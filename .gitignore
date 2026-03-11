@@ -1,0 +1,22 @@
+node_modules/
+.turbo/
+
+# JS builds
+**/dist/
+**/.next/
+**/coverage/
+
+# Rust
+**/target/
+
+# Local env and DB
+**/.env
+**/*.sqlite
+**/*.sqlite-shm
+**/*.sqlite-wal
+
+.tmp*
+
+# OS
+.DS_Store
+Thumbs.db

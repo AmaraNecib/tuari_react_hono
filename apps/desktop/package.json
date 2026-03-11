@@ -1,0 +1,18 @@
+{
+  "name": "@tuari/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "pnpm run sidecar:build && tauri build",
+    "portable": "pnpm run build && node ./scripts/build-portable.mjs",
+    "portable:only": "node ./scripts/build-portable.mjs",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "pnpm run sidecar:build && tauri build",
+    "sidecar:build": "node ./scripts/build-sidecar.mjs",
+    "typecheck": "pnpm run sidecar:build && cargo check --manifest-path ./src-tauri/Cargo.toml"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "tuari_react_hono",
+  "private": true,
+  "packageManager": "pnpm@10.8.1",
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter @tuari/api --filter @tuari/web dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "dev:web": "pnpm --filter @tuari/web dev",
+    "dev:api": "pnpm --filter @tuari/api dev",
+    "dev:desktop": "pnpm --filter @tuari/desktop dev",
+    "build:desktop": "pnpm --filter @tuari/desktop build",
+    "portable:desktop": "pnpm --filter @tuari/desktop portable"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "prisma"
+    ]
+  },
+  "devDependencies": {
+    "turbo": "^2.8.16",
+    "typescript": "^5.9.3"
+  }
+}
