@@ -9,6 +9,12 @@ Starter stack:
 Architecture guide:
 - `docs/ARCHITECTURE.md`
 
+API architecture:
+- `src/app`: composition and app assembly
+- `src/infrastructure`: env, auth, prisma, schema bootstrap
+- `src/modules`: feature services and repositories
+- `src/rpc`: transport boundary only
+
 ## What this starter does
 - Runs fully local through Tauri. No internet deployment step is required.
 - Ships a local bundled API runtime inside the desktop app.

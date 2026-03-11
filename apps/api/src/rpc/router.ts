@@ -2,71 +2,64 @@ import { ORPCError, implement } from "@orpc/server";
 
 import { appContract } from "@tuari/contracts";
 
-import { auth } from "../lib/auth";
-import { todoRepository } from "../lib/todos";
+import type { AppDependencies } from "../app/dependencies";
+import type { RpcContext } from "./context";
 
-type Context = {
-  headers: Headers;
-};
+export function createRouter(dependencies: Pick<AppDependencies, "sessionService" | "todoService">) {
+  const os = implement(appContract).$context<RpcContext>();
 
-const os = implement(appContract).$context<Context>();
+  const requireUser = async (headers: Headers) => {
+    const user = await dependencies.sessionService.getCurrentUser(headers);
 
-const requireUser = async (headers: Headers) => {
-  const sessionData = await auth.api.getSession({ headers });
-
-  if (!sessionData?.user) {
-    throw new ORPCError("UNAUTHORIZED");
-  }
-
-  return sessionData.user;
-};
-
-export const router = os.router({
-  health: os.health.handler(() => ({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-  })),
-  session: os.session.handler(async ({ context }) => {
-    const sessionData = await auth.api.getSession({
-      headers: context.headers,
-    });
-
-    if (!sessionData?.user) {
-      return { user: null };
+    if (!user) {
+      throw new ORPCError("UNAUTHORIZED");
     }
 
-    return {
-      user: {
-        id: sessionData.user.id,
-        name: sessionData.user.name,
-        email: sessionData.user.email,
-      },
-    };
-  }),
-  todos: {
-    list: os.todos.list.handler(async ({ context }) => {
-      const user = await requireUser(context.headers);
-      return todoRepository.list(user.id);
-    }),
-    create: os.todos.create.handler(async ({ context, input }) => {
-      const user = await requireUser(context.headers);
-      return todoRepository.create(user.id, input.title);
-    }),
-    toggle: os.todos.toggle.handler(async ({ context, input }) => {
-      const user = await requireUser(context.headers);
-      const item = await todoRepository.toggle(user.id, input.id, input.completed);
+    return user;
+  };
 
-      if (!item) {
-        throw new ORPCError("NOT_FOUND");
-      }
-
-      return item;
-    }),
-    remove: os.todos.remove.handler(async ({ context, input }) => {
-      const user = await requireUser(context.headers);
+  return os.router({
+    health: os.health.handler(() => ({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+    })),
+    session: os.session.handler(async ({ context }) => {
       return {
-        success: await todoRepository.remove(user.id, input.id),
+        user: await dependencies.sessionService.getCurrentUser(context.headers),
       };
     }),
-  },
-});
+    todos: {
+      list: os.todos.list.handler(async ({ context }) => {
+        const user = await requireUser(context.headers);
+        return dependencies.todoService.listForUser(user.id);
+      }),
+      create: os.todos.create.handler(async ({ context, input }) => {
+        const user = await requireUser(context.headers);
+        return dependencies.todoService.createForUser(user.id, input.title);
+      }),
+      toggle: os.todos.toggle.handler(async ({ context, input }) => {
+        const user = await requireUser(context.headers);
+        const item = await dependencies.todoService.toggleForUser(
+          user.id,
+          input.id,
+          input.completed,
+        );
+
+        if (!item) {
+          throw new ORPCError("NOT_FOUND");
+        }
+
+        return item;
+      }),
+      remove: os.todos.remove.handler(async ({ context, input }) => {
+        const user = await requireUser(context.headers);
+        return {
+          success: await dependencies.todoService.removeForUser(
+            user.id,
+            input.id,
+          ),
+        };
+      }),
+    },
+  });
+}

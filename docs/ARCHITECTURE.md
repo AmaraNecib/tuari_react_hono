@@ -42,12 +42,10 @@ The app has three main parts:
 |   |   |-- prisma
 |   |   |   `-- schema.prisma
 |   |   |-- src
-|   |   |   |-- lib
-|   |   |   |   |-- auth.ts
-|   |   |   |   |-- db.ts
-|   |   |   |   `-- env.ts
+|   |   |   |-- app
+|   |   |   |-- infrastructure
+|   |   |   |-- modules
 |   |   |   `-- rpc
-|   |   |       `-- router.ts
 |   |   |-- prisma.config.ts
 |   |   `-- tsup.config.ts
 |   |-- desktop
@@ -191,27 +189,42 @@ This is useful in a starter because it makes local runtime failures easier to de
 Recommended boundaries:
 
 - `src/index.ts`
-  - boot the server
-  - register middleware
-  - mount routes
+  - boot the server only
+  - no business logic
 
-- `src/lib`
+- `src/app`
+  - compose dependencies
+  - create the Hono app
+  - wire infrastructure to transport
+
+- `src/infrastructure`
   - environment parsing
-  - auth setup
-  - db client
-  - reusable infrastructure
+  - auth provider setup
+  - prisma client
+  - schema/bootstrap concerns
+
+- `src/modules/<feature>`
+  - feature-local types
+  - service layer
+  - repository contracts
+  - repository implementations
 
 - `src/rpc`
-  - oRPC router definitions
-  - procedure handlers
+  - transport-facing procedure handlers
+  - auth guards and request context
+  - maps application outcomes to RPC responses
 
-If the template grows, add:
-- `src/modules/<feature>`
-- `src/modules/<feature>/service.ts`
-- `src/modules/<feature>/repository.ts`
-- `src/modules/<feature>/router.ts`
+Current API dependency direction:
 
-That keeps feature logic grouped instead of turning `src/lib` into a dump folder.
+```text
+rpc -> app dependencies -> modules -> infrastructure
+```
+
+Practical rule:
+- transport may call services
+- services may call repositories
+- repositories may call Prisma
+- transport should not directly own business logic
 
 ## Web Responsibilities
 
@@ -347,6 +360,9 @@ If you want this to be a public starter, these are the next good improvements:
 
 6. Clean build leftovers from the repo
 - ensure temp and build artifacts are gitignored and not documented as source
+
+7. Add repository tests and service tests
+- keep business rules verifiable without booting the full Hono server
 
 ## Short Operational Summary
 

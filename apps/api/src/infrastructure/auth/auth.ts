@@ -2,8 +2,8 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { bearer } from "better-auth/plugins/bearer";
 
-import { prisma } from "./db";
-import { env } from "./env";
+import { env } from "../config/env";
+import { prisma } from "../database/prisma";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
