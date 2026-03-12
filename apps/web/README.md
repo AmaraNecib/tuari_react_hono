@@ -1,36 +1,22 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# @tuari/web
 
-## Getting Started
+This app is the Vite-powered web shell for Tuari. It uses React, TanStack Router, TanStack Query, Tailwind CSS, and a small Tauri runtime bridge so the same UI can run in browser preview mode or inside the desktop shell.
 
-First, run the development server:
+## Commands
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- `pnpm --filter @tuari/web dev` - start the web app on port 3000
+- `pnpm --filter @tuari/web build` - type-check and build the Vite bundle
+- `pnpm --filter @tuari/web test` - run the web Vitest suite
+- `pnpm --filter @tuari/web lint` - run the web ESLint checks
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Copy `apps/web/.env.example` to a local env file before development.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `VITE_API_URL` - API base URL used by the browser preview shell
+- `VITE_APP_CLIENT_KEY` - client key shared with the local runtime
 
-## Learn More
+## Runtime notes
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- In a normal browser, the app falls back to preview diagnostics and does not expect Tauri APIs.
+- In the desktop shell, the runtime bridge reads config and recent API log output through Tauri commands.
