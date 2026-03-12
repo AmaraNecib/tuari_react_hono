@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createRpcContext, requireCurrentUser } from "./context";
+import { createRpcContext, getCurrentUser, requireCurrentUser } from "./context";
 
 describe("rpc context", () => {
-  it("resolves the current user once when building request context", async () => {
+  it("defers current user resolution until a handler requests it", async () => {
     const headers = new Headers({ cookie: "session=token" });
     const currentUser = {
       id: "user-1",
@@ -13,26 +13,37 @@ describe("rpc context", () => {
     const sessionService = {
       getCurrentUser: vi.fn().mockResolvedValue(currentUser),
     };
+    const context = createRpcContext(headers, sessionService);
 
-    await expect(createRpcContext(headers, sessionService)).resolves.toEqual({
-      headers,
-      currentUser,
-    });
-    expect(sessionService.getCurrentUser).toHaveBeenCalledTimes(1);
+    expect(context.headers).toBe(headers);
+    expect(sessionService.getCurrentUser).not.toHaveBeenCalled();
+    await expect(getCurrentUser(context)).resolves.toEqual(currentUser);
     expect(sessionService.getCurrentUser).toHaveBeenCalledWith(headers);
   });
 
-  it("throws an unauthorized error when a protected handler has no current user", () => {
-    expect.assertions(1);
+  it("memoizes the current user lookup for the request lifetime", async () => {
+    const currentUser = {
+      id: "user-1",
+      name: "Taylor",
+      email: "taylor@example.com",
+    };
+    const sessionService = {
+      getCurrentUser: vi.fn().mockResolvedValue(currentUser),
+    };
+    const context = createRpcContext(new Headers(), sessionService);
 
-    try {
+    await expect(getCurrentUser(context)).resolves.toEqual(currentUser);
+    await expect(requireCurrentUser(context)).resolves.toEqual(currentUser);
+
+    expect(sessionService.getCurrentUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws an unauthorized error when a protected handler has no current user", async () => {
+    await expect(
       requireCurrentUser({
         headers: new Headers(),
-        currentUser: null,
-      });
-    }
-    catch (error) {
-      expect(error).toMatchObject({ code: "UNAUTHORIZED" });
-    }
+        resolveCurrentUser: vi.fn().mockResolvedValue(null),
+      }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
