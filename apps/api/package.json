@@ -9,6 +9,7 @@
     "start": "node dist/index.cjs",
     "auth:generate": "pnpm dlx auth@latest generate --config ./src/lib/auth.ts --output ./prisma/schema.prisma --yes",
     "prisma:generate": "prisma generate",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
