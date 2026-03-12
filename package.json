@@ -3,7 +3,8 @@
   "private": true,
   "packageManager": "pnpm@10.8.1",
   "scripts": {
-    "dev": "pnpm -r --parallel --filter @tuari/api --filter @tuari/web dev",
+    "predev": "pnpm --filter @tuari/contracts build",
+    "dev": "pnpm -r --parallel --filter @tuari/contracts --filter @tuari/api --filter @tuari/web dev",
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",

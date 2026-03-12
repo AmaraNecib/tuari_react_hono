@@ -1,0 +1,61 @@
+
+> tuari_react_hono@ predev C:\Users\sensei57\.t3\worktrees\tuari_react_hono\t3code-91bf978c
+> pnpm --filter @tuari/contracts build
+
+
+> @tuari/contracts@0.0.0 build C:\Users\sensei57\.t3\worktrees\tuari_react_hono\t3code-91bf978c\packages\contracts
+> tsup src/index.ts --format esm --dts --clean
+
+[34mCLI[39m Building entry: src/index.ts
+[34mCLI[39m Using tsconfig: tsconfig.json
+[34mCLI[39m tsup v8.5.1
+[34mCLI[39m Target: es2022
+[34mCLI[39m Cleaning output folder
+[34mESM[39m Build start
+[32mESM[39m [1mdist\index.js [22m[32m1018.00 B[39m
+[32mESM[39m ⚡️ Build success in 42ms
+[34mDTS[39m Build start
+[32mDTS[39m ⚡️ Build success in 1174ms
+[32mDTS[39m [1mdist\index.d.ts [22m[32m2.59 KB[39m
+
+> tuari_react_hono@ dev C:\Users\sensei57\.t3\worktrees\tuari_react_hono\t3code-91bf978c
+> pnpm -r --parallel --filter @tuari/contracts --filter @tuari/api --filter @tuari/web dev
+
+Scope: 3 of 6 workspace projects
+apps/api dev$ tsx watch src/index.ts
+apps/web dev$ vite --host 0.0.0.0 --port 3000
+packages/contracts dev$ tsup src/index.ts --format esm --dts --watch
+packages/contracts dev: [34mCLI[39m Building entry: src/index.ts
+packages/contracts dev: [34mCLI[39m Using tsconfig: tsconfig.json
+packages/contracts dev: [34mCLI[39m tsup v8.5.1
+packages/contracts dev: [34mCLI[39m Running in watch mode
+packages/contracts dev: [34mCLI[39m Target: es2022
+packages/contracts dev: [34mESM[39m Build start
+packages/contracts dev: [32mESM[39m [1mdist\index.js [22m[32m1018.00 B[39m
+packages/contracts dev: [32mESM[39m ⚡️ Build success in 74ms
+packages/contracts dev: [34mCLI[39m Watching for changes in "."
+packages/contracts dev: [34mCLI[39m Ignoring changes in "**/{.git,node_modules}/**" | "dist"
+apps/web dev:   [32m[1mVITE[22m v7.3.1[39m  [2mready in [0m[1m927[22m[2m[0m ms[22m
+apps/web dev:   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m3000[22m/[39m
+apps/web dev:   [32m➜[39m  [1mNetwork[22m: [36mhttp://169.254.83.107:[1m3000[22m/[39m
+apps/web dev:   [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.56.1:[1m3000[22m/[39m
+apps/web dev:   [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.229.1:[1m3000[22m/[39m
+apps/web dev:   [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.211.1:[1m3000[22m/[39m
+apps/web dev:   [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.1.112:[1m3000[22m/[39m
+apps/web dev:   [32m➜[39m  [1mNetwork[22m: [36mhttp://172.21.32.1:[1m3000[22m/[39m
+apps/api dev: 1:43:13 AM [tsx] change in ./..\..\packages\contracts\dist\index.js Restarting...
+packages/contracts dev: [34mDTS[39m Build start
+packages/contracts dev: [32mDTS[39m ⚡️ Build success in 1653ms
+apps/api dev: cAPI listening on http://127.0.0.1:4318
+packages/contracts dev: Terminate batch job (Y/N)? 
+packages/contracts dev: ^C
+packages/contracts dev: Failed
+C:\Users\sensei57\.t3\worktrees\tuari_react_hono\t3code-91bf978c\packages\contracts:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @tuari/contracts@0.0.0 dev: `tsup src/index.ts --format esm --dts --watch`
+Exit status 3221225786
+apps/web dev: Terminate batch job (Y/N)? 
+apps/web dev: ^C
+apps/web dev: Failed
+apps/api dev: ^C
+apps/api dev: Terminate batch job (Y/N)? 
+ ELIFECYCLE  Command failed with exit code 3221225786.
