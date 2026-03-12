@@ -1,7 +1,3 @@
-type TauriWindow = Window & {
-  __TAURI_INTERNALS__?: unknown;
-};
-
 export type RuntimeConfig = {
   apiBaseUrl: string;
   appClientKey: string;
@@ -21,43 +17,84 @@ export type RuntimeStatus = {
   error: string | null;
 };
 
+const BROWSER_PREVIEW_ENDPOINT = "Browser preview shell";
+const DESKTOP_BRIDGE_ENDPOINT = "Tauri sidecar bridge";
+const RUNTIME_UNAVAILABLE_PATTERNS = [
+  /__TAURI_INTERNALS__/i,
+  /window\.__TAURI/i,
+  /tauri invoke bridge is not available/i,
+  /tauri ipc.*not available/i,
+  /invoke bridge.*not available/i,
+  /cannot read properties of undefined.*invoke/i,
+  /unsupported in a web browser/i,
+];
+
 function getCheckedAt(now?: () => string) {
   return now ? now() : new Date().toISOString();
 }
 
-function getTauriWindow() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window as TauriWindow;
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unable to load runtime diagnostics.";
 }
 
-export function hasTauriRuntime() {
-  return Boolean(getTauriWindow()?.__TAURI_INTERNALS__);
+function isRuntimeUnavailable(error: unknown) {
+  const message = getErrorMessage(error);
+  return RUNTIME_UNAVAILABLE_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+async function getInvoke() {
+  const tauriCore = await import("@tauri-apps/api/core");
+
+  if (typeof tauriCore.invoke !== "function") {
+    throw new Error("Tauri invoke bridge is not available.");
+  }
+
+  return tauriCore.invoke;
+}
+
+async function getServerLog(invoke: typeof import("@tauri-apps/api/core").invoke) {
+  try {
+    const serverLog = await invoke<string>("get_server_log");
+    return serverLog.trim();
+  } catch {
+    return "";
+  }
 }
 
 export async function getRuntimeStatus(options?: { now?: () => string }): Promise<RuntimeStatus> {
   const checkedAt = getCheckedAt(options?.now);
 
-  if (!hasTauriRuntime()) {
+  let invoke: typeof import("@tauri-apps/api/core").invoke;
+
+  try {
+    invoke = await getInvoke();
+  } catch (error) {
+    if (isRuntimeUnavailable(error)) {
+      return {
+        checkedAt,
+        environment: "browser",
+        endpoint: BROWSER_PREVIEW_ENDPOINT,
+        health: "preview",
+        config: null,
+        serverLog: "",
+        error: null,
+      };
+    }
+
     return {
       checkedAt,
-      environment: "browser",
-      endpoint: "Browser preview shell",
-      health: "preview",
+      environment: "desktop",
+      endpoint: DESKTOP_BRIDGE_ENDPOINT,
+      health: "degraded",
       config: null,
       serverLog: "",
-      error: null,
+      error: getErrorMessage(error),
     };
   }
 
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const [config, serverLog] = await Promise.all([
-      invoke<RuntimeConfig>("get_runtime_config"),
-      invoke<string>("get_server_log"),
-    ]);
+    const config = await invoke<RuntimeConfig>("get_runtime_config");
+    const serverLog = await getServerLog(invoke);
 
     return {
       checkedAt,
@@ -69,14 +106,26 @@ export async function getRuntimeStatus(options?: { now?: () => string }): Promis
       error: null,
     };
   } catch (error) {
+    if (isRuntimeUnavailable(error)) {
+      return {
+        checkedAt,
+        environment: "browser",
+        endpoint: BROWSER_PREVIEW_ENDPOINT,
+        health: "preview",
+        config: null,
+        serverLog: "",
+        error: null,
+      };
+    }
+
     return {
       checkedAt,
       environment: "desktop",
-      endpoint: "Tauri sidecar bridge",
+      endpoint: DESKTOP_BRIDGE_ENDPOINT,
       health: "degraded",
       config: null,
       serverLog: "",
-      error: error instanceof Error ? error.message : "Unable to load runtime diagnostics.",
+      error: getErrorMessage(error),
     };
   }
 }
