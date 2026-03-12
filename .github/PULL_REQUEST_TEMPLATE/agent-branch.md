@@ -6,10 +6,11 @@
 
 ## Files Changed
 
-- 
+-
 
 ## Validation
 
+- [ ] `pnpm check:web-hygiene`
 - [ ] `pnpm check:workflow-assets`
 - [ ] Additional branch-specific checks listed below
 
