@@ -53,7 +53,6 @@ describe("HomeView runtime diagnostics", () => {
         endpoint: "Tauri sidecar bridge",
         health: "degraded",
         config: null,
-        serverLog: "",
         error: "bridge offline",
       },
       isPending: false,
@@ -61,8 +60,8 @@ describe("HomeView runtime diagnostics", () => {
 
     renderHomeView();
 
-    expect(screen.getAllByText("Unavailable while desktop bridge is degraded").length).toBe(2);
+    expect(screen.queryByText("Unavailable while desktop bridge is degraded")).toBeNull();
     expect(screen.getByText("bridge offline")).toBeTruthy();
-    expect(screen.queryByText("Preview mode has no desktop project path")).toBeNull();
+    expect(screen.getAllByText("Tauri sidecar bridge").length).toBeGreaterThan(0);
   });
 });

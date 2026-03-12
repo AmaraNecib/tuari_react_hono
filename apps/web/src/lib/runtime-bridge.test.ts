@@ -30,34 +30,18 @@ describe("runtime bridge", () => {
       endpoint: "Browser preview shell",
       health: "preview",
       config: null,
-      serverLog: "",
       error: null,
     });
     expect(invokeMock).toHaveBeenCalledTimes(1);
     expect(invokeMock).toHaveBeenCalledWith("get_runtime_config");
   });
 
-  it("loads runtime config and log data through Tauri commands", async () => {
+  it("loads runtime config through the Tauri bridge", async () => {
     const runtimeConfig: RuntimeConfig = {
       apiBaseUrl: "http://127.0.0.1:4318",
-      appClientKey: "desktop-key",
-      projectDir: "D:/Tuari/projects/default",
-      authDbPath: "D:/Tuari/tuari.sqlite",
-      appDbPath: "D:/Tuari/tuari.sqlite",
-      serverLogPath: "D:/Tuari/logs/api-server.log",
     };
 
-    invokeMock.mockImplementation(async (command: string) => {
-      if (command === "get_runtime_config") {
-        return runtimeConfig;
-      }
-
-      if (command === "get_server_log") {
-        return "ready\nlistening\n";
-      }
-
-      throw new Error(`Unexpected command: ${command}`);
-    });
+    invokeMock.mockResolvedValue(runtimeConfig);
 
     const status = await getRuntimeStatus({ now: () => "2026-03-12T10:05:00.000Z" });
 
@@ -67,35 +51,18 @@ describe("runtime bridge", () => {
       endpoint: "http://127.0.0.1:4318",
       health: "connected",
       config: runtimeConfig,
-      serverLog: "ready\nlistening",
       error: null,
     });
-    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
     expect(invokeMock).toHaveBeenNthCalledWith(1, "get_runtime_config");
-    expect(invokeMock).toHaveBeenNthCalledWith(2, "get_server_log");
   });
 
-  it("keeps desktop diagnostics connected when log loading fails", async () => {
+  it("does not request raw desktop diagnostics", async () => {
     const runtimeConfig: RuntimeConfig = {
       apiBaseUrl: "http://127.0.0.1:4318",
-      appClientKey: "desktop-key",
-      projectDir: "D:/Tuari/projects/default",
-      authDbPath: "D:/Tuari/tuari.sqlite",
-      appDbPath: "D:/Tuari/tuari.sqlite",
-      serverLogPath: "D:/Tuari/logs/api-server.log",
     };
 
-    invokeMock.mockImplementation(async (command: string) => {
-      if (command === "get_runtime_config") {
-        return runtimeConfig;
-      }
-
-      if (command === "get_server_log") {
-        throw new Error("log file locked");
-      }
-
-      throw new Error(`Unexpected command: ${command}`);
-    });
+    invokeMock.mockResolvedValue(runtimeConfig);
 
     const status = await getRuntimeStatus({ now: () => "2026-03-12T10:07:00.000Z" });
 
@@ -105,10 +72,9 @@ describe("runtime bridge", () => {
       endpoint: "http://127.0.0.1:4318",
       health: "connected",
       config: runtimeConfig,
-      serverLog: "",
       error: null,
     });
-    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
   });
 
   it("reports a degraded desktop runtime when commands fail", async () => {
@@ -122,7 +88,6 @@ describe("runtime bridge", () => {
       endpoint: "Tauri sidecar bridge",
       health: "degraded",
       config: null,
-      serverLog: "",
       error: "bridge offline",
     });
   });
@@ -138,7 +103,6 @@ describe("runtime bridge", () => {
       endpoint: "Tauri sidecar bridge",
       health: "degraded",
       config: null,
-      serverLog: "",
       error: "runtime config not found; sidecar not available",
     });
   });
