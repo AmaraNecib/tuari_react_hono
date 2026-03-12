@@ -3,11 +3,12 @@
   "private": true,
   "packageManager": "pnpm@10.8.1",
   "scripts": {
+    "check:workflow-assets": "node --test ./tests/workflow-assets.test.mjs",
     "check:web-tracking": "node ./scripts/check-web-tracking.mjs",
     "predev": "pnpm check:web-tracking && pnpm --filter @tuari/contracts build",
     "dev": "pnpm -r --parallel --filter @tuari/contracts --filter @tuari/api --filter @tuari/web dev",
     "build": "pnpm check:web-tracking && turbo build",
-    "lint": "pnpm check:web-tracking && turbo lint",
+    "lint": "pnpm check:web-tracking && pnpm check:workflow-assets && turbo lint",
     "typecheck": "pnpm check:web-tracking && turbo typecheck",
     "dev:web": "pnpm check:web-tracking && pnpm --filter @tuari/web dev",
     "dev:api": "pnpm --filter @tuari/api dev",
