@@ -6,6 +6,7 @@ import { cors } from "hono/cors";
 import { env } from "../infrastructure/config/env";
 import type { AppDependencies } from "./dependencies";
 import { createRouter } from "../rpc/router";
+import { createRpcContext } from "../rpc/context";
 
 const isAllowedOrigin = (origin: string | undefined) => {
   if (!origin) {
@@ -27,7 +28,7 @@ const resolveCorsOrigin = (origin: string | undefined) => {
 
 export function createApp(dependencies: AppDependencies) {
   const app = new Hono();
-  const router = createRouter(dependencies);
+  const router = createRouter({ todoService: dependencies.todoService });
   const rpcHandler = new RPCHandler(router, {
     interceptors: [
       onError((error) => {
@@ -79,11 +80,10 @@ export function createApp(dependencies: AppDependencies) {
   });
 
   app.use("/rpc/*", async (c, next) => {
+    const context = await createRpcContext(c.req.raw.headers, dependencies.sessionService);
     const { matched, response } = await rpcHandler.handle(c.req.raw, {
       prefix: "/rpc",
-      context: {
-        headers: c.req.raw.headers,
-      },
+      context,
     });
 
     if (matched) {
