@@ -1,29 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-
-type RuntimeStatus = {
-  checkedAt: string;
-  environment: "desktop" | "browser";
-  endpoint: string;
-  health: "connected" | "preview";
-};
-
-async function getRuntimeStatus(): Promise<RuntimeStatus> {
-  const isDesktop =
-    typeof window !== "undefined" &&
-    Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
-
-  return {
-    checkedAt: new Date().toISOString(),
-    environment: isDesktop ? "desktop" : "browser",
-    endpoint: isDesktop ? "Tauri sidecar bridge" : "Browser preview shell",
-    health: isDesktop ? "connected" : "preview",
-  };
-}
+import { getRuntimeStatus, type RuntimeStatus } from "@/lib/runtime-bridge";
 
 export function useRuntimeStatusQuery() {
-  return useQuery({
+  return useQuery<RuntimeStatus>({
     queryKey: ["runtime-status"],
-    queryFn: getRuntimeStatus,
+    queryFn: () => getRuntimeStatus(),
     refetchInterval: 30_000,
   });
 }
