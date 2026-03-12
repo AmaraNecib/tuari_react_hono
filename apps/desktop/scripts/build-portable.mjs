@@ -1,6 +1,8 @@
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { copyValidatedTree, resolveTrustedTarPath, validateReleaseBinEntries } from "./script-security-utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,20 +41,22 @@ try {
 rmSync(finalZipPath, { force: true });
 mkdirSync(tempPortableDir, { recursive: true });
 
-cpSync(appExePath, path.resolve(tempPortableDir, "Tuari.exe"));
-cpSync(binDir, path.resolve(tempPortableDir, "bin"), { recursive: true });
+copyFileSync(appExePath, path.resolve(tempPortableDir, "Tuari.exe"));
+validateReleaseBinEntries(binDir);
+mkdirSync(path.resolve(tempPortableDir, "bin"), { recursive: true });
+copyFileSync(path.resolve(binDir, "node.exe"), path.resolve(tempPortableDir, "bin", "node.exe"));
+copyValidatedTree(path.resolve(binDir, "api-runtime"), path.resolve(tempPortableDir, "bin", "api-runtime"));
 
 const resourcesDir = path.resolve(releaseRoot, "resources");
 if (existsSync(resourcesDir)) {
-  cpSync(resourcesDir, path.resolve(tempPortableDir, "resources"), { recursive: true });
+  copyValidatedTree(resourcesDir, path.resolve(tempPortableDir, "resources"));
 }
 
 renameSync(tempPortableDir, finalPortableDir);
 
-// `tar.exe` is available on Windows and creates a zip when used with `-a`.
-const { spawnSync } = await import("node:child_process");
+const tarExecutable = resolveTrustedTarPath();
 const zipResult = spawnSync(
-  "tar.exe",
+  tarExecutable,
   ["-a", "-c", "-f", finalZipPath, "-C", finalPortableDir, "."],
   {
     stdio: "inherit",
