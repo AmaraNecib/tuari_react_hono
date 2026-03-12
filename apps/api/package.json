@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
     "start": "node dist/index.cjs",
-    "auth:generate": "pnpm dlx auth@latest generate --config ./src/lib/auth.ts --output ./prisma/schema.prisma --yes",
+    "auth:generate": "pnpm dlx @better-auth/cli@latest generate --config ./src/infrastructure/auth/auth.ts --output ./prisma/schema.prisma --yes",
     "prisma:generate": "prisma generate",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
