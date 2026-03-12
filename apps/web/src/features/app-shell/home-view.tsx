@@ -9,7 +9,10 @@ type Copy = {
   eyebrow: string;
   title: string;
   description: string;
-  statusHover: string;
+  statusHoverConnected: string;
+  statusHoverPreview: string;
+  statusHoverDegraded: string;
+  statusHoverLoading: string;
   statusPanelTitle: string;
   statusPanelDescription: string;
   themeButtonLabel: string;
@@ -25,11 +28,31 @@ type Copy = {
   }>;
   diagnostics: {
     connection: string;
+    environment: string;
+    endpoint: string;
+    projectDir: string;
+    logPath: string;
+    issue: string;
     surface: string;
     layout: string;
     checkedAt: string;
     connected: string;
     preview: string;
+    degraded: string;
+    desktop: string;
+    browser: string;
+    loading: string;
+    unavailable: string;
+    loadingEndpoint: string;
+    loadingProjectDir: string;
+    loadingLogPath: string;
+    degradedEndpoint: string;
+    degradedProjectDir: string;
+    degradedLogPath: string;
+    previewProjectDir: string;
+    logPreviewTitle: string;
+    logPreviewDescription: string;
+    noLogLines: string;
     dark: string;
     light: string;
     englishLayout: string;
@@ -43,10 +66,13 @@ const copy: Record<"en" | "ar", Copy> = {
     title: "Light stays familiar. Dark feels like its twin, not a different product.",
     description:
       "This Vite shell adds a cleaner top control area, a one-tap language switch, and a darker palette that keeps the same warm, quiet character as the light theme.",
-    statusHover: "Connected to local runtime",
+    statusHoverConnected: "Connected to local runtime",
+    statusHoverPreview: "Running in browser preview",
+    statusHoverDegraded: "Desktop runtime needs attention",
+    statusHoverLoading: "Checking runtime diagnostics",
     statusPanelTitle: "Runtime status",
     statusPanelDescription:
-      "The top control stays compact as a dot, reveals its status on hover, and opens diagnostics on click.",
+      "The top control stays compact as a dot, reveals its state on hover, and opens live runtime diagnostics on click.",
     themeButtonLabel: "Switch color theme",
     languageButtonLabel: "Switch language",
     languageSwitchValue: "AR",
@@ -73,11 +99,31 @@ const copy: Record<"en" | "ar", Copy> = {
     ],
     diagnostics: {
       connection: "Connection",
+      environment: "Environment",
+      endpoint: "API endpoint",
+      projectDir: "Project directory",
+      logPath: "Log file",
+      issue: "Runtime issue",
       surface: "Surface mode",
       layout: "Language layout",
       checkedAt: "Last check",
       connected: "Local runtime connected",
       preview: "Browser preview shell",
+      degraded: "Desktop runtime unavailable",
+      desktop: "Desktop / Tauri",
+      browser: "Browser / Preview",
+      loading: "Checking runtime diagnostics",
+      unavailable: "Unavailable",
+      loadingEndpoint: "Checking desktop bridge...",
+      loadingProjectDir: "Waiting for runtime config...",
+      loadingLogPath: "Waiting for runtime config...",
+      degradedEndpoint: "Desktop bridge unavailable",
+      degradedProjectDir: "Unavailable while desktop bridge is degraded",
+      degradedLogPath: "Unavailable while desktop bridge is degraded",
+      previewProjectDir: "Preview mode has no desktop project path",
+      logPreviewTitle: "Recent server log",
+      logPreviewDescription: "Reads the latest desktop API server lines through the Tauri bridge when available.",
+      noLogLines: "No server log lines available for this mode yet.",
       dark: "Dark theme active",
       light: "Light theme active",
       englishLayout: "English / LTR",
@@ -89,10 +135,13 @@ const copy: Record<"en" | "ar", Copy> = {
     title: "الوضع الفاتح يبقى مألوفًا، والوضع الداكن يصبح نسخته القريبة لا واجهة مختلفة.",
     description:
       "هذه واجهة Vite تضيف منطقة تحكم علوية أنظف، وزر لغة واحدًا، ولوحة داكنة تحافظ على نفس الشخصية الهادئة الموجودة في الوضع الفاتح.",
-    statusHover: "متصل بالمحرك المحلي",
+    statusHoverConnected: "متصل بالمحرك المحلي",
+    statusHoverPreview: "يعمل في معاينة المتصفح",
+    statusHoverDegraded: "محرك سطح المكتب يحتاج متابعة",
+    statusHoverLoading: "جار فحص تفاصيل التشغيل",
     statusPanelTitle: "حالة التشغيل",
     statusPanelDescription:
-      "عنصر الأعلى يبقى نقطة صغيرة، ويعرض الحالة عند المرور، ويفتح التفاصيل عند الضغط.",
+      "عنصر الأعلى يبقى نقطة صغيرة، ويعرض الحالة عند المرور، ويفتح تفاصيل تشغيل حية عند الضغط.",
     themeButtonLabel: "تبديل المظهر",
     languageButtonLabel: "تبديل اللغة",
     languageSwitchValue: "EN",
@@ -119,11 +168,31 @@ const copy: Record<"en" | "ar", Copy> = {
     ],
     diagnostics: {
       connection: "الاتصال",
+      environment: "البيئة",
+      endpoint: "واجهة API",
+      projectDir: "مجلد المشروع",
+      logPath: "ملف السجل",
+      issue: "مشكلة التشغيل",
       surface: "وضع العرض",
       layout: "اتجاه الواجهة",
       checkedAt: "آخر فحص",
       connected: "المحرك المحلي متصل",
       preview: "معاينة المتصفح",
+      degraded: "محرك سطح المكتب غير متاح",
+      desktop: "سطح المكتب / Tauri",
+      browser: "المتصفح / المعاينة",
+      loading: "جار فحص تفاصيل التشغيل",
+      unavailable: "غير متاح",
+      loadingEndpoint: "جار التحقق من جسر سطح المكتب...",
+      loadingProjectDir: "بانتظار إعدادات التشغيل...",
+      loadingLogPath: "بانتظار إعدادات التشغيل...",
+      degradedEndpoint: "جسر سطح المكتب غير متاح",
+      degradedProjectDir: "غير متاح لأن جسر سطح المكتب متعثر",
+      degradedLogPath: "غير متاح لأن جسر سطح المكتب متعثر",
+      previewProjectDir: "وضع المعاينة لا يملك مسار مشروع لسطح المكتب",
+      logPreviewTitle: "آخر سطور السجل",
+      logPreviewDescription: "تقرأ أحدث سطور خادم API عبر جسر Tauri عند توفره.",
+      noLogLines: "لا توجد سطور سجل متاحة لهذا الوضع بعد.",
       dark: "الوضع الداكن فعال",
       light: "الوضع الفاتح فعال",
       englishLayout: "الإنجليزية / LTR",
@@ -170,6 +239,7 @@ function LanguageToggleButton({ label, value }: { label: string; value: string }
 function ConnectionStatusButton({
   checkedAt,
   diagnostics,
+  health,
   hoverLabel,
   locale,
   panelDescription,
@@ -177,6 +247,7 @@ function ConnectionStatusButton({
 }: {
   checkedAt: string;
   diagnostics: Array<{ label: string; value: string }>;
+  health: "connected" | "preview" | "degraded" | "loading";
   hoverLabel: string;
   locale: "en" | "ar";
   panelDescription: string;
@@ -210,17 +281,33 @@ function ConnectionStatusButton({
         aria-expanded={isOpen}
         aria-label={hoverLabel}
         className="group relative flex size-10 items-center justify-center rounded-full border border-white/60 bg-white/80 shadow-[0_14px_40px_rgba(15,23,42,0.08)] backdrop-blur-sm transition hover:-translate-y-0.5 hover:shadow-[0_18px_48px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-white/8 dark:shadow-[0_18px_48px_rgba(0,0,0,0.32)]"
-        onClick={() => setIsOpen((current) => !current)}
-        type="button"
-      >
-        <span className="sr-only">{hoverLabel}</span>
-        <span className="relative flex size-3.5 items-center justify-center">
-          <span className="absolute inset-0 rounded-full bg-emerald-400/35 blur-[4px]" />
-          <span className="relative size-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15 transition group-hover:scale-110" />
-        </span>
-        <span className="pointer-events-none absolute -top-11 left-1/2 -translate-x-1/2 translate-y-1 rounded-full border border-white/70 bg-white/92 px-3 py-1 text-[11px] font-semibold tracking-[0.12em] whitespace-nowrap text-slate-700 opacity-0 shadow-lg backdrop-blur-sm transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 dark:border-white/10 dark:bg-slate-950/92 dark:text-slate-100">
-          {hoverLabel}
-        </span>
+          onClick={() => setIsOpen((current) => !current)}
+          type="button"
+        >
+          <span className="sr-only">{hoverLabel}</span>
+          <span className="relative flex size-3.5 items-center justify-center">
+            <span
+              className={cn(
+                "absolute inset-0 rounded-full blur-[4px]",
+                health === "connected" && "bg-emerald-400/35",
+                health === "preview" && "bg-slate-400/35",
+                health === "degraded" && "bg-amber-400/40",
+                health === "loading" && "bg-sky-400/35",
+              )}
+            />
+            <span
+              className={cn(
+                "relative size-2.5 rounded-full ring-4 transition group-hover:scale-110",
+                health === "connected" && "bg-emerald-500 ring-emerald-500/15",
+                health === "preview" && "bg-slate-500 ring-slate-500/15",
+                health === "degraded" && "bg-amber-500 ring-amber-500/20",
+                health === "loading" && "bg-sky-500 ring-sky-500/20",
+              )}
+            />
+          </span>
+          <span className="pointer-events-none absolute -top-11 left-1/2 -translate-x-1/2 translate-y-1 rounded-full border border-white/70 bg-white/92 px-3 py-1 text-[11px] font-semibold tracking-[0.12em] whitespace-nowrap text-slate-700 opacity-0 shadow-lg backdrop-blur-sm transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 dark:border-white/10 dark:bg-slate-950/92 dark:text-slate-100">
+            {hoverLabel}
+          </span>
       </button>
 
       {isOpen ? (
@@ -247,7 +334,7 @@ function ConnectionStatusButton({
                 key={item.label}
               >
                 <span className="text-sm text-slate-500 dark:text-slate-400">{item.label}</span>
-                <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                <span className="max-w-[58%] break-words text-right text-sm leading-6 font-medium text-slate-900 dark:text-slate-100">
                   {item.value}
                 </span>
               </div>
@@ -261,19 +348,79 @@ function ConnectionStatusButton({
 
 export function HomeView() {
   const { locale, theme } = useAppPreferences();
-  const { data } = useRuntimeStatusQuery();
+  const { data, isPending } = useRuntimeStatusQuery();
   const content = copy[locale];
+  const runtimeState = isPending || !data ? "loading" : data.health;
+  const hoverLabel =
+    runtimeState === "connected"
+      ? content.statusHoverConnected
+      : runtimeState === "degraded"
+        ? content.statusHoverDegraded
+        : runtimeState === "preview"
+          ? content.statusHoverPreview
+          : content.statusHoverLoading;
   const checkedAt = data?.checkedAt
     ? new Intl.DateTimeFormat(locale, {
         hour: "numeric",
         minute: "2-digit",
       }).format(new Date(data.checkedAt))
     : "--";
+  const connectionLabel =
+    runtimeState === "connected"
+      ? content.diagnostics.connected
+      : runtimeState === "degraded"
+        ? content.diagnostics.degraded
+        : runtimeState === "preview"
+          ? content.diagnostics.preview
+          : content.diagnostics.loading;
+  const environmentLabel =
+    runtimeState === "loading"
+      ? content.diagnostics.loading
+      : data?.environment === "desktop"
+        ? content.diagnostics.desktop
+        : content.diagnostics.browser;
+  const endpointLabel =
+    runtimeState === "loading"
+      ? content.diagnostics.loadingEndpoint
+      : runtimeState === "degraded"
+        ? data?.endpoint ?? content.diagnostics.degradedEndpoint
+        : data?.endpoint ?? content.diagnostics.unavailable;
+  const projectDirectory =
+    runtimeState === "loading"
+      ? content.diagnostics.loadingProjectDir
+      : runtimeState === "degraded"
+        ? content.diagnostics.degradedProjectDir
+        : runtimeState === "preview"
+          ? content.diagnostics.previewProjectDir
+          : data?.config?.projectDir ?? content.diagnostics.unavailable;
+  const logPath =
+    runtimeState === "loading"
+      ? content.diagnostics.loadingLogPath
+      : runtimeState === "degraded"
+        ? content.diagnostics.degradedLogPath
+        : data?.config?.serverLogPath ?? content.diagnostics.unavailable;
+  const logPreview = data?.serverLog || content.diagnostics.noLogLines;
 
   const diagnostics = [
     {
       label: content.diagnostics.connection,
-      value: data?.health === "connected" ? content.diagnostics.connected : content.diagnostics.preview,
+      value: connectionLabel,
+    },
+    {
+      label: content.diagnostics.environment,
+      value: environmentLabel,
+    },
+    {
+      label: content.diagnostics.endpoint,
+      value: endpointLabel,
+    },
+    {
+      label: content.diagnostics.projectDir,
+      value: projectDirectory,
+    },
+    {
+      label: content.diagnostics.logPath,
+      value: logPath,
     },
     {
       label: content.diagnostics.surface,
@@ -287,6 +434,14 @@ export function HomeView() {
       label: content.diagnostics.checkedAt,
       value: checkedAt,
     },
+    ...(data?.error
+      ? [
+          {
+            label: content.diagnostics.issue,
+            value: data.error,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -306,8 +461,8 @@ export function HomeView() {
                 <p className="text-lg font-semibold tracking-[0.08em] text-slate-950 uppercase dark:text-slate-50">
                   Tuari
                 </p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {data?.endpoint ?? "Browser preview shell"}
+                <p className="max-w-[18rem] break-words text-sm text-slate-500 dark:text-slate-400">
+                  {endpointLabel}
                 </p>
               </div>
             </div>
@@ -322,7 +477,8 @@ export function HomeView() {
             <ConnectionStatusButton
               checkedAt={checkedAt}
               diagnostics={diagnostics}
-              hoverLabel={content.statusHover}
+              health={runtimeState}
+              hoverLabel={hoverLabel}
               locale={locale}
               panelDescription={content.statusPanelDescription}
               panelTitle={content.statusPanelTitle}
@@ -381,11 +537,11 @@ export function HomeView() {
               <div className="space-y-3">
                 {diagnostics.map((item) => (
                   <div
-                    className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-3 dark:border-white/8 dark:bg-white/5"
+                    className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-3 dark:border-white/8 dark:bg-white/5"
                     key={item.label}
                   >
-                    <span className="text-sm text-slate-500 dark:text-slate-400">{item.label}</span>
-                    <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    <span className="min-w-0 text-sm text-slate-500 dark:text-slate-400">{item.label}</span>
+                    <span className="max-w-[60%] break-words text-right text-sm leading-6 font-medium text-slate-900 dark:text-slate-100">
                       {item.value}
                     </span>
                   </div>
@@ -399,6 +555,20 @@ export function HomeView() {
                 <p className="mt-3 text-sm leading-7 text-slate-200 dark:text-slate-700">
                   {content.themeNote}
                 </p>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200/80 bg-white/78 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/5 dark:shadow-[0_18px_44px_rgba(0,0,0,0.22)]">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase dark:text-slate-400">
+                    {content.diagnostics.logPreviewTitle}
+                  </p>
+                  <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
+                    {content.diagnostics.logPreviewDescription}
+                  </p>
+                </div>
+                <pre className="mt-4 max-h-48 overflow-auto rounded-2xl bg-slate-950 px-4 py-3 text-xs leading-6 whitespace-pre-wrap text-slate-100 dark:bg-slate-900">
+                  {logPreview}
+                </pre>
               </div>
             </div>
           </aside>
