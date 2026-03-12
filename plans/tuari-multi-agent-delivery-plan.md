@@ -1,16 +1,21 @@
 # Tuari Multi-Agent Delivery Plan
 
+## Purpose
+
+This plan defines how work moves from isolated agent branches into stable integration branches without mixing product work, workflow work, and release preparation in the same milestone.
+
 ## Goal
 
-Break the earlier review into delivery phases that can be executed by multiple agents without losing review quality, test coverage, or integration discipline.
+Break the earlier review into practical delivery phases that multiple agents can execute without losing review quality, test coverage, or integration discipline.
 
-## Current Blocker
+## Branch Naming Rules
 
-- `apps/web` is currently recorded in the parent repository index as a gitlink/submodule-style entry (`160000` mode), not as normal tracked files.
-- That can block normal `apps/web` file commits from the parent repo until the index layout is corrected.
-- Treat this as the first repository-level unblock before assigning normal web implementation work.
+- Agent implementation branches use `agent/phaseN-short-description`.
+- Integration branches use `integration/phaseN-short-description`.
+- Hotfix branches use `hotfix/short-description` only for urgent repair work after an integration branch has already been validated.
+- `phaseN` must match the active milestone described in this plan.
 
-## Phase Plan
+## Phase Roadmap
 
 ### Phase 0 - Repository Unblock
 
@@ -20,45 +25,72 @@ Break the earlier review into delivery phases that can be executed by multiple a
 
 ### Phase 1 - Delivery Foundations
 
-- Lock the phase boundaries, ownership map, and branch naming conventions.
-- Add or standardize test entry points for each surface: API, web, desktop, and shared contracts.
-- Define verification checklists and PR templates so every agent branch ships with the same quality bar.
-- Capture any required repo/CI updates needed to support unit, integration, and E2E work.
+- Add this delivery plan under `plans/` and keep branch naming rules stable.
+- Add the checklist, PR templates, and docs needed by every agent and integration branch.
+- Add lightweight automated validation so workflow assets can be checked in CI and before review.
+- Keep Phase 1 focused on workflow assets, not feature delivery.
 
 ### Phase 2 - Shared Contracts and API Core
 
-- Stabilize shared contracts first where downstream web and desktop work depends on them.
-- Implement API-side architectural fixes, service/repository coverage, and integration tests.
-- Keep transport wiring thin and move business logic into modules/services where needed.
+- Stabilize shared contracts before downstream web or desktop work depends on them.
+- Implement API-side architectural fixes, service or repository coverage, and integration tests.
+- Keep transport wiring thin and move business logic into modules or services where needed.
 
 ### Phase 3 - Web App Improvements
 
-- Apply the reviewed web structure and runtime/UI improvements after the repo unblock and contract updates land.
-- Add unit/integration coverage for feature logic and E2E coverage for critical user paths where appropriate.
+- Apply reviewed web structure and runtime or UI improvements after Phase 0 and Phase 2 dependencies land.
+- Add unit or integration coverage for feature logic and E2E coverage for critical user paths where appropriate.
 - Keep web branches scoped to user-facing behavior, routing, diagnostics, and API consumption.
 
 ### Phase 4 - Desktop Runtime and Packaging
 
-- Implement Tauri/runtime/path/logging/sidecar improvements that depend on completed API and web behavior.
-- Add desktop verification and smoke coverage around startup, health checks, packaging, and portable behavior.
-- Treat packaging changes as late-phase work because they validate the integrated system, not isolated features.
+- Implement Tauri, runtime, path, logging, and sidecar improvements after API and web behavior is stable.
+- Add desktop verification around startup, health checks, packaging, and portable behavior.
+- Treat packaging changes as late-phase work because they validate the integrated system.
 
 ### Phase 5 - Integration and Release Readiness
 
 - Merge completed phase branches into a dedicated integration branch.
 - Run integrated typecheck, build, test, and end-to-end verification across API, web, desktop, and contracts.
-- Fix cross-branch regressions on the integration branch or in targeted follow-up branches, then prepare the final release PR.
+- Fix cross-branch regressions on the integration branch or in targeted follow-up branches before the final release PR.
 
-## Branch-Per-Agent Workflow
+## Delivery Expectations By Phase
 
-- Create one implementation branch per agent and per scoped task, for example: `agent/api-phase2-auth`, `agent/web-phase3-runtime-panel`, `agent/desktop-phase4-portable-smoke`.
-- Keep each branch focused on one deliverable with a clear owner, linked phase, and explicit dependency list.
-- Do not mix unrelated API, web, and desktop work in the same implementation branch unless the task is intentionally cross-cutting and reviewed that way.
-- Rebase or merge from the current target branch only as needed to resolve approved dependencies; avoid long-lived drifting branches.
+| Phase | Branch focus | Exit criteria |
+| --- | --- | --- |
+| Phase 0 | Repository unblock and baseline web workspace recovery | Core worktree opens, installs, and tracks the intended web app files cleanly |
+| Phase 1 | Workflow foundation assets for multi-agent delivery | Plan, checklist, PR templates, naming rules, and automated validation exist in-repo |
+| Phase 2+ | Product or infrastructure milestones | Each phase should add a scoped plan update, branch-specific validation, and a PR ready for integration |
 
-## Requirements For Every Implementation Branch
+## Phase 1 Milestone
 
-Each implementation branch must include:
+Phase 1 is the first process-focused milestone after the repository unblock in Phase 0.
+
+Deliverables:
+
+1. Add this delivery plan under `plans/`.
+2. Add a reusable branch verification checklist template.
+3. Add pull request templates for agent and integration branches.
+4. Document branch naming and phase expectations in repo docs.
+5. Add lightweight automated validation so workflow assets can be checked in CI or before review.
+
+Non-goals:
+
+- no feature delivery
+- no UI changes
+- no runtime behavior changes
+- no infrastructure rollout changes beyond workflow validation
+
+## Working Agreement For Agent Branches
+
+Every agent branch should:
+
+1. target exactly one phase milestone
+2. keep scope narrow enough for review in one pull request
+3. add or update at least one verification command when the branch changes repo behavior or process assets
+4. leave a review trail that states files changed, validation run, and follow-ups
+
+Each implementation branch must also include:
 
 - its own code review before merge
 - its own tests: unit, integration, and E2E as appropriate to the scope
@@ -67,12 +99,12 @@ Each implementation branch must include:
 Minimum checklist for every branch:
 
 - scope statement and dependency statement
-- files/surfaces changed
+- files or surfaces changed
 - tests added or updated
 - local verification commands run
 - known risks, follow-ups, or deferred items
 
-## When Parallel Branches Are Allowed
+## Parallel And Sequential Work
 
 Parallel work is allowed when:
 
@@ -81,38 +113,49 @@ Parallel work is allowed when:
 - one branch can be reviewed and tested without unpublished changes from another branch
 - the integration branch can absorb both branches without ambiguous ownership of the same files
 
-## When Work Must Stay Sequential
-
 Work must stay sequential when:
 
-- a branch changes shared contracts, Prisma schema, auth/session behavior, or build pipeline inputs used by other branches
+- a branch changes shared contracts, Prisma schema, auth or session behavior, or build pipeline inputs used by other branches
 - downstream work depends on new APIs, route shapes, runtime commands, or packaging outputs not yet merged
-- multiple branches would need to edit the same feature area or same verification assets at the same time
-- the repository/blocker state would make branch validation unreliable, especially for `apps/web`
+- multiple branches would need to edit the same feature area or the same verification assets at the same time
+- the repository blocker state would make branch validation unreliable, especially for `apps/web`
 
 Recommended sequencing rule:
 
 - contracts and repo-shape fixes first
-- API/core behavior next
+- API and core behavior next
 - web and desktop consumers after their dependencies are merged
-- packaging/release work last
+- packaging and release work last
 
-## Integration Branch
+## Integration Branch Expectations
 
-- Create a dedicated branch such as `integration/phase-complete` once a set of reviewed implementation branches is ready.
-- Merge only completed branches that already passed their own review, tests, and checklists.
-- Use the integration branch for combined regression testing, cross-surface verification, and dependency conflict cleanup.
-- Do not treat the integration branch as a place for unfinished feature development.
+An integration branch should exist when multiple agent branches for the same phase need to be reconciled before merging to the long-lived base branch.
+
+Integration branches should:
+
+1. merge only phase-matched agent branches
+2. rerun the shared validation suite plus branch-specific checks
+3. record unresolved conflicts, intentional omissions, and rollback notes in the pull request
 
 Integration branch exit criteria:
 
 - merged branches are conflict-resolved
-- integrated typecheck/build succeeds
-- integrated unit/integration/E2E coverage passes for the affected surfaces
-- manual verification of critical desktop runtime flows is complete
+- integrated typecheck and build succeed
+- integrated unit, integration, and E2E coverage passes for the affected surfaces
+- manual verification of critical desktop runtime flows is complete when relevant
 - blockers and follow-ups are documented before release PR creation
 
-## Final PR and Merge Flow
+## Definition Of Done For Any Phase Branch
+
+A branch is ready for review when:
+
+- naming matches the branch rules
+- scope matches the declared phase
+- validation commands are documented and passing
+- pull request template sections are filled in
+- follow-up work is called out instead of being hidden in review comments
+
+## Final PR And Merge Flow
 
 1. Agent branch completes implementation, tests, verification checklist, and branch-level code review.
 2. Approved branches merge into the integration branch for the active phase or release train.
@@ -128,8 +171,10 @@ Integration branch exit criteria:
 4. Define the first shared-contract and API-core tasks that other branches depend on.
 5. Start only the implementation branches that do not overlap on contracts, schema, or repo-shape fixes.
 
-## Operating Notes
+## Updating This Plan
 
-- Prefer short-lived branches and phase-based merge windows over long-running parallel drift.
-- If a branch discovers a new shared dependency, stop parallel downstream work and move that dependency into the active sequential path.
-- If integrated testing fails, fix on a focused follow-up branch or directly on the integration branch only when the issue is purely merge-related.
+When a new phase starts:
+
+1. add the new phase goal and exit criteria here
+2. keep earlier phases as an audit trail
+3. update templates only when the workflow actually changes

@@ -3,12 +3,18 @@
   "private": true,
   "packageManager": "pnpm@10.8.1",
   "scripts": {
-    "predev": "pnpm --filter @tuari/contracts build",
+    "check:workflow-assets": "node --test ./tests/workflow-assets.test.mjs",
+    "check:web-tracking": "node ./scripts/check-web-tracking.mjs",
+    "predev": "pnpm check:web-tracking && pnpm --filter @tuari/contracts build",
     "dev": "pnpm -r --parallel --filter @tuari/contracts --filter @tuari/api --filter @tuari/web dev",
-    "build": "turbo build",
-    "lint": "turbo lint",
-    "typecheck": "turbo typecheck",
-    "dev:web": "pnpm --filter @tuari/web dev",
+    "build": "pnpm check:web-tracking && turbo build",
+    "lint": "pnpm check:web-tracking && pnpm check:workflow-assets && turbo lint",
+    "test": "pnpm check:web-tracking && pnpm check:workflow-assets && turbo test",
+    "test:api": "pnpm --filter @tuari/api test",
+    "test:contracts": "pnpm --filter @tuari/contracts test",
+    "test:web": "pnpm --filter @tuari/web test",
+    "typecheck": "pnpm check:web-tracking && turbo typecheck",
+    "dev:web": "pnpm check:web-tracking && pnpm --filter @tuari/web dev",
     "dev:api": "pnpm --filter @tuari/api dev",
     "dev:desktop": "pnpm --filter @tuari/desktop dev",
     "build:desktop": "pnpm --filter @tuari/desktop build",
@@ -21,7 +27,10 @@
     ]
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "jsdom": "^28.1.0",
     "turbo": "^2.8.16",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
   }
 }

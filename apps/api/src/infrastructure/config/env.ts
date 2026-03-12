@@ -1,5 +1,6 @@
 import "dotenv/config";
-import { resolve } from "node:path";
+
+import { resolveDatabaseEnv } from "./database-env";
 
 const splitCsv = (value: string) =>
   value
@@ -9,7 +10,6 @@ const splitCsv = (value: string) =>
 
 const defaultPort = 4318;
 const defaultHost = "127.0.0.1";
-const defaultDbPath = resolve(process.cwd(), "data", "tuari.sqlite");
 const defaultAllowedOrigins = [
   "http://localhost:1420",
   "http://127.0.0.1:1420",
@@ -18,35 +18,39 @@ const defaultAllowedOrigins = [
   "tauri://localhost",
 ];
 
-const toSqliteUrl = (filePath: string) => {
-  const normalized = filePath.replace(/\\/g, "/");
+const toPort = (value: string | undefined) => {
+  if (value === undefined) {
+    return defaultPort;
+  }
 
-  return `file:${normalized}`;
+  const port = Number(value);
+
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error(`API_PORT must be a positive integer, received \"${value}\"`);
+  }
+
+  return port;
 };
 
-export const env = {
-  host: process.env.API_HOST ?? defaultHost,
-  port: Number(process.env.API_PORT ?? defaultPort),
-  appClientKey: process.env.APP_CLIENT_KEY ?? "tuari-desktop-client-key-v1",
-  allowedOrigins:
-    process.env.ALLOWED_ORIGINS !== undefined
-      ? splitCsv(process.env.ALLOWED_ORIGINS)
-      : defaultAllowedOrigins,
-  authDbPath:
-    process.env.AUTH_DB_PATH ?? process.env.APP_DB_PATH ?? defaultDbPath,
-  appDbPath:
-    process.env.APP_DB_PATH ?? process.env.AUTH_DB_PATH ?? defaultDbPath,
-  databaseUrl:
-    process.env.DATABASE_URL ??
-    toSqliteUrl(
-      process.env.APP_DB_PATH ?? process.env.AUTH_DB_PATH ?? defaultDbPath,
-    ),
-  betterAuthSecret:
-    process.env.BETTER_AUTH_SECRET ??
-    "dev-only-secret-dev-only-secret-dev-only-secret",
-  betterAuthUrl:
-    process.env.BETTER_AUTH_URL ??
-    `http://${process.env.API_HOST ?? defaultHost}:${
-      process.env.API_PORT ?? defaultPort
-    }`,
-} as const;
+export const createEnv = (source: NodeJS.ProcessEnv = process.env) => {
+  const database = resolveDatabaseEnv(source);
+
+  return {
+    host: source.API_HOST ?? defaultHost,
+    port: toPort(source.API_PORT),
+    appClientKey: source.APP_CLIENT_KEY ?? "tuari-desktop-client-key-v1",
+    allowedOrigins:
+      source.ALLOWED_ORIGINS !== undefined
+        ? splitCsv(source.ALLOWED_ORIGINS)
+        : defaultAllowedOrigins,
+    ...database,
+    betterAuthSecret:
+      source.BETTER_AUTH_SECRET ??
+      "dev-only-secret-dev-only-secret-dev-only-secret",
+    betterAuthUrl:
+      source.BETTER_AUTH_URL ??
+      `http://${source.API_HOST ?? defaultHost}:${toPort(source.API_PORT)}`,
+  } as const;
+};
+
+export const env = createEnv();
