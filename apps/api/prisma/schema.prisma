@@ -7,16 +7,17 @@ datasource db {
 }
 
 model User {
-  id            String    @id
-  name          String
-  email         String    @unique
-  emailVerified Boolean   @default(false)
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  sessions      Session[]
-  accounts      Account[]
-  todos         Todo[]
+  id                 String              @id
+  name               String
+  email              String              @unique
+  emailVerified      Boolean             @default(false)
+  image              String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  sessions           Session[]
+  accounts           Account[]
+  auditLogs          AuditLog[]          @relation("AuditActor")
+  salaryTransactions SalaryTransaction[] @relation("SalaryTransactionActor")
 
   @@map("user")
 }
@@ -69,14 +70,102 @@ model Verification {
   @@map("verification")
 }
 
-model Todo {
-  id        String   @id
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String
-  completed Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
+model Worker {
+  id                 String              @id
+  fullName           String              @map("full_name")
+  phoneNumber        String              @map("phone_number")
+  role               String
+  status             String
+  salaryDzd          Int                 @map("salary_dzd")
+  managerId          String?             @map("manager_id")
+  manager            Worker?             @relation("WorkerManagement", fields: [managerId], references: [id], onDelete: SetNull)
+  managedWorkers     Worker[]            @relation("WorkerManagement")
+  currentProjectId   String?             @map("current_project_id")
+  currentProject     Project?            @relation("WorkerCurrentProject", fields: [currentProjectId], references: [id], onDelete: SetNull)
+  managedProjects    Project[]           @relation("ProjectManager")
+  managedWarehouses  Warehouse[]         @relation("WarehouseManager")
+  salaryTransactions SalaryTransaction[]
+  deletedAt          DateTime?           @map("deleted_at")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
 
-  @@index([userId], map: "idx_todos_user_id")
-  @@map("todos")
+  @@index([managerId], map: "idx_workers_manager_id")
+  @@index([currentProjectId], map: "idx_workers_current_project_id")
+  @@index([role], map: "idx_workers_role")
+  @@index([status], map: "idx_workers_status")
+  @@index([deletedAt], map: "idx_workers_deleted_at")
+  @@map("workers")
+}
+
+model Project {
+  id              String     @id
+  name            String
+  managerId       String     @map("manager_id")
+  manager         Worker     @relation("ProjectManager", fields: [managerId], references: [id], onDelete: Restrict)
+  warehouseId     String?    @map("warehouse_id")
+  warehouse       Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  assignedWorkers Worker[]   @relation("WorkerCurrentProject")
+  deletedAt       DateTime?  @map("deleted_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  @@index([managerId], map: "idx_projects_manager_id")
+  @@index([warehouseId], map: "idx_projects_warehouse_id")
+  @@index([deletedAt], map: "idx_projects_deleted_at")
+  @@map("projects")
+}
+
+model Warehouse {
+  id         String    @id
+  name       String
+  managerId  String?   @map("manager_id")
+  manager    Worker?   @relation("WarehouseManager", fields: [managerId], references: [id], onDelete: SetNull)
+  projects   Project[]
+  deletedAt  DateTime? @map("deleted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([managerId], map: "idx_warehouses_manager_id")
+  @@index([deletedAt], map: "idx_warehouses_deleted_at")
+  @@map("warehouses")
+}
+
+model SalaryTransaction {
+  id              String   @id
+  workerId        String   @map("worker_id")
+  worker          Worker   @relation(fields: [workerId], references: [id], onDelete: Restrict)
+  type            String
+  amountDzd       Int      @map("amount_dzd")
+  note            String?
+  beforeSalaryDzd Int?     @map("before_salary_dzd")
+  afterSalaryDzd  Int?     @map("after_salary_dzd")
+  effectiveAt     DateTime @map("effective_at")
+  createdByUserId String?  @map("created_by_user_id")
+  createdByUser   User?    @relation("SalaryTransactionActor", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([workerId], map: "idx_salary_transactions_worker_id")
+  @@index([createdByUserId], map: "idx_salary_transactions_actor_id")
+  @@index([effectiveAt], map: "idx_salary_transactions_effective_at")
+  @@map("salary_transactions")
+}
+
+model AuditLog {
+  id           String   @id
+  entityType   String   @map("entity_type")
+  entityId     String   @map("entity_id")
+  actionType   String   @map("action_type")
+  summaryKey   String   @map("summary_key")
+  actorUserId  String?  @map("actor_user_id")
+  actorUser    User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  occurredAt   DateTime @map("occurred_at")
+  beforeJson   Json?    @map("before_json")
+  afterJson    Json?    @map("after_json")
+  metadataJson Json?    @map("metadata_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId], map: "idx_audit_logs_entity")
+  @@index([actorUserId], map: "idx_audit_logs_actor_id")
+  @@index([occurredAt], map: "idx_audit_logs_occurred_at")
+  @@map("audit_logs")
 }
