@@ -49,13 +49,7 @@ describe("useRuntimeStatusQuery", () => {
       health: "connected",
       config: {
         apiBaseUrl: "http://127.0.0.1:4318",
-        appClientKey: "desktop-key",
-        projectDir: "D:/Tuari/projects/default",
-        authDbPath: "D:/Tuari/tuari.sqlite",
-        appDbPath: "D:/Tuari/tuari.sqlite",
-        serverLogPath: "D:/Tuari/logs/api-server.log",
       },
-      serverLog: "ready",
       error: null,
     });
 
@@ -66,7 +60,6 @@ describe("useRuntimeStatusQuery", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data?.endpoint).toBe("http://127.0.0.1:4318");
-    expect(result.current.data?.serverLog).toBe("ready");
     expect(result.current.data?.health).toBe("connected");
     expect(getRuntimeStatusMock).toHaveBeenCalledTimes(1);
   });
@@ -79,7 +72,6 @@ describe("useRuntimeStatusQuery", () => {
       endpoint: "http://127.0.0.1:4318",
       health: "connected",
       config: null,
-      serverLog: "ready",
       error: null,
     });
 
@@ -106,7 +98,6 @@ describe("useRuntimeStatusQuery", () => {
       endpoint: "Browser preview shell",
       health: "preview",
       config: null,
-      serverLog: "",
       error: null,
     });
 

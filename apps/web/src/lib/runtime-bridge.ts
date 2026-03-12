@@ -1,10 +1,5 @@
 export type RuntimeConfig = {
   apiBaseUrl: string;
-  appClientKey: string;
-  projectDir: string;
-  authDbPath: string;
-  appDbPath: string;
-  serverLogPath: string;
 };
 
 export type RuntimeStatus = {
@@ -13,7 +8,6 @@ export type RuntimeStatus = {
   endpoint: string;
   health: "connected" | "preview" | "degraded";
   config: RuntimeConfig | null;
-  serverLog: string;
   error: string | null;
 };
 
@@ -52,15 +46,6 @@ async function getInvoke() {
   return tauriCore.invoke;
 }
 
-async function getServerLog(invoke: typeof import("@tauri-apps/api/core").invoke) {
-  try {
-    const serverLog = await invoke<string>("get_server_log");
-    return serverLog.trim();
-  } catch {
-    return "";
-  }
-}
-
 export async function getRuntimeStatus(options?: { now?: () => string }): Promise<RuntimeStatus> {
   const checkedAt = getCheckedAt(options?.now);
 
@@ -76,7 +61,6 @@ export async function getRuntimeStatus(options?: { now?: () => string }): Promis
         endpoint: BROWSER_PREVIEW_ENDPOINT,
         health: "preview",
         config: null,
-        serverLog: "",
         error: null,
       };
     }
@@ -87,14 +71,12 @@ export async function getRuntimeStatus(options?: { now?: () => string }): Promis
       endpoint: DESKTOP_BRIDGE_ENDPOINT,
       health: "degraded",
       config: null,
-      serverLog: "",
       error: getErrorMessage(error),
     };
   }
 
   try {
     const config = await invoke<RuntimeConfig>("get_runtime_config");
-    const serverLog = await getServerLog(invoke);
 
     return {
       checkedAt,
@@ -102,7 +84,6 @@ export async function getRuntimeStatus(options?: { now?: () => string }): Promis
       endpoint: config.apiBaseUrl,
       health: "connected",
       config,
-      serverLog: serverLog.trim(),
       error: null,
     };
   } catch (error) {
@@ -113,7 +94,6 @@ export async function getRuntimeStatus(options?: { now?: () => string }): Promis
         endpoint: BROWSER_PREVIEW_ENDPOINT,
         health: "preview",
         config: null,
-        serverLog: "",
         error: null,
       };
     }
@@ -124,7 +104,6 @@ export async function getRuntimeStatus(options?: { now?: () => string }): Promis
       endpoint: DESKTOP_BRIDGE_ENDPOINT,
       health: "degraded",
       config: null,
-      serverLog: "",
       error: getErrorMessage(error),
     };
   }

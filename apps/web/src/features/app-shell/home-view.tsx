@@ -30,8 +30,6 @@ type Copy = {
     connection: string;
     environment: string;
     endpoint: string;
-    projectDir: string;
-    logPath: string;
     issue: string;
     surface: string;
     layout: string;
@@ -44,15 +42,7 @@ type Copy = {
     loading: string;
     unavailable: string;
     loadingEndpoint: string;
-    loadingProjectDir: string;
-    loadingLogPath: string;
     degradedEndpoint: string;
-    degradedProjectDir: string;
-    degradedLogPath: string;
-    previewProjectDir: string;
-    logPreviewTitle: string;
-    logPreviewDescription: string;
-    noLogLines: string;
     dark: string;
     light: string;
     englishLayout: string;
@@ -101,8 +91,6 @@ const copy: Record<"en" | "ar", Copy> = {
       connection: "Connection",
       environment: "Environment",
       endpoint: "API endpoint",
-      projectDir: "Project directory",
-      logPath: "Log file",
       issue: "Runtime issue",
       surface: "Surface mode",
       layout: "Language layout",
@@ -115,15 +103,7 @@ const copy: Record<"en" | "ar", Copy> = {
       loading: "Checking runtime diagnostics",
       unavailable: "Unavailable",
       loadingEndpoint: "Checking desktop bridge...",
-      loadingProjectDir: "Waiting for runtime config...",
-      loadingLogPath: "Waiting for runtime config...",
       degradedEndpoint: "Desktop bridge unavailable",
-      degradedProjectDir: "Unavailable while desktop bridge is degraded",
-      degradedLogPath: "Unavailable while desktop bridge is degraded",
-      previewProjectDir: "Preview mode has no desktop project path",
-      logPreviewTitle: "Recent server log",
-      logPreviewDescription: "Reads the latest desktop API server lines through the Tauri bridge when available.",
-      noLogLines: "No server log lines available for this mode yet.",
       dark: "Dark theme active",
       light: "Light theme active",
       englishLayout: "English / LTR",
@@ -170,8 +150,6 @@ const copy: Record<"en" | "ar", Copy> = {
       connection: "الاتصال",
       environment: "البيئة",
       endpoint: "واجهة API",
-      projectDir: "مجلد المشروع",
-      logPath: "ملف السجل",
       issue: "مشكلة التشغيل",
       surface: "وضع العرض",
       layout: "اتجاه الواجهة",
@@ -184,15 +162,7 @@ const copy: Record<"en" | "ar", Copy> = {
       loading: "جار فحص تفاصيل التشغيل",
       unavailable: "غير متاح",
       loadingEndpoint: "جار التحقق من جسر سطح المكتب...",
-      loadingProjectDir: "بانتظار إعدادات التشغيل...",
-      loadingLogPath: "بانتظار إعدادات التشغيل...",
       degradedEndpoint: "جسر سطح المكتب غير متاح",
-      degradedProjectDir: "غير متاح لأن جسر سطح المكتب متعثر",
-      degradedLogPath: "غير متاح لأن جسر سطح المكتب متعثر",
-      previewProjectDir: "وضع المعاينة لا يملك مسار مشروع لسطح المكتب",
-      logPreviewTitle: "آخر سطور السجل",
-      logPreviewDescription: "تقرأ أحدث سطور خادم API عبر جسر Tauri عند توفره.",
-      noLogLines: "لا توجد سطور سجل متاحة لهذا الوضع بعد.",
       dark: "الوضع الداكن فعال",
       light: "الوضع الفاتح فعال",
       englishLayout: "الإنجليزية / LTR",
@@ -385,21 +355,6 @@ export function HomeView() {
       : runtimeState === "degraded"
         ? data?.endpoint ?? content.diagnostics.degradedEndpoint
         : data?.endpoint ?? content.diagnostics.unavailable;
-  const projectDirectory =
-    runtimeState === "loading"
-      ? content.diagnostics.loadingProjectDir
-      : runtimeState === "degraded"
-        ? content.diagnostics.degradedProjectDir
-        : runtimeState === "preview"
-          ? content.diagnostics.previewProjectDir
-          : data?.config?.projectDir ?? content.diagnostics.unavailable;
-  const logPath =
-    runtimeState === "loading"
-      ? content.diagnostics.loadingLogPath
-      : runtimeState === "degraded"
-        ? content.diagnostics.degradedLogPath
-        : data?.config?.serverLogPath ?? content.diagnostics.unavailable;
-  const logPreview = data?.serverLog || content.diagnostics.noLogLines;
 
   const diagnostics = [
     {
@@ -413,14 +368,6 @@ export function HomeView() {
     {
       label: content.diagnostics.endpoint,
       value: endpointLabel,
-    },
-    {
-      label: content.diagnostics.projectDir,
-      value: projectDirectory,
-    },
-    {
-      label: content.diagnostics.logPath,
-      value: logPath,
     },
     {
       label: content.diagnostics.surface,
@@ -555,20 +502,6 @@ export function HomeView() {
                 <p className="mt-3 text-sm leading-7 text-slate-200 dark:text-slate-700">
                   {content.themeNote}
                 </p>
-              </div>
-
-              <div className="rounded-[28px] border border-slate-200/80 bg-white/78 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/5 dark:shadow-[0_18px_44px_rgba(0,0,0,0.22)]">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase dark:text-slate-400">
-                    {content.diagnostics.logPreviewTitle}
-                  </p>
-                  <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
-                    {content.diagnostics.logPreviewDescription}
-                  </p>
-                </div>
-                <pre className="mt-4 max-h-48 overflow-auto rounded-2xl bg-slate-950 px-4 py-3 text-xs leading-6 whitespace-pre-wrap text-slate-100 dark:bg-slate-900">
-                  {logPreview}
-                </pre>
               </div>
             </div>
           </aside>
