@@ -4,9 +4,39 @@ import { execFileSync } from "node:child_process";
 
 const normalizePath = (value) => path.normalize(path.resolve(value));
 
+const isNodeScriptExtension = (extension) => [".js", ".cjs", ".mjs"].includes(extension);
+const isDirectExecutableExtension = (extension) => ["", ".exe", ".com"].includes(extension);
+const isWindowsShellScriptExtension = (extension) => [".cmd", ".bat"].includes(extension);
+
+const resolveTrustedWindowsBinaryPath = ({
+  binaryName,
+  env = process.env,
+  exists = existsSync,
+}) => {
+  const windowsRoots = [...new Set([env.SystemRoot, env.windir].filter(Boolean).map(normalizePath))];
+  const candidates = windowsRoots.flatMap((root) => [
+    path.join(root, "System32", binaryName),
+    path.join(root, "Sysnative", binaryName),
+  ]);
+
+  for (const candidate of candidates) {
+    if (exists(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`Unable to locate trusted ${binaryName} under System32 or Sysnative.`);
+};
+
+const quoteForWindowsCommandProcessor = (value) => {
+  const escaped = value.replace(/([()%!^"<>&|])/g, "^$1");
+  return `"${escaped}"`;
+};
+
 export const resolvePnpmExecution = ({
   env = process.env,
   nodeExecPath = process.execPath,
+  platform = process.platform,
 } = {}) => {
   const npmExecPath = env.npm_execpath;
 
@@ -16,6 +46,7 @@ export const resolvePnpmExecution = ({
 
   const normalizedExecPath = normalizePath(npmExecPath);
   const basename = path.basename(normalizedExecPath).toLowerCase();
+  const extension = path.extname(basename);
 
   if (!basename.includes("pnpm")) {
     throw new Error(`Resolved package manager is not pnpm: ${normalizedExecPath}`);
@@ -25,16 +56,42 @@ export const resolvePnpmExecution = ({
     throw new Error(`Resolved pnpm executable does not exist: ${normalizedExecPath}`);
   }
 
-  return {
-    command: nodeExecPath,
-    argsPrefix: [normalizedExecPath],
-  };
+  if (isNodeScriptExtension(extension)) {
+    return {
+      command: nodeExecPath,
+      argsPrefix: [normalizedExecPath],
+    };
+  }
+
+  if (isDirectExecutableExtension(extension)) {
+    return {
+      command: normalizedExecPath,
+      argsPrefix: [],
+    };
+  }
+
+  if (platform === "win32" && isWindowsShellScriptExtension(extension)) {
+    return {
+      command: resolveTrustedWindowsBinaryPath({ binaryName: "cmd.exe", env }),
+      argsPrefix: ["/d", "/s", "/c", quoteForWindowsCommandProcessor(normalizedExecPath)],
+      useWindowsCommandString: true,
+    };
+  }
+
+  throw new Error(`Unsupported pnpm executable type: ${normalizedExecPath}`);
 };
 
 export const runPnpmCommand = (args, options = {}) => {
-  const { command, argsPrefix } = resolvePnpmExecution();
+  const { command, argsPrefix, useWindowsCommandString } = resolvePnpmExecution();
 
-  execFileSync(command, [...argsPrefix, ...args], {
+  const commandArgs = useWindowsCommandString
+    ? [
+      ...argsPrefix,
+      ...args.map((arg) => quoteForWindowsCommandProcessor(arg)),
+    ]
+    : [...argsPrefix, ...args];
+
+  execFileSync(command, commandArgs, {
     stdio: "inherit",
     ...options,
   });
@@ -49,19 +106,11 @@ export const resolveTrustedTarPath = ({
     throw new Error("Portable packaging is only supported on Windows hosts.");
   }
 
-  const windowsRoots = [...new Set([env.SystemRoot, env.windir].filter(Boolean).map(normalizePath))];
-  const candidates = windowsRoots.flatMap((root) => [
-    path.join(root, "System32", "tar.exe"),
-    path.join(root, "Sysnative", "tar.exe"),
-  ]);
-
-  for (const candidate of candidates) {
-    if (exists(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error("Unable to locate a trusted Windows tar.exe under System32 or Sysnative.");
+  return resolveTrustedWindowsBinaryPath({
+    binaryName: "tar.exe",
+    env,
+    exists,
+  });
 };
 
 export const validateReleaseBinEntries = (binDir, expectedEntries = ["api-runtime", "node.exe"]) => {

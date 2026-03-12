@@ -38,6 +38,57 @@ test("resolvePnpmExecution rejects non-pnpm npm_execpath", () => {
   );
 });
 
+test("resolvePnpmExecution uses executable pnpm paths directly", async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "tuari-pnpm-exe-"));
+
+  try {
+    const pnpmExecPath = path.join(tempDir, "pnpm.exe");
+    writeFileSync(pnpmExecPath, "binary");
+
+    const execution = resolvePnpmExecution({
+      env: {
+        npm_execpath: pnpmExecPath,
+      },
+      nodeExecPath: "/node.exe",
+      platform: "win32",
+    });
+
+    assert.equal(execution.command, path.resolve(pnpmExecPath));
+    assert.deepEqual(execution.argsPrefix, []);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("resolvePnpmExecution wraps pnpm cmd paths with trusted cmd.exe", async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "tuari-pnpm-cmd-"));
+
+  try {
+    const pnpmExecPath = path.join(tempDir, "pnpm.cmd");
+    writeFileSync(pnpmExecPath, "@echo off\r\n");
+
+    const execution = resolvePnpmExecution({
+      env: {
+        npm_execpath: pnpmExecPath,
+        SystemRoot: "C:/Windows",
+      },
+      nodeExecPath: "/node.exe",
+      platform: "win32",
+    });
+
+    assert.equal(execution.command, path.join(path.resolve("C:/Windows"), "System32", "cmd.exe"));
+    assert.deepEqual(execution.argsPrefix, [
+      "/d",
+      "/s",
+      "/c",
+      `"${path.resolve(pnpmExecPath)}"`,
+    ]);
+    assert.equal(execution.useWindowsCommandString, true);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("resolveTrustedTarPath prefers trusted Windows locations", () => {
   const tarPath = resolveTrustedTarPath({
     platform: "win32",
