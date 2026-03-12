@@ -1,0 +1,20 @@
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { RouterProvider } from "@tanstack/react-router";
+import { bootstrapPreferences } from "@/features/preferences/preference-constants";
+import { router } from "@/router";
+import "./styles.css";
+
+bootstrapPreferences();
+
+const rootElement = document.getElementById("root");
+
+if (!rootElement) {
+  throw new Error("Root element #root was not found.");
+}
+
+ReactDOM.createRoot(rootElement).render(
+  <React.StrictMode>
+    <RouterProvider router={router} />
+  </React.StrictMode>,
+);

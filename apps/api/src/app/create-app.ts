@@ -3,31 +3,56 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
-import { env } from "../infrastructure/config/env";
 import type { AppDependencies } from "./dependencies";
 import { createRouter } from "../rpc/router";
+import { createRpcContext } from "../rpc/context";
 
-const isAllowedOrigin = (origin: string | undefined) => {
-  if (!origin) {
-    return true;
-  }
-
-  return env.allowedOrigins.includes(origin);
+export type TransportSecurityConfig = {
+  allowedOrigins: readonly string[];
+  appClientKey: string;
 };
 
-const resolveCorsOrigin = (origin: string | undefined) => {
-  if (!origin) {
-    return env.allowedOrigins[0] ?? "http://localhost:1420";
-  }
+export const createTransportSecurity = (
+  config: TransportSecurityConfig,
+) => {
+  const isAllowedOrigin = (origin: string | undefined) => {
+    if (!origin) {
+      return false;
+    }
 
-  return isAllowedOrigin(origin)
-    ? origin
-    : env.allowedOrigins[0] ?? "http://localhost:1420";
+    return config.allowedOrigins.includes(origin);
+  };
+
+  const resolveCorsOrigin = (origin: string | undefined) => {
+    if (!origin) {
+      return "";
+    }
+
+    return isAllowedOrigin(origin) ? origin : "";
+  };
+
+  const hasValidClientKey = (clientKey: string | undefined) => {
+    if (!clientKey) {
+      return false;
+    }
+
+    return clientKey === config.appClientKey;
+  };
+
+  return {
+    isAllowedOrigin,
+    resolveCorsOrigin,
+    hasValidClientKey,
+  };
 };
 
-export function createApp(dependencies: AppDependencies) {
+export function createApp(
+  dependencies: AppDependencies,
+  transportSecurity: TransportSecurityConfig,
+) {
   const app = new Hono();
-  const router = createRouter(dependencies);
+  const router = createRouter({ todoService: dependencies.todoService });
+  const transport = createTransportSecurity(transportSecurity);
   const rpcHandler = new RPCHandler(router, {
     interceptors: [
       onError((error) => {
@@ -39,7 +64,7 @@ export function createApp(dependencies: AppDependencies) {
   app.use(
     "*",
     cors({
-      origin: resolveCorsOrigin,
+      origin: transport.resolveCorsOrigin,
       allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
       allowHeaders: [
         "Content-Type",
@@ -53,7 +78,7 @@ export function createApp(dependencies: AppDependencies) {
   );
 
   app.use("/api/auth/*", async (c, next) => {
-    if (!isAllowedOrigin(c.req.header("origin"))) {
+    if (!transport.isAllowedOrigin(c.req.header("origin"))) {
       return c.json({ message: "Blocked origin." }, 403);
     }
 
@@ -61,11 +86,11 @@ export function createApp(dependencies: AppDependencies) {
   });
 
   app.use("/rpc/*", async (c, next) => {
-    if (!isAllowedOrigin(c.req.header("origin"))) {
+    if (!transport.isAllowedOrigin(c.req.header("origin"))) {
       return c.json({ message: "Blocked origin." }, 403);
     }
 
-    if (c.req.header("x-tuari-client-key") !== env.appClientKey) {
+    if (!transport.hasValidClientKey(c.req.header("x-tuari-client-key"))) {
       return c.json({ message: "Blocked client." }, 403);
     }
 
@@ -79,11 +104,10 @@ export function createApp(dependencies: AppDependencies) {
   });
 
   app.use("/rpc/*", async (c, next) => {
+    const context = createRpcContext(c.req.raw.headers, dependencies.sessionService);
     const { matched, response } = await rpcHandler.handle(c.req.raw, {
       prefix: "/rpc",
-      context: {
-        headers: c.req.raw.headers,
-      },
+      context,
     });
 
     if (matched) {

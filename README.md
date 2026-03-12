@@ -8,6 +8,11 @@ Starter stack:
 
 Architecture guide:
 - `docs/ARCHITECTURE.md`
+- `docs/branch-workflow.md`
+
+Delivery planning:
+- `plans/tuari-multi-agent-delivery-plan.md`
+- `plans/templates/branch-verification-checklist.md`
 
 API architecture:
 - `src/app`: composition and app assembly

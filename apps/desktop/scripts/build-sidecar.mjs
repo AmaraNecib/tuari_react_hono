@@ -1,8 +1,8 @@
-import { execFileSync, execSync } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { copyValidatedTree, runPnpmCommand } from "./script-security-utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,7 +38,7 @@ const copyPackage = (packageName, fromFile = path.join(apiRoot, "package.json"))
   const targetDir = path.resolve(runtimeDir, "node_modules", packageName);
 
   mkdirSync(path.dirname(targetDir), { recursive: true });
-  cpSync(sourceDir, targetDir, { recursive: true });
+  copyValidatedTree(sourceDir, targetDir);
 
   return path.join(sourceDir, "package.json");
 };
@@ -51,18 +51,9 @@ const ensureBetterSqliteBinary = () => {
     return;
   }
 
-  const installCommand = process.platform === "win32"
-    ? ["cmd.exe", ["/c", "node_modules\\.bin\\prebuild-install.cmd"]]
-    : ["./node_modules/.bin/prebuild-install", []];
-
-  execFileSync(installCommand[0], installCommand[1], {
-    cwd: betterSqlite3Dir,
-    stdio: "inherit",
-  });
-
-  if (!existsSync(binaryPath)) {
-    throw new Error("better-sqlite3 native binary is missing after prebuild-install.");
-  }
+  throw new Error(
+    `Missing better-sqlite3 native binary at ${binaryPath}. Reinstall dependencies so the package is built before packaging.`,
+  );
 };
 
 rmSync(runtimeDir, { recursive: true, force: true });
@@ -71,26 +62,20 @@ mkdirSync(path.resolve(runtimeDir, "node_modules", "@prisma"), { recursive: true
 mkdirSync(path.resolve(runtimeDir, "node_modules", ".prisma"), { recursive: true });
 
 console.log("Generating Prisma client...");
-execSync("pnpm --filter @tuari/api prisma:generate", {
+runPnpmCommand(["--filter", "@tuari/api", "prisma:generate"], {
   cwd: workspaceRoot,
-  stdio: "inherit",
 });
 
 console.log("Building bundled API runtime...");
-execSync("pnpm --filter @tuari/api build", {
+runPnpmCommand(["--filter", "@tuari/api", "build"], {
   cwd: workspaceRoot,
-  stdio: "inherit",
 });
 
 ensureBetterSqliteBinary();
 
-cpSync(apiDistDir, path.resolve(runtimeDir, "dist"), { recursive: true });
-cpSync(prismaClientDir, path.resolve(runtimeDir, "node_modules", "@prisma", "client"), {
-  recursive: true,
-});
-cpSync(generatedPrismaDir, path.resolve(runtimeDir, "node_modules", ".prisma", "client"), {
-  recursive: true,
-});
+copyValidatedTree(apiDistDir, path.resolve(runtimeDir, "dist"));
+copyValidatedTree(prismaClientDir, path.resolve(runtimeDir, "node_modules", "@prisma", "client"));
+copyValidatedTree(generatedPrismaDir, path.resolve(runtimeDir, "node_modules", ".prisma", "client"));
 copyPackage("@prisma/client-runtime-utils", path.join(prismaClientDir, "package.json"));
 const betterSqlite3PackageJson = copyPackage("better-sqlite3");
 const bindingsPackageJson = copyPackage("bindings", betterSqlite3PackageJson);

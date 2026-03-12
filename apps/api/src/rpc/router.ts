@@ -2,21 +2,18 @@ import { ORPCError, implement } from "@orpc/server";
 
 import { appContract } from "@tuari/contracts";
 
-import type { AppDependencies } from "../app/dependencies";
-import type { RpcContext } from "./context";
+import type { TodoService } from "../modules/todos/todo.service";
+import { getCurrentUser, requireCurrentUser, type RpcContext } from "./context";
 
-export function createRouter(dependencies: Pick<AppDependencies, "sessionService" | "todoService">) {
+type RouterDependencies = {
+  todoService: Pick<
+    TodoService,
+    "listForUser" | "createForUser" | "toggleForUser" | "removeForUser"
+  >;
+};
+
+export function createRouter(dependencies: RouterDependencies) {
   const os = implement(appContract).$context<RpcContext>();
-
-  const requireUser = async (headers: Headers) => {
-    const user = await dependencies.sessionService.getCurrentUser(headers);
-
-    if (!user) {
-      throw new ORPCError("UNAUTHORIZED");
-    }
-
-    return user;
-  };
 
   return os.router({
     health: os.health.handler(() => ({
@@ -25,20 +22,20 @@ export function createRouter(dependencies: Pick<AppDependencies, "sessionService
     })),
     session: os.session.handler(async ({ context }) => {
       return {
-        user: await dependencies.sessionService.getCurrentUser(context.headers),
+        user: await getCurrentUser(context),
       };
     }),
     todos: {
       list: os.todos.list.handler(async ({ context }) => {
-        const user = await requireUser(context.headers);
+        const user = await requireCurrentUser(context);
         return dependencies.todoService.listForUser(user.id);
       }),
       create: os.todos.create.handler(async ({ context, input }) => {
-        const user = await requireUser(context.headers);
+        const user = await requireCurrentUser(context);
         return dependencies.todoService.createForUser(user.id, input.title);
       }),
       toggle: os.todos.toggle.handler(async ({ context, input }) => {
-        const user = await requireUser(context.headers);
+        const user = await requireCurrentUser(context);
         const item = await dependencies.todoService.toggleForUser(
           user.id,
           input.id,
@@ -52,7 +49,7 @@ export function createRouter(dependencies: Pick<AppDependencies, "sessionService
         return item;
       }),
       remove: os.todos.remove.handler(async ({ context, input }) => {
-        const user = await requireUser(context.headers);
+        const user = await requireCurrentUser(context);
         return {
           success: await dependencies.todoService.removeForUser(
             user.id,

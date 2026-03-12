@@ -7,6 +7,7 @@
     "build": "pnpm run sidecar:build && tauri build",
     "portable": "pnpm run build && node ./scripts/build-portable.mjs",
     "portable:only": "node ./scripts/build-portable.mjs",
+    "test:packaging-security": "node --test ./scripts/*.test.mjs",
     "tauri:dev": "tauri dev",
     "tauri:build": "pnpm run sidecar:build && tauri build",
     "sidecar:build": "node ./scripts/build-sidecar.mjs",
