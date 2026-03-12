@@ -1,31 +1,43 @@
 import { randomUUID } from "node:crypto";
 
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 
+import { recordAuditLog } from "../audit/audit-log.helpers";
 import { PrismaAuditLogRepository } from "../audit/prisma-audit-log.repository";
+import { getEmployeeRolePolicy } from "../employees/employee-role-policy";
+import { PrismaEmployeeProjectAssignmentRepository } from "../employees/prisma-employee-project-assignment.repository";
+import { PrismaEmployeeRepository } from "../employees/prisma-employee.repository";
 import { AppError } from "../shared/app-error";
-import { PrismaWorkerRepository } from "../workers/prisma-worker.repository";
-import type { Project, ProjectListFilters } from "./project.entity";
+import type { Project, ProjectListFilters, ProjectStatus } from "./project.entity";
 import { PrismaProjectRepository } from "./prisma-project.repository";
 
 type CreateProjectInput = {
   name: string;
-  managerId: string;
-  warehouseId?: string | null;
+  location?: string | null;
+  managerId?: string | null;
+  status?: ProjectStatus;
+  notes?: string | null;
 };
 
 type UpdateProjectInput = {
   id: string;
   name?: string;
-  managerId?: string;
-  warehouseId?: string | null;
+  location?: string | null;
+  managerId?: string | null;
+  status?: ProjectStatus;
+  notes?: string | null;
 };
+
+const normalizeText = (value: string | null | undefined) =>
+  value === undefined ? undefined : value?.trim() || null;
 
 const toProjectSnapshot = (project: Project) => ({
   id: project.id,
   name: project.name,
+  location: project.location,
   managerId: project.managerId,
-  warehouseId: project.warehouseId,
+  status: project.status,
+  notes: project.notes,
   deletedAt: project.deletedAt,
 });
 
@@ -33,7 +45,8 @@ export class ProjectService {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly projects: PrismaProjectRepository,
-    private readonly workers: PrismaWorkerRepository,
+    private readonly employees: PrismaEmployeeRepository,
+    private readonly employeeProjectAssignments: PrismaEmployeeProjectAssignmentRepository,
     private readonly audits: PrismaAuditLogRepository,
   ) {}
 
@@ -54,36 +67,50 @@ export class ProjectService {
   async create(input: CreateProjectInput, actorUserId: string | null): Promise<Project> {
     return this.prisma.$transaction(async (tx) => {
       const projects = this.projects.withClient(tx);
-      const workers = this.workers.withClient(tx);
+      const employees = this.employees.withClient(tx);
       const audits = this.audits.withClient(tx);
       const now = new Date();
 
-      await this.assertProjectManager(workers, input.managerId);
-      await this.assertWarehouseIfProvided(tx, input.warehouseId ?? null);
+      if (input.managerId) {
+        await this.assertProjectManager(employees, input.managerId);
+      }
 
       const project = await projects.create({
         id: randomUUID(),
-        name: input.name,
-        managerId: input.managerId,
-        warehouseId: input.warehouseId ?? null,
+        name: input.name.trim(),
+        location: normalizeText(input.location) ?? null,
+        managerId: input.managerId ?? null,
+        status: input.status ?? "ACTIVE",
+        notes: normalizeText(input.notes) ?? null,
         deletedAt: null,
         createdAt: now,
         updatedAt: now,
       });
 
-      await audits.create({
-        id: randomUUID(),
+      await recordAuditLog(audits, {
         entityType: "PROJECT",
         entityId: project.id,
         actionType: "CREATED",
         summaryKey: "audit.project.created",
         actorUserId,
-        occurredAt: now,
-        before: null,
         after: toProjectSnapshot(project),
-        metadata: null,
-        createdAt: now,
+        occurredAt: now,
       });
+
+      if (project.managerId) {
+        await recordAuditLog(audits, {
+          entityType: "EMPLOYEE",
+          entityId: project.managerId,
+          actionType: "PROJECT_MANAGER_ASSIGNED",
+          summaryKey: "audit.employee.project_assigned",
+          actorUserId,
+          metadata: {
+            projectId: project.id,
+            projectName: project.name,
+          },
+          occurredAt: now,
+        });
+      }
 
       return project;
     });
@@ -94,56 +121,105 @@ export class ProjectService {
 
     if (
       input.name === undefined &&
+      input.location === undefined &&
       input.managerId === undefined &&
-      input.warehouseId === undefined
+      input.status === undefined &&
+      input.notes === undefined
     ) {
       throw new AppError("BAD_REQUEST", "No project fields were provided.");
     }
 
-    if (input.managerId && input.managerId !== existing.managerId) {
-      const assignedWorkerCount = await this.workers.countByCurrentProjectId(existing.id);
+    if (input.managerId !== undefined && input.managerId !== existing.managerId) {
+      const activeAssignmentCount =
+        await this.employeeProjectAssignments.countActiveByProjectId(existing.id);
 
-      if (assignedWorkerCount > 0) {
+      if (activeAssignmentCount > 0) {
         throw new AppError(
           "CONFLICT",
-          "Cannot change the project manager while workers are assigned to the project.",
+          "Cannot change the project manager while active employee assignments exist.",
         );
       }
     }
 
     return this.prisma.$transaction(async (tx) => {
       const projects = this.projects.withClient(tx);
-      const workers = this.workers.withClient(tx);
+      const employees = this.employees.withClient(tx);
       const audits = this.audits.withClient(tx);
       const now = new Date();
 
       if (input.managerId) {
-        await this.assertProjectManager(workers, input.managerId);
+        await this.assertProjectManager(employees, input.managerId);
       }
-
-      await this.assertWarehouseIfProvided(tx, input.warehouseId ?? undefined);
 
       const project = await projects.update({
         id: input.id,
-        name: input.name,
+        name: input.name?.trim(),
+        location: normalizeText(input.location),
         managerId: input.managerId,
-        warehouseId: input.warehouseId,
+        status: input.status,
+        notes: normalizeText(input.notes),
         updatedAt: now,
       });
 
-      await audits.create({
-        id: randomUUID(),
+      await recordAuditLog(audits, {
         entityType: "PROJECT",
         entityId: project.id,
-        actionType: "UPDATED",
-        summaryKey: "audit.project.updated",
+        actionType:
+          input.managerId !== undefined && input.managerId !== existing.managerId
+            ? "PROJECT_MANAGER_REASSIGNED"
+            : input.status !== undefined && input.status !== existing.status
+              ? "STATUS_CHANGED"
+              : "UPDATED",
+        summaryKey:
+          input.managerId !== undefined && input.managerId !== existing.managerId
+            ? "audit.project.manager_reassigned"
+            : input.status !== undefined && input.status !== existing.status
+              ? "audit.project.status_changed"
+              : "audit.project.updated",
         actorUserId,
-        occurredAt: now,
         before: toProjectSnapshot(existing),
         after: toProjectSnapshot(project),
-        metadata: null,
-        createdAt: now,
+        occurredAt: now,
       });
+
+      if (input.managerId !== undefined && input.managerId !== existing.managerId) {
+        if (existing.managerId) {
+          await recordAuditLog(audits, {
+            entityType: "EMPLOYEE",
+            entityId: existing.managerId,
+            actionType: "PROJECT_MANAGER_UNASSIGNED",
+            summaryKey: "audit.employee.project_removed",
+            actorUserId,
+            metadata: {
+              projectId: project.id,
+              projectName: project.name,
+            },
+            occurredAt: now,
+          });
+        }
+
+        if (project.managerId) {
+          await recordAuditLog(audits, {
+            entityType: "EMPLOYEE",
+            entityId: project.managerId,
+            actionType:
+              existing.managerId && existing.managerId !== project.managerId
+                ? "PROJECT_MANAGER_REASSIGNED"
+                : "PROJECT_MANAGER_ASSIGNED",
+            summaryKey:
+              existing.managerId && existing.managerId !== project.managerId
+                ? "audit.employee.project_reassigned"
+                : "audit.employee.project_assigned",
+            actorUserId,
+            metadata: {
+              projectId: project.id,
+              projectName: project.name,
+              previousManagerId: existing.managerId,
+            },
+            occurredAt: now,
+          });
+        }
+      }
 
       return project;
     });
@@ -151,12 +227,14 @@ export class ProjectService {
 
   async softDelete(id: string, actorUserId: string | null): Promise<boolean> {
     const project = await this.getById(id);
-    const assignedWorkerCount = await this.workers.countByCurrentProjectId(id);
 
-    if (assignedWorkerCount > 0) {
+    const activeAssignmentCount =
+      await this.employeeProjectAssignments.countActiveByProjectId(id);
+
+    if (activeAssignmentCount > 0) {
       throw new AppError(
         "CONFLICT",
-        "Cannot delete a project while workers are assigned to it.",
+        "Cannot delete a project while active employee assignments exist.",
       );
     }
 
@@ -164,70 +242,61 @@ export class ProjectService {
       const projects = this.projects.withClient(tx);
       const audits = this.audits.withClient(tx);
       const now = new Date();
-
       const deleted = await projects.softDelete(id, now, now);
 
-      if (!deleted) {
-        throw new AppError("NOT_FOUND", "Project not found.");
+      if (deleted) {
+        await recordAuditLog(audits, {
+          entityType: "PROJECT",
+          entityId: project.id,
+          actionType: "SOFT_DELETED",
+          summaryKey: "audit.project.soft_deleted",
+          actorUserId,
+          before: toProjectSnapshot(project),
+          after: {
+            ...toProjectSnapshot(project),
+            deletedAt: now.toISOString(),
+          },
+          occurredAt: now,
+        });
+
+        if (project.managerId) {
+          await recordAuditLog(audits, {
+            entityType: "EMPLOYEE",
+            entityId: project.managerId,
+            actionType: "PROJECT_MANAGER_UNASSIGNED",
+            summaryKey: "audit.employee.project_removed",
+            actorUserId,
+            metadata: {
+              projectId: project.id,
+              projectName: project.name,
+            },
+            occurredAt: now,
+          });
+        }
       }
 
-      await audits.create({
-        id: randomUUID(),
-        entityType: "PROJECT",
-        entityId: project.id,
-        actionType: "SOFT_DELETED",
-        summaryKey: "audit.project.soft_deleted",
-        actorUserId,
-        occurredAt: now,
-        before: toProjectSnapshot(project),
-        after: {
-          ...toProjectSnapshot(project),
-          deletedAt: now.toISOString(),
-        },
-        metadata: null,
-        createdAt: now,
-      });
-
-      return true;
+      return deleted;
     });
   }
 
   private async assertProjectManager(
-    workers: PrismaWorkerRepository,
+    employees: PrismaEmployeeRepository,
     managerId: string,
   ): Promise<void> {
-    const manager = await workers.getById(managerId);
+    const manager = await employees.getById(managerId);
 
     if (!manager) {
       throw new AppError("NOT_FOUND", "Project manager not found.");
     }
 
-    if (manager.role !== "PROJECT_MANAGER") {
-      throw new AppError("BAD_REQUEST", "Selected worker is not a project manager.");
+    const policy = getEmployeeRolePolicy(manager.role.key);
+
+    if (!policy.canManageProjects) {
+      throw new AppError("BAD_REQUEST", "Selected employee cannot manage projects.");
     }
 
     if (manager.status !== "ACTIVE") {
       throw new AppError("BAD_REQUEST", "Project manager must be active.");
-    }
-  }
-
-  private async assertWarehouseIfProvided(
-    tx: Prisma.TransactionClient,
-    warehouseId: string | null | undefined,
-  ): Promise<void> {
-    if (warehouseId === undefined || warehouseId === null) {
-      return;
-    }
-
-    const warehouse = await tx.warehouse.findFirst({
-      where: {
-        id: warehouseId,
-        deletedAt: null,
-      },
-    });
-
-    if (!warehouse) {
-      throw new AppError("NOT_FOUND", "Warehouse not found.");
     }
   }
 }

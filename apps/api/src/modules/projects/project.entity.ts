@@ -1,18 +1,22 @@
-import type { WarehouseReference } from "../warehouses/warehouse.entity";
-import type { WorkerReference } from "../workers/worker.entity";
+import type { EmployeeReference } from "../employees/employee.entity";
 
-export type ProjectReference = {
-  id: string;
-  name: string;
-};
+export const projectStatuses = [
+  "ACTIVE",
+  "STOPPED",
+  "COMPLETED",
+  "ARCHIVED",
+] as const;
+
+export type ProjectStatus = (typeof projectStatuses)[number];
 
 export type Project = {
   id: string;
   name: string;
-  managerId: string;
-  warehouseId: string | null;
-  manager: WorkerReference;
-  warehouse: WarehouseReference | null;
+  location: string | null;
+  managerId: string | null;
+  manager: EmployeeReference | null;
+  status: ProjectStatus;
+  notes: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -20,6 +24,6 @@ export type Project = {
 
 export type ProjectListFilters = {
   managerId?: string;
-  warehouseId?: string;
+  status?: ProjectStatus;
   includeDeleted?: boolean;
 };

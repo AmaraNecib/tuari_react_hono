@@ -1,8 +1,9 @@
 import type { Prisma } from "@prisma/client";
 
+import type { EmployeeReference, EmployeeStatus } from "../employees/employee.entity";
+import { formatEmployeeName } from "../employees/employee.entity";
 import type { DatabaseClient } from "../shared/database-client";
-import type { WorkerReference, WorkerRole } from "../workers/worker.entity";
-import type { Project, ProjectListFilters } from "./project.entity";
+import type { Project, ProjectListFilters, ProjectStatus } from "./project.entity";
 import type {
   ProjectLookupOptions,
   ProjectRepository,
@@ -14,14 +15,17 @@ const projectInclude = {
   manager: {
     select: {
       id: true,
-      fullName: true,
-      role: true,
-    },
-  },
-  warehouse: {
-    select: {
-      id: true,
-      name: true,
+      firstName: true,
+      lastName: true,
+      status: true,
+      role: {
+        select: {
+          id: true,
+          key: true,
+          name: true,
+          isSystem: true,
+        },
+      },
     },
   },
 } satisfies Prisma.ProjectInclude;
@@ -30,28 +34,28 @@ type ProjectRow = Prisma.ProjectGetPayload<{
   include: typeof projectInclude;
 }>;
 
-const toWorkerReference = (row: {
-  id: string;
-  fullName: string;
-  role: string;
-}): WorkerReference => ({
+const toEmployeeReference = (row: NonNullable<ProjectRow["manager"]>): EmployeeReference => ({
   id: row.id,
-  fullName: row.fullName,
-  role: row.role as WorkerRole,
+  firstName: row.firstName,
+  lastName: row.lastName,
+  displayName: formatEmployeeName(row.firstName, row.lastName),
+  status: row.status as EmployeeStatus,
+  role: {
+    id: row.role.id,
+    key: row.role.key,
+    name: row.role.name,
+    isSystem: row.role.isSystem,
+  },
 });
 
 const toProject = (row: ProjectRow): Project => ({
   id: row.id,
   name: row.name,
+  location: row.location,
   managerId: row.managerId,
-  warehouseId: row.warehouseId,
-  manager: toWorkerReference(row.manager),
-  warehouse: row.warehouse
-    ? {
-        id: row.warehouse.id,
-        name: row.warehouse.name,
-      }
-    : null,
+  manager: row.manager ? toEmployeeReference(row.manager) : null,
+  status: row.status as ProjectStatus,
+  notes: row.notes,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
   deletedAt: row.deletedAt?.toISOString() ?? null,
@@ -68,7 +72,7 @@ export class PrismaProjectRepository implements ProjectRepository {
     const rows = await this.db.project.findMany({
       where: {
         managerId: filters?.managerId,
-        warehouseId: filters?.warehouseId,
+        status: filters?.status,
         ...(filters?.includeDeleted ? {} : { deletedAt: null }),
       },
       include: projectInclude,
@@ -98,8 +102,10 @@ export class PrismaProjectRepository implements ProjectRepository {
       data: {
         id: input.id,
         name: input.name,
+        location: input.location,
         managerId: input.managerId,
-        warehouseId: input.warehouseId,
+        status: input.status,
+        notes: input.notes,
         deletedAt: input.deletedAt,
         createdAt: input.createdAt,
         updatedAt: input.updatedAt,
@@ -112,13 +118,15 @@ export class PrismaProjectRepository implements ProjectRepository {
 
   async update(input: ProjectUpdateInput): Promise<Project> {
     const row = await this.db.project.update({
-      where: { id: input.id },
+      where: {
+        id: input.id,
+      },
       data: {
         ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.location === undefined ? {} : { location: input.location }),
         ...(input.managerId === undefined ? {} : { managerId: input.managerId }),
-        ...(input.warehouseId === undefined
-          ? {}
-          : { warehouseId: input.warehouseId }),
+        ...(input.status === undefined ? {} : { status: input.status }),
+        ...(input.notes === undefined ? {} : { notes: input.notes }),
         updatedAt: input.updatedAt,
       },
       include: projectInclude,
@@ -146,15 +154,6 @@ export class PrismaProjectRepository implements ProjectRepository {
     return this.db.project.count({
       where: {
         managerId,
-        deletedAt: null,
-      },
-    });
-  }
-
-  countByWarehouseId(warehouseId: string): Promise<number> {
-    return this.db.project.count({
-      where: {
-        warehouseId,
         deletedAt: null,
       },
     });

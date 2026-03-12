@@ -7,17 +7,16 @@ datasource db {
 }
 
 model User {
-  id                 String              @id
-  name               String
-  email              String              @unique
-  emailVerified      Boolean             @default(false)
-  image              String?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  sessions           Session[]
-  accounts           Account[]
-  auditLogs          AuditLog[]          @relation("AuditActor")
-  salaryTransactions SalaryTransaction[] @relation("SalaryTransactionActor")
+  id            String     @id
+  name          String
+  email         String     @unique
+  emailVerified Boolean    @default(false)
+  image         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  auditLogs     AuditLog[] @relation("AuditActor")
 
   @@map("user")
 }
@@ -70,47 +69,102 @@ model Verification {
   @@map("verification")
 }
 
-model Worker {
-  id                 String              @id
-  fullName           String              @map("full_name")
-  phoneNumber        String              @map("phone_number")
-  role               String
-  status             String
-  salaryDzd          Int                 @map("salary_dzd")
-  managerId          String?             @map("manager_id")
-  manager            Worker?             @relation("WorkerManagement", fields: [managerId], references: [id], onDelete: SetNull)
-  managedWorkers     Worker[]            @relation("WorkerManagement")
-  currentProjectId   String?             @map("current_project_id")
-  currentProject     Project?            @relation("WorkerCurrentProject", fields: [currentProjectId], references: [id], onDelete: SetNull)
-  managedProjects    Project[]           @relation("ProjectManager")
-  managedWarehouses  Warehouse[]         @relation("WarehouseManager")
-  salaryTransactions SalaryTransaction[]
-  deletedAt          DateTime?           @map("deleted_at")
-  createdAt          DateTime            @default(now()) @map("created_at")
-  updatedAt          DateTime            @updatedAt @map("updated_at")
+model Role {
+  id          String     @id
+  key         String     @unique
+  name        String
+  description String?
+  isSystem    Boolean    @default(false) @map("is_system")
+  employees   Employee[]
+  deletedAt   DateTime?  @map("deleted_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
 
-  @@index([managerId], map: "idx_workers_manager_id")
-  @@index([currentProjectId], map: "idx_workers_current_project_id")
-  @@index([role], map: "idx_workers_role")
-  @@index([status], map: "idx_workers_status")
-  @@index([deletedAt], map: "idx_workers_deleted_at")
-  @@map("workers")
+  @@index([deletedAt], map: "idx_roles_deleted_at")
+  @@map("roles")
+}
+
+model Employee {
+  id                         String                      @id
+  firstName                  String                      @map("first_name")
+  lastName                   String?                     @map("last_name")
+  phone                      String?
+  roleId                     String                      @map("role_id")
+  role                       Role                        @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  status                     String
+  notes                      String?
+  managerAssignmentsAsWorker EmployeeManagerAssignment[] @relation("EmployeeManagerWorker")
+  managerAssignmentsAsManager EmployeeManagerAssignment[] @relation("EmployeeManagerManager")
+  projectAssignments         EmployeeProjectAssignment[]
+  managedProjects            Project[]                   @relation("ProjectManager")
+  managedWarehouses          Warehouse[]                 @relation("WarehouseManager")
+  deletedAt                  DateTime?                   @map("deleted_at")
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
+
+  @@index([roleId], map: "idx_employees_role_id")
+  @@index([status], map: "idx_employees_status")
+  @@index([deletedAt], map: "idx_employees_deleted_at")
+  @@map("employees")
+}
+
+model EmployeeManagerAssignment {
+  id        String    @id
+  workerId  String    @map("worker_id")
+  worker    Employee  @relation("EmployeeManagerWorker", fields: [workerId], references: [id], onDelete: Restrict)
+  managerId String    @map("manager_id")
+  manager   Employee  @relation("EmployeeManagerManager", fields: [managerId], references: [id], onDelete: Restrict)
+  status    String
+  startDate DateTime  @map("start_date")
+  endDate   DateTime? @map("end_date")
+  notes     String?
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([workerId, status], map: "idx_employee_manager_assignments_worker_status")
+  @@index([managerId, status], map: "idx_employee_manager_assignments_manager_status")
+  @@index([deletedAt], map: "idx_employee_manager_assignments_deleted_at")
+  @@index([startDate], map: "idx_employee_manager_assignments_start_date")
+  @@map("employee_manager_assignments")
+}
+
+model EmployeeProjectAssignment {
+  id         String    @id
+  employeeId String    @map("employee_id")
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  projectId  String    @map("project_id")
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  status     String
+  startDate  DateTime  @map("start_date")
+  endDate    DateTime? @map("end_date")
+  notes      String?
+  deletedAt  DateTime? @map("deleted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([employeeId, status], map: "idx_employee_project_assignments_employee_status")
+  @@index([projectId, status], map: "idx_employee_project_assignments_project_status")
+  @@index([deletedAt], map: "idx_employee_project_assignments_deleted_at")
+  @@index([startDate], map: "idx_employee_project_assignments_start_date")
+  @@map("employee_project_assignments")
 }
 
 model Project {
-  id              String     @id
-  name            String
-  managerId       String     @map("manager_id")
-  manager         Worker     @relation("ProjectManager", fields: [managerId], references: [id], onDelete: Restrict)
-  warehouseId     String?    @map("warehouse_id")
-  warehouse       Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
-  assignedWorkers Worker[]   @relation("WorkerCurrentProject")
-  deletedAt       DateTime?  @map("deleted_at")
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
+  id                  String                      @id
+  name                String
+  location            String?
+  managerId           String?                     @map("manager_id")
+  manager             Employee?                   @relation("ProjectManager", fields: [managerId], references: [id], onDelete: SetNull)
+  status              String
+  notes               String?
+  employeeAssignments EmployeeProjectAssignment[]
+  deletedAt           DateTime?                   @map("deleted_at")
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
 
   @@index([managerId], map: "idx_projects_manager_id")
-  @@index([warehouseId], map: "idx_projects_warehouse_id")
+  @@index([status], map: "idx_projects_status")
   @@index([deletedAt], map: "idx_projects_deleted_at")
   @@map("projects")
 }
@@ -118,36 +172,19 @@ model Project {
 model Warehouse {
   id         String    @id
   name       String
+  address    String?
   managerId  String?   @map("manager_id")
-  manager    Worker?   @relation("WarehouseManager", fields: [managerId], references: [id], onDelete: SetNull)
-  projects   Project[]
+  manager    Employee? @relation("WarehouseManager", fields: [managerId], references: [id], onDelete: SetNull)
+  status     String
+  notes      String?
   deletedAt  DateTime? @map("deleted_at")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
   @@index([managerId], map: "idx_warehouses_manager_id")
+  @@index([status], map: "idx_warehouses_status")
   @@index([deletedAt], map: "idx_warehouses_deleted_at")
   @@map("warehouses")
-}
-
-model SalaryTransaction {
-  id              String   @id
-  workerId        String   @map("worker_id")
-  worker          Worker   @relation(fields: [workerId], references: [id], onDelete: Restrict)
-  type            String
-  amountDzd       Int      @map("amount_dzd")
-  note            String?
-  beforeSalaryDzd Int?     @map("before_salary_dzd")
-  afterSalaryDzd  Int?     @map("after_salary_dzd")
-  effectiveAt     DateTime @map("effective_at")
-  createdByUserId String?  @map("created_by_user_id")
-  createdByUser   User?    @relation("SalaryTransactionActor", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  @@index([workerId], map: "idx_salary_transactions_worker_id")
-  @@index([createdByUserId], map: "idx_salary_transactions_actor_id")
-  @@index([effectiveAt], map: "idx_salary_transactions_effective_at")
-  @@map("salary_transactions")
 }
 
 model AuditLog {

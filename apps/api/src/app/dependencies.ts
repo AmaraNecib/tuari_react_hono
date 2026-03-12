@@ -1,50 +1,77 @@
 import { auth } from "../infrastructure/auth/auth";
 import { prisma } from "../infrastructure/database/prisma";
+import { SessionService } from "../modules/session/session.service";
 import { PrismaAuditLogRepository } from "../modules/audit/prisma-audit-log.repository";
 import { AuditLogService } from "../modules/audit/audit-log.service";
 import { PrismaProjectRepository } from "../modules/projects/prisma-project.repository";
 import { ProjectService } from "../modules/projects/project.service";
-import { PrismaSalaryTransactionRepository } from "../modules/salary/prisma-salary-transaction.repository";
-import { SalaryService } from "../modules/salary/salary.service";
-import { SessionService } from "../modules/session/session.service";
+import { PrismaRoleRepository } from "../modules/roles/prisma-role.repository";
+import { RoleService } from "../modules/roles/role.service";
 import { PrismaWarehouseRepository } from "../modules/warehouses/prisma-warehouse.repository";
 import { WarehouseService } from "../modules/warehouses/warehouse.service";
-import { PrismaWorkerRepository } from "../modules/workers/prisma-worker.repository";
-import { WorkerService } from "../modules/workers/worker.service";
+import { PrismaEmployeeManagerAssignmentRepository } from "../modules/employees/prisma-employee-manager-assignment.repository";
+import { EmployeeManagerAssignmentService } from "../modules/employees/employee-manager-assignment.service";
+import { PrismaEmployeeProjectAssignmentRepository } from "../modules/employees/prisma-employee-project-assignment.repository";
+import { EmployeeProjectAssignmentService } from "../modules/employees/employee-project-assignment.service";
+import { PrismaEmployeeRepository } from "../modules/employees/prisma-employee.repository";
+import { EmployeeService } from "../modules/employees/employee.service";
 
-const workerRepository = new PrismaWorkerRepository(prisma);
+const roleRepository = new PrismaRoleRepository(prisma);
+const employeeRepository = new PrismaEmployeeRepository(prisma);
+const auditLogRepository = new PrismaAuditLogRepository(prisma);
+const employeeManagerAssignmentRepository =
+  new PrismaEmployeeManagerAssignmentRepository(prisma);
+const employeeProjectAssignmentRepository =
+  new PrismaEmployeeProjectAssignmentRepository(prisma);
 const projectRepository = new PrismaProjectRepository(prisma);
 const warehouseRepository = new PrismaWarehouseRepository(prisma);
-const auditLogRepository = new PrismaAuditLogRepository(prisma);
-const salaryTransactionRepository = new PrismaSalaryTransactionRepository(prisma);
 
 export const appDependencies = {
   auth,
   sessionService: new SessionService(auth),
   auditLogService: new AuditLogService(auditLogRepository),
-  workerService: new WorkerService(
+  roleService: new RoleService(
     prisma,
-    workerRepository,
+    roleRepository,
+    employeeRepository,
+    auditLogRepository,
+  ),
+  employeeService: new EmployeeService(
+    prisma,
+    employeeRepository,
+    roleRepository,
+    employeeManagerAssignmentRepository,
+    employeeProjectAssignmentRepository,
     projectRepository,
+    warehouseRepository,
+    auditLogRepository,
+  ),
+  employeeManagerAssignmentService: new EmployeeManagerAssignmentService(
+    prisma,
+    employeeManagerAssignmentRepository,
+    employeeRepository,
+    employeeProjectAssignmentRepository,
+    auditLogRepository,
+  ),
+  employeeProjectAssignmentService: new EmployeeProjectAssignmentService(
+    prisma,
+    employeeProjectAssignmentRepository,
+    employeeRepository,
+    projectRepository,
+    employeeManagerAssignmentRepository,
     auditLogRepository,
   ),
   projectService: new ProjectService(
     prisma,
     projectRepository,
-    workerRepository,
+    employeeRepository,
+    employeeProjectAssignmentRepository,
     auditLogRepository,
   ),
   warehouseService: new WarehouseService(
     prisma,
     warehouseRepository,
-    workerRepository,
-    projectRepository,
-    auditLogRepository,
-  ),
-  salaryService: new SalaryService(
-    prisma,
-    workerRepository,
-    salaryTransactionRepository,
+    employeeRepository,
     auditLogRepository,
   ),
 } as const;

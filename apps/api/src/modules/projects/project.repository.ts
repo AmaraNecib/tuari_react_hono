@@ -1,10 +1,12 @@
-import type { Project, ProjectListFilters } from "./project.entity";
+import type { Project, ProjectListFilters, ProjectStatus } from "./project.entity";
 
 export type ProjectWriteInput = {
   id: string;
   name: string;
-  managerId: string;
-  warehouseId: string | null;
+  location: string | null;
+  managerId: string | null;
+  status: ProjectStatus;
+  notes: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -13,8 +15,10 @@ export type ProjectWriteInput = {
 export type ProjectUpdateInput = {
   id: string;
   name?: string;
-  managerId?: string;
-  warehouseId?: string | null;
+  location?: string | null;
+  managerId?: string | null;
+  status?: ProjectStatus;
+  notes?: string | null;
   updatedAt: Date;
 };
 
@@ -29,5 +33,4 @@ export interface ProjectRepository {
   update(input: ProjectUpdateInput): Promise<Project>;
   softDelete(id: string, deletedAt: Date, updatedAt: Date): Promise<boolean>;
   countByManagerId(managerId: string): Promise<number>;
-  countByWarehouseId(warehouseId: string): Promise<number>;
 }

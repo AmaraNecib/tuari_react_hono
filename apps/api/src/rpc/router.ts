@@ -8,12 +8,14 @@ import type { RpcContext } from "./context";
 
 type RouterDependencies = Pick<
   AppDependencies,
-  | "sessionService"
   | "auditLogService"
-  | "workerService"
+  | "sessionService"
+  | "roleService"
+  | "employeeService"
+  | "employeeManagerAssignmentService"
+  | "employeeProjectAssignmentService"
   | "projectService"
   | "warehouseService"
-  | "salaryService"
 >;
 
 const mapAppErrorCode = (code: AppError["code"]) => {
@@ -40,6 +42,7 @@ const toOrpcError = (error: unknown) => {
 
 export function createRouter(dependencies: RouterDependencies) {
   const os = implement(appContract).$context<RpcContext>();
+  const auditOs = implement(appContract.audits).$context<RpcContext>();
 
   const requireUser = async (headers: Headers) => {
     const user = await dependencies.sessionService.getCurrentUser(headers);
@@ -59,90 +62,210 @@ export function createRouter(dependencies: RouterDependencies) {
     session: os.session.handler(async ({ context }) => ({
       user: await dependencies.sessionService.getCurrentUser(context.headers),
     })),
-    workers: {
-      list: os.workers.list.handler(async ({ context, input }) => {
+    roles: {
+      list: os.roles.list.handler(async ({ context, input }) => {
         await requireUser(context.headers);
-        return dependencies.workerService.list(input);
+        return dependencies.roleService.list(input);
       }),
-      get: os.workers.get.handler(async ({ context, input }) => {
+      get: os.roles.get.handler(async ({ context, input }) => {
         await requireUser(context.headers);
 
         try {
-          return await dependencies.workerService.getById(input.id);
+          return await dependencies.roleService.getById(input.id);
         } catch (error) {
           throw toOrpcError(error);
         }
       }),
-      create: os.workers.create.handler(async ({ context, input }) => {
+      create: os.roles.create.handler(async ({ context, input }) => {
         const user = await requireUser(context.headers);
 
         try {
-          return await dependencies.workerService.create(input, user.id);
+          return await dependencies.roleService.create(input, user.id);
         } catch (error) {
           throw toOrpcError(error);
         }
       }),
-      update: os.workers.update.handler(async ({ context, input }) => {
+      update: os.roles.update.handler(async ({ context, input }) => {
         const user = await requireUser(context.headers);
 
         try {
-          return await dependencies.workerService.update(input, user.id);
+          return await dependencies.roleService.update(input, user.id);
         } catch (error) {
           throw toOrpcError(error);
         }
       }),
-      reassign: os.workers.reassign.handler(async ({ context, input }) => {
-        const user = await requireUser(context.headers);
-
-        try {
-          return await dependencies.workerService.reassign(input, user.id);
-        } catch (error) {
-          throw toOrpcError(error);
-        }
-      }),
-      changeStatus: os.workers.changeStatus.handler(async ({ context, input }) => {
-        const user = await requireUser(context.headers);
-
-        try {
-          return await dependencies.workerService.changeStatus(input, user.id);
-        } catch (error) {
-          throw toOrpcError(error);
-        }
-      }),
-      delete: os.workers.delete.handler(async ({ context, input }) => {
+      delete: os.roles.delete.handler(async ({ context, input }) => {
         const user = await requireUser(context.headers);
 
         try {
           return {
-            success: await dependencies.workerService.softDelete(input.id, user.id),
+            success: await dependencies.roleService.softDelete(input.id, user.id),
           };
         } catch (error) {
           throw toOrpcError(error);
         }
       }),
-      activity: os.workers.activity.handler(async ({ context, input }) => {
+    },
+    employees: {
+      list: os.employees.list.handler(async ({ context, input }) => {
         await requireUser(context.headers);
-        return dependencies.auditLogService.listForEntity("WORKER", input.id);
+        return dependencies.employeeService.list(input);
       }),
-      salary: {
-        list: os.workers.salary.list.handler(async ({ context, input }) => {
+      get: os.employees.get.handler(async ({ context, input }) => {
+        await requireUser(context.headers);
+
+        try {
+          return await dependencies.employeeService.getById(input.id);
+        } catch (error) {
+          throw toOrpcError(error);
+        }
+      }),
+      create: os.employees.create.handler(async ({ context, input }) => {
+        const user = await requireUser(context.headers);
+
+        try {
+          return await dependencies.employeeService.create(input, user.id);
+        } catch (error) {
+          throw toOrpcError(error);
+        }
+      }),
+      update: os.employees.update.handler(async ({ context, input }) => {
+        const user = await requireUser(context.headers);
+
+        try {
+          return await dependencies.employeeService.update(input, user.id);
+        } catch (error) {
+          throw toOrpcError(error);
+        }
+      }),
+      delete: os.employees.delete.handler(async ({ context, input }) => {
+        const user = await requireUser(context.headers);
+
+        try {
+          return {
+            success: await dependencies.employeeService.softDelete(input.id, user.id),
+          };
+        } catch (error) {
+          throw toOrpcError(error);
+        }
+      }),
+      managerAssignments: {
+        list: os.employees.managerAssignments.list.handler(async ({ context, input }) => {
+          await requireUser(context.headers);
+          return dependencies.employeeManagerAssignmentService.list(input);
+        }),
+        get: os.employees.managerAssignments.get.handler(async ({ context, input }) => {
           await requireUser(context.headers);
 
           try {
-            return await dependencies.salaryService.listByWorkerId(input.id);
+            return await dependencies.employeeManagerAssignmentService.getById(input.id);
           } catch (error) {
             throw toOrpcError(error);
           }
         }),
-        record: os.workers.salary.record.handler(async ({ context, input }) => {
-          const user = await requireUser(context.headers);
+        create: os.employees.managerAssignments.create.handler(
+          async ({ context, input }) => {
+            const user = await requireUser(context.headers);
+
+            try {
+              return await dependencies.employeeManagerAssignmentService.create(
+                input,
+                user.id,
+              );
+            } catch (error) {
+              throw toOrpcError(error);
+            }
+          },
+        ),
+        update: os.employees.managerAssignments.update.handler(
+          async ({ context, input }) => {
+            const user = await requireUser(context.headers);
+
+            try {
+              return await dependencies.employeeManagerAssignmentService.update(
+                input,
+                user.id,
+              );
+            } catch (error) {
+              throw toOrpcError(error);
+            }
+          },
+        ),
+        delete: os.employees.managerAssignments.delete.handler(
+          async ({ context, input }) => {
+            const user = await requireUser(context.headers);
+
+            try {
+              return {
+                success: await dependencies.employeeManagerAssignmentService.softDelete(
+                  input.id,
+                  user.id,
+                ),
+              };
+            } catch (error) {
+              throw toOrpcError(error);
+            }
+          },
+        ),
+      },
+      projectAssignments: {
+        list: os.employees.projectAssignments.list.handler(async ({ context, input }) => {
+          await requireUser(context.headers);
+          return dependencies.employeeProjectAssignmentService.list(input);
+        }),
+        get: os.employees.projectAssignments.get.handler(async ({ context, input }) => {
+          await requireUser(context.headers);
 
           try {
-            return await dependencies.salaryService.record(input, user.id);
+            return await dependencies.employeeProjectAssignmentService.getById(input.id);
           } catch (error) {
             throw toOrpcError(error);
           }
         }),
+        create: os.employees.projectAssignments.create.handler(
+          async ({ context, input }) => {
+            const user = await requireUser(context.headers);
+
+            try {
+              return await dependencies.employeeProjectAssignmentService.create(
+                input,
+                user.id,
+              );
+            } catch (error) {
+              throw toOrpcError(error);
+            }
+          },
+        ),
+        update: os.employees.projectAssignments.update.handler(
+          async ({ context, input }) => {
+            const user = await requireUser(context.headers);
+
+            try {
+              return await dependencies.employeeProjectAssignmentService.update(
+                input,
+                user.id,
+              );
+            } catch (error) {
+              throw toOrpcError(error);
+            }
+          },
+        ),
+        delete: os.employees.projectAssignments.delete.handler(
+          async ({ context, input }) => {
+            const user = await requireUser(context.headers);
+
+            try {
+              return {
+                success: await dependencies.employeeProjectAssignmentService.softDelete(
+                  input.id,
+                  user.id,
+                ),
+              };
+            } catch (error) {
+              throw toOrpcError(error);
+            }
+          },
+        ),
       },
     },
     projects: {
@@ -234,7 +357,7 @@ export function createRouter(dependencies: RouterDependencies) {
       }),
     },
     audits: {
-      list: os.audits.list.handler(async ({ context, input }) => {
+      list: auditOs.list.handler(async ({ context, input }) => {
         await requireUser(context.headers);
         return dependencies.auditLogService.list(input);
       }),

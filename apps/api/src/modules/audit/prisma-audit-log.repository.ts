@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 import type { DatabaseClient } from "../shared/database-client";
 import type {
@@ -51,8 +51,13 @@ const toAuditLog = (row: AuditLogRow): AuditLog => ({
   metadata: toAuditSnapshot(row.metadataJson),
 });
 
-const toJsonValue = (value: AuditSnapshot | null): Prisma.InputJsonValue | null =>
-  value as Prisma.InputJsonValue | null;
+const toJsonValue = (value: AuditSnapshot | null) => {
+  if (value === null) {
+    return Prisma.JsonNull;
+  }
+
+  return value as Prisma.InputJsonValue;
+};
 
 export class PrismaAuditLogRepository implements AuditLogRepository {
   constructor(private readonly db: DatabaseClient) {}
@@ -79,7 +84,7 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
   }
 
   async create(input: AuditLogWriteInput): Promise<AuditLog> {
-    const row = await this.db.auditLog.create({
+    const created = await this.db.auditLog.create({
       data: {
         id: input.id,
         entityType: input.entityType,
@@ -92,6 +97,12 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
         afterJson: toJsonValue(input.after),
         metadataJson: toJsonValue(input.metadata),
         createdAt: input.createdAt,
+      },
+    });
+
+    const row = await this.db.auditLog.findUniqueOrThrow({
+      where: {
+        id: created.id,
       },
       include: auditLogInclude,
     });

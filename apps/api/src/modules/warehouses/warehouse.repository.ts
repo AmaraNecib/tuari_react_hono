@@ -1,9 +1,12 @@
-import type { Warehouse, WarehouseListFilters } from "./warehouse.entity";
+import type { Warehouse, WarehouseListFilters, WarehouseStatus } from "./warehouse.entity";
 
 export type WarehouseWriteInput = {
   id: string;
   name: string;
+  address: string | null;
   managerId: string | null;
+  status: WarehouseStatus;
+  notes: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -12,7 +15,10 @@ export type WarehouseWriteInput = {
 export type WarehouseUpdateInput = {
   id: string;
   name?: string;
+  address?: string | null;
   managerId?: string | null;
+  status?: WarehouseStatus;
+  notes?: string | null;
   updatedAt: Date;
 };
 

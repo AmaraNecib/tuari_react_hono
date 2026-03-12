@@ -1,8 +1,9 @@
 import type { Prisma } from "@prisma/client";
 
+import type { EmployeeReference, EmployeeStatus } from "../employees/employee.entity";
+import { formatEmployeeName } from "../employees/employee.entity";
 import type { DatabaseClient } from "../shared/database-client";
-import type { WorkerReference, WorkerRole } from "../workers/worker.entity";
-import type { Warehouse, WarehouseListFilters } from "./warehouse.entity";
+import type { Warehouse, WarehouseListFilters, WarehouseStatus } from "./warehouse.entity";
 import type {
   WarehouseLookupOptions,
   WarehouseRepository,
@@ -14,8 +15,17 @@ const warehouseInclude = {
   manager: {
     select: {
       id: true,
-      fullName: true,
-      role: true,
+      firstName: true,
+      lastName: true,
+      status: true,
+      role: {
+        select: {
+          id: true,
+          key: true,
+          name: true,
+          isSystem: true,
+        },
+      },
     },
   },
 } satisfies Prisma.WarehouseInclude;
@@ -24,21 +34,30 @@ type WarehouseRow = Prisma.WarehouseGetPayload<{
   include: typeof warehouseInclude;
 }>;
 
-const toWorkerReference = (row: {
-  id: string;
-  fullName: string;
-  role: string;
-}): WorkerReference => ({
+const toEmployeeReference = (
+  row: NonNullable<WarehouseRow["manager"]>,
+): EmployeeReference => ({
   id: row.id,
-  fullName: row.fullName,
-  role: row.role as WorkerRole,
+  firstName: row.firstName,
+  lastName: row.lastName,
+  displayName: formatEmployeeName(row.firstName, row.lastName),
+  status: row.status as EmployeeStatus,
+  role: {
+    id: row.role.id,
+    key: row.role.key,
+    name: row.role.name,
+    isSystem: row.role.isSystem,
+  },
 });
 
 const toWarehouse = (row: WarehouseRow): Warehouse => ({
   id: row.id,
   name: row.name,
+  address: row.address,
   managerId: row.managerId,
-  manager: row.manager ? toWorkerReference(row.manager) : null,
+  manager: row.manager ? toEmployeeReference(row.manager) : null,
+  status: row.status as WarehouseStatus,
+  notes: row.notes,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
   deletedAt: row.deletedAt?.toISOString() ?? null,
@@ -55,6 +74,7 @@ export class PrismaWarehouseRepository implements WarehouseRepository {
     const rows = await this.db.warehouse.findMany({
       where: {
         managerId: filters?.managerId,
+        status: filters?.status,
         ...(filters?.includeDeleted ? {} : { deletedAt: null }),
       },
       include: warehouseInclude,
@@ -87,7 +107,10 @@ export class PrismaWarehouseRepository implements WarehouseRepository {
       data: {
         id: input.id,
         name: input.name,
+        address: input.address,
         managerId: input.managerId,
+        status: input.status,
+        notes: input.notes,
         deletedAt: input.deletedAt,
         createdAt: input.createdAt,
         updatedAt: input.updatedAt,
@@ -100,10 +123,15 @@ export class PrismaWarehouseRepository implements WarehouseRepository {
 
   async update(input: WarehouseUpdateInput): Promise<Warehouse> {
     const row = await this.db.warehouse.update({
-      where: { id: input.id },
+      where: {
+        id: input.id,
+      },
       data: {
         ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.address === undefined ? {} : { address: input.address }),
         ...(input.managerId === undefined ? {} : { managerId: input.managerId }),
+        ...(input.status === undefined ? {} : { status: input.status }),
+        ...(input.notes === undefined ? {} : { notes: input.notes }),
         updatedAt: input.updatedAt,
       },
       include: warehouseInclude,

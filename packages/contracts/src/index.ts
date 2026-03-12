@@ -1,51 +1,82 @@
 import { oc, type ContractRouterClient } from "@orpc/contract";
 import { z } from "zod";
 
-export const workerRoleValues = [
-  "WORKER",
-  "PROJECT_MANAGER",
-  "WAREHOUSE_MANAGER",
+export const systemRoleKeyValues = [
+  "worker",
+  "project_manager",
+  "warehouse_manager",
 ] as const;
 
-export const workerStatusValues = [
+export const employeeStatusValues = [
   "ACTIVE",
   "INACTIVE",
-  "ON_LEAVE",
+  "LEFT",
 ] as const;
 
-export const salaryTransactionTypeValues = [
-  "SALARY_SET",
-  "SALARY_BONUS",
-  "SALARY_DEDUCTION",
-  "SALARY_PAYMENT",
+export const projectStatusValues = [
+  "ACTIVE",
+  "STOPPED",
+  "COMPLETED",
+  "ARCHIVED",
+] as const;
+
+export const warehouseStatusValues = [
+  "ACTIVE",
+  "INACTIVE",
+  "ARCHIVED",
+] as const;
+
+export const assignmentStatusValues = [
+  "ACTIVE",
+  "ENDED",
+  "CANCELLED",
 ] as const;
 
 export const auditEntityTypeValues = [
-  "WORKER",
+  "ROLE",
+  "EMPLOYEE",
   "PROJECT",
   "WAREHOUSE",
-  "SALARY_TRANSACTION",
+  "EMPLOYEE_MANAGER_ASSIGNMENT",
+  "EMPLOYEE_PROJECT_ASSIGNMENT",
 ] as const;
 
 export const auditActionTypeValues = [
   "CREATED",
   "UPDATED",
   "STATUS_CHANGED",
-  "MANAGER_CHANGED",
-  "PROJECT_CHANGED",
-  "SALARY_CHANGED",
   "SOFT_DELETED",
+  "MANAGER_ASSIGNED",
+  "MANAGER_REASSIGNED",
+  "MANAGER_UNASSIGNED",
+  "PROJECT_ASSIGNED",
+  "PROJECT_REASSIGNED",
+  "PROJECT_UNASSIGNED",
+  "PROJECT_MANAGER_ASSIGNED",
+  "PROJECT_MANAGER_REASSIGNED",
+  "PROJECT_MANAGER_UNASSIGNED",
+  "WAREHOUSE_MANAGER_ASSIGNED",
+  "WAREHOUSE_MANAGER_REASSIGNED",
+  "WAREHOUSE_MANAGER_UNASSIGNED",
 ] as const;
 
-export const workerRoleSchema = z.enum(workerRoleValues);
-export const workerStatusSchema = z.enum(workerStatusValues);
-export const salaryTransactionTypeSchema = z.enum(salaryTransactionTypeValues);
+export const systemRoleKeySchema = z.enum(systemRoleKeyValues);
+export const employeeStatusSchema = z.enum(employeeStatusValues);
+export const projectStatusSchema = z.enum(projectStatusValues);
+export const warehouseStatusSchema = z.enum(warehouseStatusValues);
+export const assignmentStatusSchema = z.enum(assignmentStatusValues);
 export const auditEntityTypeSchema = z.enum(auditEntityTypeValues);
 export const auditActionTypeSchema = z.enum(auditActionTypeValues);
 
 const isoDateSchema = z.string().datetime({ offset: true });
 const nullableIsoDateSchema = isoDateSchema.nullable();
-
+const optionalTextSchema = z.string().trim().max(500).nullable().optional();
+const roleKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9_]+$/);
 const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
   z.union([
     z.string(),
@@ -56,8 +87,7 @@ const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
     z.record(z.string(), jsonValueSchema),
   ]),
 );
-
-export const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
+const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
 
 export const sessionUserSchema = z.object({
   id: z.string(),
@@ -65,33 +95,109 @@ export const sessionUserSchema = z.object({
   email: z.string().email(),
 });
 
-export const workerReferenceSchema = z.object({
+export const roleSchema = z.object({
   id: z.string(),
-  fullName: z.string(),
-  role: workerRoleSchema,
+  key: roleKeySchema,
+  name: z.string(),
+  description: z.string().nullable(),
+  isSystem: z.boolean(),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
+  deletedAt: nullableIsoDateSchema,
+});
+
+export const roleReferenceSchema = roleSchema.pick({
+  id: true,
+  key: true,
+  name: true,
+  isSystem: true,
 });
 
 export const projectReferenceSchema = z.object({
   id: z.string(),
   name: z.string(),
+  status: projectStatusSchema,
+  managerId: z.string().nullable(),
 });
 
 export const warehouseReferenceSchema = z.object({
   id: z.string(),
   name: z.string(),
+  status: warehouseStatusSchema,
+  managerId: z.string().nullable(),
 });
 
-export const workerSchema = z.object({
+export const employeeReferenceSchema = z.object({
   id: z.string(),
-  fullName: z.string(),
-  phoneNumber: z.string(),
-  role: workerRoleSchema,
-  status: workerStatusSchema,
-  salaryDzd: z.number().int().nonnegative(),
-  managerId: z.string().nullable(),
-  currentProjectId: z.string().nullable(),
-  manager: workerReferenceSchema.nullable(),
-  currentProject: projectReferenceSchema.nullable(),
+  firstName: z.string(),
+  lastName: z.string().nullable(),
+  displayName: z.string(),
+  status: employeeStatusSchema,
+  role: roleReferenceSchema,
+});
+
+export const employeeManagerAssignmentSummarySchema = z.object({
+  id: z.string(),
+  managerId: z.string(),
+  status: assignmentStatusSchema,
+  startDate: isoDateSchema,
+  endDate: nullableIsoDateSchema,
+  notes: z.string().nullable(),
+  manager: employeeReferenceSchema,
+});
+
+export const employeeProjectAssignmentSummarySchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  status: assignmentStatusSchema,
+  startDate: isoDateSchema,
+  endDate: nullableIsoDateSchema,
+  notes: z.string().nullable(),
+  project: projectReferenceSchema,
+});
+
+export const employeeSchema = z.object({
+  id: z.string(),
+  firstName: z.string(),
+  lastName: z.string().nullable(),
+  displayName: z.string(),
+  phone: z.string().nullable(),
+  roleId: z.string(),
+  role: roleReferenceSchema,
+  status: employeeStatusSchema,
+  notes: z.string().nullable(),
+  activeManagerAssignment: employeeManagerAssignmentSummarySchema.nullable(),
+  activeProjectAssignments: z.array(employeeProjectAssignmentSummarySchema),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
+  deletedAt: nullableIsoDateSchema,
+});
+
+export const employeeManagerAssignmentSchema = z.object({
+  id: z.string(),
+  workerId: z.string(),
+  managerId: z.string(),
+  status: assignmentStatusSchema,
+  startDate: isoDateSchema,
+  endDate: nullableIsoDateSchema,
+  notes: z.string().nullable(),
+  worker: employeeReferenceSchema,
+  manager: employeeReferenceSchema,
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
+  deletedAt: nullableIsoDateSchema,
+});
+
+export const employeeProjectAssignmentSchema = z.object({
+  id: z.string(),
+  employeeId: z.string(),
+  projectId: z.string(),
+  status: assignmentStatusSchema,
+  startDate: isoDateSchema,
+  endDate: nullableIsoDateSchema,
+  notes: z.string().nullable(),
+  employee: employeeReferenceSchema,
+  project: projectReferenceSchema,
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
   deletedAt: nullableIsoDateSchema,
@@ -100,10 +206,11 @@ export const workerSchema = z.object({
 export const projectSchema = z.object({
   id: z.string(),
   name: z.string(),
-  managerId: z.string(),
-  warehouseId: z.string().nullable(),
-  manager: workerReferenceSchema,
-  warehouse: warehouseReferenceSchema.nullable(),
+  location: z.string().nullable(),
+  managerId: z.string().nullable(),
+  manager: employeeReferenceSchema.nullable(),
+  status: projectStatusSchema,
+  notes: z.string().nullable(),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
   deletedAt: nullableIsoDateSchema,
@@ -112,24 +219,14 @@ export const projectSchema = z.object({
 export const warehouseSchema = z.object({
   id: z.string(),
   name: z.string(),
+  address: z.string().nullable(),
   managerId: z.string().nullable(),
-  manager: workerReferenceSchema.nullable(),
+  manager: employeeReferenceSchema.nullable(),
+  status: warehouseStatusSchema,
+  notes: z.string().nullable(),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
   deletedAt: nullableIsoDateSchema,
-});
-
-export const salaryTransactionSchema = z.object({
-  id: z.string(),
-  workerId: z.string(),
-  type: salaryTransactionTypeSchema,
-  amountDzd: z.number().int().nonnegative(),
-  note: z.string().nullable(),
-  beforeSalaryDzd: z.number().int().nonnegative().nullable(),
-  afterSalaryDzd: z.number().int().nonnegative().nullable(),
-  effectiveAt: isoDateSchema,
-  createdAt: isoDateSchema,
-  createdByUser: sessionUserSchema.nullable(),
 });
 
 export const auditLogSchema = z.object({
@@ -145,96 +242,157 @@ export const auditLogSchema = z.object({
   metadata: jsonObjectSchema.nullable(),
 });
 
-const workerCoreInputSchema = z.object({
-  fullName: z.string().min(1).max(160),
-  phoneNumber: z.string().min(1).max(40),
-  salaryDzd: z.number().int().nonnegative(),
+const roleCoreInputSchema = z.object({
+  key: roleKeySchema,
+  name: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(500).nullable().optional(),
 });
 
-export const createWorkerInputSchema = z.discriminatedUnion("role", [
-  workerCoreInputSchema.extend({
-    role: z.literal("WORKER"),
-    managerId: z.string().min(1),
-    currentProjectId: z.string().min(1),
-  }),
-  workerCoreInputSchema.extend({
-    role: z.literal("PROJECT_MANAGER"),
-  }),
-  workerCoreInputSchema.extend({
-    role: z.literal("WAREHOUSE_MANAGER"),
-  }),
-]);
+export const createRoleInputSchema = roleCoreInputSchema.extend({
+  isSystem: z.literal(false).optional(),
+});
 
-export const updateWorkerInputSchema = z.object({
+export const updateRoleInputSchema = z.object({
   id: z.string(),
-  fullName: z.string().min(1).max(160).optional(),
-  phoneNumber: z.string().min(1).max(40).optional(),
+  key: roleKeySchema.optional(),
+  name: z.string().trim().min(1).max(160).optional(),
+  description: z.string().trim().max(500).nullable().optional(),
 });
 
-export const reassignWorkerInputSchema = z.object({
-  workerId: z.string(),
-  managerId: z.string(),
-  projectId: z.string(),
-});
-
-export const changeWorkerStatusInputSchema = z.object({
-  workerId: z.string(),
-  status: workerStatusSchema,
-});
-
-export const recordSalaryTransactionInputSchema = z.object({
-  workerId: z.string(),
-  type: salaryTransactionTypeSchema,
-  amountDzd: z.number().int().nonnegative(),
-  note: z.string().trim().max(300).nullable().optional(),
-  effectiveAt: isoDateSchema.optional(),
-});
-
-export const workerListInputSchema = z
+export const roleListInputSchema = z
   .object({
-    role: workerRoleSchema.optional(),
-    status: workerStatusSchema.optional(),
+    key: roleKeySchema.optional(),
+    isSystem: z.boolean().optional(),
+    includeDeleted: z.boolean().optional(),
+  })
+  .optional();
+
+export const createEmployeeInputSchema = z.object({
+  firstName: z.string().trim().min(1).max(120),
+  lastName: z.string().trim().max(120).nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
+  roleId: z.string().min(1),
+  notes: z.string().trim().max(500).nullable().optional(),
+  managerId: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
+});
+
+export const updateEmployeeInputSchema = z.object({
+  id: z.string(),
+  firstName: z.string().trim().min(1).max(120).optional(),
+  lastName: z.string().trim().max(120).nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
+  roleId: z.string().min(1).optional(),
+  status: employeeStatusSchema.optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
+});
+
+export const employeeListInputSchema = z
+  .object({
+    roleId: z.string().optional(),
+    roleKey: roleKeySchema.optional(),
+    status: employeeStatusSchema.optional(),
     managerId: z.string().optional(),
-    currentProjectId: z.string().optional(),
+    projectId: z.string().optional(),
+    includeDeleted: z.boolean().optional(),
+  })
+  .optional();
+
+const assignmentCoreInputSchema = z.object({
+  status: assignmentStatusSchema.optional(),
+  startDate: isoDateSchema.optional(),
+  endDate: isoDateSchema.nullable().optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
+});
+
+export const createEmployeeManagerAssignmentInputSchema =
+  assignmentCoreInputSchema.extend({
+    workerId: z.string().min(1),
+    managerId: z.string().min(1),
+  });
+
+export const updateEmployeeManagerAssignmentInputSchema =
+  assignmentCoreInputSchema.extend({
+    id: z.string(),
+    managerId: z.string().min(1).optional(),
+  });
+
+export const employeeManagerAssignmentListInputSchema = z
+  .object({
+    workerId: z.string().optional(),
+    managerId: z.string().optional(),
+    status: assignmentStatusSchema.optional(),
+    includeDeleted: z.boolean().optional(),
+  })
+  .optional();
+
+export const createEmployeeProjectAssignmentInputSchema =
+  assignmentCoreInputSchema.extend({
+    employeeId: z.string().min(1),
+    projectId: z.string().min(1),
+  });
+
+export const updateEmployeeProjectAssignmentInputSchema =
+  assignmentCoreInputSchema.extend({
+    id: z.string(),
+    projectId: z.string().min(1).optional(),
+  });
+
+export const employeeProjectAssignmentListInputSchema = z
+  .object({
+    employeeId: z.string().optional(),
+    projectId: z.string().optional(),
+    status: assignmentStatusSchema.optional(),
     includeDeleted: z.boolean().optional(),
   })
   .optional();
 
 export const createProjectInputSchema = z.object({
-  name: z.string().min(1).max(160),
-  managerId: z.string().min(1),
-  warehouseId: z.string().nullable().optional(),
+  name: z.string().trim().min(1).max(160),
+  location: z.string().trim().max(240).nullable().optional(),
+  managerId: z.string().nullable().optional(),
+  status: projectStatusSchema.optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
 });
 
 export const updateProjectInputSchema = z.object({
   id: z.string(),
-  name: z.string().min(1).max(160).optional(),
-  managerId: z.string().min(1).optional(),
-  warehouseId: z.string().nullable().optional(),
+  name: z.string().trim().min(1).max(160).optional(),
+  location: z.string().trim().max(240).nullable().optional(),
+  managerId: z.string().nullable().optional(),
+  status: projectStatusSchema.optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
 });
 
 export const projectListInputSchema = z
   .object({
     managerId: z.string().optional(),
-    warehouseId: z.string().optional(),
+    status: projectStatusSchema.optional(),
     includeDeleted: z.boolean().optional(),
   })
   .optional();
 
 export const createWarehouseInputSchema = z.object({
-  name: z.string().min(1).max(160),
+  name: z.string().trim().min(1).max(160),
+  address: z.string().trim().max(240).nullable().optional(),
   managerId: z.string().nullable().optional(),
+  status: warehouseStatusSchema.optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
 });
 
 export const updateWarehouseInputSchema = z.object({
   id: z.string(),
-  name: z.string().min(1).max(160).optional(),
+  name: z.string().trim().min(1).max(160).optional(),
+  address: z.string().trim().max(240).nullable().optional(),
   managerId: z.string().nullable().optional(),
+  status: warehouseStatusSchema.optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
 });
 
 export const warehouseListInputSchema = z
   .object({
     managerId: z.string().optional(),
+    status: warehouseStatusSchema.optional(),
     includeDeleted: z.boolean().optional(),
   })
   .optional();
@@ -264,29 +422,48 @@ export const appContract = {
       user: sessionUserSchema.nullable(),
     }),
   ),
-  workers: {
-    list: oc.input(workerListInputSchema).output(z.array(workerSchema)),
-    get: oc.input(idInputSchema).output(workerSchema),
-    create: oc.input(createWorkerInputSchema).output(workerSchema),
-    update: oc.input(updateWorkerInputSchema).output(workerSchema),
-    reassign: oc.input(reassignWorkerInputSchema).output(workerSchema),
-    changeStatus: oc
-      .input(changeWorkerStatusInputSchema)
-      .output(workerSchema),
-    delete: oc
-      .input(idInputSchema)
-      .output(z.object({ success: z.boolean() })),
-    activity: oc.input(idInputSchema).output(z.array(auditLogSchema)),
-    salary: {
-      list: oc.input(idInputSchema).output(z.array(salaryTransactionSchema)),
-      record: oc
-        .input(recordSalaryTransactionInputSchema)
-        .output(
-          z.object({
-            worker: workerSchema,
-            transaction: salaryTransactionSchema,
-          }),
-        ),
+  roles: {
+    list: oc.input(roleListInputSchema).output(z.array(roleSchema)),
+    get: oc.input(idInputSchema).output(roleSchema),
+    create: oc.input(createRoleInputSchema).output(roleSchema),
+    update: oc.input(updateRoleInputSchema).output(roleSchema),
+    delete: oc.input(idInputSchema).output(z.object({ success: z.boolean() })),
+  },
+  employees: {
+    list: oc.input(employeeListInputSchema).output(z.array(employeeSchema)),
+    get: oc.input(idInputSchema).output(employeeSchema),
+    create: oc.input(createEmployeeInputSchema).output(employeeSchema),
+    update: oc.input(updateEmployeeInputSchema).output(employeeSchema),
+    delete: oc.input(idInputSchema).output(z.object({ success: z.boolean() })),
+    managerAssignments: {
+      list: oc
+        .input(employeeManagerAssignmentListInputSchema)
+        .output(z.array(employeeManagerAssignmentSchema)),
+      get: oc.input(idInputSchema).output(employeeManagerAssignmentSchema),
+      create: oc
+        .input(createEmployeeManagerAssignmentInputSchema)
+        .output(employeeManagerAssignmentSchema),
+      update: oc
+        .input(updateEmployeeManagerAssignmentInputSchema)
+        .output(employeeManagerAssignmentSchema),
+      delete: oc
+        .input(idInputSchema)
+        .output(z.object({ success: z.boolean() })),
+    },
+    projectAssignments: {
+      list: oc
+        .input(employeeProjectAssignmentListInputSchema)
+        .output(z.array(employeeProjectAssignmentSchema)),
+      get: oc.input(idInputSchema).output(employeeProjectAssignmentSchema),
+      create: oc
+        .input(createEmployeeProjectAssignmentInputSchema)
+        .output(employeeProjectAssignmentSchema),
+      update: oc
+        .input(updateEmployeeProjectAssignmentInputSchema)
+        .output(employeeProjectAssignmentSchema),
+      delete: oc
+        .input(idInputSchema)
+        .output(z.object({ success: z.boolean() })),
     },
   },
   projects: {
@@ -294,18 +471,14 @@ export const appContract = {
     get: oc.input(idInputSchema).output(projectSchema),
     create: oc.input(createProjectInputSchema).output(projectSchema),
     update: oc.input(updateProjectInputSchema).output(projectSchema),
-    delete: oc
-      .input(idInputSchema)
-      .output(z.object({ success: z.boolean() })),
+    delete: oc.input(idInputSchema).output(z.object({ success: z.boolean() })),
   },
   warehouses: {
     list: oc.input(warehouseListInputSchema).output(z.array(warehouseSchema)),
     get: oc.input(idInputSchema).output(warehouseSchema),
     create: oc.input(createWarehouseInputSchema).output(warehouseSchema),
     update: oc.input(updateWarehouseInputSchema).output(warehouseSchema),
-    delete: oc
-      .input(idInputSchema)
-      .output(z.object({ success: z.boolean() })),
+    delete: oc.input(idInputSchema).output(z.object({ success: z.boolean() })),
   },
   audits: {
     list: oc.input(auditListInputSchema).output(z.array(auditLogSchema)),
