@@ -80,7 +80,7 @@ export function createApp(dependencies: AppDependencies) {
   });
 
   app.use("/rpc/*", async (c, next) => {
-    const context = await createRpcContext(c.req.raw.headers, dependencies.sessionService);
+    const context = createRpcContext(c.req.raw.headers, dependencies.sessionService);
     const { matched, response } = await rpcHandler.handle(c.req.raw, {
       prefix: "/rpc",
       context,

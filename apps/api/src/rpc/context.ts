@@ -8,23 +8,35 @@ type SessionResolver = {
 
 export type RpcContext = {
   headers: Headers;
-  currentUser: SessionUser | null;
+  resolveCurrentUser: () => Promise<SessionUser | null>;
 };
 
-export async function createRpcContext(
+export function createRpcContext(
   headers: Headers,
   sessionService: SessionResolver,
-): Promise<RpcContext> {
+): RpcContext {
+  let currentUserPromise: Promise<SessionUser | null> | undefined;
+
   return {
     headers,
-    currentUser: await sessionService.getCurrentUser(headers),
+    resolveCurrentUser: () => {
+      currentUserPromise ??= sessionService.getCurrentUser(headers);
+
+      return currentUserPromise;
+    },
   };
 }
 
-export function requireCurrentUser(context: RpcContext): SessionUser {
-  if (!context.currentUser) {
+export function getCurrentUser(context: RpcContext): Promise<SessionUser | null> {
+  return context.resolveCurrentUser();
+}
+
+export async function requireCurrentUser(context: RpcContext): Promise<SessionUser> {
+  const currentUser = await getCurrentUser(context);
+
+  if (!currentUser) {
     throw new ORPCError("UNAUTHORIZED");
   }
 
-  return context.currentUser;
+  return currentUser;
 }

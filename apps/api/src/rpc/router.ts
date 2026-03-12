@@ -3,7 +3,7 @@ import { ORPCError, implement } from "@orpc/server";
 import { appContract } from "@tuari/contracts";
 
 import type { TodoService } from "../modules/todos/todo.service";
-import { requireCurrentUser, type RpcContext } from "./context";
+import { getCurrentUser, requireCurrentUser, type RpcContext } from "./context";
 
 type RouterDependencies = {
   todoService: Pick<
@@ -22,20 +22,20 @@ export function createRouter(dependencies: RouterDependencies) {
     })),
     session: os.session.handler(async ({ context }) => {
       return {
-        user: context.currentUser,
+        user: await getCurrentUser(context),
       };
     }),
     todos: {
       list: os.todos.list.handler(async ({ context }) => {
-        const user = requireCurrentUser(context);
+        const user = await requireCurrentUser(context);
         return dependencies.todoService.listForUser(user.id);
       }),
       create: os.todos.create.handler(async ({ context, input }) => {
-        const user = requireCurrentUser(context);
+        const user = await requireCurrentUser(context);
         return dependencies.todoService.createForUser(user.id, input.title);
       }),
       toggle: os.todos.toggle.handler(async ({ context, input }) => {
-        const user = requireCurrentUser(context);
+        const user = await requireCurrentUser(context);
         const item = await dependencies.todoService.toggleForUser(
           user.id,
           input.id,
@@ -49,7 +49,7 @@ export function createRouter(dependencies: RouterDependencies) {
         return item;
       }),
       remove: os.todos.remove.handler(async ({ context, input }) => {
-        const user = requireCurrentUser(context);
+        const user = await requireCurrentUser(context);
         return {
           success: await dependencies.todoService.removeForUser(
             user.id,

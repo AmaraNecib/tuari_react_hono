@@ -18,10 +18,10 @@ describe("RPC router auth context", () => {
     name: "Taylor",
     email: "taylor@example.com",
   };
-  const context: RpcContext = {
+  const createContext = (user: typeof currentUser | null = currentUser): RpcContext => ({
     headers: new Headers({ cookie: "session=token" }),
-    currentUser,
-  };
+    resolveCurrentUser: vi.fn().mockResolvedValue(user),
+  });
 
   beforeEach(() => {
     todoService.listForUser.mockReset();
@@ -30,15 +30,18 @@ describe("RPC router auth context", () => {
     todoService.removeForUser.mockReset();
   });
 
-  it("returns the preloaded current user for the session procedure", async () => {
+  it("returns the resolved current user for the session procedure", async () => {
+    const context = createContext();
     const client = createRouterClient(router, { context });
 
     await expect(client.session()).resolves.toEqual({
       user: currentUser,
     });
+    expect(context.resolveCurrentUser).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the preloaded current user in protected todo procedures", async () => {
+  it("uses the resolved current user in protected todo procedures", async () => {
+    const context = createContext();
     const client = createRouterClient(router, { context });
     todoService.listForUser.mockResolvedValue([]);
     todoService.createForUser.mockResolvedValue({
@@ -57,14 +60,23 @@ describe("RPC router auth context", () => {
     });
     expect(todoService.listForUser).toHaveBeenCalledWith(currentUser.id);
     expect(todoService.createForUser).toHaveBeenCalledWith(currentUser.id, "Ship Phase 2");
+    expect(context.resolveCurrentUser).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not resolve auth for public procedures that do not use it", async () => {
+    const context = createContext();
+    const client = createRouterClient(router, { context });
+
+    await expect(client.health()).resolves.toMatchObject({
+      status: "ok",
+    });
+
+    expect(context.resolveCurrentUser).not.toHaveBeenCalled();
   });
 
   it("keeps unauthorized todo access consistent when no current user exists", async () => {
     const client = createRouterClient(router, {
-      context: {
-        headers: new Headers(),
-        currentUser: null,
-      },
+      context: createContext(null),
     });
 
     await expect(client.todos.list()).rejects.toMatchObject({
