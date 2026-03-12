@@ -1,24 +1,31 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createApp } from "./create-app";
+import { createApp, createTransportSecurity } from "./create-app";
+
+const transportSecurity = {
+  allowedOrigins: ["http://localhost:1420"],
+  appClientKey: "test-client-key",
+} as const;
+
+const createDependencies = () => ({
+  auth: {
+    handler: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+  },
+  sessionService: {
+    getCurrentUser: vi.fn(),
+  },
+  todoService: {
+    listForUser: vi.fn(),
+    createForUser: vi.fn(),
+    toggleForUser: vi.fn(),
+    removeForUser: vi.fn(),
+  },
+});
 
 describe("createApp RPC wiring", () => {
   it("skips session resolution for public RPC procedures that do not need auth", async () => {
-    const dependencies = {
-      auth: {
-        handler: vi.fn(),
-      },
-      sessionService: {
-        getCurrentUser: vi.fn(),
-      },
-      todoService: {
-        listForUser: vi.fn(),
-        createForUser: vi.fn(),
-        toggleForUser: vi.fn(),
-        removeForUser: vi.fn(),
-      },
-    };
-    const app = createApp(dependencies as never);
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
 
     const response = await app.request(
       new Request("http://localhost/rpc/health", {
@@ -26,7 +33,7 @@ describe("createApp RPC wiring", () => {
         headers: {
           "content-type": "application/json",
           origin: "http://localhost:1420",
-          "x-tuari-client-key": "tuari-desktop-client-key-v1",
+          "x-tuari-client-key": "test-client-key",
         },
         body: JSON.stringify({ json: null, meta: [] }),
       }),
@@ -47,21 +54,9 @@ describe("createApp RPC wiring", () => {
       name: "Taylor",
       email: "taylor@example.com",
     };
-    const dependencies = {
-      auth: {
-        handler: vi.fn(),
-      },
-      sessionService: {
-        getCurrentUser: vi.fn().mockResolvedValue(currentUser),
-      },
-      todoService: {
-        listForUser: vi.fn(),
-        createForUser: vi.fn(),
-        toggleForUser: vi.fn(),
-        removeForUser: vi.fn(),
-      },
-    };
-    const app = createApp(dependencies as never);
+    const dependencies = createDependencies();
+    dependencies.sessionService.getCurrentUser.mockResolvedValue(currentUser);
+    const app = createApp(dependencies as never, transportSecurity);
 
     const response = await app.request(
       new Request("http://localhost/rpc/session", {
@@ -69,7 +64,7 @@ describe("createApp RPC wiring", () => {
         headers: {
           "content-type": "application/json",
           origin: "http://localhost:1420",
-          "x-tuari-client-key": "tuari-desktop-client-key-v1",
+          "x-tuari-client-key": "test-client-key",
           cookie: "session=token",
         },
         body: JSON.stringify({ json: null, meta: [] }),
@@ -84,5 +79,88 @@ describe("createApp RPC wiring", () => {
     expect(response.status).toBe(200);
     expect(dependencies.sessionService.getCurrentUser).toHaveBeenCalledTimes(1);
     expect(dependencies.todoService.listForUser).not.toHaveBeenCalled();
+  });
+
+  it("blocks RPC requests from disallowed origins", async () => {
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/rpc/health", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://evil.example",
+          "x-tuari-client-key": "test-client-key",
+        },
+        body: JSON.stringify({ json: null, meta: [] }),
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({ message: "Blocked origin." });
+    expect(response.status).toBe(403);
+  });
+
+  it("blocks auth requests with a missing origin", async () => {
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/api/auth/session", {
+        method: "GET",
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({ message: "Blocked origin." });
+    expect(response.status).toBe(403);
+    expect(dependencies.auth.handler).not.toHaveBeenCalled();
+  });
+
+  it("blocks RPC requests with a missing client key", async () => {
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/rpc/health", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:1420",
+        },
+        body: JSON.stringify({ json: null, meta: [] }),
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({ message: "Blocked client." });
+    expect(response.status).toBe(403);
+  });
+
+  it("blocks RPC requests with the wrong client key", async () => {
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/rpc/health", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:1420",
+          "x-tuari-client-key": "wrong-client-key",
+        },
+        body: JSON.stringify({ json: null, meta: [] }),
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({ message: "Blocked client." });
+    expect(response.status).toBe(403);
+  });
+});
+
+describe("createTransportSecurity", () => {
+  it("fails closed for requests without an origin", () => {
+    const transport = createTransportSecurity(transportSecurity);
+
+    expect(transport.isAllowedOrigin(undefined)).toBe(false);
+    expect(transport.resolveCorsOrigin(undefined)).toBe("");
   });
 });

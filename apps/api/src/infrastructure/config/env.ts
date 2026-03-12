@@ -18,6 +18,19 @@ const defaultAllowedOrigins = [
   "tauri://localhost",
 ];
 
+const requireEnv = (
+  source: NodeJS.ProcessEnv,
+  key: "APP_CLIENT_KEY" | "BETTER_AUTH_SECRET",
+) => {
+  const value = source[key]?.trim();
+
+  if (!value) {
+    throw new Error(`${key} is required`);
+  }
+
+  return value;
+};
+
 const toPort = (value: string | undefined) => {
   if (value === undefined) {
     return defaultPort;
@@ -38,19 +51,15 @@ export const createEnv = (source: NodeJS.ProcessEnv = process.env) => {
   return {
     host: source.API_HOST ?? defaultHost,
     port: toPort(source.API_PORT),
-    appClientKey: source.APP_CLIENT_KEY ?? "tuari-desktop-client-key-v1",
+    appClientKey: requireEnv(source, "APP_CLIENT_KEY"),
     allowedOrigins:
       source.ALLOWED_ORIGINS !== undefined
         ? splitCsv(source.ALLOWED_ORIGINS)
         : defaultAllowedOrigins,
     ...database,
-    betterAuthSecret:
-      source.BETTER_AUTH_SECRET ??
-      "dev-only-secret-dev-only-secret-dev-only-secret",
+    betterAuthSecret: requireEnv(source, "BETTER_AUTH_SECRET"),
     betterAuthUrl:
       source.BETTER_AUTH_URL ??
       `http://${source.API_HOST ?? defaultHost}:${toPort(source.API_PORT)}`,
   } as const;
 };
-
-export const env = createEnv();
