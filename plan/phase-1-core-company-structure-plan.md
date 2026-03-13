@@ -455,6 +455,10 @@ Rules:
 - Decide how to enforce worker active-project and active-manager consistency: database constraint where possible, service-layer validation, or both.
 - Decide whether project assignment creation should require an active manager assignment first, or whether it can be created before that relationship is established.
 - Decide the exact status values and uniqueness strategy used to represent a single active manager assignment and a single active project assignment.
+- Close the baseline risk that Playwright is not yet configured before the parallel branches rely on browser-first validation.
+- Close the baseline risk that web-side oRPC client usage is not yet wired before the RTL shell branch starts building query hooks.
+- Freeze the `better-auth` phone-first contract in the shared baseline before either implementation branch extends auth flows.
+- Keep `foundation/phase1-shared-baseline` intentionally small and focused so it does not slow the parallel web and API branches.
 
 ## Acceptance Checklist
 

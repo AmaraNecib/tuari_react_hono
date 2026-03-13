@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createApp, createTransportSecurity } from "./create-app";
 
 const transportSecurity = {
-  allowedOrigins: ["http://localhost:1420"],
+  allowedOrigins: ["http://localhost:3000", "http://127.0.0.1:3000"],
   appClientKey: "test-client-key",
 } as const;
 
@@ -13,12 +13,6 @@ const createDependencies = () => ({
   },
   sessionService: {
     getCurrentUser: vi.fn(),
-  },
-  todoService: {
-    listForUser: vi.fn(),
-    createForUser: vi.fn(),
-    toggleForUser: vi.fn(),
-    removeForUser: vi.fn(),
   },
 });
 
@@ -32,7 +26,7 @@ describe("createApp RPC wiring", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:1420",
+          origin: "http://localhost:3000",
           "x-tuari-client-key": "test-client-key",
         },
         body: JSON.stringify({ json: null, meta: [] }),
@@ -52,7 +46,7 @@ describe("createApp RPC wiring", () => {
     const currentUser = {
       id: "user-1",
       name: "Taylor",
-      email: "taylor@example.com",
+      phone: "+2135550101",
     };
     const dependencies = createDependencies();
     dependencies.sessionService.getCurrentUser.mockResolvedValue(currentUser);
@@ -63,7 +57,7 @@ describe("createApp RPC wiring", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:1420",
+          origin: "http://localhost:3000",
           "x-tuari-client-key": "test-client-key",
           cookie: "session=token",
         },
@@ -78,7 +72,6 @@ describe("createApp RPC wiring", () => {
     });
     expect(response.status).toBe(200);
     expect(dependencies.sessionService.getCurrentUser).toHaveBeenCalledTimes(1);
-    expect(dependencies.todoService.listForUser).not.toHaveBeenCalled();
   });
 
   it("blocks RPC requests from disallowed origins", async () => {
@@ -125,7 +118,7 @@ describe("createApp RPC wiring", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:1420",
+          origin: "http://localhost:3000",
         },
         body: JSON.stringify({ json: null, meta: [] }),
       }),
@@ -144,7 +137,7 @@ describe("createApp RPC wiring", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:1420",
+          origin: "http://localhost:3000",
           "x-tuari-client-key": "wrong-client-key",
         },
         body: JSON.stringify({ json: null, meta: [] }),

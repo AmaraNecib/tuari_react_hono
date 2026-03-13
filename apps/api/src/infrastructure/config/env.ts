@@ -11,6 +11,8 @@ const splitCsv = (value: string) =>
 const defaultPort = 4318;
 const defaultHost = "127.0.0.1";
 const defaultAllowedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
   "http://localhost:1420",
   "http://127.0.0.1:1420",
   "http://tauri.localhost",
@@ -39,7 +41,7 @@ const toPort = (value: string | undefined) => {
   const port = Number(value);
 
   if (!Number.isInteger(port) || port <= 0) {
-    throw new Error(`API_PORT must be a positive integer, received \"${value}\"`);
+    throw new Error(`API_PORT must be a positive integer, received "${value}"`);
   }
 
   return port;

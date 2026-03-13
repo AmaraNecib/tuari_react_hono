@@ -45,6 +45,13 @@ Land the minimum shared baseline required for Phase 1 web and API work to start 
 - Worker/manager/project rules from the main Phase 1 plan remain the source of truth
 - Playwright is not yet configured in-repo, so this branch only reserves consistent setup conventions and does not deliver full E2E coverage
 
+## Baseline Guardrails
+
+- Playwright setup must move from "not yet configured" to a minimally working baseline before the later branches rely on browser-first validation.
+- Web-side oRPC client usage must be wired in the shared baseline so the web branch starts from real shared-contract patterns rather than placeholder fetch flows.
+- The `better-auth` phone-first contract must be frozen in this branch before either implementation branch extends auth flows.
+- Keep this branch small and focused; if it grows into feature work, it will slow the parallel web and API branches.
+
 ## Allowed File Areas
 
 - `plan/**`

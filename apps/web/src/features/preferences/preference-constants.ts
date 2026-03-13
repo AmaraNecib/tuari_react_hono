@@ -7,7 +7,7 @@ export type AppTheme = "light" | "dark";
 export type AppLocale = "en" | "ar";
 
 export const DEFAULT_THEME: AppTheme = "light";
-export const DEFAULT_LOCALE: AppLocale = "en";
+export const DEFAULT_LOCALE: AppLocale = "ar";
 
 export function getNextTheme(theme: AppTheme): AppTheme {
   return theme === "light" ? "dark" : "light";

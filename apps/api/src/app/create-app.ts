@@ -12,9 +12,7 @@ export type TransportSecurityConfig = {
   appClientKey: string;
 };
 
-export const createTransportSecurity = (
-  config: TransportSecurityConfig,
-) => {
+export const createTransportSecurity = (config: TransportSecurityConfig) => {
   const isAllowedOrigin = (origin: string | undefined) => {
     if (!origin) {
       return false;
@@ -51,7 +49,7 @@ export function createApp(
   transportSecurity: TransportSecurityConfig,
 ) {
   const app = new Hono();
-  const router = createRouter({ todoService: dependencies.todoService });
+  const router = createRouter();
   const transport = createTransportSecurity(transportSecurity);
   const rpcHandler = new RPCHandler(router, {
     interceptors: [

@@ -21,19 +21,31 @@ describe("SessionService", () => {
     expect(getSession).toHaveBeenCalledWith({ headers });
   });
 
+  it("returns null when the current session has no phone identity yet", async () => {
+    getSession.mockResolvedValue({
+      user: {
+        id: "user-1",
+        name: "Taylor",
+        phoneNumber: null,
+      },
+    });
+
+    await expect(service.getCurrentUser(headers)).resolves.toBeNull();
+  });
+
   it("maps the authenticated user into the session contract", async () => {
     getSession.mockResolvedValue({
       user: {
         id: "user-1",
         name: "Taylor",
-        email: "taylor@example.com",
+        phoneNumber: "+2135550101",
       },
     });
 
     await expect(service.getCurrentUser(headers)).resolves.toEqual({
       id: "user-1",
       name: "Taylor",
-      email: "taylor@example.com",
+      phone: "+2135550101",
     });
   });
 });

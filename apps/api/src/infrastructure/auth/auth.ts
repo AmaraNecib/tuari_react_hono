@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { bearer } from "better-auth/plugins/bearer";
+import { bearer, phoneNumber } from "better-auth/plugins";
 
 import { env } from "../config/runtime-env";
 import { prisma } from "../database/prisma";
@@ -16,5 +16,12 @@ export const auth = betterAuth({
   baseURL: env.betterAuthUrl,
   secret: env.betterAuthSecret,
   trustedOrigins: env.allowedOrigins,
-  plugins: [bearer()],
+  plugins: [
+    bearer(),
+    phoneNumber({
+      sendOTP: ({ code, phoneNumber }) => {
+        console.info(`[better-auth] Phone verification requested for ${phoneNumber}: ${code}`);
+      },
+    }),
+  ],
 });

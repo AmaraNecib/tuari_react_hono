@@ -7,6 +7,8 @@ const schemaStatements = [
     "email" TEXT NOT NULL UNIQUE,
     "emailVerified" INTEGER NOT NULL DEFAULT 0,
     "image" TEXT,
+    "phoneNumber" TEXT,
+    "phoneNumberVerified" INTEGER DEFAULT 0,
     "createdAt" DATETIME NOT NULL,
     "updatedAt" DATETIME NOT NULL
   )`,
@@ -56,11 +58,31 @@ const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "session_userId_idx" ON "session" ("userId")',
   'CREATE INDEX IF NOT EXISTS "verification_identifier_idx" ON "verification" ("identifier")',
   'CREATE UNIQUE INDEX IF NOT EXISTS "account_providerId_accountId_key" ON "account" ("providerId", "accountId")',
+  'CREATE UNIQUE INDEX IF NOT EXISTS "user_phoneNumber_key" ON "user" ("phoneNumber")',
   'CREATE INDEX IF NOT EXISTS "idx_todos_user_id" ON "todos" ("user_id")',
 ];
+
+const additiveStatements = [
+  'ALTER TABLE "user" ADD COLUMN "phoneNumber" TEXT',
+  'ALTER TABLE "user" ADD COLUMN "phoneNumberVerified" INTEGER DEFAULT 0',
+];
+
+function isDuplicateColumnError(error: unknown) {
+  return error instanceof Error && error.message.includes("duplicate column name");
+}
 
 export async function ensureDatabaseSchema(): Promise<void> {
   for (const statement of schemaStatements) {
     await prisma.$executeRawUnsafe(statement);
+  }
+
+  for (const statement of additiveStatements) {
+    try {
+      await prisma.$executeRawUnsafe(statement);
+    } catch (error) {
+      if (!isDuplicateColumnError(error)) {
+        throw error;
+      }
+    }
   }
 }

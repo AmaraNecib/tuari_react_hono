@@ -1,20 +1,24 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AppPreferencesProvider } from "@/features/preferences/preferences";
+import { QueryClientProvider } from "@tanstack/react-query"
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      gcTime: 5 * 60_000,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
+import { Toaster } from "@/components/ui/sonner"
+import { AppPreferencesProvider } from "@/features/preferences/preferences"
+import { queryClient } from "@/lib/query-client"
+
+function AppProvidersContent({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      {children}
+      <Toaster />
+    </>
+  )
+}
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppPreferencesProvider>{children}</AppPreferencesProvider>
+      <AppPreferencesProvider>
+        <AppProvidersContent>{children}</AppProvidersContent>
+      </AppPreferencesProvider>
     </QueryClientProvider>
-  );
+  )
 }

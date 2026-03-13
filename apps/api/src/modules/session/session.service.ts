@@ -6,7 +6,7 @@ type AuthGateway = {
       user?: {
         id: string;
         name: string | null;
-        email: string;
+        phoneNumber?: string | null;
       } | null;
     } | null>;
   };
@@ -18,14 +18,14 @@ export class SessionService {
   async getCurrentUser(headers: Headers): Promise<SessionUser | null> {
     const sessionData = await this.authGateway.api.getSession({ headers });
 
-    if (!sessionData?.user) {
+    if (!sessionData?.user?.phoneNumber) {
       return null;
     }
 
     return {
       id: sessionData.user.id,
       name: sessionData.user.name,
-      email: sessionData.user.email,
+      phone: sessionData.user.phoneNumber,
     };
   }
 }

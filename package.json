@@ -14,6 +14,8 @@
     "test:api": "pnpm --filter @tuari/api test",
     "test:contracts": "pnpm --filter @tuari/contracts test",
     "test:web": "pnpm --filter @tuari/web test",
+    "test:e2e": "playwright test",
+    "playwright:install": "playwright install chromium",
     "typecheck": "pnpm check:web-tracking && turbo typecheck",
     "dev:web": "pnpm check:web-tracking && pnpm --filter @tuari/web dev",
     "dev:api": "pnpm --filter @tuari/api dev",
@@ -28,6 +30,7 @@
     ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@testing-library/react": "^16.3.2",
     "jsdom": "^28.1.0",
     "turbo": "^2.8.16",
