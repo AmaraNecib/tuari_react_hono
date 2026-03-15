@@ -40,14 +40,14 @@ describe("usePhoneSignInMutation", () => {
 
     await act(async () => {
       await result.current.mutateAsync({
-        phone: "+2135550101",
+        phone: "0612345678",
         password: "password123",
         rememberMe: true,
       })
     })
 
     expect(authClient.signIn.phoneNumber).toHaveBeenCalledWith({
-      phoneNumber: "+2135550101",
+      phoneNumber: "0612345678",
       password: "password123",
       rememberMe: true,
     })

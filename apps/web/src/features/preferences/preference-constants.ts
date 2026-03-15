@@ -28,7 +28,7 @@ function readStoredTheme(): AppTheme {
 
 function readStoredLocale(): AppLocale {
   const storedLocale = window.localStorage.getItem(STORAGE_KEYS.locale);
-  return storedLocale === "ar" ? "ar" : DEFAULT_LOCALE;
+  return storedLocale === "ar" || storedLocale === "en" ? storedLocale : DEFAULT_LOCALE;
 }
 
 export function applyTheme(theme: AppTheme) {

@@ -1,16 +1,58 @@
 import { expect, test } from "@playwright/test"
 
+test.describe.configure({ mode: "serial" })
+
+async function bootstrapIfNeeded(page: import("@playwright/test").Page) {
+  await expect(page.getByLabel("رقم الهاتف")).toBeVisible()
+
+  const createFirstUserButton = page.getByRole("button", { name: "إنشاء الحساب الأول" })
+
+  if (await createFirstUserButton.isVisible()) {
+    await page.getByLabel("الاسم الكامل").fill("مدير التشغيل")
+    await page.getByLabel("رقم الهاتف").fill("0612345678")
+    await page.getByLabel("كلمة المرور").fill("password123")
+    await createFirstUserButton.click()
+    return
+  }
+
+  await page.getByLabel("رقم الهاتف").fill("0612345678")
+  await page.getByLabel("كلمة المرور").fill("password123")
+  await page.getByRole("button", { name: "دخول إلى مساحة العمل" }).click()
+}
+
 test("browser shell boots with Arabic RTL defaults", async ({ page }) => {
   await page.goto("/")
 
   await expect(page.locator("html")).toHaveAttribute("lang", "ar")
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl")
-  await expect(page.getByText("تحديث الواجهة المحلية")).toBeVisible()
+  await expect(page.getByLabel("رقم الهاتف")).toBeVisible()
+  await expect(
+    page.getByRole("heading", { name: /إنشاء المستخدم الأول|تسجيل الدخول/ }),
+  ).toBeVisible()
+  await expect(page.getByText("اللغة")).toHaveCount(0)
+})
+
+test("phase 1 shell signs in and keeps a collapsible fixed sidebar", async ({ page }) => {
+  await page.goto("/")
+
+  await bootstrapIfNeeded(page)
+
+  await expect(page.getByText("مساحة العمل")).toBeVisible()
+  await expect(page.getByRole("link", { name: "الهيكل المؤسسي" })).toBeVisible()
+  await expect(page.locator("aside[data-sidebar-collapsed='false']")).toBeVisible()
+  await expect(page.getByText("اللغة")).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "تبديل المظهر" })).toBeVisible()
+
+  await page.getByRole("button", { name: "تصغير الشريط الجانبي" }).click()
+  await expect(page.locator("aside[data-sidebar-collapsed='true']")).toBeVisible()
+
+  await page.getByRole("button", { name: "الإعدادات" }).click()
+  await expect(page.getByRole("heading", { name: "الإعدادات" })).toBeVisible()
 })
 
 test("api health responds for the web shell", async ({ request }) => {
   const response = await request.get("http://127.0.0.1:4318/health")
 
   expect(response.ok()).toBe(true)
-  await expect(response.json()).resolves.toEqual({ status: "ok" })
+  await expect(response.json()).resolves.toMatchObject({ status: "ok" })
 })

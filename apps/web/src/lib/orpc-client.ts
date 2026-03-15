@@ -4,14 +4,13 @@ import { createTanstackQueryUtils } from "@orpc/tanstack-query"
 import type { AppClient } from "@tuari/contracts"
 
 const DEFAULT_API_URL = "http://127.0.0.1:4318"
-const DEFAULT_APP_CLIENT_KEY = "tuari-desktop-client-key-v1"
 
 export function resolveApiBaseUrl() {
   return import.meta.env.VITE_API_URL?.trim() || DEFAULT_API_URL
 }
 
 export function resolveAppClientKey() {
-  return import.meta.env.VITE_APP_CLIENT_KEY?.trim() || DEFAULT_APP_CLIENT_KEY
+  return import.meta.env.VITE_APP_CLIENT_KEY?.trim() || ""
 }
 
 export function createRpcHeaders() {

@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   appErrorSchema,
+  authSetupStatusSchema,
   employeeProjectAssignmentSchema,
   employeeSchema,
+  managerAssignmentCreateInputSchema,
   phonePasswordSignInSchema,
+  projectAssignmentCreateInputSchema,
   projectSchema,
+  roleCreateInputSchema,
   sessionUserSchema,
   warehouseSchema,
 } from "./index";
@@ -12,13 +16,13 @@ import {
 describe("contracts", () => {
   it("accepts a valid phone password sign-in payload", () => {
     expect(
-      phonePasswordSignInSchema.parse({
-        phone: "+2135550101",
+        phonePasswordSignInSchema.parse({
+        phone: "0612345678",
         password: "password123",
         rememberMe: true,
       }),
     ).toEqual({
-      phone: "+2135550101",
+      phone: "0612345678",
       password: "password123",
       rememberMe: true,
     });
@@ -33,17 +37,29 @@ describe("contracts", () => {
     ).toThrowError();
   });
 
-  it("accepts a session user with phone identity", () => {
+  it("exposes auth setup status with optional bootstrap secret gating", () => {
     expect(
-      sessionUserSchema.parse({
-        id: "user-1",
-        name: null,
-        phone: "+2135550101",
+      authSetupStatusSchema.parse({
+        hasUsers: false,
+        requiresSetupKey: true,
       }),
     ).toEqual({
-      id: "user-1",
-      name: null,
-      phone: "+2135550101",
+      hasUsers: false,
+      requiresSetupKey: true,
+    })
+  })
+
+  it("accepts a session user with phone identity", () => {
+    expect(
+        sessionUserSchema.parse({
+          id: "user-1",
+          name: null,
+          phone: "0612345678",
+        }),
+      ).toEqual({
+        id: "user-1",
+        name: null,
+        phone: "0612345678",
     });
   });
 
@@ -102,17 +118,43 @@ describe("contracts", () => {
 
   it("accepts a required employee identity shape", () => {
     expect(
-      employeeSchema.parse({
-        id: "employee-1",
-        firstName: "Amara",
-        lastName: "Necib",
-        phone: "+2135550101",
-        roleId: "role-worker",
-        status: "ACTIVE",
+        employeeSchema.parse({
+          id: "employee-1",
+          firstName: "Amara",
+          lastName: "Necib",
+          phone: "0612345678",
+          roleId: "role-worker",
+          status: "ACTIVE",
         notes: null,
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       }).phone,
-    ).toBe("+2135550101");
+    ).toBe("0612345678");
+  });
+
+  it("accepts create payloads for core company entities", () => {
+    expect(
+      roleCreateInputSchema.parse({
+        key: "site_admin",
+        name: "Site Admin",
+        description: null,
+      }).key,
+    ).toBe("site_admin");
+
+    expect(
+      managerAssignmentCreateInputSchema.parse({
+        workerId: "employee-1",
+        managerId: "employee-2",
+        status: "ACTIVE",
+      }).status,
+    ).toBe("ACTIVE");
+
+    expect(
+      projectAssignmentCreateInputSchema.parse({
+        employeeId: "employee-1",
+        projectId: "project-1",
+        status: "ACTIVE",
+      }).employeeId,
+    ).toBe("employee-1");
   });
 });

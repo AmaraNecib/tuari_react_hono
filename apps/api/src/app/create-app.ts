@@ -49,7 +49,7 @@ export function createApp(
   transportSecurity: TransportSecurityConfig,
 ) {
   const app = new Hono();
-  const router = createRouter();
+  const router = createRouter(dependencies);
   const transport = createTransportSecurity(transportSecurity);
   const rpcHandler = new RPCHandler(router, {
     interceptors: [
@@ -57,6 +57,15 @@ export function createApp(
         console.error("[oRPC error]", error);
       }),
     ],
+  });
+
+  app.use("*", async (c, next) => {
+    await next();
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("X-Frame-Options", "DENY");
+    c.header("Referrer-Policy", "same-origin");
+    c.header("Cross-Origin-Opener-Policy", "same-origin");
+    c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   });
 
   app.use(

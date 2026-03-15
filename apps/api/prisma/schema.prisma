@@ -9,13 +9,11 @@ datasource db {
 model User {
   id                  String    @id
   name                String
-  email               String    @unique
-  emailVerified       Boolean   @default(false)
   image               String?
-  phoneNumber         String?   @unique
-  phoneNumberVerified Boolean?  @default(false)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  phoneNumber         String    @unique
+  phoneNumberVerified Boolean   @default(false)
+  createdAt           DateTime                    @map("created_at")
+  updatedAt           DateTime                    @map("updated_at")
   sessions            Session[]
   accounts            Account[]
   todos               Todo[]
@@ -23,12 +21,24 @@ model User {
   @@map("user")
 }
 
+model Todo {
+  id        String   @id
+  userId    String   @map("user_id")
+  title     String
+  completed Boolean  @default(false)
+  createdAt DateTime @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_todos_user_id")
+  @@map("todos")
+}
+
 model Session {
   id        String   @id
   expiresAt DateTime
   token     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
   ipAddress String?
   userAgent String?
   userId    String
@@ -39,11 +49,10 @@ model Session {
 }
 
 model Account {
-  id                    String   @id
+  id                    String    @id
   accountId             String
   providerId            String
   userId                String
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   accessToken           String?
   refreshToken          String?
   idToken               String?
@@ -51,8 +60,9 @@ model Account {
   refreshTokenExpiresAt DateTime?
   scope                 String?
   password              String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt             DateTime
+  updatedAt             DateTime
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@unique([providerId, accountId])
@@ -64,21 +74,110 @@ model Verification {
   identifier String
   value      String
   expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime
+  updatedAt  DateTime
 
   @@index([identifier])
   @@map("verification")
 }
 
-model Todo {
-  id        String   @id
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String
-  completed Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
+model Role {
+  id          String     @id
+  key         String     @unique
+  name        String
+  description String?
+  isSystem    Boolean    @default(false) @map("is_system")
+  createdAt   DateTime   @map("created_at")
+  updatedAt   DateTime   @map("updated_at")
+  employees   Employee[]
 
-  @@index([userId], map: "idx_todos_user_id")
-  @@map("todos")
+  @@map("role")
+}
+
+model Employee {
+  id                         String                       @id
+  firstName                  String                       @map("first_name")
+  lastName                   String                       @map("last_name")
+  phone                      String                       @unique
+  roleId                     String                       @map("role_id")
+  status                     String
+  notes                      String?
+  createdAt                  DateTime                     @map("created_at")
+  updatedAt                  DateTime                     @map("updated_at")
+  role                       Role                         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  managedProjects             Project[]                    @relation("ProjectManager")
+  managedWarehouses           Warehouse[]                  @relation("WarehouseManager")
+  managerAssignmentsAsWorker  EmployeeManagerAssignment[]  @relation("WorkerAssignments")
+  managerAssignmentsAsManager EmployeeManagerAssignment[]  @relation("ManagerAssignments")
+  projectAssignments          EmployeeProjectAssignment[]
+
+  @@index([roleId])
+  @@map("employee")
+}
+
+model EmployeeManagerAssignment {
+  id        String   @id
+  workerId  String   @map("worker_id")
+  managerId String   @map("manager_id")
+  status    String
+  startDate DateTime @map("start_date")
+  endDate   DateTime? @map("end_date")
+  notes     String?
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+  worker    Employee @relation("WorkerAssignments", fields: [workerId], references: [id], onDelete: Restrict)
+  manager   Employee @relation("ManagerAssignments", fields: [managerId], references: [id], onDelete: Restrict)
+
+  @@index([workerId])
+  @@index([managerId])
+  @@map("employee_manager_assignment")
+}
+
+model Project {
+  id                  String                      @id
+  name                String
+  location            String?
+  managerId           String?                     @map("manager_id")
+  status              String
+  notes               String?
+  createdAt           DateTime                    @map("created_at")
+  updatedAt           DateTime                    @map("updated_at")
+  manager             Employee?                   @relation("ProjectManager", fields: [managerId], references: [id], onDelete: SetNull)
+  employeeAssignments EmployeeProjectAssignment[]
+
+  @@index([managerId])
+  @@map("project")
+}
+
+model EmployeeProjectAssignment {
+  id        String   @id
+  employeeId String   @map("employee_id")
+  projectId String   @map("project_id")
+  status    String
+  startDate DateTime @map("start_date")
+  endDate   DateTime? @map("end_date")
+  notes     String?
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId])
+  @@index([projectId])
+  @@map("employee_project_assignment")
+}
+
+model Warehouse {
+  id        String    @id
+  name      String
+  address   String?   @map("address")
+  managerId String?   @map("manager_id")
+  status    String
+  notes     String?
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+  manager   Employee? @relation("WarehouseManager", fields: [managerId], references: [id], onDelete: SetNull)
+
+  @@index([managerId])
+  @@map("warehouse")
 }
