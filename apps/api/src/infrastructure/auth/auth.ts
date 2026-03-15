@@ -5,22 +5,22 @@ import { bearer, phoneNumber } from "better-auth/plugins";
 import { env } from "../config/runtime-env";
 import { prisma } from "../database/prisma";
 
+const algerianPhonePattern = /^(05|06|07)\d{8}$/;
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "sqlite",
     usePlural: false,
   }),
-  emailAndPassword: {
-    enabled: true,
-  },
   baseURL: env.betterAuthUrl,
   secret: env.betterAuthSecret,
   trustedOrigins: env.allowedOrigins,
   plugins: [
     bearer(),
     phoneNumber({
-      sendOTP: ({ code, phoneNumber }) => {
-        console.info(`[better-auth] Phone verification requested for ${phoneNumber}: ${code}`);
+      phoneNumberValidator: async (phoneNumberValue) => algerianPhonePattern.test(phoneNumberValue),
+      sendOTP: ({ phoneNumber: requestedPhoneNumber }) => {
+        console.info(`[better-auth] Phone verification requested for ${requestedPhoneNumber}`);
       },
     }),
   ],

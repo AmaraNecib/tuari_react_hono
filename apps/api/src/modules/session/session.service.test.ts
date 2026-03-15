@@ -38,14 +38,14 @@ describe("SessionService", () => {
       user: {
         id: "user-1",
         name: "Taylor",
-        phoneNumber: "+2135550101",
+        phoneNumber: "0612345678",
       },
     });
 
     await expect(service.getCurrentUser(headers)).resolves.toEqual({
       id: "user-1",
       name: "Taylor",
-      phone: "+2135550101",
+      phone: "0612345678",
     });
   });
 });

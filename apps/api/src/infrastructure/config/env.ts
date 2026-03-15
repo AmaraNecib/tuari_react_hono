@@ -33,6 +33,16 @@ const requireEnv = (
   return value;
 };
 
+const resolveBootstrapSetupKey = (source: NodeJS.ProcessEnv) => {
+  const value = source.BOOTSTRAP_SETUP_KEY?.trim() || null;
+
+  if ((source.NODE_ENV ?? "development") === "production" && !value) {
+    throw new Error("BOOTSTRAP_SETUP_KEY is required in production");
+  }
+
+  return value;
+};
+
 const toPort = (value: string | undefined) => {
   if (value === undefined) {
     return defaultPort;
@@ -63,5 +73,6 @@ export const createEnv = (source: NodeJS.ProcessEnv = process.env) => {
     betterAuthUrl:
       source.BETTER_AUTH_URL ??
       `http://${source.API_HOST ?? defaultHost}:${toPort(source.API_PORT)}`,
+    bootstrapSetupKey: resolveBootstrapSetupKey(source),
   } as const;
 };
