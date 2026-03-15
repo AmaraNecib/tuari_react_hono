@@ -11,7 +11,7 @@
     "build": "pnpm check:web-tracking && turbo build",
     "lint": "pnpm check:web-tracking && pnpm check:web-hygiene && pnpm check:workflow-assets && turbo lint",
     "test": "pnpm check:web-tracking && pnpm check:web-hygiene && pnpm check:workflow-assets && turbo test",
-    "test:api": "pnpm --filter @tuari/api test",
+    "test:api": "pnpm --filter @tuari/contracts build && pnpm --filter @tuari/api test",
     "test:contracts": "pnpm --filter @tuari/contracts test",
     "test:web": "pnpm --filter @tuari/web test",
     "test:e2e": "playwright test",

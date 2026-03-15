@@ -8,7 +8,7 @@ describe("rpc context", () => {
     const currentUser = {
       id: "user-1",
       name: "Taylor",
-      email: "taylor@example.com",
+      phone: "0612345678",
     };
     const sessionService = {
       getCurrentUser: vi.fn().mockResolvedValue(currentUser),
@@ -25,7 +25,7 @@ describe("rpc context", () => {
     const currentUser = {
       id: "user-1",
       name: "Taylor",
-      email: "taylor@example.com",
+      phone: "0612345678",
     };
     const sessionService = {
       getCurrentUser: vi.fn().mockResolvedValue(currentUser),

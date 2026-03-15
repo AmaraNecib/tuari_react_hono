@@ -11,6 +11,13 @@ const createDependencies = () => ({
   auth: {
     handler: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
   },
+  authBootstrapService: {
+    getSetupStatus: vi.fn().mockResolvedValue({ hasUsers: false }),
+    bootstrapFirstUser: vi.fn(),
+  },
+  companyService: {
+    listRoles: vi.fn(),
+  },
   sessionService: {
     getCurrentUser: vi.fn(),
   },
@@ -46,7 +53,7 @@ describe("createApp RPC wiring", () => {
     const currentUser = {
       id: "user-1",
       name: "Taylor",
-      phone: "+2135550101",
+      phone: "0612345678",
     };
     const dependencies = createDependencies();
     dependencies.sessionService.getCurrentUser.mockResolvedValue(currentUser);
