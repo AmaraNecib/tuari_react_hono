@@ -6,31 +6,41 @@ datasource db {
   provider = "sqlite"
 }
 
+enum SalaryPeriodType {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
 model User {
   id                  String    @id
   name                String
   image               String?
   phoneNumber         String    @unique
   phoneNumberVerified Boolean   @default(false)
-  createdAt           DateTime                    @map("created_at")
-  updatedAt           DateTime                    @map("updated_at")
+  createdAt           DateTime  @map("created_at")
+  updatedAt           DateTime  @map("updated_at")
   sessions            Session[]
   accounts            Account[]
-  todos               Todo[]
+  profileHistory      UserProfileHistory[]
 
   @@map("user")
 }
 
-model Todo {
-  id        String   @id
-  userId    String   @map("user_id")
-  title     String
-  completed Boolean  @default(false)
-  createdAt DateTime @map("created_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model UserProfileHistory {
+  id            String   @id
+  userId        String   @map("user_id")
+  name          String?
+  phone         String?
+  actorUserId   String?  @map("actor_user_id")
+  actorLabel    String?  @map("actor_label")
+  transactionId String?  @map("transaction_id")
+  createdAt     DateTime @map("created_at")
+  updatedAt     DateTime @map("updated_at")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId], map: "idx_todos_user_id")
-  @@map("todos")
+  @@index([userId, updatedAt])
+  @@map("user_profile_history")
 }
 
 model Session {
@@ -64,8 +74,8 @@ model Account {
   updatedAt             DateTime
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
   @@unique([providerId, accountId])
+  @@index([userId])
   @@map("account")
 }
 
@@ -82,51 +92,62 @@ model Verification {
 }
 
 model Role {
-  id          String     @id
-  key         String     @unique
-  name        String
-  description String?
-  isSystem    Boolean    @default(false) @map("is_system")
-  createdAt   DateTime   @map("created_at")
-  updatedAt   DateTime   @map("updated_at")
-  employees   Employee[]
+  id                     String                 @id
+  key                    String                 @unique
+  name                   String
+  description            String?
+  isSystem               Boolean                @default(false) @map("is_system")
+  createdAt              DateTime               @map("created_at")
+  updatedAt              DateTime               @map("updated_at")
+  employees              Employee[]
+  employeeStateHistories EmployeeStateHistory[]
 
   @@map("role")
 }
 
 model Employee {
-  id                         String                       @id
-  firstName                  String                       @map("first_name")
-  lastName                   String                       @map("last_name")
-  phone                      String                       @unique
-  roleId                     String                       @map("role_id")
-  status                     String
-  notes                      String?
-  createdAt                  DateTime                     @map("created_at")
-  updatedAt                  DateTime                     @map("updated_at")
-  role                       Role                         @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  managedProjects             Project[]                    @relation("ProjectManager")
-  managedWarehouses           Warehouse[]                  @relation("WarehouseManager")
-  managerAssignmentsAsWorker  EmployeeManagerAssignment[]  @relation("WorkerAssignments")
-  managerAssignmentsAsManager EmployeeManagerAssignment[]  @relation("ManagerAssignments")
+  id                          String                             @id
+  firstName                   String                             @map("first_name")
+  lastName                    String                             @map("last_name")
+  phone                       String                             @unique
+  roleId                      String                             @map("role_id")
+  status                      String
+  salaryAmountDzd             Float?                             @map("salary_amount_dzd")
+  salaryPeriod                String?                            @map("salary_period")
+  notes                       String?
+  createdAt                   DateTime                           @map("created_at")
+  updatedAt                   DateTime                           @map("updated_at")
+  role                        Role                               @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  managedProjects             Project[]                          @relation("ProjectManager")
+  managedWarehouses           Warehouse[]                        @relation("WarehouseManager")
+  managerAssignmentsAsWorker  EmployeeManagerAssignment[]        @relation("WorkerAssignments")
+  managerAssignmentsAsManager EmployeeManagerAssignment[]        @relation("ManagerAssignments")
   projectAssignments          EmployeeProjectAssignment[]
+  warehouseAssignments        EmployeeWarehouseAssignment[]
+  stateHistory                EmployeeStateHistory[]
+  managedProjectHistory       ProjectManagerOwnershipHistory[]   @relation("ProjectManagementOwner")
+  managedWarehouseHistory     WarehouseManagerOwnershipHistory[] @relation("WarehouseManagementOwner")
+  salaryPayments              EmployeeSalaryPayment[]
 
   @@index([roleId])
   @@map("employee")
 }
 
 model EmployeeManagerAssignment {
-  id        String   @id
-  workerId  String   @map("worker_id")
-  managerId String   @map("manager_id")
+  id        String    @id
+  workerId  String    @map("worker_id")
+  managerId String    @map("manager_id")
   status    String
-  startDate DateTime @map("start_date")
+  startDate DateTime  @map("start_date")
   endDate   DateTime? @map("end_date")
   notes     String?
-  createdAt DateTime @map("created_at")
-  updatedAt DateTime @map("updated_at")
-  worker    Employee @relation("WorkerAssignments", fields: [workerId], references: [id], onDelete: Restrict)
-  manager   Employee @relation("ManagerAssignments", fields: [managerId], references: [id], onDelete: Restrict)
+  actorUserId   String?   @map("actor_user_id")
+  actorLabel    String?   @map("actor_label")
+  transactionId String?   @map("transaction_id")
+  createdAt     DateTime  @map("created_at")
+  updatedAt     DateTime  @map("updated_at")
+  worker        Employee  @relation("WorkerAssignments", fields: [workerId], references: [id], onDelete: Restrict)
+  manager       Employee  @relation("ManagerAssignments", fields: [managerId], references: [id], onDelete: Restrict)
 
   @@index([workerId])
   @@index([managerId])
@@ -134,33 +155,37 @@ model EmployeeManagerAssignment {
 }
 
 model Project {
-  id                  String                      @id
+  id                  String                           @id
   name                String
   location            String?
-  managerId           String?                     @map("manager_id")
+  managerId           String?                          @map("manager_id")
   status              String
   notes               String?
-  createdAt           DateTime                    @map("created_at")
-  updatedAt           DateTime                    @map("updated_at")
-  manager             Employee?                   @relation("ProjectManager", fields: [managerId], references: [id], onDelete: SetNull)
+  createdAt           DateTime                         @map("created_at")
+  updatedAt           DateTime                         @map("updated_at")
+  manager             Employee?                        @relation("ProjectManager", fields: [managerId], references: [id], onDelete: SetNull)
   employeeAssignments EmployeeProjectAssignment[]
+  managerHistory      ProjectManagerOwnershipHistory[]
 
   @@index([managerId])
   @@map("project")
 }
 
 model EmployeeProjectAssignment {
-  id        String   @id
-  employeeId String   @map("employee_id")
-  projectId String   @map("project_id")
-  status    String
-  startDate DateTime @map("start_date")
-  endDate   DateTime? @map("end_date")
-  notes     String?
-  createdAt DateTime @map("created_at")
-  updatedAt DateTime @map("updated_at")
-  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  id         String    @id
+  employeeId String    @map("employee_id")
+  projectId  String    @map("project_id")
+  status     String
+  startDate  DateTime  @map("start_date")
+  endDate    DateTime? @map("end_date")
+  notes      String?
+  actorUserId   String?   @map("actor_user_id")
+  actorLabel    String?   @map("actor_label")
+  transactionId String?   @map("transaction_id")
+  createdAt     DateTime  @map("created_at")
+  updatedAt     DateTime  @map("updated_at")
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
   @@index([employeeId])
   @@index([projectId])
@@ -168,16 +193,125 @@ model EmployeeProjectAssignment {
 }
 
 model Warehouse {
-  id        String    @id
-  name      String
-  address   String?   @map("address")
-  managerId String?   @map("manager_id")
-  status    String
-  notes     String?
-  createdAt DateTime @map("created_at")
-  updatedAt DateTime @map("updated_at")
-  manager   Employee? @relation("WarehouseManager", fields: [managerId], references: [id], onDelete: SetNull)
+  id                  String                             @id
+  name                String
+  address             String?                            @map("address")
+  managerId           String?                            @map("manager_id")
+  status              String
+  notes               String?
+  createdAt           DateTime                           @map("created_at")
+  updatedAt           DateTime                           @map("updated_at")
+  manager             Employee?                          @relation("WarehouseManager", fields: [managerId], references: [id], onDelete: SetNull)
+  employeeAssignments EmployeeWarehouseAssignment[]
+  managerHistory      WarehouseManagerOwnershipHistory[]
 
   @@index([managerId])
   @@map("warehouse")
+}
+
+model EmployeeWarehouseAssignment {
+  id          String    @id
+  employeeId  String    @map("employee_id")
+  warehouseId String    @map("warehouse_id")
+  status      String
+  startDate   DateTime  @map("start_date")
+  endDate     DateTime? @map("end_date")
+  notes       String?
+  actorUserId   String?   @map("actor_user_id")
+  actorLabel    String?   @map("actor_label")
+  transactionId String?   @map("transaction_id")
+  createdAt     DateTime  @map("created_at")
+  updatedAt     DateTime  @map("updated_at")
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId])
+  @@index([warehouseId])
+  @@map("employee_warehouse_assignment")
+}
+
+model EmployeeStateHistory {
+  id              String    @id
+  employeeId      String    @map("employee_id")
+  roleId          String    @map("role_id")
+  status          String
+  salaryAmountDzd Float?    @map("salary_amount_dzd")
+  salaryPeriod    String?   @map("salary_period")
+  eventType       String    @map("event_type")
+  startDate       DateTime  @map("start_date")
+  endDate         DateTime? @map("end_date")
+  notes           String?
+  actorUserId     String?   @map("actor_user_id")
+  actorLabel      String?   @map("actor_label")
+  transactionId   String?   @map("transaction_id")
+  createdAt       DateTime  @map("created_at")
+  updatedAt       DateTime  @map("updated_at")
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  role            Role      @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, startDate])
+  @@index([employeeId, endDate])
+  @@map("employee_state_history")
+}
+
+model ProjectManagerOwnershipHistory {
+  id        String    @id
+  projectId String    @map("project_id")
+  managerId String    @map("manager_id")
+  status    String
+  startDate DateTime  @map("start_date")
+  endDate   DateTime? @map("end_date")
+  notes     String?
+  actorUserId   String?   @map("actor_user_id")
+  actorLabel    String?   @map("actor_label")
+  transactionId String?   @map("transaction_id")
+  createdAt     DateTime  @map("created_at")
+  updatedAt     DateTime  @map("updated_at")
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  manager       Employee  @relation("ProjectManagementOwner", fields: [managerId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, startDate])
+  @@index([managerId, startDate])
+  @@map("project_manager_ownership_history")
+}
+
+model WarehouseManagerOwnershipHistory {
+  id          String    @id
+  warehouseId String    @map("warehouse_id")
+  managerId   String    @map("manager_id")
+  status      String
+  startDate   DateTime  @map("start_date")
+  endDate     DateTime? @map("end_date")
+  notes       String?
+  actorUserId   String?   @map("actor_user_id")
+  actorLabel    String?   @map("actor_label")
+  transactionId String?   @map("transaction_id")
+  createdAt     DateTime  @map("created_at")
+  updatedAt     DateTime  @map("updated_at")
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  manager       Employee  @relation("WarehouseManagementOwner", fields: [managerId], references: [id], onDelete: Restrict)
+
+  @@index([warehouseId, startDate])
+  @@index([managerId, startDate])
+  @@map("warehouse_manager_ownership_history")
+}
+
+model EmployeeSalaryPayment {
+  id                String           @id
+  employeeId        String           @map("employee_id")
+  periodType        SalaryPeriodType @map("period_type")
+  expectedAmountDzd Float            @map("expected_amount_dzd")
+  actualAmountDzd   Float            @map("actual_amount_dzd")
+  paymentDate       DateTime         @map("payment_date")
+  note              String?          @map("note")
+  actorUserId       String?          @map("actor_user_id")
+  actorLabel        String?          @map("actor_label")
+  transactionId     String?          @map("transaction_id")
+  createdAt         DateTime         @map("created_at")
+  updatedAt         DateTime         @map("updated_at")
+  employee          Employee         @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, paymentDate])
+  @@index([employeeId, periodType, paymentDate])
+  @@map("employee_salary_payment")
 }

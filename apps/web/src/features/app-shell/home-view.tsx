@@ -1,30 +1,10 @@
 import "@/i18n"
 
-import { useMemo, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { authBootstrapInputSchema, phonePasswordSignInSchema, type SystemLogEntry } from "@tuari/contracts"
+import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
-import { authBootstrapInputSchema, phonePasswordSignInSchema } from "@tuari/contracts"
-import {
-  BriefcaseBusiness,
-  LayoutGrid,
-  LogOut,
-  MoonStar,
-  PanelRightClose,
-  PanelRightOpen,
-  ShieldCheck,
-  Sparkles,
-  SunMedium,
-  UserSquare2,
-  Users,
-  Warehouse,
-} from "lucide-react"
 
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,11 +17,19 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { EmployeeDetailsPage } from "@/features/employees/employee-details-page"
+import { EmployeeEditPage } from "@/features/employees/employee-edit-page"
 import { useAppPreferences } from "@/features/preferences/preferences"
+import { ProjectDetailsPage } from "@/features/projects/project-details-page"
+import { ProjectEditPage } from "@/features/projects/project-edit-page"
+import { getArabicHistoryEventLabel, getArabicRoleLabel, getArabicStatusLabel } from "@/features/shared/status-meta"
+import { WarehouseDetailsPage } from "@/features/warehouses/warehouse-details-page"
+import { WarehouseEditPage } from "@/features/warehouses/warehouse-edit-page"
+import { extractAuthErrorMessage } from "@/lib/auth-api"
 import { showSuccessToast } from "@/lib/toast"
-import { cn } from "@/lib/utils"
 
+import { DashboardSection } from "./dashboard-section"
+import { EmployeesSection } from "./employees-section"
 import {
   useAddWorkspaceRecordMutation,
   useAuthSetupStatusQuery,
@@ -52,25 +40,22 @@ import {
   useDemoWorkspaceQuery,
   useRemoveWorkspaceRecordMutation,
   useResetWorkspaceMutation,
+  useSystemLogQuery,
+  useUpdateAccountSettingsMutation,
   type DemoEmployee,
-  type SectionKey,
 } from "./mock-dashboard"
+import { ProjectsSection } from "./projects-section"
+import { RolesSection } from "./roles-section"
+import { SettingsSection } from "./settings-section"
+import { SystemLogSection } from "./system-log-section"
+import { WarehousesSection } from "./warehouses-section"
+import { WorkspaceBreadcrumbs } from "./workspace-breadcrumbs"
+import { WorkspaceSidebar, type WorkspaceSidebarPage } from "./workspace-sidebar"
 
-type EmployeeRow = {
-  id: string
-  name: string
-  role: string
-  phone: string
-  status: string
-  managerName: string
-  projectName: string
-  isWorker: boolean
-  hierarchyHint: string | null
-  notes: string | null
-}
+export type HomeViewPage = WorkspaceSidebarPage
 
 type PendingDelete = {
-  section: Exclude<SectionKey, "settings">
+  section: "projects" | "roles" | "warehouses"
   id: string
   label: string
 }
@@ -82,76 +67,65 @@ type FormErrors = {
   setupSecret?: string
 }
 
-
-const primarySections: Array<Exclude<SectionKey, "settings">> = [
-  "employees",
-  "projects",
-  "warehouses",
-  "roles",
-]
-
-const sectionIcons = {
-  employees: Users,
-  projects: BriefcaseBusiness,
-  warehouses: Warehouse,
-  roles: ShieldCheck,
-  settings: LayoutGrid,
-} satisfies Record<SectionKey, typeof Users>
-
-function getStatusTone(status: string) {
-  if (status === "ACTIVE") {
-    return "bg-emerald-500/12 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-400/14 dark:text-emerald-200"
-  }
-
-  if (status === "LEFT" || status === "ARCHIVED") {
-    return "bg-slate-500/12 text-slate-700 ring-slate-500/20 dark:bg-slate-400/14 dark:text-slate-200"
-  }
-
-  return "bg-amber-500/12 text-amber-700 ring-amber-500/20 dark:bg-amber-400/14 dark:text-amber-100"
-}
-
 function formatName(employee: DemoEmployee) {
   return `${employee.firstName} ${employee.lastName}`
 }
 
-function DataCard({ title, value, detail }: { title: string; value: number; detail: string }) {
-  return (
-    <article className="app-shell relative overflow-hidden rounded-[28px] border border-white/65 bg-card/85 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-card/88">
-      <div className="relative z-10 flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <p className="text-xs font-medium tracking-[0.24em] text-muted-foreground uppercase">{title}</p>
-          <p className="text-3xl font-semibold tracking-tight text-foreground">{value}</p>
-        </div>
-        <div className="rounded-2xl bg-primary/10 p-2 text-primary">
-          <Sparkles className="size-5" />
-        </div>
-      </div>
-      <p className="relative z-10 mt-4 text-sm leading-6 text-muted-foreground">{detail}</p>
-    </article>
-  )
+function toSafeRouteSegment(value: string) {
+  return encodeURIComponent(value)
 }
 
-function SectionHeader({
-  title,
-  description,
-  action,
-}: {
-  title: string
-  description: string
-  action?: ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-4 border-b border-border/60 pb-5 xl:flex-row xl:items-end xl:justify-between">
-      <div className="space-y-2">
-        <h2 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h2>
-        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
-      </div>
-      {action}
-    </div>
-  )
+function includeCurrentManagerOption(
+  options: Array<{ id: string; label: string }>,
+  currentManager: { id: string | null; label: string },
+) {
+  if (!currentManager.id || options.some((option) => option.id === currentManager.id)) {
+    return options
+  }
+
+  return [{ id: currentManager.id, label: currentManager.label }, ...options]
 }
 
-function mapCredentialErrors(copy: { validation: { phone: string; phoneFormat: string; password: string; passwordShort: string } }, phone: string, password: string) {
+function formatDateLabel(value: string | null) {
+  if (!value) {
+    return "-"
+  }
+
+  return new Intl.DateTimeFormat("ar-DZ", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value))
+}
+
+function formatDateRange(startDate: string | null, endDate: string | null, ongoingLabel: string) {
+  return `${formatDateLabel(startDate)} - ${endDate ? formatDateLabel(endDate) : ongoingLabel}`
+}
+
+function formatSalaryPeriodLabel(
+  value: "DAILY" | "WEEKLY" | "MONTHLY" | null,
+  labels: { daily: string; monthly: string; weekly: string },
+) {
+  if (value === "DAILY") {
+    return labels.daily
+  }
+
+  if (value === "WEEKLY") {
+    return labels.weekly
+  }
+
+  if (value === "MONTHLY") {
+    return labels.monthly
+  }
+
+  return null
+}
+
+function mapCredentialErrors(
+  copy: { validation: { phone: string; phoneFormat: string; password: string; passwordShort: string } },
+  phone: string,
+  password: string,
+) {
   const errors: FormErrors = {}
   const result = phonePasswordSignInSchema.safeParse({
     phone: phone.trim(),
@@ -173,7 +147,23 @@ function mapCredentialErrors(copy: { validation: { phone: string; phoneFormat: s
   return errors
 }
 
-function mapBootstrapErrors(copy: { validation: { name: string; phone: string; phoneFormat: string; password: string; passwordShort: string; setupSecret: string } }, name: string, phone: string, password: string, setupSecret: string, requiresSetupKey: boolean) {
+function mapBootstrapErrors(
+  copy: {
+    validation: {
+      name: string
+      phone: string
+      phoneFormat: string
+      password: string
+      passwordShort: string
+      setupSecret: string
+    }
+  },
+  name: string,
+  phone: string,
+  password: string,
+  setupSecret: string,
+  requiresSetupKey: boolean,
+) {
   const errors = mapCredentialErrors(copy, phone, password)
   const result = authBootstrapInputSchema.safeParse({
     name: name.trim(),
@@ -194,67 +184,54 @@ function mapBootstrapErrors(copy: { validation: { name: string; phone: string; p
   return errors
 }
 
-function SidebarActionButton({
-  ariaLabel,
-  children,
-  collapsed,
-  current,
-  tooltip,
-  variant = "ghost",
-  onClick,
+export function HomeView({
+  detailTab,
+  page = "dashboard",
+  employeeId,
+  projectId,
+  warehouseId,
 }: {
-  ariaLabel: string
-  children: ReactNode
-  collapsed: boolean
-  current?: boolean
-  tooltip: string
-  variant?: "ghost" | "secondary"
-  onClick: () => void
+  detailTab?: string
+  page?: HomeViewPage
+  employeeId?: string
+  projectId?: string
+  warehouseId?: string
 }) {
-  const button = (
-    <Button
-      aria-current={current ? "page" : undefined}
-      aria-label={ariaLabel}
-      className={cn("h-11 w-full rounded-2xl px-3", collapsed ? "justify-center px-0" : "justify-start")}
-      variant={variant}
-      onClick={onClick}
-    >
-      {children}
-    </Button>
-  )
-
-  if (!collapsed) {
-    return button
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger render={button} />
-      <TooltipContent side="left">{tooltip}</TooltipContent>
-    </Tooltip>
-  )
-}
-
-export function HomeView() {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
+  const navigate = useNavigate()
   const { theme, toggleTheme } = useAppPreferences()
+  const [systemLogFilters, setSystemLogFilters] = useState<{
+    actionType?: SystemLogEntry["actionType"]
+    actorUserId?: string
+    entityType?: SystemLogEntry["entityType"]
+    fromDate?: string
+    toDate?: string
+  }>({})
   const setupStatusQuery = useAuthSetupStatusQuery()
   const sessionQuery = useDemoSessionQuery()
   const workspaceQuery = useDemoWorkspaceQuery()
+  const systemLogQuery = useSystemLogQuery({ enabled: page === "transactions", filters: systemLogFilters })
   const bootstrapMutation = useBootstrapFirstUserMutation()
   const signInMutation = useDemoSignInMutation()
   const signOutMutation = useDemoSignOutMutation()
   const addRecordMutation = useAddWorkspaceRecordMutation()
   const removeRecordMutation = useRemoveWorkspaceRecordMutation()
   const resetWorkspaceMutation = useResetWorkspaceMutation()
+  const updateAccountSettingsMutation = useUpdateAccountSettingsMutation()
 
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [password, setPassword] = useState("")
   const [setupSecret, setSetupSecret] = useState("")
   const [errors, setErrors] = useState<FormErrors>({})
-  const [activeSection, setActiveSection] = useState<SectionKey>("employees")
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") {
+      return false
+    }
+
+    return window.innerWidth < 1200
+  })
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [signOutOpen, setSignOutOpen] = useState(false)
 
@@ -275,6 +252,9 @@ export function HomeView() {
       setupSecretPlaceholder: t("auth.setupSecretPlaceholder"),
       signIn: t("auth.signIn"),
       createFirstUser: t("auth.createFirstUser"),
+      startupErrorTitle: t("auth.startupErrorTitle"),
+      startupErrorDescription: t("auth.startupErrorDescription"),
+      signInError: t("auth.signInError"),
     },
     common: {
       cancel: t("common.cancel"),
@@ -283,21 +263,24 @@ export function HomeView() {
       delete: t("common.delete"),
       yes: t("common.yes"),
       no: t("common.no"),
+      retry: t("common.retry"),
       loadingAuth: t("common.loadingAuth"),
+      view: t("common.view"),
+      edit: t("common.edit"),
+      leave: t("common.leave"),
+      actions: t("common.actions"),
     },
     shell: {
-      workspace: t("shell.workspace"),
-      module: t("shell.module"),
       description: t("shell.description"),
-      quickMetrics: t("shell.quickMetrics"),
-      addRecord: t("shell.addRecord"),
+      addWorker: t("shell.addWorker"),
+      addProject: t("shell.addProject"),
+      addWarehouse: t("shell.addWarehouse"),
+      addRole: t("shell.addRole"),
       collapse: t("shell.collapse"),
       expand: t("shell.expand"),
       themeToggle: t("shell.themeToggle"),
       signOut: t("shell.signOut"),
       resetWorkspace: t("shell.resetWorkspace"),
-      resetTitle: t("shell.resetTitle"),
-      resetDescription: t("shell.resetDescription"),
       signOutTitle: t("shell.signOutTitle"),
       signOutDescription: t("shell.signOutDescription"),
       destructiveTitle: t("shell.destructiveTitle"),
@@ -305,12 +288,28 @@ export function HomeView() {
       empty: t("shell.empty"),
       noManager: t("shell.noManager"),
       noProject: t("shell.noProject"),
-      activePage: t("shell.activePage"),
+      noLocation: t("shell.noLocation"),
+      noAddress: t("shell.noAddress"),
       themeLight: t("shell.themeLight"),
       themeDark: t("shell.themeDark"),
-      sidebarHint: t("shell.sidebarHint"),
       settingsThemeDescription: t("shell.settingsThemeDescription"),
       settingsResetDescription: t("shell.settingsResetDescription"),
+      settingsAccountTitle: t("shell.settingsAccountTitle"),
+      settingsAccountDescription: t("shell.settingsAccountDescription"),
+      settingsAccountName: t("shell.settingsAccountName"),
+      settingsAccountPhone: t("shell.settingsAccountPhone"),
+      settingsAccountPhoneHint: t("shell.settingsAccountPhoneHint"),
+      settingsAccountCurrentPassword: t("shell.settingsAccountCurrentPassword"),
+      settingsAccountNewPassword: t("shell.settingsAccountNewPassword"),
+      settingsAccountSave: t("shell.settingsAccountSave"),
+      settingsAccountNamePlaceholder: t("shell.settingsAccountNamePlaceholder"),
+      settingsAccountPhonePlaceholder: t("shell.settingsAccountPhonePlaceholder"),
+      settingsAccountCurrentPasswordPlaceholder: t("shell.settingsAccountCurrentPasswordPlaceholder"),
+      settingsAccountNewPasswordPlaceholder: t("shell.settingsAccountNewPasswordPlaceholder"),
+      leaveTitle: t("shell.leaveTitle"),
+      leaveDescription: t("shell.leaveDescription"),
+      deleteEmployeeTitle: t("shell.deleteEmployeeTitle"),
+      deleteEmployeeDescription: t("shell.deleteEmployeeDescription"),
     },
     validation: {
       name: t("auth.validation.name"),
@@ -319,6 +318,10 @@ export function HomeView() {
       password: t("auth.validation.password"),
       passwordShort: t("auth.validation.passwordShort"),
       setupSecret: t("auth.validation.setupSecret"),
+    },
+    dashboard: {
+      title: t("sections.dashboard.label"),
+      description: t("sections.dashboard.description"),
     },
     metrics: {
       workers: t("metrics.workers"),
@@ -341,6 +344,10 @@ export function HomeView() {
       key: t("columns.key"),
     },
     sections: {
+      dashboard: {
+        label: t("sections.dashboard.label"),
+        description: t("sections.dashboard.description"),
+      },
       employees: {
         label: t("sections.employees.label"),
         description: t("sections.employees.description"),
@@ -352,6 +359,10 @@ export function HomeView() {
       warehouses: {
         label: t("sections.warehouses.label"),
         description: t("sections.warehouses.description"),
+      },
+      transactions: {
+        label: t("sections.transactions.label"),
+        description: t("sections.transactions.description"),
       },
       roles: {
         label: t("sections.roles.label"),
@@ -366,9 +377,42 @@ export function HomeView() {
       themeDark: t("toasts.themeDark"),
       themeLight: t("toasts.themeLight"),
     },
+    detailPages: {
+      shared: {
+        back: t("detailPages.shared.back"),
+        currentAssignment: t("detailPages.shared.currentAssignment"),
+        currentlySelected: t("detailPages.shared.currentlySelected"),
+        activeRoleMissing: t("detailPages.shared.activeRoleMissing"),
+        activeWarehouseMissing: t("detailPages.shared.activeWarehouseMissing"),
+        activeWorkerMissing: t("detailPages.shared.activeWorkerMissing"),
+        missingRecordDescription: t("detailPages.shared.missingRecordDescription"),
+        ongoing: t("detailPages.shared.ongoing"),
+      },
+      salary: {
+        activeSalaryPrefix: t("detailPages.salary.activeSalaryPrefix"),
+        currency: t("detailPages.salary.currency"),
+        daily: t("detailPages.salary.daily"),
+        weekly: t("detailPages.salary.weekly"),
+        monthly: t("detailPages.salary.monthly"),
+      },
+      employee: {
+        employmentState: t("detailPages.employee.employmentState"),
+        directManager: t("detailPages.employee.directManager"),
+        projectAssignment: t("detailPages.employee.projectAssignment"),
+        warehouseAssignment: t("detailPages.employee.warehouseAssignment"),
+        projectOwnership: t("detailPages.employee.projectOwnership"),
+        warehouseOwnership: t("detailPages.employee.warehouseOwnership"),
+      },
+      project: {
+        managerLabel: t("detailPages.project.manager"),
+      },
+      warehouse: {
+        managerLabel: t("detailPages.warehouse.manager"),
+      },
+    },
   }
 
-  const activeSectionCopy = copy.sections[activeSection]
+  const detailCopy = useMemo(() => copy.detailPages, [i18n.language])
 
   const derived = useMemo(() => {
     if (!workspace) {
@@ -388,39 +432,131 @@ export function HomeView() {
         .filter((assignment) => assignment.status === "ACTIVE")
         .map((assignment) => [assignment.employeeId, assignment]),
     )
+    const activeWarehouseByEmployee = new Map(
+      workspace.warehouseAssignments
+        .filter((assignment) => assignment.status === "ACTIVE")
+        .map((assignment) => [assignment.employeeId, assignment]),
+    )
 
-    const employeeRows: EmployeeRow[] = workspace.employees
+    const employeeRows = workspace.employees
       .map((employee) => {
         const role = roleById.get(employee.roleId)
-        const managerAssignment = activeManagerByWorker.get(employee.id)
+        const managerAssignment = activeManagerByWorker.get(employee.id) ?? null
         const manager = managerAssignment ? employeeById.get(managerAssignment.managerId) : null
-        const projectAssignment = activeProjectByEmployee.get(employee.id)
+        const projectAssignment = activeProjectByEmployee.get(employee.id) ?? null
         const project = projectAssignment ? projectById.get(projectAssignment.projectId) : null
-        const isWorker = role?.key === "worker"
+        const warehouseAssignment = activeWarehouseByEmployee.get(employee.id) ?? null
+        const warehouse = warehouseAssignment
+          ? workspace.warehouses.find((warehouseItem) => warehouseItem.id === warehouseAssignment.warehouseId) ?? null
+          : null
+        const hasManagerHistory = workspace.managerAssignments.some(
+          (assignment) => assignment.workerId === employee.id || assignment.managerId === employee.id,
+        )
+        const hasProjectHistory = workspace.projectAssignments.some(
+          (assignment) => assignment.employeeId === employee.id,
+        )
+        const hasWarehouseHistory = workspace.warehouseAssignments.some(
+          (assignment) => assignment.employeeId === employee.id,
+        )
+      const managesAnyProject = workspace.projects.some((projectItem) => projectItem.managerId === employee.id)
+      const managesAnyWarehouse = workspace.warehouses.some(
+        (warehouseItem) => warehouseItem.managerId === employee.id,
+      )
+      const hasManagedProjectHistory = workspace.projectManagerOwnershipHistory.some((entry) => entry.managerId === employee.id)
+      const hasManagedWarehouseHistory = workspace.warehouseManagerOwnershipHistory.some((entry) => entry.managerId === employee.id)
+      const hasSalaryPayments = workspace.salaryPayments.some((payment) => payment.employeeId === employee.id)
+      const canDelete =
+        !hasManagerHistory &&
+        !hasProjectHistory &&
+        !hasWarehouseHistory &&
+        !hasManagedProjectHistory &&
+        !hasManagedWarehouseHistory &&
+        !hasSalaryPayments &&
+        !managesAnyProject &&
+        !managesAnyWarehouse
+      const deleteDisabledReason = canDelete
+        ? null
+          : hasManagerHistory
+            ? t("detailPages.employee.deleteReasonManagementHistory")
+            : hasProjectHistory || hasWarehouseHistory
+            ? t("detailPages.employee.deleteReasonWorkHistory")
+            : hasManagedProjectHistory || hasManagedWarehouseHistory || hasSalaryPayments
+              ? t("detailPages.employee.deleteReasonHistoryOrPayments")
+              : managesAnyProject || managesAnyWarehouse
+                ? t("detailPages.employee.deleteReasonManagedScope")
+                : t("detailPages.employee.deleteReasonFallback")
+        const canLeave =
+          employee.status === "ACTIVE" &&
+          !(
+            (role?.key === "worker" && (managerAssignment || projectAssignment || warehouseAssignment)) ||
+            (role?.key === "project_manager" &&
+              (workspace.projects.some(
+                (projectItem) => projectItem.managerId === employee.id && projectItem.status === "ACTIVE",
+              ) ||
+                projectAssignment ||
+                warehouseAssignment ||
+                workspace.managerAssignments.some(
+                  (assignment) => assignment.managerId === employee.id && assignment.status === "ACTIVE",
+                ))) ||
+            (role?.key === "warehouse_manager" &&
+              (workspace.warehouses.some(
+                (warehouseItem) => warehouseItem.managerId === employee.id && warehouseItem.status === "ACTIVE",
+              ) ||
+                projectAssignment ||
+                warehouseAssignment))
+          )
+        const leaveDisabledReason = canLeave
+          ? null
+          : employee.status !== "ACTIVE"
+            ? t("detailPages.employee.leaveReasonInactive")
+            : role?.key === "worker" && (managerAssignment || projectAssignment || warehouseAssignment)
+              ? t("detailPages.employee.leaveReasonWorkerLinked")
+              : role?.key === "project_manager"
+                ? t("detailPages.employee.leaveReasonProjectManagerLinked")
+                : role?.key === "warehouse_manager"
+                  ? t("detailPages.employee.leaveReasonWarehouseManagerLinked")
+                  : t("detailPages.employee.leaveReasonFallback")
 
         return {
           id: employee.id,
+          firstName: employee.firstName,
+          lastName: employee.lastName,
           name: formatName(employee),
-          role: role?.name ?? copy.shell.noManager,
+          roleId: employee.roleId,
+          roleKey: role?.key ?? "",
+          role: role ? getArabicRoleLabel(role) : copy.shell.noManager,
           phone: employee.phone,
           status: employee.status,
+          salaryAmountDzd: employee.salaryAmountDzd,
+          salaryPeriod: employee.salaryPeriod,
           managerName: manager ? formatName(manager) : copy.shell.noManager,
-          projectName: project?.name ?? copy.shell.noProject,
-          isWorker,
-          hierarchyHint: isWorker && manager ? `${copy.columns.manager}: ${formatName(manager)}` : null,
+          managerAssignmentId: managerAssignment?.id ?? null,
+          currentManagerId: manager?.id ?? null,
+          currentProjectId: project?.id ?? null,
+          currentProjectAssignmentId: projectAssignment?.id ?? null,
+          currentWarehouseId: warehouse?.id ?? null,
+          currentWarehouseAssignmentId: warehouseAssignment?.id ?? null,
+          projectName: project?.name ?? warehouse?.name ?? copy.shell.noProject,
           notes: employee.notes,
+          isWorker: role?.key === "worker",
+          canDelete,
+          canLeave,
+          deleteDisabledReason,
+          leaveDisabledReason,
+          createdAt: employee.createdAt,
+          updatedAt: employee.updatedAt,
         }
       })
       .sort((left, right) => {
-        if (left.isWorker !== right.isWorker) {
-          return left.isWorker ? 1 : -1
+        const rolePriority: Record<string, number> = {
+          project_manager: 0,
+          warehouse_manager: 1,
+          worker: 2,
         }
 
-        if (left.managerName !== right.managerName) {
-          return left.managerName.localeCompare(right.managerName, "ar")
-        }
+        const priorityDifference = (rolePriority[left.roleKey] ?? 99) - (rolePriority[right.roleKey] ?? 99)
 
-        return left.name.localeCompare(right.name, "ar")
+        return priorityDifference !== 0 ? priorityDifference : left.name.localeCompare(right.name, "ar")
       })
 
     const projects = workspace.projects.map((project) => {
@@ -438,30 +574,351 @@ export function HomeView() {
 
     const warehouses = workspace.warehouses.map((warehouse) => {
       const manager = warehouse.managerId ? employeeById.get(warehouse.managerId) : null
+      const hasActiveWarehouseWorkers =
+        workspace.warehouseAssignments.some(
+          (assignment) => assignment.warehouseId === warehouse.id && assignment.status === "ACTIVE",
+        )
+      const hasActiveManagerRelation = warehouse.managerId !== null
+      const canArchive = !hasActiveWarehouseWorkers && !hasActiveManagerRelation
+      const archiveDisabledReason = canArchive
+        ? null
+        : hasActiveWarehouseWorkers && hasActiveManagerRelation
+          ? t("detailPages.warehouse.archiveReasonManagerAndWorkers")
+          : hasActiveWarehouseWorkers
+            ? t("detailPages.warehouse.archiveReasonWorkers")
+            : t("detailPages.warehouse.archiveReasonManager")
 
       return {
         ...warehouse,
         managerName: manager ? formatName(manager) : copy.shell.noManager,
+        canArchive,
+        archiveDisabledReason,
       }
     })
+
+    const managerOptions = workspace.employees
+      .filter((employee) => {
+        const role = roleById.get(employee.roleId)
+        return employee.status === "ACTIVE" && role?.key === "project_manager"
+      })
+      .map((employee) => ({
+        id: employee.id,
+        label: `${formatName(employee)} - ${employee.phone}`,
+        projectOptions: workspace.projects
+          .filter((project) => project.managerId === employee.id && project.status === "ACTIVE")
+          .map((project) => ({ id: project.id, label: project.name }))
+          .sort((left, right) => left.label.localeCompare(right.label, "ar")),
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label, "ar"))
+
+    const warehouseManagerOptions = workspace.employees
+      .filter((employee) => {
+        const role = roleById.get(employee.roleId)
+        return employee.status === "ACTIVE" && role?.key === "warehouse_manager"
+      })
+      .map((employee) => ({
+        id: employee.id,
+        label: `${formatName(employee)} - ${employee.phone}`,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label, "ar"))
+
+    const managerHistoryByEmployeeId = Object.fromEntries(
+      workspace.employees.map((employee) => [
+        employee.id,
+        workspace.managerAssignments
+          .filter((assignment) => assignment.workerId === employee.id)
+          .sort((left, right) => right.startDate.localeCompare(left.startDate))
+          .map((assignment) => ({
+            id: assignment.id,
+            label: employeeById.get(assignment.managerId)
+              ? formatName(employeeById.get(assignment.managerId)!)
+              : copy.shell.noManager,
+            secondary: formatDateRange(assignment.startDate, assignment.endDate, detailCopy.shared.ongoing),
+            status: assignment.status,
+          })),
+      ]),
+    )
+
+    const projectHistoryByEmployeeId = Object.fromEntries(
+      workspace.employees.map((employee) => [
+        employee.id,
+        workspace.projectAssignments
+          .filter((assignment) => assignment.employeeId === employee.id)
+          .sort((left, right) => right.startDate.localeCompare(left.startDate))
+          .map((assignment) => ({
+            id: assignment.id,
+            label: projectById.get(assignment.projectId)?.name ?? copy.shell.noProject,
+            secondary: formatDateRange(assignment.startDate, assignment.endDate, detailCopy.shared.ongoing),
+            status: assignment.status,
+          })),
+      ]),
+    )
+
+    const warehouseHistoryByEmployeeId = Object.fromEntries(
+      workspace.employees.map((employee) => [
+        employee.id,
+        workspace.warehouseAssignments
+          .filter((assignment) => assignment.employeeId === employee.id)
+          .sort((left, right) => right.startDate.localeCompare(left.startDate))
+          .map((assignment) => ({
+            id: assignment.id,
+            label:
+              workspace.warehouses.find((warehouse) => warehouse.id === assignment.warehouseId)?.name ??
+              detailCopy.shared.activeWarehouseMissing,
+            secondary: formatDateRange(assignment.startDate, assignment.endDate, detailCopy.shared.ongoing),
+            status: assignment.status,
+          })),
+      ]),
+    )
+
+    const managedProjectsByEmployeeId = Object.fromEntries(
+      workspace.employees.map((employee) => [
+        employee.id,
+        workspace.projects
+          .filter((project) => project.managerId === employee.id && project.status === "ACTIVE")
+          .map((project) => project.name),
+      ]),
+    )
+
+    const managedWarehousesByEmployeeId = Object.fromEntries(
+      workspace.employees.map((employee) => [
+        employee.id,
+        workspace.warehouses
+          .filter((warehouse) => warehouse.managerId === employee.id && warehouse.status === "ACTIVE")
+          .map((warehouse) => warehouse.name),
+      ]),
+    )
+
+    const salaryPaymentsByEmployeeId = Object.fromEntries(
+      workspace.employees.map((employee) => [
+        employee.id,
+        workspace.salaryPayments
+          .filter((payment) => payment.employeeId === employee.id)
+          .sort((left, right) => right.paymentDate.localeCompare(left.paymentDate)),
+      ]),
+    )
+
+    const workHistoryByEmployeeId = Object.fromEntries(
+      workspace.employees.map((employee) => {
+        const items = [
+          ...workspace.employeeStateHistory
+            .filter((entry) => entry.employeeId === employee.id)
+            .map((entry) => ({
+              id: `state-${entry.id}`,
+              typeLabel: detailCopy.employee.employmentState,
+               title: `${getArabicRoleLabel(roleById.get(entry.roleId) ?? null)} - ${getArabicStatusLabel(entry.status)}`,
+              detail:
+                entry.salaryAmountDzd !== null
+                  ? `${detailCopy.salary.activeSalaryPrefix} ${entry.salaryAmountDzd} ${detailCopy.salary.currency}${formatSalaryPeriodLabel(entry.salaryPeriod, detailCopy.salary) ? ` / ${formatSalaryPeriodLabel(entry.salaryPeriod, detailCopy.salary)}` : ""}`
+                  : null,
+              periodLabel: formatDateRange(entry.startDate, entry.endDate, detailCopy.shared.ongoing),
+              statusLabel: getArabicHistoryEventLabel(entry.eventType),
+              sortValue: entry.startDate,
+            })),
+          ...workspace.managerAssignments
+            .filter((assignment) => assignment.workerId === employee.id)
+            .map((assignment) => ({
+              id: `manager-${assignment.id}`,
+              typeLabel: detailCopy.employee.directManager,
+              title: employeeById.get(assignment.managerId) ? formatName(employeeById.get(assignment.managerId)!) : copy.shell.noManager,
+              detail: assignment.notes,
+              periodLabel: formatDateRange(assignment.startDate, assignment.endDate, detailCopy.shared.ongoing),
+              statusLabel: getArabicStatusLabel(assignment.status),
+              sortValue: assignment.startDate,
+            })),
+          ...workspace.projectAssignments
+            .filter((assignment) => assignment.employeeId === employee.id)
+            .map((assignment) => ({
+              id: `project-${assignment.id}`,
+              typeLabel: detailCopy.employee.projectAssignment,
+              title: projectById.get(assignment.projectId)?.name ?? copy.shell.noProject,
+              detail: assignment.notes,
+              periodLabel: formatDateRange(assignment.startDate, assignment.endDate, detailCopy.shared.ongoing),
+              statusLabel: getArabicStatusLabel(assignment.status),
+              sortValue: assignment.startDate,
+            })),
+          ...workspace.warehouseAssignments
+            .filter((assignment) => assignment.employeeId === employee.id)
+            .map((assignment) => ({
+              id: `warehouse-${assignment.id}`,
+              typeLabel: detailCopy.employee.warehouseAssignment,
+              title:
+                workspace.warehouses.find((warehouse) => warehouse.id === assignment.warehouseId)?.name ??
+                detailCopy.shared.activeWarehouseMissing,
+              detail: assignment.notes,
+              periodLabel: formatDateRange(assignment.startDate, assignment.endDate, detailCopy.shared.ongoing),
+              statusLabel: getArabicStatusLabel(assignment.status),
+              sortValue: assignment.startDate,
+            })),
+          ...workspace.projectManagerOwnershipHistory
+            .filter((entry) => entry.managerId === employee.id)
+            .map((entry) => ({
+              id: `managed-project-${entry.id}`,
+              typeLabel: detailCopy.employee.projectOwnership,
+              title: projectById.get(entry.projectId)?.name ?? copy.shell.noProject,
+              detail: entry.notes,
+              periodLabel: formatDateRange(entry.startDate, entry.endDate, detailCopy.shared.ongoing),
+              statusLabel: getArabicStatusLabel(entry.status),
+              sortValue: entry.startDate,
+            })),
+          ...workspace.warehouseManagerOwnershipHistory
+            .filter((entry) => entry.managerId === employee.id)
+            .map((entry) => ({
+              id: `managed-warehouse-${entry.id}`,
+              typeLabel: detailCopy.employee.warehouseOwnership,
+              title:
+                workspace.warehouses.find((warehouse) => warehouse.id === entry.warehouseId)?.name ??
+                detailCopy.shared.activeWarehouseMissing,
+              detail: entry.notes,
+              periodLabel: formatDateRange(entry.startDate, entry.endDate, detailCopy.shared.ongoing),
+              statusLabel: getArabicStatusLabel(entry.status),
+              sortValue: entry.startDate,
+            })),
+        ]
+
+        return [
+          employee.id,
+          items
+            .sort((left, right) => right.sortValue.localeCompare(left.sortValue))
+            .map(({ sortValue, ...item }) => item),
+        ]
+      }),
+    )
+
+    const projectWorkersByProjectId = Object.fromEntries(
+      workspace.projects.map((project) => [
+        project.id,
+        workspace.projectAssignments
+          .filter((assignment) => assignment.projectId === project.id && assignment.status === "ACTIVE")
+          .map((assignment) => {
+            const worker = employeeById.get(assignment.employeeId)
+            const workerRole = worker ? roleById.get(worker.roleId) : null
+
+            return {
+              id: assignment.id,
+               typeLabel: getArabicRoleLabel(workerRole ?? null),
+              title: worker ? formatName(worker) : detailCopy.shared.activeWorkerMissing,
+              detail: assignment.notes,
+              periodLabel: formatDateRange(assignment.startDate, assignment.endDate, detailCopy.shared.ongoing),
+              statusLabel: detailCopy.shared.currentAssignment,
+            }
+          }),
+      ]),
+    )
+
+    const projectManagementHistoryByProjectId = Object.fromEntries(
+      workspace.projects.map((project) => [
+        project.id,
+        workspace.projectManagerOwnershipHistory
+          .filter((entry) => entry.projectId === project.id)
+          .sort((left, right) => right.startDate.localeCompare(left.startDate))
+          .map((entry) => ({
+            id: entry.id,
+            typeLabel: detailCopy.project.managerLabel,
+            title: employeeById.get(entry.managerId) ? formatName(employeeById.get(entry.managerId)!) : copy.shell.noManager,
+            detail: entry.notes,
+            periodLabel: formatDateRange(entry.startDate, entry.endDate, detailCopy.shared.ongoing),
+            statusLabel: getArabicStatusLabel(entry.status),
+          })),
+      ]),
+    )
+
+    const warehouseManagementHistoryByWarehouseId = Object.fromEntries(
+      workspace.warehouses.map((warehouse) => [
+        warehouse.id,
+        workspace.warehouseManagerOwnershipHistory
+          .filter((entry) => entry.warehouseId === warehouse.id)
+          .sort((left, right) => right.startDate.localeCompare(left.startDate))
+          .map((entry) => ({
+            id: entry.id,
+            typeLabel: detailCopy.warehouse.managerLabel,
+            title: employeeById.get(entry.managerId) ? formatName(employeeById.get(entry.managerId)!) : copy.shell.noManager,
+            detail: entry.notes,
+            periodLabel: formatDateRange(entry.startDate, entry.endDate, detailCopy.shared.ongoing),
+            statusLabel: getArabicStatusLabel(entry.status),
+          })),
+      ]),
+    )
+
+    const warehouseWorkersByWarehouseId = Object.fromEntries(
+      workspace.warehouses.map((warehouse) => [
+        warehouse.id,
+        workspace.warehouseAssignments
+          .filter((assignment) => assignment.warehouseId === warehouse.id && assignment.status === "ACTIVE")
+          .map((assignment) => {
+            const worker = employeeById.get(assignment.employeeId)
+            const workerRole = worker ? roleById.get(worker.roleId) : null
+
+            return {
+              id: assignment.id,
+               typeLabel: getArabicRoleLabel(workerRole ?? null),
+              title: worker ? formatName(worker) : detailCopy.shared.activeWorkerMissing,
+              detail: assignment.notes,
+              periodLabel: formatDateRange(assignment.startDate, assignment.endDate, detailCopy.shared.ongoing),
+              statusLabel: detailCopy.shared.currentAssignment,
+            }
+          }),
+      ]),
+    )
+
+    const projectOptions = workspace.projects
+      .filter((project) => project.status === "ACTIVE")
+      .map((project) => ({ id: project.id, label: project.name }))
+      .sort((left, right) => left.label.localeCompare(right.label, "ar"))
+
+    const warehouseOptions = workspace.warehouses
+      .filter((warehouse) => warehouse.status === "ACTIVE")
+      .map((warehouse) => ({ id: warehouse.id, label: warehouse.name }))
+      .sort((left, right) => left.label.localeCompare(right.label, "ar"))
 
     return {
       employeeRows,
       projects,
       warehouses,
       roles: workspace.roles,
+      managerOptions,
+      projectManagerOptions: managerOptions,
+      warehouseManagerOptions,
+      managerHistoryByEmployeeId,
+      projectHistoryByEmployeeId,
+      warehouseHistoryByEmployeeId,
+      managedProjectsByEmployeeId,
+      managedWarehousesByEmployeeId,
+      salaryPaymentsByEmployeeId,
+      workHistoryByEmployeeId,
+      projectManagementHistoryByProjectId,
+      projectWorkersByProjectId,
+      projectOptions,
       metrics: {
-        workers: employeeRows.filter((employee) => employee.isWorker && employee.status === "ACTIVE").length,
+        workers: employeeRows.filter((employee) => employee.status === "ACTIVE" && employee.isWorker).length,
         projects: projects.filter((project) => project.status === "ACTIVE").length,
         warehouses: warehouses.filter((warehouse) => warehouse.status !== "ARCHIVED").length,
         roles: workspace.roles.length,
       },
+      warehouseManagementHistoryByWarehouseId,
+      warehouseOptions,
+      warehouseWorkersByWarehouseId,
     }
-  }, [copy.columns.manager, copy.shell.noManager, copy.shell.noProject, workspace])
+  }, [detailCopy, copy.shell.noManager, copy.shell.noProject, i18n.language, workspace])
 
-  const hasUsers = setupStatusQuery.data?.hasUsers ?? true
-  const requiresSetupKey = setupStatusQuery.data?.requiresSetupKey ?? false
+  const setupStatus = setupStatusQuery.data
+  const hasUsers = setupStatus?.hasUsers ?? false
+  const requiresSetupKey = setupStatus?.requiresSetupKey ?? false
+  const authStartupError = setupStatusQuery.error ?? sessionQuery.error ?? null
+  const isAuthStateLoading = (!setupStatus && !authStartupError) || sessionQuery.isPending
   const isFirstRun = !session && !hasUsers
+
+  useEffect(() => {
+    function syncSidebarForViewport() {
+      if (window.innerWidth < 1200) {
+        setSidebarCollapsed(true)
+      }
+    }
+
+    syncSidebarForViewport()
+    window.addEventListener("resize", syncSidebarForViewport)
+    return () => window.removeEventListener("resize", syncSidebarForViewport)
+  }, [])
 
   function handleThemeToggle() {
     toggleTheme()
@@ -473,16 +930,22 @@ export function HomeView() {
 
     const nextErrors = mapCredentialErrors(copy, phone, password)
     setErrors(nextErrors)
+    setAuthError(null)
 
     if (Object.keys(nextErrors).length > 0) {
       return
     }
 
-    await signInMutation.mutateAsync({
-      phone: phone.trim(),
-      password,
-      rememberMe: true,
-    })
+    try {
+      await signInMutation.mutateAsync({
+        phone: phone.trim(),
+        password,
+        rememberMe: true,
+      })
+    } catch (error) {
+      setAuthError(extractAuthErrorMessage(error, copy.auth.signInError))
+      return
+    }
 
     setPassword("")
   }
@@ -491,25 +954,30 @@ export function HomeView() {
     event.preventDefault()
 
     const nextErrors = mapBootstrapErrors(copy, name, phone, password, setupSecret, requiresSetupKey)
-
     setErrors(nextErrors)
+    setAuthError(null)
 
     if (Object.values(nextErrors).some(Boolean)) {
       return
     }
 
-    await bootstrapMutation.mutateAsync({
-      name: name.trim(),
-      phone: phone.trim(),
-      password,
-      setupSecret: setupSecret.trim() || undefined,
-    })
+    try {
+      await bootstrapMutation.mutateAsync({
+        name: name.trim(),
+        phone: phone.trim(),
+        password,
+        setupSecret: setupSecret.trim() || undefined,
+      })
 
-    await signInMutation.mutateAsync({
-      phone: phone.trim(),
-      password,
-      rememberMe: true,
-    })
+      await signInMutation.mutateAsync({
+        phone: phone.trim(),
+        password,
+        rememberMe: true,
+      })
+    } catch (error) {
+      setAuthError(extractAuthErrorMessage(error, copy.auth.signInError))
+      return
+    }
 
     setName("")
     setPassword("")
@@ -532,15 +1000,35 @@ export function HomeView() {
   async function confirmSignOut() {
     await signOutMutation.mutateAsync()
     setSignOutOpen(false)
-    setActiveSection("employees")
+  }
+
+  async function retryAuthState() {
+    await Promise.all([setupStatusQuery.refetch(), sessionQuery.refetch()])
   }
 
   if (!session) {
-    if (setupStatusQuery.isLoading) {
+    if (isAuthStateLoading) {
       return (
         <main className="flex min-h-screen items-center justify-center px-6 py-8">
-          <section className="w-full max-w-lg rounded-[32px] border border-white/70 bg-card/94 p-8 text-center shadow-[0_24px_90px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-card/94 lg:p-10">
+          <section className="w-full max-w-lg rounded-[32px] border border-white/70 bg-card/94 p-8 text-center backdrop-blur-xl dark:border-white/10 dark:bg-card/94 lg:p-10">
             <p className="text-sm text-muted-foreground">{copy.common.loadingAuth}</p>
+          </section>
+        </main>
+      )
+    }
+
+    if (authStartupError) {
+      return (
+        <main className="flex min-h-screen items-center justify-center px-6 py-8">
+          <section className="w-full max-w-lg rounded-[32px] border border-white/70 bg-card/94 p-8 text-center backdrop-blur-xl dark:border-white/10 dark:bg-card/94 lg:p-10">
+            <div className="space-y-3">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">{copy.auth.startupErrorTitle}</h1>
+              <p className="text-sm leading-6 text-muted-foreground">{copy.auth.startupErrorDescription}</p>
+            </div>
+
+            <Button className="mt-6 h-11 w-full rounded-2xl text-base" type="button" variant="outline" onClick={() => void retryAuthState()}>
+              {copy.common.retry}
+            </Button>
           </section>
         </main>
       )
@@ -548,7 +1036,7 @@ export function HomeView() {
 
     return (
       <main className="flex min-h-screen items-center justify-center px-6 py-8">
-        <section className="w-full max-w-lg rounded-[32px] border border-white/70 bg-card/94 p-8 shadow-[0_24px_90px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-card/94 lg:p-10">
+        <section className="w-full max-w-lg rounded-[32px] border border-white/70 bg-card/94 p-8 backdrop-blur-xl dark:border-white/10 dark:bg-card/94 lg:p-10">
           <form className="space-y-7" onSubmit={isFirstRun ? handleBootstrap : handleSignIn}>
             <div className="space-y-2 text-center">
               <h1 className="text-3xl font-semibold tracking-tight text-foreground">
@@ -622,6 +1110,7 @@ export function HomeView() {
             >
               {isFirstRun ? copy.auth.createFirstUser : copy.auth.signIn}
             </Button>
+            {authError ? <p className="text-center text-sm text-destructive">{authError}</p> : null}
           </form>
         </section>
       </main>
@@ -632,427 +1121,405 @@ export function HomeView() {
     return null
   }
 
-  const sidebarWidth = sidebarCollapsed ? "6rem" : "19rem"
+  const sidebarWidth = sidebarCollapsed ? "5.5rem" : "18rem"
+  const employeePage = page === "employees-create" ? "create" : "list"
+  const selectedEmployee = employeeId
+    ? derived.employeeRows.find((employee) => employee.id === employeeId) ?? null
+    : null
+  const selectedProject = projectId
+    ? derived.projects.find((project) => project.id === projectId) ?? null
+    : null
+  const selectedWarehouse = warehouseId
+    ? derived.warehouses.find((warehouse) => warehouse.id === warehouseId) ?? null
+    : null
+  const selectedProjectManagerOptions = selectedProject
+    ? includeCurrentManagerOption(derived.projectManagerOptions, {
+        id: selectedProject.managerId,
+        label: selectedProject.managerName,
+      })
+    : derived.projectManagerOptions
+  const selectedWarehouseManagerOptions = selectedWarehouse
+    ? includeCurrentManagerOption(derived.warehouseManagerOptions, {
+        id: selectedWarehouse.managerId,
+        label: selectedWarehouse.managerName,
+      })
+    : derived.warehouseManagerOptions
+
+  function renderMissingRecordState(label: string, href: string) {
+    return (
+      <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+        <div className="space-y-4">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">{label}</h1>
+          <p className="text-sm leading-6 text-muted-foreground">{detailCopy.shared.missingRecordDescription}</p>
+          <Button variant="outline" onClick={() => void navigate({ to: href as never })}>
+            {detailCopy.shared.back}
+          </Button>
+        </div>
+      </section>
+    )
+  }
+
+  const breadcrumbItems = [
+    { label: copy.sections.dashboard.label, to: "/" },
+    ...(page === "employees" || page === "employees-create" || page === "employee-details" || page === "employee-edit"
+      ? [{ label: copy.sections.employees.label, to: "/employees" }]
+      : page === "projects" || page === "project-details" || page === "project-edit"
+        ? [{ label: copy.sections.projects.label, to: "/projects" }]
+        : page === "warehouses" || page === "warehouse-details" || page === "warehouse-edit"
+          ? [{ label: copy.sections.warehouses.label, to: "/warehouses" }]
+          : page === "transactions"
+            ? [{ label: copy.sections.transactions.label, to: "/transactions" }]
+          : page === "roles"
+            ? [{ label: copy.sections.roles.label, to: "/roles" }]
+            : page === "settings"
+              ? [{ label: copy.sections.settings.label, to: "/settings" }]
+              : []),
+    ...(page === "employees-create"
+      ? [{ label: t("detailPages.employee.createBreadcrumb") }]
+      : page === "employee-details" && selectedEmployee
+        ? [{ label: selectedEmployee.name }]
+      : page === "employee-edit" && selectedEmployee
+          ? [{ label: selectedEmployee.name, to: `/employees/${toSafeRouteSegment(selectedEmployee.id)}` }, { label: copy.common.edit }]
+          : page === "project-details" && selectedProject
+            ? [{ label: selectedProject.name }]
+            : page === "project-edit" && selectedProject
+              ? [{ label: selectedProject.name, to: `/projects/${toSafeRouteSegment(selectedProject.id)}` }, { label: t("detailPages.project.editBreadcrumb") }]
+              : page === "warehouse-details" && selectedWarehouse
+                ? [{ label: selectedWarehouse.name }]
+                : page === "warehouse-edit" && selectedWarehouse
+                  ? [{ label: selectedWarehouse.name, to: `/warehouses/${toSafeRouteSegment(selectedWarehouse.id)}` }, { label: t("detailPages.warehouse.editBreadcrumb") }]
+                  : []),
+  ]
 
   return (
-    <div className="h-screen overflow-hidden px-4 py-4 lg:px-5 lg:py-5">
-      <aside
-        className="fixed inset-y-4 right-4 z-30 flex flex-col rounded-[30px] border border-white/70 bg-sidebar/94 p-3 shadow-[0_24px_80px_rgba(15,23,42,0.14)] backdrop-blur-xl dark:border-white/10"
-        data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
-        style={{ width: sidebarWidth }}
-      >
-        <div className={cn("mb-3 flex items-center", sidebarCollapsed ? "justify-center" : "justify-between gap-2") }>
-          {!sidebarCollapsed ? <p className="text-[11px] font-medium tracking-[0.22em] text-muted-foreground uppercase">{copy.shell.module}</p> : null}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  aria-label={sidebarCollapsed ? copy.shell.expand : copy.shell.collapse}
-                  className={cn(
-                    "h-10 rounded-2xl border border-border/70 bg-background/75 text-sm shadow-sm backdrop-blur",
-                    sidebarCollapsed ? "w-10 px-0" : "px-3",
-                  )}
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setSidebarCollapsed((current) => !current)}
-                >
-                  {sidebarCollapsed ? <PanelRightOpen className="size-4" /> : <PanelRightClose className="size-4" />}
-                  {!sidebarCollapsed ? <span className="me-1">{copy.shell.collapse}</span> : null}
-                </Button>
-              }
+    <div className="min-h-screen overflow-hidden">
+      <WorkspaceSidebar
+        collapseLabel={copy.shell.collapse}
+        collapsed={sidebarCollapsed}
+        currentPage={page}
+        dashboardLabel={copy.sections.dashboard.label}
+        employeesLabel={copy.sections.employees.label}
+        expandLabel={copy.shell.expand}
+        projectsLabel={copy.sections.projects.label}
+        rolesLabel={copy.sections.roles.label}
+        transactionsLabel={copy.sections.transactions.label}
+        session={session}
+        settingsLabel={copy.sections.settings.label}
+        signOutLabel={copy.shell.signOut}
+        theme={theme}
+        themeToggleLabel={copy.shell.themeToggle}
+        warehousesLabel={copy.sections.warehouses.label}
+        width={sidebarWidth}
+        onSetCollapsed={setSidebarCollapsed}
+        onSignOut={() => setSignOutOpen(true)}
+        onToggleTheme={handleThemeToggle}
+      />
+
+      <main className="h-screen overflow-y-auto" style={{ paddingRight: sidebarWidth }}>
+        <div className="flex min-h-full min-w-0 flex-col gap-6 pb-8 pr-5 pt-5 pl-0">
+          {page !== "dashboard" ? <WorkspaceBreadcrumbs items={breadcrumbItems} /> : null}
+
+          {page === "dashboard" ? (
+            <DashboardSection
+              labels={{
+                title: copy.dashboard.title,
+                description: copy.dashboard.description,
+                workers: copy.metrics.workers,
+                projects: copy.metrics.projects,
+                warehouses: copy.metrics.warehouses,
+                roles: copy.metrics.roles,
+              }}
+              metrics={derived.metrics}
             />
-            <TooltipContent side="left">{sidebarCollapsed ? copy.shell.expand : copy.shell.collapse}</TooltipContent>
-          </Tooltip>
-        </div>
-
-        <div className={cn("mb-4 rounded-[24px] border border-white/60 bg-white/65 p-3 dark:border-white/10 dark:bg-white/5", sidebarCollapsed ? "text-center" : "") }>
-          <div className={cn("flex items-center gap-3", sidebarCollapsed ? "justify-center" : "") }>
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-              <UserSquare2 className="size-5" />
-            </div>
-            {!sidebarCollapsed ? (
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-sidebar-foreground">{session.name}</p>
-                <p className="truncate text-xs text-muted-foreground" dir="ltr">{session.phone}</p>
-              </div>
-            ) : null}
-          </div>
-          {!sidebarCollapsed ? (
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">{copy.shell.sidebarHint}</p>
           ) : null}
-        </div>
 
-        <nav aria-label="Primary" className="flex-1 space-y-1.5">
-          {primarySections.map((section) => {
-            const Icon = sectionIcons[section]
-            const isActive = activeSection === section
+          {page === "employees" || page === "employees-create" ? (
+            <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+              <EmployeesSection
+                actionLabels={{
+                  view: copy.common.view,
+                  edit: copy.common.edit,
+                  leave: copy.common.leave,
+                  delete: copy.common.delete,
+                  leaveTitle: copy.shell.leaveTitle,
+                  leaveDescription: copy.shell.leaveDescription,
+                  deleteTitle: copy.shell.deleteEmployeeTitle,
+                  deleteDescription: copy.shell.deleteEmployeeDescription,
+                }}
+                addWorkerLabel={copy.shell.addWorker}
+                columns={{
+                  name: copy.columns.name,
+                  role: copy.columns.role,
+                  manager: copy.columns.manager,
+                  project: copy.columns.project,
+                  phone: copy.columns.phone,
+                  status: copy.columns.status,
+                  actions: copy.common.actions,
+                }}
+                createHref="/employees/create"
+                description={copy.sections.employees.description}
+                employeePage={employeePage}
+                emptyLabel={copy.shell.empty}
+                managerOptions={derived.managerOptions}
+                roles={derived.roles}
+                rows={derived.employeeRows}
+                title={copy.sections.employees.label}
+              />
+            </section>
+          ) : null}
 
-            return (
-              <SidebarActionButton
-                key={section}
-                ariaLabel={copy.sections[section].label}
-                collapsed={sidebarCollapsed}
-                current={isActive}
-                tooltip={copy.sections[section].label}
-                variant={isActive ? "secondary" : "ghost"}
-                onClick={() => setActiveSection(section)}
-              >
-                <Icon className="size-4" />
-                {!sidebarCollapsed ? <span>{copy.sections[section].label}</span> : null}
-              </SidebarActionButton>
+          {page === "employee-details" ? (
+            selectedEmployee ? (
+              <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+                <EmployeeDetailsPage
+                  activeTab={detailTab ?? "personal"}
+                  employee={selectedEmployee}
+                  managedProjects={derived.managedProjectsByEmployeeId[selectedEmployee.id] ?? []}
+                  managedWarehouses={derived.managedWarehousesByEmployeeId[selectedEmployee.id] ?? []}
+                  onTabChange={(tabId) =>
+                    void navigate({
+                      to: "/employees/$employeeId" as never,
+                      params: { employeeId: selectedEmployee.id } as never,
+                      search: { tab: tabId } as never,
+                    })
+                  }
+                  salaryPayments={derived.salaryPaymentsByEmployeeId[selectedEmployee.id] ?? []}
+                  workHistory={derived.workHistoryByEmployeeId[selectedEmployee.id] ?? []}
+                />
+              </section>
+            ) : (
+              renderMissingRecordState(t("detailPages.employee.fileTitle"), "/employees")
             )
-          })}
-        </nav>
+          ) : null}
 
-        <div className="mt-4 space-y-1.5 border-t border-sidebar-border/70 pt-4">
-          <SidebarActionButton
-            ariaLabel={copy.shell.themeToggle}
-            collapsed={sidebarCollapsed}
-            tooltip={copy.shell.themeToggle}
-            onClick={handleThemeToggle}
-          >
-            {theme === "light" ? <MoonStar className="size-4" /> : <SunMedium className="size-4" />}
-            {!sidebarCollapsed ? <span>{copy.shell.themeToggle}</span> : null}
-          </SidebarActionButton>
-          <SidebarActionButton
-            ariaLabel={copy.sections.settings.label}
-            collapsed={sidebarCollapsed}
-            current={activeSection === "settings"}
-            tooltip={copy.sections.settings.label}
-            variant={activeSection === "settings" ? "secondary" : "ghost"}
-            onClick={() => setActiveSection("settings")}
-          >
-            <LayoutGrid className="size-4" />
-            {!sidebarCollapsed ? <span>{copy.sections.settings.label}</span> : null}
-          </SidebarActionButton>
-          <SidebarActionButton
-            ariaLabel={copy.shell.signOut}
-            collapsed={sidebarCollapsed}
-            tooltip={copy.shell.signOut}
-            onClick={() => setSignOutOpen(true)}
-          >
-            <LogOut className="size-4 text-destructive" />
-            {!sidebarCollapsed ? <span className="text-destructive">{copy.shell.signOut}</span> : null}
-          </SidebarActionButton>
-        </div>
-      </aside>
-
-      <main className="h-full overflow-y-auto" style={{ paddingRight: `calc(${sidebarWidth} + 1.25rem)` }}>
-        <div className="mx-auto flex min-h-full max-w-[1500px] min-w-0 flex-col gap-5 pb-8">
-          <section className="app-shell relative overflow-hidden rounded-[30px] border border-white/70 bg-card/88 px-5 py-4 shadow-[0_24px_90px_rgba(15,23,42,0.1)] backdrop-blur-xl dark:border-white/10 dark:bg-card/88 lg:px-6">
-            <div className="relative z-10 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="space-y-2">
-                <Breadcrumb>
-                  <BreadcrumbList>
-                    <BreadcrumbItem>
-                      <BreadcrumbPage>{copy.shell.workspace}</BreadcrumbPage>
-                    </BreadcrumbItem>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>
-                      <BreadcrumbPage>{copy.shell.module}</BreadcrumbPage>
-                    </BreadcrumbItem>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>
-                      <BreadcrumbPage>{activeSectionCopy.label}</BreadcrumbPage>
-                    </BreadcrumbItem>
-                  </BreadcrumbList>
-                </Breadcrumb>
-                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                  <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-foreground">
-                    {copy.shell.activePage}
-                  </span>
-                  <span>{copy.shell.description}</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="grid gap-4 xl:grid-cols-4">
-            <DataCard title={copy.metrics.workers} value={derived.metrics.workers} detail={copy.shell.quickMetrics} />
-            <DataCard title={copy.metrics.projects} value={derived.metrics.projects} detail={copy.sections.projects.label} />
-            <DataCard title={copy.metrics.warehouses} value={derived.metrics.warehouses} detail={copy.sections.warehouses.label} />
-            <DataCard title={copy.metrics.roles} value={derived.metrics.roles} detail={copy.sections.roles.label} />
-          </section>
-
-          <section className="rounded-[32px] border border-white/70 bg-card/92 p-6 shadow-[0_24px_90px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-card/92">
-            {activeSection === "employees" ? (
-              <div className="space-y-6">
-                <SectionHeader
-                  action={
-                    <Button disabled={addRecordMutation.isPending} onClick={() => addRecordMutation.mutate("employees")}>
-                      {copy.shell.addRecord}
-                    </Button>
-                  }
-                  description={copy.sections.employees.description}
-                  title={copy.sections.employees.label}
+          {page === "employee-edit" ? (
+            selectedEmployee ? (
+              <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+                <EmployeeEditPage
+                  currentManagedProjectIds={derived.projects.filter((project) => project.managerId === selectedEmployee.id).map((project) => project.id)}
+                  currentManagedWarehouseIds={derived.warehouses.filter((warehouse) => warehouse.managerId === selectedEmployee.id).map((warehouse) => warehouse.id)}
+                  employee={selectedEmployee}
+                  managedProjectOptions={derived.projects
+                    .filter((project) => project.managerId === selectedEmployee.id || (project.status === "ACTIVE" && !project.managerId))
+                    .map((project) => ({
+                      id: project.id,
+                      label: project.name,
+                      secondary:
+                        project.managerId === selectedEmployee.id
+                          ? `${detailCopy.shared.currentlySelected} - ${getArabicStatusLabel(project.status)}`
+                          : t("detailPages.shell.activeWorkersCount", { count: project.activeWorkers }),
+                    }))}
+                  managedWarehouseOptions={derived.warehouses
+                    .filter((warehouse) => warehouse.managerId === selectedEmployee.id || (warehouse.status === "ACTIVE" && !warehouse.managerId))
+                    .map((warehouse) => ({
+                      id: warehouse.id,
+                      label: warehouse.name,
+                      secondary:
+                        warehouse.managerId === selectedEmployee.id
+                          ? `${detailCopy.shared.currentlySelected} - ${getArabicStatusLabel(warehouse.status)}`
+                          : warehouse.managerName,
+                    }))}
+                  managerOptions={derived.managerOptions}
+                  roles={derived.roles}
                 />
-                <div className="overflow-hidden rounded-[28px] border border-border/60">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-muted/60 text-muted-foreground">
-                        <tr>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.name}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.role}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.manager}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.project}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.phone}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.status}</th>
-                          <th className="px-4 py-3 text-start font-medium" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {derived.employeeRows.length > 0 ? (
-                          derived.employeeRows.map((row) => (
-                            <tr key={row.id} className="border-t border-border/60 bg-background/45 align-top">
-                              <td className="px-4 py-4">
-                                <div className={cn("space-y-1", row.isWorker ? "pr-4" : "") }>
-                                  <p className="font-medium text-foreground">{row.name}</p>
-                                  {row.hierarchyHint ? <p className="text-xs text-muted-foreground">{row.hierarchyHint}</p> : null}
-                                </div>
-                              </td>
-                              <td className="px-4 py-4 text-muted-foreground">{row.role}</td>
-                              <td className="px-4 py-4 text-muted-foreground">{row.managerName}</td>
-                              <td className="px-4 py-4 text-muted-foreground">{row.projectName}</td>
-                              <td className="px-4 py-4 text-foreground" dir="ltr">{row.phone}</td>
-                              <td className="px-4 py-4">
-                                <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", getStatusTone(row.status))}>
-                                  {row.status}
-                                </span>
-                              </td>
-                              <td className="px-4 py-4 text-end">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    setPendingDelete({
-                                      section: "employees",
-                                      id: row.id,
-                                      label: row.name,
-                                    })
-                                  }
-                                >
-                                  {copy.common.archive}
-                                </Button>
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td className="px-4 py-6 text-center text-muted-foreground" colSpan={7}>{copy.shell.empty}</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            ) : null}
+              </section>
+            ) : (
+              renderMissingRecordState(t("detailPages.employee.editTitle"), "/employees")
+            )
+          ) : null}
 
-            {activeSection === "projects" ? (
-              <div className="space-y-6">
-                <SectionHeader
-                  action={
-                    <Button disabled={addRecordMutation.isPending} onClick={() => addRecordMutation.mutate("projects")}>
-                      {copy.shell.addRecord}
-                    </Button>
+          {page === "projects" ? (
+            <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+              <ProjectsSection
+                addLabel={copy.shell.addProject}
+                archiveLabel={copy.common.archive}
+                columns={{
+                  name: copy.columns.name,
+                  manager: copy.columns.manager,
+                  location: copy.columns.location,
+                  workers: copy.columns.workers,
+                  status: copy.columns.status,
+                  actions: copy.common.actions,
+                }}
+                description={copy.sections.projects.description}
+                emptyLabel={copy.shell.empty}
+                noLocationLabel={copy.shell.noLocation}
+                rows={derived.projects}
+                title={copy.sections.projects.label}
+                viewLabel={copy.common.view}
+                editLabel={copy.common.edit}
+                onAdd={() => addRecordMutation.mutate("projects")}
+                onArchive={(project) =>
+                  setPendingDelete({
+                    section: "projects",
+                    id: project.id,
+                    label: project.name,
+                  })
+                }
+                onEdit={(project) => void navigate({ to: "/projects/$projectId/edit" as never, params: { projectId: project.id } as never })}
+                onView={(project) => void navigate({ to: "/projects/$projectId" as never, params: { projectId: project.id } as never })}
+              />
+            </section>
+          ) : null}
+
+          {page === "project-details" ? (
+            selectedProject ? (
+              <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+                <ProjectDetailsPage
+                  activeTab={detailTab ?? "overview"}
+                  managementHistoryRows={derived.projectManagementHistoryByProjectId[selectedProject.id] ?? []}
+                  onTabChange={(tabId) =>
+                    void navigate({
+                      to: "/projects/$projectId" as never,
+                      params: { projectId: selectedProject.id } as never,
+                      search: { tab: tabId } as never,
+                    })
                   }
-                  description={copy.sections.projects.description}
-                  title={copy.sections.projects.label}
+                  project={selectedProject}
+                  workerRows={derived.projectWorkersByProjectId[selectedProject.id] ?? []}
                 />
-                <div className="overflow-hidden rounded-[28px] border border-border/60">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-muted/60 text-muted-foreground">
-                        <tr>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.name}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.manager}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.location}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.workers}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.status}</th>
-                          <th className="px-4 py-3 text-start font-medium" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {derived.projects.map((project) => (
-                          <tr key={project.id} className="border-t border-border/60 bg-background/45">
-                            <td className="px-4 py-4">
-                              <p className="font-medium text-foreground">{project.name}</p>
-                              {project.notes ? <p className="mt-1 text-xs text-muted-foreground">{project.notes}</p> : null}
-                            </td>
-                            <td className="px-4 py-4 text-muted-foreground">{project.managerName}</td>
-                            <td className="px-4 py-4 text-muted-foreground">{project.location ?? copy.shell.noManager}</td>
-                            <td className="px-4 py-4 text-foreground">{project.activeWorkers}</td>
-                            <td className="px-4 py-4">
-                              <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", getStatusTone(project.status))}>
-                                {project.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 text-end">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  setPendingDelete({
-                                    section: "projects",
-                                    id: project.id,
-                                    label: project.name,
-                                  })
-                                }
-                              >
-                                {copy.common.archive}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            ) : null}
+              </section>
+            ) : (
+              renderMissingRecordState(t("detailPages.project.fileTitle"), "/projects")
+            )
+          ) : null}
 
-            {activeSection === "warehouses" ? (
-              <div className="space-y-6">
-                <SectionHeader
-                  action={
-                    <Button disabled={addRecordMutation.isPending} onClick={() => addRecordMutation.mutate("warehouses")}>
-                      {copy.shell.addRecord}
-                    </Button>
+          {page === "project-edit" ? (
+            selectedProject ? (
+              <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+                <ProjectEditPage managerOptions={selectedProjectManagerOptions} project={selectedProject} />
+              </section>
+            ) : (
+              renderMissingRecordState(t("detailPages.project.editTitle"), "/projects")
+            )
+          ) : null}
+
+          {page === "warehouses" ? (
+            <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+              <WarehousesSection
+                addLabel={copy.shell.addWarehouse}
+                archiveLabel={copy.common.archive}
+                columns={{
+                  name: copy.columns.name,
+                  manager: copy.columns.manager,
+                  address: copy.columns.address,
+                  status: copy.columns.status,
+                  actions: copy.common.actions,
+                }}
+                description={copy.sections.warehouses.description}
+                emptyLabel={copy.shell.empty}
+                noAddressLabel={copy.shell.noAddress}
+                rows={derived.warehouses}
+                title={copy.sections.warehouses.label}
+                viewLabel={copy.common.view}
+                editLabel={copy.common.edit}
+                onAdd={() => addRecordMutation.mutate("warehouses")}
+                onArchive={(warehouse) =>
+                  setPendingDelete({
+                    section: "warehouses",
+                    id: warehouse.id,
+                    label: warehouse.name,
+                  })
+                }
+                onEdit={(warehouse) => void navigate({ to: "/warehouses/$warehouseId/edit" as never, params: { warehouseId: warehouse.id } as never })}
+                onView={(warehouse) => void navigate({ to: "/warehouses/$warehouseId" as never, params: { warehouseId: warehouse.id } as never })}
+              />
+            </section>
+          ) : null}
+
+          {page === "transactions" ? (
+            <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+              <SystemLogSection
+                entries={systemLogQuery.data?.items ?? []}
+                filters={systemLogFilters}
+                onFiltersChange={setSystemLogFilters}
+                title={copy.sections.transactions.label}
+              />
+            </section>
+          ) : null}
+
+          {page === "warehouse-details" ? (
+            selectedWarehouse ? (
+              <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+                <WarehouseDetailsPage
+                  activeTab={detailTab ?? "overview"}
+                  managementHistoryRows={derived.warehouseManagementHistoryByWarehouseId[selectedWarehouse.id] ?? []}
+                  onTabChange={(tabId) =>
+                    void navigate({
+                      to: "/warehouses/$warehouseId" as never,
+                      params: { warehouseId: selectedWarehouse.id } as never,
+                      search: { tab: tabId } as never,
+                    })
                   }
-                  description={copy.sections.warehouses.description}
-                  title={copy.sections.warehouses.label}
+                  teamRows={derived.warehouseWorkersByWarehouseId[selectedWarehouse.id] ?? []}
+                  warehouse={selectedWarehouse}
                 />
-                <div className="overflow-hidden rounded-[28px] border border-border/60">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-muted/60 text-muted-foreground">
-                        <tr>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.name}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.manager}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.address}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.status}</th>
-                          <th className="px-4 py-3 text-start font-medium" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {derived.warehouses.map((warehouse) => (
-                          <tr key={warehouse.id} className="border-t border-border/60 bg-background/45">
-                            <td className="px-4 py-4">
-                              <p className="font-medium text-foreground">{warehouse.name}</p>
-                              {warehouse.notes ? <p className="mt-1 text-xs text-muted-foreground">{warehouse.notes}</p> : null}
-                            </td>
-                            <td className="px-4 py-4 text-muted-foreground">{warehouse.managerName}</td>
-                            <td className="px-4 py-4 text-muted-foreground">{warehouse.address ?? copy.shell.noManager}</td>
-                            <td className="px-4 py-4">
-                              <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", getStatusTone(warehouse.status))}>
-                                {warehouse.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 text-end">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  setPendingDelete({
-                                    section: "warehouses",
-                                    id: warehouse.id,
-                                    label: warehouse.name,
-                                  })
-                                }
-                              >
-                                {copy.common.archive}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            ) : null}
+              </section>
+            ) : (
+              renderMissingRecordState(t("detailPages.warehouse.fileTitle"), "/warehouses")
+            )
+          ) : null}
 
-            {activeSection === "roles" ? (
-              <div className="space-y-6">
-                <SectionHeader
-                  action={
-                    <Button disabled={addRecordMutation.isPending} onClick={() => addRecordMutation.mutate("roles")}>
-                      {copy.shell.addRecord}
-                    </Button>
-                  }
-                  description={copy.sections.roles.description}
-                  title={copy.sections.roles.label}
-                />
-                <div className="overflow-hidden rounded-[28px] border border-border/60">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-muted/60 text-muted-foreground">
-                        <tr>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.name}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.key}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.system}</th>
-                          <th className="px-4 py-3 text-start font-medium">{copy.columns.description}</th>
-                          <th className="px-4 py-3 text-start font-medium" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {derived.roles.map((role) => (
-                          <tr key={role.id} className="border-t border-border/60 bg-background/45">
-                            <td className="px-4 py-4 font-medium text-foreground">{role.name}</td>
-                            <td className="px-4 py-4 text-muted-foreground">{role.key}</td>
-                            <td className="px-4 py-4 text-muted-foreground">{role.isSystem ? copy.common.yes : copy.common.no}</td>
-                            <td className="px-4 py-4 text-muted-foreground">{role.description ?? copy.shell.empty}</td>
-                            <td className="px-4 py-4 text-end">
-                              <Button
-                                disabled={role.isSystem}
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  setPendingDelete({
-                                    section: "roles",
-                                    id: role.id,
-                                    label: role.name,
-                                  })
-                                }
-                              >
-                                {copy.common.delete}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            ) : null}
+          {page === "warehouse-edit" ? (
+            selectedWarehouse ? (
+              <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+                <WarehouseEditPage managerOptions={selectedWarehouseManagerOptions} warehouse={selectedWarehouse} />
+              </section>
+            ) : (
+              renderMissingRecordState(t("detailPages.warehouse.editTitle"), "/warehouses")
+            )
+          ) : null}
 
-            {activeSection === "settings" ? (
-              <div className="space-y-6">
-                <SectionHeader description={copy.sections.settings.description} title={copy.sections.settings.label} />
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <article className="rounded-[28px] border border-border/60 bg-background/55 p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h3 className="text-lg font-semibold text-foreground">{copy.shell.themeToggle}</h3>
-                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy.shell.settingsThemeDescription}</p>
-                      </div>
-                      <Button variant="outline" onClick={handleThemeToggle}>{theme === "light" ? copy.shell.themeDark : copy.shell.themeLight}</Button>
-                    </div>
-                  </article>
-                  <article className="rounded-[28px] border border-border/60 bg-background/55 p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h3 className="text-lg font-semibold text-foreground">{copy.shell.resetWorkspace}</h3>
-                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy.shell.settingsResetDescription}</p>
-                      </div>
-                      <Button variant="outline" onClick={() => resetWorkspaceMutation.mutate()}>{copy.shell.resetWorkspace}</Button>
-                    </div>
-                  </article>
-                </div>
-              </div>
-            ) : null}
-          </section>
+          {page === "roles" ? (
+            <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+              <RolesSection
+                columns={{
+                  name: copy.columns.name,
+                  key: copy.columns.key,
+                  system: copy.columns.system,
+                  description: copy.columns.description,
+                }}
+                description={copy.sections.roles.description}
+                emptyLabel={copy.shell.empty}
+                noLabel={copy.common.no}
+                roles={derived.roles}
+                title={copy.sections.roles.label}
+                yesLabel={copy.common.yes}
+              />
+            </section>
+          ) : null}
+
+          {page === "settings" ? (
+            <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+              <SettingsSection
+                accountCurrentPasswordLabel={copy.shell.settingsAccountCurrentPassword}
+                accountCurrentPasswordPlaceholder={copy.shell.settingsAccountCurrentPasswordPlaceholder}
+                accountDescription={copy.shell.settingsAccountDescription}
+                accountNameLabel={copy.shell.settingsAccountName}
+                accountNamePlaceholder={copy.shell.settingsAccountNamePlaceholder}
+                accountNewPasswordLabel={copy.shell.settingsAccountNewPassword}
+                accountNewPasswordPlaceholder={copy.shell.settingsAccountNewPasswordPlaceholder}
+                accountPhoneLabel={copy.shell.settingsAccountPhone}
+                accountPhoneHint={copy.shell.settingsAccountPhoneHint}
+                accountPhonePlaceholder={copy.shell.settingsAccountPhonePlaceholder}
+                accountSaveLabel={copy.shell.settingsAccountSave}
+                accountTitle={copy.shell.settingsAccountTitle}
+                currentName={session.name ?? ""}
+                currentPhone={session.phone}
+                description={copy.sections.settings.description}
+                isSavingAccount={updateAccountSettingsMutation.isPending}
+                resetDescription={copy.shell.settingsResetDescription}
+                resetLabel={copy.shell.resetWorkspace}
+                themeDescription={copy.shell.settingsThemeDescription}
+                themeLabel={copy.shell.themeToggle}
+                themeValueLabel={theme === "light" ? copy.shell.themeDark : copy.shell.themeLight}
+                title={copy.sections.settings.label}
+                onSaveAccount={(input) => updateAccountSettingsMutation.mutate(input)}
+                onReset={() => resetWorkspaceMutation.mutate()}
+                onToggleTheme={handleThemeToggle}
+              />
+            </section>
+          ) : null}
         </div>
       </main>
 
@@ -1084,7 +1551,6 @@ export function HomeView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
     </div>
   )
 }

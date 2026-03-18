@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import type { AppDependencies } from "./dependencies";
+import { AccountServiceError } from "../modules/account/account.service";
 import { createRouter } from "../rpc/router";
 import { createRpcContext } from "../rpc/context";
 
@@ -92,6 +93,14 @@ export function createApp(
     await next();
   });
 
+  app.use("/api/auth/profile", async (c, next) => {
+    if (!transport.isAllowedOrigin(c.req.header("origin"))) {
+      return c.json({ message: "Blocked origin." }, 403);
+    }
+
+    await next();
+  });
+
   app.use("/rpc/*", async (c, next) => {
     if (!transport.isAllowedOrigin(c.req.header("origin"))) {
       return c.json({ message: "Blocked origin." }, 403);
@@ -105,6 +114,21 @@ export function createApp(
   });
 
   app.get("/health", (c) => c.json({ status: "ok" }));
+
+  app.post("/api/auth/profile", async (c) => {
+    const body = await c.req.json().catch(() => null);
+
+    try {
+      const result = await dependencies.accountService.updateCurrentProfile(c.req.raw.headers, body ?? {});
+      return c.json(result);
+    } catch (error) {
+      if (error instanceof AccountServiceError) {
+        return c.json({ message: error.message }, { status: error.status as 400 | 401 | 409 });
+      }
+
+      throw error;
+    }
+  });
 
   app.on(["POST", "GET"], "/api/auth/*", (c) => {
     return dependencies.auth.handler(c.req.raw);

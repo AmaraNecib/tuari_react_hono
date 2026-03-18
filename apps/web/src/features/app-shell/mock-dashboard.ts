@@ -1,22 +1,34 @@
 import "@/i18n"
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type {
-  AuthBootstrapInput,
-  Employee,
-  EmployeeManagerAssignment,
-  EmployeeProjectAssignment,
-  Project,
-  Role,
-  SessionUser,
-  Warehouse,
+import {
+  algerianPhoneSchema,
+  type AppError,
+  type AuthBootstrapInput,
+  type Employee,
+  type EmployeeBatchCreateInput,
+  type EmployeeManagerAssignment,
+  type EmployeeProjectAssignment,
+  type EmployeeSalaryPayment,
+  type EmployeeStateHistory,
+  type EmployeeWarehouseAssignment,
+  type Project,
+  type ProjectManagerOwnershipHistory,
+  type Role,
+  type SessionUser,
+  type SystemLogEntry,
+  type Warehouse,
+  type WarehouseManagerOwnershipHistory,
 } from "@tuari/contracts"
 
 import { usePhoneSignInMutation } from "@/features/auth/use-phone-sign-in-mutation"
 import { useSessionQuery } from "@/features/session/use-session-query"
 import { i18n } from "@/i18n"
+import { changeCurrentPassword, signOutDesktopSession, updateCurrentProfile } from "@/lib/auth-api"
+import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { authClient } from "@/lib/auth-client"
 import { orpc, rpcClient } from "@/lib/orpc-client"
+import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 
 export type SectionKey = "employees" | "projects" | "warehouses" | "roles" | "settings"
@@ -29,6 +41,59 @@ export type DemoWorkspace = {
   warehouses: Warehouse[]
   managerAssignments: EmployeeManagerAssignment[]
   projectAssignments: EmployeeProjectAssignment[]
+  warehouseAssignments: EmployeeWarehouseAssignment[]
+  employeeStateHistory: EmployeeStateHistory[]
+  projectManagerOwnershipHistory: ProjectManagerOwnershipHistory[]
+  warehouseManagerOwnershipHistory: WarehouseManagerOwnershipHistory[]
+  salaryPayments: EmployeeSalaryPayment[]
+}
+
+function toLocalDayBoundary(value: string, boundary: "start" | "end") {
+  const [rawYear, rawMonth, rawDay] = value.split("-").map((part) => Number.parseInt(part, 10))
+  const year = rawYear ?? Number.NaN
+  const month = rawMonth ?? Number.NaN
+  const day = rawDay ?? Number.NaN
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return undefined
+  }
+
+  const algeriaOffsetHours = 1
+
+  return boundary === "start"
+    ? new Date(Date.UTC(year, month - 1, day, 0 - algeriaOffsetHours, 0, 0, 0)).toISOString()
+    : new Date(Date.UTC(year, month - 1, day, 23 - algeriaOffsetHours, 59, 59, 999)).toISOString()
+}
+
+export function useSystemLogQuery({
+  enabled = true,
+  filters,
+}: {
+  enabled?: boolean
+  filters?: {
+    actionType?: SystemLogEntry["actionType"]
+    actorUserId?: string
+    entityType?: SystemLogEntry["entityType"]
+    fromDate?: string
+    toDate?: string
+  }
+} = {}) {
+  const sessionQuery = useSessionQuery()
+
+  return useQuery({
+    queryKey: ["phase1", "workspace", "system-log", sessionQuery.data?.user?.id ?? null, filters],
+    queryFn: async (): Promise<{ items: SystemLogEntry[] }> =>
+      rpcClient.systemLogList(
+        filters
+          ? {
+              ...filters,
+              fromDate: filters.fromDate ? toLocalDayBoundary(filters.fromDate, "start") : undefined,
+              toDate: filters.toDate ? toLocalDayBoundary(filters.toDate, "end") : undefined,
+            }
+          : undefined,
+      ),
+    enabled: Boolean(sessionQuery.data?.user) && enabled,
+  })
 }
 
 type EntityResult<T> =
@@ -39,17 +104,40 @@ type DeleteResult =
   | { success: true; message: string }
   | { success: false; error: { message: string } }
 
+export class AppMutationError extends Error {
+  code: AppError["code"]
+  fieldErrors: AppError["fieldErrors"]
+
+  constructor(error: Pick<AppError, "message"> & Partial<Pick<AppError, "code" | "fieldErrors">>) {
+    super(error.message)
+    this.name = "AppMutationError"
+    this.code = error.code ?? "BUSINESS_RULE"
+    this.fieldErrors = error.fieldErrors ?? []
+  }
+}
+
+export type EmployeeBatchCreateResult = {
+  createdCount: number
+}
+
 export const authSetupStatusQueryKey = ["auth", "setup-status"] as const
-export const demoWorkspaceQueryKey = ["phase1", "workspace"] as const
+const workspaceQueryPrefix = ["phase1", "workspace"] as const
+export const demoWorkspaceQueryKey = (userId: string | null = "anonymous") =>
+  ["phase1", "workspace", userId] as const
 
 async function loadWorkspace(): Promise<DemoWorkspace> {
-  const [roles, employees, projects, warehouses, managerAssignments, projectAssignments] = await Promise.all([
+  const [roles, employees, projects, warehouses, managerAssignments, projectAssignments, warehouseAssignments, employeeStateHistory, projectManagerOwnershipHistory, warehouseManagerOwnershipHistory, salaryPayments] = await Promise.all([
     rpcClient.rolesList(),
     rpcClient.employeesList(),
     rpcClient.projectsList(),
     rpcClient.warehousesList(),
     rpcClient.managerAssignmentsList(),
     rpcClient.projectAssignmentsList(),
+    rpcClient.warehouseAssignmentsList(),
+    rpcClient.employeeStateHistoryList(),
+    rpcClient.projectManagerOwnershipHistoryList(),
+    rpcClient.warehouseManagerOwnershipHistoryList(),
+    rpcClient.salaryPaymentsList(),
   ])
 
   return {
@@ -59,12 +147,17 @@ async function loadWorkspace(): Promise<DemoWorkspace> {
     warehouses: warehouses.items,
     managerAssignments: managerAssignments.items,
     projectAssignments: projectAssignments.items,
+    warehouseAssignments: warehouseAssignments.items,
+    employeeStateHistory: employeeStateHistory.items,
+    projectManagerOwnershipHistory: projectManagerOwnershipHistory.items,
+    warehouseManagerOwnershipHistory: warehouseManagerOwnershipHistory.items,
+    salaryPayments: salaryPayments.items,
   }
 }
 
 function requireEntitySuccess<T>(result: EntityResult<T>) {
   if (!result.success) {
-    throw new Error(result.error.message)
+    throw new AppMutationError(result.error)
   }
 
   return result
@@ -72,7 +165,7 @@ function requireEntitySuccess<T>(result: EntityResult<T>) {
 
 function requireDeleteSuccess(result: DeleteResult) {
   if (!result.success) {
-    throw new Error(result.error.message)
+    throw new AppMutationError(result.error)
   }
 
   return result
@@ -88,15 +181,11 @@ function nextSequence(values: string[], prefix: string) {
   return largest + 1
 }
 
-async function ensureWorkspace(queryClient: ReturnType<typeof useQueryClient>) {
+async function ensureWorkspace(queryClient: ReturnType<typeof useQueryClient>, userId: string | null) {
   return queryClient.ensureQueryData({
-    queryKey: demoWorkspaceQueryKey,
+    queryKey: demoWorkspaceQueryKey(userId),
     queryFn: loadWorkspace,
   })
-}
-
-function roleIdByKey(workspace: DemoWorkspace, key: string) {
-  return workspace.roles.find((role) => role.key === key)?.id
 }
 
 export function useAuthSetupStatusQuery() {
@@ -104,6 +193,8 @@ export function useAuthSetupStatusQuery() {
     queryKey: authSetupStatusQueryKey,
     queryFn: () => rpcClient.authSetupStatus(),
     staleTime: 5_000,
+    retry: shouldRetryStartupQuery,
+    retryDelay: getStartupQueryRetryDelay,
   })
 }
 
@@ -139,7 +230,7 @@ export function useDemoWorkspaceQuery() {
   const sessionQuery = useSessionQuery()
 
   return useQuery({
-    queryKey: demoWorkspaceQueryKey,
+    queryKey: demoWorkspaceQueryKey(sessionQuery.data?.user?.id ?? null),
     queryFn: loadWorkspace,
     enabled: Boolean(sessionQuery.data?.user),
   })
@@ -155,18 +246,334 @@ export function useDemoSignOutMutation() {
   return useMutation({
     mutationKey: ["phase1", "sign-out"],
     mutationFn: async () => {
+      if (isDesktopRuntime()) {
+        await signOutDesktopSession()
+        return
+      }
+
       await authClient.signOut()
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: orpc.session.key() })
-      await queryClient.removeQueries({ queryKey: demoWorkspaceQueryKey })
+      await queryClient.removeQueries({ queryKey: workspaceQueryPrefix })
       showSuccessToast(i18n.t("toasts.signOutSuccess"))
+    },
+  })
+}
+
+export function useUpdateAccountSettingsMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["auth", "account", "update"],
+    mutationFn: async (input: {
+      currentPassword?: string
+      name?: string
+      newPassword?: string
+      phone?: string
+    }) => {
+      const name = input.name?.trim() || undefined
+      const phone = input.phone?.trim() || undefined
+      const currentPassword = input.currentPassword?.trim() || undefined
+      const newPassword = input.newPassword?.trim() || undefined
+
+      if (!name && !phone && !currentPassword && !newPassword) {
+        throw new Error(i18n.t("toasts.accountNoChanges"))
+      }
+
+      if (phone) {
+        const phoneResult = algerianPhoneSchema.safeParse(phone)
+        if (!phoneResult.success) {
+          throw new Error(i18n.t("auth.validation.phoneFormat"))
+        }
+      }
+
+      if (currentPassword || newPassword) {
+        if (!currentPassword) {
+          throw new Error(i18n.t("toasts.accountPasswordCurrentRequired"))
+        }
+
+        if (!newPassword) {
+          throw new Error(i18n.t("toasts.accountPasswordNewRequired"))
+        }
+
+        if (newPassword.length < 8 || newPassword.length > 128) {
+          throw new Error(i18n.t("auth.validation.passwordShort"))
+        }
+      }
+
+      if (name || phone) {
+        await updateCurrentProfile({ currentPassword, name, phone })
+      }
+
+      if (currentPassword && newPassword) {
+        await changeCurrentPassword({
+          currentPassword,
+          newPassword,
+          revokeOtherSessions: false,
+        })
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: orpc.session.key() })
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(i18n.t("toasts.accountUpdated"))
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useCreateEmployeesBatchMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "employees", "create-batch"],
+    mutationFn: async (input: EmployeeBatchCreateInput): Promise<EmployeeBatchCreateResult> => {
+      const result = await rpcClient.employeesBatchCreate(input)
+      const success = requireEntitySuccess(result)
+
+      return {
+        createdCount: success.item.employees.length,
+      }
+    },
+    onSuccess: async ({ createdCount }) => {
+      if (createdCount > 0) {
+        await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      }
+    },
+  })
+}
+
+export function useUpdateEmployeeMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "employees", "update"],
+    mutationFn: async (input: {
+      id: string
+      firstName?: string
+      lastName?: string
+      phone?: string
+      roleId?: string
+      status?: Employee["status"]
+      salaryAmountDzd?: number | null
+      salaryPeriod?: Employee["salaryPeriod"]
+      notes?: string | null
+    }) => {
+      const result = await rpcClient.employeesUpdate(input)
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useLeaveEmployeeMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "employees", "leave"],
+    mutationFn: async (id: string) => {
+      const result = await rpcClient.employeesUpdate({
+        id,
+        status: "LEFT",
+      })
+
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useDeleteEmployeeMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "employees", "delete"],
+    mutationFn: async (id: string) => {
+      const result = await rpcClient.employeesDelete({ id })
+      return requireDeleteSuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useUpdateProjectMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "projects", "update"],
+    mutationFn: async (input: {
+      id: string
+      name?: string
+      location?: string | null
+      managerId?: string | null
+      status?: Project["status"]
+      notes?: string | null
+    }) => {
+      const result = await rpcClient.projectsUpdate(input)
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useUpdateWarehouseMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "warehouses", "update"],
+    mutationFn: async (input: {
+      id: string
+      name?: string
+      address?: string | null
+      managerId?: string | null
+      status?: Warehouse["status"]
+      notes?: string | null
+    }) => {
+      const result = await rpcClient.warehousesUpdate(input)
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useUpdateEmployeeWorkplaceMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "employees", "workplace"],
+    mutationFn: async (input: {
+      employeeId: string
+      managerId?: string | null
+      nextType: "NONE" | "PROJECT" | "WAREHOUSE"
+      projectId?: string | null
+      warehouseId?: string | null
+    }) => {
+      return requireDeleteSuccess(
+        await rpcClient.employeesAssignWorkplace({
+          employeeId: input.employeeId,
+          managerId: input.managerId ?? null,
+          nextType: input.nextType,
+          projectId: input.projectId ?? null,
+          warehouseId: input.warehouseId ?? null,
+        }),
+      )
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useSyncManagedProjectsMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "employees", "managed-projects"],
+    mutationFn: async (input: { currentIds: string[]; employeeId: string; nextIds: string[] }) => {
+      return requireDeleteSuccess(
+        await rpcClient.employeesSyncManagedProjects({
+          employeeId: input.employeeId,
+          projectIds: input.nextIds,
+        }),
+      )
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useSyncManagedWarehousesMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "employees", "managed-warehouses"],
+    mutationFn: async (input: { currentIds: string[]; employeeId: string; nextIds: string[] }) => {
+      return requireDeleteSuccess(
+        await rpcClient.employeesSyncManagedWarehouses({
+          employeeId: input.employeeId,
+          warehouseIds: input.nextIds,
+        }),
+      )
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useCreateSalaryPaymentMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "salary-payments", "create"],
+    mutationFn: async (input: {
+      employeeId: string
+      actualAmountDzd: number
+      paymentDate?: string
+      note?: string | null
+    }) => {
+      const result = await rpcClient.salaryPaymentsCreate(input)
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
     },
   })
 }
 
 export function useAddWorkspaceRecordMutation() {
   const queryClient = useQueryClient()
+  const sessionQuery = useSessionQuery()
 
   return useMutation({
     mutationKey: ["phase1", "workspace", "add"],
@@ -175,8 +582,11 @@ export function useAddWorkspaceRecordMutation() {
         return { message: i18n.t("toasts.settingsSynced"), section }
       }
 
-      const workspace = await ensureWorkspace(queryClient)
-      const timestamp = new Date().toISOString()
+      const workspace = await ensureWorkspace(queryClient, sessionQuery.data?.user?.id ?? null)
+
+      if (section === "employees") {
+        throw new Error(i18n.t("toasts.addWorkerError"))
+      }
 
       if (section === "roles") {
         const sequence = nextSequence(workspace.roles.map((role) => role.id), "role-custom-")
@@ -217,56 +627,10 @@ export function useAddWorkspaceRecordMutation() {
         return { message: success.message, section }
       }
 
-      const workerRoleId = roleIdByKey(workspace, "worker")
-      if (!workerRoleId) {
-        throw new Error(i18n.t("toasts.missingWorkerRole"))
-      }
-
-      const sequence = workspace.employees.length + 1
-      const employeeResult = await rpcClient.employeesCreate({
-        firstName: i18n.t("mockData.employeeFirstName"),
-        lastName: i18n.t("mockData.employeeLastName", { count: sequence }),
-        phone: `05${(10000000 + sequence).toString().slice(-8)}`,
-        roleId: workerRoleId,
-        status: "ACTIVE",
-        notes: i18n.t("mockData.employeeNotes"),
-      })
-      const employee = requireEntitySuccess(employeeResult).item
-
-      const projectManagerRoleId = roleIdByKey(workspace, "project_manager")
-      const manager = workspace.employees.find(
-        (item) => item.roleId === projectManagerRoleId && item.status === "ACTIVE",
-      )
-      const project = workspace.projects.find(
-        (item) => item.status === "ACTIVE" && item.managerId === manager?.id,
-      )
-
-      if (manager) {
-        const managerAssignment = await rpcClient.managerAssignmentsCreate({
-          workerId: employee.id,
-          managerId: manager.id,
-          status: "ACTIVE",
-          startDate: timestamp,
-          notes: i18n.t("mockData.managerAssignmentNotes"),
-        })
-        requireEntitySuccess(managerAssignment)
-      }
-
-      if (project) {
-        const projectAssignment = await rpcClient.projectAssignmentsCreate({
-          employeeId: employee.id,
-          projectId: project.id,
-          status: "ACTIVE",
-          startDate: timestamp,
-          notes: i18n.t("mockData.projectAssignmentNotes"),
-        })
-        requireEntitySuccess(projectAssignment)
-      }
-
-      return { message: i18n.t("mockData.employeeCreated"), section }
+      throw new Error(i18n.t("toasts.addError"))
     },
     onSuccess: async ({ message }) => {
-      await queryClient.invalidateQueries({ queryKey: demoWorkspaceQueryKey })
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -309,7 +673,7 @@ export function useRemoveWorkspaceRecordMutation() {
       return { success: true as const, message: requireEntitySuccess(result).message }
     },
     onSuccess: async ({ message }) => {
-      await queryClient.invalidateQueries({ queryKey: demoWorkspaceQueryKey })
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -324,7 +688,7 @@ export function useResetWorkspaceMutation() {
   return useMutation({
     mutationKey: ["phase1", "workspace", "reset"],
     mutationFn: async () => {
-      await queryClient.invalidateQueries({ queryKey: demoWorkspaceQueryKey })
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
       return { success: true as const }
     },
     onSuccess: () => {

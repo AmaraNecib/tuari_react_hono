@@ -18,6 +18,12 @@ describe("CompanyService", () => {
     return harness;
   };
 
+  const createAuditContext = (overrides?: Partial<{ actorLabel: string; actorUserId: string; transactionId: string }>) => ({
+    actorLabel: overrides?.actorLabel ?? "مدير التشغيل",
+    actorUserId: overrides?.actorUserId ?? "admin-user-1",
+    transactionId: overrides?.transactionId ?? crypto.randomUUID(),
+  })
+
   it("protects system roles from deletion", () => {
     const { service, roleIds } = createHarness();
 
@@ -37,6 +43,733 @@ describe("CompanyService", () => {
       }),
     ).toThrowError(CompanyError);
   });
+
+  it("creates employee batches atomically with manager assignments", () => {
+    const { repository, service, roleIds } = createHarness();
+    const manager = service.createEmployee({
+      firstName: "Mourad",
+      lastName: "Saadi",
+      phone: "0612345609",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const project = service.createProject({
+      name: "North Site",
+      managerId: manager.id,
+      status: "ACTIVE",
+    }).item;
+
+    const result = service.createEmployeesBatch({
+      employees: [
+        {
+          firstName: "Nora",
+          lastName: "Kaci",
+          phone: "0612345614",
+          roleId: roleIds.worker,
+          status: "ACTIVE",
+          managerId: manager.id,
+          projectId: project.id,
+        },
+        {
+          firstName: "Rania",
+          lastName: "Bouzid",
+          phone: "0612345615",
+          roleId: roleIds.warehouseManager,
+          status: "ACTIVE",
+        },
+      ],
+    });
+
+    expect(result.item.employees).toHaveLength(2);
+    expect(result.item.managerAssignments).toHaveLength(1);
+    expect(result.item.projectAssignments).toHaveLength(1);
+    expect(result.item.managerAssignments[0]?.managerId).toBe(manager.id);
+    expect(service.listEmployees().items).toHaveLength(3);
+  });
+
+  it("rolls back the full employee batch when any row is invalid", () => {
+    const { service, roleIds } = createHarness();
+    const manager = service.createEmployee({
+      firstName: "Mourad",
+      lastName: "Saadi",
+      phone: "0612345616",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const project = service.createProject({
+      name: "North Site",
+      managerId: manager.id,
+      status: "ACTIVE",
+    }).item;
+
+    expect(() =>
+      service.createEmployeesBatch({
+        employees: [
+          {
+            firstName: "Nora",
+            lastName: "Kaci",
+            phone: "0612345617",
+            roleId: roleIds.worker,
+            status: "ACTIVE",
+            managerId: manager.id,
+            projectId: project.id,
+          },
+          {
+            firstName: "Rania",
+            lastName: "Bouzid",
+            phone: "0612345616",
+            roleId: roleIds.worker,
+            status: "ACTIVE",
+          },
+        ],
+      }),
+    ).toThrowError(CompanyError);
+
+    expect(service.listEmployees().items.map((employee) => employee.phone)).toEqual(["0612345616"]);
+  });
+
+  it("deletes an employee and clears related links", () => {
+    const { service, roleIds } = createHarness();
+    const worker = service.createEmployee({
+      firstName: "Nora",
+      lastName: "Kaci",
+      phone: "0612345624",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item;
+
+    expect(service.deleteEmployee(worker.id).success).toBe(true);
+    expect(service.listEmployees().items.map((employee) => employee.id)).not.toContain(worker.id);
+  });
+
+  it("rejects deleting an employee that already has work history", () => {
+    const { service, roleIds } = createHarness();
+    const manager = service.createEmployee({
+      firstName: "Mourad",
+      lastName: "Saadi",
+      phone: "0612345623",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const worker = service.createEmployee({
+      firstName: "Nora",
+      lastName: "Kaci",
+      phone: "0612345627",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item;
+    const project = service.createProject({
+      name: "North Site",
+      managerId: manager.id,
+      status: "ACTIVE",
+    }).item;
+
+    service.createManagerAssignment({
+      workerId: worker.id,
+      managerId: manager.id,
+      status: "ACTIVE",
+    });
+    service.createProjectAssignment({
+      employeeId: worker.id,
+      projectId: project.id,
+      status: "ACTIVE",
+    });
+
+    expect(() => service.deleteEmployee(worker.id)).toThrowError(CompanyError);
+  });
+
+  it("creates and ends warehouse assignments", () => {
+    const { service, roleIds } = createHarness();
+    const warehouseWorker = service.createEmployee({
+      firstName: "Yara",
+      lastName: "Toumi",
+      phone: "0612345630",
+      roleId: roleIds.warehouseManager,
+      status: "ACTIVE",
+    }).item;
+    const warehouse = service.createWarehouse({
+      name: "Central Warehouse",
+      status: "ACTIVE",
+      managerId: null,
+    }).item;
+
+    const assignment = service.createWarehouseAssignment({
+      employeeId: warehouseWorker.id,
+      warehouseId: warehouse.id,
+      status: "ACTIVE",
+    });
+
+    expect(assignment.item.warehouseId).toBe(warehouse.id);
+    expect(service.listWarehouseAssignments().items).toHaveLength(1);
+
+    const ended = service.endWarehouseAssignment({ id: assignment.item.id });
+    expect(ended.item.status).toBe("ENDED");
+  });
+
+  it("reassigns workplace atomically between projects under the same manager", () => {
+    const { service, roleIds } = createHarness();
+    const manager = service.createEmployee({
+      firstName: "Mourad",
+      lastName: "Saadi",
+      phone: "0612345632",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const worker = service.createEmployee({
+      firstName: "Yara",
+      lastName: "Toumi",
+      phone: "0612345636",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item;
+    const projectA = service.createProject({ name: "A", status: "ACTIVE", managerId: manager.id }).item;
+    const projectB = service.createProject({ name: "B", status: "ACTIVE", managerId: manager.id }).item;
+
+    service.assignEmployeeWorkplace({
+      employeeId: worker.id,
+      nextType: "PROJECT",
+      managerId: manager.id,
+      projectId: projectA.id,
+    });
+    service.assignEmployeeWorkplace({
+      employeeId: worker.id,
+      nextType: "PROJECT",
+      managerId: manager.id,
+      projectId: projectB.id,
+    });
+
+    const assignments = service.listProjectAssignments({ employeeId: worker.id }).items;
+    expect(assignments.filter((assignment) => assignment.status === "ACTIVE")).toHaveLength(1);
+    expect(assignments.find((assignment) => assignment.status === "ACTIVE")?.projectId).toBe(projectB.id);
+  });
+
+  it("does not write extra workplace rows for a no-op workplace save", () => {
+    const { service, roleIds } = createHarness();
+    const manager = service.createEmployee({
+      firstName: "Mourad",
+      lastName: "Saadi",
+      phone: "0612345634",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const worker = service.createEmployee({
+      firstName: "Yara",
+      lastName: "Toumi",
+      phone: "0612345635",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item;
+    const project = service.createProject({ name: "Same Project", status: "ACTIVE", managerId: manager.id }).item;
+
+    service.assignEmployeeWorkplace({
+      employeeId: worker.id,
+      nextType: "PROJECT",
+      managerId: manager.id,
+      projectId: project.id,
+    });
+    service.assignEmployeeWorkplace({
+      employeeId: worker.id,
+      nextType: "PROJECT",
+      managerId: manager.id,
+      projectId: project.id,
+    });
+
+    expect(service.listManagerAssignments({ workerId: worker.id }).items).toHaveLength(1)
+    expect(service.listProjectAssignments({ employeeId: worker.id }).items).toHaveLength(1)
+    expect(service.listProjectAssignments({ employeeId: worker.id }).items[0]?.status).toBe("ACTIVE")
+  })
+
+  it("rejects archiving a warehouse while active warehouse assignments still point to it", () => {
+    const { service, roleIds } = createHarness();
+    const warehouseWorker = service.createEmployee({
+      firstName: "Yara",
+      lastName: "Toumi",
+      phone: "0612345633",
+      roleId: roleIds.warehouseManager,
+      status: "ACTIVE",
+    }).item;
+    const warehouse = service.createWarehouse({ name: "Central", status: "ACTIVE" }).item;
+
+    service.createWarehouseAssignment({
+      employeeId: warehouseWorker.id,
+      warehouseId: warehouse.id,
+      status: "ACTIVE",
+    });
+
+    expect(() =>
+      service.updateWarehouse({
+        id: warehouse.id,
+        status: "ARCHIVED",
+      }),
+    ).toThrowError(CompanyError);
+  });
+
+  it("rejects archiving a warehouse while it still has an active manager", () => {
+    const { service, roleIds } = createHarness();
+    const manager = service.createEmployee({
+      firstName: "Salim",
+      lastName: "Mebarki",
+      phone: "0612345644",
+      roleId: roleIds.warehouseManager,
+      status: "ACTIVE",
+    }).item;
+    const warehouse = service.createWarehouse({
+      name: "Managed Warehouse",
+      status: "ACTIVE",
+      managerId: manager.id,
+    }).item;
+
+    expect(() =>
+      service.updateWarehouse({
+        id: warehouse.id,
+        status: "ARCHIVED",
+      }),
+    ).toThrowError(CompanyError);
+  });
+
+  it("reassigns active project workers to the new project manager without rewriting project assignment history", () => {
+    const { service, roleIds } = createHarness();
+    const managerA = service.createEmployee({
+      firstName: "Manager",
+      lastName: "One",
+      phone: "0612345645",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const managerB = service.createEmployee({
+      firstName: "Manager",
+      lastName: "Two",
+      phone: "0612345646",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const worker = service.createEmployee({
+      firstName: "Worker",
+      lastName: "Project",
+      phone: "0612345647",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item;
+    const project = service.createProject({
+      name: "Reassign Project",
+      managerId: managerA.id,
+      status: "ACTIVE",
+    }).item;
+
+    service.createManagerAssignment({
+      workerId: worker.id,
+      managerId: managerA.id,
+      status: "ACTIVE",
+    });
+    service.createProjectAssignment({
+      employeeId: worker.id,
+      projectId: project.id,
+      status: "ACTIVE",
+    });
+
+    service.updateProject({ id: project.id, managerId: managerB.id });
+
+    const managerAssignments = service.listManagerAssignments({ workerId: worker.id }).items;
+    const projectAssignments = service.listProjectAssignments({ employeeId: worker.id }).items;
+
+    expect(projectAssignments).toHaveLength(1);
+    expect(projectAssignments[0]?.status).toBe("ACTIVE");
+    expect(projectAssignments[0]?.projectId).toBe(project.id);
+
+    expect(managerAssignments).toHaveLength(2);
+    expect(managerAssignments.filter((assignment) => assignment.status === "ACTIVE")).toHaveLength(1);
+    expect(managerAssignments.find((assignment) => assignment.status === "ACTIVE")?.managerId).toBe(managerB.id);
+    expect(managerAssignments.find((assignment) => assignment.status === "ENDED")?.managerId).toBe(managerA.id);
+  });
+
+  it("rejects removing a project manager while active workers still follow that project", () => {
+    const { service, roleIds } = createHarness();
+    const manager = service.createEmployee({
+      firstName: "Manager",
+      lastName: "Active",
+      phone: "0612345648",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const worker = service.createEmployee({
+      firstName: "Worker",
+      lastName: "Linked",
+      phone: "0612345649",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item;
+    const project = service.createProject({
+      name: "Linked Project",
+      managerId: manager.id,
+      status: "ACTIVE",
+    }).item;
+
+    service.createManagerAssignment({
+      workerId: worker.id,
+      managerId: manager.id,
+      status: "ACTIVE",
+    });
+    service.createProjectAssignment({
+      employeeId: worker.id,
+      projectId: project.id,
+      status: "ACTIVE",
+    });
+
+    expect(() =>
+      service.updateProject({
+        id: project.id,
+        managerId: null,
+      }),
+    ).toThrowError(CompanyError);
+  });
+
+  it("rejects project manager propagation when worker manager links are already inconsistent", () => {
+    const { repository, service, roleIds } = createHarness();
+    const managerA = service.createEmployee({
+      firstName: "Manager",
+      lastName: "Current",
+      phone: "0612345650",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const managerB = service.createEmployee({
+      firstName: "Manager",
+      lastName: "Next",
+      phone: "0612345651",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const unrelatedManager = service.createEmployee({
+      firstName: "Manager",
+      lastName: "Drift",
+      phone: "0612345652",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const worker = service.createEmployee({
+      firstName: "Worker",
+      lastName: "Mismatch",
+      phone: "0612345653",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item;
+    const project = service.createProject({
+      name: "Consistency Guard",
+      managerId: managerA.id,
+      status: "ACTIVE",
+    }).item;
+
+    repository.createManagerAssignment({
+      workerId: worker.id,
+      managerId: unrelatedManager.id,
+      status: "ACTIVE",
+      startDate: new Date().toISOString(),
+    });
+    repository.createProjectAssignment({
+      employeeId: worker.id,
+      projectId: project.id,
+      status: "ACTIVE",
+      startDate: new Date().toISOString(),
+    });
+
+    expect(() =>
+      service.updateProject({
+        id: project.id,
+        managerId: managerB.id,
+      }),
+    ).toThrowError(CompanyError);
+  });
+
+  it("syncs managed projects atomically for a project manager", () => {
+    const { service, roleIds } = createHarness();
+    const manager = service.createEmployee({
+      firstName: "Mourad",
+      lastName: "Saadi",
+      phone: "0612345637",
+      roleId: roleIds.projectManager,
+      status: "ACTIVE",
+    }).item;
+    const projectA = service.createProject({ name: "A", status: "ACTIVE" }).item;
+    const projectB = service.createProject({ name: "B", status: "ACTIVE" }).item;
+
+    service.syncManagedProjects({ employeeId: manager.id, projectIds: [projectA.id, projectB.id] });
+
+    const managed = service.listProjects({ managerId: manager.id }).items.map((project) => project.id);
+    expect(managed).toEqual(expect.arrayContaining([projectA.id, projectB.id]));
+  });
+
+  it("stores actor metadata on salary payments", () => {
+    const { service, roleIds } = createHarness();
+    const audit = createAuditContext()
+    const worker = service.createEmployee(
+      {
+        firstName: "سارة",
+        lastName: "بن صالح",
+        phone: "0612345640",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+        salaryAmountDzd: 6500,
+        salaryPeriod: "DAILY",
+      },
+      audit,
+    ).item;
+
+    const payment = service.createSalaryPayment(
+      {
+        employeeId: worker.id,
+        actualAmountDzd: 6200,
+      },
+      audit,
+    ).item;
+
+    expect(payment.actorUserId).toBe(audit.actorUserId)
+    expect(payment.transactionId).toBe(audit.transactionId)
+  })
+
+  it("stores company timestamps in the Algerian timezone offset", () => {
+    const { service, roleIds } = createHarness()
+
+    const employee = service.createEmployee({
+      firstName: "Aya",
+      lastName: "Merabet",
+      phone: "0612345637",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item
+
+    expect(employee.createdAt.endsWith("+01:00")).toBe(true)
+    expect(employee.updatedAt.endsWith("+01:00")).toBe(true)
+  })
+
+  it("groups system log rows by transaction id", () => {
+    const { database, service, roleIds } = createHarness();
+    const audit = createAuditContext({ actorUserId: "admin-user-1", transactionId: crypto.randomUUID() })
+    const timestamp = new Date().toISOString()
+
+    database
+      .prepare('INSERT INTO "user" (id, name, image, phoneNumber, phoneNumberVerified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(audit.actorUserId, "Admin One", null, "0612345659", 1, timestamp, timestamp)
+
+    const manager = service.createEmployee(
+      {
+        firstName: "Manager",
+        lastName: "Grouped",
+        phone: "0612345660",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      },
+      audit,
+    ).item;
+    const worker = service.createEmployee(
+      {
+        firstName: "Worker",
+        lastName: "Grouped",
+        phone: "0612345661",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      },
+      audit,
+    ).item;
+    const project = service.createProject(
+      {
+        name: "Grouped Project",
+        managerId: manager.id,
+        status: "ACTIVE",
+      },
+      audit,
+    ).item;
+
+    service.assignEmployeeWorkplace(
+      {
+        employeeId: worker.id,
+        nextType: "PROJECT",
+        managerId: manager.id,
+        projectId: project.id,
+      },
+      audit,
+    )
+
+    const logs = service.listSystemLog({ actorUserId: audit.actorUserId }).items
+
+    expect(logs[0]).toMatchObject({
+      actorLabel: "مدير التشغيل",
+      actionType: "PROJECT_MANAGER_CHANGED",
+    })
+    expect(logs[0]?.detail).toContain("تم ربط العامل Worker Grouped بالمدير Manager Grouped")
+    expect(logs.some((entry) => entry.transactionId === audit.transactionId)).toBe(true)
+  })
+
+  it("lists account profile updates in the system log", () => {
+    const { database, service } = createHarness()
+    const userId = "admin-user-1"
+    const timestamp = new Date().toISOString()
+
+    database
+      .prepare('INSERT INTO "user" (id, name, image, phoneNumber, phoneNumberVerified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(userId, "الاسم الجديد", null, "0612345659", 1, timestamp, timestamp)
+
+    database
+      .prepare('INSERT INTO "user_profile_history" (id, user_id, name, phone, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run("profile-log-1", userId, "الاسم الجديد", "0612345659", userId, "الاسم الجديد", crypto.randomUUID(), timestamp, timestamp)
+
+    const logs = service.listSystemLog({ actorUserId: userId }).items
+
+    expect(logs[0]).toMatchObject({
+      actionType: "ACCOUNT_UPDATED",
+      entityType: "ACCOUNT",
+      actorLabel: "الاسم الجديد",
+    })
+  })
+
+  it("translates employee status labels inside system log details", () => {
+    const { service, roleIds } = createHarness()
+
+    service.createEmployee({
+      firstName: "علي",
+      lastName: "أحمد",
+      phone: "0612345602",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    })
+
+    const logs = service.listSystemLog({ actionType: "EMPLOYEE_CREATED" }).items
+
+    expect(logs[0]?.detail).toContain("نشط")
+    expect(logs[0]?.detail).not.toContain("ACTIVE")
+  })
+
+  it("keeps the original actor label snapshot after the user renames the account", () => {
+    const { database, service, roleIds } = createHarness()
+    const audit = createAuditContext({ actorUserId: "admin-user-1", actorLabel: "الاسم القديم" })
+
+    service.createEmployee({
+      firstName: "علي",
+      lastName: "أحمد",
+      phone: "0612345611",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }, audit)
+
+    database
+      .prepare('UPDATE "user" SET name = ? WHERE id = ?')
+      .run("الاسم الجديد", "admin-user-1")
+
+    const logs = service.listSystemLog({ actionType: "EMPLOYEE_CREATED" }).items
+
+    expect(logs[0]?.actorLabel).toBe("الاسم القديم")
+  })
+
+  it("orders system log rows from newest to oldest by real timestamp", () => {
+    const { database, service } = createHarness()
+    const userId = "admin-user-1"
+
+    database
+      .prepare('INSERT INTO "user" (id, name, image, phoneNumber, phoneNumberVerified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(userId, "عمارة", null, "0612345658", 1, "2026-03-18T01:00:00.000Z", "2026-03-18T01:00:00.000Z")
+
+    database
+      .prepare('INSERT INTO "user_profile_history" (id, user_id, name, phone, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run("profile-log-older", userId, "عمارة", "0612345658", userId, "عمارة", crypto.randomUUID(), "2026-03-18T01:15:00.000Z", "2026-03-18T01:15:00.000Z")
+
+    database
+      .prepare('INSERT INTO "user_profile_history" (id, user_id, name, phone, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run("profile-log-newer", userId, "بلال", "0612345658", userId, "بلال", crypto.randomUUID(), "2026-03-18T02:16:00+01:00", "2026-03-18T02:16:00+01:00")
+
+    const logs = service.listSystemLog({ actionType: "ACCOUNT_UPDATED" }).items
+
+    expect(logs[0]?.entityLabel).toBe("بلال")
+    expect(logs[1]?.entityLabel).toBe("عمارة")
+  })
+
+  it("closes and reopens project manager ownership history with one transaction id", () => {
+    const { service, roleIds } = createHarness();
+    const auditA = createAuditContext({ actorUserId: "admin-a" })
+    const auditB = createAuditContext({ actorUserId: "admin-b" })
+    const managerA = service.createEmployee(
+      {
+        firstName: "Ali",
+        lastName: "Bensaid",
+        phone: "0612345641",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      },
+      auditA,
+    ).item;
+    const managerB = service.createEmployee(
+      {
+        firstName: "Lina",
+        lastName: "Saidi",
+        phone: "0612345642",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      },
+      auditA,
+    ).item;
+    const project = service.createProject(
+      {
+        name: "مشروع التاريخ",
+        managerId: managerA.id,
+        status: "ACTIVE",
+      },
+      auditA,
+    ).item;
+
+    service.updateProject({ id: project.id, managerId: managerB.id }, auditB)
+
+    const history = service.listProjectManagerOwnershipHistory({ projectId: project.id }).items
+    expect(history).toHaveLength(2)
+
+    const activeEntry = history.find((entry) => entry.endDate === null)
+    const endedEntry = history.find((entry) => entry.endDate !== null)
+
+    expect(activeEntry).toMatchObject({
+      managerId: managerB.id,
+      actorUserId: auditB.actorUserId,
+      transactionId: auditB.transactionId,
+    })
+    expect(endedEntry).toMatchObject({
+      managerId: managerA.id,
+      actorUserId: auditB.actorUserId,
+      transactionId: auditB.transactionId,
+      endDate: activeEntry?.startDate,
+    })
+  })
+
+  it("keeps warehouse ownership history exact when syncing managers", () => {
+    const { service, roleIds } = createHarness();
+    const createAudit = createAuditContext({ actorUserId: "admin-setup" })
+    const syncAudit = createAuditContext({ actorUserId: "admin-sync" })
+    const manager = service.createEmployee(
+      {
+        firstName: "Yasmine",
+        lastName: "Touati",
+        phone: "0612345643",
+        roleId: roleIds.warehouseManager,
+        status: "ACTIVE",
+      },
+      createAudit,
+    ).item;
+    const warehouse = service.createWarehouse(
+      {
+        name: "Warehouse One",
+        status: "ACTIVE",
+      },
+      createAudit,
+    ).item;
+
+    service.syncManagedWarehouses({ employeeId: manager.id, warehouseIds: [warehouse.id] }, syncAudit)
+    service.syncManagedWarehouses({ employeeId: manager.id, warehouseIds: [] }, syncAudit)
+
+    const history = service.listWarehouseManagerOwnershipHistory({ warehouseId: warehouse.id }).items
+    expect(history).toHaveLength(1)
+    expect(history[0]).toMatchObject({
+      managerId: manager.id,
+      actorUserId: syncAudit.actorUserId,
+      transactionId: syncAudit.transactionId,
+      status: "ENDED",
+    })
+    expect(history[0]?.endDate).not.toBeNull()
+  })
 
   it("rejects more than one active manager assignment per worker", () => {
     const { service, roleIds } = createHarness();
@@ -261,5 +994,45 @@ describe("CompanyService", () => {
         status: "ACTIVE",
       }).item.managerId,
     ).toBeNull();
+  });
+
+  it("enforces status values with database CHECK constraints", () => {
+    const { database, roleIds } = createHarness();
+    const timestamp = new Date().toISOString();
+
+    expect(() =>
+      database
+        .prepare(
+          'INSERT INTO "employee" (id, first_name, last_name, phone, role_id, status, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          crypto.randomUUID(),
+          "Bad",
+          "Status",
+          "0612345618",
+          roleIds.worker,
+          "UNKNOWN",
+          null,
+          timestamp,
+          timestamp,
+        ),
+    ).toThrowError();
+
+    expect(() =>
+      database
+        .prepare(
+          'INSERT INTO "project" (id, name, location, manager_id, status, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          crypto.randomUUID(),
+          "Invalid Project",
+          null,
+          null,
+          "UNKNOWN",
+          null,
+          timestamp,
+          timestamp,
+        ),
+    ).toThrowError();
   });
 });

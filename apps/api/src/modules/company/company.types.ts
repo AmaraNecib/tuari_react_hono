@@ -2,9 +2,15 @@ import type {
   Employee,
   EmployeeManagerAssignment,
   EmployeeProjectAssignment,
+  EmployeeSalaryPayment,
+  EmployeeStateHistory,
+  EmployeeWarehouseAssignment,
   Project,
+  ProjectManagerOwnershipHistory,
   Role,
+  SystemLogEntry,
   Warehouse,
+  WarehouseManagerOwnershipHistory,
 } from "@tuari/contracts";
 
 export type EmployeeStatus = Employee["status"];
@@ -16,8 +22,42 @@ export type RoleRecord = Role;
 export type EmployeeRecord = Employee;
 export type ProjectRecord = Project;
 export type WarehouseRecord = Warehouse;
-export type EmployeeManagerAssignmentRecord = EmployeeManagerAssignment;
-export type EmployeeProjectAssignmentRecord = EmployeeProjectAssignment;
+type AuditSnapshot = {
+  actorLabel?: string | null;
+};
+
+export type EmployeeManagerAssignmentRecord = EmployeeManagerAssignment & AuditSnapshot;
+export type EmployeeProjectAssignmentRecord = EmployeeProjectAssignment & AuditSnapshot;
+export type EmployeeWarehouseAssignmentRecord = EmployeeWarehouseAssignment & AuditSnapshot;
+export type EmployeeStateHistoryRecord = EmployeeStateHistory & AuditSnapshot;
+export type ProjectManagerOwnershipHistoryRecord = ProjectManagerOwnershipHistory & AuditSnapshot;
+export type WarehouseManagerOwnershipHistoryRecord = WarehouseManagerOwnershipHistory & AuditSnapshot;
+export type EmployeeSalaryPaymentRecord = EmployeeSalaryPayment & AuditSnapshot;
+export type SystemLogEntryRecord = SystemLogEntry;
+
+export type AuthUserDisplayRecord = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+};
+
+export type UserProfileHistoryRecord = {
+  id: string;
+  userId: string;
+  name: string | null;
+  phone: string | null;
+  actorUserId: string | null;
+  actorLabel: string | null;
+  transactionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MutationAuditContext = {
+  actorUserId?: string | null;
+  actorLabel?: string | null;
+  transactionId?: string | null;
+};
 
 export type RoleCreateData = {
   key: string;
@@ -38,7 +78,20 @@ export type EmployeeCreateData = {
   phone: string;
   roleId: string;
   status: EmployeeStatus;
+  salaryAmountDzd?: number | null;
+  salaryPeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null;
   notes?: string | null;
+};
+
+export type EmployeeBatchCreateData = EmployeeCreateData & {
+  managerId?: string | null;
+  projectId?: string | null;
+};
+
+export type EmployeeBatchCreateResultRecord = {
+  employees: EmployeeRecord[];
+  managerAssignments: EmployeeManagerAssignmentRecord[];
+  projectAssignments: EmployeeProjectAssignmentRecord[];
 };
 
 export type EmployeeUpdateData = {
@@ -48,6 +101,8 @@ export type EmployeeUpdateData = {
   phone?: string;
   roleId?: string;
   status?: EmployeeStatus;
+  salaryAmountDzd?: number | null;
+  salaryPeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null;
   notes?: string | null;
 };
 
@@ -64,6 +119,7 @@ export type ProjectUpdateData = {
   name?: string;
   location?: string | null;
   managerId?: string | null;
+  reassignWorkerIds?: string[];
   status?: ProjectStatus;
   notes?: string | null;
 };
@@ -115,6 +171,49 @@ export type ProjectAssignmentEndData = {
   notes?: string | null;
 };
 
+export type EmployeeWorkplaceAssignmentData = {
+  employeeId: string;
+  nextType: "NONE" | "PROJECT" | "WAREHOUSE";
+  managerId?: string | null;
+  projectId?: string | null;
+  warehouseId?: string | null;
+  notes?: string | null;
+};
+
+export type EmployeeManagedProjectsSyncData = {
+  employeeId: string;
+  projectIds: string[];
+};
+
+export type EmployeeManagedWarehousesSyncData = {
+  employeeId: string;
+  warehouseIds: string[];
+};
+
+export type WarehouseAssignmentCreateData = {
+  employeeId: string;
+  warehouseId: string;
+  status: AssignmentStatus;
+  startDate: string;
+  endDate?: string | null;
+  notes?: string | null;
+};
+
+export type WarehouseAssignmentEndData = {
+  id: string;
+  endDate: string;
+  notes?: string | null;
+};
+
+export type EmployeeSalaryPaymentCreateData = {
+  employeeId: string;
+  periodType: "DAILY" | "WEEKLY" | "MONTHLY";
+  expectedAmountDzd: number;
+  actualAmountDzd: number;
+  paymentDate: string;
+  note?: string | null;
+};
+
 export type EmployeeListFilters = {
   roleId?: string;
   status?: EmployeeStatus;
@@ -140,6 +239,39 @@ export type ProjectAssignmentListFilters = {
   employeeId?: string;
   projectId?: string;
   status?: AssignmentStatus;
+};
+
+export type WarehouseAssignmentListFilters = {
+  employeeId?: string;
+  warehouseId?: string;
+  status?: AssignmentStatus;
+};
+
+export type EmployeeStateHistoryListFilters = {
+  employeeId?: string;
+};
+
+export type ProjectManagerOwnershipHistoryListFilters = {
+  managerId?: string;
+  projectId?: string;
+};
+
+export type WarehouseManagerOwnershipHistoryListFilters = {
+  managerId?: string;
+  warehouseId?: string;
+};
+
+export type EmployeeSalaryPaymentListFilters = {
+  employeeId?: string;
+};
+
+export type SystemLogListFilters = {
+  actionType?: SystemLogEntryRecord["actionType"];
+  actorUserId?: string;
+  entityId?: string;
+  entityType?: SystemLogEntryRecord["entityType"];
+  fromDate?: string;
+  toDate?: string;
 };
 
 export const SYSTEM_ROLE_KEYS = {
