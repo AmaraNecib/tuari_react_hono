@@ -90,8 +90,9 @@ export class AuthBootstrapService {
         const userId = crypto.randomUUID()
 
         await tx.$executeRawUnsafe(
-          'INSERT INTO "app_bootstrap_state" ("singleton", "created_at") VALUES (1, ?)',
+          'INSERT INTO "app_bootstrap_state" ("singleton", "created_at", "user_id") VALUES (1, ?, ?)',
           timestamp.toISOString(),
+          userId,
         )
 
         const user = await tx.user.create({
@@ -134,6 +135,23 @@ export class AuthBootstrapService {
 
       throw error
     }
+  }
+
+  async isBootstrapOwner(userId: string): Promise<boolean> {
+    const [stateRow] = await this.prisma.$queryRawUnsafe<Array<{ user_id: string | null }>>(
+      'SELECT "user_id" FROM "app_bootstrap_state" WHERE "singleton" = 1 LIMIT 1',
+    )
+
+    if (stateRow?.user_id) {
+      return stateRow.user_id === userId
+    }
+
+    const firstUser = await this.prisma.user.findFirst({
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    })
+
+    return firstUser?.id === userId
   }
 
   private async hasConfiguredUsers(db: Pick<RawQueryClient, "$queryRawUnsafe">): Promise<boolean> {

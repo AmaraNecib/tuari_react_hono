@@ -1,5 +1,6 @@
 export type RuntimeConfig = {
   apiBaseUrl: string;
+  appClientKey: string;
 };
 
 export type RuntimeStatus = {

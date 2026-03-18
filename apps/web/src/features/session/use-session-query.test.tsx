@@ -4,6 +4,7 @@ import { renderHook } from "@testing-library/react"
 import { useQuery } from "@tanstack/react-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"
 import { orpc } from "@/lib/orpc-client"
 import { useSessionQuery } from "./use-session-query"
 
@@ -46,6 +47,10 @@ describe("useSessionQuery", () => {
     renderHook(() => useSessionQuery())
 
     expect(orpc.session.queryOptions).toHaveBeenCalledTimes(1)
-    expect(useQuery).toHaveBeenCalledWith(queryOptions)
+    expect(useQuery).toHaveBeenCalledWith({
+      ...queryOptions,
+      retry: shouldRetryStartupQuery,
+      retryDelay: getStartupQueryRetryDelay,
+    })
   })
 })

@@ -3,19 +3,13 @@ import { RPCLink } from "@orpc/client/fetch"
 import { createTanstackQueryUtils } from "@orpc/tanstack-query"
 import type { AppClient } from "@tuari/contracts"
 
-const DEFAULT_API_URL = "http://127.0.0.1:4318"
-
-export function resolveApiBaseUrl() {
-  return import.meta.env.VITE_API_URL?.trim() || DEFAULT_API_URL
-}
-
-export function resolveAppClientKey() {
-  return import.meta.env.VITE_APP_CLIENT_KEY?.trim() || ""
-}
+import { createDesktopAuthorizationHeader } from "@/lib/desktop-auth-session"
+import { resolveApiBaseUrl, resolveAppClientKey } from "@/lib/runtime-config"
 
 export function createRpcHeaders() {
   return {
     "x-tuari-client-key": resolveAppClientKey(),
+    ...createDesktopAuthorizationHeader(),
   }
 }
 

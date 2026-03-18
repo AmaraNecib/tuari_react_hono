@@ -4,6 +4,8 @@ import { z } from "zod";
 export const entityIdSchema = z.string().min(1);
 export const timestampSchema = z.string().datetime({ offset: true });
 export const nullableTextSchema = z.string().trim().min(1).nullable();
+export const auditActorUserIdSchema = entityIdSchema.nullable();
+export const auditTransactionIdSchema = z.string().uuid().nullable();
 
 export const algerianPhoneSchema = z.string().trim().regex(/^(05|06|07)\d{8}$/);
 
@@ -68,6 +70,7 @@ const createDeleteResultSchema = z.union([
 ]);
 
 export const employeeStatusSchema = z.enum(["ACTIVE", "INACTIVE", "LEFT"]);
+export const salaryPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
 export const projectStatusSchema = z.enum([
   "ACTIVE",
   "STOPPED",
@@ -76,6 +79,7 @@ export const projectStatusSchema = z.enum([
 ]);
 export const warehouseStatusSchema = z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]);
 export const assignmentStatusSchema = z.enum(["ACTIVE", "ENDED", "ARCHIVED"]);
+export const employeeBatchLimit = 24;
 
 export const roleKeySchema = z
   .string()
@@ -101,6 +105,8 @@ export const employeeSchema = z.object({
   phone: algerianPhoneSchema,
   roleId: entityIdSchema,
   status: employeeStatusSchema,
+  salaryAmountDzd: z.number().nonnegative().nullable(),
+  salaryPeriod: salaryPeriodSchema.nullable(),
   notes: nullableTextSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
@@ -114,6 +120,8 @@ export const employeeManagerAssignmentSchema = z.object({
   startDate: timestampSchema,
   endDate: timestampSchema.nullable(),
   notes: nullableTextSchema,
+  actorUserId: auditActorUserIdSchema,
+  transactionId: auditTransactionIdSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
@@ -126,9 +134,119 @@ export const employeeProjectAssignmentSchema = z.object({
   startDate: timestampSchema,
   endDate: timestampSchema.nullable(),
   notes: nullableTextSchema,
+  actorUserId: auditActorUserIdSchema,
+  transactionId: auditTransactionIdSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
+
+export const employeeWarehouseAssignmentSchema = z.object({
+  id: entityIdSchema,
+  employeeId: entityIdSchema,
+  warehouseId: entityIdSchema,
+  status: assignmentStatusSchema,
+  startDate: timestampSchema,
+  endDate: timestampSchema.nullable(),
+  notes: nullableTextSchema,
+  actorUserId: auditActorUserIdSchema,
+  transactionId: auditTransactionIdSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const employeeStateHistorySchema = z.object({
+  id: entityIdSchema,
+  employeeId: entityIdSchema,
+  roleId: entityIdSchema,
+  status: z.string(),
+  salaryAmountDzd: z.number().nullable(),
+  salaryPeriod: salaryPeriodSchema.nullable(),
+  eventType: z.string(),
+  startDate: timestampSchema,
+  endDate: timestampSchema.nullable(),
+  notes: nullableTextSchema,
+  actorUserId: auditActorUserIdSchema,
+  transactionId: auditTransactionIdSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const projectManagerOwnershipHistorySchema = z.object({
+  id: entityIdSchema,
+  projectId: entityIdSchema,
+  managerId: entityIdSchema,
+  status: z.string(),
+  startDate: timestampSchema,
+  endDate: timestampSchema.nullable(),
+  notes: nullableTextSchema,
+  actorUserId: auditActorUserIdSchema,
+  transactionId: auditTransactionIdSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const warehouseManagerOwnershipHistorySchema = z.object({
+  id: entityIdSchema,
+  warehouseId: entityIdSchema,
+  managerId: entityIdSchema,
+  status: z.string(),
+  startDate: timestampSchema,
+  endDate: timestampSchema.nullable(),
+  notes: nullableTextSchema,
+  actorUserId: auditActorUserIdSchema,
+  transactionId: auditTransactionIdSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const employeeSalaryPaymentSchema = z.object({
+  id: entityIdSchema,
+  employeeId: entityIdSchema,
+  periodType: salaryPeriodSchema,
+  expectedAmountDzd: z.number().nonnegative(),
+  actualAmountDzd: z.number().nonnegative(),
+  paymentDate: timestampSchema,
+  note: nullableTextSchema,
+  actorUserId: auditActorUserIdSchema,
+  transactionId: auditTransactionIdSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const systemLogActionTypeSchema = z.enum([
+  "ACCOUNT_UPDATED",
+  "EMPLOYEE_CREATED",
+  "EMPLOYEE_UPDATED",
+  "WORKPLACE_ASSIGNED",
+  "PROJECT_MANAGER_CHANGED",
+  "WAREHOUSE_MANAGER_CHANGED",
+  "SALARY_PAYMENT_RECORDED",
+])
+
+export const systemLogEntityTypeSchema = z.enum([
+  "ACCOUNT",
+  "EMPLOYEE",
+  "PROJECT",
+  "WAREHOUSE",
+  "MANAGER_ASSIGNMENT",
+  "PROJECT_ASSIGNMENT",
+  "WAREHOUSE_ASSIGNMENT",
+  "SALARY_PAYMENT",
+])
+
+export const systemLogEntrySchema = z.object({
+  id: entityIdSchema,
+  transactionId: auditTransactionIdSchema,
+  actorUserId: auditActorUserIdSchema,
+  actorLabel: nullableTextSchema,
+  actionType: systemLogActionTypeSchema,
+  entityType: systemLogEntityTypeSchema,
+  entityId: entityIdSchema.nullable(),
+  entityLabel: nullableTextSchema,
+  summary: z.string().trim().min(1),
+  detail: nullableTextSchema,
+  createdAt: timestampSchema,
+})
 
 export const projectSchema = z.object({
   id: entityIdSchema,
@@ -195,7 +313,14 @@ export const employeeCreateInputSchema = z.object({
   phone: algerianPhoneSchema,
   roleId: entityIdSchema,
   status: employeeStatusSchema.default("ACTIVE"),
+  salaryAmountDzd: z.number().nonnegative().nullable().optional(),
+  salaryPeriod: salaryPeriodSchema.nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const employeeBatchCreateRowInputSchema = employeeCreateInputSchema.extend({
+  managerId: entityIdSchema.nullable().optional(),
+  projectId: entityIdSchema.nullable().optional(),
 });
 
 export const employeeUpdateInputSchema = z.object({
@@ -205,6 +330,8 @@ export const employeeUpdateInputSchema = z.object({
   phone: algerianPhoneSchema.optional(),
   roleId: entityIdSchema.optional(),
   status: employeeStatusSchema.optional(),
+  salaryAmountDzd: z.number().nonnegative().nullable().optional(),
+  salaryPeriod: salaryPeriodSchema.nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
 });
 
@@ -214,6 +341,36 @@ export const employeeListInputSchema = z
     status: employeeStatusSchema.optional(),
   })
   .optional();
+
+export const employeeBatchCreateInputSchema = z
+  .object({
+    employees: z.array(employeeBatchCreateRowInputSchema).min(1).max(employeeBatchLimit),
+  })
+  .superRefine(({ employees }, ctx) => {
+    const seenPhones = new Map<string, number>();
+
+    employees.forEach((employee, index) => {
+      const normalizedPhone = employee.phone.trim();
+      const existingIndex = seenPhones.get(normalizedPhone);
+
+      if (existingIndex !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "تم تكرار رقم الهاتف داخل نفس الدفعة.",
+          path: ["employees", index, "phone"],
+        });
+        return;
+      }
+
+      seenPhones.set(normalizedPhone, index);
+    });
+  });
+
+export const employeeBatchCreateResultSchema = z.object({
+  employees: z.array(employeeSchema),
+  managerAssignments: z.array(employeeManagerAssignmentSchema),
+  projectAssignments: z.array(employeeProjectAssignmentSchema),
+});
 
 export const projectCreateInputSchema = z.object({
   name: z.string().trim().min(1).max(160),
@@ -309,6 +466,84 @@ export const projectAssignmentListInputSchema = z
   })
   .optional();
 
+export const warehouseAssignmentCreateInputSchema = z.object({
+  employeeId: entityIdSchema,
+  warehouseId: entityIdSchema,
+  status: assignmentStatusSchema.default("ACTIVE"),
+  startDate: timestampSchema.optional(),
+  endDate: timestampSchema.nullable().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const employeeWorkplaceTypeSchema = z.enum(["NONE", "PROJECT", "WAREHOUSE"]);
+
+export const employeeAssignWorkplaceInputSchema = z.object({
+  employeeId: entityIdSchema,
+  nextType: employeeWorkplaceTypeSchema,
+  managerId: entityIdSchema.nullable().optional(),
+  projectId: entityIdSchema.nullable().optional(),
+  warehouseId: entityIdSchema.nullable().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const employeeSyncManagedProjectsInputSchema = z.object({
+  employeeId: entityIdSchema,
+  projectIds: z.array(entityIdSchema),
+});
+
+export const employeeSyncManagedWarehousesInputSchema = z.object({
+  employeeId: entityIdSchema,
+  warehouseIds: z.array(entityIdSchema),
+});
+
+export const warehouseAssignmentEndInputSchema = z.object({
+  id: entityIdSchema,
+  endDate: timestampSchema.optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const warehouseAssignmentListInputSchema = z
+  .object({
+    employeeId: entityIdSchema.optional(),
+    warehouseId: entityIdSchema.optional(),
+    status: assignmentStatusSchema.optional(),
+  })
+  .optional();
+
+export const employeeStateHistoryListInputSchema = z
+  .object({ employeeId: entityIdSchema.optional() })
+  .optional();
+
+export const projectManagerOwnershipHistoryListInputSchema = z
+  .object({ managerId: entityIdSchema.optional(), projectId: entityIdSchema.optional() })
+  .optional();
+
+export const warehouseManagerOwnershipHistoryListInputSchema = z
+  .object({ managerId: entityIdSchema.optional(), warehouseId: entityIdSchema.optional() })
+  .optional();
+
+export const employeeSalaryPaymentCreateInputSchema = z.object({
+  employeeId: entityIdSchema,
+  actualAmountDzd: z.number().nonnegative(),
+  paymentDate: timestampSchema.optional(),
+  note: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const employeeSalaryPaymentListInputSchema = z
+  .object({ employeeId: entityIdSchema.optional() })
+  .optional();
+
+export const systemLogListInputSchema = z
+  .object({
+    actionType: systemLogActionTypeSchema.optional(),
+    actorUserId: entityIdSchema.optional(),
+    entityId: entityIdSchema.optional(),
+    entityType: systemLogEntityTypeSchema.optional(),
+    fromDate: timestampSchema.optional(),
+    toDate: timestampSchema.optional(),
+  })
+  .optional();
+
 export const appContract = {
   health: oc.output(healthCheckSchema),
   session: oc.output(sessionSchema),
@@ -334,9 +569,22 @@ export const appContract = {
   employeesCreate: oc
     .input(employeeCreateInputSchema)
     .output(createEntityResultSchema(employeeSchema)),
+  employeesBatchCreate: oc
+    .input(employeeBatchCreateInputSchema)
+    .output(createEntityResultSchema(employeeBatchCreateResultSchema)),
   employeesUpdate: oc
     .input(employeeUpdateInputSchema)
     .output(createEntityResultSchema(employeeSchema)),
+  employeesDelete: oc.input(idInputSchema).output(createDeleteResultSchema),
+  employeesAssignWorkplace: oc
+    .input(employeeAssignWorkplaceInputSchema)
+    .output(createDeleteResultSchema),
+  employeesSyncManagedProjects: oc
+    .input(employeeSyncManagedProjectsInputSchema)
+    .output(createDeleteResultSchema),
+  employeesSyncManagedWarehouses: oc
+    .input(employeeSyncManagedWarehousesInputSchema)
+    .output(createDeleteResultSchema),
   projectsList: oc.input(projectListInputSchema).output(createListSchema(projectSchema)),
   projectsGet: oc
     .input(idInputSchema)
@@ -383,6 +631,36 @@ export const appContract = {
   projectAssignmentsEnd: oc
     .input(projectAssignmentEndInputSchema)
     .output(createEntityResultSchema(employeeProjectAssignmentSchema)),
+  warehouseAssignmentsList: oc
+    .input(warehouseAssignmentListInputSchema)
+    .output(createListSchema(employeeWarehouseAssignmentSchema)),
+  warehouseAssignmentsGet: oc
+    .input(idInputSchema)
+    .output(createEntityResultSchema(employeeWarehouseAssignmentSchema)),
+  warehouseAssignmentsCreate: oc
+    .input(warehouseAssignmentCreateInputSchema)
+    .output(createEntityResultSchema(employeeWarehouseAssignmentSchema)),
+  warehouseAssignmentsEnd: oc
+    .input(warehouseAssignmentEndInputSchema)
+    .output(createEntityResultSchema(employeeWarehouseAssignmentSchema)),
+  employeeStateHistoryList: oc
+    .input(employeeStateHistoryListInputSchema)
+    .output(createListSchema(employeeStateHistorySchema)),
+  projectManagerOwnershipHistoryList: oc
+    .input(projectManagerOwnershipHistoryListInputSchema)
+    .output(createListSchema(projectManagerOwnershipHistorySchema)),
+  warehouseManagerOwnershipHistoryList: oc
+    .input(warehouseManagerOwnershipHistoryListInputSchema)
+    .output(createListSchema(warehouseManagerOwnershipHistorySchema)),
+  salaryPaymentsList: oc
+    .input(employeeSalaryPaymentListInputSchema)
+    .output(createListSchema(employeeSalaryPaymentSchema)),
+  salaryPaymentsCreate: oc
+    .input(employeeSalaryPaymentCreateInputSchema)
+    .output(createEntityResultSchema(employeeSalaryPaymentSchema)),
+  systemLogList: oc
+    .input(systemLogListInputSchema)
+    .output(createListSchema(systemLogEntrySchema)),
 };
 
 export type PhonePasswordSignInInput = z.infer<typeof phonePasswordSignInSchema>;
@@ -392,7 +670,15 @@ export type AppError = z.infer<typeof appErrorSchema>;
 export type RoleCreateInput = z.infer<typeof roleCreateInputSchema>;
 export type RoleUpdateInput = z.infer<typeof roleUpdateInputSchema>;
 export type EmployeeCreateInput = z.infer<typeof employeeCreateInputSchema>;
+export type EmployeeBatchCreateRowInput = z.infer<typeof employeeBatchCreateRowInputSchema>;
+export type EmployeeBatchCreateInput = z.infer<typeof employeeBatchCreateInputSchema>;
+export type EmployeeBatchCreateResult = z.infer<typeof employeeBatchCreateResultSchema>;
 export type EmployeeUpdateInput = z.infer<typeof employeeUpdateInputSchema>;
+export type EmployeeAssignWorkplaceInput = z.infer<typeof employeeAssignWorkplaceInputSchema>;
+export type EmployeeSyncManagedProjectsInput = z.infer<typeof employeeSyncManagedProjectsInputSchema>;
+export type EmployeeSyncManagedWarehousesInput = z.infer<typeof employeeSyncManagedWarehousesInputSchema>;
+export type EmployeeSalaryPaymentCreateInput = z.infer<typeof employeeSalaryPaymentCreateInputSchema>;
+export type SystemLogListInput = z.infer<typeof systemLogListInputSchema>;
 export type ProjectCreateInput = z.infer<typeof projectCreateInputSchema>;
 export type ProjectUpdateInput = z.infer<typeof projectUpdateInputSchema>;
 export type WarehouseCreateInput = z.infer<typeof warehouseCreateInputSchema>;
@@ -401,6 +687,8 @@ export type ManagerAssignmentCreateInput = z.infer<typeof managerAssignmentCreat
 export type ManagerAssignmentEndInput = z.infer<typeof managerAssignmentEndInputSchema>;
 export type ProjectAssignmentCreateInput = z.infer<typeof projectAssignmentCreateInputSchema>;
 export type ProjectAssignmentEndInput = z.infer<typeof projectAssignmentEndInputSchema>;
+export type WarehouseAssignmentCreateInput = z.infer<typeof warehouseAssignmentCreateInputSchema>;
+export type WarehouseAssignmentEndInput = z.infer<typeof warehouseAssignmentEndInputSchema>;
 export type Role = z.infer<typeof roleSchema>;
 export type Employee = z.infer<typeof employeeSchema>;
 export type Project = z.infer<typeof projectSchema>;
@@ -411,6 +699,14 @@ export type EmployeeManagerAssignment = z.infer<
 export type EmployeeProjectAssignment = z.infer<
   typeof employeeProjectAssignmentSchema
 >;
+export type EmployeeWarehouseAssignment = z.infer<
+  typeof employeeWarehouseAssignmentSchema
+>;
+export type EmployeeStateHistory = z.infer<typeof employeeStateHistorySchema>;
+export type ProjectManagerOwnershipHistory = z.infer<typeof projectManagerOwnershipHistorySchema>;
+export type WarehouseManagerOwnershipHistory = z.infer<typeof warehouseManagerOwnershipHistorySchema>;
+export type EmployeeSalaryPayment = z.infer<typeof employeeSalaryPaymentSchema>;
+export type SystemLogEntry = z.infer<typeof systemLogEntrySchema>;
 export type SessionUser = z.infer<typeof sessionUserSchema>;
 export type AppContract = typeof appContract;
 export type AppClient = ContractRouterClient<AppContract>;

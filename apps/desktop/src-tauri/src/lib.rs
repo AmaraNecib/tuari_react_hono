@@ -1,11 +1,15 @@
 use rand::{rngs::OsRng, RngCore};
 use serde::Serialize;
 use std::fs::{copy, create_dir_all, read_to_string, write, File, OpenOptions};
+use std::io::{Read, Write};
+use std::net::TcpStream;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, RunEvent};
 
 const API_HOST: &str = "127.0.0.1";
@@ -14,6 +18,8 @@ const ALLOWED_ORIGINS: &str =
   "http://localhost:1420,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost";
 const APP_CLIENT_KEY_BYTES: usize = 32;
 const BETTER_AUTH_SECRET_BYTES: usize = 48;
+const API_STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
+const API_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(250);
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -30,20 +36,51 @@ struct RuntimeSecrets {
 #[serde(rename_all = "camelCase")]
 struct RuntimeConfig {
     api_base_url: String,
+    app_client_key: String,
 }
 
 #[tauri::command]
-fn get_runtime_config() -> RuntimeConfig {
-    RuntimeConfig {
+fn get_runtime_config(app: AppHandle) -> Result<RuntimeConfig, String> {
+    let runtime_secrets = load_runtime_secrets(&app)?;
+
+    Ok(RuntimeConfig {
         api_base_url: format!("http://{}:{}", API_HOST, API_PORT),
+        app_client_key: runtime_secrets.app_client_key,
+    })
+}
+
+fn has_portable_runtime_layout(root: &Path) -> bool {
+    let node_binary_name = if cfg!(target_os = "windows") {
+        "node.exe"
+    } else {
+        "node"
+    };
+
+    root.join("bin").join(node_binary_name).exists()
+        && root
+            .join("bin")
+            .join("api-runtime")
+            .join("dist")
+            .join("index.cjs")
+            .exists()
+}
+
+fn resolve_portable_data_dir() -> Result<Option<PathBuf>, String> {
+    let exe_path = std::env::current_exe().map_err(|error| error.to_string())?;
+    let exe_dir = exe_path
+        .parent()
+        .ok_or_else(|| "Failed to determine executable directory.".to_string())?;
+
+    if has_portable_runtime_layout(exe_dir) {
+        return Ok(Some(exe_dir.join("data")));
     }
+
+    Ok(None)
 }
 
 fn resolve_tuari_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    if !cfg!(debug_assertions) {
-        if let Ok(resource_dir) = app.path().resource_dir() {
-            return Ok(resource_dir);
-        }
+    if let Some(portable_data_dir) = resolve_portable_data_dir()? {
+        return Ok(portable_data_dir);
     }
 
     #[cfg(target_os = "windows")]
@@ -242,6 +279,83 @@ fn workspace_root() -> PathBuf {
         .join("..")
 }
 
+fn is_api_ready() -> bool {
+    let mut stream = match TcpStream::connect((API_HOST, API_PORT)) {
+        Ok(stream) => stream,
+        Err(_) => return false,
+    };
+
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+
+    let request = format!(
+        "GET /health HTTP/1.1\r\nHost: {}:{}\r\nConnection: close\r\n\r\n",
+        API_HOST, API_PORT
+    );
+
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+
+    let mut response = String::new();
+    if stream.read_to_string(&mut response).is_err() {
+        return false;
+    }
+
+    response.starts_with("HTTP/1.1 200") || response.contains(r#"{"status":"ok"}"#)
+}
+
+fn stop_child_process(child: &mut Child) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = child.kill();
+    }
+}
+
+fn wait_for_api_ready(child: &mut Child, server_log_path: &Path) -> Result<(), String> {
+    let deadline = Instant::now() + API_STARTUP_TIMEOUT;
+
+    loop {
+        if is_api_ready() {
+            return Ok(());
+        }
+
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Err(format!(
+                    "The local API stopped before startup completed ({status}). Check {}.",
+                    server_log_path.display()
+                ));
+            }
+            Ok(None) => {}
+            Err(error) => {
+                return Err(format!(
+                    "Failed while waiting for the local API to start: {error}"
+                ));
+            }
+        }
+
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "Timed out while starting the local API. Check {}.",
+                server_log_path.display()
+            ));
+        }
+
+        sleep(API_STARTUP_POLL_INTERVAL);
+    }
+}
+
 fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
     let runtime_secrets = load_runtime_secrets(app)?;
@@ -304,9 +418,16 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(error_log_file));
 
-    command
+    let mut child = command
         .spawn()
-        .map_err(|error| format!("Failed to launch API process: {error}"))
+        .map_err(|error| format!("Failed to launch API process: {error}"))?;
+
+    if let Err(error) = wait_for_api_ready(&mut child, &server_log_path) {
+        stop_child_process(&mut child);
+        return Err(error);
+    }
+
+    Ok(child)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -337,20 +458,7 @@ fn kill_api(app: &AppHandle) {
     let lock_result = state.child.lock();
     if let Ok(mut guard) = lock_result {
         if let Some(child) = guard.as_mut() {
-            #[cfg(target_os = "windows")]
-            {
-                let _ = Command::new("taskkill")
-                    .args(["/PID", &child.id().to_string(), "/T", "/F"])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .status();
-            }
-
-            #[cfg(not(target_os = "windows"))]
-            {
-                let _ = child.kill();
-            }
+            stop_child_process(child);
         }
         *guard = None;
     }
@@ -358,7 +466,10 @@ fn kill_api(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::{encode_secret, is_valid_secret, load_or_create_secret, APP_CLIENT_KEY_BYTES};
+    use super::{
+        encode_secret, has_portable_runtime_layout, is_valid_secret, load_or_create_secret,
+        APP_CLIENT_KEY_BYTES,
+    };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -398,6 +509,27 @@ mod tests {
 
         assert_eq!(first_secret, second_secret);
         assert!(is_valid_secret(&first_secret, APP_CLIENT_KEY_BYTES));
+
+        remove_dir_all(&temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn detects_portable_runtime_layout_from_sibling_bin_directory() {
+        let temp_dir = unique_temp_dir();
+        let runtime_dist_dir = temp_dir.join("bin").join("api-runtime").join("dist");
+        create_dir_all(&runtime_dist_dir).expect("create runtime dist dir");
+        std::fs::write(runtime_dist_dir.join("index.cjs"), "module.exports = {};")
+            .expect("write sidecar entry");
+
+        let node_binary_name = if cfg!(target_os = "windows") {
+            "node.exe"
+        } else {
+            "node"
+        };
+
+        std::fs::write(temp_dir.join("bin").join(node_binary_name), "").expect("write node marker");
+
+        assert!(has_portable_runtime_layout(&temp_dir));
 
         remove_dir_all(&temp_dir).expect("remove temp dir");
     }

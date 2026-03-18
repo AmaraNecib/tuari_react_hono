@@ -82,7 +82,8 @@ describe("AuthBootstrapService", () => {
     })
 
     expect(prisma.tx.$executeRawUnsafe).toHaveBeenCalledWith(
-      'INSERT INTO "app_bootstrap_state" ("singleton", "created_at") VALUES (1, ?)',
+      'INSERT INTO "app_bootstrap_state" ("singleton", "created_at", "user_id") VALUES (1, ?, ?)',
+      expect.any(String),
       expect.any(String),
     )
     expect(prisma.tx.account.create).toHaveBeenCalledTimes(1)

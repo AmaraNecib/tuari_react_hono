@@ -9,8 +9,8 @@ export function Toaster(props: ToasterProps) {
     <Sonner
       closeButton={false}
       dir={locale === "ar" ? "rtl" : "ltr"}
-      expand
-      gap={10}
+      expand={false}
+      gap={12}
       offset={{ right: 20, bottom: 20 }}
       position="bottom-right"
       richColors
@@ -18,8 +18,8 @@ export function Toaster(props: ToasterProps) {
       toastOptions={{
         classNames: {
           toast:
-            "!w-[360px] !rounded-[24px] !border !border-border/70 !bg-card/95 !p-4 !shadow-[0_18px_50px_rgba(15,23,42,0.16)] !backdrop-blur-xl !cursor-pointer dark:!border-white/10 dark:!bg-card/92",
-          title: "!text-sm !font-medium !leading-6 !text-foreground",
+            "!w-[min(340px,calc(100vw-32px))] !max-w-[calc(100vw-32px)] !rounded-[20px] !border !border-border/60 !bg-card/96 !px-4 !py-3.5 !shadow-[0_22px_44px_rgba(15,23,42,0.22)] !backdrop-blur-2xl !cursor-pointer dark:!border-white/8 dark:!bg-card/94",
+          title: "!text-sm !font-semibold !leading-6 !text-foreground",
           description: "!text-sm !leading-6 !text-muted-foreground",
           success: "!border-emerald-500/25",
           error: "!border-destructive/25",

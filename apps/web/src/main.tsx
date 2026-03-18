@@ -4,7 +4,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 import { bootstrapPreferences } from "@/features/preferences/preference-constants";
-import { router } from "@/router";
+import { initializeRuntimeConfig } from "@/lib/runtime-config";
 import "./styles.css";
 
 bootstrapPreferences();
@@ -15,8 +15,17 @@ if (!rootElement) {
   throw new Error("Root element #root was not found.");
 }
 
-ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
-    <RouterProvider router={router} />
-  </React.StrictMode>,
-);
+const appRoot = rootElement;
+
+async function bootstrap() {
+  await initializeRuntimeConfig();
+  const { router } = await import("@/router");
+
+  ReactDOM.createRoot(appRoot).render(
+    <React.StrictMode>
+      <RouterProvider router={router} />
+    </React.StrictMode>,
+  );
+}
+
+void bootstrap();
