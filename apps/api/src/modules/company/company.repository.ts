@@ -4,7 +4,39 @@ import { dirname } from "node:path";
 import Database from "better-sqlite3";
 
 import { resolveDatabaseEnv } from "../../infrastructure/config/database-env";
+import {
+  mapDebtAccount,
+  mapDebtClosureLink,
+  mapDebtEntry,
+  mapExternalCounterparty,
+  mapAuthUserDisplay,
+  mapEmployee,
+  mapEmployeeSalaryPayment,
+  mapEmployeeStateHistory,
+  mapManagerAssignment,
+  mapProject,
+  mapProjectAssignment,
+  mapProjectManagerOwnershipHistory,
+  mapRole,
+  mapUserProfileHistory,
+  mapWarehouse,
+  mapWarehouseAssignment,
+  mapWarehouseManagerOwnershipHistory,
+  normalizeAuditContext,
+  type SqliteRow,
+} from "./company.repository-mappers";
+import { createAlgeriaTimestamp } from "./company-time";
 import type {
+  DebtAccountCreateData,
+  DebtClosureLinkCreateData,
+  DebtClosureLinkListFilters,
+  DebtClosureLinkRecord,
+  DebtAccountListFilters,
+  DebtAccountRecord,
+  DebtAccountUpdateData,
+  DebtEntryCreateData,
+  DebtEntryListFilters,
+  DebtEntryRecord,
   EmployeeBatchCreateData,
   EmployeeBatchCreateResultRecord,
   EmployeeCreateData,
@@ -22,6 +54,9 @@ import type {
   EmployeeManagedProjectsSyncData,
   EmployeeManagedWarehousesSyncData,
   AuthUserDisplayRecord,
+  ExternalCounterpartyCreateData,
+  ExternalCounterpartyListFilters,
+  ExternalCounterpartyRecord,
   MutationAuditContext,
   UserProfileHistoryRecord,
   EmployeeWorkplaceAssignmentData,
@@ -51,221 +86,8 @@ import type {
   WarehouseUpdateData,
 } from "./company.types";
 
-type SqliteRow = Record<string, null | number | string>;
-
-function toNullableText(value: unknown) {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function normalizeAuditContext(auditContext?: MutationAuditContext): Required<MutationAuditContext> {
-  return {
-    actorUserId: auditContext?.actorUserId ?? null,
-    actorLabel: auditContext?.actorLabel ?? null,
-    transactionId: auditContext?.transactionId ?? crypto.randomUUID(),
-  }
-}
-
-function createAlgeriaTimestamp(date = new Date()) {
-  return new Date(date.getTime() + 60 * 60 * 1000).toISOString().replace("Z", "+01:00")
-}
-
-function mapRole(row: SqliteRow): RoleRecord {
-  return {
-    id: String(row.id),
-    key: String(row.key),
-    name: String(row.name),
-    description: toNullableText(row.description),
-    isSystem: Number(row.is_system) === 1,
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  };
-}
-
-function mapEmployee(row: SqliteRow): EmployeeRecord {
-  return {
-    id: String(row.id),
-    firstName: String(row.first_name),
-    lastName: String(row.last_name),
-    phone: String(row.phone),
-    roleId: String(row.role_id),
-    status: String(row.status) as EmployeeRecord["status"],
-    salaryAmountDzd: row.salary_amount_dzd === null || row.salary_amount_dzd === undefined ? null : Number(row.salary_amount_dzd),
-    salaryPeriod: row.salary_period ? String(row.salary_period) as EmployeeRecord["salaryPeriod"] : null,
-    notes: toNullableText(row.notes),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  };
-}
-
-function mapProject(row: SqliteRow): ProjectRecord {
-  return {
-    id: String(row.id),
-    name: String(row.name),
-    location: toNullableText(row.location),
-    managerId: row.manager_id ? String(row.manager_id) : null,
-    status: String(row.status) as ProjectRecord["status"],
-    notes: toNullableText(row.notes),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  };
-}
-
-function mapWarehouse(row: SqliteRow): WarehouseRecord {
-  return {
-    id: String(row.id),
-    name: String(row.name),
-    address: toNullableText(row.address),
-    managerId: row.manager_id ? String(row.manager_id) : null,
-    status: String(row.status) as WarehouseRecord["status"],
-    notes: toNullableText(row.notes),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  };
-}
-
-function mapManagerAssignment(row: SqliteRow): EmployeeManagerAssignmentRecord {
-  return {
-    id: String(row.id),
-    workerId: String(row.worker_id),
-    managerId: String(row.manager_id),
-    status: String(row.status) as EmployeeManagerAssignmentRecord["status"],
-    startDate: String(row.start_date),
-    endDate: row.end_date ? String(row.end_date) : null,
-    notes: toNullableText(row.notes),
-    actorUserId: toNullableText(row.actor_user_id),
-    actorLabel: toNullableText(row.actor_label),
-    transactionId: toNullableText(row.transaction_id),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  };
-}
-
-function mapProjectAssignment(row: SqliteRow): EmployeeProjectAssignmentRecord {
-  return {
-    id: String(row.id),
-    employeeId: String(row.employee_id),
-    projectId: String(row.project_id),
-    status: String(row.status) as EmployeeProjectAssignmentRecord["status"],
-    startDate: String(row.start_date),
-    endDate: row.end_date ? String(row.end_date) : null,
-    notes: toNullableText(row.notes),
-    actorUserId: toNullableText(row.actor_user_id),
-    actorLabel: toNullableText(row.actor_label),
-    transactionId: toNullableText(row.transaction_id),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  };
-}
-
-function mapWarehouseAssignment(row: SqliteRow): EmployeeWarehouseAssignmentRecord {
-  return {
-    id: String(row.id),
-    employeeId: String(row.employee_id),
-    warehouseId: String(row.warehouse_id),
-    status: String(row.status) as EmployeeWarehouseAssignmentRecord["status"],
-    startDate: String(row.start_date),
-    endDate: row.end_date ? String(row.end_date) : null,
-    notes: toNullableText(row.notes),
-    actorUserId: toNullableText(row.actor_user_id),
-    actorLabel: toNullableText(row.actor_label),
-    transactionId: toNullableText(row.transaction_id),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  };
-}
-
-function mapEmployeeStateHistory(row: SqliteRow): EmployeeStateHistoryRecord {
-  return {
-    id: String(row.id),
-    employeeId: String(row.employee_id),
-    roleId: String(row.role_id),
-    status: String(row.status),
-    salaryAmountDzd: row.salary_amount_dzd === null || row.salary_amount_dzd === undefined ? null : Number(row.salary_amount_dzd),
-    salaryPeriod: row.salary_period ? String(row.salary_period) as EmployeeStateHistoryRecord["salaryPeriod"] : null,
-    eventType: String(row.event_type),
-    startDate: String(row.start_date),
-    endDate: row.end_date ? String(row.end_date) : null,
-    notes: toNullableText(row.notes),
-    actorUserId: toNullableText(row.actor_user_id),
-    actorLabel: toNullableText(row.actor_label),
-    transactionId: toNullableText(row.transaction_id),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  }
-}
-
-function mapProjectManagerOwnershipHistory(row: SqliteRow): ProjectManagerOwnershipHistoryRecord {
-  return {
-    id: String(row.id),
-    projectId: String(row.project_id),
-    managerId: String(row.manager_id),
-    status: String(row.status),
-    startDate: String(row.start_date),
-    endDate: row.end_date ? String(row.end_date) : null,
-    notes: toNullableText(row.notes),
-    actorUserId: toNullableText(row.actor_user_id),
-    actorLabel: toNullableText(row.actor_label),
-    transactionId: toNullableText(row.transaction_id),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  }
-}
-
-function mapWarehouseManagerOwnershipHistory(row: SqliteRow): WarehouseManagerOwnershipHistoryRecord {
-  return {
-    id: String(row.id),
-    warehouseId: String(row.warehouse_id),
-    managerId: String(row.manager_id),
-    status: String(row.status),
-    startDate: String(row.start_date),
-    endDate: row.end_date ? String(row.end_date) : null,
-    notes: toNullableText(row.notes),
-    actorUserId: toNullableText(row.actor_user_id),
-    actorLabel: toNullableText(row.actor_label),
-    transactionId: toNullableText(row.transaction_id),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  }
-}
-
-function mapEmployeeSalaryPayment(row: SqliteRow): EmployeeSalaryPaymentRecord {
-  return {
-    id: String(row.id),
-    employeeId: String(row.employee_id),
-    periodType: String(row.period_type) as EmployeeSalaryPaymentRecord["periodType"],
-    expectedAmountDzd: Number(row.expected_amount_dzd),
-    actualAmountDzd: Number(row.actual_amount_dzd),
-    paymentDate: String(row.payment_date),
-    note: toNullableText(row.note),
-    actorUserId: toNullableText(row.actor_user_id),
-    actorLabel: toNullableText(row.actor_label),
-    transactionId: toNullableText(row.transaction_id),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  }
-}
-
-function mapUserProfileHistory(row: SqliteRow): UserProfileHistoryRecord {
-  return {
-    id: String(row.id),
-    userId: String(row.user_id),
-    name: toNullableText(row.name),
-    phone: toNullableText(row.phone),
-    actorUserId: toNullableText(row.actor_user_id),
-    actorLabel: toNullableText(row.actor_label),
-    transactionId: toNullableText(row.transaction_id),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  }
-}
-
 export interface CompanyRepository {
+  withTransaction<T>(callback: () => T): T;
   listRoles(): RoleRecord[];
   getRoleById(id: string): RoleRecord | null;
   getRoleByKey(key: string): RoleRecord | null;
@@ -284,6 +106,22 @@ export interface CompanyRepository {
   assignEmployeeWorkplace(data: EmployeeWorkplaceAssignmentData, auditContext?: MutationAuditContext): void;
   syncManagedProjects(data: EmployeeManagedProjectsSyncData, auditContext?: MutationAuditContext): void;
   syncManagedWarehouses(data: EmployeeManagedWarehousesSyncData, auditContext?: MutationAuditContext): void;
+
+  listExternalCounterparties(filters?: ExternalCounterpartyListFilters): ExternalCounterpartyRecord[];
+  getExternalCounterpartyById(id: string): ExternalCounterpartyRecord | null;
+  createExternalCounterparty(data: ExternalCounterpartyCreateData): ExternalCounterpartyRecord;
+
+  listDebtAccounts(filters?: DebtAccountListFilters): DebtAccountRecord[];
+  getDebtAccountById(id: string): DebtAccountRecord | null;
+  getDebtAccountByWorkerId(workerId: string): DebtAccountRecord | null;
+  getDebtAccountByExternalCounterpartyId(externalCounterpartyId: string): DebtAccountRecord | null;
+  createDebtAccount(data: DebtAccountCreateData, auditContext?: MutationAuditContext): DebtAccountRecord;
+  updateDebtAccount(data: DebtAccountUpdateData, auditContext?: MutationAuditContext): DebtAccountRecord | null;
+
+  listDebtEntries(filters: DebtEntryListFilters): DebtEntryRecord[];
+  createDebtEntry(data: DebtEntryCreateData, auditContext?: MutationAuditContext): DebtEntryRecord;
+  listDebtClosureLinks(filters?: DebtClosureLinkListFilters): DebtClosureLinkRecord[];
+  createDebtClosureLink(data: DebtClosureLinkCreateData, auditContext?: MutationAuditContext): DebtClosureLinkRecord;
 
   listProjects(filters?: ProjectListFilters): ProjectRecord[];
   getProjectById(id: string): ProjectRecord | null;
@@ -323,6 +161,10 @@ export interface CompanyRepository {
 export class SqliteCompanyRepository implements CompanyRepository {
   constructor(private readonly database: Database.Database) {
     this.database.pragma("foreign_keys = ON");
+  }
+
+  withTransaction<T>(callback: () => T): T {
+    return this.database.transaction(callback)()
   }
 
   listRoles(): RoleRecord[] {
@@ -426,15 +268,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
       .prepare('SELECT id, name, phoneNumber as phone FROM "user" WHERE id = ?')
       .get(id) as SqliteRow | undefined
 
-    if (!row) {
-      return null
-    }
-
-    return {
-      id: String(row.id),
-      name: toNullableText(row.name),
-      phone: toNullableText(row.phone),
-    }
+    return row ? mapAuthUserDisplay(row) : null
   }
 
   createEmployee(data: EmployeeCreateData, auditContext?: MutationAuditContext): EmployeeRecord {
@@ -871,6 +705,223 @@ export class SqliteCompanyRepository implements CompanyRepository {
     })
 
     transaction(data)
+  }
+
+  listExternalCounterparties(filters?: ExternalCounterpartyListFilters): ExternalCounterpartyRecord[] {
+    const conditions: string[] = []
+    const params: Array<string> = []
+
+    if (filters?.fullName) {
+      conditions.push('full_name LIKE ?')
+      params.push(`%${filters.fullName}%`)
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+    const rows = this.database
+      .prepare(`SELECT * FROM external_counterparty ${whereClause} ORDER BY full_name COLLATE NOCASE ASC, created_at ASC`)
+      .all(...params) as SqliteRow[]
+
+    return rows.map(mapExternalCounterparty)
+  }
+
+  getExternalCounterpartyById(id: string): ExternalCounterpartyRecord | null {
+    const row = this.database.prepare('SELECT * FROM external_counterparty WHERE id = ?').get(id) as SqliteRow | undefined
+    return row ? mapExternalCounterparty(row) : null
+  }
+
+  createExternalCounterparty(data: ExternalCounterpartyCreateData): ExternalCounterpartyRecord {
+    const id = crypto.randomUUID()
+    const timestamp = createAlgeriaTimestamp()
+    this.database
+      .prepare(
+        'INSERT INTO external_counterparty (id, full_name, phone_number, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run(id, data.fullName, data.phoneNumber, data.note ?? null, timestamp, timestamp)
+
+    return this.getExternalCounterpartyById(id)!
+  }
+
+  listDebtAccounts(filters?: DebtAccountListFilters): DebtAccountRecord[] {
+    const conditions: string[] = []
+    const params: Array<string> = []
+
+    if (filters?.partyType) {
+      conditions.push('party_type = ?')
+      params.push(filters.partyType)
+    }
+
+    if (filters?.workerId) {
+      conditions.push('worker_id = ?')
+      params.push(filters.workerId)
+    }
+
+    if (filters?.externalCounterpartyId) {
+      conditions.push('external_counterparty_id = ?')
+      params.push(filters.externalCounterpartyId)
+    }
+
+    if (filters?.status) {
+      conditions.push('status = ?')
+      params.push(filters.status)
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+    const rows = this.database
+      .prepare(`SELECT * FROM debt_account ${whereClause} ORDER BY updated_at DESC, created_at DESC`)
+      .all(...params) as SqliteRow[]
+
+    return rows.map(mapDebtAccount)
+  }
+
+  getDebtAccountById(id: string): DebtAccountRecord | null {
+    const row = this.database.prepare('SELECT * FROM debt_account WHERE id = ?').get(id) as SqliteRow | undefined
+    return row ? mapDebtAccount(row) : null
+  }
+
+  getDebtAccountByWorkerId(workerId: string): DebtAccountRecord | null {
+    const row = this.database
+      .prepare('SELECT * FROM debt_account WHERE worker_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1')
+      .get(workerId) as SqliteRow | undefined
+    return row ? mapDebtAccount(row) : null
+  }
+
+  getDebtAccountByExternalCounterpartyId(externalCounterpartyId: string): DebtAccountRecord | null {
+    const row = this.database
+      .prepare(
+        'SELECT * FROM debt_account WHERE external_counterparty_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1',
+      )
+      .get(externalCounterpartyId) as SqliteRow | undefined
+    return row ? mapDebtAccount(row) : null
+  }
+
+  createDebtAccount(data: DebtAccountCreateData, auditContext?: MutationAuditContext): DebtAccountRecord {
+    const id = crypto.randomUUID()
+    const timestamp = createAlgeriaTimestamp()
+    const audit = normalizeAuditContext(auditContext)
+    this.database
+      .prepare(
+        'INSERT INTO debt_account (id, party_type, worker_id, external_counterparty_id, status, current_balance_dzd, note, settled_at, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        id,
+        data.partyType,
+        data.workerId ?? null,
+        data.externalCounterpartyId ?? null,
+        data.status,
+        data.currentBalanceDzd,
+        data.note ?? null,
+        data.settledAt ?? null,
+        audit.actorUserId,
+        audit.actorLabel,
+        audit.transactionId,
+        timestamp,
+        timestamp,
+      )
+
+    return this.getDebtAccountById(id)!
+  }
+
+  updateDebtAccount(data: DebtAccountUpdateData, auditContext?: MutationAuditContext): DebtAccountRecord | null {
+    const current = this.getDebtAccountById(data.id)
+    if (!current) {
+      return null
+    }
+
+    const audit = normalizeAuditContext(auditContext)
+    const timestamp = createAlgeriaTimestamp()
+    this.database
+      .prepare(
+        'UPDATE debt_account SET status = ?, current_balance_dzd = ?, settled_at = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?',
+      )
+      .run(
+        data.status,
+        data.currentBalanceDzd,
+        data.settledAt ?? null,
+        audit.actorUserId,
+        audit.actorLabel,
+        audit.transactionId,
+        timestamp,
+        data.id,
+      )
+
+    return this.getDebtAccountById(data.id)
+  }
+
+  listDebtEntries(filters: DebtEntryListFilters): DebtEntryRecord[] {
+    const rows = this.database
+      .prepare('SELECT * FROM debt_entry WHERE debt_account_id = ? ORDER BY entry_date DESC, created_at DESC')
+      .all(filters.debtAccountId) as SqliteRow[]
+
+    return rows.map(mapDebtEntry)
+  }
+
+  createDebtEntry(data: DebtEntryCreateData, auditContext?: MutationAuditContext): DebtEntryRecord {
+    const id = crypto.randomUUID()
+    const timestamp = createAlgeriaTimestamp()
+    const audit = normalizeAuditContext(auditContext)
+    this.database
+      .prepare(
+        'INSERT INTO debt_entry (id, debt_account_id, entry_type, signed_amount_dzd, entry_date, note, balance_after_dzd, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        id,
+        data.debtAccountId,
+        data.entryType,
+        data.signedAmountDzd,
+        data.entryDate,
+        data.note ?? null,
+        data.balanceAfterDzd,
+        audit.actorUserId,
+        audit.actorLabel,
+        audit.transactionId,
+        timestamp,
+        timestamp,
+      )
+
+    const [entry] = this.listDebtEntries({ debtAccountId: data.debtAccountId }).filter((item) => item.id === id)
+    return entry!
+  }
+
+  listDebtClosureLinks(filters?: DebtClosureLinkListFilters): DebtClosureLinkRecord[] {
+    const conditions: string[] = []
+    const params: Array<string> = []
+
+    if (filters?.debtAccountId) {
+      conditions.push('(source_debt_account_id = ? OR target_debt_account_id = ?)')
+      params.push(filters.debtAccountId, filters.debtAccountId)
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+    const rows = this.database
+      .prepare(`SELECT * FROM debt_closure_link ${whereClause} ORDER BY entry_date DESC, created_at DESC`)
+      .all(...params) as SqliteRow[]
+
+    return rows.map(mapDebtClosureLink)
+  }
+
+  createDebtClosureLink(data: DebtClosureLinkCreateData, auditContext?: MutationAuditContext): DebtClosureLinkRecord {
+    const id = crypto.randomUUID()
+    const timestamp = createAlgeriaTimestamp()
+    const audit = normalizeAuditContext(auditContext)
+    this.database
+      .prepare(
+        'INSERT INTO debt_closure_link (id, source_debt_account_id, target_debt_account_id, closed_amount_dzd, entry_date, note, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        id,
+        data.sourceDebtAccountId,
+        data.targetDebtAccountId,
+        data.closedAmountDzd,
+        data.entryDate,
+        data.note ?? null,
+        audit.actorUserId,
+        audit.actorLabel,
+        audit.transactionId,
+        timestamp,
+        timestamp,
+      )
+
+    return this.listDebtClosureLinks().find((item) => item.id === id)!
   }
 
   listProjects(filters?: ProjectListFilters): ProjectRecord[] {

@@ -25,6 +25,12 @@ type ProfileUpdateInput = {
   phone?: string
 }
 
+type CurrentSessionUser = {
+  id: string
+  name: string | null
+  phoneNumber: string
+}
+
 export class AccountServiceError extends Error {
   constructor(
     message: string,
@@ -40,6 +46,40 @@ export class AccountService {
     private readonly repository: AccountRepository,
     private readonly authGateway: AuthGateway,
   ) {}
+
+  async getCurrentSessionUser(headers: Headers): Promise<CurrentSessionUser> {
+    const session = await this.authGateway.api.getSession({ headers })
+    if (!session?.user?.id || !session.user.phoneNumber) {
+      throw new AccountServiceError("يجب تسجيل الدخول أولًا.", 401)
+    }
+
+    return {
+      id: session.user.id,
+      name: session.user.name ?? null,
+      phoneNumber: session.user.phoneNumber,
+    }
+  }
+
+  async recordPasswordChangeForUser(user: CurrentSessionUser) {
+    const timestamp = new Date()
+
+    await this.repository.withTransaction((tx) =>
+      tx.createProfileHistory({
+        id: crypto.randomUUID(),
+        userId: user.id,
+        name: null,
+        phone: null,
+        previousName: null,
+        previousPhone: null,
+        passwordChanged: true,
+        actorUserId: user.id,
+        actorLabel: user.name ?? user.phoneNumber,
+        transactionId: crypto.randomUUID(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    )
+  }
 
   async updateCurrentProfile(headers: Headers, rawInput: ProfileUpdateInput) {
     const currentPassword = typeof rawInput.currentPassword === "string" ? rawInput.currentPassword : undefined
@@ -61,21 +101,18 @@ export class AccountService {
       }
     }
 
-    const session = await this.authGateway.api.getSession({ headers })
-    if (!session?.user?.id || !session.user.phoneNumber) {
-      throw new AccountServiceError("يجب تسجيل الدخول أولًا.", 401)
-    }
+    const session = await this.getCurrentSessionUser(headers)
 
     const timestamp = new Date()
     const transactionId = crypto.randomUUID()
 
     return this.repository.withTransaction(async (tx) => {
-      if (phone && phone !== session.user!.phoneNumber) {
+      if (phone && phone !== session.phoneNumber) {
         if (!currentPassword || currentPassword.trim().length === 0) {
           throw new AccountServiceError("أدخل كلمة المرور الحالية لتغيير رقم الهاتف.", 400)
         }
 
-        const credentialPassword = await tx.findCredentialPasswordByUserId(session.user!.id)
+        const credentialPassword = await tx.findCredentialPasswordByUserId(session.id)
 
         if (!credentialPassword) {
           throw new AccountServiceError("تعذر التحقق من كلمة المرور الحالية.", 400)
@@ -93,28 +130,30 @@ export class AccountService {
 
         const existingUserId = await tx.findUserIdByPhoneNumber(phone)
 
-        if (existingUserId && existingUserId !== session.user!.id) {
+        if (existingUserId && existingUserId !== session.id) {
           throw new AccountServiceError("رقم الهاتف مستخدم بالفعل.", 409)
         }
       }
 
       const updatedUser = await tx.updateUserProfile({
-        id: session.user!.id,
+        id: session.id,
         name,
         phone,
         updatedAt: timestamp,
       })
 
       await tx.createProfileHistory({
-          id: crypto.randomUUID(),
-          userId: updatedUser.id,
-          name: updatedUser.name,
-          phone: updatedUser.phone,
-          actorUserId: updatedUser.id,
-          actorLabel: updatedUser.name,
-          transactionId,
-          createdAt: timestamp,
-          updatedAt: timestamp,
+        id: crypto.randomUUID(),
+        userId: updatedUser.id,
+        name: updatedUser.name,
+        phone: updatedUser.phone,
+        previousName: session.name,
+        previousPhone: session.phoneNumber,
+        actorUserId: updatedUser.id,
+        actorLabel: session.name ?? session.phoneNumber,
+        transactionId,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       })
 
       return {
@@ -125,5 +164,10 @@ export class AccountService {
         },
       }
     })
+  }
+
+  async recordPasswordChange(headers: Headers) {
+    const session = await this.getCurrentSessionUser(headers)
+    await this.recordPasswordChangeForUser(session)
   }
 }

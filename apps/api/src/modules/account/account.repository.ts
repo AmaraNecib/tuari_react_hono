@@ -1,4 +1,4 @@
-import type { PrismaClient, PrismaTransactionClient } from "@prisma/client"
+import type { Prisma, PrismaClient } from "@prisma/client"
 
 export type AccountProfileRecord = {
   id: string
@@ -13,7 +13,10 @@ export type AccountRepositoryTransaction = {
     createdAt: Date
     id: string
     name: string | null
-    phone: string
+    passwordChanged?: boolean
+    phone: string | null
+    previousName: string | null
+    previousPhone: string | null
     transactionId: string
     updatedAt: Date
     userId: string
@@ -33,7 +36,7 @@ export type AccountRepository = {
 }
 
 class PrismaAccountRepositoryTransaction implements AccountRepositoryTransaction {
-  constructor(private readonly prisma: PrismaTransactionClient) {}
+  constructor(private readonly prisma: Prisma.TransactionClient) {}
 
   async createProfileHistory(input: {
     actorLabel: string | null
@@ -41,7 +44,10 @@ class PrismaAccountRepositoryTransaction implements AccountRepositoryTransaction
     createdAt: Date
     id: string
     name: string | null
-    phone: string
+    passwordChanged?: boolean
+    phone: string | null
+    previousName: string | null
+    previousPhone: string | null
     transactionId: string
     updatedAt: Date
     userId: string

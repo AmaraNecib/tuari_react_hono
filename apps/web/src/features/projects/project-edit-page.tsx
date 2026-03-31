@@ -1,12 +1,15 @@
-import { useMemo, useState } from "react"
+import type { FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
-import { FieldSection, NativeSelect, Textarea } from "@/components/ui/form-controls"
-import { Input } from "@/components/ui/input"
 import { useUpdateProjectMutation } from "@/features/app-shell/mock-dashboard"
+import { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
+import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import type { ProjectPageRecord } from "./project-details-page"
+import { createProjectFormState, ProjectFormFields, type ProjectFormErrors, type ProjectFormState } from "./project-form"
 
 export function ProjectEditPage({
   managerOptions,
@@ -15,108 +18,107 @@ export function ProjectEditPage({
   managerOptions: Array<{ id: string; label: string }>
   project: ProjectPageRecord
 }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const updateProjectMutation = useUpdateProjectMutation()
-  const [state, setState] = useState({
-    name: project.name,
-    location: project.location ?? "",
-    managerId: project.managerId ?? "",
-    status: project.status,
-    notes: project.notes ?? "",
-  })
+  const [state, setState] = useState<ProjectFormState>(() => createProjectFormState(project))
+  const [errors, setErrors] = useState<ProjectFormErrors>({})
+  const previousProjectIdRef = useRef(project.id)
   const statusOptions = useMemo(
     () => [
-      { value: "ACTIVE", label: "نشط" },
-      { value: "STOPPED", label: "متوقف" },
-      { value: "COMPLETED", label: "مكتمل" },
-      { value: "ARCHIVED", label: "مؤرشف" },
+      { value: "ACTIVE", label: t("status.active") },
+      { value: "STOPPED", label: t("status.stopped") },
+      { value: "COMPLETED", label: t("status.completed") },
+      { value: "ARCHIVED", label: t("status.archived") },
     ],
-    [],
+    [t],
   )
 
+  useEffect(() => {
+    if (previousProjectIdRef.current === project.id) {
+      return
+    }
+
+    previousProjectIdRef.current = project.id
+    setState(createProjectFormState(project))
+    setErrors({})
+  }, [project])
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const nextErrors: ProjectFormErrors = {}
+
+    if (state.name.trim().length === 0) {
+      nextErrors.name = t("detailPages.project.validation.nameRequired")
+    }
+
+    setErrors(nextErrors)
+
+    if (Object.keys(nextErrors).length > 0) {
+      return
+    }
+
+    const nextManagerId = state.managerId || null
+    await updateProjectMutation.mutateAsync({
+      id: project.id,
+      name: state.name.trim(),
+      location: state.location.trim() || null,
+      managerId: nextManagerId !== project.managerId ? nextManagerId : undefined,
+      status: state.status as "ACTIVE" | "STOPPED" | "COMPLETED" | "ARCHIVED",
+      notes: state.notes.trim() || null,
+    })
+
+    void navigateToWorkspaceRoute(navigate, workspaceRoutes.projectDetails(project.id))
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-border/60 pb-5 xl:flex-row xl:items-end xl:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">{`تعديل ${project.name}`}</h1>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">صفحة مستقلة لتحديث بيانات المشروع ومديره وحالته.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={() => void navigate({ to: "/projects/$projectId" as never, params: { projectId: project.id } as never })}>
-            العودة إلى المشروع
-          </Button>
-          <Button variant="outline" onClick={() => void navigate({ to: "/projects" as never })}>
-            العودة إلى المشاريع
-          </Button>
-        </div>
-      </div>
+    <Surface variant="panel">
+      <form onSubmit={handleSubmit}>
+        <PageSurfaceContent>
+        <PageHeader
+          action={
+            <PageActionGroup>
+              <Button type="button" onClick={() => void navigateToWorkspaceRoute(navigate, workspaceRoutes.projectDetails(project.id))}>
+                {t("detailPages.shared.backToRecord")}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => void navigateToWorkspaceRoute(navigate, workspaceRoutes.projects())}>
+                {t("detailPages.project.back")}
+              </Button>
+            </PageActionGroup>
+          }
+          description={t("detailPages.project.description")}
+          title={`${t("detailPages.project.editTitle")} - ${project.name}`}
+        />
 
-      <FieldSection description="بيانات المشروع الأساسية ومديره الحالي." title="معلومات المشروع">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="اسم المشروع">
-            <Input value={state.name} onChange={(event) => setState({ ...state, name: event.target.value })} />
-          </Field>
-          <Field label="الموقع">
-            <Input value={state.location} onChange={(event) => setState({ ...state, location: event.target.value })} />
-          </Field>
-          <Field label="مدير المشروع">
-            <NativeSelect value={state.managerId} onChange={(event) => setState({ ...state, managerId: event.target.value })}>
-              <option value="">بدون مدير محدد</option>
-              {managerOptions.map((manager) => (
-                <option key={manager.id} value={manager.id}>
-                  {manager.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field label="الحالة">
-            <NativeSelect value={state.status} onChange={(event) => setState({ ...state, status: event.target.value })}>
-              {statusOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-          <label className="flex flex-col gap-2 md:col-span-2 xl:col-span-3">
-            <span className="text-sm font-medium text-foreground">ملاحظات</span>
-            <Textarea value={state.notes} onChange={(event) => setState({ ...state, notes: event.target.value })} />
-          </label>
-        </div>
-      </FieldSection>
-
-      <div className="flex justify-end gap-3">
-        <Button variant="outline" onClick={() => void navigate({ to: "/projects/$projectId" as never, params: { projectId: project.id } as never })}>
-          إلغاء
-        </Button>
-        <Button
-          disabled={updateProjectMutation.isPending}
-          onClick={async () => {
-            const nextManagerId = state.managerId || null
-            await updateProjectMutation.mutateAsync({
-              id: project.id,
-              name: state.name.trim(),
-              location: state.location.trim() || null,
-              managerId: nextManagerId !== project.managerId ? nextManagerId : undefined,
-              status: state.status as "ACTIVE" | "STOPPED" | "COMPLETED" | "ARCHIVED",
-              notes: state.notes.trim() || null,
-            })
-
-            void navigate({ to: "/projects/$projectId" as never, params: { projectId: project.id } as never })
+        <ProjectFormFields
+          description={t("detailPages.project.description")}
+          errors={errors}
+          labels={{
+            name: t("detailPages.project.name"),
+            location: t("detailPages.project.location"),
+            manager: t("detailPages.project.manager"),
+            status: t("detailPages.project.status"),
+            notes: t("detailPages.project.notes"),
+            noManager: t("shell.noManager"),
           }}
-        >
-          حفظ التعديل
-        </Button>
-      </div>
-    </div>
-  )
-}
+          managerOptions={managerOptions}
+          state={state}
+          statusOptions={statusOptions}
+          title={t("detailPages.project.overviewTab")}
+          onChange={setState}
+        />
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-2">
-      <span className="text-sm font-medium text-foreground">{label}</span>
-      {children}
-    </label>
+        <PageFooterActions>
+          <Button type="button" variant="outline" onClick={() => void navigateToWorkspaceRoute(navigate, workspaceRoutes.projectDetails(project.id))}>
+             {t("common.cancel")}
+           </Button>
+          <Button disabled={updateProjectMutation.isPending} type="submit">
+            {t("detailPages.project.saveChanges")}
+          </Button>
+        </PageFooterActions>
+        </PageSurfaceContent>
+      </form>
+    </Surface>
   )
 }

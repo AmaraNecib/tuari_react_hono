@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react"
+import type { FormEvent, ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { type Role } from "@tuari/contracts"
 import { useNavigate } from "@tanstack/react-router"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, FieldSection, NativeSelect, Textarea } from "@/components/ui/form-controls"
@@ -11,6 +13,8 @@ import {
   useUpdateEmployeeMutation,
   useUpdateEmployeeWorkplaceMutation,
 } from "@/features/app-shell/mock-dashboard"
+import { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
+import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import type { EmployeeManagerOption } from "./employee-batch-row-card"
 import type { EmployeeTableRow } from "./employee-table"
@@ -77,6 +81,7 @@ export function EmployeeEditPage({
   managedWarehouseOptions: ManagedOption[]
   roles: Role[]
 }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const updateEmployeeMutation = useUpdateEmployeeMutation()
   const updateEmployeeWorkplaceMutation = useUpdateEmployeeWorkplaceMutation()
@@ -88,6 +93,21 @@ export function EmployeeEditPage({
   const [workerProjectId, setWorkerProjectId] = useState(employee.currentProjectId ?? "")
   const [selectedManagedProjectIds, setSelectedManagedProjectIds] = useState<string[]>(currentManagedProjectIds)
   const [selectedManagedWarehouseIds, setSelectedManagedWarehouseIds] = useState<string[]>(currentManagedWarehouseIds)
+  const previousEmployeeIdRef = useRef(employee.id)
+
+  useEffect(() => {
+    if (previousEmployeeIdRef.current === employee.id) {
+      return
+    }
+
+    previousEmployeeIdRef.current = employee.id
+    setState(createFormState(employee))
+    setErrors({})
+    setWorkerManagerId(employee.currentManagerId ?? "")
+    setWorkerProjectId(employee.currentProjectId ?? "")
+    setSelectedManagedProjectIds(currentManagedProjectIds)
+    setSelectedManagedWarehouseIds(currentManagedWarehouseIds)
+  }, [currentManagedProjectIds, currentManagedWarehouseIds, employee])
 
   const currentRoleKey = employee.roleKey
   const selectedRoleKey = useMemo(
@@ -101,14 +121,14 @@ export function EmployeeEditPage({
   const selectedManager = managerOptions.find((manager) => manager.id === workerManagerId) ?? null
   const workerProjectOptions = selectedManager?.projectOptions ?? []
   const statusOptions = [
-    { value: "ACTIVE", label: "نشط" },
-    { value: "INACTIVE", label: "غير نشط" },
-    { value: "LEFT", label: "غادر" },
+    { value: "ACTIVE", label: t("status.active") },
+    { value: "INACTIVE", label: t("status.inactive") },
+    { value: "LEFT", label: t("status.left") },
   ] satisfies Array<{ value: EmployeeTableRow["status"]; label: string }>
   const salaryPeriodOptions = [
-    { value: "DAILY", label: "يومي" },
-    { value: "WEEKLY", label: "أسبوعي" },
-    { value: "MONTHLY", label: "شهري" },
+    { value: "DAILY", label: t("detailPages.salary.daily") },
+    { value: "WEEKLY", label: t("detailPages.salary.weekly") },
+    { value: "MONTHLY", label: t("detailPages.salary.monthly") },
   ] satisfies Array<{ value: "DAILY" | "WEEKLY" | "MONTHLY"; label: string }>
   const isSaving =
     updateEmployeeMutation.isPending ||
@@ -133,40 +153,40 @@ export function EmployeeEditPage({
     const salaryAmount = parseSalaryAmount(state.salaryAmountDzd)
 
     if (state.firstName.trim().length === 0) {
-      nextErrors.firstName = "الاسم الأول مطلوب."
+      nextErrors.firstName = t("detailPages.employee.editPage.validation.firstNameRequired")
     }
 
     if (state.lastName.trim().length === 0) {
-      nextErrors.lastName = "اللقب مطلوب."
+      nextErrors.lastName = t("detailPages.employee.editPage.validation.lastNameRequired")
     }
 
     if (!/^0[5-7]\d{8}$/.test(state.phone.trim())) {
-      nextErrors.phone = "رقم الهاتف يجب أن يكون جزائريًا صالحًا بصيغة 10 أرقام."
+      nextErrors.phone = t("detailPages.employee.editPage.validation.phoneInvalid")
     }
 
     if (!state.roleId) {
-      nextErrors.roleId = "اختيار الدور مطلوب."
+      nextErrors.roleId = t("detailPages.employee.editPage.validation.roleRequired")
     }
 
     if (Number.isNaN(salaryAmount)) {
-      nextErrors.salaryAmountDzd = "قيمة الأجر يجب أن تكون رقمًا صالحًا."
+      nextErrors.salaryAmountDzd = t("detailPages.employee.editPage.validation.salaryAmountInvalid")
     }
 
     if (salaryAmount !== null && !state.salaryPeriod) {
-      nextErrors.salaryPeriod = "اختيار دورية الأجر مطلوب عند إدخال قيمة الأجر."
+      nextErrors.salaryPeriod = t("detailPages.employee.editPage.validation.salaryPeriodRequired")
     }
 
     if (salaryAmount === null && state.salaryPeriod) {
-      nextErrors.salaryAmountDzd = "أدخل قيمة الأجر عند اختيار دورية الأجر."
+      nextErrors.salaryAmountDzd = t("detailPages.employee.editPage.validation.salaryAmountRequired")
     }
 
     if (isWorker && state.status === "ACTIVE" && !hasWarehouseWorkerPlacement) {
       if (!workerManagerId) {
-        nextErrors.managerId = "اختيار المدير المباشر مطلوب للعامل النشط."
+        nextErrors.managerId = t("detailPages.employee.editPage.validation.managerRequired")
       }
 
       if (!workerProjectId) {
-        nextErrors.projectId = "اختيار مشروع العامل مطلوب."
+        nextErrors.projectId = t("detailPages.employee.editPage.validation.projectRequired")
       }
     }
 
@@ -208,7 +228,7 @@ export function EmployeeEditPage({
     if (requiresBlockedTransition) {
       setErrors((current) => ({
         ...current,
-        roleId: "غيّر الارتباطات الحالية أولًا من شاشة الإدارة قبل تعديل هذا الدور أو إنهاءه.",
+        roleId: t("detailPages.employee.editPage.validation.blockedTransition"),
       }))
       return
     }
@@ -251,180 +271,196 @@ export function EmployeeEditPage({
       })
     }
 
-    void navigate({ to: "/employees/$employeeId" as never, params: { employeeId: employee.id } as never })
+    void navigateToWorkspaceRoute(navigate, workspaceRoutes.employeeDetails(employee.id))
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    void handleSaveAll()
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-border/60 pb-5 xl:flex-row xl:items-end xl:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">{`تعديل بيانات ${employee.name}`}</h1>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-            الصفحة تعتمد على مكونات موحدة وتُظهر فقط الحقول المناسبة للدور المختار.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={() => void navigate({ to: "/employees/$employeeId" as never, params: { employeeId: employee.id } as never })}>
-            العودة إلى الملف
-          </Button>
-          <Button variant="outline" onClick={() => void navigate({ to: "/employees" as never })}>
-            العودة إلى العاملين
-          </Button>
-        </div>
-      </div>
+    <Surface variant="panel">
+      <form onSubmit={handleSubmit}>
+        <PageSurfaceContent>
+        <PageHeader
+          action={
+            <PageActionGroup>
+              <Button type="button" onClick={() => void navigateToWorkspaceRoute(navigate, workspaceRoutes.employeeDetails(employee.id))}>
+                {t("detailPages.employee.editPage.backToRecord")}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => void navigateToWorkspaceRoute(navigate, workspaceRoutes.employees())}>
+                {t("detailPages.employee.back")}
+              </Button>
+            </PageActionGroup>
+          }
+          description={t("detailPages.employee.editPage.description")}
+          title={`${t("detailPages.employee.editTitle")} ${employee.name}`}
+        />
 
-      <FieldSection description="الاسم، الهاتف، الدور، الحالة، والملاحظات الأساسية." title="المعلومات الشخصية">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="الاسم الأول" error={errors.firstName}>
-            <Input value={state.firstName} onChange={(event) => setState({ ...state, firstName: event.target.value })} />
-          </Field>
-          <Field label="اللقب" error={errors.lastName}>
-            <Input value={state.lastName} onChange={(event) => setState({ ...state, lastName: event.target.value })} />
-          </Field>
-          <Field label="رقم الهاتف" error={errors.phone}>
-            <Input dir="ltr" value={state.phone} onChange={(event) => setState({ ...state, phone: event.target.value })} />
-          </Field>
-          <Field label="الدور" error={errors.roleId}>
-            <NativeSelect value={state.roleId} onChange={(event) => updateRole(event.target.value)}>
-              {roles.map((role) => (
-                <option key={role.id} disabled={currentRoleKey !== "worker" && role.key === "worker"} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </NativeSelect>
-            {currentRoleKey !== "worker" ? (
-              <p className="text-xs leading-5 text-muted-foreground">
-                تحويل مدير قائم مباشرة إلى عامل غير متاح من هذه الصفحة حاليًا حتى لا نفقد الارتباطات بطريقة غير مكتملة.
-              </p>
+        <FieldSection
+          description={t("detailPages.employee.editPage.personalDescription")}
+          title={t("detailPages.employee.editPage.personalTitle")}
+        >
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Field label={t("detailPages.employee.editPage.firstName")} error={errors.firstName}>
+              <Input value={state.firstName} onChange={(event) => setState({ ...state, firstName: event.target.value })} />
+            </Field>
+            <Field label={t("detailPages.employee.editPage.lastName")} error={errors.lastName}>
+              <Input value={state.lastName} onChange={(event) => setState({ ...state, lastName: event.target.value })} />
+            </Field>
+            <Field label={t("detailPages.employee.phone")} error={errors.phone}>
+              <Input dir="ltr" inputMode="tel" value={state.phone} onChange={(event) => setState({ ...state, phone: event.target.value })} />
+            </Field>
+            <Field label={t("detailPages.employee.role")} error={errors.roleId}>
+              <NativeSelect value={state.roleId} onChange={(event) => updateRole(event.target.value)}>
+                {roles.map((role) => (
+                  <option key={role.id} disabled={currentRoleKey !== "worker" && role.key === "worker"} value={role.id}>
+                    {role.name}
+                  </option>
+                ))}
+              </NativeSelect>
+              {currentRoleKey !== "worker" ? (
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {t("detailPages.employee.editPage.roleWorkerHint")}
+                </p>
+              ) : null}
+            </Field>
+            <Field label={t("detailPages.employee.editPage.status")} error={errors.status}>
+              <NativeSelect
+                value={state.status}
+                onChange={(event) => setState({ ...state, status: event.target.value as EmployeeTableRow["status"] })}
+              >
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field label={t("detailPages.employee.editPage.notes")} error={errors.notes} className="md:col-span-2 xl:col-span-1">
+              <Textarea value={state.notes} onChange={(event) => setState({ ...state, notes: event.target.value })} />
+            </Field>
+          </div>
+        </FieldSection>
+
+        <FieldSection
+          description={t("detailPages.employee.editPage.workDescription")}
+          title={t("detailPages.employee.editPage.workTitle")}
+        >
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {isWorker && !hasWarehouseWorkerPlacement ? (
+              <>
+                <Field label={t("detailPages.employee.editPage.directManager")} error={errors.managerId}>
+                  <NativeSelect
+                    value={workerManagerId}
+                    onChange={(event) => {
+                      setWorkerManagerId(event.target.value)
+                      setWorkerProjectId("")
+                    }}
+                  >
+                    <option value="">{t("detailPages.employee.editPage.selectProjectManager")}</option>
+                    {managerOptions.map((manager) => (
+                      <option key={manager.id} value={manager.id}>
+                        {manager.label}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </Field>
+                <Field label={t("detailPages.employee.editPage.currentProject")} error={errors.projectId}>
+                  <NativeSelect disabled={!workerManagerId} value={workerProjectId} onChange={(event) => setWorkerProjectId(event.target.value)}>
+                    <option value="">{t("detailPages.employee.editPage.selectManagerProject")}</option>
+                    {workerProjectOptions.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.label}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </Field>
+              </>
             ) : null}
-          </Field>
-          <Field label="الحالة" error={errors.status}>
-            <NativeSelect
-              value={state.status}
-              onChange={(event) => setState({ ...state, status: event.target.value as EmployeeTableRow["status"] })}
-            >
-              {statusOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field label="ملاحظات" error={errors.notes} className="md:col-span-2 xl:col-span-1">
-            <Textarea value={state.notes} onChange={(event) => setState({ ...state, notes: event.target.value })} />
-          </Field>
-        </div>
-      </FieldSection>
 
-      <FieldSection description="تتغير هذه الحقول تلقائيًا حسب الدور المختار." title="معلومات العمل">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {isWorker && !hasWarehouseWorkerPlacement ? (
-            <>
-              <Field label="المدير المباشر" error={errors.managerId}>
-                <NativeSelect
-                  value={workerManagerId}
-                  onChange={(event) => {
-                    setWorkerManagerId(event.target.value)
-                    setWorkerProjectId("")
-                  }}
-                >
-                  <option value="">اختر مدير المشروع</option>
-                  {managerOptions.map((manager) => (
-                    <option key={manager.id} value={manager.id}>
-                      {manager.label}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </Field>
-              <Field label="المشروع الحالي" error={errors.projectId}>
-                <NativeSelect disabled={!workerManagerId} value={workerProjectId} onChange={(event) => setWorkerProjectId(event.target.value)}>
-                  <option value="">اختر مشروعًا من مشاريع المدير</option>
-                  {workerProjectOptions.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.label}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </Field>
-            </>
-          ) : null}
+            {hasWarehouseWorkerPlacement ? (
+              <div className="md:col-span-2 xl:col-span-3 rounded-[18px] border border-border/60 bg-sidebar/90 px-4 py-3 text-sm text-muted-foreground shadow-sm">
+                {t("detailPages.employee.editPage.warehousePlacementNotice")}
+              </div>
+            ) : null}
+          </div>
 
-          {hasWarehouseWorkerPlacement ? (
-            <div className="md:col-span-2 xl:col-span-3 rounded-[18px] border border-border/60 bg-sidebar/90 px-4 py-3 text-sm text-muted-foreground shadow-sm">
-              هذا العامل مرتبط حاليًا بمستودع نشط. يمكن تعديل بياناته الأساسية وأجره من هنا، أما تغيير موقع العمل فيتم من مسار إدارة المستودعات.
-            </div>
-          ) : null}
-        </div>
-
-        {isProjectManager ? (
-          <ManagedScopeSection
-            description="اختر المشاريع التي يديرها هذا المدير حاليًا."
-            items={managedProjectOptions}
-            selectedIds={selectedManagedProjectIds}
-            title="المشاريع التي يديرها"
-            onToggle={(projectId) =>
-              setSelectedManagedProjectIds((current) =>
-                current.includes(projectId) ? current.filter((id) => id !== projectId) : [...current, projectId],
-              )
-            }
-          />
-        ) : null}
-
-        {isWarehouseManager ? (
-          <ManagedScopeSection
-            description="اختر المستودعات التي يديرها هذا المدير حاليًا."
-            items={managedWarehouseOptions}
-            selectedIds={selectedManagedWarehouseIds}
-            title="المستودعات التي يديرها"
-            onToggle={(warehouseId) =>
-              setSelectedManagedWarehouseIds((current) =>
-                current.includes(warehouseId) ? current.filter((id) => id !== warehouseId) : [...current, warehouseId],
-              )
-            }
-          />
-        ) : null}
-      </FieldSection>
-
-      <FieldSection description="يُعرض الأجر بالدينار الجزائري مع دورية صرف ثابتة حاليًا." title="الأجر">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="قيمة الأجر" error={errors.salaryAmountDzd}>
-            <CurrencyInput
-              currencyLabel="دج"
-              placeholder="10000"
-              value={state.salaryAmountDzd}
-              onChange={(event) => setState({ ...state, salaryAmountDzd: event.target.value })}
-            />
-          </Field>
-          <Field label="دورية الأجر" error={errors.salaryPeriod}>
-            <NativeSelect
-              value={state.salaryPeriod}
-              onChange={(event) =>
-                setState({
-                  ...state,
-                  salaryPeriod: event.target.value as FormState["salaryPeriod"],
-                })
+          {isProjectManager ? (
+            <ManagedScopeSection
+              description={t("detailPages.employee.editPage.managedProjectsDescription")}
+              items={managedProjectOptions}
+              selectedIds={selectedManagedProjectIds}
+              title={t("detailPages.employee.editPage.managedProjectsTitle")}
+              onToggle={(projectId) =>
+                setSelectedManagedProjectIds((current) =>
+                  current.includes(projectId) ? current.filter((id) => id !== projectId) : [...current, projectId],
+                )
               }
-            >
-              <option value="">اختر دورية الأجر</option>
-              {salaryPeriodOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-        </div>
-      </FieldSection>
+            />
+          ) : null}
 
-      <div className="flex justify-end gap-3">
-        <Button variant="outline" onClick={() => void navigate({ to: "/employees/$employeeId" as never, params: { employeeId: employee.id } as never })}>
-          إلغاء
-        </Button>
-        <Button disabled={isSaving} onClick={() => void handleSaveAll()}>
-          حفظ كل التغييرات
-        </Button>
-      </div>
-    </div>
+          {isWarehouseManager ? (
+            <ManagedScopeSection
+              description={t("detailPages.employee.editPage.managedWarehousesDescription")}
+              items={managedWarehouseOptions}
+              selectedIds={selectedManagedWarehouseIds}
+              title={t("detailPages.employee.editPage.managedWarehousesTitle")}
+              onToggle={(warehouseId) =>
+                setSelectedManagedWarehouseIds((current) =>
+                  current.includes(warehouseId) ? current.filter((id) => id !== warehouseId) : [...current, warehouseId],
+                )
+              }
+            />
+          ) : null}
+        </FieldSection>
+
+        <FieldSection
+          description={t("detailPages.employee.editPage.salaryDescription")}
+          title={t("detailPages.employee.editPage.salaryTitle")}
+        >
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Field label={t("detailPages.employee.editPage.salaryAmount")} error={errors.salaryAmountDzd}>
+              <CurrencyInput
+                currencyLabel="دج"
+                placeholder="10000"
+                value={state.salaryAmountDzd}
+                onChange={(event) => setState({ ...state, salaryAmountDzd: event.target.value })}
+              />
+            </Field>
+            <Field label={t("detailPages.employee.editPage.salaryPeriod")} error={errors.salaryPeriod}>
+              <NativeSelect
+                value={state.salaryPeriod}
+                onChange={(event) =>
+                  setState({
+                    ...state,
+                    salaryPeriod: event.target.value as FormState["salaryPeriod"],
+                  })
+                }
+              >
+                <option value="">{t("detailPages.employee.editPage.selectSalaryPeriod")}</option>
+                {salaryPeriodOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+          </div>
+        </FieldSection>
+
+        <PageFooterActions>
+          <Button type="button" variant="outline" onClick={() => void navigateToWorkspaceRoute(navigate, workspaceRoutes.employeeDetails(employee.id))}>
+            {t("common.cancel")}
+          </Button>
+          <Button disabled={isSaving} type="submit">
+            {t("detailPages.employee.editPage.saveAll")}
+          </Button>
+        </PageFooterActions>
+        </PageSurfaceContent>
+      </form>
+    </Surface>
   )
 }
 
@@ -454,7 +490,7 @@ function ManagedScopeSection({
           return (
             <label
               key={item.id}
-               className={`flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-3 transition ${checked ? "border-primary/60 bg-primary/8" : "border-border/70 bg-sidebar dark:bg-background/70"}`}
+              className={`flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-3 transition ${checked ? "border-primary/60 bg-primary/8" : "border-border/70 bg-sidebar dark:bg-background/70"}`}
             >
               <input
                 checked={checked}
@@ -483,7 +519,7 @@ function Field({
   label: string
   error?: string
   className?: string
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
     <label className={`flex flex-col gap-2 ${className ?? ""}`.trim()}>

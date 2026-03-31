@@ -12,8 +12,7 @@ function AppProvidersContent({ children }: { children: React.ReactNode }) {
   const { locale } = useAppPreferences()
 
   useEffect(() => {
-    const nextLanguage = locale in resources ? locale : "ar"
-    void i18n.changeLanguage(nextLanguage)
+    void i18n.changeLanguage(locale in resources ? locale : "ar")
   }, [locale])
 
   return (

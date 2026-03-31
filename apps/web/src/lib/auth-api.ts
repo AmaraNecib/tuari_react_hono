@@ -1,5 +1,11 @@
-import { clearDesktopBearerToken, createDesktopAuthorizationHeader, isDesktopRuntime, setDesktopBearerToken } from "./desktop-auth-session"
-import { resolveApiBaseUrl } from "./runtime-config"
+import {
+  clearDesktopBearerToken,
+  createDesktopAuthorizationHeader,
+  isDesktopRuntime,
+  isDesktopSessionRemembered,
+  setDesktopBearerToken,
+} from "./desktop-auth-session"
+import { resolveApiUrl } from "./runtime-config"
 
 type SignInResponse = {
   token?: string
@@ -13,8 +19,30 @@ type ProfileUpdateResponse = {
   }
 }
 
+function translateAuthApiErrorMessage(message: string) {
+  const normalized = message.trim().toLowerCase()
+
+  if (normalized === "invalid password") {
+    return "كلمة المرور الحالية غير صحيحة."
+  }
+
+  if (normalized === "user not found") {
+    return "تعذر العثور على المستخدم الحالي."
+  }
+
+  if (normalized === "session expired") {
+    return "انتهت الجلسة الحالية. يرجى تسجيل الدخول مرة أخرى."
+  }
+
+  return message
+}
+
 function resolveAuthUrl(path: string) {
-  return new URL(`/api/auth${path}`, resolveApiBaseUrl()).toString()
+  return resolveApiUrl(`api/auth${path}`)
+}
+
+function resolveAuthRequestCredentials(): RequestCredentials {
+  return isDesktopRuntime() ? "omit" : "include"
 }
 
 async function readJsonBody(response: Response) {
@@ -32,7 +60,7 @@ async function postAuthenticatedJson<TResponse>(path: string, body: Record<strin
       "content-type": "application/json",
       ...(isDesktopRuntime() ? createDesktopAuthorizationHeader() : {}),
     },
-    credentials: "include",
+    credentials: resolveAuthRequestCredentials(),
     body: JSON.stringify(body),
   })
 
@@ -40,7 +68,7 @@ async function postAuthenticatedJson<TResponse>(path: string, body: Record<strin
 
   if (!response.ok) {
     const message = typeof responseBody?.message === "string" && responseBody.message.trim().length > 0
-      ? responseBody.message
+      ? translateAuthApiErrorMessage(responseBody.message)
       : response.statusText || "تعذر تنفيذ العملية الآن."
     throw new Error(message)
   }
@@ -86,7 +114,7 @@ export async function signInDesktopWithPhoneNumber(input: {
     headers: {
       "content-type": "application/json",
     },
-    credentials: "include",
+    credentials: resolveAuthRequestCredentials(),
     body: JSON.stringify(input),
   })
 
@@ -94,7 +122,7 @@ export async function signInDesktopWithPhoneNumber(input: {
 
   if (!response.ok) {
     const message = typeof body?.message === "string" && body.message.trim().length > 0
-      ? body.message
+      ? translateAuthApiErrorMessage(body.message)
       : response.statusText || "تعذر تسجيل الدخول الآن."
     throw new Error(message)
   }
@@ -104,7 +132,7 @@ export async function signInDesktopWithPhoneNumber(input: {
     throw new Error("لم يتم استلام رمز جلسة صالح من الخادم.")
   }
 
-  setDesktopBearerToken(data.token)
+  await setDesktopBearerToken(data.token, { rememberMe: input.rememberMe === true })
   return data
 }
 
@@ -115,10 +143,10 @@ export async function signOutDesktopSession() {
       headers: {
         ...createDesktopAuthorizationHeader(),
       },
-      credentials: "include",
+      credentials: resolveAuthRequestCredentials(),
     })
   } finally {
-    clearDesktopBearerToken()
+    await clearDesktopBearerToken()
   }
 }
 
@@ -131,5 +159,11 @@ export async function changeCurrentPassword(input: {
   newPassword: string
   revokeOtherSessions?: boolean
 }) {
-  return postAuthenticatedJson<{ token: string | null }>("/change-password", input)
+  const response = await postAuthenticatedJson<{ token: string | null }>("/change-password", input)
+
+  if (isDesktopRuntime() && typeof response.token === "string" && response.token.trim().length > 0) {
+    await setDesktopBearerToken(response.token, { rememberMe: isDesktopSessionRemembered() })
+  }
+
+  return response
 }

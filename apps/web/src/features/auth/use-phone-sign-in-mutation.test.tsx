@@ -4,18 +4,20 @@ import { act, renderHook } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { authClient } from "@/lib/auth-client"
+import { getAuthClient } from "@/lib/auth-client"
 import { signInDesktopWithPhoneNumber } from "@/lib/auth-api"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { createAppQueryClient } from "@/lib/query-client"
 import { usePhoneSignInMutation } from "./use-phone-sign-in-mutation"
 
+const phoneNumberSignInMock = vi.fn()
+
 vi.mock("@/lib/auth-client", () => ({
-  authClient: {
+  getAuthClient: vi.fn(() => ({
     signIn: {
-      phoneNumber: vi.fn(),
+      phoneNumber: phoneNumberSignInMock,
     },
-  },
+  })),
 }))
 
 vi.mock("@/lib/auth-api", () => ({
@@ -29,7 +31,8 @@ vi.mock("@/lib/desktop-auth-session", () => ({
 
 describe("usePhoneSignInMutation", () => {
   beforeEach(() => {
-    vi.mocked(authClient.signIn.phoneNumber).mockReset()
+    phoneNumberSignInMock.mockReset()
+    vi.mocked(getAuthClient).mockClear()
     vi.mocked(signInDesktopWithPhoneNumber).mockReset()
     vi.mocked(isDesktopRuntime).mockReturnValue(false)
   })
@@ -40,7 +43,7 @@ describe("usePhoneSignInMutation", () => {
       .spyOn(queryClient, "invalidateQueries")
       .mockResolvedValue(undefined as never)
 
-    vi.mocked(authClient.signIn.phoneNumber).mockResolvedValue({
+    phoneNumberSignInMock.mockResolvedValue({
       data: { ok: true },
       error: null,
     } as never)
@@ -59,7 +62,7 @@ describe("usePhoneSignInMutation", () => {
       })
     })
 
-    expect(authClient.signIn.phoneNumber).toHaveBeenCalledWith({
+    expect(phoneNumberSignInMock).toHaveBeenCalledWith({
       phoneNumber: "0612345678",
       password: "password123",
       rememberMe: true,
@@ -81,7 +84,7 @@ describe("usePhoneSignInMutation", () => {
         password: "short",
       }),
     ).rejects.toBeTruthy()
-    expect(authClient.signIn.phoneNumber).not.toHaveBeenCalled()
+    expect(phoneNumberSignInMock).not.toHaveBeenCalled()
   })
 
   it("uses the desktop bearer-token login flow inside Tauri", async () => {
@@ -112,7 +115,7 @@ describe("usePhoneSignInMutation", () => {
       password: "password123",
       rememberMe: true,
     })
-    expect(authClient.signIn.phoneNumber).not.toHaveBeenCalled()
+    expect(phoneNumberSignInMock).not.toHaveBeenCalled()
     expect(invalidateQueries).toHaveBeenCalledTimes(1)
   })
 })

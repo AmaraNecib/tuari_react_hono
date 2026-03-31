@@ -4,22 +4,28 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import type { AppDependencies } from "./dependencies";
+import { normalizeOrigin } from "../infrastructure/config/env";
 import { AccountServiceError } from "../modules/account/account.service";
 import { createRouter } from "../rpc/router";
 import { createRpcContext } from "../rpc/context";
 
 export type TransportSecurityConfig = {
   allowedOrigins: readonly string[];
-  appClientKey: string;
 };
 
 export const createTransportSecurity = (config: TransportSecurityConfig) => {
+  const normalizedAllowedOrigins = new Set(config.allowedOrigins.map(normalizeOrigin));
+
   const isAllowedOrigin = (origin: string | undefined) => {
     if (!origin) {
       return false;
     }
 
-    return config.allowedOrigins.includes(origin);
+    try {
+      return normalizedAllowedOrigins.has(normalizeOrigin(origin));
+    } catch {
+      return false;
+    }
   };
 
   const resolveCorsOrigin = (origin: string | undefined) => {
@@ -30,20 +36,36 @@ export const createTransportSecurity = (config: TransportSecurityConfig) => {
     return isAllowedOrigin(origin) ? origin : "";
   };
 
-  const hasValidClientKey = (clientKey: string | undefined) => {
-    if (!clientKey) {
-      return false;
-    }
-
-    return clientKey === config.appClientKey;
-  };
-
   return {
     isAllowedOrigin,
     resolveCorsOrigin,
-    hasValidClientKey,
   };
 };
+
+function isSecureRequest(url: string, forwardedProto: string | undefined) {
+  if (forwardedProto?.split(",")[0]?.trim().toLowerCase() === "https") {
+    return true;
+  }
+
+  try {
+    return new URL(url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isLocalhostHostname(url: string) {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "tauri.localhost";
+  } catch {
+    return false;
+  }
+}
+
+function shouldDisableCaching(path: string) {
+  return path.startsWith("/api/auth/") || path === "/rpc/session";
+}
 
 export function createApp(
   dependencies: AppDependencies,
@@ -64,9 +86,26 @@ export function createApp(
     await next();
     c.header("X-Content-Type-Options", "nosniff");
     c.header("X-Frame-Options", "DENY");
-    c.header("Referrer-Policy", "same-origin");
+    c.header("Referrer-Policy", "no-referrer");
     c.header("Cross-Origin-Opener-Policy", "same-origin");
     c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    c.header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+
+    const vary = c.res.headers.get("Vary");
+    if (!vary) {
+      c.header("Vary", "Origin");
+    } else if (!vary.includes("Origin")) {
+      c.header("Vary", `${vary}, Origin`);
+    }
+
+    if (shouldDisableCaching(c.req.path)) {
+      c.header("Cache-Control", "no-store, private");
+      c.header("Pragma", "no-cache");
+    }
+
+    if (isSecureRequest(c.req.url, c.req.header("x-forwarded-proto")) && !isLocalhostHostname(c.req.url)) {
+      c.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
   });
 
   app.use(
@@ -77,7 +116,6 @@ export function createApp(
       allowHeaders: [
         "Content-Type",
         "Authorization",
-        "X-Tuari-Client-Key",
         "X-Requested-With",
       ],
       credentials: true,
@@ -86,15 +124,10 @@ export function createApp(
   );
 
   app.use("/api/auth/*", async (c, next) => {
-    if (!transport.isAllowedOrigin(c.req.header("origin"))) {
-      return c.json({ message: "Blocked origin." }, 403);
-    }
+    const origin = c.req.header("origin")
+    const isTopLevelSafeAuthRequest = !origin && ["GET", "HEAD"].includes(c.req.method)
 
-    await next();
-  });
-
-  app.use("/api/auth/profile", async (c, next) => {
-    if (!transport.isAllowedOrigin(c.req.header("origin"))) {
+    if (!isTopLevelSafeAuthRequest && !transport.isAllowedOrigin(origin)) {
       return c.json({ message: "Blocked origin." }, 403);
     }
 
@@ -104,10 +137,6 @@ export function createApp(
   app.use("/rpc/*", async (c, next) => {
     if (!transport.isAllowedOrigin(c.req.header("origin"))) {
       return c.json({ message: "Blocked origin." }, 403);
-    }
-
-    if (!transport.hasValidClientKey(c.req.header("x-tuari-client-key"))) {
-      return c.json({ message: "Blocked client." }, 403);
     }
 
     await next();
@@ -128,6 +157,35 @@ export function createApp(
 
       throw error;
     }
+  });
+
+  app.post("/api/auth/change-password", async (c) => {
+    let actor: Awaited<ReturnType<typeof dependencies.accountService.getCurrentSessionUser>> | null = null
+
+    try {
+      actor = await dependencies.accountService.getCurrentSessionUser(c.req.raw.headers)
+    } catch {
+      actor = null
+    }
+
+    const response = await dependencies.auth.handler(c.req.raw)
+
+    if (!response.ok) {
+      return c.newResponse(response.body, response)
+    }
+
+    if (!actor) {
+      console.warn("[auth] Password change succeeded but actor audit context could not be resolved")
+      return c.newResponse(response.body, response)
+    }
+
+    try {
+      await dependencies.accountService.recordPasswordChangeForUser(actor)
+    } catch (error) {
+      console.warn("[auth] Password change audit could not be recorded", error)
+    }
+
+    return c.newResponse(response.body, response)
   });
 
   app.on(["POST", "GET"], "/api/auth/*", (c) => {

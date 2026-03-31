@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   appErrorSchema,
   authSetupStatusSchema,
+  debtAccountCreateInputSchema,
+  debtAccountSchema,
+  debtCloseAgainstInputSchema,
+  debtClosureLinkSchema,
+  debtPartyDetailSchema,
+  debtEntryCreateInputSchema,
+  debtEntrySchema,
+  debtsSummarySchema,
+  externalCounterpartyCreateInputSchema,
+  externalCounterpartySchema,
   employeeBatchCreateInputSchema,
   employeeBatchLimit,
   employeeProjectAssignmentSchema,
@@ -214,6 +224,149 @@ describe("contracts", () => {
     ).toBe(8200)
   })
 
+  it("accepts external counterparties and debt ledger payloads", () => {
+    expect(
+      externalCounterpartyCreateInputSchema.parse({
+        fullName: "شركة البركة",
+        phoneNumber: "0612345678",
+        note: "مورد خارجي",
+      }).fullName,
+    ).toBe("شركة البركة")
+
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: "counterparty-1",
+        openingBalanceDzd: 1200,
+      }).partyType,
+    ).toBe("EXTERNAL_COUNTERPARTY")
+
+    expect(
+      debtEntryCreateInputSchema.parse({
+        debtAccountId: "debt-account-1",
+        entryType: "PAYMENT",
+        signedAmountDzd: -500,
+      }).entryType,
+    ).toBe("PAYMENT")
+  })
+
+  it("rejects invalid debt account party linkage", () => {
+    expect(() =>
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        externalCounterpartyId: "counterparty-1",
+      }),
+    ).toThrowError()
+  })
+
+  it("accepts debt entities in the shared contract", () => {
+    expect(
+      externalCounterpartySchema.parse({
+        id: "counterparty-1",
+        fullName: "عميل خارجي",
+        phoneNumber: "0612345678",
+        note: null,
+        createdAt: "2026-03-17T10:00:00.000Z",
+        updatedAt: "2026-03-17T10:00:00.000Z",
+      }).id,
+    ).toBe("counterparty-1")
+
+    expect(
+      debtAccountSchema.parse({
+        id: "debt-account-1",
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        externalCounterpartyId: null,
+        status: "OPEN",
+        currentBalanceDzd: 1500,
+        note: null,
+        settledAt: null,
+        actorUserId: "user-1",
+        actorLabel: "Admin",
+        transactionId: "550e8400-e29b-41d4-a716-446655440000",
+        createdAt: "2026-03-17T10:00:00.000Z",
+        updatedAt: "2026-03-17T10:00:00.000Z",
+      }).partyType,
+    ).toBe("INTERNAL_WORKER")
+
+    expect(
+      debtEntrySchema.parse({
+        id: "debt-entry-1",
+        debtAccountId: "debt-account-1",
+        entryType: "SETTLEMENT",
+        signedAmountDzd: -1500,
+        entryDate: "2026-03-17T10:00:00.000Z",
+        note: null,
+        balanceAfterDzd: 0,
+        actorUserId: "user-1",
+        actorLabel: "Admin",
+        transactionId: "550e8400-e29b-41d4-a716-446655440000",
+        createdAt: "2026-03-17T10:00:00.000Z",
+        updatedAt: "2026-03-17T10:00:00.000Z",
+      }).entryType,
+    ).toBe("SETTLEMENT")
+
+    expect(
+      debtClosureLinkSchema.parse({
+        id: "closure-1",
+        sourceDebtAccountId: "debt-account-1",
+        targetDebtAccountId: "debt-account-2",
+        closedAmountDzd: 500,
+        entryDate: "2026-03-17T10:00:00.000Z",
+        note: "مقاصة",
+        actorUserId: "user-1",
+        actorLabel: "Admin",
+        transactionId: "550e8400-e29b-41d4-a716-446655440000",
+        createdAt: "2026-03-17T10:00:00.000Z",
+        updatedAt: "2026-03-17T10:00:00.000Z",
+      }).closedAmountDzd,
+    ).toBe(500)
+  })
+
+  it("accepts debt closure and aggregate debt payloads", () => {
+    expect(
+      debtCloseAgainstInputSchema.parse({
+        sourceDebtAccountId: "debt-account-1",
+        targetDebtAccountId: "debt-account-2",
+      }).sourceDebtAccountId,
+    ).toBe("debt-account-1")
+
+    expect(
+      debtPartyDetailSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        externalCounterpartyId: null,
+        displayName: "عامل واحد",
+        phoneNumber: "0612345678",
+        note: null,
+        totalBalanceDzd: 200,
+        balanceLabel: "لنا عنده",
+        debtAccounts: [],
+      }).totalBalanceDzd,
+    ).toBe(200)
+
+    expect(
+      debtsSummarySchema.parse({
+        parties: [
+          {
+            partyType: "INTERNAL_WORKER",
+            workerId: "worker-1",
+            externalCounterpartyId: null,
+            displayName: "عامل واحد",
+            phoneNumber: "0612345678",
+            totalBalanceDzd: 200,
+            balanceLabel: "لنا عنده",
+            openDebtCasesCount: 1,
+            settledDebtCasesCount: 1,
+            latestActivityAt: "2026-03-17T10:00:00.000Z",
+          },
+        ],
+        debtAccounts: [],
+      }).parties[0]?.openDebtCasesCount,
+    ).toBe(1)
+  })
+
   it("accepts grouped system log entries", () => {
     expect(
       systemLogEntrySchema.parse({
@@ -221,15 +374,15 @@ describe("contracts", () => {
         transactionId: "550e8400-e29b-41d4-a716-446655440000",
         actorUserId: "user-1",
         actorLabel: "Admin One",
-        actionType: "WORKPLACE_ASSIGNED",
-        entityType: "PROJECT_ASSIGNMENT",
+        actionType: "DEBT_ENTRY_RECORDED",
+        entityType: "DEBT_ENTRY",
         entityId: "assignment-1",
         entityLabel: "North Site",
         summary: "تم إسناد العامل إلى المشروع",
         detail: null,
         createdAt: "2026-03-17T10:00:00.000Z",
       }).actionType,
-    ).toBe("WORKPLACE_ASSIGNED")
+    ).toBe("DEBT_ENTRY_RECORDED")
   })
 
   it("rejects duplicate phones inside the same employee batch", () => {

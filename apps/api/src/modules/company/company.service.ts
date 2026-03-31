@@ -1,4 +1,9 @@
 import {
+  type DebtAccountCreateInput,
+  type DebtCloseAgainstInput,
+  type DebtPartyDetailInput,
+  type DebtEntryCreateInput,
+  type DebtSettlementInput,
   type EmployeeBatchCreateInput,
   type EmployeeAssignWorkplaceInput,
   type EmployeeCreateInput,
@@ -6,6 +11,7 @@ import {
   type EmployeeSyncManagedWarehousesInput,
   type EmployeeSalaryPaymentCreateInput,
   type EmployeeUpdateInput,
+  type ExternalCounterpartyCreateInput,
   type ManagerAssignmentCreateInput,
   type ManagerAssignmentEndInput,
   type ProjectAssignmentCreateInput,
@@ -22,17 +28,23 @@ import {
 
 import { CompanyError } from "./company.errors";
 import type { CompanyRepository } from "./company.repository";
+import { buildCompanySystemLog } from "./company.system-log";
+import { normalizeAlgeriaTimestamp } from "./company-time";
 import {
   SYSTEM_ROLE_KEYS,
+  type DebtAccountRecord,
+  type DebtClosureLinkListFilters,
   type EmployeeSalaryPaymentListFilters,
   type EmployeeStateHistoryListFilters,
   type EmployeeListFilters,
+  type ExternalCounterpartyListFilters,
   type ManagerAssignmentListFilters,
+  type DebtAccountListFilters,
+  type DebtEntryListFilters,
   type ProjectManagerOwnershipHistoryListFilters,
   type ProjectAssignmentListFilters,
   type ProjectListFilters,
   type MutationAuditContext,
-  type SystemLogEntryRecord,
   type SystemLogListFilters,
   type WarehouseAssignmentListFilters,
   type WarehouseManagerOwnershipHistoryListFilters,
@@ -63,14 +75,6 @@ function normalizeText(value: string | null | undefined) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function createAlgeriaTimestamp(date = new Date()) {
-  return new Date(date.getTime() + 60 * 60 * 1000).toISOString().replace("Z", "+01:00")
-}
-
-function normalizeTimestamp(value: string | undefined) {
-  return value ?? createAlgeriaTimestamp();
-}
-
 function buildBatchField(index: number, field: string) {
   return `employees.${index}.${field}`;
 }
@@ -83,6 +87,42 @@ function normalizeSalaryAmount(value: number | null | undefined) {
   return value;
 }
 
+function normalizeSignedMoneyAmount(value: number) {
+  if (!Number.isFinite(value) || value === 0) {
+    throw new CompanyError("VALIDATION", "يجب إدخال مبلغ صالح وغير صفري.", [
+      { field: "signedAmountDzd", message: "يجب إدخال مبلغ صالح وغير صفري." },
+    ])
+  }
+
+  return value
+}
+
+function getDebtAccountStatus(balance: number) {
+  return balance === 0 ? "SETTLED" : "OPEN"
+}
+
+function getDebtBalanceLabel(balance: number) {
+  if (balance > 0) {
+    return "لنا عنده" as const
+  }
+
+  if (balance < 0) {
+    return "علينا له" as const
+  }
+
+  return "مغلق" as const
+}
+
+function getDebtEntryDeltaForClosure(balance: number, closedAmountDzd: number) {
+  return balance > 0 ? -closedAmountDzd : closedAmountDzd
+}
+
+function buildDebtPartyKey(account: Pick<DebtAccountRecord, "partyType" | "workerId" | "externalCounterpartyId">) {
+  return account.partyType === "INTERNAL_WORKER"
+    ? `INTERNAL_WORKER:${account.workerId}`
+    : `EXTERNAL_COUNTERPARTY:${account.externalCounterpartyId}`
+}
+
 function normalizeMutationAuditContext(auditContext?: MutationAuditContext): Required<MutationAuditContext> {
   return {
     actorUserId: auditContext?.actorUserId ?? null,
@@ -91,29 +131,12 @@ function normalizeMutationAuditContext(auditContext?: MutationAuditContext): Req
   }
 }
 
-function getArabicStatusLabel(status: string) {
-  switch (status) {
-    case "ACTIVE":
-      return "نشط"
-    case "INACTIVE":
-      return "غير نشط"
-    case "LEFT":
-      return "غادر"
-    case "STOPPED":
-      return "متوقف"
-    case "COMPLETED":
-      return "مكتمل"
-    case "ARCHIVED":
-      return "مؤرشف"
-    case "ENDED":
-      return "منتهي"
-    default:
-      return status
+function assertDebtEntryDateNotBackdated(entryDate: string, latestEntryDate: string | null, field: string) {
+  if (latestEntryDate && Date.parse(entryDate) < Date.parse(latestEntryDate)) {
+    throw new CompanyError("BUSINESS_RULE", "لا يمكن تسجيل قيد بتاريخ أقدم من آخر حركة موجودة على الحساب.", [
+      { field, message: "لا يمكن تسجيل قيد بتاريخ أقدم من آخر حركة موجودة على الحساب." },
+    ])
   }
-}
-
-function compareTimestampsDesc(left: string, right: string) {
-  return new Date(right).getTime() - new Date(left).getTime()
 }
 
 export class CompanyService {
@@ -121,6 +144,28 @@ export class CompanyService {
 
   listRoles() {
     return { items: this.repository.listRoles() };
+  }
+
+  getWorkspaceSnapshot() {
+    return {
+      roles: this.repository.listRoles(),
+      employees: this.repository.listEmployees(),
+      externalCounterparties: this.repository.listExternalCounterparties(),
+      debtAccounts: this.repository.listDebtAccounts(),
+      debtEntries: this.repository
+        .listDebtAccounts()
+        .flatMap((account) => this.repository.listDebtEntries({ debtAccountId: account.id })),
+      debtClosureLinks: this.repository.listDebtClosureLinks(),
+      projects: this.repository.listProjects(),
+      warehouses: this.repository.listWarehouses(),
+      managerAssignments: this.repository.listManagerAssignments(),
+      projectAssignments: this.repository.listProjectAssignments(),
+      warehouseAssignments: this.repository.listWarehouseAssignments(),
+      employeeStateHistory: this.repository.listEmployeeStateHistory(),
+      projectManagerOwnershipHistory: this.repository.listProjectManagerOwnershipHistory(),
+      warehouseManagerOwnershipHistory: this.repository.listWarehouseManagerOwnershipHistory(),
+      salaryPayments: this.repository.listSalaryPayments(),
+    }
   }
 
   getRole(id: string) {
@@ -167,256 +212,407 @@ export class CompanyService {
     return { items: this.repository.listSalaryPayments(filters) }
   }
 
-  listSystemLog(filters?: SystemLogListFilters) {
-    const rolesById = new Map(this.repository.listRoles().map((role) => [role.id, role]))
-    const employeesById = new Map(this.repository.listEmployees().map((employee) => [employee.id, employee]))
-    const projectsById = new Map(this.repository.listProjects().map((project) => [project.id, project]))
-    const warehousesById = new Map(this.repository.listWarehouses().map((warehouse) => [warehouse.id, warehouse]))
-    const actorLabelCache = new Map<string, string | null>()
+  listExternalCounterparties(filters?: ExternalCounterpartyListFilters) {
+    return { items: this.repository.listExternalCounterparties(filters) }
+  }
 
-    const resolveActorLabel = (actorUserId: string | null) => {
-      if (!actorUserId) {
-        return null
-      }
-
-      if (actorLabelCache.has(actorUserId)) {
-        return actorLabelCache.get(actorUserId) ?? null
-      }
-
-      const authUser = this.repository.getAuthUserById(actorUserId)
-      const actorLabel = authUser?.name ?? actorUserId
-
-      actorLabelCache.set(actorUserId, actorLabel ?? null)
-      return actorLabel ?? null
+  getExternalCounterparty(id: string) {
+    const counterparty = this.repository.getExternalCounterpartyById(id)
+    if (!counterparty) {
+      throw new CompanyError("NOT_FOUND", "تعذر العثور على الطرف الخارجي المطلوب.")
     }
 
-    const logEvents: Array<SystemLogEntryRecord> = []
+    return successResult("تم تحميل الطرف الخارجي بنجاح.", counterparty)
+  }
 
-    for (const entry of this.repository.listEmployeeStateHistory()) {
-      const employee = employeesById.get(entry.employeeId)
-      const role = rolesById.get(entry.roleId)
-      logEvents.push({
-        id: `employee-state-${entry.id}`,
-        transactionId: entry.transactionId,
-        actorUserId: entry.actorUserId,
-        actorLabel: entry.actorLabel ?? resolveActorLabel(entry.actorUserId),
-        actionType: entry.eventType === "CREATED" ? "EMPLOYEE_CREATED" : "EMPLOYEE_UPDATED",
-        entityType: "EMPLOYEE",
-        entityId: entry.employeeId,
-        entityLabel: employee ? `${employee.firstName} ${employee.lastName}` : null,
-        summary:
-          entry.eventType === "CREATED"
-            ? `تم إنشاء العامل ${employee ? `${employee.firstName} ${employee.lastName}` : entry.employeeId}`
-            : `تم تحديث بيانات العامل ${employee ? `${employee.firstName} ${employee.lastName}` : entry.employeeId}`,
-        detail: `${role?.name ?? "دور غير معروف"} - ${getArabicStatusLabel(entry.status)}`,
-        createdAt: entry.updatedAt,
-      })
+  createExternalCounterparty(input: ExternalCounterpartyCreateInput) {
+    const counterparty = this.repository.createExternalCounterparty({
+      fullName: input.fullName.trim(),
+      phoneNumber: input.phoneNumber.trim(),
+      note: normalizeText(input.note),
+    })
+
+    return successResult("تم إنشاء الطرف الخارجي بنجاح.", counterparty)
+  }
+
+  listDebtAccounts(filters?: DebtAccountListFilters) {
+    return { items: this.repository.listDebtAccounts(filters) }
+  }
+
+  getDebtAccount(id: string) {
+    const account = this.repository.getDebtAccountById(id)
+    if (!account) {
+      throw new CompanyError("NOT_FOUND", "تعذر العثور على حساب الدين المطلوب.")
     }
 
-    for (const assignment of this.repository.listManagerAssignments()) {
-      const worker = employeesById.get(assignment.workerId)
-      const manager = employeesById.get(assignment.managerId)
-      const verb = assignment.status === "ACTIVE" ? "تم ربط" : "تم إنهاء ربط"
-      logEvents.push({
-        id: `manager-assignment-${assignment.id}`,
-        transactionId: assignment.transactionId,
-        actorUserId: assignment.actorUserId,
-        actorLabel: assignment.actorLabel ?? resolveActorLabel(assignment.actorUserId),
-        actionType: "WORKPLACE_ASSIGNED",
-        entityType: "MANAGER_ASSIGNMENT",
-        entityId: assignment.id,
-        entityLabel: worker ? `${worker.firstName} ${worker.lastName}` : null,
-        summary: `${verb} العامل ${worker ? `${worker.firstName} ${worker.lastName}` : assignment.workerId} بالمدير ${manager ? `${manager.firstName} ${manager.lastName}` : assignment.managerId}`,
-        detail: assignment.notes,
-        createdAt: assignment.updatedAt,
-      })
+    return successResult("تم تحميل حساب الدين بنجاح.", account)
+  }
+
+  listDebtEntries(filters: DebtEntryListFilters) {
+    this.requireDebtAccount(filters.debtAccountId)
+    return { items: this.repository.listDebtEntries(filters) }
+  }
+
+  listDebtClosureLinks(filters: DebtClosureLinkListFilters) {
+    this.requireDebtAccount(filters.debtAccountId!)
+    return { items: this.repository.listDebtClosureLinks(filters) }
+  }
+
+  createDebtAccount(input: DebtAccountCreateInput, auditContext?: MutationAuditContext) {
+    const audit = normalizeMutationAuditContext(auditContext)
+
+    const workerId = input.workerId ?? null
+    const externalCounterpartyId = input.externalCounterpartyId ?? null
+
+    if ((workerId === null && externalCounterpartyId === null) || (workerId !== null && externalCounterpartyId !== null)) {
+      throw new CompanyError("VALIDATION", "يجب ربط الحساب بطرف واحد فقط.", [
+        { field: workerId !== null ? "externalCounterpartyId" : "workerId", message: "يجب ربط الحساب بطرف واحد فقط." },
+      ])
     }
 
-    for (const assignment of this.repository.listProjectAssignments()) {
-      const employee = employeesById.get(assignment.employeeId)
-      const project = projectsById.get(assignment.projectId)
-      const verb = assignment.status === "ACTIVE" ? "تم إسناد" : "تم إنهاء إسناد"
-      logEvents.push({
-        id: `project-assignment-${assignment.id}`,
-        transactionId: assignment.transactionId,
-        actorUserId: assignment.actorUserId,
-        actorLabel: assignment.actorLabel ?? resolveActorLabel(assignment.actorUserId),
-        actionType: "WORKPLACE_ASSIGNED",
-        entityType: "PROJECT_ASSIGNMENT",
-        entityId: assignment.id,
-        entityLabel: project?.name ?? null,
-        summary: `${verb} ${employee ? `${employee.firstName} ${employee.lastName}` : assignment.employeeId} إلى المشروع ${project?.name ?? assignment.projectId}`,
-        detail: assignment.notes,
-        createdAt: assignment.updatedAt,
-      })
+    if (input.partyType === "INTERNAL_WORKER") {
+      this.requireEmployeeWorker(workerId!, "workerId")
     }
 
-    for (const assignment of this.repository.listWarehouseAssignments()) {
-      const employee = employeesById.get(assignment.employeeId)
-      const warehouse = warehousesById.get(assignment.warehouseId)
-      const verb = assignment.status === "ACTIVE" ? "تم إسناد" : "تم إنهاء إسناد"
-      logEvents.push({
-        id: `warehouse-assignment-${assignment.id}`,
-        transactionId: assignment.transactionId,
-        actorUserId: assignment.actorUserId,
-        actorLabel: assignment.actorLabel ?? resolveActorLabel(assignment.actorUserId),
-        actionType: "WORKPLACE_ASSIGNED",
-        entityType: "WAREHOUSE_ASSIGNMENT",
-        entityId: assignment.id,
-        entityLabel: warehouse?.name ?? null,
-        summary: `${verb} ${employee ? `${employee.firstName} ${employee.lastName}` : assignment.employeeId} إلى المستودع ${warehouse?.name ?? assignment.warehouseId}`,
-        detail: assignment.notes,
-        createdAt: assignment.updatedAt,
-      })
+    if (input.partyType === "EXTERNAL_COUNTERPARTY") {
+      this.requireExternalCounterparty(externalCounterpartyId!, "externalCounterpartyId")
     }
 
-    for (const entry of this.repository.listProjectManagerOwnershipHistory()) {
-      const project = projectsById.get(entry.projectId)
-      const manager = employeesById.get(entry.managerId)
-      const verb = entry.status === "ACTIVE" ? "تم تعيين" : "تم إنهاء تعيين"
-      logEvents.push({
-        id: `project-manager-history-${entry.id}`,
-        transactionId: entry.transactionId,
-        actorUserId: entry.actorUserId,
-        actorLabel: entry.actorLabel ?? resolveActorLabel(entry.actorUserId),
-        actionType: "PROJECT_MANAGER_CHANGED",
-        entityType: "PROJECT",
-        entityId: entry.projectId,
-        entityLabel: project?.name ?? null,
-        summary: `${verb} ${manager ? `${manager.firstName} ${manager.lastName}` : entry.managerId} مديرًا للمشروع ${project?.name ?? entry.projectId}`,
-        detail: entry.notes,
-        createdAt: entry.updatedAt,
-      })
+    const openingBalance = input.openingBalanceDzd ?? 0
+    if (!Number.isFinite(openingBalance)) {
+      throw new CompanyError("VALIDATION", "يجب إدخال رصيد افتتاحي صالح.", [
+        { field: "openingBalanceDzd", message: "يجب إدخال رصيد افتتاحي صالح." },
+      ])
     }
-
-    for (const entry of this.repository.listWarehouseManagerOwnershipHistory()) {
-      const warehouse = warehousesById.get(entry.warehouseId)
-      const manager = employeesById.get(entry.managerId)
-      const verb = entry.status === "ACTIVE" ? "تم تعيين" : "تم إنهاء تعيين"
-      logEvents.push({
-        id: `warehouse-manager-history-${entry.id}`,
-        transactionId: entry.transactionId,
-        actorUserId: entry.actorUserId,
-        actorLabel: entry.actorLabel ?? resolveActorLabel(entry.actorUserId),
-        actionType: "WAREHOUSE_MANAGER_CHANGED",
-        entityType: "WAREHOUSE",
-        entityId: entry.warehouseId,
-        entityLabel: warehouse?.name ?? null,
-        summary: `${verb} ${manager ? `${manager.firstName} ${manager.lastName}` : entry.managerId} مديرًا للمستودع ${warehouse?.name ?? entry.warehouseId}`,
-        detail: entry.notes,
-        createdAt: entry.updatedAt,
-      })
-    }
-
-    for (const payment of this.repository.listSalaryPayments()) {
-      const employee = employeesById.get(payment.employeeId)
-      logEvents.push({
-        id: `salary-payment-${payment.id}`,
-        transactionId: payment.transactionId,
-        actorUserId: payment.actorUserId,
-        actorLabel: payment.actorLabel ?? resolveActorLabel(payment.actorUserId),
-        actionType: "SALARY_PAYMENT_RECORDED",
-        entityType: "SALARY_PAYMENT",
-        entityId: payment.id,
-        entityLabel: employee ? `${employee.firstName} ${employee.lastName}` : null,
-        summary: `تم تسجيل دفعة راتب للعامل ${employee ? `${employee.firstName} ${employee.lastName}` : payment.employeeId}`,
-        detail: `المبلغ المدفوع ${payment.actualAmountDzd} دج`,
-        createdAt: payment.updatedAt,
-      })
-    }
-
-    for (const entry of this.repository.listUserProfileHistory()) {
-      logEvents.push({
-        id: `user-profile-${entry.id}`,
-        transactionId: entry.transactionId,
-        actorUserId: entry.actorUserId,
-        actorLabel: entry.actorLabel ?? resolveActorLabel(entry.actorUserId),
-        actionType: "ACCOUNT_UPDATED",
-        entityType: "ACCOUNT",
-        entityId: entry.userId,
-        entityLabel: entry.name ?? entry.phone ?? resolveActorLabel(entry.userId),
-        summary: `تم تحديث بيانات الحساب ${entry.name ?? entry.phone ?? entry.userId}`,
-        detail: [entry.name ? `الاسم: ${entry.name}` : null, entry.phone ? `الهاتف: ${entry.phone}` : null]
-          .filter((value): value is string => Boolean(value))
-          .join(" • ") || null,
-        createdAt: entry.updatedAt,
-      })
-    }
-
-    const groupedEntries = Array.from(
-      logEvents.reduce<Map<string, { events: SystemLogEntryRecord[]; key: string }>>((groups, event) => {
-        const key = event.transactionId ?? event.id
-        const existing = groups.get(key)
-
-        if (existing) {
-          existing.events.push(event)
-          return groups
-        }
-
-        groups.set(key, { events: [event], key })
-        return groups
-      }, new Map<string, { events: SystemLogEntryRecord[]; key: string }>()).values(),
-    )
-      .filter(({ events }) =>
-        events.some((event) => {
-          if (filters?.actionType && event.actionType !== filters.actionType) {
-            return false
-          }
-
-          if (filters?.actorUserId && event.actorUserId !== filters.actorUserId) {
-            return false
-          }
-
-          if (filters?.entityId && event.entityId !== filters.entityId) {
-            return false
-          }
-
-          if (filters?.entityType && event.entityType !== filters.entityType) {
-            return false
-          }
-
-          if (filters?.fromDate && event.createdAt < filters.fromDate) {
-            return false
-          }
-
-          if (filters?.toDate && event.createdAt > filters.toDate) {
-            return false
-          }
-
-          return true
-        }),
+    const status = getDebtAccountStatus(openingBalance)
+    const entryDate = normalizeAlgeriaTimestamp(input.openingEntryDate)
+    const account = this.repository.withTransaction(() => {
+      const createdAccount = this.repository.createDebtAccount(
+        {
+          partyType: input.partyType,
+          workerId,
+          externalCounterpartyId,
+          status,
+          currentBalanceDzd: openingBalance,
+          note: normalizeText(input.note),
+          settledAt: status === "SETTLED" ? entryDate : null,
+        },
+        audit,
       )
-      .map(({ events, key }) => {
-        const sortedEvents = [...events].sort((left, right) => compareTimestampsDesc(left.createdAt, right.createdAt))
-        const primaryEvent = (
-          sortedEvents.find((event) => event.actionType === "SALARY_PAYMENT_RECORDED") ??
-          sortedEvents.find((event) => event.actionType === "PROJECT_MANAGER_CHANGED") ??
-          sortedEvents.find((event) => event.actionType === "WAREHOUSE_MANAGER_CHANGED") ??
-          sortedEvents[0]
-        )!
 
-        const detailLines = sortedEvents
-          .flatMap((event) => [event.detail, event.summary !== primaryEvent.summary ? event.summary : null])
-          .filter((value): value is string => Boolean(value && value.trim().length > 0))
-          .filter((value, index, values) => values.indexOf(value) === index)
+      if (openingBalance !== 0) {
+        this.repository.createDebtEntry(
+          {
+            debtAccountId: createdAccount.id,
+            entryType: "OPENING",
+            signedAmountDzd: openingBalance,
+            entryDate,
+            note: normalizeText(input.openingEntryNote) ?? normalizeText(input.note),
+            balanceAfterDzd: openingBalance,
+          },
+          audit,
+        )
+      }
+
+      return createdAccount
+    })
+
+    return successResult("تم إنشاء حساب الدين بنجاح.", this.requireDebtAccount(account.id))
+  }
+
+  createDebtEntry(input: DebtEntryCreateInput, auditContext?: MutationAuditContext) {
+    const audit = normalizeMutationAuditContext(auditContext)
+    const account = this.requireDebtAccount(input.debtAccountId)
+    const existingEntries = this.repository.listDebtEntries({ debtAccountId: account.id })
+
+    if (input.entryType === "OPENING" && existingEntries.length > 0) {
+      throw new CompanyError("BUSINESS_RULE", "يمكن تسجيل رصيد افتتاحي فقط كأول حركة على الحساب.", [
+        { field: "entryType", message: "يمكن تسجيل رصيد افتتاحي فقط كأول حركة على الحساب." },
+      ])
+    }
+
+    const signedAmountDzd = normalizeSignedMoneyAmount(input.signedAmountDzd)
+    const entryDate = normalizeAlgeriaTimestamp(input.entryDate)
+    assertDebtEntryDateNotBackdated(entryDate, existingEntries[0]?.entryDate ?? null, "entryDate")
+    const nextBalance = account.currentBalanceDzd + signedAmountDzd
+    const nextStatus = getDebtAccountStatus(nextBalance)
+
+    const entry = this.repository.withTransaction(() => {
+      const createdEntry = this.repository.createDebtEntry(
+        {
+          debtAccountId: account.id,
+          entryType: input.entryType,
+          signedAmountDzd,
+          entryDate,
+          note: normalizeText(input.note),
+          balanceAfterDzd: nextBalance,
+        },
+        audit,
+      )
+
+      this.repository.updateDebtAccount(
+        {
+          id: account.id,
+          currentBalanceDzd: nextBalance,
+          status: nextStatus,
+          settledAt: nextStatus === "SETTLED" ? entryDate : null,
+        },
+        audit,
+      )
+
+      return createdEntry
+    })
+
+    return successResult("تم تسجيل حركة الدين بنجاح.", entry)
+  }
+
+  settleDebtAccount(input: DebtSettlementInput, auditContext?: MutationAuditContext) {
+    const audit = normalizeMutationAuditContext(auditContext)
+    const account = this.requireDebtAccount(input.id)
+
+    if (account.currentBalanceDzd === 0) {
+      throw new CompanyError("BUSINESS_RULE", "الحساب مسوّى بالفعل ولا يحتاج إلى تسوية جديدة.")
+    }
+
+    const entryDate = normalizeAlgeriaTimestamp(input.entryDate)
+    const existingEntries = this.repository.listDebtEntries({ debtAccountId: account.id })
+    assertDebtEntryDateNotBackdated(entryDate, existingEntries[0]?.entryDate ?? null, "entryDate")
+    const settlementAmount = -account.currentBalanceDzd
+    const entry = this.repository.withTransaction(() => {
+      const createdEntry = this.repository.createDebtEntry(
+        {
+          debtAccountId: account.id,
+          entryType: "SETTLEMENT",
+          signedAmountDzd: settlementAmount,
+          entryDate,
+          note: normalizeText(input.note),
+          balanceAfterDzd: 0,
+        },
+        audit,
+      )
+
+      this.repository.updateDebtAccount(
+        {
+          id: account.id,
+          currentBalanceDzd: 0,
+          status: "SETTLED",
+          settledAt: entryDate,
+        },
+        audit,
+      )
+
+      return createdEntry
+    })
+
+    return successResult("تمت تسوية حساب الدين بنجاح.", entry)
+  }
+
+  closeDebtAgainstAnother(input: DebtCloseAgainstInput, auditContext?: MutationAuditContext) {
+    const audit = normalizeMutationAuditContext(auditContext)
+    const sourceAccount = this.requireDebtAccount(input.sourceDebtAccountId)
+    const targetAccount = this.requireDebtAccount(input.targetDebtAccountId)
+
+    if (sourceAccount.id === targetAccount.id) {
+      throw new CompanyError("VALIDATION", "يجب اختيار حسابي دين مختلفين.", [
+        { field: "targetDebtAccountId", message: "يجب اختيار حسابي دين مختلفين." },
+      ])
+    }
+
+    if (buildDebtPartyKey(sourceAccount) !== buildDebtPartyKey(targetAccount)) {
+      throw new CompanyError("BUSINESS_RULE", "لا يمكن إغلاق الدين إلا بين حالتين تخصان نفس الطرف.", [
+        { field: "targetDebtAccountId", message: "لا يمكن إغلاق الدين إلا بين حالتين تخصان نفس الطرف." },
+      ])
+    }
+
+    if (sourceAccount.currentBalanceDzd === 0 || targetAccount.currentBalanceDzd === 0) {
+      throw new CompanyError("BUSINESS_RULE", "يجب أن يكون كلا الحسابين مفتوحًا وبأرصدة غير صفرية قبل الإغلاق المتبادل.")
+    }
+
+    if (Math.sign(sourceAccount.currentBalanceDzd) === Math.sign(targetAccount.currentBalanceDzd)) {
+      throw new CompanyError("BUSINESS_RULE", "لا يمكن الإغلاق المتبادل إلا بين رصيدين باتجاهين متعاكسين.")
+    }
+
+    const entryDate = normalizeAlgeriaTimestamp(input.entryDate)
+    const sourceEntries = this.repository.listDebtEntries({ debtAccountId: sourceAccount.id })
+    const targetEntries = this.repository.listDebtEntries({ debtAccountId: targetAccount.id })
+    assertDebtEntryDateNotBackdated(entryDate, sourceEntries[0]?.entryDate ?? null, "entryDate")
+    assertDebtEntryDateNotBackdated(entryDate, targetEntries[0]?.entryDate ?? null, "entryDate")
+
+    const closedAmountDzd = Math.min(Math.abs(sourceAccount.currentBalanceDzd), Math.abs(targetAccount.currentBalanceDzd))
+    const sourceDelta = getDebtEntryDeltaForClosure(sourceAccount.currentBalanceDzd, closedAmountDzd)
+    const targetDelta = getDebtEntryDeltaForClosure(targetAccount.currentBalanceDzd, closedAmountDzd)
+    const nextSourceBalance = sourceAccount.currentBalanceDzd + sourceDelta
+    const nextTargetBalance = targetAccount.currentBalanceDzd + targetDelta
+
+    const link = this.repository.withTransaction(() => {
+      this.repository.createDebtEntry(
+        {
+          debtAccountId: sourceAccount.id,
+          entryType: "CLOSURE",
+          signedAmountDzd: sourceDelta,
+          entryDate,
+          note: normalizeText(input.note),
+          balanceAfterDzd: nextSourceBalance,
+        },
+        audit,
+      )
+
+      this.repository.createDebtEntry(
+        {
+          debtAccountId: targetAccount.id,
+          entryType: "CLOSURE",
+          signedAmountDzd: targetDelta,
+          entryDate,
+          note: normalizeText(input.note),
+          balanceAfterDzd: nextTargetBalance,
+        },
+        audit,
+      )
+
+      this.repository.updateDebtAccount(
+        {
+          id: sourceAccount.id,
+          currentBalanceDzd: nextSourceBalance,
+          status: getDebtAccountStatus(nextSourceBalance),
+          settledAt: nextSourceBalance === 0 ? entryDate : null,
+        },
+        audit,
+      )
+
+      this.repository.updateDebtAccount(
+        {
+          id: targetAccount.id,
+          currentBalanceDzd: nextTargetBalance,
+          status: getDebtAccountStatus(nextTargetBalance),
+          settledAt: nextTargetBalance === 0 ? entryDate : null,
+        },
+        audit,
+      )
+
+      return this.repository.createDebtClosureLink(
+        {
+          sourceDebtAccountId: sourceAccount.id,
+          targetDebtAccountId: targetAccount.id,
+          closedAmountDzd,
+          entryDate,
+          note: normalizeText(input.note),
+        },
+        audit,
+      )
+    })
+
+    return successResult("تم إغلاق الدين مقابل دين آخر بنجاح.", link)
+  }
+
+  getDebtPartyDetail(input: DebtPartyDetailInput) {
+    if (input.partyType === "INTERNAL_WORKER") {
+      const employee = this.requireEmployeeWorker(input.workerId!, "workerId")
+      const debtAccounts = this.repository.listDebtAccounts({ workerId: employee.id })
+      const totalBalanceDzd = debtAccounts.reduce((sum, account) => sum + account.currentBalanceDzd, 0)
+      return successResult("تم تحميل تفاصيل ديون العامل بنجاح.", {
+        partyType: "INTERNAL_WORKER" as const,
+        workerId: employee.id,
+        externalCounterpartyId: null,
+        displayName: `${employee.firstName} ${employee.lastName}`,
+        phoneNumber: employee.phone,
+        note: employee.notes,
+        totalBalanceDzd,
+        balanceLabel: getDebtBalanceLabel(totalBalanceDzd),
+        debtAccounts,
+      })
+    }
+
+    const counterparty = this.requireExternalCounterparty(input.externalCounterpartyId!, "externalCounterpartyId")
+    const debtAccounts = this.repository.listDebtAccounts({ externalCounterpartyId: counterparty.id })
+    const totalBalanceDzd = debtAccounts.reduce((sum, account) => sum + account.currentBalanceDzd, 0)
+    return successResult("تم تحميل تفاصيل ديون الطرف الخارجي بنجاح.", {
+      partyType: "EXTERNAL_COUNTERPARTY" as const,
+      workerId: null,
+      externalCounterpartyId: counterparty.id,
+      displayName: counterparty.fullName,
+      phoneNumber: counterparty.phoneNumber,
+      note: counterparty.note,
+      totalBalanceDzd,
+      balanceLabel: getDebtBalanceLabel(totalBalanceDzd),
+      debtAccounts,
+    })
+  }
+
+  listDebtsSummary() {
+    const employeesById = new Map(this.repository.listEmployees().map((employee) => [employee.id, employee]))
+    const counterpartiesById = new Map(
+      this.repository.listExternalCounterparties().map((counterparty) => [counterparty.id, counterparty]),
+    )
+
+    const debtAccounts = this.repository.listDebtAccounts().map((account) => {
+        const employee = account.workerId ? employeesById.get(account.workerId) : null
+        const counterparty = account.externalCounterpartyId
+          ? counterpartiesById.get(account.externalCounterpartyId)
+          : null
 
         return {
-          id: key,
-          transactionId: primaryEvent.transactionId,
-          actorUserId: primaryEvent.actorUserId,
-          actorLabel: primaryEvent.actorLabel,
-          actionType: primaryEvent.actionType,
-          entityType: primaryEvent.entityType,
-          entityId: primaryEvent.entityId,
-          entityLabel: primaryEvent.entityLabel,
-          summary: primaryEvent.summary,
-          detail: detailLines.length > 0 ? detailLines.join(" • ") : primaryEvent.detail,
-          createdAt: sortedEvents[0]!.createdAt,
-        } satisfies SystemLogEntryRecord
+          accountId: account.id,
+          partyType: account.partyType,
+          workerId: account.workerId,
+          externalCounterpartyId: account.externalCounterpartyId,
+          displayName: employee ? `${employee.firstName} ${employee.lastName}` : counterparty?.fullName ?? account.id,
+          phoneNumber: employee?.phone ?? counterparty?.phoneNumber ?? null,
+          status: account.status,
+          currentBalanceDzd: account.currentBalanceDzd,
+          balanceLabel: getDebtBalanceLabel(account.currentBalanceDzd),
+          createdAt: account.createdAt,
+          updatedAt: account.updatedAt,
+        }
       })
-      .sort((left, right) => compareTimestampsDesc(left.createdAt, right.createdAt))
 
-    return { items: groupedEntries }
+    const partyMap = new Map<string, {
+      partyType: "INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY"
+      workerId: string | null
+      externalCounterpartyId: string | null
+      displayName: string
+      phoneNumber: string | null
+      totalBalanceDzd: number
+      openDebtCasesCount: number
+      settledDebtCasesCount: number
+      latestActivityAt: string
+    }>()
+
+    for (const account of this.repository.listDebtAccounts()) {
+      const key = buildDebtPartyKey(account)
+      const employee = account.workerId ? employeesById.get(account.workerId) : null
+      const counterparty = account.externalCounterpartyId ? counterpartiesById.get(account.externalCounterpartyId) : null
+      const current = partyMap.get(key)
+      const nextLatestActivityAt = current
+        ? Date.parse(current.latestActivityAt) > Date.parse(account.updatedAt)
+          ? current.latestActivityAt
+          : account.updatedAt
+        : account.updatedAt
+
+      partyMap.set(key, {
+        partyType: account.partyType,
+        workerId: account.workerId,
+        externalCounterpartyId: account.externalCounterpartyId,
+        displayName: employee ? `${employee.firstName} ${employee.lastName}` : counterparty?.fullName ?? account.id,
+        phoneNumber: employee?.phone ?? counterparty?.phoneNumber ?? null,
+        totalBalanceDzd: (current?.totalBalanceDzd ?? 0) + account.currentBalanceDzd,
+        openDebtCasesCount: (current?.openDebtCasesCount ?? 0) + (account.status === "OPEN" ? 1 : 0),
+        settledDebtCasesCount: (current?.settledDebtCasesCount ?? 0) + (account.status === "SETTLED" ? 1 : 0),
+        latestActivityAt: nextLatestActivityAt,
+      })
+    }
+
+    const parties = Array.from(partyMap.values())
+      .map((party) => ({
+        ...party,
+        balanceLabel: getDebtBalanceLabel(party.totalBalanceDzd),
+      }))
+      .sort((left, right) => Date.parse(right.latestActivityAt) - Date.parse(left.latestActivityAt))
+
+    return { parties, debtAccounts }
+  }
+
+  listSystemLog(filters?: SystemLogListFilters) {
+    return buildCompanySystemLog(this.repository, filters)
   }
 
   getEmployee(id: string) {
@@ -1043,7 +1239,7 @@ export class CompanyService {
       workerId: input.workerId,
       managerId: input.managerId,
       status: input.status,
-      startDate: normalizeTimestamp(input.startDate),
+      startDate: normalizeAlgeriaTimestamp(input.startDate),
       endDate: input.status === "ACTIVE" ? null : input.endDate ?? null,
       notes: normalizeText(input.notes),
     }, audit);
@@ -1073,7 +1269,7 @@ export class CompanyService {
 
     const assignment = this.repository.endManagerAssignment({
       id: input.id,
-      endDate: normalizeTimestamp(input.endDate),
+      endDate: normalizeAlgeriaTimestamp(input.endDate),
       notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
     }, audit);
 
@@ -1154,7 +1350,7 @@ export class CompanyService {
       employeeId: input.employeeId,
       projectId: input.projectId,
       status: input.status,
-      startDate: normalizeTimestamp(input.startDate),
+      startDate: normalizeAlgeriaTimestamp(input.startDate),
       endDate: input.status === "ACTIVE" ? null : input.endDate ?? null,
       notes: normalizeText(input.notes),
     }, audit);
@@ -1176,7 +1372,7 @@ export class CompanyService {
 
     const assignment = this.repository.endProjectAssignment({
       id: input.id,
-      endDate: normalizeTimestamp(input.endDate),
+      endDate: normalizeAlgeriaTimestamp(input.endDate),
       notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
     }, audit);
 
@@ -1205,7 +1401,7 @@ export class CompanyService {
       periodType,
       expectedAmountDzd: expectedAmount,
       actualAmountDzd: input.actualAmountDzd,
-      paymentDate: normalizeTimestamp(input.paymentDate),
+      paymentDate: normalizeAlgeriaTimestamp(input.paymentDate),
       note: normalizeText(input.note),
     }, audit)
 
@@ -1273,7 +1469,7 @@ export class CompanyService {
       employeeId: input.employeeId,
       warehouseId: input.warehouseId,
       status: input.status,
-      startDate: normalizeTimestamp(input.startDate),
+      startDate: normalizeAlgeriaTimestamp(input.startDate),
       endDate: input.status === "ACTIVE" ? null : input.endDate ?? null,
       notes: normalizeText(input.notes),
     }, audit);
@@ -1295,7 +1491,7 @@ export class CompanyService {
 
     const assignment = this.repository.endWarehouseAssignment({
       id: input.id,
-      endDate: normalizeTimestamp(input.endDate),
+      endDate: normalizeAlgeriaTimestamp(input.endDate),
       notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
     }, audit);
 
@@ -1523,6 +1719,30 @@ export class CompanyService {
         return true
       })
       .map((assignment) => assignment.employeeId)
+  }
+
+  private requireExternalCounterparty(id: string, field = "id") {
+    const counterparty = this.repository.getExternalCounterpartyById(id)
+    if (!counterparty) {
+      throw new CompanyError("NOT_FOUND", "تعذر العثور على الطرف الخارجي المطلوب.", [
+        { field, message: "تعذر العثور على الطرف الخارجي المطلوب." },
+      ])
+    }
+
+    return counterparty
+  }
+
+  private requireDebtAccount(id: string) {
+    const account = this.repository.getDebtAccountById(id)
+    if (!account) {
+      throw new CompanyError("NOT_FOUND", "تعذر العثور على حساب الدين المطلوب.")
+    }
+
+    return account
+  }
+
+  private requireEmployeeWorker(id: string, field: string) {
+    return this.requireEmployeeWithRoleKey(id, SYSTEM_ROLE_KEYS.worker, field)
   }
 
   private requireRole(roleId: string) {

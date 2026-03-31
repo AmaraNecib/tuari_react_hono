@@ -3,23 +3,26 @@ import { RPCLink } from "@orpc/client/fetch"
 import { createTanstackQueryUtils } from "@orpc/tanstack-query"
 import type { AppClient } from "@tuari/contracts"
 
-import { createDesktopAuthorizationHeader } from "@/lib/desktop-auth-session"
-import { resolveApiBaseUrl, resolveAppClientKey } from "@/lib/runtime-config"
+import { createDesktopAuthorizationHeader, isDesktopRuntime } from "@/lib/desktop-auth-session"
+import { resolveApiUrl } from "@/lib/runtime-config"
 
 export function createRpcHeaders() {
   return {
-    "x-tuari-client-key": resolveAppClientKey(),
     ...createDesktopAuthorizationHeader(),
   }
 }
 
+export function resolveRpcCredentials(): RequestCredentials {
+  return isDesktopRuntime() ? "omit" : "include"
+}
+
 export const rpcLink = new RPCLink({
-  url: () => new URL("/rpc", resolveApiBaseUrl()).toString(),
+  url: () => resolveApiUrl("rpc"),
   headers: () => createRpcHeaders(),
   fetch: (request, init) =>
     globalThis.fetch(request, {
       ...init,
-      credentials: "include",
+      credentials: resolveRpcCredentials(),
     }),
   interceptors: [
     onError((error) => {

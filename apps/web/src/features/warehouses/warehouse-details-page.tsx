@@ -6,6 +6,7 @@ import {
   RecordInfoCard,
   RecordInfoGrid,
   RecordPageFrame,
+  RecordTabPanel,
   RecordTabs,
 } from "@/features/shared/record-page-frame"
 
@@ -49,6 +50,7 @@ export function WarehouseDetailsPage({
   const { t } = useTranslation()
   const resolvedTab = ["overview", "history", "team"].includes(activeTab) ? activeTab : "overview"
   const hasExpandedNotes = (warehouse.notes?.trim().length ?? 0) > 90
+  const tabsBaseId = `warehouse-record-${warehouse.id}`
 
   return (
     <RecordPageFrame
@@ -61,6 +63,7 @@ export function WarehouseDetailsPage({
     >
       <RecordTabs
         activeTab={resolvedTab}
+        baseId={tabsBaseId}
         tabs={[
           { id: "overview", label: t("detailPages.warehouse.overviewTab") },
           { id: "history", label: t("detailPages.warehouse.historyTab") },
@@ -69,7 +72,7 @@ export function WarehouseDetailsPage({
         onChange={onTabChange}
       />
 
-      {resolvedTab === "overview" ? (
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="overview">
         <RecordInfoGrid>
           <RecordInfoCard label={t("detailPages.warehouse.name")} value={warehouse.name} />
           <RecordInfoCard label={t("detailPages.warehouse.status")} value={getArabicStatusLabel(warehouse.status)} />
@@ -78,16 +81,16 @@ export function WarehouseDetailsPage({
           <RecordInfoCard label={t("detailPages.warehouse.teamCount")} value={String(teamRows.length)} />
           <RecordInfoCard label={t("detailPages.warehouse.notes")} value={warehouse.notes ?? t("common.noNotes")} wide={hasExpandedNotes} />
         </RecordInfoGrid>
-      ) : null}
+      </RecordTabPanel>
 
-      {resolvedTab === "history" ? (
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="history">
         <RecordHistoryTable
           emptyLabel={t("detailPages.warehouse.historyEmpty")}
           rows={managementHistoryRows}
         />
-      ) : null}
+      </RecordTabPanel>
 
-      {resolvedTab === "team" ? (
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="team">
         <RecordHistoryTable
           columns={{
             type: t("detailPages.warehouse.teamRole"),
@@ -98,7 +101,7 @@ export function WarehouseDetailsPage({
           emptyLabel={t("detailPages.warehouse.teamEmpty")}
           rows={teamRows}
         />
-      ) : null}
+      </RecordTabPanel>
     </RecordPageFrame>
   )
 }

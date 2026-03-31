@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import type { DebtAccount, DebtClosureLink, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashboard"
+import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import {
   RecordHistoryTable,
   RecordInfoCard,
   RecordInfoGrid,
   RecordPageFrame,
+  RecordTabPanel,
   RecordTabs,
 } from "@/features/shared/record-page-frame"
+import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 
 import type { EmployeeTableRow } from "./employee-table"
@@ -23,28 +27,6 @@ type EmployeeWorkHistoryRow = {
   typeLabel: string
   periodLabel: string
   statusLabel: string
-}
-
-function getAlgeriaDateInputValue(date = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Africa/Algiers",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date)
-}
-
-function toAlgeriaStartOfDayIso(value: string) {
-  const [rawYear, rawMonth, rawDay] = value.split("-").map((part) => Number.parseInt(part, 10))
-  const year = rawYear ?? Number.NaN
-  const month = rawMonth ?? Number.NaN
-  const day = rawDay ?? Number.NaN
-
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
-    return undefined
-  }
-
-  return new Date(Date.UTC(year, month - 1, day, -1, 0, 0, 0)).toISOString()
 }
 
 function getSalaryDifferenceMeta(expectedAmountDzd: number, actualAmountDzd: number) {
@@ -115,6 +97,9 @@ function renderMoneyValue(
 
 export function EmployeeDetailsPage({
   activeTab,
+  debtAccounts,
+  debtClosureLinksByAccountId,
+  debtEntriesByAccountId,
   employee,
   managedProjects,
   managedWarehouses,
@@ -123,6 +108,9 @@ export function EmployeeDetailsPage({
   workHistory,
 }: {
   activeTab: string
+  debtAccounts: DebtAccount[]
+  debtClosureLinksByAccountId: Record<string, DebtClosureLink[]>
+  debtEntriesByAccountId: Record<string, DebtEntry[]>
   employee: EmployeeTableRow
   managedProjects: string[]
   managedWarehouses: string[]
@@ -146,7 +134,8 @@ export function EmployeeDetailsPage({
   const [actualAmount, setActualAmount] = useState(() => (employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : ""))
   const [note, setNote] = useState("")
   const [showPaymentForm, setShowPaymentForm] = useState(false)
-  const resolvedTab = ["personal", "history", "finance"].includes(activeTab) ? activeTab : "personal"
+  const availableTabs = isWorker ? ["personal", "history", "finance", "debts"] : ["personal", "history", "finance"]
+  const resolvedTab = availableTabs.includes(activeTab) ? activeTab : "personal"
   const sortedSalaryPayments = useMemo(
     () => [...salaryPayments].sort((left, right) => right.paymentDate.localeCompare(left.paymentDate)),
     [salaryPayments],
@@ -165,6 +154,7 @@ export function EmployeeDetailsPage({
   const managedProjectNamesLabel = managedProjects.length > 0 ? managedProjects.join("، ") : t("detailPages.employee.noManagedProjectNames")
   const managedWarehouseNamesLabel = managedWarehouses.length > 0 ? managedWarehouses.join("، ") : t("detailPages.employee.noManagedWarehouseNames")
   const hasExpandedNotes = (employee.notes?.trim().length ?? 0) > 90
+  const tabsBaseId = `employee-record-${employee.id}`
 
   useEffect(() => {
     setPaymentDate(getAlgeriaDateInputValue())
@@ -195,22 +185,24 @@ export function EmployeeDetailsPage({
     >
       <RecordTabs
         activeTab={resolvedTab}
+        baseId={tabsBaseId}
         tabs={[
           { id: "personal", label: t("detailPages.employee.personalTab") },
           { id: "history", label: t("detailPages.employee.historyTab") },
           { id: "finance", label: t("detailPages.employee.financeTab") },
+          ...(isWorker ? [{ id: "debts", label: "الديون" }] : []),
         ]}
         onChange={onTabChange}
       />
 
-      {resolvedTab === "personal" ? (
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="personal">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <RecordInfoCard label={t("detailPages.employee.fullName")} value={employee.name} />
           <RecordInfoCard label={t("detailPages.employee.role")} value={employee.role} />
           <RecordInfoCard label={t("detailPages.employee.phone")} value={employee.phone} valueClassName="text-right font-mono" />
           <RecordInfoCard label={t("detailPages.employee.status")} value={getArabicStatusLabel(employee.status)} />
           {isWorker ? <RecordInfoCard label={t("detailPages.employee.currentManager")} value={employee.managerName || t("detailPages.employee.noCurrentManager")} /> : null}
-          {isWorker ? <RecordInfoCard label={t("detailPages.employee.currentWorkplace")} value={employee.projectName || t("detailPages.employee.noCurrentWorkplace")} /> : null}
+          {isWorker ? <RecordInfoCard label={t("detailPages.employee.currentWorkplace")} value={employee.currentWorkplace || t("detailPages.employee.noCurrentWorkplace")} /> : null}
           {isProjectManager ? <RecordInfoCard label={t("detailPages.employee.managedProjectsCount")} value={managedProjectCountLabel} /> : null}
           {isProjectManager ? (
             <RecordInfoCard label={t("detailPages.employee.managedProjectsNames")} value={managedProjectNamesLabel} valueClassName="text-sm leading-7" />
@@ -223,16 +215,16 @@ export function EmployeeDetailsPage({
             <RecordInfoCard label={t("detailPages.employee.notes")} value={employee.notes ?? noNotesLabel} wide={hasExpandedNotes} />
           </div>
         </div>
-      ) : null}
+      </RecordTabPanel>
 
-      {resolvedTab === "history" ? (
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="history">
         <RecordHistoryTable
           emptyLabel={t("detailPages.employee.noWorkHistory")}
           rows={workHistory}
         />
-      ) : null}
+      </RecordTabPanel>
 
-      {resolvedTab === "finance" ? (
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="finance">
         <div className="space-y-6">
           <RecordInfoGrid>
             <RecordInfoCard
@@ -256,9 +248,9 @@ export function EmployeeDetailsPage({
             />
           </RecordInfoGrid>
 
-          <div className="rounded-[28px] border border-border/70 bg-sidebar p-5 shadow-sm dark:bg-background/60">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-1">
+          <div className="rounded-[28px] border border-border/70 bg-sidebar p-5 shadow-sm dark:bg-background/60" dir="rtl">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between" dir="rtl">
+              <div className="space-y-1 text-start">
                 <h3 className="text-lg font-semibold text-foreground">{t("detailPages.employee.financeSectionTitle")}</h3>
                 <p className="text-sm leading-6 text-muted-foreground">
                   {t("detailPages.employee.financeSectionDescription")}
@@ -315,7 +307,7 @@ export function EmployeeDetailsPage({
                     <Textarea value={note} onChange={(event) => setNote(event.target.value)} />
                   </label>
                 </div>
-                <div className="flex justify-end gap-3">
+                <div className="flex justify-start gap-3" dir="rtl">
                   <Button size="lg" variant="outline" onClick={() => setShowPaymentForm(false)}>
                     {t("common.cancel")}
                   </Button>
@@ -326,7 +318,7 @@ export function EmployeeDetailsPage({
                       createSalaryPaymentMutation.mutate({
                         employeeId: employee.id,
                         actualAmountDzd: actualAmountValue!,
-                        paymentDate: paymentDate ? toAlgeriaStartOfDayIso(paymentDate) : undefined,
+                        paymentDate: paymentDate ? toAlgeriaDayBoundaryIso(paymentDate, "start") : undefined,
                         note: note.trim() || null,
                       })
                     }
@@ -338,16 +330,16 @@ export function EmployeeDetailsPage({
             ) : null}
           </div>
 
-          <div className="overflow-hidden rounded-[28px] border border-border/70 bg-sidebar shadow-sm dark:bg-background/60">
+          <div className="overflow-hidden rounded-[28px] border border-border/70 bg-sidebar shadow-sm dark:bg-background/60" dir="rtl">
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
+              <table className="min-w-full text-sm" aria-label={t("detailPages.employee.financeSectionTitle")}>
                 <thead className="bg-muted/40 text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 text-right font-medium">{t("detailPages.employee.financeTableDate")}</th>
-                    <th className="px-4 py-3 text-right font-medium">{t("detailPages.employee.financeTableExpected")}</th>
-                    <th className="px-4 py-3 text-right font-medium">{t("detailPages.employee.financeTableActual")}</th>
-                    <th className="px-4 py-3 text-right font-medium">{t("detailPages.employee.financeTableDifference")}</th>
-                    <th className="px-4 py-3 text-right font-medium">{t("detailPages.employee.financeTableNotes")}</th>
+                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDate")}</th>
+                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableExpected")}</th>
+                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableActual")}</th>
+                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDifference")}</th>
+                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableNotes")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -357,17 +349,17 @@ export function EmployeeDetailsPage({
 
                       return (
                         <tr key={payment.id} className="border-t border-border/60 bg-sidebar dark:bg-background">
-                          <td className="px-4 py-4 text-right text-foreground">{new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}</td>
-                          <td className="px-4 py-4 text-right text-foreground">{renderMoneyValue(payment.expectedAmountDzd, currencyLabel)}</td>
-                          <td className="px-4 py-4 text-right text-foreground">{renderMoneyValue(payment.actualAmountDzd, currencyLabel)}</td>
-                          <td className="px-4 py-4 text-right font-medium">
+                          <td className="px-4 py-4 text-start text-foreground">{new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}</td>
+                          <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.expectedAmountDzd, currencyLabel)}</td>
+                          <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.actualAmountDzd, currencyLabel)}</td>
+                          <td className="px-4 py-4 text-start font-medium">
                             {renderMoneyValue(difference.value, currencyLabel, {
                               signed: true,
                               toneClassName: difference.className,
                               zeroAsDash: true,
                             })}
                           </td>
-                          <td className="px-4 py-4 text-right text-muted-foreground">{payment.note ?? t("detailPages.salary.zeroDifference")}</td>
+                          <td className="px-4 py-4 text-start text-muted-foreground">{payment.note?.trim() ? payment.note : noNotesLabel}</td>
                         </tr>
                       )
                     })
@@ -383,6 +375,18 @@ export function EmployeeDetailsPage({
             </div>
           </div>
         </div>
+      </RecordTabPanel>
+
+      {isWorker ? (
+        <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="debts">
+          <DebtCasesPanel
+            accounts={debtAccounts}
+            debtClosureLinksByAccountId={debtClosureLinksByAccountId}
+            debtEntriesByAccountId={debtEntriesByAccountId}
+            title="ديون العامل"
+            workerId={employee.id}
+          />
+        </RecordTabPanel>
       ) : null}
     </RecordPageFrame>
   )

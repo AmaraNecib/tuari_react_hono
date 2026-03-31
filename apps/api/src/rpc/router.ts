@@ -3,6 +3,7 @@ import { implement, ORPCError } from "@orpc/server";
 import { appContract } from "@tuari/contracts";
 
 import { toFailureResult } from "../modules/company/company.errors";
+import { createAlgeriaTimestamp } from "../modules/company/company-time";
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import type { CompanyService } from "../modules/company/company.service";
 import { getCurrentUser, requireCurrentUser, type RpcContext } from "./context";
@@ -48,7 +49,7 @@ export function createRouter(dependencies: RouterDependencies) {
   return os.router({
     health: os.health.handler(() => ({
       status: "ok",
-      timestamp: new Date().toISOString(),
+      timestamp: createAlgeriaTimestamp(),
     })),
     session: os.session.handler(async ({ context }) => ({
       user: await getCurrentUser(context),
@@ -59,6 +60,10 @@ export function createRouter(dependencies: RouterDependencies) {
     authBootstrap: os.authBootstrap.handler(async ({ input }) =>
       dependencies.authBootstrapService.bootstrapFirstUser(input),
     ),
+    workspaceSnapshot: os.workspaceSnapshot.handler(async ({ context }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return dependencies.companyService.getWorkspaceSnapshot()
+    }),
     rolesList: os.rolesList.handler(async ({ context }) => {
       await requireWorkspaceAdmin(context, dependencies);
       return dependencies.companyService.listRoles();
@@ -222,6 +227,58 @@ export function createRouter(dependencies: RouterDependencies) {
     salaryPaymentsCreate: os.salaryPaymentsCreate.handler(async ({ context, input }) => {
       const auditContext = await createMutationAuditContext(context, dependencies)
       return resolveCompanyResult(() => dependencies.companyService.createSalaryPayment(input, auditContext))
+    }),
+    externalCounterpartiesList: os.externalCounterpartiesList.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return dependencies.companyService.listExternalCounterparties(input ?? undefined)
+    }),
+    externalCounterpartiesGet: os.externalCounterpartiesGet.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return resolveCompanyResult(() => dependencies.companyService.getExternalCounterparty(input.id))
+    }),
+    externalCounterpartiesCreate: os.externalCounterpartiesCreate.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return resolveCompanyResult(() => dependencies.companyService.createExternalCounterparty(input))
+    }),
+    debtAccountsList: os.debtAccountsList.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return dependencies.companyService.listDebtAccounts(input ?? undefined)
+    }),
+    debtAccountsGet: os.debtAccountsGet.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return resolveCompanyResult(() => dependencies.companyService.getDebtAccount(input.id))
+    }),
+    debtAccountsCreate: os.debtAccountsCreate.handler(async ({ context, input }) => {
+      const auditContext = await createMutationAuditContext(context, dependencies)
+      return resolveCompanyResult(() => dependencies.companyService.createDebtAccount(input, auditContext))
+    }),
+    debtEntriesList: os.debtEntriesList.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return dependencies.companyService.listDebtEntries(input)
+    }),
+    debtEntriesCreate: os.debtEntriesCreate.handler(async ({ context, input }) => {
+      const auditContext = await createMutationAuditContext(context, dependencies)
+      return resolveCompanyResult(() => dependencies.companyService.createDebtEntry(input, auditContext))
+    }),
+    debtClosureLinksList: os.debtClosureLinksList.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return dependencies.companyService.listDebtClosureLinks(input)
+    }),
+    debtCloseAgainst: os.debtCloseAgainst.handler(async ({ context, input }) => {
+      const auditContext = await createMutationAuditContext(context, dependencies)
+      return resolveCompanyResult(() => dependencies.companyService.closeDebtAgainstAnother(input, auditContext))
+    }),
+    debtAccountsSettle: os.debtAccountsSettle.handler(async ({ context, input }) => {
+      const auditContext = await createMutationAuditContext(context, dependencies)
+      return resolveCompanyResult(() => dependencies.companyService.settleDebtAccount(input, auditContext))
+    }),
+    debtPartyDetail: os.debtPartyDetail.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return resolveCompanyResult(() => dependencies.companyService.getDebtPartyDetail(input))
+    }),
+    debtsSummary: os.debtsSummary.handler(async ({ context }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return dependencies.companyService.listDebtsSummary()
     }),
     systemLogList: os.systemLogList.handler(async ({ context, input }) => {
       await requireWorkspaceAdmin(context, dependencies)

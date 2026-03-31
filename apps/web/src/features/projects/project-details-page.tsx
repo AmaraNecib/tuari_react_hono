@@ -6,6 +6,7 @@ import {
   RecordInfoCard,
   RecordInfoGrid,
   RecordPageFrame,
+  RecordTabPanel,
   RecordTabs,
 } from "@/features/shared/record-page-frame"
 
@@ -50,6 +51,7 @@ export function ProjectDetailsPage({
   const { t } = useTranslation()
   const resolvedTab = ["overview", "history", "workers"].includes(activeTab) ? activeTab : "overview"
   const hasExpandedNotes = (project.notes?.trim().length ?? 0) > 90
+  const tabsBaseId = `project-record-${project.id}`
 
   return (
     <RecordPageFrame
@@ -62,6 +64,7 @@ export function ProjectDetailsPage({
     >
       <RecordTabs
         activeTab={resolvedTab}
+        baseId={tabsBaseId}
         tabs={[
           { id: "overview", label: t("detailPages.project.overviewTab") },
           { id: "history", label: t("detailPages.project.historyTab") },
@@ -70,7 +73,7 @@ export function ProjectDetailsPage({
         onChange={onTabChange}
       />
 
-      {resolvedTab === "overview" ? (
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="overview">
         <RecordInfoGrid>
           <RecordInfoCard label={t("detailPages.project.name")} value={project.name} />
           <RecordInfoCard label={t("detailPages.project.status")} value={getArabicStatusLabel(project.status)} />
@@ -79,9 +82,9 @@ export function ProjectDetailsPage({
           <RecordInfoCard label={t("detailPages.project.workerCount")} value={String(project.activeWorkers)} />
           <RecordInfoCard label={t("detailPages.project.notes")} value={project.notes ?? t("common.noNotes")} wide={hasExpandedNotes} />
         </RecordInfoGrid>
-      ) : null}
+      </RecordTabPanel>
 
-      {resolvedTab === "workers" ? (
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="workers">
         <RecordHistoryTable
           columns={{
             type: t("detailPages.project.workersRole"),
@@ -92,14 +95,14 @@ export function ProjectDetailsPage({
           emptyLabel={t("detailPages.project.workersEmpty")}
           rows={workerRows}
         />
-      ) : null}
+      </RecordTabPanel>
 
-      {resolvedTab === "history" ? (
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="history">
         <RecordHistoryTable
           emptyLabel={t("detailPages.project.historyEmpty")}
           rows={managementHistoryRows}
         />
-      ) : null}
+      </RecordTabPanel>
     </RecordPageFrame>
   )
 }

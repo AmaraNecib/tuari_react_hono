@@ -9,7 +9,6 @@ async function main() {
   await ensureDatabaseSchema();
   const app = createApp(appDependencies, {
     allowedOrigins: env.allowedOrigins,
-    appClientKey: env.appClientKey,
   });
 
   serve(

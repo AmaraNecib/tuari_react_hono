@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Link, useNavigate } from "@tanstack/react-router"
+import { useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 import {
   AlertDialog,
@@ -12,6 +12,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { buttonVariants } from "@/components/ui/button"
+import {
+  AppShellSectionBody,
+  AppShellSectionSurface,
+} from "@/features/app-shell/app-shell-table-primitives"
 import { EmployeeBatchCreatePage } from "@/features/employees/employee-batch-create-page"
 import {
   EmployeeTable,
@@ -25,16 +29,17 @@ import {
   useDeleteEmployeeMutation,
   useLeaveEmployeeMutation,
 } from "./mock-dashboard"
+import { useHomeViewNavigation } from "./home-view-navigation"
 import { SectionHeader } from "./section-header"
+import { type WorkspaceRouteTarget, WorkspaceLink } from "@/router/navigation"
 
 type EmployeesSectionProps = {
-  createHref: string
+  createTarget: WorkspaceRouteTarget
   emptyLabel: string
   employeePage: "list" | "create"
   managerOptions: EmployeeManagerOption[]
   roles: Role[]
   title: string
-  description: string
   addWorkerLabel: string
   columns: {
     name: string
@@ -63,75 +68,78 @@ type PendingAction =
   | { type: "delete"; employee: EmployeeTableRow }
 
 export function EmployeesSection({
-  createHref,
+  createTarget,
   emptyLabel,
   employeePage,
   managerOptions,
   roles,
   title,
-  description,
   addWorkerLabel,
   columns,
   actionLabels,
   rows,
 }: EmployeesSectionProps) {
-  const navigate = useNavigate()
+  const { t } = useTranslation()
+  const navigation = useHomeViewNavigation()
   const leaveEmployeeMutation = useLeaveEmployeeMutation()
   const deleteEmployeeMutation = useDeleteEmployeeMutation()
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const actionInFlightRef = useRef(false)
 
   if (employeePage === "create") {
     return (
       <EmployeeBatchCreatePage
         managerOptions={managerOptions}
         roles={roles}
-        onCancel={() => void navigate({ to: "/employees" as never })}
-        onDone={() => void navigate({ to: "/employees" as never })}
+        onCancel={() => void navigation.goToEmployees()}
+        onDone={() => void navigation.goToEmployees()}
       />
     )
   }
 
   const actionEmployee = pendingAction?.employee ?? null
+  const actionPending = pendingAction?.type === "delete" ? deleteEmployeeMutation.isPending : leaveEmployeeMutation.isPending
 
   return (
     <>
-      <div className="space-y-6">
-        <SectionHeader
-          action={
-            <Link
-              className={cn(buttonVariants({ variant: "default" }), "h-10 rounded-2xl px-4")}
-              to={createHref as never}
-            >
-              {addWorkerLabel}
-            </Link>
-          }
-          description={description}
-          title={title}
-        />
-        <EmployeeTable
-          copy={{
-            name: columns.name,
-            role: columns.role,
-            manager: columns.manager,
-            project: columns.project,
-            phone: columns.phone,
-            status: columns.status,
-            actions: columns.actions,
-            empty: emptyLabel,
-            view: actionLabels.view,
-            edit: actionLabels.edit,
-            leave: actionLabels.leave,
-            delete: actionLabels.delete,
-          }}
-          rows={rows}
-          onDelete={(row) => setPendingAction({ type: "delete", employee: row })}
-          onEdit={(row) => void navigate({ to: "/employees/$employeeId/edit" as never, params: { employeeId: row.id } as never })}
-          onLeave={(row) => setPendingAction({ type: "leave", employee: row })}
-          onView={(row) => void navigate({ to: "/employees/$employeeId" as never, params: { employeeId: row.id } as never })}
-        />
-      </div>
+      <AppShellSectionSurface>
+        <AppShellSectionBody>
+          <SectionHeader
+            action={
+              <WorkspaceLink
+                className={cn(buttonVariants({ variant: "default" }), "h-10 rounded-2xl px-4")}
+                target={createTarget}
+              >
+                {addWorkerLabel}
+              </WorkspaceLink>
+            }
+            title={title}
+          />
+          <EmployeeTable
+            copy={{
+              name: columns.name,
+              role: columns.role,
+              manager: columns.manager,
+              project: columns.project,
+              phone: columns.phone,
+              status: columns.status,
+              actions: columns.actions,
+              empty: emptyLabel,
+              view: actionLabels.view,
+              edit: actionLabels.edit,
+              leave: actionLabels.leave,
+              delete: actionLabels.delete,
+            }}
+            rows={rows}
+            onDelete={(row) => setPendingAction({ type: "delete", employee: row })}
+            onEdit={(row) => void navigation.goToEmployeeEdit(row.id)}
+            onLeave={(row) => setPendingAction({ type: "leave", employee: row })}
+            onView={(row) => void navigation.goToEmployeeDetails(row.id)}
+          />
+        </AppShellSectionBody>
+      </AppShellSectionSurface>
 
-      <AlertDialog open={Boolean(pendingAction)} onOpenChange={(open) => (!open ? setPendingAction(null) : null)}>
+      <AlertDialog open={Boolean(pendingAction)} onOpenChange={(open) => (!open && !actionPending ? setPendingAction(null) : null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -144,23 +152,34 @@ export function EmployeesSection({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogCancel disabled={actionPending}>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
+              disabled={actionPending}
               onClick={async () => {
-                if (!pendingAction) {
+                if (!pendingAction || actionPending) {
                   return
                 }
 
-                if (pendingAction.type === "delete") {
-                  await deleteEmployeeMutation.mutateAsync(pendingAction.employee.id)
-                } else {
-                  await leaveEmployeeMutation.mutateAsync(pendingAction.employee.id)
+                if (actionInFlightRef.current) {
+                  return
                 }
 
-                setPendingAction(null)
+                actionInFlightRef.current = true
+
+                try {
+                  if (pendingAction.type === "delete") {
+                    await deleteEmployeeMutation.mutateAsync(pendingAction.employee.id)
+                  } else {
+                    await leaveEmployeeMutation.mutateAsync(pendingAction.employee.id)
+                  }
+
+                  setPendingAction(null)
+                } finally {
+                  actionInFlightRef.current = false
+                }
               }}
             >
-              تأكيد
+              {t("common.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

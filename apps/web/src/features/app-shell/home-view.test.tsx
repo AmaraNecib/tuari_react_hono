@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import "@/i18n"
+
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -8,13 +10,17 @@ import { AppPreferencesProvider } from "@/features/preferences/preferences"
 
 import { HomeView, type HomeViewPage } from "./home-view"
 
+const { navigateMock } = vi.hoisted(() => ({
+  navigateMock: vi.fn(),
+}))
+
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router")
 
   return {
     ...actual,
     Link: ({ children, ...props }: { children: ReactNode }) => <a {...props}>{children}</a>,
-    useNavigate: () => () => Promise.resolve(),
+    useNavigate: () => navigateMock,
   }
 })
 
@@ -27,8 +33,12 @@ let sessionQueryError: Error | null = null
 let setupStatusData: { hasUsers: boolean; requiresSetupKey?: boolean } | undefined = { hasUsers: true }
 let setupStatusPending = false
 let setupStatusError: Error | null = null
+let workspaceQueryPending = false
+let workspaceQueryError: Error | null = null
 
-const workspaceData = {
+let workspaceData: typeof initialWorkspaceData | undefined
+
+const initialWorkspaceData = {
   roles: [
     {
       id: "role-worker",
@@ -86,6 +96,9 @@ const workspaceData = {
       updatedAt: "2026-03-13T10:00:00.000Z",
     },
   ],
+  externalCounterparties: [],
+  debtAccounts: [],
+  debtEntries: [],
   projects: [
     {
       id: "project-1",
@@ -140,7 +153,19 @@ const workspaceData = {
   employeeStateHistory: [],
   projectManagerOwnershipHistory: [],
   warehouseManagerOwnershipHistory: [],
-  salaryPayments: [],
+  salaryPayments: [
+    {
+      id: "salary-payment-1",
+      employeeId: "employee-worker-1",
+      paymentDate: "2026-03-18T08:00:00.000Z",
+      expectedAmountDzd: 4500,
+      actualAmountDzd: 5000,
+      periodType: "DAILY",
+      note: "دفعة مع زيادة",
+      createdAt: "2026-03-18T08:00:00.000Z",
+      updatedAt: "2026-03-18T08:00:00.000Z",
+    },
+  ],
 }
 
 const systemLogData = {
@@ -168,7 +193,9 @@ const createEmployeesBatchMutate = vi.fn()
 const updateEmployeeMutate = vi.fn()
 const leaveEmployeeMutate = vi.fn()
 const deleteEmployeeMutate = vi.fn()
+const createProjectMutate = vi.fn()
 const updateProjectMutate = vi.fn()
+const createWarehouseMutate = vi.fn()
 const updateWarehouseMutate = vi.fn()
 const updateEmployeeWorkplaceMutate = vi.fn()
 const syncManagedProjectsMutate = vi.fn()
@@ -177,7 +204,8 @@ const createSalaryPaymentMutate = vi.fn()
 const addMutate = vi.fn()
 const removeMutate = vi.fn()
 const resetMutate = vi.fn()
-const updateAccountMutate = vi.fn()
+const updateAccountMutateAsync = vi.fn()
+const workspaceRefetch = vi.fn()
 
 vi.mock("./mock-dashboard", () => ({
   useAuthSetupStatusQuery: () => ({
@@ -193,15 +221,21 @@ vi.mock("./mock-dashboard", () => ({
     refetch: vi.fn(),
   }),
   useBootstrapFirstUserMutation: () => ({ isPending: false, mutateAsync: bootstrapMutate }),
-  useDemoWorkspaceQuery: () => ({ data: workspaceData }),
-  useSystemLogQuery: () => ({ data: systemLogData }),
+  useDemoWorkspaceQuery: () => ({ data: workspaceData, error: workspaceQueryError, isPending: workspaceQueryPending, refetch: workspaceRefetch }),
+  useSystemLogQuery: () => ({ data: systemLogData, error: null, isPending: false }),
   useDemoSignInMutation: () => ({ isPending: false, mutateAsync: signInMutate }),
   useDemoSignOutMutation: () => ({ isPending: false, mutateAsync: signOutMutate }),
   useCreateEmployeesBatchMutation: () => ({ isPending: false, mutateAsync: createEmployeesBatchMutate }),
+  useCreateExternalCounterpartyMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useCreateDebtAccountMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useCreateDebtEntryMutation: () => ({ isPending: false, mutate: vi.fn() }),
+  useSettleDebtAccountMutation: () => ({ isPending: false, mutate: vi.fn() }),
   useUpdateEmployeeMutation: () => ({ isPending: false, mutateAsync: updateEmployeeMutate }),
   useLeaveEmployeeMutation: () => ({ isPending: false, mutateAsync: leaveEmployeeMutate }),
   useDeleteEmployeeMutation: () => ({ isPending: false, mutateAsync: deleteEmployeeMutate }),
+  useCreateProjectMutation: () => ({ isPending: false, mutateAsync: createProjectMutate }),
   useUpdateProjectMutation: () => ({ isPending: false, mutateAsync: updateProjectMutate }),
+  useCreateWarehouseMutation: () => ({ isPending: false, mutateAsync: createWarehouseMutate }),
   useUpdateWarehouseMutation: () => ({ isPending: false, mutateAsync: updateWarehouseMutate }),
   useUpdateEmployeeWorkplaceMutation: () => ({ isPending: false, mutateAsync: updateEmployeeWorkplaceMutate }),
   useSyncManagedProjectsMutation: () => ({ isPending: false, mutateAsync: syncManagedProjectsMutate }),
@@ -210,7 +244,7 @@ vi.mock("./mock-dashboard", () => ({
   useAddWorkspaceRecordMutation: () => ({ isPending: false, mutate: addMutate }),
   useRemoveWorkspaceRecordMutation: () => ({ isPending: false, mutateAsync: removeMutate }),
   useResetWorkspaceMutation: () => ({ isPending: false, mutateAsync: resetMutate }),
-  useUpdateAccountSettingsMutation: () => ({ isPending: false, mutate: updateAccountMutate }),
+  useUpdateAccountSettingsMutation: () => ({ isPending: false, mutateAsync: updateAccountMutateAsync }),
   AppMutationError: class AppMutationError extends Error {
     fieldErrors = []
   },
@@ -239,6 +273,9 @@ describe("HomeView workspace shell", () => {
     sessionQueryError = null
     setupStatusPending = false
     setupStatusError = null
+    workspaceData = initialWorkspaceData
+    workspaceQueryPending = false
+    workspaceQueryError = null
     signInMutate.mockReset()
     bootstrapMutate.mockReset()
     signOutMutate.mockReset()
@@ -246,7 +283,9 @@ describe("HomeView workspace shell", () => {
     updateEmployeeMutate.mockReset()
     leaveEmployeeMutate.mockReset()
     deleteEmployeeMutate.mockReset()
+    createProjectMutate.mockReset()
     updateProjectMutate.mockReset()
+    createWarehouseMutate.mockReset()
     updateWarehouseMutate.mockReset()
     updateEmployeeWorkplaceMutate.mockReset()
     syncManagedProjectsMutate.mockReset()
@@ -255,6 +294,10 @@ describe("HomeView workspace shell", () => {
     addMutate.mockReset()
     removeMutate.mockReset()
     resetMutate.mockReset()
+    updateAccountMutateAsync.mockReset()
+    workspaceRefetch.mockReset()
+    navigateMock.mockReset()
+    window.localStorage.clear()
     document.documentElement.className = ""
     document.documentElement.lang = "ar"
     document.documentElement.dir = "rtl"
@@ -335,6 +378,46 @@ describe("HomeView workspace shell", () => {
     })
   })
 
+  it("shows the bootstrap-specific fallback when first-user setup fails without a server message", async () => {
+    setupStatusData = { hasUsers: false }
+    bootstrapMutate.mockRejectedValue({})
+
+    renderHomeView()
+
+    fireEvent.change(screen.getByLabelText("الاسم الكامل"), {
+      target: { value: "أحمد بن صالح" },
+    })
+    fireEvent.change(screen.getByLabelText("رقم الهاتف"), {
+      target: { value: "0612345678" },
+    })
+    fireEvent.change(screen.getByLabelText("كلمة المرور"), {
+      target: { value: "password123" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء الحساب الأول" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("تعذر إكمال إعداد المستخدم الأول الآن. أعد المحاولة بعد التحقق من بيانات التهيئة.")).toBeTruthy()
+    })
+  })
+
+  it("shows a retry state when workspace data settles without payload", () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+    workspaceData = undefined
+
+    renderHomeView("dashboard")
+
+    expect(screen.getByText("تعذر تحميل بيانات مساحة العمل الآن.")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }))
+
+    expect(workspaceRefetch).toHaveBeenCalledTimes(1)
+  })
+
   it("shows dashboard as a separate page", () => {
     sessionData = {
       user: {
@@ -398,6 +481,12 @@ describe("HomeView workspace shell", () => {
     fireEvent.change(screen.getAllByLabelText("الدور")[0]!, {
       target: { value: "role-project-manager" },
     })
+    fireEvent.change(screen.getAllByPlaceholderText("10000")[0]!, {
+      target: { value: "95000" },
+    })
+    fireEvent.change(screen.getAllByLabelText("دورية الأجر")[0]!, {
+      target: { value: "MONTHLY" },
+    })
 
     fireEvent.change(screen.getAllByLabelText("الاسم الأول")[1]!, {
       target: { value: "نجيب" },
@@ -414,6 +503,12 @@ describe("HomeView workspace shell", () => {
     fireEvent.change(screen.getAllByLabelText("المدير المباشر")[1]!, {
       target: { value: "employee-manager-1" },
     })
+    fireEvent.change(screen.getAllByPlaceholderText("10000")[1]!, {
+      target: { value: "4500" },
+    })
+    fireEvent.change(screen.getAllByLabelText("دورية الأجر")[1]!, {
+      target: { value: "DAILY" },
+    })
     fireEvent.change(screen.getAllByLabelText("المشروع الحالي")[0]!, {
       target: { value: "project-1" },
     })
@@ -428,18 +523,54 @@ describe("HomeView workspace shell", () => {
             lastName: "بوقرة",
             phone: "0555123456",
             roleId: "role-project-manager",
+            salaryAmountDzd: 95000,
+            salaryPeriod: "MONTHLY",
           }),
           expect.objectContaining({
             firstName: "نجيب",
             lastName: "قاسمي",
             phone: "0666123456",
             roleId: "role-worker",
+            salaryAmountDzd: 4500,
+            salaryPeriod: "DAILY",
             managerId: "employee-manager-1",
             projectId: "project-1",
           }),
         ],
       })
     })
+  })
+
+  it("blocks employee batch submission when salary period is selected without an amount", async () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+
+    renderHomeView("employees-create")
+
+    fireEvent.change(screen.getByLabelText("الاسم الأول"), {
+      target: { value: "سمير" },
+    })
+    fireEvent.change(screen.getByLabelText("اللقب"), {
+      target: { value: "بوقرة" },
+    })
+    fireEvent.change(screen.getByLabelText("رقم الهاتف"), {
+      target: { value: "0555123456" },
+    })
+    fireEvent.change(screen.getByLabelText("دورية الأجر"), {
+      target: { value: "MONTHLY" },
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "حفظ العامل" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("أدخل قيمة الأجر عند اختيار دورية الأجر.")).toBeTruthy()
+    })
+    expect(createEmployeesBatchMutate).not.toHaveBeenCalled()
   })
 
   it("renders employee details as a dedicated page with tabs", () => {
@@ -456,6 +587,81 @@ describe("HomeView workspace shell", () => {
     expect(screen.getByText("المعلومات الشخصية")).toBeTruthy()
     expect(screen.getByText("سجل العمل")).toBeTruthy()
     expect(screen.getByText("المالية")).toBeTruthy()
+  })
+
+  it("routes back to employees when a requested employee record is missing", () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+
+    renderHomeView("employee-details", { employeeId: "employee-missing" })
+
+    fireEvent.click(screen.getByRole("button", { name: "العودة" }))
+
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/employees",
+    })
+  })
+
+  it("shows missing project and warehouse record fallbacks with return actions", () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+
+    const { unmount } = renderHomeView("project-details", { projectId: "project-missing" })
+
+    expect(screen.getByText("تعذر العثور على هذا السجل أو لم يعد متاحًا ضمن البيانات الحالية.")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "العودة" }))
+
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/projects" })
+
+    navigateMock.mockReset()
+    unmount()
+
+    renderHomeView("warehouse-details", { warehouseId: "warehouse-missing" })
+
+    expect(screen.getByText("تعذر العثور على هذا السجل أو لم يعد متاحًا ضمن البيانات الحالية.")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "العودة" }))
+
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/warehouses" })
+  })
+
+  it("shows no-notes fallback in the employee finance table when a salary payment note is missing", () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+    workspaceData = {
+      ...initialWorkspaceData,
+      salaryPayments: [
+        {
+          id: "salary-payment-2",
+          employeeId: "employee-worker-1",
+          paymentDate: "2026-03-19T08:00:00.000Z",
+          expectedAmountDzd: 4500,
+          actualAmountDzd: 4500,
+          periodType: "DAILY",
+          note: null as string | null,
+          createdAt: "2026-03-19T08:00:00.000Z",
+          updatedAt: "2026-03-19T08:00:00.000Z",
+        },
+      ],
+    } as unknown as typeof initialWorkspaceData
+
+    renderHomeView("employee-details", { detailTab: "finance", employeeId: "employee-worker-1" })
+
+    expect(screen.getByText("لا توجد ملاحظات.")).toBeTruthy()
   })
 
   it("submits salary payment form without client-controlled expected amount fields", () => {
@@ -520,6 +726,123 @@ describe("HomeView workspace shell", () => {
     expect(screen.getByText("العمال المرتبطون")).toBeTruthy()
   })
 
+  it("opens a dedicated project create page and navigates to the new record", async () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+    createProjectMutate.mockResolvedValue({ item: { id: "project-2" } })
+
+    renderHomeView("project-create")
+
+    expect(screen.getByRole("heading", { name: "إضافة مشروع" })).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText("اسم المشروع"), {
+      target: { value: "مشروع التوسعة" },
+    })
+    fireEvent.change(screen.getByLabelText("الموقع"), {
+      target: { value: "وهران" },
+    })
+    fireEvent.change(screen.getByLabelText("المدير المسؤول"), {
+      target: { value: "employee-manager-1" },
+    })
+    fireEvent.change(screen.getByLabelText("ملاحظات"), {
+      target: { value: "مرحلة أولى" },
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "حفظ المشروع" }))
+
+    await waitFor(() => {
+      expect(createProjectMutate).toHaveBeenCalledWith({
+        name: "مشروع التوسعة",
+        location: "وهران",
+        managerId: "employee-manager-1",
+        status: "ACTIVE",
+        notes: "مرحلة أولى",
+      })
+    })
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/projects/$projectId",
+      params: { projectId: "project-2" },
+    })
+  })
+
+  it("navigates project add actions to the dedicated create route", () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+
+    renderHomeView("projects")
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة مشروع" }))
+
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/projects/create" })
+  })
+
+  it("opens a dedicated warehouse create page and navigates to the new record", async () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+    createWarehouseMutate.mockResolvedValue({ item: { id: "warehouse-2" } })
+
+    renderHomeView("warehouse-create")
+
+    expect(screen.getByRole("heading", { name: "إضافة مستودع" })).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText("اسم المستودع"), {
+      target: { value: "مستودع الجنوب" },
+    })
+    fireEvent.change(screen.getByLabelText("العنوان"), {
+      target: { value: "الأغواط" },
+    })
+    fireEvent.change(screen.getByLabelText("ملاحظات"), {
+      target: { value: "قيد التجهيز" },
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "حفظ المستودع" }))
+
+    await waitFor(() => {
+      expect(createWarehouseMutate).toHaveBeenCalledWith({
+        name: "مستودع الجنوب",
+        address: "الأغواط",
+        managerId: null,
+        status: "ACTIVE",
+        notes: "قيد التجهيز",
+      })
+    })
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/warehouses/$warehouseId",
+      params: { warehouseId: "warehouse-2" },
+    })
+  })
+
+  it("navigates warehouse add actions to the dedicated create route", () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+
+    renderHomeView("warehouses")
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة مستودع" }))
+
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/warehouses/create" })
+  })
+
   it("renders the transactions page with grouped log rows", () => {
     sessionData = {
       user: {
@@ -533,6 +856,49 @@ describe("HomeView workspace shell", () => {
 
     expect(screen.getByRole("heading", { name: "سجل المعاملات" })).toBeTruthy()
     expect(screen.getByText("تم إسناد علي بن حميد إلى المشروع مبنى الإدارة الجديد")).toBeTruthy()
+  })
+
+  it("renders the salaries page with recent payments and worker shortcuts", () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+
+    renderHomeView("salaries")
+
+    expect(screen.getByRole("heading", { name: "الرواتب" })).toBeTruthy()
+    expect(screen.getByText("آخر دفعات الرواتب")).toBeTruthy()
+    expect(screen.getAllByText("علي بن حميد").length).toBeGreaterThan(0)
+    expect(screen.getAllByRole("button", { name: "إضافة دفعة" }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole("button", { name: "تعديل الأجر" }).length).toBeGreaterThan(0)
+  })
+
+  it("navigates from salaries page to the worker finance tab and edit page", () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+
+    renderHomeView("salaries")
+
+    fireEvent.click(screen.getAllByRole("button", { name: "إضافة دفعة" })[0]!)
+    fireEvent.click(screen.getAllByRole("button", { name: "تعديل الأجر" })[0]!)
+
+    expect(navigateMock).toHaveBeenNthCalledWith(1, {
+      to: "/employees/$employeeId",
+      params: { employeeId: "employee-worker-1" },
+      search: { tab: "finance" },
+    })
+    expect(navigateMock).toHaveBeenNthCalledWith(2, {
+      to: "/employees/$employeeId/edit",
+      params: { employeeId: "employee-worker-1" },
+    })
   })
 
   it("renders account controls on the settings page", () => {
@@ -551,6 +917,34 @@ describe("HomeView workspace shell", () => {
     expect(screen.getByRole("button", { name: "حفظ بيانات الحساب" })).toBeTruthy()
   })
 
+  it("submits account settings through the semantic form flow", async () => {
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+    updateAccountMutateAsync.mockResolvedValue({ success: true })
+
+    renderHomeView("settings")
+
+    fireEvent.change(screen.getByDisplayValue("مدير التشغيل"), {
+      target: { value: "مدير التشغيل الأول" },
+    })
+
+    fireEvent.submit(screen.getByRole("button", { name: "حفظ بيانات الحساب" }).closest("form")!)
+
+    await waitFor(() => {
+      expect(updateAccountMutateAsync).toHaveBeenCalledWith({
+        currentPassword: undefined,
+        name: "مدير التشغيل الأول",
+        newPassword: undefined,
+        phone: undefined,
+      })
+    })
+  })
+
   it("shows the roles destination in the workspace sidebar", () => {
     sessionData = {
       user: {
@@ -564,6 +958,7 @@ describe("HomeView workspace shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "توسيع الشريط الجانبي" }))
 
     expect(screen.getByText("الأدوار")).toBeTruthy()
+    expect(screen.getByText("الرواتب")).toBeTruthy()
   })
 
   it("shows worker manager and project controls on the employee edit page", () => {
@@ -579,6 +974,83 @@ describe("HomeView workspace shell", () => {
 
     expect(screen.getByText("المدير المباشر")).toBeTruthy()
     expect(screen.getByText("المشروع الحالي")).toBeTruthy()
+  })
+
+  it("persists the sidebar collapsed state across route remounts", () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1400,
+    })
+
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+
+    const firstRender = renderHomeView("dashboard")
+
+    fireEvent.click(screen.getByRole("button", { name: "تصغير الشريط الجانبي" }))
+
+    expect(window.localStorage.getItem("tuari.workspace.sidebar.collapsed")).toBe("true")
+
+    firstRender.unmount()
+    renderHomeView("employees")
+
+    expect(screen.getByRole("button", { name: "توسيع الشريط الجانبي" })).toBeTruthy()
+  })
+
+  it("restores an expanded sidebar from storage instead of collapsing on desktop widths", () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1400,
+    })
+    window.localStorage.setItem("tuari.workspace.sidebar.collapsed", "false")
+
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+
+    renderHomeView("dashboard")
+
+    expect(screen.getByRole("button", { name: "تصغير الشريط الجانبي" })).toBeTruthy()
+  })
+
+  it("auto-collapses below 1200px without auto-expanding again", () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1400,
+      writable: true,
+    })
+
+    sessionData = {
+      user: {
+        id: "demo-session-user",
+        name: "مدير التشغيل",
+        phone: "0612345678",
+      },
+    }
+
+    renderHomeView("dashboard")
+
+    expect(screen.getByRole("button", { name: "تصغير الشريط الجانبي" })).toBeTruthy()
+
+    window.innerWidth = 1100
+    fireEvent(window, new Event("resize"))
+
+    expect(screen.getByRole("button", { name: "توسيع الشريط الجانبي" })).toBeTruthy()
+    expect(window.localStorage.getItem("tuari.workspace.sidebar.collapsed")).toBe("true")
+
+    window.innerWidth = 1400
+    fireEvent(window, new Event("resize"))
+
+    expect(screen.getByRole("button", { name: "توسيع الشريط الجانبي" })).toBeTruthy()
   })
 
   it("does not resubmit workplace links when worker placement stays unchanged", async () => {

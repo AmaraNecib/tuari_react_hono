@@ -9,10 +9,11 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
+import { getWorkspaceLinkProps, type WorkspaceRouteTarget } from "@/router/navigation"
 
 type BreadcrumbItemRecord = {
   label: string
-  to?: string
+  to?: WorkspaceRouteTarget
 }
 
 export function WorkspaceBreadcrumbs({ items }: { items: BreadcrumbItemRecord[] }) {
@@ -28,7 +29,7 @@ export function WorkspaceBreadcrumbs({ items }: { items: BreadcrumbItemRecord[] 
                 {isLast || !item.to ? (
                   <BreadcrumbPage>{item.label}</BreadcrumbPage>
                 ) : (
-                  <BreadcrumbLink render={<Link to={item.to as never} />}>{item.label}</BreadcrumbLink>
+                  <BreadcrumbLink render={<Link {...getWorkspaceLinkProps(item.to)} />}>{item.label}</BreadcrumbLink>
                 )}
               </BreadcrumbItem>
               {!isLast ? <BreadcrumbSeparator /> : null}

@@ -1,4 +1,6 @@
-import { BriefcaseBusiness, ShieldCheck, Users, Warehouse } from "lucide-react"
+import { BriefcaseBusiness, Users, Warehouse } from "lucide-react"
+
+import { PageHeader, Surface } from "@/features/shared/page-primitives"
 
 type DashboardSectionProps = {
   metrics: {
@@ -27,27 +29,21 @@ const cards = [
 export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
   return (
     <div className="space-y-6">
-      <section className="space-y-2 border-b border-border/60 pb-5">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">{labels.title}</h1>
-        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{labels.description}</p>
-      </section>
+      <PageHeader description={labels.description} title={labels.title} />
 
-      <section className="grid gap-4 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {cards.map(({ key, icon: Icon }) => (
-          <article
-            key={key}
-            className="rounded-[28px] border border-border/40 bg-background/18 p-5 backdrop-blur-xl"
-          >
+          <Surface key={key} as="article" className="p-5">
             <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <p className="text-sm font-medium text-muted-foreground">{labels[key]}</p>
-                <p className="text-4xl font-semibold text-foreground">{metrics[key]}</p>
+                <p className="text-4xl font-semibold tracking-[-0.03em] text-foreground">{metrics[key]}</p>
               </div>
-              <div className="rounded-2xl bg-primary/10 p-2.5 text-primary">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10">
                 <Icon className="size-5" />
               </div>
             </div>
-          </article>
+          </Surface>
         ))}
       </section>
     </div>
