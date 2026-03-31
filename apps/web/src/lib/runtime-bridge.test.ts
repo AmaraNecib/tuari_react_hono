@@ -39,7 +39,6 @@ describe("runtime bridge", () => {
   it("loads runtime config through the Tauri bridge", async () => {
     const runtimeConfig: RuntimeConfig = {
       apiBaseUrl: "http://127.0.0.1:4318",
-      appClientKey: "desktop-client-key",
     };
 
     invokeMock.mockResolvedValue(runtimeConfig);
@@ -61,7 +60,6 @@ describe("runtime bridge", () => {
   it("does not request raw desktop diagnostics", async () => {
     const runtimeConfig: RuntimeConfig = {
       apiBaseUrl: "http://127.0.0.1:4318",
-      appClientKey: "desktop-client-key",
     };
 
     invokeMock.mockResolvedValue(runtimeConfig);

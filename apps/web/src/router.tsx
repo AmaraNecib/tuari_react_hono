@@ -31,6 +31,12 @@ const rootRoute = createRootRoute({
 const dashboardRoute = createWorkspaceRoute("/", "dashboard")
 const employeesRoute = createWorkspaceRoute("/employees", "employees")
 const employeesCreateRoute = createWorkspaceRoute("/employees/create", "employees-create")
+const debtsRoute = createWorkspaceRoute("/debts", "debts")
+const externalCounterpartiesRoute = createWorkspaceRoute("/debts/counterparties", "external-counterparties")
+const externalCounterpartyCreateRoute = createWorkspaceRoute(
+  "/debts/counterparties/create",
+  "external-counterparty-create",
+)
 const employeeDetailsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/employees/$employeeId",
@@ -44,7 +50,14 @@ const employeeEditRoute = createRoute({
   path: "/employees/$employeeId/edit",
   component: EmployeeEditRouteComponent,
 })
+const externalCounterpartyDetailsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/debts/counterparties/$counterpartyId",
+  component: ExternalCounterpartyDetailsRouteComponent,
+})
 const projectsRoute = createWorkspaceRoute("/projects", "projects")
+const projectsCreateRoute = createWorkspaceRoute("/projects/create", "project-create")
+const salariesRoute = createWorkspaceRoute("/salaries", "salaries")
 const projectDetailsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects/$projectId",
@@ -59,6 +72,7 @@ const projectEditRoute = createRoute({
   component: ProjectEditRouteComponent,
 })
 const warehousesRoute = createWorkspaceRoute("/warehouses", "warehouses")
+const warehousesCreateRoute = createWorkspaceRoute("/warehouses/create", "warehouse-create")
 const transactionsRoute = createWorkspaceRoute("/transactions", "transactions")
 const warehouseDetailsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -87,6 +101,11 @@ function EmployeeEditRouteComponent() {
   return <HomeView employeeId={employeeId} page="employee-edit" />
 }
 
+function ExternalCounterpartyDetailsRouteComponent() {
+  const { counterpartyId } = externalCounterpartyDetailsRoute.useParams()
+  return <HomeView counterpartyId={counterpartyId} page="external-counterparty-details" />
+}
+
 function ProjectDetailsRouteComponent() {
   const { projectId } = projectDetailsRoute.useParams()
   const search = projectDetailsRoute.useSearch()
@@ -113,12 +132,19 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute,
   employeesRoute,
   employeesCreateRoute,
+  debtsRoute,
+  externalCounterpartiesRoute,
+  externalCounterpartyCreateRoute,
   employeeDetailsRoute,
   employeeEditRoute,
+  externalCounterpartyDetailsRoute,
   projectsRoute,
+  projectsCreateRoute,
+  salariesRoute,
   projectDetailsRoute,
   projectEditRoute,
   warehousesRoute,
+  warehousesCreateRoute,
   transactionsRoute,
   warehouseDetailsRoute,
   warehouseEditRoute,

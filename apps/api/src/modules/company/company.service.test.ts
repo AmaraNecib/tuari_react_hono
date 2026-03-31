@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CompanyError } from "./company.errors";
 import { createInMemoryCompanyHarness } from "./company.test-helpers";
@@ -526,6 +526,261 @@ describe("CompanyService", () => {
     expect(payment.transactionId).toBe(audit.transactionId)
   })
 
+  it("creates worker debt accounts, records entries, and settles to zero", () => {
+    const { service, roleIds } = createHarness()
+    const audit = createAuditContext()
+    const worker = service.createEmployee(
+      {
+        firstName: "خالد",
+        lastName: "بن عمر",
+        phone: "0612345670",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      },
+      audit,
+    ).item
+
+    const account = service.createDebtAccount(
+      {
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.id,
+        openingBalanceDzd: 1500,
+        note: "رصيد افتتاحي",
+      },
+      audit,
+    ).item
+
+    expect(account.currentBalanceDzd).toBe(1500)
+    expect(service.listDebtEntries({ debtAccountId: account.id }).items).toHaveLength(1)
+
+    const payment = service.createDebtEntry(
+      {
+        debtAccountId: account.id,
+        entryType: "PAYMENT",
+        signedAmountDzd: -500,
+        note: "دفعة جزئية",
+      },
+      audit,
+    ).item
+
+    expect(payment.balanceAfterDzd).toBe(1000)
+    expect(service.getDebtAccount(account.id).item.currentBalanceDzd).toBe(1000)
+
+    const settlement = service.settleDebtAccount({ id: account.id, note: "إغلاق الحساب" }, audit).item
+    expect(settlement.balanceAfterDzd).toBe(0)
+    expect(settlement.signedAmountDzd).toBe(-1000)
+    expect(service.getDebtAccount(account.id).item.status).toBe("SETTLED")
+  })
+
+  it("creates external counterparties and summarizes debt balances", () => {
+    const { service } = createHarness()
+    const audit = createAuditContext()
+    const counterparty = service.createExternalCounterparty({
+      fullName: "عميل خارجي",
+      phoneNumber: "0612345671",
+      note: "تعامل متكرر",
+    }).item
+
+    const account = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: -800,
+      },
+      audit,
+    ).item
+
+    const secondAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: 300,
+        note: "حالة مستقلة",
+      },
+      audit,
+    ).item
+
+    const summary = service.listDebtsSummary()
+    expect(summary.debtAccounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountId: account.id,
+          displayName: counterparty.fullName,
+          currentBalanceDzd: -800,
+          balanceLabel: "علينا له",
+        }),
+        expect.objectContaining({ accountId: secondAccount.id, currentBalanceDzd: 300 }),
+      ]),
+    )
+    expect(summary.parties).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalCounterpartyId: counterparty.id,
+          totalBalanceDzd: -500,
+          balanceLabel: "علينا له",
+          openDebtCasesCount: 2,
+        }),
+      ]),
+    )
+
+    const detail = service.getDebtPartyDetail({
+      partyType: "EXTERNAL_COUNTERPARTY",
+      externalCounterpartyId: counterparty.id,
+    }).item
+    expect(detail.totalBalanceDzd).toBe(-500)
+    expect(detail.debtAccounts).toHaveLength(2)
+  })
+
+  it("closes one debt against another while preserving closure history and residual balance", () => {
+    const { service, roleIds } = createHarness()
+    const audit = createAuditContext()
+    const worker = service.createEmployee({
+      firstName: "منير",
+      lastName: "قاسمي",
+      phone: "0612345676",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item
+
+    const positiveAccount = service.createDebtAccount({
+      partyType: "INTERNAL_WORKER",
+      workerId: worker.id,
+      openingBalanceDzd: 1000,
+      openingEntryDate: "2026-03-20T00:00:00.000+01:00",
+    }, audit).item
+
+    const negativeAccount = service.createDebtAccount({
+      partyType: "INTERNAL_WORKER",
+      workerId: worker.id,
+      openingBalanceDzd: -600,
+      openingEntryDate: "2026-03-21T00:00:00.000+01:00",
+    }, audit).item
+
+    const closure = service.closeDebtAgainstAnother({
+      sourceDebtAccountId: positiveAccount.id,
+      targetDebtAccountId: negativeAccount.id,
+      entryDate: "2026-03-22T00:00:00.000+01:00",
+      note: "مقاصة بين حالتين",
+    }, audit).item
+
+    expect(closure.closedAmountDzd).toBe(600)
+    expect(service.getDebtAccount(positiveAccount.id).item.currentBalanceDzd).toBe(400)
+    expect(service.getDebtAccount(negativeAccount.id).item.currentBalanceDzd).toBe(0)
+    expect(service.getDebtAccount(negativeAccount.id).item.status).toBe("SETTLED")
+    expect(service.listDebtClosureLinks({ debtAccountId: positiveAccount.id }).items).toEqual([
+      expect.objectContaining({ id: closure.id, note: "مقاصة بين حالتين" }),
+    ])
+    expect(service.listDebtEntries({ debtAccountId: positiveAccount.id }).items[0]).toMatchObject({
+      entryType: "CLOSURE",
+      signedAmountDzd: -600,
+      balanceAfterDzd: 400,
+    })
+    expect(service.listDebtEntries({ debtAccountId: negativeAccount.id }).items[0]).toMatchObject({
+      entryType: "CLOSURE",
+      signedAmountDzd: 600,
+      balanceAfterDzd: 0,
+    })
+  })
+
+  it("rejects settling an already zero debt account", () => {
+    const { service, roleIds } = createHarness()
+    const worker = service.createEmployee({
+      firstName: "أيمن",
+      lastName: "صالح",
+      phone: "0612345672",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item
+    const account = service.createDebtAccount({
+      partyType: "INTERNAL_WORKER",
+      workerId: worker.id,
+    }).item
+
+    expect(() => service.settleDebtAccount({ id: account.id })).toThrowError(CompanyError)
+  })
+
+  it("rejects backdated debt entries to preserve running balances", () => {
+    const { service, roleIds } = createHarness()
+    const worker = service.createEmployee({
+      firstName: "أيمن",
+      lastName: "صالح",
+      phone: "0612345673",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item
+    const account = service.createDebtAccount({
+      partyType: "INTERNAL_WORKER",
+      workerId: worker.id,
+      openingBalanceDzd: 1000,
+      openingEntryDate: "2026-03-20T00:00:00.000+01:00",
+    }).item
+
+    expect(() =>
+      service.createDebtEntry({
+        debtAccountId: account.id,
+        entryType: "PAYMENT",
+        signedAmountDzd: -200,
+        entryDate: "2026-03-19T00:00:00.000+01:00",
+      }),
+    ).toThrowError(CompanyError)
+  })
+
+  it("rolls back debt account creation when opening ledger write fails", () => {
+    const { repository, service, roleIds } = createHarness()
+    const worker = service.createEmployee({
+      firstName: "سليم",
+      lastName: "رحالي",
+      phone: "0612345674",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item
+    const createDebtEntrySpy = vi.spyOn(repository, "createDebtEntry").mockImplementation(() => {
+      throw new Error("ledger write failed")
+    })
+
+    expect(() =>
+      service.createDebtAccount({
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.id,
+        openingBalanceDzd: 500,
+      }),
+    ).toThrow("ledger write failed")
+
+    expect(service.listDebtAccounts().items).toHaveLength(0)
+    createDebtEntrySpy.mockRestore()
+  })
+
+  it("rolls back debt ledger creation when account update fails", () => {
+    const { repository, service, roleIds } = createHarness()
+    const worker = service.createEmployee({
+      firstName: "ليلى",
+      lastName: "مقدم",
+      phone: "0612345675",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item
+    const account = service.createDebtAccount({
+      partyType: "INTERNAL_WORKER",
+      workerId: worker.id,
+      openingBalanceDzd: 800,
+    }).item
+    const updateDebtAccountSpy = vi.spyOn(repository, "updateDebtAccount").mockImplementation(() => {
+      throw new Error("account update failed")
+    })
+
+    expect(() =>
+      service.createDebtEntry({
+        debtAccountId: account.id,
+        entryType: "PAYMENT",
+        signedAmountDzd: -200,
+      }),
+    ).toThrow("account update failed")
+
+    expect(service.listDebtEntries({ debtAccountId: account.id }).items).toHaveLength(1)
+    expect(service.getDebtAccount(account.id).item.currentBalanceDzd).toBe(800)
+    updateDebtAccountSpy.mockRestore()
+  })
+
   it("stores company timestamps in the Algerian timezone offset", () => {
     const { service, roleIds } = createHarness()
 
@@ -599,6 +854,35 @@ describe("CompanyService", () => {
     expect(logs.some((entry) => entry.transactionId === audit.transactionId)).toBe(true)
   })
 
+  it("includes debt account mutations in the system log", () => {
+    const { service, roleIds } = createHarness()
+    const audit = createAuditContext({ transactionId: crypto.randomUUID() })
+    const worker = service.createEmployee(
+      {
+        firstName: "Debt",
+        lastName: "Worker",
+        phone: "0612345673",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      },
+      audit,
+    ).item
+
+    const account = service.createDebtAccount(
+      {
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.id,
+        openingBalanceDzd: 900,
+      },
+      audit,
+    ).item
+
+    service.settleDebtAccount({ id: account.id }, audit)
+
+    const logs = service.listSystemLog({ actorUserId: audit.actorUserId }).items
+    expect(logs.some((entry) => entry.transactionId === audit.transactionId)).toBe(true)
+  })
+
   it("lists account profile updates in the system log", () => {
     const { database, service } = createHarness()
     const userId = "admin-user-1"
@@ -606,19 +890,23 @@ describe("CompanyService", () => {
 
     database
       .prepare('INSERT INTO "user" (id, name, image, phoneNumber, phoneNumberVerified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(userId, "الاسم الجديد", null, "0612345659", 1, timestamp, timestamp)
+      .run(userId, "الاسم الجديد", null, "0612345658", 1, timestamp, timestamp)
 
     database
-      .prepare('INSERT INTO "user_profile_history" (id, user_id, name, phone, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run("profile-log-1", userId, "الاسم الجديد", "0612345659", userId, "الاسم الجديد", crypto.randomUUID(), timestamp, timestamp)
+      .prepare('INSERT INTO "user_profile_history" (id, user_id, name, phone, previous_name, previous_phone, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run("profile-log-1", userId, "الاسم الجديد", "0612345658", "الاسم القديم", "0612345658", userId, "الاسم القديم", crypto.randomUUID(), timestamp, timestamp)
 
     const logs = service.listSystemLog({ actorUserId: userId }).items
 
     expect(logs[0]).toMatchObject({
       actionType: "ACCOUNT_UPDATED",
       entityType: "ACCOUNT",
-      actorLabel: "الاسم الجديد",
+      actorLabel: "الاسم القديم",
+      actorCurrentLabel: "الاسم الجديد",
+      summary: "تم تحديث بيانات حساب الاسم الجديد",
     })
+    expect(logs[0]?.detail).toContain("تم تحديث الاسم")
+    expect(logs[0]?.detail).not.toContain("0612345658")
   })
 
   it("translates employee status labels inside system log details", () => {
@@ -668,12 +956,12 @@ describe("CompanyService", () => {
       .run(userId, "عمارة", null, "0612345658", 1, "2026-03-18T01:00:00.000Z", "2026-03-18T01:00:00.000Z")
 
     database
-      .prepare('INSERT INTO "user_profile_history" (id, user_id, name, phone, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run("profile-log-older", userId, "عمارة", "0612345658", userId, "عمارة", crypto.randomUUID(), "2026-03-18T01:15:00.000Z", "2026-03-18T01:15:00.000Z")
+      .prepare('INSERT INTO "user_profile_history" (id, user_id, name, phone, previous_name, previous_phone, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run("profile-log-older", userId, "عمارة", "0612345658", "بلال", "0612345658", userId, "بلال", crypto.randomUUID(), "2026-03-18T01:15:00.000Z", "2026-03-18T01:15:00.000Z")
 
     database
-      .prepare('INSERT INTO "user_profile_history" (id, user_id, name, phone, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run("profile-log-newer", userId, "بلال", "0612345658", userId, "بلال", crypto.randomUUID(), "2026-03-18T02:16:00+01:00", "2026-03-18T02:16:00+01:00")
+      .prepare('INSERT INTO "user_profile_history" (id, user_id, name, phone, previous_name, previous_phone, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run("profile-log-newer", userId, "بلال", "0612345658", "عمارة", "0612345658", userId, "عمارة", crypto.randomUUID(), "2026-03-18T02:16:00+01:00", "2026-03-18T02:16:00+01:00")
 
     const logs = service.listSystemLog({ actionType: "ACCOUNT_UPDATED" }).items
 

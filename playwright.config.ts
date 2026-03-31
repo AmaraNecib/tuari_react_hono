@@ -1,6 +1,5 @@
 import { defineConfig, devices } from "@playwright/test"
 
-const appClientKey = "tuari-desktop-client-key-v1"
 const apiUrl = "http://127.0.0.1:4318"
 const webUrl = "http://127.0.0.1:3000"
 const e2eDbPath = `./data/tuari.phase1.integration.${Date.now()}.sqlite`
@@ -9,13 +8,11 @@ const sharedEnv = {
   ...process.env,
   API_HOST: "127.0.0.1",
   API_PORT: "4318",
-  APP_CLIENT_KEY: appClientKey,
   ALLOWED_ORIGINS: `${webUrl},http://localhost:3000,http://localhost:1420,http://127.0.0.1:1420,https://tauri.localhost,tauri://localhost`,
   BETTER_AUTH_SECRET: "tuari-foundation-secret-1234567890",
   BETTER_AUTH_URL: apiUrl,
   APP_DB_PATH: e2eDbPath,
   VITE_API_URL: apiUrl,
-  VITE_APP_CLIENT_KEY: appClientKey,
 }
 
 export default defineConfig({

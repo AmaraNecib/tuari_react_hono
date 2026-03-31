@@ -2,6 +2,7 @@ import {
   employeeBatchCreateInputSchema,
   employeeBatchCreateRowInputSchema,
   employeeBatchLimit,
+  type Employee,
   type EmployeeBatchCreateInput,
 } from "@tuari/contracts"
 
@@ -12,6 +13,8 @@ export type EmployeeDraft = {
   lastName: string
   phone: string
   roleId: string
+  salaryAmountDzd: string
+  salaryPeriod: NonNullable<Employee["salaryPeriod"]> | ""
   managerId: string
   projectId: string
   notes: string
@@ -25,10 +28,23 @@ export function createEmptyEmployeeDraft(defaultRoleId = ""): EmployeeDraft {
     lastName: "",
     phone: "",
     roleId: defaultRoleId,
+    salaryAmountDzd: "",
+    salaryPeriod: "",
     managerId: "",
     projectId: "",
     notes: "",
   }
+}
+
+export function parseSalaryAmount(value: string) {
+  const trimmed = value.trim()
+
+  if (trimmed.length === 0) {
+    return null
+  }
+
+  const numeric = Number(trimmed)
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : Number.NaN
 }
 
 export function normalizeEmployeeDraft(draft: EmployeeDraft) {
@@ -38,6 +54,8 @@ export function normalizeEmployeeDraft(draft: EmployeeDraft) {
     phone: draft.phone.trim(),
     roleId: draft.roleId,
     status: "ACTIVE" as const,
+    salaryAmountDzd: parseSalaryAmount(draft.salaryAmountDzd),
+    salaryPeriod: draft.salaryPeriod || null,
     managerId: draft.managerId.trim() || null,
     projectId: draft.projectId.trim() || null,
     notes: draft.notes.trim() || undefined,
@@ -46,6 +64,7 @@ export function normalizeEmployeeDraft(draft: EmployeeDraft) {
 
 export function validateEmployeeDraft(draft: EmployeeDraft) {
   const errors: EmployeeDraftErrors = {}
+  const salaryAmount = parseSalaryAmount(draft.salaryAmountDzd)
   const result = employeeBatchCreateRowInputSchema.safeParse(normalizeEmployeeDraft(draft))
 
   if (!result.success) {
@@ -68,6 +87,14 @@ export function validateEmployeeDraft(draft: EmployeeDraft) {
         errors.roleId = issue.message
       }
 
+      if (field === "salaryAmountDzd") {
+        errors.salaryAmountDzd = issue.message
+      }
+
+      if (field === "salaryPeriod") {
+        errors.salaryPeriod = issue.message
+      }
+
       if (field === "managerId") {
         errors.managerId = issue.message
       }
@@ -80,6 +107,18 @@ export function validateEmployeeDraft(draft: EmployeeDraft) {
         errors.notes = issue.message
       }
     }
+  }
+
+  if (Number.isNaN(salaryAmount)) {
+    errors.salaryAmountDzd = errors.salaryAmountDzd ?? "invalid"
+  }
+
+  if (salaryAmount !== null && !draft.salaryPeriod) {
+    errors.salaryPeriod = errors.salaryPeriod ?? "required"
+  }
+
+  if (salaryAmount === null && draft.salaryPeriod) {
+    errors.salaryAmountDzd = errors.salaryAmountDzd ?? "required"
   }
 
   return errors

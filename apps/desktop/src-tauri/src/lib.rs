@@ -16,10 +16,11 @@ const API_HOST: &str = "127.0.0.1";
 const API_PORT: u16 = 4318;
 const ALLOWED_ORIGINS: &str =
   "http://localhost:1420,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost";
-const APP_CLIENT_KEY_BYTES: usize = 32;
 const BETTER_AUTH_SECRET_BYTES: usize = 48;
 const API_STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const API_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const DESKTOP_AUTH_SERVICE: &str = "com.tuari.desktop.auth";
+const DESKTOP_AUTH_ACCOUNT: &str = "desktop-bearer-token";
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -28,25 +29,110 @@ struct ApiProcess {
 }
 
 struct RuntimeSecrets {
-    app_client_key: String,
     better_auth_secret: String,
+}
+
+struct DesktopAuthRuntimeState {
+    session: Mutex<Option<DesktopAuthSession>>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopAuthSession {
+    token: String,
+    remember_me: bool,
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeConfig {
     api_base_url: String,
-    app_client_key: String,
 }
 
 #[tauri::command]
-fn get_runtime_config(app: AppHandle) -> Result<RuntimeConfig, String> {
-    let runtime_secrets = load_runtime_secrets(&app)?;
-
+fn get_runtime_config(_app: AppHandle) -> Result<RuntimeConfig, String> {
     Ok(RuntimeConfig {
         api_base_url: format!("http://{}:{}", API_HOST, API_PORT),
-        app_client_key: runtime_secrets.app_client_key,
     })
+}
+
+fn normalize_token(token: &str) -> Option<String> {
+    let normalized = token.trim();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.to_string())
+    }
+}
+
+fn desktop_auth_entry() -> Result<keyring::Entry, String> {
+    keyring::Entry::new(DESKTOP_AUTH_SERVICE, DESKTOP_AUTH_ACCOUNT)
+        .map_err(|error| format!("Failed to open desktop credential store: {error}"))
+}
+
+#[tauri::command]
+fn get_desktop_runtime_auth_session(
+    state: tauri::State<'_, DesktopAuthRuntimeState>,
+) -> Result<Option<DesktopAuthSession>, String> {
+    let guard = state.session.lock().map_err(|error| error.to_string())?;
+    Ok(guard.clone())
+}
+
+#[tauri::command]
+fn set_desktop_runtime_auth_session(
+    token: String,
+    remember_me: bool,
+    state: tauri::State<'_, DesktopAuthRuntimeState>,
+) -> Result<(), String> {
+    let mut guard = state.session.lock().map_err(|error| error.to_string())?;
+    *guard = normalize_token(&token).map(|token| DesktopAuthSession { token, remember_me });
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_desktop_runtime_auth_session(
+    state: tauri::State<'_, DesktopAuthRuntimeState>,
+) -> Result<(), String> {
+    let mut guard = state.session.lock().map_err(|error| error.to_string())?;
+    *guard = None;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_desktop_auth_token() -> Result<Option<String>, String> {
+    let entry = desktop_auth_entry()?;
+
+    match entry.get_password() {
+        Ok(token) => Ok(normalize_token(&token)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(format!(
+            "Failed to read the desktop auth token from secure storage: {error}"
+        )),
+    }
+}
+
+#[tauri::command]
+fn set_desktop_auth_token(token: String) -> Result<(), String> {
+    let entry = desktop_auth_entry()?;
+
+    match normalize_token(&token) {
+        Some(token) => entry
+            .set_password(&token)
+            .map_err(|error| format!("Failed to persist the desktop auth token securely: {error}")),
+        None => clear_desktop_auth_token(),
+    }
+}
+
+#[tauri::command]
+fn clear_desktop_auth_token() -> Result<(), String> {
+    let entry = desktop_auth_entry()?;
+
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(format!(
+            "Failed to clear the desktop auth token from secure storage: {error}"
+        )),
+    }
 }
 
 fn has_portable_runtime_layout(root: &Path) -> bool {
@@ -83,17 +169,10 @@ fn resolve_tuari_dir(app: &AppHandle) -> Result<PathBuf, String> {
         return Ok(portable_data_dir);
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(public_dir) = std::env::var("PUBLIC") {
-            return Ok(PathBuf::from(public_dir).join("Documents").join("Tuari"));
-        }
-    }
-
     let base_dir = app
         .path()
-        .document_dir()
-        .or_else(|_| app.path().app_data_dir())
+        .app_data_dir()
+        .or_else(|_| app.path().app_local_data_dir())
         .map_err(|error| error.to_string())?;
 
     Ok(base_dir.join("Tuari"))
@@ -126,6 +205,29 @@ fn resolve_legacy_project_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| error.to_string())?;
 
     Ok(base_dir.join("Tuari").join("projects").join("default"))
+}
+
+fn resolve_legacy_tuari_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(public_dir) = std::env::var("PUBLIC") {
+            return Ok(Some(
+                PathBuf::from(public_dir).join("Documents").join("Tuari"),
+            ));
+        }
+
+        let document_dir = app
+            .path()
+            .document_dir()
+            .map_err(|error| error.to_string())?;
+        return Ok(Some(document_dir.join("Tuari")));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        Ok(None)
+    }
 }
 
 fn resolve_private_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -180,19 +282,12 @@ fn load_runtime_secrets(app: &AppHandle) -> Result<RuntimeSecrets, String> {
     let secrets_dir = resolve_secrets_dir(app)?;
     create_dir_all(&secrets_dir).map_err(|error| error.to_string())?;
 
-    let app_client_key = load_or_create_secret(
-        &secrets_dir.join("app-client-key.secret"),
-        APP_CLIENT_KEY_BYTES,
-    )?;
     let better_auth_secret = load_or_create_secret(
         &secrets_dir.join("better-auth.secret"),
         BETTER_AUTH_SECRET_BYTES,
     )?;
 
-    Ok(RuntimeSecrets {
-        app_client_key,
-        better_auth_secret,
-    })
+    Ok(RuntimeSecrets { better_auth_secret })
 }
 
 fn ensure_file_exists(file_path: &PathBuf) -> Result<(), String> {
@@ -216,7 +311,68 @@ fn migrate_legacy_db_if_needed(
     Ok(())
 }
 
+fn copy_file_if_missing(source_path: &Path, destination_path: &Path) -> Result<(), String> {
+    if destination_path.exists() {
+        return Ok(());
+    }
+
+    if let Some(parent_dir) = destination_path.parent() {
+        create_dir_all(parent_dir).map_err(|error| error.to_string())?;
+    }
+
+    copy(source_path, destination_path).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn copy_allowlisted_legacy_runtime_files_if_missing(
+    legacy_root: &Path,
+    current_root: &Path,
+) -> Result<(), String> {
+    const ALLOWLIST: &[&[&str]] = &[
+        &["projects", "default", "tuari.sqlite"],
+        &["projects", "default", "auth.sqlite"],
+        &["projects", "default", "app.sqlite"],
+    ];
+
+    for relative_segments in ALLOWLIST {
+        let source_path = relative_segments
+            .iter()
+            .fold(legacy_root.to_path_buf(), |path, segment| {
+                path.join(segment)
+            });
+
+        if !source_path.exists() {
+            continue;
+        }
+
+        let destination_path = relative_segments
+            .iter()
+            .fold(current_root.to_path_buf(), |path, segment| {
+                path.join(segment)
+            });
+
+        copy_file_if_missing(&source_path, &destination_path)?;
+    }
+
+    Ok(())
+}
+
+fn migrate_legacy_runtime_tree_if_needed(app: &AppHandle) -> Result<(), String> {
+    let current_root = resolve_tuari_dir(app)?;
+    let Some(legacy_root) = resolve_legacy_tuari_dir(app)? else {
+        return Ok(());
+    };
+
+    if current_root == legacy_root || !legacy_root.exists() {
+        return Ok(());
+    }
+
+    copy_allowlisted_legacy_runtime_files_if_missing(&legacy_root, &current_root)
+}
+
 fn ensure_runtime_files(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), String> {
+    migrate_legacy_runtime_tree_if_needed(app)?;
+
     let project_dir = resolve_project_dir(app)?;
     let logs_dir = resolve_logs_dir(app)?;
     create_dir_all(&project_dir).map_err(|error| error.to_string())?;
@@ -405,7 +561,6 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     command
         .env("API_HOST", API_HOST)
         .env("API_PORT", API_PORT.to_string())
-        .env("APP_CLIENT_KEY", runtime_secrets.app_client_key)
         .env("ALLOWED_ORIGINS", ALLOWED_ORIGINS)
         .env("BETTER_AUTH_SECRET", runtime_secrets.better_auth_secret)
         .env(
@@ -436,7 +591,18 @@ pub fn run() {
         .manage(ApiProcess {
             child: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![get_runtime_config])
+        .manage(DesktopAuthRuntimeState {
+            session: Mutex::new(None),
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_runtime_config,
+            get_desktop_runtime_auth_session,
+            set_desktop_runtime_auth_session,
+            clear_desktop_runtime_auth_session,
+            get_desktop_auth_token,
+            set_desktop_auth_token,
+            clear_desktop_auth_token
+        ])
         .setup(|app| {
             let child = spawn_api_process(app.handle())?;
             let state = app.state::<ApiProcess>();
@@ -467,8 +633,9 @@ fn kill_api(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_secret, has_portable_runtime_layout, is_valid_secret, load_or_create_secret,
-        APP_CLIENT_KEY_BYTES,
+        copy_allowlisted_legacy_runtime_files_if_missing, encode_secret,
+        has_portable_runtime_layout, is_valid_secret, load_or_create_secret, normalize_token,
+        BETTER_AUTH_SECRET_BYTES,
     };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
@@ -490,25 +657,34 @@ mod tests {
     #[test]
     fn validates_expected_secret_shape() {
         assert!(is_valid_secret(
-            &"ab".repeat(APP_CLIENT_KEY_BYTES),
-            APP_CLIENT_KEY_BYTES
+            &"ab".repeat(BETTER_AUTH_SECRET_BYTES),
+            BETTER_AUTH_SECRET_BYTES
         ));
-        assert!(!is_valid_secret("invalid-secret", APP_CLIENT_KEY_BYTES));
+        assert!(!is_valid_secret("invalid-secret", BETTER_AUTH_SECRET_BYTES));
+    }
+
+    #[test]
+    fn normalizes_persisted_auth_tokens() {
+        assert_eq!(
+            normalize_token("  desktop-token  "),
+            Some("desktop-token".to_string())
+        );
+        assert_eq!(normalize_token("   \n\t  "), None);
     }
 
     #[test]
     fn persists_secret_once_per_install_location() {
         let temp_dir = unique_temp_dir();
         create_dir_all(&temp_dir).expect("create temp dir");
-        let secret_path = temp_dir.join("app-client-key.secret");
+        let secret_path = temp_dir.join("better-auth.secret");
 
         let first_secret =
-            load_or_create_secret(&secret_path, APP_CLIENT_KEY_BYTES).expect("create secret");
-        let second_secret = load_or_create_secret(&secret_path, APP_CLIENT_KEY_BYTES)
+            load_or_create_secret(&secret_path, BETTER_AUTH_SECRET_BYTES).expect("create secret");
+        let second_secret = load_or_create_secret(&secret_path, BETTER_AUTH_SECRET_BYTES)
             .expect("reuse existing secret");
 
         assert_eq!(first_secret, second_secret);
-        assert!(is_valid_secret(&first_secret, APP_CLIENT_KEY_BYTES));
+        assert!(is_valid_secret(&first_secret, BETTER_AUTH_SECRET_BYTES));
 
         remove_dir_all(&temp_dir).expect("remove temp dir");
     }
@@ -530,6 +706,45 @@ mod tests {
         std::fs::write(temp_dir.join("bin").join(node_binary_name), "").expect("write node marker");
 
         assert!(has_portable_runtime_layout(&temp_dir));
+
+        remove_dir_all(&temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn migrates_only_allowlisted_legacy_runtime_files_without_overwriting_existing_files() {
+        let temp_dir = unique_temp_dir();
+        let legacy_dir = temp_dir.join("legacy");
+        let current_dir = temp_dir.join("current");
+        let legacy_nested_dir = legacy_dir.join("projects").join("default");
+        let current_nested_dir = current_dir.join("projects").join("default");
+
+        create_dir_all(&legacy_nested_dir).expect("create legacy nested dir");
+        create_dir_all(&current_nested_dir).expect("create current nested dir");
+
+        std::fs::write(legacy_nested_dir.join("tuari.sqlite"), "legacy-db")
+            .expect("write legacy db");
+        std::fs::write(legacy_dir.join("logs.txt"), "legacy log").expect("write legacy log");
+        std::fs::write(current_nested_dir.join("tuari.sqlite"), "current-db")
+            .expect("write current db");
+
+        copy_allowlisted_legacy_runtime_files_if_missing(&legacy_dir, &current_dir)
+            .expect("copy allowlisted legacy files into current dir");
+
+        assert_eq!(
+            std::fs::read_to_string(current_nested_dir.join("tuari.sqlite"))
+                .expect("read current db"),
+            "current-db"
+        );
+        assert!(!current_dir.join("logs.txt").exists());
+
+        copy_allowlisted_legacy_runtime_files_if_missing(&legacy_dir, &current_dir)
+            .expect("re-run allowlisted legacy copy safely");
+
+        assert_eq!(
+            std::fs::read_to_string(current_nested_dir.join("tuari.sqlite"))
+                .expect("read current db after second migration"),
+            "current-db"
+        );
 
         remove_dir_all(&temp_dir).expect("remove temp dir");
     }

@@ -4,20 +4,53 @@ const DEFAULT_API_URL = "http://127.0.0.1:4318"
 
 export type ResolvedRuntimeConfig = {
   apiBaseUrl: string
-  appClientKey: string
 }
 
 let runtimeConfig: ResolvedRuntimeConfig = {
-  apiBaseUrl: import.meta.env.VITE_API_URL?.trim() || DEFAULT_API_URL,
-  appClientKey: import.meta.env.VITE_APP_CLIENT_KEY?.trim() || "",
+  apiBaseUrl: normalizeApiBaseUrl(import.meta.env.VITE_API_URL?.trim() || DEFAULT_API_URL),
+}
+
+function isLocalHostname(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "[::1]" || hostname === "::1" || hostname === "tauri.localhost"
+}
+
+function normalizeApiBaseUrl(value: string) {
+  const trimmedValue = value.trim()
+
+  if (trimmedValue.length === 0) {
+    throw new Error("API base URL cannot be empty")
+  }
+
+  let parsedUrl: URL
+
+  try {
+    parsedUrl = new URL(trimmedValue)
+  } catch {
+    throw new Error(`Invalid API base URL: ${value}`)
+  }
+
+  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+    throw new Error(`API base URL must use http or https, received "${parsedUrl.protocol}"`)
+  }
+
+  if (parsedUrl.username || parsedUrl.password || parsedUrl.search || parsedUrl.hash) {
+    throw new Error("API base URL must not include credentials, query parameters, or fragments")
+  }
+
+  if (!isLocalHostname(parsedUrl.hostname) && parsedUrl.protocol !== "https:") {
+    throw new Error("API base URL must use https for non-local hosts")
+  }
+
+  return parsedUrl.toString().replace(/\/+$/, "")
+}
+
+export function resolveApiUrl(path: string) {
+  const baseUrl = new URL(`${resolveApiBaseUrl().replace(/\/+$/, "")}/`)
+  return new URL(path.replace(/^\//, ""), baseUrl).toString()
 }
 
 export function resolveApiBaseUrl() {
   return runtimeConfig.apiBaseUrl
-}
-
-export function resolveAppClientKey() {
-  return runtimeConfig.appClientKey
 }
 
 export async function initializeRuntimeConfig() {
@@ -25,8 +58,7 @@ export async function initializeRuntimeConfig() {
 
   if (status.config) {
     runtimeConfig = {
-      apiBaseUrl: status.config.apiBaseUrl.trim() || runtimeConfig.apiBaseUrl,
-      appClientKey: status.config.appClientKey.trim() || runtimeConfig.appClientKey,
+      apiBaseUrl: normalizeApiBaseUrl(status.config.apiBaseUrl.trim() || runtimeConfig.apiBaseUrl),
     }
   }
 
@@ -35,7 +67,6 @@ export async function initializeRuntimeConfig() {
 
 export function resetRuntimeConfigForTests() {
   runtimeConfig = {
-    apiBaseUrl: import.meta.env.VITE_API_URL?.trim() || DEFAULT_API_URL,
-    appClientKey: import.meta.env.VITE_APP_CLIENT_KEY?.trim() || "",
+    apiBaseUrl: normalizeApiBaseUrl(import.meta.env.VITE_API_URL?.trim() || DEFAULT_API_URL),
   }
 }

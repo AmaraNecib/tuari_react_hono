@@ -1,9 +1,26 @@
-import type { ReactNode } from "react"
+import { type KeyboardEvent, type ReactNode, useId, useMemo, useRef } from "react"
 import { Link } from "@tanstack/react-router"
+import { useTranslation } from "react-i18next"
 
 import { Button, buttonVariants } from "@/components/ui/button"
-import { i18n } from "@/i18n"
+import {
+  AppShellEmptyStateRow,
+  AppShellTableFrame,
+  AppShellTableHead,
+  AppShellTableHeaderCell,
+  AppShellTableRow,
+} from "@/features/app-shell/app-shell-table-primitives"
 import { cn } from "@/lib/utils"
+
+import { PageActionGroup, PageHeader, PageSurfaceContent, Surface } from "./page-primitives"
+
+function getTabId(baseId: string, tabId: string) {
+  return `${baseId}-tab-${tabId}`
+}
+
+function getPanelId(baseId: string, tabId: string) {
+  return `${baseId}-panel-${tabId}`
+}
 
 export function RecordPageFrame({
   title,
@@ -23,64 +40,161 @@ export function RecordPageFrame({
   children: ReactNode
 }) {
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-border/60 pb-5 xl:flex-row xl:items-end xl:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">{title}</h1>
-          {description ? <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Link
-            className={cn(
-              buttonVariants({ variant: "outline", size: "lg" }),
-              "border-primary/18 bg-sidebar text-primary shadow-sm hover:border-primary/30 hover:bg-sidebar hover:text-primary dark:bg-input/30",
-            )}
-            to={backHref}
-          >
-            {backLabel}
-          </Link>
-          {editHref && editLabel ? (
+    <Surface variant="panel">
+      <PageSurfaceContent>
+        <PageHeader
+          action={
+            <PageActionGroup>
             <Link
-              className={cn(buttonVariants({ variant: "default", size: "lg" }), "shadow-sm")}
-              to={editHref}
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "border-primary/20 bg-background/75 text-primary hover:border-primary/35 hover:text-primary",
+              )}
+              to={backHref}
             >
-              {editLabel}
+              {backLabel}
             </Link>
-          ) : null}
-        </div>
-      </div>
-      {children}
-    </div>
+            {editHref && editLabel ? (
+              <Link className={cn(buttonVariants({ variant: "default", size: "lg" }))} to={editHref}>
+                {editLabel}
+              </Link>
+            ) : null}
+            </PageActionGroup>
+          }
+          description={description}
+          title={title}
+        />
+        {children}
+      </PageSurfaceContent>
+    </Surface>
   )
 }
 
 export function RecordTabs({
   activeTab,
+  baseId,
   tabs,
   onChange,
 }: {
   activeTab: string
+  baseId?: string
   tabs: Array<{ id: string; label: string }>
   onChange: (tabId: string) => void
 }) {
+  const { t } = useTranslation()
+  const generatedId = useId()
+  const resolvedBaseId = useMemo(() => (baseId ?? `record-tabs-${generatedId}`).replace(/:/g, ""), [baseId, generatedId])
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  function focusTab(index: number) {
+    tabRefs.current[index]?.focus()
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const closestDirection = event.currentTarget.closest("[dir]")?.getAttribute("dir")
+    const isRtl = (closestDirection ?? document.documentElement.dir) === "rtl"
+    const previousIndex = index === 0 ? tabs.length - 1 : index - 1
+    const nextIndex = index === tabs.length - 1 ? 0 : index + 1
+
+    let targetIndex: number | null = null
+
+    switch (event.key) {
+      case "ArrowLeft":
+        targetIndex = isRtl ? nextIndex : previousIndex
+        break
+      case "ArrowRight":
+        targetIndex = isRtl ? previousIndex : nextIndex
+        break
+      case "Home":
+        targetIndex = 0
+        break
+      case "End":
+        targetIndex = tabs.length - 1
+        break
+      default:
+        break
+    }
+
+    if (targetIndex === null) {
+      return
+    }
+
+    const targetTab = tabs[targetIndex]
+
+    if (!targetTab) {
+      return
+    }
+
+    event.preventDefault()
+    onChange(targetTab.id)
+    focusTab(targetIndex)
+  }
+
   return (
-    <div className="flex flex-wrap gap-2 rounded-[24px] border border-border/60 bg-muted/20 p-2">
-      {tabs.map((tab) => (
+    <div
+      aria-label={t("detailPages.shared.recordTabsLabel")}
+      aria-orientation="horizontal"
+      className="surface-subtle flex flex-wrap gap-2 rounded-[24px] p-2"
+      role="tablist"
+    >
+      {tabs.map((tab, index) => (
         <Button
+          ref={(node) => {
+            tabRefs.current[index] = node
+          }}
+          aria-controls={getPanelId(resolvedBaseId, tab.id)}
+          aria-selected={activeTab === tab.id}
+          id={getTabId(resolvedBaseId, tab.id)}
           key={tab.id}
+          role="tab"
+          tabIndex={activeTab === tab.id ? 0 : -1}
           className={cn(
-            "min-w-[9.5rem] rounded-[18px] px-4 shadow-sm",
+            "min-w-[9.5rem] rounded-[18px] px-4",
             activeTab === tab.id
               ? "bg-primary text-primary-foreground hover:bg-primary/90"
-              : "border-border/70 bg-sidebar text-foreground hover:border-primary/20 hover:bg-sidebar hover:text-foreground dark:bg-background/60",
+              : "border-border/70 bg-background/80 text-foreground hover:border-primary/20 hover:bg-muted/60 hover:text-foreground dark:bg-background/60",
           )}
           size="lg"
+          type="button"
           variant={activeTab === tab.id ? "default" : "outline"}
           onClick={() => onChange(tab.id)}
+          onKeyDown={(event) => handleKeyDown(event, index)}
         >
           {tab.label}
         </Button>
       ))}
+    </div>
+  )
+}
+
+export function RecordTabPanel({
+  activeTab,
+  baseId,
+  tabId,
+  children,
+  className,
+}: {
+  activeTab: string
+  baseId: string
+  tabId: string
+  children: ReactNode
+  className?: string
+}) {
+  const isActive = activeTab === tabId
+
+  if (!isActive) {
+    return null
+  }
+
+  return (
+    <div
+      aria-labelledby={getTabId(baseId, tabId)}
+      className={className}
+      id={getPanelId(baseId, tabId)}
+      role="tabpanel"
+      tabIndex={0}
+    >
+      {children}
     </div>
   )
 }
@@ -101,10 +215,10 @@ export function RecordInfoCard({
   valueClassName?: string
 }) {
   return (
-    <article className={`min-w-0 flex flex-col gap-1.5 rounded-[22px] border border-border/70 bg-sidebar px-5 py-3.5 shadow-sm dark:bg-background/60 ${wide ? "md:col-span-2 xl:col-span-3" : ""}`}>
+    <Surface as="article" className={cn("min-w-0 flex flex-col gap-1.5 rounded-[22px] px-5 py-3.5", wide ? "md:col-span-2 xl:col-span-3" : "")} variant="card">
       <p className="text-[0.8rem] font-medium leading-5 text-muted-foreground">{label}</p>
       <div className={`min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[1.05rem] font-semibold leading-8 text-foreground ${valueClassName ?? ""}`.trim()}>{value}</div>
-    </article>
+    </Surface>
   )
 }
 
@@ -129,44 +243,42 @@ export function RecordHistoryTable({
     statusLabel: string
   }>
 }) {
+  const { t } = useTranslation()
+
   return (
-    <div className="overflow-hidden rounded-[28px] border border-border/70 bg-sidebar shadow-sm dark:bg-background/60">
-      <div className="overflow-x-auto">
+    <Surface className="overflow-hidden" variant="table">
+      <AppShellTableFrame className="rounded-[30px] border-0">
         <table className="min-w-full text-sm">
-          <thead className="bg-muted/40 text-muted-foreground dark:bg-muted/45">
+          <AppShellTableHead className="bg-muted/45 dark:bg-muted/55">
             <tr>
-              <th className="px-4 py-3 text-right font-medium">{columns?.type ?? i18n.t("detailPages.shared.historyType")}</th>
-              <th className="px-4 py-3 text-right font-medium">{columns?.details ?? i18n.t("detailPages.shared.historyDetails")}</th>
-              <th className="px-4 py-3 text-right font-medium">{columns?.period ?? i18n.t("detailPages.shared.historyPeriod")}</th>
-              <th className="px-4 py-3 text-right font-medium">{columns?.status ?? i18n.t("detailPages.shared.historyStatus")}</th>
+              <AppShellTableHeaderCell>{columns?.type ?? t("detailPages.shared.historyType")}</AppShellTableHeaderCell>
+              <AppShellTableHeaderCell>{columns?.details ?? t("detailPages.shared.historyDetails")}</AppShellTableHeaderCell>
+              <AppShellTableHeaderCell>{columns?.period ?? t("detailPages.shared.historyPeriod")}</AppShellTableHeaderCell>
+              <AppShellTableHeaderCell>{columns?.status ?? t("detailPages.shared.historyStatus")}</AppShellTableHeaderCell>
             </tr>
-          </thead>
+          </AppShellTableHead>
           <tbody>
             {rows.length > 0 ? (
               rows.map((row) => (
-                <tr key={row.id} className="border-t border-border/60 bg-sidebar dark:bg-background">
-                  <td className="px-4 py-4 text-right text-muted-foreground">{row.typeLabel}</td>
-                  <td className="px-4 py-4 text-right">
+                <AppShellTableRow key={row.id} className="bg-background/75 dark:bg-background">
+                  <td className="px-4 py-4 text-start text-muted-foreground">{row.typeLabel}</td>
+                  <td className="px-4 py-4 text-start">
                     <div className="space-y-1">
                       <p className="font-medium text-foreground">{row.title}</p>
-                      {row.detail ? <p className="text-xs leading-5 text-muted-foreground">{row.detail}</p> : null}
+                      {row.detail ? <p className="text-xs leading-5 text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{row.detail}</p> : null}
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-right text-muted-foreground">{row.periodLabel}</td>
-                  <td className="px-4 py-4 text-right text-foreground">{row.statusLabel}</td>
-                </tr>
+                  <td className="px-4 py-4 text-start text-muted-foreground">{row.periodLabel}</td>
+                  <td className="px-4 py-4 text-start text-foreground">{row.statusLabel}</td>
+                </AppShellTableRow>
               ))
             ) : (
-              <tr>
-                <td className="px-4 py-6 text-center text-muted-foreground" colSpan={4}>
-                  {emptyLabel}
-                </td>
-              </tr>
+              <AppShellEmptyStateRow colSpan={4}>{emptyLabel}</AppShellEmptyStateRow>
             )}
           </tbody>
         </table>
-      </div>
-    </div>
+      </AppShellTableFrame>
+    </Surface>
   )
 }
 
@@ -180,12 +292,12 @@ export function RecordHistoryCard({
   items: Array<{ id: string; label: string; secondary: string; badge: string }>
 }) {
   return (
-    <article className="rounded-[28px] border border-border/70 bg-sidebar p-4 dark:bg-background/60">
+    <Surface as="article" className="p-4" variant="table">
       <h3 className="text-lg font-semibold text-foreground">{title}</h3>
       <div className="mt-4 space-y-3">
         {items.length > 0 ? (
           items.map((item) => (
-            <div key={item.id} className="rounded-[22px] border border-border/60 bg-sidebar px-4 py-3 dark:bg-background">
+            <Surface key={item.id} className="rounded-[22px] px-4 py-3" variant="inset">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
                   <p className="font-medium text-foreground">{item.label}</p>
@@ -193,12 +305,12 @@ export function RecordHistoryCard({
                 </div>
                 <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground">{item.badge}</span>
               </div>
-            </div>
+            </Surface>
           ))
         ) : (
           <p className="text-sm text-muted-foreground">{emptyLabel}</p>
         )}
       </div>
-    </article>
+    </Surface>
   )
 }

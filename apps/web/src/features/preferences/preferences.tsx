@@ -1,4 +1,4 @@
-import { createContext, startTransition, useContext, useEffect, useState } from "react";
+import { createContext, startTransition, useContext, useEffect, useState } from "react"
 import {
   applyLocale,
   applyTheme,
@@ -8,32 +8,32 @@ import {
   readAppliedTheme,
   type AppLocale,
   type AppTheme,
-} from "./preference-constants";
+} from "./preference-constants"
 
 type AppPreferencesContextValue = {
-  locale: AppLocale;
-  theme: AppTheme;
-  toggleLocale: () => void;
-  toggleTheme: () => void;
-};
+  locale: AppLocale
+  theme: AppTheme
+  toggleLocale: () => void
+  toggleTheme: () => void
+}
 
-const AppPreferencesContext = createContext<AppPreferencesContextValue | null>(null);
+const AppPreferencesContext = createContext<AppPreferencesContextValue | null>(null)
 
 export function AppPreferencesProvider({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
-  const [theme, setTheme] = useState<AppTheme>(readAppliedTheme);
-  const [locale, setLocale] = useState<AppLocale>(readAppliedLocale);
+  const [theme, setTheme] = useState<AppTheme>(readAppliedTheme)
+  const [locale, setLocale] = useState<AppLocale>(readAppliedLocale)
 
   useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
+    applyTheme(theme)
+  }, [theme])
 
   useEffect(() => {
-    applyLocale(locale);
-  }, [locale]);
+    applyLocale(locale)
+  }, [locale])
 
   return (
     <AppPreferencesContext.Provider
@@ -42,27 +42,27 @@ export function AppPreferencesProvider({
         theme,
         toggleLocale: () => {
           startTransition(() => {
-            setLocale((currentLocale) => getNextLocale(currentLocale));
-          });
+            setLocale((currentLocale) => getNextLocale(currentLocale))
+          })
         },
         toggleTheme: () => {
           startTransition(() => {
-            setTheme((currentTheme) => getNextTheme(currentTheme));
-          });
+            setTheme((currentTheme) => getNextTheme(currentTheme))
+          })
         },
       }}
     >
       {children}
     </AppPreferencesContext.Provider>
-  );
+  )
 }
 
 export function useAppPreferences() {
-  const context = useContext(AppPreferencesContext);
+  const context = useContext(AppPreferencesContext)
 
   if (!context) {
-    throw new Error("useAppPreferences must be used within an AppPreferencesProvider");
+    throw new Error("useAppPreferences must be used within an AppPreferencesProvider")
   }
 
-  return context;
+  return context
 }

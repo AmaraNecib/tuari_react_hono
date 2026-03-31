@@ -21,7 +21,8 @@
     "dev:api": "pnpm check:web-tracking && pnpm --filter @tuari/contracts build && pnpm --filter @tuari/api dev",
     "dev:desktop": "pnpm --filter @tuari/desktop dev",
     "build:desktop": "pnpm --filter @tuari/desktop build",
-    "portable:desktop": "pnpm --filter @tuari/desktop portable"
+    "portable:desktop": "pnpm --filter @tuari/desktop portable",
+    "pipeline": "pnpm --filter @tuari/pipeline run pipeline"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@testing-library/react": "^16.3.2",
+    "@types/node": "^25.5.0",
     "jsdom": "^28.1.0",
     "turbo": "^2.8.16",
     "typescript": "^5.9.3",

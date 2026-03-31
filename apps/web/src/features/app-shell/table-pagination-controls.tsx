@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { NativeSelect } from "@/components/ui/form-controls"
+import { Surface } from "@/features/shared/page-primitives"
 
 const presetPageSizes = [10, 25, 50, 100]
 
@@ -24,7 +25,7 @@ export function TablePaginationControls({
   const end = totalCount === 0 ? 0 : Math.min(page * pageSize, totalCount)
 
   return (
-    <div className="flex flex-col gap-3 border-t border-border/60 bg-background/15 px-4 py-3 md:flex-row md:items-center md:justify-between">
+    <Surface variant="subtle" className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
       <p className="text-sm text-muted-foreground">
         {t("tables.range", { end, start, total: totalCount })}
       </p>
@@ -55,6 +56,6 @@ export function TablePaginationControls({
           </Button>
         </div>
       </div>
-    </div>
+    </Surface>
   )
 }

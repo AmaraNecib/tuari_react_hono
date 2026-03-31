@@ -1,10 +1,17 @@
 import type {
+  DebtAccount,
+  DebtClosureLink,
+  DebtPartyDetail,
+  DebtPartySummaryItem,
+  DebtEntry,
+  DebtSummaryItem,
   Employee,
   EmployeeManagerAssignment,
   EmployeeProjectAssignment,
   EmployeeSalaryPayment,
   EmployeeStateHistory,
   EmployeeWarehouseAssignment,
+  ExternalCounterparty,
   Project,
   ProjectManagerOwnershipHistory,
   Role,
@@ -22,6 +29,13 @@ export type RoleRecord = Role;
 export type EmployeeRecord = Employee;
 export type ProjectRecord = Project;
 export type WarehouseRecord = Warehouse;
+export type ExternalCounterpartyRecord = ExternalCounterparty;
+export type DebtAccountRecord = DebtAccount & AuditSnapshot;
+export type DebtClosureLinkRecord = DebtClosureLink & AuditSnapshot;
+export type DebtEntryRecord = DebtEntry & AuditSnapshot;
+export type DebtPartyDetailRecord = DebtPartyDetail;
+export type DebtPartySummaryItemRecord = DebtPartySummaryItem;
+export type DebtSummaryItemRecord = DebtSummaryItem;
 type AuditSnapshot = {
   actorLabel?: string | null;
 };
@@ -46,6 +60,9 @@ export type UserProfileHistoryRecord = {
   userId: string;
   name: string | null;
   phone: string | null;
+  previousName: string | null;
+  previousPhone: string | null;
+  passwordChanged: boolean;
   actorUserId: string | null;
   actorLabel: string | null;
   transactionId: string | null;
@@ -214,6 +231,57 @@ export type EmployeeSalaryPaymentCreateData = {
   note?: string | null;
 };
 
+export type ExternalCounterpartyCreateData = {
+  fullName: string;
+  phoneNumber: string;
+  note?: string | null;
+};
+
+export type ExternalCounterpartyListFilters = {
+  fullName?: string;
+};
+
+export type DebtAccountCreateData = {
+  partyType: DebtAccountRecord["partyType"];
+  workerId?: string | null;
+  externalCounterpartyId?: string | null;
+  status: DebtAccountRecord["status"];
+  currentBalanceDzd: number;
+  note?: string | null;
+  settledAt?: string | null;
+};
+
+export type DebtAccountListFilters = {
+  partyType?: DebtAccountRecord["partyType"];
+  workerId?: string;
+  externalCounterpartyId?: string;
+  status?: DebtAccountRecord["status"];
+};
+
+export type DebtAccountUpdateData = {
+  id: string;
+  status: DebtAccountRecord["status"];
+  currentBalanceDzd: number;
+  settledAt?: string | null;
+};
+
+export type DebtEntryCreateData = {
+  debtAccountId: string;
+  entryType: DebtEntryRecord["entryType"];
+  signedAmountDzd: number;
+  entryDate: string;
+  note?: string | null;
+  balanceAfterDzd: number;
+};
+
+export type DebtClosureLinkCreateData = {
+  sourceDebtAccountId: string;
+  targetDebtAccountId: string;
+  closedAmountDzd: number;
+  entryDate: string;
+  note?: string | null;
+};
+
 export type EmployeeListFilters = {
   roleId?: string;
   status?: EmployeeStatus;
@@ -263,6 +331,14 @@ export type WarehouseManagerOwnershipHistoryListFilters = {
 
 export type EmployeeSalaryPaymentListFilters = {
   employeeId?: string;
+};
+
+export type DebtEntryListFilters = {
+  debtAccountId: string;
+};
+
+export type DebtClosureLinkListFilters = {
+  debtAccountId?: string;
 };
 
 export type SystemLogListFilters = {

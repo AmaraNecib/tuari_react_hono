@@ -71,6 +71,9 @@ const createDeleteResultSchema = z.union([
 
 export const employeeStatusSchema = z.enum(["ACTIVE", "INACTIVE", "LEFT"]);
 export const salaryPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
+export const debtPartyTypeSchema = z.enum(["INTERNAL_WORKER", "EXTERNAL_COUNTERPARTY"]);
+export const debtAccountStatusSchema = z.enum(["OPEN", "SETTLED"]);
+export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT", "CLOSURE"]);
 export const projectStatusSchema = z.enum([
   "ACTIVE",
   "STOPPED",
@@ -213,8 +216,109 @@ export const employeeSalaryPaymentSchema = z.object({
   updatedAt: timestampSchema,
 });
 
+export const externalCounterpartySchema = z.object({
+  id: entityIdSchema,
+  fullName: z.string().trim().min(1).max(160),
+  phoneNumber: algerianPhoneSchema,
+  note: nullableTextSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const debtAccountSchema = z.object({
+  id: entityIdSchema,
+  partyType: debtPartyTypeSchema,
+  workerId: entityIdSchema.nullable(),
+  externalCounterpartyId: entityIdSchema.nullable(),
+  status: debtAccountStatusSchema,
+  currentBalanceDzd: z.number(),
+  note: nullableTextSchema,
+  settledAt: timestampSchema.nullable(),
+  actorUserId: auditActorUserIdSchema,
+  actorLabel: nullableTextSchema,
+  transactionId: auditTransactionIdSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const debtEntrySchema = z.object({
+  id: entityIdSchema,
+  debtAccountId: entityIdSchema,
+  entryType: debtEntryTypeSchema,
+  signedAmountDzd: z.number(),
+  entryDate: timestampSchema,
+  note: nullableTextSchema,
+  balanceAfterDzd: z.number(),
+  actorUserId: auditActorUserIdSchema,
+  actorLabel: nullableTextSchema,
+  transactionId: auditTransactionIdSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const debtClosureLinkSchema = z.object({
+  id: entityIdSchema,
+  sourceDebtAccountId: entityIdSchema,
+  targetDebtAccountId: entityIdSchema,
+  closedAmountDzd: z.number().positive(),
+  entryDate: timestampSchema,
+  note: nullableTextSchema,
+  actorUserId: auditActorUserIdSchema,
+  actorLabel: nullableTextSchema,
+  transactionId: auditTransactionIdSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const debtPartySummaryItemSchema = z.object({
+  partyType: debtPartyTypeSchema,
+  workerId: entityIdSchema.nullable(),
+  externalCounterpartyId: entityIdSchema.nullable(),
+  displayName: z.string().trim().min(1).max(160),
+  phoneNumber: algerianPhoneSchema.nullable(),
+  totalBalanceDzd: z.number(),
+  balanceLabel: z.enum(["لنا عنده", "علينا له", "مغلق"]),
+  openDebtCasesCount: z.number().int().nonnegative(),
+  settledDebtCasesCount: z.number().int().nonnegative(),
+  latestActivityAt: timestampSchema,
+});
+
+export const debtPartyDetailSchema = z.object({
+  partyType: debtPartyTypeSchema,
+  workerId: entityIdSchema.nullable(),
+  externalCounterpartyId: entityIdSchema.nullable(),
+  displayName: z.string().trim().min(1).max(160),
+  phoneNumber: algerianPhoneSchema.nullable(),
+  note: nullableTextSchema,
+  totalBalanceDzd: z.number(),
+  balanceLabel: z.enum(["لنا عنده", "علينا له", "مغلق"]),
+  debtAccounts: z.array(debtAccountSchema),
+});
+
+export const debtSummaryItemSchema = z.object({
+  accountId: entityIdSchema,
+  partyType: debtPartyTypeSchema,
+  workerId: entityIdSchema.nullable(),
+  externalCounterpartyId: entityIdSchema.nullable(),
+  displayName: z.string().trim().min(1).max(160),
+  phoneNumber: algerianPhoneSchema.nullable(),
+  status: debtAccountStatusSchema,
+  currentBalanceDzd: z.number(),
+  balanceLabel: z.enum(["لنا عنده", "علينا له", "مغلق"]),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const debtsSummarySchema = z.object({
+  parties: z.array(debtPartySummaryItemSchema),
+  debtAccounts: z.array(debtSummaryItemSchema),
+});
+
 export const systemLogActionTypeSchema = z.enum([
   "ACCOUNT_UPDATED",
+  "DEBT_ACCOUNT_CREATED",
+  "DEBT_ENTRY_RECORDED",
+  "DEBT_SETTLED",
   "EMPLOYEE_CREATED",
   "EMPLOYEE_UPDATED",
   "WORKPLACE_ASSIGNED",
@@ -225,7 +329,10 @@ export const systemLogActionTypeSchema = z.enum([
 
 export const systemLogEntityTypeSchema = z.enum([
   "ACCOUNT",
+  "DEBT_ACCOUNT",
+  "DEBT_ENTRY",
   "EMPLOYEE",
+  "EXTERNAL_COUNTERPARTY",
   "PROJECT",
   "WAREHOUSE",
   "MANAGER_ASSIGNMENT",
@@ -239,6 +346,7 @@ export const systemLogEntrySchema = z.object({
   transactionId: auditTransactionIdSchema,
   actorUserId: auditActorUserIdSchema,
   actorLabel: nullableTextSchema,
+  actorCurrentLabel: nullableTextSchema.optional().default(null),
   actionType: systemLogActionTypeSchema,
   entityType: systemLogEntityTypeSchema,
   entityId: entityIdSchema.nullable(),
@@ -268,6 +376,24 @@ export const warehouseSchema = z.object({
   notes: nullableTextSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
+});
+
+export const workspaceSnapshotSchema = z.object({
+  roles: z.array(roleSchema),
+  employees: z.array(employeeSchema),
+  externalCounterparties: z.array(externalCounterpartySchema),
+  debtAccounts: z.array(debtAccountSchema),
+  debtEntries: z.array(debtEntrySchema),
+  debtClosureLinks: z.array(debtClosureLinkSchema),
+  projects: z.array(projectSchema),
+  warehouses: z.array(warehouseSchema),
+  managerAssignments: z.array(employeeManagerAssignmentSchema),
+  projectAssignments: z.array(employeeProjectAssignmentSchema),
+  warehouseAssignments: z.array(employeeWarehouseAssignmentSchema),
+  employeeStateHistory: z.array(employeeStateHistorySchema),
+  projectManagerOwnershipHistory: z.array(projectManagerOwnershipHistorySchema),
+  warehouseManagerOwnershipHistory: z.array(warehouseManagerOwnershipHistorySchema),
+  salaryPayments: z.array(employeeSalaryPaymentSchema),
 });
 
 export const sessionUserSchema = z.object({
@@ -529,6 +655,136 @@ export const employeeSalaryPaymentCreateInputSchema = z.object({
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
+export const externalCounterpartyCreateInputSchema = z.object({
+  fullName: z.string().trim().min(1).max(160),
+  phoneNumber: algerianPhoneSchema,
+  note: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const externalCounterpartyListInputSchema = z
+  .object({
+    fullName: z.string().trim().min(1).max(160).optional(),
+  })
+  .optional();
+
+export const debtAccountListInputSchema = z
+  .object({
+    partyType: debtPartyTypeSchema.optional(),
+    workerId: entityIdSchema.optional(),
+    externalCounterpartyId: entityIdSchema.optional(),
+    status: debtAccountStatusSchema.optional(),
+  })
+  .optional();
+
+export const debtAccountCreateInputSchema = z
+  .object({
+    partyType: debtPartyTypeSchema,
+    workerId: entityIdSchema.nullable().optional(),
+    externalCounterpartyId: entityIdSchema.nullable().optional(),
+    note: z.string().trim().max(1000).nullable().optional(),
+    openingBalanceDzd: z.number().finite().optional(),
+    openingEntryDate: timestampSchema.optional(),
+    openingEntryNote: z.string().trim().max(1000).nullable().optional(),
+  })
+  .superRefine((input, ctx) => {
+    const hasWorker = Boolean(input.workerId);
+    const hasExternal = Boolean(input.externalCounterpartyId);
+
+    if (hasWorker === hasExternal) {
+      ctx.addIssue({
+        code: "custom",
+        message: "يجب ربط الحساب بطرف واحد فقط.",
+        path: ["workerId"],
+      });
+    }
+
+    if (input.partyType === "INTERNAL_WORKER" && !hasWorker) {
+      ctx.addIssue({
+        code: "custom",
+        message: "يجب اختيار عامل صالح.",
+        path: ["workerId"],
+      });
+    }
+
+    if (input.partyType === "EXTERNAL_COUNTERPARTY" && !hasExternal) {
+      ctx.addIssue({
+        code: "custom",
+        message: "يجب اختيار طرف خارجي صالح.",
+        path: ["externalCounterpartyId"],
+      });
+    }
+  });
+
+export const debtEntryCreateInputSchema = z.object({
+  debtAccountId: entityIdSchema,
+  entryType: z.enum(["OPENING", "PAYMENT", "ADJUSTMENT"]),
+  signedAmountDzd: z.number().finite(),
+  entryDate: timestampSchema.optional(),
+  note: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const debtSettlementInputSchema = z.object({
+  id: entityIdSchema,
+  entryDate: timestampSchema.optional(),
+  note: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const debtClosureLinkListInputSchema = z.object({
+  debtAccountId: entityIdSchema,
+});
+
+export const debtCloseAgainstInputSchema = z
+  .object({
+    sourceDebtAccountId: entityIdSchema,
+    targetDebtAccountId: entityIdSchema,
+    entryDate: timestampSchema.optional(),
+    note: z.string().trim().max(1000).nullable().optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.sourceDebtAccountId === input.targetDebtAccountId) {
+      ctx.addIssue({
+        code: "custom",
+        message: "يجب اختيار حسابي دين مختلفين.",
+        path: ["targetDebtAccountId"],
+      })
+    }
+  });
+
+export const debtPartyDetailInputSchema = z
+  .object({
+    partyType: debtPartyTypeSchema,
+    workerId: entityIdSchema.nullable().optional(),
+    externalCounterpartyId: entityIdSchema.nullable().optional(),
+  })
+  .superRefine((input, ctx) => {
+    const hasWorker = Boolean(input.workerId)
+    const hasExternal = Boolean(input.externalCounterpartyId)
+
+    if (hasWorker === hasExternal) {
+      ctx.addIssue({
+        code: "custom",
+        message: "يجب تحديد طرف واحد فقط.",
+        path: ["workerId"],
+      })
+    }
+
+    if (input.partyType === "INTERNAL_WORKER" && !hasWorker) {
+      ctx.addIssue({
+        code: "custom",
+        message: "يجب اختيار عامل صالح.",
+        path: ["workerId"],
+      })
+    }
+
+    if (input.partyType === "EXTERNAL_COUNTERPARTY" && !hasExternal) {
+      ctx.addIssue({
+        code: "custom",
+        message: "يجب اختيار طرف خارجي صالح.",
+        path: ["externalCounterpartyId"],
+      })
+    }
+  });
+
 export const employeeSalaryPaymentListInputSchema = z
   .object({ employeeId: entityIdSchema.optional() })
   .optional();
@@ -551,6 +807,7 @@ export const appContract = {
   authBootstrap: oc
     .input(authBootstrapInputSchema)
     .output(createEntityResultSchema(sessionUserSchema)),
+  workspaceSnapshot: oc.output(workspaceSnapshotSchema),
   rolesList: oc.output(createListSchema(roleSchema)),
   rolesGet: oc.input(idInputSchema).output(createEntityResultSchema(roleSchema)),
   rolesCreate: oc
@@ -658,6 +915,43 @@ export const appContract = {
   salaryPaymentsCreate: oc
     .input(employeeSalaryPaymentCreateInputSchema)
     .output(createEntityResultSchema(employeeSalaryPaymentSchema)),
+  externalCounterpartiesList: oc
+    .input(externalCounterpartyListInputSchema)
+    .output(createListSchema(externalCounterpartySchema)),
+  externalCounterpartiesGet: oc
+    .input(idInputSchema)
+    .output(createEntityResultSchema(externalCounterpartySchema)),
+  externalCounterpartiesCreate: oc
+    .input(externalCounterpartyCreateInputSchema)
+    .output(createEntityResultSchema(externalCounterpartySchema)),
+  debtAccountsList: oc
+    .input(debtAccountListInputSchema)
+    .output(createListSchema(debtAccountSchema)),
+  debtAccountsGet: oc
+    .input(idInputSchema)
+    .output(createEntityResultSchema(debtAccountSchema)),
+  debtAccountsCreate: oc
+    .input(debtAccountCreateInputSchema)
+    .output(createEntityResultSchema(debtAccountSchema)),
+  debtEntriesList: oc
+    .input(z.object({ debtAccountId: entityIdSchema }))
+    .output(createListSchema(debtEntrySchema)),
+  debtEntriesCreate: oc
+    .input(debtEntryCreateInputSchema)
+    .output(createEntityResultSchema(debtEntrySchema)),
+  debtClosureLinksList: oc
+    .input(debtClosureLinkListInputSchema)
+    .output(createListSchema(debtClosureLinkSchema)),
+  debtCloseAgainst: oc
+    .input(debtCloseAgainstInputSchema)
+    .output(createEntityResultSchema(debtClosureLinkSchema)),
+  debtAccountsSettle: oc
+    .input(debtSettlementInputSchema)
+    .output(createEntityResultSchema(debtEntrySchema)),
+  debtPartyDetail: oc
+    .input(debtPartyDetailInputSchema)
+    .output(createEntityResultSchema(debtPartyDetailSchema)),
+  debtsSummary: oc.output(debtsSummarySchema),
   systemLogList: oc
     .input(systemLogListInputSchema)
     .output(createListSchema(systemLogEntrySchema)),
@@ -673,11 +967,18 @@ export type EmployeeCreateInput = z.infer<typeof employeeCreateInputSchema>;
 export type EmployeeBatchCreateRowInput = z.infer<typeof employeeBatchCreateRowInputSchema>;
 export type EmployeeBatchCreateInput = z.infer<typeof employeeBatchCreateInputSchema>;
 export type EmployeeBatchCreateResult = z.infer<typeof employeeBatchCreateResultSchema>;
+export type WorkspaceSnapshot = z.infer<typeof workspaceSnapshotSchema>;
 export type EmployeeUpdateInput = z.infer<typeof employeeUpdateInputSchema>;
 export type EmployeeAssignWorkplaceInput = z.infer<typeof employeeAssignWorkplaceInputSchema>;
 export type EmployeeSyncManagedProjectsInput = z.infer<typeof employeeSyncManagedProjectsInputSchema>;
 export type EmployeeSyncManagedWarehousesInput = z.infer<typeof employeeSyncManagedWarehousesInputSchema>;
 export type EmployeeSalaryPaymentCreateInput = z.infer<typeof employeeSalaryPaymentCreateInputSchema>;
+export type ExternalCounterpartyCreateInput = z.infer<typeof externalCounterpartyCreateInputSchema>;
+export type DebtAccountCreateInput = z.infer<typeof debtAccountCreateInputSchema>;
+export type DebtEntryCreateInput = z.infer<typeof debtEntryCreateInputSchema>;
+export type DebtSettlementInput = z.infer<typeof debtSettlementInputSchema>;
+export type DebtCloseAgainstInput = z.infer<typeof debtCloseAgainstInputSchema>;
+export type DebtPartyDetailInput = z.infer<typeof debtPartyDetailInputSchema>;
 export type SystemLogListInput = z.infer<typeof systemLogListInputSchema>;
 export type ProjectCreateInput = z.infer<typeof projectCreateInputSchema>;
 export type ProjectUpdateInput = z.infer<typeof projectUpdateInputSchema>;
@@ -706,6 +1007,14 @@ export type EmployeeStateHistory = z.infer<typeof employeeStateHistorySchema>;
 export type ProjectManagerOwnershipHistory = z.infer<typeof projectManagerOwnershipHistorySchema>;
 export type WarehouseManagerOwnershipHistory = z.infer<typeof warehouseManagerOwnershipHistorySchema>;
 export type EmployeeSalaryPayment = z.infer<typeof employeeSalaryPaymentSchema>;
+export type ExternalCounterparty = z.infer<typeof externalCounterpartySchema>;
+export type DebtAccount = z.infer<typeof debtAccountSchema>;
+export type DebtEntry = z.infer<typeof debtEntrySchema>;
+export type DebtClosureLink = z.infer<typeof debtClosureLinkSchema>;
+export type DebtPartySummaryItem = z.infer<typeof debtPartySummaryItemSchema>;
+export type DebtPartyDetail = z.infer<typeof debtPartyDetailSchema>;
+export type DebtSummaryItem = z.infer<typeof debtSummaryItemSchema>;
+export type DebtsSummary = z.infer<typeof debtsSummarySchema>;
 export type SystemLogEntry = z.infer<typeof systemLogEntrySchema>;
 export type SessionUser = z.infer<typeof sessionUserSchema>;
 export type AppContract = typeof appContract;

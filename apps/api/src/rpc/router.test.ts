@@ -482,4 +482,119 @@ describe("RPC router", () => {
       ]),
     })
   })
+
+  it("covers external counterparty and debt flows through the RPC contract", async () => {
+    const { service, roleIds } = createHarness()
+    const router = createRouter({ authBootstrapService, companyService: service })
+    const client = createRouterClient(router, { context: createContext() as never })
+
+    const worker = expectSuccess(
+      await client.employeesCreate({
+        firstName: "Debt",
+        lastName: "Worker",
+        phone: "0612345674",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }),
+    )
+
+    const internalAccount = expectSuccess(
+      await client.debtAccountsCreate({
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.item.id,
+        openingBalanceDzd: 1000,
+      }),
+    )
+
+    expect(internalAccount.item.actorUserId).toBe(currentUser.id)
+
+    const externalCounterparty = expectSuccess(
+      await client.externalCounterpartiesCreate({
+        fullName: "مقاول خارجي",
+        phoneNumber: "0612345675",
+        note: "تعامل أول",
+      }),
+    )
+
+    const externalAccount = expectSuccess(
+      await client.debtAccountsCreate({
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: externalCounterparty.item.id,
+      }),
+    )
+
+    const secondInternalAccount = expectSuccess(
+      await client.debtAccountsCreate({
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.item.id,
+        openingBalanceDzd: -300,
+      }),
+    )
+
+    const thirdInternalAccount = expectSuccess(
+      await client.debtAccountsCreate({
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.item.id,
+        openingBalanceDzd: 500,
+      }),
+    )
+
+    const payment = expectSuccess(
+      await client.debtEntriesCreate({
+        debtAccountId: internalAccount.item.id,
+        entryType: "PAYMENT",
+        signedAmountDzd: -250,
+        note: "دفعة جزئية",
+      }),
+    )
+    expect(payment.item.balanceAfterDzd).toBe(750)
+
+    const settlement = expectSuccess(await client.debtAccountsSettle({ id: internalAccount.item.id }))
+    expect(settlement.item.entryType).toBe("SETTLEMENT")
+    expect(settlement.item.balanceAfterDzd).toBe(0)
+
+    const closure = expectSuccess(
+      await client.debtCloseAgainst({
+        sourceDebtAccountId: secondInternalAccount.item.id,
+        targetDebtAccountId: thirdInternalAccount.item.id,
+      }),
+    )
+    expect(closure.item.closedAmountDzd).toBe(300)
+
+    await expect(client.debtEntriesList({ debtAccountId: internalAccount.item.id })).resolves.toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ entryType: "SETTLEMENT" }),
+        expect.objectContaining({ entryType: "PAYMENT" }),
+        expect.objectContaining({ entryType: "OPENING" }),
+      ]),
+    })
+
+    await expect(client.debtClosureLinksList({ debtAccountId: secondInternalAccount.item.id })).resolves.toMatchObject({
+      items: expect.arrayContaining([expect.objectContaining({ id: closure.item.id })]),
+    })
+
+    const partyDetail = expectSuccess(
+      await client.debtPartyDetail({
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.item.id,
+      }),
+    )
+    expect(partyDetail.item.debtAccounts).toHaveLength(3)
+
+    await expect(client.debtsSummary()).resolves.toMatchObject({
+      parties: expect.arrayContaining([
+        expect.objectContaining({ workerId: worker.item.id, openDebtCasesCount: 1, settledDebtCasesCount: 2 }),
+      ]),
+      debtAccounts: expect.arrayContaining([
+        expect.objectContaining({ accountId: internalAccount.item.id, balanceLabel: "مغلق" }),
+        expect.objectContaining({ accountId: externalAccount.item.id, displayName: "مقاول خارجي" }),
+      ]),
+    })
+
+    await expect(client.systemLogList()).resolves.toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ actionType: "DEBT_SETTLED" }),
+      ]),
+    })
+  })
 });

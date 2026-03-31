@@ -7,18 +7,10 @@ import {
   type AuthBootstrapInput,
   type Employee,
   type EmployeeBatchCreateInput,
-  type EmployeeManagerAssignment,
-  type EmployeeProjectAssignment,
-  type EmployeeSalaryPayment,
-  type EmployeeStateHistory,
-  type EmployeeWarehouseAssignment,
   type Project,
-  type ProjectManagerOwnershipHistory,
   type Role,
   type SessionUser,
-  type SystemLogEntry,
   type Warehouse,
-  type WarehouseManagerOwnershipHistory,
 } from "@tuari/contracts"
 
 import { usePhoneSignInMutation } from "@/features/auth/use-phone-sign-in-mutation"
@@ -26,76 +18,16 @@ import { useSessionQuery } from "@/features/session/use-session-query"
 import { i18n } from "@/i18n"
 import { changeCurrentPassword, signOutDesktopSession, updateCurrentProfile } from "@/lib/auth-api"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
-import { authClient } from "@/lib/auth-client"
+import { getAuthClient } from "@/lib/auth-client"
 import { orpc, rpcClient } from "@/lib/orpc-client"
 import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
+import { demoWorkspaceQueryKey, workspaceQueryPrefix } from "./workspace-queries"
+export { demoWorkspaceQueryKey, useDemoWorkspaceQuery, useSystemLogQuery, workspaceQueryPrefix, type DemoWorkspace } from "./workspace-queries"
 
 export type SectionKey = "employees" | "projects" | "warehouses" | "roles" | "settings"
 export type DemoSession = SessionUser | null
 export type DemoEmployee = Employee
-export type DemoWorkspace = {
-  roles: Role[]
-  employees: Employee[]
-  projects: Project[]
-  warehouses: Warehouse[]
-  managerAssignments: EmployeeManagerAssignment[]
-  projectAssignments: EmployeeProjectAssignment[]
-  warehouseAssignments: EmployeeWarehouseAssignment[]
-  employeeStateHistory: EmployeeStateHistory[]
-  projectManagerOwnershipHistory: ProjectManagerOwnershipHistory[]
-  warehouseManagerOwnershipHistory: WarehouseManagerOwnershipHistory[]
-  salaryPayments: EmployeeSalaryPayment[]
-}
-
-function toLocalDayBoundary(value: string, boundary: "start" | "end") {
-  const [rawYear, rawMonth, rawDay] = value.split("-").map((part) => Number.parseInt(part, 10))
-  const year = rawYear ?? Number.NaN
-  const month = rawMonth ?? Number.NaN
-  const day = rawDay ?? Number.NaN
-
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
-    return undefined
-  }
-
-  const algeriaOffsetHours = 1
-
-  return boundary === "start"
-    ? new Date(Date.UTC(year, month - 1, day, 0 - algeriaOffsetHours, 0, 0, 0)).toISOString()
-    : new Date(Date.UTC(year, month - 1, day, 23 - algeriaOffsetHours, 59, 59, 999)).toISOString()
-}
-
-export function useSystemLogQuery({
-  enabled = true,
-  filters,
-}: {
-  enabled?: boolean
-  filters?: {
-    actionType?: SystemLogEntry["actionType"]
-    actorUserId?: string
-    entityType?: SystemLogEntry["entityType"]
-    fromDate?: string
-    toDate?: string
-  }
-} = {}) {
-  const sessionQuery = useSessionQuery()
-
-  return useQuery({
-    queryKey: ["phase1", "workspace", "system-log", sessionQuery.data?.user?.id ?? null, filters],
-    queryFn: async (): Promise<{ items: SystemLogEntry[] }> =>
-      rpcClient.systemLogList(
-        filters
-          ? {
-              ...filters,
-              fromDate: filters.fromDate ? toLocalDayBoundary(filters.fromDate, "start") : undefined,
-              toDate: filters.toDate ? toLocalDayBoundary(filters.toDate, "end") : undefined,
-            }
-          : undefined,
-      ),
-    enabled: Boolean(sessionQuery.data?.user) && enabled,
-  })
-}
-
 type EntityResult<T> =
   | { success: true; message: string; item: T }
   | { success: false; error: { message: string } }
@@ -121,39 +53,6 @@ export type EmployeeBatchCreateResult = {
 }
 
 export const authSetupStatusQueryKey = ["auth", "setup-status"] as const
-const workspaceQueryPrefix = ["phase1", "workspace"] as const
-export const demoWorkspaceQueryKey = (userId: string | null = "anonymous") =>
-  ["phase1", "workspace", userId] as const
-
-async function loadWorkspace(): Promise<DemoWorkspace> {
-  const [roles, employees, projects, warehouses, managerAssignments, projectAssignments, warehouseAssignments, employeeStateHistory, projectManagerOwnershipHistory, warehouseManagerOwnershipHistory, salaryPayments] = await Promise.all([
-    rpcClient.rolesList(),
-    rpcClient.employeesList(),
-    rpcClient.projectsList(),
-    rpcClient.warehousesList(),
-    rpcClient.managerAssignmentsList(),
-    rpcClient.projectAssignmentsList(),
-    rpcClient.warehouseAssignmentsList(),
-    rpcClient.employeeStateHistoryList(),
-    rpcClient.projectManagerOwnershipHistoryList(),
-    rpcClient.warehouseManagerOwnershipHistoryList(),
-    rpcClient.salaryPaymentsList(),
-  ])
-
-  return {
-    roles: roles.items,
-    employees: employees.items,
-    projects: projects.items,
-    warehouses: warehouses.items,
-    managerAssignments: managerAssignments.items,
-    projectAssignments: projectAssignments.items,
-    warehouseAssignments: warehouseAssignments.items,
-    employeeStateHistory: employeeStateHistory.items,
-    projectManagerOwnershipHistory: projectManagerOwnershipHistory.items,
-    warehouseManagerOwnershipHistory: warehouseManagerOwnershipHistory.items,
-    salaryPayments: salaryPayments.items,
-  }
-}
 
 function requireEntitySuccess<T>(result: EntityResult<T>) {
   if (!result.success) {
@@ -181,10 +80,10 @@ function nextSequence(values: string[], prefix: string) {
   return largest + 1
 }
 
-async function ensureWorkspace(queryClient: ReturnType<typeof useQueryClient>, userId: string | null) {
+async function ensureWorkspace(queryClient: ReturnType<typeof useQueryClient>, userId: string | null): Promise<import("./workspace-queries").DemoWorkspace> {
   return queryClient.ensureQueryData({
     queryKey: demoWorkspaceQueryKey(userId),
-    queryFn: loadWorkspace,
+    queryFn: () => rpcClient.workspaceSnapshot(),
   })
 }
 
@@ -218,21 +117,10 @@ export function useBootstrapFirstUserMutation() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: authSetupStatusQueryKey })
-      showSuccessToast(i18n.t("toasts.bootstrapSuccess"))
     },
     onError: (error) => {
       showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.bootstrapError"))
     },
-  })
-}
-
-export function useDemoWorkspaceQuery() {
-  const sessionQuery = useSessionQuery()
-
-  return useQuery({
-    queryKey: demoWorkspaceQueryKey(sessionQuery.data?.user?.id ?? null),
-    queryFn: loadWorkspace,
-    enabled: Boolean(sessionQuery.data?.user),
   })
 }
 
@@ -251,7 +139,7 @@ export function useDemoSignOutMutation() {
         return
       }
 
-      await authClient.signOut()
+      await getAuthClient().signOut()
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: orpc.session.key() })
@@ -310,7 +198,7 @@ export function useUpdateAccountSettingsMutation() {
         await changeCurrentPassword({
           currentPassword,
           newPassword,
-          revokeOtherSessions: false,
+          revokeOtherSessions: true,
         })
       }
     },
@@ -443,6 +331,31 @@ export function useUpdateProjectMutation() {
   })
 }
 
+export function useCreateProjectMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "projects", "create"],
+    mutationFn: async (input: {
+      name: string
+      location?: string | null
+      managerId?: string | null
+      status?: Project["status"]
+      notes?: string | null
+    }) => {
+      const result = await rpcClient.projectsCreate(input)
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
 export function useUpdateWarehouseMutation() {
   const queryClient = useQueryClient()
 
@@ -457,6 +370,31 @@ export function useUpdateWarehouseMutation() {
       notes?: string | null
     }) => {
       const result = await rpcClient.warehousesUpdate(input)
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useCreateWarehouseMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "warehouses", "create"],
+    mutationFn: async (input: {
+      name: string
+      address?: string | null
+      managerId?: string | null
+      status?: Warehouse["status"]
+      notes?: string | null
+    }) => {
+      const result = await rpcClient.warehousesCreate(input)
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
@@ -571,6 +509,150 @@ export function useCreateSalaryPaymentMutation() {
   })
 }
 
+export function useCreateExternalCounterpartyMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "external-counterparties", "create"],
+    mutationFn: async (input: {
+      fullName: string
+      phoneNumber: string
+      note?: string | null
+    }) => {
+      const result = await rpcClient.externalCounterpartiesCreate(input)
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useCreateDebtAccountMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "debts", "accounts", "create"],
+    mutationFn: async (input: {
+      partyType: "INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY"
+      workerId?: string | null
+      externalCounterpartyId?: string | null
+      note?: string | null
+      openingBalanceDzd?: number
+      openingEntryDate?: string
+      openingEntryNote?: string | null
+    }) => {
+      const result = await rpcClient.debtAccountsCreate({
+        externalCounterpartyId: input.externalCounterpartyId ?? null,
+        note: input.note ?? null,
+        openingBalanceDzd: input.openingBalanceDzd ?? 0,
+        openingEntryDate: input.openingEntryDate,
+        openingEntryNote: input.openingEntryNote ?? null,
+        partyType: input.partyType,
+        workerId: input.workerId ?? null,
+      })
+
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useCreateDebtEntryMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "debts", "entries", "create"],
+    mutationFn: async (input: {
+      debtAccountId: string
+      signedAmountDzd: number
+      entryDate?: string
+      note?: string | null
+    }) => {
+      const result = await rpcClient.debtEntriesCreate({
+        debtAccountId: input.debtAccountId,
+        entryDate: input.entryDate,
+        entryType: "ADJUSTMENT",
+        note: input.note,
+        signedAmountDzd: input.signedAmountDzd,
+      })
+
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useSettleDebtAccountMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "debts", "settle"],
+    mutationFn: async (input: { debtAccountId: string; entryDate?: string; note?: string | null }) => {
+      const result = await rpcClient.debtAccountsSettle({
+        id: input.debtAccountId,
+        entryDate: input.entryDate,
+        note: input.note,
+      })
+
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useCloseDebtAgainstMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "debts", "close-against"],
+    mutationFn: async (input: {
+      sourceDebtAccountId: string
+      targetDebtAccountId: string
+      entryDate?: string
+      note?: string | null
+    }) => {
+      const result = await rpcClient.debtCloseAgainst({
+        entryDate: input.entryDate,
+        note: input.note,
+        sourceDebtAccountId: input.sourceDebtAccountId,
+        targetDebtAccountId: input.targetDebtAccountId,
+      })
+
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
 export function useAddWorkspaceRecordMutation() {
   const queryClient = useQueryClient()
   const sessionQuery = useSessionQuery()
@@ -589,7 +671,7 @@ export function useAddWorkspaceRecordMutation() {
       }
 
       if (section === "roles") {
-        const sequence = nextSequence(workspace.roles.map((role) => role.id), "role-custom-")
+        const sequence = nextSequence(workspace.roles.map((role: Role) => role.id), "role-custom-")
         const result = await rpcClient.rolesCreate({
           key: `custom_${sequence}`,
           name: i18n.t("mockData.customRoleName", { count: sequence }),
@@ -600,8 +682,8 @@ export function useAddWorkspaceRecordMutation() {
       }
 
       if (section === "projects") {
-        const sequence = nextSequence(workspace.projects.map((project) => project.id), "project-")
-        const managerId = workspace.projects.find((project) => project.managerId)?.managerId ?? null
+        const sequence = nextSequence(workspace.projects.map((project: Project) => project.id), "project-")
+        const managerId = workspace.projects.find((project: Project) => project.managerId)?.managerId ?? null
         const result = await rpcClient.projectsCreate({
           name: i18n.t("mockData.projectName", { count: sequence }),
           location: sequence % 2 === 0 ? i18n.t("mockData.projectLocationEven") : i18n.t("mockData.projectLocationOdd"),
@@ -614,7 +696,7 @@ export function useAddWorkspaceRecordMutation() {
       }
 
       if (section === "warehouses") {
-        const sequence = nextSequence(workspace.warehouses.map((warehouse) => warehouse.id), "warehouse-")
+        const sequence = nextSequence(workspace.warehouses.map((warehouse: Warehouse) => warehouse.id), "warehouse-")
         const result = await rpcClient.warehousesCreate({
           name: i18n.t("mockData.warehouseName", { count: sequence }),
           address:

@@ -32,6 +32,9 @@ model UserProfileHistory {
   userId        String   @map("user_id")
   name          String?
   phone         String?
+  previousName  String?  @map("previous_name")
+  previousPhone String?  @map("previous_phone")
+  passwordChanged Boolean @default(false) @map("password_changed")
   actorUserId   String?  @map("actor_user_id")
   actorLabel    String?  @map("actor_label")
   transactionId String?  @map("transaction_id")
@@ -128,6 +131,7 @@ model Employee {
   managedProjectHistory       ProjectManagerOwnershipHistory[]   @relation("ProjectManagementOwner")
   managedWarehouseHistory     WarehouseManagerOwnershipHistory[] @relation("WarehouseManagementOwner")
   salaryPayments              EmployeeSalaryPayment[]
+  debtAccounts                DebtAccount[]
 
   @@index([roleId])
   @@map("employee")
@@ -314,4 +318,81 @@ model EmployeeSalaryPayment {
   @@index([employeeId, paymentDate])
   @@index([employeeId, periodType, paymentDate])
   @@map("employee_salary_payment")
+}
+
+model ExternalCounterparty {
+  id           String        @id
+  fullName     String        @map("full_name")
+  phoneNumber  String        @map("phone_number")
+  note         String?
+  createdAt    DateTime      @map("created_at")
+  updatedAt    DateTime      @map("updated_at")
+  debtAccounts DebtAccount[]
+
+  @@index([fullName])
+  @@map("external_counterparty")
+}
+
+model DebtAccount {
+  id                     String                @id
+  partyType              String                @map("party_type")
+  workerId               String?               @map("worker_id")
+  externalCounterpartyId String?               @map("external_counterparty_id")
+  status                 String
+  currentBalanceDzd      Float                 @default(0) @map("current_balance_dzd")
+  note                   String?
+  settledAt              DateTime?             @map("settled_at")
+  actorUserId            String?               @map("actor_user_id")
+  actorLabel             String?               @map("actor_label")
+  transactionId          String?               @map("transaction_id")
+  createdAt              DateTime              @map("created_at")
+  updatedAt              DateTime              @map("updated_at")
+  worker                 Employee?             @relation(fields: [workerId], references: [id], onDelete: Restrict)
+  externalCounterparty   ExternalCounterparty? @relation(fields: [externalCounterpartyId], references: [id], onDelete: Restrict)
+  entries                DebtEntry[]
+  closureLinksAsSource   DebtClosureLink[]     @relation("DebtClosureSource")
+  closureLinksAsTarget   DebtClosureLink[]     @relation("DebtClosureTarget")
+
+  @@index([workerId])
+  @@index([externalCounterpartyId])
+  @@map("debt_account")
+}
+
+model DebtEntry {
+  id             String      @id
+  debtAccountId  String      @map("debt_account_id")
+  entryType      String      @map("entry_type")
+  signedAmountDzd Float      @map("signed_amount_dzd")
+  entryDate      DateTime    @map("entry_date")
+  note           String?
+  balanceAfterDzd Float      @map("balance_after_dzd")
+  actorUserId    String?     @map("actor_user_id")
+  actorLabel     String?     @map("actor_label")
+  transactionId  String?     @map("transaction_id")
+  createdAt      DateTime    @map("created_at")
+  updatedAt      DateTime    @map("updated_at")
+  debtAccount    DebtAccount @relation(fields: [debtAccountId], references: [id], onDelete: Restrict)
+
+  @@index([debtAccountId, entryDate])
+  @@map("debt_entry")
+}
+
+model DebtClosureLink {
+  id                  String      @id
+  sourceDebtAccountId String      @map("source_debt_account_id")
+  targetDebtAccountId String      @map("target_debt_account_id")
+  closedAmountDzd     Float       @map("closed_amount_dzd")
+  entryDate           DateTime    @map("entry_date")
+  note                String?
+  actorUserId         String?     @map("actor_user_id")
+  actorLabel          String?     @map("actor_label")
+  transactionId       String?     @map("transaction_id")
+  createdAt           DateTime    @map("created_at")
+  updatedAt           DateTime    @map("updated_at")
+  sourceDebtAccount   DebtAccount @relation("DebtClosureSource", fields: [sourceDebtAccountId], references: [id], onDelete: Restrict)
+  targetDebtAccount   DebtAccount @relation("DebtClosureTarget", fields: [targetDebtAccountId], references: [id], onDelete: Restrict)
+
+  @@index([sourceDebtAccountId, entryDate])
+  @@index([targetDebtAccountId, entryDate])
+  @@map("debt_closure_link")
 }

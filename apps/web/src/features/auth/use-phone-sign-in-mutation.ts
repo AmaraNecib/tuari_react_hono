@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { phonePasswordSignInSchema, type PhonePasswordSignInInput } from "@tuari/contracts"
 
 import { i18n } from "@/i18n"
-import { authClient } from "@/lib/auth-client"
+import { getAuthClient } from "@/lib/auth-client"
 import { extractAuthErrorMessage, signInDesktopWithPhoneNumber } from "@/lib/auth-api"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { orpc } from "@/lib/orpc-client"
@@ -24,7 +24,7 @@ export function usePhoneSignInMutation() {
         })
       }
 
-      const result = await authClient.signIn.phoneNumber({
+      const result = await getAuthClient().signIn.phoneNumber({
         phoneNumber: input.phone,
         password: input.password,
         rememberMe: input.rememberMe,

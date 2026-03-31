@@ -58,6 +58,13 @@ describe("AccountService", () => {
     expect(repository.withTransaction).toHaveBeenCalledTimes(1)
     expect(updateUserProfile).toHaveBeenCalledTimes(1)
     expect(createProfileHistory).toHaveBeenCalledTimes(1)
+    expect(createProfileHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorLabel: "عمارة",
+        previousName: "عمارة",
+        previousPhone: "0612345678",
+      }),
+    )
   })
 
   it("rejects unauthenticated profile updates", async () => {
@@ -119,5 +126,84 @@ describe("AccountService", () => {
       message: "أدخل كلمة المرور الحالية لتغيير رقم الهاتف.",
       status: 400,
     })
+  })
+
+  it("records password change audit entries without copying unchanged profile fields", async () => {
+    const createProfileHistory = vi.fn().mockResolvedValue(undefined)
+    const repository: AccountRepository = {
+      withTransaction: vi.fn(async (callback) =>
+        callback({
+          createProfileHistory,
+          findCredentialPasswordByUserId: vi.fn(),
+          findUserIdByPhoneNumber: vi.fn(),
+          updateUserProfile: vi.fn(),
+        }),
+      ),
+    }
+
+    const service = new AccountService(repository, {
+      $context: Promise.resolve({
+        password: {
+          verify: vi.fn(),
+        },
+      }),
+      api: {
+        getSession: vi.fn().mockResolvedValue({
+          user: {
+            id: "user-1",
+            name: "عمارة",
+            phoneNumber: "0612345678",
+          },
+        }),
+      },
+    })
+
+    await service.recordPasswordChange(new Headers())
+
+    expect(createProfileHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        passwordChanged: true,
+        previousName: null,
+        previousPhone: null,
+      }),
+    )
+  })
+
+  it("records password change audit entries directly for a resolved actor", async () => {
+    const createProfileHistory = vi.fn().mockResolvedValue(undefined)
+    const repository: AccountRepository = {
+      withTransaction: vi.fn(async (callback) =>
+        callback({
+          createProfileHistory,
+          findCredentialPasswordByUserId: vi.fn(),
+          findUserIdByPhoneNumber: vi.fn(),
+          updateUserProfile: vi.fn(),
+        }),
+      ),
+    }
+
+    const service = new AccountService(repository, {
+      $context: Promise.resolve({
+        password: {
+          verify: vi.fn(),
+        },
+      }),
+      api: {
+        getSession: vi.fn(),
+      },
+    })
+
+    await service.recordPasswordChangeForUser({
+      id: "user-1",
+      name: "عمارة",
+      phoneNumber: "0612345678",
+    })
+
+    expect(createProfileHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorLabel: "عمارة",
+        passwordChanged: true,
+      }),
+    )
   })
 })

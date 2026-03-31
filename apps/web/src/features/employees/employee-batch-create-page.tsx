@@ -39,6 +39,9 @@ function localizeRowErrors(
     phone: string
     phoneFormat: string
     roleId: string
+    salaryAmountDzd: string
+    salaryAmountInvalid: string
+    salaryPeriod: string
     managerId: string
     projectId: string
     notes: string
@@ -55,6 +58,12 @@ function localizeRowErrors(
           : copy.phoneFormat
       : undefined,
     roleId: rowError.roleId ? copy.roleId : undefined,
+    salaryAmountDzd: rowError.salaryAmountDzd
+      ? rowError.salaryAmountDzd === "invalid"
+        ? copy.salaryAmountInvalid
+        : copy.salaryAmountDzd
+      : undefined,
+    salaryPeriod: rowError.salaryPeriod ? copy.salaryPeriod : undefined,
     managerId: rowError.managerId,
     projectId: rowError.projectId,
     notes: rowError.notes ? copy.notes : undefined,
@@ -69,7 +78,10 @@ function mapServerErrors(error: AppMutationError, rowCount: number) {
   const rowErrors = createEmptyErrorRows(rowCount)
 
   for (const fieldError of error.fieldErrors) {
-    const match = /^employees\.(\d+)\.(firstName|lastName|phone|roleId|managerId|projectId|notes)$/.exec(fieldError.field)
+    const match =
+      /^employees\.(\d+)\.(firstName|lastName|phone|roleId|salaryAmountDzd|salaryPeriod|managerId|projectId|notes)$/.exec(
+        fieldError.field,
+      )
 
     if (!match) {
       continue
@@ -133,6 +145,8 @@ export function EmployeeBatchCreatePage({
     lastNameLabel: t("employeeForm.lastNameLabel"),
     phoneLabel: t("auth.phoneLabel"),
     roleLabel: t("employeeForm.roleLabel"),
+    salaryAmountLabel: t("employeeForm.salaryAmountLabel"),
+    salaryPeriodLabel: t("employeeForm.salaryPeriodLabel"),
     managerLabel: t("employeeForm.managerLabel"),
     managerPlaceholder: t("employeeForm.managerPlaceholder"),
     managerDisabledHint: t("employeeForm.managerDisabledHint"),
@@ -141,13 +155,23 @@ export function EmployeeBatchCreatePage({
     lastNamePlaceholder: t("employeeForm.lastNamePlaceholder"),
     phonePlaceholder: t("auth.phonePlaceholder"),
     rolePlaceholder: t("employeeForm.rolePlaceholder"),
+    salaryAmountPlaceholder: "10000",
+    salaryPeriodPlaceholder: t("employeeForm.selectSalaryPeriod"),
     notesPlaceholder: t("employeeForm.notesPlaceholder"),
+    salaryPeriodOptions: [
+      { value: "DAILY" as const, label: t("detailPages.salary.daily") },
+      { value: "WEEKLY" as const, label: t("detailPages.salary.weekly") },
+      { value: "MONTHLY" as const, label: t("detailPages.salary.monthly") },
+    ],
     validation: {
       firstName: t("employeeForm.validation.firstName"),
       lastName: t("employeeForm.validation.lastName"),
       phone: t("auth.validation.phone"),
       phoneFormat: t("auth.validation.phoneFormat"),
       roleId: t("employeeForm.validation.roleId"),
+      salaryAmountDzd: t("employeeForm.validation.salaryAmountRequired"),
+      salaryAmountInvalid: t("employeeForm.validation.salaryAmountInvalid"),
+      salaryPeriod: t("employeeForm.validation.salaryPeriodRequired"),
       managerId: t("employeeForm.validation.managerId"),
       projectId: t("employeeForm.validation.projectId"),
       notes: t("employeeForm.validation.notes"),
@@ -264,13 +288,13 @@ export function EmployeeBatchCreatePage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-border/60 pb-5 xl:flex-row xl:items-end xl:justify-between">
-        <div className="space-y-2">
+      <div className="flex flex-col gap-4 border-b border-border/60 pb-5 xl:flex-row xl:items-end xl:justify-between" dir="rtl">
+        <div className="space-y-2 text-start">
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">{copy.title}</h2>
           <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{copy.description}</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3" dir="rtl">
           <Button type="button" variant="outline" onClick={onCancel}>
             {copy.cancel}
           </Button>
@@ -295,6 +319,11 @@ export function EmployeeBatchCreatePage({
               lastNameLabel: copy.lastNameLabel,
               phoneLabel: copy.phoneLabel,
               roleLabel: copy.roleLabel,
+              salaryAmountLabel: copy.salaryAmountLabel,
+              salaryPeriodLabel: copy.salaryPeriodLabel,
+              salaryAmountPlaceholder: copy.salaryAmountPlaceholder,
+              salaryPeriodPlaceholder: copy.salaryPeriodPlaceholder,
+              salaryPeriodOptions: copy.salaryPeriodOptions,
               managerLabel: copy.managerLabel,
               managerPlaceholder: copy.managerPlaceholder,
               managerDisabledHint: copy.managerDisabledHint,
@@ -320,7 +349,7 @@ export function EmployeeBatchCreatePage({
           />
         ))}
 
-        <div className="flex justify-end">
+        <div className="flex justify-start" dir="rtl">
           <Button className="min-w-44" disabled={createEmployeesBatchMutation.isPending} type="submit">
             {rows.length === 1 ? copy.submitSingle : copy.submitBatch}
           </Button>

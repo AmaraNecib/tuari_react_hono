@@ -1,6 +1,7 @@
 import type { Role } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
+import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
@@ -18,6 +19,11 @@ type EmployeeBatchRowCardCopy = {
   lastNameLabel: string
   phoneLabel: string
   roleLabel: string
+  salaryAmountLabel: string
+  salaryPeriodLabel: string
+  salaryAmountPlaceholder: string
+  salaryPeriodPlaceholder: string
+  salaryPeriodOptions: Array<{ value: "DAILY" | "WEEKLY" | "MONTHLY"; label: string }>
   managerLabel: string
   managerPlaceholder: string
   managerDisabledHint: string
@@ -114,12 +120,7 @@ export function EmployeeBatchRowCard({
 
         <label className="flex flex-col gap-2.5">
           <span className="text-sm font-medium text-foreground">{copy.roleLabel}</span>
-          <select
-            className={fieldClassName}
-            name={`employee-role-${index}`}
-            value={draft.roleId}
-            onChange={(event) => onChange(index, "roleId", event.target.value)}
-          >
+          <select className={fieldClassName} name={`employee-role-${index}`} value={draft.roleId} onChange={(event) => onChange(index, "roleId", event.target.value)}>
             <option value="">{copy.rolePlaceholder}</option>
             {roles.map((role) => (
               <option key={role.id} value={role.id}>
@@ -128,6 +129,35 @@ export function EmployeeBatchRowCard({
             ))}
           </select>
           {errors.roleId ? <p className="text-sm text-destructive">{errors.roleId}</p> : null}
+        </label>
+
+        <label className="flex flex-col gap-2.5">
+          <span className="text-sm font-medium text-foreground">{copy.salaryAmountLabel}</span>
+          <CurrencyInput
+            currencyLabel="دج"
+            name={`employee-salary-amount-${index}`}
+            placeholder={copy.salaryAmountPlaceholder}
+            value={draft.salaryAmountDzd}
+            onChange={(event) => onChange(index, "salaryAmountDzd", event.target.value)}
+          />
+          {errors.salaryAmountDzd ? <p className="text-sm text-destructive">{errors.salaryAmountDzd}</p> : null}
+        </label>
+
+        <label className="flex flex-col gap-2.5">
+          <span className="text-sm font-medium text-foreground">{copy.salaryPeriodLabel}</span>
+          <NativeSelect
+            name={`employee-salary-period-${index}`}
+            value={draft.salaryPeriod}
+            onChange={(event) => onChange(index, "salaryPeriod", event.target.value)}
+          >
+            <option value="">{copy.salaryPeriodPlaceholder}</option>
+            {copy.salaryPeriodOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </NativeSelect>
+          {errors.salaryPeriod ? <p className="text-sm text-destructive">{errors.salaryPeriod}</p> : null}
         </label>
 
         <div className="flex flex-col gap-2.5 xl:col-span-2">

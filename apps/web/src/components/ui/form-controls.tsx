@@ -5,7 +5,7 @@ import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export const formControlClassName =
-  "w-full rounded-xl border border-border/80 bg-sidebar px-3.5 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition placeholder:text-muted-foreground/80 focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 dark:bg-background dark:[color-scheme:dark] dark:shadow-none"
+  "w-full rounded-2xl border border-border/75 bg-background/82 px-4 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.48)_inset] outline-none transition-[color,background-color,border-color,box-shadow] duration-200 placeholder:text-muted-foreground/80 focus-visible:border-primary/45 focus-visible:ring-4 focus-visible:ring-primary/10 dark:bg-background dark:[color-scheme:dark] dark:shadow-none"
 
 export const formInputClassName = cn(formControlClassName, "h-10")
 export const formTextareaClassName = cn(formControlClassName, "min-h-24 py-3")
@@ -38,7 +38,7 @@ function FieldSection({
   children: ReactNode
 }) {
   return (
-    <section className="space-y-4 rounded-[24px] border border-border/60 bg-sidebar/80 p-5">
+    <section className="surface-card space-y-4 rounded-[26px] p-5">
       <div className="space-y-1">
         <h2 className="text-lg font-semibold text-foreground">{title}</h2>
         {description ? <p className="text-sm leading-6 text-muted-foreground">{description}</p> : null}
@@ -58,7 +58,7 @@ function CurrencyInput({
   inputClassName?: string
 }) {
   return (
-    <span className={cn("flex w-full items-center gap-2 rounded-xl border border-border/80 bg-sidebar px-3.5 shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-primary/10 dark:bg-background dark:shadow-none", className)}>
+    <span className={cn("flex w-full items-center gap-2 rounded-2xl border border-border/75 bg-background/82 px-4 shadow-[0_1px_0_rgba(255,255,255,0.48)_inset] focus-within:border-primary/45 focus-within:ring-4 focus-within:ring-primary/10 dark:bg-background dark:shadow-none", className)}>
       <span className="shrink-0 text-sm font-medium text-muted-foreground" dir="rtl">
         {currencyLabel ?? "دج"}
       </span>

@@ -7,7 +7,7 @@ import {
   initializeRuntimeConfig,
   resetRuntimeConfigForTests,
   resolveApiBaseUrl,
-  resolveAppClientKey,
+  resolveApiUrl,
 } from "./runtime-config"
 
 vi.mock("./runtime-bridge", () => ({
@@ -28,7 +28,6 @@ describe("runtime config", () => {
       health: "connected",
       config: {
         apiBaseUrl: "http://127.0.0.1:4318",
-        appClientKey: "desktop-client-key",
       },
       error: null,
     })
@@ -36,12 +35,10 @@ describe("runtime config", () => {
     await initializeRuntimeConfig()
 
     expect(resolveApiBaseUrl()).toBe("http://127.0.0.1:4318")
-    expect(resolveAppClientKey()).toBe("desktop-client-key")
   })
 
   it("keeps the existing defaults when the runtime bridge has no config", async () => {
     const initialApiBaseUrl = resolveApiBaseUrl()
-    const initialAppClientKey = resolveAppClientKey()
 
     vi.mocked(getRuntimeStatus).mockResolvedValue({
       checkedAt: "2026-03-17T20:00:00.000Z",
@@ -55,6 +52,85 @@ describe("runtime config", () => {
     await initializeRuntimeConfig()
 
     expect(resolveApiBaseUrl()).toBe(initialApiBaseUrl)
-    expect(resolveAppClientKey()).toBe(initialAppClientKey)
+  })
+
+  it("normalizes trailing slashes from runtime config urls", async () => {
+    vi.mocked(getRuntimeStatus).mockResolvedValue({
+      checkedAt: "2026-03-17T20:00:00.000Z",
+      environment: "browser",
+      endpoint: "https://api.example.com",
+      health: "connected",
+      config: {
+        apiBaseUrl: "https://api.example.com///",
+      },
+      error: null,
+    })
+
+    await initializeRuntimeConfig()
+
+    expect(resolveApiBaseUrl()).toBe("https://api.example.com")
+  })
+
+  it("rejects invalid runtime api urls", async () => {
+    vi.mocked(getRuntimeStatus).mockResolvedValue({
+      checkedAt: "2026-03-17T20:00:00.000Z",
+      environment: "browser",
+      endpoint: "browser",
+      health: "connected",
+      config: {
+        apiBaseUrl: "not-a-url",
+      },
+      error: null,
+    })
+
+    await expect(initializeRuntimeConfig()).rejects.toThrow("Invalid API base URL")
+  })
+
+  it("rejects insecure non-local runtime api urls", async () => {
+    vi.mocked(getRuntimeStatus).mockResolvedValue({
+      checkedAt: "2026-03-17T20:00:00.000Z",
+      environment: "browser",
+      endpoint: "browser",
+      health: "connected",
+      config: {
+        apiBaseUrl: "http://api.example.com",
+      },
+      error: null,
+    })
+
+    await expect(initializeRuntimeConfig()).rejects.toThrow("API base URL must use https for non-local hosts")
+  })
+
+  it("rejects runtime api urls with credentials or fragments", async () => {
+    vi.mocked(getRuntimeStatus).mockResolvedValue({
+      checkedAt: "2026-03-17T20:00:00.000Z",
+      environment: "browser",
+      endpoint: "browser",
+      health: "connected",
+      config: {
+        apiBaseUrl: "https://user:pass@example.com/path#hash",
+      },
+      error: null,
+    })
+
+    await expect(initializeRuntimeConfig()).rejects.toThrow("API base URL must not include credentials, query parameters, or fragments")
+  })
+
+  it("preserves configured base paths when resolving endpoint urls", async () => {
+    vi.mocked(getRuntimeStatus).mockResolvedValue({
+      checkedAt: "2026-03-17T20:00:00.000Z",
+      environment: "browser",
+      endpoint: "browser",
+      health: "connected",
+      config: {
+        apiBaseUrl: "https://example.com/app",
+      },
+      error: null,
+    })
+
+    await initializeRuntimeConfig()
+
+    expect(resolveApiUrl("/api/auth/session")).toBe("https://example.com/app/api/auth/session")
+    expect(resolveApiUrl("rpc")).toBe("https://example.com/app/rpc")
   })
 })

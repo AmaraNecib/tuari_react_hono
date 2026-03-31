@@ -1,17 +1,32 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
 import type { SystemLogEntry } from "@tuari/contracts"
 
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
+import { formatDateTimeInAlgeria } from "@/lib/algeria-time"
 
+import {
+  AppShellEmptyStateRow,
+  AppShellFilterShell,
+  AppShellSectionBody,
+  AppShellSectionSurface,
+  AppShellTableFrame,
+  AppShellTableHead,
+  AppShellTableHeaderCell,
+  AppShellTableRow,
+  usePaginatedRows,
+} from "./app-shell-table-primitives"
 import { SectionHeader } from "./section-header"
 import { TablePaginationControls } from "./table-pagination-controls"
 
 function getActionTypeLabel(t: (key: string) => string, actionType: SystemLogEntry["actionType"]) {
   const map: Record<SystemLogEntry["actionType"], string> = {
     ACCOUNT_UPDATED: t("systemLog.accountUpdated"),
+    DEBT_ACCOUNT_CREATED: t("systemLog.debtAccountCreated"),
+    DEBT_ENTRY_RECORDED: t("systemLog.debtEntryRecorded"),
+    DEBT_SETTLED: t("systemLog.debtSettled"),
     EMPLOYEE_CREATED: t("systemLog.employeeCreated"),
     EMPLOYEE_UPDATED: t("systemLog.employeeUpdated"),
     PROJECT_MANAGER_CHANGED: t("systemLog.projectManagerChanged"),
@@ -26,7 +41,10 @@ function getActionTypeLabel(t: (key: string) => string, actionType: SystemLogEnt
 function getEntityTypeLabel(t: (key: string) => string, entityType: SystemLogEntry["entityType"]) {
   const map: Record<SystemLogEntry["entityType"], string> = {
     ACCOUNT: t("systemLog.entityAccount"),
+    DEBT_ACCOUNT: t("systemLog.entityDebtAccount"),
+    DEBT_ENTRY: t("systemLog.entityDebtEntry"),
     EMPLOYEE: t("systemLog.entityEmployee"),
+    EXTERNAL_COUNTERPARTY: t("systemLog.entityExternalCounterparty"),
     MANAGER_ASSIGNMENT: t("systemLog.entityManagerAssignment"),
     PROJECT: t("systemLog.entityProject"),
     PROJECT_ASSIGNMENT: t("systemLog.entityProjectAssignment"),
@@ -41,6 +59,8 @@ function getEntityTypeLabel(t: (key: string) => string, entityType: SystemLogEnt
 export function SystemLogSection({
   entries,
   filters,
+  isError = false,
+  isLoading = false,
   onFiltersChange,
   title,
 }: {
@@ -59,20 +79,11 @@ export function SystemLogSection({
     fromDate?: string
     toDate?: string
   }) => void
+  isError?: boolean
+  isLoading?: boolean
   title: string
 }) {
   const { t } = useTranslation()
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-  const dateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat("ar-DZ", {
-        dateStyle: "medium",
-        timeStyle: "short",
-        timeZone: "Africa/Algiers",
-      }),
-    [],
-  )
 
   const actorOptions = useMemo(
     () =>
@@ -87,108 +98,101 @@ export function SystemLogSection({
   )
 
   const filteredEntries = entries
-
-  const pagedEntries = useMemo(
-    () => filteredEntries.slice((page - 1) * pageSize, page * pageSize),
-    [filteredEntries, page, pageSize],
-  )
-
-  useEffect(() => {
-    setPage(1)
-  }, [filters.actionType, filters.actorUserId, filters.entityType, filters.fromDate, filters.toDate])
-
-  useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(filteredEntries.length / pageSize))
-    if (page > maxPage) {
-      setPage(maxPage)
-    }
-  }, [filteredEntries.length, page, pageSize])
+  const { page, pageSize, pagedRows: pagedEntries, setPage, setPageSize } = usePaginatedRows({
+    rows: filteredEntries,
+    resetPageDeps: [filters.actionType, filters.actorUserId, filters.entityType, filters.fromDate, filters.toDate],
+  })
 
   return (
-    <div className="space-y-6">
-      <SectionHeader title={title} />
+    <AppShellSectionSurface>
+      <AppShellSectionBody>
+        <SectionHeader title={title} />
 
-      <div className="grid gap-3 rounded-[24px] border border-border/60 bg-background/12 p-4 md:grid-cols-2 xl:grid-cols-5">
-        <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-foreground">{t("systemLog.actor")}</span>
-          <NativeSelect value={filters.actorUserId ?? "ALL"} onChange={(event) => onFiltersChange({ ...filters, actorUserId: event.target.value === "ALL" ? undefined : event.target.value })}>
-            <option value="ALL">{t("systemLog.actorAll")}</option>
-            {actorOptions.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-foreground">{t("systemLog.action")}</span>
-          <NativeSelect value={filters.actionType ?? "ALL"} onChange={(event) => onFiltersChange({ ...filters, actionType: event.target.value === "ALL" ? undefined : (event.target.value as SystemLogEntry["actionType"]) })}>
-            <option value="ALL">{t("systemLog.actionAll")}</option>
-            {["ACCOUNT_UPDATED", "EMPLOYEE_CREATED", "EMPLOYEE_UPDATED", "WORKPLACE_ASSIGNED", "PROJECT_MANAGER_CHANGED", "WAREHOUSE_MANAGER_CHANGED", "SALARY_PAYMENT_RECORDED"].map((value) => (
-              <option key={value} value={value}>
-                {getActionTypeLabel(t, value as SystemLogEntry["actionType"])}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-foreground">{t("systemLog.entity")}</span>
-          <NativeSelect value={filters.entityType ?? "ALL"} onChange={(event) => onFiltersChange({ ...filters, entityType: event.target.value === "ALL" ? undefined : (event.target.value as SystemLogEntry["entityType"]) })}>
-            <option value="ALL">{t("systemLog.entityAll")}</option>
-            {["ACCOUNT", "EMPLOYEE", "PROJECT", "WAREHOUSE", "MANAGER_ASSIGNMENT", "PROJECT_ASSIGNMENT", "WAREHOUSE_ASSIGNMENT", "SALARY_PAYMENT"].map((value) => (
-              <option key={value} value={value}>
-                {getEntityTypeLabel(t, value as SystemLogEntry["entityType"])}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-foreground">{t("systemLog.dateFrom")}</span>
-          <Input type="date" value={filters.fromDate ?? ""} onChange={(event) => onFiltersChange({ ...filters, fromDate: event.target.value || undefined })} />
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-foreground">{t("systemLog.dateTo")}</span>
-          <Input type="date" value={filters.toDate ?? ""} onChange={(event) => onFiltersChange({ ...filters, toDate: event.target.value || undefined })} />
-        </label>
-      </div>
+        <AppShellFilterShell>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-foreground">{t("systemLog.actor")}</span>
+            <NativeSelect value={filters.actorUserId ?? "ALL"} onChange={(event) => onFiltersChange({ ...filters, actorUserId: event.target.value === "ALL" ? undefined : event.target.value })}>
+              <option value="ALL">{t("systemLog.actorAll")}</option>
+              {actorOptions.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-foreground">{t("systemLog.action")}</span>
+            <NativeSelect value={filters.actionType ?? "ALL"} onChange={(event) => onFiltersChange({ ...filters, actionType: event.target.value === "ALL" ? undefined : (event.target.value as SystemLogEntry["actionType"]) })}>
+              <option value="ALL">{t("systemLog.actionAll")}</option>
+              {["ACCOUNT_UPDATED", "DEBT_ACCOUNT_CREATED", "DEBT_ENTRY_RECORDED", "DEBT_SETTLED", "EMPLOYEE_CREATED", "EMPLOYEE_UPDATED", "WORKPLACE_ASSIGNED", "PROJECT_MANAGER_CHANGED", "WAREHOUSE_MANAGER_CHANGED", "SALARY_PAYMENT_RECORDED"].map((value) => (
+                <option key={value} value={value}>
+                  {getActionTypeLabel(t, value as SystemLogEntry["actionType"])}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-foreground">{t("systemLog.entity")}</span>
+            <NativeSelect value={filters.entityType ?? "ALL"} onChange={(event) => onFiltersChange({ ...filters, entityType: event.target.value === "ALL" ? undefined : (event.target.value as SystemLogEntry["entityType"]) })}>
+              <option value="ALL">{t("systemLog.entityAll")}</option>
+              {["ACCOUNT", "DEBT_ACCOUNT", "DEBT_ENTRY", "EMPLOYEE", "EXTERNAL_COUNTERPARTY", "PROJECT", "WAREHOUSE", "MANAGER_ASSIGNMENT", "PROJECT_ASSIGNMENT", "WAREHOUSE_ASSIGNMENT", "SALARY_PAYMENT"].map((value) => (
+                <option key={value} value={value}>
+                  {getEntityTypeLabel(t, value as SystemLogEntry["entityType"])}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-foreground">{t("systemLog.dateFrom")}</span>
+            <Input type="date" value={filters.fromDate ?? ""} onChange={(event) => onFiltersChange({ ...filters, fromDate: event.target.value || undefined })} />
+          </label>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-foreground">{t("systemLog.dateTo")}</span>
+            <Input type="date" value={filters.toDate ?? ""} onChange={(event) => onFiltersChange({ ...filters, toDate: event.target.value || undefined })} />
+          </label>
+        </AppShellFilterShell>
 
-      <div className="overflow-hidden rounded-[28px] border border-border/60">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-muted/60 text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 text-right font-medium">{t("systemLog.createdAt")}</th>
-                <th className="px-4 py-3 text-right font-medium">{t("systemLog.actor")}</th>
-                <th className="px-4 py-3 text-right font-medium">{t("systemLog.action")}</th>
-                <th className="px-4 py-3 text-right font-medium">{t("systemLog.target")}</th>
-                <th className="px-4 py-3 text-right font-medium">{t("systemLog.summary")}</th>
-                <th className="px-4 py-3 text-right font-medium">{t("systemLog.details")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedEntries.length > 0 ? (
-                pagedEntries.map((entry) => (
-                  <tr key={entry.id} className="border-t border-border/60 bg-background/10 align-top">
-                    <td className="px-4 py-4 text-right text-muted-foreground">{dateFormatter.format(new Date(entry.createdAt))}</td>
-                    <td className="px-4 py-4 text-right text-muted-foreground">{entry.actorLabel ?? t("systemLog.actorUnknown")}</td>
-                    <td className="px-4 py-4 text-right text-foreground">{getActionTypeLabel(t, entry.actionType)}</td>
-                    <td className="px-4 py-4 text-right text-muted-foreground">{entry.entityLabel ?? t("systemLog.targetUnknown")}</td>
-                    <td className="px-4 py-4 text-right font-medium text-foreground">{entry.summary}</td>
-                    <td className="px-4 py-4 text-right text-xs leading-6 text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                      {entry.detail ?? "—"}
-                    </td>
-                  </tr>
-                ))
-              ) : (
+        <AppShellTableFrame>
+            <table className="min-w-full text-sm">
+              <AppShellTableHead>
                 <tr>
-                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={6}>
-                    {t("systemLog.empty")}
-                  </td>
+                  <AppShellTableHeaderCell>{t("systemLog.createdAt")}</AppShellTableHeaderCell>
+                  <AppShellTableHeaderCell>{t("systemLog.actor")}</AppShellTableHeaderCell>
+                  <AppShellTableHeaderCell>{t("systemLog.action")}</AppShellTableHeaderCell>
+                  <AppShellTableHeaderCell>{t("systemLog.target")}</AppShellTableHeaderCell>
+                  <AppShellTableHeaderCell>{t("systemLog.summary")}</AppShellTableHeaderCell>
+                  <AppShellTableHeaderCell>{t("systemLog.details")}</AppShellTableHeaderCell>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </AppShellTableHead>
+              <tbody>
+                {isLoading ? (
+                  <AppShellEmptyStateRow colSpan={6}>{t("systemLog.loading")}</AppShellEmptyStateRow>
+                ) : isError ? (
+                  <AppShellEmptyStateRow colSpan={6}>{t("systemLog.loadError")}</AppShellEmptyStateRow>
+                ) : pagedEntries.length > 0 ? (
+                  pagedEntries.map((entry) => (
+                    <AppShellTableRow key={entry.id} className="align-top">
+                      <td className="px-4 py-4 text-start text-muted-foreground">{formatDateTimeInAlgeria(new Date(entry.createdAt))}</td>
+                      <td
+                        className="px-4 py-4 text-start text-muted-foreground"
+                        title={entry.actorCurrentLabel && entry.actorCurrentLabel !== entry.actorLabel ? `${t("systemLog.currentActorName")}: ${entry.actorCurrentLabel}` : undefined}
+                      >
+                        {entry.actorLabel ?? t("systemLog.actorUnknown")}
+                      </td>
+                      <td className="px-4 py-4 text-start text-foreground">{getActionTypeLabel(t, entry.actionType)}</td>
+                      <td className="px-4 py-4 text-start text-muted-foreground">{entry.entityLabel ?? t("systemLog.targetUnknown")}</td>
+                      <td className="px-4 py-4 text-start font-medium text-foreground">{entry.summary}</td>
+                      <td className="px-4 py-4 text-start text-xs leading-6 text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                        {entry.detail ?? "—"}
+                      </td>
+                    </AppShellTableRow>
+                  ))
+                ) : (
+                  <AppShellEmptyStateRow colSpan={6}>{t("systemLog.empty")}</AppShellEmptyStateRow>
+                )}
+              </tbody>
+            </table>
+        </AppShellTableFrame>
         <TablePaginationControls
           page={page}
           pageSize={pageSize}
@@ -199,7 +203,7 @@ export function SystemLogSection({
             setPageSize(nextPageSize)
           }}
         />
-      </div>
-    </div>
+      </AppShellSectionBody>
+    </AppShellSectionSurface>
   )
 }

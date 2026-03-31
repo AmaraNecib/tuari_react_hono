@@ -1,0 +1,386 @@
+import type { CompanyRepository } from "./company.repository"
+import { compareTimestampsDesc } from "./company-time"
+import type { SystemLogEntryRecord, SystemLogListFilters } from "./company.types"
+
+function getArabicStatusLabel(status: string) {
+  switch (status) {
+    case "ACTIVE":
+      return "نشط"
+    case "INACTIVE":
+      return "غير نشط"
+    case "LEFT":
+      return "غادر"
+    case "STOPPED":
+      return "متوقف"
+    case "COMPLETED":
+      return "مكتمل"
+    case "ARCHIVED":
+      return "مؤرشف"
+    case "ENDED":
+      return "منتهي"
+    default:
+      return status
+  }
+}
+
+export function buildCompanySystemLog(repository: CompanyRepository, filters?: SystemLogListFilters) {
+  const rolesById = new Map(repository.listRoles().map((role) => [role.id, role]))
+  const employeesById = new Map(repository.listEmployees().map((employee) => [employee.id, employee]))
+  const externalCounterpartiesById = new Map(
+    repository.listExternalCounterparties().map((counterparty) => [counterparty.id, counterparty]),
+  )
+  const projectsById = new Map(repository.listProjects().map((project) => [project.id, project]))
+  const warehousesById = new Map(repository.listWarehouses().map((warehouse) => [warehouse.id, warehouse]))
+  const actorLabelCache = new Map<string, string | null>()
+
+  const resolveActorLabel = (actorUserId: string | null) => {
+    if (!actorUserId) {
+      return null
+    }
+
+    if (actorLabelCache.has(actorUserId)) {
+      return actorLabelCache.get(actorUserId) ?? null
+    }
+
+    const authUser = repository.getAuthUserById(actorUserId)
+    const actorLabel = authUser?.name ?? actorUserId
+
+    actorLabelCache.set(actorUserId, actorLabel ?? null)
+    return actorLabel ?? null
+  }
+
+  const logEvents: Array<SystemLogEntryRecord> = []
+
+  for (const entry of repository.listEmployeeStateHistory()) {
+    const employee = employeesById.get(entry.employeeId)
+    const role = rolesById.get(entry.roleId)
+    logEvents.push({
+      id: `employee-state-${entry.id}`,
+      transactionId: entry.transactionId,
+      actorUserId: entry.actorUserId,
+      actorLabel: entry.actorLabel ?? resolveActorLabel(entry.actorUserId),
+      actorCurrentLabel: resolveActorLabel(entry.actorUserId),
+      actionType: entry.eventType === "CREATED" ? "EMPLOYEE_CREATED" : "EMPLOYEE_UPDATED",
+      entityType: "EMPLOYEE",
+      entityId: entry.employeeId,
+      entityLabel: employee ? `${employee.firstName} ${employee.lastName}` : null,
+      summary:
+        entry.eventType === "CREATED"
+          ? `تم إنشاء العامل ${employee ? `${employee.firstName} ${employee.lastName}` : entry.employeeId}`
+          : `تم تحديث بيانات العامل ${employee ? `${employee.firstName} ${employee.lastName}` : entry.employeeId}`,
+      detail: `${role?.name ?? "دور غير معروف"} - ${getArabicStatusLabel(entry.status)}`,
+      createdAt: entry.updatedAt,
+    })
+  }
+
+  for (const assignment of repository.listManagerAssignments()) {
+    const worker = employeesById.get(assignment.workerId)
+    const manager = employeesById.get(assignment.managerId)
+    const verb = assignment.status === "ACTIVE" ? "تم ربط" : "تم إنهاء ربط"
+    logEvents.push({
+      id: `manager-assignment-${assignment.id}`,
+      transactionId: assignment.transactionId,
+      actorUserId: assignment.actorUserId,
+      actorLabel: assignment.actorLabel ?? resolveActorLabel(assignment.actorUserId),
+      actorCurrentLabel: resolveActorLabel(assignment.actorUserId),
+      actionType: "WORKPLACE_ASSIGNED",
+      entityType: "MANAGER_ASSIGNMENT",
+      entityId: assignment.id,
+      entityLabel: worker ? `${worker.firstName} ${worker.lastName}` : null,
+      summary: `${verb} العامل ${worker ? `${worker.firstName} ${worker.lastName}` : assignment.workerId} بالمدير ${manager ? `${manager.firstName} ${manager.lastName}` : assignment.managerId}`,
+      detail: assignment.notes,
+      createdAt: assignment.updatedAt,
+    })
+  }
+
+  for (const assignment of repository.listProjectAssignments()) {
+    const employee = employeesById.get(assignment.employeeId)
+    const project = projectsById.get(assignment.projectId)
+    const verb = assignment.status === "ACTIVE" ? "تم إسناد" : "تم إنهاء إسناد"
+    logEvents.push({
+      id: `project-assignment-${assignment.id}`,
+      transactionId: assignment.transactionId,
+      actorUserId: assignment.actorUserId,
+      actorLabel: assignment.actorLabel ?? resolveActorLabel(assignment.actorUserId),
+      actorCurrentLabel: resolveActorLabel(assignment.actorUserId),
+      actionType: "WORKPLACE_ASSIGNED",
+      entityType: "PROJECT_ASSIGNMENT",
+      entityId: assignment.id,
+      entityLabel: project?.name ?? null,
+      summary: `${verb} ${employee ? `${employee.firstName} ${employee.lastName}` : assignment.employeeId} إلى المشروع ${project?.name ?? assignment.projectId}`,
+      detail: assignment.notes,
+      createdAt: assignment.updatedAt,
+    })
+  }
+
+  for (const assignment of repository.listWarehouseAssignments()) {
+    const employee = employeesById.get(assignment.employeeId)
+    const warehouse = warehousesById.get(assignment.warehouseId)
+    const verb = assignment.status === "ACTIVE" ? "تم إسناد" : "تم إنهاء إسناد"
+    logEvents.push({
+      id: `warehouse-assignment-${assignment.id}`,
+      transactionId: assignment.transactionId,
+      actorUserId: assignment.actorUserId,
+      actorLabel: assignment.actorLabel ?? resolveActorLabel(assignment.actorUserId),
+      actorCurrentLabel: resolveActorLabel(assignment.actorUserId),
+      actionType: "WORKPLACE_ASSIGNED",
+      entityType: "WAREHOUSE_ASSIGNMENT",
+      entityId: assignment.id,
+      entityLabel: warehouse?.name ?? null,
+      summary: `${verb} ${employee ? `${employee.firstName} ${employee.lastName}` : assignment.employeeId} إلى المستودع ${warehouse?.name ?? assignment.warehouseId}`,
+      detail: assignment.notes,
+      createdAt: assignment.updatedAt,
+    })
+  }
+
+  for (const entry of repository.listProjectManagerOwnershipHistory()) {
+    const project = projectsById.get(entry.projectId)
+    const manager = employeesById.get(entry.managerId)
+    const verb = entry.status === "ACTIVE" ? "تم تعيين" : "تم إنهاء تعيين"
+    logEvents.push({
+      id: `project-manager-history-${entry.id}`,
+      transactionId: entry.transactionId,
+      actorUserId: entry.actorUserId,
+      actorLabel: entry.actorLabel ?? resolveActorLabel(entry.actorUserId),
+      actorCurrentLabel: resolveActorLabel(entry.actorUserId),
+      actionType: "PROJECT_MANAGER_CHANGED",
+      entityType: "PROJECT",
+      entityId: entry.projectId,
+      entityLabel: project?.name ?? null,
+      summary: `${verb} ${manager ? `${manager.firstName} ${manager.lastName}` : entry.managerId} مديرًا للمشروع ${project?.name ?? entry.projectId}`,
+      detail: entry.notes,
+      createdAt: entry.updatedAt,
+    })
+  }
+
+  for (const entry of repository.listWarehouseManagerOwnershipHistory()) {
+    const warehouse = warehousesById.get(entry.warehouseId)
+    const manager = employeesById.get(entry.managerId)
+    const verb = entry.status === "ACTIVE" ? "تم تعيين" : "تم إنهاء تعيين"
+    logEvents.push({
+      id: `warehouse-manager-history-${entry.id}`,
+      transactionId: entry.transactionId,
+      actorUserId: entry.actorUserId,
+      actorLabel: entry.actorLabel ?? resolveActorLabel(entry.actorUserId),
+      actorCurrentLabel: resolveActorLabel(entry.actorUserId),
+      actionType: "WAREHOUSE_MANAGER_CHANGED",
+      entityType: "WAREHOUSE",
+      entityId: entry.warehouseId,
+      entityLabel: warehouse?.name ?? null,
+      summary: `${verb} ${manager ? `${manager.firstName} ${manager.lastName}` : entry.managerId} مديرًا للمستودع ${warehouse?.name ?? entry.warehouseId}`,
+      detail: entry.notes,
+      createdAt: entry.updatedAt,
+    })
+  }
+
+  for (const payment of repository.listSalaryPayments()) {
+    const employee = employeesById.get(payment.employeeId)
+    logEvents.push({
+      id: `salary-payment-${payment.id}`,
+      transactionId: payment.transactionId,
+      actorUserId: payment.actorUserId,
+      actorLabel: payment.actorLabel ?? resolveActorLabel(payment.actorUserId),
+      actorCurrentLabel: resolveActorLabel(payment.actorUserId),
+      actionType: "SALARY_PAYMENT_RECORDED",
+      entityType: "SALARY_PAYMENT",
+      entityId: payment.id,
+      entityLabel: employee ? `${employee.firstName} ${employee.lastName}` : null,
+      summary: `تم تسجيل دفعة راتب للعامل ${employee ? `${employee.firstName} ${employee.lastName}` : payment.employeeId}`,
+      detail: `المبلغ المدفوع ${payment.actualAmountDzd} دج`,
+      createdAt: payment.updatedAt,
+    })
+  }
+
+  for (const account of repository.listDebtAccounts()) {
+    const employee = account.workerId ? employeesById.get(account.workerId) : null
+    const counterparty = account.externalCounterpartyId
+      ? externalCounterpartiesById.get(account.externalCounterpartyId)
+      : null
+    const partyLabel = employee
+      ? `${employee.firstName} ${employee.lastName}`
+      : counterparty?.fullName ?? account.id
+
+    logEvents.push({
+      id: `debt-account-${account.id}`,
+      transactionId: account.transactionId,
+      actorUserId: account.actorUserId,
+      actorLabel: account.actorLabel ?? resolveActorLabel(account.actorUserId),
+      actorCurrentLabel: resolveActorLabel(account.actorUserId),
+      actionType: "DEBT_ACCOUNT_CREATED",
+      entityType: "DEBT_ACCOUNT",
+      entityId: account.id,
+      entityLabel: partyLabel,
+      summary: `تم إنشاء حساب دين للطرف ${partyLabel}`,
+      detail: account.note,
+      createdAt: account.createdAt,
+    })
+  }
+
+  for (const account of repository.listDebtAccounts()) {
+    const employee = account.workerId ? employeesById.get(account.workerId) : null
+    const counterparty = account.externalCounterpartyId
+      ? externalCounterpartiesById.get(account.externalCounterpartyId)
+      : null
+    const partyLabel = employee
+      ? `${employee.firstName} ${employee.lastName}`
+      : counterparty?.fullName ?? account.id
+
+    for (const entry of repository.listDebtEntries({ debtAccountId: account.id })) {
+      const actionType = entry.entryType === "SETTLEMENT" ? "DEBT_SETTLED" : "DEBT_ENTRY_RECORDED"
+      const summary =
+        entry.entryType === "SETTLEMENT"
+          ? `تمت تسوية حساب الدين للطرف ${partyLabel}`
+          : `تم تسجيل حركة دين للطرف ${partyLabel}`
+
+      logEvents.push({
+        id: `debt-entry-${entry.id}`,
+        transactionId: entry.transactionId,
+        actorUserId: entry.actorUserId,
+        actorLabel: entry.actorLabel ?? resolveActorLabel(entry.actorUserId),
+        actorCurrentLabel: resolveActorLabel(entry.actorUserId),
+        actionType,
+        entityType: "DEBT_ENTRY",
+        entityId: entry.id,
+        entityLabel: partyLabel,
+        summary,
+        detail: `${entry.entryType} • ${entry.signedAmountDzd} دج • الرصيد ${entry.balanceAfterDzd} دج${entry.note ? ` • ${entry.note}` : ""}`,
+        createdAt: entry.updatedAt,
+      })
+    }
+  }
+
+  for (const entry of repository.listUserProfileHistory()) {
+    const currentAccountLabel = resolveActorLabel(entry.userId)
+    const accountDetailParts = [
+      entry.previousName !== entry.name
+        ? "تم تحديث الاسم"
+        : null,
+      entry.previousPhone !== entry.phone
+        ? "تم تحديث رقم الهاتف"
+        : null,
+      entry.passwordChanged ? "تم تحديث كلمة المرور" : null,
+    ].filter((value): value is string => Boolean(value))
+
+    logEvents.push({
+      id: `user-profile-${entry.id}`,
+      transactionId: entry.transactionId,
+      actorUserId: entry.actorUserId,
+      actorLabel: entry.actorLabel ?? resolveActorLabel(entry.actorUserId),
+      actorCurrentLabel: resolveActorLabel(entry.actorUserId),
+      actionType: "ACCOUNT_UPDATED",
+      entityType: "ACCOUNT",
+      entityId: entry.userId,
+      entityLabel: entry.name ?? currentAccountLabel ?? entry.phone ?? entry.userId,
+      summary: `تم تحديث بيانات حساب ${entry.name ?? currentAccountLabel ?? entry.userId}`,
+      detail: accountDetailParts.join(" • ") || null,
+      createdAt: entry.updatedAt,
+    })
+  }
+
+  const groupedEntries = Array.from(
+    logEvents.reduce<Map<string, { events: SystemLogEntryRecord[]; key: string }>>((groups, event) => {
+      const key = event.transactionId ?? event.id
+      const existing = groups.get(key)
+
+      if (existing) {
+        existing.events.push(event)
+        return groups
+      }
+
+      groups.set(key, { events: [event], key })
+      return groups
+    }, new Map<string, { events: SystemLogEntryRecord[]; key: string }>()).values(),
+  )
+    .filter(({ events }) =>
+      events.some((event) => {
+        if (filters?.actionType && event.actionType !== filters.actionType) {
+          return false
+        }
+
+        if (filters?.actorUserId && event.actorUserId !== filters.actorUserId) {
+          return false
+        }
+
+        if (filters?.entityId && event.entityId !== filters.entityId) {
+          return false
+        }
+
+        if (filters?.entityType && event.entityType !== filters.entityType) {
+          return false
+        }
+
+        if (filters?.fromDate && event.createdAt < filters.fromDate) {
+          return false
+        }
+
+        if (filters?.toDate && event.createdAt > filters.toDate) {
+          return false
+        }
+
+        return true
+      }),
+    )
+    .map(({ events, key }) => {
+      const sortedEvents = [...events].sort((left, right) => compareTimestampsDesc(left.createdAt, right.createdAt))
+      const matchingEvents = sortedEvents.filter((event) => {
+        if (filters?.actionType && event.actionType !== filters.actionType) {
+          return false
+        }
+
+        if (filters?.actorUserId && event.actorUserId !== filters.actorUserId) {
+          return false
+        }
+
+        if (filters?.entityId && event.entityId !== filters.entityId) {
+          return false
+        }
+
+        if (filters?.entityType && event.entityType !== filters.entityType) {
+          return false
+        }
+
+        if (filters?.fromDate && compareTimestampsDesc(event.createdAt, filters.fromDate) > 0) {
+          return false
+        }
+
+        if (filters?.toDate && compareTimestampsDesc(event.createdAt, filters.toDate) < 0) {
+          return false
+        }
+
+        return true
+      })
+      const primaryEvent = (
+        matchingEvents.find((event) => event.actionType === "SALARY_PAYMENT_RECORDED") ??
+        matchingEvents.find((event) => event.actionType === "PROJECT_MANAGER_CHANGED") ??
+        matchingEvents.find((event) => event.actionType === "WAREHOUSE_MANAGER_CHANGED") ??
+        matchingEvents[0] ??
+        sortedEvents.find((event) => event.actionType === "SALARY_PAYMENT_RECORDED") ??
+        sortedEvents.find((event) => event.actionType === "PROJECT_MANAGER_CHANGED") ??
+        sortedEvents.find((event) => event.actionType === "WAREHOUSE_MANAGER_CHANGED") ??
+        sortedEvents[0]
+      )!
+
+      const detailLines = sortedEvents
+        .flatMap((event) => [event.detail, event.summary !== primaryEvent.summary ? event.summary : null])
+        .filter((value): value is string => Boolean(value && value.trim().length > 0))
+        .filter((value, index, values) => values.indexOf(value) === index)
+
+      return {
+        id: key,
+        transactionId: primaryEvent.transactionId,
+        actorUserId: primaryEvent.actorUserId,
+        actorLabel: primaryEvent.actorLabel,
+        actorCurrentLabel: primaryEvent.actorCurrentLabel,
+        actionType: primaryEvent.actionType,
+        entityType: primaryEvent.entityType,
+        entityId: primaryEvent.entityId,
+        entityLabel: primaryEvent.entityLabel,
+        summary: primaryEvent.summary,
+        detail: detailLines.length > 0 ? detailLines.join(" • ") : primaryEvent.detail,
+        createdAt: sortedEvents[0]!.createdAt,
+      } satisfies SystemLogEntryRecord
+    })
+    .sort((left, right) => compareTimestampsDesc(left.createdAt, right.createdAt))
+
+  return { items: groupedEntries }
+}

@@ -1,5 +1,7 @@
 import type { ReactNode } from "react"
 
+import { PageHeader } from "@/features/shared/page-primitives"
+
 export function SectionHeader({
   title,
   description,
@@ -9,12 +11,5 @@ export function SectionHeader({
   description?: string
   action?: ReactNode
 }) {
-  return (
-    <div className="flex flex-col gap-4 border-b border-border/60 pb-5 xl:flex-row xl:items-end xl:justify-between">
-      <div className="space-y-2">
-        <h2 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h2>
-      </div>
-      {action}
-    </div>
-  )
+  return <PageHeader action={action} description={description} title={title} titleAs="h2" />
 }
