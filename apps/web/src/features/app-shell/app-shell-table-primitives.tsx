@@ -32,7 +32,7 @@ export function AppShellTableHead({ children, className }: { children: ReactNode
 
 export function AppShellTableHeaderCell({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <th className={cn("px-4 py-3 text-start font-medium", className)} scope="col">
+    <th className={cn("px-4 py-3 text-end font-medium", className)} scope="col">
       {children}
     </th>
   )
@@ -53,7 +53,7 @@ export function AppShellEmptyStateRow({ colSpan, children }: { colSpan: number; 
 }
 
 export function AppShellActionGroup({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex flex-wrap justify-start gap-2", className)} dir="rtl">{children}</div>
+  return <div className={cn("flex flex-wrap justify-end gap-2", className)} dir="rtl">{children}</div>
 }
 
 export function AppShellActionButtonWithReason({

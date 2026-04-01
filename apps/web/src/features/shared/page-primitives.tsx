@@ -53,11 +53,11 @@ function PageHeader({
 
   return (
     <header className={cn("page-header xl:flex-row xl:items-end xl:justify-between", className)} dir="rtl">
-      <div className="space-y-2 text-start">
+      <div className="space-y-2 text-end">
         <TitleTag className={cn("text-balance font-semibold tracking-[-0.02em] text-foreground", titleAs === "h1" ? "text-3xl md:text-[2.05rem]" : "text-2xl md:text-[1.7rem]")}>{title}</TitleTag>
         {description ? <p className="max-w-3xl text-sm leading-7 text-muted-foreground">{description}</p> : null}
       </div>
-      {action ? <div className="flex w-full flex-wrap items-center justify-start gap-3 xl:w-auto" dir="rtl">{action}</div> : null}
+      {action ? <div className="flex w-full flex-wrap items-center justify-end gap-3 xl:w-auto">{action}</div> : null}
     </header>
   )
 }
@@ -78,7 +78,7 @@ function PageActionGroup({ children, className }: { children: ReactNode; classNa
 
 function PageFooterActions({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("flex justify-start gap-3", className)} dir="rtl">
+    <div className={cn("flex justify-end gap-3", className)} dir="rtl">
       {children}
     </div>
   )
@@ -97,11 +97,11 @@ function SurfaceHeader({
 }) {
   return (
     <div className={cn("flex flex-col gap-4 md:flex-row md:items-start md:justify-between", className)} dir="rtl">
-      <div className="space-y-1.5 text-start">
+      <div className="space-y-1.5 text-end">
         <h3 className="text-lg font-semibold tracking-[-0.015em] text-foreground">{title}</h3>
         {description ? <p className="text-sm leading-6 text-muted-foreground">{description}</p> : null}
       </div>
-      {action ? <div className="flex w-full flex-wrap items-center justify-start gap-3 md:w-auto" dir="rtl">{action}</div> : null}
+      {action ? <div className="flex w-full flex-wrap items-center justify-end gap-3 md:w-auto">{action}</div> : null}
     </div>
   )
 }

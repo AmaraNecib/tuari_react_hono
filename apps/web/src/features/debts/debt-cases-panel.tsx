@@ -178,7 +178,7 @@ export function DebtCasesPanel({
                   <button
                     key={account.id}
                     className={cn(
-                      "w-full rounded-[22px] border p-4 text-start transition-colors",
+                      "w-full rounded-[22px] border p-4 text-end transition-colors",
                       isSelected
                         ? "border-primary/35 bg-primary/8"
                         : "border-border/70 bg-background/60 hover:border-primary/20 hover:bg-muted/40",
