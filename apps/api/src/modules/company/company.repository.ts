@@ -58,6 +58,7 @@ import type {
   ExternalCounterpartyListFilters,
   ExternalCounterpartyRecord,
   MutationAuditContext,
+  InventoryItemDefinitionAuditRecord,
   UserProfileHistoryRecord,
   EmployeeWorkplaceAssignmentData,
   ManagerAssignmentCreateData,
@@ -155,6 +156,7 @@ export interface CompanyRepository {
   listSalaryPayments(filters?: EmployeeSalaryPaymentListFilters): EmployeeSalaryPaymentRecord[];
   createSalaryPayment(data: EmployeeSalaryPaymentCreateData, auditContext?: MutationAuditContext): EmployeeSalaryPaymentRecord;
   listUserProfileHistory(): UserProfileHistoryRecord[];
+  listInventoryItemDefinitionsForLog(): InventoryItemDefinitionAuditRecord[];
   getAuthUserById(id: string): AuthUserDisplayRecord | null;
 }
 
@@ -1523,6 +1525,26 @@ export class SqliteCompanyRepository implements CompanyRepository {
       .all() as SqliteRow[]
 
     return rows.map(mapUserProfileHistory)
+  }
+
+  listInventoryItemDefinitionsForLog(): InventoryItemDefinitionAuditRecord[] {
+    const rows = this.database
+      .prepare('SELECT * FROM inventory_item_definition ORDER BY created_at DESC')
+      .all() as SqliteRow[]
+
+    return rows.map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      itemType: String(row.item_type) as InventoryItemDefinitionAuditRecord["itemType"],
+      unit: row.unit ? String(row.unit) : null,
+      description: row.description ? String(row.description) : null,
+      isActive: Number(row.is_active) === 1,
+      actorUserId: row.actor_user_id ? String(row.actor_user_id) : null,
+      actorLabel: row.actor_label ? String(row.actor_label) : null,
+      transactionId: row.transaction_id ? String(row.transaction_id) : null,
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+    }))
   }
 
   createSalaryPayment(data: EmployeeSalaryPaymentCreateData, auditContext?: MutationAuditContext): EmployeeSalaryPaymentRecord {
