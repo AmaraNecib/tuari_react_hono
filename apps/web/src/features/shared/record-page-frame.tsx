@@ -47,6 +47,11 @@ export function RecordPageFrame({
         <PageHeader
           action={
             <PageActionGroup>
+            {editHref && editLabel ? (
+              <Link className={cn(buttonVariants({ variant: "default", size: "lg" }))} to={editHref}>
+                {editLabel}
+              </Link>
+            ) : null}
             {action ? action : null}
             <Link
               className={cn(
@@ -57,11 +62,6 @@ export function RecordPageFrame({
             >
               {backLabel}
             </Link>
-            {editHref && editLabel ? (
-              <Link className={cn(buttonVariants({ variant: "default", size: "lg" }))} to={editHref}>
-                {editLabel}
-              </Link>
-            ) : null}
             </PageActionGroup>
           }
           description={description}

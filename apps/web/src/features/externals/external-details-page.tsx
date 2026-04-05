@@ -2,7 +2,7 @@ import type { DebtAccount, DebtClosureLink, DebtEntry, ExternalCounterparty } fr
 
 import { RecordInfoCard, RecordInfoGrid, RecordPageFrame } from "@/features/shared/record-page-frame"
 
-import { DebtCasesPanel } from "./debt-cases-panel"
+import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 
 export function ExternalCounterpartyDetailsPage({
   counterparty,
@@ -17,7 +17,7 @@ export function ExternalCounterpartyDetailsPage({
 }) {
   return (
     <RecordPageFrame
-      backHref="/debts/counterparties"
+      backHref="/externals"
       backLabel="العودة إلى الأطراف الخارجية"
       title={counterparty.fullName}
       description="يعرض الملف إجمالي الرصيد مع جميع حالات الدين المنفصلة لهذا الطرف وإمكانية إغلاق كل حالة على حدة."

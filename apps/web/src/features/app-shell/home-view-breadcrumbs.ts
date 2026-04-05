@@ -26,8 +26,10 @@ export function buildHomeViewBreadcrumbItems({
     { label: copy.sections.dashboard.label, to: workspaceRoutes.dashboard() },
     ...(page === "employees" || page === "employees-create" || page === "employee-details" || page === "employee-edit"
       ? [{ label: copy.sections.employees.label, to: workspaceRoutes.employees() }]
-      : page === "debts" || page === "external-counterparties" || page === "external-counterparty-create" || page === "external-counterparty-details"
+      : page === "debts" || page === "debt-create"
         ? [{ label: copy.sections.debts.label, to: workspaceRoutes.debts() }]
+      : page === "externals" || page === "external-create" || page === "external-details"
+        ? [{ label: copy.sections.externals.label, to: workspaceRoutes.externals() }]
       : page === "projects" || page === "project-create" || page === "project-details" || page === "project-edit"
         ? [{ label: copy.sections.projects.label, to: workspaceRoutes.projects() }]
         : page === "salaries"
@@ -47,16 +49,16 @@ export function buildHomeViewBreadcrumbItems({
         ? [{ label: selectedEmployee.name }]
         : page === "employee-edit" && selectedEmployee
           ? [{ label: selectedEmployee.name, to: workspaceRoutes.employeeDetails(selectedEmployee.id) }, { label: copy.common.edit }]
-          : page === "external-counterparties"
-            ? [{ label: "الأطراف الخارجية" }]
-            : page === "external-counterparty-create"
+          : page === "externals"
+            ? [{ label: copy.sections.externals.label }]
+            : page === "external-create"
               ? [
-                  { label: "الأطراف الخارجية", to: workspaceRoutes.externalCounterparties() },
+                  { label: copy.sections.externals.label, to: workspaceRoutes.externals() },
                   { label: "إضافة طرف خارجي" },
                 ]
-              : page === "external-counterparty-details" && selectedCounterparty
+              : page === "external-details" && selectedCounterparty
                 ? [
-                    { label: "الأطراف الخارجية", to: workspaceRoutes.externalCounterparties() },
+                    { label: copy.sections.externals.label, to: workspaceRoutes.externals() },
                     { label: selectedCounterparty.fullName },
                   ]
           : page === "project-create"

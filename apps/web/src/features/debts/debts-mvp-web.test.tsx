@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
 import { DebtsHubPage } from "@/features/debts/debts-hub-page"
-import { ExternalCounterpartyCreatePage } from "@/features/debts/external-counterparty-create-page"
-import { ExternalCounterpartyDetailsPage } from "@/features/debts/external-counterparty-details-page"
+import { ExternalCounterpartyCreatePage } from "@/features/externals/external-create-page"
+import { ExternalCounterpartyDetailsPage } from "@/features/externals/external-details-page"
 import { EmployeeDetailsPage } from "@/features/employees/employee-details-page"
 
 const {
@@ -93,6 +93,7 @@ describe("debts MVP web UI", () => {
           },
         ]}
         totals={{ openCount: 2, owedByUsDzd: 700, owedToUsDzd: 1500 }}
+        onCreateDebt={vi.fn()}
         onCreateExternalCounterparty={vi.fn()}
         onOpenExternalCounterparty={vi.fn()}
         onOpenWorker={vi.fn()}

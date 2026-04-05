@@ -64,7 +64,7 @@ export function DebtCreatePage({
     if (partyType === "INTERNAL_WORKER") {
       navigation.goToEmployeeDebts(selectedPartyId)
     } else {
-      navigation.goToExternalCounterpartyDetails(selectedPartyId)
+      navigation.goToExternalDetails(selectedPartyId)
     }
   }
 
@@ -124,7 +124,7 @@ export function DebtCreatePage({
                   if (partyType === "INTERNAL_WORKER") {
                     // TODO: Navigate to create new employee
                   } else {
-                    navigation.goToExternalCounterpartyCreate()
+                    navigation.goToExternalCreate()
                   }
                 }}
               >
@@ -210,7 +210,7 @@ export function DebtCreatePage({
           </label>
 
           {/* Action Buttons */}
-          <PageFooterActions className="mt-6 justify-end">
+          <PageFooterActions className="mt-6">
             <Button
               variant="outline"
               onClick={() => navigation.goToDebts()}

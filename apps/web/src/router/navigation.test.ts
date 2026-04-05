@@ -35,12 +35,12 @@ describe("workspace navigation helpers", () => {
     expect(getWorkspaceLinkProps(workspaceRoutes.debts())).toEqual({
       to: "/debts",
     })
-    expect(getWorkspaceLinkProps(workspaceRoutes.externalCounterpartyCreate())).toEqual({
-      to: "/debts/counterparties/create",
+    expect(getWorkspaceLinkProps(workspaceRoutes.externalCreate())).toEqual({
+      to: "/externals/create",
     })
-    expect(getWorkspaceLinkProps(workspaceRoutes.externalCounterpartyDetails("external-1"))).toEqual({
-      params: { counterpartyId: "external-1" },
-      to: "/debts/counterparties/$counterpartyId",
+    expect(getWorkspaceLinkProps(workspaceRoutes.externalDetails("external-1"))).toEqual({
+      params: { externalId: "external-1" },
+      to: "/externals/$externalId",
     })
   })
 })

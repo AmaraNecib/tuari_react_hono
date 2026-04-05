@@ -124,6 +124,10 @@ export type HomeViewCopy = {
       label: string
       description: string
     }
+    externals: {
+      label: string
+      description: string
+    }
     projects: {
       label: string
       description: string
@@ -314,6 +318,10 @@ export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
       debts: {
         label: t("sections.debts.label"),
         description: t("sections.debts.description"),
+      },
+      externals: {
+        label: "الجهات الخارجية",
+        description: "إدارة الجهات الخارجية",
       },
       projects: {
         label: t("sections.projects.label"),

@@ -6,6 +6,7 @@ import type { SystemLogEntry } from "@tuari/contracts"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { formatDateTimeInAlgeria } from "@/lib/algeria-time"
+import { cn } from "@/lib/utils"
 
 import {
   AppShellEmptyStateRow,
@@ -54,6 +55,92 @@ function getEntityTypeLabel(t: (key: string) => string, entityType: SystemLogEnt
   }
 
   return map[entityType]
+}
+
+function parseDetailLines(detail: string | null | undefined) {
+  if (!detail) {
+    return []
+  }
+
+  const normalized = detail
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  if (normalized.length > 1) {
+    return normalized.map((line) => line.replace(/^•\s*/, ""))
+  }
+
+  return [detail.trim().replace(/^•\s*/, "")]
+}
+
+function parseDetailTokens(line: string) {
+  const structuredPrefixes = [
+    "تم ",
+    "تمت ",
+    "نوع الحركة",
+    "القيمة",
+    "الرصيد",
+    "الحالة",
+    "المبلغ المدفوع",
+  ]
+
+  if (!structuredPrefixes.some((prefix) => line.startsWith(prefix))) {
+    return [line]
+  }
+
+  return line
+    .split(/\s+[•—]\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+}
+
+function getDetailTokenClassName(token: string) {
+  if (token.startsWith("القيمة") || token.startsWith("الرصيد")) {
+    return "border-emerald-300 bg-emerald-100 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-200 font-mono font-semibold"
+  }
+
+  if (token.startsWith("نوع الحركة") || token.startsWith("الحالة")) {
+    return "border-sky-300 bg-sky-100 text-sky-950 dark:border-sky-800 dark:bg-sky-950/35 dark:text-sky-200 font-semibold"
+  }
+
+  if (token.startsWith("تم ") || token.startsWith("تمت ")) {
+    return "border-violet-300 bg-violet-100 text-violet-950 dark:border-violet-800 dark:bg-violet-950/35 dark:text-violet-200 font-semibold"
+  }
+
+  return "border-border bg-muted/80 text-foreground dark:bg-muted/45 dark:text-muted-foreground font-medium"
+}
+
+function SystemLogDetailsCell({ detail }: { detail: string | null | undefined }) {
+  const lines = parseDetailLines(detail)
+
+  if (lines.length === 0) {
+    return <span>—</span>
+  }
+
+  return (
+    <div className="space-y-2">
+      {lines.map((line, lineIndex) => {
+        const tokens = parseDetailTokens(line)
+
+        return (
+          <div key={`${line}-${lineIndex}`} className="flex flex-wrap gap-2">
+            {tokens.map((token, tokenIndex) => (
+              <span
+                key={`${token}-${tokenIndex}`}
+                className={cn(
+                  "inline-flex min-h-8 items-center rounded-xl border px-3 py-1.5 text-[12px] leading-5 shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] dark:shadow-none",
+                  getDetailTokenClassName(token),
+                )}
+              >
+                {token}
+              </span>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 export function SystemLogSection({
@@ -183,7 +270,7 @@ export function SystemLogSection({
                       <td className="px-4 py-4 text-start text-muted-foreground">{entry.entityLabel ?? t("systemLog.targetUnknown")}</td>
                       <td className="px-4 py-4 text-start font-medium text-foreground">{entry.summary}</td>
                       <td className="px-4 py-4 text-start text-xs leading-6 text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                        {entry.detail ?? "—"}
+                        <SystemLogDetailsCell detail={entry.detail} />
                       </td>
                     </AppShellTableRow>
                   ))

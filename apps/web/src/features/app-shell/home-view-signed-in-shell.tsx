@@ -66,6 +66,7 @@ export function HomeViewSignedInShell({
         dashboardLabel={copy.sections.dashboard.label}
         debtsLabel={copy.sections.debts.label}
         employeesLabel={copy.sections.employees.label}
+        externalsLabel={copy.sections.externals.label}
         expandLabel={copy.shell.expand}
         projectsLabel={copy.sections.projects.label}
         rolesLabel={copy.sections.roles.label}

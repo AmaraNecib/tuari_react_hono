@@ -883,6 +883,50 @@ describe("CompanyService", () => {
     expect(logs.some((entry) => entry.transactionId === audit.transactionId)).toBe(true)
   })
 
+  it("renders debt history details with readable Arabic labels", () => {
+    const { service, roleIds } = createHarness()
+    const audit = createAuditContext({ transactionId: crypto.randomUUID() })
+    const worker = service.createEmployee(
+      {
+        firstName: "أحمد",
+        lastName: "بوزيد",
+        phone: "0612345693",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      },
+      audit,
+    ).item
+
+    const account = service.createDebtAccount(
+      {
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.id,
+        openingBalanceDzd: 30000,
+      },
+      audit,
+    ).item
+
+    service.createDebtEntry(
+      {
+        debtAccountId: account.id,
+        entryType: "ADJUSTMENT",
+        signedAmountDzd: -5000,
+        note: "خصم معدات",
+      },
+      audit,
+    )
+
+    const logs = service.listSystemLog({ actorUserId: audit.actorUserId }).items
+    const debtLog = logs.find((entry) => entry.entityType === "DEBT_ENTRY")
+
+    expect(debtLog?.summary).toContain("تم تسجيل تعديل على دين الطرف أحمد بوزيد")
+    expect(debtLog?.detail).toContain("نوع الحركة تعديل")
+    expect(debtLog?.detail).toContain("القيمة -5000 دج")
+    expect(debtLog?.detail).toContain("الرصيد بعد العملية")
+    expect(debtLog?.detail).not.toContain("ADJUSTMENT")
+    expect(debtLog?.detail).not.toContain("OPENING")
+  })
+
   it("lists account profile updates in the system log", () => {
     const { database, service } = createHarness()
     const userId = "admin-user-1"

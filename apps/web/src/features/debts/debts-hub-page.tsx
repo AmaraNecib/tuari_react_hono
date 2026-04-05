@@ -15,12 +15,14 @@ function HubStatCard({ label, value, valueClassName }: { label: string; value: s
 }
 
 export function DebtsHubPage({
+  onCreateDebt,
   onCreateExternalCounterparty,
   onOpenExternalCounterparty,
   onOpenWorker,
   rows,
   totals,
 }: {
+  onCreateDebt: () => void
   onCreateExternalCounterparty: () => void
   onOpenExternalCounterparty: (counterpartyId: string) => void
   onOpenWorker: (employeeId: string) => void
@@ -38,15 +40,17 @@ export function DebtsHubPage({
 }) {
   return (
     <RecordPageFrame
+      action={
+        <div className="flex gap-2">
+          <Button onClick={onCreateDebt}>إنشاء دين جديد</Button>
+          <Button variant="outline" onClick={onCreateExternalCounterparty}>إضافة طرف خارجي</Button>
+        </div>
+      }
       backHref="/"
       backLabel="العودة إلى لوحة التحكم"
       title="مركز الديون"
       description="ملخص سريع لأرصدة العمال والأطراف الخارجية. الأخضر يعني أنهم مدينون لنا، والأحمر يعني أننا مدينون لهم."
     >
-      <div className="flex flex-wrap justify-start gap-3">
-        <Button onClick={onCreateExternalCounterparty}>إضافة طرف خارجي</Button>
-      </div>
-
       <div className="grid gap-4 md:grid-cols-3">
         <HubStatCard label="عدد الحسابات المفتوحة" value={String(totals.openCount)} />
         <HubStatCard label="لنا عندهم" value={`دج ${formatDebtMoney(totals.owedToUsDzd)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />

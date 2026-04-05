@@ -1,8 +1,7 @@
 import { Button } from "@/components/ui/button"
-import { RecordPageFrame } from "@/features/shared/record-page-frame"
-import { Surface } from "@/features/shared/page-primitives"
+import { PageHeader, Surface } from "@/features/shared/page-primitives"
 
-import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
+import { formatDebtMoney, getDebtBalanceMeta } from "@/features/debts/debt-utils"
 
 export function ExternalCounterpartiesPage({
   counterparties,
@@ -22,15 +21,12 @@ export function ExternalCounterpartiesPage({
   onOpen: (counterpartyId: string) => void
 }) {
   return (
-    <RecordPageFrame
-      backHref="/debts"
-      backLabel="العودة إلى مركز الديون"
-      title="الأطراف الخارجية"
-      description="قائمة مستقلة للأطراف الخارجية مع إجمالي الرصيد وعدد حالات الدين المنفصلة لكل شخص."
-    >
-      <div className="flex flex-wrap justify-start gap-3">
-        <Button onClick={onCreate}>إضافة طرف خارجي</Button>
-      </div>
+    <div className="space-y-6 p-6 xl:p-7">
+      <PageHeader
+        title="الجهات الخارجية"
+        description="قائمة مستقلة للجهات الخارجية مع إجمالي الرصيد وعدد حالات الدين المنفصلة لكل جهة."
+        action={<Button onClick={onCreate}>إضافة جهة خارجية</Button>}
+      />
 
       <Surface className="overflow-hidden" variant="table">
         <div className="overflow-x-auto">
@@ -82,6 +78,6 @@ export function ExternalCounterpartiesPage({
           </table>
         </div>
       </Surface>
-    </RecordPageFrame>
+    </div>
   )
 }

@@ -945,7 +945,7 @@ describe("HomeView workspace shell", () => {
     })
   })
 
-  it("shows the roles destination in the workspace sidebar", () => {
+  it("shows the externals destination in the workspace sidebar", () => {
     sessionData = {
       user: {
         id: "demo-session-user",
@@ -957,7 +957,7 @@ describe("HomeView workspace shell", () => {
     renderHomeView("dashboard")
     fireEvent.click(screen.getByRole("button", { name: "توسيع الشريط الجانبي" }))
 
-    expect(screen.getByText("الأدوار")).toBeTruthy()
+    expect(screen.getByText("الجهات الخارجية")).toBeTruthy()
     expect(screen.getByText("الرواتب")).toBeTruthy()
   })
 

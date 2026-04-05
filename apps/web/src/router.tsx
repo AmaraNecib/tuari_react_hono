@@ -16,6 +16,19 @@ function RootLayout() {
   )
 }
 
+function NotFoundPage() {
+  return (
+    <div className="flex h-screen flex-col items-center justify-center p-6 text-center" dir="rtl">
+      <h1 className="text-6xl font-bold text-primary">404</h1>
+      <h2 className="mt-4 text-2xl font-semibold text-foreground">الصفحة غير موجودة</h2>
+      <p className="mt-2 text-muted-foreground">عذرًا، الصفحة التي تبحث عنها غير موجودة أو تم نقلها.</p>
+      <a href="/" className="mt-8 rounded-full bg-primary px-6 py-2.5 font-medium text-primary-foreground hover:bg-primary/90">
+        العودة إلى الرئيسية
+      </a>
+    </div>
+  )
+}
+
 function createWorkspaceRoute(path: string, page: HomeViewPage) {
   return createRoute({
     getParentRoute: () => rootRoute,
@@ -32,10 +45,11 @@ const dashboardRoute = createWorkspaceRoute("/", "dashboard")
 const employeesRoute = createWorkspaceRoute("/employees", "employees")
 const employeesCreateRoute = createWorkspaceRoute("/employees/create", "employees-create")
 const debtsRoute = createWorkspaceRoute("/debts", "debts")
-const externalCounterpartiesRoute = createWorkspaceRoute("/debts/counterparties", "external-counterparties")
-const externalCounterpartyCreateRoute = createWorkspaceRoute(
-  "/debts/counterparties/create",
-  "external-counterparty-create",
+const debtCreateRoute = createWorkspaceRoute("/debts/create", "debt-create")
+const externalsRoute = createWorkspaceRoute("/externals", "externals")
+const externalCreateRoute = createWorkspaceRoute(
+  "/externals/create",
+  "external-create",
 )
 const employeeDetailsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -50,10 +64,10 @@ const employeeEditRoute = createRoute({
   path: "/employees/$employeeId/edit",
   component: EmployeeEditRouteComponent,
 })
-const externalCounterpartyDetailsRoute = createRoute({
+const externalDetailsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/debts/counterparties/$counterpartyId",
-  component: ExternalCounterpartyDetailsRouteComponent,
+  path: "/externals/$externalId",
+  component: ExternalDetailsRouteComponent,
 })
 const projectsRoute = createWorkspaceRoute("/projects", "projects")
 const projectsCreateRoute = createWorkspaceRoute("/projects/create", "project-create")
@@ -87,7 +101,11 @@ const warehouseEditRoute = createRoute({
   path: "/warehouses/$warehouseId/edit",
   component: WarehouseEditRouteComponent,
 })
-const rolesRoute = createWorkspaceRoute("/roles", "roles")
+const rolesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/roles",
+  component: NotFoundPage,
+})
 const settingsRoute = createWorkspaceRoute("/settings", "settings")
 
 function EmployeeDetailsRouteComponent() {
@@ -101,9 +119,9 @@ function EmployeeEditRouteComponent() {
   return <HomeView employeeId={employeeId} page="employee-edit" />
 }
 
-function ExternalCounterpartyDetailsRouteComponent() {
-  const { counterpartyId } = externalCounterpartyDetailsRoute.useParams()
-  return <HomeView counterpartyId={counterpartyId} page="external-counterparty-details" />
+function ExternalDetailsRouteComponent() {
+  const { externalId } = externalDetailsRoute.useParams()
+  return <HomeView counterpartyId={externalId} page="external-details" />
 }
 
 function ProjectDetailsRouteComponent() {
@@ -133,11 +151,12 @@ const routeTree = rootRoute.addChildren([
   employeesRoute,
   employeesCreateRoute,
   debtsRoute,
-  externalCounterpartiesRoute,
-  externalCounterpartyCreateRoute,
+  debtCreateRoute,
+  externalsRoute,
+  externalCreateRoute,
   employeeDetailsRoute,
   employeeEditRoute,
-  externalCounterpartyDetailsRoute,
+  externalDetailsRoute,
   projectsRoute,
   projectsCreateRoute,
   salariesRoute,
@@ -155,6 +174,7 @@ const routeTree = rootRoute.addChildren([
 export const router = createRouter({
   routeTree,
   defaultPreload: "intent",
+  defaultNotFoundComponent: NotFoundPage,
 })
 
 declare module "@tanstack/react-router" {

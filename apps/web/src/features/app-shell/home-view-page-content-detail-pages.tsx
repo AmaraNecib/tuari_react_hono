@@ -1,8 +1,9 @@
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { DebtsHubPage } from "@/features/debts/debts-hub-page"
-import { ExternalCounterpartyCreatePage } from "@/features/debts/external-counterparty-create-page"
-import { ExternalCounterpartyDetailsPage } from "@/features/debts/external-counterparty-details-page"
-import { ExternalCounterpartiesPage } from "@/features/debts/external-counterparties-page"
+import { DebtCreatePage } from "@/features/debts/debt-create-page"
+import { ExternalCounterpartyCreatePage } from "@/features/externals/external-create-page"
+import { ExternalCounterpartyDetailsPage } from "@/features/externals/external-details-page"
+import { ExternalCounterpartiesPage } from "@/features/externals/externals-page"
 import { EmployeeDetailsPage } from "@/features/employees/employee-details-page"
 import { EmployeeEditPage } from "@/features/employees/employee-edit-page"
 import { ProjectDetailsPage } from "@/features/projects/project-details-page"
@@ -55,13 +56,23 @@ export function HomeViewPageDetailContent({
         <DebtsHubPage
           rows={derived.debtHubRows}
           totals={derived.debtTotals}
-          onCreateExternalCounterparty={() => void navigation.goToExternalCounterparties()}
-          onOpenExternalCounterparty={(counterpartyId) => void navigation.goToExternalCounterpartyDetails(counterpartyId)}
+          onCreateDebt={() => void navigation.goToDebtCreate()}
+          onCreateExternalCounterparty={() => void navigation.goToExternals()}
+          onOpenExternalCounterparty={(counterpartyId) => void navigation.goToExternalDetails(counterpartyId)}
           onOpenWorker={(employeeId) => void navigation.goToEmployeeDebts(employeeId)}
         />
       )
 
-    case "external-counterparties":
+    case "debt-create":
+      return (
+        <DebtCreatePage
+          employees={derived.employeeRows}
+          externalCounterparties={derived.externalCounterparties}
+          navigation={navigation}
+        />
+      )
+
+    case "externals":
       return (
         <ExternalCounterpartiesPage
           counterparties={derived.externalCounterparties.map((counterparty) => ({
@@ -73,8 +84,8 @@ export function HomeViewPageDetailContent({
             totalBalanceDzd: counterparty.totalBalanceDzd,
             totalCaseCount: counterparty.accounts.length,
           }))}
-          onCreate={() => void navigation.goToExternalCounterpartyCreate()}
-          onOpen={(counterpartyId) => void navigation.goToExternalCounterpartyDetails(counterpartyId)}
+          onCreate={() => void navigation.goToExternalCreate()}
+          onOpen={(counterpartyId) => void navigation.goToExternalDetails(counterpartyId)}
         />
       )
 
@@ -102,10 +113,10 @@ export function HomeViewPageDetailContent({
         />
       )
 
-    case "external-counterparty-create":
-      return <ExternalCounterpartyCreatePage onCreated={(counterpartyId) => void navigation.goToExternalCounterpartyDetails(counterpartyId)} />
+    case "external-create":
+      return <ExternalCounterpartyCreatePage onCreated={(counterpartyId) => void navigation.goToExternalDetails(counterpartyId)} />
 
-    case "external-counterparty-details":
+    case "external-details":
       return selectedCounterparty ? (
         <ExternalCounterpartyDetailsPage
           counterparty={selectedCounterparty}
@@ -118,7 +129,7 @@ export function HomeViewPageDetailContent({
           backLabel={detailCopy.shared.back}
           description={detailCopy.shared.missingRecordDescription}
           navigation={navigation}
-          target={workspaceRoutes.externalCounterparties()}
+          target={workspaceRoutes.externals()}
           title="ملف الطرف الخارجي"
         />
       )

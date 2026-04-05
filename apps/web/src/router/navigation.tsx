@@ -11,9 +11,10 @@ export type WorkspaceRouteTarget =
   | { to: "/employees/$employeeId"; params: { employeeId: string }; search?: WorkspaceTabSearch }
   | { to: "/employees/$employeeId/edit"; params: { employeeId: string } }
   | { to: "/debts" }
-  | { to: "/debts/counterparties" }
-  | { to: "/debts/counterparties/create" }
-  | { to: "/debts/counterparties/$counterpartyId"; params: { counterpartyId: string } }
+  | { to: "/debts/create" }
+  | { to: "/externals" }
+  | { to: "/externals/create" }
+  | { to: "/externals/$externalId"; params: { externalId: string } }
   | { to: "/projects" }
   | { to: "/projects/create" }
   | { to: "/projects/$projectId"; params: { projectId: string }; search?: WorkspaceTabSearch }
@@ -55,11 +56,12 @@ export const workspaceRoutes = {
     search: { tab },
   }),
   debts: (): WorkspaceRouteTarget => ({ to: "/debts" }),
-  externalCounterparties: (): WorkspaceRouteTarget => ({ to: "/debts/counterparties" }),
-  externalCounterpartyCreate: (): WorkspaceRouteTarget => ({ to: "/debts/counterparties/create" }),
-  externalCounterpartyDetails: (counterpartyId: string): WorkspaceRouteTarget => ({
-    to: "/debts/counterparties/$counterpartyId",
-    params: { counterpartyId },
+  debtCreate: (): WorkspaceRouteTarget => ({ to: "/debts/create" }),
+  externals: (): WorkspaceRouteTarget => ({ to: "/externals" }),
+  externalCreate: (): WorkspaceRouteTarget => ({ to: "/externals/create" }),
+  externalDetails: (externalId: string): WorkspaceRouteTarget => ({
+    to: "/externals/$externalId",
+    params: { externalId },
   }),
   projects: (): WorkspaceRouteTarget => ({ to: "/projects" }),
   projectCreate: (): WorkspaceRouteTarget => ({ to: "/projects/create" }),

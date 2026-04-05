@@ -2,14 +2,13 @@ import {
   BriefcaseBusiness,
   Gauge,
   HandCoins,
-  LayoutGrid,
   LogOut,
   Logs,
   MoonStar,
   PanelRightClose,
   PanelRightOpen,
   ReceiptText,
-  ShieldCheck,
+  Settings,
   SunMedium,
   UserSquare2,
   Users,
@@ -29,14 +28,15 @@ type WorkspaceSidebarPage =
   | "employee-details"
   | "employee-edit"
   | "debts"
-  | "external-counterparties"
+  | "debt-create"
+  | "externals"
   | "projects"
   | "salaries"
   | "project-details"
   | "project-create"
   | "project-edit"
-  | "external-counterparty-create"
-  | "external-counterparty-details"
+  | "external-create"
+  | "external-details"
   | "transactions"
   | "warehouses"
   | "warehouse-details"
@@ -52,6 +52,7 @@ type WorkspaceSidebarProps = {
   dashboardLabel: string
   debtsLabel: string
   employeesLabel: string
+  externalsLabel: string
   expandLabel: string
   projectsLabel: string
   salariesLabel: string
@@ -75,12 +76,12 @@ type WorkspaceSidebarProps = {
 const items = [
   { key: "dashboard", target: workspaceRoutes.dashboard(), icon: Gauge },
   { key: "employees", target: workspaceRoutes.employees(), icon: Users },
+  { key: "externals", target: workspaceRoutes.externals(), icon: UserSquare2 },
   { key: "debts", target: workspaceRoutes.debts(), icon: HandCoins },
   { key: "projects", target: workspaceRoutes.projects(), icon: BriefcaseBusiness },
   { key: "salaries", target: workspaceRoutes.salaries(), icon: ReceiptText },
   { key: "warehouses", target: workspaceRoutes.warehouses(), icon: Warehouse },
   { key: "transactions", target: workspaceRoutes.transactions(), icon: Logs },
-  { key: "roles", target: workspaceRoutes.roles(), icon: ShieldCheck },
 ] as const
 
 const utilityButtonClassName = "h-11 w-full rounded-2xl transition-colors"
@@ -94,12 +95,11 @@ export function WorkspaceSidebar({
   dashboardLabel,
   debtsLabel,
   employeesLabel,
+  externalsLabel,
   expandLabel,
   projectsLabel,
   salariesLabel,
-  rolesLabel,
   transactionsLabel,
-  session,
   settingsLabel,
   signOutLabel,
   theme,
@@ -115,18 +115,20 @@ export function WorkspaceSidebar({
     dashboard: dashboardLabel,
     debts: debtsLabel,
     employees: employeesLabel,
+    externals: externalsLabel,
     projects: projectsLabel,
     salaries: salariesLabel,
     warehouses: warehousesLabel,
     transactions: transactionsLabel,
-    roles: rolesLabel,
   } as const
 
   const activeKey =
     currentPage === "employees-create" || currentPage === "employee-details" || currentPage === "employee-edit"
       ? "employees"
-      : currentPage === "external-counterparties" || currentPage === "external-counterparty-create" || currentPage === "external-counterparty-details"
+      : currentPage === "debt-create"
         ? "debts"
+        : currentPage === "externals" || currentPage === "external-create" || currentPage === "external-details"
+          ? "externals"
       : currentPage === "project-details" || currentPage === "project-create" || currentPage === "project-edit"
         ? "projects"
         : currentPage === "warehouse-details" || currentPage === "warehouse-create" || currentPage === "warehouse-edit"
@@ -158,49 +160,25 @@ export function WorkspaceSidebar({
       className="shell-sidebar fixed inset-y-0 right-0 z-30 flex flex-col rounded-none rounded-l-[32px] p-3"
       style={{ width }}
     >
-      <div className={cn("surface-card mb-3 rounded-[26px] px-3 py-3", collapsed ? "" : "pb-4")}>
-        <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between gap-2")}>
-          {!collapsed ? (
-            <div className="min-w-0">
-              <p className="text-[0.7rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Tuari</p>
-              <p className="mt-1 text-sm font-medium text-sidebar-foreground">{t("shell.workspace")}</p>
-            </div>
-          ) : null}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  aria-label={collapsed ? expandLabel : collapseLabel}
-                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-xl", collapsed ? "w-10 px-0" : "px-3")}
-                  type="button"
-                  onClick={() => onSetCollapsed(!collapsed)}
-                >
-                  {collapsed ? <PanelRightOpen className="size-4" /> : <PanelRightClose className="size-4" />}
-                  {!collapsed ? <span>{collapseLabel}</span> : null}
-                </button>
-              }
-            />
-            <TooltipContent side="left">{collapsed ? expandLabel : collapseLabel}</TooltipContent>
-          </Tooltip>
-        </div>
-
-        {!collapsed ? <div className="mt-4 h-px bg-gradient-to-l from-transparent via-border/80 to-transparent" /> : null}
-      </div>
-
-      <div className="surface-panel mb-4 rounded-[26px] p-3">
-        <div className={cn("flex items-center gap-3", collapsed ? "justify-center" : "")}>
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_10px_24px_rgba(59,91,162,0.18)]">
-            <UserSquare2 className="size-5" />
-          </div>
-          {!collapsed ? (
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-sidebar-foreground">{session.name ?? dashboardLabel}</p>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                <bdi dir="ltr">{session.phone}</bdi>
-              </p>
-            </div>
-          ) : null}
-        </div>
+      <div className={cn("mb-4 flex items-center", collapsed ? "justify-center" : "justify-start px-1 pt-1")}>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                aria-label={collapsed ? expandLabel : collapseLabel}
+                className={cn(
+                  buttonVariants({ variant: "ghost", size: "icon" }),
+                  "size-9 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                )}
+                type="button"
+                onClick={() => onSetCollapsed(!collapsed)}
+              >
+                {collapsed ? <PanelRightOpen className="size-5" /> : <PanelRightClose className="size-5" />}
+              </button>
+            }
+          />
+          <TooltipContent side="left">{collapsed ? expandLabel : collapseLabel}</TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="mb-2 px-1">
@@ -250,7 +228,7 @@ export function WorkspaceSidebar({
             className={getUtilityClassName(currentPage === "settings")}
             target={workspaceRoutes.settings()}
           >
-            <LayoutGrid className="size-4" />
+            <Settings className="size-4" />
             {!collapsed ? <span>{settingsLabel}</span> : null}
           </WorkspaceLink>
           <button

@@ -23,6 +23,87 @@ function getArabicStatusLabel(status: string) {
   }
 }
 
+function getDebtEntryTypeLabel(entryType: string) {
+  switch (entryType) {
+    case "OPENING":
+      return "رصيد افتتاحي"
+    case "PAYMENT":
+      return "دفعة"
+    case "ADJUSTMENT":
+      return "تعديل"
+    case "SETTLEMENT":
+      return "تسوية"
+    case "CLOSURE":
+      return "إغلاق مقابل حالة أخرى"
+    default:
+      return entryType
+  }
+}
+
+function formatSignedDzd(amount: number) {
+  const absoluteAmount = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+    useGrouping: false,
+  }).format(Math.abs(amount))
+
+  if (amount === 0) {
+    return `0 دج`
+  }
+
+  return `${amount > 0 ? "+" : "-"}${absoluteAmount} دج`
+}
+
+function buildDebtEntrySummary(entryType: string, partyLabel: string) {
+  switch (entryType) {
+    case "OPENING":
+      return `تم تسجيل رصيد افتتاحي للطرف ${partyLabel}`
+    case "PAYMENT":
+      return `تم تسجيل دفعة للطرف ${partyLabel}`
+    case "ADJUSTMENT":
+      return `تم تسجيل تعديل على دين الطرف ${partyLabel}`
+    case "CLOSURE":
+      return `تم تسجيل إغلاق مقابل حالة أخرى للطرف ${partyLabel}`
+    case "SETTLEMENT":
+      return `تمت تسوية حساب الدين للطرف ${partyLabel}`
+    default:
+      return `تم تسجيل حركة دين للطرف ${partyLabel}`
+  }
+}
+
+function buildDebtEntryDetail(entry: {
+  entryType: string
+  signedAmountDzd: number
+  balanceAfterDzd: number
+  note?: string | null
+}) {
+  return [
+    `نوع الحركة ${getDebtEntryTypeLabel(entry.entryType)}`,
+    `القيمة ${formatSignedDzd(entry.signedAmountDzd)}`,
+    `الرصيد بعد العملية ${formatSignedDzd(entry.balanceAfterDzd)}`,
+    entry.note?.trim() || null,
+  ]
+    .filter((value): value is string => Boolean(value && value.trim().length > 0))
+    .join(" • ")
+}
+
+function buildGroupedDetailLine(primaryEvent: SystemLogEntryRecord, event: SystemLogEntryRecord) {
+  const detail = event.detail?.trim() || null
+
+  if (event.summary !== primaryEvent.summary && detail) {
+    return `• ${event.summary} — ${detail}`
+  }
+
+  if (event.summary !== primaryEvent.summary) {
+    return `• ${event.summary}`
+  }
+
+  if (detail) {
+    return `• ${detail}`
+  }
+
+  return null
+}
+
 export function buildCompanySystemLog(repository: CompanyRepository, filters?: SystemLogListFilters) {
   const rolesById = new Map(repository.listRoles().map((role) => [role.id, role]))
   const employeesById = new Map(repository.listEmployees().map((employee) => [employee.id, employee]))
@@ -227,10 +308,7 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
 
     for (const entry of repository.listDebtEntries({ debtAccountId: account.id })) {
       const actionType = entry.entryType === "SETTLEMENT" ? "DEBT_SETTLED" : "DEBT_ENTRY_RECORDED"
-      const summary =
-        entry.entryType === "SETTLEMENT"
-          ? `تمت تسوية حساب الدين للطرف ${partyLabel}`
-          : `تم تسجيل حركة دين للطرف ${partyLabel}`
+      const summary = buildDebtEntrySummary(entry.entryType, partyLabel)
 
       logEvents.push({
         id: `debt-entry-${entry.id}`,
@@ -243,7 +321,7 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
         entityId: entry.id,
         entityLabel: partyLabel,
         summary,
-        detail: `${entry.entryType} • ${entry.signedAmountDzd} دج • الرصيد ${entry.balanceAfterDzd} دج${entry.note ? ` • ${entry.note}` : ""}`,
+        detail: buildDebtEntryDetail(entry),
         createdAt: entry.updatedAt,
       })
     }
@@ -351,17 +429,23 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
       })
       const primaryEvent = (
         matchingEvents.find((event) => event.actionType === "SALARY_PAYMENT_RECORDED") ??
+        matchingEvents.find((event) => event.actionType === "DEBT_SETTLED") ??
+        matchingEvents.find((event) => event.actionType === "DEBT_ENTRY_RECORDED") ??
+        matchingEvents.find((event) => event.actionType === "DEBT_ACCOUNT_CREATED") ??
         matchingEvents.find((event) => event.actionType === "PROJECT_MANAGER_CHANGED") ??
         matchingEvents.find((event) => event.actionType === "WAREHOUSE_MANAGER_CHANGED") ??
         matchingEvents[0] ??
         sortedEvents.find((event) => event.actionType === "SALARY_PAYMENT_RECORDED") ??
+        sortedEvents.find((event) => event.actionType === "DEBT_SETTLED") ??
+        sortedEvents.find((event) => event.actionType === "DEBT_ENTRY_RECORDED") ??
+        sortedEvents.find((event) => event.actionType === "DEBT_ACCOUNT_CREATED") ??
         sortedEvents.find((event) => event.actionType === "PROJECT_MANAGER_CHANGED") ??
         sortedEvents.find((event) => event.actionType === "WAREHOUSE_MANAGER_CHANGED") ??
         sortedEvents[0]
       )!
 
       const detailLines = sortedEvents
-        .flatMap((event) => [event.detail, event.summary !== primaryEvent.summary ? event.summary : null])
+        .map((event) => buildGroupedDetailLine(primaryEvent, event))
         .filter((value): value is string => Boolean(value && value.trim().length > 0))
         .filter((value, index, values) => values.indexOf(value) === index)
 
@@ -376,7 +460,7 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
         entityId: primaryEvent.entityId,
         entityLabel: primaryEvent.entityLabel,
         summary: primaryEvent.summary,
-        detail: detailLines.length > 0 ? detailLines.join(" • ") : primaryEvent.detail,
+        detail: detailLines.length > 0 ? detailLines.join("\n") : primaryEvent.detail,
         createdAt: sortedEvents[0]!.createdAt,
       } satisfies SystemLogEntryRecord
     })

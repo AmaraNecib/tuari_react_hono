@@ -14,10 +14,11 @@ export function useHomeViewNavigation() {
     goToEmployeeDebts: (employeeId: string) => goToRoute(workspaceRoutes.employeeTab(employeeId, "debts")),
     setEmployeeTab: (employeeId: string, tab: string) => goToRoute(workspaceRoutes.employeeTab(employeeId, tab)),
     goToDebts: () => goToRoute(workspaceRoutes.debts()),
-    goToExternalCounterparties: () => goToRoute(workspaceRoutes.externalCounterparties()),
-    goToExternalCounterpartyCreate: () => goToRoute(workspaceRoutes.externalCounterpartyCreate()),
-    goToExternalCounterpartyDetails: (counterpartyId: string) =>
-      goToRoute(workspaceRoutes.externalCounterpartyDetails(counterpartyId)),
+    goToDebtCreate: () => goToRoute(workspaceRoutes.debtCreate()),
+    goToExternals: () => goToRoute(workspaceRoutes.externals()),
+    goToExternalCreate: () => goToRoute(workspaceRoutes.externalCreate()),
+    goToExternalDetails: (externalId: string) =>
+      goToRoute(workspaceRoutes.externalDetails(externalId)),
     goToProjectDetails: (projectId: string) => goToRoute(workspaceRoutes.projectDetails(projectId)),
     goToProjectEdit: (projectId: string) => goToRoute(workspaceRoutes.projectEdit(projectId)),
     goToProjectCreate: () => goToRoute(workspaceRoutes.projectCreate()),
