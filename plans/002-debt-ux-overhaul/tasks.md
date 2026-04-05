@@ -525,7 +525,7 @@ debt.filter.owedToUs              → "لنا عنده" / "Owed to us"
 debt.filter.owedByUs              → "علينا له" / "Owed by us"
 debt.filter.settled               → "مغلقة" / "Settled"
 sections.externalPersons.label    → "الأطراف الخارجية" / "External Persons"
-externalPerson.createTitle        → "إضافة طرف خارجي" / "Add External Person"
+externalPerson.createTitle        → "إضافة جهة خارجية" / "Add External Person"
 externalPerson.backToDebtCreate   → "العودة لإنشاء الدين" / "Back to debt creation"
 ```
 

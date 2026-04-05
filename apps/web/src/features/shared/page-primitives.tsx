@@ -52,12 +52,12 @@ function PageHeader({
   const TitleTag = titleAs
 
   return (
-    <header className={cn("page-header flex flex-col gap-4 md:flex-row md:items-start md:justify-between", className)}>
-      <div className="space-y-2 text-right md:flex-1">
+    <header className={cn("page-header flex w-full items-start justify-between gap-4 flex-row", className)}>
+      <div className="space-y-2 text-start max-w-[70%]">
         <TitleTag className={cn("text-balance font-semibold tracking-[-0.02em] text-foreground", titleAs === "h1" ? "text-3xl md:text-[2.05rem]" : "text-2xl md:text-[1.7rem]")}>{title}</TitleTag>
         {description ? <p className="max-w-3xl text-sm leading-7 text-muted-foreground">{description}</p> : null}
       </div>
-      {action ? <div className="flex w-full flex-wrap items-center justify-start gap-3 md:w-auto md:justify-end">{action}</div> : null}
+      {action ? <div className="flex items-center gap-3 shrink-0">{action}</div> : null}
     </header>
   )
 }
@@ -96,12 +96,12 @@ function SurfaceHeader({
   className?: string
 }) {
   return (
-    <div className={cn("flex flex-col gap-4 md:flex-row md:items-start md:justify-between", className)}>
-      <div className="space-y-1.5 text-right md:flex-1">
+    <div className={cn("flex w-full items-start justify-between gap-4 flex-row", className)}>
+      <div className="space-y-1.5 text-start max-w-[70%]">
         <h3 className="text-lg font-semibold tracking-[-0.015em] text-foreground">{title}</h3>
         {description ? <p className="text-sm leading-6 text-muted-foreground">{description}</p> : null}
       </div>
-      {action ? <div className="flex w-full flex-wrap items-center justify-start gap-3 md:w-auto md:justify-end">{action}</div> : null}
+      {action ? <div className="flex items-center gap-3 shrink-0">{action}</div> : null}
     </div>
   )
 }

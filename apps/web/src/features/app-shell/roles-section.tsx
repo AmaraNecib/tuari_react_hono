@@ -1,15 +1,13 @@
 import type { Role } from "@tuari/contracts"
+import { RecordPageFrame } from "@/features/shared/record-page-frame"
 
 import {
   AppShellEmptyStateRow,
-  AppShellSectionBody,
-  AppShellSectionSurface,
   AppShellTableFrame,
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
 } from "./app-shell-table-primitives"
-import { SectionHeader } from "./section-header"
 
 type RolesSectionProps = {
   columns: {
@@ -34,10 +32,8 @@ export function RolesSection({
   yesLabel,
 }: RolesSectionProps) {
   return (
-    <AppShellSectionSurface>
-      <AppShellSectionBody>
-        <SectionHeader title={title} />
-        <AppShellTableFrame>
+    <RecordPageFrame title={title}>
+      <AppShellTableFrame>
             <table className="min-w-full text-sm">
               <AppShellTableHead>
                 <tr>
@@ -63,7 +59,6 @@ export function RolesSection({
               </tbody>
             </table>
         </AppShellTableFrame>
-      </AppShellSectionBody>
-    </AppShellSectionSurface>
+    </RecordPageFrame>
   )
 }

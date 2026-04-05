@@ -34,8 +34,8 @@ export function RecordPageFrame({
 }: {
   title: string
   description?: string
-  backHref: string
-  backLabel: string
+  backHref?: string
+  backLabel?: string
   editHref?: string
   editLabel?: string
   action?: ReactNode
@@ -53,15 +53,17 @@ export function RecordPageFrame({
               </Link>
             ) : null}
             {action ? action : null}
-            <Link
-              className={cn(
-                buttonVariants({ variant: "outline", size: "lg" }),
-                "border-primary/20 bg-background/75 text-primary hover:border-primary/35 hover:text-primary",
-              )}
-              to={backHref}
-            >
-              {backLabel}
-            </Link>
+            {backHref && backLabel ? (
+              <Link
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "lg" }),
+                  "border-primary/20 bg-background/75 text-primary hover:border-primary/35 hover:text-primary",
+                )}
+                to={backHref}
+              >
+                {backLabel}
+              </Link>
+            ) : null}
             </PageActionGroup>
           }
           description={description}

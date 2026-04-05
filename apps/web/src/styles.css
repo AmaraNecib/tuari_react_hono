@@ -264,9 +264,6 @@
 
   .page-header {
     position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
     padding-bottom: 1.25rem;
     border-bottom: 1px solid color-mix(in oklab, var(--surface-border) 82%, transparent);
   }

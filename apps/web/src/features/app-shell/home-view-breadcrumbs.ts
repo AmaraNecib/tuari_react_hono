@@ -54,7 +54,7 @@ export function buildHomeViewBreadcrumbItems({
             : page === "external-create"
               ? [
                   { label: copy.sections.externals.label, to: workspaceRoutes.externals() },
-                  { label: "إضافة طرف خارجي" },
+                  { label: "إضافة جهة خارجية" },
                 ]
               : page === "external-details" && selectedCounterparty
                 ? [

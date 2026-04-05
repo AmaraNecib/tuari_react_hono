@@ -1,20 +1,18 @@
 import { Button } from "@/components/ui/button"
 import { getArabicStatusLabel, getStatusTone } from "@/features/shared/status-meta"
+import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { cn } from "@/lib/utils"
 
 import {
   AppShellActionButtonWithReason,
   AppShellActionGroup,
   AppShellEmptyStateRow,
-  AppShellSectionBody,
-  AppShellSectionSurface,
   AppShellTableFrame,
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
   usePaginatedRows,
 } from "./app-shell-table-primitives"
-import { SectionHeader } from "./section-header"
 import { TablePaginationControls } from "./table-pagination-controls"
 
 export type ProjectRow = {
@@ -71,13 +69,11 @@ export function ProjectsSection({
   const { page, pageSize, pagedRows, setPage, setPageSize } = usePaginatedRows({ rows })
 
   return (
-    <AppShellSectionSurface>
-      <AppShellSectionBody>
-        <SectionHeader
-          action={<Button onClick={onAdd}>{addLabel}</Button>}
-          title={title}
-        />
-        <AppShellTableFrame>
+    <RecordPageFrame
+      title={title}
+      action={<Button size="lg" onClick={onAdd}>{addLabel}</Button>}
+    >
+      <AppShellTableFrame>
             <table className="min-w-full text-sm">
               <AppShellTableHead>
                 <tr>
@@ -153,7 +149,6 @@ export function ProjectsSection({
             setPageSize(nextPageSize)
           }}
         />
-      </AppShellSectionBody>
-    </AppShellSectionSurface>
+    </RecordPageFrame>
   )
 }

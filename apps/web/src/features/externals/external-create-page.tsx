@@ -15,7 +15,7 @@ export function ExternalCounterpartyCreatePage({ onCreated }: { onCreated: (coun
   return (
     <Surface className="p-6 xl:p-7" variant="panel">
       <SurfaceHeader
-        title="إضافة طرف خارجي"
+        title="إضافة جهة خارجية"
         description="أنشئ الطرف الخارجي أولًا ثم سجّل القيود من صفحته الخاصة. لا يوجد إنشاء inline في هذا الإصدار."
       />
 

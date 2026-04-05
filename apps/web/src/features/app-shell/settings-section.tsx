@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 
-import { SectionHeader } from "./section-header"
+import { RecordPageFrame } from "@/features/shared/record-page-frame"
 
 type SettingsSectionProps = {
   accountCurrentPasswordLabel: string
@@ -162,8 +162,7 @@ export function SettingsSection({
   }
 
   return (
-    <div className="space-y-6">
-      <SectionHeader title={title} />
+    <RecordPageFrame title={title}>
       <div className="grid gap-4 xl:grid-cols-2">
         <Surface as="article" className="p-5 xl:col-span-2">
           <form className="space-y-5" onSubmit={(event) => void handleSave(event)}>
@@ -239,6 +238,6 @@ export function SettingsSection({
           </div>
         </Surface>
       </div>
-    </div>
+    </RecordPageFrame>
   )
 }

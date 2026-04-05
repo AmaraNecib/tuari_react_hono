@@ -6,15 +6,13 @@ import {
   AppShellActionButtonWithReason,
   AppShellActionGroup,
   AppShellEmptyStateRow,
-  AppShellSectionBody,
-  AppShellSectionSurface,
   AppShellTableFrame,
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
   usePaginatedRows,
 } from "./app-shell-table-primitives"
-import { SectionHeader } from "./section-header"
+import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { TablePaginationControls } from "./table-pagination-controls"
 
 export type WarehouseRow = {
@@ -69,13 +67,11 @@ export function WarehousesSection({
   const { page, pageSize, pagedRows, setPage, setPageSize } = usePaginatedRows({ rows })
 
   return (
-    <AppShellSectionSurface>
-      <AppShellSectionBody>
-        <SectionHeader
-          action={<Button onClick={onAdd}>{addLabel}</Button>}
-          title={title}
-        />
-        <AppShellTableFrame>
+    <RecordPageFrame
+      title={title}
+      action={<Button size="lg" onClick={onAdd}>{addLabel}</Button>}
+    >
+      <AppShellTableFrame>
             <table className="min-w-full text-sm">
               <AppShellTableHead>
                 <tr>
@@ -149,7 +145,6 @@ export function WarehousesSection({
             setPageSize(nextPageSize)
           }}
         />
-      </AppShellSectionBody>
-    </AppShellSectionSurface>
+    </RecordPageFrame>
   )
 }

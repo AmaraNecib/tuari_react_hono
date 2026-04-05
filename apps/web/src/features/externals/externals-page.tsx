@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button"
-import { PageHeader, Surface } from "@/features/shared/page-primitives"
+import { Surface } from "@/features/shared/page-primitives"
+import { RecordPageFrame } from "@/features/shared/record-page-frame"
 
 import { formatDebtMoney, getDebtBalanceMeta } from "@/features/debts/debt-utils"
 
@@ -21,13 +22,11 @@ export function ExternalCounterpartiesPage({
   onOpen: (counterpartyId: string) => void
 }) {
   return (
-    <div className="space-y-6 p-6 xl:p-7">
-      <PageHeader
-        title="الجهات الخارجية"
-        description="قائمة مستقلة للجهات الخارجية مع إجمالي الرصيد وعدد حالات الدين المنفصلة لكل جهة."
-        action={<Button onClick={onCreate}>إضافة جهة خارجية</Button>}
-      />
-
+    <RecordPageFrame
+      title="الجهات الخارجية"
+      description="قائمة مستقلة للجهات الخارجية مع إجمالي الرصيد وعدد حالات الدين المنفصلة لكل جهة."
+      action={<Button size="lg" onClick={onCreate}>إضافة جهة خارجية</Button>}
+    >
       <Surface className="overflow-hidden" variant="table">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -78,6 +77,6 @@ export function ExternalCounterpartiesPage({
           </table>
         </div>
       </Surface>
-    </div>
+    </RecordPageFrame>
   )
 }

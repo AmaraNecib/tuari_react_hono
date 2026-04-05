@@ -12,10 +12,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { buttonVariants } from "@/components/ui/button"
-import {
-  AppShellSectionBody,
-  AppShellSectionSurface,
-} from "@/features/app-shell/app-shell-table-primitives"
 import { EmployeeBatchCreatePage } from "@/features/employees/employee-batch-create-page"
 import {
   EmployeeTable,
@@ -30,7 +26,7 @@ import {
   useLeaveEmployeeMutation,
 } from "./mock-dashboard"
 import { useHomeViewNavigation } from "./home-view-navigation"
-import { SectionHeader } from "./section-header"
+import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { type WorkspaceRouteTarget, WorkspaceLink } from "@/router/navigation"
 
 type EmployeesSectionProps = {
@@ -102,20 +98,18 @@ export function EmployeesSection({
 
   return (
     <>
-      <AppShellSectionSurface>
-        <AppShellSectionBody>
-          <SectionHeader
-            action={
-              <WorkspaceLink
-                className={cn(buttonVariants({ variant: "default" }), "h-10 rounded-2xl px-4")}
-                target={createTarget}
-              >
-                {addWorkerLabel}
-              </WorkspaceLink>
-            }
-            title={title}
-          />
-          <EmployeeTable
+      <RecordPageFrame
+        action={
+          <WorkspaceLink
+            className={cn(buttonVariants({ variant: "default", size: "lg" }))}
+            target={createTarget}
+          >
+            {addWorkerLabel}
+          </WorkspaceLink>
+        }
+        title={title}
+      >
+        <EmployeeTable
             copy={{
               name: columns.name,
               role: columns.role,
@@ -135,9 +129,8 @@ export function EmployeesSection({
             onEdit={(row) => void navigation.goToEmployeeEdit(row.id)}
             onLeave={(row) => setPendingAction({ type: "leave", employee: row })}
             onView={(row) => void navigation.goToEmployeeDetails(row.id)}
-          />
-        </AppShellSectionBody>
-      </AppShellSectionSurface>
+        />
+      </RecordPageFrame>
 
       <AlertDialog open={Boolean(pendingAction)} onOpenChange={(open) => (!open && !actionPending ? setPendingAction(null) : null)}>
         <AlertDialogContent>

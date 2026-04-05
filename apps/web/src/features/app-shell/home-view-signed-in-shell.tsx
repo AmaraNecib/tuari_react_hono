@@ -84,8 +84,8 @@ export function HomeViewSignedInShell({
         onToggleTheme={onThemeToggle}
       />
 
-      <main className="h-screen overflow-y-auto" style={{ paddingRight: sidebarWidth }}>
-        <div className="flex min-h-full min-w-0 flex-col gap-6 pb-8 pe-5 ps-0 pt-5">
+      <main className="h-screen overflow-y-auto" style={{ paddingRight: `calc(${sidebarWidth} + 1.5rem)` }}>
+        <div className="flex min-h-full min-w-0 flex-col gap-6 pb-8 pe-6 ps-6 pt-5">
           {page !== "dashboard" ? <WorkspaceBreadcrumbs items={breadcrumbItems} /> : null}
           {children}
         </div>

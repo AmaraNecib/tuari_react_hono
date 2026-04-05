@@ -1,18 +1,18 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { RecordTabs, RecordPageFrame } from "@/features/shared/record-page-frame"
 
 import {
   AppShellActionGroup,
   AppShellEmptyStateRow,
   AppShellTableFrame,
   AppShellTableHead,
-  AppShellTableHeaderCell,
-  AppShellTableRow,
-} from "./app-shell-table-primitives"
-import { SectionHeader } from "./section-header"
+    AppShellTableHeaderCell,
+    AppShellTableRow,
+  } from "./app-shell-table-primitives"
 
 function getSalaryPeriodLabelKey(value: "DAILY" | "WEEKLY" | "MONTHLY" | null) {
   if (value === "DAILY") {
@@ -74,6 +74,7 @@ export function SalariesSection({
   onEditSalary: (employeeId: string) => void
 }) {
   const { t } = useTranslation()
+  const [activeTab, setActiveTab] = useState("recent")
   const currencyLabel = t("detailPages.salary.currency")
   const sortedWorkers = useMemo(
     () => [...workers].sort((left, right) => left.employeeName.localeCompare(right.employeeName, "ar")),
@@ -81,14 +82,24 @@ export function SalariesSection({
   )
 
   return (
-    <Surface variant="panel" className="overflow-hidden">
-      <div className="space-y-6 p-6 xl:p-7">
-        <SectionHeader title={t("sections.salaries.label")} description={t("sections.salaries.description")} />
-
-        <Surface className="p-5" variant="table">
-          <SurfaceHeader title={t("salaries.recentTitle")} />
-
-          <AppShellTableFrame className="mt-5 rounded-[24px]">
+    <RecordPageFrame title={t("sections.salaries.label")} description={t("sections.salaries.description")}>
+      <div className="flex flex-col gap-6" dir="rtl">
+          <div className="flex justify-start">
+            <RecordTabs
+              activeTab={activeTab}
+              tabs={[
+                { id: "recent", label: t("salaries.recentTitle") },
+                { id: "workers", label: t("salaries.workersTitle") },
+              ]}
+              onChange={setActiveTab}
+            />
+          </div>
+          
+          {activeTab === "recent" ? (
+            <Surface className="p-5" variant="table">
+              <SurfaceHeader title={t("salaries.recentTitle")} />
+    
+              <AppShellTableFrame className="mt-5 rounded-[24px]">
               <table className="min-w-full text-sm">
                 <AppShellTableHead className="bg-muted/50">
                   <tr>
@@ -97,7 +108,7 @@ export function SalariesSection({
                     <AppShellTableHeaderCell>{t("salaries.expectedAmount")}</AppShellTableHeaderCell>
                     <AppShellTableHeaderCell>{t("salaries.actualAmount")}</AppShellTableHeaderCell>
                     <AppShellTableHeaderCell>{t("salaries.notes")}</AppShellTableHeaderCell>
-                    <AppShellTableHeaderCell>{t("common.actions")}</AppShellTableHeaderCell>
+                    <AppShellTableHeaderCell className="text-end">{t("common.actions")}</AppShellTableHeaderCell>
                   </tr>
                 </AppShellTableHead>
                 <tbody>
@@ -121,8 +132,8 @@ export function SalariesSection({
                         <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.expectedAmountDzd, currencyLabel)}</td>
                         <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.actualAmountDzd, currencyLabel)}</td>
                         <td className="px-4 py-4 text-start text-muted-foreground">{payment.note ?? t("common.noNotes")}</td>
-                        <td className="px-4 py-4 text-start">
-                          <AppShellActionGroup>
+                        <td className="px-4 py-4 text-end">
+                          <AppShellActionGroup className="justify-end">
                             <Button size="xs" onClick={() => onAddPayment(payment.employeeId)}>
                               {t("salaries.addPayment")}
                             </Button>
@@ -138,20 +149,22 @@ export function SalariesSection({
                   )}
                 </tbody>
               </table>
-          </AppShellTableFrame>
-        </Surface>
+            </AppShellTableFrame>
+          </Surface>
+          ) : null}
 
-        <Surface className="p-5" variant="table">
-          <SurfaceHeader description={t("salaries.workersDescription")} title={t("salaries.workersTitle")} />
+        {activeTab === "workers" ? (
+          <Surface className="p-5" variant="table">
+            <SurfaceHeader description={t("salaries.workersDescription")} title={t("salaries.workersTitle")} />
 
-          <AppShellTableFrame className="mt-5 rounded-[24px]">
+            <AppShellTableFrame className="mt-5 rounded-[24px]">
               <table className="min-w-full text-sm">
                 <AppShellTableHead className="bg-muted/50">
                   <tr>
                     <AppShellTableHeaderCell>{t("columns.name")}</AppShellTableHeaderCell>
                     <AppShellTableHeaderCell>{t("salaries.currentSalary")}</AppShellTableHeaderCell>
                     <AppShellTableHeaderCell>{t("salaries.lastPaymentDate")}</AppShellTableHeaderCell>
-                    <AppShellTableHeaderCell>{t("common.actions")}</AppShellTableHeaderCell>
+                    <AppShellTableHeaderCell className="text-end">{t("common.actions")}</AppShellTableHeaderCell>
                   </tr>
                 </AppShellTableHead>
                 <tbody>
@@ -184,8 +197,8 @@ export function SalariesSection({
                         <td className="px-4 py-4 text-start text-muted-foreground">
                           {worker.lastPaymentDate ? new Intl.DateTimeFormat("ar-DZ").format(new Date(worker.lastPaymentDate)) : t("salaries.noPaymentsYet")}
                         </td>
-                        <td className="px-4 py-4 text-start">
-                          <AppShellActionGroup>
+                        <td className="px-4 py-4 text-end">
+                          <AppShellActionGroup className="justify-end">
                             <Button size="xs" onClick={() => onAddPayment(worker.employeeId)}>
                               {t("salaries.addPayment")}
                             </Button>
@@ -201,9 +214,10 @@ export function SalariesSection({
                   )}
                 </tbody>
               </table>
-          </AppShellTableFrame>
-        </Surface>
-      </div>
-    </Surface>
+            </AppShellTableFrame>
+          </Surface>
+        ) : null}
+        </div>
+    </RecordPageFrame>
   )
 }

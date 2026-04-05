@@ -42,12 +42,9 @@ export function DebtsHubPage({
     <RecordPageFrame
       action={
         <div className="flex gap-2">
-          <Button onClick={onCreateDebt}>إنشاء دين جديد</Button>
-          <Button variant="outline" onClick={onCreateExternalCounterparty}>إضافة طرف خارجي</Button>
+          <Button size="lg" onClick={onCreateDebt}>إنشاء دين جديد</Button>
         </div>
       }
-      backHref="/"
-      backLabel="العودة إلى لوحة التحكم"
       title="مركز الديون"
       description="ملخص سريع لأرصدة العمال والأطراف الخارجية. الأخضر يعني أنهم مدينون لنا، والأحمر يعني أننا مدينون لهم."
     >

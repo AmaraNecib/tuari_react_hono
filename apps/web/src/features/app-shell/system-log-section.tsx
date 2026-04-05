@@ -19,7 +19,7 @@ import {
   AppShellTableRow,
   usePaginatedRows,
 } from "./app-shell-table-primitives"
-import { SectionHeader } from "./section-header"
+import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { TablePaginationControls } from "./table-pagination-controls"
 
 function getActionTypeLabel(t: (key: string) => string, actionType: SystemLogEntry["actionType"]) {
@@ -191,10 +191,7 @@ export function SystemLogSection({
   })
 
   return (
-    <AppShellSectionSurface>
-      <AppShellSectionBody>
-        <SectionHeader title={title} />
-
+    <RecordPageFrame title={title}>
         <AppShellFilterShell>
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">{t("systemLog.actor")}</span>
@@ -290,7 +287,6 @@ export function SystemLogSection({
             setPageSize(nextPageSize)
           }}
         />
-      </AppShellSectionBody>
-    </AppShellSectionSurface>
+    </RecordPageFrame>
   )
 }
