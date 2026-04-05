@@ -9,6 +9,10 @@ import { EmployeeEditPage } from "@/features/employees/employee-edit-page"
 import { ProjectDetailsPage } from "@/features/projects/project-details-page"
 import { ProjectCreatePage } from "@/features/projects/project-create-page"
 import { ProjectEditPage } from "@/features/projects/project-edit-page"
+import { InventoryItemDefinitionsPage } from "@/features/inventory/inventory-item-definitions-page"
+import { InventoryInvoiceCreatePage } from "@/features/inventory/inventory-invoice-create-page"
+import { InventoryInvoiceDetailsPage } from "@/features/inventory/inventory-invoice-details-page"
+import { InventoryInvoicesPage } from "@/features/inventory/inventory-invoices-page"
 import { workspaceRoutes } from "@/router/navigation"
 import { WarehouseDetailsPage } from "@/features/warehouses/warehouse-details-page"
 import { WarehouseCreatePage } from "@/features/warehouses/warehouse-create-page"
@@ -23,6 +27,7 @@ export function HomeViewPageDetailContent({
   detailTab,
   navigation,
   page,
+  selectedInvoiceId,
   selectedCounterparty,
   selectedEmployeeManagerOptions,
   selectedEmployee,
@@ -44,6 +49,7 @@ export function HomeViewPageDetailContent({
   | "selectedWarehouse"
   | "t"
 > & {
+  selectedInvoiceId?: string
   selectedEmployeeManagerOptions: HomeViewPageContentProps["derived"]["managerOptions"]
   selectedProjectManagerOptions: HomeViewPageContentProps["derived"]["projectManagerOptions"]
   selectedWarehouseManagerOptions: HomeViewPageContentProps["derived"]["warehouseManagerOptions"]
@@ -246,6 +252,18 @@ export function HomeViewPageDetailContent({
           title={t("detailPages.warehouse.editTitle")}
         />
       )
+
+    case "inventory":
+      return <InventoryItemDefinitionsPage />
+
+    case "invoices":
+      return <InventoryInvoicesPage onCreate={() => void navigation.goToInvoiceCreate()} onOpen={(invoiceId) => void navigation.goToInvoiceDetails(invoiceId)} />
+
+    case "invoice-create":
+      return <InventoryInvoiceCreatePage onCreated={(invoiceId) => void navigation.goToInvoiceDetails(invoiceId)} />
+
+    case "invoice-details":
+      return selectedInvoiceId ? <InventoryInvoiceDetailsPage invoiceId={selectedInvoiceId} onBack={() => void navigation.goToInvoices()} /> : null
 
     default:
       return null

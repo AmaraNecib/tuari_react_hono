@@ -6,6 +6,7 @@ import { cors } from "hono/cors";
 import type { AppDependencies } from "./dependencies";
 import { normalizeOrigin } from "../infrastructure/config/env";
 import { AccountServiceError } from "../modules/account/account.service";
+import { InventoryError } from "../modules/inventory/inventory.errors";
 import { createRouter } from "../rpc/router";
 import { createRpcContext } from "../rpc/context";
 
@@ -64,7 +65,22 @@ function isLocalhostHostname(url: string) {
 }
 
 function shouldDisableCaching(path: string) {
-  return path.startsWith("/api/auth/") || path === "/rpc/session";
+  return path.startsWith("/api/auth/") || path.startsWith("/api/inventory/") || path === "/rpc/session";
+}
+
+function getAppErrorStatus(code: "VALIDATION" | "UNAUTHORIZED" | "NOT_FOUND" | "CONFLICT" | "BUSINESS_RULE") {
+  switch (code) {
+    case "UNAUTHORIZED":
+      return 401
+    case "NOT_FOUND":
+      return 404
+    case "CONFLICT":
+      return 409
+    case "VALIDATION":
+    case "BUSINESS_RULE":
+    default:
+      return 400
+  }
 }
 
 export function createApp(
@@ -142,6 +158,14 @@ export function createApp(
     await next();
   });
 
+  app.use("/api/inventory/*", async (c, next) => {
+    if (!transport.isAllowedOrigin(c.req.header("origin"))) {
+      return c.json({ message: "Blocked origin." }, 403)
+    }
+
+    await next()
+  })
+
   app.get("/health", (c) => c.json({ status: "ok" }));
 
   app.post("/api/auth/profile", async (c) => {
@@ -191,6 +215,69 @@ export function createApp(
   app.on(["POST", "GET"], "/api/auth/*", (c) => {
     return dependencies.auth.handler(c.req.raw);
   });
+
+  app.post("/api/inventory/invoice-groups/:invoiceGroupId/attachments", async (c) => {
+    try {
+      const currentUser = await dependencies.accountService.getCurrentSessionUser(c.req.raw.headers)
+      if (!(await dependencies.authBootstrapService.isBootstrapOwner(currentUser.id))) {
+        return c.json({ message: "غير مصرح بهذا الإجراء." }, 401)
+      }
+
+      const { invoiceGroupId } = c.req.param()
+      const formData = await c.req.formData()
+      const files = formData.getAll("files").filter((value): value is File => value instanceof File)
+
+      const attachments = await dependencies.inventoryService.addInvoiceAttachments(
+        invoiceGroupId,
+        await Promise.all(
+          files.map(async (file) => ({
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            bytes: new Uint8Array(await file.arrayBuffer()),
+          })),
+        ),
+      )
+
+      return c.json({ success: true, items: attachments })
+    } catch (error) {
+      if (error instanceof AccountServiceError) {
+        return c.json({ message: error.message }, error.status as 400 | 401 | 409)
+      }
+
+      if (error instanceof InventoryError) {
+        return c.json({ success: false, error: error.appError }, getAppErrorStatus(error.appError.code))
+      }
+
+      throw error
+    }
+  })
+
+  app.get("/api/inventory/attachments/:attachmentId", async (c) => {
+    try {
+      const currentUser = await dependencies.accountService.getCurrentSessionUser(c.req.raw.headers)
+      if (!(await dependencies.authBootstrapService.isBootstrapOwner(currentUser.id))) {
+        return c.json({ message: "غير مصرح بهذا الإجراء." }, 401)
+      }
+
+      const { attachmentId } = c.req.param()
+      const { attachment, body } = await dependencies.inventoryService.getAttachmentDownload(attachmentId)
+      c.header("Content-Type", attachment.mimeType)
+      c.header("Content-Length", String(attachment.byteSize))
+      c.header("Content-Disposition", `inline; filename="${encodeURIComponent(attachment.originalName)}"`)
+      return c.body(body)
+    } catch (error) {
+      if (error instanceof AccountServiceError) {
+        return c.json({ message: error.message }, error.status as 400 | 401 | 409)
+      }
+
+      if (error instanceof InventoryError) {
+        return c.json({ success: false, error: error.appError }, getAppErrorStatus(error.appError.code))
+      }
+
+      throw error
+    }
+  })
 
   app.use("/rpc/*", async (c, next) => {
     const context = createRpcContext(c.req.raw.headers, dependencies.sessionService);

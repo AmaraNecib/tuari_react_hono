@@ -76,6 +76,20 @@ export type MutationAuditContext = {
   transactionId?: string | null;
 };
 
+export type InventoryItemDefinitionAuditRecord = {
+  id: string;
+  name: string;
+  itemType: "CONSUMABLE" | "ASSET";
+  unit: string | null;
+  description: string | null;
+  isActive: boolean;
+  actorUserId: string | null;
+  actorLabel: string | null;
+  transactionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type RoleCreateData = {
   key: string;
   name: string;
