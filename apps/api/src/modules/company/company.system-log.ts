@@ -77,7 +77,6 @@ function buildDebtEntryDetail(entry: {
   note?: string | null
 }) {
   return [
-    `نوع الحركة ${getDebtEntryTypeLabel(entry.entryType)}`,
     `القيمة ${formatSignedDzd(entry.signedAmountDzd)}`,
     `الرصيد بعد العملية ${formatSignedDzd(entry.balanceAfterDzd)}`,
     entry.note?.trim() || null,
@@ -281,31 +280,6 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
       ? `${employee.firstName} ${employee.lastName}`
       : counterparty?.fullName ?? account.id
 
-    logEvents.push({
-      id: `debt-account-${account.id}`,
-      transactionId: account.transactionId,
-      actorUserId: account.actorUserId,
-      actorLabel: account.actorLabel ?? resolveActorLabel(account.actorUserId),
-      actorCurrentLabel: resolveActorLabel(account.actorUserId),
-      actionType: "DEBT_ACCOUNT_CREATED",
-      entityType: "DEBT_ACCOUNT",
-      entityId: account.id,
-      entityLabel: partyLabel,
-      summary: `تم إنشاء حساب دين للطرف ${partyLabel}`,
-      detail: account.note,
-      createdAt: account.createdAt,
-    })
-  }
-
-  for (const account of repository.listDebtAccounts()) {
-    const employee = account.workerId ? employeesById.get(account.workerId) : null
-    const counterparty = account.externalCounterpartyId
-      ? externalCounterpartiesById.get(account.externalCounterpartyId)
-      : null
-    const partyLabel = employee
-      ? `${employee.firstName} ${employee.lastName}`
-      : counterparty?.fullName ?? account.id
-
     for (const entry of repository.listDebtEntries({ debtAccountId: account.id })) {
       const actionType = entry.entryType === "SETTLEMENT" ? "DEBT_SETTLED" : "DEBT_ENTRY_RECORDED"
       const summary = buildDebtEntrySummary(entry.entryType, partyLabel)
@@ -355,9 +329,32 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
     })
   }
 
+  for (const item of repository.listInventoryItemDefinitionsForLog()) {
+    logEvents.push({
+      id: `inventory-item-${item.id}`,
+      transactionId: item.transactionId,
+      actorUserId: item.actorUserId,
+      actorLabel: item.actorLabel ?? resolveActorLabel(item.actorUserId),
+      actorCurrentLabel: resolveActorLabel(item.actorUserId),
+      actionType: "INVENTORY_ITEM_CREATED",
+      entityType: "INVENTORY_ITEM",
+      entityId: item.id,
+      entityLabel: item.name,
+      summary: `تم إنشاء تعريف عنصر ${item.name}`,
+      detail: [
+        item.itemType === "CONSUMABLE" ? "نوع العنصر مادة استهلاكية" : "نوع العنصر أصل",
+        item.unit ? `الوحدة ${item.unit}` : null,
+        item.description,
+      ].filter((value): value is string => Boolean(value && value.trim().length > 0)).join(" • ") || null,
+      createdAt: item.createdAt,
+    })
+  }
+
   const groupedEntries = Array.from(
     logEvents.reduce<Map<string, { events: SystemLogEntryRecord[]; key: string }>>((groups, event) => {
-      const key = event.transactionId ?? event.id
+      const key = event.actionType === "DEBT_ENTRY_RECORDED" || event.actionType === "DEBT_SETTLED"
+        ? event.id
+        : event.transactionId ?? event.id
       const existing = groups.get(key)
 
       if (existing) {

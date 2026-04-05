@@ -20,6 +20,10 @@ describe("runtime config", () => {
     vi.mocked(getRuntimeStatus).mockReset()
   })
 
+  it("uses the current localhost hostname for the default browser api base url", () => {
+    expect(resolveApiBaseUrl()).toBe("http://localhost:4318")
+  })
+
   it("uses desktop runtime values when the Tauri bridge provides them", async () => {
     vi.mocked(getRuntimeStatus).mockResolvedValue({
       checkedAt: "2026-03-17T20:00:00.000Z",

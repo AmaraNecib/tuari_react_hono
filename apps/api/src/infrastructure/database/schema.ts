@@ -16,6 +16,10 @@ function isDuplicateColumnError(error: unknown) {
   return error instanceof Error && error.message.includes("duplicate column name");
 }
 
+function isMissingColumnError(error: unknown) {
+  return error instanceof Error && error.message.includes("no such column")
+}
+
 async function getTableColumns(tableName: string) {
   return prisma.$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info(\"${tableName}\")`);
 }
@@ -82,6 +86,57 @@ async function syncLegacyTimestampColumns() {
       'UPDATE "verification" SET "createdAt" = COALESCE("createdAt", "created_at"), "updatedAt" = COALESCE("updatedAt", "updated_at") WHERE "created_at" IS NOT NULL OR "updated_at" IS NOT NULL',
     );
   }
+}
+
+async function ensureInventoryProjectIndexes() {
+  if (await hasColumn("inventory_invoice_group", "project_id")) {
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "inventory_invoice_group_project_id_idx" ON "inventory_invoice_group" ("project_id", "created_at")',
+    )
+  }
+
+  if (await hasColumn("inventory_entry", "project_id")) {
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "inventory_entry_project_id_idx" ON "inventory_entry" ("project_id")',
+    )
+  }
+
+  if (await hasColumn("inventory_invoice_group", "external_counterparty_id")) {
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "inventory_invoice_group_external_counterparty_id_idx" ON "inventory_invoice_group" ("external_counterparty_id")',
+    )
+  }
+
+  if (await hasColumn("inventory_asset_unit", "current_warehouse_id")) {
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "inventory_asset_unit_current_warehouse_id_idx" ON "inventory_asset_unit" ("current_warehouse_id")',
+    )
+  }
+
+  if (await hasColumn("inventory_asset_unit", "current_project_id")) {
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "inventory_asset_unit_current_project_id_idx" ON "inventory_asset_unit" ("current_project_id")',
+    )
+  }
+
+  await prisma.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_inventory_entry_id_idx" ON "inventory_consumable_balance" ("inventory_entry_id")',
+  )
+  await prisma.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_item_definition_id_idx" ON "inventory_consumable_balance" ("item_definition_id")',
+  )
+  await prisma.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_warehouse_id_idx" ON "inventory_consumable_balance" ("warehouse_id")',
+  )
+  await prisma.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_project_id_idx" ON "inventory_consumable_balance" ("project_id")',
+  )
+  await prisma.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "inventory_movement_inventory_entry_id_idx" ON "inventory_movement" ("inventory_entry_id", "occurred_at")',
+  )
+  await prisma.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "inventory_movement_asset_unit_id_idx" ON "inventory_movement" ("asset_unit_id", "occurred_at")',
+  )
 }
 
 async function repairLegacyAuthTables() {
@@ -598,7 +653,13 @@ export async function ensureDatabaseSchema(): Promise<void> {
   await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
 
   for (const statement of schemaStatements) {
-    await prisma.$executeRawUnsafe(statement);
+    try {
+      await prisma.$executeRawUnsafe(statement)
+    } catch (error) {
+      if (!isMissingColumnError(error) || (!statement.includes("project_id") && !statement.includes("external_counterparty_id") && !statement.includes("current_warehouse_id") && !statement.includes("current_project_id"))) {
+        throw error
+      }
+    }
   }
 
   for (const statement of additiveStatements) {
@@ -610,6 +671,8 @@ export async function ensureDatabaseSchema(): Promise<void> {
       }
     }
   }
+
+  await ensureInventoryProjectIndexes()
 
   await runObsoleteMigrations();
   await runStatusConstraintMigrations();

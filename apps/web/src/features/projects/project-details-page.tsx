@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next"
 
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
+import { InventoryLocationContentsSection } from "@/features/inventory/inventory-location-contents-section"
 import {
   RecordHistoryTable,
   RecordInfoCard,
@@ -49,7 +50,7 @@ export function ProjectDetailsPage({
   }>
 }) {
   const { t } = useTranslation()
-  const resolvedTab = ["overview", "history", "workers"].includes(activeTab) ? activeTab : "overview"
+  const resolvedTab = ["overview", "history", "workers", "items"].includes(activeTab) ? activeTab : "overview"
   const hasExpandedNotes = (project.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `project-record-${project.id}`
 
@@ -69,6 +70,7 @@ export function ProjectDetailsPage({
           { id: "overview", label: t("detailPages.project.overviewTab") },
           { id: "history", label: t("detailPages.project.historyTab") },
           { id: "workers", label: t("detailPages.project.workersTab") },
+          { id: "items", label: "العناصر" },
         ]}
         onChange={onTabChange}
       />
@@ -102,6 +104,10 @@ export function ProjectDetailsPage({
           emptyLabel={t("detailPages.project.historyEmpty")}
           rows={managementHistoryRows}
         />
+      </RecordTabPanel>
+
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items">
+        <InventoryLocationContentsSection projectId={project.id} />
       </RecordTabPanel>
     </RecordPageFrame>
   )
