@@ -21,8 +21,7 @@
     "dev:api": "pnpm check:web-tracking && pnpm --filter @tuari/contracts build && pnpm --filter @tuari/api dev",
     "dev:desktop": "pnpm --filter @tuari/desktop dev",
     "build:desktop": "pnpm --filter @tuari/desktop build",
-    "portable:desktop": "pnpm --filter @tuari/desktop portable",
-    "pipeline": "pnpm --filter @tuari/pipeline run pipeline"
+    "portable:desktop": "pnpm --filter @tuari/desktop portable"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

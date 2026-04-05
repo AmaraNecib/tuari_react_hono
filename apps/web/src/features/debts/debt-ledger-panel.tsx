@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtClosureLink, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
@@ -41,7 +40,6 @@ export function DebtLedgerPanel({
   relatedAccounts: DebtAccount[]
   title: string
 }) {
-  const { t } = useTranslation()
   const closeDebtAgainstMutation = useCloseDebtAgainstMutation()
   const createDebtEntryMutation = useCreateDebtEntryMutation()
   const settleDebtAccountMutation = useSettleDebtAccountMutation()
@@ -54,7 +52,7 @@ export function DebtLedgerPanel({
   const sortedEntries = useMemo(() => sortDebtEntries(debtEntries), [debtEntries])
   const relatedAccountsById = useMemo(() => new Map(relatedAccounts.map((account) => [account.id, account])), [relatedAccounts])
   const balanceDzd = getDebtAccountBalance(debtAccount)
-  const balanceMeta = getDebtBalanceMeta(balanceDzd, t)
+  const balanceMeta = getDebtBalanceMeta(balanceDzd)
   const normalizedAmount = signedAmount.trim()
   const signedAmountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : null
   const hasValidAmount = signedAmountValue !== null && Number.isFinite(signedAmountValue) && signedAmountValue !== 0
@@ -73,27 +71,27 @@ export function DebtLedgerPanel({
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <DebtStatCard
-          label={t("detailPages.debt.ledgerPanel.currentBalanceLabel")}
-          value={`${t("detailPages.debt.currency")} ${formatDebtMoney(balanceDzd)}`}
+          label="الرصيد الحالي"
+          value={`دج ${formatDebtMoney(balanceDzd)}`}
           valueClassName={balanceMeta.textClassName}
         />
-        <DebtStatCard label={t("detailPages.debt.ledgerPanel.statusLabel")} value={balanceMeta.shortLabel} valueClassName={balanceMeta.textClassName} />
-        <DebtStatCard label={t("detailPages.debt.ledgerPanel.entryCountLabel")} value={String(sortedEntries.length)} />
+        <DebtStatCard label="الحالة" value={balanceMeta.shortLabel} valueClassName={balanceMeta.textClassName} />
+        <DebtStatCard label="عدد القيود" value={String(sortedEntries.length)} />
       </div>
 
       <Surface className="p-5" variant="card">
         <SurfaceHeader
           description={
             debtAccount
-              ? t("detailPages.debt.ledgerPanel.ledgerDescription")
-              : t("detailPages.debt.ledgerPanel.noAccountDescription")
+              ? "الموجب بالأخضر يعني أن الطرف مدين لنا. السالب بالأحمر يعني أننا مدينون له."
+              : "أنشئ أو اختر حالة دين أولًا قبل إضافة قيود جديدة."
           }
           title={title}
         />
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("detailPages.debt.ledgerPanel.entryDateLabel")}</span>
+            <span className="text-sm font-medium text-foreground">التاريخ</span>
             <input
               className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
               type="date"
@@ -102,17 +100,17 @@ export function DebtLedgerPanel({
             />
           </label>
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("detailPages.debt.ledgerPanel.amountLabel")}</span>
-            <CurrencyInput placeholder={t("detailPages.debt.amountPlaceholder")} value={signedAmount} onChange={(event) => setSignedAmount(event.target.value)} />
+            <span className="text-sm font-medium text-foreground">المبلغ الموقّع</span>
+            <CurrencyInput placeholder="مثال: 2500 أو -2500" value={signedAmount} onChange={(event) => setSignedAmount(event.target.value)} />
           </label>
           <label className="flex flex-col gap-2 md:col-span-2 xl:col-span-2">
-            <span className="text-sm font-medium text-foreground">{t("detailPages.debt.note")}</span>
-            <Textarea placeholder={t("detailPages.debt.note")} value={note} onChange={(event) => setNote(event.target.value)} />
+            <span className="text-sm font-medium text-foreground">ملاحظة</span>
+            <Textarea placeholder="وصف مختصر للقيد" value={note} onChange={(event) => setNote(event.target.value)} />
           </label>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{t("detailPages.debt.ledgerPanel.amountHelperText")}</p>
+          <p className="text-sm text-muted-foreground">اكتب قيمة موجبة إذا كان المبلغ لنا، أو سالبة إذا كان علينا.</p>
           <Button
             disabled={!debtAccount || !hasValidAmount || createDebtEntryMutation.isPending}
             onClick={() =>
@@ -126,7 +124,7 @@ export function DebtLedgerPanel({
                 : undefined
             }
           >
-            {t("detailPages.debt.ledgerPanel.saveEntryButton")}
+            حفظ القيد
           </Button>
         </div>
       </Surface>
@@ -135,10 +133,10 @@ export function DebtLedgerPanel({
         <SurfaceHeader
           description={
             balanceDzd === 0
-              ? t("detailPages.debt.ledgerPanel.settleDescription")
-              : t("detailPages.debt.ledgerPanel.settleCreateDescription", { amount: formatDebtMoney(-balanceDzd) })
+              ? "لا توجد حاجة إلى تسوية إضافية لأن الرصيد مغلق بالفعل."
+              : `سيتم إنشاء قيد تسوية يعاكس الرصيد الحالي (${formatDebtMoney(-balanceDzd)} دج).`
           }
-          title={t("detailPages.debt.ledgerPanel.settleTitle")}
+          title="تسوية الرصيد"
         />
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -158,7 +156,7 @@ export function DebtLedgerPanel({
                 : undefined
             }
           >
-            {t("detailPages.debt.ledgerPanel.settleButton")}
+            تسوية إلى صفر
           </Button>
         </div>
       </Surface>
@@ -168,31 +166,31 @@ export function DebtLedgerPanel({
           description={
             debtAccount
               ? closeAgainstOptions.length > 0
-                ? t("detailPages.debt.ledgerPanel.closeAgainstDescription")
-                : t("detailPages.debt.ledgerPanel.noCounterpartDescription")
-              : t("detailPages.debt.ledgerPanel.noAccountDescription")
+                ? "أغلق هذه الحالة مقابل حالة معاكسة من نفس الطرف لإنقاص الرصيدين معًا."
+                : "لا توجد حالة مقابلة بإشارة معاكسة لهذا الطرف حاليًا."
+              : "اختر حالة دين أولًا قبل استخدام الإغلاق مقابل حالة أخرى."
           }
-          title={t("detailPages.debt.ledgerPanel.closeAgainstButton")}
+          title="إغلاق مقابل حالة أخرى"
         />
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("detailPages.debt.ledgerPanel.counterpartyLabel")}</span>
+            <span className="text-sm font-medium text-foreground">الحالة المقابلة</span>
             <NativeSelect
               disabled={!debtAccount || closeAgainstOptions.length === 0}
               value={targetDebtAccountId}
               onChange={(event) => setTargetDebtAccountId(event.target.value)}
             >
-              <option value="">{t("detailPages.debt.selectParty")}</option>
+              <option value="">اختر حالة مقابلة</option>
               {closeAgainstOptions.map((option) => (
                 <option key={option.account.id} value={option.account.id}>
-                  {option.label} — {formatDebtMoney(option.account.currentBalanceDzd)} {t("detailPages.debt.currency")}
+                  {option.label} — {formatDebtMoney(option.account.currentBalanceDzd)} دج
                 </option>
               ))}
             </NativeSelect>
           </label>
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("detailPages.debt.ledgerPanel.closureDateLabel")}</span>
+            <span className="text-sm font-medium text-foreground">تاريخ الإغلاق</span>
             <input
               className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
               type="date"
@@ -201,14 +199,14 @@ export function DebtLedgerPanel({
             />
           </label>
           <label className="flex flex-col gap-2 md:col-span-2 xl:col-span-2">
-            <span className="text-sm font-medium text-foreground">{t("detailPages.debt.ledgerPanel.closureNoteLabel")}</span>
-            <Textarea placeholder={t("detailPages.debt.note")} value={closureNote} onChange={(event) => setClosureNote(event.target.value)} />
+            <span className="text-sm font-medium text-foreground">ملاحظة الإغلاق</span>
+            <Textarea placeholder="سبب مختصر للإغلاق بين الحالتين" value={closureNote} onChange={(event) => setClosureNote(event.target.value)} />
           </label>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            {t("detailPages.debt.ledgerPanel.closureHelperText")}
+            سيتم إغلاق أصغر رصيد ممكن بين الحالتين تلقائيًا.
           </p>
           <Button
             disabled={!debtAccount || balanceDzd === 0 || !hasCloseAgainstTarget || closeDebtAgainstMutation.isPending}
@@ -224,15 +222,15 @@ export function DebtLedgerPanel({
                 : undefined
             }
           >
-            {t("detailPages.debt.ledgerPanel.closeAgainstButton")}
+            إغلاق مقابل الحالة المختارة
           </Button>
         </div>
       </Surface>
 
       <Surface className="p-5" variant="card">
         <SurfaceHeader
-          description={t("detailPages.debt.ledgerPanel.closureHistoryDescription")}
-          title={t("detailPages.debt.ledgerPanel.closureHistoryTitle")}
+          description="يعرض عمليات الإغلاق التي ربطت هذه الحالة بحالات أخرى من نفس الطرف."
+          title="سجل الإغلاق"
         />
 
         <div className="mt-4 space-y-3">
@@ -242,17 +240,17 @@ export function DebtLedgerPanel({
               const otherAccountId = isSource ? link.targetDebtAccountId : link.sourceDebtAccountId
               const otherAccount = relatedAccountsById.get(otherAccountId)
               const otherLabel = otherAccount
-                ? otherAccount.note?.trim() || t("detailPages.debt.ledgerPanel.linkedCaseFallback")
-                : t("detailPages.debt.ledgerPanel.linkedCaseFallback")
+                ? otherAccount.note?.trim() || `حالة مرتبطة`
+                : "حالة مرتبطة"
 
               return (
                 <div key={link.id} className="rounded-[20px] border border-border/70 bg-background/60 p-4 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="font-medium text-foreground">
-                      {isSource ? t("detailPages.debt.ledgerPanel.closedFromLabel") : t("detailPages.debt.ledgerPanel.closedToLabel")} {otherLabel}
+                      {isSource ? "أُغلق من هذه الحالة مقابل" : "أُغلق على هذه الحالة من"} {otherLabel}
                     </p>
                     <span className="font-mono text-foreground" dir="ltr">
-                      {t("detailPages.debt.currency")} {formatDebtMoney(link.closedAmountDzd)}
+                      دج {formatDebtMoney(link.closedAmountDzd)}
                     </span>
                   </div>
                   <p className="mt-1 text-muted-foreground">
@@ -263,7 +261,7 @@ export function DebtLedgerPanel({
               )
             })
           ) : (
-            <p className="text-sm text-muted-foreground">{t("detailPages.debt.ledgerPanel.closureEmpty")}</p>
+            <p className="text-sm text-muted-foreground">لا توجد عمليات إغلاق مرتبطة بهذه الحالة بعد.</p>
           )}
         </div>
       </Surface>
@@ -273,36 +271,36 @@ export function DebtLedgerPanel({
           <table className="min-w-full text-sm">
             <thead className="bg-muted/40 text-muted-foreground">
               <tr>
-                <th className="px-4 py-3 text-end font-medium">{t("detailPages.debt.ledgerPanel.tableDate")}</th>
-                <th className="px-4 py-3 text-end font-medium">{t("detailPages.debt.ledgerPanel.tableType")}</th>
-                <th className="px-4 py-3 text-end font-medium">{t("detailPages.debt.ledgerPanel.tableAmount")}</th>
-                <th className="px-4 py-3 text-end font-medium">{t("detailPages.debt.ledgerPanel.tableBalance")}</th>
-                <th className="px-4 py-3 text-end font-medium">{t("detailPages.debt.ledgerPanel.tableNote")}</th>
+                <th className="px-4 py-3 text-start font-medium">التاريخ</th>
+                <th className="px-4 py-3 text-start font-medium">النوع</th>
+                <th className="px-4 py-3 text-start font-medium">المبلغ</th>
+                <th className="px-4 py-3 text-start font-medium">الرصيد بعد القيد</th>
+                <th className="px-4 py-3 text-start font-medium">ملاحظة</th>
               </tr>
             </thead>
             <tbody>
               {sortedEntries.length > 0 ? (
                 sortedEntries.map((entry) => {
-                  const amountMeta = getDebtBalanceMeta(entry.signedAmountDzd, t)
+                  const amountMeta = getDebtBalanceMeta(entry.signedAmountDzd)
 
                   return (
                     <tr key={entry.id} className="border-t border-border/60 bg-background/75">
-                      <td className="px-4 py-4 text-end text-foreground">{new Intl.DateTimeFormat("ar-DZ").format(new Date(entry.entryDate))}</td>
-                      <td className="px-4 py-4 text-end text-muted-foreground">{getDebtEntryTypeLabel(entry.entryType, t)}</td>
-                      <td className={cn("px-4 py-4 text-end font-mono", amountMeta.textClassName)} dir="ltr">
-                        {t("detailPages.debt.currency")} {formatDebtMoney(entry.signedAmountDzd)}
+                      <td className="px-4 py-4 text-start text-foreground">{new Intl.DateTimeFormat("ar-DZ").format(new Date(entry.entryDate))}</td>
+                      <td className="px-4 py-4 text-start text-muted-foreground">{getDebtEntryTypeLabel(entry.entryType)}</td>
+                      <td className={cn("px-4 py-4 text-start font-mono", amountMeta.textClassName)} dir="ltr">
+                        دج {formatDebtMoney(entry.signedAmountDzd)}
                       </td>
-                      <td className={cn("px-4 py-4 text-end font-mono", getDebtBalanceMeta(entry.balanceAfterDzd, t).textClassName)} dir="ltr">
-                        {t("detailPages.debt.currency")} {formatDebtMoney(entry.balanceAfterDzd)}
+                      <td className={cn("px-4 py-4 text-start font-mono", getDebtBalanceMeta(entry.balanceAfterDzd).textClassName)} dir="ltr">
+                        دج {formatDebtMoney(entry.balanceAfterDzd)}
                       </td>
-                      <td className="px-4 py-4 text-end text-muted-foreground">{entry.note?.trim() || "—"}</td>
+                      <td className="px-4 py-4 text-start text-muted-foreground">{entry.note?.trim() || "—"}</td>
                     </tr>
                   )
                 })
               ) : (
                 <tr>
                   <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
-                    {t("detailPages.debt.ledgerPanel.tableEmpty")}
+                    لا توجد قيود دين بعد.
                   </td>
                 </tr>
               )}

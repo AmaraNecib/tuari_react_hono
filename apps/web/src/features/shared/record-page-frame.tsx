@@ -29,6 +29,7 @@ export function RecordPageFrame({
   backLabel,
   editHref,
   editLabel,
+  action,
   children,
 }: {
   title: string
@@ -37,6 +38,7 @@ export function RecordPageFrame({
   backLabel: string
   editHref?: string
   editLabel?: string
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -45,6 +47,7 @@ export function RecordPageFrame({
         <PageHeader
           action={
             <PageActionGroup>
+            {action ? action : null}
             <Link
               className={cn(
                 buttonVariants({ variant: "outline", size: "lg" }),
