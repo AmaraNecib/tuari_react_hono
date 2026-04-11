@@ -100,7 +100,6 @@ export function HomeViewPageDetailContent({
         <EmployeeDetailsPage
           activeTab={detailTab ?? "personal"}
           debtAccounts={derived.debtAccountsByWorkerId.get(selectedEmployee.id) ?? []}
-          debtClosureLinksByAccountId={derived.debtClosureLinksByAccountId}
           debtEntriesByAccountId={derived.debtEntriesByAccountId}
           employee={selectedEmployee}
           managedProjects={derived.managedProjectsByEmployeeId[selectedEmployee.id] ?? []}
@@ -127,7 +126,6 @@ export function HomeViewPageDetailContent({
         <ExternalCounterpartyDetailsPage
           counterparty={selectedCounterparty}
           debtAccounts={derived.debtAccountsByExternalCounterpartyId.get(selectedCounterparty.id) ?? []}
-          debtClosureLinksByAccountId={derived.debtClosureLinksByAccountId}
           debtEntriesByAccountId={derived.debtEntriesByAccountId}
         />
       ) : (

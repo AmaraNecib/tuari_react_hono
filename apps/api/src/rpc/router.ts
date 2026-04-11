@@ -315,14 +315,6 @@ export function createRouter(dependencies: RouterDependencies) {
       const auditContext = await createMutationAuditContext(context, dependencies)
       return resolveCompanyResult(() => dependencies.companyService.createDebtEntry(input, auditContext))
     }),
-    debtClosureLinksList: os.debtClosureLinksList.handler(async ({ context, input }) => {
-      await requireWorkspaceAdmin(context, dependencies)
-      return dependencies.companyService.listDebtClosureLinks(input)
-    }),
-    debtCloseAgainst: os.debtCloseAgainst.handler(async ({ context, input }) => {
-      const auditContext = await createMutationAuditContext(context, dependencies)
-      return resolveCompanyResult(() => dependencies.companyService.closeDebtAgainstAnother(input, auditContext))
-    }),
     debtAccountsSettle: os.debtAccountsSettle.handler(async ({ context, input }) => {
       const auditContext = await createMutationAuditContext(context, dependencies)
       return resolveCompanyResult(() => dependencies.companyService.settleDebtAccount(input, auditContext))

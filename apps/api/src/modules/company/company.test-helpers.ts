@@ -217,7 +217,7 @@ const schemaStatements = [
   `CREATE TABLE "debt_entry" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "debt_account_id" TEXT NOT NULL,
-    "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT', 'CLOSURE')),
+    "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT')),
     "signed_amount_dzd" REAL NOT NULL,
     "entry_date" DATETIME NOT NULL,
     "note" TEXT,
@@ -229,23 +229,6 @@ const schemaStatements = [
     "updated_at" DATETIME NOT NULL,
     FOREIGN KEY ("debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
   )`,
-  `CREATE TABLE "debt_closure_link" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "source_debt_account_id" TEXT NOT NULL,
-    "target_debt_account_id" TEXT NOT NULL,
-    "closed_amount_dzd" REAL NOT NULL,
-    "entry_date" DATETIME NOT NULL,
-    "note" TEXT,
-    "actor_user_id" TEXT,
-    "actor_label" TEXT,
-    "transaction_id" TEXT,
-    "created_at" DATETIME NOT NULL,
-    "updated_at" DATETIME NOT NULL,
-    CHECK ("source_debt_account_id" <> "target_debt_account_id"),
-    CHECK ("closed_amount_dzd" > 0),
-    FOREIGN KEY ("source_debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    FOREIGN KEY ("target_debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-  )`,
   `CREATE UNIQUE INDEX "employee_manager_assignment_active_worker_key" ON "employee_manager_assignment" ("worker_id") WHERE "status" = 'ACTIVE'`,
   `CREATE UNIQUE INDEX "employee_project_assignment_active_employee_key" ON "employee_project_assignment" ("employee_id") WHERE "status" = 'ACTIVE'`,
   `CREATE UNIQUE INDEX "employee_warehouse_assignment_active_employee_key" ON "employee_warehouse_assignment" ("employee_id") WHERE "status" = 'ACTIVE'`,
@@ -256,9 +239,9 @@ const schemaStatements = [
   `CREATE INDEX "external_counterparty_full_name_idx" ON "external_counterparty" ("full_name")`,
   `CREATE INDEX "debt_account_worker_id_idx" ON "debt_account" ("worker_id")`,
   `CREATE INDEX "debt_account_external_counterparty_id_idx" ON "debt_account" ("external_counterparty_id")`,
+  `CREATE UNIQUE INDEX "debt_account_worker_unique" ON "debt_account" ("worker_id") WHERE "worker_id" IS NOT NULL`,
+  `CREATE UNIQUE INDEX "debt_account_external_counterparty_unique" ON "debt_account" ("external_counterparty_id") WHERE "external_counterparty_id" IS NOT NULL`,
   `CREATE INDEX "debt_entry_debt_account_id_idx" ON "debt_entry" ("debt_account_id", "entry_date")`,
-  `CREATE INDEX "debt_closure_link_source_debt_account_id_idx" ON "debt_closure_link" ("source_debt_account_id", "entry_date")`,
-  `CREATE INDEX "debt_closure_link_target_debt_account_id_idx" ON "debt_closure_link" ("target_debt_account_id", "entry_date")`,
 ];
 
 export function createInMemoryCompanyHarness() {

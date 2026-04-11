@@ -73,7 +73,7 @@ export const employeeStatusSchema = z.enum(["ACTIVE", "INACTIVE", "LEFT"]);
 export const salaryPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
 export const debtPartyTypeSchema = z.enum(["INTERNAL_WORKER", "EXTERNAL_COUNTERPARTY"]);
 export const debtAccountStatusSchema = z.enum(["OPEN", "SETTLED"]);
-export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT", "CLOSURE"]);
+export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT"]);
 export const projectStatusSchema = z.enum([
   "ACTIVE",
   "STOPPED",
@@ -254,20 +254,6 @@ export const debtEntrySchema = z.object({
   entryDate: timestampSchema,
   note: nullableTextSchema,
   balanceAfterDzd: z.number(),
-  actorUserId: auditActorUserIdSchema,
-  actorLabel: nullableTextSchema,
-  transactionId: auditTransactionIdSchema,
-  createdAt: timestampSchema,
-  updatedAt: timestampSchema,
-});
-
-export const debtClosureLinkSchema = z.object({
-  id: entityIdSchema,
-  sourceDebtAccountId: entityIdSchema,
-  targetDebtAccountId: entityIdSchema,
-  closedAmountDzd: z.number().positive(),
-  entryDate: timestampSchema,
-  note: nullableTextSchema,
   actorUserId: auditActorUserIdSchema,
   actorLabel: nullableTextSchema,
   transactionId: auditTransactionIdSchema,
@@ -515,7 +501,6 @@ export const workspaceSnapshotSchema = z.object({
   externalCounterparties: z.array(externalCounterpartySchema),
   debtAccounts: z.array(debtAccountSchema),
   debtEntries: z.array(debtEntrySchema),
-  debtClosureLinks: z.array(debtClosureLinkSchema),
   projects: z.array(projectSchema),
   warehouses: z.array(warehouseSchema),
   managerAssignments: z.array(employeeManagerAssignmentSchema),
@@ -1045,27 +1030,6 @@ export const debtSettlementInputSchema = z.object({
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
-export const debtClosureLinkListInputSchema = z.object({
-  debtAccountId: entityIdSchema,
-});
-
-export const debtCloseAgainstInputSchema = z
-  .object({
-    sourceDebtAccountId: entityIdSchema,
-    targetDebtAccountId: entityIdSchema,
-    entryDate: timestampSchema.optional(),
-    note: z.string().trim().max(1000).nullable().optional(),
-  })
-  .superRefine((input, ctx) => {
-    if (input.sourceDebtAccountId === input.targetDebtAccountId) {
-      ctx.addIssue({
-        code: "custom",
-        message: "يجب اختيار حسابي دين مختلفين.",
-        path: ["targetDebtAccountId"],
-      })
-    }
-  });
-
 export const debtPartyDetailInputSchema = z
   .object({
     partyType: debtPartyTypeSchema,
@@ -1288,12 +1252,6 @@ export const appContract = {
   debtEntriesCreate: oc
     .input(debtEntryCreateInputSchema)
     .output(createEntityResultSchema(debtEntrySchema)),
-  debtClosureLinksList: oc
-    .input(debtClosureLinkListInputSchema)
-    .output(createListSchema(debtClosureLinkSchema)),
-  debtCloseAgainst: oc
-    .input(debtCloseAgainstInputSchema)
-    .output(createEntityResultSchema(debtClosureLinkSchema)),
   debtAccountsSettle: oc
     .input(debtSettlementInputSchema)
     .output(createEntityResultSchema(debtEntrySchema)),
@@ -1326,7 +1284,6 @@ export type ExternalCounterpartyCreateInput = z.infer<typeof externalCounterpart
 export type DebtAccountCreateInput = z.infer<typeof debtAccountCreateInputSchema>;
 export type DebtEntryCreateInput = z.infer<typeof debtEntryCreateInputSchema>;
 export type DebtSettlementInput = z.infer<typeof debtSettlementInputSchema>;
-export type DebtCloseAgainstInput = z.infer<typeof debtCloseAgainstInputSchema>;
 export type DebtPartyDetailInput = z.infer<typeof debtPartyDetailInputSchema>;
 export type SystemLogListInput = z.infer<typeof systemLogListInputSchema>;
 export type ProjectCreateInput = z.infer<typeof projectCreateInputSchema>;
@@ -1372,7 +1329,6 @@ export type EmployeeSalaryPayment = z.infer<typeof employeeSalaryPaymentSchema>;
 export type ExternalCounterparty = z.infer<typeof externalCounterpartySchema>;
 export type DebtAccount = z.infer<typeof debtAccountSchema>;
 export type DebtEntry = z.infer<typeof debtEntrySchema>;
-export type DebtClosureLink = z.infer<typeof debtClosureLinkSchema>;
 export type DebtPartySummaryItem = z.infer<typeof debtPartySummaryItemSchema>;
 export type DebtPartyDetail = z.infer<typeof debtPartyDetailSchema>;
 export type DebtSummaryItem = z.infer<typeof debtSummaryItemSchema>;
