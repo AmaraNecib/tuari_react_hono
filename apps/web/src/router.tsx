@@ -87,6 +87,9 @@ const projectEditRoute = createRoute({
 })
 const warehousesRoute = createWorkspaceRoute("/warehouses", "warehouses")
 const warehousesCreateRoute = createWorkspaceRoute("/warehouses/create", "warehouse-create")
+const inventoryRoute = createWorkspaceRoute("/inventory", "inventory")
+const invoicesRoute = createWorkspaceRoute("/invoices", "invoices")
+const invoiceCreateRoute = createWorkspaceRoute("/invoices/create", "invoice-create")
 const transactionsRoute = createWorkspaceRoute("/transactions", "transactions")
 const warehouseDetailsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -100,6 +103,11 @@ const warehouseEditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/warehouses/$warehouseId/edit",
   component: WarehouseEditRouteComponent,
+})
+const invoiceDetailsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/invoices/$invoiceId",
+  component: InvoiceDetailsRouteComponent,
 })
 const rolesRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -146,6 +154,11 @@ function WarehouseEditRouteComponent() {
   return <HomeView page="warehouse-edit" warehouseId={warehouseId} />
 }
 
+function InvoiceDetailsRouteComponent() {
+  const { invoiceId } = invoiceDetailsRoute.useParams()
+  return <HomeView invoiceId={invoiceId} page="invoice-details" />
+}
+
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   employeesRoute,
@@ -164,9 +177,13 @@ const routeTree = rootRoute.addChildren([
   projectEditRoute,
   warehousesRoute,
   warehousesCreateRoute,
+  inventoryRoute,
+  invoicesRoute,
+  invoiceCreateRoute,
   transactionsRoute,
   warehouseDetailsRoute,
   warehouseEditRoute,
+  invoiceDetailsRoute,
   rolesRoute,
   settingsRoute,
 ])

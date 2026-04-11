@@ -20,6 +20,7 @@ export type HomeViewPageContentProps = {
   copy: HomeViewCopy
   derived: HomeViewDerived
   detailTab?: string
+  invoiceId?: string
   page: HomeViewPage
   selectedCounterparty: HomeViewDerived["externalCounterparties"][number] | null
   selectedEmployee: HomeViewDerived["employeeRows"][number] | null

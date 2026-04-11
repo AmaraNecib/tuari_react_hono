@@ -11,6 +11,7 @@ export function HomeViewPageContent({
   copy,
   derived,
   detailTab,
+  invoiceId,
   navigation,
   page,
   selectedCounterparty,
@@ -37,6 +38,7 @@ export function HomeViewPageContent({
         copy={copy}
         derived={derived}
         detailTab={detailTab}
+        selectedInvoiceId={invoiceId}
         navigation={navigation}
         page={page}
         selectedCounterparty={selectedCounterparty}

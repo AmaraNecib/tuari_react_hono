@@ -42,14 +42,14 @@ export function DebtsHubPage({
     <RecordPageFrame
       action={
         <div className="flex gap-2">
-          <Button size="lg" onClick={onCreateDebt}>إنشاء دين جديد</Button>
+          <Button size="lg" onClick={onCreateDebt}>إضافة رصيد دين</Button>
         </div>
       }
       title="مركز الديون"
-      description="ملخص سريع لأرصدة العمال والأطراف الخارجية. الأخضر يعني أنهم مدينون لنا، والأحمر يعني أننا مدينون لهم."
+      description="ملخص سريع لحساب دين واحد لكل عامل أو طرف خارجي. الأخضر يعني أنهم مدينون لنا، والأحمر يعني أننا مدينون لهم."
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <HubStatCard label="عدد الحسابات المفتوحة" value={String(totals.openCount)} />
+        <HubStatCard label="عدد الأرصدة المفتوحة" value={String(totals.openCount)} />
         <HubStatCard label="لنا عندهم" value={`دج ${formatDebtMoney(totals.owedToUsDzd)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
         <HubStatCard label="علينا لهم" value={`دج ${formatDebtMoney(-totals.owedByUsDzd)}`} valueClassName="text-rose-700 dark:text-rose-300" />
       </div>
@@ -62,7 +62,7 @@ export function DebtsHubPage({
                 <th className="px-4 py-3 text-start font-medium">الطرف</th>
                 <th className="px-4 py-3 text-start font-medium">النوع</th>
                 <th className="px-4 py-3 text-start font-medium">الهاتف</th>
-                <th className="px-4 py-3 text-start font-medium">الحالات</th>
+                <th className="px-4 py-3 text-start font-medium">الحساب</th>
                 <th className="px-4 py-3 text-start font-medium">الرصيد</th>
                 <th className="px-4 py-3 text-start font-medium">الدلالة</th>
                 <th className="px-4 py-3 text-start font-medium">الإجراء</th>
@@ -78,7 +78,7 @@ export function DebtsHubPage({
                       <td className="px-4 py-4 text-start font-medium text-foreground">{row.name}</td>
                       <td className="px-4 py-4 text-start text-muted-foreground">{row.type === "worker" ? "عامل داخلي" : "طرف خارجي"}</td>
                       <td className="px-4 py-4 text-start text-foreground"><bdi dir="ltr">{row.phone}</bdi></td>
-                      <td className="px-4 py-4 text-start text-foreground">{row.caseCount}</td>
+                  <td className="px-4 py-4 text-start text-foreground">{row.caseCount}</td>
                       <td className={`px-4 py-4 text-start font-mono ${balanceMeta.textClassName}`.trim()} dir="ltr">
                         دج {formatDebtMoney(row.balanceDzd)}
                       </td>

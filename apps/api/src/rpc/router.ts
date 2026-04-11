@@ -6,11 +6,14 @@ import { toFailureResult } from "../modules/company/company.errors";
 import { createAlgeriaTimestamp } from "../modules/company/company-time";
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import type { CompanyService } from "../modules/company/company.service";
+import { toFailureResult as toInventoryFailureResult } from "../modules/inventory/inventory.errors";
+import type { InventoryService } from "../modules/inventory/inventory.service";
 import { getCurrentUser, requireCurrentUser, type RpcContext } from "./context";
 
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
   companyService: CompanyService;
+  inventoryService: InventoryService;
 };
 
 function resolveCompanyResult<T>(operation: () => T) {
@@ -18,6 +21,14 @@ function resolveCompanyResult<T>(operation: () => T) {
     return operation();
   } catch (error) {
     return toFailureResult(error);
+  }
+}
+
+function resolveInventoryResult<T>(operation: () => T) {
+  try {
+    return operation()
+  } catch (error) {
+    return toInventoryFailureResult(error)
   }
 }
 
@@ -152,6 +163,50 @@ export function createRouter(dependencies: RouterDependencies) {
       const auditContext = await createMutationAuditContext(context, dependencies)
       return resolveCompanyResult(() => dependencies.companyService.updateWarehouse(input, auditContext));
     }),
+    inventoryItemDefinitionsList: os.inventoryItemDefinitionsList.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return dependencies.inventoryService.listItemDefinitions(input ?? undefined)
+    }),
+    inventoryItemDefinitionsGet: os.inventoryItemDefinitionsGet.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return resolveInventoryResult(() => dependencies.inventoryService.getItemDefinition(input.id))
+    }),
+    inventoryItemDefinitionsCreate: os.inventoryItemDefinitionsCreate.handler(async ({ context, input }) => {
+      const auditContext = await createMutationAuditContext(context, dependencies)
+      return resolveInventoryResult(() => dependencies.inventoryService.createItemDefinition(input, auditContext))
+    }),
+    inventoryItemDefinitionsUpdate: os.inventoryItemDefinitionsUpdate.handler(async ({ context, input }) => {
+      const auditContext = await createMutationAuditContext(context, dependencies)
+      return resolveInventoryResult(() => dependencies.inventoryService.updateItemDefinition(input, auditContext))
+    }),
+    inventoryInvoiceGroupsList: os.inventoryInvoiceGroupsList.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return dependencies.inventoryService.listInvoiceGroups(input ?? undefined)
+    }),
+    inventoryInvoiceGroupsGet: os.inventoryInvoiceGroupsGet.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return resolveInventoryResult(() => dependencies.inventoryService.getInvoiceGroup(input.id))
+    }),
+    inventoryInvoiceGroupsCreate: os.inventoryInvoiceGroupsCreate.handler(async ({ context, input }) => {
+      const auditContext = await createMutationAuditContext(context, dependencies)
+      return resolveInventoryResult(() => dependencies.inventoryService.createInvoiceGroup(input, auditContext))
+    }),
+    inventoryLocationContentsGet: os.inventoryLocationContentsGet.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return resolveInventoryResult(() => dependencies.inventoryService.getLocationContents(input))
+    }),
+    inventoryAssetsGet: os.inventoryAssetsGet.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return resolveInventoryResult(() => dependencies.inventoryService.getAsset(input.id))
+    }),
+    inventoryAssetsTransfer: os.inventoryAssetsTransfer.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return resolveInventoryResult(() => dependencies.inventoryService.transferAsset(input))
+    }),
+    inventoryConsumablesTransfer: os.inventoryConsumablesTransfer.handler(async ({ context, input }) => {
+      await requireWorkspaceAdmin(context, dependencies)
+      return resolveInventoryResult(() => dependencies.inventoryService.transferConsumable(input))
+    }),
     managerAssignmentsList: os.managerAssignmentsList.handler(async ({ context, input }) => {
       await requireWorkspaceAdmin(context, dependencies);
       return dependencies.companyService.listManagerAssignments(input ?? undefined);
@@ -259,14 +314,6 @@ export function createRouter(dependencies: RouterDependencies) {
     debtEntriesCreate: os.debtEntriesCreate.handler(async ({ context, input }) => {
       const auditContext = await createMutationAuditContext(context, dependencies)
       return resolveCompanyResult(() => dependencies.companyService.createDebtEntry(input, auditContext))
-    }),
-    debtClosureLinksList: os.debtClosureLinksList.handler(async ({ context, input }) => {
-      await requireWorkspaceAdmin(context, dependencies)
-      return dependencies.companyService.listDebtClosureLinks(input)
-    }),
-    debtCloseAgainst: os.debtCloseAgainst.handler(async ({ context, input }) => {
-      const auditContext = await createMutationAuditContext(context, dependencies)
-      return resolveCompanyResult(() => dependencies.companyService.closeDebtAgainstAnother(input, auditContext))
     }),
     debtAccountsSettle: os.debtAccountsSettle.handler(async ({ context, input }) => {
       const auditContext = await createMutationAuditContext(context, dependencies)

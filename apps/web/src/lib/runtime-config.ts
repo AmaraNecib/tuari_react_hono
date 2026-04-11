@@ -1,13 +1,25 @@
 import { getRuntimeStatus } from "./runtime-bridge"
 
-const DEFAULT_API_URL = "http://127.0.0.1:4318"
+const DEFAULT_API_PORT = "4318"
 
 export type ResolvedRuntimeConfig = {
   apiBaseUrl: string
 }
 
 let runtimeConfig: ResolvedRuntimeConfig = {
-  apiBaseUrl: normalizeApiBaseUrl(import.meta.env.VITE_API_URL?.trim() || DEFAULT_API_URL),
+  apiBaseUrl: normalizeApiBaseUrl(import.meta.env.VITE_API_URL?.trim() || getDefaultApiBaseUrl()),
+}
+
+function getDefaultApiBaseUrl() {
+  if (typeof window !== "undefined") {
+    const { hostname, protocol } = window.location
+
+    if (isLocalHostname(hostname)) {
+      return `${protocol}//${hostname}:${DEFAULT_API_PORT}`
+    }
+  }
+
+  return `http://127.0.0.1:${DEFAULT_API_PORT}`
 }
 
 function isLocalHostname(hostname: string) {
@@ -67,6 +79,6 @@ export async function initializeRuntimeConfig() {
 
 export function resetRuntimeConfigForTests() {
   runtimeConfig = {
-    apiBaseUrl: normalizeApiBaseUrl(import.meta.env.VITE_API_URL?.trim() || DEFAULT_API_URL),
+    apiBaseUrl: normalizeApiBaseUrl(import.meta.env.VITE_API_URL?.trim() || getDefaultApiBaseUrl()),
   }
 }
