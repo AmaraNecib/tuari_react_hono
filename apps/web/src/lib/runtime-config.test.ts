@@ -21,7 +21,7 @@ describe("runtime config", () => {
   })
 
   it("uses the current localhost hostname for the default browser api base url", () => {
-    expect(resolveApiBaseUrl()).toBe("http://localhost:4318")
+    expect(resolveApiBaseUrl()).toBe("http://127.0.0.1:4318")
   })
 
   it("uses desktop runtime values when the Tauri bridge provides them", async () => {

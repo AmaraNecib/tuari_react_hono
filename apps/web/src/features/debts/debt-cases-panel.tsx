@@ -60,8 +60,8 @@ export function DebtCasesPanel({
 
       <Surface className="p-5" variant="card">
         <SurfaceHeader
-          description="لكل طرف حساب دين واحد فقط. إذا كان الحساب موجودًا فسيُضاف المبلغ كحركة جديدة على نفس الحساب الموحد."
-          title={debtAccount ? "إضافة حركة على الحساب" : "إنشاء الحساب"}
+          description="لكل طرف حساب دين واحد فقط. إذا كان الحساب موجودًا فسيُسجَّل المبلغ كدفعة جديدة على نفس الحساب الموحد."
+          title={debtAccount ? "تسجيل دفعة على الحساب" : "إنشاء الحساب"}
         />
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -79,7 +79,7 @@ export function DebtCasesPanel({
             <CurrencyInput placeholder="0 أو 2500 أو -2500" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} />
           </label>
           <label className="flex flex-col gap-2 md:col-span-2">
-            <span className="text-sm font-medium text-foreground">ملاحظة الحركة</span>
+            <span className="text-sm font-medium text-foreground">ملاحظة الدفعة</span>
             <Textarea placeholder="مثال: دين جديد، دفعة وصلت، دفعة خرجت" value={note} onChange={(event) => setNote(event.target.value)} />
           </label>
         </div>
@@ -103,7 +103,7 @@ export function DebtCasesPanel({
               setNote("")
             }}
           >
-            {debtAccount ? "إضافة حركة إلى الحساب" : "إنشاء الحساب"}
+            {debtAccount ? "تسجيل الدفعة" : "إنشاء الحساب"}
           </Button>
         </PageFooterActions>
       </Surface>
