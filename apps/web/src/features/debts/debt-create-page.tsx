@@ -220,7 +220,7 @@ export function DebtCreatePage({
               disabled={!selectedPartyId || !hasValidAmount || createDebtAccountMutation.isPending}
               onClick={handleCreateDebt}
             >
-              {createDebtAccountMutation.isPending ? t("common.saving") : "حفظ الحركة على الحساب"}
+              {createDebtAccountMutation.isPending ? t("common.saving") : "تسجيل الدفعة على الحساب"}
             </Button>
           </PageFooterActions>
         </div>

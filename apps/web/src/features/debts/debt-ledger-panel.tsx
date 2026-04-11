@@ -108,7 +108,7 @@ export function DebtLedgerPanel({
                 : undefined
             }
           >
-            حفظ الحركة
+            تسجيل الدفعة
           </Button>
         </div>
       </Surface>

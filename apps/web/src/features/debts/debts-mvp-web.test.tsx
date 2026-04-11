@@ -157,7 +157,7 @@ describe("debts MVP web UI", () => {
     )
 
     fireEvent.change(screen.getByPlaceholderText("مثال: 2500 أو -2500"), { target: { value: "500" } })
-    fireEvent.click(screen.getByRole("button", { name: "حفظ الحركة" }))
+    fireEvent.click(screen.getAllByRole("button", { name: "تسجيل الدفعة" })[1]!)
 
     expect(createDebtEntryMutate).toHaveBeenCalledWith(
       expect.objectContaining({ debtAccountId: "debt-2", signedAmountDzd: 500 }),
@@ -171,7 +171,7 @@ describe("debts MVP web UI", () => {
 
     fireEvent.change(screen.getByPlaceholderText("0 أو 2500 أو -2500"), { target: { value: "-1200" } })
     fireEvent.change(screen.getByPlaceholderText("مثال: دين جديد، دفعة وصلت، دفعة خرجت"), { target: { value: "دفعة شراء جديدة" } })
-    fireEvent.click(screen.getByRole("button", { name: "إضافة حركة إلى الحساب" }))
+    fireEvent.click(screen.getAllByRole("button", { name: "تسجيل الدفعة" })[0]!)
 
     await waitFor(() => {
       expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(
