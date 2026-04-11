@@ -4,7 +4,8 @@ import {
   additiveStatements,
   companyIndexStatements,
   companyStatusConstraintChecks,
-  debtSingleAccountMigrationKey,
+  debtEntryClosureMigrationKey,
+  debtMultiCaseMigrationKey,
   obsoleteMigrationKey,
   roleSeeds,
   schemaStatements,
@@ -13,10 +14,6 @@ import {
 
 function isDuplicateColumnError(error: unknown) {
   return error instanceof Error && error.message.includes("duplicate column name");
-}
-
-function isMissingColumnError(error: unknown) {
-  return error instanceof Error && error.message.includes("no such column")
 }
 
 async function getTableColumns(tableName: string) {
@@ -50,6 +47,14 @@ async function hasStatusCheckConstraints() {
   return tableSql.every((entry) => entry.hasFragment);
 }
 
+async function hasDebtEntryClosureConstraint() {
+  const tableSql = await getTableSql("debt_entry");
+
+  return tableSql.includes(
+    `"entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT', 'CLOSURE'))`,
+  );
+}
+
 async function syncLegacyTimestampColumns() {
   if ((await hasColumn("user", "createdAt")) || (await hasColumn("user", "updatedAt"))) {
     await prisma.$executeRawUnsafe(
@@ -77,57 +82,6 @@ async function syncLegacyTimestampColumns() {
       'UPDATE "verification" SET "createdAt" = COALESCE("createdAt", "created_at"), "updatedAt" = COALESCE("updatedAt", "updated_at") WHERE "created_at" IS NOT NULL OR "updated_at" IS NOT NULL',
     );
   }
-}
-
-async function ensureInventoryProjectIndexes() {
-  if (await hasColumn("inventory_invoice_group", "project_id")) {
-    await prisma.$executeRawUnsafe(
-      'CREATE INDEX IF NOT EXISTS "inventory_invoice_group_project_id_idx" ON "inventory_invoice_group" ("project_id", "created_at")',
-    )
-  }
-
-  if (await hasColumn("inventory_entry", "project_id")) {
-    await prisma.$executeRawUnsafe(
-      'CREATE INDEX IF NOT EXISTS "inventory_entry_project_id_idx" ON "inventory_entry" ("project_id")',
-    )
-  }
-
-  if (await hasColumn("inventory_invoice_group", "external_counterparty_id")) {
-    await prisma.$executeRawUnsafe(
-      'CREATE INDEX IF NOT EXISTS "inventory_invoice_group_external_counterparty_id_idx" ON "inventory_invoice_group" ("external_counterparty_id")',
-    )
-  }
-
-  if (await hasColumn("inventory_asset_unit", "current_warehouse_id")) {
-    await prisma.$executeRawUnsafe(
-      'CREATE INDEX IF NOT EXISTS "inventory_asset_unit_current_warehouse_id_idx" ON "inventory_asset_unit" ("current_warehouse_id")',
-    )
-  }
-
-  if (await hasColumn("inventory_asset_unit", "current_project_id")) {
-    await prisma.$executeRawUnsafe(
-      'CREATE INDEX IF NOT EXISTS "inventory_asset_unit_current_project_id_idx" ON "inventory_asset_unit" ("current_project_id")',
-    )
-  }
-
-  await prisma.$executeRawUnsafe(
-    'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_inventory_entry_id_idx" ON "inventory_consumable_balance" ("inventory_entry_id")',
-  )
-  await prisma.$executeRawUnsafe(
-    'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_item_definition_id_idx" ON "inventory_consumable_balance" ("item_definition_id")',
-  )
-  await prisma.$executeRawUnsafe(
-    'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_warehouse_id_idx" ON "inventory_consumable_balance" ("warehouse_id")',
-  )
-  await prisma.$executeRawUnsafe(
-    'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_project_id_idx" ON "inventory_consumable_balance" ("project_id")',
-  )
-  await prisma.$executeRawUnsafe(
-    'CREATE INDEX IF NOT EXISTS "inventory_movement_inventory_entry_id_idx" ON "inventory_movement" ("inventory_entry_id", "occurred_at")',
-  )
-  await prisma.$executeRawUnsafe(
-    'CREATE INDEX IF NOT EXISTS "inventory_movement_asset_unit_id_idx" ON "inventory_movement" ("asset_unit_id", "occurred_at")',
-  )
 }
 
 async function repairLegacyAuthTables() {
@@ -513,220 +467,56 @@ async function runActorLabelBackfillMigration() {
   });
 }
 
-async function runDebtSingleAccountMigration() {
+async function runDebtMultiCaseMigration() {
   const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
-    debtSingleAccountMigrationKey,
+    debtMultiCaseMigrationKey,
   )
 
   if (migrationRow) {
     return
   }
 
-  type DebtAccountRow = {
-    id: string
-    party_type: "INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY"
-    worker_id: string | null
-    external_counterparty_id: string | null
-    status: "OPEN" | "SETTLED"
-    current_balance_dzd: number
-    note: string | null
-    settled_at: string | null
-    actor_user_id: string | null
-    actor_label: string | null
-    transaction_id: string | null
-    created_at: string
-    updated_at: string
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe('DROP INDEX IF EXISTS "debt_account_worker_unique"')
+    await tx.$executeRawUnsafe('DROP INDEX IF EXISTS "debt_account_external_counterparty_unique"')
+    await tx.$executeRawUnsafe(
+      'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+      debtMultiCaseMigrationKey,
+      new Date().toISOString(),
+    )
+  })
+}
+
+async function runDebtEntryClosureMigration() {
+  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    debtEntryClosureMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
   }
 
-  type DebtEntryRow = {
-    id: string
-    debt_account_id: string
-    entry_type: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "SETTLEMENT" | "CLOSURE"
-    signed_amount_dzd: number
-    entry_date: string
-    note: string | null
-    balance_after_dzd: number
-    actor_user_id: string | null
-    actor_label: string | null
-    transaction_id: string | null
-    created_at: string
-    updated_at: string
+  if (await hasDebtEntryClosureConstraint()) {
+    await prisma.$executeRawUnsafe(
+      'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+      debtEntryClosureMigrationKey,
+      new Date().toISOString(),
+    );
+    return;
   }
 
-  type InvoiceDebtLinkRow = {
-    id: string
-    debt_account_id: string | null
-  }
-
-  const compareAsc = (left: string, right: string) => Date.parse(left) - Date.parse(right)
-  const compareDesc = (left: string, right: string) => Date.parse(right) - Date.parse(left)
-  const maxTimestamp = (values: Array<string | null | undefined>) =>
-    values.filter((value): value is string => Boolean(value)).sort(compareDesc)[0] ?? new Date().toISOString()
-
-  const getPartyKey = (account: Pick<DebtAccountRow, "party_type" | "worker_id" | "external_counterparty_id">) =>
-    account.party_type === "INTERNAL_WORKER"
-      ? `INTERNAL_WORKER:${account.worker_id}`
-      : `EXTERNAL_COUNTERPARTY:${account.external_counterparty_id}`
-
-  const normalizeEntryType = (entryType: DebtEntryRow["entry_type"], isFirstEntry: boolean) => {
-    if (entryType === "CLOSURE") {
-      return null
-    }
-
-    if (entryType === "OPENING") {
-      return isFirstEntry ? "OPENING" : "ADJUSTMENT"
-    }
-
-    if (entryType === "SETTLEMENT") {
-      return "ADJUSTMENT"
-    }
-
-    return entryType
-  }
-
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF")
+  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
     await prisma.$transaction(async (tx) => {
-      const accounts = await tx.$queryRawUnsafe<DebtAccountRow[]>(
-        'SELECT * FROM "debt_account" ORDER BY "created_at" ASC, "updated_at" ASC, "id" ASC',
-      )
-      const entries = await tx.$queryRawUnsafe<DebtEntryRow[]>(
-        'SELECT * FROM "debt_entry" ORDER BY "entry_date" ASC, "created_at" ASC, "id" ASC',
-      )
-      const invoiceLinks = await tx.$queryRawUnsafe<InvoiceDebtLinkRow[]>(
-        'SELECT "id", "debt_account_id" FROM "inventory_invoice_group"',
-      )
-
-      const entriesByAccountId = new Map<string, DebtEntryRow[]>()
-      for (const entry of entries) {
-        entriesByAccountId.set(entry.debt_account_id, [...(entriesByAccountId.get(entry.debt_account_id) ?? []), entry])
-      }
-
-      const accountsByParty = new Map<string, DebtAccountRow[]>()
-      for (const account of accounts) {
-        const partyKey = getPartyKey(account)
-        accountsByParty.set(partyKey, [...(accountsByParty.get(partyKey) ?? []), account])
-      }
-
-      const rebuiltAccounts: DebtAccountRow[] = []
-      const rebuiltEntries: Array<Omit<DebtEntryRow, "entry_type"> & { entry_type: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "SETTLEMENT" }> = []
-      const accountIdMap = new Map<string, string>()
-
-      for (const groupedAccounts of accountsByParty.values()) {
-        const sortedAccounts = [...groupedAccounts].sort((left, right) => {
-          const byCreatedAt = compareAsc(left.created_at, right.created_at)
-          return byCreatedAt !== 0 ? byCreatedAt : compareAsc(left.updated_at, right.updated_at)
-        })
-
-        const canonicalAccount = sortedAccounts[0]!
-        const latestAccount = [...sortedAccounts].sort((left, right) => compareDesc(left.updated_at, right.updated_at))[0]!
-        const mergedEntries = sortedAccounts
-          .flatMap((account) => entriesByAccountId.get(account.id) ?? [])
-          .sort((left, right) => {
-            const byEntryDate = compareAsc(left.entry_date, right.entry_date)
-            return byEntryDate !== 0 ? byEntryDate : compareAsc(left.created_at, right.created_at)
-          })
-
-        let runningBalance = 0
-        let keptEntryCount = 0
-
-        for (const entry of mergedEntries) {
-          const normalizedEntryType = normalizeEntryType(entry.entry_type, keptEntryCount === 0)
-          if (!normalizedEntryType) {
-            continue
-          }
-
-          runningBalance += Number(entry.signed_amount_dzd)
-          keptEntryCount += 1
-          rebuiltEntries.push({
-            ...entry,
-            debt_account_id: canonicalAccount.id,
-            entry_type: normalizedEntryType,
-            balance_after_dzd: runningBalance,
-          })
-        }
-
-        if (keptEntryCount === 0 && sortedAccounts.some((account) => Number(account.current_balance_dzd) !== 0)) {
-          const syntheticEntryDate = canonicalAccount.created_at
-          runningBalance = sortedAccounts.reduce((sum, account) => sum + Number(account.current_balance_dzd), 0)
-          rebuiltEntries.push({
-            id: crypto.randomUUID(),
-            debt_account_id: canonicalAccount.id,
-            entry_type: "OPENING",
-            signed_amount_dzd: runningBalance,
-            entry_date: syntheticEntryDate,
-            note: "ترحيل رصيد قديم بعد توحيد الحسابات",
-            balance_after_dzd: runningBalance,
-            actor_user_id: latestAccount.actor_user_id,
-            actor_label: latestAccount.actor_label,
-            transaction_id: latestAccount.transaction_id,
-            created_at: syntheticEntryDate,
-            updated_at: syntheticEntryDate,
-          })
-          keptEntryCount = 1
-        }
-
-        const totalBalance = keptEntryCount > 0
-          ? rebuiltEntries.filter((entry) => entry.debt_account_id === canonicalAccount.id).at(-1)?.balance_after_dzd ?? 0
-          : 0
-        const latestRelevantTimestamp = maxTimestamp([
-          latestAccount.updated_at,
-          ...rebuiltEntries.filter((entry) => entry.debt_account_id === canonicalAccount.id).flatMap((entry) => [entry.updated_at, entry.entry_date]),
-        ])
-
-        rebuiltAccounts.push({
-          ...canonicalAccount,
-          current_balance_dzd: totalBalance,
-          status: totalBalance === 0 ? "SETTLED" : "OPEN",
-          note:
-            sortedAccounts
-              .map((account) => account.note?.trim() ?? "")
-              .find((value) => value.length > 0) ?? null,
-          settled_at: totalBalance === 0 ? latestRelevantTimestamp : null,
-          actor_user_id: latestAccount.actor_user_id,
-          actor_label: latestAccount.actor_label,
-          transaction_id: latestAccount.transaction_id,
-          created_at: canonicalAccount.created_at,
-          updated_at: latestRelevantTimestamp,
-        })
-
-        for (const account of sortedAccounts) {
-          accountIdMap.set(account.id, canonicalAccount.id)
-        }
-      }
-
-      await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "debt_account_single"')
-      await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "debt_entry_single"')
+      await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "debt_entry_checked"');
       await tx.$executeRawUnsafe(
-        `CREATE TABLE "debt_account_single" (
-          "id" TEXT NOT NULL PRIMARY KEY,
-          "party_type" TEXT NOT NULL CHECK ("party_type" IN ('INTERNAL_WORKER', 'EXTERNAL_COUNTERPARTY')),
-          "worker_id" TEXT,
-          "external_counterparty_id" TEXT,
-          "status" TEXT NOT NULL CHECK ("status" IN ('OPEN', 'SETTLED')),
-          "current_balance_dzd" REAL NOT NULL DEFAULT 0,
-          "note" TEXT,
-          "settled_at" DATETIME,
-          "actor_user_id" TEXT,
-          "actor_label" TEXT,
-          "transaction_id" TEXT,
-          "created_at" DATETIME NOT NULL,
-          "updated_at" DATETIME NOT NULL,
-          CONSTRAINT "debt_account_worker_id_fkey"
-            FOREIGN KEY ("worker_id") REFERENCES "employee" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-          CONSTRAINT "debt_account_external_counterparty_id_fkey"
-            FOREIGN KEY ("external_counterparty_id") REFERENCES "external_counterparty" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-          CONSTRAINT "debt_account_party_check"
-            CHECK ((("worker_id" IS NOT NULL) AND ("external_counterparty_id" IS NULL)) OR (("worker_id" IS NULL) AND ("external_counterparty_id" IS NOT NULL)))
-        )`,
-      )
-      await tx.$executeRawUnsafe(
-        `CREATE TABLE "debt_entry_single" (
+        `CREATE TABLE "debt_entry_checked" (
           "id" TEXT NOT NULL PRIMARY KEY,
           "debt_account_id" TEXT NOT NULL,
-          "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT')),
+          "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT', 'CLOSURE')),
           "signed_amount_dzd" REAL NOT NULL,
           "entry_date" DATETIME NOT NULL,
           "note" TEXT,
@@ -737,77 +527,37 @@ async function runDebtSingleAccountMigration() {
           "created_at" DATETIME NOT NULL,
           "updated_at" DATETIME NOT NULL,
           CONSTRAINT "debt_entry_debt_account_id_fkey"
-            FOREIGN KEY ("debt_account_id") REFERENCES "debt_account_single" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+            FOREIGN KEY ("debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
         )`,
-      )
+      );
+      await tx.$executeRawUnsafe(
+        'INSERT INTO "debt_entry_checked" ("id", "debt_account_id", "entry_type", "signed_amount_dzd", "entry_date", "note", "balance_after_dzd", "actor_user_id", "actor_label", "transaction_id", "created_at", "updated_at") SELECT "id", "debt_account_id", "entry_type", "signed_amount_dzd", "entry_date", "note", "balance_after_dzd", "actor_user_id", "actor_label", "transaction_id", "created_at", "updated_at" FROM "debt_entry"',
+      );
 
-      for (const account of rebuiltAccounts) {
-        await tx.$executeRawUnsafe(
-          'INSERT INTO "debt_account_single" ("id", "party_type", "worker_id", "external_counterparty_id", "status", "current_balance_dzd", "note", "settled_at", "actor_user_id", "actor_label", "transaction_id", "created_at", "updated_at") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          account.id,
-          account.party_type,
-          account.worker_id,
-          account.external_counterparty_id,
-          account.status,
-          account.current_balance_dzd,
-          account.note,
-          account.settled_at,
-          account.actor_user_id,
-          account.actor_label,
-          account.transaction_id,
-          account.created_at,
-          account.updated_at,
-        )
+      const [sourceRow] = await tx.$queryRawUnsafe<Array<{ count: number | bigint }>>(
+        'SELECT COUNT(*) AS count FROM "debt_entry"',
+      );
+      const [checkedRow] = await tx.$queryRawUnsafe<Array<{ count: number | bigint }>>(
+        'SELECT COUNT(*) AS count FROM "debt_entry_checked"',
+      );
+
+      if (Number(sourceRow?.count ?? 0) !== Number(checkedRow?.count ?? 0)) {
+        throw new Error("Debt entry closure migration row count mismatch.");
       }
 
-      for (const entry of rebuiltEntries) {
-        await tx.$executeRawUnsafe(
-          'INSERT INTO "debt_entry_single" ("id", "debt_account_id", "entry_type", "signed_amount_dzd", "entry_date", "note", "balance_after_dzd", "actor_user_id", "actor_label", "transaction_id", "created_at", "updated_at") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          entry.id,
-          entry.debt_account_id,
-          entry.entry_type,
-          entry.signed_amount_dzd,
-          entry.entry_date,
-          entry.note,
-          entry.balance_after_dzd,
-          entry.actor_user_id,
-          entry.actor_label,
-          entry.transaction_id,
-          entry.created_at,
-          entry.updated_at,
-        )
-      }
-
-      await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "debt_closure_link"')
-      await tx.$executeRawUnsafe('DROP TABLE "debt_entry"')
-      await tx.$executeRawUnsafe('DROP TABLE "debt_account"')
-      await tx.$executeRawUnsafe('ALTER TABLE "debt_account_single" RENAME TO "debt_account"')
-      await tx.$executeRawUnsafe('ALTER TABLE "debt_entry_single" RENAME TO "debt_entry"')
-      await tx.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "debt_account_worker_id_idx" ON "debt_account" ("worker_id")')
-      await tx.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "debt_account_external_counterparty_id_idx" ON "debt_account" ("external_counterparty_id")')
-      await tx.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "debt_account_worker_unique" ON "debt_account" ("worker_id") WHERE "worker_id" IS NOT NULL')
-      await tx.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "debt_account_external_counterparty_unique" ON "debt_account" ("external_counterparty_id") WHERE "external_counterparty_id" IS NOT NULL')
-      await tx.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "debt_entry_debt_account_id_idx" ON "debt_entry" ("debt_account_id", "entry_date")')
-
-      for (const invoiceLink of invoiceLinks) {
-        const nextDebtAccountId = invoiceLink.debt_account_id ? accountIdMap.get(invoiceLink.debt_account_id) ?? null : null
-        if (invoiceLink.debt_account_id !== nextDebtAccountId) {
-          await tx.$executeRawUnsafe(
-            'UPDATE "inventory_invoice_group" SET "debt_account_id" = ? WHERE "id" = ?',
-            nextDebtAccountId,
-            invoiceLink.id,
-          )
-        }
-      }
-
+      await tx.$executeRawUnsafe('DROP TABLE "debt_entry"');
+      await tx.$executeRawUnsafe('ALTER TABLE "debt_entry_checked" RENAME TO "debt_entry"');
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "debt_entry_debt_account_id_idx" ON "debt_entry" ("debt_account_id", "entry_date")',
+      );
       await tx.$executeRawUnsafe(
         'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
-        debtSingleAccountMigrationKey,
+        debtEntryClosureMigrationKey,
         new Date().toISOString(),
-      )
-    })
+      );
+    });
   } finally {
-    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON")
+    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
 }
 
@@ -848,13 +598,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
   await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
 
   for (const statement of schemaStatements) {
-    try {
-      await prisma.$executeRawUnsafe(statement)
-    } catch (error) {
-      if (!isMissingColumnError(error) || (!statement.includes("project_id") && !statement.includes("external_counterparty_id") && !statement.includes("current_warehouse_id") && !statement.includes("current_project_id"))) {
-        throw error
-      }
-    }
+    await prisma.$executeRawUnsafe(statement);
   }
 
   for (const statement of additiveStatements) {
@@ -867,12 +611,11 @@ export async function ensureDatabaseSchema(): Promise<void> {
     }
   }
 
-  await ensureInventoryProjectIndexes()
-
   await runObsoleteMigrations();
   await runStatusConstraintMigrations();
   await runActorLabelBackfillMigration();
-  await runDebtSingleAccountMigration();
+  await runDebtMultiCaseMigration();
+  await runDebtEntryClosureMigration();
 
   await syncLegacyTimestampColumns();
   await repairLegacyAuthTables();

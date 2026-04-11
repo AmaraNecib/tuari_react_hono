@@ -170,8 +170,6 @@ model Project {
   manager             Employee?                        @relation("ProjectManager", fields: [managerId], references: [id], onDelete: SetNull)
   employeeAssignments EmployeeProjectAssignment[]
   managerHistory      ProjectManagerOwnershipHistory[]
-  inventoryInvoiceGroups InventoryInvoiceGroup[]      @relation("InventoryInvoiceGroupProject")
-  inventoryEntries      InventoryEntry[]              @relation("InventoryEntryProject")
 
   @@index([managerId])
   @@map("project")
@@ -210,8 +208,6 @@ model Warehouse {
   manager             Employee?                          @relation("WarehouseManager", fields: [managerId], references: [id], onDelete: SetNull)
   employeeAssignments EmployeeWarehouseAssignment[]
   managerHistory      WarehouseManagerOwnershipHistory[]
-  inventoryInvoiceGroups InventoryInvoiceGroup[]         @relation("InventoryInvoiceGroupWarehouse")
-  inventoryEntries      InventoryEntry[]                 @relation("InventoryEntryWarehouse")
 
   @@index([managerId])
   @@map("warehouse")
@@ -354,6 +350,8 @@ model DebtAccount {
   worker                 Employee?             @relation(fields: [workerId], references: [id], onDelete: Restrict)
   externalCounterparty   ExternalCounterparty? @relation(fields: [externalCounterpartyId], references: [id], onDelete: Restrict)
   entries                DebtEntry[]
+  closureLinksAsSource   DebtClosureLink[]     @relation("DebtClosureSource")
+  closureLinksAsTarget   DebtClosureLink[]     @relation("DebtClosureTarget")
 
   @@index([workerId])
   @@index([externalCounterpartyId])
@@ -379,153 +377,22 @@ model DebtEntry {
   @@map("debt_entry")
 }
 
-model InventoryItemDefinition {
-  id          String                @id
-  name        String
-  itemType    String                @map("item_type")
-  unit        String?
-  description String?
-  isActive    Boolean               @default(true) @map("is_active")
-  actorUserId String?               @map("actor_user_id")
-  actorLabel  String?               @map("actor_label")
-  transactionId String?             @map("transaction_id")
-  createdAt   DateTime              @map("created_at")
-  updatedAt   DateTime              @map("updated_at")
-  entries      InventoryEntry[]
+model DebtClosureLink {
+  id                  String      @id
+  sourceDebtAccountId String      @map("source_debt_account_id")
+  targetDebtAccountId String      @map("target_debt_account_id")
+  closedAmountDzd     Float       @map("closed_amount_dzd")
+  entryDate           DateTime    @map("entry_date")
+  note                String?
+  actorUserId         String?     @map("actor_user_id")
+  actorLabel          String?     @map("actor_label")
+  transactionId       String?     @map("transaction_id")
+  createdAt           DateTime    @map("created_at")
+  updatedAt           DateTime    @map("updated_at")
+  sourceDebtAccount   DebtAccount @relation("DebtClosureSource", fields: [sourceDebtAccountId], references: [id], onDelete: Restrict)
+  targetDebtAccount   DebtAccount @relation("DebtClosureTarget", fields: [targetDebtAccountId], references: [id], onDelete: Restrict)
 
-  @@index([itemType, isActive])
-  @@map("inventory_item_definition")
-}
-
-model InventoryInvoiceGroup {
-  id           String                    @id
-  invoiceNumber String?                  @map("invoice_number")
-  supplierName String?                   @map("supplier_name")
-  invoiceDate  DateTime?                 @map("invoice_date")
-  warehouseId  String?                   @map("warehouse_id")
-  projectId    String?                   @map("project_id")
-  externalCounterpartyId String?         @map("external_counterparty_id")
-  grossTotalDzd Float                    @default(0) @map("gross_total_dzd")
-  paidAmountDzd Float                    @default(0) @map("paid_amount_dzd")
-  remainingDebtDzd Float                 @default(0) @map("remaining_debt_dzd")
-  debtAccountId String?                  @map("debt_account_id")
-  note         String?
-  createdAt    DateTime                  @map("created_at")
-  updatedAt    DateTime                  @map("updated_at")
-  warehouse    Warehouse?                @relation("InventoryInvoiceGroupWarehouse", fields: [warehouseId], references: [id], onDelete: SetNull)
-  project      Project?                  @relation("InventoryInvoiceGroupProject", fields: [projectId], references: [id], onDelete: SetNull)
-  entries      InventoryEntry[]
-  attachments  InventoryInvoiceAttachment[]
-
-  @@index([warehouseId, createdAt])
-  @@index([projectId, createdAt])
-  @@index([externalCounterpartyId])
-  @@map("inventory_invoice_group")
-}
-
-model InventoryEntry {
-  id               String                   @id
-  invoiceGroupId   String                   @map("invoice_group_id")
-  itemDefinitionId String                   @map("item_definition_id")
-  warehouseId      String?                  @map("warehouse_id")
-  projectId        String?                  @map("project_id")
-  itemType         String                   @map("item_type")
-  itemName         String                   @map("item_name")
-  unit             String?
-  quantity         Float
-  unitPriceDzd     Float?                   @map("unit_price_dzd")
-  totalPriceDzd    Float                    @map("total_price_dzd")
-  note             String?
-  createdAt        DateTime                 @map("created_at")
-  updatedAt        DateTime                 @map("updated_at")
-  invoiceGroup     InventoryInvoiceGroup    @relation(fields: [invoiceGroupId], references: [id], onDelete: Cascade)
-  itemDefinition   InventoryItemDefinition  @relation(fields: [itemDefinitionId], references: [id], onDelete: Restrict)
-  warehouse        Warehouse?               @relation("InventoryEntryWarehouse", fields: [warehouseId], references: [id], onDelete: SetNull)
-  project          Project?                 @relation("InventoryEntryProject", fields: [projectId], references: [id], onDelete: SetNull)
-  assetUnits       InventoryAssetUnit[]
-
-  @@index([invoiceGroupId, createdAt])
-  @@index([itemDefinitionId])
-  @@index([warehouseId])
-  @@index([projectId])
-  @@map("inventory_entry")
-}
-
-model InventoryAssetUnit {
-  id               String          @id
-  inventoryEntryId String          @map("inventory_entry_id")
-  assetName        String          @map("asset_name")
-  assetTag         String?         @map("asset_tag")
-  serialNumber     String?         @map("serial_number")
-  condition        String?
-  purchaseDate     DateTime?       @map("purchase_date")
-  purchasePriceDzd Float           @map("purchase_price_dzd")
-  currentWarehouseId String?       @map("current_warehouse_id")
-  currentProjectId String?         @map("current_project_id")
-  currentLocationLabel String?     @map("current_location_label")
-  note             String?
-  createdAt        DateTime        @map("created_at")
-  updatedAt        DateTime        @map("updated_at")
-  inventoryEntry   InventoryEntry  @relation(fields: [inventoryEntryId], references: [id], onDelete: Cascade)
-
-  @@index([inventoryEntryId, createdAt])
-  @@index([assetTag])
-  @@index([serialNumber])
-  @@index([currentWarehouseId])
-  @@index([currentProjectId])
-  @@map("inventory_asset_unit")
-}
-
-model InventoryConsumableBalance {
-  id String @id
-  inventoryEntryId String @map("inventory_entry_id")
-  itemDefinitionId String @map("item_definition_id")
-  warehouseId String? @map("warehouse_id")
-  projectId String? @map("project_id")
-  quantity Float
-  createdAt DateTime @map("created_at")
-  updatedAt DateTime @map("updated_at")
-
-  @@index([inventoryEntryId])
-  @@index([itemDefinitionId])
-  @@index([warehouseId])
-  @@index([projectId])
-  @@map("inventory_consumable_balance")
-}
-
-model InventoryMovement {
-  id String @id
-  movementType String @map("movement_type")
-  itemType String @map("item_type")
-  inventoryEntryId String? @map("inventory_entry_id")
-  assetUnitId String? @map("asset_unit_id")
-  quantity Float
-  fromWarehouseId String? @map("from_warehouse_id")
-  fromProjectId String? @map("from_project_id")
-  toWarehouseId String? @map("to_warehouse_id")
-  toProjectId String? @map("to_project_id")
-  note String?
-  occurredAt DateTime @map("occurred_at")
-  createdAt DateTime @map("created_at")
-
-  @@index([inventoryEntryId, occurredAt])
-  @@index([assetUnitId, occurredAt])
-  @@map("inventory_movement")
-}
-
-model InventoryInvoiceAttachment {
-  id            String                 @id
-  invoiceGroupId String                @map("invoice_group_id")
-  originalName  String                 @map("original_name")
-  mimeType      String                 @map("mime_type")
-  byteSize      Int                    @map("byte_size")
-  storageKey    String                 @map("storage_key")
-  relativePath  String                 @map("relative_path")
-  sha256        String?
-  createdAt     DateTime               @map("created_at")
-  invoiceGroup  InventoryInvoiceGroup  @relation(fields: [invoiceGroupId], references: [id], onDelete: Cascade)
-
-  @@unique([storageKey])
-  @@index([invoiceGroupId, createdAt])
-  @@map("inventory_invoice_attachment")
+  @@index([sourceDebtAccountId, entryDate])
+  @@index([targetDebtAccountId, entryDate])
+  @@map("debt_closure_link")
 }

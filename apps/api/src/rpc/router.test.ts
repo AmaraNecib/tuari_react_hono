@@ -35,16 +35,6 @@ describe("RPC router", () => {
     }),
   }
 
-  const createTestRouter = (
-    service: ReturnType<typeof createHarness>["service"],
-    authOverrides?: Partial<typeof authBootstrapService>,
-  ) =>
-    createRouter({
-      authBootstrapService: { ...authBootstrapService, ...authOverrides },
-      companyService: service,
-      inventoryService: {} as never,
-    })
-
   const currentUser = {
     id: "user-1",
     name: "Taylor",
@@ -58,7 +48,7 @@ describe("RPC router", () => {
 
   it("returns the resolved current user for the session procedure", async () => {
     const { service } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const context = createContext();
     const client = createRouterClient(router, { context: context as never });
 
@@ -70,7 +60,7 @@ describe("RPC router", () => {
 
   it("reports whether the first auth user has already been created", async () => {
     const { service } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const client = createRouterClient(router, { context: createContext(null) as never });
 
     await expect(client.authSetupStatus()).resolves.toEqual({ hasUsers: false, requiresSetupKey: false });
@@ -78,7 +68,7 @@ describe("RPC router", () => {
 
   it("keeps public health checks unauthenticated", async () => {
     const { service } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const context = createContext();
     const client = createRouterClient(router, { context: context as never });
 
@@ -88,7 +78,7 @@ describe("RPC router", () => {
 
   it("rejects protected procedures when no session exists", async () => {
     const { service } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const client = createRouterClient(router, { context: createContext(null) as never });
 
     await expect(client.rolesList()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
@@ -96,7 +86,10 @@ describe("RPC router", () => {
 
   it("rejects workspace mutations for non-admin authenticated users", async () => {
     const { service, roleIds } = createHarness();
-    const router = createTestRouter(service, { isBootstrapOwner: async () => false })
+    const router = createRouter({
+      authBootstrapService: { ...authBootstrapService, isBootstrapOwner: async () => false },
+      companyService: service,
+    });
     const client = createRouterClient(router, { context: createContext() as never });
 
     await expect(
@@ -112,7 +105,7 @@ describe("RPC router", () => {
 
   it("covers CRUD and assignment flows with typed business-rule failures", async () => {
     const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -243,7 +236,7 @@ describe("RPC router", () => {
 
   it("creates employee batches atomically through the RPC contract", async () => {
     const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -293,7 +286,7 @@ describe("RPC router", () => {
 
   it("deletes an employee through the RPC contract", async () => {
     const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const client = createRouterClient(router, { context: createContext() as never });
 
     const worker = expectSuccess(await client.employeesCreate({
@@ -316,7 +309,7 @@ describe("RPC router", () => {
 
   it("rejects deleting an employee with existing work links", async () => {
     const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -362,7 +355,7 @@ describe("RPC router", () => {
 
   it("creates warehouse assignments through the RPC contract", async () => {
     const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const client = createRouterClient(router, { context: createContext() as never });
 
     const employee = expectSuccess(await client.employeesCreate({
@@ -389,7 +382,7 @@ describe("RPC router", () => {
 
   it("assigns employee workplace atomically through the RPC contract", async () => {
     const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -424,7 +417,7 @@ describe("RPC router", () => {
 
   it("syncs managed projects through the RPC contract", async () => {
     const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -450,7 +443,7 @@ describe("RPC router", () => {
 
   it("lists grouped system log rows through the RPC contract", async () => {
     const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service });
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -492,7 +485,7 @@ describe("RPC router", () => {
 
   it("covers external counterparty and debt flows through the RPC contract", async () => {
     const { service, roleIds } = createHarness()
-    const router = createTestRouter(service)
+    const router = createRouter({ authBootstrapService, companyService: service })
     const client = createRouterClient(router, { context: createContext() as never })
 
     const worker = expectSuccess(
@@ -530,7 +523,7 @@ describe("RPC router", () => {
       }),
     )
 
-    const secondWorkerMutation = expectSuccess(
+    const secondInternalAccount = expectSuccess(
       await client.debtAccountsCreate({
         partyType: "INTERNAL_WORKER",
         workerId: worker.item.id,
@@ -538,18 +531,13 @@ describe("RPC router", () => {
       }),
     )
 
-    const thirdWorkerMutation = expectSuccess(
+    const thirdInternalAccount = expectSuccess(
       await client.debtAccountsCreate({
         partyType: "INTERNAL_WORKER",
         workerId: worker.item.id,
         openingBalanceDzd: 500,
       }),
     )
-
-    expect(secondWorkerMutation.item.id).toBe(internalAccount.item.id)
-    expect(thirdWorkerMutation.item.id).toBe(internalAccount.item.id)
-
-    expect((await client.debtAccountsList({ workerId: worker.item.id })).items).toHaveLength(1)
 
     const payment = expectSuccess(
       await client.debtEntriesCreate({
@@ -559,20 +547,30 @@ describe("RPC router", () => {
         note: "دفعة جزئية",
       }),
     )
-    expect(payment.item.balanceAfterDzd).toBe(950)
+    expect(payment.item.balanceAfterDzd).toBe(750)
 
     const settlement = expectSuccess(await client.debtAccountsSettle({ id: internalAccount.item.id }))
     expect(settlement.item.entryType).toBe("SETTLEMENT")
     expect(settlement.item.balanceAfterDzd).toBe(0)
+
+    const closure = expectSuccess(
+      await client.debtCloseAgainst({
+        sourceDebtAccountId: secondInternalAccount.item.id,
+        targetDebtAccountId: thirdInternalAccount.item.id,
+      }),
+    )
+    expect(closure.item.closedAmountDzd).toBe(300)
 
     await expect(client.debtEntriesList({ debtAccountId: internalAccount.item.id })).resolves.toMatchObject({
       items: expect.arrayContaining([
         expect.objectContaining({ entryType: "SETTLEMENT" }),
         expect.objectContaining({ entryType: "PAYMENT" }),
         expect.objectContaining({ entryType: "OPENING" }),
-        expect.objectContaining({ entryType: "ADJUSTMENT", signedAmountDzd: -300 }),
-        expect.objectContaining({ entryType: "ADJUSTMENT", signedAmountDzd: 500 }),
       ]),
+    })
+
+    await expect(client.debtClosureLinksList({ debtAccountId: secondInternalAccount.item.id })).resolves.toMatchObject({
+      items: expect.arrayContaining([expect.objectContaining({ id: closure.item.id })]),
     })
 
     const partyDetail = expectSuccess(
@@ -581,11 +579,11 @@ describe("RPC router", () => {
         workerId: worker.item.id,
       }),
     )
-    expect(partyDetail.item.debtAccounts).toHaveLength(1)
+    expect(partyDetail.item.debtAccounts).toHaveLength(3)
 
     await expect(client.debtsSummary()).resolves.toMatchObject({
       parties: expect.arrayContaining([
-        expect.objectContaining({ workerId: worker.item.id, openDebtCasesCount: 0, settledDebtCasesCount: 1 }),
+        expect.objectContaining({ workerId: worker.item.id, openDebtCasesCount: 1, settledDebtCasesCount: 2 }),
       ]),
       debtAccounts: expect.arrayContaining([
         expect.objectContaining({ accountId: internalAccount.item.id, balanceLabel: "مغلق" }),

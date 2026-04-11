@@ -73,7 +73,7 @@ export const employeeStatusSchema = z.enum(["ACTIVE", "INACTIVE", "LEFT"]);
 export const salaryPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
 export const debtPartyTypeSchema = z.enum(["INTERNAL_WORKER", "EXTERNAL_COUNTERPARTY"]);
 export const debtAccountStatusSchema = z.enum(["OPEN", "SETTLED"]);
-export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT"]);
+export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT", "CLOSURE"]);
 export const projectStatusSchema = z.enum([
   "ACTIVE",
   "STOPPED",
@@ -82,11 +82,6 @@ export const projectStatusSchema = z.enum([
 ]);
 export const warehouseStatusSchema = z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]);
 export const assignmentStatusSchema = z.enum(["ACTIVE", "ENDED", "ARCHIVED"]);
-export const inventoryItemTypeSchema = z.enum(["CONSUMABLE", "ASSET"]);
-export const inventoryAssetConditionSchema = z.enum(["NEW", "USED", "MAINTENANCE", "DAMAGED"]);
-export const inventoryMovementTypeSchema = z.enum(["PURCHASE", "TRANSFER"]);
-export const inventoryLocationTypeSchema = z.enum(["WAREHOUSE", "PROJECT"]);
-export const inventoryPaymentInputTypeSchema = z.enum(["AMOUNT", "PERCENT"]);
 export const employeeBatchLimit = 24;
 
 export const roleKeySchema = z
@@ -261,6 +256,20 @@ export const debtEntrySchema = z.object({
   updatedAt: timestampSchema,
 });
 
+export const debtClosureLinkSchema = z.object({
+  id: entityIdSchema,
+  sourceDebtAccountId: entityIdSchema,
+  targetDebtAccountId: entityIdSchema,
+  closedAmountDzd: z.number().positive(),
+  entryDate: timestampSchema,
+  note: nullableTextSchema,
+  actorUserId: auditActorUserIdSchema,
+  actorLabel: nullableTextSchema,
+  transactionId: auditTransactionIdSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
 export const debtPartySummaryItemSchema = z.object({
   partyType: debtPartyTypeSchema,
   workerId: entityIdSchema.nullable(),
@@ -312,7 +321,6 @@ export const systemLogActionTypeSchema = z.enum([
   "DEBT_SETTLED",
   "EMPLOYEE_CREATED",
   "EMPLOYEE_UPDATED",
-  "INVENTORY_ITEM_CREATED",
   "WORKPLACE_ASSIGNED",
   "PROJECT_MANAGER_CHANGED",
   "WAREHOUSE_MANAGER_CHANGED",
@@ -325,7 +333,6 @@ export const systemLogEntityTypeSchema = z.enum([
   "DEBT_ENTRY",
   "EMPLOYEE",
   "EXTERNAL_COUNTERPARTY",
-  "INVENTORY_ITEM",
   "PROJECT",
   "WAREHOUSE",
   "MANAGER_ASSIGNMENT",
@@ -371,136 +378,13 @@ export const warehouseSchema = z.object({
   updatedAt: timestampSchema,
 });
 
-export const inventoryItemDefinitionSchema = z.object({
-  id: entityIdSchema,
-  name: z.string().trim().min(1).max(160),
-  itemType: inventoryItemTypeSchema,
-  unit: nullableTextSchema,
-  description: nullableTextSchema,
-  isActive: z.boolean(),
-  createdAt: timestampSchema,
-  updatedAt: timestampSchema,
-});
-
-export const inventoryInvoiceAttachmentSchema = z.object({
-  id: entityIdSchema,
-  invoiceGroupId: entityIdSchema,
-  originalName: z.string().trim().min(1).max(255),
-  mimeType: z.string().trim().min(1).max(160),
-  byteSize: z.number().int().nonnegative(),
-  storageKey: z.string().trim().min(1).max(255),
-  relativePath: z.string().trim().min(1).max(500),
-  downloadUrl: z.string().trim().min(1).max(500),
-  sha256: nullableTextSchema,
-  createdAt: timestampSchema,
-});
-
-export const inventoryAssetUnitSchema = z.object({
-  id: entityIdSchema,
-  inventoryEntryId: entityIdSchema,
-  assetName: z.string().trim().min(1).max(160),
-  assetTag: nullableTextSchema,
-  serialNumber: nullableTextSchema,
-  condition: inventoryAssetConditionSchema.nullable(),
-  purchaseDate: timestampSchema.nullable(),
-  purchasePriceDzd: z.number().nonnegative(),
-  currentWarehouseId: entityIdSchema.nullable(),
-  currentProjectId: entityIdSchema.nullable(),
-  currentLocationLabel: nullableTextSchema,
-  note: nullableTextSchema,
-  createdAt: timestampSchema,
-  updatedAt: timestampSchema,
-});
-
-export const inventoryConsumableBalanceSchema = z.object({
-  id: entityIdSchema,
-  inventoryEntryId: entityIdSchema,
-  itemDefinitionId: entityIdSchema,
-  itemName: z.string().trim().min(1).max(160),
-  warehouseId: entityIdSchema.nullable(),
-  projectId: entityIdSchema.nullable(),
-  quantity: z.number().positive(),
-  locationLabel: z.string().trim().min(1).max(160),
-  createdAt: timestampSchema,
-  updatedAt: timestampSchema,
-});
-
-export const inventoryMovementSchema = z.object({
-  id: entityIdSchema,
-  movementType: inventoryMovementTypeSchema,
-  itemType: inventoryItemTypeSchema,
-  inventoryEntryId: entityIdSchema.nullable(),
-  assetUnitId: entityIdSchema.nullable(),
-  quantity: z.number().positive(),
-  fromWarehouseId: entityIdSchema.nullable(),
-  fromProjectId: entityIdSchema.nullable(),
-  toWarehouseId: entityIdSchema.nullable(),
-  toProjectId: entityIdSchema.nullable(),
-  note: nullableTextSchema,
-  occurredAt: timestampSchema,
-  createdAt: timestampSchema,
-});
-
-export const inventoryAssetDetailSchema = z.object({
-  asset: inventoryAssetUnitSchema,
-  invoiceGroup: z.lazy(() => inventoryInvoiceGroupSchema),
-  movements: z.array(inventoryMovementSchema),
-});
-
-export const inventoryLocationContentsSchema = z.object({
-  assets: z.array(inventoryAssetUnitSchema),
-  consumables: z.array(inventoryConsumableBalanceSchema),
-});
-
-export const inventoryEntrySchema = z.object({
-  id: entityIdSchema,
-  invoiceGroupId: entityIdSchema,
-  itemDefinitionId: entityIdSchema,
-  warehouseId: entityIdSchema.nullable(),
-  projectId: entityIdSchema.nullable(),
-  itemType: inventoryItemTypeSchema,
-  itemName: z.string().trim().min(1).max(160),
-  unit: nullableTextSchema,
-  quantity: z.number().positive(),
-  unitPriceDzd: z.number().nonnegative().nullable(),
-  totalPriceDzd: z.number().nonnegative(),
-  note: nullableTextSchema,
-  createdAt: timestampSchema,
-  updatedAt: timestampSchema,
-  assets: z.array(inventoryAssetUnitSchema),
-});
-
-export const inventoryInvoiceGroupSchema = z.object({
-  id: entityIdSchema,
-  invoiceNumber: nullableTextSchema,
-  supplierName: nullableTextSchema,
-  invoiceDate: timestampSchema.nullable(),
-  warehouseId: entityIdSchema.nullable(),
-  projectId: entityIdSchema.nullable(),
-  externalCounterpartyId: entityIdSchema.nullable(),
-  grossTotalDzd: z.number().nonnegative(),
-  paidAmountDzd: z.number().nonnegative(),
-  remainingDebtDzd: z.number().nonnegative(),
-  debtAccountId: entityIdSchema.nullable(),
-  note: nullableTextSchema,
-  createdAt: timestampSchema,
-  updatedAt: timestampSchema,
-});
-
-export const inventoryInvoiceGroupDetailSchema = z.object({
-  group: inventoryInvoiceGroupSchema,
-  entries: z.array(inventoryEntrySchema),
-  attachments: z.array(inventoryInvoiceAttachmentSchema),
-  movements: z.array(inventoryMovementSchema),
-  consumableBalances: z.array(inventoryConsumableBalanceSchema),
-});
-
 export const workspaceSnapshotSchema = z.object({
   roles: z.array(roleSchema),
   employees: z.array(employeeSchema),
   externalCounterparties: z.array(externalCounterpartySchema),
   debtAccounts: z.array(debtAccountSchema),
   debtEntries: z.array(debtEntrySchema),
+  debtClosureLinks: z.array(debtClosureLinkSchema),
   projects: z.array(projectSchema),
   warehouses: z.array(warehouseSchema),
   managerAssignments: z.array(employeeManagerAssignmentSchema),
@@ -661,191 +545,6 @@ export const warehouseListInputSchema = z
     status: warehouseStatusSchema.optional(),
   })
   .optional();
-
-export const inventoryItemDefinitionCreateInputSchema = z
-  .object({
-    name: z.string().trim().min(1).max(160),
-    itemType: inventoryItemTypeSchema,
-    unit: z.string().trim().max(60).nullable().optional(),
-    description: z.string().trim().max(500).nullable().optional(),
-  })
-  .superRefine((input, ctx) => {
-    const hasUnit = Boolean(input.unit?.trim())
-
-    if (input.itemType === "CONSUMABLE" && !hasUnit) {
-      ctx.addIssue({
-        code: "custom",
-        message: "يجب إدخال وحدة قياس للمواد الاستهلاكية.",
-        path: ["unit"],
-      })
-    }
-
-    if (input.itemType === "ASSET" && hasUnit) {
-      ctx.addIssue({
-        code: "custom",
-        message: "لا تستخدم وحدة قياس للعناصر المصنفة كأصول.",
-        path: ["unit"],
-      })
-    }
-  });
-
-export const inventoryItemDefinitionUpdateInputSchema = z
-  .object({
-    id: entityIdSchema,
-    name: z.string().trim().min(1).max(160).optional(),
-    itemType: inventoryItemTypeSchema.optional(),
-    unit: z.string().trim().max(60).nullable().optional(),
-    description: z.string().trim().max(500).nullable().optional(),
-    isActive: z.boolean().optional(),
-  })
-  .superRefine((input, ctx) => {
-    if (input.itemType === "ASSET" && typeof input.unit === "string" && input.unit.trim().length > 0) {
-      ctx.addIssue({
-        code: "custom",
-        message: "لا تستخدم وحدة قياس للعناصر المصنفة كأصول.",
-        path: ["unit"],
-      })
-    }
-  });
-
-export const inventoryItemDefinitionListInputSchema = z
-  .object({
-    itemType: inventoryItemTypeSchema.optional(),
-    isActive: z.boolean().optional(),
-  })
-  .optional();
-
-export const inventoryAssetUnitCreateInputSchema = z.object({
-  assetName: z.string().trim().min(1).max(160),
-  assetTag: z.string().trim().max(120).nullable().optional(),
-  serialNumber: z.string().trim().max(160).nullable().optional(),
-  condition: inventoryAssetConditionSchema.nullable().optional(),
-  purchaseDate: timestampSchema.nullable().optional(),
-  purchasePriceDzd: z.number().nonnegative(),
-  note: z.string().trim().max(1000).nullable().optional(),
-});
-
-export const inventoryConsumableEntryCreateInputSchema = z.object({
-  kind: z.literal("CONSUMABLE"),
-  itemDefinitionId: entityIdSchema,
-  warehouseId: entityIdSchema.nullable().optional(),
-  projectId: entityIdSchema.nullable().optional(),
-  quantity: z.number().positive(),
-  unitPriceDzd: z.number().nonnegative(),
-  totalPriceDzd: z.number().nonnegative(),
-  note: z.string().trim().max(1000).nullable().optional(),
-}).superRefine((input, ctx) => {
-  if (input.warehouseId && input.projectId) {
-    ctx.addIssue({ code: "custom", message: "اختر مستودعًا أو مشروعًا واحدًا فقط.", path: ["warehouseId"] })
-  }
-});
-
-export const inventoryAssetEntryCreateInputSchema = z.object({
-  kind: z.literal("ASSET"),
-  itemDefinitionId: entityIdSchema,
-  warehouseId: entityIdSchema.nullable().optional(),
-  projectId: entityIdSchema.nullable().optional(),
-  assets: z.array(inventoryAssetUnitCreateInputSchema).min(1),
-  note: z.string().trim().max(1000).nullable().optional(),
-}).superRefine((input, ctx) => {
-  if (input.warehouseId && input.projectId) {
-    ctx.addIssue({ code: "custom", message: "اختر مستودعًا أو مشروعًا واحدًا فقط.", path: ["warehouseId"] })
-  }
-});
-
-export const inventoryInvoiceEntryCreateInputSchema = z.discriminatedUnion("kind", [
-  inventoryConsumableEntryCreateInputSchema,
-  inventoryAssetEntryCreateInputSchema,
-]);
-
-export const inventoryInvoiceGroupCreateInputSchema = z.object({
-  invoiceNumber: z.string().trim().max(160).nullable().optional(),
-  supplierName: z.string().trim().max(160).nullable().optional(),
-  invoiceDate: timestampSchema.nullable().optional(),
-  warehouseId: entityIdSchema.nullable().optional(),
-  projectId: entityIdSchema.nullable().optional(),
-  externalCounterpartyId: entityIdSchema.nullable().optional(),
-  createDebt: z.boolean().optional(),
-  paymentInputType: inventoryPaymentInputTypeSchema.optional(),
-  paidAmountDzd: z.number().nonnegative().nullable().optional(),
-  paidPercent: z.number().min(0).max(100).nullable().optional(),
-  note: z.string().trim().max(1000).nullable().optional(),
-  entries: z.array(inventoryInvoiceEntryCreateInputSchema).min(1),
-}).superRefine((input, ctx) => {
-  if (input.warehouseId && input.projectId) {
-    ctx.addIssue({ code: "custom", message: "اختر مستودعًا أو مشروعًا واحدًا فقط كوجهة افتراضية.", path: ["warehouseId"] })
-  }
-
-  if (input.createDebt && !input.externalCounterpartyId) {
-    ctx.addIssue({ code: "custom", message: "اختر طرفًا خارجيًا عند تسجيل المشتريات كدين.", path: ["externalCounterpartyId"] })
-  }
-
-  if (input.createDebt && !input.paymentInputType) {
-    ctx.addIssue({ code: "custom", message: "اختر طريقة إدخال الدفعة الأولية للدين.", path: ["paymentInputType"] })
-  }
-
-  if (!input.createDebt && (input.paidAmountDzd != null || input.paidPercent != null || input.paymentInputType)) {
-    ctx.addIssue({ code: "custom", message: "بيانات الدين لا تُستخدم إلا عند تفعيل خيار الدين.", path: ["createDebt"] })
-  }
-});
-
-export const inventoryInvoiceGroupListInputSchema = z
-  .object({
-    warehouseId: entityIdSchema.optional(),
-    projectId: entityIdSchema.optional(),
-  })
-  .optional();
-
-export const inventoryAssetTransferInputSchema = z.object({
-  assetUnitId: entityIdSchema,
-  toWarehouseId: entityIdSchema.nullable().optional(),
-  toProjectId: entityIdSchema.nullable().optional(),
-  note: z.string().trim().max(1000).nullable().optional(),
-  occurredAt: timestampSchema.optional(),
-}).superRefine((input, ctx) => {
-  const hasWarehouse = Boolean(input.toWarehouseId)
-  const hasProject = Boolean(input.toProjectId)
-
-  if (hasWarehouse === hasProject) {
-    ctx.addIssue({ code: "custom", message: "اختر وجهة واحدة فقط للتحويل.", path: ["toWarehouseId"] })
-  }
-});
-
-export const inventoryConsumableTransferInputSchema = z.object({
-  inventoryEntryId: entityIdSchema,
-  quantity: z.number().positive(),
-  fromWarehouseId: entityIdSchema.nullable().optional(),
-  fromProjectId: entityIdSchema.nullable().optional(),
-  toWarehouseId: entityIdSchema.nullable().optional(),
-  toProjectId: entityIdSchema.nullable().optional(),
-  note: z.string().trim().max(1000).nullable().optional(),
-  occurredAt: timestampSchema.optional(),
-}).superRefine((input, ctx) => {
-  const hasFromWarehouse = Boolean(input.fromWarehouseId)
-  const hasFromProject = Boolean(input.fromProjectId)
-  const hasToWarehouse = Boolean(input.toWarehouseId)
-  const hasToProject = Boolean(input.toProjectId)
-
-  if (hasFromWarehouse === hasFromProject) {
-    ctx.addIssue({ code: "custom", message: "اختر مصدرًا واحدًا فقط للتحويل.", path: ["fromWarehouseId"] })
-  }
-
-  if (hasToWarehouse === hasToProject) {
-    ctx.addIssue({ code: "custom", message: "اختر وجهة واحدة فقط للتحويل.", path: ["toWarehouseId"] })
-  }
-});
-
-export const inventoryLocationContentsInputSchema = z.object({
-  warehouseId: entityIdSchema.nullable().optional(),
-  projectId: entityIdSchema.nullable().optional(),
-}).superRefine((input, ctx) => {
-  const hasWarehouse = Boolean(input.warehouseId)
-  const hasProject = Boolean(input.projectId)
-
-  if (hasWarehouse === hasProject) {
-    ctx.addIssue({ code: "custom", message: "اختر مستودعًا أو مشروعًا واحدًا فقط.", path: ["warehouseId"] })
-  }
-});
 
 export const managerAssignmentCreateInputSchema = z.object({
   workerId: entityIdSchema,
@@ -1030,6 +729,27 @@ export const debtSettlementInputSchema = z.object({
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
+export const debtClosureLinkListInputSchema = z.object({
+  debtAccountId: entityIdSchema,
+});
+
+export const debtCloseAgainstInputSchema = z
+  .object({
+    sourceDebtAccountId: entityIdSchema,
+    targetDebtAccountId: entityIdSchema,
+    entryDate: timestampSchema.optional(),
+    note: z.string().trim().max(1000).nullable().optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.sourceDebtAccountId === input.targetDebtAccountId) {
+      ctx.addIssue({
+        code: "custom",
+        message: "يجب اختيار حسابي دين مختلفين.",
+        path: ["targetDebtAccountId"],
+      })
+    }
+  });
+
 export const debtPartyDetailInputSchema = z
   .object({
     partyType: debtPartyTypeSchema,
@@ -1144,39 +864,6 @@ export const appContract = {
   warehousesUpdate: oc
     .input(warehouseUpdateInputSchema)
     .output(createEntityResultSchema(warehouseSchema)),
-  inventoryItemDefinitionsList: oc
-    .input(inventoryItemDefinitionListInputSchema)
-    .output(createListSchema(inventoryItemDefinitionSchema)),
-  inventoryItemDefinitionsGet: oc
-    .input(idInputSchema)
-    .output(createEntityResultSchema(inventoryItemDefinitionSchema)),
-  inventoryItemDefinitionsCreate: oc
-    .input(inventoryItemDefinitionCreateInputSchema)
-    .output(createEntityResultSchema(inventoryItemDefinitionSchema)),
-  inventoryItemDefinitionsUpdate: oc
-    .input(inventoryItemDefinitionUpdateInputSchema)
-    .output(createEntityResultSchema(inventoryItemDefinitionSchema)),
-  inventoryInvoiceGroupsList: oc
-    .input(inventoryInvoiceGroupListInputSchema)
-    .output(createListSchema(inventoryInvoiceGroupSchema)),
-  inventoryInvoiceGroupsGet: oc
-    .input(idInputSchema)
-    .output(createEntityResultSchema(inventoryInvoiceGroupDetailSchema)),
-  inventoryInvoiceGroupsCreate: oc
-    .input(inventoryInvoiceGroupCreateInputSchema)
-    .output(createEntityResultSchema(inventoryInvoiceGroupDetailSchema)),
-  inventoryLocationContentsGet: oc
-    .input(inventoryLocationContentsInputSchema)
-    .output(createEntityResultSchema(inventoryLocationContentsSchema)),
-  inventoryAssetsGet: oc
-    .input(idInputSchema)
-    .output(createEntityResultSchema(inventoryAssetDetailSchema)),
-  inventoryAssetsTransfer: oc
-    .input(inventoryAssetTransferInputSchema)
-    .output(createEntityResultSchema(inventoryAssetDetailSchema)),
-  inventoryConsumablesTransfer: oc
-    .input(inventoryConsumableTransferInputSchema)
-    .output(createEntityResultSchema(inventoryLocationContentsSchema)),
   managerAssignmentsList: oc
     .input(managerAssignmentListInputSchema)
     .output(createListSchema(employeeManagerAssignmentSchema)),
@@ -1252,6 +939,12 @@ export const appContract = {
   debtEntriesCreate: oc
     .input(debtEntryCreateInputSchema)
     .output(createEntityResultSchema(debtEntrySchema)),
+  debtClosureLinksList: oc
+    .input(debtClosureLinkListInputSchema)
+    .output(createListSchema(debtClosureLinkSchema)),
+  debtCloseAgainst: oc
+    .input(debtCloseAgainstInputSchema)
+    .output(createEntityResultSchema(debtClosureLinkSchema)),
   debtAccountsSettle: oc
     .input(debtSettlementInputSchema)
     .output(createEntityResultSchema(debtEntrySchema)),
@@ -1284,15 +977,13 @@ export type ExternalCounterpartyCreateInput = z.infer<typeof externalCounterpart
 export type DebtAccountCreateInput = z.infer<typeof debtAccountCreateInputSchema>;
 export type DebtEntryCreateInput = z.infer<typeof debtEntryCreateInputSchema>;
 export type DebtSettlementInput = z.infer<typeof debtSettlementInputSchema>;
+export type DebtCloseAgainstInput = z.infer<typeof debtCloseAgainstInputSchema>;
 export type DebtPartyDetailInput = z.infer<typeof debtPartyDetailInputSchema>;
 export type SystemLogListInput = z.infer<typeof systemLogListInputSchema>;
 export type ProjectCreateInput = z.infer<typeof projectCreateInputSchema>;
 export type ProjectUpdateInput = z.infer<typeof projectUpdateInputSchema>;
 export type WarehouseCreateInput = z.infer<typeof warehouseCreateInputSchema>;
 export type WarehouseUpdateInput = z.infer<typeof warehouseUpdateInputSchema>;
-export type InventoryItemDefinitionCreateInput = z.infer<typeof inventoryItemDefinitionCreateInputSchema>;
-export type InventoryItemDefinitionUpdateInput = z.infer<typeof inventoryItemDefinitionUpdateInputSchema>;
-export type InventoryInvoiceGroupCreateInput = z.infer<typeof inventoryInvoiceGroupCreateInputSchema>;
 export type ManagerAssignmentCreateInput = z.infer<typeof managerAssignmentCreateInputSchema>;
 export type ManagerAssignmentEndInput = z.infer<typeof managerAssignmentEndInputSchema>;
 export type ProjectAssignmentCreateInput = z.infer<typeof projectAssignmentCreateInputSchema>;
@@ -1303,16 +994,6 @@ export type Role = z.infer<typeof roleSchema>;
 export type Employee = z.infer<typeof employeeSchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type Warehouse = z.infer<typeof warehouseSchema>;
-export type InventoryItemDefinition = z.infer<typeof inventoryItemDefinitionSchema>;
-export type InventoryInvoiceAttachment = z.infer<typeof inventoryInvoiceAttachmentSchema>;
-export type InventoryAssetUnit = z.infer<typeof inventoryAssetUnitSchema>;
-export type InventoryConsumableBalance = z.infer<typeof inventoryConsumableBalanceSchema>;
-export type InventoryMovement = z.infer<typeof inventoryMovementSchema>;
-export type InventoryAssetDetail = z.infer<typeof inventoryAssetDetailSchema>;
-export type InventoryLocationContents = z.infer<typeof inventoryLocationContentsSchema>;
-export type InventoryEntry = z.infer<typeof inventoryEntrySchema>;
-export type InventoryInvoiceGroup = z.infer<typeof inventoryInvoiceGroupSchema>;
-export type InventoryInvoiceGroupDetail = z.infer<typeof inventoryInvoiceGroupDetailSchema>;
 export type EmployeeManagerAssignment = z.infer<
   typeof employeeManagerAssignmentSchema
 >;
@@ -1329,6 +1010,7 @@ export type EmployeeSalaryPayment = z.infer<typeof employeeSalaryPaymentSchema>;
 export type ExternalCounterparty = z.infer<typeof externalCounterpartySchema>;
 export type DebtAccount = z.infer<typeof debtAccountSchema>;
 export type DebtEntry = z.infer<typeof debtEntrySchema>;
+export type DebtClosureLink = z.infer<typeof debtClosureLinkSchema>;
 export type DebtPartySummaryItem = z.infer<typeof debtPartySummaryItemSchema>;
 export type DebtPartyDetail = z.infer<typeof debtPartyDetailSchema>;
 export type DebtSummaryItem = z.infer<typeof debtSummaryItemSchema>;

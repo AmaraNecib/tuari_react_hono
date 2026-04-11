@@ -2,15 +2,17 @@ import {
   BriefcaseBusiness,
   Gauge,
   HandCoins,
-  Boxes,
+  LogOut,
   Logs,
+  MoonStar,
   PanelRightClose,
   PanelRightOpen,
   ReceiptText,
+  Settings,
+  SunMedium,
   UserSquare2,
   Users,
   Warehouse,
-  FileText,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -40,10 +42,6 @@ type WorkspaceSidebarPage =
   | "warehouse-details"
   | "warehouse-create"
   | "warehouse-edit"
-  | "inventory"
-  | "invoices"
-  | "invoice-create"
-  | "invoice-details"
   | "roles"
   | "settings"
 
@@ -57,8 +55,6 @@ type WorkspaceSidebarProps = {
   externalsLabel: string
   expandLabel: string
   projectsLabel: string
-  inventoryLabel: string
-  invoicesLabel: string
   salariesLabel: string
   rolesLabel: string
   transactionsLabel: string
@@ -66,9 +62,15 @@ type WorkspaceSidebarProps = {
     name: string | null
     phone: string
   }
+  settingsLabel: string
+  signOutLabel: string
+  theme: "dark" | "light"
+  themeToggleLabel: string
   warehousesLabel: string
   width: string
   onSetCollapsed: (nextValue: boolean) => void
+  onSignOut: () => void
+  onToggleTheme: () => void
 }
 
 const items = [
@@ -79,8 +81,6 @@ const items = [
   { key: "projects", target: workspaceRoutes.projects(), icon: BriefcaseBusiness },
   { key: "salaries", target: workspaceRoutes.salaries(), icon: ReceiptText },
   { key: "warehouses", target: workspaceRoutes.warehouses(), icon: Warehouse },
-  { key: "inventory", target: workspaceRoutes.inventory(), icon: Boxes },
-  { key: "invoices", target: workspaceRoutes.invoices(), icon: FileText },
   { key: "transactions", target: workspaceRoutes.transactions(), icon: Logs },
 ] as const
 
@@ -97,14 +97,18 @@ export function WorkspaceSidebar({
   employeesLabel,
   externalsLabel,
   expandLabel,
-  inventoryLabel,
-  invoicesLabel,
   projectsLabel,
   salariesLabel,
   transactionsLabel,
+  settingsLabel,
+  signOutLabel,
+  theme,
+  themeToggleLabel,
   warehousesLabel,
   width,
   onSetCollapsed,
+  onSignOut,
+  onToggleTheme,
 }: WorkspaceSidebarProps) {
   const { t } = useTranslation()
   const itemLabels = {
@@ -112,8 +116,6 @@ export function WorkspaceSidebar({
     debts: debtsLabel,
     employees: employeesLabel,
     externals: externalsLabel,
-    inventory: inventoryLabel,
-    invoices: invoicesLabel,
     projects: projectsLabel,
     salaries: salariesLabel,
     warehouses: warehousesLabel,
@@ -127,13 +129,11 @@ export function WorkspaceSidebar({
         ? "debts"
         : currentPage === "externals" || currentPage === "external-create" || currentPage === "external-details"
           ? "externals"
-        : currentPage === "project-details" || currentPage === "project-create" || currentPage === "project-edit"
-          ? "projects"
+      : currentPage === "project-details" || currentPage === "project-create" || currentPage === "project-edit"
+        ? "projects"
         : currentPage === "warehouse-details" || currentPage === "warehouse-create" || currentPage === "warehouse-edit"
           ? "warehouses"
-          : currentPage === "invoice-create" || currentPage === "invoice-details"
-            ? "invoices"
-           : currentPage
+          : currentPage
 
   function getNavClassName(active: boolean) {
     return cn(
@@ -211,6 +211,36 @@ export function WorkspaceSidebar({
           )
         })}
       </nav>
+
+      <div className="mt-4 border-t border-border/70 pt-4">
+        {!collapsed ? <p className="mb-2 px-4 text-[0.72rem] font-medium text-muted-foreground">{t("shell.preferencesSection")}</p> : null}
+        <div className="space-y-1.5">
+          <button
+            className={getUtilityClassName()}
+            type="button"
+            onClick={onToggleTheme}
+          >
+            {theme === "light" ? <MoonStar className="size-4" /> : <SunMedium className="size-4" />}
+            {!collapsed ? <span>{themeToggleLabel}</span> : null}
+          </button>
+          <WorkspaceLink
+            aria-current={currentPage === "settings" ? "page" : undefined}
+            className={getUtilityClassName(currentPage === "settings")}
+            target={workspaceRoutes.settings()}
+          >
+            <Settings className="size-4" />
+            {!collapsed ? <span>{settingsLabel}</span> : null}
+          </WorkspaceLink>
+          <button
+            className={cn(getUtilityClassName(), "hover:bg-destructive/8 hover:text-destructive")}
+            type="button"
+            onClick={onSignOut}
+          >
+            <LogOut className="size-4 text-destructive" />
+            {!collapsed ? <span className="text-destructive">{signOutLabel}</span> : null}
+          </button>
+        </div>
+      </div>
     </aside>
   )
 }

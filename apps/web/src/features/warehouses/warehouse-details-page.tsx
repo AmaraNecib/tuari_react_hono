@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next"
 
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
-import { InventoryLocationContentsSection } from "@/features/inventory/inventory-location-contents-section"
 import {
   RecordHistoryTable,
   RecordInfoCard,
@@ -49,7 +48,7 @@ export function WarehouseDetailsPage({
   warehouse: WarehousePageRecord
 }) {
   const { t } = useTranslation()
-  const resolvedTab = ["overview", "history", "team", "items"].includes(activeTab) ? activeTab : "overview"
+  const resolvedTab = ["overview", "history", "team"].includes(activeTab) ? activeTab : "overview"
   const hasExpandedNotes = (warehouse.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `warehouse-record-${warehouse.id}`
 
@@ -69,7 +68,6 @@ export function WarehouseDetailsPage({
           { id: "overview", label: t("detailPages.warehouse.overviewTab") },
           { id: "history", label: t("detailPages.warehouse.historyTab") },
           { id: "team", label: t("detailPages.warehouse.teamTab") },
-          { id: "items", label: "العناصر" },
         ]}
         onChange={onTabChange}
       />
@@ -103,10 +101,6 @@ export function WarehouseDetailsPage({
           emptyLabel={t("detailPages.warehouse.teamEmpty")}
           rows={teamRows}
         />
-      </RecordTabPanel>
-
-      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items">
-        <InventoryLocationContentsSection warehouseId={warehouse.id} />
       </RecordTabPanel>
     </RecordPageFrame>
   )

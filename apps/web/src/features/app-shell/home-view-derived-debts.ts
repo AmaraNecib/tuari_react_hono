@@ -27,6 +27,18 @@ export function buildDebtDerivedCollections({
     ]),
   ) as Record<string, DemoWorkspace["debtEntries"]>
 
+  const debtClosureLinksByAccountId = Object.fromEntries(
+    workspace.debtAccounts.map((account) => [
+      account.id,
+      [...workspace.debtClosureLinks]
+        .filter((link) => link.sourceDebtAccountId === account.id || link.targetDebtAccountId === account.id)
+        .sort((left, right) => {
+          const byEntryDate = right.entryDate.localeCompare(left.entryDate)
+          return byEntryDate !== 0 ? byEntryDate : right.createdAt.localeCompare(left.createdAt)
+        }),
+    ]),
+  ) as Record<string, DemoWorkspace["debtClosureLinks"]>
+
   const debtAccountsByWorkerId = new Map<string, DemoWorkspace["debtAccounts"]>()
   const debtAccountsByExternalCounterpartyId = new Map<string, DemoWorkspace["debtAccounts"]>()
 
@@ -115,6 +127,7 @@ export function buildDebtDerivedCollections({
     debtAccountById,
     debtAccountsByExternalCounterpartyId,
     debtAccountsByWorkerId,
+    debtClosureLinksByAccountId,
     debtEntriesByAccountId,
     debtHubRows,
     debtTotals: totals,

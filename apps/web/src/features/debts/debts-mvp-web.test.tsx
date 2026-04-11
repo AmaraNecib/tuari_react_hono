@@ -12,11 +12,13 @@ import { ExternalCounterpartyDetailsPage } from "@/features/externals/external-d
 import { EmployeeDetailsPage } from "@/features/employees/employee-details-page"
 
 const {
+  closeDebtAgainstMutate,
   createDebtAccountMutateAsync,
   createDebtEntryMutate,
   createCounterpartyMutateAsync,
   settleDebtAccountMutate,
 } = vi.hoisted(() => ({
+  closeDebtAgainstMutate: vi.fn(),
   createDebtAccountMutateAsync: vi.fn(async () => ({
     item: {
       actorLabel: null,
@@ -25,7 +27,7 @@ const {
       currentBalanceDzd: 0,
       externalCounterpartyId: "external-1",
       id: "debt-new",
-      note: "حساب موحد",
+      note: "حالة جديدة",
       partyType: "EXTERNAL_COUNTERPARTY",
       settledAt: null,
       status: "SETTLED",
@@ -50,6 +52,7 @@ vi.mock("@tanstack/react-router", async () => {
 
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
   useCreateDebtAccountMutation: () => ({ isPending: false, mutateAsync: createDebtAccountMutateAsync }),
+  useCloseDebtAgainstMutation: () => ({ isPending: false, mutate: closeDebtAgainstMutate }),
   useCreateDebtEntryMutation: () => ({ isPending: false, mutate: createDebtEntryMutate }),
   useSettleDebtAccountMutation: () => ({ isPending: false, mutate: settleDebtAccountMutate }),
   useCreateExternalCounterpartyMutation: () => ({
@@ -71,7 +74,7 @@ describe("debts MVP web UI", () => {
           {
             accountId: "debt-1",
             balanceDzd: 1500,
-            caseCount: 1,
+            caseCount: 2,
             name: "علي بن حميد",
             partyId: "worker-1",
             phone: "0555200120",
@@ -124,7 +127,7 @@ describe("debts MVP web UI", () => {
     })
   })
 
-  it("manages a unified external counterparty debt account", async () => {
+  it("supports multiple debt cases on external counterparty detail page", async () => {
     render(
       <ExternalCounterpartyDetailsPage
         counterparty={{
@@ -143,7 +146,7 @@ describe("debts MVP web UI", () => {
             currentBalanceDzd: -700,
             externalCounterpartyId: "external-1",
             id: "debt-2",
-            note: "حساب موحد",
+            note: "توريد مارس",
             partyType: "EXTERNAL_COUNTERPARTY",
             settledAt: null,
             status: "OPEN",
@@ -151,13 +154,60 @@ describe("debts MVP web UI", () => {
             updatedAt: "2026-03-27T10:00:00.000Z",
             workerId: null,
           },
+          {
+            actorLabel: null,
+            actorUserId: null,
+            createdAt: "2026-03-20T10:00:00.000Z",
+            currentBalanceDzd: 300,
+            externalCounterpartyId: "external-1",
+            id: "debt-3",
+            note: "ملف قديم",
+            partyType: "EXTERNAL_COUNTERPARTY",
+            settledAt: "2026-03-24T10:00:00.000Z",
+            status: "SETTLED",
+            transactionId: null,
+            updatedAt: "2026-03-24T10:00:00.000Z",
+            workerId: null,
+          },
         ]}
-        debtEntriesByAccountId={{ "debt-2": [] }}
+        debtClosureLinksByAccountId={{
+          "debt-2": [
+            {
+              actorLabel: null,
+              actorUserId: null,
+              closedAmountDzd: 200,
+              createdAt: "2026-03-29T10:00:00.000Z",
+              entryDate: "2026-03-29T10:00:00.000Z",
+              id: "closure-1",
+              note: "إغلاق جزئي سابق",
+              sourceDebtAccountId: "debt-2",
+              targetDebtAccountId: "debt-3",
+              transactionId: null,
+              updatedAt: "2026-03-29T10:00:00.000Z",
+            },
+          ],
+          "debt-3": [
+            {
+              actorLabel: null,
+              actorUserId: null,
+              closedAmountDzd: 200,
+              createdAt: "2026-03-29T10:00:00.000Z",
+              entryDate: "2026-03-29T10:00:00.000Z",
+              id: "closure-1",
+              note: "إغلاق جزئي سابق",
+              sourceDebtAccountId: "debt-2",
+              targetDebtAccountId: "debt-3",
+              transactionId: null,
+              updatedAt: "2026-03-29T10:00:00.000Z",
+            },
+          ],
+        }}
+        debtEntriesByAccountId={{ "debt-2": [], "debt-3": [] }}
       />,
     )
 
     fireEvent.change(screen.getByPlaceholderText("مثال: 2500 أو -2500"), { target: { value: "500" } })
-    fireEvent.click(screen.getByRole("button", { name: "حفظ الحركة" }))
+    fireEvent.click(screen.getByRole("button", { name: "حفظ القيد" }))
 
     expect(createDebtEntryMutate).toHaveBeenCalledWith(
       expect.objectContaining({ debtAccountId: "debt-2", signedAmountDzd: 500 }),
@@ -169,9 +219,25 @@ describe("debts MVP web UI", () => {
       expect.objectContaining({ debtAccountId: "debt-2" }),
     )
 
+    expect(screen.getByText("سجل الإغلاق")).toBeTruthy()
+    expect(screen.getByText(/إغلاق جزئي سابق/)).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText("تاريخ الإغلاق"), { target: { value: "2026-03-30" } })
+    fireEvent.change(screen.getByLabelText("ملاحظة الإغلاق"), { target: { value: "إغلاق رصيدين متعاكسين" } })
+    fireEvent.change(screen.getByLabelText("الحالة المقابلة"), { target: { value: "debt-3" } })
+    fireEvent.click(screen.getByRole("button", { name: "إغلاق مقابل الحالة المختارة" }))
+
+    expect(closeDebtAgainstMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        note: "إغلاق رصيدين متعاكسين",
+        sourceDebtAccountId: "debt-2",
+        targetDebtAccountId: "debt-3",
+      }),
+    )
+
     fireEvent.change(screen.getByPlaceholderText("0 أو 2500 أو -2500"), { target: { value: "-1200" } })
-    fireEvent.change(screen.getByPlaceholderText("مثال: دين جديد، دفعة وصلت، دفعة خرجت"), { target: { value: "دفعة شراء جديدة" } })
-    fireEvent.click(screen.getByRole("button", { name: "إضافة حركة إلى الحساب" }))
+    fireEvent.change(screen.getByPlaceholderText("مثال: سلفة مواد، تسوية نقل، حساب مستقل"), { target: { value: "حالة شحن جديدة" } })
+    fireEvent.click(screen.getByRole("button", { name: "حفظ حالة الدين" }))
 
     await waitFor(() => {
       expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(
@@ -192,7 +258,7 @@ describe("debts MVP web UI", () => {
             currentBalanceDzd: 300,
             externalCounterpartyId: null,
             id: "debt-worker-1",
-            note: "حساب العامل",
+            note: "رصيد موقع أ",
             partyType: "INTERNAL_WORKER",
             settledAt: null,
             status: "OPEN",
@@ -201,6 +267,7 @@ describe("debts MVP web UI", () => {
             workerId: "worker-1",
           },
         ]}
+        debtClosureLinksByAccountId={{ "debt-worker-1": [] }}
         debtEntriesByAccountId={{
           "debt-worker-1": [
             {
@@ -256,8 +323,8 @@ describe("debts MVP web UI", () => {
       />,
     )
 
+    expect(screen.getByRole("tab", { name: "الديون" })).toBeTruthy()
     expect(screen.getByText("ديون العامل")).toBeTruthy()
     expect(screen.getAllByText("رصيد افتتاحي").length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/\+300/).length).toBeGreaterThan(0)
   })
 })

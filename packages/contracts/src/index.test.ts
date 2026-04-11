@@ -4,6 +4,8 @@ import {
   authSetupStatusSchema,
   debtAccountCreateInputSchema,
   debtAccountSchema,
+  debtCloseAgainstInputSchema,
+  debtClosureLinkSchema,
   debtPartyDetailSchema,
   debtEntryCreateInputSchema,
   debtEntrySchema,
@@ -305,9 +307,31 @@ describe("contracts", () => {
       }).entryType,
     ).toBe("SETTLEMENT")
 
+    expect(
+      debtClosureLinkSchema.parse({
+        id: "closure-1",
+        sourceDebtAccountId: "debt-account-1",
+        targetDebtAccountId: "debt-account-2",
+        closedAmountDzd: 500,
+        entryDate: "2026-03-17T10:00:00.000Z",
+        note: "مقاصة",
+        actorUserId: "user-1",
+        actorLabel: "Admin",
+        transactionId: "550e8400-e29b-41d4-a716-446655440000",
+        createdAt: "2026-03-17T10:00:00.000Z",
+        updatedAt: "2026-03-17T10:00:00.000Z",
+      }).closedAmountDzd,
+    ).toBe(500)
   })
 
-  it("accepts aggregate debt payloads", () => {
+  it("accepts debt closure and aggregate debt payloads", () => {
+    expect(
+      debtCloseAgainstInputSchema.parse({
+        sourceDebtAccountId: "debt-account-1",
+        targetDebtAccountId: "debt-account-2",
+      }).sourceDebtAccountId,
+    ).toBe("debt-account-1")
+
     expect(
       debtPartyDetailSchema.parse({
         partyType: "INTERNAL_WORKER",

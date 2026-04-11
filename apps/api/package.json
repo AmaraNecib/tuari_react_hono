@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm prisma:generate && tsx watch src/index.ts",
-    "build": "pnpm prisma:generate && tsup",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
     "start": "node dist/index.cjs",
     "auth:generate": "pnpm dlx @better-auth/cli@latest generate --config ./src/infrastructure/auth/auth.ts --output ./prisma/schema.prisma --yes",
     "prisma:generate": "prisma generate",
     "test": "vitest run",
-    "typecheck": "pnpm prisma:generate && tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@better-auth/prisma-adapter": "^1.5.5",

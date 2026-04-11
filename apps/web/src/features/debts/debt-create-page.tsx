@@ -60,6 +60,7 @@ export function DebtCreatePage({
       openingEntryNote: note.trim() || null,
     })
 
+    // Navigate to the debt view
     if (partyType === "INTERNAL_WORKER") {
       navigation.goToEmployeeDebts(selectedPartyId)
     } else {
@@ -220,7 +221,7 @@ export function DebtCreatePage({
               disabled={!selectedPartyId || !hasValidAmount || createDebtAccountMutation.isPending}
               onClick={handleCreateDebt}
             >
-              {createDebtAccountMutation.isPending ? t("common.saving") : "حفظ الحركة على الحساب"}
+              {createDebtAccountMutation.isPending ? t("common.saving") : t("detailPages.debt.create")}
             </Button>
           </PageFooterActions>
         </div>

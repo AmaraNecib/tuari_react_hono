@@ -10,7 +10,6 @@ export function buildHomeViewSelection({
   copy,
   derived,
   employeeId,
-  invoiceId,
   page,
   projectId,
   t,
@@ -20,14 +19,11 @@ export function buildHomeViewSelection({
   copy: HomeViewCopy
   derived: HomeViewDerived | null
   employeeId?: string
-  invoiceId?: string
   page: HomeViewPage
   projectId?: string
   t: TFunction
   warehouseId?: string
 }) {
-  void invoiceId
-
   const selectedEmployee = employeeId
     ? derived?.employeeRows.find((employee) => employee.id === employeeId) ?? null
     : null

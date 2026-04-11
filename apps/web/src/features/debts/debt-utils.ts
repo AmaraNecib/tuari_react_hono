@@ -84,6 +84,8 @@ export function getDebtEntryTypeLabel(entryType: DebtEntry["entryType"]) {
       return "تعديل"
     case "SETTLEMENT":
       return "تسوية"
+    case "CLOSURE":
+      return "إغلاق مقابل حالة أخرى"
     default:
       return entryType
   }

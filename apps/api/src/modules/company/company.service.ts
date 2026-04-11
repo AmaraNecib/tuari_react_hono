@@ -1,5 +1,6 @@
 import {
   type DebtAccountCreateInput,
+  type DebtCloseAgainstInput,
   type DebtPartyDetailInput,
   type DebtEntryCreateInput,
   type DebtSettlementInput,
@@ -32,6 +33,7 @@ import { normalizeAlgeriaTimestamp } from "./company-time";
 import {
   SYSTEM_ROLE_KEYS,
   type DebtAccountRecord,
+  type DebtClosureLinkListFilters,
   type EmployeeSalaryPaymentListFilters,
   type EmployeeStateHistoryListFilters,
   type EmployeeListFilters,
@@ -111,6 +113,10 @@ function getDebtBalanceLabel(balance: number) {
   return "مغلق" as const
 }
 
+function getDebtEntryDeltaForClosure(balance: number, closedAmountDzd: number) {
+  return balance > 0 ? -closedAmountDzd : closedAmountDzd
+}
+
 function buildDebtPartyKey(account: Pick<DebtAccountRecord, "partyType" | "workerId" | "externalCounterpartyId">) {
   return account.partyType === "INTERNAL_WORKER"
     ? `INTERNAL_WORKER:${account.workerId}`
@@ -149,6 +155,7 @@ export class CompanyService {
       debtEntries: this.repository
         .listDebtAccounts()
         .flatMap((account) => this.repository.listDebtEntries({ debtAccountId: account.id })),
+      debtClosureLinks: this.repository.listDebtClosureLinks(),
       projects: this.repository.listProjects(),
       warehouses: this.repository.listWarehouses(),
       managerAssignments: this.repository.listManagerAssignments(),
@@ -246,6 +253,11 @@ export class CompanyService {
     return { items: this.repository.listDebtEntries(filters) }
   }
 
+  listDebtClosureLinks(filters: DebtClosureLinkListFilters) {
+    this.requireDebtAccount(filters.debtAccountId!)
+    return { items: this.repository.listDebtClosureLinks(filters) }
+  }
+
   createDebtAccount(input: DebtAccountCreateInput, auditContext?: MutationAuditContext) {
     const audit = normalizeMutationAuditContext(auditContext)
 
@@ -272,30 +284,8 @@ export class CompanyService {
         { field: "openingBalanceDzd", message: "يجب إدخال رصيد افتتاحي صالح." },
       ])
     }
-    const entryDate = normalizeAlgeriaTimestamp(input.openingEntryDate)
-
-    const existingAccount = input.partyType === "INTERNAL_WORKER"
-      ? this.repository.getDebtAccountByWorkerId(workerId!)
-      : this.repository.getDebtAccountByExternalCounterpartyId(externalCounterpartyId!)
-
-    if (existingAccount) {
-      if (openingBalance !== 0) {
-        this.createDebtEntry(
-          {
-            debtAccountId: existingAccount.id,
-            entryType: "ADJUSTMENT",
-            signedAmountDzd: openingBalance,
-            entryDate,
-            note: normalizeText(input.openingEntryNote) ?? normalizeText(input.note),
-          },
-          audit,
-        )
-      }
-
-      return successResult("تم تحديث حساب الدين الحالي بنجاح.", this.requireDebtAccount(existingAccount.id))
-    }
-
     const status = getDebtAccountStatus(openingBalance)
+    const entryDate = normalizeAlgeriaTimestamp(input.openingEntryDate)
     const account = this.repository.withTransaction(() => {
       const createdAccount = this.repository.createDebtAccount(
         {
@@ -415,6 +405,103 @@ export class CompanyService {
     })
 
     return successResult("تمت تسوية حساب الدين بنجاح.", entry)
+  }
+
+  closeDebtAgainstAnother(input: DebtCloseAgainstInput, auditContext?: MutationAuditContext) {
+    const audit = normalizeMutationAuditContext(auditContext)
+    const sourceAccount = this.requireDebtAccount(input.sourceDebtAccountId)
+    const targetAccount = this.requireDebtAccount(input.targetDebtAccountId)
+
+    if (sourceAccount.id === targetAccount.id) {
+      throw new CompanyError("VALIDATION", "يجب اختيار حسابي دين مختلفين.", [
+        { field: "targetDebtAccountId", message: "يجب اختيار حسابي دين مختلفين." },
+      ])
+    }
+
+    if (buildDebtPartyKey(sourceAccount) !== buildDebtPartyKey(targetAccount)) {
+      throw new CompanyError("BUSINESS_RULE", "لا يمكن إغلاق الدين إلا بين حالتين تخصان نفس الطرف.", [
+        { field: "targetDebtAccountId", message: "لا يمكن إغلاق الدين إلا بين حالتين تخصان نفس الطرف." },
+      ])
+    }
+
+    if (sourceAccount.currentBalanceDzd === 0 || targetAccount.currentBalanceDzd === 0) {
+      throw new CompanyError("BUSINESS_RULE", "يجب أن يكون كلا الحسابين مفتوحًا وبأرصدة غير صفرية قبل الإغلاق المتبادل.")
+    }
+
+    if (Math.sign(sourceAccount.currentBalanceDzd) === Math.sign(targetAccount.currentBalanceDzd)) {
+      throw new CompanyError("BUSINESS_RULE", "لا يمكن الإغلاق المتبادل إلا بين رصيدين باتجاهين متعاكسين.")
+    }
+
+    const entryDate = normalizeAlgeriaTimestamp(input.entryDate)
+    const sourceEntries = this.repository.listDebtEntries({ debtAccountId: sourceAccount.id })
+    const targetEntries = this.repository.listDebtEntries({ debtAccountId: targetAccount.id })
+    assertDebtEntryDateNotBackdated(entryDate, sourceEntries[0]?.entryDate ?? null, "entryDate")
+    assertDebtEntryDateNotBackdated(entryDate, targetEntries[0]?.entryDate ?? null, "entryDate")
+
+    const closedAmountDzd = Math.min(Math.abs(sourceAccount.currentBalanceDzd), Math.abs(targetAccount.currentBalanceDzd))
+    const sourceDelta = getDebtEntryDeltaForClosure(sourceAccount.currentBalanceDzd, closedAmountDzd)
+    const targetDelta = getDebtEntryDeltaForClosure(targetAccount.currentBalanceDzd, closedAmountDzd)
+    const nextSourceBalance = sourceAccount.currentBalanceDzd + sourceDelta
+    const nextTargetBalance = targetAccount.currentBalanceDzd + targetDelta
+
+    const link = this.repository.withTransaction(() => {
+      this.repository.createDebtEntry(
+        {
+          debtAccountId: sourceAccount.id,
+          entryType: "CLOSURE",
+          signedAmountDzd: sourceDelta,
+          entryDate,
+          note: normalizeText(input.note),
+          balanceAfterDzd: nextSourceBalance,
+        },
+        audit,
+      )
+
+      this.repository.createDebtEntry(
+        {
+          debtAccountId: targetAccount.id,
+          entryType: "CLOSURE",
+          signedAmountDzd: targetDelta,
+          entryDate,
+          note: normalizeText(input.note),
+          balanceAfterDzd: nextTargetBalance,
+        },
+        audit,
+      )
+
+      this.repository.updateDebtAccount(
+        {
+          id: sourceAccount.id,
+          currentBalanceDzd: nextSourceBalance,
+          status: getDebtAccountStatus(nextSourceBalance),
+          settledAt: nextSourceBalance === 0 ? entryDate : null,
+        },
+        audit,
+      )
+
+      this.repository.updateDebtAccount(
+        {
+          id: targetAccount.id,
+          currentBalanceDzd: nextTargetBalance,
+          status: getDebtAccountStatus(nextTargetBalance),
+          settledAt: nextTargetBalance === 0 ? entryDate : null,
+        },
+        audit,
+      )
+
+      return this.repository.createDebtClosureLink(
+        {
+          sourceDebtAccountId: sourceAccount.id,
+          targetDebtAccountId: targetAccount.id,
+          closedAmountDzd,
+          entryDate,
+          note: normalizeText(input.note),
+        },
+        audit,
+      )
+    })
+
+    return successResult("تم إغلاق الدين مقابل دين آخر بنجاح.", link)
   }
 
   getDebtPartyDetail(input: DebtPartyDetailInput) {

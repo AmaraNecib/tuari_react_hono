@@ -40,13 +40,9 @@ export function buildHomeViewBreadcrumbItems({
               ? [{ label: copy.sections.transactions.label, to: workspaceRoutes.transactions() }]
               : page === "roles"
                 ? [{ label: copy.sections.roles.label, to: workspaceRoutes.roles() }]
-              : page === "inventory"
-                ? [{ label: "دليل العناصر", to: workspaceRoutes.inventory() }]
-                : page === "invoices" || page === "invoice-create" || page === "invoice-details"
-                  ? [{ label: "الفواتير", to: workspaceRoutes.invoices() }]
-                  : page === "settings"
-                   ? [{ label: copy.sections.settings.label, to: workspaceRoutes.settings() }]
-                   : []),
+                : page === "settings"
+                  ? [{ label: copy.sections.settings.label, to: workspaceRoutes.settings() }]
+                  : []),
     ...(page === "employees-create"
       ? [{ label: t("detailPages.employee.createBreadcrumb") }]
       : page === "employee-details" && selectedEmployee
@@ -75,17 +71,9 @@ export function buildHomeViewBreadcrumbItems({
                   ? [{ label: t("detailPages.warehouse.createBreadcrumb") }]
                   : page === "warehouse-details" && selectedWarehouse
                   ? [{ label: selectedWarehouse.name }]
-                 : page === "warehouse-edit" && selectedWarehouse
-                   ? [{ label: selectedWarehouse.name, to: workspaceRoutes.warehouseDetails(selectedWarehouse.id) }, { label: t("detailPages.warehouse.editBreadcrumb") }]
-                   : page === "inventory"
-                     ? [{ label: "دليل العناصر" }]
-                     : page === "invoices"
-                       ? [{ label: "كل الفواتير" }]
-                       : page === "invoice-create"
-                         ? [{ label: "إضافة فاتورة" }]
-                         : page === "invoice-details"
-                           ? [{ label: "تفاصيل الفاتورة" }]
-                   : []),
+                : page === "warehouse-edit" && selectedWarehouse
+                  ? [{ label: selectedWarehouse.name, to: workspaceRoutes.warehouseDetails(selectedWarehouse.id) }, { label: t("detailPages.warehouse.editBreadcrumb") }]
+                  : []),
   ]
 }
 

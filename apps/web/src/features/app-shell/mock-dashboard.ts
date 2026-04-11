@@ -623,6 +623,36 @@ export function useSettleDebtAccountMutation() {
   })
 }
 
+export function useCloseDebtAgainstMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "debts", "close-against"],
+    mutationFn: async (input: {
+      sourceDebtAccountId: string
+      targetDebtAccountId: string
+      entryDate?: string
+      note?: string | null
+    }) => {
+      const result = await rpcClient.debtCloseAgainst({
+        entryDate: input.entryDate,
+        note: input.note,
+        sourceDebtAccountId: input.sourceDebtAccountId,
+        targetDebtAccountId: input.targetDebtAccountId,
+      })
+
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
 export function useAddWorkspaceRecordMutation() {
   const queryClient = useQueryClient()
   const sessionQuery = useSessionQuery()

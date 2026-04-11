@@ -1,5 +1,6 @@
 import type {
   DebtAccount,
+  DebtClosureLink,
   DebtPartyDetail,
   DebtPartySummaryItem,
   DebtEntry,
@@ -30,6 +31,7 @@ export type ProjectRecord = Project;
 export type WarehouseRecord = Warehouse;
 export type ExternalCounterpartyRecord = ExternalCounterparty;
 export type DebtAccountRecord = DebtAccount & AuditSnapshot;
+export type DebtClosureLinkRecord = DebtClosureLink & AuditSnapshot;
 export type DebtEntryRecord = DebtEntry & AuditSnapshot;
 export type DebtPartyDetailRecord = DebtPartyDetail;
 export type DebtPartySummaryItemRecord = DebtPartySummaryItem;
@@ -72,20 +74,6 @@ export type MutationAuditContext = {
   actorUserId?: string | null;
   actorLabel?: string | null;
   transactionId?: string | null;
-};
-
-export type InventoryItemDefinitionAuditRecord = {
-  id: string;
-  name: string;
-  itemType: "CONSUMABLE" | "ASSET";
-  unit: string | null;
-  description: string | null;
-  isActive: boolean;
-  actorUserId: string | null;
-  actorLabel: string | null;
-  transactionId: string | null;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type RoleCreateData = {
@@ -286,6 +274,14 @@ export type DebtEntryCreateData = {
   balanceAfterDzd: number;
 };
 
+export type DebtClosureLinkCreateData = {
+  sourceDebtAccountId: string;
+  targetDebtAccountId: string;
+  closedAmountDzd: number;
+  entryDate: string;
+  note?: string | null;
+};
+
 export type EmployeeListFilters = {
   roleId?: string;
   status?: EmployeeStatus;
@@ -339,6 +335,10 @@ export type EmployeeSalaryPaymentListFilters = {
 
 export type DebtEntryListFilters = {
   debtAccountId: string;
+};
+
+export type DebtClosureLinkListFilters = {
+  debtAccountId?: string;
 };
 
 export type SystemLogListFilters = {

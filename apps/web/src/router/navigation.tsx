@@ -24,10 +24,6 @@ export type WorkspaceRouteTarget =
   | { to: "/warehouses/create" }
   | { to: "/warehouses/$warehouseId"; params: { warehouseId: string }; search?: WorkspaceTabSearch }
   | { to: "/warehouses/$warehouseId/edit"; params: { warehouseId: string } }
-  | { to: "/inventory" }
-  | { to: "/invoices" }
-  | { to: "/invoices/create" }
-  | { to: "/invoices/$invoiceId"; params: { invoiceId: string } }
   | { to: "/transactions" }
   | { to: "/roles" }
   | { to: "/settings" }
@@ -85,10 +81,6 @@ export const workspaceRoutes = {
   salaries: (): WorkspaceRouteTarget => ({ to: "/salaries" }),
   warehouses: (): WorkspaceRouteTarget => ({ to: "/warehouses" }),
   warehouseCreate: (): WorkspaceRouteTarget => ({ to: "/warehouses/create" }),
-  inventory: (): WorkspaceRouteTarget => ({ to: "/inventory" }),
-  invoices: (): WorkspaceRouteTarget => ({ to: "/invoices" }),
-  invoiceCreate: (): WorkspaceRouteTarget => ({ to: "/invoices/create" }),
-  invoiceDetails: (invoiceId: string): WorkspaceRouteTarget => ({ to: "/invoices/$invoiceId", params: { invoiceId } }),
   warehouseDetails: (warehouseId: string): WorkspaceRouteTarget => ({
     to: "/warehouses/$warehouseId",
     params: { warehouseId },
