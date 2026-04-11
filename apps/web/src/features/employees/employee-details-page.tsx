@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import type { DebtAccount, DebtClosureLink, DebtEntry } from "@tuari/contracts"
+import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
@@ -98,7 +98,6 @@ function renderMoneyValue(
 export function EmployeeDetailsPage({
   activeTab,
   debtAccounts,
-  debtClosureLinksByAccountId,
   debtEntriesByAccountId,
   employee,
   managedProjects,
@@ -109,7 +108,6 @@ export function EmployeeDetailsPage({
 }: {
   activeTab: string
   debtAccounts: DebtAccount[]
-  debtClosureLinksByAccountId: Record<string, DebtClosureLink[]>
   debtEntriesByAccountId: Record<string, DebtEntry[]>
   employee: EmployeeTableRow
   managedProjects: string[]
@@ -381,7 +379,6 @@ export function EmployeeDetailsPage({
         <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="debts">
           <DebtCasesPanel
             accounts={debtAccounts}
-            debtClosureLinksByAccountId={debtClosureLinksByAccountId}
             debtEntriesByAccountId={debtEntriesByAccountId}
             title="ديون العامل"
             workerId={employee.id}

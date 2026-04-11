@@ -595,10 +595,12 @@ describe("CompanyService", () => {
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 300,
-        note: "حالة مستقلة",
+        note: "إضافة على الحساب الموحد",
       },
       audit,
     ).item
+
+    expect(secondAccount.id).toBe(account.id)
 
     const summary = service.listDebtsSummary()
     expect(summary.debtAccounts).toEqual(
@@ -606,10 +608,9 @@ describe("CompanyService", () => {
         expect.objectContaining({
           accountId: account.id,
           displayName: counterparty.fullName,
-          currentBalanceDzd: -800,
+          currentBalanceDzd: -500,
           balanceLabel: "علينا له",
         }),
-        expect.objectContaining({ accountId: secondAccount.id, currentBalanceDzd: 300 }),
       ]),
     )
     expect(summary.parties).toEqual(
@@ -618,7 +619,7 @@ describe("CompanyService", () => {
           externalCounterpartyId: counterparty.id,
           totalBalanceDzd: -500,
           balanceLabel: "علينا له",
-          openDebtCasesCount: 2,
+          openDebtCasesCount: 1,
         }),
       ]),
     )
@@ -628,10 +629,10 @@ describe("CompanyService", () => {
       externalCounterpartyId: counterparty.id,
     }).item
     expect(detail.totalBalanceDzd).toBe(-500)
-    expect(detail.debtAccounts).toHaveLength(2)
+    expect(detail.debtAccounts).toHaveLength(1)
   })
 
-  it("closes one debt against another while preserving closure history and residual balance", () => {
+  it("reuses the same debt account for repeated entries on the same party", () => {
     const { service, roleIds } = createHarness()
     const audit = createAuditContext()
     const worker = service.createEmployee({
@@ -642,44 +643,29 @@ describe("CompanyService", () => {
       status: "ACTIVE",
     }).item
 
-    const positiveAccount = service.createDebtAccount({
+    const firstAccount = service.createDebtAccount({
       partyType: "INTERNAL_WORKER",
       workerId: worker.id,
       openingBalanceDzd: 1000,
       openingEntryDate: "2026-03-20T00:00:00.000+01:00",
     }, audit).item
 
-    const negativeAccount = service.createDebtAccount({
+    const secondMutation = service.createDebtAccount({
       partyType: "INTERNAL_WORKER",
       workerId: worker.id,
       openingBalanceDzd: -600,
       openingEntryDate: "2026-03-21T00:00:00.000+01:00",
     }, audit).item
 
-    const closure = service.closeDebtAgainstAnother({
-      sourceDebtAccountId: positiveAccount.id,
-      targetDebtAccountId: negativeAccount.id,
-      entryDate: "2026-03-22T00:00:00.000+01:00",
-      note: "مقاصة بين حالتين",
-    }, audit).item
-
-    expect(closure.closedAmountDzd).toBe(600)
-    expect(service.getDebtAccount(positiveAccount.id).item.currentBalanceDzd).toBe(400)
-    expect(service.getDebtAccount(negativeAccount.id).item.currentBalanceDzd).toBe(0)
-    expect(service.getDebtAccount(negativeAccount.id).item.status).toBe("SETTLED")
-    expect(service.listDebtClosureLinks({ debtAccountId: positiveAccount.id }).items).toEqual([
-      expect.objectContaining({ id: closure.id, note: "مقاصة بين حالتين" }),
-    ])
-    expect(service.listDebtEntries({ debtAccountId: positiveAccount.id }).items[0]).toMatchObject({
-      entryType: "CLOSURE",
-      signedAmountDzd: -600,
-      balanceAfterDzd: 400,
-    })
-    expect(service.listDebtEntries({ debtAccountId: negativeAccount.id }).items[0]).toMatchObject({
-      entryType: "CLOSURE",
-      signedAmountDzd: 600,
-      balanceAfterDzd: 0,
-    })
+    expect(secondMutation.id).toBe(firstAccount.id)
+    expect(service.getDebtAccount(firstAccount.id).item.currentBalanceDzd).toBe(400)
+    expect(service.listDebtAccounts({ workerId: worker.id }).items).toHaveLength(1)
+    expect(service.listDebtEntries({ debtAccountId: firstAccount.id }).items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ entryType: "OPENING", signedAmountDzd: 1000 }),
+        expect.objectContaining({ entryType: "ADJUSTMENT", signedAmountDzd: -600, balanceAfterDzd: 400 }),
+      ]),
+    )
   })
 
   it("rejects settling an already zero debt account", () => {

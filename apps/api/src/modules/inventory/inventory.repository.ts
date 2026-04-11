@@ -4,7 +4,7 @@ import { dirname } from "node:path"
 import Database from "better-sqlite3"
 
 import { resolveDatabaseEnv } from "../../infrastructure/config/database-env"
-import { normalizeAuditContext, type SqliteRow as CompanySqliteRow } from "../company/company.repository-mappers"
+import { normalizeAuditContext } from "../company/company.repository-mappers"
 import { createAlgeriaTimestamp } from "../company/company-time"
 import type { MutationAuditContext } from "../company/company.types"
 import type {
