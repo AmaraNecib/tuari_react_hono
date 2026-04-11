@@ -29,5 +29,9 @@ export function useHomeViewNavigation() {
     goToWarehouseCreate: () => goToRoute(workspaceRoutes.warehouseCreate()),
     goToWarehouses: () => goToRoute(workspaceRoutes.warehouses()),
     setWarehouseTab: (warehouseId: string, tab: string) => goToRoute(workspaceRoutes.warehouseTab(warehouseId, tab)),
+    goToInventory: () => goToRoute(workspaceRoutes.inventory()),
+    goToInvoices: () => goToRoute(workspaceRoutes.invoices()),
+    goToInvoiceCreate: () => goToRoute(workspaceRoutes.invoiceCreate()),
+    goToInvoiceDetails: (invoiceId: string) => goToRoute(workspaceRoutes.invoiceDetails(invoiceId)),
   }
 }

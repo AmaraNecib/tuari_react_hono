@@ -1,5 +1,7 @@
 import type { ReactNode } from "react"
+import { LogOut, MoonStar, Settings, SunMedium } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,6 +19,7 @@ import type { DemoSession } from "./mock-dashboard"
 import type { HomeViewPage, PendingDelete } from "./home-view-types"
 import { WorkspaceBreadcrumbs } from "./workspace-breadcrumbs"
 import { WorkspaceSidebar } from "./workspace-sidebar"
+import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
 
 export function HomeViewSignedInShell({
   breadcrumbItems,
@@ -56,6 +59,12 @@ export function HomeViewSignedInShell({
   onThemeToggle: () => void
 }) {
   const sidebarWidth = sidebarCollapsed ? "5.5rem" : "18rem"
+  const pageLabel =
+    page === "inventory"
+      ? "دليل العناصر"
+      : page === "invoices" || page === "invoice-create" || page === "invoice-details"
+        ? "الفواتير"
+        : copy.sections.dashboard.label
 
   return (
     <div className="min-h-screen overflow-hidden">
@@ -68,25 +77,42 @@ export function HomeViewSignedInShell({
         employeesLabel={copy.sections.employees.label}
         externalsLabel={copy.sections.externals.label}
         expandLabel={copy.shell.expand}
+        inventoryLabel="دليل العناصر"
+        invoicesLabel="الفواتير"
         projectsLabel={copy.sections.projects.label}
         rolesLabel={copy.sections.roles.label}
         salariesLabel={copy.sections.salaries.label}
         session={session}
-        settingsLabel={copy.sections.settings.label}
-        signOutLabel={copy.shell.signOut}
-        theme={theme}
-        themeToggleLabel={copy.shell.themeToggle}
         transactionsLabel={copy.sections.transactions.label}
         warehousesLabel={copy.sections.warehouses.label}
         width={sidebarWidth}
         onSetCollapsed={onSetSidebarCollapsed}
-        onSignOut={() => onSignOutOpenChange(true)}
-        onToggleTheme={onThemeToggle}
       />
 
       <main className="h-screen overflow-y-auto" style={{ paddingRight: `calc(${sidebarWidth} + 1.5rem)` }}>
         <div className="flex min-h-full min-w-0 flex-col gap-6 pb-8 pe-6 ps-6 pt-5">
-          {page !== "dashboard" ? <WorkspaceBreadcrumbs items={breadcrumbItems} /> : null}
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0 text-right">
+              {page !== "dashboard" ? (
+                <WorkspaceBreadcrumbs items={breadcrumbItems} />
+              ) : (
+                <div className="text-sm font-medium text-muted-foreground">{pageLabel}</div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-background/82 p-1.5 shadow-lg shadow-black/10 backdrop-blur-xl">
+              <Button aria-label={copy.shell.signOut} className="size-9 rounded-xl text-destructive hover:text-destructive" size="icon" type="button" variant="ghost" onClick={() => onSignOutOpenChange(true)}>
+                <LogOut className="size-4" />
+              </Button>
+              <WorkspaceLink aria-label={copy.sections.settings.label} className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground" target={workspaceRoutes.settings()}>
+                <Settings className="size-4" />
+              </WorkspaceLink>
+              <Button aria-label={copy.shell.themeToggle} className="size-9 rounded-xl" size="icon" type="button" variant="ghost" onClick={onThemeToggle}>
+                {theme === "light" ? <MoonStar className="size-4" /> : <SunMedium className="size-4" />}
+              </Button>
+            </div>
+          </div>
+
           {children}
         </div>
       </main>

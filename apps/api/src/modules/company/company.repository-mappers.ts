@@ -1,6 +1,5 @@
 import type {
   DebtAccountRecord,
-  DebtClosureLinkRecord,
   DebtEntryRecord,
   AuthUserDisplayRecord,
   EmployeeManagerAssignmentRecord,
@@ -252,22 +251,6 @@ export function mapDebtEntry(row: SqliteRow): DebtEntryRecord {
     entryDate: String(row.entry_date),
     note: toNullableText(row.note),
     balanceAfterDzd: Number(row.balance_after_dzd),
-    actorUserId: toNullableText(row.actor_user_id),
-    actorLabel: toNullableText(row.actor_label),
-    transactionId: toNullableText(row.transaction_id),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  }
-}
-
-export function mapDebtClosureLink(row: SqliteRow): DebtClosureLinkRecord {
-  return {
-    id: String(row.id),
-    sourceDebtAccountId: String(row.source_debt_account_id),
-    targetDebtAccountId: String(row.target_debt_account_id),
-    closedAmountDzd: Number(row.closed_amount_dzd),
-    entryDate: String(row.entry_date),
-    note: toNullableText(row.note),
     actorUserId: toNullableText(row.actor_user_id),
     actorLabel: toNullableText(row.actor_label),
     transactionId: toNullableText(row.transaction_id),

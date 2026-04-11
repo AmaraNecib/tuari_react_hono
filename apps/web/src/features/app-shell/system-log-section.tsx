@@ -30,6 +30,7 @@ function getActionTypeLabel(t: (key: string) => string, actionType: SystemLogEnt
     DEBT_SETTLED: t("systemLog.debtSettled"),
     EMPLOYEE_CREATED: t("systemLog.employeeCreated"),
     EMPLOYEE_UPDATED: t("systemLog.employeeUpdated"),
+    INVENTORY_ITEM_CREATED: "إنشاء تعريف عنصر",
     PROJECT_MANAGER_CHANGED: t("systemLog.projectManagerChanged"),
     SALARY_PAYMENT_RECORDED: t("systemLog.salaryPaymentRecorded"),
     WAREHOUSE_MANAGER_CHANGED: t("systemLog.warehouseManagerChanged"),
@@ -46,6 +47,7 @@ function getEntityTypeLabel(t: (key: string) => string, entityType: SystemLogEnt
     DEBT_ENTRY: t("systemLog.entityDebtEntry"),
     EMPLOYEE: t("systemLog.entityEmployee"),
     EXTERNAL_COUNTERPARTY: t("systemLog.entityExternalCounterparty"),
+    INVENTORY_ITEM: "تعريف عنصر",
     MANAGER_ASSIGNMENT: t("systemLog.entityManagerAssignment"),
     PROJECT: t("systemLog.entityProject"),
     PROJECT_ASSIGNMENT: t("systemLog.entityProjectAssignment"),
@@ -66,12 +68,13 @@ function parseDetailLines(detail: string | null | undefined) {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
+    .filter((line) => !line.includes("تم إنشاء حساب دين"))
 
   if (normalized.length > 1) {
     return normalized.map((line) => line.replace(/^•\s*/, ""))
   }
 
-  return [detail.trim().replace(/^•\s*/, "")]
+  return normalized.length === 1 ? [normalized[0]!.replace(/^•\s*/, "")] : []
 }
 
 function parseDetailTokens(line: string) {
@@ -92,6 +95,7 @@ function parseDetailTokens(line: string) {
   return line
     .split(/\s+[•—]\s+/)
     .map((part) => part.trim())
+    .filter((part) => !part.startsWith("نوع الحركة"))
     .filter((part) => part.length > 0)
 }
 
@@ -208,7 +212,7 @@ export function SystemLogSection({
             <span className="text-sm font-medium text-foreground">{t("systemLog.action")}</span>
             <NativeSelect value={filters.actionType ?? "ALL"} onChange={(event) => onFiltersChange({ ...filters, actionType: event.target.value === "ALL" ? undefined : (event.target.value as SystemLogEntry["actionType"]) })}>
               <option value="ALL">{t("systemLog.actionAll")}</option>
-              {["ACCOUNT_UPDATED", "DEBT_ACCOUNT_CREATED", "DEBT_ENTRY_RECORDED", "DEBT_SETTLED", "EMPLOYEE_CREATED", "EMPLOYEE_UPDATED", "WORKPLACE_ASSIGNED", "PROJECT_MANAGER_CHANGED", "WAREHOUSE_MANAGER_CHANGED", "SALARY_PAYMENT_RECORDED"].map((value) => (
+              {["ACCOUNT_UPDATED", "DEBT_ENTRY_RECORDED", "DEBT_SETTLED", "EMPLOYEE_CREATED", "EMPLOYEE_UPDATED", "INVENTORY_ITEM_CREATED", "WORKPLACE_ASSIGNED", "PROJECT_MANAGER_CHANGED", "WAREHOUSE_MANAGER_CHANGED", "SALARY_PAYMENT_RECORDED"].map((value) => (
                 <option key={value} value={value}>
                   {getActionTypeLabel(t, value as SystemLogEntry["actionType"])}
                 </option>
@@ -219,7 +223,7 @@ export function SystemLogSection({
             <span className="text-sm font-medium text-foreground">{t("systemLog.entity")}</span>
             <NativeSelect value={filters.entityType ?? "ALL"} onChange={(event) => onFiltersChange({ ...filters, entityType: event.target.value === "ALL" ? undefined : (event.target.value as SystemLogEntry["entityType"]) })}>
               <option value="ALL">{t("systemLog.entityAll")}</option>
-              {["ACCOUNT", "DEBT_ACCOUNT", "DEBT_ENTRY", "EMPLOYEE", "EXTERNAL_COUNTERPARTY", "PROJECT", "WAREHOUSE", "MANAGER_ASSIGNMENT", "PROJECT_ASSIGNMENT", "WAREHOUSE_ASSIGNMENT", "SALARY_PAYMENT"].map((value) => (
+              {["ACCOUNT", "DEBT_ACCOUNT", "DEBT_ENTRY", "EMPLOYEE", "EXTERNAL_COUNTERPARTY", "INVENTORY_ITEM", "PROJECT", "WAREHOUSE", "MANAGER_ASSIGNMENT", "PROJECT_ASSIGNMENT", "WAREHOUSE_ASSIGNMENT", "SALARY_PAYMENT"].map((value) => (
                 <option key={value} value={value}>
                   {getEntityTypeLabel(t, value as SystemLogEntry["entityType"])}
                 </option>

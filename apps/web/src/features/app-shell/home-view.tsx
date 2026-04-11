@@ -64,6 +64,7 @@ export function HomeView({
   page = "dashboard",
   counterpartyId,
   employeeId,
+  invoiceId,
   projectId,
   warehouseId,
 }: {
@@ -71,6 +72,7 @@ export function HomeView({
   page?: HomeViewPage
   counterpartyId?: string
   employeeId?: string
+  invoiceId?: string
   projectId?: string
   warehouseId?: string
 }) {
@@ -116,6 +118,7 @@ export function HomeView({
     copy,
     derived,
     employeeId,
+    invoiceId,
     page,
     projectId,
     t,

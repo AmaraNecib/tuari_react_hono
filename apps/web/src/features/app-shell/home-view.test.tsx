@@ -870,7 +870,7 @@ describe("HomeView workspace shell", () => {
     renderHomeView("salaries")
 
     expect(screen.getByRole("heading", { name: "الرواتب" })).toBeTruthy()
-    expect(screen.getByText("آخر دفعات الرواتب")).toBeTruthy()
+    expect(screen.getAllByText("آخر دفعات الرواتب").length).toBeGreaterThan(0)
     expect(screen.getAllByText("علي بن حميد").length).toBeGreaterThan(0)
     expect(screen.getAllByRole("button", { name: "إضافة دفعة" }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole("button", { name: "تعديل الأجر" }).length).toBeGreaterThan(0)
