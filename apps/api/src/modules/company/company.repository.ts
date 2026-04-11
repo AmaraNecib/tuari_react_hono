@@ -6,7 +6,6 @@ import Database from "better-sqlite3";
 import { resolveDatabaseEnv } from "../../infrastructure/config/database-env";
 import {
   mapDebtAccount,
-  mapDebtClosureLink,
   mapDebtEntry,
   mapExternalCounterparty,
   mapAuthUserDisplay,
@@ -28,9 +27,6 @@ import {
 import { createAlgeriaTimestamp } from "./company-time";
 import type {
   DebtAccountCreateData,
-  DebtClosureLinkCreateData,
-  DebtClosureLinkListFilters,
-  DebtClosureLinkRecord,
   DebtAccountListFilters,
   DebtAccountRecord,
   DebtAccountUpdateData,
@@ -121,8 +117,6 @@ export interface CompanyRepository {
 
   listDebtEntries(filters: DebtEntryListFilters): DebtEntryRecord[];
   createDebtEntry(data: DebtEntryCreateData, auditContext?: MutationAuditContext): DebtEntryRecord;
-  listDebtClosureLinks(filters?: DebtClosureLinkListFilters): DebtClosureLinkRecord[];
-  createDebtClosureLink(data: DebtClosureLinkCreateData, auditContext?: MutationAuditContext): DebtClosureLinkRecord;
 
   listProjects(filters?: ProjectListFilters): ProjectRecord[];
   getProjectById(id: string): ProjectRecord | null;
@@ -884,48 +878,6 @@ export class SqliteCompanyRepository implements CompanyRepository {
     return entry!
   }
 
-  listDebtClosureLinks(filters?: DebtClosureLinkListFilters): DebtClosureLinkRecord[] {
-    const conditions: string[] = []
-    const params: Array<string> = []
-
-    if (filters?.debtAccountId) {
-      conditions.push('(source_debt_account_id = ? OR target_debt_account_id = ?)')
-      params.push(filters.debtAccountId, filters.debtAccountId)
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
-    const rows = this.database
-      .prepare(`SELECT * FROM debt_closure_link ${whereClause} ORDER BY entry_date DESC, created_at DESC`)
-      .all(...params) as SqliteRow[]
-
-    return rows.map(mapDebtClosureLink)
-  }
-
-  createDebtClosureLink(data: DebtClosureLinkCreateData, auditContext?: MutationAuditContext): DebtClosureLinkRecord {
-    const id = crypto.randomUUID()
-    const timestamp = createAlgeriaTimestamp()
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare(
-        'INSERT INTO debt_closure_link (id, source_debt_account_id, target_debt_account_id, closed_amount_dzd, entry_date, note, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(
-        id,
-        data.sourceDebtAccountId,
-        data.targetDebtAccountId,
-        data.closedAmountDzd,
-        data.entryDate,
-        data.note ?? null,
-        audit.actorUserId,
-        audit.actorLabel,
-        audit.transactionId,
-        timestamp,
-        timestamp,
-      )
-
-    return this.listDebtClosureLinks().find((item) => item.id === id)!
-  }
-
   listProjects(filters?: ProjectListFilters): ProjectRecord[] {
     const conditions: string[] = [];
     const params: Array<string> = [];
@@ -1528,9 +1480,19 @@ export class SqliteCompanyRepository implements CompanyRepository {
   }
 
   listInventoryItemDefinitionsForLog(): InventoryItemDefinitionAuditRecord[] {
-    const rows = this.database
-      .prepare('SELECT * FROM inventory_item_definition ORDER BY created_at DESC')
-      .all() as SqliteRow[]
+    let rows: SqliteRow[]
+
+    try {
+      rows = this.database
+        .prepare('SELECT * FROM inventory_item_definition ORDER BY created_at DESC')
+        .all() as SqliteRow[]
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("no such table")) {
+        return []
+      }
+
+      throw error
+    }
 
     return rows.map((row) => ({
       id: String(row.id),

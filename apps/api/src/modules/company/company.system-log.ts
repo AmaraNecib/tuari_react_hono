@@ -33,8 +33,6 @@ function getDebtEntryTypeLabel(entryType: string) {
       return "تعديل"
     case "SETTLEMENT":
       return "تسوية"
-    case "CLOSURE":
-      return "إغلاق مقابل حالة أخرى"
     default:
       return entryType
   }
@@ -61,8 +59,6 @@ function buildDebtEntrySummary(entryType: string, partyLabel: string) {
       return `تم تسجيل دفعة للطرف ${partyLabel}`
     case "ADJUSTMENT":
       return `تم تسجيل تعديل على دين الطرف ${partyLabel}`
-    case "CLOSURE":
-      return `تم تسجيل إغلاق مقابل حالة أخرى للطرف ${partyLabel}`
     case "SETTLEMENT":
       return `تمت تسوية حساب الدين للطرف ${partyLabel}`
     default:
@@ -77,6 +73,7 @@ function buildDebtEntryDetail(entry: {
   note?: string | null
 }) {
   return [
+    `نوع الحركة ${getDebtEntryTypeLabel(entry.entryType)}`,
     `القيمة ${formatSignedDzd(entry.signedAmountDzd)}`,
     `الرصيد بعد العملية ${formatSignedDzd(entry.balanceAfterDzd)}`,
     entry.note?.trim() || null,

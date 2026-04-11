@@ -266,7 +266,6 @@ const workspace: DemoWorkspace = {
   externalCounterparties: [],
   debtAccounts: [],
   debtEntries: [],
-  debtClosureLinks: [],
   salaryPayments: [
     {
       id: "salary-payment-1",

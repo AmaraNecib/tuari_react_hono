@@ -273,7 +273,7 @@ export const schemaStatements = [
   `CREATE TABLE IF NOT EXISTS "debt_entry" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "debt_account_id" TEXT NOT NULL,
-    "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT', 'CLOSURE')),
+    "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT')),
     "signed_amount_dzd" REAL NOT NULL,
     "entry_date" DATETIME NOT NULL,
     "note" TEXT,
@@ -285,27 +285,6 @@ export const schemaStatements = [
     "updated_at" DATETIME NOT NULL,
     CONSTRAINT "debt_entry_debt_account_id_fkey"
       FOREIGN KEY ("debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-  )`,
-  `CREATE TABLE IF NOT EXISTS "debt_closure_link" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "source_debt_account_id" TEXT NOT NULL,
-    "target_debt_account_id" TEXT NOT NULL,
-    "closed_amount_dzd" REAL NOT NULL,
-    "entry_date" DATETIME NOT NULL,
-    "note" TEXT,
-    "actor_user_id" TEXT,
-    "actor_label" TEXT,
-    "transaction_id" TEXT,
-    "created_at" DATETIME NOT NULL,
-    "updated_at" DATETIME NOT NULL,
-    CONSTRAINT "debt_closure_link_source_debt_account_id_fkey"
-      FOREIGN KEY ("source_debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "debt_closure_link_target_debt_account_id_fkey"
-      FOREIGN KEY ("target_debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "debt_closure_link_accounts_check"
-      CHECK ("source_debt_account_id" <> "target_debt_account_id"),
-    CONSTRAINT "debt_closure_link_amount_check"
-      CHECK ("closed_amount_dzd" > 0)
   )`,
   `CREATE TABLE IF NOT EXISTS "inventory_item_definition" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -494,8 +473,6 @@ export const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "debt_account_worker_id_idx" ON "debt_account" ("worker_id")',
   'CREATE INDEX IF NOT EXISTS "debt_account_external_counterparty_id_idx" ON "debt_account" ("external_counterparty_id")',
   'CREATE INDEX IF NOT EXISTS "debt_entry_debt_account_id_idx" ON "debt_entry" ("debt_account_id", "entry_date")',
-  'CREATE INDEX IF NOT EXISTS "debt_closure_link_source_debt_account_id_idx" ON "debt_closure_link" ("source_debt_account_id", "entry_date")',
-  'CREATE INDEX IF NOT EXISTS "debt_closure_link_target_debt_account_id_idx" ON "debt_closure_link" ("target_debt_account_id", "entry_date")',
   'CREATE INDEX IF NOT EXISTS "inventory_item_definition_item_type_is_active_idx" ON "inventory_item_definition" ("item_type", "is_active")',
   'CREATE INDEX IF NOT EXISTS "inventory_invoice_group_warehouse_id_idx" ON "inventory_invoice_group" ("warehouse_id", "created_at")',
   'CREATE INDEX IF NOT EXISTS "inventory_invoice_group_project_id_idx" ON "inventory_invoice_group" ("project_id", "created_at")',
@@ -583,6 +560,7 @@ export const statusConstraintMigrationKey = "enforce_company_status_checks_v1"
 export const actorLabelBackfillMigrationKey = "backfill_actor_labels_v1"
 export const debtMultiCaseMigrationKey = "enable_debt_multi_case_v1"
 export const debtEntryClosureMigrationKey = "enable_debt_entry_closure_v1"
+export const debtSingleAccountMigrationKey = "simplify_debt_single_account_v1"
 
 export const companyIndexStatements = [
   'CREATE INDEX IF NOT EXISTS "employee_role_id_idx" ON "employee" ("role_id")',

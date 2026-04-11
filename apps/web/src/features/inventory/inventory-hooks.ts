@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
+  AppError,
   InventoryAssetDetail,
   ExternalCounterparty,
   InventoryLocationContents,
@@ -55,7 +56,7 @@ function getInventoryErrorMessage(error: unknown, fallbackMessage: string) {
   return extractRpcIssueMessage(error) ?? (error instanceof Error && error.message.trim().length > 0 ? error.message : fallbackMessage)
 }
 
-function requireEntitySuccess<T>(result: { success: boolean; message?: string; item?: T; error?: { message: string; code?: string; fieldErrors?: Array<{ field: string; message: string }> } }) {
+function requireEntitySuccess<T>(result: { success: boolean; message?: string; item?: T; error?: { message: string; code?: AppError["code"]; fieldErrors?: Array<{ field: string; message: string }> } }) {
   if (!result.success || !result.item) {
     throw new AppMutationError({
       message: result.error?.message ?? "تعذر تنفيذ العملية.",
