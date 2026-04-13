@@ -91,7 +91,6 @@ describe("debts MVP web UI", () => {
         ]}
         totals={{ openCount: 2, owedByUsDzd: 700, owedToUsDzd: 1500 }}
         onCreateDebt={vi.fn()}
-        onCreateExternalCounterparty={vi.fn()}
         onOpenExternalCounterparty={vi.fn()}
         onOpenWorker={vi.fn()}
       />,

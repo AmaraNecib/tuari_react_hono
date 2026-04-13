@@ -89,6 +89,16 @@ function resolveOccurredAt(value?: string | null) {
   return value ?? new Date().toISOString()
 }
 
+const ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+])
+const MAX_INVOICE_ATTACHMENT_COUNT = 10
+const MAX_INVOICE_ATTACHMENT_SIZE = 10 * 1024 * 1024
+const MAX_INVOICE_ATTACHMENT_TOTAL_SIZE = 25 * 1024 * 1024
+
 export class InventoryService {
   constructor(
     private readonly repository: InventoryRepository,
@@ -551,17 +561,28 @@ export class InventoryService {
       throw new InventoryError("VALIDATION", "يجب اختيار ملف واحد على الأقل.")
     }
 
-    const allowedMimeTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"])
-    const maxFileSize = 10 * 1024 * 1024
+    if (files.length > MAX_INVOICE_ATTACHMENT_COUNT) {
+      throw new InventoryError("VALIDATION", "عدد الملفات المرفوعة كبير جدًا.", [
+        { field: "files", message: `الحد الأقصى هو ${MAX_INVOICE_ATTACHMENT_COUNT} ملفات لكل فاتورة.` },
+      ])
+    }
+
+    const totalFileSize = files.reduce((sum, file) => sum + file.size, 0)
+    if (totalFileSize > MAX_INVOICE_ATTACHMENT_TOTAL_SIZE) {
+      throw new InventoryError("VALIDATION", "إجمالي حجم الملفات كبير جدًا.", [
+        { field: "files", message: "يرجى تقليل إجمالي حجم المرفقات قبل الرفع." },
+      ])
+    }
+
     const savedFiles: Array<InventoryStoredUpload> = []
 
     try {
       for (const file of files) {
-        if (!allowedMimeTypes.has(file.type)) {
+        if (!ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES.has(file.type)) {
           throw new InventoryError("VALIDATION", `نوع الملف غير مدعوم: ${file.name}`)
         }
 
-        if (file.size > maxFileSize) {
+        if (file.size > MAX_INVOICE_ATTACHMENT_SIZE) {
           throw new InventoryError("VALIDATION", `حجم الملف كبير جدًا: ${file.name}`)
         }
 

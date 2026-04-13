@@ -11,8 +11,6 @@ import { cn } from "@/lib/utils"
 import {
   AppShellEmptyStateRow,
   AppShellFilterShell,
-  AppShellSectionBody,
-  AppShellSectionSurface,
   AppShellTableFrame,
   AppShellTableHead,
   AppShellTableHeaderCell,

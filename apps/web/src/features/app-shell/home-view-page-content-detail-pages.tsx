@@ -63,7 +63,6 @@ export function HomeViewPageDetailContent({
           rows={derived.debtHubRows}
           totals={derived.debtTotals}
           onCreateDebt={() => void navigation.goToDebtCreate()}
-          onCreateExternalCounterparty={() => void navigation.goToExternals()}
           onOpenExternalCounterparty={(counterpartyId) => void navigation.goToExternalDetails(counterpartyId)}
           onOpenWorker={(employeeId) => void navigation.goToEmployeeDebts(employeeId)}
         />

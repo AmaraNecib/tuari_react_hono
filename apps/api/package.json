@@ -13,16 +13,16 @@
     "typecheck": "pnpm prisma:generate && tsc --noEmit"
   },
   "dependencies": {
-    "@better-auth/prisma-adapter": "^1.5.5",
-    "@hono/node-server": "^1.19.6",
+    "@better-auth/prisma-adapter": "^1.6.2",
+    "@hono/node-server": "^1.19.14",
     "@orpc/server": "^1.13.6",
     "@prisma/adapter-better-sqlite3": "^7.5.0",
     "@prisma/client": "^7.5.0",
     "@tuari/contracts": "workspace:*",
-    "better-auth": "^1.5.5",
+    "better-auth": "^1.6.2",
     "better-sqlite3": "^12.6.2",
     "dotenv": "^17.2.3",
-    "hono": "^4.10.4",
+    "hono": "^4.12.12",
     "prisma": "^7.5.0"
   },
   "devDependencies": {

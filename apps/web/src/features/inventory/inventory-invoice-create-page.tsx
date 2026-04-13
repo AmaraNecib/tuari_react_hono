@@ -90,7 +90,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   const [lines, setLines] = useState<LineState[]>([createConsumableLine()])
   const [formError, setFormError] = useState<string | null>(null)
 
-  const definitions = definitionsQuery.data?.items ?? []
+  const definitionItems = definitionsQuery.data?.items
+  const definitions = useMemo(() => definitionItems ?? [], [definitionItems])
   const warehouses = warehousesQuery.data?.items ?? []
   const projects = projectsQuery.data?.items ?? []
   const counterparties = counterpartiesQuery.data?.items ?? []

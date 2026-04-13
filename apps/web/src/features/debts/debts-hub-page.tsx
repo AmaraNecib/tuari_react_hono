@@ -16,14 +16,12 @@ function HubStatCard({ label, value, valueClassName }: { label: string; value: s
 
 export function DebtsHubPage({
   onCreateDebt,
-  onCreateExternalCounterparty,
   onOpenExternalCounterparty,
   onOpenWorker,
   rows,
   totals,
 }: {
   onCreateDebt: () => void
-  onCreateExternalCounterparty: () => void
   onOpenExternalCounterparty: (counterpartyId: string) => void
   onOpenWorker: (employeeId: string) => void
   rows: Array<{

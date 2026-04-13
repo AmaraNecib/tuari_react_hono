@@ -146,15 +146,6 @@ export function WorkspaceSidebar({
     )
   }
 
-  function getUtilityClassName(active = false) {
-    return cn(
-      buttonVariants({ variant: active ? "secondary" : "ghost", size: "default" }),
-      utilityButtonClassName,
-      collapsed ? collapsedButtonClassName : expandedButtonClassName,
-      active ? "border border-primary/15 bg-primary/10 text-primary" : "text-sidebar-foreground/88 hover:bg-background/70 hover:text-foreground",
-    )
-  }
-
   return (
     <aside
       className="shell-sidebar fixed inset-y-0 right-0 z-30 flex flex-col rounded-none rounded-l-[32px] p-3"

@@ -68,6 +68,9 @@ function shouldDisableCaching(path: string) {
   return path.startsWith("/api/auth/") || path.startsWith("/api/inventory/") || path === "/rpc/session";
 }
 
+const MAX_INVOICE_ATTACHMENT_COUNT = 10
+const MAX_INVOICE_ATTACHMENT_TOTAL_SIZE = 25 * 1024 * 1024
+
 function getAppErrorStatus(code: "VALIDATION" | "UNAUTHORIZED" | "NOT_FOUND" | "CONFLICT" | "BUSINESS_RULE") {
   switch (code) {
     case "UNAUTHORIZED":
@@ -227,16 +230,31 @@ export function createApp(
       const formData = await c.req.formData()
       const files = formData.getAll("files").filter((value): value is File => value instanceof File)
 
+      if (files.length > MAX_INVOICE_ATTACHMENT_COUNT) {
+        throw new InventoryError("VALIDATION", "عدد الملفات المرفوعة كبير جدًا.", [
+          { field: "files", message: `الحد الأقصى هو ${MAX_INVOICE_ATTACHMENT_COUNT} ملفات لكل فاتورة.` },
+        ])
+      }
+
+      const totalFileSize = files.reduce((sum, file) => sum + file.size, 0)
+      if (totalFileSize > MAX_INVOICE_ATTACHMENT_TOTAL_SIZE) {
+        throw new InventoryError("VALIDATION", "إجمالي حجم الملفات كبير جدًا.", [
+          { field: "files", message: "يرجى تقليل إجمالي حجم المرفقات قبل الرفع." },
+        ])
+      }
+
+      const normalizedFiles = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          bytes: new Uint8Array(await file.arrayBuffer()),
+        })),
+      )
+
       const attachments = await dependencies.inventoryService.addInvoiceAttachments(
         invoiceGroupId,
-        await Promise.all(
-          files.map(async (file) => ({
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            bytes: new Uint8Array(await file.arrayBuffer()),
-          })),
-        ),
+        normalizedFiles,
       )
 
       return c.json({ success: true, items: attachments })
