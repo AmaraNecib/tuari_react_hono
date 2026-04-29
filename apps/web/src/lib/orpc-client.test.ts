@@ -4,8 +4,11 @@ import { describe, expect, it, vi } from "vitest"
 
 const isDesktopRuntimeMock = vi.fn(() => true)
 
+vi.mock("@/lib/desktop-api-bridge", () => ({
+  desktopApiFetch: vi.fn(),
+}))
+
 vi.mock("@/lib/desktop-auth-session", () => ({
-  createDesktopAuthorizationHeader: vi.fn(() => ({ authorization: "Bearer desktop-token" })),
   isDesktopRuntime: isDesktopRuntimeMock,
 }))
 

@@ -1,9 +1,11 @@
 import {
-  clearDesktopBearerToken,
-  createDesktopAuthorizationHeader,
+  desktopApiFetch,
+  desktopBridgeChangePassword,
+  desktopBridgeSignInWithPhoneNumber,
+  desktopBridgeSignOutSession,
+} from "./desktop-api-bridge"
+import {
   isDesktopRuntime,
-  isDesktopSessionRemembered,
-  setDesktopBearerToken,
 } from "./desktop-auth-session"
 import { resolveApiUrl } from "./runtime-config"
 
@@ -54,15 +56,23 @@ async function readJsonBody(response: Response) {
 }
 
 async function postAuthenticatedJson<TResponse>(path: string, body: Record<string, unknown>) {
-  const response = await fetch(resolveAuthUrl(path), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(isDesktopRuntime() ? createDesktopAuthorizationHeader() : {}),
-    },
-    credentials: resolveAuthRequestCredentials(),
-    body: JSON.stringify(body),
-  })
+  const response = isDesktopRuntime()
+    ? await desktopApiFetch(resolveAuthUrl(path), {
+      authenticated: true,
+      body: JSON.stringify(body),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+    : await fetch(resolveAuthUrl(path), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      credentials: resolveAuthRequestCredentials(),
+      body: JSON.stringify(body),
+    })
 
   const responseBody = await readJsonBody(response)
 
@@ -77,25 +87,31 @@ async function postAuthenticatedJson<TResponse>(path: string, body: Record<strin
 }
 
 export function extractAuthErrorMessage(error: unknown, fallbackMessage: string) {
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error
+  }
+
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message
   }
 
   if (typeof error === "object" && error !== null) {
-    const message = Reflect.get(error, "message")
+    const obj = error as Record<string, unknown>
+
+    const message = obj["message"]
     if (typeof message === "string" && message.trim().length > 0) {
       return message
     }
 
-    const nestedError = Reflect.get(error, "error")
+    const nestedError = obj["error"]
     if (typeof nestedError === "object" && nestedError !== null) {
-      const nestedMessage = Reflect.get(nestedError, "message")
+      const nestedMessage = (nestedError as Record<string, unknown>)["message"]
       if (typeof nestedMessage === "string" && nestedMessage.trim().length > 0) {
         return nestedMessage
       }
     }
 
-    const statusText = Reflect.get(error, "statusText")
+    const statusText = obj["statusText"]
     if (typeof statusText === "string" && statusText.trim().length > 0) {
       return statusText
     }
@@ -109,6 +125,11 @@ export async function signInDesktopWithPhoneNumber(input: {
   password: string
   rememberMe?: boolean
 }) {
+  if (isDesktopRuntime()) {
+    await desktopBridgeSignInWithPhoneNumber(input)
+    return { success: true as const }
+  }
+
   const response = await fetch(resolveAuthUrl("/sign-in/phone-number"), {
     method: "POST",
     headers: {
@@ -127,27 +148,19 @@ export async function signInDesktopWithPhoneNumber(input: {
     throw new Error(message)
   }
 
-  const data = body as SignInResponse | null
-  if (!data?.token || data.token.trim().length === 0) {
-    throw new Error("لم يتم استلام رمز جلسة صالح من الخادم.")
-  }
-
-  await setDesktopBearerToken(data.token, { rememberMe: input.rememberMe === true })
-  return data
+  return body as SignInResponse | null
 }
 
 export async function signOutDesktopSession() {
-  try {
-    await fetch(resolveAuthUrl("/sign-out"), {
-      method: "POST",
-      headers: {
-        ...createDesktopAuthorizationHeader(),
-      },
-      credentials: resolveAuthRequestCredentials(),
-    })
-  } finally {
-    await clearDesktopBearerToken()
+  if (isDesktopRuntime()) {
+    await desktopBridgeSignOutSession()
+    return
   }
+
+  await fetch(resolveAuthUrl("/sign-out"), {
+    method: "POST",
+    credentials: resolveAuthRequestCredentials(),
+  })
 }
 
 export async function updateCurrentProfile(input: { currentPassword?: string; name?: string; phone?: string }) {
@@ -159,11 +172,12 @@ export async function changeCurrentPassword(input: {
   newPassword: string
   revokeOtherSessions?: boolean
 }) {
-  const response = await postAuthenticatedJson<{ token: string | null }>("/change-password", input)
-
-  if (isDesktopRuntime() && typeof response.token === "string" && response.token.trim().length > 0) {
-    await setDesktopBearerToken(response.token, { rememberMe: isDesktopSessionRemembered() })
+  if (isDesktopRuntime()) {
+    await desktopBridgeChangePassword(input)
+    return { token: null } as const
   }
+
+  const response = await postAuthenticatedJson<{ token: string | null }>("/change-password", input)
 
   return response
 }

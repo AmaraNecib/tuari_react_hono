@@ -200,6 +200,7 @@ export interface InventoryRepository {
   listConsumableBalancesByLocation(filters: { warehouseId?: string; projectId?: string }): InventoryConsumableBalanceRecord[]
   getConsumableBalanceByEntryAndLocation(filters: { inventoryEntryId: string; warehouseId?: string | null; projectId?: string | null }): InventoryConsumableBalanceRecord | null
   updateConsumableBalanceQuantity(id: string, quantity: number): void
+  deleteConsumableBalance(id: string): void
   createMovement(data: InventoryMovementCreateData): InventoryMovementRecord
   listMovementsByInvoiceGroupId(invoiceGroupId: string): InventoryMovementRecord[]
   listMovementsByAssetUnitId(assetUnitId: string): InventoryMovementRecord[]
@@ -487,6 +488,10 @@ export class SqliteInventoryRepository implements InventoryRepository {
     this.database.prepare('UPDATE inventory_consumable_balance SET quantity = ?, updated_at = ? WHERE id = ?').run(quantity, createAlgeriaTimestamp(), id)
   }
 
+  deleteConsumableBalance(id: string) {
+    this.database.prepare('DELETE FROM inventory_consumable_balance WHERE id = ?').run(id)
+  }
+
   createMovement(data: InventoryMovementCreateData) {
     const id = crypto.randomUUID()
     const createdAt = createAlgeriaTimestamp()
@@ -539,9 +544,12 @@ export class SqliteInventoryRepository implements InventoryRepository {
   }
 }
 
-export function createInventoryRepository() {
+export function createInventoryRepository(database?: Database.Database) {
+  if (database) {
+    return new SqliteInventoryRepository(database)
+  }
+
   const { databasePath } = resolveDatabaseEnv()
   mkdirSync(dirname(databasePath), { recursive: true })
-  const database = new Database(databasePath)
-  return new SqliteInventoryRepository(database)
+  return new SqliteInventoryRepository(new Database(databasePath))
 }

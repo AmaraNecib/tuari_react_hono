@@ -1,5 +1,6 @@
 use rand::{rngs::OsRng, RngCore};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::{copy, create_dir_all, read_to_string, write, File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -21,6 +22,7 @@ const API_STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const API_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_AUTH_SERVICE: &str = "com.tuari.desktop.auth";
 const DESKTOP_AUTH_ACCOUNT: &str = "desktop-bearer-token";
+const DESKTOP_REQUEST_ORIGIN: &str = "https://tauri.localhost";
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -49,6 +51,60 @@ struct RuntimeConfig {
     api_base_url: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopPhoneSignInInput {
+    phone_number: String,
+    password: String,
+    remember_me: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopChangePasswordInput {
+    current_password: String,
+    new_password: String,
+    revoke_other_sessions: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopApiMultipartFile {
+    field_name: String,
+    file_name: String,
+    mime_type: Option<String>,
+    bytes: Vec<u8>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopApiRequest {
+    method: String,
+    path: String,
+    headers: HashMap<String, String>,
+    body: Option<Vec<u8>>,
+    authenticated: bool,
+    multipart_files: Option<Vec<DesktopApiMultipartFile>>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopApiResponse {
+    status: u16,
+    headers: HashMap<String, String>,
+    body: Vec<u8>,
+}
+
+#[derive(Deserialize)]
+struct DesktopTokenResponse {
+    token: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DesktopErrorResponse {
+    message: Option<String>,
+}
+
 #[tauri::command]
 fn get_runtime_config(_app: AppHandle) -> Result<RuntimeConfig, String> {
     Ok(RuntimeConfig {
@@ -70,35 +126,31 @@ fn desktop_auth_entry() -> Result<keyring::Entry, String> {
         .map_err(|error| format!("Failed to open desktop credential store: {error}"))
 }
 
-#[tauri::command]
 fn get_desktop_runtime_auth_session(
-    state: tauri::State<'_, DesktopAuthRuntimeState>,
+    state: &tauri::State<'_, DesktopAuthRuntimeState>,
 ) -> Result<Option<DesktopAuthSession>, String> {
     let guard = state.session.lock().map_err(|error| error.to_string())?;
     Ok(guard.clone())
 }
 
-#[tauri::command]
 fn set_desktop_runtime_auth_session(
     token: String,
     remember_me: bool,
-    state: tauri::State<'_, DesktopAuthRuntimeState>,
+    state: &tauri::State<'_, DesktopAuthRuntimeState>,
 ) -> Result<(), String> {
     let mut guard = state.session.lock().map_err(|error| error.to_string())?;
     *guard = normalize_token(&token).map(|token| DesktopAuthSession { token, remember_me });
     Ok(())
 }
 
-#[tauri::command]
 fn clear_desktop_runtime_auth_session(
-    state: tauri::State<'_, DesktopAuthRuntimeState>,
+    state: &tauri::State<'_, DesktopAuthRuntimeState>,
 ) -> Result<(), String> {
     let mut guard = state.session.lock().map_err(|error| error.to_string())?;
     *guard = None;
     Ok(())
 }
 
-#[tauri::command]
 fn get_desktop_auth_token() -> Result<Option<String>, String> {
     let entry = desktop_auth_entry()?;
 
@@ -111,7 +163,6 @@ fn get_desktop_auth_token() -> Result<Option<String>, String> {
     }
 }
 
-#[tauri::command]
 fn set_desktop_auth_token(token: String) -> Result<(), String> {
     let entry = desktop_auth_entry()?;
 
@@ -123,7 +174,6 @@ fn set_desktop_auth_token(token: String) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
 fn clear_desktop_auth_token() -> Result<(), String> {
     let entry = desktop_auth_entry()?;
 
@@ -133,6 +183,327 @@ fn clear_desktop_auth_token() -> Result<(), String> {
             "Failed to clear the desktop auth token from secure storage: {error}"
         )),
     }
+}
+
+fn persist_desktop_auth_session(
+    token: Option<&str>,
+    remember_me: bool,
+    state: &tauri::State<'_, DesktopAuthRuntimeState>,
+) -> Result<(), String> {
+    let normalized_token = token.and_then(normalize_token);
+
+    match normalized_token.as_deref() {
+        Some(normalized_token) => {
+            set_desktop_runtime_auth_session(normalized_token.to_string(), remember_me, state)?;
+
+            if remember_me {
+                set_desktop_auth_token(normalized_token.to_string())?;
+            } else {
+                clear_desktop_auth_token()?;
+            }
+        }
+        None => {
+            clear_desktop_runtime_auth_session(state)?;
+            clear_desktop_auth_token()?;
+        }
+    }
+
+    Ok(())
+}
+
+fn resolve_active_desktop_auth_session(
+    state: &tauri::State<'_, DesktopAuthRuntimeState>,
+) -> Result<Option<DesktopAuthSession>, String> {
+    if let Some(runtime_session) = get_desktop_runtime_auth_session(state)? {
+        return Ok(Some(runtime_session));
+    }
+
+    let Some(stored_token) = get_desktop_auth_token()? else {
+        return Ok(None);
+    };
+
+    let restored_session = DesktopAuthSession {
+        token: stored_token,
+        remember_me: true,
+    };
+
+    set_desktop_runtime_auth_session(
+        restored_session.token.clone(),
+        restored_session.remember_me,
+        state,
+    )?;
+
+    Ok(Some(restored_session))
+}
+
+fn resolve_api_url(path: &str) -> Result<String, String> {
+    let normalized_path = path.trim();
+
+    if !normalized_path.starts_with('/') || normalized_path.starts_with("//") {
+        return Err("Desktop API bridge requires an absolute local API path.".to_string());
+    }
+
+    if normalized_path.contains('\r') || normalized_path.contains('\n') {
+        return Err("Desktop API bridge path contains invalid newline characters.".to_string());
+    }
+
+    Ok(format!("http://{}:{}{}", API_HOST, API_PORT, normalized_path))
+}
+
+fn matches_inventory_attachment_upload_path(path: &str) -> bool {
+    let path_without_query = path.split('?').next().unwrap_or(path);
+    let Some(remaining_path) = path_without_query.strip_prefix("/api/inventory/invoice-groups/") else {
+        return false;
+    };
+
+    let mut segments = remaining_path.split('/');
+    matches!(
+        (segments.next(), segments.next(), segments.next()),
+        (Some(invoice_group_id), Some("attachments"), None) if !invoice_group_id.is_empty()
+    )
+}
+
+fn matches_inventory_attachment_download_path(path: &str) -> bool {
+    let path_without_query = path.split('?').next().unwrap_or(path);
+    let Some(remaining_path) = path_without_query.strip_prefix("/api/inventory/attachments/") else {
+        return false;
+    };
+
+    !remaining_path.is_empty() && !remaining_path.contains('/')
+}
+
+fn is_allowed_desktop_bridge_path(path: &str) -> bool {
+    matches!(path, "/rpc" | "/api/auth/profile")
+        || path.starts_with("/rpc?")
+        || path.starts_with("/api/auth/profile?")
+        || matches_inventory_attachment_upload_path(path)
+        || matches_inventory_attachment_download_path(path)
+}
+
+fn should_forward_request_header(name: &str) -> bool {
+    !matches!(
+        name.trim().to_ascii_lowercase().as_str(),
+        "authorization" | "cookie" | "host" | "origin" | "content-length"
+    )
+}
+
+fn extract_response_error_message(status: reqwest::StatusCode, body: &[u8], fallback: &str) -> String {
+    serde_json::from_slice::<DesktopErrorResponse>(body)
+        .ok()
+        .and_then(|payload| payload.message)
+        .filter(|message| !message.trim().is_empty())
+        .unwrap_or_else(|| {
+            status
+                .canonical_reason()
+                .map(str::to_string)
+                .unwrap_or_else(|| fallback.to_string())
+        })
+}
+
+async fn send_desktop_api_request(
+    request: DesktopApiRequest,
+    state: &tauri::State<'_, DesktopAuthRuntimeState>,
+) -> Result<DesktopApiResponse, String> {
+    if request.body.is_some() && request.multipart_files.is_some() {
+        return Err("Desktop API bridge cannot send raw and multipart bodies together.".to_string());
+    }
+
+    if !is_allowed_desktop_bridge_path(&request.path) {
+        return Err("Desktop API bridge path is not allowed.".to_string());
+    }
+
+    let method = reqwest::Method::from_bytes(request.method.trim().as_bytes())
+        .map_err(|error| format!("Unsupported desktop API method: {error}"))?;
+    let url = resolve_api_url(&request.path)?;
+
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|error| format!("Failed to initialize desktop API client: {error}"))?;
+    let mut builder = client.request(method, url).header("Origin", DESKTOP_REQUEST_ORIGIN);
+
+    for (name, value) in request.headers {
+        if should_forward_request_header(&name) {
+            builder = builder.header(name, value);
+        }
+    }
+
+    if request.authenticated {
+        if let Some(session) = resolve_active_desktop_auth_session(state)? {
+            builder = builder.bearer_auth(session.token);
+        }
+    }
+
+    if let Some(files) = request.multipart_files {
+        let mut form = reqwest::multipart::Form::new();
+
+        for file in files {
+            let mut part = reqwest::multipart::Part::bytes(file.bytes).file_name(file.file_name);
+            if let Some(mime_type) = file.mime_type.as_deref().filter(|mime_type| !mime_type.trim().is_empty()) {
+                part = part
+                    .mime_str(mime_type)
+                    .map_err(|error| format!("Invalid desktop upload mime type: {error}"))?;
+            }
+
+            form = form.part(file.field_name, part);
+        }
+
+        builder = builder.multipart(form);
+    } else if let Some(body) = request.body {
+        builder = builder.body(body);
+    }
+
+    let response = builder
+        .send()
+        .await
+        .map_err(|error| format!("Desktop API bridge request failed: {error}"))?;
+    let status = response.status();
+    let headers = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.as_str().to_string(), value.to_string()))
+        })
+        .collect::<HashMap<_, _>>();
+    let body = response
+        .bytes()
+        .await
+        .map_err(|error| format!("Failed to read desktop API bridge response body: {error}"))?
+        .to_vec();
+
+    Ok(DesktopApiResponse {
+        status: status.as_u16(),
+        headers,
+        body,
+    })
+}
+
+#[tauri::command]
+async fn desktop_api_request(
+    request: DesktopApiRequest,
+    state: tauri::State<'_, DesktopAuthRuntimeState>,
+) -> Result<DesktopApiResponse, String> {
+    send_desktop_api_request(request, &state).await
+}
+
+#[tauri::command]
+async fn desktop_sign_in_with_phone_number(
+    input: DesktopPhoneSignInInput,
+    state: tauri::State<'_, DesktopAuthRuntimeState>,
+) -> Result<(), String> {
+    let request_body = serde_json::to_vec(&serde_json::json!({
+        "phoneNumber": input.phone_number,
+        "password": input.password,
+        "rememberMe": input.remember_me,
+    }))
+    .map_err(|error| format!("Failed to serialize desktop sign-in request: {error}"))?;
+
+    let response = send_desktop_api_request(
+        DesktopApiRequest {
+            authenticated: false,
+            body: Some(request_body),
+            headers: HashMap::from([(
+                "content-type".to_string(),
+                "application/json".to_string(),
+            )]),
+            method: "POST".to_string(),
+            multipart_files: None,
+            path: "/api/auth/sign-in/phone-number".to_string(),
+        },
+        &state,
+    )
+    .await?;
+
+    if !(200..300).contains(&response.status) {
+        return Err(extract_response_error_message(
+            reqwest::StatusCode::from_u16(response.status)
+                .unwrap_or(reqwest::StatusCode::INTERNAL_SERVER_ERROR),
+            &response.body,
+            "تعذر تسجيل الدخول الآن.",
+        ));
+    }
+
+    let token_response = serde_json::from_slice::<DesktopTokenResponse>(&response.body)
+        .map_err(|error| format!("Failed to parse desktop sign-in response: {error}"))?;
+    let Some(token) = token_response.token.as_deref().and_then(normalize_token) else {
+        return Err("لم يتم استلام رمز جلسة صالح من الخادم.".to_string());
+    };
+
+    persist_desktop_auth_session(Some(&token), input.remember_me, &state)
+}
+
+#[tauri::command]
+async fn desktop_change_password(
+    input: DesktopChangePasswordInput,
+    state: tauri::State<'_, DesktopAuthRuntimeState>,
+) -> Result<(), String> {
+    let existing_session = resolve_active_desktop_auth_session(&state)?;
+    let request_body = serde_json::to_vec(&serde_json::json!({
+        "currentPassword": input.current_password,
+        "newPassword": input.new_password,
+        "revokeOtherSessions": input.revoke_other_sessions,
+    }))
+    .map_err(|error| format!("Failed to serialize desktop password-change request: {error}"))?;
+
+    let response = send_desktop_api_request(
+        DesktopApiRequest {
+            authenticated: true,
+            body: Some(request_body),
+            headers: HashMap::from([(
+                "content-type".to_string(),
+                "application/json".to_string(),
+            )]),
+            method: "POST".to_string(),
+            multipart_files: None,
+            path: "/api/auth/change-password".to_string(),
+        },
+        &state,
+    )
+    .await?;
+
+    if !(200..300).contains(&response.status) {
+        return Err(extract_response_error_message(
+            reqwest::StatusCode::from_u16(response.status)
+                .unwrap_or(reqwest::StatusCode::INTERNAL_SERVER_ERROR),
+            &response.body,
+            "تعذر تنفيذ العملية الآن.",
+        ));
+    }
+
+    let token_response = serde_json::from_slice::<DesktopTokenResponse>(&response.body)
+        .map_err(|error| format!("Failed to parse desktop password-change response: {error}"))?;
+
+    if let Some(token) = token_response.token.as_deref().and_then(normalize_token) {
+        let remember_me = existing_session
+            .map(|session| session.remember_me)
+            .unwrap_or(false);
+        persist_desktop_auth_session(Some(&token), remember_me, &state)?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn desktop_sign_out_session(
+    state: tauri::State<'_, DesktopAuthRuntimeState>,
+) -> Result<(), String> {
+    let _ = send_desktop_api_request(
+        DesktopApiRequest {
+            authenticated: true,
+            body: None,
+            headers: HashMap::new(),
+            method: "POST".to_string(),
+            multipart_files: None,
+            path: "/api/auth/sign-out".to_string(),
+        },
+        &state,
+    )
+    .await;
+
+    persist_desktop_auth_session(None, false, &state)?;
+    Ok(())
 }
 
 fn has_portable_runtime_layout(root: &Path) -> bool {
@@ -398,6 +769,13 @@ fn ensure_runtime_files(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), 
     Ok((auth_db_path, app_db_path, server_log_path))
 }
 
+fn resolve_attachments_root(app_db_path: &Path) -> PathBuf {
+    app_db_path
+        .parent()
+        .map(|parent| parent.join("attachments").join("invoices"))
+        .unwrap_or_else(|| PathBuf::from("attachments").join("invoices"))
+}
+
 fn cleanup_stale_api_processes() {
     if cfg!(debug_assertions) {
         return;
@@ -514,6 +892,7 @@ fn wait_for_api_ready(child: &mut Child, server_log_path: &Path) -> Result<(), S
 
 fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
+    let attachments_root = resolve_attachments_root(&app_db_path);
     let runtime_secrets = load_runtime_secrets(app)?;
     cleanup_stale_api_processes();
 
@@ -569,6 +948,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         )
         .env("AUTH_DB_PATH", auth_db_path.as_os_str())
         .env("APP_DB_PATH", app_db_path.as_os_str())
+        .env("APP_ATTACHMENTS_ROOT", attachments_root.as_os_str())
         .env("DATABASE_URL", to_sqlite_url(&app_db_path))
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(error_log_file));
@@ -596,12 +976,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_runtime_config,
-            get_desktop_runtime_auth_session,
-            set_desktop_runtime_auth_session,
-            clear_desktop_runtime_auth_session,
-            get_desktop_auth_token,
-            set_desktop_auth_token,
-            clear_desktop_auth_token
+            desktop_api_request,
+            desktop_sign_in_with_phone_number,
+            desktop_change_password,
+            desktop_sign_out_session
         ])
         .setup(|app| {
             let child = spawn_api_process(app.handle())?;
@@ -634,8 +1012,9 @@ fn kill_api(app: &AppHandle) {
 mod tests {
     use super::{
         copy_allowlisted_legacy_runtime_files_if_missing, encode_secret,
-        has_portable_runtime_layout, is_valid_secret, load_or_create_secret, normalize_token,
-        BETTER_AUTH_SECRET_BYTES,
+        has_portable_runtime_layout, is_allowed_desktop_bridge_path, is_valid_secret,
+        load_or_create_secret, matches_inventory_attachment_download_path,
+        matches_inventory_attachment_upload_path, normalize_token, BETTER_AUTH_SECRET_BYTES,
     };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
@@ -747,5 +1126,36 @@ mod tests {
         );
 
         remove_dir_all(&temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn allows_only_expected_desktop_bridge_paths() {
+        assert!(is_allowed_desktop_bridge_path("/rpc"));
+        assert!(is_allowed_desktop_bridge_path("/rpc?batch=1"));
+        assert!(is_allowed_desktop_bridge_path("/api/auth/profile"));
+        assert!(is_allowed_desktop_bridge_path(
+            "/api/inventory/invoice-groups/invoice-1/attachments"
+        ));
+        assert!(is_allowed_desktop_bridge_path(
+            "/api/inventory/attachments/attachment-1"
+        ));
+        assert!(!is_allowed_desktop_bridge_path("/api/auth/change-password"));
+        assert!(!is_allowed_desktop_bridge_path("/health"));
+    }
+
+    #[test]
+    fn validates_inventory_attachment_bridge_paths() {
+        assert!(matches_inventory_attachment_upload_path(
+            "/api/inventory/invoice-groups/invoice-1/attachments"
+        ));
+        assert!(!matches_inventory_attachment_upload_path(
+            "/api/inventory/invoice-groups/invoice-1/attachments/extra"
+        ));
+        assert!(matches_inventory_attachment_download_path(
+            "/api/inventory/attachments/attachment-1"
+        ));
+        assert!(!matches_inventory_attachment_download_path(
+            "/api/inventory/attachments/attachment-1/extra"
+        ));
     }
 }

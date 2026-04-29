@@ -3,13 +3,12 @@ import { RPCLink } from "@orpc/client/fetch"
 import { createTanstackQueryUtils } from "@orpc/tanstack-query"
 import type { AppClient } from "@tuari/contracts"
 
-import { createDesktopAuthorizationHeader, isDesktopRuntime } from "@/lib/desktop-auth-session"
+import { desktopApiFetch } from "@/lib/desktop-api-bridge"
+import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { resolveApiUrl } from "@/lib/runtime-config"
 
 export function createRpcHeaders() {
-  return {
-    ...createDesktopAuthorizationHeader(),
-  }
+  return {}
 }
 
 export function resolveRpcCredentials(): RequestCredentials {
@@ -20,10 +19,15 @@ export const rpcLink = new RPCLink({
   url: () => resolveApiUrl("rpc"),
   headers: () => createRpcHeaders(),
   fetch: (request, init) =>
-    globalThis.fetch(request, {
-      ...init,
-      credentials: resolveRpcCredentials(),
-    }),
+    isDesktopRuntime()
+      ? desktopApiFetch(request, {
+        ...init,
+        authenticated: true,
+      })
+      : globalThis.fetch(request, {
+        ...init,
+        credentials: resolveRpcCredentials(),
+      }),
   interceptors: [
     onError((error) => {
       console.error("[web oRPC]", error)

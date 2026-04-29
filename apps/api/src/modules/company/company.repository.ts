@@ -116,6 +116,8 @@ export interface CompanyRepository {
   updateDebtAccount(data: DebtAccountUpdateData, auditContext?: MutationAuditContext): DebtAccountRecord | null;
 
   listDebtEntries(filters: DebtEntryListFilters): DebtEntryRecord[];
+  getLatestDebtEntry(accountId: string): DebtEntryRecord | null;
+  listAllDebtEntries(): DebtEntryRecord[];
   createDebtEntry(data: DebtEntryCreateData, auditContext?: MutationAuditContext): DebtEntryRecord;
 
   listProjects(filters?: ProjectListFilters): ProjectRecord[];
@@ -848,6 +850,20 @@ export class SqliteCompanyRepository implements CompanyRepository {
       .prepare('SELECT * FROM debt_entry WHERE debt_account_id = ? ORDER BY entry_date DESC, created_at DESC')
       .all(filters.debtAccountId) as SqliteRow[]
 
+    return rows.map(mapDebtEntry)
+  }
+
+  getLatestDebtEntry(accountId: string): DebtEntryRecord | null {
+    const row = this.database
+      .prepare('SELECT * FROM debt_entry WHERE debt_account_id = ? ORDER BY entry_date DESC, created_at DESC LIMIT 1')
+      .get(accountId) as SqliteRow | undefined
+    return row ? mapDebtEntry(row) : null
+  }
+
+  listAllDebtEntries(): DebtEntryRecord[] {
+    const rows = this.database
+      .prepare('SELECT * FROM debt_entry ORDER BY debt_account_id, entry_date DESC, created_at DESC')
+      .all() as SqliteRow[]
     return rows.map(mapDebtEntry)
   }
 
@@ -1698,10 +1714,12 @@ export class SqliteCompanyRepository implements CompanyRepository {
   }
 }
 
-export function createCompanyRepository(databasePath?: string) {
-  const path = databasePath ?? resolveDatabaseEnv().databasePath;
+export function createCompanyRepository(database?: Database.Database | string) {
+  if (database instanceof Database) {
+    return new SqliteCompanyRepository(database);
+  }
 
+  const path = database ?? resolveDatabaseEnv().databasePath;
   mkdirSync(dirname(path), { recursive: true });
-
   return new SqliteCompanyRepository(new Database(path));
 }

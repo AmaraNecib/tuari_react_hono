@@ -8,6 +8,7 @@ import type {
 
 import { InventoryError } from "./inventory.errors"
 import { CompanyError } from "../company/company.errors"
+import { createAlgeriaTimestamp } from "../company/company-time"
 import type { MutationAuditContext } from "../company/company.types"
 import type {
   InventoryAssetUnitCreateData,
@@ -79,6 +80,12 @@ function validateSingleDestination(warehouseId: string | null | undefined, proje
   }
 }
 
+function requireOneDestination(warehouseId: string | null | undefined, projectId: string | null | undefined, field: string) {
+  if (!warehouseId && !projectId) {
+    throw new InventoryError("VALIDATION", "يجب تحديد مستودع أو مشروع.", [{ field, message: "يجب تحديد مستودع أو مشروع." }])
+  }
+}
+
 function generateNextInvoiceNumber(latestInvoiceNumber: string | null) {
   const match = latestInvoiceNumber?.match(/^IN-(\d+)$/)
   const nextNumber = match ? Number.parseInt(match[1] ?? "0", 10) + 1 : 1
@@ -86,7 +93,7 @@ function generateNextInvoiceNumber(latestInvoiceNumber: string | null) {
 }
 
 function resolveOccurredAt(value?: string | null) {
-  return value ?? new Date().toISOString()
+  return value ?? createAlgeriaTimestamp()
 }
 
 const ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES = new Set([
@@ -96,8 +103,8 @@ const ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES = new Set([
   "image/webp",
 ])
 const MAX_INVOICE_ATTACHMENT_COUNT = 10
-const MAX_INVOICE_ATTACHMENT_SIZE = 10 * 1024 * 1024
-const MAX_INVOICE_ATTACHMENT_TOTAL_SIZE = 25 * 1024 * 1024
+const MAX_INVOICE_ATTACHMENT_SIZE = 5 * 1024 * 1024
+const MAX_INVOICE_ATTACHMENT_TOTAL_SIZE = 15 * 1024 * 1024
 
 export class InventoryService {
   constructor(
@@ -179,116 +186,137 @@ export class InventoryService {
   }
 
   createInvoiceGroup(input: InventoryInvoiceGroupCreateInput, auditContext?: MutationAuditContext) {
+    // Group-level destination validation
     validateSingleDestination(input.warehouseId ?? null, input.projectId ?? null, "warehouseId")
     validateWarehouse(this.repository, input.warehouseId ?? null, "warehouseId")
     validateProject(this.repository, input.projectId ?? null, "projectId")
     validateExternalCounterparty(this.repository, input.externalCounterpartyId ?? null, "externalCounterpartyId")
 
-    const detail = (() => {
-      const resolvedInvoiceNumber = normalizeText(input.invoiceNumber) ?? generateNextInvoiceNumber(this.repository.getLatestInvoiceNumber())
-      const resolvedInvoiceDate = resolveOccurredAt(input.invoiceDate ?? null)
-      const preparedEntries: Array<
-        | {
-            kind: "CONSUMABLE"
-            definitionId: string
-            definitionName: string
-            unit: string | null
-            warehouseId: string | null
-            projectId: string | null
-            quantity: number
-            unitPriceDzd: number
-            totalPriceDzd: number
-            note: string | null
-          }
-        | {
-            kind: "ASSET"
-            definitionId: string
-            definitionName: string
-            warehouseId: string | null
-            projectId: string | null
-            totalPriceDzd: number
-            note: string | null
-            assets: InventoryAssetUnitCreateData[]
-          }
-      > = []
+    const resolvedInvoiceNumber = normalizeText(input.invoiceNumber) ?? generateNextInvoiceNumber(this.repository.getLatestInvoiceNumber())
+    const resolvedInvoiceDate = resolveOccurredAt(input.invoiceDate ?? null)
 
-      let grossTotalDzd = 0
+    // Phase 1: validate and prepare entries (reads only, safe before the write transaction)
+    type PreparedConsumable = {
+      kind: "CONSUMABLE"
+      definitionId: string
+      definitionName: string
+      unit: string | null
+      warehouseId: string | null
+      projectId: string | null
+      quantity: number
+      unitPriceDzd: number
+      totalPriceDzd: number
+      note: string | null
+    }
+    type PreparedAsset = {
+      kind: "ASSET"
+      definitionId: string
+      definitionName: string
+      warehouseId: string | null
+      projectId: string | null
+      totalPriceDzd: number
+      note: string | null
+      assets: InventoryAssetUnitCreateData[]
+    }
+    const preparedEntries: Array<PreparedConsumable | PreparedAsset> = []
+    let grossTotalDzd = 0
 
-      for (const [index, entry] of input.entries.entries()) {
-        const definition = this.repository.getItemDefinitionById(entry.itemDefinitionId)
-        if (!definition) {
-          throw new InventoryError("VALIDATION", "العنصر المحدد غير موجود.", [{ field: `entries.${index}.itemDefinitionId`, message: "العنصر المحدد غير موجود." }])
-        }
-
-        const effectiveWarehouseId = entry.warehouseId ?? input.warehouseId ?? null
-        const effectiveProjectId = entry.projectId ?? input.projectId ?? null
-        validateSingleDestination(effectiveWarehouseId, effectiveProjectId, `entries.${index}.warehouseId`)
-        validateWarehouse(this.repository, effectiveWarehouseId, `entries.${index}.warehouseId`)
-        validateProject(this.repository, effectiveProjectId, `entries.${index}.projectId`)
-
-        if (entry.kind === "CONSUMABLE") {
-          if (definition.itemType !== "CONSUMABLE") {
-            throw new InventoryError("VALIDATION", "تعريف العنصر لا يطابق نوع إدخال المواد الاستهلاكية.", [{ field: `entries.${index}.itemDefinitionId`, message: "تعريف العنصر لا يطابق نوع إدخال المواد الاستهلاكية." }])
-          }
-
-          const quantity = normalizePositive(entry.quantity, `entries.${index}.quantity`)
-          const unitPriceDzd = normalizeMoney(entry.unitPriceDzd, `entries.${index}.unitPriceDzd`)
-          const totalPriceDzd = normalizeMoney(entry.totalPriceDzd, `entries.${index}.totalPriceDzd`)
-          grossTotalDzd += totalPriceDzd
-          preparedEntries.push({
-            kind: "CONSUMABLE",
-            definitionId: definition.id,
-            definitionName: definition.name,
-            unit: definition.unit,
-            warehouseId: effectiveWarehouseId,
-            projectId: effectiveProjectId,
-            quantity,
-            unitPriceDzd,
-            totalPriceDzd,
-            note: normalizeText(entry.note),
-          })
-          continue
-        }
-
-        if (definition.itemType !== "ASSET") {
-          throw new InventoryError("VALIDATION", "تعريف العنصر لا يطابق نوع إدخال الأصول.", [{ field: `entries.${index}.itemDefinitionId`, message: "تعريف العنصر لا يطابق نوع إدخال الأصول." }])
-        }
-
-        const assets: InventoryAssetUnitCreateData[] = entry.assets.map((asset, assetIndex) => ({
-          inventoryEntryId: "",
-          assetName: asset.assetName.trim(),
-          assetTag: normalizeText(asset.assetTag),
-          serialNumber: normalizeText(asset.serialNumber),
-          condition: asset.condition ?? null,
-          purchaseDate: asset.purchaseDate ?? null,
-          purchasePriceDzd: normalizeMoney(asset.purchasePriceDzd, `entries.${index}.assets.${assetIndex}.purchasePriceDzd`),
-          currentWarehouseId: effectiveWarehouseId,
-          currentProjectId: effectiveProjectId,
-          note: normalizeText(asset.note),
-        }))
-
-        const totalPriceDzd = assets.reduce((sum, asset) => sum + asset.purchasePriceDzd, 0)
-        grossTotalDzd += totalPriceDzd
-        preparedEntries.push({
-          kind: "ASSET",
-          definitionId: definition.id,
-          definitionName: definition.name,
-          warehouseId: effectiveWarehouseId,
-          projectId: effectiveProjectId,
-          totalPriceDzd,
-          note: normalizeText(entry.note),
-          assets,
-        })
+    for (const [index, entry] of input.entries.entries()) {
+      const definition = this.repository.getItemDefinitionById(entry.itemDefinitionId)
+      if (!definition) {
+        throw new InventoryError("VALIDATION", "العنصر المحدد غير موجود.", [{ field: `entries.${index}.itemDefinitionId`, message: "العنصر المحدد غير موجود." }])
       }
 
-      const paidAmountDzd = input.createDebt
-        ? input.paymentInputType === "PERCENT"
-          ? normalizeMoney((grossTotalDzd * (input.paidPercent ?? 0)) / 100, "paidPercent")
-          : normalizeMoney(input.paidAmountDzd ?? 0, "paidAmountDzd")
-        : grossTotalDzd
-      const remainingDebtDzd = input.createDebt ? Math.max(0, grossTotalDzd - paidAmountDzd) : 0
+      if (!definition.isActive) {
+        throw new InventoryError("VALIDATION", "لا يمكن إضافة عنصر غير نشط.", [{ field: `entries.${index}.itemDefinitionId`, message: "لا يمكن إضافة عنصر غير نشط." }])
+      }
 
+      const effectiveWarehouseId = entry.warehouseId ?? input.warehouseId ?? null
+      const effectiveProjectId = entry.projectId ?? input.projectId ?? null
+
+      validateSingleDestination(effectiveWarehouseId, effectiveProjectId, `entries.${index}.warehouseId`)
+      requireOneDestination(effectiveWarehouseId, effectiveProjectId, `entries.${index}.warehouseId`)
+      validateWarehouse(this.repository, effectiveWarehouseId, `entries.${index}.warehouseId`)
+      validateProject(this.repository, effectiveProjectId, `entries.${index}.projectId`)
+
+      if (entry.kind === "CONSUMABLE") {
+        if (definition.itemType !== "CONSUMABLE") {
+          throw new InventoryError("VALIDATION", "تعريف العنصر لا يطابق نوع إدخال المواد الاستهلاكية.", [{ field: `entries.${index}.itemDefinitionId`, message: "تعريف العنصر لا يطابق نوع إدخال المواد الاستهلاكية." }])
+        }
+
+        const quantity = normalizePositive(entry.quantity, `entries.${index}.quantity`)
+        const unitPriceDzd = normalizeMoney(entry.unitPriceDzd, `entries.${index}.unitPriceDzd`)
+        // Server derives total to prevent client-submitted inconsistencies
+        const totalPriceDzd = quantity * unitPriceDzd
+        grossTotalDzd += totalPriceDzd
+        preparedEntries.push({
+          kind: "CONSUMABLE",
+          definitionId: definition.id,
+          definitionName: definition.name,
+          unit: definition.unit,
+          warehouseId: effectiveWarehouseId,
+          projectId: effectiveProjectId,
+          quantity,
+          unitPriceDzd,
+          totalPriceDzd,
+          note: normalizeText(entry.note),
+        })
+        continue
+      }
+
+      if (definition.itemType !== "ASSET") {
+        throw new InventoryError("VALIDATION", "تعريف العنصر لا يطابق نوع إدخال الأصول.", [{ field: `entries.${index}.itemDefinitionId`, message: "تعريف العنصر لا يطابق نوع إدخال الأصول." }])
+      }
+
+      const assets: InventoryAssetUnitCreateData[] = entry.assets.map((asset, assetIndex) => ({
+        inventoryEntryId: "",
+        assetName: asset.assetName.trim(),
+        assetTag: normalizeText(asset.assetTag),
+        serialNumber: normalizeText(asset.serialNumber),
+        condition: asset.condition ?? null,
+        purchaseDate: asset.purchaseDate ?? null,
+        purchasePriceDzd: normalizeMoney(asset.purchasePriceDzd, `entries.${index}.assets.${assetIndex}.purchasePriceDzd`),
+        currentWarehouseId: effectiveWarehouseId,
+        currentProjectId: effectiveProjectId,
+        note: normalizeText(asset.note),
+      }))
+
+      const totalPriceDzd = assets.reduce((sum, asset) => sum + asset.purchasePriceDzd, 0)
+      grossTotalDzd += totalPriceDzd
+      preparedEntries.push({
+        kind: "ASSET",
+        definitionId: definition.id,
+        definitionName: definition.name,
+        warehouseId: effectiveWarehouseId,
+        projectId: effectiveProjectId,
+        totalPriceDzd,
+        note: normalizeText(entry.note),
+        assets,
+      })
+    }
+
+    // Phase 2: calculate and validate payment amounts
+    const paidAmountDzd = input.createDebt
+      ? input.paymentInputType === "PERCENT"
+        ? normalizeMoney((grossTotalDzd * (input.paidPercent ?? 0)) / 100, "paidPercent")
+        : normalizeMoney(input.paidAmountDzd ?? 0, "paidAmountDzd")
+      : grossTotalDzd
+
+    if (input.createDebt && paidAmountDzd > grossTotalDzd) {
+      const overpaymentField = input.paymentInputType === "PERCENT" ? "paidPercent" : "paidAmountDzd"
+      throw new InventoryError("VALIDATION", "لا يمكن أن يتجاوز المبلغ المدفوع إجمالي الفاتورة.", [
+        { field: overpaymentField, message: "لا يمكن أن يتجاوز المبلغ المدفوع إجمالي الفاتورة." },
+      ])
+    }
+
+    const remainingDebtDzd = input.createDebt ? Math.max(0, grossTotalDzd - paidAmountDzd) : 0
+
+    // Phase 3: persist everything in a single atomic transaction.
+    // Both company and inventory repositories share the same database connection,
+    // so nested withTransaction calls become savepoints automatically.
+    const detail = this.repository.withTransaction(() => {
       let debtAccountId: string | null = null
+
       if (input.createDebt && input.externalCounterpartyId && grossTotalDzd > 0) {
         try {
           if (!this.debtService) {
@@ -416,7 +444,7 @@ export class InventoryService {
         movements: this.repository.listMovementsByInvoiceGroupId(group.id),
         consumableBalances: this.repository.listConsumableBalancesByInvoiceGroupId(group.id),
       }
-    })()
+    })
 
     return successResult("تم إنشاء الفاتورة والعناصر المرتبطة بها بنجاح.", detail)
   }
@@ -487,6 +515,7 @@ export class InventoryService {
   }
 
   transferConsumable(input: { inventoryEntryId: string; quantity: number; fromWarehouseId?: string | null; fromProjectId?: string | null; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }) {
+    normalizePositive(input.quantity, "quantity")
     validateSingleDestination(input.fromWarehouseId ?? null, input.fromProjectId ?? null, "fromWarehouseId")
     validateSingleDestination(input.toWarehouseId ?? null, input.toProjectId ?? null, "toWarehouseId")
     validateWarehouse(this.repository, input.fromWarehouseId ?? null, "fromWarehouseId")
@@ -514,7 +543,13 @@ export class InventoryService {
     }
 
     this.repository.withTransaction(() => {
-      this.repository.updateConsumableBalanceQuantity(sourceBalance.id, sourceBalance.quantity - input.quantity)
+      const remainingQty = sourceBalance.quantity - input.quantity
+      if (remainingQty === 0) {
+        // Delete the zero-balance record to satisfy the quantity > 0 DB constraint
+        this.repository.deleteConsumableBalance(sourceBalance.id)
+      } else {
+        this.repository.updateConsumableBalanceQuantity(sourceBalance.id, remainingQty)
+      }
 
       const targetBalance = this.repository.getConsumableBalanceByEntryAndLocation({
         inventoryEntryId: entry.id,

@@ -3,6 +3,8 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { downloadDesktopApiFile } from "@/lib/desktop-api-bridge"
+import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { resolveApiUrl } from "@/lib/runtime-config"
 
 import {
@@ -35,8 +37,13 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
   const [consumableTargets, setConsumableTargets] = useState<Record<string, { quantity: string; warehouseId: string; projectId: string }>>({})
 
   const detail = invoiceQuery.data
+  const isDesktop = isDesktopRuntime()
   const warehouses = warehousesQuery.data?.items ?? []
   const projects = projectsQuery.data?.items ?? []
+
+  async function handleAttachmentOpen(attachment: { id: string; originalName: string }) {
+    await downloadDesktopApiFile(resolveApiUrl(`/api/inventory/attachments/${attachment.id}`), attachment.originalName)
+  }
 
   return (
     <div className="space-y-6">
@@ -161,9 +168,20 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
           <SurfaceHeader title="ملفات الفاتورة" description="الملفات المرفوعة والمرتبطة بهذه الفاتورة." />
           <div className="grid gap-3">
             {detail?.attachments.map((attachment) => (
-              <a key={attachment.id} className="rounded-2xl border border-border/70 px-4 py-3 text-sm transition hover:bg-muted/30" href={resolveApiUrl(`/api/inventory/attachments/${attachment.id}`)} rel="noreferrer" target="_blank">
-                {attachment.originalName}
-              </a>
+              isDesktop ? (
+                <button
+                  key={attachment.id}
+                  className="rounded-2xl border border-border/70 px-4 py-3 text-start text-sm transition hover:bg-muted/30"
+                  type="button"
+                  onClick={() => void handleAttachmentOpen(attachment)}
+                >
+                  {attachment.originalName}
+                </button>
+              ) : (
+                <a key={attachment.id} className="rounded-2xl border border-border/70 px-4 py-3 text-sm transition hover:bg-muted/30" href={resolveApiUrl(`/api/inventory/attachments/${attachment.id}`)} rel="noreferrer" target="_blank">
+                  {attachment.originalName}
+                </a>
+              )
             ))}
             {detail && detail.attachments.length === 0 ? <p className="text-sm text-muted-foreground">لا توجد ملفات مرفوعة لهذه الفاتورة.</p> : null}
           </div>

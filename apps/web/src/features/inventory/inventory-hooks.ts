@@ -14,6 +14,8 @@ import type {
 } from "@tuari/contracts"
 
 import { AppMutationError } from "@/features/app-shell/mock-dashboard"
+import { desktopApiFetch } from "@/lib/desktop-api-bridge"
+import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { createRpcHeaders, resolveRpcCredentials, rpcClient } from "@/lib/orpc-client"
 import { resolveApiUrl } from "@/lib/runtime-config"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
@@ -25,6 +27,8 @@ const inventoryKeys = {
   warehouses: ["inventory", "warehouses"] as const,
   projects: ["inventory", "projects"] as const,
   counterparties: ["inventory", "counterparties"] as const,
+  asset: (assetId: string) => ["inventory", "asset", assetId] as const,
+  locationContents: (input: { warehouseId?: string; projectId?: string }) => ["inventory", "location-contents", input] as const,
 }
 
 function extractRpcIssueMessage(error: unknown): string | null {
@@ -33,14 +37,17 @@ function extractRpcIssueMessage(error: unknown): string | null {
   }
 
   if (typeof error === "object" && error !== null) {
-    const directData = Reflect.get(error, "data")
+    const obj = error as Record<string, unknown>
+    const directData = obj["data"]
 
     if (typeof directData === "object" && directData !== null) {
-      const issues = Reflect.get(directData, "issues")
+      const data = directData as Record<string, unknown>
+      const issues = data["issues"]
       if (Array.isArray(issues) && issues.length > 0) {
         const firstIssue = issues[0]
         if (typeof firstIssue === "object" && firstIssue !== null) {
-          const message = Reflect.get(firstIssue, "message")
+          const issue = firstIssue as Record<string, unknown>
+          const message = issue["message"]
           if (typeof message === "string" && message.trim().length > 0) {
             return message
           }
@@ -95,7 +102,7 @@ export function useInventoryInvoiceGroupQuery(invoiceId: string | undefined) {
 
 export function useInventoryLocationContentsQuery(input: { warehouseId?: string; projectId?: string }) {
   return useQuery({
-    queryKey: ["inventory", "location-contents", input],
+    queryKey: inventoryKeys.locationContents(input),
     enabled: Boolean(input.warehouseId || input.projectId),
     queryFn: async (): Promise<InventoryLocationContents> => {
       const result = await rpcClient.inventoryLocationContentsGet({
@@ -109,7 +116,7 @@ export function useInventoryLocationContentsQuery(input: { warehouseId?: string;
 
 export function useInventoryAssetQuery(assetId: string | undefined) {
   return useQuery({
-    queryKey: ["inventory", "asset", assetId],
+    queryKey: inventoryKeys.asset(assetId ?? "missing"),
     enabled: Boolean(assetId),
     queryFn: async (): Promise<InventoryAssetDetail> => {
       const result = await rpcClient.inventoryAssetsGet({ id: assetId! })
@@ -179,7 +186,9 @@ export function useTransferInventoryAssetMutation() {
     mutationKey: ["inventory", "assets", "transfer"],
     mutationFn: async (input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }) => requireEntitySuccess(await rpcClient.inventoryAssetsTransfer(input)),
     onSuccess: async ({ item, message }) => {
-      await queryClient.invalidateQueries({ queryKey: ["inventory"] })
+      await queryClient.invalidateQueries({ queryKey: inventoryKeys.asset(item.asset.id) })
+      await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroup(item.invoiceGroup.id) })
+      await queryClient.invalidateQueries({ queryKey: ["inventory", "location-contents"] })
       showSuccessToast(message)
       return item
     },
@@ -196,7 +205,8 @@ export function useTransferInventoryConsumableMutation() {
     mutationKey: ["inventory", "consumables", "transfer"],
     mutationFn: async (input: { inventoryEntryId: string; quantity: number; fromWarehouseId?: string | null; fromProjectId?: string | null; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }) => requireEntitySuccess(await rpcClient.inventoryConsumablesTransfer(input)),
     onSuccess: async ({ message }) => {
-      await queryClient.invalidateQueries({ queryKey: ["inventory"] })
+      await queryClient.invalidateQueries({ queryKey: ["inventory", "location-contents"] })
+      await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroups })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -206,19 +216,33 @@ export function useTransferInventoryConsumableMutation() {
 }
 
 export async function uploadInvoiceAttachments(invoiceGroupId: string, files: File[]) {
-  const formData = new FormData()
-  for (const file of files) {
-    formData.append("files", file)
-  }
-
-  const response = await fetch(resolveApiUrl(`/api/inventory/invoice-groups/${invoiceGroupId}/attachments`), {
-    method: "POST",
-    headers: {
-      ...createRpcHeaders(),
-    },
-    credentials: resolveRpcCredentials(),
-    body: formData,
-  })
+  const response = isDesktopRuntime()
+    ? await desktopApiFetch(resolveApiUrl(`/api/inventory/invoice-groups/${invoiceGroupId}/attachments`), {
+      authenticated: true,
+      method: "POST",
+      multipartFiles: await Promise.all(
+        files.map(async (file) => ({
+          bytes: Array.from(new Uint8Array(await file.arrayBuffer())),
+          fieldName: "files",
+          fileName: file.name,
+          mimeType: file.type || null,
+        })),
+      ),
+    })
+    : await fetch(resolveApiUrl(`/api/inventory/invoice-groups/${invoiceGroupId}/attachments`), {
+      method: "POST",
+      headers: {
+        ...createRpcHeaders(),
+      },
+      credentials: resolveRpcCredentials(),
+      body: (() => {
+        const formData = new FormData()
+        for (const file of files) {
+          formData.append("files", file)
+        }
+        return formData
+      })(),
+    })
 
   const body = (await response.json().catch(() => null)) as
     | { success: true; items: unknown[] }

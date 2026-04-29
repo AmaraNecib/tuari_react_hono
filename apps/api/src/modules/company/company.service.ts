@@ -146,9 +146,7 @@ export class CompanyService {
       employees: this.repository.listEmployees(),
       externalCounterparties: this.repository.listExternalCounterparties(),
       debtAccounts: this.repository.listDebtAccounts(),
-      debtEntries: this.repository
-        .listDebtAccounts()
-        .flatMap((account) => this.repository.listDebtEntries({ debtAccountId: account.id })),
+      debtEntries: this.repository.listAllDebtEntries(),
       projects: this.repository.listProjects(),
       warehouses: this.repository.listWarehouses(),
       managerAssignments: this.repository.listManagerAssignments(),
@@ -333,9 +331,9 @@ export class CompanyService {
   createDebtEntry(input: DebtEntryCreateInput, auditContext?: MutationAuditContext) {
     const audit = normalizeMutationAuditContext(auditContext)
     const account = this.requireDebtAccount(input.debtAccountId)
-    const existingEntries = this.repository.listDebtEntries({ debtAccountId: account.id })
+    const latestEntry = this.repository.getLatestDebtEntry(account.id)
 
-    if (input.entryType === "OPENING" && existingEntries.length > 0) {
+    if (input.entryType === "OPENING" && latestEntry !== null) {
       throw new CompanyError("BUSINESS_RULE", "يمكن تسجيل رصيد افتتاحي فقط كأول حركة على الحساب.", [
         { field: "entryType", message: "يمكن تسجيل رصيد افتتاحي فقط كأول حركة على الحساب." },
       ])
@@ -343,7 +341,7 @@ export class CompanyService {
 
     const signedAmountDzd = normalizeSignedMoneyAmount(input.signedAmountDzd)
     const entryDate = normalizeAlgeriaTimestamp(input.entryDate)
-    assertDebtEntryDateNotBackdated(entryDate, existingEntries[0]?.entryDate ?? null, "entryDate")
+    assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate ?? null, "entryDate")
     const nextBalance = account.currentBalanceDzd + signedAmountDzd
     const nextStatus = getDebtAccountStatus(nextBalance)
 
@@ -385,8 +383,8 @@ export class CompanyService {
     }
 
     const entryDate = normalizeAlgeriaTimestamp(input.entryDate)
-    const existingEntries = this.repository.listDebtEntries({ debtAccountId: account.id })
-    assertDebtEntryDateNotBackdated(entryDate, existingEntries[0]?.entryDate ?? null, "entryDate")
+    const latestEntry = this.repository.getLatestDebtEntry(account.id)
+    assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate ?? null, "entryDate")
     const settlementAmount = -account.currentBalanceDzd
     const entry = this.repository.withTransaction(() => {
       const createdEntry = this.repository.createDebtEntry(
@@ -452,12 +450,13 @@ export class CompanyService {
   }
 
   listDebtsSummary() {
+    const allDebtAccounts = this.repository.listDebtAccounts()
     const employeesById = new Map(this.repository.listEmployees().map((employee) => [employee.id, employee]))
     const counterpartiesById = new Map(
       this.repository.listExternalCounterparties().map((counterparty) => [counterparty.id, counterparty]),
     )
 
-    const debtAccounts = this.repository.listDebtAccounts().map((account) => {
+    const debtAccounts = allDebtAccounts.map((account) => {
         const employee = account.workerId ? employeesById.get(account.workerId) : null
         const counterparty = account.externalCounterpartyId
           ? counterpartiesById.get(account.externalCounterpartyId)
@@ -490,7 +489,7 @@ export class CompanyService {
       latestActivityAt: string
     }>()
 
-    for (const account of this.repository.listDebtAccounts()) {
+    for (const account of allDebtAccounts) {
       const key = buildDebtPartyKey(account)
       const employee = account.workerId ? employeesById.get(account.workerId) : null
       const counterparty = account.externalCounterpartyId ? counterpartiesById.get(account.externalCounterpartyId) : null

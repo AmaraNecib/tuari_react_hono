@@ -1,6 +1,14 @@
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 const defaultDbPath = resolve(process.cwd(), "data", "tuari.sqlite");
+
+const resolveAttachmentsRootPath = (source: NodeJS.ProcessEnv, databasePath: string) => {
+  if (source.APP_ATTACHMENTS_ROOT?.trim()) {
+    return resolve(source.APP_ATTACHMENTS_ROOT.trim());
+  }
+
+  return resolve(dirname(databasePath), "attachments", "invoices");
+};
 
 const toSqliteUrl = (filePath: string) => {
   const normalized = filePath.replace(/\\/g, "/");
@@ -23,8 +31,10 @@ export const resolveDatabaseEnv = (source: NodeJS.ProcessEnv = process.env) => {
     source.APP_DB_PATH ??
     source.AUTH_DB_PATH ??
     (source.DATABASE_URL ? fromSqliteUrl(source.DATABASE_URL) : defaultDbPath);
+  const attachmentsRootPath = resolveAttachmentsRootPath(source, databasePath);
 
   return {
+    attachmentsRootPath,
     databasePath,
     databaseUrl: toSqliteUrl(databasePath),
   } as const;

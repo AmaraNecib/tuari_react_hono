@@ -5,15 +5,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const fetchMock = vi.fn<typeof fetch>()
 const isDesktopRuntimeMock = vi.fn(() => true)
-const isDesktopSessionRememberedMock = vi.fn(() => false)
-const setDesktopBearerTokenMock = vi.fn<(...args: [string, { rememberMe?: boolean }?]) => Promise<void>>()
+const desktopApiFetchMock = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+const desktopBridgeChangePasswordMock = vi.fn<(...args: [Record<string, unknown>]) => Promise<void>>()
+const desktopBridgeSignInWithPhoneNumberMock = vi.fn<(...args: [Record<string, unknown>]) => Promise<void>>()
+const desktopBridgeSignOutSessionMock = vi.fn<() => Promise<void>>()
+
+vi.mock("./desktop-api-bridge", () => ({
+  desktopApiFetch: desktopApiFetchMock,
+  desktopBridgeChangePassword: desktopBridgeChangePasswordMock,
+  desktopBridgeSignInWithPhoneNumber: desktopBridgeSignInWithPhoneNumberMock,
+  desktopBridgeSignOutSession: desktopBridgeSignOutSessionMock,
+}))
 
 vi.mock("./desktop-auth-session", () => ({
-  clearDesktopBearerToken: vi.fn(),
-  createDesktopAuthorizationHeader: vi.fn(() => ({ authorization: "Bearer current-token" })),
   isDesktopRuntime: isDesktopRuntimeMock,
-  isDesktopSessionRemembered: isDesktopSessionRememberedMock,
-  setDesktopBearerToken: setDesktopBearerTokenMock,
 }))
 
 vi.mock("./runtime-config", () => ({
@@ -24,11 +29,12 @@ vi.mock("./runtime-config", () => ({
 describe("changeCurrentPassword", () => {
   beforeEach(() => {
     fetchMock.mockReset()
+    desktopApiFetchMock.mockReset()
+    desktopBridgeChangePasswordMock.mockReset()
+    desktopBridgeSignInWithPhoneNumberMock.mockReset()
+    desktopBridgeSignOutSessionMock.mockReset()
     isDesktopRuntimeMock.mockReset()
     isDesktopRuntimeMock.mockReturnValue(true)
-    isDesktopSessionRememberedMock.mockReset()
-    isDesktopSessionRememberedMock.mockReturnValue(false)
-    setDesktopBearerTokenMock.mockReset()
     vi.stubGlobal("fetch", fetchMock)
   })
 
@@ -36,13 +42,8 @@ describe("changeCurrentPassword", () => {
     vi.unstubAllGlobals()
   })
 
-  it("updates the desktop bearer token when password change rotates it", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ token: "rotated-token" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    )
+  it("delegates desktop password changes to the native bridge", async () => {
+    desktopBridgeChangePasswordMock.mockResolvedValue(undefined)
 
     const { changeCurrentPassword } = await import("./auth-api")
 
@@ -51,69 +52,46 @@ describe("changeCurrentPassword", () => {
         currentPassword: "old-password",
         newPassword: "new-password-123",
         revokeOtherSessions: true,
-      }),
-    ).resolves.toEqual({ token: "rotated-token" })
-
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:3000/api/auth/change-password", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: "Bearer current-token",
-      },
-      credentials: "omit",
-      body: JSON.stringify({
-        currentPassword: "old-password",
-        newPassword: "new-password-123",
-        revokeOtherSessions: true,
-      }),
-    })
-    expect(setDesktopBearerTokenMock).toHaveBeenCalledWith("rotated-token", { rememberMe: false })
-  })
-
-  it("does not overwrite desktop auth state when no rotated token is returned", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ token: null }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    )
-
-    const { changeCurrentPassword } = await import("./auth-api")
-
-    await expect(
-      changeCurrentPassword({
-        currentPassword: "old-password",
-        newPassword: "new-password-123",
       }),
     ).resolves.toEqual({ token: null })
 
-    expect(setDesktopBearerTokenMock).not.toHaveBeenCalled()
+    expect(desktopBridgeChangePasswordMock).toHaveBeenCalledWith({
+      currentPassword: "old-password",
+      newPassword: "new-password-123",
+      revokeOtherSessions: true,
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it("preserves rememberMe semantics when password change rotates the desktop token", async () => {
-    isDesktopSessionRememberedMock.mockReturnValue(true)
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ token: "rotated-token" }), {
+  it("uses the desktop bridge for authenticated profile updates", async () => {
+    desktopApiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ user: { id: "user-1", name: "عمارة", phone: "0612345678" } }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
     )
 
-    const { changeCurrentPassword } = await import("./auth-api")
+    const { updateCurrentProfile } = await import("./auth-api")
 
-    await changeCurrentPassword({
-      currentPassword: "old-password",
-      newPassword: "new-password-123",
+    await expect(updateCurrentProfile({ name: "عمارة" })).resolves.toEqual({
+      user: { id: "user-1", name: "عمارة", phone: "0612345678" },
     })
 
-    expect(setDesktopBearerTokenMock).toHaveBeenCalledWith("rotated-token", { rememberMe: true })
+    expect(desktopApiFetchMock).toHaveBeenCalledWith("http://localhost:3000/api/auth/profile", {
+      authenticated: true,
+      body: JSON.stringify({ name: "عمارة" }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
   })
 })
 
 describe("signInDesktopWithPhoneNumber", () => {
   beforeEach(() => {
     fetchMock.mockReset()
-    setDesktopBearerTokenMock.mockReset()
+    desktopBridgeSignInWithPhoneNumberMock.mockReset()
+    isDesktopRuntimeMock.mockReset()
+    isDesktopRuntimeMock.mockReturnValue(true)
     vi.stubGlobal("fetch", fetchMock)
   })
 
@@ -121,71 +99,41 @@ describe("signInDesktopWithPhoneNumber", () => {
     vi.unstubAllGlobals()
   })
 
-  it("stores remembered desktop sign-ins in persisted auth storage", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ token: "desktop-token" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    )
+  it("stores remembered desktop sign-ins through the native bridge", async () => {
+    desktopBridgeSignInWithPhoneNumberMock.mockResolvedValue(undefined)
 
     const { signInDesktopWithPhoneNumber } = await import("./auth-api")
 
-    await signInDesktopWithPhoneNumber({
+    await expect(
+      signInDesktopWithPhoneNumber({
+        phoneNumber: "0612345678",
+        password: "password123",
+        rememberMe: true,
+      }),
+    ).resolves.toEqual({ success: true })
+
+    expect(desktopBridgeSignInWithPhoneNumberMock).toHaveBeenCalledWith({
       phoneNumber: "0612345678",
       password: "password123",
       rememberMe: true,
     })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
 
-    expect(setDesktopBearerTokenMock).toHaveBeenCalledWith("desktop-token", { rememberMe: true })
+describe("signOutDesktopSession", () => {
+  beforeEach(() => {
+    desktopBridgeSignOutSessionMock.mockReset()
+    isDesktopRuntimeMock.mockReset()
+    isDesktopRuntimeMock.mockReturnValue(true)
   })
 
-  it("keeps non-remembered desktop sign-ins runtime-only", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ token: "desktop-token" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    )
+  it("delegates desktop sign-out to the native bridge", async () => {
+    desktopBridgeSignOutSessionMock.mockResolvedValue(undefined)
 
-    const { signInDesktopWithPhoneNumber } = await import("./auth-api")
+    const { signOutDesktopSession } = await import("./auth-api")
 
-    await signInDesktopWithPhoneNumber({
-      phoneNumber: "0612345678",
-      password: "password123",
-      rememberMe: false,
-    })
-
-    expect(setDesktopBearerTokenMock).toHaveBeenCalledWith("desktop-token", { rememberMe: false })
-  })
-
-  it("uses non-cookie desktop requests for desktop sign-in", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ token: "desktop-token" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    )
-
-    const { signInDesktopWithPhoneNumber } = await import("./auth-api")
-
-    await signInDesktopWithPhoneNumber({
-      phoneNumber: "0612345678",
-      password: "password123",
-      rememberMe: false,
-    })
-
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:3000/api/auth/sign-in/phone-number", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      credentials: "omit",
-      body: JSON.stringify({
-        phoneNumber: "0612345678",
-        password: "password123",
-        rememberMe: false,
-      }),
-    })
+    await expect(signOutDesktopSession()).resolves.toBeUndefined()
+    expect(desktopBridgeSignOutSessionMock).toHaveBeenCalledTimes(1)
   })
 })

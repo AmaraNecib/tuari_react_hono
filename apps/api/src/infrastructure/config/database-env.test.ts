@@ -6,6 +6,7 @@ describe("resolveDatabaseEnv", () => {
   it("uses one sqlite file by default", () => {
     const env = resolveDatabaseEnv({});
 
+    expect(env.attachmentsRootPath).toMatch(/data[\\/]attachments[\\/]invoices$/);
     expect(env.databasePath).toMatch(/data[\\/]tuari\.sqlite$/);
     expect(env.databaseUrl).toMatch(/^file:.*data[\\/]tuari\.sqlite$/);
   });
@@ -16,6 +17,7 @@ describe("resolveDatabaseEnv", () => {
       DATABASE_URL: "file:./data/ignored.sqlite",
     });
 
+    expect(env.attachmentsRootPath).toMatch(/data[\\/]attachments[\\/]invoices$/);
     expect(env.databasePath).toBe("./data/custom.sqlite");
     expect(env.databaseUrl).toBe("file:./data/custom.sqlite");
   });
@@ -25,6 +27,7 @@ describe("resolveDatabaseEnv", () => {
       AUTH_DB_PATH: "./data/legacy.sqlite",
     });
 
+    expect(env.attachmentsRootPath).toMatch(/data[\\/]attachments[\\/]invoices$/);
     expect(env.databasePath).toBe("./data/legacy.sqlite");
     expect(env.databaseUrl).toBe("file:./data/legacy.sqlite");
   });
@@ -34,8 +37,19 @@ describe("resolveDatabaseEnv", () => {
       DATABASE_URL: "file:./data/from-url.sqlite",
     });
 
+    expect(env.attachmentsRootPath).toMatch(/data[\\/]attachments[\\/]invoices$/);
     expect(env.databasePath).toBe("./data/from-url.sqlite");
     expect(env.databaseUrl).toBe("file:./data/from-url.sqlite");
+  });
+
+  it("prefers APP_ATTACHMENTS_ROOT when explicitly provided", () => {
+    const env = resolveDatabaseEnv({
+      APP_DB_PATH: "./data/custom.sqlite",
+      APP_ATTACHMENTS_ROOT: "./private-files/invoices",
+    });
+
+    expect(env.attachmentsRootPath).toMatch(/[\\/]private-files[\\/]invoices$/);
+    expect(env.databasePath).toBe("./data/custom.sqlite");
   });
 
   it("rejects non-sqlite database URLs", () => {

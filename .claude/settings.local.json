@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs wc *)",
+      "Bash(rm -rf \"D:/projects/tuari_react_hono/apps/web/src/features/design-system\")",
+      "Bash(rm -rf \"D:/projects/tuari_react_hono/apps/web/src/features/design-experiments\")",
+      "Bash(pnpm --filter @tuari/web typecheck)",
+      "Bash(pnpm --filter @tuari/api typecheck)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm test:api *)",
+      "Bash(pnpm test:web *)"
+    ]
+  }
+}
