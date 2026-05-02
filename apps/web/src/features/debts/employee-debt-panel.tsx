@@ -5,6 +5,7 @@ import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-cont
 import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
+import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 import { useEmployeeDebtAccountQuery, useCreateEmployeeDebtEntryMutation } from "./employee-debt-hooks"
 import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
 
@@ -13,15 +14,12 @@ export function EmployeeDebtPanel({ employeeId, employeeName }: { employeeId: st
   const createEntryMutation = useCreateEmployeeDebtEntryMutation()
 
   const [entryType, setEntryType] = useState<"OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE">("OPENING")
-  const [amount, setAmount] = useState("")
+  const { amount, setAmount, value: amountValue, isValid: hasValidAmount, reset: resetAmount } = useFormAmount()
   const [note, setNote] = useState("")
-  const [entryDate, setEntryDate] = useState(() => getAlgeriaDateInputValue())
+  const { date: entryDate, setDate: setEntryDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
 
   const debtAccount = debtAccountQuery.data
   const balanceMeta = getDebtBalanceMeta(debtAccount?.currentBalanceDzd ?? 0)
-  const normalizedAmount = amount.trim()
-  const amountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : null
-  const hasValidAmount = amountValue !== null && Number.isFinite(amountValue) && amountValue > 0
 
   const handleSubmit = async () => {
     if (!hasValidAmount) return
@@ -39,9 +37,9 @@ export function EmployeeDebtPanel({ employeeId, employeeName }: { employeeId: st
 
   const resetForm = () => {
     setEntryType("OPENING")
-    setAmount("")
+    resetAmount()
     setNote("")
-    setEntryDate(getAlgeriaDateInputValue())
+    resetDate()
   }
 
   return (

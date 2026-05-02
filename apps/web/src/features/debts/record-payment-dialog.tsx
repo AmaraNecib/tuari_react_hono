@@ -16,6 +16,7 @@ import { useCreateDebtEntryMutation, useSettleDebtAccountMutation } from "@/feat
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
 import { cn } from "@/lib/utils"
+import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 
 export function RecordPaymentDialog({
   debtAccount,
@@ -31,14 +32,10 @@ export function RecordPaymentDialog({
   const { t } = useTranslation()
   const createDebtEntryMutation = useCreateDebtEntryMutation()
   const settleDebtAccountMutation = useSettleDebtAccountMutation()
-  const [amount, setAmount] = useState("")
+  const { amount, setAmount, value: amountValue, isValid: hasValidAmount, reset: resetAmount } = useFormAmount()
+  const { date: paymentDate, setDate: setPaymentDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
   const [note, setNote] = useState("")
-  const [paymentDate, setPaymentDate] = useState(() => getAlgeriaDateInputValue())
   const [showSettlePrompt, setShowSettlePrompt] = useState(false)
-
-  const normalizedAmount = amount.trim()
-  const amountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : null
-  const hasValidAmount = amountValue !== null && Number.isFinite(amountValue) && amountValue > 0
 
   const balance = debtAccount?.currentBalanceDzd ?? 0
   const balanceMeta = getDebtBalanceMeta(balance)
@@ -83,9 +80,9 @@ export function RecordPaymentDialog({
   }
 
   const resetForm = () => {
-    setAmount("")
+    resetAmount()
     setNote("")
-    setPaymentDate(getAlgeriaDateInputValue())
+    resetDate()
     setShowSettlePrompt(false)
   }
 

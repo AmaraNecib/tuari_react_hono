@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import { cn } from "@/lib/utils"
+import { useFormAmount } from "@/features/shared/use-form-amount"
 import { useRecordInvoicePaymentMutation } from "./inventory-hooks"
 
 export function RecordInvoicePaymentDialog({
@@ -26,12 +27,8 @@ export function RecordInvoicePaymentDialog({
   onSuccess?: () => void
 }) {
   const recordPaymentMutation = useRecordInvoicePaymentMutation()
-  const [amount, setAmount] = useState("")
+  const { amount, setAmount, value: amountValue, isValid: hasValidAmount } = useFormAmount()
   const [note, setNote] = useState("")
-
-  const normalizedAmount = amount.trim()
-  const amountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : null
-  const hasValidAmount = amountValue !== null && Number.isFinite(amountValue) && amountValue > 0
 
   const remainingDebt = useMemo(
     () => invoiceDetail?.group.remainingDebtDzd ?? 0,
@@ -60,6 +57,8 @@ export function RecordInvoicePaymentDialog({
   const resetForm = () => {
     setAmount("")
     setNote("")
+    // Note: useFormAmount().reset() not called here as it requires initial state
+    // Form will reset when dialog reopens
   }
 
   if (!invoiceDetail) return null
