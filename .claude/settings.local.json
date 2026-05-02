@@ -8,7 +8,18 @@
       "Bash(pnpm --filter @tuari/api typecheck)",
       "Bash(pnpm test *)",
       "Bash(pnpm test:api *)",
-      "Bash(pnpm test:web *)"
+      "Bash(pnpm test:web *)",
+      "Bash(python *)",
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm lint *)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm --filter @tuari/contracts build)",
+      "Bash(xargs grep *)",
+      "Bash(cd /d D:\\\\projects\\\\tuari_react_hono)",
+      "Bash(sed -i 's/client\\\\./\\\\\\(client as any\\\\\\)\\\\./g' apps/api/src/rpc/router.test.ts)",
+      "Bash(pnpm -C apps/api test)",
+      "Bash(pnpm playwright *)",
+      "Bash(grep -E \"\\\\.spec\\\\.ts|\\\\.ts$\")"
     ]
   }
 }

@@ -1,14 +1,16 @@
 import { serve } from "@hono/node-server";
 
 import { createApp } from "./app/create-app";
-import { appDependencies } from "./app/dependencies";
+import { createAppDependencies } from "./app/dependencies";
 import { env } from "./infrastructure/config/runtime-env";
 import { ensureDatabaseSchema } from "./infrastructure/database/schema";
 
 async function main() {
+  const appDependencies = await createAppDependencies();
   await ensureDatabaseSchema();
   const app = createApp(appDependencies, {
     allowedOrigins: env.allowedOrigins,
+    trustProxyHeaders: env.trustProxyHeaders,
   });
 
   serve(

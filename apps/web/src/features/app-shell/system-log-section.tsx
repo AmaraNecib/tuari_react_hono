@@ -156,6 +156,7 @@ export function SystemLogSection({
   entries: SystemLogEntry[]
   filters: {
     actionType?: SystemLogEntry["actionType"]
+    actorQuery?: string
     actorUserId?: string
     entityType?: SystemLogEntry["entityType"]
     fromDate?: string
@@ -163,6 +164,7 @@ export function SystemLogSection({
   }
   onFiltersChange: (filters: {
     actionType?: SystemLogEntry["actionType"]
+    actorQuery?: string
     actorUserId?: string
     entityType?: SystemLogEntry["entityType"]
     fromDate?: string
@@ -186,10 +188,17 @@ export function SystemLogSection({
     [entries],
   )
 
-  const filteredEntries = entries
+  const actorQuery = filters.actorQuery?.trim().toLowerCase() ?? ""
+  const filteredEntries = actorQuery
+    ? entries.filter((entry) =>
+        [entry.actorLabel, entry.actorCurrentLabel, entry.actorUserId]
+          .filter(Boolean)
+          .some((value) => value!.toLowerCase().includes(actorQuery)),
+      )
+    : entries
   const { page, pageSize, pagedRows: pagedEntries, setPage, setPageSize } = usePaginatedRows({
     rows: filteredEntries,
-    resetPageDeps: [filters.actionType, filters.actorUserId, filters.entityType, filters.fromDate, filters.toDate],
+    resetPageDeps: [filters.actionType, filters.actorQuery, filters.actorUserId, filters.entityType, filters.fromDate, filters.toDate],
   })
 
   return (
@@ -205,6 +214,14 @@ export function SystemLogSection({
                 </option>
               ))}
             </NativeSelect>
+          </label>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-foreground">{t("systemLog.actorSearch")}</span>
+            <Input
+              value={filters.actorQuery ?? ""}
+              placeholder={t("systemLog.actorSearchPlaceholder")}
+              onChange={(event) => onFiltersChange({ ...filters, actorQuery: event.target.value || undefined })}
+            />
           </label>
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">{t("systemLog.action")}</span>
@@ -246,15 +263,16 @@ export function SystemLogSection({
                   <AppShellTableHeaderCell>{t("systemLog.actor")}</AppShellTableHeaderCell>
                   <AppShellTableHeaderCell>{t("systemLog.action")}</AppShellTableHeaderCell>
                   <AppShellTableHeaderCell>{t("systemLog.target")}</AppShellTableHeaderCell>
+                  <AppShellTableHeaderCell>{t("systemLog.entityId")}</AppShellTableHeaderCell>
                   <AppShellTableHeaderCell>{t("systemLog.summary")}</AppShellTableHeaderCell>
                   <AppShellTableHeaderCell>{t("systemLog.details")}</AppShellTableHeaderCell>
                 </tr>
               </AppShellTableHead>
               <tbody>
                 {isLoading ? (
-                  <AppShellEmptyStateRow colSpan={6}>{t("systemLog.loading")}</AppShellEmptyStateRow>
+                  <AppShellEmptyStateRow colSpan={7}>{t("systemLog.loading")}</AppShellEmptyStateRow>
                 ) : isError ? (
-                  <AppShellEmptyStateRow colSpan={6}>{t("systemLog.loadError")}</AppShellEmptyStateRow>
+                  <AppShellEmptyStateRow colSpan={7}>{t("systemLog.loadError")}</AppShellEmptyStateRow>
                 ) : pagedEntries.length > 0 ? (
                   pagedEntries.map((entry) => (
                     <AppShellTableRow key={entry.id} className="align-top">
@@ -267,6 +285,7 @@ export function SystemLogSection({
                       </td>
                       <td className="px-4 py-4 text-start text-foreground">{getActionTypeLabel(t, entry.actionType)}</td>
                       <td className="px-4 py-4 text-start text-muted-foreground">{entry.entityLabel ?? t("systemLog.targetUnknown")}</td>
+                      <td className="px-4 py-4 text-start font-mono text-xs text-muted-foreground">{entry.entityId}</td>
                       <td className="px-4 py-4 text-start font-medium text-foreground">{entry.summary}</td>
                       <td className="px-4 py-4 text-start text-xs leading-6 text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                         <SystemLogDetailsCell detail={entry.detail} />
@@ -274,7 +293,7 @@ export function SystemLogSection({
                     </AppShellTableRow>
                   ))
                 ) : (
-                  <AppShellEmptyStateRow colSpan={6}>{t("systemLog.empty")}</AppShellEmptyStateRow>
+                  <AppShellEmptyStateRow colSpan={7}>{t("systemLog.empty")}</AppShellEmptyStateRow>
                 )}
               </tbody>
             </table>

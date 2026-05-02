@@ -221,7 +221,7 @@ vi.mock("./mock-dashboard", () => ({
     refetch: vi.fn(),
   }),
   useBootstrapFirstUserMutation: () => ({ isPending: false, mutateAsync: bootstrapMutate }),
-  useDemoWorkspaceQuery: () => ({ data: workspaceData, error: workspaceQueryError, isPending: workspaceQueryPending, refetch: workspaceRefetch }),
+  useCompositeWorkspaceQuery: () => ({ data: workspaceData, isError: Boolean(workspaceQueryError), isPending: workspaceQueryPending, refetch: workspaceRefetch }),
   useSystemLogQuery: () => ({ data: systemLogData, error: null, isPending: false }),
   useDemoSignInMutation: () => ({ isPending: false, mutateAsync: signInMutate }),
   useDemoSignOutMutation: () => ({ isPending: false, mutateAsync: signOutMutate }),
@@ -573,7 +573,7 @@ describe("HomeView workspace shell", () => {
     expect(createEmployeesBatchMutate).not.toHaveBeenCalled()
   })
 
-  it("renders employee details as a dedicated page with tabs", () => {
+  it("renders employee details as a dedicated page with tabs", async () => {
     sessionData = {
       user: {
         id: "demo-session-user",
@@ -584,7 +584,7 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("employee-details", { employeeId: "employee-worker-1" })
 
-    expect(screen.getByText("المعلومات الشخصية")).toBeTruthy()
+    expect(await screen.findByText("المعلومات الشخصية")).toBeTruthy()
     expect(screen.getByText("سجل العمل")).toBeTruthy()
     expect(screen.getByText("المالية")).toBeTruthy()
   })
@@ -634,7 +634,7 @@ describe("HomeView workspace shell", () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: "/warehouses" })
   })
 
-  it("shows no-notes fallback in the employee finance table when a salary payment note is missing", () => {
+  it("shows no-notes fallback in the employee finance table when a salary payment note is missing", async () => {
     sessionData = {
       user: {
         id: "demo-session-user",
@@ -661,10 +661,10 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("employee-details", { detailTab: "finance", employeeId: "employee-worker-1" })
 
-    expect(screen.getByText("لا توجد ملاحظات.")).toBeTruthy()
+    expect(await screen.findByText("لا توجد ملاحظات.")).toBeTruthy()
   })
 
-  it("submits salary payment form without client-controlled expected amount fields", () => {
+  it("submits salary payment form without client-controlled expected amount fields", async () => {
     sessionData = {
       user: {
         id: "demo-session-user",
@@ -675,7 +675,7 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("employee-details", { detailTab: "finance", employeeId: "employee-worker-1" })
 
-    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
+    fireEvent.click(await screen.findByRole("button", { name: "إضافة دفعة راتب" }))
     fireEvent.change(screen.getByPlaceholderText("0"), {
       target: { value: "5000" },
     })
@@ -692,7 +692,7 @@ describe("HomeView workspace shell", () => {
     })
   })
 
-  it("keeps salary payment save disabled when the paid amount is empty", () => {
+  it("keeps salary payment save disabled when the paid amount is empty", async () => {
     sessionData = {
       user: {
         id: "demo-session-user",
@@ -703,7 +703,7 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("employee-details", { detailTab: "finance", employeeId: "employee-worker-1" })
 
-    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
+    fireEvent.click(await screen.findByRole("button", { name: "إضافة دفعة راتب" }))
     fireEvent.change(screen.getByPlaceholderText("0"), {
       target: { value: "" },
     })
@@ -711,7 +711,7 @@ describe("HomeView workspace shell", () => {
     expect(screen.getByRole("button", { name: "حفظ دفعة الراتب" }).hasAttribute("disabled")).toBe(true)
   })
 
-  it("renders project details as a dedicated page", () => {
+  it("renders project details as a dedicated page", async () => {
     sessionData = {
       user: {
         id: "demo-session-user",
@@ -722,7 +722,7 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("project-details", { projectId: "project-1" })
 
-    expect(screen.getByRole("heading", { name: "مبنى الإدارة الجديد" })).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "مبنى الإدارة الجديد" })).toBeTruthy()
     expect(screen.getByText("العمال المرتبطون")).toBeTruthy()
   })
 
@@ -738,7 +738,7 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("project-create")
 
-    expect(screen.getByRole("heading", { name: "إضافة مشروع" })).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "إضافة مشروع" })).toBeTruthy()
 
     fireEvent.change(screen.getByLabelText("اسم المشروع"), {
       target: { value: "مشروع التوسعة" },
@@ -798,7 +798,7 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("warehouse-create")
 
-    expect(screen.getByRole("heading", { name: "إضافة مستودع" })).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "إضافة مستودع" })).toBeTruthy()
 
     fireEvent.change(screen.getByLabelText("اسم المستودع"), {
       target: { value: "مستودع الجنوب" },
@@ -961,7 +961,7 @@ describe("HomeView workspace shell", () => {
     expect(screen.getByText("الرواتب")).toBeTruthy()
   })
 
-  it("shows worker manager and project controls on the employee edit page", () => {
+  it("shows worker manager and project controls on the employee edit page", async () => {
     sessionData = {
       user: {
         id: "demo-session-user",
@@ -972,7 +972,7 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("employee-edit", { employeeId: "employee-worker-1" })
 
-    expect(screen.getByText("المدير المباشر")).toBeTruthy()
+    expect(await screen.findByText("المدير المباشر")).toBeTruthy()
     expect(screen.getByText("المشروع الحالي")).toBeTruthy()
   })
 
@@ -1066,7 +1066,7 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("employee-edit", { employeeId: "employee-worker-1" })
 
-    fireEvent.click(screen.getByRole("button", { name: "حفظ كل التغييرات" }))
+    fireEvent.click(await screen.findByRole("button", { name: "حفظ كل التغييرات" }))
 
     await waitFor(() => {
       expect(updateEmployeeMutate).toHaveBeenCalled()

@@ -5,6 +5,9 @@ import { appContract } from "@tuari/contracts";
 import { createAlgeriaTimestamp } from "../modules/company/company-time";
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import type { CompanyService } from "../modules/company/company.service";
+import type { WorkforceService } from "../modules/company/workforce.service";
+import type { OperationsService } from "../modules/company/operations.service";
+import type { FinanceService } from "../modules/company/finance.service";
 import type { InventoryService } from "../modules/inventory/inventory.service";
 import { getCurrentUser, type RpcContext } from "./context";
 import { createRpcMiddleware } from "./rpc-middleware";
@@ -17,6 +20,9 @@ import { createSystemHandlers } from "./handlers/system";
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
   companyService: CompanyService;
+  workforceService: WorkforceService;
+  operationsService: OperationsService;
+  financeService: FinanceService;
   inventoryService: InventoryService;
 };
 
@@ -45,9 +51,9 @@ export function createRouter(dependencies: RouterDependencies) {
   const allHandlers = Object.assign(
     baseHandlers,
     createSystemHandlers(os, m, dependencies.companyService),
-    createWorkforceHandlers(os, m, dependencies.companyService),
-    createOperationsHandlers(os, m, dependencies.companyService),
-    createFinanceHandlers(os, m, dependencies.companyService),
+    createWorkforceHandlers(os, m, dependencies.workforceService),
+    createOperationsHandlers(os, m, dependencies.operationsService),
+    createFinanceHandlers(os, m, dependencies.financeService),
     createInventoryHandlers(os, m, dependencies.inventoryService),
   );
 

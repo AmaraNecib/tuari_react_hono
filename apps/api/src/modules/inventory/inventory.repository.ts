@@ -27,6 +27,10 @@ import type {
   InventoryItemDefinitionUpdateData,
 } from "./inventory.types"
 
+// Architecture note: business-domain persistence intentionally uses explicit
+// better-sqlite3 SQL. See docs/architecture-decisions.md (ADR-001) before
+// adding or migrating business queries to Prisma.
+
 type SqliteRow = Record<string, unknown>
 
 function toNullableString(value: unknown) {

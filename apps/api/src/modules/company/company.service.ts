@@ -26,6 +26,22 @@ import {
 } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
+import type {
+  WorkspaceAdminAuthorizer,
+} from "./company.helpers";
+import {
+  assertDebtEntryDateNotBackdated,
+  buildBatchField,
+  buildDebtPartyKey,
+  deleteResult,
+  getDebtAccountStatus,
+  getDebtBalanceLabel,
+  normalizeMutationAuditContext,
+  normalizeSalaryAmount,
+  normalizeSignedMoneyAmount,
+  normalizeText,
+  successResult,
+} from "./company.helpers";
 import type { CompanyRepository } from "./company.repository";
 import { buildCompanySystemLog } from "./company.system-log";
 import { normalizeAlgeriaTimestamp } from "./company-time";
@@ -49,92 +65,25 @@ import {
   type WarehouseListFilters,
 } from "./company.types";
 
-function successResult<T>(message: string, item: T) {
-  return {
-    success: true as const,
-    message,
-    item,
-  };
-}
-
-function deleteResult(message: string) {
-  return {
-    success: true as const,
-    message,
-  };
-}
-
-function normalizeText(value: string | null | undefined) {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function buildBatchField(index: number, field: string) {
-  return `employees.${index}.${field}`;
-}
-
-function normalizeSalaryAmount(value: number | null | undefined) {
-  if (typeof value !== "number" || Number.isNaN(value)) {
-    return null;
-  }
-
-  return value;
-}
-
-function normalizeSignedMoneyAmount(value: number) {
-  if (!Number.isFinite(value) || value === 0) {
-    throw new CompanyError("VALIDATION", "يجب إدخال مبلغ صالح وغير صفري.", [
-      { field: "signedAmountDzd", message: "يجب إدخال مبلغ صالح وغير صفري." },
-    ])
-  }
-
-  return value
-}
-
-function getDebtAccountStatus(balance: number) {
-  return balance === 0 ? "SETTLED" : "OPEN"
-}
-
-function getDebtBalanceLabel(balance: number) {
-  if (balance > 0) {
-    return "لنا عنده" as const
-  }
-
-  if (balance < 0) {
-    return "علينا له" as const
-  }
-
-  return "مغلق" as const
-}
-
-function buildDebtPartyKey(account: Pick<DebtAccountRecord, "partyType" | "workerId" | "externalCounterpartyId">) {
-  return account.partyType === "INTERNAL_WORKER"
-    ? `INTERNAL_WORKER:${account.workerId}`
-    : `EXTERNAL_COUNTERPARTY:${account.externalCounterpartyId}`
-}
-
-function normalizeMutationAuditContext(auditContext?: MutationAuditContext): Required<MutationAuditContext> {
-  return {
-    actorUserId: auditContext?.actorUserId ?? null,
-    actorLabel: auditContext?.actorLabel ?? null,
-    transactionId: auditContext?.transactionId ?? crypto.randomUUID(),
-  }
-}
-
-function assertDebtEntryDateNotBackdated(entryDate: string, latestEntryDate: string | null, field: string) {
-  if (latestEntryDate && Date.parse(entryDate) < Date.parse(latestEntryDate)) {
-    throw new CompanyError("BUSINESS_RULE", "لا يمكن تسجيل قيد بتاريخ أقدم من آخر حركة موجودة على الحساب.", [
-      { field, message: "لا يمكن تسجيل قيد بتاريخ أقدم من آخر حركة موجودة على الحساب." },
-    ])
-  }
-}
-
 export class CompanyService {
-  constructor(private readonly repository: CompanyRepository) {}
+  constructor(
+    private readonly repository: CompanyRepository,
+    private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
+  ) {}
+
+  private createMutationAuditContext(auditContext?: MutationAuditContext): Required<MutationAuditContext> {
+    const audit = normalizeMutationAuditContext(auditContext)
+
+    if (!this.workspaceAdminAuthorizer) {
+      return audit
+    }
+
+    if (!audit.actorUserId || !this.workspaceAdminAuthorizer.isBootstrapOwner(audit.actorUserId)) {
+      throw new CompanyError("UNAUTHORIZED", "هذا الإجراء متاح فقط لحساب الإدارة الرئيسي.")
+    }
+
+    return audit
+  }
 
   listRoles() {
     return { items: this.repository.listRoles() };
@@ -216,7 +165,9 @@ export class CompanyService {
     return successResult("تم تحميل الطرف الخارجي بنجاح.", counterparty)
   }
 
-  createExternalCounterparty(input: ExternalCounterpartyCreateInput) {
+  createExternalCounterparty(input: ExternalCounterpartyCreateInput, auditContext?: MutationAuditContext) {
+    this.createMutationAuditContext(auditContext)
+
     const counterparty = this.repository.createExternalCounterparty({
       fullName: input.fullName.trim(),
       phoneNumber: input.phoneNumber.trim(),
@@ -245,7 +196,7 @@ export class CompanyService {
   }
 
   createDebtAccount(input: DebtAccountCreateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const workerId = input.workerId ?? null
     const externalCounterpartyId = input.externalCounterpartyId ?? null
@@ -329,7 +280,7 @@ export class CompanyService {
   }
 
   createDebtEntry(input: DebtEntryCreateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
     const account = this.requireDebtAccount(input.debtAccountId)
     const latestEntry = this.repository.getLatestDebtEntry(account.id)
 
@@ -375,7 +326,7 @@ export class CompanyService {
   }
 
   settleDebtAccount(input: DebtSettlementInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
     const account = this.requireDebtAccount(input.id)
 
     if (account.currentBalanceDzd === 0) {
@@ -533,7 +484,7 @@ export class CompanyService {
   }
 
   createEmployee(input: EmployeeCreateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     this.requireAssignableEmployeeRole(input.roleId, "roleId");
 
@@ -570,7 +521,7 @@ export class CompanyService {
   }
 
   createEmployeesBatch(input: EmployeeBatchCreateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const fieldErrors: Array<{ field: string; message: string }> = [];
     const seenPhones = new Set<string>();
@@ -756,7 +707,7 @@ export class CompanyService {
   }
 
   updateEmployee(input: EmployeeUpdateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const current = this.requireEmployee(input.id);
     const currentRole = this.requireRole(current.roleId);
@@ -813,7 +764,9 @@ export class CompanyService {
     return successResult("تم تحديث بيانات العامل بنجاح.", employee!);
   }
 
-  deleteEmployee(id: string) {
+  deleteEmployee(id: string, auditContext?: MutationAuditContext) {
+    this.createMutationAuditContext(auditContext)
+
     const current = this.repository.getEmployeeById(id);
     if (!current) {
       throw new CompanyError("NOT_FOUND", "تعذر العثور على العامل المطلوب.");
@@ -859,7 +812,7 @@ export class CompanyService {
   }
 
   createProject(input: ProjectCreateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     if (input.managerId) {
       this.requireActiveEmployee(
@@ -880,7 +833,7 @@ export class CompanyService {
   }
 
   updateProject(input: ProjectUpdateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const current = this.requireProject(input.id);
     const nextManagerId = input.managerId !== undefined ? input.managerId : current.managerId
@@ -922,7 +875,7 @@ export class CompanyService {
   }
 
   createWarehouse(input: WarehouseCreateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     if (input.managerId) {
       this.requireActiveEmployee(
@@ -947,7 +900,7 @@ export class CompanyService {
   }
 
   updateWarehouse(input: WarehouseUpdateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const current = this.requireWarehouse(input.id);
 
@@ -977,7 +930,7 @@ export class CompanyService {
   }
 
   assignEmployeeWorkplace(input: EmployeeAssignWorkplaceInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const employee = this.requireEmployee(input.employeeId);
     const role = this.requireRole(employee.roleId);
@@ -1048,7 +1001,7 @@ export class CompanyService {
   }
 
   syncManagedProjects(input: EmployeeSyncManagedProjectsInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const employee = this.requireEmployeeWithRoleKey(input.employeeId, SYSTEM_ROLE_KEYS.projectManager, "employeeId")
     this.requireActiveEmployee(employee, "employeeId")
@@ -1082,7 +1035,7 @@ export class CompanyService {
   }
 
   syncManagedWarehouses(input: EmployeeSyncManagedWarehousesInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const employee = this.requireEmployeeWithRoleKey(input.employeeId, SYSTEM_ROLE_KEYS.warehouseManager, "employeeId")
     this.requireActiveEmployee(employee, "employeeId")
@@ -1129,7 +1082,7 @@ export class CompanyService {
   }
 
   createManagerAssignment(input: ManagerAssignmentCreateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const worker = this.requireEmployeeWithRoleKey(input.workerId, SYSTEM_ROLE_KEYS.worker, "workerId");
     const manager = this.requireEmployeeWithRoleKey(input.managerId, SYSTEM_ROLE_KEYS.projectManager, "managerId");
@@ -1160,7 +1113,7 @@ export class CompanyService {
   }
 
   endManagerAssignment(input: ManagerAssignmentEndInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const current = this.repository.getManagerAssignmentById(input.id);
     if (!current) {
@@ -1202,7 +1155,7 @@ export class CompanyService {
   }
 
   createProjectAssignment(input: ProjectAssignmentCreateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const employee = this.requireEmployee(input.employeeId);
     const employeeRole = this.requireRole(employee.roleId);
@@ -1271,7 +1224,7 @@ export class CompanyService {
   }
 
   endProjectAssignment(input: ProjectAssignmentEndInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const current = this.repository.getProjectAssignmentById(input.id);
     if (!current) {
@@ -1296,7 +1249,7 @@ export class CompanyService {
   }
 
   createSalaryPayment(input: EmployeeSalaryPaymentCreateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const employee = this.requireEmployee(input.employeeId)
     const expectedAmount = employee.salaryAmountDzd ?? null
@@ -1305,6 +1258,12 @@ export class CompanyService {
     if (expectedAmount === null || periodType === null) {
       throw new CompanyError("BUSINESS_RULE", "يجب تحديد أجر العامل الحالي قبل تسجيل دفعة راتب.", [
         { field: "employeeId", message: "يجب تحديد أجر العامل الحالي قبل تسجيل دفعة راتب." },
+      ])
+    }
+
+    if (!Number.isFinite(input.actualAmountDzd) || input.actualAmountDzd <= 0) {
+      throw new CompanyError("VALIDATION", "يجب إدخال مبلغ راتب أكبر من صفر.", [
+        { field: "actualAmountDzd", message: "يجب إدخال مبلغ راتب أكبر من صفر." },
       ])
     }
 
@@ -1330,7 +1289,7 @@ export class CompanyService {
   }
 
   createWarehouseAssignment(input: WarehouseAssignmentCreateInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const employee = this.requireEmployee(input.employeeId);
     const employeeRole = this.requireRole(employee.roleId);
@@ -1390,7 +1349,7 @@ export class CompanyService {
   }
 
   endWarehouseAssignment(input: WarehouseAssignmentEndInput, auditContext?: MutationAuditContext) {
-    const audit = normalizeMutationAuditContext(auditContext)
+    const audit = this.createMutationAuditContext(auditContext)
 
     const current = this.repository.getWarehouseAssignmentById(input.id);
     if (!current) {

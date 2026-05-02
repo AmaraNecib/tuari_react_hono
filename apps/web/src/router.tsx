@@ -4,9 +4,26 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router"
+import { lazy, Suspense, type ReactNode } from "react"
+import { useTranslation } from "react-i18next"
 
-import { HomeView, type HomeViewPage } from "@/features/app-shell/home-view"
+import type { HomeViewPage } from "@/features/app-shell/home-view"
 import { AppProviders } from "@/providers/app-providers"
+
+const HomeView = lazy(async () => import("@/features/app-shell/home-view").then((module) => ({ default: module.HomeView })))
+
+function WorkspaceRouteFallback() {
+  const { t } = useTranslation()
+  return (
+    <div className="flex min-h-screen items-center justify-center p-6 text-sm text-muted-foreground" dir="rtl">
+      {t("workspace.notFound.loadingWorkspace")}
+    </div>
+  )
+}
+
+function renderHomeView(node: ReactNode) {
+  return <Suspense fallback={<WorkspaceRouteFallback />}>{node}</Suspense>
+}
 
 function RootLayout() {
   return (
@@ -17,13 +34,14 @@ function RootLayout() {
 }
 
 function NotFoundPage() {
+  const { t } = useTranslation()
   return (
     <div className="flex h-screen flex-col items-center justify-center p-6 text-center" dir="rtl">
       <h1 className="text-6xl font-bold text-primary">404</h1>
-      <h2 className="mt-4 text-2xl font-semibold text-foreground">الصفحة غير موجودة</h2>
-      <p className="mt-2 text-muted-foreground">عذرًا، الصفحة التي تبحث عنها غير موجودة أو تم نقلها.</p>
+      <h2 className="mt-4 text-2xl font-semibold text-foreground">{t("workspace.notFound.title")}</h2>
+      <p className="mt-2 text-muted-foreground">{t("workspace.notFound.description")}</p>
       <a href="/" className="mt-8 rounded-full bg-primary px-6 py-2.5 font-medium text-primary-foreground hover:bg-primary/90">
-        العودة إلى الرئيسية
+        {t("workspace.notFound.backHome")}
       </a>
     </div>
   )
@@ -33,7 +51,7 @@ function createWorkspaceRoute(path: string, page: HomeViewPage) {
   return createRoute({
     getParentRoute: () => rootRoute,
     path,
-    component: () => <HomeView page={page} />,
+    component: () => renderHomeView(<HomeView page={page} />),
   })
 }
 
@@ -119,44 +137,44 @@ const settingsRoute = createWorkspaceRoute("/settings", "settings")
 function EmployeeDetailsRouteComponent() {
   const { employeeId } = employeeDetailsRoute.useParams()
   const search = employeeDetailsRoute.useSearch()
-  return <HomeView detailTab={search.tab} employeeId={employeeId} page="employee-details" />
+  return renderHomeView(<HomeView detailTab={search.tab} employeeId={employeeId} page="employee-details" />)
 }
 
 function EmployeeEditRouteComponent() {
   const { employeeId } = employeeEditRoute.useParams()
-  return <HomeView employeeId={employeeId} page="employee-edit" />
+  return renderHomeView(<HomeView employeeId={employeeId} page="employee-edit" />)
 }
 
 function ExternalDetailsRouteComponent() {
   const { externalId } = externalDetailsRoute.useParams()
-  return <HomeView counterpartyId={externalId} page="external-details" />
+  return renderHomeView(<HomeView counterpartyId={externalId} page="external-details" />)
 }
 
 function ProjectDetailsRouteComponent() {
   const { projectId } = projectDetailsRoute.useParams()
   const search = projectDetailsRoute.useSearch()
-  return <HomeView detailTab={search.tab} page="project-details" projectId={projectId} />
+  return renderHomeView(<HomeView detailTab={search.tab} page="project-details" projectId={projectId} />)
 }
 
 function ProjectEditRouteComponent() {
   const { projectId } = projectEditRoute.useParams()
-  return <HomeView page="project-edit" projectId={projectId} />
+  return renderHomeView(<HomeView page="project-edit" projectId={projectId} />)
 }
 
 function WarehouseDetailsRouteComponent() {
   const { warehouseId } = warehouseDetailsRoute.useParams()
   const search = warehouseDetailsRoute.useSearch()
-  return <HomeView detailTab={search.tab} page="warehouse-details" warehouseId={warehouseId} />
+  return renderHomeView(<HomeView detailTab={search.tab} page="warehouse-details" warehouseId={warehouseId} />)
 }
 
 function WarehouseEditRouteComponent() {
   const { warehouseId } = warehouseEditRoute.useParams()
-  return <HomeView page="warehouse-edit" warehouseId={warehouseId} />
+  return renderHomeView(<HomeView page="warehouse-edit" warehouseId={warehouseId} />)
 }
 
 function InvoiceDetailsRouteComponent() {
   const { invoiceId } = invoiceDetailsRoute.useParams()
-  return <HomeView invoiceId={invoiceId} page="invoice-details" />
+  return renderHomeView(<HomeView invoiceId={invoiceId} page="invoice-details" />)
 }
 
 const routeTree = rootRoute.addChildren([

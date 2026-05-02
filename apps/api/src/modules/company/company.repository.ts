@@ -83,8 +83,13 @@ import type {
   WarehouseUpdateData,
 } from "./company.types";
 
+// Architecture note: business-domain persistence intentionally uses explicit
+// better-sqlite3 SQL. See docs/architecture-decisions.md (ADR-001) before
+// adding or migrating business queries to Prisma.
+
 export interface CompanyRepository {
   withTransaction<T>(callback: () => T): T;
+  isBootstrapOwner(userId: string): boolean;
   listRoles(): RoleRecord[];
   getRoleById(id: string): RoleRecord | null;
   getRoleByKey(key: string): RoleRecord | null;
@@ -163,6 +168,22 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   withTransaction<T>(callback: () => T): T {
     return this.database.transaction(callback)()
+  }
+
+  isBootstrapOwner(userId: string): boolean {
+    const stateRow = this.database
+      .prepare('SELECT "user_id" FROM "app_bootstrap_state" WHERE "singleton" = 1 LIMIT 1')
+      .get() as { user_id: string | null } | undefined
+
+    if (stateRow?.user_id) {
+      return stateRow.user_id === userId
+    }
+
+    const firstUser = this.database
+      .prepare('SELECT "id" FROM "user" ORDER BY "created_at" ASC LIMIT 1')
+      .get() as { id: string } | undefined
+
+    return firstUser?.id === userId
   }
 
   listRoles(): RoleRecord[] {

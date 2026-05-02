@@ -110,6 +110,14 @@ const toPort = (value: string | undefined) => {
   return port;
 };
 
+const toBoolean = (value: string | undefined) => {
+  if (value === undefined) {
+    return false;
+  }
+
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+};
+
 export const createEnv = (source: NodeJS.ProcessEnv = process.env) => {
   const database = resolveDatabaseEnv(source);
   const allowedOrigins =
@@ -121,6 +129,7 @@ export const createEnv = (source: NodeJS.ProcessEnv = process.env) => {
     host: source.API_HOST ?? defaultHost,
     port: toPort(source.API_PORT),
     allowedOrigins,
+    trustProxyHeaders: toBoolean(source.API_TRUST_PROXY_HEADERS),
     ...database,
     betterAuthSecret: requireEnv(source, "BETTER_AUTH_SECRET"),
     betterAuthUrl: normalizeBaseUrl(

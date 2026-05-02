@@ -17,10 +17,11 @@ const sharedEnv = {
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  reporter: "line",
+  reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : [["html", { open: "never" }], ["line"]],
   timeout: 30_000,
   use: {
     baseURL: webUrl,

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { LogOut, MoonStar, Settings, SunMedium } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -58,12 +59,13 @@ export function HomeViewSignedInShell({
   onSignOutOpenChange: (value: boolean) => void
   onThemeToggle: () => void
 }) {
+  const { t } = useTranslation()
   const sidebarWidth = sidebarCollapsed ? "5.5rem" : "18rem"
   const pageLabel =
     page === "inventory"
-      ? "دليل العناصر"
+      ? t("workspace.shell.itemsGuide")
       : page === "invoices" || page === "invoice-create" || page === "invoice-details"
-        ? "الفواتير"
+        ? t("workspace.shell.invoices")
         : copy.sections.dashboard.label
 
   return (
@@ -77,8 +79,8 @@ export function HomeViewSignedInShell({
         employeesLabel={copy.sections.employees.label}
         externalsLabel={copy.sections.externals.label}
         expandLabel={copy.shell.expand}
-        inventoryLabel="دليل العناصر"
-        invoicesLabel="الفواتير"
+        inventoryLabel={t("workspace.shell.itemsGuide")}
+        invoicesLabel={t("workspace.shell.invoices")}
         projectsLabel={copy.sections.projects.label}
         rolesLabel={copy.sections.roles.label}
         salariesLabel={copy.sections.salaries.label}

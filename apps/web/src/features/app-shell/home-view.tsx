@@ -20,13 +20,14 @@ import {
   useDemoSessionQuery,
   useDemoSignInMutation,
   useDemoSignOutMutation,
-  useDemoWorkspaceQuery,
+  useCompositeWorkspaceQuery,
   useRemoveWorkspaceRecordMutation,
   useResetWorkspaceMutation,
   useSystemLogQuery,
   useUpdateAccountSettingsMutation,
 } from "./mock-dashboard"
 import type { HomeViewPage } from "./home-view-types"
+import { ErrorBoundary } from "@/components/error-boundary"
 
 export type { HomeViewPage } from "./home-view-types"
 
@@ -106,7 +107,7 @@ export function HomeView({
     theme,
     toggleTheme,
   })
-  const workspaceQuery = useDemoWorkspaceQuery()
+  const workspaceQuery = useCompositeWorkspaceQuery()
   const systemLogQuery = useSystemLogQuery({ enabled: page === "transactions", filters: shell.systemLogFilters })
   const workspace = workspaceQuery.data
   const derived = useMemo(
@@ -168,6 +169,10 @@ export function HomeView({
     )
   }
 
+  const contentBoundaryKey = [page, detailTab, counterpartyId, employeeId, invoiceId, projectId, warehouseId]
+    .filter(Boolean)
+    .join(":")
+
   return (
     <HomeViewSignedInShell
       breadcrumbItems={breadcrumbItems}
@@ -187,35 +192,37 @@ export function HomeView({
       onSignOutOpenChange={shell.setSignOutOpen}
       onThemeToggle={shell.handleThemeToggle}
     >
-      <HomeViewPageContent
-        copy={copy}
-        derived={derived}
-        detailTab={detailTab}
-        page={page}
-        selectedCounterparty={selectedCounterparty}
-        selectedEmployee={selectedEmployee}
-        selectedProject={selectedProject}
-        selectedWarehouse={selectedWarehouse}
-        session={auth.session}
-        systemLogFilters={shell.systemLogFilters}
-        systemLogState={{
-          entries: systemLogQuery.data?.items ?? [],
-          isError: Boolean(systemLogQuery.error),
-          isLoading: systemLogQuery.isPending,
-        }}
-        t={t}
-        theme={theme}
-        resetWorkspacePending={resetWorkspaceMutation.isPending}
-        updateAccountPending={updateAccountSettingsMutation.isPending}
-        navigation={navigation}
-        onAddProject={navigation.goToProjectCreate}
-        onAddWarehouse={navigation.goToWarehouseCreate}
-        onResetWorkspace={shell.handleResetWorkspace}
-        onSaveAccount={(input) => updateAccountSettingsMutation.mutateAsync(input)}
-        onSetPendingDelete={shell.setPendingDelete}
-        onSystemLogFiltersChange={shell.setSystemLogFilters}
-        onThemeToggle={shell.handleThemeToggle}
-      />
+      <ErrorBoundary key={contentBoundaryKey}>
+        <HomeViewPageContent
+          copy={copy}
+          derived={derived}
+          detailTab={detailTab}
+          page={page}
+          selectedCounterparty={selectedCounterparty}
+          selectedEmployee={selectedEmployee}
+          selectedProject={selectedProject}
+          selectedWarehouse={selectedWarehouse}
+          session={auth.session}
+          systemLogFilters={shell.systemLogFilters}
+          systemLogState={{
+            entries: systemLogQuery.data?.items ?? [],
+            isError: Boolean(systemLogQuery.error),
+            isLoading: systemLogQuery.isPending,
+          }}
+          t={t}
+          theme={theme}
+          resetWorkspacePending={resetWorkspaceMutation.isPending}
+          updateAccountPending={updateAccountSettingsMutation.isPending}
+          navigation={navigation}
+          onAddProject={navigation.goToProjectCreate}
+          onAddWarehouse={navigation.goToWarehouseCreate}
+          onResetWorkspace={shell.handleResetWorkspace}
+          onSaveAccount={(input) => updateAccountSettingsMutation.mutateAsync(input)}
+          onSetPendingDelete={shell.setPendingDelete}
+          onSystemLogFiltersChange={shell.setSystemLogFilters}
+          onThemeToggle={shell.handleThemeToggle}
+        />
+      </ErrorBoundary>
     </HomeViewSignedInShell>
   )
 }

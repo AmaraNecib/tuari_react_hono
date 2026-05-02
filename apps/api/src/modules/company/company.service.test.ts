@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CompanyError } from "./company.errors";
+import { CompanyService } from "./company.service";
 import { createInMemoryCompanyHarness } from "./company.test-helpers";
 
 describe("CompanyService", () => {
@@ -23,6 +24,37 @@ describe("CompanyService", () => {
     actorUserId: overrides?.actorUserId ?? "admin-user-1",
     transactionId: overrides?.transactionId ?? crypto.randomUUID(),
   })
+
+  it("rejects mutating service calls without an actor when admin authorizer is configured", () => {
+    const { repository } = createHarness();
+    const service = new CompanyService(repository, { isBootstrapOwner: () => true });
+
+    expect(() => service.createProject({ name: "No actor", status: "ACTIVE" })).toThrowError(CompanyError);
+  });
+
+  it("rejects mutating service calls from non-admin actors", () => {
+    const { repository } = createHarness();
+    const service = new CompanyService(repository, { isBootstrapOwner: (id) => id === "admin-user-1" });
+
+    expect(() =>
+      service.createProject(
+        { name: "Wrong actor", status: "ACTIVE" },
+        createAuditContext({ actorUserId: "regular-user-1" }),
+      ),
+    ).toThrowError(CompanyError);
+  });
+
+  it("allows mutating service calls from bootstrap owner actors", () => {
+    const { repository } = createHarness();
+    const service = new CompanyService(repository, { isBootstrapOwner: (id) => id === "admin-user-1" });
+
+    const result = service.createProject(
+      { name: "Authorized project", status: "ACTIVE" },
+      createAuditContext({ actorUserId: "admin-user-1" }),
+    );
+
+    expect(result.success).toBe(true);
+  });
 
   it("protects system roles from deletion", () => {
     const { service, roleIds } = createHarness();
@@ -526,6 +558,71 @@ describe("CompanyService", () => {
     expect(payment.transactionId).toBe(audit.transactionId)
   })
 
+  it("rejects zero and negative salary payment amounts", () => {
+    const { service, roleIds } = createHarness()
+    const worker = service.createEmployee({
+      firstName: "رامي",
+      lastName: "سعيد",
+      phone: "0612345641",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+      salaryAmountDzd: 5000,
+      salaryPeriod: "DAILY",
+    }).item
+
+    for (const amount of [0, -1]) {
+      expect(() =>
+        service.createSalaryPayment({
+          employeeId: worker.id,
+          actualAmountDzd: amount,
+        }),
+      ).toThrowError(CompanyError)
+    }
+  })
+
+  it("computes debt balances for positive, mixed, exact-settlement, and overpayment entries", () => {
+    const { service, roleIds } = createHarness()
+    const audit = createAuditContext()
+    const worker = service.createEmployee({
+      firstName: "نادر",
+      lastName: "عمارة",
+      phone: "0612345642",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item
+    const account = service.createDebtAccount({
+      partyType: "INTERNAL_WORKER",
+      workerId: worker.id,
+      openingBalanceDzd: 1000,
+      openingEntryDate: "2026-03-20T00:00:00.000+01:00",
+    }, audit).item
+
+    expect(account.currentBalanceDzd).toBe(1000)
+
+    expect(service.createDebtEntry({
+      debtAccountId: account.id,
+      entryType: "PAYMENT",
+      signedAmountDzd: -250,
+      entryDate: "2026-03-21T00:00:00.000+01:00",
+    }, audit).item.balanceAfterDzd).toBe(750)
+
+    expect(service.createDebtEntry({
+      debtAccountId: account.id,
+      entryType: "PAYMENT",
+      signedAmountDzd: -750,
+      entryDate: "2026-03-22T00:00:00.000+01:00",
+    }, audit).item.balanceAfterDzd).toBe(0)
+    expect(service.getDebtAccount(account.id).item.status).toBe("SETTLED")
+
+    expect(service.createDebtEntry({
+      debtAccountId: account.id,
+      entryType: "PAYMENT",
+      signedAmountDzd: -200,
+      entryDate: "2026-03-23T00:00:00.000+01:00",
+    }, audit).item.balanceAfterDzd).toBe(-200)
+    expect(service.getDebtAccount(account.id).item.status).toBe("OPEN")
+  })
+
   it("creates worker debt accounts, records entries, and settles to zero", () => {
     const { service, roleIds } = createHarness()
     const audit = createAuditContext()
@@ -709,6 +806,41 @@ describe("CompanyService", () => {
         entryDate: "2026-03-19T00:00:00.000+01:00",
       }),
     ).toThrowError(CompanyError)
+  })
+
+  it("allows equal, newer, and first debt entry dates", () => {
+    const { service, roleIds } = createHarness()
+    const audit = createAuditContext()
+    const worker = service.createEmployee({
+      firstName: "سامي",
+      lastName: "مراد",
+      phone: "0612345643",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    }).item
+    const account = service.createDebtAccount({
+      partyType: "INTERNAL_WORKER",
+      workerId: worker.id,
+    }, audit).item
+
+    expect(service.createDebtEntry({
+      debtAccountId: account.id,
+      entryType: "ADJUSTMENT",
+      signedAmountDzd: 100,
+      entryDate: "2026-03-20T00:00:00.000+01:00",
+    }, audit).item.balanceAfterDzd).toBe(100)
+    expect(service.createDebtEntry({
+      debtAccountId: account.id,
+      entryType: "ADJUSTMENT",
+      signedAmountDzd: 50,
+      entryDate: "2026-03-20T00:00:00.000+01:00",
+    }, audit).item.balanceAfterDzd).toBe(150)
+    expect(service.createDebtEntry({
+      debtAccountId: account.id,
+      entryType: "ADJUSTMENT",
+      signedAmountDzd: 25,
+      entryDate: "2026-03-21T00:00:00.000+01:00",
+    }, audit).item.balanceAfterDzd).toBe(175)
   })
 
   it("rolls back debt account creation when opening ledger write fails", () => {

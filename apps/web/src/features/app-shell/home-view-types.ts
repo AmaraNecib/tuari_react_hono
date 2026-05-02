@@ -19,6 +19,7 @@ export type FormErrors = {
 
 export type HomeViewSystemLogFilters = {
   actionType?: SystemLogEntry["actionType"]
+  actorQuery?: string
   actorUserId?: string
   entityType?: SystemLogEntry["entityType"]
   fromDate?: string

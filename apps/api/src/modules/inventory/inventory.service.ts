@@ -23,6 +23,18 @@ type DebtService = {
   createDebtEntry(input: DebtEntryCreateInput, auditContext?: MutationAuditContext): { success: true; item: { id: string } }
 }
 
+type WorkspaceAdminAuthorizer = {
+  isBootstrapOwner(userId: string): boolean
+}
+
+function normalizeMutationAuditContext(auditContext?: MutationAuditContext): Required<MutationAuditContext> {
+  return {
+    actorUserId: auditContext?.actorUserId ?? null,
+    actorLabel: auditContext?.actorLabel ?? null,
+    transactionId: auditContext?.transactionId ?? crypto.randomUUID(),
+  }
+}
+
 function successResult<T>(message: string, item: T) {
   return {
     success: true as const,
@@ -111,7 +123,22 @@ export class InventoryService {
     private readonly repository: InventoryRepository,
     private readonly storage: InventoryAttachmentStorage,
     private readonly debtService?: DebtService,
+    private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
   ) {}
+
+  private createMutationAuditContext(auditContext?: MutationAuditContext): Required<MutationAuditContext> {
+    const audit = normalizeMutationAuditContext(auditContext)
+
+    if (!this.workspaceAdminAuthorizer) {
+      return audit
+    }
+
+    if (!audit.actorUserId || !this.workspaceAdminAuthorizer.isBootstrapOwner(audit.actorUserId)) {
+      throw new InventoryError("UNAUTHORIZED", "هذا الإجراء متاح فقط لحساب الإدارة الرئيسي.")
+    }
+
+    return audit
+  }
 
   listItemDefinitions(filters?: { itemType?: "CONSUMABLE" | "ASSET"; isActive?: boolean }) {
     return { items: this.repository.listItemDefinitions(filters) }
@@ -127,17 +154,21 @@ export class InventoryService {
   }
 
   createItemDefinition(input: InventoryItemDefinitionCreateInput, auditContext?: MutationAuditContext) {
+    const audit = this.createMutationAuditContext(auditContext)
+
     const item = this.repository.createItemDefinition({
       name: input.name.trim(),
       itemType: input.itemType,
       unit: input.itemType === "CONSUMABLE" ? normalizeText(input.unit) : null,
       description: normalizeText(input.description),
-    }, auditContext)
+    }, audit)
 
     return successResult("تم إنشاء تعريف العنصر بنجاح.", item)
   }
 
   updateItemDefinition(input: InventoryItemDefinitionUpdateInput, auditContext?: MutationAuditContext) {
+    const audit = this.createMutationAuditContext(auditContext)
+
     const current = this.repository.getItemDefinitionById(input.id)
     if (!current) {
       throw new InventoryError("NOT_FOUND", "تعذر العثور على تعريف العنصر المطلوب.")
@@ -161,7 +192,7 @@ export class InventoryService {
       unit: nextUnit,
       description: input.description !== undefined ? normalizeText(input.description) : undefined,
       isActive: input.isActive,
-    }, auditContext)
+    }, audit)
 
     return successResult("تم تحديث تعريف العنصر بنجاح.", item!)
   }
@@ -186,6 +217,8 @@ export class InventoryService {
   }
 
   createInvoiceGroup(input: InventoryInvoiceGroupCreateInput, auditContext?: MutationAuditContext) {
+    const audit = this.createMutationAuditContext(auditContext)
+
     // Group-level destination validation
     validateSingleDestination(input.warehouseId ?? null, input.projectId ?? null, "warehouseId")
     validateWarehouse(this.repository, input.warehouseId ?? null, "warehouseId")
@@ -330,7 +363,7 @@ export class InventoryService {
             openingEntryDate: resolvedInvoiceDate,
             openingEntryNote: `إجمالي فاتورة شراء ${resolvedInvoiceNumber}`,
             note: normalizeText(input.note),
-          }, auditContext)
+          }, audit)
 
           debtAccountId = debtResult.item.id
 
@@ -341,7 +374,7 @@ export class InventoryService {
               signedAmountDzd: paidAmountDzd,
               entryDate: resolvedInvoiceDate,
               note: `دفعة عند تسجيل الفاتورة ${resolvedInvoiceNumber}`,
-            }, auditContext)
+            }, audit)
           }
         } catch (error) {
           if (error instanceof CompanyError) {
@@ -449,6 +482,10 @@ export class InventoryService {
     return successResult("تم إنشاء الفاتورة والعناصر المرتبطة بها بنجاح.", detail)
   }
 
+  receiveInventory(input: InventoryInvoiceGroupCreateInput, auditContext?: MutationAuditContext) {
+    return this.createInvoiceGroup(input, auditContext)
+  }
+
   getLocationContents(input: { warehouseId?: string | null; projectId?: string | null }) {
     validateSingleDestination(input.warehouseId ?? null, input.projectId ?? null, "warehouseId")
 
@@ -477,7 +514,9 @@ export class InventoryService {
     })
   }
 
-  transferAsset(input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }) {
+  transferAsset(input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
+    this.createMutationAuditContext(auditContext)
+
     validateSingleDestination(input.toWarehouseId ?? null, input.toProjectId ?? null, "toWarehouseId")
     validateWarehouse(this.repository, input.toWarehouseId ?? null, "toWarehouseId")
     validateProject(this.repository, input.toProjectId ?? null, "toProjectId")
@@ -514,7 +553,9 @@ export class InventoryService {
     return this.getAsset(asset.id)
   }
 
-  transferConsumable(input: { inventoryEntryId: string; quantity: number; fromWarehouseId?: string | null; fromProjectId?: string | null; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }) {
+  transferConsumable(input: { inventoryEntryId: string; quantity: number; fromWarehouseId?: string | null; fromProjectId?: string | null; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
+    this.createMutationAuditContext(auditContext)
+
     normalizePositive(input.quantity, "quantity")
     validateSingleDestination(input.fromWarehouseId ?? null, input.fromProjectId ?? null, "fromWarehouseId")
     validateSingleDestination(input.toWarehouseId ?? null, input.toProjectId ?? null, "toWarehouseId")
@@ -586,7 +627,9 @@ export class InventoryService {
     return this.getLocationContents({ warehouseId: input.toWarehouseId ?? null, projectId: input.toProjectId ?? null })
   }
 
-  async addInvoiceAttachments(invoiceGroupId: string, files: InventoryUploadFile[]) {
+  async addInvoiceAttachments(invoiceGroupId: string, files: InventoryUploadFile[], auditContext?: MutationAuditContext) {
+    this.createMutationAuditContext(auditContext)
+
     const group = this.repository.getInvoiceGroupById(invoiceGroupId)
     if (!group) {
       throw new InventoryError("NOT_FOUND", "تعذر العثور على الفاتورة المطلوبة.")

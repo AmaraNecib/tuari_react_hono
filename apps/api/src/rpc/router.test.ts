@@ -3,6 +3,9 @@ import { createRouterClient } from "@orpc/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createInMemoryCompanyHarness } from "../modules/company/company.test-helpers";
+import { WorkforceService } from "../modules/company/workforce.service";
+import { OperationsService } from "../modules/company/operations.service";
+import { FinanceService } from "../modules/company/finance.service";
 import { createRouter } from "./router";
 import type { RpcContext } from "./context";
 
@@ -45,6 +48,9 @@ describe("RPC router", () => {
     createRouter({
       authBootstrapService: { ...authBootstrapService, ...authOverrides },
       companyService: service,
+      workforceService: new WorkforceService(service),
+      operationsService: new OperationsService(service),
+      financeService: new FinanceService(service),
       inventoryService: {} as never,
     })
 
