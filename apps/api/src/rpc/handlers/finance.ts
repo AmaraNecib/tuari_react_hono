@@ -50,5 +50,12 @@ export function createFinanceHandlers(
     debtsSummary: os.debtsSummary.handler(m.queryAuth(async ({ context, input }: any) =>
       financeService.listDebtsSummary()
     )),
+    employeeDebtAccountGet: os.employeeDebtAccountGet.handler(m.queryAuth(async ({ context, input }: any) =>
+      financeService.getEmployeeDebtAccount((input as any).employeeId)
+    )),
+    employeeDebtEntryCreate: os.employeeDebtEntryCreate.handler(m.mutationAudit(
+      ({ input, auditContext }: any) => financeService.createEmployeeDebtEntry(input as any, auditContext),
+      toFailureResult,
+    )),
   };
 }

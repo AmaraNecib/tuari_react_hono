@@ -55,5 +55,16 @@ export function createInventoryHandlers(
       ({ input, auditContext }: any) => inventoryService.transferConsumable(input as any, auditContext),
       toInventoryFailureResult,
     )),
+    inventoryInvoiceGroupsRecordPayment: os.inventoryInvoiceGroupsRecordPayment.handler(m.mutationAudit(
+      ({ input, auditContext }: any) => inventoryService.recordInvoicePayment(input as any, auditContext),
+      toInventoryFailureResult,
+    )),
+    inventoryOutboundTransfersList: os.inventoryOutboundTransfersList.handler(m.queryAuth(async ({ context, input }: any) =>
+      ({ items: inventoryService.listOutboundTransfers() })
+    )),
+    inventoryOutboundTransfersCreate: os.inventoryOutboundTransfersCreate.handler(m.mutationAudit(
+      ({ input, auditContext }: any) => inventoryService.createOutboundTransfer(input as any, auditContext),
+      toInventoryFailureResult,
+    )),
   };
 }

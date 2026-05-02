@@ -60,4 +60,12 @@ export class FinanceService {
   listDebtsSummary() {
     return this.companyService.listDebtsSummary();
   }
+
+  getEmployeeDebtAccount(employeeId: string) {
+    return this.companyService.getEmployeeDebtAccount(employeeId);
+  }
+
+  createEmployeeDebtEntry(input: { employeeId: string; entryType: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE"; amountDzd: number; entryDate?: string; note?: string }, auditContext?: MutationAuditContext) {
+    return this.companyService.createEmployeeDebtEntry(input, auditContext);
+  }
 }
