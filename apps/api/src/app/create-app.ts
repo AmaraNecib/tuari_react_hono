@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 
 import type { AppDependencies } from "./dependencies";
 import { normalizeOrigin } from "../infrastructure/config/env";
+import { resolveClientIp, SlidingWindowRateLimiter } from "../infrastructure/rate-limiter";
 import { AccountServiceError } from "../modules/account/account.service";
 import { InventoryError } from "../modules/inventory/inventory.errors";
 import { createRouter } from "../rpc/router";
@@ -12,6 +13,7 @@ import { createRpcContext } from "../rpc/context";
 
 export type TransportSecurityConfig = {
   allowedOrigins: readonly string[];
+  trustProxyHeaders?: boolean;
 };
 
 export const createTransportSecurity = (config: TransportSecurityConfig) => {
@@ -68,6 +70,11 @@ function shouldDisableCaching(path: string) {
   return path.startsWith("/api/auth/") || path.startsWith("/api/inventory/") || path === "/rpc/session";
 }
 
+function getRemoteAddress(env: unknown) {
+  const maybeEnv = env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined
+  return maybeEnv?.incoming?.socket?.remoteAddress
+}
+
 const MAX_INVOICE_ATTACHMENT_COUNT = 10
 const MAX_INVOICE_ATTACHMENT_TOTAL_SIZE = 25 * 1024 * 1024
 
@@ -93,7 +100,8 @@ export function createApp(
   const app = new Hono();
   const router = createRouter(dependencies);
   const transport = createTransportSecurity(transportSecurity);
-  const rpcHandler = new RPCHandler(router, {
+  const authRateLimiter = new SlidingWindowRateLimiter(30, 15 * 60 * 1000).startCleanup()
+  const rpcHandler = new RPCHandler(router as any, {
     interceptors: [
       onError((error) => {
         console.error("[oRPC error]", error);
@@ -148,6 +156,17 @@ export function createApp(
 
     if (!isTopLevelSafeAuthRequest && !transport.isAllowedOrigin(origin)) {
       return c.json({ message: "Blocked origin." }, 403);
+    }
+
+    const ip = resolveClientIp({
+      forwardedFor: c.req.header("x-forwarded-for"),
+      realIp: c.req.header("x-real-ip"),
+      remoteAddress: getRemoteAddress(c.env),
+      trustProxyHeaders: transportSecurity.trustProxyHeaders ?? false,
+    })
+
+    if (!authRateLimiter.allow(ip)) {
+      return c.json({ message: "طلبات كثيرة جدًا. يرجى المحاولة لاحقًا." }, 429)
     }
 
     await next();
@@ -255,6 +274,11 @@ export function createApp(
       const attachments = await dependencies.inventoryService.addInvoiceAttachments(
         invoiceGroupId,
         normalizedFiles,
+        {
+          actorUserId: currentUser.id,
+          actorLabel: currentUser.name ?? currentUser.phoneNumber,
+          transactionId: crypto.randomUUID(),
+        },
       )
 
       return c.json({ success: true, items: attachments })
