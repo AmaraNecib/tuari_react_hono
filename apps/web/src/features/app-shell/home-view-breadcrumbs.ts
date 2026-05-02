@@ -44,9 +44,11 @@ export function buildHomeViewBreadcrumbItems({
                 ? [{ label: "دليل العناصر", to: workspaceRoutes.inventory() }]
                 : page === "invoices" || page === "invoice-create" || page === "invoice-details"
                   ? [{ label: "الفواتير", to: workspaceRoutes.invoices() }]
-                  : page === "settings"
-                   ? [{ label: copy.sections.settings.label, to: workspaceRoutes.settings() }]
-                   : []),
+                  : page === "outbound-transfers" || page === "outbound-transfer-create"
+                    ? [{ label: "التحويلات الخارجية", to: workspaceRoutes.outboundTransfers() }]
+                    : page === "settings"
+                     ? [{ label: copy.sections.settings.label, to: workspaceRoutes.settings() }]
+                     : []),
     ...(page === "employees-create"
       ? [{ label: t("detailPages.employee.createBreadcrumb") }]
       : page === "employee-details" && selectedEmployee
@@ -85,6 +87,10 @@ export function buildHomeViewBreadcrumbItems({
                          ? [{ label: "إضافة فاتورة" }]
                          : page === "invoice-details"
                            ? [{ label: "تفاصيل الفاتورة" }]
+                           : page === "outbound-transfers"
+                             ? [{ label: "قائمة التحويلات" }]
+                             : page === "outbound-transfer-create"
+                               ? [{ label: "إنشاء تحويل خارجي" }]
                    : []),
   ]
 }

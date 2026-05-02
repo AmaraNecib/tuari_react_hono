@@ -9,6 +9,9 @@ import type {
   InventoryInvoiceGroup,
   InventoryItemDefinition,
   InventoryItemDefinitionCreateInput,
+  InventoryOutboundTransfer,
+  InventoryOutboundTransferCreateInput,
+  InventoryInvoiceGroupRecordPaymentInput,
   Project,
   Warehouse,
 } from "@tuari/contracts"
@@ -29,6 +32,7 @@ const inventoryKeys = {
   counterparties: ["inventory", "counterparties"] as const,
   asset: (assetId: string) => ["inventory", "asset", assetId] as const,
   locationContents: (input: { warehouseId?: string; projectId?: string }) => ["inventory", "location-contents", input] as const,
+  outboundTransfers: ["inventory", "outbound-transfers"] as const,
 }
 
 function extractRpcIssueMessage(error: unknown): string | null {
@@ -254,4 +258,46 @@ export async function uploadInvoiceAttachments(invoiceGroupId: string, files: Fi
   }
 
   return body.items
+}
+
+export function useOutboundTransfersQuery() {
+  return useQuery({
+    queryKey: inventoryKeys.outboundTransfers,
+    queryFn: async (): Promise<{ items: InventoryOutboundTransfer[] }> => rpcClient.inventoryOutboundTransfersList(undefined),
+  })
+}
+
+export function useRecordInvoicePaymentMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["inventory", "invoice-groups", "record-payment"],
+    mutationFn: async (input: InventoryInvoiceGroupRecordPaymentInput) => requireEntitySuccess(await rpcClient.inventoryInvoiceGroupsRecordPayment(input)),
+    onSuccess: async ({ item, message }) => {
+      await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroups })
+      await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroup(item.id) })
+      showSuccessToast(message)
+      return item
+    },
+    onError: (error) => {
+      showErrorToast(getInventoryErrorMessage(error, "تعذر تسجيل الدفع."))
+    },
+  })
+}
+
+export function useCreateOutboundTransferMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["inventory", "outbound-transfers", "create"],
+    mutationFn: async (input: InventoryOutboundTransferCreateInput) => requireEntitySuccess(await rpcClient.inventoryOutboundTransfersCreate(input)),
+    onSuccess: async ({ item, message }) => {
+      await queryClient.invalidateQueries({ queryKey: inventoryKeys.outboundTransfers })
+      showSuccessToast(message)
+      return item
+    },
+    onError: (error) => {
+      showErrorToast(getInventoryErrorMessage(error, "تعذر إنشاء التحويل الخارجي."))
+    },
+  })
 }

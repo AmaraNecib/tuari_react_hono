@@ -14,6 +14,7 @@ import {
   useTransferInventoryAssetMutation,
   useTransferInventoryConsumableMutation,
 } from "./inventory-hooks"
+import { RecordInvoicePaymentDialog } from "./record-invoice-payment-dialog"
 
 function buildLocationHref(location: { warehouseId?: string | null; projectId?: string | null }) {
   if (location.warehouseId) {
@@ -35,6 +36,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
   const transferConsumableMutation = useTransferInventoryConsumableMutation()
   const [assetTargets, setAssetTargets] = useState<Record<string, { warehouseId: string; projectId: string }>>({})
   const [consumableTargets, setConsumableTargets] = useState<Record<string, { quantity: string; warehouseId: string; projectId: string }>>({})
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
 
   const detail = invoiceQuery.data
   const isDesktop = isDesktopRuntime()
@@ -49,7 +51,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
     <div className="space-y-6">
       <Surface variant="panel">
         <PageSurfaceContent>
-          <PageHeader title={detail?.group.invoiceNumber || "تفاصيل الفاتورة"} description={detail?.group.supplierName || "بدون مورد محدد"} action={<PageActionGroup><Button variant="outline" onClick={onBack}>العودة إلى الفواتير</Button></PageActionGroup>} />
+          <PageHeader title={detail?.group.invoiceNumber || "تفاصيل الفاتورة"} description={detail?.group.supplierName || "بدون مورد محدد"} action={<PageActionGroup><Button variant="outline" onClick={onBack}>العودة إلى الفواتير</Button>{detail && detail.group.remainingDebtDzd > 0 && <Button onClick={() => setPaymentDialogOpen(true)}>تسجيل دفعة</Button>}</PageActionGroup>} />
           {detail ? (
             <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-2xl border border-border/70 p-4">تاريخ الفاتورة: {detail.group.invoiceDate ? new Date(detail.group.invoiceDate).toLocaleDateString("ar-DZ") : "غير محدد"}</div>
@@ -187,6 +189,8 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
           </div>
         </PageSurfaceContent>
       </Surface>
+
+      <RecordInvoicePaymentDialog invoiceDetail={detail ?? null} open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen} onSuccess={() => invoiceQuery.refetch()} />
     </div>
   )
 }

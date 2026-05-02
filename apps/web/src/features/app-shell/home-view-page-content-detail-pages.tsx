@@ -20,6 +20,8 @@ const InventoryItemDefinitionsPage = lazy(async () => import("@/features/invento
 const InventoryInvoiceCreatePage = lazy(async () => import("@/features/inventory/inventory-invoice-create-page").then((module) => ({ default: module.InventoryInvoiceCreatePage })))
 const InventoryInvoiceDetailsPage = lazy(async () => import("@/features/inventory/inventory-invoice-details-page").then((module) => ({ default: module.InventoryInvoiceDetailsPage })))
 const InventoryInvoicesPage = lazy(async () => import("@/features/inventory/inventory-invoices-page").then((module) => ({ default: module.InventoryInvoicesPage })))
+const OutboundTransfersPage = lazy(async () => import("@/features/inventory/outbound-transfers-page").then((module) => ({ default: module.OutboundTransfersPage })))
+const OutboundTransferCreatePage = lazy(async () => import("@/features/inventory/outbound-transfer-create-page").then((module) => ({ default: module.OutboundTransferCreatePage })))
 const WarehouseDetailsPage = lazy(async () => import("@/features/warehouses/warehouse-details-page").then((module) => ({ default: module.WarehouseDetailsPage })))
 const WarehouseCreatePage = lazy(async () => import("@/features/warehouses/warehouse-create-page").then((module) => ({ default: module.WarehouseCreatePage })))
 const WarehouseEditPage = lazy(async () => import("@/features/warehouses/warehouse-edit-page").then((module) => ({ default: module.WarehouseEditPage })))
@@ -304,6 +306,20 @@ export function HomeViewPageDetailContent({
             />,
           )
         : null
+
+    case "outbound-transfers":
+      return renderLazy(
+        <OutboundTransfersPage
+          onCreate={() => void navigation.goToOutboundTransferCreate()}
+        />,
+      )
+
+    case "outbound-transfer-create":
+      return renderLazy(
+        <OutboundTransferCreatePage
+          onBack={() => void navigation.goToOutboundTransfers()}
+        />,
+      )
 
     default:
       return null

@@ -33,5 +33,7 @@ export function useHomeViewNavigation() {
     goToInvoices: () => goToRoute(workspaceRoutes.invoices()),
     goToInvoiceCreate: () => goToRoute(workspaceRoutes.invoiceCreate()),
     goToInvoiceDetails: (invoiceId: string) => goToRoute(workspaceRoutes.invoiceDetails(invoiceId)),
+    goToOutboundTransfers: () => goToRoute(workspaceRoutes.outboundTransfers()),
+    goToOutboundTransferCreate: () => goToRoute(workspaceRoutes.outboundTransferCreate()),
   }
 }

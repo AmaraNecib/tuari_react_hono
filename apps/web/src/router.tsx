@@ -108,6 +108,8 @@ const warehousesCreateRoute = createWorkspaceRoute("/warehouses/create", "wareho
 const inventoryRoute = createWorkspaceRoute("/inventory", "inventory")
 const invoicesRoute = createWorkspaceRoute("/invoices", "invoices")
 const invoiceCreateRoute = createWorkspaceRoute("/invoices/create", "invoice-create")
+const outboundTransfersRoute = createWorkspaceRoute("/outbound-transfers", "outbound-transfers")
+const outboundTransferCreateRoute = createWorkspaceRoute("/outbound-transfers/create", "outbound-transfer-create")
 const transactionsRoute = createWorkspaceRoute("/transactions", "transactions")
 const warehouseDetailsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -198,6 +200,8 @@ const routeTree = rootRoute.addChildren([
   inventoryRoute,
   invoicesRoute,
   invoiceCreateRoute,
+  outboundTransfersRoute,
+  outboundTransferCreateRoute,
   transactionsRoute,
   warehouseDetailsRoute,
   warehouseEditRoute,

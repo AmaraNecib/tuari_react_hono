@@ -44,6 +44,8 @@ type WorkspaceSidebarPage =
   | "invoices"
   | "invoice-create"
   | "invoice-details"
+  | "outbound-transfers"
+  | "outbound-transfer-create"
   | "roles"
   | "settings"
 
