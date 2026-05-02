@@ -98,16 +98,18 @@ export function useInventoryAssetQuery(assetId: string | undefined) {
   })
 }
 
-export function useInventoryWarehousesQuery() {
+export function useInventoryWarehousesQuery(enabled = true) {
   return useQuery({
     queryKey: inventoryKeys.warehouses,
+    enabled,
     queryFn: async (): Promise<{ items: Warehouse[] }> => rpcClient.warehousesList(undefined),
   })
 }
 
-export function useInventoryProjectsQuery() {
+export function useInventoryProjectsQuery(enabled = true) {
   return useQuery({
     queryKey: inventoryKeys.projects,
+    enabled,
     queryFn: async (): Promise<{ items: Project[] }> => rpcClient.projectsList(undefined),
   })
 }

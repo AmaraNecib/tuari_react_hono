@@ -31,9 +31,9 @@ function buildLocationHref(location: { warehouseId?: string | null; projectId?: 
 export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: string; onBack: () => void }) {
   const invoiceQuery = useInventoryInvoiceGroupQuery(invoiceId)
   const [transferSectionExpanded, setTransferSectionExpanded] = useState(false)
-  // Only fetch warehouses/projects when transfer section is expanded (optimization)
-  const warehousesQuery = useInventoryWarehousesQuery()
-  const projectsQuery = useInventoryProjectsQuery()
+  // Only fetch warehouses/projects when transfer section is expanded (lazy loading optimization)
+  const warehousesQuery = useInventoryWarehousesQuery(transferSectionExpanded)
+  const projectsQuery = useInventoryProjectsQuery(transferSectionExpanded)
   const transferAssetMutation = useTransferInventoryAssetMutation()
   const transferConsumableMutation = useTransferInventoryConsumableMutation()
   const [assetTargets, setAssetTargets] = useState<Record<string, { warehouseId: string; projectId: string }>>({})
