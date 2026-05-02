@@ -3,6 +3,7 @@ import type { AppError } from "@tuari/contracts";
 
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import { InputValidator } from "../infrastructure/validation/input-validator";
+import { SlidingWindowRateLimiter, resolveClientIp } from "../infrastructure/rate-limiter";
 import { requireCurrentUser, type RpcContext } from "./context";
 
 // Generic schema interface for validation
@@ -24,6 +25,41 @@ type RouterDependencies = {
 export type RpcMiddleware = ReturnType<typeof createRpcMiddleware>;
 
 export function createRpcMiddleware(dependencies: RouterDependencies) {
+  // Initialize rate limiter: 100 requests per 15 minutes per user
+  const rateLimiter = new SlidingWindowRateLimiter(100, 15 * 60 * 1000);
+  rateLimiter.startCleanup();
+
+  // Generate unique key for rate limiting (based on user ID or IP)
+  function getRateLimitKey(context: RpcContext): string {
+    try {
+      // Prefer user ID if available
+      if (context.user?.id) return `user:${context.user.id}`;
+    } catch {}
+
+    // Fallback to IP address
+    const forwardedFor = context.req?.headers?.["x-forwarded-for"] as string | undefined;
+    const realIp = context.req?.headers?.["x-real-ip"] as string | undefined;
+    const remoteAddress = (context.req as any)?.socket?.remoteAddress;
+
+    const ip = resolveClientIp({
+      forwardedFor,
+      realIp,
+      remoteAddress,
+      trustProxyHeaders: true,
+    });
+
+    return `ip:${ip}`;
+  }
+
+  function checkRateLimit(context: RpcContext): void {
+    const key = getRateLimitKey(context);
+    if (!rateLimiter.allow(key)) {
+      throw new ORPCError("TOO_MANY_REQUESTS", {
+        message: "Too many requests. Please try again later.",
+      });
+    }
+  }
+
   async function requireWorkspaceAdmin(context: RpcContext) {
     const currentUser = await requireCurrentUser(context);
 
@@ -87,6 +123,48 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       errorResolver: (error: unknown) => any,
     ): (params: { context: RpcContext; input: TInput }) => Promise<any> {
       return async ({ context, input }) => {
+        const auditContext = await createMutationAuditContext(context);
+        try {
+          const validatedInput = InputValidator.validate<TInput>(input, schema);
+          return handler({ context, input: validatedInput, auditContext });
+        } catch (error) {
+          return errorResolver(error);
+        }
+      };
+    },
+
+    queryAuthRateLimited<TInput, TOutput>(
+      handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput>,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
+      return async ({ context, input }) => {
+        checkRateLimit(context);
+        await requireWorkspaceAdmin(context);
+        return handler({ context, input });
+      };
+    },
+
+    mutationAuditRateLimited<TInput, TOutput>(
+      handler: (params: { context: RpcContext; input: TInput; auditContext: MutationAuditContext }) => TOutput,
+      errorResolver: (error: unknown) => any,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<any> {
+      return async ({ context, input }) => {
+        checkRateLimit(context);
+        const auditContext = await createMutationAuditContext(context);
+        try {
+          return handler({ context, input, auditContext });
+        } catch (error) {
+          return errorResolver(error);
+        }
+      };
+    },
+
+    mutationAuditRateLimitedValidated<TInput, TOutput>(
+      schema: ValidatorSchema,
+      handler: (params: { context: RpcContext; input: TInput; auditContext: MutationAuditContext }) => TOutput,
+      errorResolver: (error: unknown) => any,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<any> {
+      return async ({ context, input }) => {
+        checkRateLimit(context);
         const auditContext = await createMutationAuditContext(context);
         try {
           const validatedInput = InputValidator.validate<TInput>(input, schema);
