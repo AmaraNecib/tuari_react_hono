@@ -26,6 +26,7 @@ import {
 } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
+import { TransactionManager } from "./transaction-manager";
 import type {
   WorkspaceAdminAuthorizer,
 } from "./company.helpers";
@@ -66,10 +67,14 @@ import {
 } from "./company.types";
 
 export class CompanyService {
+  private readonly transactionManager: TransactionManager;
+
   constructor(
     private readonly repository: CompanyRepository,
     private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
-  ) {}
+  ) {
+    this.transactionManager = new TransactionManager(repository);
+  }
 
   private createMutationAuditContext(auditContext?: MutationAuditContext): Required<MutationAuditContext> {
     const audit = normalizeMutationAuditContext(auditContext)
@@ -83,6 +88,10 @@ export class CompanyService {
     }
 
     return audit
+  }
+
+  private withTransaction<T>(operation: () => T): T {
+    return this.transactionManager.execute(operation);
   }
 
   listRoles() {
@@ -166,15 +175,17 @@ export class CompanyService {
   }
 
   createExternalCounterparty(input: ExternalCounterpartyCreateInput, auditContext?: MutationAuditContext) {
-    this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      this.createMutationAuditContext(auditContext)
 
-    const counterparty = this.repository.createExternalCounterparty({
-      fullName: input.fullName.trim(),
-      phoneNumber: input.phoneNumber.trim(),
-      note: normalizeText(input.note),
-    })
+      const counterparty = this.repository.createExternalCounterparty({
+        fullName: input.fullName.trim(),
+        phoneNumber: input.phoneNumber.trim(),
+        note: normalizeText(input.note),
+      })
 
-    return successResult("تم إنشاء الطرف الخارجي بنجاح.", counterparty)
+      return successResult("تم إنشاء الطرف الخارجي بنجاح.", counterparty)
+    });
   }
 
   listDebtAccounts(filters?: DebtAccountListFilters) {
@@ -484,44 +495,47 @@ export class CompanyService {
   }
 
   createEmployee(input: EmployeeCreateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
-    this.requireAssignableEmployeeRole(input.roleId, "roleId");
+      this.requireAssignableEmployeeRole(input.roleId, "roleId");
 
-    if ((input.salaryAmountDzd ?? null) !== null && !input.salaryPeriod) {
-      throw new CompanyError("VALIDATION", "يجب اختيار دورية الأجر مع قيمة الأجر.", [
-        { field: "salaryPeriod", message: "يجب اختيار دورية الأجر مع قيمة الأجر." },
-      ])
-    }
+      if ((input.salaryAmountDzd ?? null) !== null && !input.salaryPeriod) {
+        throw new CompanyError("VALIDATION", "يجب اختيار دورية الأجر مع قيمة الأجر.", [
+          { field: "salaryPeriod", message: "يجب اختيار دورية الأجر مع قيمة الأجر." },
+        ])
+      }
 
-    if ((input.salaryAmountDzd ?? null) === null && input.salaryPeriod) {
-      throw new CompanyError("VALIDATION", "يجب إدخال قيمة الأجر مع دورية الأجر.", [
-        { field: "salaryAmountDzd", message: "يجب إدخال قيمة الأجر مع دورية الأجر." },
-      ])
-    }
+      if ((input.salaryAmountDzd ?? null) === null && input.salaryPeriod) {
+        throw new CompanyError("VALIDATION", "يجب إدخال قيمة الأجر مع دورية الأجر.", [
+          { field: "salaryAmountDzd", message: "يجب إدخال قيمة الأجر مع دورية الأجر." },
+        ])
+      }
 
-    if (this.repository.getEmployeeByPhone(input.phone)) {
-      throw new CompanyError("CONFLICT", "رقم هاتف العامل مستخدم بالفعل.", [
-        { field: "phone", message: "رقم هاتف العامل مستخدم بالفعل." },
-      ]);
-    }
+      if (this.repository.getEmployeeByPhone(input.phone)) {
+        throw new CompanyError("CONFLICT", "رقم هاتف العامل مستخدم بالفعل.", [
+          { field: "phone", message: "رقم هاتف العامل مستخدم بالفعل." },
+        ]);
+      }
 
-    const employee = this.repository.createEmployee({
-      firstName: input.firstName.trim(),
-      lastName: input.lastName.trim(),
-      phone: input.phone.trim(),
-      roleId: input.roleId,
-      status: input.status,
-      salaryAmountDzd: normalizeSalaryAmount(input.salaryAmountDzd),
-      salaryPeriod: input.salaryPeriod ?? null,
-      notes: normalizeText(input.notes),
-    }, audit);
+      const employee = this.repository.createEmployee({
+        firstName: input.firstName.trim(),
+        lastName: input.lastName.trim(),
+        phone: input.phone.trim(),
+        roleId: input.roleId,
+        status: input.status,
+        salaryAmountDzd: normalizeSalaryAmount(input.salaryAmountDzd),
+        salaryPeriod: input.salaryPeriod ?? null,
+        notes: normalizeText(input.notes),
+      }, audit);
 
-    return successResult("تم إنشاء العامل بنجاح.", employee);
+      return successResult("تم إنشاء العامل بنجاح.", employee);
+    });
   }
 
   createEmployeesBatch(input: EmployeeBatchCreateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
     const fieldErrors: Array<{ field: string; message: string }> = [];
     const seenPhones = new Set<string>();
@@ -701,106 +715,111 @@ export class CompanyService {
       );
     }
 
-    const result = this.repository.createEmployeesBatch(normalizedEmployees, audit);
+      const result = this.repository.createEmployeesBatch(normalizedEmployees, audit);
 
-    return successResult("تم إنشاء دفعة العاملين بنجاح.", result);
+      return successResult("تم إنشاء دفعة العاملين بنجاح.", result);
+    });
   }
 
   updateEmployee(input: EmployeeUpdateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
-    const current = this.requireEmployee(input.id);
-    const currentRole = this.requireRole(current.roleId);
-    const nextRole = input.roleId ? this.requireAssignableEmployeeRole(input.roleId, "roleId") : currentRole;
-    const nextStatus = input.status ?? current.status;
+      const current = this.requireEmployee(input.id);
+      const currentRole = this.requireRole(current.roleId);
+      const nextRole = input.roleId ? this.requireAssignableEmployeeRole(input.roleId, "roleId") : currentRole;
+      const nextStatus = input.status ?? current.status;
 
-    this.ensureEmployeeTransitionAllowed(current, currentRole.key, nextRole.key, nextStatus);
+      this.ensureEmployeeTransitionAllowed(current, currentRole.key, nextRole.key, nextStatus);
 
-    if (currentRole.key !== SYSTEM_ROLE_KEYS.worker && nextRole.key === SYSTEM_ROLE_KEYS.worker && nextStatus === "ACTIVE") {
-      throw new CompanyError(
-        "BUSINESS_RULE",
-        "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط.",
-        [{ field: "roleId", message: "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط." }],
-      );
-    }
-
-    if (input.phone && input.phone !== current.phone) {
-      const existing = this.repository.getEmployeeByPhone(input.phone.trim());
-      if (existing && existing.id !== input.id) {
-        throw new CompanyError("CONFLICT", "رقم هاتف العامل مستخدم بالفعل.", [
-          { field: "phone", message: "رقم هاتف العامل مستخدم بالفعل." },
-        ]);
+      if (currentRole.key !== SYSTEM_ROLE_KEYS.worker && nextRole.key === SYSTEM_ROLE_KEYS.worker && nextStatus === "ACTIVE") {
+        throw new CompanyError(
+          "BUSINESS_RULE",
+          "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط.",
+          [{ field: "roleId", message: "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط." }],
+        );
       }
-    }
 
-    const nextSalaryAmount =
-      input.salaryAmountDzd !== undefined ? normalizeSalaryAmount(input.salaryAmountDzd) : current.salaryAmountDzd
-    const nextSalaryPeriod = input.salaryPeriod !== undefined ? input.salaryPeriod : current.salaryPeriod
+      if (input.phone && input.phone !== current.phone) {
+        const existing = this.repository.getEmployeeByPhone(input.phone.trim());
+        if (existing && existing.id !== input.id) {
+          throw new CompanyError("CONFLICT", "رقم هاتف العامل مستخدم بالفعل.", [
+            { field: "phone", message: "رقم هاتف العامل مستخدم بالفعل." },
+          ]);
+        }
+      }
 
-    if ((nextSalaryAmount ?? null) !== null && !nextSalaryPeriod) {
-      throw new CompanyError("VALIDATION", "يجب اختيار دورية الأجر مع قيمة الأجر.", [
-        { field: "salaryPeriod", message: "يجب اختيار دورية الأجر مع قيمة الأجر." },
-      ])
-    }
+      const nextSalaryAmount =
+        input.salaryAmountDzd !== undefined ? normalizeSalaryAmount(input.salaryAmountDzd) : current.salaryAmountDzd
+      const nextSalaryPeriod = input.salaryPeriod !== undefined ? input.salaryPeriod : current.salaryPeriod
 
-    if ((nextSalaryAmount ?? null) === null && nextSalaryPeriod) {
-      throw new CompanyError("VALIDATION", "يجب إدخال قيمة الأجر مع دورية الأجر.", [
-        { field: "salaryAmountDzd", message: "يجب إدخال قيمة الأجر مع دورية الأجر." },
-      ])
-    }
+      if ((nextSalaryAmount ?? null) !== null && !nextSalaryPeriod) {
+        throw new CompanyError("VALIDATION", "يجب اختيار دورية الأجر مع قيمة الأجر.", [
+          { field: "salaryPeriod", message: "يجب اختيار دورية الأجر مع قيمة الأجر." },
+        ])
+      }
 
-    const employee = this.repository.updateEmployee({
-      id: input.id,
-      firstName: input.firstName?.trim(),
-      lastName: input.lastName?.trim(),
-      phone: input.phone?.trim(),
-      roleId: input.roleId,
-      status: input.status,
-      salaryAmountDzd: input.salaryAmountDzd !== undefined ? normalizeSalaryAmount(input.salaryAmountDzd) : undefined,
-      salaryPeriod: input.salaryPeriod !== undefined ? input.salaryPeriod : undefined,
-      notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
-    }, audit);
+      if ((nextSalaryAmount ?? null) === null && nextSalaryPeriod) {
+        throw new CompanyError("VALIDATION", "يجب إدخال قيمة الأجر مع دورية الأجر.", [
+          { field: "salaryAmountDzd", message: "يجب إدخال قيمة الأجر مع دورية الأجر." },
+        ])
+      }
 
-    return successResult("تم تحديث بيانات العامل بنجاح.", employee!);
+      const employee = this.repository.updateEmployee({
+        id: input.id,
+        firstName: input.firstName?.trim(),
+        lastName: input.lastName?.trim(),
+        phone: input.phone?.trim(),
+        roleId: input.roleId,
+        status: input.status,
+        salaryAmountDzd: input.salaryAmountDzd !== undefined ? normalizeSalaryAmount(input.salaryAmountDzd) : undefined,
+        salaryPeriod: input.salaryPeriod !== undefined ? input.salaryPeriod : undefined,
+        notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
+      }, audit);
+
+      return successResult("تم تحديث بيانات العامل بنجاح.", employee!);
+    });
   }
 
   deleteEmployee(id: string, auditContext?: MutationAuditContext) {
-    this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      this.createMutationAuditContext(auditContext)
 
-    const current = this.repository.getEmployeeById(id);
-    if (!current) {
-      throw new CompanyError("NOT_FOUND", "تعذر العثور على العامل المطلوب.");
-    }
+      const current = this.repository.getEmployeeById(id);
+      if (!current) {
+        throw new CompanyError("NOT_FOUND", "تعذر العثور على العامل المطلوب.");
+      }
 
-    const hasManagerHistory =
-      this.repository.listManagerAssignments({ workerId: id }).length > 0 ||
-      this.repository.listManagerAssignments({ managerId: id }).length > 0;
-    const hasProjectHistory = this.repository.listProjectAssignments({ employeeId: id }).length > 0;
-    const hasWarehouseHistory = this.repository.listWarehouseAssignments({ employeeId: id }).length > 0;
-    const hasManagedProjectHistory = this.repository.listProjectManagerOwnershipHistory({ managerId: id }).length > 0;
-    const hasManagedWarehouseHistory = this.repository.listWarehouseManagerOwnershipHistory({ managerId: id }).length > 0;
-    const hasSalaryPayments = this.repository.listSalaryPayments({ employeeId: id }).length > 0;
-    const managesProjects = this.repository.listProjects({ managerId: id }).length > 0;
-    const managesWarehouses = this.repository.listWarehouses({ managerId: id }).length > 0;
+      const hasManagerHistory =
+        this.repository.listManagerAssignments({ workerId: id }).length > 0 ||
+        this.repository.listManagerAssignments({ managerId: id }).length > 0;
+      const hasProjectHistory = this.repository.listProjectAssignments({ employeeId: id }).length > 0;
+      const hasWarehouseHistory = this.repository.listWarehouseAssignments({ employeeId: id }).length > 0;
+      const hasManagedProjectHistory = this.repository.listProjectManagerOwnershipHistory({ managerId: id }).length > 0;
+      const hasManagedWarehouseHistory = this.repository.listWarehouseManagerOwnershipHistory({ managerId: id }).length > 0;
+      const hasSalaryPayments = this.repository.listSalaryPayments({ employeeId: id }).length > 0;
+      const managesProjects = this.repository.listProjects({ managerId: id }).length > 0;
+      const managesWarehouses = this.repository.listWarehouses({ managerId: id }).length > 0;
 
-    if (
-      hasManagerHistory ||
-      hasProjectHistory ||
-      hasWarehouseHistory ||
-      hasManagedProjectHistory ||
-      hasManagedWarehouseHistory ||
-      hasSalaryPayments ||
-      managesProjects ||
-      managesWarehouses
-    ) {
-      throw new CompanyError(
-        "BUSINESS_RULE",
-        "لا يمكن حذف العامل نهائيًا لأنه مرتبط بسجل عمل أو بإدارة قائمة. استخدم إنهاء بدلًا من ذلك.",
-      );
-    }
+      if (
+        hasManagerHistory ||
+        hasProjectHistory ||
+        hasWarehouseHistory ||
+        hasManagedProjectHistory ||
+        hasManagedWarehouseHistory ||
+        hasSalaryPayments ||
+        managesProjects ||
+        managesWarehouses
+      ) {
+        throw new CompanyError(
+          "BUSINESS_RULE",
+          "لا يمكن حذف العامل نهائيًا لأنه مرتبط بسجل عمل أو بإدارة قائمة. استخدم إنهاء بدلًا من ذلك.",
+        );
+      }
 
-    this.repository.deleteEmployee(id);
-    return deleteResult("تم حذف العامل نهائيًا بنجاح.");
+      this.repository.deleteEmployee(id);
+      return deleteResult("تم حذف العامل نهائيًا بنجاح.");
+    });
   }
 
   listProjects(filters?: ProjectListFilters) {
@@ -812,58 +831,62 @@ export class CompanyService {
   }
 
   createProject(input: ProjectCreateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
-    if (input.managerId) {
-      this.requireActiveEmployee(
-        this.requireEmployeeWithRoleKey(input.managerId, SYSTEM_ROLE_KEYS.projectManager, "managerId"),
-        "managerId",
-      );
-    }
+      if (input.managerId) {
+        this.requireActiveEmployee(
+          this.requireEmployeeWithRoleKey(input.managerId, SYSTEM_ROLE_KEYS.projectManager, "managerId"),
+          "managerId",
+        );
+      }
 
-    const project = this.repository.createProject({
-      name: input.name.trim(),
-      location: normalizeText(input.location),
-      managerId: input.managerId ?? null,
-      status: input.status,
-      notes: normalizeText(input.notes),
-    }, audit);
+      const project = this.repository.createProject({
+        name: input.name.trim(),
+        location: normalizeText(input.location),
+        managerId: input.managerId ?? null,
+        status: input.status,
+        notes: normalizeText(input.notes),
+      }, audit);
 
-    return successResult("تم إنشاء المشروع بنجاح.", project);
+      return successResult("تم إنشاء المشروع بنجاح.", project);
+    });
   }
 
   updateProject(input: ProjectUpdateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
-    const current = this.requireProject(input.id);
-    const nextManagerId = input.managerId !== undefined ? input.managerId : current.managerId
-    const nextStatus = input.status ?? current.status
+      const current = this.requireProject(input.id);
+      const nextManagerId = input.managerId !== undefined ? input.managerId : current.managerId
+      const nextStatus = input.status ?? current.status
 
-    this.ensureProjectTransitionAllowed(current.id, current.managerId, input.managerId, input.status);
+      this.ensureProjectTransitionAllowed(current.id, current.managerId, input.managerId, input.status);
 
-    if (input.managerId && input.managerId !== current.managerId) {
-      this.requireActiveEmployee(
-        this.requireEmployeeWithRoleKey(input.managerId, SYSTEM_ROLE_KEYS.projectManager, "managerId"),
-        "managerId",
-      );
-    }
+      if (input.managerId && input.managerId !== current.managerId) {
+        this.requireActiveEmployee(
+          this.requireEmployeeWithRoleKey(input.managerId, SYSTEM_ROLE_KEYS.projectManager, "managerId"),
+          "managerId",
+        );
+      }
 
-    const reassignWorkerIds =
-      current.managerId !== nextManagerId && nextManagerId && nextStatus === "ACTIVE"
-        ? this.listActiveWorkerIdsForProject(current.id, { requireManagerConsistencyWith: current.managerId })
-        : undefined
+      const reassignWorkerIds =
+        current.managerId !== nextManagerId && nextManagerId && nextStatus === "ACTIVE"
+          ? this.listActiveWorkerIdsForProject(current.id, { requireManagerConsistencyWith: current.managerId })
+          : undefined
 
-    const project = this.repository.updateProject({
-      id: input.id,
-      name: input.name?.trim(),
-      location: input.location !== undefined ? normalizeText(input.location) : undefined,
-      managerId: input.managerId,
-      reassignWorkerIds,
-      status: input.status,
-      notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
-    }, audit);
+      const project = this.repository.updateProject({
+        id: input.id,
+        name: input.name?.trim(),
+        location: input.location !== undefined ? normalizeText(input.location) : undefined,
+        managerId: input.managerId,
+        reassignWorkerIds,
+        status: input.status,
+        notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
+      }, audit);
 
-    return successResult("تم تحديث المشروع بنجاح.", project!);
+      return successResult("تم تحديث المشروع بنجاح.", project!);
+    });
   }
 
   listWarehouses(filters?: WarehouseListFilters) {
@@ -875,58 +898,62 @@ export class CompanyService {
   }
 
   createWarehouse(input: WarehouseCreateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
-    if (input.managerId) {
-      this.requireActiveEmployee(
-        this.requireEmployeeWithRoleKey(
-          input.managerId,
-          SYSTEM_ROLE_KEYS.warehouseManager,
+      if (input.managerId) {
+        this.requireActiveEmployee(
+          this.requireEmployeeWithRoleKey(
+            input.managerId,
+            SYSTEM_ROLE_KEYS.warehouseManager,
+            "managerId",
+          ),
           "managerId",
-        ),
-        "managerId",
-      );
-    }
+        );
+      }
 
-    const warehouse = this.repository.createWarehouse({
-      name: input.name.trim(),
-      address: normalizeText(input.address),
-      managerId: input.managerId ?? null,
-      status: input.status,
-      notes: normalizeText(input.notes),
-    }, audit);
+      const warehouse = this.repository.createWarehouse({
+        name: input.name.trim(),
+        address: normalizeText(input.address),
+        managerId: input.managerId ?? null,
+        status: input.status,
+        notes: normalizeText(input.notes),
+      }, audit);
 
-    return successResult("تم إنشاء المستودع بنجاح.", warehouse);
+      return successResult("تم إنشاء المستودع بنجاح.", warehouse);
+    });
   }
 
   updateWarehouse(input: WarehouseUpdateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
-    const current = this.requireWarehouse(input.id);
+      const current = this.requireWarehouse(input.id);
 
-    this.ensureWarehouseTransitionAllowed(current.id, current.managerId, input.managerId, input.status);
+      this.ensureWarehouseTransitionAllowed(current.id, current.managerId, input.managerId, input.status);
 
-    if (input.managerId && input.managerId !== current.managerId) {
-      this.requireActiveEmployee(
-        this.requireEmployeeWithRoleKey(
-          input.managerId,
-          SYSTEM_ROLE_KEYS.warehouseManager,
+      if (input.managerId && input.managerId !== current.managerId) {
+        this.requireActiveEmployee(
+          this.requireEmployeeWithRoleKey(
+            input.managerId,
+            SYSTEM_ROLE_KEYS.warehouseManager,
+            "managerId",
+          ),
           "managerId",
-        ),
-        "managerId",
-      );
-    }
+        );
+      }
 
-    const warehouse = this.repository.updateWarehouse({
-      id: input.id,
-      name: input.name?.trim(),
-      address: input.address !== undefined ? normalizeText(input.address) : undefined,
-      managerId: input.managerId,
-      status: input.status,
-      notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
-    }, audit);
+      const warehouse = this.repository.updateWarehouse({
+        id: input.id,
+        name: input.name?.trim(),
+        address: input.address !== undefined ? normalizeText(input.address) : undefined,
+        managerId: input.managerId,
+        status: input.status,
+        notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
+      }, audit);
 
-    return successResult("تم تحديث المستودع بنجاح.", warehouse!);
+      return successResult("تم تحديث المستودع بنجاح.", warehouse!);
+    });
   }
 
   assignEmployeeWorkplace(input: EmployeeAssignWorkplaceInput, auditContext?: MutationAuditContext) {
@@ -1082,63 +1109,67 @@ export class CompanyService {
   }
 
   createManagerAssignment(input: ManagerAssignmentCreateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
-    const worker = this.requireEmployeeWithRoleKey(input.workerId, SYSTEM_ROLE_KEYS.worker, "workerId");
-    const manager = this.requireEmployeeWithRoleKey(input.managerId, SYSTEM_ROLE_KEYS.projectManager, "managerId");
+      const worker = this.requireEmployeeWithRoleKey(input.workerId, SYSTEM_ROLE_KEYS.worker, "workerId");
+      const manager = this.requireEmployeeWithRoleKey(input.managerId, SYSTEM_ROLE_KEYS.projectManager, "managerId");
 
-    if (input.status === "ACTIVE") {
-      this.requireActiveEmployee(worker, "workerId");
-      this.requireActiveEmployee(manager, "managerId");
-    }
+      if (input.status === "ACTIVE") {
+        this.requireActiveEmployee(worker, "workerId");
+        this.requireActiveEmployee(manager, "managerId");
+      }
 
-    if (input.status === "ACTIVE" && this.repository.getActiveManagerAssignmentByWorkerId(input.workerId)) {
-      throw new CompanyError(
-        "CONFLICT",
-        "هذا العامل مرتبط حاليًا بمدير نشط بالفعل.",
-        [{ field: "workerId", message: "هذا العامل مرتبط حاليًا بمدير نشط بالفعل." }],
-      );
-    }
+      if (input.status === "ACTIVE" && this.repository.getActiveManagerAssignmentByWorkerId(input.workerId)) {
+        throw new CompanyError(
+          "CONFLICT",
+          "هذا العامل مرتبط حاليًا بمدير نشط بالفعل.",
+          [{ field: "workerId", message: "هذا العامل مرتبط حاليًا بمدير نشط بالفعل." }],
+        );
+      }
 
-    const assignment = this.repository.createManagerAssignment({
-      workerId: input.workerId,
-      managerId: input.managerId,
-      status: input.status,
-      startDate: normalizeAlgeriaTimestamp(input.startDate),
-      endDate: input.status === "ACTIVE" ? null : input.endDate ?? null,
-      notes: normalizeText(input.notes),
-    }, audit);
+      const assignment = this.repository.createManagerAssignment({
+        workerId: input.workerId,
+        managerId: input.managerId,
+        status: input.status,
+        startDate: normalizeAlgeriaTimestamp(input.startDate),
+        endDate: input.status === "ACTIVE" ? null : input.endDate ?? null,
+        notes: normalizeText(input.notes),
+      }, audit);
 
-    return successResult("تم إنشاء ربط المدير بنجاح.", assignment);
+      return successResult("تم إنشاء ربط المدير بنجاح.", assignment);
+    });
   }
 
   endManagerAssignment(input: ManagerAssignmentEndInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
-    const current = this.repository.getManagerAssignmentById(input.id);
-    if (!current) {
-      throw new CompanyError("NOT_FOUND", "تعذر العثور على ربط المدير.");
-    }
+      const current = this.repository.getManagerAssignmentById(input.id);
+      if (!current) {
+        throw new CompanyError("NOT_FOUND", "تعذر العثور على ربط المدير.");
+      }
 
-    if (current.status !== "ACTIVE") {
-      throw new CompanyError("BUSINESS_RULE", "يمكن إنهاء روابط المدير النشطة فقط.");
-    }
+      if (current.status !== "ACTIVE") {
+        throw new CompanyError("BUSINESS_RULE", "يمكن إنهاء روابط المدير النشطة فقط.");
+      }
 
-    const activeProject = this.repository.getActiveProjectAssignmentByEmployeeId(current.workerId);
-    if (activeProject) {
-      throw new CompanyError(
-        "BUSINESS_RULE",
-        "يجب إنهاء المشروع النشط للعامل قبل إنهاء ربط المدير.",
-      );
-    }
+      const activeProject = this.repository.getActiveProjectAssignmentByEmployeeId(current.workerId);
+      if (activeProject) {
+        throw new CompanyError(
+          "BUSINESS_RULE",
+          "يجب إنهاء المشروع النشط للعامل قبل إنهاء ربط المدير.",
+        );
+      }
 
-    const assignment = this.repository.endManagerAssignment({
-      id: input.id,
-      endDate: normalizeAlgeriaTimestamp(input.endDate),
-      notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
-    }, audit);
+      const assignment = this.repository.endManagerAssignment({
+        id: input.id,
+        endDate: normalizeAlgeriaTimestamp(input.endDate),
+        notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
+      }, audit);
 
-    return successResult("تم إنهاء ربط المدير بنجاح.", assignment!);
+      return successResult("تم إنهاء ربط المدير بنجاح.", assignment!);
+    });
   }
 
   listProjectAssignments(filters?: ProjectAssignmentListFilters) {
@@ -1155,7 +1186,8 @@ export class CompanyService {
   }
 
   createProjectAssignment(input: ProjectAssignmentCreateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
     const employee = this.requireEmployee(input.employeeId);
     const employeeRole = this.requireRole(employee.roleId);
@@ -1211,37 +1243,40 @@ export class CompanyService {
       }
     }
 
-    const assignment = this.repository.createProjectAssignment({
-      employeeId: input.employeeId,
-      projectId: input.projectId,
-      status: input.status,
-      startDate: normalizeAlgeriaTimestamp(input.startDate),
-      endDate: input.status === "ACTIVE" ? null : input.endDate ?? null,
-      notes: normalizeText(input.notes),
-    }, audit);
+      const assignment = this.repository.createProjectAssignment({
+        employeeId: input.employeeId,
+        projectId: input.projectId,
+        status: input.status,
+        startDate: normalizeAlgeriaTimestamp(input.startDate),
+        endDate: input.status === "ACTIVE" ? null : input.endDate ?? null,
+        notes: normalizeText(input.notes),
+      }, audit);
 
-    return successResult("تم إنشاء ربط المشروع بنجاح.", assignment);
+      return successResult("تم إنشاء ربط المشروع بنجاح.", assignment);
+    });
   }
 
   endProjectAssignment(input: ProjectAssignmentEndInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
-    const current = this.repository.getProjectAssignmentById(input.id);
-    if (!current) {
-      throw new CompanyError("NOT_FOUND", "تعذر العثور على ربط المشروع.");
-    }
+      const current = this.repository.getProjectAssignmentById(input.id);
+      if (!current) {
+        throw new CompanyError("NOT_FOUND", "تعذر العثور على ربط المشروع.");
+      }
 
-    if (current.status !== "ACTIVE") {
-      throw new CompanyError("BUSINESS_RULE", "يمكن إنهاء روابط المشاريع النشطة فقط.");
-    }
+      if (current.status !== "ACTIVE") {
+        throw new CompanyError("BUSINESS_RULE", "يمكن إنهاء روابط المشاريع النشطة فقط.");
+      }
 
-    const assignment = this.repository.endProjectAssignment({
-      id: input.id,
-      endDate: normalizeAlgeriaTimestamp(input.endDate),
-      notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
-    }, audit);
+      const assignment = this.repository.endProjectAssignment({
+        id: input.id,
+        endDate: normalizeAlgeriaTimestamp(input.endDate),
+        notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
+      }, audit);
 
-    return successResult("تم إنهاء ربط المشروع بنجاح.", assignment!);
+      return successResult("تم إنهاء ربط المشروع بنجاح.", assignment!);
+    });
   }
 
   listWarehouseAssignments(filters?: WarehouseAssignmentListFilters) {
@@ -1249,34 +1284,36 @@ export class CompanyService {
   }
 
   createSalaryPayment(input: EmployeeSalaryPaymentCreateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
-    const employee = this.requireEmployee(input.employeeId)
-    const expectedAmount = employee.salaryAmountDzd ?? null
-    const periodType = employee.salaryPeriod ?? null
+      const employee = this.requireEmployee(input.employeeId)
+      const expectedAmount = employee.salaryAmountDzd ?? null
+      const periodType = employee.salaryPeriod ?? null
 
-    if (expectedAmount === null || periodType === null) {
-      throw new CompanyError("BUSINESS_RULE", "يجب تحديد أجر العامل الحالي قبل تسجيل دفعة راتب.", [
-        { field: "employeeId", message: "يجب تحديد أجر العامل الحالي قبل تسجيل دفعة راتب." },
-      ])
-    }
+      if (expectedAmount === null || periodType === null) {
+        throw new CompanyError("BUSINESS_RULE", "يجب تحديد أجر العامل الحالي قبل تسجيل دفعة راتب.", [
+          { field: "employeeId", message: "يجب تحديد أجر العامل الحالي قبل تسجيل دفعة راتب." },
+        ])
+      }
 
-    if (!Number.isFinite(input.actualAmountDzd) || input.actualAmountDzd <= 0) {
-      throw new CompanyError("VALIDATION", "يجب إدخال مبلغ راتب أكبر من صفر.", [
-        { field: "actualAmountDzd", message: "يجب إدخال مبلغ راتب أكبر من صفر." },
-      ])
-    }
+      if (!Number.isFinite(input.actualAmountDzd) || input.actualAmountDzd <= 0) {
+        throw new CompanyError("VALIDATION", "يجب إدخال مبلغ راتب أكبر من صفر.", [
+          { field: "actualAmountDzd", message: "يجب إدخال مبلغ راتب أكبر من صفر." },
+        ])
+      }
 
-    const payment = this.repository.createSalaryPayment({
-      employeeId: input.employeeId,
-      periodType,
-      expectedAmountDzd: expectedAmount,
-      actualAmountDzd: input.actualAmountDzd,
-      paymentDate: normalizeAlgeriaTimestamp(input.paymentDate),
-      note: normalizeText(input.note),
-    }, audit)
+      const payment = this.repository.createSalaryPayment({
+        employeeId: input.employeeId,
+        periodType,
+        expectedAmountDzd: expectedAmount,
+        actualAmountDzd: input.actualAmountDzd,
+        paymentDate: normalizeAlgeriaTimestamp(input.paymentDate),
+        note: normalizeText(input.note),
+      }, audit)
 
-    return successResult("تم تسجيل دفعة الراتب بنجاح.", payment)
+      return successResult("تم تسجيل دفعة الراتب بنجاح.", payment)
+    });
   }
 
   getWarehouseAssignment(id: string) {
@@ -1289,7 +1326,8 @@ export class CompanyService {
   }
 
   createWarehouseAssignment(input: WarehouseAssignmentCreateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
     const employee = this.requireEmployee(input.employeeId);
     const employeeRole = this.requireRole(employee.roleId);
@@ -1336,37 +1374,40 @@ export class CompanyService {
       }
     }
 
-    const assignment = this.repository.createWarehouseAssignment({
-      employeeId: input.employeeId,
-      warehouseId: input.warehouseId,
-      status: input.status,
-      startDate: normalizeAlgeriaTimestamp(input.startDate),
-      endDate: input.status === "ACTIVE" ? null : input.endDate ?? null,
-      notes: normalizeText(input.notes),
-    }, audit);
+      const assignment = this.repository.createWarehouseAssignment({
+        employeeId: input.employeeId,
+        warehouseId: input.warehouseId,
+        status: input.status,
+        startDate: normalizeAlgeriaTimestamp(input.startDate),
+        endDate: input.status === "ACTIVE" ? null : input.endDate ?? null,
+        notes: normalizeText(input.notes),
+      }, audit);
 
-    return successResult("تم إنشاء ربط المستودع بنجاح.", assignment);
+      return successResult("تم إنشاء ربط المستودع بنجاح.", assignment);
+    });
   }
 
   endWarehouseAssignment(input: WarehouseAssignmentEndInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
+    return this.withTransaction(() => {
+      const audit = this.createMutationAuditContext(auditContext)
 
-    const current = this.repository.getWarehouseAssignmentById(input.id);
-    if (!current) {
-      throw new CompanyError("NOT_FOUND", "تعذر العثور على ربط المستودع.");
-    }
+      const current = this.repository.getWarehouseAssignmentById(input.id);
+      if (!current) {
+        throw new CompanyError("NOT_FOUND", "تعذر العثور على ربط المستودع.");
+      }
 
-    if (current.status !== "ACTIVE") {
-      throw new CompanyError("BUSINESS_RULE", "يمكن إنهاء روابط المستودعات النشطة فقط.");
-    }
+      if (current.status !== "ACTIVE") {
+        throw new CompanyError("BUSINESS_RULE", "يمكن إنهاء روابط المستودعات النشطة فقط.");
+      }
 
-    const assignment = this.repository.endWarehouseAssignment({
-      id: input.id,
-      endDate: normalizeAlgeriaTimestamp(input.endDate),
-      notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
-    }, audit);
+      const assignment = this.repository.endWarehouseAssignment({
+        id: input.id,
+        endDate: normalizeAlgeriaTimestamp(input.endDate),
+        notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
+      }, audit);
 
-    return successResult("تم إنهاء ربط المستودع بنجاح.", assignment!);
+      return successResult("تم إنهاء ربط المستودع بنجاح.", assignment!);
+    });
   }
 
   private ensureEmployeeTransitionAllowed(
