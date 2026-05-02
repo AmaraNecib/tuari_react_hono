@@ -2,7 +2,14 @@ import { ORPCError } from "@orpc/server";
 import type { AppError } from "@tuari/contracts";
 
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
+import { InputValidator } from "../infrastructure/validation/input-validator";
 import { requireCurrentUser, type RpcContext } from "./context";
+
+// Generic schema interface for validation
+export interface ValidatorSchema {
+  parse(input: unknown): unknown;
+  parseAsync(input: unknown): Promise<unknown>;
+}
 
 export type MutationAuditContext = {
   actorUserId: string;
@@ -49,6 +56,17 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       };
     },
 
+    queryAuthValidated<TInput, TOutput>(
+      schema: ValidatorSchema,
+      handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput>,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
+      return async ({ context, input }) => {
+        await requireWorkspaceAdmin(context);
+        const validatedInput = InputValidator.validate<TInput>(input, schema);
+        return handler({ context, input: validatedInput });
+      };
+    },
+
     mutationAudit<TInput, TOutput>(
       handler: (params: { context: RpcContext; input: TInput; auditContext: MutationAuditContext }) => TOutput,
       errorResolver: (error: unknown) => any,
@@ -57,6 +75,22 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
         const auditContext = await createMutationAuditContext(context);
         try {
           return handler({ context, input, auditContext });
+        } catch (error) {
+          return errorResolver(error);
+        }
+      };
+    },
+
+    mutationAuditValidated<TInput, TOutput>(
+      schema: ValidatorSchema,
+      handler: (params: { context: RpcContext; input: TInput; auditContext: MutationAuditContext }) => TOutput,
+      errorResolver: (error: unknown) => any,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<any> {
+      return async ({ context, input }) => {
+        const auditContext = await createMutationAuditContext(context);
+        try {
+          const validatedInput = InputValidator.validate<TInput>(input, schema);
+          return handler({ context, input: validatedInput, auditContext });
         } catch (error) {
           return errorResolver(error);
         }
