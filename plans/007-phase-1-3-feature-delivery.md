@@ -2,9 +2,13 @@
 
 ## Overview
 
-Implementation roadmap for Phase 1-3 features of the Tuari system. Excludes: Offline Mode, Barcode/QR Scanning, Scheduled Reports Email (defer to V2).
+Implementation roadmap for Phase 1-3 features + Offline Mode of the Tuari system (desktop app).
 
-**Target Timeline:** 6-7 weeks
+**Critical Priority:** Offline Mode (desktop/portable app required to work without internet)
+
+**Deferred to V2:** Barcode/QR Scanning, Scheduled Reports Email, Keyboard Shortcuts
+
+**Target Timeline:** 7-8 weeks
 **Target Completion:** End of Month 2
 
 ---
@@ -222,28 +226,7 @@ Leverage React Query's built-in cache invalidation + browser storage events:
 
 ---
 
-### Priority 9: Keyboard Shortcuts & Command Palette
-**Effort:** 2 days | **Value:** LOW
-
-**Deliverables:**
-- `apps/web/src/features/shared/command-palette.tsx`
-- Hotkey listener + action registry
-
-**Shortcuts:**
-- `Cmd/Ctrl + K` — open palette
-- `Cmd + I` — new invoice
-- `Cmd + T` — new transfer
-- `Cmd + P` — quick payment
-- `Cmd + /` — help
-
-**Benefits:**
-- Faster workflow for power users
-- Professional app feel
-- Reduces mouse usage
-
----
-
-### Priority 10: Export/Import with Validation
+### Priority 9: Export/Import with Validation
 **Effort:** 3-4 days | **Value:** MEDIUM
 
 **Deliverables:**
@@ -272,6 +255,40 @@ Leverage React Query's built-in cache invalidation + browser storage events:
 
 ---
 
+## PHASE 4: OFFLINE MODE (CRITICAL FOR DESKTOP) (2-3 weeks)
+
+### Priority 10: Offline Mode (Desktop)
+**Effort:** 4-5 days | **Value:** CRITICAL
+
+**Context:** App runs from portable media (USB/external SSD). Must work without internet.
+
+**Deliverables:**
+- `apps/web/src/features/offline/offline-manager.ts` — mutation queue + persistence
+- `apps/web/src/features/offline/offline-indicator.tsx` — status display
+- Network detection + auto-retry on reconnect
+
+**Features:**
+- Queue mutations when offline
+- Persist queue to localStorage
+- Auto-retry with exponential backoff when online
+- Show offline status in UI
+- Sync conflict resolution
+- Manual retry button for failed mutations
+
+**Technical:**
+- Detect network status via `navigator.onLine` + fetch probe
+- Queue mutations to localStorage with retry metadata
+- Apply queued mutations in order on reconnect
+- Handle conflicts (last-write-wins or prompt user)
+
+**Benefits:**
+- Desktop app works without internet
+- Reduces data loss risk
+- Better field team experience
+- Essential for portable USB/SSD deployment
+
+---
+
 ## Implementation Timeline
 
 ### Week 1-2 (Phase 1, Start)
@@ -290,11 +307,12 @@ Leverage React Query's built-in cache invalidation + browser storage events:
 
 ### Week 6 (Phase 3)
 - Mobile Improvements (Priority 8)
-- Keyboard Shortcuts (Priority 9)
+- Export/Import (Priority 9)
 
-### Week 7 (Phase 3, Complete)
-- Export/Import (Priority 10)
-- Polish & testing
+### Week 7-8 (Phase 4, CRITICAL)
+- **Offline Mode (Priority 10)** — must complete before desktop deployment
+- Testing multi-device scenarios (USB, SSD, network interruptions)
+- Polish & hardening
 
 ---
 
@@ -359,11 +377,20 @@ Leverage React Query's built-in cache invalidation + browser storage events:
 
 ## Rollback Strategy
 
-Features can be rolled back independently:
+**Phases 1-3:** Features can be rolled back independently:
 - Feature flags not needed (clean implementation)
 - New pages don't affect existing pages
 - Cache invalidation is additive (safe to remove)
 - Multi-tab sync can be disabled via `enableTabSync` env var
+
+**Phase 4 (Offline Mode):** Cannot be rolled back after desktop deployment:
+- Must be thoroughly tested before release
+- Test scenarios: 
+  - Network outages (WiFi drop, no connectivity)
+  - Queue conflicts (same entity edited offline + online)
+  - Recovery on reconnect (retry failed mutations)
+  - Large queues (100+ pending mutations)
+- Recommend staging deployment to subset of users first
 
 ---
 
@@ -371,9 +398,12 @@ Features can be rolled back independently:
 
 1. **Start with Priority 1** — advanced search has lowest risk, high value
 2. **Batch Priority 2 & 4** — reports + dashboard share aggregate endpoints
-3. **Multi-tab sync** is foundational for all later phases (implement early)
+3. **Multi-tab sync** is foundational (implement by end of Phase 2)
 4. **Test multi-tab scenarios** thoroughly (localStorage events are tricky)
-5. **Mobile considerations** deferred until Phase 3 (but keep responsive in mind)
+5. **Offline Mode (Priority 10)** must ship before desktop app deployment
+   - Critical for portable USB/SSD usage
+   - Test thoroughly: network interruptions, queue conflicts, reconnect scenarios
+   - Coordinate with Tauri app release schedule
 
 ---
 
