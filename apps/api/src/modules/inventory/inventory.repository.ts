@@ -25,6 +25,8 @@ import type {
   InventoryItemDefinitionListFilters,
   InventoryItemDefinitionRecord,
   InventoryItemDefinitionUpdateData,
+  InventoryOutboundTransferCreateData,
+  InventoryOutboundTransferRecord,
 } from "./inventory.types"
 
 // Architecture note: business-domain persistence intentionally uses explicit
@@ -165,6 +167,22 @@ function mapAttachment(row: SqliteRow): InventoryInvoiceAttachmentRecord {
   }
 }
 
+function mapOutboundTransfer(row: SqliteRow): InventoryOutboundTransferRecord {
+  return {
+    id: String(row.id),
+    transferDate: String(row.transfer_date),
+    fromType: row.from_type as InventoryOutboundTransferRecord["fromType"],
+    fromId: String(row.from_id),
+    counterpartyId: String(row.counterparty_id),
+    transferType: row.transfer_type as InventoryOutboundTransferRecord["transferType"],
+    status: "COMPLETED" as const,
+    associatedDebtAccountId: toNullableString(row.associated_debt_account_id),
+    notes: toNullableString(row.notes),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
+}
+
 function resolveLocationLabelByIds(database: Database.Database, warehouseId?: string | null, projectId?: string | null) {
   if (warehouseId) {
     const row = database.prepare('SELECT name FROM warehouse WHERE id = ?').get(warehouseId) as SqliteRow | undefined
@@ -211,6 +229,10 @@ export interface InventoryRepository {
   listAttachmentsByInvoiceGroupId(invoiceGroupId: string): InventoryInvoiceAttachmentRecord[]
   createAttachment(data: InventoryInvoiceAttachmentCreateData): InventoryInvoiceAttachmentRecord
   getAttachmentById(id: string): InventoryInvoiceAttachmentRecord | null
+  updateInvoiceGroupPayment(id: string, paidAmountDzd: number, remainingDebtDzd: number, auditContext?: MutationAuditContext): InventoryInvoiceGroupRecord | null
+  createOutboundTransfer(data: InventoryOutboundTransferCreateData, auditContext?: MutationAuditContext): InventoryOutboundTransferRecord
+  listOutboundTransfers(): InventoryOutboundTransferRecord[]
+  getOutboundTransferById(id: string): InventoryOutboundTransferRecord | null
 }
 
 export class SqliteInventoryRepository implements InventoryRepository {
@@ -545,6 +567,57 @@ export class SqliteInventoryRepository implements InventoryRepository {
   getAttachmentById(id: string) {
     const row = this.database.prepare('SELECT * FROM inventory_invoice_attachment WHERE id = ?').get(id) as SqliteRow | undefined
     return row ? mapAttachment(row) : null
+  }
+
+  updateInvoiceGroupPayment(id: string, paidAmountDzd: number, remainingDebtDzd: number, _auditContext?: MutationAuditContext) {
+    const timestamp = createAlgeriaTimestamp()
+    this.database.prepare(
+      'UPDATE inventory_invoice_group SET paid_amount_dzd = ?, remaining_debt_dzd = ?, updated_at = ? WHERE id = ?',
+    ).run(paidAmountDzd, remainingDebtDzd, timestamp, id)
+    return this.getInvoiceGroupById(id)
+  }
+
+  createOutboundTransfer(data: InventoryOutboundTransferCreateData, auditContext?: MutationAuditContext) {
+    const id = crypto.randomUUID()
+    const timestamp = createAlgeriaTimestamp()
+    const audit = normalizeAuditContext(auditContext)
+    this.database.prepare(
+      'INSERT INTO inventory_outbound_transfer (id, transfer_date, from_type, from_id, counterparty_id, transfer_type, status, associated_debt_account_id, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(
+      id,
+      timestamp,
+      data.fromType,
+      data.fromId,
+      data.counterpartyId,
+      data.transferType,
+      "COMPLETED",
+      data.associatedDebtAccountId ?? null,
+      data.notes ?? null,
+      audit.actorUserId,
+      audit.actorLabel,
+      audit.transactionId,
+      timestamp,
+      timestamp,
+    )
+
+    for (const item of data.items) {
+      const itemId = crypto.randomUUID()
+      this.database.prepare(
+        'INSERT INTO inventory_outbound_transfer_item (id, transfer_id, item_id, quantity, unit_price_dzd, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      ).run(itemId, id, item.itemId, item.quantity, item.unitPriceDzd ?? null, timestamp)
+    }
+
+    return this.getOutboundTransferById(id)!
+  }
+
+  listOutboundTransfers() {
+    const rows = this.database.prepare('SELECT * FROM inventory_outbound_transfer ORDER BY transfer_date DESC, created_at DESC').all() as SqliteRow[]
+    return rows.map(mapOutboundTransfer)
+  }
+
+  getOutboundTransferById(id: string) {
+    const row = this.database.prepare('SELECT * FROM inventory_outbound_transfer WHERE id = ?').get(id) as SqliteRow | undefined
+    return row ? mapOutboundTransfer(row) : null
   }
 }
 

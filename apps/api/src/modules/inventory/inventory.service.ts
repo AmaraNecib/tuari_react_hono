@@ -715,4 +715,162 @@ export class InventoryService {
       body,
     }
   }
+
+  recordInvoicePayment(input: { invoiceGroupId: string; amountDzd: number; note?: string }, auditContext?: MutationAuditContext) {
+    if (!this.debtService) {
+      throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
+    }
+
+    const invoice = this.repository.getInvoiceGroupById(input.invoiceGroupId)
+    if (!invoice) {
+      throw new InventoryError("NOT_FOUND", "الفاتورة المحددة غير موجودة.")
+    }
+
+    if (!invoice.debtAccountId) {
+      throw new InventoryError("BUSINESS_RULE", "الفاتورة لا ترتبط بحساب دين.")
+    }
+
+    const amountToRecord = normalizePositive(input.amountDzd, "amountDzd")
+    if (amountToRecord > invoice.remainingDebtDzd) {
+      throw new InventoryError("VALIDATION", "المبلغ المدفوع يتجاوز الدين المتبقي.", [
+        { field: "amountDzd", message: `لا يمكن دفع أكثر من ${invoice.remainingDebtDzd} دزد.` },
+      ])
+    }
+
+    return this.repository.withTransaction(() => {
+      const newPaidAmount = invoice.paidAmountDzd + amountToRecord
+      const newRemainingDebt = invoice.remainingDebtDzd - amountToRecord
+
+      this.repository.updateInvoiceGroupPayment(input.invoiceGroupId, newPaidAmount, newRemainingDebt, auditContext)
+
+      const result = this.debtService!.createDebtEntry(
+        {
+          debtAccountId: invoice.debtAccountId!,
+          entryType: "PAYMENT",
+          signedAmountDzd: -amountToRecord,
+          note: input.note ?? `دفع فاتورة ${invoice.invoiceNumber ?? ""}`,
+        },
+        auditContext,
+      )
+
+      if (!result.success) {
+        throw new InventoryError("BUSINESS_RULE", "تعذر تسجيل الدفع في حساب الدين.")
+      }
+
+      const updated = this.repository.getInvoiceGroupById(input.invoiceGroupId)
+      return updated!
+    })
+  }
+
+  createOutboundTransfer(input: { fromType: "WAREHOUSE" | "PROJECT"; fromId: string; counterpartyId: string; transferType: "SALE" | "GIFT" | "RETURN"; items: Array<{ itemId: string; quantity: number; unitPriceDzd?: number }>; debtAmountDzd?: number; notes?: string }, auditContext?: MutationAuditContext) {
+    if (!this.debtService) {
+      throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
+    }
+
+    if (!input.items.length) {
+      throw new InventoryError("VALIDATION", "يجب إضافة عناصر للتحويل.")
+    }
+
+    if (input.fromType === "WAREHOUSE") {
+      validateWarehouse(this.repository, input.fromId, "fromId")
+    } else {
+      validateProject(this.repository, input.fromId, "fromId")
+    }
+
+    validateExternalCounterparty(this.repository, input.counterpartyId, "counterpartyId")
+
+    return this.repository.withTransaction(() => {
+      let associatedDebtAccountId: string | undefined
+
+      if (input.debtAmountDzd && input.debtAmountDzd > 0) {
+        const debtResult = this.debtService!.createDebtAccount(
+          {
+            partyType: "EXTERNAL_COUNTERPARTY",
+            externalCounterpartyId: input.counterpartyId,
+            openingBalanceDzd: input.debtAmountDzd,
+            openingEntryNote: `دين من تحويل إلى ${input.counterpartyId}`,
+          },
+          auditContext,
+        )
+        associatedDebtAccountId = debtResult.item.id
+      }
+
+      for (const item of input.items) {
+        const itemDef = this.repository.getItemDefinitionById(item.itemId)
+        if (!itemDef) {
+          throw new InventoryError("NOT_FOUND", `العنصر ${item.itemId} غير موجود.`)
+        }
+
+        if (itemDef.itemType === "CONSUMABLE") {
+          const balance = this.repository.getConsumableBalanceByEntryAndLocation({
+            inventoryEntryId: item.itemId,
+            warehouseId: input.fromType === "WAREHOUSE" ? input.fromId : null,
+            projectId: input.fromType === "PROJECT" ? input.fromId : null,
+          })
+
+          if (!balance || balance.quantity < item.quantity) {
+            throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${itemDef.name} غير متوفرة.`)
+          }
+
+          const newQuantity = balance.quantity - item.quantity
+          if (newQuantity > 0) {
+            this.repository.updateConsumableBalanceQuantity(balance.id, newQuantity)
+          } else {
+            this.repository.deleteConsumableBalance(balance.id)
+          }
+        } else {
+          const assets = this.repository.listAssetUnitsByLocation({
+            warehouseId: input.fromType === "WAREHOUSE" ? input.fromId : undefined,
+            projectId: input.fromType === "PROJECT" ? input.fromId : undefined,
+          }).slice(0, item.quantity)
+
+          if (assets.length < item.quantity) {
+            throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${itemDef.name} غير متوفرة.`)
+          }
+
+          for (const asset of assets) {
+            this.repository.updateAssetUnitLocation(asset.id, { currentWarehouseId: null, currentProjectId: null })
+          }
+        }
+
+        this.repository.createMovement({
+          movementType: "OUTBOUND_SALE",
+          itemType: itemDef.itemType,
+          inventoryEntryId: itemDef.itemType === "CONSUMABLE" ? item.itemId : undefined,
+          quantity: item.quantity,
+          fromWarehouseId: input.fromType === "WAREHOUSE" ? input.fromId : undefined,
+          fromProjectId: input.fromType === "PROJECT" ? input.fromId : undefined,
+          note: `تحويل خارجي إلى ${input.counterpartyId}`,
+          occurredAt: createAlgeriaTimestamp(),
+        })
+      }
+
+      const transfer = this.repository.createOutboundTransfer(
+        {
+          fromType: input.fromType,
+          fromId: input.fromId,
+          counterpartyId: input.counterpartyId,
+          transferType: input.transferType,
+          items: input.items,
+          associatedDebtAccountId,
+          notes: input.notes,
+        },
+        auditContext,
+      )
+
+      return transfer
+    })
+  }
+
+  listOutboundTransfers() {
+    return this.repository.listOutboundTransfers()
+  }
+
+  getOutboundTransferById(id: string) {
+    const transfer = this.repository.getOutboundTransferById(id)
+    if (!transfer) {
+      throw new InventoryError("NOT_FOUND", "التحويل المحدد غير موجود.")
+    }
+    return transfer
+  }
 }

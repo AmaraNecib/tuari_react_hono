@@ -1734,4 +1734,41 @@ export class CompanyService {
 
     return employee;
   }
+
+  getEmployeeDebtAccount(employeeId: string) {
+    this.requireEmployee(employeeId);
+    const { items: accounts } = this.listDebtAccounts({ workerId: employeeId });
+    return accounts[0] || null;
+  }
+
+  createEmployeeDebtEntry(input: { employeeId: string; entryType: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE"; amountDzd: number; entryDate?: string; note?: string }, auditContext?: MutationAuditContext) {
+    const employee = this.requireEmployee(input.employeeId);
+
+    let account = this.getEmployeeDebtAccount(input.employeeId);
+
+    if (!account) {
+      const createResult = this.createDebtAccount(
+        {
+          partyType: "INTERNAL_WORKER",
+          workerId: input.employeeId,
+          note: `حساب الدين للعامل: ${employee.firstName} ${employee.lastName}`,
+        },
+        auditContext,
+      );
+      account = createResult.item;
+    }
+
+    const result = this.createDebtEntry(
+      {
+        debtAccountId: account.id,
+        entryType: input.entryType,
+        signedAmountDzd: input.amountDzd,
+        entryDate: input.entryDate,
+        note: input.note || `${input.entryType}: ${employee.firstName} ${employee.lastName}`,
+      },
+      auditContext,
+    );
+
+    return result.item;
+  }
 }

@@ -9,6 +9,8 @@ import type {
   InventoryLocationContents,
   InventoryMovement,
   InventoryEntry,
+  InventoryOutboundTransfer,
+  OutboundTransferItemInput,
 } from "@tuari/contracts"
 
 export type InventoryItemDefinitionRecord = InventoryItemDefinition
@@ -136,4 +138,21 @@ export type InventoryUploadFile = {
   type: string
   size: number
   bytes: Uint8Array
+}
+
+export type InventoryOutboundTransferRecord = InventoryOutboundTransfer
+export type OutboundTransferItemRecord = OutboundTransferItemInput & { id: string; createdAt: string }
+
+export type InventoryOutboundTransferCreateData = {
+  fromType: InventoryOutboundTransfer["fromType"]
+  fromId: string
+  counterpartyId: string
+  transferType: InventoryOutboundTransfer["transferType"]
+  items: Array<{
+    itemId: string
+    quantity: number
+    unitPriceDzd?: number
+  }>
+  associatedDebtAccountId?: string | null
+  notes?: string | null
 }

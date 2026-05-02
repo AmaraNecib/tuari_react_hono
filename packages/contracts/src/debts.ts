@@ -158,7 +158,7 @@ export const debtAccountCreateInputSchema = z
 
 export const debtEntryCreateInputSchema = z.object({
   debtAccountId: entityIdSchema,
-  entryType: z.enum(["OPENING", "PAYMENT", "ADJUSTMENT"]),
+  entryType: z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "ADVANCE"]),
   signedAmountDzd: z.number().finite(),
   entryDate: timestampSchema.optional(),
   note: z.string().trim().max(1000).nullable().optional(),
