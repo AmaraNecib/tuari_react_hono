@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import type { InventoryInvoiceGroupDetail } from "@tuari/contracts"
 
 import {
@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
-import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 import { useRecordInvoicePaymentMutation } from "./inventory-hooks"
 
@@ -29,13 +28,15 @@ export function RecordInvoicePaymentDialog({
   const recordPaymentMutation = useRecordInvoicePaymentMutation()
   const [amount, setAmount] = useState("")
   const [note, setNote] = useState("")
-  const [paymentDate, setPaymentDate] = useState(() => getAlgeriaDateInputValue())
 
   const normalizedAmount = amount.trim()
   const amountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : null
   const hasValidAmount = amountValue !== null && Number.isFinite(amountValue) && amountValue > 0
 
-  const remainingDebt = invoiceDetail?.group.remainingDebtDzd ?? 0
+  const remainingDebt = useMemo(
+    () => invoiceDetail?.group.remainingDebtDzd ?? 0,
+    [invoiceDetail?.group.remainingDebtDzd]
+  )
   const isAmountValid = hasValidAmount && amountValue! <= remainingDebt
 
   const handlePayFull = () => {
@@ -59,7 +60,6 @@ export function RecordInvoicePaymentDialog({
   const resetForm = () => {
     setAmount("")
     setNote("")
-    setPaymentDate(getAlgeriaDateInputValue())
   }
 
   if (!invoiceDetail) return null

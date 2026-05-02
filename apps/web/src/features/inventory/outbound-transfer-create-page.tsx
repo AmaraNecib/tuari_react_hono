@@ -4,6 +4,8 @@ import type { ExternalCounterparty, Warehouse, Project } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { showErrorToast } from "@/lib/toast"
+import { ItemListEditor, type ItemEditorRow } from "./item-list-editor"
 import { useCreateOutboundTransferMutation, useInventoryExternalCounterpartiesQuery, useInventoryWarehousesQuery, useInventoryProjectsQuery, useInventoryItemDefinitionsQuery } from "./inventory-hooks"
 
 export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
@@ -17,7 +19,7 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
   const [fromId, setFromId] = useState("")
   const [counterpartyId, setCounterpartyId] = useState("")
   const [transferType, setTransferType] = useState<"SALE" | "GIFT" | "RETURN">("SALE")
-  const [items, setItems] = useState<Array<{ itemId: string; quantity: string; unitPrice: string }>>([])
+  const [items, setItems] = useState<ItemEditorRow[]>([])
   const [notes, setNotes] = useState("")
   const [debtAmount, setDebtAmount] = useState("")
 
@@ -52,17 +54,60 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
   }
 
   const handleSubmit = async () => {
-    const validatedItems = items
-      .filter((item) => item.itemId && item.quantity)
-      .map((item) => ({
-        itemId: item.itemId,
-        quantity: Number(item.quantity),
-        ...(item.unitPrice ? { unitPriceDzd: Number(item.unitPrice) } : {}),
-      }))
-
-    if (!fromId || !counterpartyId || validatedItems.length === 0) {
-      alert("يرجى ملء البيانات المطلوبة")
+    // Validate required fields
+    if (!fromId) {
+      showErrorToast("يرجى اختيار الموقع الأصلي")
       return
+    }
+    if (!counterpartyId) {
+      showErrorToast("يرجى اختيار الطرف الخارجي")
+      return
+    }
+
+    // Validate items
+    const validationErrors: string[] = []
+    const validatedItems = items.map((item, idx) => {
+      if (!item.itemId) {
+        validationErrors.push(`العنصر ${idx + 1}: يجب تحديد العنصر`)
+        return null
+      }
+      if (!itemDefinitions.some((def) => def.id === item.itemId)) {
+        validationErrors.push(`العنصر ${idx + 1}: العنصر المحدد غير موجود`)
+        return null
+      }
+      const quantity = Number(item.quantity)
+      if (!item.quantity || quantity <= 0) {
+        validationErrors.push(`العنصر ${idx + 1}: يجب إدخال كمية أكبر من 0`)
+        return null
+      }
+      if (!Number.isFinite(quantity)) {
+        validationErrors.push(`العنصر ${idx + 1}: الكمية غير صحيحة`)
+        return null
+      }
+      return {
+        itemId: item.itemId,
+        quantity,
+        ...(item.unitPrice ? { unitPriceDzd: Number(item.unitPrice) } : {}),
+      }
+    }).filter((item) => item !== null)
+
+    if (validationErrors.length > 0) {
+      showErrorToast(validationErrors.join("\n"))
+      return
+    }
+
+    if (validatedItems.length === 0) {
+      showErrorToast("يرجى إضافة عنصر واحد على الأقل")
+      return
+    }
+
+    // Validate debt amount if provided
+    if (debtAmount) {
+      const debtValue = Number(debtAmount)
+      if (!Number.isFinite(debtValue) || debtValue < 0) {
+        showErrorToast("مبلغ الدين غير صحيح")
+        return
+      }
     }
 
     await createTransferMutation.mutateAsync({
@@ -140,28 +185,7 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
       <Surface variant="panel">
         <PageSurfaceContent>
           <SurfaceHeader title="العناصر المحولة" />
-          <div className="space-y-3">
-            {items.map((item, idx) => (
-              <div key={idx} className="flex gap-3 rounded-xl border border-border/70 p-3">
-                <select value={item.itemId} onChange={(e) => updateItem(idx, "itemId", e.target.value)} className="h-10 flex-1 rounded-lg border border-border bg-background px-2 text-sm">
-                  <option value="">اختر العنصر</option>
-                  {itemDefinitions.map((def) => (
-                    <option key={def.id} value={def.id}>
-                      {def.name}
-                    </option>
-                  ))}
-                </select>
-                <Input type="number" min="0" step="0.01" placeholder="الكمية" value={item.quantity} onChange={(e) => updateItem(idx, "quantity", e.target.value)} className="w-20" />
-                <Input type="number" min="0" step="0.01" placeholder="السعر" value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", e.target.value)} className="w-24" />
-                <Button variant="ghost" size="sm" onClick={() => removeItem(idx)} className="text-red-600">
-                  حذف
-                </Button>
-              </div>
-            ))}
-            <Button variant="outline" size="sm" onClick={addItem} className="w-full">
-              + إضافة عنصر
-            </Button>
-          </div>
+          <ItemListEditor items={items} itemDefinitions={itemDefinitions} onAdd={addItem} onRemove={removeItem} onUpdate={updateItem} />
         </PageSurfaceContent>
       </Surface>
 

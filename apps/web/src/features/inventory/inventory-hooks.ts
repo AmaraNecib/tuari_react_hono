@@ -20,6 +20,7 @@ import { AppMutationError } from "@/features/app-shell/mock-dashboard"
 import { desktopApiFetch } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { createRpcHeaders, resolveRpcCredentials, rpcClient } from "@/lib/orpc-client"
+import { buildErrorMessage } from "@/lib/rpc-error-handling"
 import { resolveApiUrl } from "@/lib/runtime-config"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 
@@ -33,38 +34,6 @@ const inventoryKeys = {
   asset: (assetId: string) => ["inventory", "asset", assetId] as const,
   locationContents: (input: { warehouseId?: string; projectId?: string }) => ["inventory", "location-contents", input] as const,
   outboundTransfers: ["inventory", "outbound-transfers"] as const,
-}
-
-function extractRpcIssueMessage(error: unknown): string | null {
-  if (error instanceof Error && error.message.trim().length > 0 && error.message !== "Input validation failed") {
-    return error.message
-  }
-
-  if (typeof error === "object" && error !== null) {
-    const obj = error as Record<string, unknown>
-    const directData = obj["data"]
-
-    if (typeof directData === "object" && directData !== null) {
-      const data = directData as Record<string, unknown>
-      const issues = data["issues"]
-      if (Array.isArray(issues) && issues.length > 0) {
-        const firstIssue = issues[0]
-        if (typeof firstIssue === "object" && firstIssue !== null) {
-          const issue = firstIssue as Record<string, unknown>
-          const message = issue["message"]
-          if (typeof message === "string" && message.trim().length > 0) {
-            return message
-          }
-        }
-      }
-    }
-  }
-
-  return null
-}
-
-function getInventoryErrorMessage(error: unknown, fallbackMessage: string) {
-  return extractRpcIssueMessage(error) ?? (error instanceof Error && error.message.trim().length > 0 ? error.message : fallbackMessage)
 }
 
 function requireEntitySuccess<T>(result: { success: boolean; message?: string; item?: T; error?: { message: string; code?: AppError["code"]; fieldErrors?: Array<{ field: string; message: string }> } }) {
@@ -161,7 +130,7 @@ export function useCreateInventoryItemDefinitionMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(getInventoryErrorMessage(error, "تعذر إنشاء تعريف العنصر."))
+      showErrorToast(buildErrorMessage(error, "تعذر إنشاء تعريف العنصر."))
     },
   })
 }
@@ -178,7 +147,7 @@ export function useCreateInventoryInvoiceGroupMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(getInventoryErrorMessage(error, "تعذر إنشاء الفاتورة."))
+      showErrorToast(buildErrorMessage(error, "تعذر إنشاء الفاتورة."))
     },
   })
 }
@@ -197,7 +166,7 @@ export function useTransferInventoryAssetMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(getInventoryErrorMessage(error, "تعذر تحويل الأصل."))
+      showErrorToast(buildErrorMessage(error, "تعذر تحويل الأصل."))
     },
   })
 }
@@ -214,7 +183,7 @@ export function useTransferInventoryConsumableMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(getInventoryErrorMessage(error, "تعذر تحويل الكمية."))
+      showErrorToast(buildErrorMessage(error, "تعذر تحويل الكمية."))
     },
   })
 }
@@ -280,7 +249,7 @@ export function useRecordInvoicePaymentMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(getInventoryErrorMessage(error, "تعذر تسجيل الدفع."))
+      showErrorToast(buildErrorMessage(error, "تعذر تسجيل الدفع."))
     },
   })
 }
@@ -297,7 +266,7 @@ export function useCreateOutboundTransferMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(getInventoryErrorMessage(error, "تعذر إنشاء التحويل الخارجي."))
+      showErrorToast(buildErrorMessage(error, "تعذر إنشاء التحويل الخارجي."))
     },
   })
 }
