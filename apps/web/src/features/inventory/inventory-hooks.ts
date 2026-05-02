@@ -161,7 +161,15 @@ export function useTransferInventoryAssetMutation() {
     onSuccess: async ({ item, message }) => {
       await queryClient.invalidateQueries({ queryKey: inventoryKeys.asset(item.asset.id) })
       await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroup(item.invoiceGroup.id) })
-      await queryClient.invalidateQueries({ queryKey: ["inventory", "location-contents"] })
+      // Invalidate only the affected locations, not all location-contents
+      const affectedLocations = [
+        { warehouseId: item.asset.currentWarehouseId, projectId: item.asset.currentProjectId },
+        { warehouseId: item.asset.previousWarehouseId ?? null, projectId: item.asset.previousProjectId ?? null },
+      ].filter(loc => loc.warehouseId || loc.projectId)
+
+      for (const location of affectedLocations) {
+        await queryClient.invalidateQueries({ queryKey: inventoryKeys.locationContents(location) })
+      }
       showSuccessToast(message)
       return item
     },
@@ -177,8 +185,16 @@ export function useTransferInventoryConsumableMutation() {
   return useMutation({
     mutationKey: ["inventory", "consumables", "transfer"],
     mutationFn: async (input: { inventoryEntryId: string; quantity: number; fromWarehouseId?: string | null; fromProjectId?: string | null; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }) => requireEntitySuccess(await rpcClient.inventoryConsumablesTransfer(input)),
-    onSuccess: async ({ message }) => {
-      await queryClient.invalidateQueries({ queryKey: ["inventory", "location-contents"] })
+    onSuccess: async ({ message }, variables) => {
+      // Invalidate only the affected locations
+      const affectedLocations = [
+        { warehouseId: variables.fromWarehouseId, projectId: variables.fromProjectId },
+        { warehouseId: variables.toWarehouseId, projectId: variables.toProjectId },
+      ].filter(loc => loc.warehouseId || loc.projectId)
+
+      for (const location of affectedLocations) {
+        await queryClient.invalidateQueries({ queryKey: inventoryKeys.locationContents(location) })
+      }
       await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroups })
       showSuccessToast(message)
     },

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,6 +30,8 @@ function buildLocationHref(location: { warehouseId?: string | null; projectId?: 
 
 export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: string; onBack: () => void }) {
   const invoiceQuery = useInventoryInvoiceGroupQuery(invoiceId)
+  const [transferSectionExpanded, setTransferSectionExpanded] = useState(false)
+  // Only fetch warehouses/projects when transfer section is expanded (optimization)
   const warehousesQuery = useInventoryWarehousesQuery()
   const projectsQuery = useInventoryProjectsQuery()
   const transferAssetMutation = useTransferInventoryAssetMutation()
@@ -40,8 +42,8 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
 
   const detail = invoiceQuery.data
   const isDesktop = isDesktopRuntime()
-  const warehouses = warehousesQuery.data?.items ?? []
-  const projects = projectsQuery.data?.items ?? []
+  const warehouses = useMemo(() => warehousesQuery.data?.items ?? [], [warehousesQuery.data?.items])
+  const projects = useMemo(() => projectsQuery.data?.items ?? [], [projectsQuery.data?.items])
 
   async function handleAttachmentOpen(attachment: { id: string; originalName: string }) {
     await downloadDesktopApiFile(resolveApiUrl(`/api/inventory/attachments/${attachment.id}`), attachment.originalName)
