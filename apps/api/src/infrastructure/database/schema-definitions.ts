@@ -500,6 +500,44 @@ export const schemaStatements = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "project_manager_ownership_history_active_project_key" ON "project_manager_ownership_history" ("project_id") WHERE "end_date" IS NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "warehouse_manager_ownership_history_active_warehouse_key" ON "warehouse_manager_ownership_history" ("warehouse_id") WHERE "end_date" IS NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "inventory_invoice_group_invoice_number_key" ON "inventory_invoice_group" ("invoice_number") WHERE "invoice_number" IS NOT NULL`,
+  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_counterparty_id_idx" ON "inventory_outbound_transfer" ("counterparty_id")',
+  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_debt_account_id_idx" ON "inventory_outbound_transfer" ("associated_debt_account_id")',
+  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_transfer_id_idx" ON "inventory_outbound_transfer_item" ("transfer_id")',
+  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_item_item_id_idx" ON "inventory_outbound_transfer_item" ("item_id")',
+  `CREATE TABLE IF NOT EXISTS "inventory_outbound_transfer" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "transfer_date" DATETIME NOT NULL,
+    "from_type" TEXT NOT NULL CHECK ("from_type" IN ('WAREHOUSE', 'PROJECT')),
+    "from_id" TEXT NOT NULL,
+    "counterparty_id" TEXT NOT NULL,
+    "transfer_type" TEXT NOT NULL CHECK ("transfer_type" IN ('SALE', 'GIFT', 'RETURN')),
+    "status" TEXT NOT NULL CHECK ("status" IN ('COMPLETED')),
+    "associated_debt_account_id" TEXT,
+    "notes" TEXT,
+    "actor_user_id" TEXT,
+    "actor_label" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    "updated_at" DATETIME NOT NULL,
+    CONSTRAINT "inventory_outbound_transfer_counterparty_id_fkey"
+      FOREIGN KEY ("counterparty_id") REFERENCES "external_counterparty" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "inventory_outbound_transfer_debt_account_id_fkey"
+      FOREIGN KEY ("associated_debt_account_id") REFERENCES "debt_account" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS "inventory_outbound_transfer_item" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "transfer_id" TEXT NOT NULL,
+    "item_id" TEXT NOT NULL,
+    "quantity" REAL NOT NULL,
+    "unit_price_dzd" REAL,
+    "created_at" DATETIME NOT NULL,
+    CONSTRAINT "inventory_outbound_transfer_item_transfer_id_fkey"
+      FOREIGN KEY ("transfer_id") REFERENCES "inventory_outbound_transfer" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "inventory_outbound_transfer_item_item_id_fkey"
+      FOREIGN KEY ("item_id") REFERENCES "inventory_item_definition" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "inventory_outbound_transfer_item_quantity_check"
+      CHECK ("quantity" > 0)
+  )`,
 ]
 
 export const additiveStatements = [
@@ -562,6 +600,8 @@ export const actorLabelBackfillMigrationKey = "backfill_actor_labels_v1"
 export const debtMultiCaseMigrationKey = "enable_debt_multi_case_v1"
 export const debtEntryClosureMigrationKey = "enable_debt_entry_closure_v1"
 export const debtSingleAccountMigrationKey = "simplify_debt_single_account_v1"
+export const addOutboundTransferMigrationKey = "add_outbound_transfer_tables_v1"
+export const addAdvanceDebtEntryMigrationKey = "add_advance_debt_entry_type_v1"
 
 export const companyIndexStatements = [
   'CREATE INDEX IF NOT EXISTS "employee_role_id_idx" ON "employee" ("role_id")',

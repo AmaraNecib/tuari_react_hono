@@ -319,6 +319,42 @@ export const inventoryLocationContentsInputSchema = z.object({
   }
 });
 
+export const inventoryInvoiceGroupRecordPaymentInputSchema = z.object({
+  invoiceGroupId: entityIdSchema,
+  amountDzd: z.number().positive(),
+  note: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const outboundTransferItemInputSchema = z.object({
+  itemId: entityIdSchema,
+  quantity: z.number().positive(),
+  unitPriceDzd: z.number().nonnegative().optional(),
+});
+
+export const inventoryOutboundTransferCreateInputSchema = z.object({
+  fromType: z.enum(["WAREHOUSE", "PROJECT"]),
+  fromId: entityIdSchema,
+  counterpartyId: entityIdSchema,
+  transferType: z.enum(["SALE", "GIFT", "RETURN"]),
+  items: z.array(outboundTransferItemInputSchema).min(1),
+  debtAmountDzd: z.number().nonnegative().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const inventoryOutboundTransferSchema = z.object({
+  id: entityIdSchema,
+  transferDate: timestampSchema,
+  fromType: z.enum(["WAREHOUSE", "PROJECT"]),
+  fromId: entityIdSchema,
+  counterpartyId: entityIdSchema,
+  transferType: z.enum(["SALE", "GIFT", "RETURN"]),
+  status: z.literal("COMPLETED"),
+  associatedDebtAccountId: entityIdSchema.nullable(),
+  notes: nullableTextSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
 export type InventoryItemDefinition = z.infer<typeof inventoryItemDefinitionSchema>;
 export type InventoryInvoiceAttachment = z.infer<typeof inventoryInvoiceAttachmentSchema>;
 export type InventoryAssetUnit = z.infer<typeof inventoryAssetUnitSchema>;
@@ -332,3 +368,7 @@ export type InventoryInvoiceGroupDetail = z.infer<typeof inventoryInvoiceGroupDe
 export type InventoryItemDefinitionCreateInput = z.infer<typeof inventoryItemDefinitionCreateInputSchema>;
 export type InventoryItemDefinitionUpdateInput = z.infer<typeof inventoryItemDefinitionUpdateInputSchema>;
 export type InventoryInvoiceGroupCreateInput = z.infer<typeof inventoryInvoiceGroupCreateInputSchema>;
+export type InventoryInvoiceGroupRecordPaymentInput = z.infer<typeof inventoryInvoiceGroupRecordPaymentInputSchema>;
+export type OutboundTransferItemInput = z.infer<typeof outboundTransferItemInputSchema>;
+export type InventoryOutboundTransferCreateInput = z.infer<typeof inventoryOutboundTransferCreateInputSchema>;
+export type InventoryOutboundTransfer = z.infer<typeof inventoryOutboundTransferSchema>;

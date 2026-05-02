@@ -68,7 +68,7 @@ export const employeeStatusSchema = z.enum(["ACTIVE", "INACTIVE", "LEFT"]);
 export const salaryPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
 export const debtPartyTypeSchema = z.enum(["INTERNAL_WORKER", "EXTERNAL_COUNTERPARTY"]);
 export const debtAccountStatusSchema = z.enum(["OPEN", "SETTLED"]);
-export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT"]);
+export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT", "ADVANCE"]);
 export const projectStatusSchema = z.enum([
   "ACTIVE",
   "STOPPED",
@@ -79,7 +79,7 @@ export const warehouseStatusSchema = z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]);
 export const assignmentStatusSchema = z.enum(["ACTIVE", "ENDED", "ARCHIVED"]);
 export const inventoryItemTypeSchema = z.enum(["CONSUMABLE", "ASSET"]);
 export const inventoryAssetConditionSchema = z.enum(["NEW", "USED", "MAINTENANCE", "DAMAGED"]);
-export const inventoryMovementTypeSchema = z.enum(["PURCHASE", "TRANSFER"]);
+export const inventoryMovementTypeSchema = z.enum(["PURCHASE", "TRANSFER", "OUTBOUND_SALE"]);
 export const inventoryLocationTypeSchema = z.enum(["WAREHOUSE", "PROJECT"]);
 export const inventoryPaymentInputTypeSchema = z.enum(["AMOUNT", "PERCENT"]);
 export const employeeBatchLimit = 24;

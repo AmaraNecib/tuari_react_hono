@@ -205,6 +205,18 @@ export const debtPartyDetailInputSchema = z
     }
   });
 
+export const employeeDebtEntryCreateInputSchema = z.object({
+  employeeId: entityIdSchema,
+  entryType: z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "ADVANCE"]),
+  amountDzd: z.number().positive(),
+  entryDate: timestampSchema.optional(),
+  note: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const employeeDebtAccountGetInputSchema = z.object({
+  employeeId: entityIdSchema,
+});
+
 export type ExternalCounterparty = z.infer<typeof externalCounterpartySchema>;
 export type DebtAccount = z.infer<typeof debtAccountSchema>;
 export type DebtEntry = z.infer<typeof debtEntrySchema>;
@@ -217,3 +229,5 @@ export type DebtAccountCreateInput = z.infer<typeof debtAccountCreateInputSchema
 export type DebtEntryCreateInput = z.infer<typeof debtEntryCreateInputSchema>;
 export type DebtSettlementInput = z.infer<typeof debtSettlementInputSchema>;
 export type DebtPartyDetailInput = z.infer<typeof debtPartyDetailInputSchema>;
+export type EmployeeDebtEntryCreateInput = z.infer<typeof employeeDebtEntryCreateInputSchema>;
+export type EmployeeDebtAccountGetInput = z.infer<typeof employeeDebtAccountGetInputSchema>;

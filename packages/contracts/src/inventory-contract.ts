@@ -14,12 +14,15 @@ import {
   inventoryInvoiceGroupDetailSchema,
   inventoryInvoiceGroupListInputSchema,
   inventoryInvoiceGroupSchema,
+  inventoryInvoiceGroupRecordPaymentInputSchema,
   inventoryItemDefinitionCreateInputSchema,
   inventoryItemDefinitionListInputSchema,
   inventoryItemDefinitionSchema,
   inventoryItemDefinitionUpdateInputSchema,
   inventoryLocationContentsInputSchema,
   inventoryLocationContentsSchema,
+  inventoryOutboundTransferCreateInputSchema,
+  inventoryOutboundTransferSchema,
 } from "./inventory"
 
 export const inventoryContract = {
@@ -59,6 +62,15 @@ export const inventoryContract = {
   inventoryConsumablesTransfer: oc
     .input(inventoryConsumableTransferInputSchema)
     .output(createEntityResultSchema(inventoryLocationContentsSchema)),
+  inventoryInvoiceGroupsRecordPayment: oc
+    .input(inventoryInvoiceGroupRecordPaymentInputSchema)
+    .output(createEntityResultSchema(inventoryInvoiceGroupSchema)),
+  inventoryOutboundTransfersList: oc
+    .input(inventoryLocationContentsInputSchema.optional())
+    .output(createListSchema(inventoryOutboundTransferSchema)),
+  inventoryOutboundTransfersCreate: oc
+    .input(inventoryOutboundTransferCreateInputSchema)
+    .output(createEntityResultSchema(inventoryOutboundTransferSchema)),
 } as const
 
 export type InventoryContract = typeof inventoryContract

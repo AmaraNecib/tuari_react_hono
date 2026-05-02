@@ -2,6 +2,8 @@ import { prisma } from "./prisma";
 import {
   actorLabelBackfillMigrationKey,
   additiveStatements,
+  addAdvanceDebtEntryMigrationKey,
+  addOutboundTransferMigrationKey,
   companyIndexStatements,
   companyStatusConstraintChecks,
   debtSingleAccountMigrationKey,
@@ -811,6 +813,168 @@ async function runDebtSingleAccountMigration() {
   }
 }
 
+async function runAddOutboundTransferMigration() {
+  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    addOutboundTransferMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "inventory_movement_updated"');
+      await tx.$executeRawUnsafe(
+        `CREATE TABLE "inventory_movement_updated" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "movement_type" TEXT NOT NULL CHECK ("movement_type" IN ('PURCHASE', 'TRANSFER', 'OUTBOUND_SALE')),
+          "item_type" TEXT NOT NULL CHECK ("item_type" IN ('CONSUMABLE', 'ASSET')),
+          "inventory_entry_id" TEXT,
+          "asset_unit_id" TEXT,
+          "quantity" REAL NOT NULL,
+          "from_warehouse_id" TEXT,
+          "from_project_id" TEXT,
+          "to_warehouse_id" TEXT,
+          "to_project_id" TEXT,
+          "note" TEXT,
+          "occurred_at" DATETIME NOT NULL,
+          "created_at" DATETIME NOT NULL,
+          CONSTRAINT "inventory_movement_inventory_entry_id_fkey"
+            FOREIGN KEY ("inventory_entry_id") REFERENCES "inventory_entry" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT "inventory_movement_asset_unit_id_fkey"
+            FOREIGN KEY ("asset_unit_id") REFERENCES "inventory_asset_unit" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT "inventory_movement_quantity_check"
+            CHECK ("quantity" > 0),
+          CONSTRAINT "inventory_movement_from_destination_check"
+            CHECK (NOT ("from_warehouse_id" IS NOT NULL AND "from_project_id" IS NOT NULL)),
+          CONSTRAINT "inventory_movement_to_destination_check"
+            CHECK (NOT ("to_warehouse_id" IS NOT NULL AND "to_project_id" IS NOT NULL))
+        )`,
+      );
+
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "inventory_movement_updated" (
+          "id", "movement_type", "item_type", "inventory_entry_id", "asset_unit_id",
+          "quantity", "from_warehouse_id", "from_project_id", "to_warehouse_id",
+          "to_project_id", "note", "occurred_at", "created_at"
+        )
+        SELECT
+          "id", "movement_type", "item_type", "inventory_entry_id", "asset_unit_id",
+          "quantity", "from_warehouse_id", "from_project_id", "to_warehouse_id",
+          "to_project_id", "note", "occurred_at", "created_at"
+        FROM "inventory_movement"`,
+      );
+
+      const [sourceRow] = await tx.$queryRawUnsafe<Array<{ count: number | bigint }>>(
+        'SELECT COUNT(*) AS count FROM "inventory_movement"',
+      );
+      const [updatedRow] = await tx.$queryRawUnsafe<Array<{ count: number | bigint }>>(
+        'SELECT COUNT(*) AS count FROM "inventory_movement_updated"',
+      );
+
+      if (Number(sourceRow?.count ?? 0) !== Number(updatedRow?.count ?? 0)) {
+        throw new Error("inventory_movement migration row count mismatch.");
+      }
+
+      await tx.$executeRawUnsafe('DROP TABLE "inventory_movement"');
+      await tx.$executeRawUnsafe('ALTER TABLE "inventory_movement_updated" RENAME TO "inventory_movement"');
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "inventory_movement_inventory_entry_id_idx" ON "inventory_movement" ("inventory_entry_id", "occurred_at")',
+      );
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "inventory_movement_asset_unit_id_idx" ON "inventory_movement" ("asset_unit_id", "occurred_at")',
+      );
+
+      await tx.$executeRawUnsafe(
+        'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+        addOutboundTransferMigrationKey,
+        new Date().toISOString(),
+      );
+    });
+  } finally {
+    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+  }
+}
+
+async function runAddAdvanceDebtEntryMigration() {
+  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    addAdvanceDebtEntryMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "debt_entry_updated"');
+      await tx.$executeRawUnsafe(
+        `CREATE TABLE "debt_entry_updated" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "debt_account_id" TEXT NOT NULL,
+          "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT', 'ADVANCE')),
+          "signed_amount_dzd" REAL NOT NULL,
+          "entry_date" DATETIME NOT NULL,
+          "note" TEXT,
+          "balance_after_dzd" REAL NOT NULL,
+          "actor_user_id" TEXT,
+          "actor_label" TEXT,
+          "transaction_id" TEXT,
+          "created_at" DATETIME NOT NULL,
+          "updated_at" DATETIME NOT NULL,
+          CONSTRAINT "debt_entry_debt_account_id_fkey"
+            FOREIGN KEY ("debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+        )`,
+      );
+
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "debt_entry_updated" (
+          "id", "debt_account_id", "entry_type", "signed_amount_dzd", "entry_date",
+          "note", "balance_after_dzd", "actor_user_id", "actor_label", "transaction_id",
+          "created_at", "updated_at"
+        )
+        SELECT
+          "id", "debt_account_id", "entry_type", "signed_amount_dzd", "entry_date",
+          "note", "balance_after_dzd", "actor_user_id", "actor_label", "transaction_id",
+          "created_at", "updated_at"
+        FROM "debt_entry"`,
+      );
+
+      const [sourceRow] = await tx.$queryRawUnsafe<Array<{ count: number | bigint }>>(
+        'SELECT COUNT(*) AS count FROM "debt_entry"',
+      );
+      const [updatedRow] = await tx.$queryRawUnsafe<Array<{ count: number | bigint }>>(
+        'SELECT COUNT(*) AS count FROM "debt_entry_updated"',
+      );
+
+      if (Number(sourceRow?.count ?? 0) !== Number(updatedRow?.count ?? 0)) {
+        throw new Error("debt_entry migration row count mismatch.");
+      }
+
+      await tx.$executeRawUnsafe('DROP TABLE "debt_entry"');
+      await tx.$executeRawUnsafe('ALTER TABLE "debt_entry_updated" RENAME TO "debt_entry"');
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "debt_entry_debt_account_id_idx" ON "debt_entry" ("debt_account_id", "entry_date")',
+      );
+
+      await tx.$executeRawUnsafe(
+        'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+        addAdvanceDebtEntryMigrationKey,
+        new Date().toISOString(),
+      );
+    });
+  } finally {
+    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+  }
+}
+
 async function ensureSeedRoles() {
   for (const role of roleSeeds) {
     const existing = (await prisma.$queryRawUnsafe<Array<{ id: string }>>(
@@ -873,6 +1037,8 @@ export async function ensureDatabaseSchema(): Promise<void> {
   await runStatusConstraintMigrations();
   await runActorLabelBackfillMigration();
   await runDebtSingleAccountMigration();
+  await runAddOutboundTransferMigration();
+  await runAddAdvanceDebtEntryMigration();
 
   await syncLegacyTimestampColumns();
   await repairLegacyAuthTables();
