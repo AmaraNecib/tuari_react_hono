@@ -6,6 +6,8 @@ import { PageActionGroup, PageHeader, PageSurfaceContent, Surface } from "@/feat
 import { AppShellFilterShell, usePaginatedRows } from "@/features/app-shell/app-shell-table-primitives"
 import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls"
 import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
+import { BatchOperationsToolbar } from "@/features/shared/batch-operations-toolbar"
+import { useBatchSelection } from "@/hooks/use-batch-selection"
 
 import { useInventoryInvoiceGroupsQuery } from "./inventory-hooks"
 
@@ -20,6 +22,7 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
   const invoicesQuery = useInventoryInvoiceGroupsQuery()
   const [query, setQuery] = useState("")
   const [filters, setFilters] = useState<Record<string, unknown>>({})
+  const batchSelection = useBatchSelection(invoicesQuery.data?.items ?? [])
 
   const normalizedQuery = query.trim().toLowerCase()
   const status = (filters.status as InvoiceStatusFilter) ?? "ALL"
@@ -83,19 +86,56 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
         </AppShellFilterShell>
 
         <div className="grid gap-3">
-          {pagedInvoices.map((invoice) => (
-            <button key={invoice.id} className="rounded-2xl border border-border/70 px-4 py-4 text-start transition hover:bg-muted/30" type="button" onClick={() => onOpen(invoice.id)}>
-              <div className="flex items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="font-medium text-foreground">{invoice.invoiceNumber || "فاتورة بدون رقم"}</div>
-                  <div className="text-sm text-muted-foreground">{invoice.supplierName || "بدون مورد محدد"}</div>
-                </div>
-                <div className="text-xs text-muted-foreground">{invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString("ar-DZ") : "بدون تاريخ"}</div>
+          {pagedInvoices.map((invoice) => {
+            const isSelected = batchSelection.selectedIds.has(invoice.id);
+            return (
+              <div
+                key={invoice.id}
+                className={`flex items-start gap-3 rounded-2xl border border-border/70 px-4 py-4 transition ${
+                  isSelected ? "bg-muted/30" : "bg-background/10"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => batchSelection.toggleItem(invoice.id)}
+                  className="mt-1 h-4 w-4 cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <button
+                  className="flex-1 text-start transition hover:opacity-80"
+                  type="button"
+                  onClick={() => onOpen(invoice.id)}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="font-medium text-foreground">{invoice.invoiceNumber || "فاتورة بدون رقم"}</div>
+                      <div className="text-sm text-muted-foreground">{invoice.supplierName || "بدون مورد محدد"}</div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString("ar-DZ") : "بدون تاريخ"}</div>
+                  </div>
+                </button>
               </div>
-            </button>
-          ))}
+            );
+          })}
           {filteredInvoices.length === 0 ? <p className="text-sm text-muted-foreground">لا توجد فواتير بعد.</p> : null}
         </div>
+
+        <BatchOperationsToolbar
+          selectCount={batchSelection.selectCount}
+          isAllSelected={batchSelection.isAllSelected}
+          isPartiallySelected={batchSelection.isPartiallySelected}
+          operations={[
+            { id: "export", label: "تصدير", variant: "outline" },
+            { id: "delete", label: "حذف", variant: "destructive", requiresConfirmation: true },
+          ]}
+          onToggleAll={batchSelection.toggleAll}
+          onClearSelection={batchSelection.clearSelection}
+          onOperation={(operationId) => {
+            console.log(`Operation ${operationId} on items:`, batchSelection.selectedItems.map((i: any) => i.id));
+            batchSelection.clearSelection();
+          }}
+        />
 
         {filteredInvoices.length > pageSize && (
           <TablePaginationControls
