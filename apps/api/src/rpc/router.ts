@@ -16,6 +16,7 @@ import { createOperationsHandlers } from "./handlers/operations";
 import { createFinanceHandlers } from "./handlers/finance";
 import { createInventoryHandlers } from "./handlers/inventory";
 import { createSystemHandlers } from "./handlers/system";
+import { createReportsHandlers } from "./handlers/reports";
 
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
@@ -55,6 +56,7 @@ export function createRouter(dependencies: RouterDependencies) {
     createOperationsHandlers(os, m, dependencies.operationsService),
     createFinanceHandlers(os, m, dependencies.financeService),
     createInventoryHandlers(os, m, dependencies.inventoryService),
+    createReportsHandlers(os, m, dependencies.companyService, dependencies.inventoryService),
   );
 
   return os.router(allHandlers as any);
