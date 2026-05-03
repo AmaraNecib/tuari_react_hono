@@ -18,7 +18,7 @@ describe("Advanced Search & Filtering Integration", () => {
     });
 
     expect(result.current.presets).toHaveLength(1);
-    expect(result.current.presets[0].name).toBe("Paid Invoices");
+    expect(result.current.presets[0]?.name).toBe("Paid Invoices");
   });
 
   it("enforces max presets limit", () => {
@@ -49,7 +49,7 @@ describe("Advanced Search & Filtering Integration", () => {
     let presetId = "";
     act(() => {
       result.current.savePreset("Test", {});
-      presetId = result.current.presets[0].id;
+      presetId = result.current.presets[0]?.id || "";
     });
 
     expect(result.current.presets).toHaveLength(1);
