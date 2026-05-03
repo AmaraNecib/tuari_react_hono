@@ -27,9 +27,8 @@ export class InputValidator {
           message: err.message,
         })) || [];
 
-        throw new ORPCError("VALIDATION_ERROR", {
+        throw new ORPCError("VALIDATION", {
           message: "Invalid input: validation failed",
-          fieldErrors,
         });
       }
       throw error;
@@ -52,9 +51,8 @@ export class InputValidator {
           message: err.message,
         })) || [];
 
-        throw new ORPCError("VALIDATION_ERROR", {
+        throw new ORPCError("VALIDATION", {
           message: "Invalid input: validation failed",
-          fieldErrors,
         });
       }
       throw error;

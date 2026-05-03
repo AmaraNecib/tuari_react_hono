@@ -91,7 +91,7 @@ describe("StructuredLogger", () => {
       });
       expect(spy).toHaveBeenCalled();
       // Check that duration was logged
-      const call = spy.mock.calls[0][0];
+      const call = spy.mock.calls[0]?.[0];
       expect(call).toContain("completed");
     });
 

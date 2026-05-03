@@ -32,23 +32,19 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
   // Generate unique key for rate limiting (based on user ID or IP)
   function getRateLimitKey(context: RpcContext): string {
     try {
-      // Prefer user ID if available
-      if (context.user?.id) return `user:${context.user.id}`;
-    } catch {}
+      const forwardedFor = context.headers.get("x-forwarded-for") as string | undefined;
+      const realIp = context.headers.get("x-real-ip") as string | undefined;
 
-    // Fallback to IP address
-    const forwardedFor = context.req?.headers?.["x-forwarded-for"] as string | undefined;
-    const realIp = context.req?.headers?.["x-real-ip"] as string | undefined;
-    const remoteAddress = (context.req as any)?.socket?.remoteAddress;
-
-    const ip = resolveClientIp({
-      forwardedFor,
-      realIp,
-      remoteAddress,
-      trustProxyHeaders: true,
-    });
-
-    return `ip:${ip}`;
+      const ip = resolveClientIp({
+        forwardedFor,
+        realIp,
+        remoteAddress: undefined,
+        trustProxyHeaders: true,
+      });
+      return `ip:${ip}`;
+    } catch {
+      return "ip:unknown";
+    }
   }
 
   function checkRateLimit(context: RpcContext): void {

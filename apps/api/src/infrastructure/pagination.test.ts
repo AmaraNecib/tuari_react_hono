@@ -31,8 +31,8 @@ describe("Paginator", () => {
     it("returns correct page of items", () => {
       const result = Paginator.paginate(items, { limit: 10, offset: 0 });
       expect(result.items).toHaveLength(10);
-      expect(result.items[0].id).toBe(1);
-      expect(result.items[9].id).toBe(10);
+      expect(result.items[0]?.id).toBe(1);
+      expect(result.items[9]?.id).toBe(10);
     });
 
     it("calculates total correctly", () => {

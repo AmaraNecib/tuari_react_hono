@@ -163,14 +163,9 @@ export function useTransferInventoryAssetMutation() {
     onSuccess: async ({ item, message }) => {
       await queryClient.invalidateQueries({ queryKey: inventoryKeys.asset(item.asset.id) })
       await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroup(item.invoiceGroup.id) })
-      // Invalidate only the affected locations, not all location-contents
-      const affectedLocations = [
-        { warehouseId: item.asset.currentWarehouseId, projectId: item.asset.currentProjectId },
-        { warehouseId: item.asset.previousWarehouseId ?? null, projectId: item.asset.previousProjectId ?? null },
-      ].filter(loc => loc.warehouseId || loc.projectId)
-
-      for (const location of affectedLocations) {
-        await queryClient.invalidateQueries({ queryKey: inventoryKeys.locationContents(location) })
+      // Invalidate the current location where asset was transferred
+      if (item.asset.currentWarehouseId || item.asset.currentProjectId) {
+        await queryClient.invalidateQueries({ queryKey: inventoryKeys.locationContents({ warehouseId: item.asset.currentWarehouseId ?? undefined, projectId: item.asset.currentProjectId ?? undefined }) })
       }
       showSuccessToast(message)
       return item
@@ -190,12 +185,12 @@ export function useTransferInventoryConsumableMutation() {
     onSuccess: async ({ message }, variables) => {
       // Invalidate only the affected locations
       const affectedLocations = [
-        { warehouseId: variables.fromWarehouseId, projectId: variables.fromProjectId },
-        { warehouseId: variables.toWarehouseId, projectId: variables.toProjectId },
+        { warehouseId: variables.fromWarehouseId ?? undefined, projectId: variables.fromProjectId ?? undefined },
+        { warehouseId: variables.toWarehouseId ?? undefined, projectId: variables.toProjectId ?? undefined },
       ].filter(loc => loc.warehouseId || loc.projectId)
 
       for (const location of affectedLocations) {
-        await queryClient.invalidateQueries({ queryKey: inventoryKeys.locationContents(location) })
+        await queryClient.invalidateQueries({ queryKey: inventoryKeys.locationContents(location as any) })
       }
       await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroups })
       showSuccessToast(message)

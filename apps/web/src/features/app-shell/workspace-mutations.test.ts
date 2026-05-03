@@ -19,12 +19,12 @@ describe("AppMutationError", () => {
 
     const error = new AppMutationError({
       message: "Validation failed",
-      code: "VALIDATION_ERROR",
+      code: "VALIDATION",
       fieldErrors: fieldErrors as any,
     })
 
     expect(error.message).toBe("Validation failed")
-    expect(error.code).toBe("VALIDATION_ERROR")
+    expect(error.code).toBe("VALIDATION")
     expect(error.fieldErrors).toEqual(fieldErrors)
   })
 
@@ -39,7 +39,7 @@ describe("AppMutationError", () => {
   it("defaults fieldErrors to empty array when not provided", () => {
     const error = new AppMutationError({
       message: "Some error",
-      code: "CUSTOM_CODE",
+      code: "CONFLICT",
     })
 
     expect(error.fieldErrors).toEqual([])
@@ -104,14 +104,14 @@ describe("mutation error handling patterns", () => {
       success: false as const,
       error: {
         message: "Validation error",
-        code: "VALIDATION_ERROR" as const,
+        code: "VALIDATION" as const,
         fieldErrors: [{ field: "email", message: "Invalid email" }],
       },
     }
 
     if (!failureResult.success) {
       const error = new AppMutationError(failureResult.error)
-      expect(error.code).toBe("VALIDATION_ERROR")
+      expect(error.code).toBe("VALIDATION")
       expect(error.fieldErrors).toHaveLength(1)
     }
   })
