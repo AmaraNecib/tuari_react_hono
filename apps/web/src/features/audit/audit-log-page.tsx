@@ -1,10 +1,12 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
 import { AppShellFilterShell, usePaginatedRows } from "@/features/app-shell/app-shell-table-primitives";
 import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls";
+import { rpcClient } from "@/lib/orpc-client";
 
 interface AuditLog {
   id: string;
@@ -16,28 +18,6 @@ interface AuditLog {
   changes: string;
 }
 
-// Mock data for demo
-const mockLogs: AuditLog[] = [
-  {
-    id: "1",
-    timestamp: new Date().toISOString(),
-    actor: "المستخدم الأول",
-    domain: "المخزون",
-    action: "create",
-    resourceId: "invoice-123",
-    changes: "تم إنشاء فاتورة جديدة",
-  },
-  {
-    id: "2",
-    timestamp: new Date(Date.now() - 3600000).toISOString(),
-    actor: "المستخدم الثاني",
-    domain: "الديون",
-    action: "update",
-    resourceId: "debt-456",
-    changes: "تم تحديث مبلغ الدين",
-  },
-];
-
 export function AuditLogPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [domain, setDomain] = useState("ALL");
@@ -45,13 +25,37 @@ export function AuditLogPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  const filteredLogs = useMemo(() => {
-    let result = mockLogs;
+  // Fetch audit logs from API
+  const { data: apiResponse, isLoading, error } = useQuery({
+    queryKey: ["systemLogList"],
+    queryFn: async () => {
+      const result = await (rpcClient as any).systemLogList({});
+      return result?.items ?? [];
+    },
+  });
+
+  const logs = useMemo(() => {
+    if (!apiResponse) return [];
+
+    // Map API response to AuditLog interface
+    return apiResponse.map((entry: any) => ({
+      id: entry.id,
+      timestamp: entry.createdAt,
+      actor: entry.actorLabel ?? entry.actorCurrentLabel ?? "غير معروف",
+      domain: entry.entityType ?? "unknown",
+      action: entry.actionType ?? "unknown",
+      resourceId: entry.entityId ?? "",
+      changes: entry.summary ?? "",
+    }));
+  }, [apiResponse]);
+
+  const filteredLogs = useMemo((): AuditLog[] => {
+    let result = logs;
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
-        (log) =>
+        (log: AuditLog) =>
           log.actor.toLowerCase().includes(q) ||
           log.resourceId.toLowerCase().includes(q) ||
           log.changes.toLowerCase().includes(q)
@@ -59,23 +63,23 @@ export function AuditLogPage() {
     }
 
     if (domain !== "ALL") {
-      result = result.filter((log) => log.domain === domain);
+      result = result.filter((log: AuditLog) => log.domain === domain);
     }
 
     if (action !== "ALL") {
-      result = result.filter((log) => log.action === action);
+      result = result.filter((log: AuditLog) => log.action === action);
     }
 
     if (startDate) {
-      result = result.filter((log) => new Date(log.timestamp) >= new Date(startDate));
+      result = result.filter((log: AuditLog) => new Date(log.timestamp) >= new Date(startDate));
     }
 
     if (endDate) {
-      result = result.filter((log) => new Date(log.timestamp) <= new Date(endDate));
+      result = result.filter((log: AuditLog) => new Date(log.timestamp) <= new Date(endDate));
     }
 
-    return result.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [searchQuery, domain, action, startDate, endDate]);
+    return result.sort((a: AuditLog, b: AuditLog) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [logs, searchQuery, domain, action, startDate, endDate]);
 
   const { page, pageSize, pagedRows: pagedLogs, setPage, setPageSize } = usePaginatedRows({
     rows: filteredLogs,
@@ -85,7 +89,7 @@ export function AuditLogPage() {
 
   const handleExportCSV = () => {
     const headers = ["التاريخ", "المستخدم", "النطاق", "الإجراء", "معرف المورد", "التغييرات"];
-    const rows = filteredLogs.map((log) => [
+    const rows = filteredLogs.map((log: AuditLog) => [
       new Date(log.timestamp).toLocaleString("ar-DZ"),
       log.actor,
       log.domain,
@@ -94,7 +98,7 @@ export function AuditLogPage() {
       log.changes,
     ]);
 
-    const csv = [headers, ...rows].map((row) => row.map((cell) => `"${cell}"`).join(",")).join("\n");
+    const csv = [headers, ...rows].map((row: (string | number)[]) => row.map((cell: string | number) => `"${cell}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -167,36 +171,51 @@ export function AuditLogPage() {
           </label>
         </AppShellFilterShell>
 
-        {filteredLogs.length === 0 ? (
+        {isLoading && (
+          <div className="rounded-lg border border-border/60 bg-background/10 p-8 text-center">
+            <p className="text-muted-foreground">جاري تحميل السجل...</p>
+          </div>
+        )}
+
+        {error && (
+          <div className="rounded-lg border border-destructive/60 bg-destructive/10 p-4 text-sm text-destructive">
+            خطأ في تحميل السجل: {error instanceof Error ? error.message : "حدث خطأ"}
+          </div>
+        )}
+
+        {!isLoading && !error && filteredLogs.length === 0 ? (
           <div className="rounded-lg border border-border/60 bg-background/10 p-8 text-center">
             <p className="text-muted-foreground">لا توجد عمليات مطابقة للفلاتر</p>
           </div>
-        ) : (
+        ) : (!isLoading && !error) && (
           <div className="space-y-3">
-            {pagedLogs.map((log) => (
-              <div key={log.id} className="rounded-lg border border-border/60 bg-background/10 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 space-y-2">
-                    <div className="flex flex-wrap gap-2">
-                      <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
-                        {log.domain}
-                      </span>
-                      <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
-                        {log.action === "create" && "إنشاء"}
-                        {log.action === "update" && "تحديث"}
-                        {log.action === "delete" && "حذف"}
-                      </span>
-                    </div>
-                    <div className="text-sm font-medium">{log.changes}</div>
-                    <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                      <span>{log.actor}</span>
-                      <span>{log.resourceId}</span>
-                      <span>{new Date(log.timestamp).toLocaleString("ar-DZ")}</span>
+            {pagedLogs.map((log: unknown) => {
+              const auditLog = log as AuditLog;
+              return (
+                <div key={auditLog.id} className="rounded-lg border border-border/60 bg-background/10 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
+                          {auditLog.domain}
+                        </span>
+                        <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
+                          {auditLog.action === "create" && "إنشاء"}
+                          {auditLog.action === "update" && "تحديث"}
+                          {auditLog.action === "delete" && "حذف"}
+                        </span>
+                      </div>
+                      <div className="text-sm font-medium">{auditLog.changes}</div>
+                      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                        <span>{auditLog.actor}</span>
+                        <span>{auditLog.resourceId}</span>
+                        <span>{new Date(auditLog.timestamp).toLocaleString("ar-DZ")}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

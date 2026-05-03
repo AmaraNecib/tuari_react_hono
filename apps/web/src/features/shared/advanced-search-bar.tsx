@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { type FilterPreset, useSavedFilters } from "@/hooks/use-saved-filters";
@@ -32,11 +32,6 @@ export function AdvancedSearchBar({
     storageKey,
   });
 
-  // Debounce search
-  const debounceTimer = useMemo(() => {
-    return debounceMs > 0 ? debounceMs : 0;
-  }, [debounceMs]);
-
   const handleSearch = useCallback(
     (searchQuery: string, filters: Record<string, unknown>) => {
       onSearch(searchQuery, filters);
@@ -44,15 +39,20 @@ export function AdvancedSearchBar({
     [onSearch]
   );
 
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleSearch(query, activeFilters);
+    }, debounceMs);
+
+    return () => clearTimeout(timer);
+  }, [query, activeFilters, debounceMs, handleSearch]);
+
   const handleQueryChange = useCallback(
     (value: string) => {
       setQuery(value);
-      const timer = setTimeout(() => {
-        handleSearch(value, activeFilters);
-      }, debounceTimer);
-      return () => clearTimeout(timer);
     },
-    [handleSearch, activeFilters, debounceTimer]
+    []
   );
 
   const handleFilterChange = useCallback(

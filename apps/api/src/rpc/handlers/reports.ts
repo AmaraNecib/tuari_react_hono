@@ -36,23 +36,34 @@ async function generateInventoryReport(
   const result = inventoryService.listInvoiceGroups?.();
   const invoiceGroups = result?.items ?? [];
 
-  const totalValueDzd = invoiceGroups.reduce((sum: number, group: any) => sum + (group.totalAmountDzd || 0), 0);
+  // Filter by date range if provided
+  let filtered = invoiceGroups;
+  if (startDate || endDate) {
+    const start = startDate ? new Date(startDate) : new Date('1900-01-01');
+    const end = endDate ? new Date(endDate) : new Date('2100-12-31');
+    filtered = invoiceGroups.filter(g => {
+      const date = g.invoiceDate ? new Date(g.invoiceDate) : new Date(g.createdAt);
+      return date >= start && date <= end;
+    });
+  }
+
+  const totalValueDzd = filtered.reduce((sum: number, group: any) => sum + (group.grossTotalDzd || 0), 0);
 
   return {
     type: "INVENTORY" as const,
     generatedAt: new Date().toISOString(),
     summary: {
-      totalAssetsDzd: totalValueDzd * 0.6,
-      totalConsumablesDzd: totalValueDzd * 0.4,
+      totalAssetsDzd: 0,
+      totalConsumablesDzd: 0,
       totalValueDzd,
     },
     byLocation: [
       {
         locationId: null,
         locationLabel: "جميع المواقع",
-        assetCount: Math.floor(invoiceGroups.length * 0.6),
-        assetValueDzd: totalValueDzd * 0.6,
-        consumableCount: Math.floor(invoiceGroups.length * 0.4),
+        assetCount: 0,
+        assetValueDzd: 0,
+        consumableCount: 0,
       },
     ],
     byItemType: [],
@@ -70,6 +81,11 @@ async function generateDebtReport(
   startDate?: string,
   endDate?: string,
 ) {
+  // TODO: Implement real debt aggregation using date range filters
+  // For now, return zeroed summary (date filters not yet wired)
+  void startDate;
+  void endDate;
+
   return {
     type: "DEBT" as const,
     generatedAt: new Date().toISOString(),
@@ -94,6 +110,12 @@ async function generateMovementReport(
   startDate?: string,
   endDate?: string,
 ) {
+  // TODO: Implement real movement tracking using date range filters
+  // For now, return zeroed summary (date filters not yet wired)
+  void startDate;
+  void endDate;
+  void inventoryService;
+
   return {
     type: "MOVEMENT" as const,
     generatedAt: new Date().toISOString(),

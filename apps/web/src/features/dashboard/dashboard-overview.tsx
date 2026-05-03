@@ -21,13 +21,13 @@ export function DashboardOverview() {
             <div className="mt-2 space-y-1">
               {inventoryReport.isLoading ? (
                 <p className="text-lg font-bold">جاري التحميل...</p>
-              ) : inventoryReport.data ? (
+              ) : inventoryReport.data?.summary?.totalValueDzd ? (
                 <>
                   <p className="text-2xl font-bold">
-                    {(inventoryReport.data as any).summary.totalValueDzd.toLocaleString("ar-DZ")} د.ج
+                    {(inventoryReport.data as any).summary?.totalValueDzd?.toLocaleString("ar-DZ")} د.ج
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    أصول: {(inventoryReport.data as any).summary.totalAssetsDzd.toLocaleString("ar-DZ")} د.ج
+                    أصول: {(inventoryReport.data as any).summary?.totalAssetsDzd?.toLocaleString("ar-DZ")} د.ج
                   </p>
                 </>
               ) : (
@@ -42,13 +42,13 @@ export function DashboardOverview() {
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
                 <p className="text-lg font-bold">جاري التحميل...</p>
-              ) : debtReport.data ? (
+              ) : debtReport.data?.summary?.totalOutstandingDzd !== undefined ? (
                 <>
                   <p className="text-2xl font-bold">
-                    {(debtReport.data as any).summary.totalOutstandingDzd.toLocaleString("ar-DZ")} د.ج
+                    {(debtReport.data as any).summary?.totalOutstandingDzd?.toLocaleString("ar-DZ")} د.ج
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    متأخرة: {(debtReport.data as any).summary.overdueDzd.toLocaleString("ar-DZ")} د.ج
+                    متأخرة: {(debtReport.data as any).summary?.overdueDzd?.toLocaleString("ar-DZ")} د.ج
                   </p>
                 </>
               ) : (
@@ -63,9 +63,9 @@ export function DashboardOverview() {
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
                 <p className="text-sm">جاري التحميل...</p>
-              ) : debtReport.data ? (
+              ) : debtReport.data?.agingBreakdown ? (
                 <>
-                  {(debtReport.data as any).agingBreakdown.slice(0, 2).map((item: any) => (
+                  {(debtReport.data as any).agingBreakdown?.slice(0, 2).map((item: any) => (
                     <div key={item.ageCategory} className="flex justify-between text-xs">
                       <span className="text-muted-foreground">
                         {item.ageCategory === "0-30_DAYS" && "0-30 يوم"}
@@ -88,13 +88,13 @@ export function DashboardOverview() {
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
                 <p className="text-sm">جاري التحميل...</p>
-              ) : debtReport.data && (debtReport.data as any).topDebtors.length > 0 ? (
+              ) : debtReport.data?.topDebtors?.[0] ? (
                 <>
                   <div className="text-sm font-medium">
-                    {(debtReport.data as any).topDebtors[0].partyName}
+                    {(debtReport.data as any).topDebtors?.[0]?.partyName}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {(debtReport.data as any).topDebtors[0].amountDzd.toLocaleString("ar-DZ")} د.ج
+                    {(debtReport.data as any).topDebtors?.[0]?.amountDzd?.toLocaleString("ar-DZ")} د.ج
                   </p>
                 </>
               ) : (
