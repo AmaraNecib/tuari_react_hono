@@ -1,11 +1,11 @@
 import { useMemo, useState, type ChangeEvent } from "react"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
 import { AppShellFilterShell, usePaginatedRows } from "@/features/app-shell/app-shell-table-primitives"
 import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls"
+import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
 
 import { useInventoryInvoiceGroupsQuery } from "./inventory-hooks"
 
@@ -19,9 +19,11 @@ type InvoiceStatusFilter = "ALL" | "PAID" | "UNPAID"
 export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPageProps) {
   const invoicesQuery = useInventoryInvoiceGroupsQuery()
   const [query, setQuery] = useState("")
-  const [status, setStatus] = useState<InvoiceStatusFilter>("ALL")
+  const [filters, setFilters] = useState<Record<string, unknown>>({})
 
   const normalizedQuery = query.trim().toLowerCase()
+  const status = (filters.status as InvoiceStatusFilter) ?? "ALL"
+
   const filteredInvoices = useMemo(() => {
     let result = invoicesQuery.data?.items ?? []
 
@@ -58,17 +60,21 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
         />
 
         <AppShellFilterShell>
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">البحث</span>
-            <Input
-              placeholder="رقم الفاتورة أو اسم المورد"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+          <div className="col-span-full lg:col-span-3">
+            <AdvancedSearchBar
+              searchFields={[
+                { key: "query", label: "البحث", placeholder: "رقم الفاتورة أو اسم المورد" },
+              ]}
+              onSearch={(searchQuery, filtersObj) => {
+                setQuery(searchQuery)
+                setFilters(filtersObj)
+              }}
+              storageKey="invoices-search-filters"
             />
-          </label>
+          </div>
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">الحالة</span>
-            <NativeSelect value={status} onChange={(e: ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value as InvoiceStatusFilter)}>
+            <NativeSelect value={status} onChange={(e: ChangeEvent<HTMLSelectElement>) => setFilters(prev => ({ ...prev, status: e.target.value }))}>
               <option value="ALL">الكل</option>
               <option value="PAID">مدفوعة</option>
               <option value="UNPAID">متبقي دين</option>
