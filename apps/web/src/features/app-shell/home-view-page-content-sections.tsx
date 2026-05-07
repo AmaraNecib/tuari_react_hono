@@ -139,7 +139,6 @@ export function HomeViewPageSectionContent({
         <SalariesSection
           recentPayments={derived.recentSalaryPayments}
           workers={derived.salariedEmployees}
-          onAddPayment={(employeeId) => void navigation.goToEmployeeFinance(employeeId)}
           onEditSalary={(employeeId) => void navigation.goToEmployeeEdit(employeeId)}
         />
       )

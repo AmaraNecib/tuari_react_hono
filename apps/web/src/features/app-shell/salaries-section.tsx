@@ -2,44 +2,31 @@ import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
-import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { RecordTabs, RecordPageFrame } from "@/features/shared/record-page-frame"
+import { PageHeader } from "@/features/shared/page-primitives"
+import { RecordTabs } from "@/features/shared/record-page-frame"
+import { AddSalaryPaymentDialog } from "@/features/employees/add-salary-payment-dialog"
 
 import {
   AppShellActionGroup,
   AppShellEmptyStateRow,
   AppShellTableFrame,
   AppShellTableHead,
-    AppShellTableHeaderCell,
-    AppShellTableRow,
-  } from "./app-shell-table-primitives"
+  AppShellTableHeaderCell,
+  AppShellTableRow,
+} from "./app-shell-table-primitives"
 
 function getSalaryPeriodLabelKey(value: "DAILY" | "WEEKLY" | "MONTHLY" | null) {
-  if (value === "DAILY") {
-    return "detailPages.salary.daily"
-  }
-
-  if (value === "WEEKLY") {
-    return "detailPages.salary.weekly"
-  }
-
-  if (value === "MONTHLY") {
-    return "detailPages.salary.monthly"
-  }
-
+  if (value === "DAILY") return "detailPages.salary.daily"
+  if (value === "WEEKLY") return "detailPages.salary.weekly"
+  if (value === "MONTHLY") return "detailPages.salary.monthly"
   return "detailPages.salary.notSpecified"
 }
 
-function renderMoneyValue(value: number, currencyLabel: string) {
-  const formattedNumber = new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-    useGrouping: false,
-  }).format(value)
-
+function MoneyCell({ value, currencyLabel }: { value: number; currencyLabel: string }) {
   return (
-    <span className="inline-flex items-baseline gap-1.5 font-mono" dir="ltr">
-      <span>{currencyLabel}</span>
-      <span>{formattedNumber}</span>
+    <span className="font-mono tabular-nums text-ink" dir="ltr">
+      {currencyLabel}{" "}
+      {new Intl.NumberFormat("en-US", { maximumFractionDigits: 0, useGrouping: true }).format(value)}
     </span>
   )
 }
@@ -47,7 +34,6 @@ function renderMoneyValue(value: number, currencyLabel: string) {
 export function SalariesSection({
   recentPayments,
   workers,
-  onAddPayment,
   onEditSalary,
 }: {
   recentPayments: Array<{
@@ -70,154 +56,143 @@ export function SalariesSection({
     salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | null
     lastPaymentDate: string | null
   }>
-  onAddPayment: (employeeId: string) => void
   onEditSalary: (employeeId: string) => void
 }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState("recent")
+  const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
   const currencyLabel = t("detailPages.salary.currency")
   const sortedWorkers = useMemo(
-    () => [...workers].sort((left, right) => left.employeeName.localeCompare(right.employeeName, "ar")),
+    () => [...workers].sort((a, b) => a.employeeName.localeCompare(b.employeeName, "ar")),
     [workers],
   )
 
   return (
-    <RecordPageFrame title={t("sections.salaries.label")} description={t("sections.salaries.description")}>
-      <div className="flex flex-col gap-6" dir="rtl">
-          <div className="flex justify-start">
-            <RecordTabs
-              activeTab={activeTab}
-              tabs={[
-                { id: "recent", label: t("salaries.recentTitle") },
-                { id: "workers", label: t("salaries.workersTitle") },
-              ]}
-              onChange={setActiveTab}
-            />
-          </div>
-          
-          {activeTab === "recent" ? (
-            <Surface className="p-5" variant="table">
-              <SurfaceHeader title={t("salaries.recentTitle")} />
-    
-              <AppShellTableFrame className="mt-5 rounded-[24px]">
-              <table className="min-w-full text-sm">
-                <AppShellTableHead className="bg-muted/50">
-                  <tr>
-                    <AppShellTableHeaderCell>{t("columns.name")}</AppShellTableHeaderCell>
-                    <AppShellTableHeaderCell>{t("salaries.paymentDate")}</AppShellTableHeaderCell>
-                    <AppShellTableHeaderCell>{t("salaries.expectedAmount")}</AppShellTableHeaderCell>
-                    <AppShellTableHeaderCell>{t("salaries.actualAmount")}</AppShellTableHeaderCell>
-                    <AppShellTableHeaderCell>{t("salaries.notes")}</AppShellTableHeaderCell>
-                    <AppShellTableHeaderCell className="text-end">{t("common.actions")}</AppShellTableHeaderCell>
-                  </tr>
-                </AppShellTableHead>
-                <tbody>
-                  {recentPayments.length > 0 ? (
-                    recentPayments.map((payment) => (
-                      <AppShellTableRow key={payment.id} className="bg-background/70 align-middle dark:bg-background/40">
-                        <td className="px-4 py-4 text-start">
-                          <div className="space-y-1">
-                            <p className="font-medium text-foreground" dir="auto">
-                              {payment.employeeName}
-                            </p>
-                            <p className="text-xs text-muted-foreground" dir="auto">
-                              {payment.employeeRole}
-                            </p>
-                            <p className="text-xs text-muted-foreground" dir="ltr">
-                              {payment.employeePhone}
-                            </p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-start text-foreground">{new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}</td>
-                        <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.expectedAmountDzd, currencyLabel)}</td>
-                        <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.actualAmountDzd, currencyLabel)}</td>
-                        <td className="px-4 py-4 text-start text-muted-foreground">{payment.note ?? t("common.noNotes")}</td>
-                        <td className="px-4 py-4 text-end">
-                          <AppShellActionGroup className="justify-end">
-                            <Button size="xs" onClick={() => onAddPayment(payment.employeeId)}>
-                              {t("salaries.addPayment")}
-                            </Button>
-                            <Button size="xs" variant="outline" onClick={() => onEditSalary(payment.employeeId)}>
-                              {t("salaries.editSalary")}
-                            </Button>
-                          </AppShellActionGroup>
-                        </td>
-                      </AppShellTableRow>
-                    ))
-                  ) : (
-                    <AppShellEmptyStateRow colSpan={6}>{t("salaries.recentEmpty")}</AppShellEmptyStateRow>
-                  )}
-                </tbody>
-              </table>
-            </AppShellTableFrame>
-          </Surface>
-          ) : null}
+    <div className="space-y-6">
+      <AddSalaryPaymentDialog
+        employeeId={paymentTarget?.id ?? null}
+        employeeName={paymentTarget?.name}
+        open={paymentTarget !== null}
+        onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
+      />
 
-        {activeTab === "workers" ? (
-          <Surface className="p-5" variant="table">
-            <SurfaceHeader description={t("salaries.workersDescription")} title={t("salaries.workersTitle")} />
+      <PageHeader title={t("sections.salaries.label")} />
 
-            <AppShellTableFrame className="mt-5 rounded-[24px]">
-              <table className="min-w-full text-sm">
-                <AppShellTableHead className="bg-muted/50">
-                  <tr>
-                    <AppShellTableHeaderCell>{t("columns.name")}</AppShellTableHeaderCell>
-                    <AppShellTableHeaderCell>{t("salaries.currentSalary")}</AppShellTableHeaderCell>
-                    <AppShellTableHeaderCell>{t("salaries.lastPaymentDate")}</AppShellTableHeaderCell>
-                    <AppShellTableHeaderCell className="text-end">{t("common.actions")}</AppShellTableHeaderCell>
-                  </tr>
-                </AppShellTableHead>
-                <tbody>
-                  {sortedWorkers.length > 0 ? (
-                    sortedWorkers.map((worker) => (
-                      <AppShellTableRow key={worker.employeeId} className="bg-background/70 align-middle dark:bg-background/40">
-                        <td className="px-4 py-4 text-start">
-                          <div className="space-y-1">
-                            <p className="font-medium text-foreground" dir="auto">
-                              {worker.employeeName}
-                            </p>
-                            <p className="text-xs text-muted-foreground" dir="auto">
-                              {worker.employeeRole}
-                            </p>
-                            <p className="text-xs text-muted-foreground" dir="ltr">
-                              {worker.employeePhone}
-                            </p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-start text-foreground">
-                          {worker.salaryAmountDzd !== null
-                            ? (
-                                <span className="inline-flex flex-wrap items-center gap-1.5">
-                                  {renderMoneyValue(worker.salaryAmountDzd, currencyLabel)}
-                                  <span className="text-muted-foreground">/ {t(getSalaryPeriodLabelKey(worker.salaryPeriod))}</span>
-                                </span>
-                              )
-                            : t("detailPages.salary.notSpecified")}
-                        </td>
-                        <td className="px-4 py-4 text-start text-muted-foreground">
-                          {worker.lastPaymentDate ? new Intl.DateTimeFormat("ar-DZ").format(new Date(worker.lastPaymentDate)) : t("salaries.noPaymentsYet")}
-                        </td>
-                        <td className="px-4 py-4 text-end">
-                          <AppShellActionGroup className="justify-end">
-                            <Button size="xs" onClick={() => onAddPayment(worker.employeeId)}>
-                              {t("salaries.addPayment")}
-                            </Button>
-                            <Button size="xs" variant="outline" onClick={() => onEditSalary(worker.employeeId)}>
-                              {t("salaries.editSalary")}
-                            </Button>
-                          </AppShellActionGroup>
-                        </td>
-                      </AppShellTableRow>
-                    ))
-                  ) : (
-                    <AppShellEmptyStateRow colSpan={4}>{t("salaries.workersEmpty")}</AppShellEmptyStateRow>
-                  )}
-                </tbody>
-              </table>
-            </AppShellTableFrame>
-          </Surface>
-        ) : null}
-        </div>
-    </RecordPageFrame>
+      <RecordTabs
+        activeTab={activeTab}
+        tabs={[
+          { id: "recent", label: t("salaries.recentTitle") },
+          { id: "workers", label: t("salaries.workersTitle") },
+        ]}
+        onChange={setActiveTab}
+      />
+
+      {activeTab === "recent" ? (
+        <AppShellTableFrame>
+          <table className="min-w-full">
+            <AppShellTableHead>
+              <tr>
+                <AppShellTableHeaderCell>{t("columns.name")}</AppShellTableHeaderCell>
+                <AppShellTableHeaderCell>{t("salaries.paymentDate")}</AppShellTableHeaderCell>
+                <AppShellTableHeaderCell>{t("salaries.expectedAmount")}</AppShellTableHeaderCell>
+                <AppShellTableHeaderCell>{t("salaries.actualAmount")}</AppShellTableHeaderCell>
+                <AppShellTableHeaderCell>{t("salaries.notes")}</AppShellTableHeaderCell>
+                <AppShellTableHeaderCell className="text-end">{t("common.actions")}</AppShellTableHeaderCell>
+              </tr>
+            </AppShellTableHead>
+            <tbody>
+              {recentPayments.length > 0 ? (
+                recentPayments.map((payment) => (
+                  <AppShellTableRow key={payment.id}>
+                    <td className="px-4 py-3 text-start">
+                      <p className="text-[13px] font-medium text-ink" dir="auto">{payment.employeeName}</p>
+                      <p className="text-[11px] text-ink-3" dir="auto">{payment.employeeRole}</p>
+                    </td>
+                    <td className="px-4 py-3 text-start text-[13px] text-ink-2">
+                      {new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}
+                    </td>
+                    <td className="px-4 py-3 text-start">
+                      <MoneyCell value={payment.expectedAmountDzd} currencyLabel={currencyLabel} />
+                    </td>
+                    <td className="px-4 py-3 text-start">
+                      <MoneyCell value={payment.actualAmountDzd} currencyLabel={currencyLabel} />
+                    </td>
+                    <td className="px-4 py-3 text-start text-[12.5px] text-ink-3">
+                      {payment.note ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-end">
+                      <AppShellActionGroup className="justify-end">
+                        <Button size="xs" onClick={() => setPaymentTarget({ id: payment.employeeId, name: payment.employeeName })}>
+                          {t("salaries.addPayment")}
+                        </Button>
+                        <Button size="xs" variant="outline" onClick={() => onEditSalary(payment.employeeId)}>
+                          {t("salaries.editSalary")}
+                        </Button>
+                      </AppShellActionGroup>
+                    </td>
+                  </AppShellTableRow>
+                ))
+              ) : (
+                <AppShellEmptyStateRow colSpan={6}>{t("salaries.recentEmpty")}</AppShellEmptyStateRow>
+              )}
+            </tbody>
+          </table>
+        </AppShellTableFrame>
+      ) : null}
+
+      {activeTab === "workers" ? (
+        <AppShellTableFrame>
+          <table className="min-w-full">
+            <AppShellTableHead>
+              <tr>
+                <AppShellTableHeaderCell>{t("columns.name")}</AppShellTableHeaderCell>
+                <AppShellTableHeaderCell>{t("salaries.currentSalary")}</AppShellTableHeaderCell>
+                <AppShellTableHeaderCell>{t("salaries.lastPaymentDate")}</AppShellTableHeaderCell>
+                <AppShellTableHeaderCell className="text-end">{t("common.actions")}</AppShellTableHeaderCell>
+              </tr>
+            </AppShellTableHead>
+            <tbody>
+              {sortedWorkers.length > 0 ? (
+                sortedWorkers.map((worker) => (
+                  <AppShellTableRow key={worker.employeeId}>
+                    <td className="px-4 py-3 text-start">
+                      <p className="text-[13px] font-medium text-ink" dir="auto">{worker.employeeName}</p>
+                      <p className="text-[11px] text-ink-3" dir="auto">{worker.employeeRole}</p>
+                    </td>
+                    <td className="px-4 py-3 text-start">
+                      {worker.salaryAmountDzd !== null ? (
+                        <span className="inline-flex items-baseline gap-1.5">
+                          <MoneyCell value={worker.salaryAmountDzd} currencyLabel={currencyLabel} />
+                          <span className="text-[11px] text-ink-3">/ {t(getSalaryPeriodLabelKey(worker.salaryPeriod))}</span>
+                        </span>
+                      ) : (
+                        <span className="text-[12.5px] text-ink-4">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-start text-[13px] text-ink-3">
+                      {worker.lastPaymentDate
+                        ? new Intl.DateTimeFormat("ar-DZ").format(new Date(worker.lastPaymentDate))
+                        : <span className="text-ink-4">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-end">
+                      <AppShellActionGroup className="justify-end">
+                        <Button size="xs" onClick={() => setPaymentTarget({ id: worker.employeeId, name: worker.employeeName })}>
+                          {t("salaries.addPayment")}
+                        </Button>
+                        <Button size="xs" variant="outline" onClick={() => onEditSalary(worker.employeeId)}>
+                          {t("salaries.editSalary")}
+                        </Button>
+                      </AppShellActionGroup>
+                    </td>
+                  </AppShellTableRow>
+                ))
+              ) : (
+                <AppShellEmptyStateRow colSpan={4}>{t("salaries.workersEmpty")}</AppShellEmptyStateRow>
+              )}
+            </tbody>
+          </table>
+        </AppShellTableFrame>
+      ) : null}
+    </div>
   )
 }

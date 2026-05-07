@@ -5,6 +5,7 @@ import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashboard"
+import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import {
@@ -127,6 +128,7 @@ export function EmployeeDetailsPage({
   const isProjectManager = employee.roleKey === "project_manager"
   const isWarehouseManager = employee.roleKey === "warehouse_manager"
   const isWorker = employee.roleKey === "worker"
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const createSalaryPaymentMutation = useCreateSalaryPaymentMutation()
   const [paymentDate, setPaymentDate] = useState(() => getAlgeriaDateInputValue())
   const [actualAmount, setActualAmount] = useState(() => (employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : ""))
@@ -180,6 +182,21 @@ export function EmployeeDetailsPage({
       editHref={`/employees/${encodeURIComponent(employee.id)}/edit`}
       editLabel={t("detailPages.employee.edit")}
       title={employee.name}
+      action={
+        isWorker && employee.status === "ACTIVE" ? (
+          <>
+            <AddSalaryPaymentDialog
+              employeeId={employee.id}
+              employeeName={employee.name}
+              open={paymentDialogOpen}
+              onOpenChange={setPaymentDialogOpen}
+            />
+            <Button size="lg" onClick={() => setPaymentDialogOpen(true)}>
+              {t("salaries.addPayment")}
+            </Button>
+          </>
+        ) : undefined
+      }
     >
       <RecordTabs
         activeTab={resolvedTab}

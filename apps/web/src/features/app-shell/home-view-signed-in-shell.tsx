@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { LogOut, MoonStar, Settings, SunMedium } from "lucide-react"
+import { LogOut, MoonStar, PanelRightClose, PanelRightOpen, Settings, SunMedium } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -60,16 +60,13 @@ export function HomeViewSignedInShell({
   onThemeToggle: () => void
 }) {
   const { t } = useTranslation()
-  const sidebarWidth = sidebarCollapsed ? "5.5rem" : "18rem"
-  const pageLabel =
-    page === "inventory"
-      ? t("workspace.shell.itemsGuide")
-      : page === "invoices" || page === "invoice-create" || page === "invoice-details"
-        ? t("workspace.shell.invoices")
-        : copy.sections.dashboard.label
 
   return (
-    <div className="min-h-screen overflow-hidden">
+    <div
+      className="tauri-shell"
+      data-collapsed={sidebarCollapsed ? "true" : "false"}
+    >
+      {/* Sidebar — first in DOM = right side in RTL CSS grid */}
       <WorkspaceSidebar
         collapseLabel={copy.shell.collapse}
         collapsed={sidebarCollapsed}
@@ -87,39 +84,77 @@ export function HomeViewSignedInShell({
         session={session}
         transactionsLabel={copy.sections.transactions.label}
         warehousesLabel={copy.sections.warehouses.label}
-        width={sidebarWidth}
+        width=""
         onSetCollapsed={onSetSidebarCollapsed}
       />
 
-      <main className="h-screen overflow-y-auto" style={{ paddingRight: `calc(${sidebarWidth} + 1.5rem)` }}>
-        <div className="flex min-h-full min-w-0 flex-col gap-6 pb-8 pe-6 ps-6 pt-5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0 text-right">
-              {page !== "dashboard" ? (
-                <WorkspaceBreadcrumbs items={breadcrumbItems} />
-              ) : (
-                <div className="text-sm font-medium text-muted-foreground">{pageLabel}</div>
-              )}
-            </div>
+      {/* Main area */}
+      <div className="flex flex-col min-w-0 bg-bg overflow-hidden">
+        {/* Topbar */}
+        <header
+          className="flex items-center gap-3 px-4 border-b border-line bg-bg flex-shrink-0"
+          style={{ height: "var(--header-h)" }}
+        >
+          {/* Sidebar toggle */}
+          <button
+            type="button"
+            aria-label={sidebarCollapsed ? copy.shell.expand : copy.shell.collapse}
+            className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors flex-shrink-0"
+            onClick={() => onSetSidebarCollapsed(!sidebarCollapsed)}
+          >
+            {sidebarCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
+          </button>
 
-            <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-background/82 p-1.5 shadow-lg shadow-black/10 backdrop-blur-xl">
-              <Button aria-label={copy.shell.signOut} className="size-9 rounded-xl text-destructive hover:text-destructive" size="icon" type="button" variant="ghost" onClick={() => onSignOutOpenChange(true)}>
-                <LogOut className="size-4" />
-              </Button>
-              <WorkspaceLink aria-label={copy.sections.settings.label} className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground" target={workspaceRoutes.settings()}>
-                <Settings className="size-4" />
-              </WorkspaceLink>
-              <Button aria-label={copy.shell.themeToggle} className="size-9 rounded-xl" size="icon" type="button" variant="ghost" onClick={onThemeToggle}>
-                {theme === "light" ? <MoonStar className="size-4" /> : <SunMedium className="size-4" />}
-              </Button>
-            </div>
+          {/* Breadcrumbs */}
+          <div className="flex items-center gap-2 text-[13px] min-w-0 flex-1">
+            {page !== "dashboard" ? (
+              <WorkspaceBreadcrumbs items={breadcrumbItems} />
+            ) : (
+              <span className="font-medium text-ink">{copy.sections.dashboard.label}</span>
+            )}
           </div>
 
+          {/* Right actions */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              type="button"
+              aria-label={copy.shell.themeToggle}
+              className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
+              onClick={onThemeToggle}
+            >
+              {theme === "light" ? <MoonStar size={16} /> : <SunMedium size={16} />}
+            </button>
+
+            <WorkspaceLink
+              aria-label={copy.sections.settings.label}
+              className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
+              target={workspaceRoutes.settings()}
+            >
+              <Settings size={16} />
+            </WorkspaceLink>
+
+            <button
+              type="button"
+              aria-label={copy.shell.signOut}
+              className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-bad hover:bg-bad-soft transition-colors"
+              onClick={() => onSignOutOpenChange(true)}
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        </header>
+
+        {/* Scrollable page content */}
+        <div className="flex-1 overflow-auto px-10 py-8">
           {children}
         </div>
-      </main>
+      </div>
 
-      <AlertDialog open={Boolean(pendingDelete)} onOpenChange={(open) => (!open && !deletePending ? onPendingDeleteChange(null) : null)}>
+      {/* Delete confirmation dialog */}
+      <AlertDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => (!open && !deletePending ? onPendingDeleteChange(null) : null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{copy.shell.destructiveTitle}</AlertDialogTitle>
@@ -135,7 +170,11 @@ export function HomeViewSignedInShell({
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={signOutOpen} onOpenChange={(open) => (!signOutPending ? onSignOutOpenChange(open) : null)}>
+      {/* Sign-out confirmation dialog */}
+      <AlertDialog
+        open={signOutOpen}
+        onOpenChange={(open) => (!signOutPending ? onSignOutOpenChange(open) : null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{copy.shell.signOutTitle}</AlertDialogTitle>

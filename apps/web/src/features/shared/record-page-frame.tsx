@@ -42,36 +42,31 @@ export function RecordPageFrame({
   children: ReactNode
 }) {
   return (
-    <Surface variant="panel">
-      <PageSurfaceContent>
-        <PageHeader
-          action={
-            <PageActionGroup>
-            {editHref && editLabel ? (
-              <Link className={cn(buttonVariants({ variant: "default", size: "lg" }))} to={editHref}>
-                {editLabel}
-              </Link>
-            ) : null}
-            {action ? action : null}
-            {backHref && backLabel ? (
-              <Link
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "lg" }),
-                  "border-primary/20 bg-background/75 text-primary hover:border-primary/35 hover:text-primary",
-                )}
-                to={backHref}
-              >
-                {backLabel}
-              </Link>
-            ) : null}
-            </PageActionGroup>
-          }
-          description={description}
-          title={title}
-        />
-        {children}
-      </PageSurfaceContent>
-    </Surface>
+    <div className="space-y-6">
+      <PageHeader
+        action={
+          <PageActionGroup>
+          {editHref && editLabel ? (
+            <Link className={cn(buttonVariants({ variant: "default", size: "sm" }))} to={editHref}>
+              {editLabel}
+            </Link>
+          ) : null}
+          {action ? action : null}
+          {backHref && backLabel ? (
+            <Link
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+              to={backHref}
+            >
+              {backLabel}
+            </Link>
+          ) : null}
+          </PageActionGroup>
+        }
+        description={description}
+        title={title}
+      />
+      {children}
+    </div>
   )
 }
 
@@ -139,11 +134,11 @@ export function RecordTabs({
     <div
       aria-label={t("detailPages.shared.recordTabsLabel")}
       aria-orientation="horizontal"
-      className="surface-subtle flex flex-wrap gap-2 rounded-[24px] p-2"
+      className="flex flex-wrap gap-0 border-b border-line"
       role="tablist"
     >
       {tabs.map((tab, index) => (
-        <Button
+        <button
           ref={(node) => {
             tabRefs.current[index] = node
           }}
@@ -153,20 +148,18 @@ export function RecordTabs({
           key={tab.id}
           role="tab"
           tabIndex={activeTab === tab.id ? 0 : -1}
-          className={cn(
-            "min-w-[9.5rem] rounded-[18px] px-4",
-            activeTab === tab.id
-              ? "bg-primary text-primary-foreground hover:bg-primary/90"
-              : "border-border/70 bg-background/80 text-foreground hover:border-primary/20 hover:bg-muted/60 hover:text-foreground dark:bg-background/60",
-          )}
-          size="lg"
           type="button"
-          variant={activeTab === tab.id ? "default" : "outline"}
+          className={cn(
+            "relative px-5 py-2.5 text-[13px] font-medium transition-colors outline-none",
+            activeTab === tab.id
+              ? "text-ink after:absolute after:inset-x-0 after:bottom-[-1px] after:h-[2px] after:bg-primary after:rounded-full"
+              : "text-ink-3 hover:text-ink-2",
+          )}
           onClick={() => onChange(tab.id)}
           onKeyDown={(event) => handleKeyDown(event, index)}
         >
           {tab.label}
-        </Button>
+        </button>
       ))}
     </div>
   )
@@ -220,10 +213,12 @@ export function RecordInfoCard({
   valueClassName?: string
 }) {
   return (
-    <Surface as="article" className={cn("min-w-0 flex flex-col gap-1.5 rounded-[22px] px-5 py-3.5", wide ? "md:col-span-2 xl:col-span-3" : "")} variant="card">
-      <p className="text-[0.8rem] font-medium leading-5 text-muted-foreground">{label}</p>
-      <div className={`min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[1.05rem] font-semibold leading-8 text-foreground ${valueClassName ?? ""}`.trim()}>{value}</div>
-    </Surface>
+    <article className={cn("min-w-0 flex flex-col gap-1 border border-line rounded-xl px-4 py-3 bg-surface", wide ? "md:col-span-2 xl:col-span-3" : "")}>
+      <p className="text-[12px] font-mono font-semibold uppercase tracking-widest text-ink-4">{label}</p>
+      <div className={cn("min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[14px] font-medium text-ink leading-snug", valueClassName)}>
+        {value}
+      </div>
+    </article>
   )
 }
 
@@ -251,10 +246,9 @@ export function RecordHistoryTable({
   const { t } = useTranslation()
 
   return (
-    <Surface className="overflow-hidden" variant="table">
-      <AppShellTableFrame className="rounded-[30px] border-0">
-        <table className="min-w-full text-sm">
-          <AppShellTableHead className="bg-muted/45 dark:bg-muted/55">
+    <AppShellTableFrame>
+      <table className="min-w-full text-sm">
+          <AppShellTableHead>
             <tr>
               <AppShellTableHeaderCell>{columns?.type ?? t("detailPages.shared.historyType")}</AppShellTableHeaderCell>
               <AppShellTableHeaderCell>{columns?.details ?? t("detailPages.shared.historyDetails")}</AppShellTableHeaderCell>
@@ -265,16 +259,16 @@ export function RecordHistoryTable({
           <tbody>
             {rows.length > 0 ? (
               rows.map((row) => (
-                <AppShellTableRow key={row.id} className="bg-background/75 dark:bg-background">
-                  <td className="px-4 py-4 text-start text-muted-foreground">{row.typeLabel}</td>
-                  <td className="px-4 py-4 text-start">
-                    <div className="space-y-1">
-                      <p className="font-medium text-foreground">{row.title}</p>
-                      {row.detail ? <p className="text-xs leading-5 text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{row.detail}</p> : null}
+                <AppShellTableRow key={row.id}>
+                  <td className="px-4 py-3 text-start text-ink-3 text-[13px]">{row.typeLabel}</td>
+                  <td className="px-4 py-3 text-start">
+                    <div className="space-y-0.5">
+                      <p className="text-[13px] font-medium text-ink">{row.title}</p>
+                      {row.detail ? <p className="text-[12px] leading-5 text-ink-3 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{row.detail}</p> : null}
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-start text-muted-foreground">{row.periodLabel}</td>
-                  <td className="px-4 py-4 text-start text-foreground">{row.statusLabel}</td>
+                  <td className="px-4 py-3 text-start text-ink-3 text-[13px]">{row.periodLabel}</td>
+                  <td className="px-4 py-3 text-start text-ink text-[13px]">{row.statusLabel}</td>
                 </AppShellTableRow>
               ))
             ) : (
@@ -282,8 +276,7 @@ export function RecordHistoryTable({
             )}
           </tbody>
         </table>
-      </AppShellTableFrame>
-    </Surface>
+    </AppShellTableFrame>
   )
 }
 

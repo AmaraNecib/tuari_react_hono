@@ -1,6 +1,7 @@
+import { useTranslation } from "react-i18next"
 import { BriefcaseBusiness, Users, Warehouse } from "lucide-react"
 
-import { PageHeader, Surface } from "@/features/shared/page-primitives"
+import { PageHeader, StatBand } from "@/features/shared/page-primitives"
 
 type DashboardSectionProps = {
   metrics: {
@@ -19,33 +20,24 @@ type DashboardSectionProps = {
   }
 }
 
-const cards = [
-  { key: "workers", icon: Users },
-  { key: "projects", icon: BriefcaseBusiness },
-  { key: "warehouses", icon: Warehouse },
-  // { key: "roles", icon: ShieldCheck },
-] as const
-
 export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
-  return (
-    <div className="space-y-6">
-      <PageHeader description={labels.description} title={labels.title} />
+  const { t } = useTranslation()
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map(({ key, icon: Icon }) => (
-          <Surface key={key} as="article" className="p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">{labels[key]}</p>
-                <p className="text-4xl font-semibold tracking-[-0.03em] text-foreground">{metrics[key]}</p>
-              </div>
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10">
-                <Icon className="size-5" />
-              </div>
-            </div>
-          </Surface>
-        ))}
-      </section>
+  return (
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow={t("detailPages.shell.itemsGuide")}
+        title={labels.title}
+      />
+
+      <StatBand
+        stats={[
+          { label: labels.workers,    value: metrics.workers,    tone: metrics.workers > 0 ? "good" : "neutral" },
+          { label: labels.projects,   value: metrics.projects,   tone: metrics.projects > 0 ? "good" : "neutral" },
+          { label: labels.warehouses, value: metrics.warehouses, tone: metrics.warehouses > 0 ? "good" : "neutral" },
+          { label: labels.roles,      value: metrics.roles,      tone: "neutral" },
+        ]}
+      />
     </div>
   )
 }

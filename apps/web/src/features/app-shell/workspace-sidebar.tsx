@@ -1,23 +1,23 @@
 import {
   BriefcaseBusiness,
+  Boxes,
   Gauge,
   HandCoins,
-  Boxes,
   Logs,
-  PanelRightClose,
-  PanelRightOpen,
   ReceiptText,
+  FileText,
   UserSquare2,
   Users,
   Warehouse,
-  FileText,
+  Settings,
+  PanelRightOpen,
 } from "lucide-react"
+import type React from "react"
 import { useTranslation } from "react-i18next"
 
-import { buttonVariants } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
+import { WorkspaceLink, workspaceRoutes, type WorkspaceRouteTarget } from "@/router/navigation"
 
 type WorkspaceSidebarPage =
   | "dashboard"
@@ -64,146 +64,223 @@ type WorkspaceSidebarProps = {
   salariesLabel: string
   rolesLabel: string
   transactionsLabel: string
-  session: {
-    name: string | null
-    phone: string
-  }
+  session: { name: string | null; phone: string }
   warehousesLabel: string
   width: string
   onSetCollapsed: (nextValue: boolean) => void
 }
 
-const items = [
-  { key: "dashboard", target: workspaceRoutes.dashboard(), icon: Gauge },
-  { key: "employees", target: workspaceRoutes.employees(), icon: Users },
-  { key: "externals", target: workspaceRoutes.externals(), icon: UserSquare2 },
-  { key: "debts", target: workspaceRoutes.debts(), icon: HandCoins },
-  { key: "projects", target: workspaceRoutes.projects(), icon: BriefcaseBusiness },
-  { key: "salaries", target: workspaceRoutes.salaries(), icon: ReceiptText },
-  { key: "warehouses", target: workspaceRoutes.warehouses(), icon: Warehouse },
-  { key: "inventory", target: workspaceRoutes.inventory(), icon: Boxes },
-  { key: "invoices", target: workspaceRoutes.invoices(), icon: FileText },
-  { key: "transactions", target: workspaceRoutes.transactions(), icon: Logs },
-] as const
+type NavItem = {
+  key: WorkspaceSidebarPage
+  target: WorkspaceRouteTarget
+  Icon: React.ComponentType<{ size?: number; className?: string }>
+}
 
-const utilityButtonClassName = "h-11 w-full rounded-2xl transition-colors"
-const collapsedButtonClassName = "justify-center px-0"
-const expandedButtonClassName = "justify-start px-3"
+type NavGroup = {
+  labelKey: string
+  fallback: string
+  items: NavItem[]
+}
+
+const ACTIVE_KEY_MAP: Partial<Record<WorkspaceSidebarPage, WorkspaceSidebarPage>> = {
+  "employees-create": "employees",
+  "employee-details": "employees",
+  "employee-edit":    "employees",
+  "debt-create":      "debts",
+  "external-create":  "externals",
+  "external-details": "externals",
+  "project-create":   "projects",
+  "project-details":  "projects",
+  "project-edit":     "projects",
+  "warehouse-create": "warehouses",
+  "warehouse-details":"warehouses",
+  "warehouse-edit":   "warehouses",
+  "invoice-create":   "invoices",
+  "invoice-details":  "invoices",
+  "outbound-transfers":       "inventory",
+  "outbound-transfer-create": "inventory",
+}
+
+function getInitials(name: string | null): string {
+  if (!name) return "؟"
+  const parts = name.trim().split(/\s+/)
+  return parts.length >= 2
+    ? (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase()
+    : name.slice(0, 2).toUpperCase()
+}
 
 export function WorkspaceSidebar({
   collapsed,
-  collapseLabel,
   currentPage,
   dashboardLabel,
   debtsLabel,
   employeesLabel,
   externalsLabel,
-  expandLabel,
   inventoryLabel,
   invoicesLabel,
   projectsLabel,
   salariesLabel,
   transactionsLabel,
   warehousesLabel,
-  width,
+  session,
   onSetCollapsed,
 }: WorkspaceSidebarProps) {
   const { t } = useTranslation()
-  const itemLabels = {
-    dashboard: dashboardLabel,
-    debts: debtsLabel,
-    employees: employeesLabel,
-    externals: externalsLabel,
-    inventory: inventoryLabel,
-    invoices: invoicesLabel,
-    projects: projectsLabel,
-    salaries: salariesLabel,
-    warehouses: warehousesLabel,
+  const activeKey: WorkspaceSidebarPage = ACTIVE_KEY_MAP[currentPage] ?? currentPage
+
+  const labels: Record<string, string> = {
+    dashboard:    dashboardLabel,
+    debts:        debtsLabel,
+    employees:    employeesLabel,
+    externals:    externalsLabel,
+    inventory:    inventoryLabel,
+    invoices:     invoicesLabel,
+    projects:     projectsLabel,
+    salaries:     salariesLabel,
     transactions: transactionsLabel,
-  } as const
-
-  const activeKey =
-    currentPage === "employees-create" || currentPage === "employee-details" || currentPage === "employee-edit"
-      ? "employees"
-      : currentPage === "debt-create"
-        ? "debts"
-        : currentPage === "externals" || currentPage === "external-create" || currentPage === "external-details"
-          ? "externals"
-        : currentPage === "project-details" || currentPage === "project-create" || currentPage === "project-edit"
-          ? "projects"
-        : currentPage === "warehouse-details" || currentPage === "warehouse-create" || currentPage === "warehouse-edit"
-          ? "warehouses"
-          : currentPage === "invoice-create" || currentPage === "invoice-details"
-            ? "invoices"
-           : currentPage
-
-  function getNavClassName(active: boolean) {
-    return cn(
-      buttonVariants({ variant: active ? "secondary" : "ghost", size: "default" }),
-      utilityButtonClassName,
-      collapsed ? collapsedButtonClassName : expandedButtonClassName,
-      active
-        ? "border border-primary/15 bg-primary/10 text-primary shadow-[0_12px_24px_rgba(59,91,162,0.12)] hover:bg-primary/12"
-        : "text-sidebar-foreground/88 hover:bg-background/70 hover:text-foreground",
-    )
+    warehouses:   warehousesLabel,
+    settings:     t("shell.settings"),
   }
 
+  const groups: NavGroup[] = [
+    {
+      labelKey: "shell.navGroupOverview",
+      fallback: "نظرة عامة",
+      items: [{ key: "dashboard", target: workspaceRoutes.dashboard(), Icon: Gauge }],
+    },
+    {
+      labelKey: "shell.navGroupOps",
+      fallback: "العمليات",
+      items: [
+        { key: "projects",   target: workspaceRoutes.projects(),   Icon: BriefcaseBusiness },
+        { key: "warehouses", target: workspaceRoutes.warehouses(), Icon: Warehouse },
+        { key: "inventory",  target: workspaceRoutes.inventory(),  Icon: Boxes },
+        { key: "salaries",   target: workspaceRoutes.salaries(),   Icon: ReceiptText },
+      ],
+    },
+    {
+      labelKey: "shell.navGroupMoney",
+      fallback: "المالية",
+      items: [
+        { key: "invoices",     target: workspaceRoutes.invoices(),     Icon: FileText },
+        { key: "debts",        target: workspaceRoutes.debts(),        Icon: HandCoins },
+        { key: "transactions", target: workspaceRoutes.transactions(), Icon: Logs },
+      ],
+    },
+    {
+      labelKey: "shell.navGroupPeople",
+      fallback: "الموظفون",
+      items: [
+        { key: "employees", target: workspaceRoutes.employees(), Icon: Users },
+        { key: "externals", target: workspaceRoutes.externals(), Icon: UserSquare2 },
+      ],
+    },
+    {
+      labelKey: "shell.navGroupSystem",
+      fallback: "النظام",
+      items: [{ key: "settings", target: workspaceRoutes.settings(), Icon: Settings }],
+    },
+  ]
+
   return (
-    <aside
-      className="shell-sidebar fixed inset-y-0 right-0 z-30 flex flex-col rounded-none rounded-l-[32px] p-3"
-      style={{ width }}
-    >
-      <div className={cn("mb-4 flex items-center", collapsed ? "justify-center" : "justify-start px-1 pt-1")}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                aria-label={collapsed ? expandLabel : collapseLabel}
-                className={cn(
-                  buttonVariants({ variant: "ghost", size: "icon" }),
-                  "size-9 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                )}
-                type="button"
-                onClick={() => onSetCollapsed(!collapsed)}
-              >
-                {collapsed ? <PanelRightOpen className="size-5" /> : <PanelRightClose className="size-5" />}
-              </button>
-            }
-          />
-          <TooltipContent side="left">{collapsed ? expandLabel : collapseLabel}</TooltipContent>
-        </Tooltip>
+    <aside className="flex flex-col h-full bg-bg-2 border-s border-line overflow-hidden min-w-0">
+      {/* Brand */}
+      <div className="flex items-center gap-3 px-5 border-b border-line flex-shrink-0" style={{ height: "var(--header-h)" }}>
+        <div className="w-[22px] h-[22px] rounded-[5px] bg-ink text-bg grid place-items-center text-sm font-display italic font-medium flex-shrink-0">
+          ط
+        </div>
+        <span className="sb-collapse-hide font-display italic text-[19px] tracking-[-0.01em] whitespace-nowrap overflow-hidden">
+          نظام
+        </span>
       </div>
 
-      <div className="mb-2 px-1">
-        {!collapsed ? <p className="px-3 text-[0.72rem] font-medium text-muted-foreground">{t("shell.mainNavigation")}</p> : null}
-      </div>
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto p-2 space-y-4" aria-label={t("shell.mainNavigation")}>
+        {groups.map((group) => (
+          <div key={group.labelKey}>
+            {/* Group header */}
+            <div className="sb-collapse-hide px-3 pb-1 pt-2 text-[11px] font-semibold tracking-wider uppercase text-ink-4">
+              {t(group.labelKey, group.fallback)}
+            </div>
 
-      <nav className="flex-1 space-y-1.5" aria-label={t("shell.mainNavigation")}>
-        {items.map(({ key, target, icon: Icon }) => {
-          const active = activeKey === key
-          const link = (
-            <WorkspaceLink
-              aria-current={active ? "page" : undefined}
-              className={getNavClassName(active)}
-              target={target}
-            >
-              <Icon className="size-4" />
-              {!collapsed ? <span>{itemLabels[key]}</span> : null}
-            </WorkspaceLink>
-          )
+            {/* Group items */}
+            <div className="space-y-0.5">
+              {group.items.map(({ key, target, Icon }) => {
+                const active = activeKey === key
+                const label = labels[key] ?? key
 
-          if (!collapsed) {
-            return <div key={key}>{link}</div>
-          }
+                const navItem = (
+                  <WorkspaceLink
+                    key={key}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-[6px] rounded-[6px] text-[13.5px] cursor-pointer select-none transition-colors",
+                      "relative",
+                      active
+                        ? "bg-surface text-ink font-medium shadow-[var(--shadow-sm)] sb-item-active"
+                        : "text-ink-2 hover:bg-surface-2 hover:text-ink",
+                    )}
+                    target={target}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <Icon
+                      size={16}
+                      className={cn(
+                        "flex-shrink-0 opacity-80",
+                        active && "opacity-100 text-primary",
+                      )}
+                    />
+                    <span className="sb-collapse-hide">{label}</span>
+                  </WorkspaceLink>
+                )
 
-          return (
-            <Tooltip key={key}>
-              <TooltipTrigger render={link} />
-              <TooltipContent side="left">{itemLabels[key]}</TooltipContent>
-            </Tooltip>
-          )
-        })}
+                if (collapsed) {
+                  return (
+                    <Tooltip key={key}>
+                      <TooltipTrigger render={navItem} />
+                      <TooltipContent side="left">{label}</TooltipContent>
+                    </Tooltip>
+                  )
+                }
+
+                return <div key={key}>{navItem}</div>
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
+
+      {/* Footer: user info + collapse toggle */}
+      {collapsed ? (
+        <div className="border-t border-line py-3 flex flex-col items-center gap-2 flex-shrink-0">
+          <div
+            className="w-[26px] h-[26px] rounded-full grid place-items-center text-white text-[11px] font-semibold flex-shrink-0"
+            style={{ background: "linear-gradient(135deg, var(--primary), color-mix(in oklab, var(--primary) 70%, white))" }}
+          >
+            {getInitials(session.name)}
+          </div>
+          <button
+            type="button"
+            aria-label={t("shell.expand")}
+            className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors"
+            onClick={() => onSetCollapsed(false)}
+          >
+            <PanelRightOpen size={16} />
+          </button>
+        </div>
+      ) : (
+        <div className="border-t border-line px-3 py-3 flex items-center gap-3 text-[12.5px] flex-shrink-0">
+          <div
+            className="w-[26px] h-[26px] rounded-full grid place-items-center text-white text-[11px] font-semibold flex-shrink-0"
+            style={{ background: "linear-gradient(135deg, var(--primary), color-mix(in oklab, var(--primary) 70%, white))" }}
+          >
+            {getInitials(session.name)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium truncate">{session.name ?? session.phone}</div>
+            <div className="text-ink-3 text-[11px] truncate">{session.phone}</div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }

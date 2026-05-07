@@ -1,0 +1,65 @@
+// English / Arabic translation map
+const T = {
+  en: {
+    brand_sub: "OS", org: "Khoury Construction",
+    g_overview: "Overview", g_ops: "Operations", g_money: "Money", g_people: "People", g_system: "System",
+    nav_dashboard: "Dashboard", nav_analytics: "Analytics", nav_projects: "Projects",
+    nav_warehouse: "Warehouse", nav_expenses: "Expenses", nav_invoices: "Invoices",
+    nav_partners: "Partners", nav_employees: "Employees", nav_reports: "Reports", nav_settings: "Settings",
+    role: "Owner · Admin", search: "Search projects, items, people…",
+    btn_new: "New", btn_filter: "Filter", btn_new_project: "New Project",
+    greet_eyebrow: "May 7, 2026 · Wednesday",
+    greet_title: 'Good morning, <b>Joseph</b>.',
+    greet_sub: "5 active projects, 3 invoices await action, $32k in supplier balances due this month.",
+    s_active: "Active projects", s_of: "of", s_spent: "Spent this quarter", s_recv: "Receivable", s_pay: "Payable",
+    s_clients: "clients", s_suppliers: "suppliers", s_overdue: "1 overdue", s_due_in: "due in 22 d", s_vs_last: "vs. last month",
+    sec_inflight: 'Projects in flight', see_all: "View all", see_ledger: "See ledger", inbox: "Inbox", full_ledger: "Full ledger",
+    col_project: "Project", col_status: "Status", col_budget: "Budget", col_due: "Due", col_crew: "Crew",
+    sec_qactions: 'Quick actions', sec_recent: 'Recent expenses', sec_activity: 'Activity', sec_alerts: 'Stock alerts',
+    qa: [
+      { t: "New expense", s: "Log fuel, materials, labor" },
+      { t: "Create invoice", s: "Bill a client" },
+      { t: "Receive stock", s: "Add to warehouse" },
+      { t: "Assign asset", s: "Move tool/vehicle to site" },
+      { t: "Pay employee", s: "Salary or against debt" },
+      { t: "Settle balance", s: "Pay supplier or receive" },
+      { t: "Run report", s: "P&L, cashflow, by project" },
+      { t: "Upload doc", s: "Permit, contract, photo" },
+    ],
+    col_date: "Date", col_desc: "Description", col_cat: "Category", col_type: "Type", col_by: "Logged by", col_amount: "Amount",
+    consumable: "Consumable", inuse: "In-Use", on_hand: "on hand", reorder_at: "reorder at",
+  },
+  ar: {
+    brand_sub: "نظام", org: "خوري للإنشاءات",
+    g_overview: "نظرة عامة", g_ops: "العمليات", g_money: "المالية", g_people: "الموظفون", g_system: "النظام",
+    nav_dashboard: "لوحة التحكم", nav_analytics: "التحليلات", nav_projects: "المشاريع",
+    nav_warehouse: "المستودع", nav_expenses: "المصاريف", nav_invoices: "الفواتير",
+    nav_partners: "الشركاء", nav_employees: "الموظفون", nav_reports: "التقارير", nav_settings: "الإعدادات",
+    role: "المالك · مسؤول", search: "ابحث في المشاريع والأصناف والأشخاص…",
+    btn_new: "جديد", btn_filter: "تصفية", btn_new_project: "مشروع جديد",
+    greet_eyebrow: "٧ أيار ٢٠٢٦ · الأربعاء",
+    greet_title: 'صباح الخير، <b>جوزيف</b>.',
+    greet_sub: "٥ مشاريع نشطة، ٣ فواتير بانتظار الإجراء، ٣٢ ألف دولار من أرصدة الموردين مستحقة هذا الشهر.",
+    s_active: "المشاريع النشطة", s_of: "من", s_spent: "المصروف هذا الربع", s_recv: "ذمم مدينة", s_pay: "ذمم دائنة",
+    s_clients: "عملاء", s_suppliers: "موردون", s_overdue: "متأخرة ١", s_due_in: "خلال ٢٢ يومًا", s_vs_last: "مقابل الشهر السابق",
+    sec_inflight: 'المشاريع <b>قيد التنفيذ</b>', see_all: "عرض الكل", see_ledger: "عرض السجل", inbox: "الوارد", full_ledger: "السجل الكامل",
+    col_project: "المشروع", col_status: "الحالة", col_budget: "الميزانية", col_due: "الاستحقاق", col_crew: "الفريق",
+    sec_qactions: 'إجراءات <b>سريعة</b>', sec_recent: 'مصاريف <b>حديثة</b>', sec_activity: '<b>النشاط</b>', sec_alerts: 'تنبيهات <b>المخزون</b>',
+    qa: [
+      { t: "مصروف جديد", s: "وقود، مواد، عمالة" },
+      { t: "إنشاء فاتورة", s: "محاسبة عميل" },
+      { t: "استلام مخزون", s: "إضافة إلى المستودع" },
+      { t: "تخصيص أصل", s: "نقل أداة/مركبة إلى موقع" },
+      { t: "دفع موظف", s: "راتب أو سداد دين" },
+      { t: "تسوية رصيد", s: "دفع مورد أو استلام" },
+      { t: "تشغيل تقرير", s: "أرباح وخسائر، تدفق نقدي" },
+      { t: "رفع مستند", s: "إذن، عقد، صورة" },
+    ],
+    col_date: "التاريخ", col_desc: "الوصف", col_cat: "الفئة", col_type: "النوع", col_by: "المُسجِّل", col_amount: "المبلغ",
+    consumable: "استهلاكي", inuse: "قيد الاستخدام", on_hand: "متوفر", reorder_at: "إعادة الطلب عند",
+  }
+};
+window.T = T;
+window.useLang = function(lang) {
+  return (key) => (T[lang] && T[lang][key]) || T.en[key] || key;
+};

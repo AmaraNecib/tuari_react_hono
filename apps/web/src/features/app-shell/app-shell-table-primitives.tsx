@@ -20,32 +20,40 @@ export function AppShellSectionBody({ children, className }: { children: ReactNo
 
 export function AppShellTableFrame({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("overflow-hidden rounded-[28px] border border-border/60", className)} dir="rtl">
+    <div className={cn("overflow-hidden rounded-xl border border-line", className)} dir="rtl">
       <div className="overflow-x-auto">{children}</div>
     </div>
   )
 }
 
 export function AppShellTableHead({ children, className }: { children: ReactNode; className?: string }) {
-  return <thead className={cn("bg-muted/60 text-muted-foreground", className)}>{children}</thead>
+  return (
+    <thead className={cn("bg-bg-2 border-b border-line", className)}>
+      {children}
+    </thead>
+  )
 }
 
 export function AppShellTableHeaderCell({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <th className={cn("px-4 py-3 text-start font-medium", className)} scope="col">
+    <th className={cn("px-4 py-2.5 text-start text-[12px] font-mono font-semibold uppercase tracking-widest text-ink-4", className)} scope="col">
       {children}
     </th>
   )
 }
 
 export function AppShellTableRow({ children, className }: { children: ReactNode; className?: string }) {
-  return <tr className={cn("border-t border-border/60 bg-background/10", className)}>{children}</tr>
+  return (
+    <tr className={cn("border-t border-line bg-surface hover:bg-surface-2 transition-colors", className)}>
+      {children}
+    </tr>
+  )
 }
 
 export function AppShellEmptyStateRow({ colSpan, children }: { colSpan: number; children: ReactNode }) {
   return (
     <tr>
-      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={colSpan}>
+      <td className="px-4 py-8 text-center text-[13px] text-ink-3" colSpan={colSpan}>
         {children}
       </td>
     </tr>
@@ -53,7 +61,7 @@ export function AppShellEmptyStateRow({ colSpan, children }: { colSpan: number; 
 }
 
 export function AppShellActionGroup({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex flex-wrap justify-start gap-2", className)} dir="rtl">{children}</div>
+  return <div className={cn("flex flex-wrap justify-start gap-1.5", className)} dir="rtl">{children}</div>
 }
 
 export function AppShellActionButtonWithReason({
@@ -93,7 +101,7 @@ export function AppShellActionButtonWithReason({
 
 export function AppShellFilterShell({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("grid gap-3 rounded-[24px] border border-border/60 bg-background/12 p-4 md:grid-cols-2 xl:grid-cols-5", className)} dir="rtl">
+    <div className={cn("grid gap-3 rounded-xl border border-line bg-bg-2 p-4 md:grid-cols-2 xl:grid-cols-5", className)} dir="rtl">
       {children}
     </div>
   )

@@ -1,3 +1,6 @@
+import { useState } from "react"
+import { useTranslation } from "react-i18next"
+
 import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
@@ -12,8 +15,8 @@ import {
   usePaginatedRows,
 } from "@/features/app-shell/app-shell-table-primitives"
 import { getArabicStatusLabel, getStatusTone } from "@/features/shared/status-meta"
-
 import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls"
+import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 
 export type EmployeeTableRow = {
   id: string
@@ -70,10 +73,18 @@ type EmployeeTableProps = {
 }
 
 export function EmployeeTable({ copy, rows, onDelete, onEdit, onLeave, onView }: EmployeeTableProps) {
+  const { t } = useTranslation()
   const { page, pageSize, pagedRows, setPage, setPageSize } = usePaginatedRows({ rows })
+  const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
 
   return (
     <div className="overflow-hidden rounded-[28px] border border-border/60">
+      <AddSalaryPaymentDialog
+        employeeId={paymentTarget?.id ?? null}
+        employeeName={paymentTarget?.name}
+        open={paymentTarget !== null}
+        onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
+      />
       <AppShellTableFrame className="rounded-none border-0">
         <table className="min-w-full text-sm">
           <AppShellTableHead>
@@ -122,6 +133,14 @@ export function EmployeeTable({ copy, rows, onDelete, onEdit, onLeave, onView }:
                   </td>
                   <td className="px-4 py-4 text-start">
                     <AppShellActionGroup>
+                      {row.isWorker && row.status === "ACTIVE" ? (
+                        <Button
+                          size="xs"
+                          onClick={() => setPaymentTarget({ id: row.id, name: row.name })}
+                        >
+                          {t("salaries.addPayment")}
+                        </Button>
+                      ) : null}
                       <Button size="xs" variant="outline" onClick={() => onView(row)}>
                         {copy.view}
                       </Button>
