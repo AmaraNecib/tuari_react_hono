@@ -12,9 +12,14 @@ interface GenerateReportInput {
 export function useReportQuery(input: GenerateReportInput, enabled = true) {
   return useQuery({
     queryKey: ["reports", input.type, input.startDate, input.endDate],
-    queryFn: async () => (rpcClient as any).reportsGenerate(input),
+    queryFn: async () => {
+      const result = await (rpcClient as any).reportsGenerate(input);
+      if (!result) throw new Error("Failed to generate report");
+      return result;
+    },
     enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 1,
   });
 }
 
@@ -31,6 +36,10 @@ export function useMovementReport(startDate?: string, endDate?: string) {
 }
 
 export function formatReportAsCSV(report: any): string {
+  if (!report?.type || !report?.summary) {
+    return "";
+  }
+
   const lines: string[] = [];
 
   if (report.type === "INVENTORY") {

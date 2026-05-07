@@ -274,6 +274,7 @@ fn matches_inventory_attachment_download_path(path: &str) -> bool {
 
 fn is_allowed_desktop_bridge_path(path: &str) -> bool {
     matches!(path, "/rpc" | "/api/auth/profile")
+        || path.starts_with("/rpc/")
         || path.starts_with("/rpc?")
         || path.starts_with("/api/auth/profile?")
         || matches_inventory_attachment_upload_path(path)
@@ -306,10 +307,6 @@ async fn send_desktop_api_request(
 ) -> Result<DesktopApiResponse, String> {
     if request.body.is_some() && request.multipart_files.is_some() {
         return Err("Desktop API bridge cannot send raw and multipart bodies together.".to_string());
-    }
-
-    if !is_allowed_desktop_bridge_path(&request.path) {
-        return Err("Desktop API bridge path is not allowed.".to_string());
     }
 
     let method = reqwest::Method::from_bytes(request.method.trim().as_bytes())
@@ -385,6 +382,9 @@ async fn desktop_api_request(
     request: DesktopApiRequest,
     state: tauri::State<'_, DesktopAuthRuntimeState>,
 ) -> Result<DesktopApiResponse, String> {
+    if !is_allowed_desktop_bridge_path(&request.path) {
+        return Err("Desktop API bridge path is not allowed.".to_string());
+    }
     send_desktop_api_request(request, &state).await
 }
 
@@ -1132,6 +1132,8 @@ mod tests {
     fn allows_only_expected_desktop_bridge_paths() {
         assert!(is_allowed_desktop_bridge_path("/rpc"));
         assert!(is_allowed_desktop_bridge_path("/rpc?batch=1"));
+        assert!(is_allowed_desktop_bridge_path("/rpc/authSetupStatus"));
+        assert!(is_allowed_desktop_bridge_path("/rpc/session"));
         assert!(is_allowed_desktop_bridge_path("/api/auth/profile"));
         assert!(is_allowed_desktop_bridge_path(
             "/api/inventory/invoice-groups/invoice-1/attachments"

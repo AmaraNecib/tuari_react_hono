@@ -1736,11 +1736,11 @@ export class SqliteCompanyRepository implements CompanyRepository {
 }
 
 export function createCompanyRepository(database?: Database.Database | string) {
-  if (database instanceof Database) {
+  if (database !== undefined && typeof database !== 'string') {
     return new SqliteCompanyRepository(database);
   }
 
-  const path = database ?? resolveDatabaseEnv().databasePath;
+  const path = typeof database === 'string' ? database : resolveDatabaseEnv().databasePath;
   mkdirSync(dirname(path), { recursive: true });
   return new SqliteCompanyRepository(new Database(path));
 }

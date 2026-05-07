@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/form-controls";
@@ -27,6 +27,29 @@ export function ExportImportDialog({
   const [importStatus, setImportStatus] = useState<ImportStatus>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Manage success and error timeouts with cleanup
+  useEffect(() => {
+    if (importStatus === "success") {
+      timeoutRef.current = setTimeout(() => {
+        onOpenChange(false);
+        setSelectedFile(null);
+        setImportStatus("idle");
+      }, 2000);
+    } else if (importStatus === "error") {
+      timeoutRef.current = setTimeout(() => {
+        setImportStatus("idle");
+      }, 3000);
+    }
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [importStatus, onOpenChange]);
 
   const handleExport = () => {
     onExport(exportFormat);
@@ -44,11 +67,6 @@ export function ExportImportDialog({
       setErrorMessage("");
       await onImport(selectedFile, importFormat);
       setImportStatus("success");
-      setTimeout(() => {
-        onOpenChange(false);
-        setSelectedFile(null);
-        setImportStatus("idle");
-      }, 2000);
     } catch (error) {
       setImportStatus("error");
       setErrorMessage(error instanceof Error ? error.message : "خطأ في الاستيراد");

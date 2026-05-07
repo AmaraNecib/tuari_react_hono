@@ -9,4 +9,7 @@ export default defineConfig({
   target: "es2022",
   external: ["@prisma/client", "better-sqlite3"],
   noExternal: [/^(?!@prisma\/client$|better-sqlite3$).+/],
+  esbuildOptions(options) {
+    options.logOverride = { "ignored-bare-import": "silent" };
+  },
 });

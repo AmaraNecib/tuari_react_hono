@@ -28,8 +28,8 @@ export function formatNextOccurrence(pattern: any): string {
   return date.toLocaleDateString("ar-DZ");
 }
 
-export function calculateDaysUntilOccurrence(pattern: any): number {
-  if (!pattern.nextOccurrenceDate) return -1;
+export function calculateDaysUntilOccurrence(pattern: any): number | null {
+  if (!pattern?.nextOccurrenceDate) return null;
   const now = new Date();
   const nextDate = new Date(pattern.nextOccurrenceDate);
   const diff = nextDate.getTime() - now.getTime();

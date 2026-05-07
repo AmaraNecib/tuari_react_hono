@@ -500,10 +500,6 @@ export const schemaStatements = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "project_manager_ownership_history_active_project_key" ON "project_manager_ownership_history" ("project_id") WHERE "end_date" IS NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "warehouse_manager_ownership_history_active_warehouse_key" ON "warehouse_manager_ownership_history" ("warehouse_id") WHERE "end_date" IS NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "inventory_invoice_group_invoice_number_key" ON "inventory_invoice_group" ("invoice_number") WHERE "invoice_number" IS NOT NULL`,
-  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_counterparty_id_idx" ON "inventory_outbound_transfer" ("counterparty_id")',
-  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_debt_account_id_idx" ON "inventory_outbound_transfer" ("associated_debt_account_id")',
-  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_transfer_id_idx" ON "inventory_outbound_transfer_item" ("transfer_id")',
-  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_item_item_id_idx" ON "inventory_outbound_transfer_item" ("item_id")',
   `CREATE TABLE IF NOT EXISTS "inventory_outbound_transfer" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "transfer_date" DATETIME NOT NULL,
@@ -538,6 +534,10 @@ export const schemaStatements = [
     CONSTRAINT "inventory_outbound_transfer_item_quantity_check"
       CHECK ("quantity" > 0)
   )`,
+  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_counterparty_id_idx" ON "inventory_outbound_transfer" ("counterparty_id")',
+  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_debt_account_id_idx" ON "inventory_outbound_transfer" ("associated_debt_account_id")',
+  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_transfer_id_idx" ON "inventory_outbound_transfer_item" ("transfer_id")',
+  'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_item_item_id_idx" ON "inventory_outbound_transfer_item" ("item_id")',
 ]
 
 export const additiveStatements = [

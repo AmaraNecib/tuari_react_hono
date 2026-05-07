@@ -52,7 +52,7 @@ export function RecurringPatternsPage() {
           <div className="space-y-3">
             {filteredPatterns.map((pattern: any) => {
               const daysUntil = calculateDaysUntilOccurrence(pattern);
-              const statusColor = daysUntil <= 3 ? "text-amber-600" : "text-green-600";
+              const statusColor = daysUntil !== null && daysUntil <= 3 ? "text-amber-600" : "text-green-600";
 
               return (
                 <div key={pattern.id} className="rounded-lg border border-border/60 bg-background/10 p-4">
@@ -78,7 +78,7 @@ export function RecurringPatternsPage() {
                         </span>
                         <span className={statusColor}>
                           التكرار التالي: {formatNextOccurrence(pattern)}
-                          {daysUntil >= 0 && ` (خلال ${daysUntil} يوم)`}
+                          {daysUntil !== null && daysUntil >= 0 && ` (خلال ${daysUntil} يوم)`}
                         </span>
                       </div>
                     </div>

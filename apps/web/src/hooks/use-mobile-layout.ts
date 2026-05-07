@@ -4,11 +4,25 @@ const MOBILE_BREAKPOINT = 640; // sm: 640px
 const TABLET_BREAKPOINT = 768; // md: 768px
 const DESKTOP_BREAKPOINT = 1024; // lg: 1024px
 
+function getInitialState() {
+  if (typeof window === "undefined") {
+    return { isMobile: false, isTablet: false, isDesktop: true, windowWidth: 1024 };
+  }
+  const width = window.innerWidth;
+  return {
+    isMobile: width < TABLET_BREAKPOINT,
+    isTablet: width >= TABLET_BREAKPOINT && width < DESKTOP_BREAKPOINT,
+    isDesktop: width >= DESKTOP_BREAKPOINT,
+    windowWidth: width,
+  };
+}
+
 export function useMobileLayout() {
-  const [isMobile, setIsMobile] = useState(false);
-  const [isTablet, setIsTablet] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(true);
-  const [windowWidth, setWindowWidth] = useState(0);
+  const initial = getInitialState();
+  const [isMobile, setIsMobile] = useState(initial.isMobile);
+  const [isTablet, setIsTablet] = useState(initial.isTablet);
+  const [isDesktop, setIsDesktop] = useState(initial.isDesktop);
+  const [windowWidth, setWindowWidth] = useState(initial.windowWidth);
 
   useEffect(() => {
     const updateSize = () => {

@@ -46,13 +46,12 @@ describe("Advanced Search & Filtering Integration", () => {
       useSavedFilters({ storageKey: "test-filters" })
     );
 
-    let presetId = "";
     act(() => {
       result.current.savePreset("Test", {});
-      presetId = result.current.presets[0]?.id || "";
     });
 
     expect(result.current.presets).toHaveLength(1);
+    const presetId = result.current.presets[0]?.id ?? "";
 
     act(() => {
       result.current.deletePreset(presetId);

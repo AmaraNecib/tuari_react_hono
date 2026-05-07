@@ -44,9 +44,12 @@ export function useSavedFilters(options: UseSavedFiltersOptions) {
         createdAt: Date.now(),
       };
 
-      const updated = [...presets, newPreset];
-      setPresets(updated);
-      localStorage.setItem(storageKey, JSON.stringify(updated));
+      setPresets(current => {
+        if (current.length >= maxPresets) return current;
+        const updated = [...current, newPreset];
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+        return updated;
+      });
       return true;
     },
     [presets, storageKey, maxPresets]
@@ -54,22 +57,26 @@ export function useSavedFilters(options: UseSavedFiltersOptions) {
 
   const deletePreset = useCallback(
     (id: string) => {
-      const updated = presets.filter((p) => p.id !== id);
-      setPresets(updated);
-      localStorage.setItem(storageKey, JSON.stringify(updated));
+      setPresets(current => {
+        const updated = current.filter((p) => p.id !== id);
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+        return updated;
+      });
     },
-    [presets, storageKey]
+    [storageKey]
   );
 
   const updatePreset = useCallback(
     (id: string, updates: Partial<Omit<FilterPreset, "id">>) => {
-      const updated = presets.map((p) =>
-        p.id === id ? { ...p, ...updates } : p
-      );
-      setPresets(updated);
-      localStorage.setItem(storageKey, JSON.stringify(updated));
+      setPresets(current => {
+        const updated = current.map((p) =>
+          p.id === id ? { ...p, ...updates } : p
+        );
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+        return updated;
+      });
     },
-    [presets, storageKey]
+    [storageKey]
   );
 
   const clearAllPresets = useCallback(() => {
