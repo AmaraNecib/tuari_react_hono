@@ -30,12 +30,13 @@ export async function createAppDependencies() {
   const employeeRepository = new SqliteEmployeeRepository(companyRepository);
   const roleRepository = new SqliteRoleRepository(companyRepository);
   const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
-  const permissionResolver = new SqlitePermissionResolver(sharedDatabase);
+  const authBootstrapService = new AuthBootstrapService(prisma, auth, env.bootstrapSetupKey);
+  const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
 
   return {
     auth,
     accountService: new AccountService(accountRepository, auth),
-    authBootstrapService: new AuthBootstrapService(prisma, auth, env.bootstrapSetupKey),
+    authBootstrapService,
     companyService,
     workforceService: new WorkforceService(companyService),
     operationsService: new OperationsService(companyService),

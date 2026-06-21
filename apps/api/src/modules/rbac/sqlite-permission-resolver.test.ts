@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SqlitePermissionResolver } from "./sqlite-permission-resolver";
 import type { Permission } from "../rbac/permissions";
+import { ALL_PERMISSIONS } from "./permissions";
 
 function createMockDb() {
   return {
@@ -9,13 +10,21 @@ function createMockDb() {
   };
 }
 
+function createMockAuthBootstrap(isOwner: boolean = false) {
+  return {
+    isBootstrapOwner: vi.fn().mockResolvedValue(isOwner),
+  };
+}
+
 describe("SqlitePermissionResolver", () => {
   let db: ReturnType<typeof createMockDb>;
+  let authBootstrap: ReturnType<typeof createMockAuthBootstrap>;
   let resolver: SqlitePermissionResolver;
 
   beforeEach(() => {
     db = createMockDb();
-    resolver = new SqlitePermissionResolver(db as any);
+    authBootstrap = createMockAuthBootstrap();
+    resolver = new SqlitePermissionResolver(db as any, authBootstrap as any);
   });
 
   it("returns permissions for a user", async () => {
@@ -35,7 +44,16 @@ describe("SqlitePermissionResolver", () => {
     expect(perms).toEqual([]);
   });
 
-  it("queries with correct SQL", async () => {
+  it("returns ALL permissions for bootstrap owner", async () => {
+    authBootstrap.isBootstrapOwner.mockResolvedValue(true);
+
+    const perms = await resolver.getPermissionsForUserId("user-1");
+    expect(perms).toEqual([...ALL_PERMISSIONS]);
+    // Should not query the DB at all
+    expect(db.prepare).not.toHaveBeenCalled();
+  });
+
+  it("queries with correct SQL for non-owners", async () => {
     db.all.mockReturnValue([]);
 
     await resolver.getPermissionsForUserId("user-1");

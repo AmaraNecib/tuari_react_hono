@@ -1,10 +1,23 @@
 import type { Permission } from "./permissions";
+import { ALL_PERMISSIONS } from "./permissions";
 import type Database from "better-sqlite3";
 
+type AuthBootstrapGateway = {
+  isBootstrapOwner: (userId: string) => Promise<boolean>;
+};
+
 export class SqlitePermissionResolver {
-  constructor(private readonly db: Database.Database) {}
+  constructor(
+    private readonly db: Database.Database,
+    private readonly authBootstrap: AuthBootstrapGateway,
+  ) {}
 
   async getPermissionsForUserId(userId: string): Promise<Permission[]> {
+    // Bootstrap owners get all permissions regardless of employee record
+    if (await this.authBootstrap.isBootstrapOwner(userId)) {
+      return [...ALL_PERMISSIONS];
+    }
+
     const rows = this.db
       .prepare(
         `SELECT DISTINCT rp.permission
