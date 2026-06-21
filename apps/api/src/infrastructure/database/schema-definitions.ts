@@ -669,18 +669,18 @@ export const companyStatusConstraintChecks = [
 export const roleSeeds = [
   { key: "admin", name: "مدير النظام", description: "الحساب الإداري الرئيسي — له جميع الصلاحيات", isSystem: true },
   { key: "viewer", name: "مشاهد", description: "حساب للقراءة فقط — لا يمكنه تعديل أي بيانات", isSystem: true },
-  { key: "worker", name: "عامل", description: "الدور التنفيذي الأساسي للعمال الميدانيين", isSystem: false },
+  { key: "worker", name: "عامل", description: "الدور التنفيذي الأساسي للعمال الميدانيين", isSystem: true },
   {
     key: "project_manager",
     name: "مدير مشروع",
     description: "مسؤول عن متابعة العمال والمشاريع الميدانية",
-    isSystem: false,
+    isSystem: true,
   },
   {
     key: "warehouse_manager",
     name: "مدير مخزن",
     description: "مسؤول عن تشغيل وإدارة المستودعات",
-    isSystem: false,
+    isSystem: true,
   },
 ] as const;
 
