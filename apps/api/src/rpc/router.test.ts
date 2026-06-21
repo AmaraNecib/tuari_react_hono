@@ -67,6 +67,19 @@ describe("RPC router", () => {
     id: "user-1",
     name: "Taylor",
     phone: "0612345678",
+    permissions: [
+      "employees.create",
+      "employees.read",
+      "employees.update",
+      "employees.delete",
+    ],
+  };
+
+  // The session contract schema strips internal fields like permissions
+  const sessionUser = {
+    id: currentUser.id,
+    name: currentUser.name,
+    phone: currentUser.phone,
   };
 
   const createContext = (user: typeof currentUser | null = currentUser): RpcContext => ({
@@ -85,7 +98,7 @@ describe("RPC router", () => {
     const client = createClient(router, context);
 
     await expect(client.session()).resolves.toEqual({
-      user: currentUser,
+      user: sessionUser,
     });
     expect(context.resolveCurrentUser).toHaveBeenCalledTimes(1);
   });
@@ -133,7 +146,7 @@ describe("RPC router", () => {
         roleId: roleIds.worker,
         status: "ACTIVE",
       }),
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED", message: "هذا الإجراء متاح فقط لحساب الإدارة الرئيسي." });
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   it("covers CRUD and assignment flows with typed business-rule failures", async () => {

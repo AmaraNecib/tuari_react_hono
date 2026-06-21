@@ -2,6 +2,7 @@ import { ORPCError } from "@orpc/server";
 import type { AppError } from "@tuari/contracts";
 
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
+import type { Permission } from "../modules/rbac/permissions";
 import { InputValidator } from "../infrastructure/validation/input-validator";
 import { SlidingWindowRateLimiter, resolveClientIp } from "../infrastructure/rate-limiter";
 import { requireCurrentUser, type RpcContext } from "./context";
@@ -168,6 +169,30 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
         } catch (error) {
           return errorResolver(error);
         }
+      };
+    },
+
+    withPermission<TInput, TOutput>(
+      required: Permission | Permission[],
+      handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput> | TOutput,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
+      return async ({ context, input }) => {
+        const user = await context.resolveCurrentUser();
+        if (!user) {
+          throw new ORPCError("UNAUTHORIZED");
+        }
+
+        const userPermissions = (user as any).permissions ?? [];
+        const requiredPermissions = Array.isArray(required) ? required : [required];
+        const allowed = requiredPermissions.some((p) => userPermissions.includes(p));
+
+        if (!allowed) {
+          throw new ORPCError("FORBIDDEN", {
+            message: "ليس لديك صلاحية للقيام بهذا الإجراء.",
+          });
+        }
+
+        return handler({ context, input });
       };
     },
   };

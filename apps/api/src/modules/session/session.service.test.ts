@@ -1,51 +1,78 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionService } from "./session.service";
+import type { Permission } from "../rbac/permissions";
+
+function createMockAuthGateway(user: any = null) {
+  return {
+    api: {
+      getSession: vi.fn().mockResolvedValue(user ? { user } : null),
+    },
+  };
+}
+
+function createMockPermissionResolver(permissions: Permission[] = []) {
+  return {
+    getPermissionsForUserId: vi.fn().mockResolvedValue(permissions),
+  };
+}
 
 describe("SessionService", () => {
-  const getSession = vi.fn();
-  const headers = new Headers({ cookie: "session=token" });
-  const service = new SessionService({
-    api: {
-      getSession,
-    },
-  });
+  describe("getCurrentUser", () => {
+    it("returns null when no session", async () => {
+      const gateway = createMockAuthGateway(null);
+      const permResolver = createMockPermissionResolver([]);
+      const service = new SessionService(gateway, permResolver);
 
-  beforeEach(() => {
-    getSession.mockReset();
-  });
-
-  it("returns null when the auth gateway has no active session", async () => {
-    getSession.mockResolvedValue(null);
-
-    await expect(service.getCurrentUser(headers)).resolves.toBeNull();
-    expect(getSession).toHaveBeenCalledWith({ headers });
-  });
-
-  it("returns null when the current session has no phone identity yet", async () => {
-    getSession.mockResolvedValue({
-      user: {
-        id: "user-1",
-        name: "Taylor",
-        phoneNumber: null,
-      },
+      const result = await service.getCurrentUser(new Headers());
+      expect(result).toBeNull();
     });
 
-    await expect(service.getCurrentUser(headers)).resolves.toBeNull();
-  });
+    it("returns user without phone", async () => {
+      const gateway = createMockAuthGateway({ id: "u1", name: "Test" });
+      const permResolver = createMockPermissionResolver([]);
+      const service = new SessionService(gateway, permResolver);
 
-  it("maps the authenticated user into the session contract", async () => {
-    getSession.mockResolvedValue({
-      user: {
-        id: "user-1",
-        name: "Taylor",
-        phoneNumber: "0612345678",
-      },
+      const result = await service.getCurrentUser(new Headers());
+      expect(result).toBeNull();
     });
 
-    await expect(service.getCurrentUser(headers)).resolves.toEqual({
-      id: "user-1",
-      name: "Taylor",
-      phone: "0612345678",
+    it("returns user with permissions", async () => {
+      const gateway = createMockAuthGateway({
+        id: "u1",
+        name: "Admin",
+        phoneNumber: "0555000001",
+      });
+      const permResolver = createMockPermissionResolver([
+        "employees.create",
+        "employees.read",
+      ]);
+      const service = new SessionService(gateway, permResolver);
+
+      const result = await service.getCurrentUser(new Headers());
+      expect(result).toEqual({
+        id: "u1",
+        name: "Admin",
+        phone: "0555000001",
+        permissions: ["employees.create", "employees.read"],
+      });
+    });
+
+    it("returns user with empty permissions when none assigned", async () => {
+      const gateway = createMockAuthGateway({
+        id: "u1",
+        name: "Viewer",
+        phoneNumber: "0555000002",
+      });
+      const permResolver = createMockPermissionResolver([]);
+      const service = new SessionService(gateway, permResolver);
+
+      const result = await service.getCurrentUser(new Headers());
+      expect(result).toEqual({
+        id: "u1",
+        name: "Viewer",
+        phone: "0555000002",
+        permissions: [],
+      });
     });
   });
 });

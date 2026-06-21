@@ -37,7 +37,7 @@ export function createWorkforceHandlers(
     employeesList: os.employeesList.handler(m.queryAuth(async ({ context, input }: any) => {
       return workforceService.listEmployees(input ?? undefined);
     })),
-    employeesListPaged: os.employeesListPaged.handler(m.queryAuth(async ({ context, input }: any) => {
+    employeesListPaged: os.employeesListPaged.handler(m.withPermission("employees.read", m.queryAuth(async ({ context, input }: any) => {
       const opts = input ?? {};
       try {
         const result = await employeeModule.listPaged({
@@ -55,26 +55,26 @@ export function createWorkforceHandlers(
         }
         throw error;
       }
-    })),
-    employeesGet: os.employeesGet.handler(m.queryAuth(async ({ context, input }: any) => {
+    }))),
+    employeesGet: os.employeesGet.handler(m.withPermission("employees.read", m.queryAuth(async ({ context, input }: any) => {
       return workforceService.getEmployee((input as any).id);
-    })),
-    employeesCreate: os.employeesCreate.handler(m.mutationAudit(
+    }))),
+    employeesCreate: os.employeesCreate.handler(m.withPermission("employees.create", m.mutationAudit(
       ({ input, auditContext }: any) => workforceService.createEmployee(input as any, auditContext),
       toFailureResult,
-    )),
-    employeesBatchCreate: os.employeesBatchCreate.handler(m.mutationAudit(
+    ))),
+    employeesBatchCreate: os.employeesBatchCreate.handler(m.withPermission("employees.create", m.mutationAudit(
       ({ input, auditContext }: any) => workforceService.createEmployeesBatch(input as any, auditContext),
       toFailureResult,
-    )),
-    employeesUpdate: os.employeesUpdate.handler(m.mutationAudit(
+    ))),
+    employeesUpdate: os.employeesUpdate.handler(m.withPermission("employees.update", m.mutationAudit(
       ({ input, auditContext }: any) => workforceService.updateEmployee(input as any, auditContext),
       toFailureResult,
-    )),
-    employeesDelete: os.employeesDelete.handler(m.mutationAudit(
+    ))),
+    employeesDelete: os.employeesDelete.handler(m.withPermission("employees.delete", m.mutationAudit(
       ({ input, auditContext }: any) => workforceService.deleteEmployee((input as any).id, auditContext),
       toFailureResult,
-    )),
+    ))),
     employeesAssignWorkplace: os.employeesAssignWorkplace.handler(m.mutationAudit(
       ({ input, auditContext }: any) => workforceService.assignEmployeeWorkplace(input as any, auditContext),
       toFailureResult,
