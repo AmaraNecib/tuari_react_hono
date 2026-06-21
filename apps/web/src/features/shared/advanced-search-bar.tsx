@@ -3,14 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { type FilterPreset, useSavedFilters } from "@/hooks/use-saved-filters";
 
-export interface SearchField {
-  key: string;
-  label: string;
-  placeholder?: string;
-}
-
 interface AdvancedSearchBarProps {
-  searchFields: SearchField[];
   onSearch: (query: string, filters: Record<string, unknown>) => void;
   storageKey: string;
   debounceMs?: number;

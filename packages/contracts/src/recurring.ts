@@ -32,6 +32,8 @@ export const recurringPatternListSchema = z.object({
   items: z.array(recurringPatternSchema),
 });
 
+export type RecurringPatternList = z.infer<typeof recurringPatternListSchema>;
+
 export const createRecurringPatternSchema = z.object({
   name: z.string().min(1).max(160),
   description: z.string().max(500).optional(),

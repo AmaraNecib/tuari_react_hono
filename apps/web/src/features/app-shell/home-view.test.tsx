@@ -3,6 +3,7 @@
 import "@/i18n"
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
@@ -254,10 +255,18 @@ function renderHomeView(
   page: HomeViewPage = "dashboard",
   options?: { detailTab?: string; employeeId?: string; projectId?: string; warehouseId?: string },
 ) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
   return render(
-    <AppPreferencesProvider>
-      <HomeView detailTab={options?.detailTab} employeeId={options?.employeeId} page={page} projectId={options?.projectId} warehouseId={options?.warehouseId} />
-    </AppPreferencesProvider>,
+    <QueryClientProvider client={queryClient}>
+      <AppPreferencesProvider>
+        <HomeView detailTab={options?.detailTab} employeeId={options?.employeeId} page={page} projectId={options?.projectId} warehouseId={options?.warehouseId} />
+      </AppPreferencesProvider>
+    </QueryClientProvider>,
   )
 }
 
@@ -586,7 +595,7 @@ describe("HomeView workspace shell", () => {
 
     expect(await screen.findByText("المعلومات الشخصية")).toBeTruthy()
     expect(screen.getByText("سجل العمل")).toBeTruthy()
-    expect(screen.getByText("المالية")).toBeTruthy()
+    expect(screen.getByRole("tab", { name: "المالية" })).toBeTruthy()
   })
 
   it("routes back to employees when a requested employee record is missing", () => {
@@ -876,7 +885,7 @@ describe("HomeView workspace shell", () => {
     expect(screen.getAllByRole("button", { name: "تعديل الأجر" }).length).toBeGreaterThan(0)
   })
 
-  it("navigates from salaries page to the worker finance tab and edit page", () => {
+  it("navigates from salaries page to the worker edit page", () => {
     sessionData = {
       user: {
         id: "demo-session-user",
@@ -887,15 +896,12 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("salaries")
 
-    fireEvent.click(screen.getAllByRole("button", { name: "إضافة دفعة" })[0]!)
+    // The "إضافة دفعة" (Add Payment) button opens an in-page dialog
+    // and does not navigate. The "تعديل الأجر" (Edit Salary) button
+    // is the one that navigates to the employee edit page.
     fireEvent.click(screen.getAllByRole("button", { name: "تعديل الأجر" })[0]!)
 
-    expect(navigateMock).toHaveBeenNthCalledWith(1, {
-      to: "/employees/$employeeId",
-      params: { employeeId: "employee-worker-1" },
-      search: { tab: "finance" },
-    })
-    expect(navigateMock).toHaveBeenNthCalledWith(2, {
+    expect(navigateMock).toHaveBeenCalledWith({
       to: "/employees/$employeeId/edit",
       params: { employeeId: "employee-worker-1" },
     })
@@ -955,7 +961,7 @@ describe("HomeView workspace shell", () => {
     }
 
     renderHomeView("dashboard")
-    fireEvent.click(screen.getByRole("button", { name: "توسيع الشريط الجانبي" }))
+    fireEvent.click(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]!)
 
     expect(screen.getByText("الجهات الخارجية")).toBeTruthy()
     expect(screen.getByText("الرواتب")).toBeTruthy()
@@ -999,7 +1005,7 @@ describe("HomeView workspace shell", () => {
     firstRender.unmount()
     renderHomeView("employees")
 
-    expect(screen.getByRole("button", { name: "توسيع الشريط الجانبي" })).toBeTruthy()
+    expect(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]).toBeTruthy()
   })
 
   it("restores an expanded sidebar from storage instead of collapsing on desktop widths", () => {
@@ -1044,13 +1050,13 @@ describe("HomeView workspace shell", () => {
     window.innerWidth = 1100
     fireEvent(window, new Event("resize"))
 
-    expect(screen.getByRole("button", { name: "توسيع الشريط الجانبي" })).toBeTruthy()
+    expect(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]).toBeTruthy()
     expect(window.localStorage.getItem("tuari.workspace.sidebar.collapsed")).toBe("true")
 
     window.innerWidth = 1400
     fireEvent(window, new Event("resize"))
 
-    expect(screen.getByRole("button", { name: "توسيع الشريط الجانبي" })).toBeTruthy()
+    expect(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]).toBeTruthy()
   })
 
   it("does not resubmit workplace links when worker placement stays unchanged", async () => {

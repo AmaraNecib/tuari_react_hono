@@ -65,9 +65,6 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
         <AppShellFilterShell>
           <div className="col-span-full lg:col-span-3">
             <AdvancedSearchBar
-              searchFields={[
-                { key: "query", label: "البحث", placeholder: "رقم الفاتورة أو اسم المورد" },
-              ]}
               onSearch={(searchQuery, filtersObj) => {
                 setQuery(searchQuery)
                 setFilters(filtersObj)

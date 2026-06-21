@@ -3,6 +3,7 @@
 import "@/i18n"
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
@@ -58,6 +59,16 @@ vi.mock("@/features/app-shell/mock-dashboard", () => ({
   }),
   useCreateSalaryPaymentMutation: () => ({ isPending: false, mutate: vi.fn() }),
 }))
+
+function renderWithProviders(ui: ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+}
 
 describe("debts MVP web UI", () => {
   afterEach(() => {
@@ -180,7 +191,7 @@ describe("debts MVP web UI", () => {
   })
 
   it("renders worker debt tab on employee detail page", () => {
-    render(
+    renderWithProviders(
       <EmployeeDetailsPage
         activeTab="debts"
         debtAccounts={[
