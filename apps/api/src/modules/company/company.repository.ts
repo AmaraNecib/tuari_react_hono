@@ -580,39 +580,46 @@ export class SqliteCompanyRepository implements CompanyRepository {
     cursor?: string;
     limit: number;
   }): { items: EmployeeRecord[]; total: number; nextCursor: string | null } {
-    const conditions: string[] = [];
-    const params: Array<string | number> = [];
+    const filterConditions: string[] = [];
+    const filterParams: Array<string | number> = [];
 
     if (query.filters?.roleId) {
-      conditions.push("role_id = ?");
-      params.push(query.filters.roleId);
+      filterConditions.push("role_id = ?");
+      filterParams.push(query.filters.roleId);
     }
     if (query.filters?.status) {
-      conditions.push("status = ?");
-      params.push(query.filters.status);
+      filterConditions.push("status = ?");
+      filterParams.push(query.filters.status);
     }
+
+    // The total-count query uses only the filter conditions (no cursor).
+    // The cursor is a position marker for the items query, not a filter
+    // that should shrink the displayed total.
+    const filterWhereClause = filterConditions.length > 0 ? `WHERE ${filterConditions.join(" AND ")}` : "";
+    const totalRow = this.database
+      .prepare(
+        `SELECT COUNT(*) AS count FROM employee ${filterWhereClause}`,
+      )
+      .get(...filterParams) as { count: number };
 
     // Cursor encodes (created_at, id). We translate the opaque token back
     // into SQL only inside this adapter so the rest of the codebase stays
     // free of cursor parsing. The ordering is created_at DESC, id DESC.
+    const allConditions = [...filterConditions];
+    const allParams = [...filterParams];
+
     if (query.cursor !== undefined) {
       const decoded = decodeCursorToken(query.cursor);
-      conditions.push("(created_at < ? OR (created_at = ? AND id < ?))");
-      params.push(decoded.createdAt, decoded.createdAt, decoded.id);
+      allConditions.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      allParams.push(decoded.createdAt, decoded.createdAt, decoded.id);
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const whereClause = allConditions.length > 0 ? `WHERE ${allConditions.join(" AND ")}` : "";
     const rows = this.database
       .prepare(
         `SELECT * FROM employee ${whereClause} ORDER BY created_at DESC, id DESC LIMIT ?`,
       )
-      .all(...params, query.limit) as SqliteRow[];
-
-    const totalRow = this.database
-      .prepare(
-        `SELECT COUNT(*) AS count FROM employee ${whereClause}`,
-      )
-      .get(...params) as { count: number };
+      .all(...allParams, query.limit) as SqliteRow[];
 
     const items = rows.map(mapEmployee);
     const last = items[items.length - 1];

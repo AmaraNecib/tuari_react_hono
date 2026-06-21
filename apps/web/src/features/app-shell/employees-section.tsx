@@ -156,7 +156,10 @@ export function EmployeesSection({
 
   const handleNext = () => {
     if (!nextCursor) return
-    setPreviousCursorStack((stack) => (cursor ? [...stack, cursor] : stack))
+    // Push the current position so we can return to it. On the first page
+    // (cursor is undefined) we push an empty-string sentinel to keep the
+    // stack non-empty and enable the Previous button on page 2.
+    setPreviousCursorStack((stack) => [...stack, cursor ?? ""])
     navigate({ to: "/employees", search: { cursor: nextCursor, limit: resolvedLimit } })
   }
 
@@ -164,6 +167,7 @@ export function EmployeesSection({
     const previousCursor = previousCursorStack[previousCursorStack.length - 1]
     if (previousCursor === undefined) return
     setPreviousCursorStack((stack) => stack.slice(0, -1))
+    // Empty string is the sentinel for "page 1" (no cursor).
     navigate({ to: "/employees", search: { cursor: previousCursor === "" ? undefined : previousCursor, limit: resolvedLimit } })
   }
 
