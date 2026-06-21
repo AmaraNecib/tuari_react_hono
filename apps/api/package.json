@@ -10,6 +10,7 @@
     "auth:generate": "pnpm dlx @better-auth/cli@latest generate --config ./src/infrastructure/auth/auth.ts --output ./prisma/schema.prisma --yes",
     "prisma:generate": "prisma generate",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "pnpm prisma:generate && tsc --noEmit"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.17",
+    "@vitest/coverage-v8": "4.1.4",
     "tsup": "^8.5.0",
     "tsx": "^4.20.5",
     "typescript": "^5.8.2"

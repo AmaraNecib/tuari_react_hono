@@ -17,8 +17,8 @@ describe("EmployeeModule", () => {
   let roleRepository: InMemoryRoleRepository;
   let employeeModule: EmployeeModule;
 
-  const seedWorkerRole = async () => {
-    await roleRepository.save({
+  const seedWorkerRole = () => {
+    roleRepository.seed({
       id: "role-worker",
       key: "worker",
       name: "Worker",
@@ -40,7 +40,7 @@ describe("EmployeeModule", () => {
 
   describe("create", () => {
     it("creates an employee with valid input", async () => {
-      await seedWorkerRole();
+      seedWorkerRole();
 
       const input: CreateEmployeeInput = {
         firstName: "Ahmed",
@@ -63,7 +63,7 @@ describe("EmployeeModule", () => {
     });
 
     it("rejects creation with duplicate phone number", async () => {
-      await seedWorkerRole();
+      seedWorkerRole();
 
       const input: CreateEmployeeInput = {
         firstName: "Ahmed",
@@ -93,7 +93,7 @@ describe("EmployeeModule", () => {
 
   describe("findById", () => {
     it("returns the employee when found", async () => {
-      await seedWorkerRole();
+      seedWorkerRole();
 
       const created = await employeeModule.create({
         firstName: "Ahmed",
@@ -124,7 +124,7 @@ describe("EmployeeModule", () => {
     });
 
     it("returns all employees when no filters applied", async () => {
-      await seedWorkerRole();
+      seedWorkerRole();
 
       await employeeModule.create({
         firstName: "Ahmed",
@@ -145,7 +145,16 @@ describe("EmployeeModule", () => {
     });
 
     it("filters by status", async () => {
-      await seedWorkerRole();
+      seedWorkerRole();
+      roleRepository.seed({
+        id: "role-manager",
+        key: "manager",
+        name: "Manager",
+        description: null,
+        isSystem: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
 
       const created = await employeeModule.create({
         firstName: "Ahmed",
@@ -157,7 +166,7 @@ describe("EmployeeModule", () => {
         firstName: "Fatima",
         lastName: "Ben Ali",
         phone: "0555123457",
-        roleId: "role-worker",
+        roleId: "role-manager",
       });
 
       // Deactivate one
@@ -170,11 +179,45 @@ describe("EmployeeModule", () => {
       expect(inactive).toHaveLength(1);
       expect(inactive[0]?.id).toBe(created.id);
     });
+
+    it("filters by roleId", async () => {
+      seedWorkerRole();
+      roleRepository.seed({
+        id: "role-manager",
+        key: "manager",
+        name: "Manager",
+        description: null,
+        isSystem: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      await employeeModule.create({
+        firstName: "Ahmed",
+        lastName: "Worker",
+        phone: "0555123456",
+        roleId: "role-worker",
+      });
+      await employeeModule.create({
+        firstName: "Fatima",
+        lastName: "Manager",
+        phone: "0555123457",
+        roleId: "role-manager",
+      });
+
+      const workers = await employeeModule.list({ roleId: "role-worker" });
+      const managers = await employeeModule.list({ roleId: "role-manager" });
+
+      expect(workers).toHaveLength(1);
+      expect(workers[0]?.firstName).toBe("Ahmed");
+      expect(managers).toHaveLength(1);
+      expect(managers[0]?.firstName).toBe("Fatima");
+    });
   });
 
   describe("delete", () => {
     it("deletes an existing employee", async () => {
-      await seedWorkerRole();
+      seedWorkerRole();
 
       const created = await employeeModule.create({
         firstName: "Ahmed",
@@ -195,9 +238,9 @@ describe("EmployeeModule", () => {
   });
 
   describe("update", () => {
-    beforeEach(async () => {
-      await seedWorkerRole();
-      await roleRepository.save({
+    beforeEach(() => {
+      seedWorkerRole();
+      roleRepository.seed({
         id: "role-manager",
         key: "manager",
         name: "Manager",
@@ -244,6 +287,23 @@ describe("EmployeeModule", () => {
       ).rejects.toThrow(RoleNotFoundError);
     });
 
+    it("accepts update with a valid existing role", async () => {
+      const created = await employeeModule.create({
+        firstName: "Ahmed",
+        lastName: "Ben Ali",
+        phone: "0555123456",
+        roleId: "role-worker",
+      });
+
+      // Promote worker to manager - role exists, so update should succeed
+      const updated = await employeeModule.update(created.id, {
+        id: created.id,
+        roleId: "role-manager",
+      });
+
+      expect(updated.roleId).toBe("role-manager");
+    });
+
     it("rejects update with duplicate phone", async () => {
       const first = await employeeModule.create({
         firstName: "Ahmed",
@@ -278,6 +338,51 @@ describe("EmployeeModule", () => {
       });
 
       expect(updated.phone).toBe("0555123456");
+    });
+
+    it("allows update to a new phone that no one owns (no conflict)", async () => {
+      const created = await employeeModule.create({
+        firstName: "Ahmed",
+        lastName: "Ben Ali",
+        phone: "0555123456",
+        roleId: "role-worker",
+      });
+
+      // Change to a completely new phone that no employee has
+      const updated = await employeeModule.update(created.id, {
+        id: created.id,
+        phone: "0555999999",
+        firstName: "Ahmed",
+      });
+
+      expect(updated.phone).toBe("0555999999");
+    });
+
+    it("rejects update when input.id does not match path id (ghost-record guard)", async () => {
+      const created = await employeeModule.create({
+        firstName: "Ahmed",
+        lastName: "Ben Ali",
+        phone: "0555123456",
+        roleId: "role-worker",
+      });
+
+      // If a caller passes a different id in the body than in the path,
+      // the module must NOT silently create a ghost record at the wrong id.
+      // It should reject the request instead.
+      await expect(
+        employeeModule.update(created.id, {
+          id: "different-id",
+          firstName: "Updated",
+        })
+      ).rejects.toThrow(EmployeeNotFoundError);
+
+      // Verify the original record is unchanged.
+      const stillThere = await employeeModule.findById(created.id);
+      expect(stillThere?.firstName).toBe("Ahmed");
+
+      // Verify no ghost record was created.
+      const ghost = await employeeModule.findById("different-id");
+      expect(ghost).toBeNull();
     });
   });
 });

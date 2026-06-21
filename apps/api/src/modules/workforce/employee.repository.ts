@@ -25,8 +25,12 @@ export interface EmployeeFilters {
 
 /**
  * The repository interface for roles.
+ *
+ * The EmployeeModule only needs to look up roles to validate that
+ * an employee's roleId refers to an existing role. Role CRUD
+ * (create, update, delete) is handled by a separate RoleModule
+ * (future work).
  */
 export interface RoleRepository {
   findById(id: string): Promise<RoleRecord | null>;
-  save(role: RoleRecord): Promise<void>;
 }

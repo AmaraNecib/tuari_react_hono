@@ -127,6 +127,12 @@ export class EmployeeModule {
       throw new EmployeeNotFoundError(id);
     }
 
+    // Defensive: if input.id is provided and doesn't match the path id,
+    // throw rather than silently creating a ghost record.
+    if (input.id !== undefined && input.id !== id) {
+      throw new EmployeeNotFoundError(input.id);
+    }
+
     // Business rule: if role is being changed, validate the new role exists
     if (input.roleId && input.roleId !== existing.roleId) {
       const role = await this.roleRepository.findById(input.roleId);
@@ -143,9 +149,15 @@ export class EmployeeModule {
       }
     }
 
+    // Build the updated record. We explicitly set id from the path parameter,
+    // not from input.id, to prevent the ghost-record bug where a mismatched
+    // input.id would cause the save to write to a different key than the
+    // one we just read from.
+    const { id: _ignoredId, ...updatableFields } = input;
     const updated: EmployeeRecord = {
       ...existing,
-      ...input,
+      ...updatableFields,
+      id, // Always use the path id
       updatedAt: this.now(),
     };
 
