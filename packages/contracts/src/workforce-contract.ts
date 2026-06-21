@@ -5,7 +5,9 @@ import {
   createDeleteResultSchema,
   createEntityResultSchema,
   createListSchema,
+  cursorPaginationInputSchema,
   idInputSchema,
+  paginatedResultSchema,
 } from "./core"
 import {
   employeeAssignWorkplaceInputSchema,
@@ -14,6 +16,7 @@ import {
   employeeCreateInputSchema,
   employeeListInputSchema,
   employeeManagerAssignmentSchema,
+  employeePagedListInputSchema,
   employeeProjectAssignmentSchema,
   employeeSalaryPaymentCreateInputSchema,
   employeeSalaryPaymentListInputSchema,
@@ -52,6 +55,9 @@ export const workforceContract = {
   employeesList: oc
     .input(employeeListInputSchema)
     .output(createListSchema(employeeSchema)),
+  employeesListPaged: oc
+    .input(employeePagedListInputSchema)
+    .output(paginatedResultSchema(employeeSchema)),
   employeesGet: oc
     .input(idInputSchema)
     .output(createEntityResultSchema(employeeSchema)),

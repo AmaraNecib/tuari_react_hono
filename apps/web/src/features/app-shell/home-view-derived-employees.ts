@@ -38,7 +38,21 @@ const employeeRolePriority: Record<string, number> = {
   worker: 2,
 }
 
-function buildEmployeeRelationshipFacts(workspace: DemoWorkspace) {
+export type EmployeeRelationshipFacts = {
+  employeeIdsWithManagedProjectHistory: Set<string>
+  employeeIdsWithManagedWarehouseHistory: Set<string>
+  employeeIdsWithManagerHistory: Set<string>
+  employeeIdsWithProjectHistory: Set<string>
+  employeeIdsWithSalaryPayments: Set<string>
+  employeeIdsWithWarehouseHistory: Set<string>
+  activeReportsByManagerId: Map<string, DemoWorkspace["managerAssignments"]>
+  activeProjectsByManagerId: Map<string, DemoWorkspace["projects"]>
+  activeWarehousesByManagerId: Map<string, DemoWorkspace["warehouses"]>
+  projectsByManagerId: Map<string, DemoWorkspace["projects"]>
+  warehousesByManagerId: Map<string, DemoWorkspace["warehouses"]>
+}
+
+export function buildEmployeeRelationshipFacts(workspace: DemoWorkspace): EmployeeRelationshipFacts {
   const employeeIdsWithManagerHistory = new Set<string>()
 
   for (const assignment of workspace.managerAssignments) {
@@ -127,6 +141,84 @@ export function deriveEmployeeLeaveState(facts: EmployeeLeaveFacts, t: Translate
   }
 }
 
+export function buildEmployeeRow({
+  copy,
+  employee,
+  lookups,
+  relationshipFacts,
+  t,
+}: {
+  copy: { shell: { noManager: string; noProject: string } }
+  employee: DemoWorkspace["employees"][number]
+  lookups: HomeViewDerivedLookups
+  relationshipFacts: EmployeeRelationshipFacts
+  t: Translate
+}) {
+  const role = lookups.roleById.get(employee.roleId)
+  const managerAssignment = lookups.activeManagerByWorker.get(employee.id) ?? null
+  const manager = managerAssignment ? lookups.employeeById.get(managerAssignment.managerId) : null
+  const projectAssignment = lookups.activeProjectByEmployee.get(employee.id) ?? null
+  const project = projectAssignment ? lookups.projectById.get(projectAssignment.projectId) : null
+  const warehouseAssignment = lookups.activeWarehouseByEmployee.get(employee.id) ?? null
+  const warehouse = warehouseAssignment ? lookups.warehouseById.get(warehouseAssignment.warehouseId) ?? null : null
+
+  const deleteState = deriveEmployeeDeleteState(
+    {
+      hasManagedProjectHistory: relationshipFacts.employeeIdsWithManagedProjectHistory.has(employee.id),
+      hasManagedWarehouseHistory: relationshipFacts.employeeIdsWithManagedWarehouseHistory.has(employee.id),
+      hasManagerHistory: relationshipFacts.employeeIdsWithManagerHistory.has(employee.id),
+      hasProjectHistory: relationshipFacts.employeeIdsWithProjectHistory.has(employee.id),
+      hasSalaryPayments: relationshipFacts.employeeIdsWithSalaryPayments.has(employee.id),
+      hasWarehouseHistory: relationshipFacts.employeeIdsWithWarehouseHistory.has(employee.id),
+      managesAnyProject: (relationshipFacts.projectsByManagerId.get(employee.id) ?? []).length > 0,
+      managesAnyWarehouse: (relationshipFacts.warehousesByManagerId.get(employee.id) ?? []).length > 0,
+    },
+    t,
+  )
+
+  const leaveState = deriveEmployeeLeaveState(
+    {
+      employeeStatus: employee.status,
+      hasActiveProjectManagerProject: (relationshipFacts.activeProjectsByManagerId.get(employee.id) ?? []).length > 0,
+      hasActiveProjectManagerReports: (relationshipFacts.activeReportsByManagerId.get(employee.id) ?? []).length > 0,
+      hasActiveWarehouseManagerWarehouse: (relationshipFacts.activeWarehousesByManagerId.get(employee.id) ?? []).length > 0,
+      hasManagerAssignment: Boolean(managerAssignment),
+      hasProjectAssignment: Boolean(projectAssignment),
+      hasWarehouseAssignment: Boolean(warehouseAssignment),
+      roleKey: role?.key ?? null,
+    },
+    t,
+  )
+
+  return {
+    id: employee.id,
+    firstName: employee.firstName,
+    lastName: employee.lastName,
+    name: formatName(employee),
+    roleId: employee.roleId,
+    roleKey: role?.key ?? "",
+    role: role ? getArabicRoleLabel(role) : copy.shell.noManager,
+    phone: employee.phone,
+    status: employee.status,
+    salaryAmountDzd: employee.salaryAmountDzd,
+    salaryPeriod: employee.salaryPeriod,
+    managerName: manager ? formatName(manager) : copy.shell.noManager,
+    managerAssignmentId: managerAssignment?.id ?? null,
+    currentManagerId: manager?.id ?? null,
+    currentProjectId: project?.id ?? null,
+    currentProjectAssignmentId: projectAssignment?.id ?? null,
+    currentWarehouseId: warehouse?.id ?? null,
+    currentWarehouseAssignmentId: warehouseAssignment?.id ?? null,
+    currentWorkplace: project?.name ?? warehouse?.name ?? copy.shell.noProject,
+    notes: employee.notes,
+    isWorker: role?.key === "worker",
+    ...deleteState,
+    ...leaveState,
+    createdAt: employee.createdAt,
+    updatedAt: employee.updatedAt,
+  }
+}
+
 export function buildEmployeeRows({
   copy,
   lookups,
@@ -141,71 +233,7 @@ export function buildEmployeeRows({
   const relationshipFacts = buildEmployeeRelationshipFacts(workspace)
 
   return workspace.employees
-    .map((employee) => {
-      const role = lookups.roleById.get(employee.roleId)
-      const managerAssignment = lookups.activeManagerByWorker.get(employee.id) ?? null
-      const manager = managerAssignment ? lookups.employeeById.get(managerAssignment.managerId) : null
-      const projectAssignment = lookups.activeProjectByEmployee.get(employee.id) ?? null
-      const project = projectAssignment ? lookups.projectById.get(projectAssignment.projectId) : null
-      const warehouseAssignment = lookups.activeWarehouseByEmployee.get(employee.id) ?? null
-      const warehouse = warehouseAssignment ? lookups.warehouseById.get(warehouseAssignment.warehouseId) ?? null : null
-
-      const deleteState = deriveEmployeeDeleteState(
-        {
-          hasManagedProjectHistory: relationshipFacts.employeeIdsWithManagedProjectHistory.has(employee.id),
-          hasManagedWarehouseHistory: relationshipFacts.employeeIdsWithManagedWarehouseHistory.has(employee.id),
-          hasManagerHistory: relationshipFacts.employeeIdsWithManagerHistory.has(employee.id),
-          hasProjectHistory: relationshipFacts.employeeIdsWithProjectHistory.has(employee.id),
-          hasSalaryPayments: relationshipFacts.employeeIdsWithSalaryPayments.has(employee.id),
-          hasWarehouseHistory: relationshipFacts.employeeIdsWithWarehouseHistory.has(employee.id),
-          managesAnyProject: (relationshipFacts.projectsByManagerId.get(employee.id) ?? []).length > 0,
-          managesAnyWarehouse: (relationshipFacts.warehousesByManagerId.get(employee.id) ?? []).length > 0,
-        },
-        t,
-      )
-
-      const leaveState = deriveEmployeeLeaveState(
-        {
-          employeeStatus: employee.status,
-          hasActiveProjectManagerProject: (relationshipFacts.activeProjectsByManagerId.get(employee.id) ?? []).length > 0,
-          hasActiveProjectManagerReports: (relationshipFacts.activeReportsByManagerId.get(employee.id) ?? []).length > 0,
-          hasActiveWarehouseManagerWarehouse: (relationshipFacts.activeWarehousesByManagerId.get(employee.id) ?? []).length > 0,
-          hasManagerAssignment: Boolean(managerAssignment),
-          hasProjectAssignment: Boolean(projectAssignment),
-          hasWarehouseAssignment: Boolean(warehouseAssignment),
-          roleKey: role?.key ?? null,
-        },
-        t,
-      )
-
-      return {
-        id: employee.id,
-        firstName: employee.firstName,
-        lastName: employee.lastName,
-        name: formatName(employee),
-        roleId: employee.roleId,
-        roleKey: role?.key ?? "",
-        role: role ? getArabicRoleLabel(role) : copy.shell.noManager,
-        phone: employee.phone,
-        status: employee.status,
-        salaryAmountDzd: employee.salaryAmountDzd,
-        salaryPeriod: employee.salaryPeriod,
-        managerName: manager ? formatName(manager) : copy.shell.noManager,
-        managerAssignmentId: managerAssignment?.id ?? null,
-        currentManagerId: manager?.id ?? null,
-        currentProjectId: project?.id ?? null,
-        currentProjectAssignmentId: projectAssignment?.id ?? null,
-        currentWarehouseId: warehouse?.id ?? null,
-        currentWarehouseAssignmentId: warehouseAssignment?.id ?? null,
-        currentWorkplace: project?.name ?? warehouse?.name ?? copy.shell.noProject,
-        notes: employee.notes,
-        isWorker: role?.key === "worker",
-        ...deleteState,
-        ...leaveState,
-        createdAt: employee.createdAt,
-        updatedAt: employee.updatedAt,
-      }
-    })
+    .map((employee) => buildEmployeeRow({ copy, employee, lookups, relationshipFacts, t }))
     .sort((left, right) => {
       const priorityDifference = (employeeRolePriority[left.roleKey] ?? 99) - (employeeRolePriority[right.roleKey] ?? 99)
       return priorityDifference !== 0 ? priorityDifference : left.name.localeCompare(right.name, "ar")

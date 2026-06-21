@@ -9,6 +9,7 @@ import type { WorkforceService } from "../modules/company/workforce.service";
 import type { OperationsService } from "../modules/company/operations.service";
 import type { FinanceService } from "../modules/company/finance.service";
 import type { InventoryService } from "../modules/inventory/inventory.service";
+import type { EmployeeModule } from "../modules/workforce/employee.module";
 import { getCurrentUser, type RpcContext } from "./context";
 import { createRpcMiddleware } from "./rpc-middleware";
 import { createWorkforceHandlers } from "./handlers/workforce";
@@ -25,6 +26,7 @@ type RouterDependencies = {
   operationsService: OperationsService;
   financeService: FinanceService;
   inventoryService: InventoryService;
+  employeeModule: EmployeeModule;
 };
 
 export function createRouter(dependencies: RouterDependencies) {
@@ -52,7 +54,7 @@ export function createRouter(dependencies: RouterDependencies) {
   const allHandlers = Object.assign(
     baseHandlers,
     createSystemHandlers(os, m, dependencies.companyService),
-    createWorkforceHandlers(os, m, dependencies.workforceService),
+    createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
     createOperationsHandlers(os, m, dependencies.operationsService),
     createFinanceHandlers(os, m, dependencies.financeService),
     createInventoryHandlers(os, m, dependencies.inventoryService),

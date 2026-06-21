@@ -251,6 +251,22 @@ vi.mock("./mock-dashboard", () => ({
   },
 }))
 
+vi.mock("./workspace-queries", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./workspace-queries")>()
+  return {
+    ...actual,
+    useEmployeesPagedQuery: () => ({
+      data: workspaceData
+        ? { items: workspaceData.employees, nextCursor: null, hasMore: false, total: workspaceData.employees.length }
+        : undefined,
+      isPending: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    }),
+  }
+})
+
 function renderHomeView(
   page: HomeViewPage = "dashboard",
   options?: { detailTab?: string; employeeId?: string; projectId?: string; warehouseId?: string },

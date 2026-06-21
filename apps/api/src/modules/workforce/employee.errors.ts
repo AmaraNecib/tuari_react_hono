@@ -27,3 +27,18 @@ export class RoleNotFoundError extends Error {
     this.name = "RoleNotFoundError";
   }
 }
+
+/**
+ * Thrown when a paginated query receives a cursor that cannot be decoded.
+ *
+ * Cursors are opaque to clients, but they must still be valid tokens
+ * produced by this module. A malformed cursor is a programmer error
+ * (or a corrupted token), not a user error.
+ */
+export class InvalidCursorError extends Error {
+  readonly code = "INVALID_CURSOR" as const;
+  constructor(cursor: string) {
+    super(`Invalid pagination cursor: "${cursor}"`);
+    this.name = "InvalidCursorError";
+  }
+}

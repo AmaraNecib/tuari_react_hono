@@ -41,6 +41,9 @@ export type HomeViewPageContentProps = {
   onSystemLogFiltersChange: (filters: HomeViewSystemLogFilters) => void
   onThemeToggle: () => void
   navigation: ReturnType<typeof useHomeViewNavigation>
+  paginationCursor?: string
+  paginationLimit?: number
+  workspace?: import("./workspace-queries").DemoWorkspace
 }
 
 export function includeCurrentProjectManagerOption(

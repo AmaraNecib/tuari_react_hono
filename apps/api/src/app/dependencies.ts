@@ -14,6 +14,9 @@ import { createInventoryRepository } from "../modules/inventory/inventory.reposi
 import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { SessionService } from "../modules/session/session.service";
+import { EmployeeModule } from "../modules/workforce/employee.module";
+import { SqliteEmployeeRepository } from "../modules/workforce/adapters/sqlite-employee.repository";
+import { SqliteRoleRepository } from "../modules/workforce/adapters/sqlite-role.repository";
 
 export async function createAppDependencies() {
   const sharedDatabase = await createDatabaseConnection();
@@ -22,6 +25,10 @@ export async function createAppDependencies() {
   const inventoryRepository = createInventoryRepository(sharedDatabase);
   const accountRepository = new PrismaAccountRepository(prisma);
   const companyService = new CompanyService(companyRepository, companyRepository);
+
+  const employeeRepository = new SqliteEmployeeRepository(companyRepository);
+  const roleRepository = new SqliteRoleRepository(companyRepository);
+  const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
 
   return {
     auth,
@@ -38,6 +45,7 @@ export async function createAppDependencies() {
       companyRepository,
     ),
     sessionService: new SessionService(auth),
+    employeeModule,
   } as const;
 }
 

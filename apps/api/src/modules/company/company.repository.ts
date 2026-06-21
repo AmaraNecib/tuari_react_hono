@@ -5,6 +5,10 @@ import Database from "better-sqlite3";
 
 import { resolveDatabaseEnv } from "../../infrastructure/config/database-env";
 import {
+  encodeCursor as encodeCursorToken,
+  decodeCursor as decodeCursorToken,
+} from "../shared/cursor";
+import {
   mapDebtAccount,
   mapDebtEntry,
   mapExternalCounterparty,
@@ -105,6 +109,22 @@ export interface CompanyRepository {
   createEmployeesBatch(data: EmployeeBatchCreateData[], auditContext?: MutationAuditContext): EmployeeBatchCreateResultRecord;
   updateEmployee(data: EmployeeUpdateData, auditContext?: MutationAuditContext): EmployeeRecord | null;
   deleteEmployee(id: string): boolean;
+  /**
+   * Cursor-paginated employee list. The cursor is opaque (produced by
+   * `encodeCursor` in `modules/shared/cursor.ts`). Returns the page of
+   * employees sorted by `(created_at DESC, id DESC)` plus the total
+   * count matching the filter.
+   */
+  listEmployeesPaged(query: {
+    filters?: EmployeeListFilters;
+    cursor?: string;
+    limit: number;
+  }): { items: EmployeeRecord[]; total: number; nextCursor: string | null };
+  /**
+   * Insert-or-replace employee record. Used by the deep EmployeeModule's
+   * save() method which generates the UUID itself.
+   */
+  upsertEmployee(data: EmployeeCreateData | EmployeeUpdateData & { id: string }): EmployeeRecord;
   assignEmployeeWorkplace(data: EmployeeWorkplaceAssignmentData, auditContext?: MutationAuditContext): void;
   syncManagedProjects(data: EmployeeManagedProjectsSyncData, auditContext?: MutationAuditContext): void;
   syncManagedWarehouses(data: EmployeeManagedWarehousesSyncData, auditContext?: MutationAuditContext): void;
@@ -553,6 +573,85 @@ export class SqliteCompanyRepository implements CompanyRepository {
     })
 
     return transaction(id)
+  }
+
+  listEmployeesPaged(query: {
+    filters?: EmployeeListFilters;
+    cursor?: string;
+    limit: number;
+  }): { items: EmployeeRecord[]; total: number; nextCursor: string | null } {
+    const conditions: string[] = [];
+    const params: Array<string | number> = [];
+
+    if (query.filters?.roleId) {
+      conditions.push("role_id = ?");
+      params.push(query.filters.roleId);
+    }
+    if (query.filters?.status) {
+      conditions.push("status = ?");
+      params.push(query.filters.status);
+    }
+
+    // Cursor encodes (created_at, id). We translate the opaque token back
+    // into SQL only inside this adapter so the rest of the codebase stays
+    // free of cursor parsing. The ordering is created_at DESC, id DESC.
+    if (query.cursor !== undefined) {
+      const decoded = decodeCursorToken(query.cursor);
+      conditions.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      params.push(decoded.createdAt, decoded.createdAt, decoded.id);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const rows = this.database
+      .prepare(
+        `SELECT * FROM employee ${whereClause} ORDER BY created_at DESC, id DESC LIMIT ?`,
+      )
+      .all(...params, query.limit) as SqliteRow[];
+
+    const totalRow = this.database
+      .prepare(
+        `SELECT COUNT(*) AS count FROM employee ${whereClause}`,
+      )
+      .get(...params) as { count: number };
+
+    const items = rows.map(mapEmployee);
+    const last = items[items.length - 1];
+    const hasMore = items.length === query.limit;
+    const nextCursor = hasMore && last
+      ? encodeCursorToken({ createdAt: last.createdAt, id: last.id })
+      : null;
+
+    return { items, total: Number(totalRow.count), nextCursor };
+  }
+
+  upsertEmployee(data: EmployeeCreateData | (EmployeeUpdateData & { id: string })): EmployeeRecord {
+    // The deep EmployeeModule's save() generates the UUID itself, so this
+    // method is the bridge that bridges "create with known id" and "update".
+    // We check existence to decide which path to take.
+    const existing = this.getEmployeeById((data as { id: string }).id);
+    if (existing) {
+      const updateData: EmployeeUpdateData = {
+        id: (data as { id: string }).id,
+        firstName: (data as Partial<EmployeeCreateData>).firstName,
+        lastName: (data as Partial<EmployeeCreateData>).lastName,
+        phone: (data as Partial<EmployeeCreateData>).phone,
+        roleId: (data as Partial<EmployeeCreateData>).roleId,
+        status: (data as Partial<EmployeeCreateData>).status,
+        salaryAmountDzd: (data as Partial<EmployeeCreateData>).salaryAmountDzd,
+        salaryPeriod: (data as Partial<EmployeeCreateData>).salaryPeriod,
+        notes: (data as Partial<EmployeeCreateData>).notes,
+      };
+      const result = this.updateEmployee(updateData);
+      if (!result) throw new Error(`Failed to upsert employee ${updateData.id}`);
+      return result;
+    }
+
+    // Create path: ensure required fields are present.
+    const createData = data as EmployeeCreateData;
+    if (!createData.firstName || !createData.lastName || !createData.phone || !createData.roleId || !createData.status) {
+      throw new Error("upsertEmployee: missing required fields for create path");
+    }
+    return this.createEmployee(createData);
   }
 
   assignEmployeeWorkplace(data: EmployeeWorkplaceAssignmentData, auditContext?: MutationAuditContext): void {

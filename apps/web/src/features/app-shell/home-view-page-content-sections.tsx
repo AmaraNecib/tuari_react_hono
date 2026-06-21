@@ -29,6 +29,9 @@ export function HomeViewPageSectionContent({
   systemLogState,
   theme,
   updateAccountPending,
+  paginationCursor,
+  paginationLimit,
+  workspace,
 }: Pick<
   HomeViewPageContentProps,
   | "copy"
@@ -41,6 +44,9 @@ export function HomeViewPageSectionContent({
   | "onSetPendingDelete"
   | "onSystemLogFiltersChange"
   | "onThemeToggle"
+  | "paginationCursor"
+  | "paginationLimit"
+  | "workspace"
   | "page"
   | "resetWorkspacePending"
   | "session"
@@ -94,12 +100,16 @@ export function HomeViewPageSectionContent({
             actions: copy.common.actions,
           }}
           createTarget={workspaceRoutes.employeeCreate()}
+          cursor={paginationCursor}
           employeePage={employeePage}
           emptyLabel={copy.shell.empty}
+          limit={paginationLimit}
           managerOptions={derived.managerOptions}
+          noManagerLabel={copy.shell.noManager}
+          noProjectLabel={copy.shell.noProject}
           roles={derived.roles}
-          rows={derived.employeeRows}
           title={copy.sections.employees.label}
+          workspace={workspace!}
         />
       )
 

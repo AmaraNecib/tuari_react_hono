@@ -42,6 +42,34 @@ export const createListSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
     items: z.array(itemSchema),
   });
 
+/**
+ * Input for cursor-paginated list endpoints.
+ *
+ * - `cursor`: opaque token returned in a previous response's `nextCursor`.
+ *   Omit (or pass undefined) for the first page.
+ * - `limit`: page size. Server-side clamps to a safe range.
+ */
+export const cursorPaginationInputSchema = z.object({
+  cursor: z.string().min(1).optional(),
+  limit: z.number().int().positive().optional(),
+});
+
+/**
+ * Result shape for cursor-paginated list endpoints.
+ *
+ * - `items`: records on this page (already mapped to public DTO shape)
+ * - `total`: total count matching the filter (NOT the page size)
+ * - `nextCursor`: opaque token for the next page, or null on the last page
+ * - `hasMore`: convenience flag equivalent to `nextCursor !== null`
+ */
+export const paginatedResultSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
+  z.object({
+    items: z.array(itemSchema),
+    total: z.number().int().nonnegative(),
+    nextCursor: z.string().nullable(),
+    hasMore: z.boolean(),
+  });
+
 export const createEntityResultSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z.union([
     mutationFailureSchema,

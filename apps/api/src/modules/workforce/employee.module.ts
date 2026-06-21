@@ -3,12 +3,19 @@ import { randomUUID } from "node:crypto";
 import type { Employee, EmployeeCreateInput, EmployeeUpdateInput } from "@tuari/contracts";
 
 import type { EmployeeRecord } from "../company/company.types";
+import { decodeCursor, normalizePageSize } from "../shared/cursor";
 import {
   DuplicatePhoneError,
   EmployeeNotFoundError,
+  InvalidCursorError,
   RoleNotFoundError,
 } from "./employee.errors";
-import type { EmployeeFilters, EmployeeRepository, RoleRepository } from "./employee.repository";
+import type {
+  EmployeeFilters,
+  EmployeePagedResult,
+  EmployeeRepository,
+  RoleRepository,
+} from "./employee.repository";
 
 /**
  * Dependencies that the EmployeeModule needs.
@@ -29,6 +36,28 @@ export type EmployeeModuleDependencies = {
  * (callers should not need to specify it on creation).
  */
 export type CreateEmployeeInput = Omit<EmployeeCreateInput, "status">;
+
+/**
+ * Options for the paginated list query.
+ *
+ * `cursor` is an opaque token from a previous response's `nextCursor`.
+ * `limit` is clamped to a safe range by the module (1..100, default 50).
+ */
+export type ListPagedOptions = {
+  filters?: EmployeeFilters;
+  cursor?: string;
+  limit?: number;
+};
+
+/**
+ * Result of a paginated list query.
+ *
+ * - `items` are the public Employee records on this page
+ * - `total` is the total count matching the filter (not the page size)
+ * - `nextCursor` is null on the last page
+ * - `hasMore` is a convenience flag equivalent to `nextCursor !== null`
+ */
+export type PaginatedEmployees = EmployeePagedResult;
 
 /**
  * EmployeeModule - the deep module for employee management.
@@ -112,6 +141,44 @@ export class EmployeeModule {
   async list(filters?: EmployeeFilters): Promise<Employee[]> {
     const records = await this.employeeRepository.findAll(filters);
     return records.map((r) => this.toEmployee(r));
+  }
+
+  /**
+   * List employees as a paginated, cursor-based result.
+   *
+   * The cursor is opaque — clients must pass back the `nextCursor` from a
+   * previous response without inspecting or modifying it. Filters are
+   * applied BEFORE pagination so `total` reflects the filtered set.
+   *
+   * Throws:
+   * - InvalidCursorError if the cursor is malformed or was not produced
+   *   by this module.
+   */
+  async listPaged(options: ListPagedOptions): Promise<PaginatedEmployees> {
+    const limit = normalizePageSize(options.limit);
+
+    // Validate cursor up-front so we can give a precise error. The
+    // repository will also decode it, but doing it here lets us throw a
+    // module-typed error rather than a generic one.
+    if (options.cursor !== undefined) {
+      try {
+        decodeCursor(options.cursor);
+      } catch {
+        throw new InvalidCursorError(options.cursor);
+      }
+    }
+
+    const result = await this.employeeRepository.findPaged({
+      filters: options.filters,
+      cursor: options.cursor,
+      limit,
+    });
+
+    return {
+      items: result.items.map((r) => this.toEmployee(r)),
+      total: result.total,
+      nextCursor: result.nextCursor,
+    };
   }
 
   /**

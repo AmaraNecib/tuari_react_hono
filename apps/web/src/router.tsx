@@ -55,12 +55,29 @@ function createWorkspaceRoute(path: string, page: HomeViewPage) {
   })
 }
 
+type EmployeesListSearch = {
+  cursor?: string
+  limit?: number
+}
+
+function parseEmployeesListSearch(search: Record<string, unknown>): EmployeesListSearch {
+  const cursor = typeof search.cursor === "string" && search.cursor.length > 0 ? search.cursor : undefined
+  const rawLimit = typeof search.limit === "string" ? Number(search.limit) : (search.limit as number | undefined)
+  const limit = typeof rawLimit === "number" && Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : undefined
+  return { cursor, limit }
+}
+
 const rootRoute = createRootRoute({
   component: RootLayout,
 })
 
 const dashboardRoute = createWorkspaceRoute("/", "dashboard")
-const employeesRoute = createWorkspaceRoute("/employees", "employees")
+const employeesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/employees",
+  validateSearch: (search: Record<string, unknown>) => parseEmployeesListSearch(search),
+  component: EmployeesListRouteComponent,
+})
 const employeesCreateRoute = createWorkspaceRoute("/employees/create", "employees-create")
 const debtsRoute = createWorkspaceRoute("/debts", "debts")
 const debtCreateRoute = createWorkspaceRoute("/debts/create", "debt-create")
@@ -140,6 +157,17 @@ function EmployeeDetailsRouteComponent() {
   const { employeeId } = employeeDetailsRoute.useParams()
   const search = employeeDetailsRoute.useSearch()
   return renderHomeView(<HomeView detailTab={search.tab} employeeId={employeeId} page="employee-details" />)
+}
+
+function EmployeesListRouteComponent() {
+  const search = employeesRoute.useSearch()
+  return renderHomeView(
+    <HomeView
+      page="employees"
+      paginationCursor={search.cursor}
+      paginationLimit={search.limit}
+    />,
+  )
 }
 
 function EmployeeEditRouteComponent() {
