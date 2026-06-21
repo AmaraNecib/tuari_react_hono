@@ -1,0 +1,183 @@
+import { randomUUID } from "node:crypto";
+
+import type { CreateEmployeeInput, Employee, UpdateEmployeeInput } from "@tuari/contracts";
+
+import type { EmployeeRecord } from "../company/company.types";
+import {
+  DuplicatePhoneError,
+  EmployeeNotFoundError,
+  RoleNotFoundError,
+} from "./employee.errors";
+import type { EmployeeFilters, EmployeeRepository, RoleRepository } from "./employee.repository";
+
+/**
+ * Dependencies that the EmployeeModule needs.
+ * Grouped in a single object so the module has a small constructor signature.
+ */
+export type EmployeeModuleDependencies = {
+  employeeRepository: EmployeeRepository;
+  roleRepository: RoleRepository;
+  /**
+   * Returns the current timestamp. Injected to make tests deterministic.
+   * Defaults to () => new Date().toISOString() in production.
+   */
+  now?: () => string;
+};
+
+/**
+ * EmployeeModule - the deep module for employee management.
+ *
+ * This is a small public interface that hides complex implementation details.
+ * Callers don't need to know about:
+ * - How employees are stored
+ * - How uniqueness is enforced
+ * - How timestamps are generated
+ *
+ * The module is the natural place to put business rules like:
+ * - Phone number uniqueness
+ * - Role validation
+ * - Status transitions (when we add update)
+ *
+ * Tests use InMemoryEmployeeRepository.
+ * Production uses DrizzleEmployeeRepository (to be added in next iteration).
+ */
+export class EmployeeModule {
+  private readonly employeeRepository: EmployeeRepository;
+  private readonly roleRepository: RoleRepository;
+  private readonly now: () => string;
+
+  constructor(dependencies: EmployeeModuleDependencies) {
+    this.employeeRepository = dependencies.employeeRepository;
+    this.roleRepository = dependencies.roleRepository;
+    this.now = dependencies.now ?? (() => new Date().toISOString());
+  }
+
+  /**
+   * Create a new employee.
+   *
+   * Throws:
+   * - DuplicatePhoneError if phone already exists
+   * - RoleNotFoundError if roleId doesn't exist
+   */
+  async create(input: CreateEmployeeInput): Promise<Employee> {
+    // Business rule: validate role exists
+    const role = await this.roleRepository.findById(input.roleId);
+    if (!role) {
+      throw new RoleNotFoundError(input.roleId);
+    }
+
+    // Business rule: phone must be unique
+    const existing = await this.employeeRepository.findByPhone(input.phone);
+    if (existing) {
+      throw new DuplicatePhoneError(input.phone);
+    }
+
+    const timestamp = this.now();
+    const record: EmployeeRecord = {
+      id: randomUUID(),
+      firstName: input.firstName,
+      lastName: input.lastName,
+      phone: input.phone,
+      roleId: input.roleId,
+      status: "ACTIVE",
+      salaryAmountDzd: input.salaryAmountDzd ?? null,
+      salaryPeriod: input.salaryPeriod ?? null,
+      notes: input.notes ?? null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    await this.employeeRepository.save(record);
+    return this.toEmployee(record);
+  }
+
+  /**
+   * Find an employee by ID.
+   * Returns null if not found.
+   */
+  async findById(id: string): Promise<Employee | null> {
+    const record = await this.employeeRepository.findById(id);
+    return record ? this.toEmployee(record) : null;
+  }
+
+  /**
+   * List employees with optional filters.
+   */
+  async list(filters?: EmployeeFilters): Promise<Employee[]> {
+    const records = await this.employeeRepository.findAll(filters);
+    return records.map((r) => this.toEmployee(r));
+  }
+
+  /**
+   * Update an existing employee.
+   *
+   * Throws:
+   * - EmployeeNotFoundError if employee doesn't exist
+   * - DuplicatePhoneError if new phone conflicts with another employee
+   */
+  async update(id: string, input: UpdateEmployeeInput): Promise<Employee> {
+    const existing = await this.employeeRepository.findById(id);
+    if (!existing) {
+      throw new EmployeeNotFoundError(id);
+    }
+
+    // Business rule: if role is being changed, validate the new role exists
+    if (input.roleId && input.roleId !== existing.roleId) {
+      const role = await this.roleRepository.findById(input.roleId);
+      if (!role) {
+        throw new RoleNotFoundError(input.roleId);
+      }
+    }
+
+    // Business rule: if phone is being changed, ensure it doesn't conflict
+    if (input.phone && input.phone !== existing.phone) {
+      const phoneOwner = await this.employeeRepository.findByPhone(input.phone);
+      if (phoneOwner && phoneOwner.id !== id) {
+        throw new DuplicatePhoneError(input.phone);
+      }
+    }
+
+    const updated: EmployeeRecord = {
+      ...existing,
+      ...input,
+      updatedAt: this.now(),
+    };
+
+    await this.employeeRepository.save(updated);
+    return this.toEmployee(updated);
+  }
+
+  /**
+   * Delete an employee.
+   *
+   * Throws:
+   * - EmployeeNotFoundError if employee doesn't exist
+   */
+  async delete(id: string): Promise<void> {
+    const existing = await this.employeeRepository.findById(id);
+    if (!existing) {
+      throw new EmployeeNotFoundError(id);
+    }
+    await this.employeeRepository.delete(id);
+  }
+
+  /**
+   * Convert internal record shape to public Employee shape.
+   * Hides the internal representation from callers.
+   */
+  private toEmployee(record: EmployeeRecord): Employee {
+    return {
+      id: record.id,
+      firstName: record.firstName,
+      lastName: record.lastName,
+      phone: record.phone,
+      roleId: record.roleId,
+      status: record.status,
+      salaryAmountDzd: record.salaryAmountDzd,
+      salaryPeriod: record.salaryPeriod,
+      notes: record.notes,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    };
+  }
+}
