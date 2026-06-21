@@ -23,11 +23,9 @@ import { orpc, rpcClient } from "@/lib/orpc-client"
 import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 import {
-  demoWorkspaceQueryKey,
   workspaceDomainQueryKeys,
   workspaceDomainQueryPrefix,
   workspaceQueryPrefix,
-  type DemoWorkspace,
 } from "./workspace-queries"
 
 export type SectionKey = "employees" | "projects" | "warehouses" | "roles" | "settings"

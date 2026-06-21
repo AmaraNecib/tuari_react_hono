@@ -1,5 +1,4 @@
 import { useTranslation } from "react-i18next"
-import { BriefcaseBusiness, Users, Warehouse } from "lucide-react"
 
 import { PageHeader, StatBand } from "@/features/shared/page-primitives"
 

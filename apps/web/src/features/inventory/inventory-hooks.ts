@@ -190,7 +190,7 @@ export function useTransferInventoryConsumableMutation() {
       ].filter(loc => loc.warehouseId || loc.projectId)
 
       for (const location of affectedLocations) {
-        await queryClient.invalidateQueries({ queryKey: inventoryKeys.locationContents(location as any) })
+        await queryClient.invalidateQueries({ queryKey: inventoryKeys.locationContents(location) })
       }
       await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroups })
       showSuccessToast(message)

@@ -1,10 +1,14 @@
 import { useInventoryReport, useDebtReport } from "@/hooks/use-report-queries";
-import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
+import type { DebtReport, InventoryReport } from "@tuari/contracts";
 import { Button } from "@/components/ui/button";
+import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
 
 export function DashboardOverview() {
   const inventoryReport = useInventoryReport();
   const debtReport = useDebtReport();
+
+  const inventoryData = inventoryReport.data as InventoryReport | undefined;
+  const debtData = debtReport.data as DebtReport | undefined;
 
   return (
     <Surface variant="panel">
@@ -21,13 +25,13 @@ export function DashboardOverview() {
             <div className="mt-2 space-y-1">
               {inventoryReport.isLoading ? (
                 <p className="text-lg font-bold">جاري التحميل...</p>
-              ) : inventoryReport.data?.summary?.totalValueDzd ? (
+              ) : inventoryData?.summary?.totalValueDzd ? (
                 <>
                   <p className="text-2xl font-bold">
-                    {(inventoryReport.data as any).summary?.totalValueDzd?.toLocaleString("ar-DZ")} د.ج
+                    {inventoryData.summary.totalValueDzd.toLocaleString("ar-DZ")} د.ج
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    أصول: {(inventoryReport.data as any).summary?.totalAssetsDzd?.toLocaleString("ar-DZ")} د.ج
+                    أصول: {inventoryData.summary.totalAssetsDzd.toLocaleString("ar-DZ")} د.ج
                   </p>
                 </>
               ) : (
@@ -42,13 +46,13 @@ export function DashboardOverview() {
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
                 <p className="text-lg font-bold">جاري التحميل...</p>
-              ) : debtReport.data?.summary?.totalOutstandingDzd !== undefined ? (
+              ) : debtData?.summary?.totalOutstandingDzd !== undefined ? (
                 <>
                   <p className="text-2xl font-bold">
-                    {(debtReport.data as any).summary?.totalOutstandingDzd?.toLocaleString("ar-DZ")} د.ج
+                    {debtData.summary.totalOutstandingDzd.toLocaleString("ar-DZ")} د.ج
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    متأخرة: {(debtReport.data as any).summary?.overdueDzd?.toLocaleString("ar-DZ")} د.ج
+                    متأخرة: {debtData.summary.overdueDzd.toLocaleString("ar-DZ")} د.ج
                   </p>
                 </>
               ) : (
@@ -63,9 +67,9 @@ export function DashboardOverview() {
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
                 <p className="text-sm">جاري التحميل...</p>
-              ) : debtReport.data?.agingBreakdown ? (
+              ) : debtData?.agingBreakdown ? (
                 <>
-                  {(debtReport.data as any).agingBreakdown?.slice(0, 2).map((item: any) => (
+                  {debtData.agingBreakdown.slice(0, 2).map((item) => (
                     <div key={item.ageCategory} className="flex justify-between text-xs">
                       <span className="text-muted-foreground">
                         {item.ageCategory === "0-30_DAYS" && "0-30 يوم"}
@@ -88,13 +92,13 @@ export function DashboardOverview() {
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
                 <p className="text-sm">جاري التحميل...</p>
-              ) : debtReport.data?.topDebtors?.[0] ? (
+              ) : debtData?.topDebtors?.[0] ? (
                 <>
                   <div className="text-sm font-medium">
-                    {(debtReport.data as any).topDebtors?.[0]?.partyName}
+                    {debtData.topDebtors[0].partyName}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {(debtReport.data as any).topDebtors?.[0]?.amountDzd?.toLocaleString("ar-DZ")} د.ج
+                    {debtData.topDebtors[0].amountDzd.toLocaleString("ar-DZ")} د.ج
                   </p>
                 </>
               ) : (

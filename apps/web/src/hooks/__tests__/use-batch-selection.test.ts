@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { useBatchSelection } from "@/hooks/use-batch-selection";
 import { renderHook, act } from "@testing-library/react";
 
@@ -108,6 +108,6 @@ describe("Batch Selection Integration", () => {
     });
 
     expect(result.current.selectedItems).toHaveLength(2);
-    expect(result.current.selectedItems.map((i: any) => i.id)).toEqual(["1", "3"]);
+    expect(result.current.selectedItems.map((i) => i.id)).toEqual(["1", "3"]);
   });
 });

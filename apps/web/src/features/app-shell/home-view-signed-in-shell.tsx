@@ -2,7 +2,6 @@ import type { ReactNode } from "react"
 import { LogOut, MoonStar, PanelRightClose, PanelRightOpen, Settings, SunMedium } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
   AlertDialogAction,

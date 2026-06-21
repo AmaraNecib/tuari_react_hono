@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import type {
   DebtAccount,
-  DebtEntry,
   Employee,
   EmployeeManagerAssignment,
   EmployeeProjectAssignment,

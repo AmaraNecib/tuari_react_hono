@@ -1,34 +1,35 @@
 import { useQuery } from "@tanstack/react-query";
+import type { RecurringPattern, RecurringPatternList } from "@tuari/contracts";
 import { rpcClient } from "@/lib/orpc-client";
 
 export function useRecurringPatternsQuery() {
-  return useQuery({
+  return useQuery<RecurringPatternList>({
     queryKey: ["recurring-patterns"],
     queryFn: async () => {
-      return (rpcClient as any).recurringPatternsList?.() ?? { items: [] };
+      return rpcClient.recurringPatternsList({});
     },
     staleTime: 5 * 60 * 1000,
   });
 }
 
 export function useRecurringPatternQuery(id: string) {
-  return useQuery({
+  return useQuery<RecurringPattern>({
     queryKey: ["recurring-patterns", id],
     queryFn: async () => {
-      return (rpcClient as any).recurringPatternsGet?.({ id });
+      return rpcClient.recurringPatternsGet({ id });
     },
     enabled: !!id,
     staleTime: 5 * 60 * 1000,
   });
 }
 
-export function formatNextOccurrence(pattern: any): string {
+export function formatNextOccurrence(pattern: RecurringPattern): string {
   if (!pattern.nextOccurrenceDate) return "لم تحسب بعد";
   const date = new Date(pattern.nextOccurrenceDate);
   return date.toLocaleDateString("ar-DZ");
 }
 
-export function calculateDaysUntilOccurrence(pattern: any): number | null {
+export function calculateDaysUntilOccurrence(pattern: RecurringPattern): number | null {
   if (!pattern?.nextOccurrenceDate) return null;
   const now = new Date();
   const nextDate = new Date(pattern.nextOccurrenceDate);

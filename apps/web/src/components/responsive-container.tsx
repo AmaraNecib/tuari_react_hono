@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { cn } from "@/lib/utils";
 
@@ -55,12 +55,7 @@ export function TouchButton({
   onClick,
   className,
   ...props
-}: {
-  children: ReactNode;
-  onClick?: () => void;
-  className?: string;
-  [key: string]: any;
-}) {
+}: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       onClick={onClick}

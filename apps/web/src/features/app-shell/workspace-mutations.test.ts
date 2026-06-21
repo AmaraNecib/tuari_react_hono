@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect } from "vitest"
 import { AppMutationError } from "./workspace-mutations"
 
 describe("AppMutationError", () => {
@@ -20,7 +20,7 @@ describe("AppMutationError", () => {
     const error = new AppMutationError({
       message: "Validation failed",
       code: "VALIDATION",
-      fieldErrors: fieldErrors as any,
+      fieldErrors,
     })
 
     expect(error.message).toBe("Validation failed")

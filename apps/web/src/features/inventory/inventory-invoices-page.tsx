@@ -65,9 +65,6 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
         <AppShellFilterShell>
           <div className="col-span-full lg:col-span-3">
             <AdvancedSearchBar
-              searchFields={[
-                { key: "query", label: "البحث", placeholder: "رقم الفاتورة أو اسم المورد" },
-              ]}
               onSearch={(searchQuery, filtersObj) => {
                 setQuery(searchQuery)
                 setFilters(filtersObj)
@@ -132,7 +129,7 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
           onToggleAll={batchSelection.toggleAll}
           onClearSelection={batchSelection.clearSelection}
           onOperation={(operationId) => {
-            console.log(`Operation ${operationId} on items:`, batchSelection.selectedItems.map((i: any) => i.id));
+            console.log(`Operation ${operationId} on items:`, batchSelection.selectedItems.map((i) => i.id));
             batchSelection.clearSelection();
           }}
         />

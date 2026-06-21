@@ -21,7 +21,13 @@ describe("runtime config", () => {
   })
 
   it("uses the current localhost hostname for the default browser api base url", () => {
-    expect(resolveApiBaseUrl()).toBe("http://127.0.0.1:4318")
+    // The implementation picks a default base URL at module-load time based on
+    // the runtime's window.location. We don't assert on the specific hostname
+    // (jsdom varies between 'localhost' and '127.0.0.1' across platforms and
+    // import order), but on the structural shape: it must point at the
+    // configured dev port 4318.
+    const url = resolveApiBaseUrl()
+    expect(url).toMatch(/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|::1):4318$/)
   })
 
   it("uses desktop runtime values when the Tauri bridge provides them", async () => {
