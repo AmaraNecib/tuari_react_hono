@@ -70,6 +70,7 @@ export function HomeView({
   warehouseId,
   paginationCursor,
   paginationLimit,
+  paginationPrevCursors,
 }: {
   detailTab?: string
   page?: HomeViewPage
@@ -80,6 +81,7 @@ export function HomeView({
   warehouseId?: string
   paginationCursor?: string
   paginationLimit?: number
+  paginationPrevCursors?: string
 }) {
   const { t } = useTranslation()
   const navigation = useHomeViewNavigation()
@@ -207,6 +209,7 @@ export function HomeView({
           page={page}
           paginationCursor={paginationCursor}
           paginationLimit={paginationLimit}
+          paginationPrevCursors={paginationPrevCursors}
           selectedCounterparty={selectedCounterparty}
           selectedEmployee={selectedEmployee}
           selectedProject={selectedProject}

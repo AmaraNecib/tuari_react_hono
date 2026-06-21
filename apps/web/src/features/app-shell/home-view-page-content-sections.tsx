@@ -31,6 +31,7 @@ export function HomeViewPageSectionContent({
   updateAccountPending,
   paginationCursor,
   paginationLimit,
+  paginationPrevCursors,
   workspace,
 }: Pick<
   HomeViewPageContentProps,
@@ -46,6 +47,7 @@ export function HomeViewPageSectionContent({
   | "onThemeToggle"
   | "paginationCursor"
   | "paginationLimit"
+  | "paginationPrevCursors"
   | "workspace"
   | "page"
   | "resetWorkspacePending"
@@ -101,6 +103,7 @@ export function HomeViewPageSectionContent({
           }}
           createTarget={workspaceRoutes.employeeCreate()}
           cursor={paginationCursor}
+          prevCursors={paginationPrevCursors}
           employeePage={employeePage}
           emptyLabel={copy.shell.empty}
           limit={paginationLimit}

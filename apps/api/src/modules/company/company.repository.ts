@@ -666,7 +666,10 @@ export class SqliteCompanyRepository implements CompanyRepository {
     // the persisted row matches the id returned to the caller. createEmployee
     // would generate a fresh UUID, breaking the module's id contract.
     const id = (data as { id?: string }).id ?? crypto.randomUUID();
-    const timestamp = createAlgeriaTimestamp();
+    // Forward caller-supplied timestamps (set by EmployeeModule.create) so
+    // the persisted row matches exactly what the caller will see on read.
+    const createdAt = (data as { createdAt?: string }).createdAt ?? createAlgeriaTimestamp();
+    const updatedAt = (data as { updatedAt?: string }).updatedAt ?? createdAt;
     this.database
       .prepare(
         "INSERT INTO employee (id, first_name, last_name, phone, role_id, status, salary_amount_dzd, salary_period, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -681,8 +684,8 @@ export class SqliteCompanyRepository implements CompanyRepository {
         createData.salaryAmountDzd ?? null,
         createData.salaryPeriod ?? null,
         createData.notes ?? null,
-        timestamp,
-        timestamp,
+        createdAt,
+        updatedAt,
       );
     this.insertEmployeeStateHistory({
       employeeId: id,
@@ -691,7 +694,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
       salaryAmountDzd: createData.salaryAmountDzd ?? null,
       salaryPeriod: createData.salaryPeriod ?? null,
       eventType: "CREATED",
-      startDate: timestamp,
+      startDate: createdAt,
       notes: createData.notes ?? null,
       actorUserId: null,
       actorLabel: null,

@@ -58,13 +58,18 @@ function createWorkspaceRoute(path: string, page: HomeViewPage) {
 type EmployeesListSearch = {
   cursor?: string
   limit?: number
+  prevCursors?: string
 }
 
 function parseEmployeesListSearch(search: Record<string, unknown>): EmployeesListSearch {
   const cursor = typeof search.cursor === "string" && search.cursor.length > 0 ? search.cursor : undefined
   const rawLimit = typeof search.limit === "string" ? Number(search.limit) : (search.limit as number | undefined)
   const limit = typeof rawLimit === "number" && Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : undefined
-  return { cursor, limit }
+  // prevCursors is a comma-separated list of cursors (empty string = page 1 sentinel)
+  const prevCursors = typeof search.prevCursors === "string" && search.prevCursors.length > 0
+    ? search.prevCursors
+    : undefined
+  return { cursor, limit, prevCursors }
 }
 
 const rootRoute = createRootRoute({
@@ -166,6 +171,7 @@ function EmployeesListRouteComponent() {
       page="employees"
       paginationCursor={search.cursor}
       paginationLimit={search.limit}
+      paginationPrevCursors={search.prevCursors}
     />,
   )
 }

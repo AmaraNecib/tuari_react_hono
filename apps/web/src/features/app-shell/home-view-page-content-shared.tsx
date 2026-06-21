@@ -43,6 +43,7 @@ export type HomeViewPageContentProps = {
   navigation: ReturnType<typeof useHomeViewNavigation>
   paginationCursor?: string
   paginationLimit?: number
+  paginationPrevCursors?: string
   workspace?: import("./workspace-queries").DemoWorkspace
 }
 
