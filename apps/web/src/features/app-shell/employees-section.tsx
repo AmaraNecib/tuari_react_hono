@@ -106,7 +106,7 @@ export function EmployeesSection({
   const actionInFlightRef = useRef(false)
   // Initialize cursor stack from URL so it survives page refresh.
   const [previousCursorStack, setPreviousCursorStack] = useState<string[]>(() => {
-    if (!prevCursors) return [];
+    if (prevCursors === undefined) return [];
     return prevCursors.split(",");
   });
 
