@@ -146,17 +146,17 @@ export class InvoiceModule {
   }
 
   async listPaged(query: {
-    filters?: { status?: "DRAFT" | "RECEIVED" | "PAID" };
+    filters?: { status?: "DRAFT" | "RECEIVED" | "PAID"; supplierName?: string; warehouseId?: string; projectId?: string };
     cursor?: string;
     limit: number;
   }): Promise<{ items: Invoice[]; nextCursor: string | null; totalCount: number }> {
-    let after: { createdAt: string; id: string } | undefined;
+    let after: { sortValue: number | string; id: string } | undefined;
     if (query.cursor) {
       try {
         const decoded = JSON.parse(
           Buffer.from(query.cursor, "base64url").toString("utf8"),
         );
-        after = { createdAt: decoded.createdAt, id: decoded.id };
+        after = { sortValue: decoded.sortValue, id: decoded.id };
       } catch {
         throw new Error("Invalid cursor");
       }

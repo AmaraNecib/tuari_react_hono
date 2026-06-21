@@ -47,8 +47,8 @@ function createInMemoryRepository(): InvoiceRepository & {
       if (after) {
         items = items.filter(
           (i) =>
-            i.createdAt < after.createdAt ||
-            (i.createdAt === after.createdAt && i.id < after.id),
+            String(i.createdAt) < String(after.sortValue) ||
+            (String(i.createdAt) === String(after.sortValue) && i.id < after.id),
         );
       }
 
@@ -60,7 +60,7 @@ function createInMemoryRepository(): InvoiceRepository & {
       if (hasMore && pageItems.length > 0) {
         const last = pageItems[pageItems.length - 1]!;
         nextCursor = Buffer.from(
-          JSON.stringify({ createdAt: last.createdAt, id: last.id }),
+          JSON.stringify({ sortValue: last.createdAt, id: last.id }),
         ).toString("base64url");
       }
 

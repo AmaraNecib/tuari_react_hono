@@ -37,7 +37,7 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
   async findPaged(query: {
     filters?: InvoiceListFilters;
     sort?: { field: InvoiceListSortField; direction: SortDirection };
-    after?: { createdAt: string; id: string };
+    after?: { sortValue: number | string; id: string };
     limit: number;
   }): Promise<{ items: Invoice[]; nextCursor: string | null; totalCount: number }> {
     const sortCol = SORT_COLUMN_MAP[query.sort?.field ?? "createdAt"];
@@ -75,12 +75,13 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     let cursorClause = "";
     const cursorParams: unknown[] = [];
     if (query.after) {
+      const connector = conditions.length > 0 ? "AND" : "WHERE";
       if (sortDir === "DESC") {
-        cursorClause = `AND (created_at < ? OR (created_at = ? AND id < ?))`;
+        cursorClause = `${connector} (${sortCol} < ? OR (${sortCol} = ? AND id < ?))`;
       } else {
-        cursorClause = `AND (created_at > ? OR (created_at = ? AND id > ?))`;
+        cursorClause = `${connector} (${sortCol} > ? OR (${sortCol} = ? AND id > ?))`;
       }
-      cursorParams.push(query.after.createdAt, query.after.createdAt, query.after.id);
+      cursorParams.push(query.after.sortValue, query.after.sortValue, query.after.id);
     }
 
     const allParams = [...params, ...cursorParams, query.limit + 1];
@@ -98,7 +99,7 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
       const lastRow = pageRows[pageRows.length - 1]!;
       nextCursor = Buffer.from(
         JSON.stringify({
-          createdAt: lastRow.created_at as string,
+          sortValue: lastRow[sortCol],
           id: lastRow.id as string,
         }),
       ).toString("base64url");
@@ -216,6 +217,7 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     if (data.remainingAmountDzd !== undefined) { setClauses.push(`remaining_amount_dzd = ?`); params.push(data.remainingAmountDzd); }
 
     if (setClauses.length > 0) {
+      setClauses.push(`updated_at = datetime('now')`);
       params.push(id);
       this.db
         .prepare(`UPDATE "invoice" SET ${setClauses.join(", ")} WHERE id = ?`)
@@ -259,6 +261,7 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
       params.push(additionalUpdates.remainingAmountDzd);
     }
 
+    setClauses.push(`updated_at = datetime('now')`);
     params.push(id);
     this.db
       .prepare(`UPDATE "invoice" SET ${setClauses.join(", ")} WHERE id = ?`)

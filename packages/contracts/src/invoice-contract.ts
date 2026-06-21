@@ -12,6 +12,7 @@ const invoiceListOutputSchema = z.object({
   items: z.array(invoiceSchema),
   nextCursor: z.string().nullable(),
   totalCount: z.number(),
+  hasMore: z.boolean(),
 });
 
 const receiveInvoiceOutputSchema = z.object({

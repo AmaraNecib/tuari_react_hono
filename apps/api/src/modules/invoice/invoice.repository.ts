@@ -11,7 +11,7 @@ export interface InvoiceRepository {
   findPaged(query: {
     filters?: InvoiceListFilters;
     sort?: { field: InvoiceListSortField; direction: SortDirection };
-    after?: { createdAt: string; id: string };
+    after?: { sortValue: number | string; id: string };
     limit: number;
   }): Promise<{ items: Invoice[]; nextCursor: string | null; totalCount: number }>;
   create(data: {

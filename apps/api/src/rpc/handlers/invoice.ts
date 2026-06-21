@@ -14,7 +14,7 @@ export default function createInvoiceHandlers(
   return {
     invoicesList: os.invoicesList.handler(
       m.withPermission(
-        "employees.read", // Temporary — will add invoices.read later
+        "invoices.read",
         m.withAuth(async ({ context, input }: any) => {
           const opts = input ?? {};
           try {
@@ -36,7 +36,7 @@ export default function createInvoiceHandlers(
 
     invoicesGet: os.invoicesGet.handler(
       m.withPermission(
-        "employees.read",
+        "invoices.read",
         m.withAuth(async ({ context, input }: any) => {
           const invoice = await invoiceModule.findById((input as any).id);
           if (!invoice) {
@@ -49,13 +49,19 @@ export default function createInvoiceHandlers(
 
     invoicesCreate: os.invoicesCreate.handler(
       m.withPermission(
-        "employees.create",
+        "invoices.create",
         m.withAudit(
           async ({ input, auditContext }: any) => {
             const id = crypto.randomUUID();
+            // Generate IDs for line items (client doesn't supply them)
+            const lineItemsWithIds = input.lineItems.map((li: any) => ({
+              ...li,
+              id: crypto.randomUUID(),
+            }));
             const invoice = await invoiceModule.create({
               id,
               ...input,
+              lineItems: lineItemsWithIds,
             });
             return invoice;
           },
@@ -71,7 +77,7 @@ export default function createInvoiceHandlers(
 
     invoicesUpdate: os.invoicesUpdate.handler(
       m.withPermission(
-        "employees.update",
+        "invoices.update",
         m.withAudit(
           async ({ input }: any) => {
             const invoice = await invoiceModule.update(input as any);
@@ -94,7 +100,7 @@ export default function createInvoiceHandlers(
 
     invoicesDelete: os.invoicesDelete.handler(
       m.withPermission(
-        "employees.delete",
+        "invoices.delete",
         m.withAudit(
           async ({ input }: any) => {
             await invoiceModule.delete((input as any).id);
@@ -117,7 +123,7 @@ export default function createInvoiceHandlers(
 
     invoicesReceive: os.invoicesReceive.handler(
       m.withPermission(
-        "employees.update",
+        "invoices.update",
         m.withAudit(
           async ({ input }: any) => {
             const result = await invoiceModule.receive((input as any).id);
@@ -140,7 +146,7 @@ export default function createInvoiceHandlers(
 
     invoicesMarkPaid: os.invoicesMarkPaid.handler(
       m.withPermission(
-        "employees.update",
+        "invoices.update",
         m.withAudit(
           async ({ input }: any) => {
             const invoice = await invoiceModule.markPaid(input.id, input.amountDzd);
