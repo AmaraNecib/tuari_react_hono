@@ -29,10 +29,7 @@ jobs:
       - name: Lint
         run: pnpm turbo lint
 
-      - name: Test (API)
-        run: pnpm test:api
-
-      - name: Coverage (API)
+      - name: Test + Coverage (API)
         run: pnpm --filter @tuari/api test:coverage
 
       - name: Test (Web)
