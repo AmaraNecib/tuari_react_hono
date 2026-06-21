@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import type {
   DebtAccount,
   Employee,
@@ -107,6 +107,7 @@ export function useEmployeesPagedQuery({
       roleId,
     }),
     enabled: Boolean(sessionQuery.data?.user) && enabled,
+    placeholderData: keepPreviousData,
   })
 }
 

@@ -5,6 +5,7 @@ import {
   assignmentStatusSchema,
   auditActorUserIdSchema,
   auditTransactionIdSchema,
+  cursorPaginationInputSchema,
   employeeBatchLimit,
   employeeStatusSchema,
   entityIdSchema,
@@ -164,14 +165,10 @@ export const employeeListInputSchema = z
  * with cursor pagination fields. The `cursor` and `limit` come from the
  * shared cursor pagination schema.
  */
-export const employeePagedListInputSchema = z
-  .object({
-    roleId: entityIdSchema.optional(),
-    status: employeeStatusSchema.optional(),
-    cursor: z.string().min(1).optional(),
-    limit: z.number().int().positive().optional(),
-  })
-  .optional();
+export const employeePagedListInputSchema = cursorPaginationInputSchema.extend({
+  roleId: entityIdSchema.optional(),
+  status: employeeStatusSchema.optional(),
+}).optional();
 
 export const employeeBatchCreateInputSchema = z
   .object({
