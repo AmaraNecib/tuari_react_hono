@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button"
 import { CurrencyInput } from "@/components/ui/form-controls"
-import { cn } from "@/lib/utils"
 
 export function CurrencyAmountInput({
   label,
@@ -24,8 +23,6 @@ export function CurrencyAmountInput({
   const normalized = value.trim()
   const amountValue = normalized.length > 0 ? Number(normalized) : null
   const exceedsMax = maxAmount !== undefined && amountValue !== null && amountValue > maxAmount
-
-  const showError = error === true || (typeof error === "string" && error.length > 0)
 
   return (
     <div className="flex flex-col gap-2">

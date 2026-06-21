@@ -2,9 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
   AppError,
   DebtAccount,
-  DebtEntry,
   EmployeeDebtEntryCreateInput,
-  EmployeeDebtAccountGetInput,
 } from "@tuari/contracts"
 
 import { AppMutationError } from "@/features/app-shell/mock-dashboard"

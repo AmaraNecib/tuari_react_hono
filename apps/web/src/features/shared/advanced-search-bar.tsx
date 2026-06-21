@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { type FilterPreset, useSavedFilters } from "@/hooks/use-saved-filters";
@@ -17,7 +17,6 @@ interface AdvancedSearchBarProps {
 }
 
 export function AdvancedSearchBar({
-  searchFields,
   onSearch,
   storageKey,
   debounceMs = 300,
@@ -53,18 +52,6 @@ export function AdvancedSearchBar({
       setQuery(value);
     },
     []
-  );
-
-  const handleFilterChange = useCallback(
-    (fieldKey: string, value: unknown) => {
-      const updated = { ...activeFilters, [fieldKey]: value };
-      if (value === undefined || value === null || value === "") {
-        delete updated[fieldKey];
-      }
-      setActiveFilters(updated);
-      handleSearch(query, updated);
-    },
-    [activeFilters, query, handleSearch]
   );
 
   const handleSavePreset = useCallback(() => {

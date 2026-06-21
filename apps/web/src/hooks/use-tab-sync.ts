@@ -19,12 +19,30 @@ function getTabId(): string {
   return tabId;
 }
 
-export interface TabSyncMessage {
-  type: "logout" | "cache-invalidate" | "mutation";
+export interface TabSyncLogoutMessage {
+  type: "logout";
   timestamp: number;
   tabId: string;
-  payload?: any;
 }
+
+export interface TabSyncCacheInvalidateMessage {
+  type: "cache-invalidate";
+  timestamp: number;
+  tabId: string;
+  payload: { queryKey: string };
+}
+
+export interface TabSyncMutationMessage {
+  type: "mutation";
+  timestamp: number;
+  tabId: string;
+  payload: { domain: string; action: string; resourceId: string };
+}
+
+export type TabSyncMessage =
+  | TabSyncLogoutMessage
+  | TabSyncCacheInvalidateMessage
+  | TabSyncMutationMessage;
 
 export function useTabSync() {
   const queryClient = useQueryClient();
@@ -110,6 +128,9 @@ export function useTabSync() {
     return () => {
       window.removeEventListener("storage", handleStorageChange);
     };
+    // tabId is a stable ref value (set once on first render), so it does not
+    // need to be a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient]);
 
   return {
@@ -121,13 +142,14 @@ export function useTabSync() {
 
 export function useTabSyncListener(
   eventType: "logout" | "mutation",
-  callback: (payload?: any) => void
+  callback: (payload?: TabSyncMutationMessage["payload"]) => void
 ) {
   useEffect(() => {
     const eventName = eventType === "logout" ? "tab-logout" : "tab-mutation";
 
-    const handleEvent = (event: CustomEvent) => {
-      callback((event as any).detail);
+    const handleEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<TabSyncMutationMessage["payload"]>;
+      callback(customEvent.detail);
     };
 
     window.addEventListener(eventName, handleEvent as EventListener);

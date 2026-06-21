@@ -9,3 +9,4 @@ export * from "./system-log";
 export * from "./workspace";
 export * from "./reports";
 export * from "./app-contract";
+export * from "./recurring";

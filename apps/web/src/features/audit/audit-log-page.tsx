@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { SystemLogEntry } from "@tuari/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/form-controls";
@@ -29,7 +30,7 @@ export function AuditLogPage() {
   const { data: apiResponse, isLoading, error } = useQuery({
     queryKey: ["systemLogList"],
     queryFn: async () => {
-      const result = await (rpcClient as any).systemLogList({});
+      const result = await rpcClient.systemLogList({});
       return result?.items ?? [];
     },
   });
@@ -38,7 +39,7 @@ export function AuditLogPage() {
     if (!apiResponse) return [];
 
     // Map API response to AuditLog interface
-    return apiResponse.map((entry: any) => ({
+    return apiResponse.map((entry: SystemLogEntry) => ({
       id: entry.id,
       timestamp: entry.createdAt,
       actor: entry.actorLabel ?? entry.actorCurrentLabel ?? "غير معروف",
@@ -133,7 +134,7 @@ export function AuditLogPage() {
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium">النطاق</span>
-            <NativeSelect value={domain} onChange={(e: any) => setDomain(e.target.value)}>
+            <NativeSelect value={domain} onChange={(e) => setDomain(e.target.value)}>
               <option value="ALL">الكل</option>
               <option value="المخزون">المخزون</option>
               <option value="الديون">الديون</option>
@@ -144,7 +145,7 @@ export function AuditLogPage() {
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium">الإجراء</span>
-            <NativeSelect value={action} onChange={(e: any) => setAction(e.target.value)}>
+            <NativeSelect value={action} onChange={(e) => setAction(e.target.value)}>
               <option value="ALL">الكل</option>
               <option value="create">إنشاء</option>
               <option value="update">تحديث</option>

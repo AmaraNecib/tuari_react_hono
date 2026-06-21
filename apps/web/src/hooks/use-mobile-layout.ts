@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 
-const MOBILE_BREAKPOINT = 640; // sm: 640px
 const TABLET_BREAKPOINT = 768; // md: 768px
 const DESKTOP_BREAKPOINT = 1024; // lg: 1024px
 

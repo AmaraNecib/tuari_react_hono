@@ -1,7 +1,7 @@
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
+import { CurrencyInput } from "@/components/ui/form-controls"
 import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
@@ -9,7 +9,7 @@ import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 import { useEmployeeDebtAccountQuery, useCreateEmployeeDebtEntryMutation } from "./employee-debt-hooks"
 import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
 
-export function EmployeeDebtPanel({ employeeId, employeeName }: { employeeId: string; employeeName: string }) {
+export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
   const debtAccountQuery = useEmployeeDebtAccountQuery(employeeId)
   const createEntryMutation = useCreateEmployeeDebtEntryMutation()
 

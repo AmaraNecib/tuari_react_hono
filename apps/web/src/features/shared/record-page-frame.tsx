@@ -2,7 +2,7 @@ import { type KeyboardEvent, type ReactNode, useId, useMemo, useRef } from "reac
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
-import { Button, buttonVariants } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import {
   AppShellEmptyStateRow,
   AppShellTableFrame,
@@ -12,7 +12,7 @@ import {
 } from "@/features/app-shell/app-shell-table-primitives"
 import { cn } from "@/lib/utils"
 
-import { PageActionGroup, PageHeader, PageSurfaceContent, Surface } from "./page-primitives"
+import { PageActionGroup, PageHeader, Surface } from "./page-primitives"
 
 function getTabId(baseId: string, tabId: string) {
   return `${baseId}-tab-${tabId}`

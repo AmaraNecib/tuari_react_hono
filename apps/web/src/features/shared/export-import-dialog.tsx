@@ -128,7 +128,7 @@ export function ExportImportDialog({
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">صيغة التصدير</label>
-                <NativeSelect value={exportFormat} onChange={(e: any) => setExportFormat(e.target.value)}>
+                <NativeSelect value={exportFormat} onChange={(e) => setExportFormat(e.target.value as ExportFormat)}>
                   <option value="CSV">CSV</option>
                   <option value="JSON">JSON</option>
                   <option value="EXCEL">Excel</option>
@@ -148,7 +148,7 @@ export function ExportImportDialog({
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">صيغة الاستيراد</label>
-                <NativeSelect value={importFormat} onChange={(e: any) => setImportFormat(e.target.value)}>
+                <NativeSelect value={importFormat} onChange={(e) => setImportFormat(e.target.value as ExportFormat)}>
                   <option value="CSV">CSV</option>
                   <option value="JSON">JSON</option>
                   <option value="EXCEL">Excel</option>

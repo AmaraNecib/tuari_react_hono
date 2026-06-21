@@ -9,7 +9,7 @@ export function RecurringPatternsPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const patterns = patternsQuery.data?.items ?? [];
-  const filteredPatterns = patterns.filter((p: any) =>
+  const filteredPatterns = patterns.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -50,7 +50,7 @@ export function RecurringPatternsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredPatterns.map((pattern: any) => {
+            {filteredPatterns.map((pattern) => {
               const daysUntil = calculateDaysUntilOccurrence(pattern);
               const statusColor = daysUntil !== null && daysUntil <= 3 ? "text-amber-600" : "text-green-600";
 

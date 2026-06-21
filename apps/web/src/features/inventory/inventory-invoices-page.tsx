@@ -132,7 +132,7 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
           onToggleAll={batchSelection.toggleAll}
           onClearSelection={batchSelection.clearSelection}
           onOperation={(operationId) => {
-            console.log(`Operation ${operationId} on items:`, batchSelection.selectedItems.map((i: any) => i.id));
+            console.log(`Operation ${operationId} on items:`, batchSelection.selectedItems.map((i) => i.id));
             batchSelection.clearSelection();
           }}
         />

@@ -57,7 +57,7 @@ export function ReportBuilder() {
         <div className="grid gap-4 rounded-lg border border-border/60 bg-background/10 p-4 md:grid-cols-4">
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium">نوع التقرير</span>
-            <NativeSelect value={reportType} onChange={(e: any) => setReportType(e.target.value)}>
+            <NativeSelect value={reportType} onChange={(e) => setReportType(e.target.value as ReportType)}>
               <option value="INVENTORY">تقرير المخزون</option>
               <option value="DEBT">تقرير الديون</option>
               <option value="MOVEMENT">تقرير الحركات</option>

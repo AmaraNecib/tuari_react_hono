@@ -1,5 +1,4 @@
 import { useState } from "react"
-import type { ExternalCounterparty, Warehouse, Project } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,7 +27,6 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
   const projects = projectsQuery.data?.items ?? []
   const itemDefinitions = itemsQuery.data?.items ?? []
 
-  const currentLocation = fromType === "WAREHOUSE" ? warehouses.find((w) => w.id === fromId) : projects.find((p) => p.id === fromId)
   const locations = fromType === "WAREHOUSE" ? warehouses : projects
 
   const addItem = () => {
