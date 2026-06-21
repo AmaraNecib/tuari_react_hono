@@ -550,6 +550,50 @@ export const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_debt_account_id_idx" ON "inventory_outbound_transfer" ("associated_debt_account_id")',
   'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_transfer_id_idx" ON "inventory_outbound_transfer_item" ("transfer_id")',
   'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_item_item_id_idx" ON "inventory_outbound_transfer_item" ("item_id")',
+  // --- Purchase Invoice tables ---
+  `CREATE TABLE IF NOT EXISTS "invoice" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "invoice_number" TEXT,
+    "supplier_name" TEXT NOT NULL,
+    "supplier_phone" TEXT,
+    "warehouse_id" TEXT,
+    "project_id" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'DRAFT' CHECK ("status" IN ('DRAFT', 'RECEIVED', 'PAID')),
+    "invoice_date" DATETIME,
+    "due_date" DATETIME,
+    "total_amount_dzd" REAL NOT NULL DEFAULT 0,
+    "paid_amount_dzd" REAL NOT NULL DEFAULT 0,
+    "remaining_amount_dzd" REAL NOT NULL DEFAULT 0,
+    "notes" TEXT,
+    "created_at" DATETIME NOT NULL,
+    "updated_at" DATETIME NOT NULL,
+    CONSTRAINT "invoice_warehouse_id_fkey"
+      FOREIGN KEY ("warehouse_id") REFERENCES "warehouse" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "invoice_project_id_fkey"
+      FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "invoice_remaining_non_negative"
+      CHECK ("remaining_amount_dzd" >= 0)
+  )`,
+  `CREATE TABLE IF NOT EXISTS "invoice_line_item" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "invoice_id" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "quantity" REAL NOT NULL,
+    "unit_price_dzd" REAL NOT NULL,
+    "total_dzd" REAL NOT NULL,
+    CONSTRAINT "invoice_line_item_invoice_id_fkey"
+      FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "invoice_line_item_quantity_positive"
+      CHECK ("quantity" > 0),
+    CONSTRAINT "invoice_line_item_unit_price_positive"
+      CHECK ("unit_price_dzd" >= 0)
+  )`,
+  'CREATE INDEX IF NOT EXISTS "invoice_status_idx" ON "invoice" ("status")',
+  'CREATE INDEX IF NOT EXISTS "invoice_supplier_name_idx" ON "invoice" ("supplier_name")',
+  'CREATE INDEX IF NOT EXISTS "invoice_created_at_idx" ON "invoice" ("created_at")',
+  'CREATE INDEX IF NOT EXISTS "invoice_warehouse_id_idx" ON "invoice" ("warehouse_id")',
+  'CREATE INDEX IF NOT EXISTS "invoice_project_id_idx" ON "invoice" ("project_id")',
+  'CREATE INDEX IF NOT EXISTS "invoice_line_item_invoice_id_idx" ON "invoice_line_item" ("invoice_id")',
 ]
 
 export const additiveStatements = [
