@@ -2,10 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 
 import { InMemoryEmployeeRepository } from "./adapters/in-memory-employee.repository";
 import { InMemoryRoleRepository } from "./adapters/in-memory-role.repository";
-import { EmployeeModule } from "./employee.module";
+import { EmployeeModule, type CreateEmployeeInput } from "./employee.module";
 import { EmployeeNotFoundError, DuplicatePhoneError, RoleNotFoundError } from "./employee.errors";
-
-import type { CreateEmployeeInput } from "@tuari/contracts";
 
 /**
  * Tests for the Employee deep module.
@@ -19,6 +17,18 @@ describe("EmployeeModule", () => {
   let roleRepository: InMemoryRoleRepository;
   let employeeModule: EmployeeModule;
 
+  const seedWorkerRole = async () => {
+    await roleRepository.save({
+      id: "role-worker",
+      key: "worker",
+      name: "Worker",
+      description: null,
+      isSystem: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
   beforeEach(() => {
     employeeRepository = new InMemoryEmployeeRepository();
     roleRepository = new InMemoryRoleRepository();
@@ -30,15 +40,7 @@ describe("EmployeeModule", () => {
 
   describe("create", () => {
     it("creates an employee with valid input", async () => {
-      await roleRepository.save({
-        id: "role-worker",
-        key: "worker",
-        name: "Worker",
-        description: null,
-        isSystem: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      await seedWorkerRole();
 
       const input: CreateEmployeeInput = {
         firstName: "Ahmed",
@@ -54,21 +56,14 @@ describe("EmployeeModule", () => {
         lastName: "Ben Ali",
         phone: "0555123456",
         roleId: "role-worker",
+        status: "ACTIVE",
       });
       expect(employee.id).toBeDefined();
       expect(employee.createdAt).toBeDefined();
     });
 
     it("rejects creation with duplicate phone number", async () => {
-      await roleRepository.save({
-        id: "role-worker",
-        key: "worker",
-        name: "Worker",
-        description: null,
-        isSystem: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      await seedWorkerRole();
 
       const input: CreateEmployeeInput = {
         firstName: "Ahmed",
@@ -98,15 +93,7 @@ describe("EmployeeModule", () => {
 
   describe("findById", () => {
     it("returns the employee when found", async () => {
-      await roleRepository.save({
-        id: "role-worker",
-        key: "worker",
-        name: "Worker",
-        description: null,
-        isSystem: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      await seedWorkerRole();
 
       const created = await employeeModule.create({
         firstName: "Ahmed",
@@ -137,15 +124,7 @@ describe("EmployeeModule", () => {
     });
 
     it("returns all employees when no filters applied", async () => {
-      await roleRepository.save({
-        id: "role-worker",
-        key: "worker",
-        name: "Worker",
-        description: null,
-        isSystem: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      await seedWorkerRole();
 
       await employeeModule.create({
         firstName: "Ahmed",
@@ -164,19 +143,38 @@ describe("EmployeeModule", () => {
 
       expect(employees).toHaveLength(2);
     });
+
+    it("filters by status", async () => {
+      await seedWorkerRole();
+
+      const created = await employeeModule.create({
+        firstName: "Ahmed",
+        lastName: "Ben Ali",
+        phone: "0555123456",
+        roleId: "role-worker",
+      });
+      await employeeModule.create({
+        firstName: "Fatima",
+        lastName: "Ben Ali",
+        phone: "0555123457",
+        roleId: "role-worker",
+      });
+
+      // Deactivate one
+      await employeeModule.update(created.id, { id: created.id, status: "INACTIVE" });
+
+      const active = await employeeModule.list({ status: "ACTIVE" });
+      const inactive = await employeeModule.list({ status: "INACTIVE" });
+
+      expect(active).toHaveLength(1);
+      expect(inactive).toHaveLength(1);
+      expect(inactive[0]?.id).toBe(created.id);
+    });
   });
 
   describe("delete", () => {
     it("deletes an existing employee", async () => {
-      await roleRepository.save({
-        id: "role-worker",
-        key: "worker",
-        name: "Worker",
-        description: null,
-        isSystem: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      await seedWorkerRole();
 
       const created = await employeeModule.create({
         firstName: "Ahmed",
@@ -198,15 +196,7 @@ describe("EmployeeModule", () => {
 
   describe("update", () => {
     beforeEach(async () => {
-      await roleRepository.save({
-        id: "role-worker",
-        key: "worker",
-        name: "Worker",
-        description: null,
-        isSystem: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      await seedWorkerRole();
       await roleRepository.save({
         id: "role-manager",
         key: "manager",
@@ -271,6 +261,23 @@ describe("EmployeeModule", () => {
       await expect(
         employeeModule.update(second.id, { id: second.id, phone: first.phone })
       ).rejects.toThrow(DuplicatePhoneError);
+    });
+
+    it("allows update to same phone (no conflict)", async () => {
+      const created = await employeeModule.create({
+        firstName: "Ahmed",
+        lastName: "Ben Ali",
+        phone: "0555123456",
+        roleId: "role-worker",
+      });
+
+      const updated = await employeeModule.update(created.id, {
+        id: created.id,
+        phone: "0555123456",
+        firstName: "Ahmed",
+      });
+
+      expect(updated.phone).toBe("0555123456");
     });
   });
 });

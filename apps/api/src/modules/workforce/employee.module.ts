@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { CreateEmployeeInput, Employee, UpdateEmployeeInput } from "@tuari/contracts";
+import type { Employee, EmployeeCreateInput, EmployeeUpdateInput } from "@tuari/contracts";
 
 import type { EmployeeRecord } from "../company/company.types";
 import {
@@ -23,6 +23,12 @@ export type EmployeeModuleDependencies = {
    */
   now?: () => string;
 };
+
+/**
+ * Input for creating an employee. Status is set by the module to ACTIVE
+ * (callers should not need to specify it on creation).
+ */
+export type CreateEmployeeInput = Omit<EmployeeCreateInput, "status">;
 
 /**
  * EmployeeModule - the deep module for employee management.
@@ -115,7 +121,7 @@ export class EmployeeModule {
    * - EmployeeNotFoundError if employee doesn't exist
    * - DuplicatePhoneError if new phone conflicts with another employee
    */
-  async update(id: string, input: UpdateEmployeeInput): Promise<Employee> {
+  async update(id: string, input: EmployeeUpdateInput): Promise<Employee> {
     const existing = await this.employeeRepository.findById(id);
     if (!existing) {
       throw new EmployeeNotFoundError(id);
