@@ -8,6 +8,9 @@ import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
 import { createRouter } from "./router";
 import type { RpcContext } from "./context";
+import { EmployeeModule } from "../modules/workforce/employee.module";
+import { SqliteEmployeeRepository } from "../modules/workforce/adapters/sqlite-employee.repository";
+import { SqliteRoleRepository } from "../modules/workforce/adapters/sqlite-role.repository";
 
 function expectSuccess<T extends { success: boolean }>(result: T): Extract<T, { success: true }> {
   expect(result.success).toBe(true);
@@ -42,17 +45,23 @@ describe("RPC router", () => {
   }
 
   const createTestRouter = (
-    service: ReturnType<typeof createHarness>["service"],
+    harness: ReturnType<typeof createHarness>,
     authOverrides?: Partial<typeof authBootstrapService>,
-  ) =>
-    createRouter({
+  ) => {
+    const { service, repository } = harness;
+    const employeeRepository = new SqliteEmployeeRepository(repository);
+    const roleRepository = new SqliteRoleRepository(repository);
+    const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
+    return createRouter({
       authBootstrapService: { ...authBootstrapService, ...authOverrides },
       companyService: service,
       workforceService: new WorkforceService(service),
       operationsService: new OperationsService(service),
       financeService: new FinanceService(service),
       inventoryService: {} as never,
-    })
+      employeeModule,
+    });
+  }
 
   const currentUser = {
     id: "user-1",
@@ -69,8 +78,9 @@ describe("RPC router", () => {
     createRouterClient(router, { context: context as never }) as any;
 
   it("returns the resolved current user for the session procedure", async () => {
-    const { service } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service } = harness;
+    const router = createTestRouter(harness)
     const context = createContext();
     const client = createClient(router, context);
 
@@ -81,16 +91,18 @@ describe("RPC router", () => {
   });
 
   it("reports whether the first auth user has already been created", async () => {
-    const { service } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service } = harness;
+    const router = createTestRouter(harness)
     const client = createRouterClient(router, { context: createContext(null) as never });
 
     await expect(client.authSetupStatus()).resolves.toEqual({ hasUsers: false, requiresSetupKey: false });
   });
 
   it("keeps public health checks unauthenticated", async () => {
-    const { service } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service } = harness;
+    const router = createTestRouter(harness)
     const context = createContext();
     const client = createClient(router, context);
 
@@ -99,16 +111,18 @@ describe("RPC router", () => {
   });
 
   it("rejects protected procedures when no session exists", async () => {
-    const { service } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service } = harness;
+    const router = createTestRouter(harness)
     const client = createRouterClient(router, { context: createContext(null) as never });
 
     await expect(client.rolesList()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   it("rejects workspace mutations for non-admin authenticated users", async () => {
-    const { service, roleIds } = createHarness();
-    const router = createTestRouter(service, { isBootstrapOwner: async () => false })
+    const harness = createHarness();
+    const { service, roleIds } = harness;
+    const router = createTestRouter(harness, { isBootstrapOwner: async () => false })
     const client = createRouterClient(router, { context: createContext() as never });
 
     await expect(
@@ -123,8 +137,9 @@ describe("RPC router", () => {
   });
 
   it("covers CRUD and assignment flows with typed business-rule failures", async () => {
-    const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service, roleIds } = harness;
+    const router = createTestRouter(harness)
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -228,6 +243,12 @@ describe("RPC router", () => {
         expect.objectContaining({ id: worker.item.id, phone: "0612345602" }),
       ]),
     });
+    await expect(client.employeesListPaged({ limit: 10 })).resolves.toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ id: worker.item.id, phone: "0612345602" }),
+      ]),
+      hasMore: false,
+    });
     await expect(client.projectsList()).resolves.toMatchObject({
       items: expect.arrayContaining([
         expect.objectContaining({ id: project.item.id, managerId: manager.item.id }),
@@ -254,8 +275,9 @@ describe("RPC router", () => {
   });
 
   it("creates employee batches atomically through the RPC contract", async () => {
-    const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service, roleIds } = harness;
+    const router = createTestRouter(harness)
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -304,8 +326,9 @@ describe("RPC router", () => {
   });
 
   it("deletes an employee through the RPC contract", async () => {
-    const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service, roleIds } = harness;
+    const router = createTestRouter(harness)
     const client = createRouterClient(router, { context: createContext() as never });
 
     const worker = expectSuccess(await client.employeesCreate({
@@ -327,8 +350,9 @@ describe("RPC router", () => {
   });
 
   it("rejects deleting an employee with existing work links", async () => {
-    const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service, roleIds } = harness;
+    const router = createTestRouter(harness)
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -373,8 +397,9 @@ describe("RPC router", () => {
   });
 
   it("creates warehouse assignments through the RPC contract", async () => {
-    const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service, roleIds } = harness;
+    const router = createTestRouter(harness)
     const client = createRouterClient(router, { context: createContext() as never });
 
     const employee = expectSuccess(await client.employeesCreate({
@@ -400,8 +425,9 @@ describe("RPC router", () => {
   });
 
   it("assigns employee workplace atomically through the RPC contract", async () => {
-    const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service, roleIds } = harness;
+    const router = createTestRouter(harness)
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -435,8 +461,9 @@ describe("RPC router", () => {
   });
 
   it("syncs managed projects through the RPC contract", async () => {
-    const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service, roleIds } = harness;
+    const router = createTestRouter(harness)
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -461,8 +488,9 @@ describe("RPC router", () => {
   });
 
   it("lists grouped system log rows through the RPC contract", async () => {
-    const { service, roleIds } = createHarness();
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service, roleIds } = harness;
+    const router = createTestRouter(harness)
     const client = createRouterClient(router, { context: createContext() as never });
 
     const manager = expectSuccess(await client.employeesCreate({
@@ -503,8 +531,9 @@ describe("RPC router", () => {
   })
 
   it("covers external counterparty and debt flows through the RPC contract", async () => {
-    const { service, roleIds } = createHarness()
-    const router = createTestRouter(service)
+    const harness = createHarness();
+    const { service, roleIds } = harness;
+    const router = createTestRouter(harness)
     const client = createRouterClient(router, { context: createContext() as never })
 
     const worker = expectSuccess(

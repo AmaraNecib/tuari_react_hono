@@ -5,6 +5,10 @@ import Database from "better-sqlite3";
 
 import { resolveDatabaseEnv } from "../../infrastructure/config/database-env";
 import {
+  encodeCursor as encodeCursorToken,
+  decodeCursor as decodeCursorToken,
+} from "../shared/cursor";
+import {
   mapDebtAccount,
   mapDebtEntry,
   mapExternalCounterparty,
@@ -105,6 +109,22 @@ export interface CompanyRepository {
   createEmployeesBatch(data: EmployeeBatchCreateData[], auditContext?: MutationAuditContext): EmployeeBatchCreateResultRecord;
   updateEmployee(data: EmployeeUpdateData, auditContext?: MutationAuditContext): EmployeeRecord | null;
   deleteEmployee(id: string): boolean;
+  /**
+   * Cursor-paginated employee list. The cursor is opaque (produced by
+   * `encodeCursor` in `modules/shared/cursor.ts`). Returns the page of
+   * employees sorted by `(created_at DESC, id DESC)` plus the total
+   * count matching the filter.
+   */
+  listEmployeesPaged(query: {
+    filters?: EmployeeListFilters;
+    cursor?: string;
+    limit: number;
+  }): { items: EmployeeRecord[]; total: number; nextCursor: string | null };
+  /**
+   * Insert-or-replace employee record. Used by the deep EmployeeModule's
+   * save() method which generates the UUID itself.
+   */
+  upsertEmployee(data: EmployeeCreateData | EmployeeUpdateData & { id: string }): EmployeeRecord;
   assignEmployeeWorkplace(data: EmployeeWorkplaceAssignmentData, auditContext?: MutationAuditContext): void;
   syncManagedProjects(data: EmployeeManagedProjectsSyncData, auditContext?: MutationAuditContext): void;
   syncManagedWarehouses(data: EmployeeManagedWarehousesSyncData, auditContext?: MutationAuditContext): void;
@@ -553,6 +573,135 @@ export class SqliteCompanyRepository implements CompanyRepository {
     })
 
     return transaction(id)
+  }
+
+  listEmployeesPaged(query: {
+    filters?: EmployeeListFilters;
+    cursor?: string;
+    limit: number;
+  }): { items: EmployeeRecord[]; total: number; nextCursor: string | null } {
+    const filterConditions: string[] = [];
+    const filterParams: Array<string | number> = [];
+
+    if (query.filters?.roleId) {
+      filterConditions.push("role_id = ?");
+      filterParams.push(query.filters.roleId);
+    }
+    if (query.filters?.status) {
+      filterConditions.push("status = ?");
+      filterParams.push(query.filters.status);
+    }
+
+    // The total-count query uses only the filter conditions (no cursor).
+    // The cursor is a position marker for the items query, not a filter
+    // that should shrink the displayed total.
+    const filterWhereClause = filterConditions.length > 0 ? `WHERE ${filterConditions.join(" AND ")}` : "";
+    const totalRow = this.database
+      .prepare(
+        `SELECT COUNT(*) AS count FROM employee ${filterWhereClause}`,
+      )
+      .get(...filterParams) as { count: number };
+
+    // Cursor encodes (created_at, id). We translate the opaque token back
+    // into SQL only inside this adapter so the rest of the codebase stays
+    // free of cursor parsing. The ordering is created_at DESC, id DESC.
+    const allConditions = [...filterConditions];
+    const allParams = [...filterParams];
+
+    if (query.cursor !== undefined) {
+      const decoded = decodeCursorToken(query.cursor);
+      allConditions.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      allParams.push(decoded.createdAt, decoded.createdAt, decoded.id);
+    }
+
+    const whereClause = allConditions.length > 0 ? `WHERE ${allConditions.join(" AND ")}` : "";
+    // Fetch one extra row to determine hasMore without a false positive
+    // when the remaining set is exactly a multiple of the page size.
+    const fetchLimit = query.limit + 1;
+    const rows = this.database
+      .prepare(
+        `SELECT * FROM employee ${whereClause} ORDER BY created_at DESC, id DESC LIMIT ?`,
+      )
+      .all(...allParams, fetchLimit) as SqliteRow[];
+
+    const allItems = rows.map(mapEmployee);
+    const hasMore = allItems.length > query.limit;
+    const items = allItems.slice(0, query.limit);
+    const last = items[items.length - 1];
+    const nextCursor = hasMore && last
+      ? encodeCursorToken({ createdAt: last.createdAt, id: last.id })
+      : null;
+
+    return { items, total: Number(totalRow.count), nextCursor };
+  }
+
+  upsertEmployee(data: EmployeeCreateData | (EmployeeUpdateData & { id: string })): EmployeeRecord {
+    // The deep EmployeeModule's save() generates the UUID itself, so this
+    // method is the bridge that bridges "create with known id" and "update".
+    // We check existence to decide which path to take.
+    const existing = this.getEmployeeById((data as { id: string }).id);
+    if (existing) {
+      const updateData: EmployeeUpdateData = {
+        id: (data as { id: string }).id,
+        firstName: (data as Partial<EmployeeCreateData>).firstName,
+        lastName: (data as Partial<EmployeeCreateData>).lastName,
+        phone: (data as Partial<EmployeeCreateData>).phone,
+        roleId: (data as Partial<EmployeeCreateData>).roleId,
+        status: (data as Partial<EmployeeCreateData>).status,
+        salaryAmountDzd: (data as Partial<EmployeeCreateData>).salaryAmountDzd,
+        salaryPeriod: (data as Partial<EmployeeCreateData>).salaryPeriod,
+        notes: (data as Partial<EmployeeCreateData>).notes,
+      };
+      const result = this.updateEmployee(updateData);
+      if (!result) throw new Error(`Failed to upsert employee ${updateData.id}`);
+      return result;
+    }
+
+    // Create path: ensure required fields are present.
+    const createData = data as EmployeeCreateData;
+    if (!createData.firstName || !createData.lastName || !createData.phone || !createData.roleId || !createData.status) {
+      throw new Error("upsertEmployee: missing required fields for create path");
+    }
+    // Use the caller-supplied id (generated by EmployeeModule.create) so
+    // the persisted row matches the id returned to the caller. createEmployee
+    // would generate a fresh UUID, breaking the module's id contract.
+    const id = (data as { id?: string }).id ?? crypto.randomUUID();
+    // Forward caller-supplied timestamps (set by EmployeeModule.create) so
+    // the persisted row matches exactly what the caller will see on read.
+    const createdAt = (data as { createdAt?: string }).createdAt ?? createAlgeriaTimestamp();
+    const updatedAt = (data as { updatedAt?: string }).updatedAt ?? createdAt;
+    this.database
+      .prepare(
+        "INSERT INTO employee (id, first_name, last_name, phone, role_id, status, salary_amount_dzd, salary_period, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        id,
+        createData.firstName,
+        createData.lastName,
+        createData.phone,
+        createData.roleId,
+        createData.status,
+        createData.salaryAmountDzd ?? null,
+        createData.salaryPeriod ?? null,
+        createData.notes ?? null,
+        createdAt,
+        updatedAt,
+      );
+    this.insertEmployeeStateHistory({
+      employeeId: id,
+      roleId: createData.roleId,
+      status: createData.status,
+      salaryAmountDzd: createData.salaryAmountDzd ?? null,
+      salaryPeriod: createData.salaryPeriod ?? null,
+      eventType: "CREATED",
+      startDate: createdAt,
+      notes: createData.notes ?? null,
+      actorUserId: null,
+      actorLabel: null,
+      transactionId: null,
+    });
+    const created = this.getEmployeeById(id)!;
+    return created;
   }
 
   assignEmployeeWorkplace(data: EmployeeWorkplaceAssignmentData, auditContext?: MutationAuditContext): void {

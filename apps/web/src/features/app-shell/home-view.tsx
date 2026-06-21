@@ -68,6 +68,9 @@ export function HomeView({
   invoiceId,
   projectId,
   warehouseId,
+  paginationCursor,
+  paginationLimit,
+  paginationPrevCursors,
 }: {
   detailTab?: string
   page?: HomeViewPage
@@ -76,6 +79,9 @@ export function HomeView({
   invoiceId?: string
   projectId?: string
   warehouseId?: string
+  paginationCursor?: string
+  paginationLimit?: number
+  paginationPrevCursors?: string
 }) {
   const { t } = useTranslation()
   const navigation = useHomeViewNavigation()
@@ -169,6 +175,9 @@ export function HomeView({
     )
   }
 
+  // workspace is guaranteed to exist when derived is non-null.
+  const ws = workspace!
+
   const contentBoundaryKey = [page, detailTab, counterpartyId, employeeId, invoiceId, projectId, warehouseId]
     .filter(Boolean)
     .join(":")
@@ -198,6 +207,9 @@ export function HomeView({
           derived={derived}
           detailTab={detailTab}
           page={page}
+          paginationCursor={paginationCursor}
+          paginationLimit={paginationLimit}
+          paginationPrevCursors={paginationPrevCursors}
           selectedCounterparty={selectedCounterparty}
           selectedEmployee={selectedEmployee}
           selectedProject={selectedProject}
@@ -213,14 +225,15 @@ export function HomeView({
           theme={theme}
           resetWorkspacePending={resetWorkspaceMutation.isPending}
           updateAccountPending={updateAccountSettingsMutation.isPending}
+          workspace={ws}
           navigation={navigation}
-          onAddProject={navigation.goToProjectCreate}
-          onAddWarehouse={navigation.goToWarehouseCreate}
-          onResetWorkspace={shell.handleResetWorkspace}
-          onSaveAccount={(input) => updateAccountSettingsMutation.mutateAsync(input)}
+          onAddProject={() => void navigation.goToProjectCreate()}
+          onAddWarehouse={() => void navigation.goToWarehouseCreate()}
+          onResetWorkspace={() => shell.handleResetWorkspace()}
+          onSaveAccount={(payload) => updateAccountSettingsMutation.mutateAsync(payload)}
           onSetPendingDelete={shell.setPendingDelete}
           onSystemLogFiltersChange={shell.setSystemLogFilters}
-          onThemeToggle={shell.handleThemeToggle}
+          onThemeToggle={toggleTheme}
         />
       </ErrorBoundary>
     </HomeViewSignedInShell>

@@ -1,5 +1,6 @@
 import type { EmployeeRecord } from "../../company/company.types";
-import type { EmployeeFilters, EmployeeRepository } from "../employee.repository";
+import { decodeCursor, encodeCursor } from "../../shared/cursor";
+import type { EmployeeFilters, EmployeePagedQuery, EmployeePagedResult, EmployeeRepository } from "../employee.repository";
 
 /**
  * In-memory implementation of EmployeeRepository for testing.
@@ -24,6 +25,42 @@ export class InMemoryEmployeeRepository implements EmployeeRepository {
       if (filters.roleId && employee.roleId !== filters.roleId) return false;
       return true;
     });
+  }
+
+  async findPaged(options: EmployeePagedQuery): Promise<EmployeePagedResult> {
+    const all = await this.findAll(options.filters);
+    // Sort by createdAt DESC, id DESC. This matches the production SQL index
+    // so behavior is identical between adapters.
+    const sorted = all
+      .slice()
+      .sort((a, b) => {
+        if (a.createdAt !== b.createdAt) {
+          return a.createdAt < b.createdAt ? 1 : -1;
+        }
+        return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+      });
+
+    let startIndex = 0;
+    if (options.cursor !== undefined) {
+      const cursor = decodeCursor(options.cursor);
+      // Find the first item strictly past the cursor in sort order.
+      startIndex = sorted.findIndex(
+        (record) => record.createdAt < cursor.createdAt
+          || (record.createdAt === cursor.createdAt && record.id < cursor.id),
+      );
+      if (startIndex < 0) startIndex = sorted.length;
+    }
+
+    const slice = sorted.slice(startIndex, startIndex + options.limit);
+    const hasMore = startIndex + slice.length < sorted.length;
+    const last = slice[slice.length - 1];
+    const nextCursor = hasMore && last ? encodeCursor({ createdAt: last.createdAt, id: last.id }) : null;
+
+    return {
+      items: slice,
+      total: sorted.length,
+      nextCursor,
+    };
   }
 
   async findByPhone(phone: string): Promise<EmployeeRecord | null> {

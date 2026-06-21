@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import type {
   DebtAccount,
   Employee,
@@ -72,6 +72,42 @@ export function useEmployeesQuery({ enabled = true }: { enabled?: boolean } = {}
     queryKey: workspaceDomainQueryKeys.employees(userId),
     queryFn: async (): Promise<{ items: Employee[] }> => rpcClient.employeesList(),
     enabled: Boolean(sessionQuery.data?.user) && enabled,
+  })
+}
+
+/**
+ * Cursor-paginated employees query.
+ *
+ * Returns the first page when no cursor is given, then walks forward by
+ * passing the previous response's `nextCursor` back as the `cursor` arg.
+ * The `hasMore` flag is a convenience — equivalent to `nextCursor !== null`.
+ */
+export function useEmployeesPagedQuery({
+  cursor,
+  limit = 50,
+  status,
+  roleId,
+  enabled = true,
+}: {
+  cursor?: string
+  limit?: number
+  status?: Employee["status"]
+  roleId?: string
+  enabled?: boolean
+} = {}) {
+  const sessionQuery = useSessionQuery()
+  const userId = sessionQuery.data?.user?.id ?? null
+
+  return useQuery({
+    queryKey: [...workspaceDomainQueryKeys.employees(userId), "paged", { cursor, limit, status, roleId }],
+    queryFn: async () => rpcClient.employeesListPaged({
+      cursor,
+      limit,
+      status,
+      roleId,
+    }),
+    enabled: Boolean(sessionQuery.data?.user) && enabled,
+    placeholderData: keepPreviousData,
   })
 }
 

@@ -1,9 +1,11 @@
-import { implement } from "@orpc/server";
+import { implement, ORPCError } from "@orpc/server";
 
 import { appContract } from "@tuari/contracts";
 
 import { toFailureResult } from "../../modules/company/company.errors";
 import type { WorkforceService } from "../../modules/company/workforce.service";
+import { InvalidCursorError } from "../../modules/workforce/employee.errors";
+import type { EmployeeModule } from "../../modules/workforce/employee.module";
 import type { RpcContext } from "../context";
 import type { RpcMiddleware } from "../rpc-middleware";
 
@@ -11,6 +13,7 @@ export function createWorkforceHandlers(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,
   workforceService: WorkforceService,
+  employeeModule: EmployeeModule,
 ): Record<string, any> {
   return {
     rolesList: os.rolesList.handler(m.queryAuth(async ({ context, input }: any) => {
@@ -33,6 +36,25 @@ export function createWorkforceHandlers(
     )),
     employeesList: os.employeesList.handler(m.queryAuth(async ({ context, input }: any) => {
       return workforceService.listEmployees(input ?? undefined);
+    })),
+    employeesListPaged: os.employeesListPaged.handler(m.queryAuth(async ({ context, input }: any) => {
+      const opts = input ?? {};
+      try {
+        const result = await employeeModule.listPaged({
+          filters: {
+            roleId: opts.roleId,
+            status: opts.status,
+          },
+          cursor: opts.cursor,
+          limit: opts.limit,
+        });
+        return { ...result, hasMore: result.nextCursor !== null };
+      } catch (error) {
+        if (error instanceof InvalidCursorError) {
+          throw new ORPCError("BAD_REQUEST", { message: error.message });
+        }
+        throw error;
+      }
     })),
     employeesGet: os.employeesGet.handler(m.queryAuth(async ({ context, input }: any) => {
       return workforceService.getEmployee((input as any).id);

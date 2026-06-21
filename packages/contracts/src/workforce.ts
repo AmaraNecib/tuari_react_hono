@@ -5,6 +5,7 @@ import {
   assignmentStatusSchema,
   auditActorUserIdSchema,
   auditTransactionIdSchema,
+  cursorPaginationInputSchema,
   employeeBatchLimit,
   employeeStatusSchema,
   entityIdSchema,
@@ -158,6 +159,16 @@ export const employeeListInputSchema = z
     status: employeeStatusSchema.optional(),
   })
   .optional();
+
+/**
+ * Paginated input for the employee list. Composes the existing filters
+ * with cursor pagination fields. The `cursor` and `limit` come from the
+ * shared cursor pagination schema.
+ */
+export const employeePagedListInputSchema = cursorPaginationInputSchema.extend({
+  roleId: entityIdSchema.optional(),
+  status: employeeStatusSchema.optional(),
+}).optional();
 
 export const employeeBatchCreateInputSchema = z
   .object({
