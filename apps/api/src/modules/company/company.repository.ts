@@ -615,15 +615,19 @@ export class SqliteCompanyRepository implements CompanyRepository {
     }
 
     const whereClause = allConditions.length > 0 ? `WHERE ${allConditions.join(" AND ")}` : "";
+    // Fetch one extra row to determine hasMore without a false positive
+    // when the remaining set is exactly a multiple of the page size.
+    const fetchLimit = query.limit + 1;
     const rows = this.database
       .prepare(
         `SELECT * FROM employee ${whereClause} ORDER BY created_at DESC, id DESC LIMIT ?`,
       )
-      .all(...allParams, query.limit) as SqliteRow[];
+      .all(...allParams, fetchLimit) as SqliteRow[];
 
-    const items = rows.map(mapEmployee);
+    const allItems = rows.map(mapEmployee);
+    const hasMore = allItems.length > query.limit;
+    const items = allItems.slice(0, query.limit);
     const last = items[items.length - 1];
-    const hasMore = items.length === query.limit;
     const nextCursor = hasMore && last
       ? encodeCursorToken({ createdAt: last.createdAt, id: last.id })
       : null;

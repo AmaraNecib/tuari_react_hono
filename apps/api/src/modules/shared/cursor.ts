@@ -71,11 +71,7 @@ export function decodeCursor(token: string): Cursor {
   }
 
   let json: string
-  try {
-    json = Buffer.from(token, "base64url").toString("utf8")
-  } catch {
-    throw new Error("Invalid cursor: not valid base64url")
-  }
+  json = Buffer.from(token, "base64url").toString("utf8")
 
   let parsed: unknown
   try {
