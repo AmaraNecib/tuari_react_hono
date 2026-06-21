@@ -57,7 +57,11 @@ export type ListPagedOptions = {
  * - `nextCursor` is null on the last page
  * - `hasMore` is a convenience flag equivalent to `nextCursor !== null`
  */
-export type PaginatedEmployees = EmployeePagedResult;
+export type PaginatedEmployees = {
+  items: Employee[];
+  total: number;
+  nextCursor: string | null;
+};
 
 /**
  * EmployeeModule - the deep module for employee management.
