@@ -691,6 +691,11 @@ export class SqliteCompanyRepository implements CompanyRepository {
       salaryAmountDzd: createData.salaryAmountDzd ?? null,
       salaryPeriod: createData.salaryPeriod ?? null,
       eventType: "CREATED",
+      startDate: timestamp,
+      notes: createData.notes ?? null,
+      actorUserId: null,
+      actorLabel: null,
+      transactionId: null,
     });
     const created = this.getEmployeeById(id)!;
     return created;
