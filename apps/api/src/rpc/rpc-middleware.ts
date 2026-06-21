@@ -2,6 +2,7 @@ import { ORPCError } from "@orpc/server";
 import type { AppError } from "@tuari/contracts";
 
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
+import type { Permission } from "../modules/rbac/permissions";
 import { InputValidator } from "../infrastructure/validation/input-validator";
 import { SlidingWindowRateLimiter, resolveClientIp } from "../infrastructure/rate-limiter";
 import { requireCurrentUser, type RpcContext } from "./context";
@@ -66,6 +67,21 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
     }
 
     return currentUser;
+  }
+
+  // Auth-only: checks that the user is logged in but does NOT
+  // require bootstrap-admin status. Used by RBAC-protected handlers.
+  async function requireAuthenticatedUser(context: RpcContext) {
+    return await requireCurrentUser(context);
+  }
+
+  async function createAuditContextForUser(context: RpcContext): Promise<MutationAuditContext> {
+    const currentUser = await requireAuthenticatedUser(context);
+    return {
+      actorUserId: currentUser.id,
+      actorLabel: currentUser.name ?? currentUser.phone,
+      transactionId: crypto.randomUUID(),
+    };
   }
 
   async function createMutationAuditContext(context: RpcContext): Promise<MutationAuditContext> {
@@ -168,6 +184,57 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
         } catch (error) {
           return errorResolver(error);
         }
+      };
+    },
+
+    // Auth-only: checks that the user is logged in (no admin check).
+    // Used by RBAC-protected handlers where withPermission gates access.
+    withAuth<TInput, TOutput>(
+      handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput> | TOutput,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
+      return async ({ context, input }) => {
+        await requireAuthenticatedUser(context);
+        return handler({ context, input });
+      };
+    },
+
+    // Audit logging without admin check.
+    // Used by RBAC-protected mutation handlers.
+    withAudit<TInput, TOutput>(
+      handler: (params: { context: RpcContext; input: TInput; auditContext: MutationAuditContext }) => TOutput,
+      errorResolver: (error: unknown) => any,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<any> {
+      return async ({ context, input }) => {
+        const auditContext = await createAuditContextForUser(context);
+        try {
+          return handler({ context, input, auditContext });
+        } catch (error) {
+          return errorResolver(error);
+        }
+      };
+    },
+
+    withPermission<TInput, TOutput>(
+      required: Permission | Permission[],
+      handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput> | TOutput,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
+      return async ({ context, input }) => {
+        const user = await context.resolveCurrentUser();
+        if (!user) {
+          throw new ORPCError("UNAUTHORIZED");
+        }
+
+        const userPermissions = user.permissions ?? [];
+        const requiredPermissions = Array.isArray(required) ? required : [required];
+        const allowed = requiredPermissions.some((p) => userPermissions.includes(p));
+
+        if (!allowed) {
+          throw new ORPCError("FORBIDDEN", {
+            message: "ليس لديك صلاحية للقيام بهذا الإجراء.",
+          });
+        }
+
+        return handler({ context, input });
       };
     },
   };

@@ -1,3 +1,5 @@
+import { DEFAULT_ROLE_PERMISSIONS } from "../../modules/rbac/role-seeds";
+
 export const schemaStatements = [
   `CREATE TABLE IF NOT EXISTS "user" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -74,6 +76,16 @@ export const schemaStatements = [
     "is_system" INTEGER NOT NULL DEFAULT 0,
     "created_at" DATETIME NOT NULL,
     "updated_at" DATETIME NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS "role_permission" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "role_id" TEXT NOT NULL,
+    "permission" TEXT NOT NULL,
+    "created_at" DATETIME NOT NULL,
+    "updated_at" DATETIME NOT NULL,
+    UNIQUE ("role_id", "permission"),
+    CONSTRAINT "role_permission_role_id_fkey"
+      FOREIGN KEY ("role_id") REFERENCES "role" ("id") ON DELETE CASCADE ON UPDATE CASCADE
   )`,
   `CREATE TABLE IF NOT EXISTS "employee" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -655,15 +667,33 @@ export const companyStatusConstraintChecks = [
 ] as const
 
 export const roleSeeds = [
-  { key: "worker", name: "عامل", description: "الدور التنفيذي الأساسي للعمال الميدانيين" },
+  { key: "admin", name: "مدير النظام", description: "الحساب الإداري الرئيسي — له جميع الصلاحيات", isSystem: true },
+  { key: "viewer", name: "مشاهد", description: "حساب للقراءة فقط — لا يمكنه تعديل أي بيانات", isSystem: true },
+  { key: "worker", name: "عامل", description: "الدور التنفيذي الأساسي للعمال الميدانيين", isSystem: true },
   {
     key: "project_manager",
     name: "مدير مشروع",
     description: "مسؤول عن متابعة العمال والمشاريع الميدانية",
+    isSystem: true,
   },
   {
     key: "warehouse_manager",
     name: "مدير مخزن",
     description: "مسؤول عن تشغيل وإدارة المستودعات",
+    isSystem: true,
   },
-] as const
+] as const;
+
+// ---------- role_permission seeds ----------
+
+export function rolePermissionSeeds(): Array<{ roleId: string; permission: string }> {
+  // roleId is the role key (e.g. "admin"). The caller (ensureSeedRolePermissions)
+  // resolves keys to actual UUIDs before inserting.
+  return DEFAULT_ROLE_PERMISSIONS.flatMap((rp) => {
+    return rp.permissions.map((permission) => ({ roleId: rp.role.key, permission }));
+  });
+}
+
+export function createSchemaDefinitions(): string[] {
+  return [...schemaStatements];
+}

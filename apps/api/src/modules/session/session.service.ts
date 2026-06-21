@@ -1,3 +1,4 @@
+import type { Permission } from "../rbac/permissions";
 import type { SessionUser } from "./session.types";
 
 type AuthGateway = {
@@ -12,8 +13,15 @@ type AuthGateway = {
   };
 };
 
+type PermissionResolver = {
+  getPermissionsForUserId: (userId: string) => Promise<Permission[]>;
+};
+
 export class SessionService {
-  constructor(private readonly authGateway: AuthGateway) {}
+  constructor(
+    private readonly authGateway: AuthGateway,
+    private readonly permissionResolver: PermissionResolver,
+  ) {}
 
   async getCurrentUser(headers: Headers): Promise<SessionUser | null> {
     const sessionData = await this.authGateway.api.getSession({ headers });
@@ -22,10 +30,13 @@ export class SessionService {
       return null;
     }
 
+    const permissions = await this.permissionResolver.getPermissionsForUserId(sessionData.user.id);
+
     return {
       id: sessionData.user.id,
       name: sessionData.user.name,
       phone: sessionData.user.phoneNumber,
+      permissions,
     };
   }
 }

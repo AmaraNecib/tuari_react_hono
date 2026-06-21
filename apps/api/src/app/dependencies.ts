@@ -13,6 +13,7 @@ import { FinanceService } from "../modules/company/finance.service";
 import { createInventoryRepository } from "../modules/inventory/inventory.repository";
 import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
+import { SqlitePermissionResolver } from "../modules/rbac/sqlite-permission-resolver";
 import { SessionService } from "../modules/session/session.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/sqlite-employee.repository";
@@ -29,11 +30,13 @@ export async function createAppDependencies() {
   const employeeRepository = new SqliteEmployeeRepository(companyRepository);
   const roleRepository = new SqliteRoleRepository(companyRepository);
   const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
+  const authBootstrapService = new AuthBootstrapService(prisma, auth, env.bootstrapSetupKey);
+  const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
 
   return {
     auth,
     accountService: new AccountService(accountRepository, auth),
-    authBootstrapService: new AuthBootstrapService(prisma, auth, env.bootstrapSetupKey),
+    authBootstrapService,
     companyService,
     workforceService: new WorkforceService(companyService),
     operationsService: new OperationsService(companyService),
@@ -44,7 +47,7 @@ export async function createAppDependencies() {
       companyService,
       companyRepository,
     ),
-    sessionService: new SessionService(auth),
+    sessionService: new SessionService(auth, permissionResolver),
     employeeModule,
   } as const;
 }
