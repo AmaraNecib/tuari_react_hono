@@ -41,7 +41,9 @@ describe("SqlitePermissionResolver", () => {
     await resolver.getPermissionsForUserId("user-1");
 
     expect(db.prepare).toHaveBeenCalledTimes(1);
-    const sql = db.prepare.mock.calls[0][0];
+    const call = db.prepare.mock.calls[0];
+    expect(call).toBeDefined();
+    const sql = call![0];
     expect(sql).toContain("role_permission");
     expect(sql).toContain("employee");
     expect(sql).toContain("role");

@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ORPCError } from "@orpc/server";
 import { createPermissionMiddleware, type PermissionMiddleware } from "./permission-middleware";
+import type { Permission } from "./permissions";
 import type { RpcContext } from "../../rpc/context";
 import type { SessionUser } from "../session/session.types";
 
-function createMockContext(permissions: string[] = []): RpcContext {
-  const user: SessionUser & { permissions: string[] } = {
+function createMockContext(permissions: Permission[] = []): RpcContext {
+  const user: SessionUser = {
     id: "user-1",
     name: "Admin",
     phone: "0555000001",
@@ -65,7 +66,7 @@ describe("permission middleware", () => {
         });
       } catch (error) {
         expect(error).toBeInstanceOf(ORPCError);
-        expect((error as ORPCError).code).toBe("FORBIDDEN");
+        expect((error as any).code).toBe("FORBIDDEN");
       }
     });
 
@@ -108,7 +109,7 @@ describe("permission middleware", () => {
         expect.fail("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ORPCError);
-        expect((error as ORPCError).code).toBe("FORBIDDEN");
+        expect((error as any).code).toBe("FORBIDDEN");
       }
     });
   });

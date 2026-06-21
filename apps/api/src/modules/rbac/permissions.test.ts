@@ -93,4 +93,4 @@ describe("permissions", () => {
 
 // Type tests — these should compile
 type Assert<T extends true> = T;
-type IsStringArray = Assert<true extends (typeof ALL_PERMISSIONS extends string[] ? true : false) ? true : false>;
+type IsReadonlyArray = Assert<true extends (typeof ALL_PERMISSIONS extends readonly Permission[] ? true : false) ? true : false>;
