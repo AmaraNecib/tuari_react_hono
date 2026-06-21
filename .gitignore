@@ -22,6 +22,3 @@ node_modules/
 Thumbs.db
 
 /apps/api/data
-.agents/
-.claude/
-skills-lock.json
