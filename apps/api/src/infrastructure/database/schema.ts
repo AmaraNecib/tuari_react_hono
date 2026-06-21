@@ -992,7 +992,7 @@ async function ensureSeedRoles() {
         role.key,
         role.name,
         role.description,
-        1,
+        role.isSystem ? 1 : 0,
         timestamp,
         timestamp,
       );

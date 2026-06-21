@@ -10,7 +10,8 @@ export class SqlitePermissionResolver {
         `SELECT DISTINCT rp.permission
          FROM role_permission rp
          INNER JOIN employee e ON e.role_id = rp.role_id
-         WHERE e.id = ?`,
+         INNER JOIN "user" u ON u."phoneNumber" = e.phone
+         WHERE u.id = ?`,
       )
       .all(userId) as { permission: string }[];
 

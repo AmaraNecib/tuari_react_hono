@@ -47,6 +47,8 @@ describe("SqlitePermissionResolver", () => {
     expect(sql).toContain("role_permission");
     expect(sql).toContain("employee");
     expect(sql).toContain("role");
+    expect(sql).toContain("user");
+    expect(sql).toContain("phoneNumber");
     expect(db.all).toHaveBeenCalledWith("user-1");
   });
 });
