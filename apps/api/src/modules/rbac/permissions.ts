@@ -27,8 +27,6 @@ export const ALL_PERMISSIONS: readonly Permission[] = Object.entries(RESOURCE_PE
   ([resource, actions]) => actions.map((action) => `${resource}.${action}` as Permission),
 );
 
-const PERMISSION_SET = new Set<string>(ALL_PERMISSIONS as readonly string[]);
-
 export function isPermission(value: string): value is Permission {
   if (!value.includes(".")) return false;
   const [resource, action] = value.split(".", 2);

@@ -34,9 +34,9 @@ export function createWorkforceHandlers(
       ({ input, auditContext }: any) => workforceService.deleteRole((input as any).id),
       toFailureResult,
     )),
-    employeesList: os.employeesList.handler(m.queryAuth(async ({ context, input }: any) => {
+    employeesList: os.employeesList.handler(m.withPermission("employees.read", m.queryAuth(async ({ context, input }: any) => {
       return workforceService.listEmployees(input ?? undefined);
-    })),
+    }))),
     employeesListPaged: os.employeesListPaged.handler(m.withPermission("employees.read", m.queryAuth(async ({ context, input }: any) => {
       const opts = input ?? {};
       try {
@@ -75,18 +75,18 @@ export function createWorkforceHandlers(
       ({ input, auditContext }: any) => workforceService.deleteEmployee((input as any).id, auditContext),
       toFailureResult,
     ))),
-    employeesAssignWorkplace: os.employeesAssignWorkplace.handler(m.mutationAudit(
+    employeesAssignWorkplace: os.employeesAssignWorkplace.handler(m.withPermission("employees.update", m.mutationAudit(
       ({ input, auditContext }: any) => workforceService.assignEmployeeWorkplace(input as any, auditContext),
       toFailureResult,
-    )),
-    employeesSyncManagedProjects: os.employeesSyncManagedProjects.handler(m.mutationAudit(
+    ))),
+    employeesSyncManagedProjects: os.employeesSyncManagedProjects.handler(m.withPermission("employees.update", m.mutationAudit(
       ({ input, auditContext }: any) => workforceService.syncManagedProjects(input as any, auditContext),
       toFailureResult,
-    )),
-    employeesSyncManagedWarehouses: os.employeesSyncManagedWarehouses.handler(m.mutationAudit(
+    ))),
+    employeesSyncManagedWarehouses: os.employeesSyncManagedWarehouses.handler(m.withPermission("employees.update", m.mutationAudit(
       ({ input, auditContext }: any) => workforceService.syncManagedWarehouses(input as any, auditContext),
       toFailureResult,
-    )),
+    ))),
     managerAssignmentsList: os.managerAssignmentsList.handler(m.queryAuth(async ({ context, input }: any) => {
       return workforceService.listManagerAssignments(input ?? undefined);
     })),

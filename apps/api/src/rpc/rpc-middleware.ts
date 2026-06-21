@@ -182,7 +182,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
           throw new ORPCError("UNAUTHORIZED");
         }
 
-        const userPermissions = (user as any).permissions ?? [];
+        const userPermissions = user.permissions ?? [];
         const requiredPermissions = Array.isArray(required) ? required : [required];
         const allowed = requiredPermissions.some((p) => userPermissions.includes(p));
 

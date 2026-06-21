@@ -8,6 +8,7 @@ import {
   companyStatusConstraintChecks,
   debtSingleAccountMigrationKey,
   obsoleteMigrationKey,
+  rolePermissionSeeds,
   roleSeeds,
   schemaStatements,
   statusConstraintMigrationKey,
@@ -999,12 +1000,45 @@ async function ensureSeedRoles() {
     }
 
     await prisma.$executeRawUnsafe(
-      'UPDATE "role" SET name = ?, description = ?, is_system = 1, updated_at = ? WHERE key = ?',
+      'UPDATE "role" SET name = ?, description = ?, is_system = ?, updated_at = ? WHERE key = ?',
       role.name,
       role.description,
+      role.isSystem ? 1 : 0,
       timestamp,
       role.key,
     );
+  }
+}
+
+async function ensureSeedRolePermissions() {
+  // Get all role IDs (key → UUID mapping)
+  const roles = (await prisma.$queryRawUnsafe<Array<{ id: string; key: string }>>(
+    'SELECT id, key FROM "role"',
+  ));
+  const roleIdByKey = new Map(roles.map((r) => [r.key, r.id]));
+
+  const permissions = rolePermissionSeeds();
+
+  for (const { roleId: roleKey, permission } of permissions) {
+    const roleId = roleIdByKey.get(roleKey);
+    if (!roleId) continue;
+
+    const existing = (await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      'SELECT id FROM "role_permission" WHERE role_id = ? AND permission = ? LIMIT 1',
+      roleId,
+      permission,
+    ))[0];
+
+    if (!existing) {
+      await prisma.$executeRawUnsafe(
+        'INSERT INTO "role_permission" (id, role_id, permission, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+        crypto.randomUUID(),
+        roleId,
+        permission,
+        new Date().toISOString(),
+        new Date().toISOString(),
+      );
+    }
   }
 }
 
@@ -1044,4 +1078,5 @@ export async function ensureDatabaseSchema(): Promise<void> {
   await repairLegacyAuthTables();
 
   await ensureSeedRoles();
+  await ensureSeedRolePermissions();
 }
