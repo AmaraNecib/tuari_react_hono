@@ -132,11 +132,28 @@ describe("RPC router", () => {
     await expect(client.rolesList()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("rejects workspace mutations for non-admin authenticated users", async () => {
+  it("allows non-admin users with RBAC permission to create employees", async () => {
     const harness = createHarness();
     const { service, roleIds } = harness;
     const router = createTestRouter(harness, { isBootstrapOwner: async () => false })
     const client = createRouterClient(router, { context: createContext() as never });
+
+    const result = await client.employeesCreate({
+      firstName: "Nora",
+      lastName: "Kaci",
+      phone: "0612345690",
+      roleId: roleIds.worker,
+      status: "ACTIVE",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects employee creation when user lacks employees.create permission", async () => {
+    const harness = createHarness();
+    const { service, roleIds } = harness;
+    const router = createTestRouter(harness, { isBootstrapOwner: async () => false })
+    const noPermsUser = { ...currentUser, permissions: [] as string[] };
+    const client = createRouterClient(router, { context: createContext(noPermsUser) as never });
 
     await expect(
       client.employeesCreate({
@@ -146,7 +163,7 @@ describe("RPC router", () => {
         roleId: roleIds.worker,
         status: "ACTIVE",
       }),
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("covers CRUD and assignment flows with typed business-rule failures", async () => {

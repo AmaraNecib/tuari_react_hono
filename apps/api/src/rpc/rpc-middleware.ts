@@ -69,6 +69,21 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
     return currentUser;
   }
 
+  // Auth-only: checks that the user is logged in but does NOT
+  // require bootstrap-admin status. Used by RBAC-protected handlers.
+  async function requireAuthenticatedUser(context: RpcContext) {
+    return await requireCurrentUser(context);
+  }
+
+  async function createAuditContextForUser(context: RpcContext): Promise<MutationAuditContext> {
+    const currentUser = await requireAuthenticatedUser(context);
+    return {
+      actorUserId: currentUser.id,
+      actorLabel: currentUser.name ?? currentUser.phone,
+      transactionId: crypto.randomUUID(),
+    };
+  }
+
   async function createMutationAuditContext(context: RpcContext): Promise<MutationAuditContext> {
     const currentUser = await requireWorkspaceAdmin(context);
 
@@ -166,6 +181,33 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
         try {
           const validatedInput = InputValidator.validate<TInput>(input, schema);
           return handler({ context, input: validatedInput, auditContext });
+        } catch (error) {
+          return errorResolver(error);
+        }
+      };
+    },
+
+    // Auth-only: checks that the user is logged in (no admin check).
+    // Used by RBAC-protected handlers where withPermission gates access.
+    withAuth<TInput, TOutput>(
+      handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput> | TOutput,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
+      return async ({ context, input }) => {
+        await requireAuthenticatedUser(context);
+        return handler({ context, input });
+      };
+    },
+
+    // Audit logging without admin check.
+    // Used by RBAC-protected mutation handlers.
+    withAudit<TInput, TOutput>(
+      handler: (params: { context: RpcContext; input: TInput; auditContext: MutationAuditContext }) => TOutput,
+      errorResolver: (error: unknown) => any,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<any> {
+      return async ({ context, input }) => {
+        const auditContext = await createAuditContextForUser(context);
+        try {
+          return handler({ context, input, auditContext });
         } catch (error) {
           return errorResolver(error);
         }
