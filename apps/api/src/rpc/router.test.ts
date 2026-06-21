@@ -122,7 +122,7 @@ describe("RPC router", () => {
   it("rejects workspace mutations for non-admin authenticated users", async () => {
     const harness = createHarness();
     const { service, roleIds } = harness;
-    const router = createTestRouter(service, { isBootstrapOwner: async () => false })
+    const router = createTestRouter(harness, { isBootstrapOwner: async () => false })
     const client = createRouterClient(router, { context: createContext() as never });
 
     await expect(
