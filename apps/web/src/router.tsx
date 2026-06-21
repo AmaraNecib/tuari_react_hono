@@ -65,8 +65,9 @@ function parseEmployeesListSearch(search: Record<string, unknown>): EmployeesLis
   const cursor = typeof search.cursor === "string" && search.cursor.length > 0 ? search.cursor : undefined
   const rawLimit = typeof search.limit === "string" ? Number(search.limit) : (search.limit as number | undefined)
   const limit = typeof rawLimit === "number" && Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : undefined
-  // prevCursors is a comma-separated list of cursors (empty string = page 1 sentinel)
-  const prevCursors = typeof search.prevCursors === "string" && search.prevCursors.length > 0
+  // prevCursors is a comma-separated list of cursors (empty string = page 1 sentinel).
+  // We keep it even when it contains only empty-string sentinels.
+  const prevCursors = typeof search.prevCursors === "string"
     ? search.prevCursors
     : undefined
   return { cursor, limit, prevCursors }

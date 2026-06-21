@@ -139,10 +139,16 @@ export function EmployeesSection({
   const hasMore = pagedQuery.data?.hasMore ?? false
   const total = pagedQuery.data?.total ?? 0
 
-  // Reset the previous-cursor stack whenever the user changes page size —
+  // Reset the previous-cursor stack when the user changes page size —
   // the stored cursors were computed against the old limit and would point
-  // at the wrong rows in the new grid.
+  // at the wrong rows in the new grid. Skip the initial mount so the
+  // URL-restored stack is preserved.
+  const isInitialMount = useRef(true)
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
     setPreviousCursorStack([])
   }, [resolvedLimit])
 
