@@ -1,6 +1,5 @@
 import type { CompanyRepository } from "../../company/company.repository";
 import type { EmployeeRecord } from "../../company/company.types";
-import { decodeCursor, encodeCursor } from "../../shared/cursor";
 import type {
   EmployeeFilters,
   EmployeePagedQuery,
@@ -47,7 +46,3 @@ export class SqliteEmployeeRepository implements EmployeeRepository {
   }
 }
 
-// `decodeCursor` and `encodeCursor` are re-exported for any adapter that
-// prefers to do its own SQL encoding. Keeping them imported here also keeps
-// TypeScript from flagging the module as unused-imports.
-export { decodeCursor, encodeCursor };
