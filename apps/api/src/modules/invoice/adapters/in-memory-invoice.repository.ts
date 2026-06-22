@@ -84,11 +84,16 @@ export function createInMemoryInvoiceRepository(): InvoiceRepository & {
                 ? i.invoiceDate ?? null
                 : i.totalAmount;
           const av = after.sortValue;
-          // nullBoundaryPassed=true: previous page finished the null
-          // group; now keep non-null sortValue rows with id > cursor.id.
+          // nullBoundaryPassed=true: cursor is anchored at the bottom of
+          // the null group; include remaining null rows (id >
+          // cursor.id) and all non-null rows. Sorting invoiceDate ASC
+          // puts nulls first, then non-null.
           if (after.nullBoundaryPassed) {
             if (field === "invoiceDate") {
-              return i.invoiceDate !== null && i.invoiceDate !== undefined;
+              if (i.invoiceDate === null || i.invoiceDate === undefined) {
+                return i.id > after.id;
+              }
+              return true;
             }
             return true;
           }
@@ -122,10 +127,29 @@ export function createInMemoryInvoiceRepository(): InvoiceRepository & {
             : field === "invoiceDate"
               ? (last.invoiceDate ?? null)
               : last.totalAmount;
-        // ASC + last row has null sortValue means we just exhausted the
-        // null group. Signal the next page via nullBoundaryPassed.
+        // ASC + last row has null sortValue: emit nullBoundaryPassed
+        // when there are more rows beyond the current page (the
+        // boundary cursor pulls remaining null rows + all non-null
+        // rows in one go, regardless of id ordering).
+        let firstNonNullIdx = -1;
+        for (let i = pageItems.length; i < page.length; i++) {
+          const r = page[i]!;
+          if (
+            field === "invoiceDate" &&
+            r.invoiceDate !== null &&
+            r.invoiceDate !== undefined
+          ) {
+            firstNonNullIdx = i;
+            break;
+          }
+        }
+        const moreRowsBeyond =
+          totalCount > pageItems.length + (page.length - pageItems.length);
         const isAscNullBoundary =
-          dir === "asc" && field === "invoiceDate" && (lastSort === null || lastSort === undefined);
+          dir === "asc" &&
+          field === "invoiceDate" &&
+          (lastSort === null || lastSort === undefined) &&
+          (firstNonNullIdx !== -1 || moreRowsBeyond);
         nextCursor = Buffer.from(
           JSON.stringify({
             sortValue: isAscNullBoundary ? null : lastSort,

@@ -80,14 +80,19 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     if (query.after) {
       const connector = conditions.length > 0 ? "AND" : "WHERE";
       // The cursor encodes three cases:
-      //   1. nullBoundaryPassed=true: previous page finished the null
-      //      group; now fetch rows where sortCol IS NOT NULL, ordered
-      //      by id (secondary sort).
+      //   1. nullBoundaryPassed=true: previous page ended in the null
+      //      group; fetch remaining null rows (id > cursor.id) PLUS
+      //      all non-null rows. Sorted ASC puts nulls first, so the
+      //      natural ORDER BY (sortCol ASC, id ASC) gives the right
+      //      result. The id filter only applies to the null branch
+      //      (non-null rows have id > any null row by ASCII ordering
+      //      of id, but we don't rely on that).
       //   2. sortValue=null: still inside the null group; continue by
       //      id only.
       //   3. sortValue=number|string: standard keyset on (sortCol, id).
       if (query.after.nullBoundaryPassed) {
-        cursorClause = `${connector} ${sortCol} IS NOT NULL`;
+        cursorClause = `${connector} ((${sortCol} IS NULL AND id > ?) OR ${sortCol} IS NOT NULL)`;
+        cursorParams.push(query.after.id);
       } else if (query.after.sortValue === null) {
         if (sortDir === "DESC") {
           cursorClause = `${connector} (${sortCol} IS NULL AND id < ?)`;
@@ -126,11 +131,25 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     if (hasMore && pageRows.length > 0) {
       const lastRow = pageRows[pageRows.length - 1]!;
       const lastSortValue = lastRow[sortCol];
-      // When sorting ASC on a nullable column, the last row on the
-      // current page is the last null-group row. Signal the next page
-      // to fetch the non-null group via nullBoundaryPassed.
+      // For ASC + last row has null sortValue: emit nullBoundaryPassed
+      // when the cursor filter still has rows beyond the current page
+      // (totalCount > pageRows.length + rows.length - query.limit).
+      // The firstNonNullIdx scan of `rows` finds non-null rows in the
+      // window; when totalCount > rows.length, non-null rows exist
+      // beyond and we need the boundary flag to cross over.
+      let firstNonNullIdx = -1;
+      for (let i = query.limit; i < rows.length; i++) {
+        const r = rows[i]!;
+        if (r[sortCol] !== null && r[sortCol] !== undefined) {
+          firstNonNullIdx = i;
+          break;
+        }
+      }
+      const moreRowsBeyond = totalCount > pageRows.length + (rows.length - query.limit);
       const isAscNullBoundary =
-        sortDir === "ASC" && (lastSortValue === null || lastSortValue === undefined);
+        sortDir === "ASC" &&
+        (lastSortValue === null || lastSortValue === undefined) &&
+        (firstNonNullIdx !== -1 || moreRowsBeyond);
       nextCursor = Buffer.from(
         JSON.stringify({
           sortValue: isAscNullBoundary ? null : lastSortValue,

@@ -406,6 +406,79 @@ describe("InvoiceModule", () => {
       expect(seen.has("inv-dated")).toBe(true);
       expect(seen.has("inv-undated")).toBe(true);
     });
+
+    it("ASC sort: null group larger than limit does not skip null rows", async () => {
+      // Three null-dated invoices + one dated invoice. With limit=2 and
+      // ASC sort, page 1 = [null_a, null_b], page 2 = [null_c, dated].
+      // The encoder must NOT emit nullBoundaryPassed after page 1
+      // because the next row (null_c) is still null — emitting the
+      // boundary cursor would silently drop null_c.
+      await module.create(
+        makeInput({ id: "null-a", supplierName: "Na", invoiceDate: null }),
+      );
+      await module.create(
+        makeInput({ id: "null-b", supplierName: "Nb", invoiceDate: null }),
+      );
+      await module.create(
+        makeInput({ id: "null-c", supplierName: "Nc", invoiceDate: null }),
+      );
+      await module.create(
+        makeInput({
+          id: "dated",
+          supplierName: "D",
+          invoiceDate: "2024-05-01T00:00:00.000Z",
+        }),
+      );
+
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      for (let i = 0; i < 10; i++) {
+        const result = await module.listPaged({
+          limit: 2,
+          sort: { field: "invoiceDate", direction: "asc" },
+          ...(cursor ? { cursor } : {}),
+        });
+        for (const it of result.items) seen.push(it.id);
+        cursor = result.nextCursor ?? undefined;
+        if (!cursor) break;
+      }
+      // All four invoices must appear exactly once.
+      expect(new Set(seen).size).toBe(4);
+      expect(seen.sort()).toEqual(["dated", "null-a", "null-b", "null-c"].sort());
+    });
+
+    it("ASC sort: null group exactly fits in last null-only page", async () => {
+      // Two nulls + one dated, limit=2. Page 1 should yield
+      // [null-a, null-b] with a boundary cursor (so dated is reachable
+      // even though its id sorts before null-b lexically).
+      await module.create(
+        makeInput({ id: "null-a", supplierName: "Na", invoiceDate: null }),
+      );
+      await module.create(
+        makeInput({ id: "null-b", supplierName: "Nb", invoiceDate: null }),
+      );
+      await module.create(
+        makeInput({
+          id: "dated",
+          supplierName: "D",
+          invoiceDate: "2024-05-01T00:00:00.000Z",
+        }),
+      );
+
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      for (let i = 0; i < 10; i++) {
+        const result = await module.listPaged({
+          limit: 2,
+          sort: { field: "invoiceDate", direction: "asc" },
+          ...(cursor ? { cursor } : {}),
+        });
+        for (const it of result.items) seen.push(it.id);
+        cursor = result.nextCursor ?? undefined;
+        if (!cursor) break;
+      }
+      expect(new Set(seen).size).toBe(3);
+    });
   });
 
   describe("markPaid", () => {
