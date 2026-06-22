@@ -11,7 +11,7 @@ import {
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 
-import { formatDebtMoney, getDebtAccountBalance, getDebtBalanceMeta, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
+import { formatDebtMoney, getDebtAccountBalance, getDebtAccountBalanceMeta, getDebtBalanceMeta, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
 
 function DebtStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
@@ -40,7 +40,14 @@ export function DebtLedgerPanel({
   const [signedAmount, setSignedAmount] = useState("")
   const sortedEntries = useMemo(() => sortDebtEntries(debtEntries), [debtEntries])
   const balanceDzd = getDebtAccountBalance(debtAccount)
-  const balanceMeta = getDebtBalanceMeta(balanceDzd)
+  // Issue #22: the running balance is per-account, so its color and
+  // Arabic label must respect the account's direction. The
+  // direction-agnostic `getDebtBalanceMeta` would label a positive
+  // PAYABLE balance as "لنا عنده" when it actually means "we owe
+  // them" (علينا له).
+  const balanceMeta = debtAccount
+    ? getDebtAccountBalanceMeta(debtAccount)
+    : getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" })
   const normalizedAmount = signedAmount.trim()
   const signedAmountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : null
   const hasValidAmount = signedAmountValue !== null && Number.isFinite(signedAmountValue) && signedAmountValue !== 0
@@ -55,7 +62,7 @@ export function DebtLedgerPanel({
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <DebtStatCard
-          label="الرصيد الحالي"
+          label={debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
           value={`دج ${formatDebtMoney(balanceDzd)}`}
           valueClassName={balanceMeta.textClassName}
         />
@@ -161,6 +168,15 @@ export function DebtLedgerPanel({
               {sortedEntries.length > 0 ? (
                 sortedEntries.map((entry) => {
                   const amountMeta = getDebtBalanceMeta(entry.signedAmountDzd)
+                  // balanceAfterDzd is the per-account running balance,
+                  // so its color follows the account direction (same
+                  // convention as the stat card above).
+                  const balanceAfterMeta = debtAccount
+                    ? getDebtAccountBalanceMeta({
+                        currentBalance: entry.balanceAfterDzd,
+                        direction: debtAccount.direction,
+                      })
+                    : getDebtBalanceMeta(entry.balanceAfterDzd)
 
                   return (
                     <tr key={entry.id} className="border-t border-border/60 bg-background/75">
@@ -169,7 +185,7 @@ export function DebtLedgerPanel({
                       <td className={cn("px-4 py-4 text-start font-mono", amountMeta.textClassName)} dir="ltr">
                         دج {formatDebtMoney(entry.signedAmountDzd)}
                       </td>
-                      <td className={cn("px-4 py-4 text-start font-mono", getDebtBalanceMeta(entry.balanceAfterDzd).textClassName)} dir="ltr">
+                      <td className={cn("px-4 py-4 text-start font-mono", balanceAfterMeta.textClassName)} dir="ltr">
                         دج {formatDebtMoney(entry.balanceAfterDzd)}
                       </td>
                       <td className="px-4 py-4 text-start text-muted-foreground">{entry.note?.trim() || "—"}</td>
