@@ -51,6 +51,35 @@ export function getDebtAccountStatus(balance: number) {
   return balance === 0 ? "SETTLED" : "OPEN"
 }
 
+/**
+ * Sign-flips a single account's balance into the unified "net
+ * perspective" used by party-level aggregations. With the
+ * bidirectional counterparty ledger (Issue #22):
+ *   - PAYABLE: +balance means "we owe them" → contributes negatively
+ *     to the net
+ *   - RECEIVABLE: +balance means "they owe us" → contributes
+ *     positively to the net
+ *
+ * This is the same convention `getCombinedDebtBalance` uses on the
+ * web side; keeping it centralized here means the API and web agree
+ * on the meaning of `totalBalanceDzd`.
+ */
+export function getDebtAccountNetContribution(account: { currentBalance: number; direction: "PAYABLE" | "RECEIVABLE" }) {
+  return account.direction === "RECEIVABLE" ? account.currentBalance : -account.currentBalance
+}
+
+/**
+ * Aggregate multiple accounts (which may be a mix of PAYABLE and
+ * RECEIVABLE ledgers for the same party) into a single net figure
+ * honoring the per-direction sign convention. Returns the
+ * counterparty's NET position relative to us: positive = they owe
+ * us (aggregate RECEIVABLE > aggregate PAYABLE), negative = we owe
+ * them.
+ */
+export function getNetDebtBalance(accounts: Array<{ currentBalance: number; direction: "PAYABLE" | "RECEIVABLE" }>) {
+  return accounts.reduce((net, account) => net + getDebtAccountNetContribution(account), 0)
+}
+
 export function getDebtBalanceLabel(balance: number) {
   if (balance > 0) {
     return "لنا عنده" as const
