@@ -202,7 +202,7 @@ const schemaStatements = [
     "worker_id" TEXT,
     "external_counterparty_id" TEXT,
     "status" TEXT NOT NULL CHECK ("status" IN ('OPEN', 'SETTLED')),
-    "current_balance_dzd" REAL NOT NULL DEFAULT 0,
+    "current_balance" REAL NOT NULL DEFAULT 0,
     "note" TEXT,
     "settled_at" DATETIME,
     "actor_user_id" TEXT,

@@ -69,7 +69,7 @@ export function createSqliteInvoiceDebtPort(
   ): { id: string; previousBalance: number } {
     const existing = repository.getDebtAccountByExternalCounterpartyId(counterpartyId);
     if (existing) {
-      return { id: existing.id, previousBalance: existing.currentBalanceDzd };
+      return { id: existing.id, previousBalance: existing.currentBalance };
     }
 
     const created = repository.createDebtAccount(
@@ -78,7 +78,7 @@ export function createSqliteInvoiceDebtPort(
         externalCounterpartyId: counterpartyId,
         workerId: null,
         status: "OPEN",
-        currentBalanceDzd: openingSignedAmount,
+        currentBalance: openingSignedAmount,
         note,
         settledAt: null,
       },
@@ -142,7 +142,7 @@ export function createSqliteInvoiceDebtPort(
     });
     const account = accounts.find((a) => a.id === debtAccountId);
     if (!account) throw new Error(`Debt account ${debtAccountId} not found`);
-    return account.currentBalanceDzd;
+    return account.currentBalance;
   }
 
   return {
@@ -198,14 +198,14 @@ export function createSqliteInvoiceDebtPort(
         // must move the account back to OPEN status with a non-zero
         // balance so subsequent payments settle against the right
         // running balance. createDebtAccount already handles the
-        // brand-new account case (status=OPEN, currentBalanceDzd=
+        // brand-new account case (status=OPEN, currentBalance=
         // balanceAfter); this branch covers both re-opening a settled
         // account and adding onto an existing OPEN one.
         repository.updateDebtAccount(
           {
             id: account.id,
             status: "OPEN",
-            currentBalanceDzd: balanceAfter,
+            currentBalance: balanceAfter,
             settledAt: null,
           },
           audit,
@@ -250,7 +250,7 @@ export function createSqliteInvoiceDebtPort(
           {
             id: debtAccountId,
             status: settled ? "SETTLED" : "OPEN",
-            currentBalanceDzd: nextBalance,
+            currentBalance: nextBalance,
             settledAt: settled ? new Date().toISOString() : null,
           },
           audit,

@@ -597,7 +597,7 @@ describe("CompanyService", () => {
       openingEntryDate: "2026-03-20T00:00:00.000+01:00",
     }, audit).item
 
-    expect(account.currentBalanceDzd).toBe(1000)
+    expect(account.currentBalance).toBe(1000)
 
     expect(service.createDebtEntry({
       debtAccountId: account.id,
@@ -647,7 +647,7 @@ describe("CompanyService", () => {
       audit,
     ).item
 
-    expect(account.currentBalanceDzd).toBe(1500)
+    expect(account.currentBalance).toBe(1500)
     expect(service.listDebtEntries({ debtAccountId: account.id }).items).toHaveLength(1)
 
     const payment = service.createDebtEntry(
@@ -661,7 +661,7 @@ describe("CompanyService", () => {
     ).item
 
     expect(payment.balanceAfterDzd).toBe(1000)
-    expect(service.getDebtAccount(account.id).item.currentBalanceDzd).toBe(1000)
+    expect(service.getDebtAccount(account.id).item.currentBalance).toBe(1000)
 
     const settlement = service.settleDebtAccount({ id: account.id, note: "إغلاق الحساب" }, audit).item
     expect(settlement.balanceAfterDzd).toBe(0)
@@ -705,7 +705,7 @@ describe("CompanyService", () => {
         expect.objectContaining({
           accountId: account.id,
           displayName: counterparty.fullName,
-          currentBalanceDzd: -500,
+          currentBalance: -500,
           balanceLabel: "علينا له",
         }),
       ]),
@@ -755,7 +755,7 @@ describe("CompanyService", () => {
     }, audit).item
 
     expect(secondMutation.id).toBe(firstAccount.id)
-    expect(service.getDebtAccount(firstAccount.id).item.currentBalanceDzd).toBe(400)
+    expect(service.getDebtAccount(firstAccount.id).item.currentBalance).toBe(400)
     expect(service.listDebtAccounts({ workerId: worker.id }).items).toHaveLength(1)
     expect(service.listDebtEntries({ debtAccountId: firstAccount.id }).items).toEqual(
       expect.arrayContaining([
@@ -895,7 +895,7 @@ describe("CompanyService", () => {
     ).toThrow("account update failed")
 
     expect(service.listDebtEntries({ debtAccountId: account.id }).items).toHaveLength(1)
-    expect(service.getDebtAccount(account.id).item.currentBalanceDzd).toBe(800)
+    expect(service.getDebtAccount(account.id).item.currentBalance).toBe(800)
     updateDebtAccountSpy.mockRestore()
   })
 

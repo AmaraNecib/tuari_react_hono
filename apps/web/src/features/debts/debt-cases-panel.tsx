@@ -40,7 +40,7 @@ export function DebtCasesPanel({
   const [note, setNote] = useState("")
   const sortedAccounts = useMemo(() => sortDebtAccounts(accounts), [accounts])
   const debtAccount = sortedAccounts[0] ?? null
-  const balanceMeta = getDebtBalanceMeta(debtAccount?.currentBalanceDzd ?? 0)
+  const balanceMeta = getDebtBalanceMeta(debtAccount?.currentBalance ?? 0)
   const normalizedOpeningBalance = openingBalance.trim()
   const openingBalanceValue = normalizedOpeningBalance.length > 0 ? Number(normalizedOpeningBalance) : 0
   const hasValidOpeningBalance = Number.isFinite(openingBalanceValue)
@@ -51,7 +51,7 @@ export function DebtCasesPanel({
       <div className="grid gap-4 md:grid-cols-3">
         <CasesStatCard
           label="الرصيد الحالي"
-          value={`دج ${formatDebtMoney(debtAccount?.currentBalanceDzd ?? 0)}`}
+          value={`دج ${formatDebtMoney(debtAccount?.currentBalance ?? 0)}`}
           valueClassName={balanceMeta.textClassName}
         />
         <CasesStatCard label="الحساب" value={debtAccount ? "1" : "0"} />

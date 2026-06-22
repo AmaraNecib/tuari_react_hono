@@ -277,7 +277,7 @@ describe("contracts", () => {
         workerId: "worker-1",
         externalCounterpartyId: null,
         status: "OPEN",
-        currentBalanceDzd: 1500,
+        currentBalance: 1500,
         note: null,
         settledAt: null,
         actorUserId: "user-1",

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { createSchemaDefinitions, rolePermissionSeeds } from "./schema-definitions";
+import {
+  createSchemaDefinitions,
+  debtAccountBalanceRenameMigrationKey,
+  rolePermissionSeeds,
+} from "./schema-definitions";
 import { DEFAULT_ROLE_PERMISSIONS } from "../../modules/rbac/role-seeds";
 
 describe("role_permission schema", () => {
@@ -26,6 +30,34 @@ describe("role_permission schema", () => {
       d.includes('"role_permission"'),
     );
     expect(rolePermissionDef).toContain("UNIQUE");
+  });
+});
+
+describe("debt_account schema (#21 rename migration)", () => {
+  const definitions = createSchemaDefinitions();
+
+  function getDebtAccountDefinition() {
+    const def = definitions.find((d) => d.includes('"debt_account"'));
+    if (!def) {
+      throw new Error("debt_account CREATE TABLE statement not found in schemaStatements");
+    }
+    return def;
+  }
+
+  it("uses the new column name `current_balance` (no DZD suffix)", () => {
+    // The previous column name was `current_balance_dzd`. The rename
+    // migration (#21) drops the `_dzd` suffix to match the rest of the
+    // schema (invoice.*_amount, debt_entry.signed_amount, etc).
+    const def = getDebtAccountDefinition();
+    expect(def).toContain('"current_balance"');
+    expect(def).not.toContain('"current_balance_dzd"');
+  });
+
+  it("declares a unique migration key for the rename", () => {
+    // The migration registers itself in `app_schema_state` under this
+    // key. A constant makes the key discoverable from tests and from
+    // the migration function itself.
+    expect(debtAccountBalanceRenameMigrationKey).toBe("rename_debt_account_balance_drop_dzd_v1");
   });
 });
 

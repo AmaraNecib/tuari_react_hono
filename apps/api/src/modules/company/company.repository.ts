@@ -968,7 +968,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const audit = normalizeAuditContext(auditContext)
     this.database
       .prepare(
-        'INSERT INTO debt_account (id, party_type, worker_id, external_counterparty_id, status, current_balance_dzd, note, settled_at, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO debt_account (id, party_type, worker_id, external_counterparty_id, status, current_balance, note, settled_at, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         id,
@@ -976,7 +976,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
         data.workerId ?? null,
         data.externalCounterpartyId ?? null,
         data.status,
-        data.currentBalanceDzd,
+        data.currentBalance,
         data.note ?? null,
         data.settledAt ?? null,
         audit.actorUserId,
@@ -999,11 +999,11 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const timestamp = createAlgeriaTimestamp()
     this.database
       .prepare(
-        'UPDATE debt_account SET status = ?, current_balance_dzd = ?, settled_at = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?',
+        'UPDATE debt_account SET status = ?, current_balance = ?, settled_at = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?',
       )
       .run(
         data.status,
-        data.currentBalanceDzd,
+        data.currentBalance,
         data.settledAt ?? null,
         audit.actorUserId,
         audit.actorLabel,
