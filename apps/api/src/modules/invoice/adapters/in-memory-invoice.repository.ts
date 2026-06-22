@@ -157,6 +157,20 @@ export function createInMemoryInvoiceRepository(): InvoiceRepository & {
       return { ...updated, lineItems: [...updated.lineItems] };
     },
 
+    async markReceivedWithDebtAccount(id, debtAccountId) {
+      const existing = invoices.get(id);
+      if (!existing) throw new Error(`Invoice ${id} not found`);
+
+      const updated = {
+        ...existing,
+        status: "RECEIVED" as const,
+        debtAccountId,
+        updatedAt: new Date().toISOString(),
+      };
+      invoices.set(id, updated);
+      return { ...updated, lineItems: [...updated.lineItems] };
+    },
+
     async delete(id) {
       invoices.delete(id);
     },

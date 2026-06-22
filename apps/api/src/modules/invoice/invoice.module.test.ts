@@ -233,19 +233,6 @@ describe("InvoiceModule", () => {
       ).rejects.toBeInstanceOf(InvoiceDebtPortError);
     });
 
-    it("throws InvoiceNotFoundError when post-receive update returns null", async () => {
-      await module.create(makeInput({ id: "inv-1" }));
-      const nullUpdateRepo: InvoiceDebtPort = createInMemoryInvoiceDebtPort();
-      // Build a repo whose update returns null after updateStatus runs.
-      const customRepo = {
-        ...repo,
-        update: async () => null,
-      } as unknown as ReturnType<typeof createInMemoryInvoiceRepository>;
-      const m = new InvoiceModule(customRepo, nullUpdateRepo);
-      await expect(m.receive("inv-1", ACTOR)).rejects.toBeInstanceOf(
-        InvoiceNotFoundError,
-      );
-    });
   });
 
   describe("findById", () => {

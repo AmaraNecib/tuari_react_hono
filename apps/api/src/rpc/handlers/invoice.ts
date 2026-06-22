@@ -85,7 +85,15 @@ export function createInvoiceHandlers(
         "invoices.update",
         m.withAudit(
           async ({ input }: { context: RpcContext; input: unknown; auditContext: unknown }) => {
-            return invoiceModule.update(input as never);
+            const raw = input as { lineItems?: Array<{ id?: string }> };
+            const lineItemsWithIds = raw.lineItems?.map((li) => ({
+              ...li,
+              id: crypto.randomUUID(),
+            }));
+            return invoiceModule.update({
+              ...(raw as object),
+              ...(lineItemsWithIds ? { lineItems: lineItemsWithIds } : {}),
+            } as never);
           },
           (error: unknown) => {
             if (error instanceof InvoiceNotFoundError) {

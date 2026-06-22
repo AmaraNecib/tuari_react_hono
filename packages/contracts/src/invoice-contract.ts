@@ -17,7 +17,7 @@ const invoiceListOutputSchema = z.object({
 
 const receiveInvoiceOutputSchema = z.object({
   invoice: invoiceSchema,
-  debtEntryId: z.string(),
+  debtAccountId: z.string().uuid(),
 });
 
 export const invoiceContract = {

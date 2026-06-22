@@ -279,6 +279,21 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     return result;
   }
 
+  async markReceivedWithDebtAccount(
+    id: string,
+    debtAccountId: string,
+  ): Promise<Invoice> {
+    this.db
+      .prepare(
+        `UPDATE "invoice" SET status = ?, debt_account_id = ?, updated_at = datetime('now') WHERE id = ?`,
+      )
+      .run("RECEIVED", debtAccountId, id);
+
+    const result = await this.findById(id);
+    if (!result) throw new Error(`Invoice ${id} not found after receive`);
+    return result;
+  }
+
   async delete(id: string): Promise<void> {
     const transaction = this.db.transaction(() => {
       this.db.prepare(`DELETE FROM "invoice_line_item" WHERE invoice_id = ?`).run(id);

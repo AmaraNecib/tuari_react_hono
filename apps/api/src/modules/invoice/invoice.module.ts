@@ -169,15 +169,10 @@ export class InvoiceModule {
       );
     }
 
-    await this.repo.updateStatus(id, "RECEIVED");
-    const updated = await this.repo.update(id, {
-      debtAccountId,
-      updatedAt: new Date().toISOString(),
-    });
-    if (!updated) {
-      throw new InvoiceNotFoundError(id);
-    }
-
+    // Atomic single-statement write: status + debt_account_id + updated_at
+    // either all land or none. No risk of leaving the invoice stranded in
+    // RECEIVED with a null debt_account_id if the next call would fail.
+    const updated = await this.repo.markReceivedWithDebtAccount(id, debtAccountId);
     return {
       invoice: updated,
       debtAccountId,

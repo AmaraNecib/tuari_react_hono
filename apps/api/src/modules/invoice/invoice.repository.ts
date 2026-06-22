@@ -74,6 +74,10 @@ export interface InvoiceRepository {
       remainingAmount?: number;
     },
   ): Promise<Invoice>;
+  markReceivedWithDebtAccount(
+    id: string,
+    debtAccountId: string,
+  ): Promise<Invoice>;
   delete(id: string): Promise<void>;
   count(filters?: InvoiceListFilters): Promise<number>;
 }
