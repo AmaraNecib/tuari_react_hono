@@ -89,9 +89,29 @@ export const invoiceMarkPaidInputSchema = z.object({
 // --- Paginated list input ---
 import { cursorPaginationInputSchema } from "./core";
 
+export const invoiceListSortFieldSchema = z.enum([
+  "createdAt",
+  "invoiceDate",
+  "totalAmount",
+]);
+export const sortDirectionSchema = z.enum(["asc", "desc"]);
+
 export const invoiceListInputSchema = cursorPaginationInputSchema.extend({
   filters: invoiceListFiltersSchema.optional(),
+  sort: z
+    .object({
+      field: invoiceListSortFieldSchema,
+      direction: sortDirectionSchema,
+    })
+    .optional(),
 });
+
+export type InvoiceListSortField = z.infer<typeof invoiceListSortFieldSchema>;
+export type SortDirection = z.infer<typeof sortDirectionSchema>;
+export type InvoiceListInputSort = {
+  field: InvoiceListSortField;
+  direction: SortDirection;
+};
 
 // --- Types ---
 export type Invoice = z.infer<typeof invoiceSchema>;

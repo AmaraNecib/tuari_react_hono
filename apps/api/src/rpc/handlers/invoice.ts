@@ -21,12 +21,18 @@ export function createInvoiceHandlers(
       m.withPermission(
         "invoices.read",
         m.withAuth(async ({ input }: { context: RpcContext; input: unknown }) => {
-          const opts = (input ?? {}) as { filters?: unknown; cursor?: string; limit?: number };
+          const opts = (input ?? {}) as {
+            filters?: unknown;
+            cursor?: string;
+            limit?: number;
+            sort?: { field: string; direction: "asc" | "desc" };
+          };
           try {
             const result = await invoiceModule.listPaged({
               filters: opts.filters as never,
               cursor: opts.cursor,
               limit: opts.limit ?? 50,
+              sort: opts.sort as never,
             });
             return { ...result, hasMore: result.nextCursor !== null };
           } catch (error) {

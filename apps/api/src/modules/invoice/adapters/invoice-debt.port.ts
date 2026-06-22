@@ -153,10 +153,18 @@ export function createSqliteInvoiceDebtPort(
         transactionId: input.transactionId,
       };
 
-      // Atomic single-transaction flow: ensure counterparty -> ensure
-      // debt account -> create OPENING entry with correct running balance
-      // -> backfill invoice_id on that same entry. Either all four land
-      // or none do.
+      // Atomic OPENING flow (within the inner db.transaction):
+      // ensure debt account -> create OPENING entry with correct
+      // running balance -> backfill invoice_id on that same entry ->
+      // re-stamp the account. Either all four land or none do.
+      //
+      // Note: the counterparty lookup/insert runs OUTSIDE this
+      // transaction (ensureCounterpartyId). Idempotent retries on the
+      // same supplier will reuse the existing counterparty row, so
+      // partial failures leave at most an orphan counterparty without
+      // a debt account \u2014 not a financial inconsistency. If a future
+      // change ever needs strict atomicity here, move
+      // ensureCounterpartyId inside the db.transaction() block.
       const counterpartyId = ensureCounterpartyId(
         input.supplierName,
         input.supplierPhone,
