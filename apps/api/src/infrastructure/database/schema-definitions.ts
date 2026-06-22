@@ -603,7 +603,13 @@ export const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "invoice_project_id_idx" ON "invoice" ("project_id")',
   'CREATE INDEX IF NOT EXISTS "invoice_debt_account_id_idx" ON "invoice" ("debt_account_id")',
   'CREATE INDEX IF NOT EXISTS "invoice_line_item_invoice_id_idx" ON "invoice_line_item" ("invoice_id")',
-  'CREATE INDEX IF NOT EXISTS "debt_entry_invoice_id_idx" ON "debt_entry" ("invoice_id")',
+  // Note: debt_entry_invoice_id_idx is intentionally NOT created here.
+  // On existing databases, prior staging-table migrations
+  // (runDebtSingleAccountMigration, runAddAdvanceDebtEntryMigration)
+  // recreated debt_entry without an invoice_id column. The index is
+  // therefore created inside runInvoiceDebtLinkageMigration (after the
+  // column is added back) to avoid crashing startup on existing
+  // deployments.
 ]
 
 export const additiveStatements = [

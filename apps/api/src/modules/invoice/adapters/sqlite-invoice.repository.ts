@@ -345,7 +345,8 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
       params.push(additionalUpdates.remainingAmount);
     }
 
-    setClauses.push(`updated_at = datetime('now')`);
+    setClauses.push(`updated_at = ?`);
+    params.push(new Date().toISOString());
     params.push(id);
     this.db
       .prepare(`UPDATE "invoice" SET ${setClauses.join(", ")} WHERE id = ?`)
@@ -362,9 +363,9 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
   ): Promise<Invoice> {
     this.db
       .prepare(
-        `UPDATE "invoice" SET status = ?, debt_account_id = ?, updated_at = datetime('now') WHERE id = ?`,
+        `UPDATE "invoice" SET status = ?, debt_account_id = ?, updated_at = ? WHERE id = ?`,
       )
-      .run("RECEIVED", debtAccountId, id);
+      .run("RECEIVED", debtAccountId, new Date().toISOString(), id);
 
     const result = await this.findById(id);
     if (!result) throw new Error(`Invoice ${id} not found after receive`);
