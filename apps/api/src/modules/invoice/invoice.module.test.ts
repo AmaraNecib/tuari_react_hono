@@ -799,64 +799,73 @@ describe("SqliteInvoiceRepository findPaged", () => {
     // the payment while the invoice retained pre-payment amounts.
     // Fix: markPaid now wraps both calls in repo.runInTransaction, so
     // a failure inside the second call rolls back the first.
+    //
+    // This test directly verifies the rollback path: we stub
+    // updateStatus to write a sentinel row to SQL BEFORE throwing.
+    // If the BEGIN/COMMIT/ROLLBACK logic is correct, the sentinel row
+    // must NOT be present after the throw.
     await module.create(makeInput({ id: "inv-1" }));
     await module.receive("inv-1", ACTOR);
 
-    // Snapshot before the failing call. The in-memory debt port does
-    // not implement rollback, so we verify atomicity by proving that
-    // repo.updateStatus was never reached (the exception from inside
-    // the callback aborts before the update runs). We mock the debt
-    // port's recordInvoicePayment to be a no-op that records the call,
-    // then assert the invoice's paid_amount stays at 0 because
-    // updateStatus never ran.
-    let paymentCalled = false;
-    const trackingPort: InvoiceDebtPort = {
-      ...debtPort,
-      recordInvoicePayment: async (input) => {
-        paymentCalled = true;
-        // Simulate the production behavior: this WOULD have been
-        // recorded. If updateStatus then throws, the transaction
-        // boundary means the entry should NOT be visible.
-        const result = debtPort.recordInvoicePayment(input);
-        return result;
-      },
-    };
-    const trackingModule = new InvoiceModule(repo, trackingPort);
-
     const originalUpdateStatus = repo.updateStatus.bind(repo);
-    let updateStatusCalled = false;
     (repo as unknown as {
       updateStatus: (...args: unknown[]) => Promise<unknown>;
     }).updateStatus = async (...args: unknown[]) => {
-      updateStatusCalled = true;
+      const id = args[0] as string;
+      const status = args[1] as string;
+      // Write a sentinel row, THEN throw. The transaction must roll
+      // back this row.
+      db.prepare(`INSERT INTO "_test_rollback" (id, label) VALUES (?, ?)`).run(
+        id,
+        `would-set-${status}`,
+      );
       throw new Error("simulated DB failure on updateStatus");
     };
+    db.exec(
+      `CREATE TABLE IF NOT EXISTS "_test_rollback" (id TEXT NOT NULL, label TEXT NOT NULL)`,
+    );
+
     try {
-      await expect(
-        trackingModule.markPaid("inv-1", 1000, ACTOR),
-      ).rejects.toThrow(/simulated DB failure/);
+      await expect(module.markPaid("inv-1", 1000, ACTOR)).rejects.toThrow(
+        /simulated DB failure/,
+      );
     } finally {
       (repo as unknown as {
         updateStatus: typeof originalUpdateStatus;
       }).updateStatus = originalUpdateStatus;
     }
 
-    // Sanity: both calls were reached (the order matters for atomicity).
-    expect(paymentCalled).toBe(true);
-    expect(updateStatusCalled).toBe(true);
+    // The sentinel row was written BEFORE the throw. If the BEGIN
+    // /COMMIT/ROLLBACK logic is correct, ROLLBACK removed it.
+    const sentinels = db
+      .prepare(`SELECT COUNT(*) AS c FROM "_test_rollback"`)
+      .get() as { c: number };
+    expect(sentinels.c).toBe(0);
 
-    // The critical assertion: the SQLite invoice row's paid_amount is
-    // still 0 because the failing transaction rolled back the
-    // (hypothetical) in-memory debt-port write. The in-memory debt
-    // port stores entries outside the SQLite transaction, so we can't
-    // directly verify "no entry was recorded". Instead we verify the
-    // production-correct behavior via the SQLite repo: the invoice's
-    // paid_amount did NOT change.
+    // The invoice's paid_amount must NOT have changed either.
     const inv = (db
       .prepare(`SELECT paid_amount, status FROM "invoice" WHERE id = ?`)
       .get("inv-1") as { paid_amount: number; status: string } | undefined);
     expect(inv).toBeDefined();
     expect(inv!.paid_amount).toBe(0);
     expect(inv!.status).toBe("RECEIVED");
+  });
+
+  it("runInTransaction serializes concurrent callers", async () => {
+    // Fire two transactions in parallel. Without serialization, the
+    // second BEGIN fires while the first transaction is still open
+    // and SQLite throws "cannot start a transaction within a
+    // transaction". The mutex promise chain queues them.
+    const results = await Promise.all([
+      repo.runInTransaction(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+        return "a";
+      }),
+      repo.runInTransaction(async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        return "b";
+      }),
+    ]);
+    expect(results).toEqual(["a", "b"]);
   });
 });

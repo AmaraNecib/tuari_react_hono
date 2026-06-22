@@ -16,6 +16,8 @@ const SORT_COLUMN_MAP: Record<InvoiceListSortField, string> = {
 };
 
 export class SqliteInvoiceRepository implements InvoiceRepository {
+  private transactionChain: Promise<unknown> = Promise.resolve();
+
   constructor(private readonly db: Database.Database) {}
 
   async findById(id: string): Promise<(Invoice & { lineItems: InvoiceLineItem[] }) | null> {
@@ -429,23 +431,30 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
   }
 
   async runInTransaction<T>(fn: () => Promise<T>): Promise<T> {
-    // better-sqlite3 transactions are synchronous and synchronous-only,
-    // but we can wrap async work by deferring to the user's Promise
-    // resolution: if the promise rejects, we throw inside the
-    // transaction, causing better-sqlite3 to roll back. Note that
-    // better-sqlite3's transaction() does not natively support async
-    // callbacks that interleave with the SQL connection — callers must
-    // not interleave I/O between SQL statements inside `fn`. We use
-    // BEGIN/COMMIT manually for the outer boundary to keep the
-    // contract composable for downstream async work.
-    this.db.exec("BEGIN");
-    try {
-      const result = await fn();
-      this.db.exec("COMMIT");
-      return result;
-    } catch (err) {
-      this.db.exec("ROLLBACK");
-      throw err;
-    }
+    // Serial mutex: better-sqlite3 has a single connection and BEGIN
+    // cannot be issued while another transaction is open. Two
+    // concurrent markPaid calls that both await inside `fn` would
+    // otherwise collide with a "cannot start a transaction within a
+    // transaction" error. Queue every transaction through a single
+    // promise chain so they execute one at a time. Errors are caught
+    // at the chain boundary so the next caller isn't poisoned by a
+    // previous failure.
+    const next = this.transactionChain.then(async () => {
+      this.db.exec("BEGIN");
+      try {
+        const result = await fn();
+        this.db.exec("COMMIT");
+        return result;
+      } catch (err) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Ignore ROLLBACK failures (e.g. connection already closed).
+        }
+        throw err;
+      }
+    });
+    this.transactionChain = next.catch(() => undefined);
+    return next;
   }
 }
