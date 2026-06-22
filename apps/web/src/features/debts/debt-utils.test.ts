@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   formatDebtMoney,
+  getCombinedDebtBalance,
   getDebtAccountBalance,
   getDebtAccountBalanceMeta,
   getDebtBalanceMeta,
@@ -102,5 +103,45 @@ describe("sortDebtAccounts", () => {
       { id: "c", status: "OPEN", updatedAt: "2024-03-01T00:00:00Z", createdAt: "2024-03-01T00:00:00Z" } as never,
     ])
     expect(sorted.map((s) => s.id)).toEqual(["c", "a", "b"])
+  })
+})
+
+describe("getCombinedDebtBalance (issue #22 sign convention)", () => {
+  it("returns 0 for an empty account list", () => {
+    expect(getCombinedDebtBalance([])).toBe(0)
+  })
+
+  it("returns the PAYABLE balance directly when only PAYABLE accounts exist", () => {
+    // PAYABLE convention: +balance = we owe them = net negative.
+    const net = getCombinedDebtBalance([
+      { currentBalance: 2000, direction: "PAYABLE" },
+    ])
+    expect(net).toBe(-2000)
+  })
+
+  it("returns the RECEIVABLE balance directly when only RECEIVABLE accounts exist", () => {
+    const net = getCombinedDebtBalance([
+      { currentBalance: 500, direction: "RECEIVABLE" },
+    ])
+    expect(net).toBe(500)
+  })
+
+  it("subtracts PAYABLE and adds RECEIVABLE so they cancel out", () => {
+    // Counterparty: we owe them 2000 (PAYABLE +2000) and they owe us
+    // 500 (RECEIVABLE +500). Net = we still owe them 1500.
+    const net = getCombinedDebtBalance([
+      { currentBalance: 2000, direction: "PAYABLE" },
+      { currentBalance: 500, direction: "RECEIVABLE" },
+    ])
+    expect(net).toBe(-1500)
+  })
+
+  it("returns positive net when RECEIVABLE outweighs PAYABLE", () => {
+    // They owe us 3000 and we owe them 500. Net = +2500 (they owe us).
+    const net = getCombinedDebtBalance([
+      { currentBalance: 500, direction: "PAYABLE" },
+      { currentBalance: 3000, direction: "RECEIVABLE" },
+    ])
+    expect(net).toBe(2500)
   })
 })

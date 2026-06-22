@@ -1175,12 +1175,22 @@ async function runDebtAccountBalanceRenameMigration() {
 //
 // Idempotent:
 //   - skips if `app_schema_state` already has the migration key
-//   - skips the INDEX step if it already exists
-//   - wraps DDL + state insert in a transaction
+//   - drops the legacy single-column index `IF EXISTS`
+//   - creates the new composite index `IF NOT EXISTS`
+//   - wraps all DDL + state insert in a transaction
+//
+// The legacy index `debt_account_external_counterparty_unique` was
+// installed by `debtSingleAccountMigration` (Issue #13 era) and
+// enforced "one debt account per external counterparty". That
+// constraint is incompatible with bidirectional ledgers — a
+// counterparty can now have BOTH a PAYABLE and a RECEIVABLE account.
+// The DROP step is what unblocks the second-ledger INSERT on legacy
+// databases. Fresh installs skip both the DROP (no legacy index) and
+// the CREATE (no legacy index).
 //
 // The `direction` column itself is created by the additive statement
 // in `schema-definitions.ts` (runs on every startup). The migration
-// here only handles the index creation and the app_schema_state
+// here only handles the index swap and the app_schema_state
 // bookkeeping.
 export async function applyDebtAccountDirectionMigration(db: DbExecutor): Promise<void> {
   const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
@@ -1193,6 +1203,12 @@ export async function applyDebtAccountDirectionMigration(db: DbExecutor): Promis
   }
 
   await db.$transaction(async (tx) => {
+    // Drop the legacy single-column unique index. `IF EXISTS` makes
+    // this safe on fresh installs that never had the constraint.
+    await tx.$executeRawUnsafe(
+      'DROP INDEX IF EXISTS "debt_account_external_counterparty_unique"',
+    );
+
     // Create the composite unique index. `IF NOT EXISTS` makes this
     // safe to re-run on a DB where the index was created by a
     // schema-statements-based fresh install.
