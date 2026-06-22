@@ -159,8 +159,28 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
       ).toString("base64url");
     }
 
+    const invoiceIds = pageRows.map((row) => row.id as string);
+    const lineItemRows = invoiceIds.length === 0
+      ? []
+      : (this.db
+          .prepare(
+            `SELECT * FROM "invoice_line_item" WHERE invoice_id IN (${invoiceIds.map(() => "?").join(",")}) ORDER BY invoice_id, rowid`,
+          )
+          .all(...invoiceIds) as Record<string, unknown>[]);
+    const lineItemsByInvoiceId = new Map<string, InvoiceLineItem[]>();
+    for (const liRow of lineItemRows) {
+      const li = this.mapRowToLineItem(liRow);
+      const arr = lineItemsByInvoiceId.get(li.invoiceId) ?? [];
+      arr.push(li);
+      lineItemsByInvoiceId.set(li.invoiceId, arr);
+    }
+    const items = pageRows.map((row) => ({
+      ...this.mapRowToInvoice(row),
+      lineItems: lineItemsByInvoiceId.get(row.id as string) ?? [],
+    }));
+
     return {
-      items: pageRows.map((row) => this.mapRowToInvoice(row)),
+      items,
       nextCursor,
       totalCount,
     };

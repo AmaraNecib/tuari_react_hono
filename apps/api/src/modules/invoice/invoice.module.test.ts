@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import Database from "better-sqlite3";
 
 import { createInMemoryInvoiceDebtPort } from "./adapters/invoice-debt.port";
 import { createInMemoryInvoiceRepository } from "./adapters/in-memory-invoice.repository";
+import { SqliteInvoiceRepository } from "./adapters/sqlite-invoice.repository";
 import { InvoiceModule } from "./invoice.module";
 import type {
   CreateInvoiceInput,
@@ -706,5 +708,87 @@ describe("InvoiceModule", () => {
       expect(updated.dueDate).toBe("2026-08-01");
       expect(updated.notes).toBe("paid");
     });
+  });
+});
+
+describe("SqliteInvoiceRepository findPaged", () => {
+  // Regression test for Greptile 3/5 P1: the SQLite findPaged previously
+  // hard-coded lineItems: [] and never queried invoice_line_item. This
+  // integration test exercises the real adapter to prove the list
+  // endpoint now returns populated line-item arrays matching what the
+  // get endpoint returns for the same record.
+  let db: Database.Database;
+  let repo: SqliteInvoiceRepository;
+  let module: InvoiceModule;
+  let debtPort: ReturnType<typeof createInMemoryInvoiceDebtPort>;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(`
+      CREATE TABLE "invoice" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "invoice_number" TEXT,
+        "supplier_name" TEXT NOT NULL,
+        "supplier_phone" TEXT,
+        "warehouse_id" TEXT,
+        "project_id" TEXT,
+        "status" TEXT NOT NULL,
+        "invoice_date" DATETIME,
+        "due_date" DATETIME,
+        "currency" TEXT NOT NULL DEFAULT 'DZD',
+        "total_amount" REAL NOT NULL DEFAULT 0,
+        "paid_amount" REAL NOT NULL DEFAULT 0,
+        "remaining_amount" REAL NOT NULL DEFAULT 0,
+        "debt_account_id" TEXT,
+        "notes" TEXT,
+        "created_at" DATETIME NOT NULL,
+        "updated_at" DATETIME NOT NULL
+      );
+      CREATE TABLE "invoice_line_item" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "invoice_id" TEXT NOT NULL,
+        "description" TEXT NOT NULL,
+        "quantity" REAL NOT NULL,
+        "unit_price" REAL NOT NULL,
+        "total" REAL NOT NULL,
+        FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE CASCADE
+      );
+    `);
+    repo = new SqliteInvoiceRepository(db);
+    debtPort = createInMemoryInvoiceDebtPort();
+    module = new InvoiceModule(repo, debtPort);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("returns populated lineItems for every invoice in listPaged", async () => {
+    // Use unique line-item ids per invoice so the UNIQUE constraint on
+    // invoice_line_item.id doesn't collide.
+    const input1 = makeInput({ id: "inv-1", supplierName: "A" });
+    const input2 = makeInput({ id: "inv-2", supplierName: "B" });
+    input2.lineItems = input2.lineItems.map((li, idx) => ({
+      ...li,
+      id: `li-2-${idx + 1}`,
+    }));
+    await module.create(input1);
+    await module.create(input2);
+
+    const result = await module.listPaged({ limit: 10 });
+    expect(result.items).toHaveLength(2);
+    for (const item of result.items) {
+      expect(item.lineItems.length).toBeGreaterThan(0);
+      expect(item.lineItems[0]!.invoiceId).toBe(item.id);
+      expect(item.lineItems[0]!.description).toBeDefined();
+      expect(item.lineItems[0]!.unitPrice).toBeGreaterThan(0);
+    }
+
+    // Also confirm line items match what findById returns.
+    const single = await module.findById("inv-1");
+    expect(single!.lineItems).toEqual(
+      result.items.find((i) => i.id === "inv-1")!.lineItems,
+    );
   });
 });
