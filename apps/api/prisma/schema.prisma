@@ -343,7 +343,7 @@ model DebtAccount {
   workerId               String?               @map("worker_id")
   externalCounterpartyId String?               @map("external_counterparty_id")
   status                 String
-  currentBalanceDzd      Float                 @default(0) @map("current_balance_dzd")
+  currentBalance          Float                 @default(0) @map("current_balance")
   note                   String?
   settledAt              DateTime?             @map("settled_at")
   actorUserId            String?               @map("actor_user_id")
