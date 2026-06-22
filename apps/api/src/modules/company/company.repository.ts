@@ -137,6 +137,10 @@ export interface CompanyRepository {
   getDebtAccountById(id: string): DebtAccountRecord | null;
   getDebtAccountByWorkerId(workerId: string): DebtAccountRecord | null;
   getDebtAccountByExternalCounterpartyId(externalCounterpartyId: string): DebtAccountRecord | null;
+  getDebtAccountByExternalCounterpartyIdAndDirection(
+    externalCounterpartyId: string,
+    direction: DebtAccountRecord["direction"],
+  ): DebtAccountRecord | null;
   createDebtAccount(data: DebtAccountCreateData, auditContext?: MutationAuditContext): DebtAccountRecord;
   updateDebtAccount(data: DebtAccountUpdateData, auditContext?: MutationAuditContext): DebtAccountRecord | null;
 
@@ -928,6 +932,11 @@ export class SqliteCompanyRepository implements CompanyRepository {
       params.push(filters.externalCounterpartyId)
     }
 
+    if (filters?.direction) {
+      conditions.push('direction = ?')
+      params.push(filters.direction)
+    }
+
     if (filters?.status) {
       conditions.push('status = ?')
       params.push(filters.status)
@@ -962,13 +971,25 @@ export class SqliteCompanyRepository implements CompanyRepository {
     return row ? mapDebtAccount(row) : null
   }
 
+  getDebtAccountByExternalCounterpartyIdAndDirection(
+    externalCounterpartyId: string,
+    direction: DebtAccountRecord["direction"],
+  ): DebtAccountRecord | null {
+    const row = this.database
+      .prepare(
+        'SELECT * FROM debt_account WHERE external_counterparty_id = ? AND direction = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1',
+      )
+      .get(externalCounterpartyId, direction) as SqliteRow | undefined
+    return row ? mapDebtAccount(row) : null
+  }
+
   createDebtAccount(data: DebtAccountCreateData, auditContext?: MutationAuditContext): DebtAccountRecord {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
     const audit = normalizeAuditContext(auditContext)
     this.database
       .prepare(
-        'INSERT INTO debt_account (id, party_type, worker_id, external_counterparty_id, status, current_balance, note, settled_at, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO debt_account (id, party_type, worker_id, external_counterparty_id, status, direction, current_balance, note, settled_at, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         id,
@@ -976,6 +997,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
         data.workerId ?? null,
         data.externalCounterpartyId ?? null,
         data.status,
+        data.direction,
         data.currentBalance,
         data.note ?? null,
         data.settledAt ?? null,

@@ -782,6 +782,68 @@ describe("CompanyService", () => {
     expect(() => service.settleDebtAccount({ id: account.id })).toThrowError(CompanyError)
   })
 
+  it("splits a counterparty's debt into independent payable and receivable ledgers (issue #22)", () => {
+    const { service } = createHarness()
+    const audit = createAuditContext()
+    const counterparty = service.createExternalCounterparty({
+      fullName: "مورد ثنائي الاتجاه",
+      phoneNumber: "0612345001",
+    }).item
+
+    // Payable ledger (we owe them) — created first.
+    const payable = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "PAYABLE",
+        openingBalanceDzd: 2000,
+      },
+      audit,
+    ).item
+
+    // Receivable ledger (they owe us) — same counterparty, distinct account.
+    const receivable = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 500,
+      },
+      audit,
+    ).item
+
+    expect(payable.id).not.toBe(receivable.id)
+    expect(payable.direction).toBe("PAYABLE")
+    expect(receivable.direction).toBe("RECEIVABLE")
+    expect(payable.currentBalance).toBe(2000)
+    expect(receivable.currentBalance).toBe(500)
+
+    // A second createDebtAccount on the same (counterparty, direction)
+    // reuses the existing account and records an ADJUSTMENT entry —
+    // it does NOT create a new account. The receivable ledger
+    // must remain untouched when we adjust the payable one.
+    const payableAfter = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "PAYABLE",
+        openingBalanceDzd: 300,
+        openingEntryNote: "فاتورة إضافية",
+      },
+      audit,
+    ).item
+    expect(payableAfter.id).toBe(payable.id)
+    expect(payableAfter.currentBalance).toBe(2300)
+
+    const summary = service.listDebtsSummary()
+    expect(summary.debtAccounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ accountId: payable.id, direction: "PAYABLE", currentBalance: 2300 }),
+        expect.objectContaining({ accountId: receivable.id, direction: "RECEIVABLE", currentBalance: 500 }),
+      ]),
+    )
+  })
+
   it("rejects backdated debt entries to preserve running balances", () => {
     const { service, roleIds } = createHarness()
     const worker = service.createEmployee({

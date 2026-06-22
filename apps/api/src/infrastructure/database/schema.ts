@@ -7,6 +7,7 @@ import {
   companyIndexStatements,
   companyStatusConstraintChecks,
   debtAccountBalanceRenameMigrationKey,
+  debtAccountDirectionMigrationKey,
   debtSingleAccountMigrationKey,
   invoiceDebtLinkageMigrationKey,
   obsoleteMigrationKey,
@@ -1166,6 +1167,51 @@ async function runDebtAccountBalanceRenameMigration() {
   await applyDebtAccountBalanceRename(prisma);
 }
 
+// Issue #22: split each counterparty's debt into a payable and a
+// receivable ledger. Adds a `direction` column to `debt_account`,
+// backfills existing rows to 'PAYABLE', and creates a composite
+// unique index so each counterparty has at most one account of each
+// direction.
+//
+// Idempotent:
+//   - skips if `app_schema_state` already has the migration key
+//   - skips the INDEX step if it already exists
+//   - wraps DDL + state insert in a transaction
+//
+// The `direction` column itself is created by the additive statement
+// in `schema-definitions.ts` (runs on every startup). The migration
+// here only handles the index creation and the app_schema_state
+// bookkeeping.
+export async function applyDebtAccountDirectionMigration(db: DbExecutor): Promise<void> {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    debtAccountDirectionMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  await db.$transaction(async (tx) => {
+    // Create the composite unique index. `IF NOT EXISTS` makes this
+    // safe to re-run on a DB where the index was created by a
+    // schema-statements-based fresh install.
+    await tx.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "debt_account_external_counterparty_direction_unique" ON "debt_account" ("external_counterparty_id", "direction") WHERE "external_counterparty_id" IS NOT NULL',
+    );
+
+    await tx.$executeRawUnsafe(
+      'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+      debtAccountDirectionMigrationKey,
+      new Date().toISOString(),
+    );
+  });
+}
+
+async function runDebtAccountDirectionMigration() {
+  await applyDebtAccountDirectionMigration(prisma);
+}
+
 async function ensureSeedRoles() {
   for (const role of roleSeeds) {
     const existing = (await prisma.$queryRawUnsafe<Array<{ id: string }>>(
@@ -1265,6 +1311,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
   await runAddAdvanceDebtEntryMigration();
   await runInvoiceDebtLinkageMigration();
   await runDebtAccountBalanceRenameMigration();
+  await runDebtAccountDirectionMigration();
 
   await syncLegacyTimestampColumns();
   await repairLegacyAuthTables();

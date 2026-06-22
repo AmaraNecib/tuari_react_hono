@@ -8,7 +8,12 @@ import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/pag
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 
 import { DebtLedgerPanel } from "./debt-ledger-panel"
-import { formatDebtMoney, getDebtBalanceMeta, sortDebtAccounts } from "./debt-utils"
+import {
+  formatDebtMoney,
+  getDebtAccountBalanceMeta,
+  getDebtDirectionLabel,
+  sortDebtAccounts,
+} from "./debt-utils"
 
 function CasesStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
@@ -40,7 +45,7 @@ export function DebtCasesPanel({
   const [note, setNote] = useState("")
   const sortedAccounts = useMemo(() => sortDebtAccounts(accounts), [accounts])
   const debtAccount = sortedAccounts[0] ?? null
-  const balanceMeta = getDebtBalanceMeta(debtAccount?.currentBalance ?? 0)
+  const balanceMeta = debtAccount ? getDebtAccountBalanceMeta(debtAccount) : getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" })
   const normalizedOpeningBalance = openingBalance.trim()
   const openingBalanceValue = normalizedOpeningBalance.length > 0 ? Number(normalizedOpeningBalance) : 0
   const hasValidOpeningBalance = Number.isFinite(openingBalanceValue)
@@ -50,7 +55,7 @@ export function DebtCasesPanel({
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <CasesStatCard
-          label="الرصيد الحالي"
+          label={debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
           value={`دج ${formatDebtMoney(debtAccount?.currentBalance ?? 0)}`}
           valueClassName={balanceMeta.textClassName}
         />

@@ -343,6 +343,7 @@ model DebtAccount {
   workerId               String?               @map("worker_id")
   externalCounterpartyId String?               @map("external_counterparty_id")
   status                 String
+  direction              String                @default("PAYABLE") @map("direction")
   currentBalance          Float                 @default(0) @map("current_balance")
   note                   String?
   settledAt              DateTime?             @map("settled_at")

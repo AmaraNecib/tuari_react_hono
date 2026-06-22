@@ -38,6 +38,30 @@ export function getDebtBalanceMeta(balanceDzd: number) {
   }
 }
 
+/**
+ * Direction-aware balance meta. The sign convention is fixed per
+ * direction: `+balance` on a PAYABLE account means "we owe them"
+ * (rose); `+balance` on a RECEIVABLE account means "they owe us"
+ * (emerald). The aggregated party summary uses the net (sign-only)
+ * helper; per-account UIs use this one so the colors and labels stay
+ * consistent with the underlying ledger direction.
+ */
+export function getDebtAccountBalanceMeta(account: Pick<DebtAccount, "currentBalance" | "direction">) {
+  const { currentBalance, direction } = account
+
+  if (currentBalance === 0) {
+    return getDebtBalanceMeta(0)
+  }
+
+  const positiveDirectionMeaning: "RECEIVABLE" | "PAYABLE" = direction === "PAYABLE" ? "PAYABLE" : "RECEIVABLE"
+  const effectiveSign = positiveDirectionMeaning === "RECEIVABLE" ? currentBalance : -currentBalance
+  return getDebtBalanceMeta(effectiveSign)
+}
+
+export function getDebtDirectionLabel(direction: DebtAccount["direction"]) {
+  return direction === "PAYABLE" ? "علينا له" : "لنا عنده"
+}
+
 export function getDebtAccountBalance(account: DebtAccount | null | undefined) {
   return account?.currentBalance ?? 0
 }

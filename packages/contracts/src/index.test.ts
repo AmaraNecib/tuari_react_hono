@@ -7,6 +7,7 @@ import {
   debtPartyDetailSchema,
   debtEntryCreateInputSchema,
   debtEntrySchema,
+  debtSummaryItemSchema,
   debtsSummarySchema,
   externalCounterpartyCreateInputSchema,
   externalCounterpartySchema,
@@ -277,6 +278,7 @@ describe("contracts", () => {
         workerId: "worker-1",
         externalCounterpartyId: null,
         status: "OPEN",
+        direction: "PAYABLE",
         currentBalance: 1500,
         note: null,
         settledAt: null,
@@ -287,6 +289,46 @@ describe("contracts", () => {
         updatedAt: "2026-03-17T10:00:00.000Z",
       }).partyType,
     ).toBe("INTERNAL_WORKER")
+
+    // Issue #22: every debt account carries a `direction` (PAYABLE or
+    // RECEIVABLE). The schema must reject unknown values.
+    expect(() =>
+      debtAccountSchema.parse({
+        id: "debt-account-bad",
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        externalCounterpartyId: null,
+        status: "OPEN",
+        direction: "BOGUS",
+        currentBalance: 0,
+        note: null,
+        settledAt: null,
+        actorUserId: "user-1",
+        actorLabel: "Admin",
+        transactionId: "550e8400-e29b-41d4-a716-446655440000",
+        createdAt: "2026-03-17T10:00:00.000Z",
+        updatedAt: "2026-03-17T10:00:00.000Z",
+      }),
+    ).toThrow()
+
+    // The summary item is a projection of debtAccount and inherits
+    // the same direction enum.
+    expect(
+      debtSummaryItemSchema.parse({
+        accountId: "debt-account-1",
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        externalCounterpartyId: null,
+        displayName: "عامل واحد",
+        phoneNumber: "0612345678",
+        status: "OPEN",
+        direction: "RECEIVABLE",
+        currentBalance: 500,
+        balanceLabel: "لنا عنده",
+        createdAt: "2026-03-17T10:00:00.000Z",
+        updatedAt: "2026-03-17T10:00:00.000Z",
+      }).direction,
+    ).toBe("RECEIVABLE")
 
     expect(
       debtEntrySchema.parse({

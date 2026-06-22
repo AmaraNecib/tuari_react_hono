@@ -96,6 +96,7 @@ export const employeeStatusSchema = z.enum(["ACTIVE", "INACTIVE", "LEFT"]);
 export const salaryPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
 export const debtPartyTypeSchema = z.enum(["INTERNAL_WORKER", "EXTERNAL_COUNTERPARTY"]);
 export const debtAccountStatusSchema = z.enum(["OPEN", "SETTLED"]);
+export const debtAccountDirectionSchema = z.enum(["PAYABLE", "RECEIVABLE"]);
 export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT", "ADVANCE"]);
 export const projectStatusSchema = z.enum([
   "ACTIVE",

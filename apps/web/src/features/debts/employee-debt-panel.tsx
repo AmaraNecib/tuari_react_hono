@@ -7,7 +7,7 @@ import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria
 import { cn } from "@/lib/utils"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 import { useEmployeeDebtAccountQuery, useCreateEmployeeDebtEntryMutation } from "./employee-debt-hooks"
-import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
+import { formatDebtMoney, getDebtAccountBalanceMeta, getDebtDirectionLabel } from "./debt-utils"
 
 export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
   const debtAccountQuery = useEmployeeDebtAccountQuery(employeeId)
@@ -19,7 +19,9 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
   const { date: entryDate, setDate: setEntryDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
 
   const debtAccount = debtAccountQuery.data
-  const balanceMeta = getDebtBalanceMeta(debtAccount?.currentBalance ?? 0)
+  const balanceMeta = debtAccount
+    ? getDebtAccountBalanceMeta(debtAccount)
+    : getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" })
 
   const handleSubmit = async () => {
     if (!hasValidAmount) return
@@ -46,7 +48,9 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
     <div className="space-y-6">
       <div className="grid gap-4">
         <Surface className="rounded-[22px] px-5 py-4" variant="card">
-          <p className="text-sm text-muted-foreground">الرصيد الحالي</p>
+          <p className="text-sm text-muted-foreground">
+            {debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
+          </p>
           <p className={cn("mt-2 font-mono text-2xl font-semibold", balanceMeta.textClassName)} dir="ltr">
             دج {formatDebtMoney(debtAccount?.currentBalance ?? 0)}
           </p>

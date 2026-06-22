@@ -582,6 +582,7 @@ export function useCreateDebtAccountMutation() {
       partyType: "INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY"
       workerId?: string | null
       externalCounterpartyId?: string | null
+      direction?: "PAYABLE" | "RECEIVABLE"
       note?: string | null
       openingBalanceDzd?: number
       openingEntryDate?: string
@@ -589,6 +590,10 @@ export function useCreateDebtAccountMutation() {
     }) => {
       const result = await rpcClient.debtAccountsCreate({
         externalCounterpartyId: input.externalCounterpartyId ?? null,
+        // Issue #22: backward-compatible default — purchase-ledger
+        // (PAYABLE) accounts keep their pre-#22 behavior. Sale-ledger
+        // (RECEIVABLE) accounts will be wired by Issue #26.
+        direction: input.direction ?? "PAYABLE",
         note: input.note ?? null,
         openingBalanceDzd: input.openingBalanceDzd ?? 0,
         openingEntryDate: input.openingEntryDate,

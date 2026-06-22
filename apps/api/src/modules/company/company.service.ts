@@ -236,7 +236,9 @@ export class CompanyService {
 
     const existingAccount = input.partyType === "INTERNAL_WORKER"
       ? this.repository.getDebtAccountByWorkerId(workerId!)
-      : this.repository.getDebtAccountByExternalCounterpartyId(externalCounterpartyId!)
+      : (input.direction === "RECEIVABLE"
+          ? this.repository.getDebtAccountByExternalCounterpartyIdAndDirection(externalCounterpartyId!, "RECEIVABLE")
+          : this.repository.getDebtAccountByExternalCounterpartyIdAndDirection(externalCounterpartyId!, "PAYABLE"))
 
     if (existingAccount) {
       if (openingBalance !== 0) {
@@ -262,6 +264,7 @@ export class CompanyService {
           partyType: input.partyType,
           workerId,
           externalCounterpartyId,
+          direction: input.direction ?? "PAYABLE",
           status,
           currentBalance: openingBalance,
           note: normalizeText(input.note),
@@ -432,6 +435,7 @@ export class CompanyService {
           displayName: employee ? `${employee.firstName} ${employee.lastName}` : counterparty?.fullName ?? account.id,
           phoneNumber: employee?.phone ?? counterparty?.phoneNumber ?? null,
           status: account.status,
+          direction: account.direction,
           currentBalance: account.currentBalance,
           balanceLabel: getDebtBalanceLabel(account.currentBalance),
           createdAt: account.createdAt,

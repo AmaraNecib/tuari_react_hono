@@ -2,8 +2,15 @@ import Database from "better-sqlite3";
 
 import { describe, expect, it } from "vitest";
 
-import { applyDebtAccountBalanceRename, type DbExecutor } from "./schema";
-import { debtAccountBalanceRenameMigrationKey } from "./schema-definitions";
+import {
+  applyDebtAccountBalanceRename,
+  applyDebtAccountDirectionMigration,
+  type DbExecutor,
+} from "./schema";
+import {
+  debtAccountBalanceRenameMigrationKey,
+  debtAccountDirectionMigrationKey,
+} from "./schema-definitions";
 
 /**
  * Adapter that turns a `better-sqlite3` `Database` into a `DbExecutor`
@@ -167,5 +174,112 @@ describe("applyDebtAccountBalanceRename (issue #21)", () => {
       { id: "acct-positive", balance: 500 },
       { id: "acct-zero", balance: 0 },
     ]);
+  });
+});
+
+/**
+ * Issue #22: add `direction` column to `debt_account` and enforce
+ * uniqueness on `(external_counterparty_id, direction)`. The column
+ * itself is added by an additive statement on every startup, so the
+ * migration only needs to create the composite unique index and
+ * record itself in `app_schema_state`.
+ */
+describe("applyDebtAccountDirectionMigration (issue #22)", () => {
+  function createDbWithDirectionColumn() {
+    const db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(`
+      CREATE TABLE "app_schema_state" (
+        "key" TEXT NOT NULL PRIMARY KEY,
+        "executed_at" DATETIME NOT NULL
+      );
+      CREATE TABLE "external_counterparty" (
+        "id" TEXT NOT NULL PRIMARY KEY
+      );
+      CREATE TABLE "debt_account" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "external_counterparty_id" TEXT,
+        "direction" TEXT NOT NULL DEFAULT 'PAYABLE'
+          CHECK ("direction" IN ('PAYABLE', 'RECEIVABLE')),
+        "status" TEXT NOT NULL,
+        "current_balance" REAL NOT NULL DEFAULT 0
+      );
+    `);
+    db.prepare('INSERT INTO "external_counterparty" ("id") VALUES (?), (?)').run(
+      "ext-1",
+      "ext-2",
+    );
+    return db;
+  }
+
+  function listIndexes(db: Database.Database, table: string) {
+    return db
+      .prepare(`PRAGMA index_list("${table}")`)
+      .all()
+      .map((row) => (row as { name: string }).name);
+  }
+
+  it("creates the composite unique index on a fresh legacy DB", async () => {
+    const db = createDbWithDirectionColumn();
+
+    await applyDebtAccountDirectionMigration(asDbExecutor(db));
+
+    const indexes = listIndexes(db, "debt_account");
+    expect(indexes).toContain("debt_account_external_counterparty_direction_unique");
+
+    const [keyRow] = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(debtAccountDirectionMigrationKey) as Array<{ key: string }>;
+    expect(keyRow?.key).toBe(debtAccountDirectionMigrationKey);
+  });
+
+  it("is a no-op when called twice (state key guards re-run)", async () => {
+    const db = createDbWithDirectionColumn();
+
+    await applyDebtAccountDirectionMigration(asDbExecutor(db));
+    await applyDebtAccountDirectionMigration(asDbExecutor(db));
+
+    const keys = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(debtAccountDirectionMigrationKey) as Array<{ key: string }>;
+    expect(keys).toHaveLength(1);
+  });
+
+  it("enforces one-PAYABLE-and-one-RECEIVABLE-per-counterparty at the DB layer", async () => {
+    const db = createDbWithDirectionColumn();
+
+    await applyDebtAccountDirectionMigration(asDbExecutor(db));
+
+    // First PAYABLE account: ok
+    db.prepare(
+      'INSERT INTO "debt_account" ("id", "external_counterparty_id", "direction", "status") VALUES (?, ?, ?, ?)',
+    ).run("acct-pay-1", "ext-1", "PAYABLE", "OPEN");
+
+    // First RECEIVABLE account for same counterparty: ok
+    expect(() =>
+      db
+        .prepare(
+          'INSERT INTO "debt_account" ("id", "external_counterparty_id", "direction", "status") VALUES (?, ?, ?, ?)',
+        )
+        .run("acct-rec-1", "ext-1", "RECEIVABLE", "OPEN"),
+    ).not.toThrow();
+
+    // Second PAYABLE for same counterparty: rejected
+    expect(() =>
+      db
+        .prepare(
+          'INSERT INTO "debt_account" ("id", "external_counterparty_id", "direction", "status") VALUES (?, ?, ?, ?)',
+        )
+        .run("acct-pay-2", "ext-1", "PAYABLE", "OPEN"),
+    ).toThrow(/UNIQUE constraint failed/);
+
+    // Second RECEIVABLE for same counterparty: rejected
+    expect(() =>
+      db
+        .prepare(
+          'INSERT INTO "debt_account" ("id", "external_counterparty_id", "direction", "status") VALUES (?, ?, ?, ?)',
+        )
+        .run("acct-rec-2", "ext-1", "RECEIVABLE", "OPEN"),
+    ).toThrow(/UNIQUE constraint failed/);
   });
 });
