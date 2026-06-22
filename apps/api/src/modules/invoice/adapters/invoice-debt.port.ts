@@ -66,9 +66,11 @@ export function createSqliteInvoiceDebtPort(
     openingSignedAmount: number,
     note: string,
     audit: MutationAuditContext,
-  ): string {
+  ): { id: string; previousBalance: number } {
     const existing = repository.getDebtAccountByExternalCounterpartyId(counterpartyId);
-    if (existing) return existing.id;
+    if (existing) {
+      return { id: existing.id, previousBalance: existing.currentBalanceDzd };
+    }
 
     const created = repository.createDebtAccount(
       {
@@ -82,7 +84,7 @@ export function createSqliteInvoiceDebtPort(
       },
       audit,
     );
-    return created.id;
+    return { id: created.id, previousBalance: 0 };
   }
 
   function backfillEntryInvoiceId(
@@ -151,31 +153,56 @@ export function createSqliteInvoiceDebtPort(
         transactionId: input.transactionId,
       };
 
+      // Atomic single-transaction flow: ensure counterparty -> ensure
+      // debt account -> create OPENING entry with correct running balance
+      // -> backfill invoice_id on that same entry. Either all four land
+      // or none do.
       const counterpartyId = ensureCounterpartyId(
         input.supplierName,
         input.supplierPhone,
       );
 
-      const debtAccountId = ensureDebtAccountId(
-        counterpartyId,
-        input.amount,
-        `Invoice ${input.invoiceId} opening balance`,
-        audit,
-      );
+      const createOpening = db.transaction(() => {
+        const account = ensureDebtAccountId(
+          counterpartyId,
+          input.amount,
+          `Invoice ${input.invoiceId} opening balance`,
+          audit,
+        );
+        const balanceAfter = account.previousBalance + input.amount;
 
-      repository.createDebtEntry(
-        {
-          debtAccountId,
-          entryType: "OPENING",
-          signedAmountDzd: input.amount,
-          entryDate: new Date().toISOString(),
-          note: `Invoice ${input.invoiceId} opening balance`,
-          balanceAfterDzd: input.amount,
-        },
-        audit,
-      );
-      backfillEntryInvoiceId(debtAccountId, "OPENING", input.invoiceId);
+        repository.createDebtEntry(
+          {
+            debtAccountId: account.id,
+            entryType: "OPENING",
+            signedAmountDzd: input.amount,
+            entryDate: new Date().toISOString(),
+            note: `Invoice ${input.invoiceId} opening balance`,
+            balanceAfterDzd: balanceAfter,
+          },
+          audit,
+        );
+        backfillEntryInvoiceId(account.id, "OPENING", input.invoiceId);
 
+        if (account.previousBalance !== 0) {
+          // Re-stamp the debt account's running balance to reflect the
+          // new OPENING. createDebtAccount sets it to openingSignedAmount
+          // for new accounts; for existing accounts we add the delta.
+          repository.updateDebtAccount(
+            {
+              id: account.id,
+              status: "OPEN",
+              currentBalanceDzd: balanceAfter,
+              settledAt: null,
+            },
+            audit,
+          );
+        }
+
+        return account.id;
+      });
+
+      const debtAccountId = createOpening();
       return { debtAccountId };
     },
 
@@ -189,33 +216,38 @@ export function createSqliteInvoiceDebtPort(
       const { debtAccountId, totalAmount, paidAmount } =
         getInvoiceTotals(input.invoiceId);
 
-      const currentBalance = getCurrentDebtAccountBalance(debtAccountId);
-      const nextBalance = currentBalance - input.amount;
-      const settled = nextBalance <= 0;
+      const recordPayment = db.transaction(() => {
+        const currentBalance = getCurrentDebtAccountBalance(debtAccountId);
+        const nextBalance = currentBalance - input.amount;
+        const settled = nextBalance <= 0;
 
-      repository.createDebtEntry(
-        {
-          debtAccountId,
-          entryType: "PAYMENT",
-          signedAmountDzd: -input.amount,
-          entryDate: new Date().toISOString(),
-          note: `Invoice ${input.invoiceId} payment`,
-          balanceAfterDzd: nextBalance,
-        },
-        audit,
-      );
-      backfillEntryInvoiceId(debtAccountId, "PAYMENT", input.invoiceId);
+        repository.createDebtEntry(
+          {
+            debtAccountId,
+            entryType: "PAYMENT",
+            signedAmountDzd: -input.amount,
+            entryDate: new Date().toISOString(),
+            note: `Invoice ${input.invoiceId} payment`,
+            balanceAfterDzd: nextBalance,
+          },
+          audit,
+        );
+        backfillEntryInvoiceId(debtAccountId, "PAYMENT", input.invoiceId);
 
-      repository.updateDebtAccount(
-        {
-          id: debtAccountId,
-          status: settled ? "SETTLED" : "OPEN",
-          currentBalanceDzd: nextBalance,
-          settledAt: settled ? new Date().toISOString() : null,
-        },
-        audit,
-      );
+        repository.updateDebtAccount(
+          {
+            id: debtAccountId,
+            status: settled ? "SETTLED" : "OPEN",
+            currentBalanceDzd: nextBalance,
+            settledAt: settled ? new Date().toISOString() : null,
+          },
+          audit,
+        );
 
+        return { settled, nextBalance };
+      });
+
+      const { settled, nextBalance } = recordPayment();
       const newPaidAmount = paidAmount + input.amount;
       const newRemainingAmount = Math.max(0, totalAmount - newPaidAmount);
 
@@ -276,9 +308,11 @@ export function createInMemoryInvoiceDebtPort(): InvoiceDebtPort & {
   function ensureDebtAccountId(
     counterpartyId: string,
     openingSignedAmount: number,
-  ): string {
+  ): { id: string; previousBalance: number } {
     const existing = state.debtAccounts.get(counterpartyId);
-    if (existing) return existing.id;
+    if (existing) {
+      return { id: existing.id, previousBalance: existing.balance };
+    }
     const id = randomUUID();
     state.debtAccounts.set(counterpartyId, {
       id,
@@ -286,7 +320,7 @@ export function createInMemoryInvoiceDebtPort(): InvoiceDebtPort & {
       balance: openingSignedAmount,
       settled: false,
     });
-    return id;
+    return { id, previousBalance: 0 };
   }
 
   function findAccountForInvoice(invoiceId: string) {
@@ -330,18 +364,22 @@ export function createInMemoryInvoiceDebtPort(): InvoiceDebtPort & {
         input.supplierName,
         input.supplierPhone,
       );
-      const debtAccountId = ensureDebtAccountId(counterpartyId, input.amount);
-      const account = state.debtAccounts.get(counterpartyId)!;
+      const account = ensureDebtAccountId(counterpartyId, input.amount);
+      const balanceAfter = account.previousBalance + input.amount;
+      // Stamp running balance onto the account so successive OPENING
+      // entries from the same counterparty layer on top of each other.
+      const accountState = state.debtAccounts.get(counterpartyId)!;
+      accountState.balance = balanceAfter;
 
       recordEntry(
-        debtAccountId,
+        account.id,
         input.invoiceId,
         "OPENING",
         input.amount,
-        account.balance,
+        balanceAfter,
       );
 
-      return { debtAccountId };
+      return { debtAccountId: account.id };
     },
 
     async recordInvoicePayment(input) {

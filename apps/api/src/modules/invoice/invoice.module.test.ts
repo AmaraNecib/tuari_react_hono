@@ -201,6 +201,12 @@ describe("InvoiceModule", () => {
         (e) => e.entryType === "OPENING",
       );
       expect(openings).toHaveLength(2);
+
+      // Second OPENING's balanceAfter must layer on top of the first
+      // one's running balance (not just reset to its own amount).
+      const sorted = [...openings].sort((a, b) => a.invoiceId.localeCompare(b.invoiceId));
+      expect(sorted[0]!.balanceAfter).toBe(6000);
+      expect(sorted[1]!.balanceAfter).toBe(12000);
     });
 
     it("throws InvoiceNotFoundError when invoice missing", async () => {

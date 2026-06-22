@@ -225,15 +225,15 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     if (data.debtAccountId !== undefined) { setClauses.push(`debt_account_id = ?`); params.push(data.debtAccountId); }
     if (data.updatedAt !== undefined) { setClauses.push(`updated_at = ?`); params.push(data.updatedAt); }
 
-    if (setClauses.length > 0) {
-      params.push(id);
-      this.db
-        .prepare(`UPDATE "invoice" SET ${setClauses.join(", ")} WHERE id = ?`)
-        .run(...params);
-    }
+    const updateInvoice = this.db.transaction(() => {
+      if (setClauses.length > 0) {
+        params.push(id);
+        this.db
+          .prepare(`UPDATE "invoice" SET ${setClauses.join(", ")} WHERE id = ?`)
+          .run(...params);
+      }
 
-    if (data.lineItems) {
-      const transaction = this.db.transaction(() => {
+      if (data.lineItems) {
         this.db.prepare(`DELETE FROM "invoice_line_item" WHERE invoice_id = ?`).run(id);
         const insertLineItem = this.db.prepare(`
           INSERT INTO "invoice_line_item" (id, invoice_id, description, quantity, unit_price, total)
@@ -242,9 +242,9 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
         for (const li of data.lineItems!) {
           insertLineItem.run(li.id, id, li.description, li.quantity, li.unitPrice, li.total);
         }
-      });
-      transaction();
-    }
+      }
+    });
+    updateInvoice();
 
     const result = await this.findById(id);
     if (!result) throw new Error(`Invoice ${id} not found after update`);

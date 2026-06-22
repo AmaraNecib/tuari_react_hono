@@ -660,13 +660,8 @@ export const additiveStatements = [
   'ALTER TABLE "inventory_item_definition" ADD COLUMN "transaction_id" TEXT',
   'ALTER TABLE "invoice" ADD COLUMN "debt_account_id" TEXT',
   'ALTER TABLE "invoice" ADD COLUMN "currency" TEXT NOT NULL DEFAULT \'DZD\'',
-  'ALTER TABLE "invoice" ADD COLUMN "total_amount" REAL NOT NULL DEFAULT 0',
-  'ALTER TABLE "invoice" ADD COLUMN "paid_amount" REAL NOT NULL DEFAULT 0',
-  'ALTER TABLE "invoice" ADD COLUMN "remaining_amount" REAL NOT NULL DEFAULT 0',
   'ALTER TABLE "debt_entry" ADD COLUMN "invoice_id" TEXT',
   'ALTER TABLE "debt_entry" ADD COLUMN "currency" TEXT NOT NULL DEFAULT \'DZD\'',
-  'ALTER TABLE "debt_entry" ADD COLUMN "signed_amount" REAL NOT NULL DEFAULT 0',
-  'ALTER TABLE "debt_entry" ADD COLUMN "balance_after" REAL NOT NULL DEFAULT 0',
 ]
 
 export const obsoleteMigrationKey = "drop_todos_table_v1"
