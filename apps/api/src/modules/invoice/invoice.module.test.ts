@@ -479,6 +479,46 @@ describe("InvoiceModule", () => {
       }
       expect(new Set(seen).size).toBe(3);
     });
+
+    it("ASC sort: 12 null rows + 1 dated, limit=10 — all 13 reachable", async () => {
+      // Stress test for the boundary-cursor flow: null group larger
+      // than limit. Page 1 returns rows 1-10 (all null) with a
+      // boundary cursor; page 2's decoder must include remaining null
+      // rows 11-12 plus the dated row.
+      for (let i = 1; i <= 12; i++) {
+        await module.create(
+          makeInput({
+            id: `n${i.toString().padStart(2, "0")}`,
+            supplierName: `N${i}`,
+            invoiceDate: null,
+          }),
+        );
+      }
+      await module.create(
+        makeInput({
+          id: "dated",
+          supplierName: "D",
+          invoiceDate: "2024-05-01T00:00:00.000Z",
+        }),
+      );
+
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      for (let i = 0; i < 10; i++) {
+        const result = await module.listPaged({
+          limit: 10,
+          sort: { field: "invoiceDate", direction: "asc" },
+          ...(cursor ? { cursor } : {}),
+        });
+        for (const it of result.items) seen.push(it.id);
+        cursor = result.nextCursor ?? undefined;
+        if (!cursor) break;
+      }
+      expect(new Set(seen).size).toBe(13);
+      expect(seen).toContain("dated");
+      expect(seen).toContain("n01");
+      expect(seen).toContain("n12");
+    });
   });
 
   describe("markPaid", () => {
