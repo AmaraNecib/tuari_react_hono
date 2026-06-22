@@ -15,10 +15,17 @@ import type {
  * existing debt tables directly (not the CompanyService god-object) so
  * the InvoiceModule stays decoupled and testable.
  *
- * Per-counterparty ledger model:
- *   - One `debt_account` per `external_counterparty` (find-or-create on
- *     supplier name + phone). One counterparty can have many invoices;
- *     the OPENING entries accumulate the running balance.
+ * Per-counterparty ledger model (Issue #22 — bidirectional):
+ *   - One `debt_account` per (external_counterparty, direction) pair,
+ *     enforced by the composite unique index
+ *     `debt_account_external_counterparty_direction_unique`. Purchase
+ *     invoices always target the PAYABLE ledger; sale invoices (Issue
+ *     #26) will target the RECEIVABLE ledger. A single counterparty
+ *     can therefore have both ledgers, each accumulating running
+ *     balance from its own stream of invoices.
+ *   - One counterparty can have many invoices against the same ledger;
+ *     each OPENING entry accumulates on top of the previous running
+ *     balance.
  *   - Each `OPENING` debt entry is linked back to the source invoice
  *     via `debt_entry.invoice_id` so accountants can trace which
  *     invoices created which balance.
