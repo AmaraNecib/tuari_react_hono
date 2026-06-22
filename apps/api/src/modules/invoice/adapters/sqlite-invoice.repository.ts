@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import type { InvoiceRepository } from "../invoice.repository";
 import type {
   Invoice,
+  InvoiceCurrency,
   InvoiceLineItem,
   InvoiceListFilters,
   InvoiceListSortField,
@@ -11,7 +12,7 @@ import type {
 const SORT_COLUMN_MAP: Record<InvoiceListSortField, string> = {
   createdAt: "created_at",
   invoiceDate: "invoice_date",
-  totalAmountDzd: "total_amount_dzd",
+  totalAmount: "total_amount",
 };
 
 export class SqliteInvoiceRepository implements InvoiceRepository {
@@ -65,13 +66,11 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-    // Count total
     const countRow = this.db
       .prepare(`SELECT COUNT(*) as cnt FROM "invoice" ${whereClause}`)
       .get(...params) as { cnt: number };
     const totalCount = countRow.cnt;
 
-    // Cursor filter
     let cursorClause = "";
     const cursorParams: unknown[] = [];
     if (query.after) {
@@ -122,31 +121,33 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     status: "DRAFT";
     invoiceDate: string | null;
     dueDate: string | null;
-    totalAmountDzd: number;
-    paidAmountDzd: number;
-    remainingAmountDzd: number;
+    currency: InvoiceCurrency;
+    totalAmount: number;
+    paidAmount: number;
+    remainingAmount: number;
     notes: string | null;
+    debtAccountId?: string | null;
     createdAt: string;
     updatedAt: string;
     lineItems: {
       id: string;
       description: string;
       quantity: number;
-      unitPriceDzd: number;
-      totalDzd: number;
+      unitPrice: number;
+      total: number;
     }[];
   }): Promise<Invoice> {
     const insertInvoice = this.db.prepare(`
       INSERT INTO "invoice" (
         id, invoice_number, supplier_name, supplier_phone, warehouse_id, project_id,
-        status, invoice_date, due_date, total_amount_dzd, paid_amount_dzd, remaining_amount_dzd,
-        notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, invoice_date, due_date, currency, total_amount, paid_amount, remaining_amount,
+        notes, debt_account_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const insertLineItem = this.db.prepare(`
       INSERT INTO "invoice_line_item" (
-        id, invoice_id, description, quantity, unit_price_dzd, total_dzd
+        id, invoice_id, description, quantity, unit_price, total
       ) VALUES (?, ?, ?, ?, ?, ?)
     `);
 
@@ -161,16 +162,18 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
         data.status,
         data.invoiceDate,
         data.dueDate,
-        data.totalAmountDzd,
-        data.paidAmountDzd,
-        data.remainingAmountDzd,
+        data.currency,
+        data.totalAmount,
+        data.paidAmount,
+        data.remainingAmount,
         data.notes,
+        data.debtAccountId ?? null,
         data.createdAt,
         data.updatedAt,
       );
 
       for (const li of data.lineItems) {
-        insertLineItem.run(li.id, data.id, li.description, li.quantity, li.unitPriceDzd, li.totalDzd);
+        insertLineItem.run(li.id, data.id, li.description, li.quantity, li.unitPrice, li.total);
       }
     });
 
@@ -191,14 +194,17 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
       invoiceDate?: string | null;
       dueDate?: string | null;
       notes?: string | null;
-      totalAmountDzd?: number;
-      remainingAmountDzd?: number;
+      currency?: InvoiceCurrency;
+      totalAmount?: number;
+      remainingAmount?: number;
+      debtAccountId?: string | null;
+      updatedAt?: string;
       lineItems?: {
         id: string;
         description: string;
         quantity: number;
-        unitPriceDzd: number;
-        totalDzd: number;
+        unitPrice: number;
+        total: number;
       }[];
     },
   ): Promise<Invoice> {
@@ -213,27 +219,28 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     if (data.invoiceDate !== undefined) { setClauses.push(`invoice_date = ?`); params.push(data.invoiceDate); }
     if (data.dueDate !== undefined) { setClauses.push(`due_date = ?`); params.push(data.dueDate); }
     if (data.notes !== undefined) { setClauses.push(`notes = ?`); params.push(data.notes); }
-    if (data.totalAmountDzd !== undefined) { setClauses.push(`total_amount_dzd = ?`); params.push(data.totalAmountDzd); }
-    if (data.remainingAmountDzd !== undefined) { setClauses.push(`remaining_amount_dzd = ?`); params.push(data.remainingAmountDzd); }
+    if (data.currency !== undefined) { setClauses.push(`currency = ?`); params.push(data.currency); }
+    if (data.totalAmount !== undefined) { setClauses.push(`total_amount = ?`); params.push(data.totalAmount); }
+    if (data.remainingAmount !== undefined) { setClauses.push(`remaining_amount = ?`); params.push(data.remainingAmount); }
+    if (data.debtAccountId !== undefined) { setClauses.push(`debt_account_id = ?`); params.push(data.debtAccountId); }
+    if (data.updatedAt !== undefined) { setClauses.push(`updated_at = ?`); params.push(data.updatedAt); }
 
     if (setClauses.length > 0) {
-      setClauses.push(`updated_at = datetime('now')`);
       params.push(id);
       this.db
         .prepare(`UPDATE "invoice" SET ${setClauses.join(", ")} WHERE id = ?`)
         .run(...params);
     }
 
-    // Replace line items if provided
     if (data.lineItems) {
       const transaction = this.db.transaction(() => {
         this.db.prepare(`DELETE FROM "invoice_line_item" WHERE invoice_id = ?`).run(id);
         const insertLineItem = this.db.prepare(`
-          INSERT INTO "invoice_line_item" (id, invoice_id, description, quantity, unit_price_dzd, total_dzd)
+          INSERT INTO "invoice_line_item" (id, invoice_id, description, quantity, unit_price, total)
           VALUES (?, ?, ?, ?, ?, ?)
         `);
         for (const li of data.lineItems!) {
-          insertLineItem.run(li.id, id, li.description, li.quantity, li.unitPriceDzd, li.totalDzd);
+          insertLineItem.run(li.id, id, li.description, li.quantity, li.unitPrice, li.total);
         }
       });
       transaction();
@@ -247,18 +254,18 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
   async updateStatus(
     id: string,
     status: "RECEIVED" | "PAID",
-    additionalUpdates?: { paidAmountDzd?: number; remainingAmountDzd?: number },
+    additionalUpdates?: { paidAmount?: number; remainingAmount?: number },
   ): Promise<Invoice> {
     const setClauses = [`status = ?`];
     const params: unknown[] = [status];
 
-    if (additionalUpdates?.paidAmountDzd !== undefined) {
-      setClauses.push(`paid_amount_dzd = ?`);
-      params.push(additionalUpdates.paidAmountDzd);
+    if (additionalUpdates?.paidAmount !== undefined) {
+      setClauses.push(`paid_amount = ?`);
+      params.push(additionalUpdates.paidAmount);
     }
-    if (additionalUpdates?.remainingAmountDzd !== undefined) {
-      setClauses.push(`remaining_amount_dzd = ?`);
-      params.push(additionalUpdates.remainingAmountDzd);
+    if (additionalUpdates?.remainingAmount !== undefined) {
+      setClauses.push(`remaining_amount = ?`);
+      params.push(additionalUpdates.remainingAmount);
     }
 
     setClauses.push(`updated_at = datetime('now')`);
@@ -308,10 +315,12 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
       status: row.status as "DRAFT" | "RECEIVED" | "PAID",
       invoiceDate: row.invoice_date as string | null,
       dueDate: row.due_date as string | null,
-      totalAmountDzd: row.total_amount_dzd as number,
-      paidAmountDzd: row.paid_amount_dzd as number,
-      remainingAmountDzd: row.remaining_amount_dzd as number,
+      currency: (row.currency as InvoiceCurrency) ?? "DZD",
+      totalAmount: row.total_amount as number,
+      paidAmount: row.paid_amount as number,
+      remainingAmount: row.remaining_amount as number,
       notes: row.notes as string | null,
+      debtAccountId: row.debt_account_id as string | null,
       createdAt: row.created_at as string,
       updatedAt: row.updated_at as string,
       lineItems: [],
@@ -324,8 +333,8 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
       invoiceId: row.invoice_id as string,
       description: row.description as string,
       quantity: row.quantity as number,
-      unitPriceDzd: row.unit_price_dzd as number,
-      totalDzd: row.total_dzd as number,
+      unitPrice: row.unit_price as number,
+      total: row.total as number,
     };
   }
 }

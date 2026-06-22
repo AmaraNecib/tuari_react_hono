@@ -19,7 +19,7 @@ import { createFinanceHandlers } from "./handlers/finance";
 import { createInventoryHandlers } from "./handlers/inventory";
 import { createSystemHandlers } from "./handlers/system";
 import { createReportsHandlers } from "./handlers/reports";
-import createInvoiceHandlers from "./handlers/invoice";
+import { createInvoiceHandlers } from "./handlers/invoice";
 
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;

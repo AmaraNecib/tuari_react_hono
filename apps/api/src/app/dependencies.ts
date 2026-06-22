@@ -20,6 +20,7 @@ import { SessionService } from "../modules/session/session.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/sqlite-employee.repository";
 import { SqliteRoleRepository } from "../modules/workforce/adapters/sqlite-role.repository";
+import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice-debt.port";
 
 export async function createAppDependencies() {
   const sharedDatabase = await createDatabaseConnection();
@@ -33,7 +34,11 @@ export async function createAppDependencies() {
   const roleRepository = new SqliteRoleRepository(companyRepository);
   const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
   const invoiceRepository = new SqliteInvoiceRepository(sharedDatabase);
-  const invoiceModule = new InvoiceModule(invoiceRepository);
+  const invoiceDebtPort = createSqliteInvoiceDebtPort({
+    db: sharedDatabase,
+    repository: companyRepository,
+  });
+  const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
   const authBootstrapService = new AuthBootstrapService(prisma, auth, env.bootstrapSetupKey);
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
 

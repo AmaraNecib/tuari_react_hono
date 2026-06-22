@@ -1,31 +1,36 @@
-import { ORPCError } from "@orpc/server";
-import type { RpcContext } from "../context";
+import { implement, ORPCError } from "@orpc/server";
+
 import type { InvoiceModule } from "../../modules/invoice/invoice.module";
-import type { InvoiceStatus } from "../../modules/invoice/invoice.types";
-import type { createRpcMiddleware } from "../rpc-middleware";
+import {
+  EmptyLineItemsError,
+  InvalidInvoiceCursorError,
+  InvalidInvoiceStatusError,
+  InvoiceDebtPortError,
+  InvoiceNotFoundError,
+} from "../../modules/invoice/invoice.types";
+import type { RpcContext } from "../context";
+import type { RpcMiddleware } from "../rpc-middleware";
 
-type Middleware = ReturnType<typeof createRpcMiddleware>;
-
-export default function createInvoiceHandlers(
-  os: any,
-  m: Middleware,
+export function createInvoiceHandlers(
+  os: ReturnType<typeof implement>,
+  m: RpcMiddleware,
   invoiceModule: InvoiceModule,
-) {
+): Record<string, unknown> {
   return {
     invoicesList: os.invoicesList.handler(
       m.withPermission(
         "invoices.read",
-        m.withAuth(async ({ context, input }: any) => {
-          const opts = input ?? {};
+        m.withAuth(async ({ input }: { context: RpcContext; input: unknown }) => {
+          const opts = (input ?? {}) as { filters?: unknown; cursor?: string; limit?: number };
           try {
             const result = await invoiceModule.listPaged({
-              filters: opts.filters,
+              filters: opts.filters as never,
               cursor: opts.cursor,
               limit: opts.limit ?? 50,
             });
             return { ...result, hasMore: result.nextCursor !== null };
           } catch (error) {
-            if (error instanceof Error && error.message === "Invalid cursor") {
+            if (error instanceof InvalidInvoiceCursorError) {
               throw new ORPCError("BAD_REQUEST", { message: error.message });
             }
             throw error;
@@ -37,8 +42,8 @@ export default function createInvoiceHandlers(
     invoicesGet: os.invoicesGet.handler(
       m.withPermission(
         "invoices.read",
-        m.withAuth(async ({ context, input }: any) => {
-          const invoice = await invoiceModule.findById((input as any).id);
+        m.withAuth(async ({ input }: { context: RpcContext; input: unknown }) => {
+          const invoice = await invoiceModule.findById((input as { id: string }).id);
           if (!invoice) {
             throw new ORPCError("NOT_FOUND", { message: "Invoice not found" });
           }
@@ -51,22 +56,22 @@ export default function createInvoiceHandlers(
       m.withPermission(
         "invoices.create",
         m.withAudit(
-          async ({ input, auditContext }: any) => {
+          async ({ input }: { context: RpcContext; input: unknown; auditContext: unknown }) => {
+            const raw = input as { lineItems: Array<{ id?: string }> };
             const id = crypto.randomUUID();
-            // Generate IDs for line items (client doesn't supply them)
-            const lineItemsWithIds = input.lineItems.map((li: any) => ({
+            const lineItemsWithIds = raw.lineItems.map((li) => ({
               ...li,
               id: crypto.randomUUID(),
             }));
             const invoice = await invoiceModule.create({
+              ...(raw as object),
               id,
-              ...input,
               lineItems: lineItemsWithIds,
-            });
+            } as never);
             return invoice;
           },
-          (error) => {
-            if (error instanceof Error && error.message.includes("at least one line item")) {
+          (error: unknown) => {
+            if (error instanceof EmptyLineItemsError) {
               return new ORPCError("BAD_REQUEST", { message: error.message });
             }
             throw error;
@@ -79,18 +84,18 @@ export default function createInvoiceHandlers(
       m.withPermission(
         "invoices.update",
         m.withAudit(
-          async ({ input }: any) => {
-            const invoice = await invoiceModule.update(input as any);
-            return invoice;
+          async ({ input }: { context: RpcContext; input: unknown; auditContext: unknown }) => {
+            return invoiceModule.update(input as never);
           },
-          (error) => {
-            if (error instanceof Error) {
-              if (error.name === "InvoiceNotFoundError") {
-                return new ORPCError("NOT_FOUND", { message: error.message });
-              }
-              if (error.name === "InvalidInvoiceStatusError") {
-                return new ORPCError("BAD_REQUEST", { message: error.message });
-              }
+          (error: unknown) => {
+            if (error instanceof InvoiceNotFoundError) {
+              return new ORPCError("NOT_FOUND", { message: error.message });
+            }
+            if (error instanceof InvalidInvoiceStatusError) {
+              return new ORPCError("BAD_REQUEST", { message: error.message });
+            }
+            if (error instanceof EmptyLineItemsError) {
+              return new ORPCError("BAD_REQUEST", { message: error.message });
             }
             throw error;
           },
@@ -102,18 +107,16 @@ export default function createInvoiceHandlers(
       m.withPermission(
         "invoices.delete",
         m.withAudit(
-          async ({ input }: any) => {
-            await invoiceModule.delete((input as any).id);
+          async ({ input }: { context: RpcContext; input: unknown; auditContext: unknown }) => {
+            await invoiceModule.delete((input as { id: string }).id);
             return { success: true };
           },
-          (error) => {
-            if (error instanceof Error) {
-              if (error.name === "InvoiceNotFoundError") {
-                return new ORPCError("NOT_FOUND", { message: error.message });
-              }
-              if (error.name === "InvalidInvoiceStatusError") {
-                return new ORPCError("BAD_REQUEST", { message: error.message });
-              }
+          (error: unknown) => {
+            if (error instanceof InvoiceNotFoundError) {
+              return new ORPCError("NOT_FOUND", { message: error.message });
+            }
+            if (error instanceof InvalidInvoiceStatusError) {
+              return new ORPCError("BAD_REQUEST", { message: error.message });
             }
             throw error;
           },
@@ -125,18 +128,30 @@ export default function createInvoiceHandlers(
       m.withPermission(
         "invoices.update",
         m.withAudit(
-          async ({ input }: any) => {
-            const result = await invoiceModule.receive((input as any).id);
-            return result;
+          async ({
+            input,
+            auditContext,
+          }: {
+            context: RpcContext;
+            input: unknown;
+            auditContext: { actorUserId: string; actorLabel: string; transactionId: string };
+          }) => {
+            const id = (input as { id: string }).id;
+            return invoiceModule.receive(id, {
+              actorUserId: auditContext.actorUserId,
+              actorLabel: auditContext.actorLabel,
+              transactionId: auditContext.transactionId,
+            });
           },
-          (error) => {
-            if (error instanceof Error) {
-              if (error.name === "InvoiceNotFoundError") {
-                return new ORPCError("NOT_FOUND", { message: error.message });
-              }
-              if (error.name === "InvalidInvoiceStatusError") {
-                return new ORPCError("BAD_REQUEST", { message: error.message });
-              }
+          (error: unknown) => {
+            if (error instanceof InvoiceNotFoundError) {
+              return new ORPCError("NOT_FOUND", { message: error.message });
+            }
+            if (error instanceof InvalidInvoiceStatusError) {
+              return new ORPCError("BAD_REQUEST", { message: error.message });
+            }
+            if (error instanceof InvoiceDebtPortError) {
+              return new ORPCError("INTERNAL_SERVER_ERROR", { message: error.message });
             }
             throw error;
           },
@@ -148,18 +163,30 @@ export default function createInvoiceHandlers(
       m.withPermission(
         "invoices.update",
         m.withAudit(
-          async ({ input }: any) => {
-            const invoice = await invoiceModule.markPaid(input.id, input.amountDzd);
-            return invoice;
+          async ({
+            input,
+            auditContext,
+          }: {
+            context: RpcContext;
+            input: unknown;
+            auditContext: { actorUserId: string; actorLabel: string; transactionId: string };
+          }) => {
+            const { id, amountDzd } = input as { id: string; amountDzd: number };
+            return invoiceModule.markPaid(id, amountDzd, {
+              actorUserId: auditContext.actorUserId,
+              actorLabel: auditContext.actorLabel,
+              transactionId: auditContext.transactionId,
+            });
           },
-          (error) => {
-            if (error instanceof Error) {
-              if (error.name === "InvoiceNotFoundError") {
-                return new ORPCError("NOT_FOUND", { message: error.message });
-              }
-              if (error.name === "InvalidInvoiceStatusError") {
-                return new ORPCError("BAD_REQUEST", { message: error.message });
-              }
+          (error: unknown) => {
+            if (error instanceof InvoiceNotFoundError) {
+              return new ORPCError("NOT_FOUND", { message: error.message });
+            }
+            if (error instanceof InvalidInvoiceStatusError) {
+              return new ORPCError("BAD_REQUEST", { message: error.message });
+            }
+            if (error instanceof InvoiceDebtPortError) {
+              return new ORPCError("BAD_REQUEST", { message: error.message });
             }
             throw error;
           },

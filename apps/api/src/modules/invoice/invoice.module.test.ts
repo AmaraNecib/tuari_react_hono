@@ -1,362 +1,280 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { createInMemoryInvoiceDebtPort } from "./adapters/invoice-debt.port";
+import { createInMemoryInvoiceRepository } from "./adapters/in-memory-invoice.repository";
 import { InvoiceModule } from "./invoice.module";
-import type { InvoiceRepository } from "./invoice.repository";
 import type {
-  Invoice,
-  InvoiceLineItem,
-  InvoiceStatus,
   CreateInvoiceInput,
+  InvoiceDebtPort,
   UpdateInvoiceInput,
 } from "./invoice.types";
+import {
+  EmptyLineItemsError,
+  InvalidInvoiceCursorError,
+  InvalidInvoiceStatusError,
+  InvoiceDebtPortError,
+  InvoiceNotFoundError,
+} from "./invoice.types";
 
-// --- In-memory adapter for tests ---
+const ACTOR = {
+  actorUserId: "user-1",
+  actorLabel: "Test User",
+  transactionId: "tx-1",
+};
 
-function createInMemoryRepository(): InvoiceRepository & {
-  _invoices: Map<string, Invoice & { lineItems: InvoiceLineItem[] }>;
-} {
-  const invoices = new Map<string, Invoice & { lineItems: InvoiceLineItem[] }>();
+function makeLineItems(
+  items: Array<{ description: string; quantity: number; unitPrice: number }>,
+) {
+  return items.map((item, idx) => ({
+    id: `li-${idx + 1}`,
+    description: item.description,
+    quantity: item.quantity,
+    unitPrice: item.unitPrice,
+  }));
+}
 
+function makeInput(overrides: Partial<CreateInvoiceInput> = {}): CreateInvoiceInput {
   return {
-    _invoices: invoices,
-
-    async findById(id) {
-      return invoices.get(id) ?? null;
-    },
-
-    async findPaged({ filters, sort, after, limit }) {
-      let items = Array.from(invoices.values());
-
-      if (filters?.status) {
-        items = items.filter((i) => i.status === filters.status);
-      }
-      if (filters?.supplierName) {
-        items = items.filter((i) =>
-          i.supplierName.toLowerCase().includes(filters.supplierName!.toLowerCase()),
-        );
-      }
-
-      // Sort by createdAt desc, id desc
-      items.sort((a, b) => {
-        const cmp = b.createdAt.localeCompare(a.createdAt);
-        return cmp !== 0 ? cmp : b.id.localeCompare(a.id);
-      });
-
-      const totalCount = items.length;
-
-      // Cursor filter
-      if (after) {
-        items = items.filter(
-          (i) =>
-            String(i.createdAt) < String(after.sortValue) ||
-            (String(i.createdAt) === String(after.sortValue) && i.id < after.id),
-        );
-      }
-
-      const page = items.slice(0, limit + 1);
-      const hasMore = page.length > limit;
-      const pageItems = hasMore ? page.slice(0, limit) : page;
-
-      let nextCursor: string | null = null;
-      if (hasMore && pageItems.length > 0) {
-        const last = pageItems[pageItems.length - 1]!;
-        nextCursor = Buffer.from(
-          JSON.stringify({ sortValue: last.createdAt, id: last.id }),
-        ).toString("base64url");
-      }
-
-      return { items: pageItems, nextCursor, totalCount };
-    },
-
-    async create(data) {
-      const invoice: Invoice & { lineItems: InvoiceLineItem[] } = {
-        ...data,
-        lineItems: data.lineItems.map((li) => ({
-          ...li,
-          invoiceId: data.id,
-        })),
-      };
-      invoices.set(data.id, invoice);
-      return { ...invoice, lineItems: [...invoice.lineItems] };
-    },
-
-    async update(id, data) {
-      const existing = invoices.get(id);
-      if (!existing) throw new Error(`Invoice ${id} not found`);
-
-      let updatedLineItems = existing.lineItems;
-      if (data.lineItems) {
-        updatedLineItems = data.lineItems.map((li) => ({
-          ...li,
-          invoiceId: id,
-        }));
-      }
-
-      const updated = { ...existing, ...data, lineItems: updatedLineItems };
-      invoices.set(id, updated);
-      return { ...updated, lineItems: [...updated.lineItems] };
-    },
-
-    async updateStatus(id, status, additionalUpdates) {
-      const existing = invoices.get(id);
-      if (!existing) throw new Error(`Invoice ${id} not found`);
-
-      const updated = {
-        ...existing,
-        status,
-        ...additionalUpdates,
-        updatedAt: new Date().toISOString(),
-      };
-      invoices.set(id, updated);
-      return { ...updated, lineItems: [...updated.lineItems] };
-    },
-
-    async delete(id) {
-      invoices.delete(id);
-    },
-
-    async count(filters) {
-      let items = Array.from(invoices.values());
-      if (filters?.status) {
-        items = items.filter((i) => i.status === filters.status);
-      }
-      return items.length;
-    },
+    id: "inv-1",
+    supplierName: "Acme Corp",
+    lineItems: makeLineItems([
+      { description: "Cement", quantity: 10, unitPrice: 500 },
+      { description: "Sand", quantity: 5, unitPrice: 200 },
+    ]),
+    ...overrides,
   };
 }
 
-// --- Tests ---
-
 describe("InvoiceModule", () => {
-  let repo: ReturnType<typeof createInMemoryRepository>;
   let module: InvoiceModule;
+  let repo: ReturnType<typeof createInMemoryInvoiceRepository>;
+  let debtPort: ReturnType<typeof createInMemoryInvoiceDebtPort>;
 
   beforeEach(() => {
-    repo = createInMemoryRepository();
-    module = new InvoiceModule(repo);
+    repo = createInMemoryInvoiceRepository();
+    debtPort = createInMemoryInvoiceDebtPort();
+    module = new InvoiceModule(repo, debtPort);
   });
-
-  function makeLineItems(
-    items: { description: string; quantity: number; unitPriceDzd: number }[],
-  ) {
-    return items.map((item, idx) => ({
-      id: `li-${idx + 1}`,
-      description: item.description,
-      quantity: item.quantity,
-      unitPriceDzd: item.unitPriceDzd,
-    }));
-  }
 
   describe("create", () => {
     it("creates an invoice with line items in DRAFT status", async () => {
-      const result = await module.create({
-        id: "inv-1",
-        supplierName: "Acme Corp",
-        lineItems: makeLineItems([
-          { description: "Cement", quantity: 10, unitPriceDzd: 500 },
-          { description: "Sand", quantity: 5, unitPriceDzd: 200 },
-        ]),
-      });
-
+      const result = await module.create(makeInput({ id: "inv-1" }));
       expect(result.status).toBe("DRAFT");
       expect(result.supplierName).toBe("Acme Corp");
-      expect(result.totalAmountDzd).toBe(6000); // 10*500 + 5*200
-      expect(result.remainingAmountDzd).toBe(6000);
-      expect(result.paidAmountDzd).toBe(0);
+      expect(result.totalAmount).toBe(6000);
+      expect(result.remainingAmount).toBe(6000);
+      expect(result.paidAmount).toBe(0);
       expect(result.lineItems).toHaveLength(2);
       expect(result.lineItems[0]!.description).toBe("Cement");
-      expect(result.lineItems[0]!.totalDzd).toBe(5000);
+      expect(result.lineItems[0]!.total).toBe(5000);
+      expect(result.currency).toBe("DZD");
     });
 
-    it("calculates totals from line items automatically", async () => {
-      const result = await module.create({
-        id: "inv-2",
-        supplierName: "Build Co",
-        lineItems: makeLineItems([
-          { description: "Bricks", quantity: 100, unitPriceDzd: 10 },
-        ]),
-      });
-
-      expect(result.totalAmountDzd).toBe(1000);
-      expect(result.remainingAmountDzd).toBe(1000);
+    it("respects explicit currency when provided", async () => {
+      const result = await module.create(makeInput({ id: "inv-1", currency: "DZD" }));
+      expect(result.currency).toBe("DZD");
     });
 
-    it("throws when line items are empty", async () => {
+    it("throws EmptyLineItemsError when no line items", async () => {
       await expect(
-        module.create({
-          id: "inv-3",
-          supplierName: "Empty Co",
-          lineItems: [],
-        }),
-      ).rejects.toThrow("at least one line item");
+        module.create(makeInput({ id: "inv-1", lineItems: [] })),
+      ).rejects.toBeInstanceOf(EmptyLineItemsError);
     });
   });
 
   describe("update", () => {
-    it("updates invoice fields", async () => {
-      await module.create({
-        id: "inv-1",
-        supplierName: "Acme Corp",
-        lineItems: makeLineItems([
-          { description: "Cement", quantity: 10, unitPriceDzd: 500 },
-        ]),
-      });
-
+    it("updates scalar invoice fields", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
       const updated = await module.update({
         id: "inv-1",
         supplierName: "Acme Industries",
-        notes: "Updated supplier name",
-      });
-
+        notes: "Updated",
+      } satisfies UpdateInvoiceInput);
       expect(updated.supplierName).toBe("Acme Industries");
-      expect(updated.notes).toBe("Updated supplier name");
+      expect(updated.notes).toBe("Updated");
     });
 
     it("recalculates totals when line items change", async () => {
-      await module.create({
-        id: "inv-1",
-        supplierName: "Acme Corp",
-        lineItems: makeLineItems([
-          { description: "Cement", quantity: 10, unitPriceDzd: 500 },
-        ]),
-      });
-
+      await module.create(makeInput({ id: "inv-1" }));
       const updated = await module.update({
         id: "inv-1",
         lineItems: makeLineItems([
-          { description: "Sand", quantity: 20, unitPriceDzd: 100 },
+          { description: "Sand", quantity: 20, unitPrice: 100 },
         ]),
-      });
-
-      expect(updated.totalAmountDzd).toBe(2000);
-      expect(updated.remainingAmountDzd).toBe(2000);
+      } satisfies UpdateInvoiceInput);
+      expect(updated.totalAmount).toBe(2000);
+      expect(updated.remainingAmount).toBe(2000);
       expect(updated.lineItems).toHaveLength(1);
-      expect(updated.lineItems[0]!.description).toBe("Sand");
     });
 
-    it("throws when invoice not found", async () => {
-      await expect(
-        module.update({ id: "nonexistent", supplierName: "X" }),
-      ).rejects.toThrow("not found");
-    });
-
-    it("throws when trying to update a RECEIVED invoice", async () => {
-      await module.create({
+    it("updates currency", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      const updated = await module.update({
         id: "inv-1",
-        supplierName: "Acme Corp",
-        lineItems: makeLineItems([
-          { description: "Cement", quantity: 10, unitPriceDzd: 500 },
-        ]),
-      });
-      await module.receive("inv-1");
+        currency: "DZD",
+      } satisfies UpdateInvoiceInput);
+      expect(updated.currency).toBe("DZD");
+    });
 
+    it("throws InvoiceNotFoundError when invoice missing", async () => {
       await expect(
-        module.update({ id: "inv-1", supplierName: "Changed" }),
-      ).rejects.toThrow("DRAFT");
+        module.update({ id: "missing" } satisfies UpdateInvoiceInput),
+      ).rejects.toBeInstanceOf(InvoiceNotFoundError);
+    });
+
+    it("throws InvalidInvoiceStatusError when invoice is RECEIVED", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await module.receive("inv-1", ACTOR);
+      await expect(
+        module.update({ id: "inv-1", supplierName: "X" } satisfies UpdateInvoiceInput),
+      ).rejects.toBeInstanceOf(InvalidInvoiceStatusError);
+    });
+
+    it("throws EmptyLineItemsError when line items become empty", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await expect(
+        module.update({ id: "inv-1", lineItems: [] } satisfies UpdateInvoiceInput),
+      ).rejects.toBeInstanceOf(EmptyLineItemsError);
     });
   });
 
   describe("delete", () => {
     it("deletes a DRAFT invoice", async () => {
-      await module.create({
-        id: "inv-1",
-        supplierName: "Acme Corp",
-        lineItems: makeLineItems([
-          { description: "Cement", quantity: 10, unitPriceDzd: 500 },
-        ]),
-      });
-
+      await module.create(makeInput({ id: "inv-1" }));
       await module.delete("inv-1");
-      const found = await module.findById("inv-1");
-      expect(found).toBeNull();
+      expect(await module.findById("inv-1")).toBeNull();
     });
 
-    it("throws when trying to delete a RECEIVED invoice", async () => {
-      await module.create({
-        id: "inv-1",
-        supplierName: "Acme Corp",
-        lineItems: makeLineItems([
-          { description: "Cement", quantity: 10, unitPriceDzd: 500 },
-        ]),
-      });
-      await module.receive("inv-1");
-
-      await expect(module.delete("inv-1")).rejects.toThrow("DRAFT");
+    it("throws InvoiceNotFoundError when invoice missing", async () => {
+      await expect(module.delete("missing")).rejects.toBeInstanceOf(
+        InvoiceNotFoundError,
+      );
     });
 
-    it("throws when invoice not found", async () => {
-      await expect(module.delete("nonexistent")).rejects.toThrow("not found");
+    it("throws InvalidInvoiceStatusError when invoice is RECEIVED", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await module.receive("inv-1", ACTOR);
+      await expect(module.delete("inv-1")).rejects.toBeInstanceOf(
+        InvalidInvoiceStatusError,
+      );
     });
   });
 
   describe("receive", () => {
-    it("transitions invoice from DRAFT to RECEIVED", async () => {
-      await module.create({
-        id: "inv-1",
-        supplierName: "Acme Corp",
-        lineItems: makeLineItems([
-          { description: "Cement", quantity: 10, unitPriceDzd: 500 },
-        ]),
-      });
+    it("transitions DRAFT to RECEIVED and creates a debt account", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      const result = await module.receive("inv-1", ACTOR);
 
-      const result = await module.receive("inv-1");
       expect(result.invoice.status).toBe("RECEIVED");
-      expect(result.debtEntryId).toBeDefined();
-      expect(result.debtEntryId).toContain("debt-");
+      expect(result.debtAccountId).toBeDefined();
+      expect(result.invoice.debtAccountId).toBe(result.debtAccountId);
+
+      // Debt port state: one OPENING entry recorded for this invoice
+      const openingEntries = debtPort.state.entries.filter(
+        (e) => e.invoiceId === "inv-1" && e.entryType === "OPENING",
+      );
+      expect(openingEntries).toHaveLength(1);
+      expect(openingEntries[0]!.signedAmount).toBe(6000);
+      expect(openingEntries[0]!.balanceAfter).toBe(6000);
+
+      // One counterparty, one debt account
+      expect(debtPort.state.counterparties.size).toBe(1);
+      expect(debtPort.state.debtAccounts.size).toBe(1);
     });
 
-    it("throws when trying to receive a non-DRAFT invoice", async () => {
-      await module.create({
-        id: "inv-1",
-        supplierName: "Acme Corp",
-        lineItems: makeLineItems([
-          { description: "Cement", quantity: 10, unitPriceDzd: 500 },
-        ]),
-      });
-      await module.receive("inv-1");
+    it("reuses an existing counterparty's debt account across invoices", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await module.create(
+        makeInput({ id: "inv-2", supplierName: "Acme Corp" }),
+      );
 
-      await expect(module.receive("inv-1")).rejects.toThrow("DRAFT");
+      await module.receive("inv-1", ACTOR);
+      const second = await module.receive("inv-2", ACTOR);
+
+      // Same counterparty → same debt account
+      expect(second.debtAccountId).toBeDefined();
+      const firstAccountId = (await module.findById("inv-1"))!.debtAccountId;
+      expect(second.debtAccountId).toBe(firstAccountId);
+
+      // Two OPENING entries on the same account
+      const openings = debtPort.state.entries.filter(
+        (e) => e.entryType === "OPENING",
+      );
+      expect(openings).toHaveLength(2);
     });
 
-    it("throws when invoice not found", async () => {
-      await expect(module.receive("nonexistent")).rejects.toThrow("not found");
+    it("throws InvoiceNotFoundError when invoice missing", async () => {
+      await expect(module.receive("missing", ACTOR)).rejects.toBeInstanceOf(
+        InvoiceNotFoundError,
+      );
+    });
+
+    it("throws InvalidInvoiceStatusError when invoice already RECEIVED", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await module.receive("inv-1", ACTOR);
+      await expect(module.receive("inv-1", ACTOR)).rejects.toBeInstanceOf(
+        InvalidInvoiceStatusError,
+      );
+    });
+
+    it("throws InvoiceDebtPortError when debt port fails", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      const failingPort: InvoiceDebtPort = {
+        createInvoiceDebt: async () => {
+          throw new Error("db down");
+        },
+        recordInvoicePayment: async () => {
+          throw new Error("not used");
+        },
+      };
+      const failingModule = new InvoiceModule(repo, failingPort);
+      await expect(
+        failingModule.receive("inv-1", ACTOR),
+      ).rejects.toBeInstanceOf(InvoiceDebtPortError);
+    });
+
+    it("throws InvoiceNotFoundError when post-receive update returns null", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      const nullUpdateRepo: InvoiceDebtPort = createInMemoryInvoiceDebtPort();
+      // Build a repo whose update returns null after updateStatus runs.
+      const customRepo = {
+        ...repo,
+        update: async () => null,
+      } as unknown as ReturnType<typeof createInMemoryInvoiceRepository>;
+      const m = new InvoiceModule(customRepo, nullUpdateRepo);
+      await expect(m.receive("inv-1", ACTOR)).rejects.toBeInstanceOf(
+        InvoiceNotFoundError,
+      );
     });
   });
 
   describe("findById", () => {
     it("returns invoice with line items", async () => {
-      await module.create({
-        id: "inv-1",
-        supplierName: "Acme Corp",
-        lineItems: makeLineItems([
-          { description: "Cement", quantity: 10, unitPriceDzd: 500 },
-        ]),
-      });
-
+      await module.create(makeInput({ id: "inv-1" }));
       const found = await module.findById("inv-1");
       expect(found).not.toBeNull();
       expect(found!.supplierName).toBe("Acme Corp");
-      expect(found!.lineItems).toHaveLength(1);
+      expect(found!.lineItems).toHaveLength(2);
     });
 
-    it("returns null for nonexistent invoice", async () => {
-      const found = await module.findById("nonexistent");
-      expect(found).toBeNull();
+    it("returns null when missing", async () => {
+      expect(await module.findById("missing")).toBeNull();
     });
   });
 
   describe("listPaged", () => {
-    it("returns paginated invoices", async () => {
-      // Create 3 invoices
+    it("returns paginated invoices with nextCursor", async () => {
       for (let i = 1; i <= 3; i++) {
-        await module.create({
-          id: `inv-${i}`,
-          supplierName: `Supplier ${i}`,
-          lineItems: makeLineItems([
-            { description: `Item ${i}`, quantity: i, unitPriceDzd: 100 },
-          ]),
-        });
+        await module.create(
+          makeInput({
+            id: `inv-${i}`,
+            supplierName: `Supplier ${i}`,
+            lineItems: makeLineItems([
+              { description: `Item ${i}`, quantity: i, unitPrice: 100 },
+            ]),
+          }),
+        );
       }
-
       const result = await module.listPaged({ limit: 2 });
       expect(result.items).toHaveLength(2);
       expect(result.totalCount).toBe(3);
@@ -364,17 +282,9 @@ describe("InvoiceModule", () => {
     });
 
     it("filters by status", async () => {
-      await module.create({
-        id: "inv-1",
-        supplierName: "Acme",
-        lineItems: makeLineItems([{ description: "A", quantity: 1, unitPriceDzd: 100 }]),
-      });
-      await module.create({
-        id: "inv-2",
-        supplierName: "Build",
-        lineItems: makeLineItems([{ description: "B", quantity: 1, unitPriceDzd: 200 }]),
-      });
-      await module.receive("inv-1");
+      await module.create(makeInput({ id: "inv-1", supplierName: "Acme" }));
+      await module.create(makeInput({ id: "inv-2", supplierName: "Build" }));
+      await module.receive("inv-1", ACTOR);
 
       const result = await module.listPaged({
         filters: { status: "RECEIVED" },
@@ -383,35 +293,235 @@ describe("InvoiceModule", () => {
       expect(result.items).toHaveLength(1);
       expect(result.items[0]!.status).toBe("RECEIVED");
     });
+
+    it("filters by supplierName (case-insensitive substring)", async () => {
+      await module.create(makeInput({ id: "inv-1", supplierName: "Acme Corp" }));
+      await module.create(makeInput({ id: "inv-2", supplierName: "Build Co" }));
+
+      const result = await module.listPaged({
+        filters: { supplierName: "acme" },
+        limit: 10,
+      });
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]!.supplierName).toBe("Acme Corp");
+    });
+
+    it("follows cursor to fetch next page", async () => {
+      for (let i = 1; i <= 3; i++) {
+        await module.create(
+          makeInput({
+            id: `inv-${i}`,
+            supplierName: `Supplier ${i}`,
+            lineItems: makeLineItems([
+              { description: `Item ${i}`, quantity: i, unitPrice: 100 },
+            ]),
+          }),
+        );
+      }
+      const first = await module.listPaged({ limit: 2 });
+      const second = await module.listPaged({
+        limit: 2,
+        cursor: first.nextCursor ?? undefined,
+      });
+      expect(second.items.length + first.items.length).toBe(3);
+    });
+
+    it("throws InvalidInvoiceCursorError on garbage cursor", async () => {
+      await expect(
+        module.listPaged({ limit: 10, cursor: "not-a-real-cursor" }),
+      ).rejects.toBeInstanceOf(InvalidInvoiceCursorError);
+    });
+
+    it("throws InvalidInvoiceCursorError on valid JSON but wrong shape", async () => {
+      const bad = Buffer.from(JSON.stringify({ not: "right" })).toString(
+        "base64url",
+      );
+      await expect(
+        module.listPaged({ limit: 10, cursor: bad }),
+      ).rejects.toBeInstanceOf(InvalidInvoiceCursorError);
+    });
+
+    it("throws InvalidInvoiceCursorError on JSON with wrong id type", async () => {
+      const bad = Buffer.from(
+        JSON.stringify({ sortValue: 1, id: 42 }),
+      ).toString("base64url");
+      await expect(
+        module.listPaged({ limit: 10, cursor: bad }),
+      ).rejects.toBeInstanceOf(InvalidInvoiceCursorError);
+    });
+
+    it("throws InvalidInvoiceCursorError on JSON with wrong sortValue type", async () => {
+      const bad = Buffer.from(
+        JSON.stringify({ sortValue: true, id: "x" }),
+      ).toString("base64url");
+      await expect(
+        module.listPaged({ limit: 10, cursor: bad }),
+      ).rejects.toBeInstanceOf(InvalidInvoiceCursorError);
+    });
+
+    it("throws InvalidInvoiceCursorError on JSON array", async () => {
+      const bad = Buffer.from(JSON.stringify([])).toString("base64url");
+      await expect(
+        module.listPaged({ limit: 10, cursor: bad }),
+      ).rejects.toBeInstanceOf(InvalidInvoiceCursorError);
+    });
   });
 
   describe("markPaid", () => {
-    it("transitions invoice from RECEIVED to PAID", async () => {
-      await module.create({
-        id: "inv-1",
-        supplierName: "Acme Corp",
-        lineItems: makeLineItems([
-          { description: "Cement", quantity: 10, unitPriceDzd: 500 },
-        ]),
-      });
-      await module.receive("inv-1");
+    it("transitions RECEIVED to PAID when payment covers full amount", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await module.receive("inv-1", ACTOR);
 
-      const result = await module.markPaid("inv-1", 6000);
+      const result = await module.markPaid("inv-1", 6000, ACTOR);
       expect(result.status).toBe("PAID");
-      expect(result.paidAmountDzd).toBe(6000);
-      expect(result.remainingAmountDzd).toBe(0);
+      expect(result.paidAmount).toBe(6000);
+      expect(result.remainingAmount).toBe(0);
+
+      // Debt port: OPENING + PAYMENT entries
+      const entries = debtPort.state.entries.filter((e) => e.invoiceId === "inv-1");
+      expect(entries).toHaveLength(2);
+      expect(entries[1]!.entryType).toBe("PAYMENT");
+      expect(entries[1]!.signedAmount).toBe(-6000);
+
+      // Counterparty debt settled
+      const account = Array.from(debtPort.state.debtAccounts.values())[0]!;
+      expect(account.balance).toBe(0);
+      expect(account.settled).toBe(true);
     });
 
-    it("throws when trying to mark a DRAFT invoice as paid", async () => {
-      await module.create({
-        id: "inv-1",
-        supplierName: "Acme Corp",
-        lineItems: makeLineItems([
-          { description: "Cement", quantity: 10, unitPriceDzd: 500 },
-        ]),
-      });
+    it("keeps invoice RECEIVED with remaining when partially paid", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await module.receive("inv-1", ACTOR);
 
-      await expect(module.markPaid("inv-1", 5000)).rejects.toThrow("RECEIVED");
+      const result = await module.markPaid("inv-1", 2000, ACTOR);
+      expect(result.status).toBe("RECEIVED");
+      expect(result.paidAmount).toBe(2000);
+      expect(result.remainingAmount).toBe(4000);
+
+      const account = Array.from(debtPort.state.debtAccounts.values())[0]!;
+      expect(account.balance).toBe(4000);
+      expect(account.settled).toBe(false);
+    });
+
+    it("clamps remaining to zero on overpayment and transitions to PAID", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await module.receive("inv-1", ACTOR);
+
+      const result = await module.markPaid("inv-1", 10000, ACTOR);
+      expect(result.status).toBe("PAID");
+      expect(result.paidAmount).toBe(10000);
+      expect(result.remainingAmount).toBe(0);
+    });
+
+    it("accumulates payments across multiple markPaid calls", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await module.receive("inv-1", ACTOR);
+
+      const first = await module.markPaid("inv-1", 2000, ACTOR);
+      expect(first.status).toBe("RECEIVED");
+
+      const second = await module.markPaid("inv-1", 4000, ACTOR);
+      expect(second.status).toBe("PAID");
+      expect(second.paidAmount).toBe(6000);
+      expect(second.remainingAmount).toBe(0);
+    });
+
+    it("throws InvoiceNotFoundError when invoice missing", async () => {
+      await expect(
+        module.markPaid("missing", 100, ACTOR),
+      ).rejects.toBeInstanceOf(InvoiceNotFoundError);
+    });
+
+    it("throws InvalidInvoiceStatusError when invoice is DRAFT", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await expect(
+        module.markPaid("inv-1", 5000, ACTOR),
+      ).rejects.toBeInstanceOf(InvalidInvoiceStatusError);
+    });
+
+    it("throws InvoiceDebtPortError on non-positive amount", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await module.receive("inv-1", ACTOR);
+      await expect(
+        module.markPaid("inv-1", 0, ACTOR),
+      ).rejects.toBeInstanceOf(InvoiceDebtPortError);
+    });
+
+    it("throws InvoiceDebtPortError when port fails", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      await module.receive("inv-1", ACTOR);
+      const failingPort: InvoiceDebtPort = {
+        createInvoiceDebt: async () => ({ debtAccountId: "stub" }),
+        recordInvoicePayment: async () => {
+          throw new Error("db down");
+        },
+      };
+      const failingModule = new InvoiceModule(repo, failingPort);
+      await expect(
+        failingModule.markPaid("inv-1", 1000, ACTOR),
+      ).rejects.toBeInstanceOf(InvoiceDebtPortError);
+    });
+
+    it("throws InvoiceDebtPortError when invoice has no debt account", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      // Move the invoice straight to RECEIVED with no debt account
+      // by mutating the in-memory repo directly. Defensive branch.
+      const stored = repo._invoices.get("inv-1")!;
+      stored.status = "RECEIVED";
+      stored.debtAccountId = null;
+      await expect(
+        module.markPaid("inv-1", 1000, ACTOR),
+      ).rejects.toBeInstanceOf(InvoiceDebtPortError);
+    });
+
+    it("accepts dueDate on update", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      const updated = await module.update({
+        id: "inv-1",
+        dueDate: "2026-08-01",
+      } as UpdateInvoiceInput);
+      expect(updated.dueDate).toBe("2026-08-01");
+    });
+
+    it("accepts invoiceDate on update", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      const updated = await module.update({
+        id: "inv-1",
+        invoiceDate: "2026-07-15",
+      } as UpdateInvoiceInput);
+      expect(updated.invoiceDate).toBe("2026-07-15");
+    });
+
+    it("accepts projectId on update", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      const updated = await module.update({
+        id: "inv-1",
+        projectId: "00000000-0000-0000-0000-000000000001",
+      } as UpdateInvoiceInput);
+      expect(updated.projectId).toBe("00000000-0000-0000-0000-000000000001");
+    });
+
+    it("updates all scalar fields at once", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      const updated = await module.update({
+        id: "inv-1",
+        invoiceNumber: "INV-99",
+        supplierName: "New Supplier",
+        supplierPhone: "+213555",
+        warehouseId: "00000000-0000-0000-0000-000000000002",
+        projectId: "00000000-0000-0000-0000-000000000003",
+        invoiceDate: "2026-07-15",
+        dueDate: "2026-08-01",
+        notes: "paid",
+      } as UpdateInvoiceInput);
+      expect(updated.invoiceNumber).toBe("INV-99");
+      expect(updated.supplierName).toBe("New Supplier");
+      expect(updated.supplierPhone).toBe("+213555");
+      expect(updated.warehouseId).toBe("00000000-0000-0000-0000-000000000002");
+      expect(updated.projectId).toBe("00000000-0000-0000-0000-000000000003");
+      expect(updated.invoiceDate).toBe("2026-07-15");
+      expect(updated.dueDate).toBe("2026-08-01");
+      expect(updated.notes).toBe("paid");
     });
   });
 });

@@ -1,13 +1,19 @@
 import { z } from "zod";
 
+// Supported invoice currencies. Today only DZD is wired end-to-end;
+// the schema and types are forward-compatible so adding EUR/USD later
+// is a config change, not a refactor.
+export const invoiceCurrencySchema = z.enum(["DZD"]);
+export type InvoiceCurrency = z.infer<typeof invoiceCurrencySchema>;
+
 // --- Invoice line item ---
 export const invoiceLineItemSchema = z.object({
   id: z.string().uuid(),
   invoiceId: z.string().uuid(),
   description: z.string().min(1).max(300),
   quantity: z.number().positive(),
-  unitPriceDzd: z.number().min(0),
-  totalDzd: z.number().min(0),
+  unitPrice: z.number().min(0),
+  total: z.number().min(0),
 });
 
 // --- Invoice ---
@@ -23,10 +29,12 @@ export const invoiceSchema = z.object({
   status: invoiceStatusSchema,
   invoiceDate: z.string().nullable(),
   dueDate: z.string().nullable(),
-  totalAmountDzd: z.number().min(0),
-  paidAmountDzd: z.number().min(0),
-  remainingAmountDzd: z.number().min(0),
+  currency: invoiceCurrencySchema,
+  totalAmount: z.number().min(0),
+  paidAmount: z.number().min(0),
+  remainingAmount: z.number().min(0),
   notes: z.string().max(2000).nullable(),
+  debtAccountId: z.string().uuid().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
   lineItems: z.array(invoiceLineItemSchema),
@@ -36,7 +44,7 @@ export const invoiceSchema = z.object({
 export const invoiceLineItemInputSchema = z.object({
   description: z.string().min(1).max(300),
   quantity: z.number().positive(),
-  unitPriceDzd: z.number().min(0),
+  unitPrice: z.number().min(0),
 });
 
 export const invoiceCreateInputSchema = z.object({
@@ -47,6 +55,7 @@ export const invoiceCreateInputSchema = z.object({
   projectId: z.string().uuid().nullable().optional(),
   invoiceDate: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
+  currency: invoiceCurrencySchema.optional(),
   notes: z.string().max(2000).nullable().optional(),
   lineItems: z.array(invoiceLineItemInputSchema).min(1).max(50),
 });
@@ -60,6 +69,7 @@ export const invoiceUpdateInputSchema = z.object({
   projectId: z.string().uuid().nullable().optional(),
   invoiceDate: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
+  currency: invoiceCurrencySchema.optional(),
   notes: z.string().max(2000).nullable().optional(),
   lineItems: z.array(invoiceLineItemInputSchema).min(1).max(50).optional(),
 });

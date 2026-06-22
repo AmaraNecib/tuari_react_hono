@@ -1,5 +1,6 @@
 import type {
   Invoice,
+  InvoiceCurrency,
   InvoiceLineItem,
   InvoiceListFilters,
   InvoiceListSortField,
@@ -24,18 +25,20 @@ export interface InvoiceRepository {
     status: "DRAFT";
     invoiceDate: string | null;
     dueDate: string | null;
-    totalAmountDzd: number;
-    paidAmountDzd: number;
-    remainingAmountDzd: number;
+    currency: InvoiceCurrency;
+    totalAmount: number;
+    paidAmount: number;
+    remainingAmount: number;
     notes: string | null;
+    debtAccountId?: string | null;
     createdAt: string;
     updatedAt: string;
     lineItems: {
       id: string;
       description: string;
       quantity: number;
-      unitPriceDzd: number;
-      totalDzd: number;
+      unitPrice: number;
+      total: number;
     }[];
   }): Promise<Invoice>;
   update(
@@ -48,15 +51,18 @@ export interface InvoiceRepository {
       projectId?: string | null;
       invoiceDate?: string | null;
       dueDate?: string | null;
+      currency?: InvoiceCurrency;
       notes?: string | null;
-      totalAmountDzd?: number;
-      remainingAmountDzd?: number;
+      totalAmount?: number;
+      remainingAmount?: number;
+      debtAccountId?: string | null;
+      updatedAt?: string;
       lineItems?: {
         id: string;
         description: string;
         quantity: number;
-        unitPriceDzd: number;
-        totalDzd: number;
+        unitPrice: number;
+        total: number;
       }[];
     },
   ): Promise<Invoice>;
@@ -64,8 +70,8 @@ export interface InvoiceRepository {
     id: string,
     status: "RECEIVED" | "PAID",
     additionalUpdates?: {
-      paidAmountDzd?: number;
-      remainingAmountDzd?: number;
+      paidAmount?: number;
+      remainingAmount?: number;
     },
   ): Promise<Invoice>;
   delete(id: string): Promise<void>;
