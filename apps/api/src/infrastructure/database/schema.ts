@@ -1093,8 +1093,6 @@ async function ensureSeedRolePermissions() {
 export async function ensureDatabaseSchema(): Promise<void> {
   await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
 
-  await runInvoiceDebtLinkageMigration();
-
   for (const statement of schemaStatements) {
     try {
       await prisma.$executeRawUnsafe(statement)
