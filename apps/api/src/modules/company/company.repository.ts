@@ -1043,7 +1043,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const audit = normalizeAuditContext(auditContext)
     this.database
       .prepare(
-        'INSERT INTO debt_entry (id, debt_account_id, entry_type, signed_amount_dzd, entry_date, note, balance_after_dzd, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO debt_entry (id, debt_account_id, entry_type, signed_amount, entry_date, note, balance_after, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         id,

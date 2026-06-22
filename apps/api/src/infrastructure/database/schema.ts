@@ -7,6 +7,7 @@ import {
   companyIndexStatements,
   companyStatusConstraintChecks,
   debtSingleAccountMigrationKey,
+  invoiceDebtLinkageMigrationKey,
   obsoleteMigrationKey,
   rolePermissionSeeds,
   roleSeeds,
@@ -976,6 +977,98 @@ async function runAddAdvanceDebtEntryMigration() {
   }
 }
 
+async function runInvoiceDebtLinkageMigration() {
+  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    invoiceDebtLinkageMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  // Rename *_dzd -> *_amount in invoice + invoice_line_item + debt_entry.
+  // Idempotent: skip rename if the new column already exists or the old one
+  // is gone. Also links invoice to debt_account and debt_entry to invoice.
+  const renamePairs: ReadonlyArray<{ table: string; from: string; to: string }> = [
+    { table: "invoice", from: "total_amount_dzd", to: "total_amount" },
+    { table: "invoice", from: "paid_amount_dzd", to: "paid_amount" },
+    { table: "invoice", from: "remaining_amount_dzd", to: "remaining_amount" },
+    { table: "invoice_line_item", from: "unit_price_dzd", to: "unit_price" },
+    { table: "invoice_line_item", from: "total_dzd", to: "total" },
+    { table: "debt_entry", from: "signed_amount_dzd", to: "signed_amount" },
+    { table: "debt_entry", from: "balance_after_dzd", to: "balance_after" },
+  ];
+
+  // Columns to add idempotently to debt_entry. Both legacy migrations
+  // (runDebtSingleAccountMigration, runAddAdvanceDebtEntryMigration)
+  // recreate the table from a staging table that doesn't include
+  // `invoice_id` or `currency`, so fresh databases lose these columns.
+  const debtEntryAdditions = [
+    { column: "invoice_id", ddl: 'TEXT' },
+    { column: "currency", ddl: "TEXT NOT NULL DEFAULT 'DZD'" },
+  ] as const;
+
+  // Columns to add idempotently to invoice. The legacy CREATE TABLE
+  // for invoice in schemaStatements already includes these, but the
+  // additive migrations handle the case where the invoice table was
+  // created by an older schemaStatements that didn't include them.
+  const invoiceAdditions = [
+    { column: "debt_account_id", ddl: 'TEXT' },
+    { column: "currency", ddl: "TEXT NOT NULL DEFAULT 'DZD'" },
+    { column: "total_amount", ddl: 'REAL NOT NULL DEFAULT 0' },
+    { column: "paid_amount", ddl: 'REAL NOT NULL DEFAULT 0' },
+    { column: "remaining_amount", ddl: 'REAL NOT NULL DEFAULT 0' },
+  ] as const;
+
+  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const { table, from, to } of renamePairs) {
+        const fromExists = await hasColumn(table, from);
+        const toExists = await hasColumn(table, to);
+        if (fromExists && !toExists) {
+          await tx.$executeRawUnsafe(
+            `ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`,
+          );
+        }
+      }
+
+      for (const { column, ddl } of debtEntryAdditions) {
+        if (!(await hasColumn("debt_entry", column))) {
+          await tx.$executeRawUnsafe(
+            `ALTER TABLE "debt_entry" ADD COLUMN "${column}" ${ddl}`,
+          );
+        }
+      }
+      for (const { column, ddl } of invoiceAdditions) {
+        if (!(await hasColumn("invoice", column))) {
+          await tx.$executeRawUnsafe(
+            `ALTER TABLE "invoice" ADD COLUMN "${column}" ${ddl}`,
+          );
+        }
+      }
+
+      // Recreate the debt_entry_debt_account_id_idx if it was dropped
+      // by the legacy migrations' staging-table dance.
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "debt_entry_debt_account_id_idx" ON "debt_entry" ("debt_account_id", "entry_date")',
+      );
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "debt_entry_invoice_id_idx" ON "debt_entry" ("invoice_id")',
+      );
+
+      await tx.$executeRawUnsafe(
+        'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+        invoiceDebtLinkageMigrationKey,
+        new Date().toISOString(),
+      );
+    });
+  } finally {
+    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+  }
+}
+
 async function ensureSeedRoles() {
   for (const role of roleSeeds) {
     const existing = (await prisma.$queryRawUnsafe<Array<{ id: string }>>(
@@ -1073,6 +1166,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
   await runDebtSingleAccountMigration();
   await runAddOutboundTransferMigration();
   await runAddAdvanceDebtEntryMigration();
+  await runInvoiceDebtLinkageMigration();
 
   await syncLegacyTimestampColumns();
   await repairLegacyAuthTables();

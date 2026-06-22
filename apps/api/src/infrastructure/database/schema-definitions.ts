@@ -285,18 +285,22 @@ export const schemaStatements = [
   `CREATE TABLE IF NOT EXISTS "debt_entry" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "debt_account_id" TEXT NOT NULL,
+    "invoice_id" TEXT,
     "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT')),
-    "signed_amount_dzd" REAL NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'DZD',
+    "signed_amount" REAL NOT NULL,
     "entry_date" DATETIME NOT NULL,
     "note" TEXT,
-    "balance_after_dzd" REAL NOT NULL,
+    "balance_after" REAL NOT NULL,
     "actor_user_id" TEXT,
     "actor_label" TEXT,
     "transaction_id" TEXT,
     "created_at" DATETIME NOT NULL,
     "updated_at" DATETIME NOT NULL,
     CONSTRAINT "debt_entry_debt_account_id_fkey"
-      FOREIGN KEY ("debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+      FOREIGN KEY ("debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "debt_entry_invoice_id_fkey"
+      FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE SET NULL ON UPDATE CASCADE
   )`,
   `CREATE TABLE IF NOT EXISTS "inventory_item_definition" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -550,6 +554,62 @@ export const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_debt_account_id_idx" ON "inventory_outbound_transfer" ("associated_debt_account_id")',
   'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_transfer_id_idx" ON "inventory_outbound_transfer_item" ("transfer_id")',
   'CREATE INDEX IF NOT EXISTS "inventory_outbound_transfer_item_item_id_idx" ON "inventory_outbound_transfer_item" ("item_id")',
+  // --- Purchase Invoice tables ---
+  `CREATE TABLE IF NOT EXISTS "invoice" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "invoice_number" TEXT,
+    "supplier_name" TEXT NOT NULL,
+    "supplier_phone" TEXT,
+    "warehouse_id" TEXT,
+    "project_id" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'DRAFT' CHECK ("status" IN ('DRAFT', 'RECEIVED', 'PAID')),
+    "invoice_date" DATETIME,
+    "due_date" DATETIME,
+    "currency" TEXT NOT NULL DEFAULT 'DZD',
+    "total_amount" REAL NOT NULL DEFAULT 0,
+    "paid_amount" REAL NOT NULL DEFAULT 0,
+    "remaining_amount" REAL NOT NULL DEFAULT 0,
+    "notes" TEXT,
+    "debt_account_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    "updated_at" DATETIME NOT NULL,
+    CONSTRAINT "invoice_warehouse_id_fkey"
+      FOREIGN KEY ("warehouse_id") REFERENCES "warehouse" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "invoice_project_id_fkey"
+      FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "invoice_debt_account_id_fkey"
+      FOREIGN KEY ("debt_account_id") REFERENCES "debt_account" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "invoice_remaining_non_negative"
+      CHECK ("remaining_amount" >= 0)
+  )`,
+  `CREATE TABLE IF NOT EXISTS "invoice_line_item" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "invoice_id" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "quantity" REAL NOT NULL,
+    "unit_price" REAL NOT NULL,
+    "total" REAL NOT NULL,
+    CONSTRAINT "invoice_line_item_invoice_id_fkey"
+      FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "invoice_line_item_quantity_positive"
+      CHECK ("quantity" > 0),
+    CONSTRAINT "invoice_line_item_unit_price_non_negative"
+      CHECK ("unit_price" >= 0)
+  )`,
+  'CREATE INDEX IF NOT EXISTS "invoice_status_idx" ON "invoice" ("status")',
+  'CREATE INDEX IF NOT EXISTS "invoice_supplier_name_idx" ON "invoice" ("supplier_name")',
+  'CREATE INDEX IF NOT EXISTS "invoice_created_at_idx" ON "invoice" ("created_at")',
+  'CREATE INDEX IF NOT EXISTS "invoice_warehouse_id_idx" ON "invoice" ("warehouse_id")',
+  'CREATE INDEX IF NOT EXISTS "invoice_project_id_idx" ON "invoice" ("project_id")',
+  'CREATE INDEX IF NOT EXISTS "invoice_debt_account_id_idx" ON "invoice" ("debt_account_id")',
+  'CREATE INDEX IF NOT EXISTS "invoice_line_item_invoice_id_idx" ON "invoice_line_item" ("invoice_id")',
+  // Note: debt_entry_invoice_id_idx is intentionally NOT created here.
+  // On existing databases, prior staging-table migrations
+  // (runDebtSingleAccountMigration, runAddAdvanceDebtEntryMigration)
+  // recreated debt_entry without an invoice_id column. The index is
+  // therefore created inside runInvoiceDebtLinkageMigration (after the
+  // column is added back) to avoid crashing startup on existing
+  // deployments.
 ]
 
 export const additiveStatements = [
@@ -604,6 +664,10 @@ export const additiveStatements = [
   'ALTER TABLE "inventory_item_definition" ADD COLUMN "actor_user_id" TEXT',
   'ALTER TABLE "inventory_item_definition" ADD COLUMN "actor_label" TEXT',
   'ALTER TABLE "inventory_item_definition" ADD COLUMN "transaction_id" TEXT',
+  'ALTER TABLE "invoice" ADD COLUMN "debt_account_id" TEXT',
+  'ALTER TABLE "invoice" ADD COLUMN "currency" TEXT NOT NULL DEFAULT \'DZD\'',
+  'ALTER TABLE "debt_entry" ADD COLUMN "invoice_id" TEXT',
+  'ALTER TABLE "debt_entry" ADD COLUMN "currency" TEXT NOT NULL DEFAULT \'DZD\'',
 ]
 
 export const obsoleteMigrationKey = "drop_todos_table_v1"
@@ -614,6 +678,7 @@ export const debtEntryClosureMigrationKey = "enable_debt_entry_closure_v1"
 export const debtSingleAccountMigrationKey = "simplify_debt_single_account_v1"
 export const addOutboundTransferMigrationKey = "add_outbound_transfer_tables_v1"
 export const addAdvanceDebtEntryMigrationKey = "add_advance_debt_entry_type_v1"
+export const invoiceDebtLinkageMigrationKey = "link_invoices_to_debt_accounts_v1"
 
 export const companyIndexStatements = [
   'CREATE INDEX IF NOT EXISTS "employee_role_id_idx" ON "employee" ("role_id")',

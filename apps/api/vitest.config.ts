@@ -22,6 +22,7 @@ export default defineConfig({
       },
       include: [
         "src/modules/workforce/**/*.ts",
+        "src/modules/invoice/**/*.ts",
       ],
       exclude: [
         "**/*.test.ts",
