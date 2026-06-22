@@ -267,6 +267,7 @@ export const schemaStatements = [
     "worker_id" TEXT,
     "external_counterparty_id" TEXT,
     "status" TEXT NOT NULL CHECK ("status" IN ('OPEN', 'SETTLED')),
+    "direction" TEXT NOT NULL CHECK ("direction" IN ('PAYABLE', 'RECEIVABLE')) DEFAULT 'PAYABLE',
     "current_balance" REAL NOT NULL DEFAULT 0,
     "note" TEXT,
     "settled_at" DATETIME,
@@ -668,6 +669,7 @@ export const additiveStatements = [
   'ALTER TABLE "invoice" ADD COLUMN "currency" TEXT NOT NULL DEFAULT \'DZD\'',
   'ALTER TABLE "debt_entry" ADD COLUMN "invoice_id" TEXT',
   'ALTER TABLE "debt_entry" ADD COLUMN "currency" TEXT NOT NULL DEFAULT \'DZD\'',
+  'ALTER TABLE "debt_account" ADD COLUMN "direction" TEXT NOT NULL DEFAULT \'PAYABLE\' CHECK ("direction" IN (\'PAYABLE\', \'RECEIVABLE\'))',
 ]
 
 export const obsoleteMigrationKey = "drop_todos_table_v1"
@@ -680,6 +682,7 @@ export const addOutboundTransferMigrationKey = "add_outbound_transfer_tables_v1"
 export const addAdvanceDebtEntryMigrationKey = "add_advance_debt_entry_type_v1"
 export const invoiceDebtLinkageMigrationKey = "link_invoices_to_debt_accounts_v1"
 export const debtAccountBalanceRenameMigrationKey = "rename_debt_account_balance_drop_dzd_v1"
+export const debtAccountDirectionMigrationKey = "add_debt_account_direction_v1"
 
 export const companyIndexStatements = [
   'CREATE INDEX IF NOT EXISTS "employee_role_id_idx" ON "employee" ("role_id")',

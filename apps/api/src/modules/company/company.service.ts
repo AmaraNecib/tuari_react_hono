@@ -35,8 +35,11 @@ import {
   buildBatchField,
   buildDebtPartyKey,
   deleteResult,
+  getDebtAccountBalanceLabel,
+  getDebtAccountNetContribution,
   getDebtAccountStatus,
   getDebtBalanceLabel,
+  getNetDebtBalance,
   normalizeMutationAuditContext,
   normalizeSalaryAmount,
   normalizeSignedMoneyAmount,
@@ -236,7 +239,9 @@ export class CompanyService {
 
     const existingAccount = input.partyType === "INTERNAL_WORKER"
       ? this.repository.getDebtAccountByWorkerId(workerId!)
-      : this.repository.getDebtAccountByExternalCounterpartyId(externalCounterpartyId!)
+      : (input.direction === "RECEIVABLE"
+          ? this.repository.getDebtAccountByExternalCounterpartyIdAndDirection(externalCounterpartyId!, "RECEIVABLE")
+          : this.repository.getDebtAccountByExternalCounterpartyIdAndDirection(externalCounterpartyId!, "PAYABLE"))
 
     if (existingAccount) {
       if (openingBalance !== 0) {
@@ -262,6 +267,7 @@ export class CompanyService {
           partyType: input.partyType,
           workerId,
           externalCounterpartyId,
+          direction: input.direction ?? "PAYABLE",
           status,
           currentBalance: openingBalance,
           note: normalizeText(input.note),
@@ -381,7 +387,11 @@ export class CompanyService {
     if (input.partyType === "INTERNAL_WORKER") {
       const employee = this.requireEmployeeWorker(input.workerId!, "workerId")
       const debtAccounts = this.repository.listDebtAccounts({ workerId: employee.id })
-      const totalBalanceDzd = debtAccounts.reduce((sum, account) => sum + account.currentBalance, 0)
+      // Worker debts are always PAYABLE (advances, cash takes), so the
+      // net equals the negated sum of balances. Using `getNetDebtBalance`
+      // keeps the sign convention consistent with external counterparties
+      // even if a future enhancement allows RECEIVABLE worker accounts.
+      const totalBalanceDzd = getNetDebtBalance(debtAccounts)
       return successResult("تم تحميل تفاصيل ديون العامل بنجاح.", {
         partyType: "INTERNAL_WORKER" as const,
         workerId: employee.id,
@@ -397,7 +407,7 @@ export class CompanyService {
 
     const counterparty = this.requireExternalCounterparty(input.externalCounterpartyId!, "externalCounterpartyId")
     const debtAccounts = this.repository.listDebtAccounts({ externalCounterpartyId: counterparty.id })
-    const totalBalanceDzd = debtAccounts.reduce((sum, account) => sum + account.currentBalance, 0)
+    const totalBalanceDzd = getNetDebtBalance(debtAccounts)
     return successResult("تم تحميل تفاصيل ديون الطرف الخارجي بنجاح.", {
       partyType: "EXTERNAL_COUNTERPARTY" as const,
       workerId: null,
@@ -432,8 +442,14 @@ export class CompanyService {
           displayName: employee ? `${employee.firstName} ${employee.lastName}` : counterparty?.fullName ?? account.id,
           phoneNumber: employee?.phone ?? counterparty?.phoneNumber ?? null,
           status: account.status,
+          direction: account.direction,
           currentBalance: account.currentBalance,
-          balanceLabel: getDebtBalanceLabel(account.currentBalance),
+          // Issue #22: per-account balance label must respect the
+          // direction sign convention. A positive PAYABLE balance
+          // means "we owe them" (علينا له), not "لنا عنده" — using
+          // the raw currentBalance here would invert the label for
+          // every PAYABLE account.
+          balanceLabel: getDebtAccountBalanceLabel(account),
           createdAt: account.createdAt,
           updatedAt: account.updatedAt,
         }
@@ -468,7 +484,7 @@ export class CompanyService {
         externalCounterpartyId: account.externalCounterpartyId,
         displayName: employee ? `${employee.firstName} ${employee.lastName}` : counterparty?.fullName ?? account.id,
         phoneNumber: employee?.phone ?? counterparty?.phoneNumber ?? null,
-        totalBalanceDzd: (current?.totalBalanceDzd ?? 0) + account.currentBalance,
+        totalBalanceDzd: (current?.totalBalanceDzd ?? 0) + getDebtAccountNetContribution(account),
         openDebtCasesCount: (current?.openDebtCasesCount ?? 0) + (account.status === "OPEN" ? 1 : 0),
         settledDebtCasesCount: (current?.settledDebtCasesCount ?? 0) + (account.status === "SETTLED" ? 1 : 0),
         latestActivityAt: nextLatestActivityAt,

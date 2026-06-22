@@ -15,10 +15,17 @@ import type {
  * existing debt tables directly (not the CompanyService god-object) so
  * the InvoiceModule stays decoupled and testable.
  *
- * Per-counterparty ledger model:
- *   - One `debt_account` per `external_counterparty` (find-or-create on
- *     supplier name + phone). One counterparty can have many invoices;
- *     the OPENING entries accumulate the running balance.
+ * Per-counterparty ledger model (Issue #22 — bidirectional):
+ *   - One `debt_account` per (external_counterparty, direction) pair,
+ *     enforced by the composite unique index
+ *     `debt_account_external_counterparty_direction_unique`. Purchase
+ *     invoices always target the PAYABLE ledger; sale invoices (Issue
+ *     #26) will target the RECEIVABLE ledger. A single counterparty
+ *     can therefore have both ledgers, each accumulating running
+ *     balance from its own stream of invoices.
+ *   - One counterparty can have many invoices against the same ledger;
+ *     each OPENING entry accumulates on top of the previous running
+ *     balance.
  *   - Each `OPENING` debt entry is linked back to the source invoice
  *     via `debt_entry.invoice_id` so accountants can trace which
  *     invoices created which balance.
@@ -67,7 +74,14 @@ export function createSqliteInvoiceDebtPort(
     note: string,
     audit: MutationAuditContext,
   ): { id: string; previousBalance: number } {
-    const existing = repository.getDebtAccountByExternalCounterpartyId(counterpartyId);
+    // Issue #22: each counterparty can have one PAYABLE and one
+    // RECEIVABLE account. Purchase invoices always write to the
+    // PAYABLE ledger. Sale-invoice support (Issue #26) will pass
+    // 'RECEIVABLE' instead.
+    const existing = repository.getDebtAccountByExternalCounterpartyIdAndDirection(
+      counterpartyId,
+      "PAYABLE",
+    );
     if (existing) {
       return { id: existing.id, previousBalance: existing.currentBalance };
     }
@@ -78,6 +92,7 @@ export function createSqliteInvoiceDebtPort(
         externalCounterpartyId: counterpartyId,
         workerId: null,
         status: "OPEN",
+        direction: "PAYABLE",
         currentBalance: openingSignedAmount,
         note,
         settledAt: null,
@@ -285,6 +300,7 @@ export interface InMemoryInvoiceDebtPortState {
   debtAccounts: Map<string, {
     id: string;
     counterpartyId: string;
+    direction: "PAYABLE" | "RECEIVABLE";
     balance: number;
     settled: boolean;
   }>;
@@ -317,18 +333,26 @@ export function createInMemoryInvoiceDebtPort(): InvoiceDebtPort & {
     return id;
   }
 
+  function accountKey(counterpartyId: string, direction: "PAYABLE" | "RECEIVABLE"): string {
+    return `${counterpartyId}::${direction}`;
+  }
+
   function ensureDebtAccountId(
     counterpartyId: string,
     openingSignedAmount: number,
   ): { id: string; previousBalance: number } {
-    const existing = state.debtAccounts.get(counterpartyId);
+    // Issue #22: invoice flow writes to PAYABLE ledger only. Sale
+    // invoices (Issue #26) will use the RECEIVABLE ledger.
+    const key = accountKey(counterpartyId, "PAYABLE");
+    const existing = state.debtAccounts.get(key);
     if (existing) {
       return { id: existing.id, previousBalance: existing.balance };
     }
     const id = randomUUID();
-    state.debtAccounts.set(counterpartyId, {
+    state.debtAccounts.set(key, {
       id,
       counterpartyId,
+      direction: "PAYABLE",
       balance: openingSignedAmount,
       settled: false,
     });
@@ -384,7 +408,7 @@ export function createInMemoryInvoiceDebtPort(): InvoiceDebtPort & {
       // from a prior full settlement); otherwise subsequent payments
       // would settle against the stale zero balance and corrupt
       // financial tracking.
-      const accountState = state.debtAccounts.get(counterpartyId)!;
+      const accountState = state.debtAccounts.get(accountKey(counterpartyId, "PAYABLE"))!;
       accountState.balance = balanceAfter;
       accountState.settled = false;
 

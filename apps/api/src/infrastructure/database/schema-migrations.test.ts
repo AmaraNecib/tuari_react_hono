@@ -2,8 +2,15 @@ import Database from "better-sqlite3";
 
 import { describe, expect, it } from "vitest";
 
-import { applyDebtAccountBalanceRename, type DbExecutor } from "./schema";
-import { debtAccountBalanceRenameMigrationKey } from "./schema-definitions";
+import {
+  applyDebtAccountBalanceRename,
+  applyDebtAccountDirectionMigration,
+  type DbExecutor,
+} from "./schema";
+import {
+  debtAccountBalanceRenameMigrationKey,
+  debtAccountDirectionMigrationKey,
+} from "./schema-definitions";
 
 /**
  * Adapter that turns a `better-sqlite3` `Database` into a `DbExecutor`
@@ -167,5 +174,177 @@ describe("applyDebtAccountBalanceRename (issue #21)", () => {
       { id: "acct-positive", balance: 500 },
       { id: "acct-zero", balance: 0 },
     ]);
+  });
+});
+
+/**
+ * Issue #22: add `direction` column to `debt_account` and enforce
+ * uniqueness on `(external_counterparty_id, direction)`. The column
+ * itself is added by an additive statement on every startup, so the
+ * migration only needs to create the composite unique index and
+ * record itself in `app_schema_state`.
+ */
+describe("applyDebtAccountDirectionMigration (issue #22)", () => {
+  function createDbWithDirectionColumn() {
+    const db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(`
+      CREATE TABLE "app_schema_state" (
+        "key" TEXT NOT NULL PRIMARY KEY,
+        "executed_at" DATETIME NOT NULL
+      );
+      CREATE TABLE "external_counterparty" (
+        "id" TEXT NOT NULL PRIMARY KEY
+      );
+      CREATE TABLE "debt_account" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "external_counterparty_id" TEXT,
+        "direction" TEXT NOT NULL DEFAULT 'PAYABLE'
+          CHECK ("direction" IN ('PAYABLE', 'RECEIVABLE')),
+        "status" TEXT NOT NULL,
+        "current_balance" REAL NOT NULL DEFAULT 0
+      );
+    `);
+    db.prepare('INSERT INTO "external_counterparty" ("id") VALUES (?), (?)').run(
+      "ext-1",
+      "ext-2",
+    );
+    return db;
+  }
+
+  /**
+   * Realistic legacy DB: has the single-column unique index installed
+   * by `debtSingleAccountMigration`. The direction migration MUST drop
+   * this index or the second ledger per counterparty is impossible.
+   */
+  function createLegacyDbWithSingleColumnIndex() {
+    const db = createDbWithDirectionColumn();
+    db.exec(
+      'CREATE UNIQUE INDEX "debt_account_external_counterparty_unique" ON "debt_account" ("external_counterparty_id") WHERE "external_counterparty_id" IS NOT NULL',
+    );
+    // Pre-existing counterparty already has a PAYABLE account.
+    db.prepare(
+      'INSERT INTO "debt_account" ("id", "external_counterparty_id", "direction", "status") VALUES (?, ?, ?, ?)',
+    ).run("acct-legacy", "ext-1", "PAYABLE", "OPEN");
+    return db;
+  }
+
+  function listIndexes(db: Database.Database, table: string) {
+    return db
+      .prepare(`PRAGMA index_list("${table}")`)
+      .all()
+      .map((row) => (row as { name: string }).name);
+  }
+
+  it("creates the composite unique index on a fresh legacy DB", async () => {
+    const db = createDbWithDirectionColumn();
+
+    await applyDebtAccountDirectionMigration(asDbExecutor(db));
+
+    const indexes = listIndexes(db, "debt_account");
+    expect(indexes).toContain("debt_account_external_counterparty_direction_unique");
+
+    const [keyRow] = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(debtAccountDirectionMigrationKey) as Array<{ key: string }>;
+    expect(keyRow?.key).toBe(debtAccountDirectionMigrationKey);
+  });
+
+  it("is a no-op when called twice (state key guards re-run)", async () => {
+    const db = createDbWithDirectionColumn();
+
+    await applyDebtAccountDirectionMigration(asDbExecutor(db));
+    await applyDebtAccountDirectionMigration(asDbExecutor(db));
+
+    const keys = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(debtAccountDirectionMigrationKey) as Array<{ key: string }>;
+    expect(keys).toHaveLength(1);
+  });
+
+  it("drops the legacy single-column unique index on legacy DBs", async () => {
+    // Greptile flagged this: production databases that ran the
+    // pre-Issue-#22 `debtSingleAccountMigration` already have
+    // `debt_account_external_counterparty_unique` enforcing
+    // "one account per counterparty". The direction migration MUST
+    // drop that index or the second ledger is impossible.
+    const db = createLegacyDbWithSingleColumnIndex();
+    expect(listIndexes(db, "debt_account")).toContain("debt_account_external_counterparty_unique");
+
+    await applyDebtAccountDirectionMigration(asDbExecutor(db));
+
+    const indexes = listIndexes(db, "debt_account");
+    expect(indexes).not.toContain("debt_account_external_counterparty_unique");
+    expect(indexes).toContain("debt_account_external_counterparty_direction_unique");
+  });
+
+  it("allows a second ledger per counterparty after dropping the legacy index", async () => {
+    const db = createLegacyDbWithSingleColumnIndex();
+
+    await applyDebtAccountDirectionMigration(asDbExecutor(db));
+
+    // The legacy PAYABLE row is still there.
+    const before = db
+      .prepare(
+        'SELECT "id", "direction" FROM "debt_account" WHERE "external_counterparty_id" = ? ORDER BY "direction"',
+      )
+      .all("ext-1") as Array<{ id: string; direction: string }>;
+    expect(before).toEqual([{ id: "acct-legacy", direction: "PAYABLE" }]);
+
+    // Insert the second ledger (RECEIVABLE) — this would FAIL on a
+    // legacy DB that hadn't dropped the old single-column index.
+    expect(() =>
+      db
+        .prepare(
+          'INSERT INTO "debt_account" ("id", "external_counterparty_id", "direction", "status") VALUES (?, ?, ?, ?)',
+        )
+        .run("acct-rec-1", "ext-1", "RECEIVABLE", "OPEN"),
+    ).not.toThrow();
+
+    // Both ledgers coexist on the same counterparty.
+    const after = db
+      .prepare(
+        'SELECT "direction" FROM "debt_account" WHERE "external_counterparty_id" = ? ORDER BY "direction"',
+      )
+      .all("ext-1") as Array<{ direction: string }>;
+    expect(after.map((row) => row.direction)).toEqual(["PAYABLE", "RECEIVABLE"]);
+  });
+
+  it("enforces one-PAYABLE-and-one-RECEIVABLE-per-counterparty at the DB layer", async () => {
+    const db = createDbWithDirectionColumn();
+
+    await applyDebtAccountDirectionMigration(asDbExecutor(db));
+
+    // First PAYABLE account: ok
+    db.prepare(
+      'INSERT INTO "debt_account" ("id", "external_counterparty_id", "direction", "status") VALUES (?, ?, ?, ?)',
+    ).run("acct-pay-1", "ext-1", "PAYABLE", "OPEN");
+
+    // First RECEIVABLE account for same counterparty: ok
+    expect(() =>
+      db
+        .prepare(
+          'INSERT INTO "debt_account" ("id", "external_counterparty_id", "direction", "status") VALUES (?, ?, ?, ?)',
+        )
+        .run("acct-rec-1", "ext-1", "RECEIVABLE", "OPEN"),
+    ).not.toThrow();
+
+    // Second PAYABLE for same counterparty: rejected
+    expect(() =>
+      db
+        .prepare(
+          'INSERT INTO "debt_account" ("id", "external_counterparty_id", "direction", "status") VALUES (?, ?, ?, ?)',
+        )
+        .run("acct-pay-2", "ext-1", "PAYABLE", "OPEN"),
+    ).toThrow(/UNIQUE constraint failed/);
+
+    // Second RECEIVABLE for same counterparty: rejected
+    expect(() =>
+      db
+        .prepare(
+          'INSERT INTO "debt_account" ("id", "external_counterparty_id", "direction", "status") VALUES (?, ?, ?, ?)',
+        )
+        .run("acct-rec-2", "ext-1", "RECEIVABLE", "OPEN"),
+    ).toThrow(/UNIQUE constraint failed/);
   });
 });

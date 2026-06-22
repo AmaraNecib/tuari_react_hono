@@ -61,6 +61,38 @@ describe("debt_account schema (#21 rename migration)", () => {
   });
 });
 
+describe("debt_account schema (#22 direction column)", () => {
+  const definitions = createSchemaDefinitions();
+
+  function getDebtAccountDefinition() {
+    const def = definitions.find((d) => d.includes('"debt_account"'));
+    if (!def) {
+      throw new Error("debt_account CREATE TABLE statement not found in schemaStatements");
+    }
+    return def;
+  }
+
+  it("includes a `direction` column with PAYABLE/RECEIVABLE check constraint", () => {
+    // Issue #22 splits each counterparty's debt into a payable and a
+    // receivable ledger. Direction is set at account-creation time and
+    // never changes; the CHECK constraint enforces the two-value enum
+    // at the database boundary so a stray application bug can't land
+    // an invalid value.
+    const def = getDebtAccountDefinition();
+    expect(def).toContain('"direction"');
+    expect(def).toMatch(/"direction"\s+TEXT\s+NOT\s+NULL\s+CHECK\s*\(\s*"direction"\s+IN\s*\(\s*'PAYABLE'\s*,\s*'RECEIVABLE'\s*\)\s*\)/);
+  });
+
+  it("defaults `direction` to PAYABLE so legacy rows backfill correctly", () => {
+    // Existing debt_account rows are all payable (pre-issue-#22). The
+    // default of 'PAYABLE' makes the additive migration backfill
+    // every existing row with the right value without an explicit
+    // UPDATE.
+    const def = getDebtAccountDefinition();
+    expect(def).toMatch(/"direction"\s+TEXT\s+NOT\s+NULL\s+CHECK[\s\S]*?DEFAULT\s+'PAYABLE'/);
+  });
+});
+
 describe("rolePermissionSeeds", () => {
   it("generates seed entries for all default roles", () => {
     const seeds = rolePermissionSeeds();

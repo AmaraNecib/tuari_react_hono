@@ -231,6 +231,7 @@ export function mapDebtAccount(row: SqliteRow): DebtAccountRecord {
     workerId: row.worker_id ? String(row.worker_id) : null,
     externalCounterpartyId: row.external_counterparty_id ? String(row.external_counterparty_id) : null,
     status: String(row.status) as DebtAccountRecord["status"],
+    direction: String(row.direction ?? "PAYABLE") as DebtAccountRecord["direction"],
     currentBalance: Number(row.current_balance ?? 0),
     note: toNullableText(row.note),
     settledAt: row.settled_at ? String(row.settled_at) : null,

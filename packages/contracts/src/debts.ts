@@ -4,6 +4,7 @@ import {
   algerianPhoneSchema,
   auditActorUserIdSchema,
   auditTransactionIdSchema,
+  debtAccountDirectionSchema,
   debtAccountStatusSchema,
   debtEntryTypeSchema,
   debtPartyTypeSchema,
@@ -11,6 +12,9 @@ import {
   nullableTextSchema,
   timestampSchema,
 } from "./core";
+
+export { debtAccountDirectionSchema };
+export type DebtAccountDirection = z.infer<typeof debtAccountDirectionSchema>;
 
 export const externalCounterpartySchema = z.object({
   id: entityIdSchema,
@@ -27,6 +31,7 @@ export const debtAccountSchema = z.object({
   workerId: entityIdSchema.nullable(),
   externalCounterpartyId: entityIdSchema.nullable(),
   status: debtAccountStatusSchema,
+  direction: debtAccountDirectionSchema,
   currentBalance: z.number(),
   note: nullableTextSchema,
   settledAt: timestampSchema.nullable(),
@@ -85,6 +90,7 @@ export const debtSummaryItemSchema = z.object({
   displayName: z.string().trim().min(1).max(160),
   phoneNumber: algerianPhoneSchema.nullable(),
   status: debtAccountStatusSchema,
+  direction: debtAccountDirectionSchema,
   currentBalance: z.number(),
   balanceLabel: z.enum(["لنا عنده", "علينا له", "مغلق"]),
   createdAt: timestampSchema,
@@ -122,6 +128,7 @@ export const debtAccountCreateInputSchema = z
     partyType: debtPartyTypeSchema,
     workerId: entityIdSchema.nullable().optional(),
     externalCounterpartyId: entityIdSchema.nullable().optional(),
+    direction: debtAccountDirectionSchema.optional(),
     note: z.string().trim().max(1000).nullable().optional(),
     openingBalanceDzd: z.number().finite().optional(),
     openingEntryDate: timestampSchema.optional(),

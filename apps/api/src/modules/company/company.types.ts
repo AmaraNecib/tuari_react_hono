@@ -258,6 +258,7 @@ export type DebtAccountCreateData = {
   workerId?: string | null;
   externalCounterpartyId?: string | null;
   status: DebtAccountRecord["status"];
+  direction: DebtAccountRecord["direction"];
   currentBalance: number;
   note?: string | null;
   settledAt?: string | null;
@@ -267,6 +268,7 @@ export type DebtAccountListFilters = {
   partyType?: DebtAccountRecord["partyType"];
   workerId?: string;
   externalCounterpartyId?: string;
+  direction?: DebtAccountRecord["direction"];
   status?: DebtAccountRecord["status"];
 };
 

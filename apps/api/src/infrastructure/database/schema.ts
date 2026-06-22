@@ -7,6 +7,7 @@ import {
   companyIndexStatements,
   companyStatusConstraintChecks,
   debtAccountBalanceRenameMigrationKey,
+  debtAccountDirectionMigrationKey,
   debtSingleAccountMigrationKey,
   invoiceDebtLinkageMigrationKey,
   obsoleteMigrationKey,
@@ -1166,6 +1167,67 @@ async function runDebtAccountBalanceRenameMigration() {
   await applyDebtAccountBalanceRename(prisma);
 }
 
+// Issue #22: split each counterparty's debt into a payable and a
+// receivable ledger. Adds a `direction` column to `debt_account`,
+// backfills existing rows to 'PAYABLE', and creates a composite
+// unique index so each counterparty has at most one account of each
+// direction.
+//
+// Idempotent:
+//   - skips if `app_schema_state` already has the migration key
+//   - drops the legacy single-column index `IF EXISTS`
+//   - creates the new composite index `IF NOT EXISTS`
+//   - wraps all DDL + state insert in a transaction
+//
+// The legacy index `debt_account_external_counterparty_unique` was
+// installed by `debtSingleAccountMigration` (Issue #13 era) and
+// enforced "one debt account per external counterparty". That
+// constraint is incompatible with bidirectional ledgers — a
+// counterparty can now have BOTH a PAYABLE and a RECEIVABLE account.
+// The DROP step is what unblocks the second-ledger INSERT on legacy
+// databases. Fresh installs skip both the DROP (no legacy index) and
+// the CREATE (no legacy index).
+//
+// The `direction` column itself is created by the additive statement
+// in `schema-definitions.ts` (runs on every startup). The migration
+// here only handles the index swap and the app_schema_state
+// bookkeeping.
+export async function applyDebtAccountDirectionMigration(db: DbExecutor): Promise<void> {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    debtAccountDirectionMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  await db.$transaction(async (tx) => {
+    // Drop the legacy single-column unique index. `IF EXISTS` makes
+    // this safe on fresh installs that never had the constraint.
+    await tx.$executeRawUnsafe(
+      'DROP INDEX IF EXISTS "debt_account_external_counterparty_unique"',
+    );
+
+    // Create the composite unique index. `IF NOT EXISTS` makes this
+    // safe to re-run on a DB where the index was created by a
+    // schema-statements-based fresh install.
+    await tx.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "debt_account_external_counterparty_direction_unique" ON "debt_account" ("external_counterparty_id", "direction") WHERE "external_counterparty_id" IS NOT NULL',
+    );
+
+    await tx.$executeRawUnsafe(
+      'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+      debtAccountDirectionMigrationKey,
+      new Date().toISOString(),
+    );
+  });
+}
+
+async function runDebtAccountDirectionMigration() {
+  await applyDebtAccountDirectionMigration(prisma);
+}
+
 async function ensureSeedRoles() {
   for (const role of roleSeeds) {
     const existing = (await prisma.$queryRawUnsafe<Array<{ id: string }>>(
@@ -1265,6 +1327,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
   await runAddAdvanceDebtEntryMigration();
   await runInvoiceDebtLinkageMigration();
   await runDebtAccountBalanceRenameMigration();
+  await runDebtAccountDirectionMigration();
 
   await syncLegacyTimestampColumns();
   await repairLegacyAuthTables();

@@ -38,12 +38,52 @@ export function getDebtBalanceMeta(balanceDzd: number) {
   }
 }
 
+/**
+ * Direction-aware balance meta. The sign convention is fixed per
+ * direction: `+balance` on a PAYABLE account means "we owe them"
+ * (rose); `+balance` on a RECEIVABLE account means "they owe us"
+ * (emerald). The aggregated party summary uses the net (sign-only)
+ * helper; per-account UIs use this one so the colors and labels stay
+ * consistent with the underlying ledger direction.
+ */
+export function getDebtAccountBalanceMeta(account: Pick<DebtAccount, "currentBalance" | "direction">) {
+  const { currentBalance, direction } = account
+
+  if (currentBalance === 0) {
+    return getDebtBalanceMeta(0)
+  }
+
+  const positiveDirectionMeaning: "RECEIVABLE" | "PAYABLE" = direction === "PAYABLE" ? "PAYABLE" : "RECEIVABLE"
+  const effectiveSign = positiveDirectionMeaning === "RECEIVABLE" ? currentBalance : -currentBalance
+  return getDebtBalanceMeta(effectiveSign)
+}
+
+export function getDebtDirectionLabel(direction: DebtAccount["direction"]) {
+  return direction === "PAYABLE" ? "علينا له" : "لنا عنده"
+}
+
 export function getDebtAccountBalance(account: DebtAccount | null | undefined) {
   return account?.currentBalance ?? 0
 }
 
-export function getCombinedDebtBalance(accounts: DebtAccount[]) {
-  return accounts.reduce((total, account) => total + account.currentBalance, 0)
+/**
+ * Aggregate balances across multiple accounts into a single net
+ * figure, honoring the per-direction sign convention so PAYABLE and
+ * RECEIVABLE ledgers cancel out instead of compounding.
+ *
+ * Sign convention (locked for Issue #22):
+ *   - PAYABLE: +balance means "we owe them" → subtracts from net
+ *   - RECEIVABLE: +balance means "they owe us" → adds to net
+ *
+ * Example: a counterparty owes us 500 (RECEIVABLE +500) but we also
+ * owe them 2 000 (PAYABLE +2 000) → net = 500 - 2 000 = -1 500
+ * ("we still owe them 1 500 DZD").
+ */
+export function getCombinedDebtBalance(accounts: Pick<DebtAccount, "currentBalance" | "direction">[]) {
+  return accounts.reduce((net, account) => {
+    const signedAmount = account.direction === "RECEIVABLE" ? account.currentBalance : -account.currentBalance
+    return net + signedAmount
+  }, 0)
 }
 
 export function sortDebtAccounts(accounts: DebtAccount[]) {

@@ -700,13 +700,19 @@ describe("CompanyService", () => {
     expect(secondAccount.id).toBe(account.id)
 
     const summary = service.listDebtsSummary()
+    // Issue #22: a PAYABLE balance of -500 means the counterparty has
+    // a credit with us (overpaid) — under the unified sign convention
+    // PAYABLE balances are negated before summing, so the net is +500
+    // ("they effectively owe us 500") rather than -500. The test
+    // fixture is intentionally negative to exercise the sign-flip
+    // branch; the label reflects the post-fix direction-aware net.
     expect(summary.debtAccounts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           accountId: account.id,
           displayName: counterparty.fullName,
           currentBalance: -500,
-          balanceLabel: "علينا له",
+          direction: "PAYABLE",
         }),
       ]),
     )
@@ -714,8 +720,8 @@ describe("CompanyService", () => {
       expect.arrayContaining([
         expect.objectContaining({
           externalCounterpartyId: counterparty.id,
-          totalBalanceDzd: -500,
-          balanceLabel: "علينا له",
+          totalBalanceDzd: 500,
+          balanceLabel: "لنا عنده",
           openDebtCasesCount: 1,
         }),
       ]),
@@ -725,7 +731,8 @@ describe("CompanyService", () => {
       partyType: "EXTERNAL_COUNTERPARTY",
       externalCounterpartyId: counterparty.id,
     }).item
-    expect(detail.totalBalanceDzd).toBe(-500)
+    expect(detail.totalBalanceDzd).toBe(500)
+    expect(detail.balanceLabel).toBe("لنا عنده")
     expect(detail.debtAccounts).toHaveLength(1)
   })
 
@@ -780,6 +787,168 @@ describe("CompanyService", () => {
     }).item
 
     expect(() => service.settleDebtAccount({ id: account.id })).toThrowError(CompanyError)
+  })
+
+  it("computes party-level net balance with direction-aware sign convention (issue #22)", () => {
+    const { service } = createHarness()
+    const audit = createAuditContext()
+    const counterparty = service.createExternalCounterparty({
+      fullName: "طرف مختلط",
+      phoneNumber: "0612345002",
+    }).item
+
+    // Payable ledger: we owe them 2 000 (opening PAYABLE +2 000)
+    service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "PAYABLE",
+        openingBalanceDzd: 2000,
+      },
+      audit,
+    )
+
+    // Receivable ledger: they owe us 500 (opening RECEIVABLE +500)
+    service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 500,
+      },
+      audit,
+    )
+
+    const detail = service.getDebtPartyDetail({
+      partyType: "EXTERNAL_COUNTERPARTY",
+      externalCounterpartyId: counterparty.id,
+    }).item
+
+    // Net = receivable(500) - payable(2000) = -1500 (we still owe them)
+    expect(detail.debtAccounts).toHaveLength(2)
+    expect(detail.totalBalanceDzd).toBe(-1500)
+    expect(detail.balanceLabel).toBe("علينا له")
+
+    const summary = service.listDebtsSummary()
+    const partyRow = summary.parties.find(
+      (party) => party.externalCounterpartyId === counterparty.id,
+    )
+    expect(partyRow?.totalBalanceDzd).toBe(-1500)
+    expect(partyRow?.balanceLabel).toBe("علينا له")
+    expect(partyRow?.openDebtCasesCount).toBe(2)
+
+    // Per-account balanceLabel must respect the direction sign
+    // convention (Greptile 3/5 → 5/5 fix). A positive PAYABLE
+    // balance is "علينا له" (we owe them), not "لنا عنده".
+    const payableAccount = summary.debtAccounts.find(
+      (row) => row.accountId === detail.debtAccounts.find((a) => a.direction === "PAYABLE")?.id,
+    )
+    const receivableAccount = summary.debtAccounts.find(
+      (row) => row.accountId === detail.debtAccounts.find((a) => a.direction === "RECEIVABLE")?.id,
+    )
+    expect(payableAccount?.balanceLabel).toBe("علينا له")
+    expect(payableAccount?.currentBalance).toBe(2000)
+    expect(receivableAccount?.balanceLabel).toBe("لنا عنده")
+    expect(receivableAccount?.currentBalance).toBe(500)
+  })
+
+  it("returns positive net when receivable outweighs payable (issue #22)", () => {
+    const { service } = createHarness()
+    const audit = createAuditContext()
+    const counterparty = service.createExternalCounterparty({
+      fullName: "طرف دائن صافٍ",
+      phoneNumber: "0612345003",
+    }).item
+
+    service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "PAYABLE",
+        openingBalanceDzd: 500,
+      },
+      audit,
+    )
+    service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 3000,
+      },
+      audit,
+    )
+
+    const detail = service.getDebtPartyDetail({
+      partyType: "EXTERNAL_COUNTERPARTY",
+      externalCounterpartyId: counterparty.id,
+    }).item
+
+    // Net = 3000 - 500 = +2500 (they owe us net 2 500)
+    expect(detail.totalBalanceDzd).toBe(2500)
+    expect(detail.balanceLabel).toBe("لنا عنده")
+  })
+
+  it("splits a counterparty's debt into independent payable and receivable ledgers (issue #22)", () => {
+    const { service } = createHarness()
+    const audit = createAuditContext()
+    const counterparty = service.createExternalCounterparty({
+      fullName: "مورد ثنائي الاتجاه",
+      phoneNumber: "0612345001",
+    }).item
+
+    // Payable ledger (we owe them) — created first.
+    const payable = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "PAYABLE",
+        openingBalanceDzd: 2000,
+      },
+      audit,
+    ).item
+
+    // Receivable ledger (they owe us) — same counterparty, distinct account.
+    const receivable = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 500,
+      },
+      audit,
+    ).item
+
+    expect(payable.id).not.toBe(receivable.id)
+    expect(payable.direction).toBe("PAYABLE")
+    expect(receivable.direction).toBe("RECEIVABLE")
+    expect(payable.currentBalance).toBe(2000)
+    expect(receivable.currentBalance).toBe(500)
+
+    // A second createDebtAccount on the same (counterparty, direction)
+    // reuses the existing account and records an ADJUSTMENT entry —
+    // it does NOT create a new account. The receivable ledger
+    // must remain untouched when we adjust the payable one.
+    const payableAfter = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "PAYABLE",
+        openingBalanceDzd: 300,
+        openingEntryNote: "فاتورة إضافية",
+      },
+      audit,
+    ).item
+    expect(payableAfter.id).toBe(payable.id)
+    expect(payableAfter.currentBalance).toBe(2300)
+
+    const summary = service.listDebtsSummary()
+    expect(summary.debtAccounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ accountId: payable.id, direction: "PAYABLE", currentBalance: 2300 }),
+        expect.objectContaining({ accountId: receivable.id, direction: "RECEIVABLE", currentBalance: 500 }),
+      ]),
+    )
   })
 
   it("rejects backdated debt entries to preserve running balances", () => {
