@@ -25,7 +25,7 @@ function calculateTotal(lineItems: { quantity: number; unitPrice: number }[]): n
 }
 
 interface CursorPayload {
-  sortValue: number | string;
+  sortValue: number | string | null;
   id: string;
 }
 
@@ -41,7 +41,8 @@ function decodeCursor(cursor: string): CursorPayload {
     decoded === null ||
     typeof (decoded as CursorPayload).id !== "string" ||
     (typeof (decoded as CursorPayload).sortValue !== "string" &&
-      typeof (decoded as CursorPayload).sortValue !== "number")
+      typeof (decoded as CursorPayload).sortValue !== "number" &&
+      (decoded as CursorPayload).sortValue !== null)
   ) {
     throw new InvalidInvoiceCursorError(cursor);
   }

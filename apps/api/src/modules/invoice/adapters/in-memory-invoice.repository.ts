@@ -84,10 +84,24 @@ export function createInMemoryInvoiceRepository(): InvoiceRepository & {
                 ? i.invoiceDate ?? ""
                 : i.totalAmount;
           const av = after.sortValue;
+          // When the cursor's sortValue is null, the next page is the
+          // remainder of the null group, ordered by id. When both are
+          // non-null, apply the standard keyset (sortCol < av OR
+          // (sortCol = av AND id < after.id)). DESC: smaller keyset; ASC: larger.
+          if (av === null) {
+            return (
+              (field === "invoiceDate" ? i.invoiceDate === null || i.invoiceDate === undefined : false) &&
+              (dir === "desc" ? i.id < after.id : i.id > after.id)
+            );
+          }
+          const cmpAv =
+            typeof av === "number" ? av : String(av);
+          const cmpIv =
+            typeof iv === "number" ? iv : String(iv);
           return (
-            (typeof iv === "number" && typeof av === "number"
-              ? iv < av || (iv === av && i.id < after.id)
-              : String(iv) < String(av) || (String(iv) === String(av) && i.id < after.id))
+            dir === "desc"
+              ? cmpIv < cmpAv || (cmpIv === cmpAv && i.id < after.id)
+              : cmpIv > cmpAv || (cmpIv === cmpAv && i.id > after.id)
           );
         });
       }
@@ -99,11 +113,13 @@ export function createInMemoryInvoiceRepository(): InvoiceRepository & {
       let nextCursor: string | null = null;
       if (hasMore && pageItems.length > 0) {
         const last = pageItems[pageItems.length - 1]!;
+        // Encode null sort values as null (so the next page knows it
+        // must continue the null group), not the empty string fallback.
         const lastSort =
           field === "createdAt"
             ? last.createdAt
             : field === "invoiceDate"
-              ? last.invoiceDate ?? ""
+              ? last.invoiceDate ?? null
               : last.totalAmount;
         nextCursor = Buffer.from(
           JSON.stringify({ sortValue: lastSort, id: last.id }),

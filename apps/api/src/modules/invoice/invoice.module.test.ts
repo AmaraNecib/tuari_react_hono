@@ -358,6 +358,19 @@ describe("InvoiceModule", () => {
         module.listPaged({ limit: 10, cursor: bad }),
       ).rejects.toBeInstanceOf(InvalidInvoiceCursorError);
     });
+
+    it("accepts null sortValue in cursor (for nullable invoiceDate sort)", async () => {
+      const cursor = Buffer.from(
+        JSON.stringify({ sortValue: null, id: "inv-x" }),
+      ).toString("base64url");
+      const result = await module.listPaged({
+        limit: 10,
+        sort: { field: "invoiceDate", direction: "asc" },
+        cursor,
+      });
+      // Should not throw and should return the existing invoices.
+      expect(result.items).toBeDefined();
+    });
   });
 
   describe("markPaid", () => {

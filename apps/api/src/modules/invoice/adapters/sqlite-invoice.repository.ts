@@ -38,7 +38,7 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
   async findPaged(query: {
     filters?: InvoiceListFilters;
     sort?: { field: InvoiceListSortField; direction: SortDirection };
-    after?: { sortValue: number | string; id: string };
+    after?: { sortValue: number | string | null; id: string };
     limit: number;
   }): Promise<{ items: Invoice[]; nextCursor: string | null; totalCount: number }> {
     const sortCol = SORT_COLUMN_MAP[query.sort?.field ?? "createdAt"];
@@ -75,12 +75,31 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     const cursorParams: unknown[] = [];
     if (query.after) {
       const connector = conditions.length > 0 ? "AND" : "WHERE";
-      if (sortDir === "DESC") {
+      // NULL sortValue: the next page is the rest of the NULL group,
+      // ordered by id. For non-null sortValue, keyset (sortCol < ? OR
+      // (sortCol = ? AND id < ?)) is used.
+      if (query.after.sortValue === null) {
+        if (sortDir === "DESC") {
+          cursorClause = `${connector} (${sortCol} IS NULL AND id < ?)`;
+        } else {
+          cursorClause = `${connector} (${sortCol} IS NULL AND id > ?)`;
+        }
+        cursorParams.push(query.after.id);
+      } else if (sortDir === "DESC") {
         cursorClause = `${connector} (${sortCol} < ? OR (${sortCol} = ? AND id < ?))`;
+        cursorParams.push(
+          query.after.sortValue,
+          query.after.sortValue,
+          query.after.id,
+        );
       } else {
         cursorClause = `${connector} (${sortCol} > ? OR (${sortCol} = ? AND id > ?))`;
+        cursorParams.push(
+          query.after.sortValue,
+          query.after.sortValue,
+          query.after.id,
+        );
       }
-      cursorParams.push(query.after.sortValue, query.after.sortValue, query.after.id);
     }
 
     const allParams = [...params, ...cursorParams, query.limit + 1];
