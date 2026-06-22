@@ -35,6 +35,7 @@ import {
   buildBatchField,
   buildDebtPartyKey,
   deleteResult,
+  getDebtAccountBalanceLabel,
   getDebtAccountNetContribution,
   getDebtAccountStatus,
   getDebtBalanceLabel,
@@ -443,7 +444,12 @@ export class CompanyService {
           status: account.status,
           direction: account.direction,
           currentBalance: account.currentBalance,
-          balanceLabel: getDebtBalanceLabel(account.currentBalance),
+          // Issue #22: per-account balance label must respect the
+          // direction sign convention. A positive PAYABLE balance
+          // means "we owe them" (علينا له), not "لنا عنده" — using
+          // the raw currentBalance here would invert the label for
+          // every PAYABLE account.
+          balanceLabel: getDebtAccountBalanceLabel(account),
           createdAt: account.createdAt,
           updatedAt: account.updatedAt,
         }

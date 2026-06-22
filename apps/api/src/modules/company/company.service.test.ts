@@ -836,6 +836,20 @@ describe("CompanyService", () => {
     expect(partyRow?.totalBalanceDzd).toBe(-1500)
     expect(partyRow?.balanceLabel).toBe("علينا له")
     expect(partyRow?.openDebtCasesCount).toBe(2)
+
+    // Per-account balanceLabel must respect the direction sign
+    // convention (Greptile 3/5 → 5/5 fix). A positive PAYABLE
+    // balance is "علينا له" (we owe them), not "لنا عنده".
+    const payableAccount = summary.debtAccounts.find(
+      (row) => row.accountId === detail.debtAccounts.find((a) => a.direction === "PAYABLE")?.id,
+    )
+    const receivableAccount = summary.debtAccounts.find(
+      (row) => row.accountId === detail.debtAccounts.find((a) => a.direction === "RECEIVABLE")?.id,
+    )
+    expect(payableAccount?.balanceLabel).toBe("علينا له")
+    expect(payableAccount?.currentBalance).toBe(2000)
+    expect(receivableAccount?.balanceLabel).toBe("لنا عنده")
+    expect(receivableAccount?.currentBalance).toBe(500)
   })
 
   it("returns positive net when receivable outweighs payable (issue #22)", () => {

@@ -80,6 +80,20 @@ export function getNetDebtBalance(accounts: Array<{ currentBalance: number; dire
   return accounts.reduce((net, account) => net + getDebtAccountNetContribution(account), 0)
 }
 
+/**
+ * Direction-aware label for a single debt account. Mirrors the
+ * per-account sign convention: +PAYABLE = "علينا له", +RECEIVABLE =
+ * "لنا عنده". Use this for per-account UIs; use
+ * `getDebtBalanceLabel(getNetDebtBalance(...))` for party aggregates.
+ */
+export function getDebtAccountBalanceLabel(account: { currentBalance: number; direction: "PAYABLE" | "RECEIVABLE" }) {
+  // Reuse the existing direction-agnostic helper by sign-flipping
+  // PAYABLE balances into the unified "net perspective" so positive
+  // maps to "لنا عنده" and negative maps to "علينا له".
+  const net = getDebtAccountNetContribution(account)
+  return getDebtBalanceLabel(net)
+}
+
 export function getDebtBalanceLabel(balance: number) {
   if (balance > 0) {
     return "لنا عنده" as const
