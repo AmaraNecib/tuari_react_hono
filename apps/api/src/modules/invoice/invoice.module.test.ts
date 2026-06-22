@@ -209,6 +209,35 @@ describe("InvoiceModule", () => {
       expect(sorted[1]!.balanceAfter).toBe(12000);
     });
 
+    it("re-opens a settled counterparty account when a new invoice arrives", async () => {
+      // First invoice: receive + full payment -> account settles to 0.
+      await module.create(makeInput({ id: "inv-1" }));
+      await module.receive("inv-1", ACTOR);
+      await module.markPaid("inv-1", 6000, ACTOR);
+
+      const account = Array.from(debtPort.state.debtAccounts.values())[0]!;
+      expect(account.balance).toBe(0);
+      expect(account.settled).toBe(true);
+
+      // Second invoice from the same supplier. The account must move
+      // back to OPEN with the new OPENING's balanceAfter, NOT stay in
+      // SETTLED with balance=0 (the bug from Greptile 3/5 review).
+      await module.create(
+        makeInput({ id: "inv-2", supplierName: "Acme Corp" }),
+      );
+      await module.receive("inv-2", ACTOR);
+
+      expect(account.balance).toBe(6000);
+      expect(account.settled).toBe(false);
+
+      // First partial payment should now settle against the running
+      // balance, not against the stale zero.
+      const partial = await module.markPaid("inv-2", 2000, ACTOR);
+      expect(partial.status).toBe("RECEIVED");
+      expect(account.balance).toBe(4000);
+      expect(account.settled).toBe(false);
+    });
+
     it("throws InvoiceNotFoundError when invoice missing", async () => {
       await expect(module.receive("missing", ACTOR)).rejects.toBeInstanceOf(
         InvoiceNotFoundError,

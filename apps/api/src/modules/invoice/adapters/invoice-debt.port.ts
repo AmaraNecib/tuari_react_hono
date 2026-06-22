@@ -184,20 +184,24 @@ export function createSqliteInvoiceDebtPort(
         );
         backfillEntryInvoiceId(account.id, "OPENING", input.invoiceId);
 
-        if (account.previousBalance !== 0) {
-          // Re-stamp the debt account's running balance to reflect the
-          // new OPENING. createDebtAccount sets it to openingSignedAmount
-          // for new accounts; for existing accounts we add the delta.
-          repository.updateDebtAccount(
-            {
-              id: account.id,
-              status: "OPEN",
-              currentBalanceDzd: balanceAfter,
-              settledAt: null,
-            },
-            audit,
-          );
-        }
+        // Always re-stamp the debt account's running balance to
+        // reflect the new OPENING entry. This is required even when
+        // previousBalance === 0 (a previously-settled supplier): we
+        // must move the account back to OPEN status with a non-zero
+        // balance so subsequent payments settle against the right
+        // running balance. createDebtAccount already handles the
+        // brand-new account case (status=OPEN, currentBalanceDzd=
+        // balanceAfter); this branch covers both re-opening a settled
+        // account and adding onto an existing OPEN one.
+        repository.updateDebtAccount(
+          {
+            id: account.id,
+            status: "OPEN",
+            currentBalanceDzd: balanceAfter,
+            settledAt: null,
+          },
+          audit,
+        );
 
         return account.id;
       });
@@ -368,8 +372,13 @@ export function createInMemoryInvoiceDebtPort(): InvoiceDebtPort & {
       const balanceAfter = account.previousBalance + input.amount;
       // Stamp running balance onto the account so successive OPENING
       // entries from the same counterparty layer on top of each other.
+      // Always re-open settled accounts (where previousBalance === 0
+      // from a prior full settlement); otherwise subsequent payments
+      // would settle against the stale zero balance and corrupt
+      // financial tracking.
       const accountState = state.debtAccounts.get(counterpartyId)!;
       accountState.balance = balanceAfter;
+      accountState.settled = false;
 
       recordEntry(
         account.id,
