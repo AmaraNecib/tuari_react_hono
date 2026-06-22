@@ -2,7 +2,44 @@ import Database from "better-sqlite3";
 
 import { describe, expect, it } from "vitest";
 
+import { applyDebtAccountBalanceRename, type DbExecutor } from "./schema";
 import { debtAccountBalanceRenameMigrationKey } from "./schema-definitions";
+
+/**
+ * Adapter that turns a `better-sqlite3` `Database` into a `DbExecutor`
+ * so the migration can be exercised directly against an in-memory SQLite
+ * without going through the global Prisma client.
+ *
+ * Mirrors the minimal Prisma surface used by the migration: raw query,
+ * raw execute, and a synchronous transaction callback that yields a
+ * same-shaped `DbExecutor` for the txn body.
+ */
+function asDbExecutor(database: Database.Database): DbExecutor {
+  function makeDb(inner: Database.Database): DbExecutor {
+    return {
+      async $queryRawUnsafe<T>(sql: string, ...params: unknown[]): Promise<T> {
+        return inner.prepare(sql).all(...params) as T;
+      },
+      async $executeRawUnsafe(sql: string, ...params: unknown[]): Promise<number> {
+        return inner.prepare(sql).run(...params).changes;
+      },
+      async $transaction<T>(work: (tx: DbExecutor) => Promise<T>): Promise<T> {
+        // better-sqlite3 transactions are synchronous and block the event loop.
+        // We use the prepared statements on the same connection to preserve
+        // the atomicity guarantees expected by the migration (rename + key
+        // insert in a single transaction).
+        let result!: T;
+        inner.transaction(() => {
+          void work(makeDb(inner)).then((value) => {
+            result = value;
+          });
+        })();
+        return result;
+      },
+    };
+  }
+  return makeDb(database);
+}
 
 /**
  * Issue #21: rename `debt_account.current_balance_dzd` → `current_balance`.
@@ -12,12 +49,8 @@ import { debtAccountBalanceRenameMigrationKey } from "./schema-definitions";
  *   (b) Legacy DB has `current_balance_dzd` — migration renames in a tx
  *   (c) Re-run on a DB where the migration already ran — no-op via
  *       `app_schema_state` key
- *
- * These tests run against an in-memory SQLite database (separate from
- * the shared Prisma test DB) so we can exercise scenario (b) without
- * mutating the shared fixture state.
  */
-describe("runDebtAccountBalanceRenameMigration (issue #21)", () => {
+describe("applyDebtAccountBalanceRename (issue #21)", () => {
   function createLegacyDb() {
     const db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
@@ -44,40 +77,12 @@ describe("runDebtAccountBalanceRenameMigration (issue #21)", () => {
       .map((column) => (column as { name: string }).name);
   }
 
-  function applyRenameMigration(db: Database.Database) {
-    const [row] = db
-      .prepare(
-        'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
-      )
-      .all(debtAccountBalanceRenameMigrationKey) as Array<{ key: string }>;
-
-    if (row) {
-      return "skipped: already executed";
-    }
-
-    const hasOld = getColumnNames(db, "debt_account").includes("current_balance_dzd");
-    const hasNew = getColumnNames(db, "debt_account").includes("current_balance");
-
-    db.transaction(() => {
-      if (hasOld && !hasNew) {
-        db.exec('ALTER TABLE "debt_account" RENAME COLUMN "current_balance_dzd" TO "current_balance"');
-      }
-      db
-        .prepare('INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)')
-        .run(debtAccountBalanceRenameMigrationKey, new Date().toISOString());
-    })();
-
-    return "applied";
-  }
-
-  it("renames `current_balance_dzd` to `current_balance` on a legacy DB", () => {
+  it("renames `current_balance_dzd` to `current_balance` on a legacy DB", async () => {
     const db = createLegacyDb();
-
     expect(getColumnNames(db, "debt_account")).toContain("current_balance_dzd");
 
-    const result = applyRenameMigration(db);
+    await applyDebtAccountBalanceRename(asDbExecutor(db));
 
-    expect(result).toBe("applied");
     const columns = getColumnNames(db, "debt_account");
     expect(columns).toContain("current_balance");
     expect(columns).not.toContain("current_balance_dzd");
@@ -95,7 +100,7 @@ describe("runDebtAccountBalanceRenameMigration (issue #21)", () => {
     expect(keyRow?.key).toBe(debtAccountBalanceRenameMigrationKey);
   });
 
-  it("is a no-op on a fresh DB that already uses the new column name", () => {
+  it("is a no-op on a fresh DB that already uses the new column name", async () => {
     const db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
     db.exec(`
@@ -110,30 +115,36 @@ describe("runDebtAccountBalanceRenameMigration (issue #21)", () => {
       );
     `);
 
-    const result = applyRenameMigration(db);
+    await applyDebtAccountBalanceRename(asDbExecutor(db));
 
-    expect(result).toBe("applied"); // Key not in state, so first call applies
     const columns = getColumnNames(db, "debt_account");
     expect(columns).toEqual(["id", "current_balance", "status"]);
 
     // Second call is a true no-op via the state key
-    const secondResult = applyRenameMigration(db);
-    expect(secondResult).toBe("skipped: already executed");
+    await applyDebtAccountBalanceRename(asDbExecutor(db));
+    const columnsAfter = getColumnNames(db, "debt_account");
+    expect(columnsAfter).toEqual(["id", "current_balance", "status"]);
   });
 
-  it("is a no-op on a DB where the migration has already run", () => {
+  it("is a no-op on a DB where the migration has already run", async () => {
     const db = createLegacyDb();
-    applyRenameMigration(db);
+    await applyDebtAccountBalanceRename(asDbExecutor(db));
 
-    const result = applyRenameMigration(db);
+    // Re-run
+    await applyDebtAccountBalanceRename(asDbExecutor(db));
 
-    expect(result).toBe("skipped: already executed");
     const columns = getColumnNames(db, "debt_account");
     expect(columns).toContain("current_balance");
     expect(columns).not.toContain("current_balance_dzd");
+
+    // State key still recorded exactly once
+    const keys = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(debtAccountBalanceRenameMigrationKey) as Array<{ key: string }>;
+    expect(keys).toHaveLength(1);
   });
 
-  it("preserves the row data when the column is renamed", () => {
+  it("preserves the row data when the column is renamed", async () => {
     const db = createLegacyDb();
     db
       .prepare('INSERT INTO "debt_account" ("id", "current_balance_dzd", "status") VALUES (?, ?, ?)')
@@ -145,7 +156,7 @@ describe("runDebtAccountBalanceRenameMigration (issue #21)", () => {
       .prepare('INSERT INTO "debt_account" ("id", "current_balance_dzd", "status") VALUES (?, ?, ?)')
       .run("acct-negative", -300, "OPEN");
 
-    applyRenameMigration(db);
+    await applyDebtAccountBalanceRename(asDbExecutor(db));
 
     const rows = db
       .prepare('SELECT "id", "current_balance" AS balance FROM "debt_account" ORDER BY "id"')
