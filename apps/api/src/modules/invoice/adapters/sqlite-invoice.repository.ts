@@ -38,7 +38,11 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
   async findPaged(query: {
     filters?: InvoiceListFilters;
     sort?: { field: InvoiceListSortField; direction: SortDirection };
-    after?: { sortValue: number | string | null; id: string };
+    after?: {
+      sortValue: number | string | null;
+      id: string;
+      nullBoundaryPassed?: boolean;
+    };
     limit: number;
   }): Promise<{ items: Invoice[]; nextCursor: string | null; totalCount: number }> {
     const sortCol = SORT_COLUMN_MAP[query.sort?.field ?? "createdAt"];
@@ -75,10 +79,16 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     const cursorParams: unknown[] = [];
     if (query.after) {
       const connector = conditions.length > 0 ? "AND" : "WHERE";
-      // NULL sortValue: the next page is the rest of the NULL group,
-      // ordered by id. For non-null sortValue, keyset (sortCol < ? OR
-      // (sortCol = ? AND id < ?)) is used.
-      if (query.after.sortValue === null) {
+      // The cursor encodes three cases:
+      //   1. nullBoundaryPassed=true: previous page finished the null
+      //      group; now fetch rows where sortCol IS NOT NULL, ordered
+      //      by id (secondary sort).
+      //   2. sortValue=null: still inside the null group; continue by
+      //      id only.
+      //   3. sortValue=number|string: standard keyset on (sortCol, id).
+      if (query.after.nullBoundaryPassed) {
+        cursorClause = `${connector} ${sortCol} IS NOT NULL`;
+      } else if (query.after.sortValue === null) {
         if (sortDir === "DESC") {
           cursorClause = `${connector} (${sortCol} IS NULL AND id < ?)`;
         } else {
@@ -115,10 +125,17 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     let nextCursor: string | null = null;
     if (hasMore && pageRows.length > 0) {
       const lastRow = pageRows[pageRows.length - 1]!;
+      const lastSortValue = lastRow[sortCol];
+      // When sorting ASC on a nullable column, the last row on the
+      // current page is the last null-group row. Signal the next page
+      // to fetch the non-null group via nullBoundaryPassed.
+      const isAscNullBoundary =
+        sortDir === "ASC" && (lastSortValue === null || lastSortValue === undefined);
       nextCursor = Buffer.from(
         JSON.stringify({
-          sortValue: lastRow[sortCol],
+          sortValue: isAscNullBoundary ? null : lastSortValue,
           id: lastRow.id as string,
+          ...(isAscNullBoundary ? { nullBoundaryPassed: true } : {}),
         }),
       ).toString("base64url");
     }

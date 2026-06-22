@@ -1000,6 +1000,27 @@ async function runInvoiceDebtLinkageMigration() {
     { table: "debt_entry", from: "balance_after_dzd", to: "balance_after" },
   ];
 
+  // Columns to add idempotently to debt_entry. Both legacy migrations
+  // (runDebtSingleAccountMigration, runAddAdvanceDebtEntryMigration)
+  // recreate the table from a staging table that doesn't include
+  // `invoice_id` or `currency`, so fresh databases lose these columns.
+  const debtEntryAdditions = [
+    { column: "invoice_id", ddl: 'TEXT' },
+    { column: "currency", ddl: "TEXT NOT NULL DEFAULT 'DZD'" },
+  ] as const;
+
+  // Columns to add idempotently to invoice. The legacy CREATE TABLE
+  // for invoice in schemaStatements already includes these, but the
+  // additive migrations handle the case where the invoice table was
+  // created by an older schemaStatements that didn't include them.
+  const invoiceAdditions = [
+    { column: "debt_account_id", ddl: 'TEXT' },
+    { column: "currency", ddl: "TEXT NOT NULL DEFAULT 'DZD'" },
+    { column: "total_amount", ddl: 'REAL NOT NULL DEFAULT 0' },
+    { column: "paid_amount", ddl: 'REAL NOT NULL DEFAULT 0' },
+    { column: "remaining_amount", ddl: 'REAL NOT NULL DEFAULT 0' },
+  ] as const;
+
   await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
   try {
     await prisma.$transaction(async (tx) => {
@@ -1012,6 +1033,30 @@ async function runInvoiceDebtLinkageMigration() {
           );
         }
       }
+
+      for (const { column, ddl } of debtEntryAdditions) {
+        if (!(await hasColumn("debt_entry", column))) {
+          await tx.$executeRawUnsafe(
+            `ALTER TABLE "debt_entry" ADD COLUMN "${column}" ${ddl}`,
+          );
+        }
+      }
+      for (const { column, ddl } of invoiceAdditions) {
+        if (!(await hasColumn("invoice", column))) {
+          await tx.$executeRawUnsafe(
+            `ALTER TABLE "invoice" ADD COLUMN "${column}" ${ddl}`,
+          );
+        }
+      }
+
+      // Recreate the debt_entry_debt_account_id_idx if it was dropped
+      // by the legacy migrations' staging-table dance.
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "debt_entry_debt_account_id_idx" ON "debt_entry" ("debt_account_id", "entry_date")',
+      );
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "debt_entry_invoice_id_idx" ON "debt_entry" ("invoice_id")',
+      );
 
       await tx.$executeRawUnsafe(
         'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',

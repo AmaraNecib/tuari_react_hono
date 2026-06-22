@@ -371,6 +371,41 @@ describe("InvoiceModule", () => {
       // Should not throw and should return the existing invoices.
       expect(result.items).toBeDefined();
     });
+
+    it("ASC sort: after null-group cursor, returns non-null rows (nullBoundaryPassed)", async () => {
+      // Force at least one invoice with non-null invoiceDate.
+      await module.create(
+        makeInput({
+          id: "inv-dated",
+          supplierName: "Dated",
+          invoiceDate: "2024-05-01T00:00:00.000Z",
+        }),
+      );
+      // Force at least one invoice with null invoiceDate.
+      await module.create(
+        makeInput({
+          id: "inv-undated",
+          supplierName: "Undated",
+          invoiceDate: null,
+        }),
+      );
+      // Walk pagination with small limit. Eventually we should see BOTH
+      // dated and undated invoices, not just one of them.
+      const seen = new Set<string>();
+      let cursor: string | undefined;
+      for (let i = 0; i < 5; i++) {
+        const result = await module.listPaged({
+          limit: 1,
+          sort: { field: "invoiceDate", direction: "asc" },
+          ...(cursor ? { cursor } : {}),
+        });
+        for (const it of result.items) seen.add(it.id);
+        cursor = result.nextCursor ?? undefined;
+        if (!cursor) break;
+      }
+      expect(seen.has("inv-dated")).toBe(true);
+      expect(seen.has("inv-undated")).toBe(true);
+    });
   });
 
   describe("markPaid", () => {

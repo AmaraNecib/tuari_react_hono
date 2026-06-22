@@ -27,6 +27,16 @@ function calculateTotal(lineItems: { quantity: number; unitPrice: number }[]): n
 interface CursorPayload {
   sortValue: number | string | null;
   id: string;
+  /**
+   * True when the previous page ended at the bottom of the null group
+   * (the last row had `sortValue = null`). The next page should fetch
+   * the non-null group instead. This is only meaningful for ASC sort on
+   * nullable columns: NULLs sort first, so the null group is at the
+   * top of the page; once exhausted, the remaining rows are all
+   * non-null. For DESC, NULLs sort last and the page simply ends, so
+   * the cursor is null and the client doesn't see a next page.
+   */
+  nullBoundaryPassed?: boolean;
 }
 
 function decodeCursor(cursor: string): CursorPayload {

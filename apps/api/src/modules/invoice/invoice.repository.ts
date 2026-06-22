@@ -12,7 +12,11 @@ export interface InvoiceRepository {
   findPaged(query: {
     filters?: InvoiceListFilters;
     sort?: { field: InvoiceListSortField; direction: SortDirection };
-    after?: { sortValue: number | string | null; id: string };
+    after?: {
+      sortValue: number | string | null;
+      id: string;
+      nullBoundaryPassed?: boolean;
+    };
     limit: number;
   }): Promise<{ items: Invoice[]; nextCursor: string | null; totalCount: number }>;
   create(data: {

@@ -81,23 +81,26 @@ export function createInMemoryInvoiceRepository(): InvoiceRepository & {
             field === "createdAt"
               ? i.createdAt
               : field === "invoiceDate"
-                ? i.invoiceDate ?? ""
+                ? i.invoiceDate ?? null
                 : i.totalAmount;
           const av = after.sortValue;
-          // When the cursor's sortValue is null, the next page is the
-          // remainder of the null group, ordered by id. When both are
-          // non-null, apply the standard keyset (sortCol < av OR
-          // (sortCol = av AND id < after.id)). DESC: smaller keyset; ASC: larger.
+          // nullBoundaryPassed=true: previous page finished the null
+          // group; now keep non-null sortValue rows with id > cursor.id.
+          if (after.nullBoundaryPassed) {
+            if (field === "invoiceDate") {
+              return i.invoiceDate !== null && i.invoiceDate !== undefined;
+            }
+            return true;
+          }
           if (av === null) {
             return (
-              (field === "invoiceDate" ? i.invoiceDate === null || i.invoiceDate === undefined : false) &&
-              (dir === "desc" ? i.id < after.id : i.id > after.id)
+              (field === "invoiceDate"
+                ? i.invoiceDate === null || i.invoiceDate === undefined
+                : false) && (dir === "desc" ? i.id < after.id : i.id > after.id)
             );
           }
-          const cmpAv =
-            typeof av === "number" ? av : String(av);
-          const cmpIv =
-            typeof iv === "number" ? iv : String(iv);
+          const cmpAv = typeof av === "number" ? av : String(av);
+          const cmpIv = typeof iv === "number" ? iv : String(iv);
           return (
             dir === "desc"
               ? cmpIv < cmpAv || (cmpIv === cmpAv && i.id < after.id)
@@ -113,16 +116,22 @@ export function createInMemoryInvoiceRepository(): InvoiceRepository & {
       let nextCursor: string | null = null;
       if (hasMore && pageItems.length > 0) {
         const last = pageItems[pageItems.length - 1]!;
-        // Encode null sort values as null (so the next page knows it
-        // must continue the null group), not the empty string fallback.
         const lastSort =
           field === "createdAt"
             ? last.createdAt
             : field === "invoiceDate"
-              ? last.invoiceDate ?? null
+              ? (last.invoiceDate ?? null)
               : last.totalAmount;
+        // ASC + last row has null sortValue means we just exhausted the
+        // null group. Signal the next page via nullBoundaryPassed.
+        const isAscNullBoundary =
+          dir === "asc" && field === "invoiceDate" && (lastSort === null || lastSort === undefined);
         nextCursor = Buffer.from(
-          JSON.stringify({ sortValue: lastSort, id: last.id }),
+          JSON.stringify({
+            sortValue: isAscNullBoundary ? null : lastSort,
+            id: last.id,
+            ...(isAscNullBoundary ? { nullBoundaryPassed: true } : {}),
+          }),
         ).toString("base64url");
       }
 
