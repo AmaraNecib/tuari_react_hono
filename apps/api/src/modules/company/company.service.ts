@@ -263,7 +263,7 @@ export class CompanyService {
           workerId,
           externalCounterpartyId,
           status,
-          currentBalanceDzd: openingBalance,
+          currentBalance: openingBalance,
           note: normalizeText(input.note),
           settledAt: status === "SETTLED" ? entryDate : null,
         },
@@ -304,7 +304,7 @@ export class CompanyService {
     const signedAmountDzd = normalizeSignedMoneyAmount(input.signedAmountDzd)
     const entryDate = normalizeAlgeriaTimestamp(input.entryDate)
     assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate ?? null, "entryDate")
-    const nextBalance = account.currentBalanceDzd + signedAmountDzd
+    const nextBalance = account.currentBalance + signedAmountDzd
     const nextStatus = getDebtAccountStatus(nextBalance)
 
     const entry = this.repository.withTransaction(() => {
@@ -323,7 +323,7 @@ export class CompanyService {
       this.repository.updateDebtAccount(
         {
           id: account.id,
-          currentBalanceDzd: nextBalance,
+          currentBalance: nextBalance,
           status: nextStatus,
           settledAt: nextStatus === "SETTLED" ? entryDate : null,
         },
@@ -340,14 +340,14 @@ export class CompanyService {
     const audit = this.createMutationAuditContext(auditContext)
     const account = this.requireDebtAccount(input.id)
 
-    if (account.currentBalanceDzd === 0) {
+    if (account.currentBalance === 0) {
       throw new CompanyError("BUSINESS_RULE", "الحساب مسوّى بالفعل ولا يحتاج إلى تسوية جديدة.")
     }
 
     const entryDate = normalizeAlgeriaTimestamp(input.entryDate)
     const latestEntry = this.repository.getLatestDebtEntry(account.id)
     assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate ?? null, "entryDate")
-    const settlementAmount = -account.currentBalanceDzd
+    const settlementAmount = -account.currentBalance
     const entry = this.repository.withTransaction(() => {
       const createdEntry = this.repository.createDebtEntry(
         {
@@ -364,7 +364,7 @@ export class CompanyService {
       this.repository.updateDebtAccount(
         {
           id: account.id,
-          currentBalanceDzd: 0,
+          currentBalance: 0,
           status: "SETTLED",
           settledAt: entryDate,
         },
@@ -381,7 +381,7 @@ export class CompanyService {
     if (input.partyType === "INTERNAL_WORKER") {
       const employee = this.requireEmployeeWorker(input.workerId!, "workerId")
       const debtAccounts = this.repository.listDebtAccounts({ workerId: employee.id })
-      const totalBalanceDzd = debtAccounts.reduce((sum, account) => sum + account.currentBalanceDzd, 0)
+      const totalBalanceDzd = debtAccounts.reduce((sum, account) => sum + account.currentBalance, 0)
       return successResult("تم تحميل تفاصيل ديون العامل بنجاح.", {
         partyType: "INTERNAL_WORKER" as const,
         workerId: employee.id,
@@ -397,7 +397,7 @@ export class CompanyService {
 
     const counterparty = this.requireExternalCounterparty(input.externalCounterpartyId!, "externalCounterpartyId")
     const debtAccounts = this.repository.listDebtAccounts({ externalCounterpartyId: counterparty.id })
-    const totalBalanceDzd = debtAccounts.reduce((sum, account) => sum + account.currentBalanceDzd, 0)
+    const totalBalanceDzd = debtAccounts.reduce((sum, account) => sum + account.currentBalance, 0)
     return successResult("تم تحميل تفاصيل ديون الطرف الخارجي بنجاح.", {
       partyType: "EXTERNAL_COUNTERPARTY" as const,
       workerId: null,
@@ -432,8 +432,8 @@ export class CompanyService {
           displayName: employee ? `${employee.firstName} ${employee.lastName}` : counterparty?.fullName ?? account.id,
           phoneNumber: employee?.phone ?? counterparty?.phoneNumber ?? null,
           status: account.status,
-          currentBalanceDzd: account.currentBalanceDzd,
-          balanceLabel: getDebtBalanceLabel(account.currentBalanceDzd),
+          currentBalance: account.currentBalance,
+          balanceLabel: getDebtBalanceLabel(account.currentBalance),
           createdAt: account.createdAt,
           updatedAt: account.updatedAt,
         }
@@ -468,7 +468,7 @@ export class CompanyService {
         externalCounterpartyId: account.externalCounterpartyId,
         displayName: employee ? `${employee.firstName} ${employee.lastName}` : counterparty?.fullName ?? account.id,
         phoneNumber: employee?.phone ?? counterparty?.phoneNumber ?? null,
-        totalBalanceDzd: (current?.totalBalanceDzd ?? 0) + account.currentBalanceDzd,
+        totalBalanceDzd: (current?.totalBalanceDzd ?? 0) + account.currentBalance,
         openDebtCasesCount: (current?.openDebtCasesCount ?? 0) + (account.status === "OPEN" ? 1 : 0),
         settledDebtCasesCount: (current?.settledDebtCasesCount ?? 0) + (account.status === "SETTLED" ? 1 : 0),
         latestActivityAt: nextLatestActivityAt,

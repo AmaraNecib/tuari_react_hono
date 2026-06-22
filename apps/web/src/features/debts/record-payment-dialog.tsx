@@ -37,7 +37,7 @@ export function RecordPaymentDialog({
   const [note, setNote] = useState("")
   const [showSettlePrompt, setShowSettlePrompt] = useState(false)
 
-  const balance = debtAccount?.currentBalanceDzd ?? 0
+  const balance = debtAccount?.currentBalance ?? 0
   const balanceMeta = getDebtBalanceMeta(balance)
 
   const handlePayFull = () => {

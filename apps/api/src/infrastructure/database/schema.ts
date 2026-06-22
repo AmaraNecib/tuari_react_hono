@@ -6,6 +6,7 @@ import {
   addOutboundTransferMigrationKey,
   companyIndexStatements,
   companyStatusConstraintChecks,
+  debtAccountBalanceRenameMigrationKey,
   debtSingleAccountMigrationKey,
   invoiceDebtLinkageMigrationKey,
   obsoleteMigrationKey,
@@ -527,12 +528,29 @@ async function runDebtSingleAccountMigration() {
     return
   }
 
+  // On databases created after #21 the historical `current_balance_dzd`
+  // column never existed; the migration has nothing to consolidate.
+  // Detect this via column existence and mark the migration done so
+  // subsequent startups are no-ops.
+  if (!(await hasColumn("debt_account", "current_balance_dzd"))) {
+    await prisma.$executeRawUnsafe(
+      'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+      debtSingleAccountMigrationKey,
+      new Date().toISOString(),
+    )
+    return
+  }
+
   type DebtAccountRow = {
     id: string
     party_type: "INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY"
     worker_id: string | null
     external_counterparty_id: string | null
     status: "OPEN" | "SETTLED"
+    // Note: reads the historical column name. The downstream
+    // `runDebtAccountBalanceRenameMigration` (#21) renames this
+    // column on the consolidated `debt_account` table once this
+    // legacy migration has finished.
     current_balance_dzd: number
     note: string | null
     settled_at: string | null
@@ -1069,6 +1087,85 @@ async function runInvoiceDebtLinkageMigration() {
   }
 }
 
+// Issue #21: drop the `_dzd` suffix from `debt_account.current_balance_dzd`.
+// The DZD-suffix was previously dropped from `invoice.*`, `invoice_line_item.*`,
+// and `debt_entry.*` by `runInvoiceDebtLinkageMigration`. This migration
+// brings `debt_account` in line with the rest of the schema.
+//
+// Idempotent:
+//   - skips if `app_schema_state` already has the migration key
+//   - skips the rename if `current_balance` is already the column name
+//   - skips the rename if the historical `current_balance_dzd` column
+//     no longer exists (fresh DBs created after this migration runs)
+//   - wraps the rename + state insert in a single transaction
+//
+// The migration is split into a pure function (`applyDebtAccountBalanceRename`)
+// that takes a `DbExecutor` so it can be exercised directly against an
+// in-memory SQLite in tests, plus a thin Prisma wrapper for production.
+export interface DbExecutor {
+  $queryRawUnsafe<T>(sql: string, ...params: unknown[]): Promise<T>;
+  $executeRawUnsafe(sql: string, ...params: unknown[]): Promise<number>;
+  $transaction<T>(work: (tx: DbExecutor) => Promise<T>): Promise<T>;
+}
+
+export { applyDebtAccountBalanceRename };
+
+async function applyDebtAccountBalanceRename(db: DbExecutor) {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    debtAccountBalanceRenameMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  const hasOldColumn = await columnExists(db, "debt_account", "current_balance_dzd");
+  const hasNewColumn = await columnExists(db, "debt_account", "current_balance");
+
+  // Only open a no-FKs window when DDL is actually going to run.
+  // Fresh DBs and already-migrated DBs take the no-op fast path.
+  const ddlRequired = hasOldColumn && !hasNewColumn;
+
+  if (ddlRequired) {
+    await db.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  }
+  try {
+    await db.$transaction(async (tx) => {
+      if (ddlRequired) {
+        await tx.$executeRawUnsafe(
+          'ALTER TABLE "debt_account" RENAME COLUMN "current_balance_dzd" TO "current_balance"',
+        );
+      }
+
+      await tx.$executeRawUnsafe(
+        'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+        debtAccountBalanceRenameMigrationKey,
+        new Date().toISOString(),
+      );
+    });
+  } finally {
+    if (ddlRequired) {
+      await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    }
+  }
+}
+
+async function columnExists(
+  db: DbExecutor,
+  tableName: string,
+  columnName: string,
+): Promise<boolean> {
+  const rows = await db.$queryRawUnsafe<Array<{ name: string }>>(
+    `PRAGMA table_info("${tableName}")`,
+  );
+  return rows.some((column) => column.name === columnName);
+}
+
+async function runDebtAccountBalanceRenameMigration() {
+  await applyDebtAccountBalanceRename(prisma);
+}
+
 async function ensureSeedRoles() {
   for (const role of roleSeeds) {
     const existing = (await prisma.$queryRawUnsafe<Array<{ id: string }>>(
@@ -1167,6 +1264,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
   await runAddOutboundTransferMigration();
   await runAddAdvanceDebtEntryMigration();
   await runInvoiceDebtLinkageMigration();
+  await runDebtAccountBalanceRenameMigration();
 
   await syncLegacyTimestampColumns();
   await repairLegacyAuthTables();

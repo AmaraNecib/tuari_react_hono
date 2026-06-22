@@ -19,7 +19,7 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
   const { date: entryDate, setDate: setEntryDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
 
   const debtAccount = debtAccountQuery.data
-  const balanceMeta = getDebtBalanceMeta(debtAccount?.currentBalanceDzd ?? 0)
+  const balanceMeta = getDebtBalanceMeta(debtAccount?.currentBalance ?? 0)
 
   const handleSubmit = async () => {
     if (!hasValidAmount) return
@@ -48,7 +48,7 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
         <Surface className="rounded-[22px] px-5 py-4" variant="card">
           <p className="text-sm text-muted-foreground">الرصيد الحالي</p>
           <p className={cn("mt-2 font-mono text-2xl font-semibold", balanceMeta.textClassName)} dir="ltr">
-            دج {formatDebtMoney(debtAccount?.currentBalanceDzd ?? 0)}
+            دج {formatDebtMoney(debtAccount?.currentBalance ?? 0)}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">{balanceMeta.description}</p>
         </Surface>

@@ -39,11 +39,11 @@ export function getDebtBalanceMeta(balanceDzd: number) {
 }
 
 export function getDebtAccountBalance(account: DebtAccount | null | undefined) {
-  return account?.currentBalanceDzd ?? 0
+  return account?.currentBalance ?? 0
 }
 
 export function getCombinedDebtBalance(accounts: DebtAccount[]) {
-  return accounts.reduce((total, account) => total + account.currentBalanceDzd, 0)
+  return accounts.reduce((total, account) => total + account.currentBalance, 0)
 }
 
 export function sortDebtAccounts(accounts: DebtAccount[]) {
