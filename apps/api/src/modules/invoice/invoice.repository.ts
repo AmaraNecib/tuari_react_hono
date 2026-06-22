@@ -84,4 +84,11 @@ export interface InvoiceRepository {
   ): Promise<Invoice>;
   delete(id: string): Promise<void>;
   count(filters?: InvoiceListFilters): Promise<number>;
+  /**
+   * Run a callback inside a database transaction. Used to compose
+   * multi-step writes (e.g. debt-port payment + invoice amount
+   * update in markPaid) so a partial failure cannot leave the ledger
+   * and the invoice out of sync.
+   */
+  runInTransaction<T>(fn: () => Promise<T>): Promise<T>;
 }

@@ -427,4 +427,25 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
       total: row.total as number,
     };
   }
+
+  async runInTransaction<T>(fn: () => Promise<T>): Promise<T> {
+    // better-sqlite3 transactions are synchronous and synchronous-only,
+    // but we can wrap async work by deferring to the user's Promise
+    // resolution: if the promise rejects, we throw inside the
+    // transaction, causing better-sqlite3 to roll back. Note that
+    // better-sqlite3's transaction() does not natively support async
+    // callbacks that interleave with the SQL connection — callers must
+    // not interleave I/O between SQL statements inside `fn`. We use
+    // BEGIN/COMMIT manually for the outer boundary to keep the
+    // contract composable for downstream async work.
+    this.db.exec("BEGIN");
+    try {
+      const result = await fn();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
 }

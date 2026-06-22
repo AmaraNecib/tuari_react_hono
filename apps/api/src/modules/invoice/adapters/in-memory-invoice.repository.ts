@@ -242,5 +242,13 @@ export function createInMemoryInvoiceRepository(): InvoiceRepository & {
       }
       return items.length;
     },
+
+    async runInTransaction<T>(fn: () => Promise<T>): Promise<T> {
+      // The in-memory adapter has no real transaction semantics; the
+      // callback runs sequentially. Errors propagate normally. This
+      // matches the SQLite contract surface and lets tests verify the
+      // atomic composition without relying on rollback behavior.
+      return await fn();
+    },
   };
 }

@@ -217,28 +217,31 @@ export class InvoiceModule {
     }
 
     let payment;
-    try {
-      payment = await this.debtPort.recordInvoicePayment({
-        invoiceId: id,
-        amount,
-        actorUserId: actor.actorUserId,
-        actorLabel: actor.actorLabel,
-        transactionId: actor.transactionId,
-      });
-    } catch (error) {
-      throw new InvoiceDebtPortError(
-        `Failed to record invoice payment: ${String(error)}`,
-      );
-    }
+    const updated = await this.repo.runInTransaction(async () => {
+      try {
+        payment = await this.debtPort.recordInvoicePayment({
+          invoiceId: id,
+          amount,
+          actorUserId: actor.actorUserId,
+          actorLabel: actor.actorLabel,
+          transactionId: actor.transactionId,
+        });
+      } catch (error) {
+        throw new InvoiceDebtPortError(
+          `Failed to record invoice payment: ${String(error)}`,
+        );
+      }
 
-    return this.repo.updateStatus(
-      id,
-      payment.settled ? "PAID" : "RECEIVED",
-      {
-        paidAmount: payment.newPaidAmount,
-        remainingAmount: payment.newRemainingAmount,
-      },
-    );
+      return this.repo.updateStatus(
+        id,
+        payment.settled ? "PAID" : "RECEIVED",
+        {
+          paidAmount: payment.newPaidAmount,
+          remainingAmount: payment.newRemainingAmount,
+        },
+      );
+    });
+    return updated;
   }
 
   async listPaged(query: {
