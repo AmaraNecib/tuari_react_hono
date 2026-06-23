@@ -268,7 +268,6 @@ export class CompanyService {
     const account = this.repository.withTransaction(() => {
       const createdAccount = this.repository.createDebtAccount(
         {
-          id: crypto.randomUUID(),
           partyType: input.partyType,
           workerId,
           externalCounterpartyId,

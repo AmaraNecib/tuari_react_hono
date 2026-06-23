@@ -255,6 +255,13 @@ export function mapDebtEntry(row: SqliteRow): DebtEntryRecord {
     actorUserId: toNullableText(row.actor_user_id),
     actorLabel: toNullableText(row.actor_label),
     transactionId: toNullableText(row.transaction_id),
+    reasonCategory: row.reason_category ? String(row.reason_category) : null,
+    reasonDetail: toNullableText(row.reason_detail),
+    paymentMethod: row.payment_method ? String(row.payment_method) : null,
+    status: String(row.status ?? "LIVE") as DebtEntryRecord["status"],
+    voidedAt: row.voided_at ? String(row.voided_at) : null,
+    voidedBy: toNullableText(row.voided_by),
+    voidReason: toNullableText(row.void_reason),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   }
