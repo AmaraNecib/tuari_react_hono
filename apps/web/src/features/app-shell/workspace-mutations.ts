@@ -587,7 +587,7 @@ export function useCreateDebtAccountMutation() {
       openingBalanceDzd?: number
       openingEntryDate?: string
       openingEntryNote?: string | null
-      reasonCategory?: string
+      reasonCategory?: "INVOICE_DRIVEN" | "SALARY_ADVANCE" | "REIMBURSEMENT" | "CASH_TAKE" | "EQUIPMENT_DAMAGE" | "PERSONAL_LOAN" | "DIRECT_LOAN_GIVEN" | "DIRECT_LOAN_TAKEN" | "OTHER"
       reasonDetail?: string | null
     }) => {
       const result = await rpcClient.debtAccountsCreate({
@@ -600,7 +600,7 @@ export function useCreateDebtAccountMutation() {
         openingBalanceDzd: input.openingBalanceDzd ?? 0,
         openingEntryDate: input.openingEntryDate,
         openingEntryNote: input.openingEntryNote ?? null,
-        reasonCategory: input.reasonCategory,
+        reasonCategory: input.reasonCategory as "INVOICE_DRIVEN" | "SALARY_ADVANCE" | "REIMBURSEMENT" | "CASH_TAKE" | "EQUIPMENT_DAMAGE" | "PERSONAL_LOAN" | "DIRECT_LOAN_GIVEN" | "DIRECT_LOAN_TAKEN" | "OTHER" | undefined,
         reasonDetail: input.reasonDetail ?? null,
         partyType: input.partyType,
         workerId: input.workerId ?? null,
