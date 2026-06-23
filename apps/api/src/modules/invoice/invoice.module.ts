@@ -123,6 +123,7 @@ export class InvoiceModule {
     if (input.invoiceDate !== undefined) updateData.invoiceDate = input.invoiceDate;
     if (input.dueDate !== undefined) updateData.dueDate = input.dueDate;
     if (input.notes !== undefined) updateData.notes = input.notes;
+    if (input.direction !== undefined) updateData.direction = input.direction;
 
     if (input.lineItems) {
       if (input.lineItems.length === 0) throw new EmptyLineItemsError();
