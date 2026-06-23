@@ -17,7 +17,7 @@ import type { ExternalCounterparty } from "@tuari/contracts"
  * OTHER and INVOICE_DRIVEN require the caller to choose.
  */
 const DEBT_CATEGORIES: Array<{
-  value: string
+  value: ReasonCategory
   labelAr: string
   labelEn: string
   impliedDirection: "PAYABLE" | "RECEIVABLE" | "UNCONSTRAINED"
@@ -92,6 +92,8 @@ const DEBT_CATEGORIES: Array<{
 
 type EmployeeOption = { id: string; name: string; phone: string; roleKey: string }
 
+type ReasonCategory = "INVOICE_DRIVEN" | "SALARY_ADVANCE" | "REIMBURSEMENT" | "CASH_TAKE" | "EQUIPMENT_DAMAGE" | "PERSONAL_LOAN" | "DIRECT_LOAN_GIVEN" | "DIRECT_LOAN_TAKEN" | "OTHER"
+
 export function DebtCreatePage({
   employees,
   externalCounterparties,
@@ -115,7 +117,7 @@ export function DebtCreatePage({
     (preselectedPartyType === "EXTERNAL_COUNTERPARTY" ? "EXTERNAL_COUNTERPARTY" : "INTERNAL_WORKER")
   )
   const [selectedPartyId, setSelectedPartyId] = useState(preselectedExternalCounterpartyId || preselectedWorkerId || "")
-  const [reasonCategory, setReasonCategory] = useState<"INVOICE_DRIVEN" | "SALARY_ADVANCE" | "REIMBURSEMENT" | "CASH_TAKE" | "EQUIPMENT_DAMAGE" | "PERSONAL_LOAN" | "DIRECT_LOAN_GIVEN" | "DIRECT_LOAN_TAKEN" | "OTHER">("SALARY_ADVANCE")
+  const [reasonCategory, setReasonCategory] = useState<ReasonCategory>("SALARY_ADVANCE")
   const [reasonDetail, setReasonDetail] = useState("")
   const [direction, setDirection] = useState<"owed-to-us" | "owed-by-us">("owed-to-us")
   const [amount, setAmount] = useState("")
