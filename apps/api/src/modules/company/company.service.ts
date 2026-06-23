@@ -246,14 +246,13 @@ export class CompanyService {
 
     if (existingAccount) {
       if (openingBalance !== 0) {
-        this.repository.createDebtEntry(
+        this.createDebtEntry(
           {
             debtAccountId: existingAccount.id,
             entryType: "ADJUSTMENT",
             signedAmountDzd: openingBalance,
             entryDate,
             note: normalizeText(input.openingEntryNote) ?? normalizeText(input.note),
-            balanceAfterDzd: existingAccount.currentBalance + openingBalance,
             reasonCategory: input.reasonCategory ?? "INVOICE_DRIVEN",
             reasonDetail: input.reasonDetail ?? null,
           },
