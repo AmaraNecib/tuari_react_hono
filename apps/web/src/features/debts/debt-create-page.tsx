@@ -115,7 +115,7 @@ export function DebtCreatePage({
     (preselectedPartyType === "EXTERNAL_COUNTERPARTY" ? "EXTERNAL_COUNTERPARTY" : "INTERNAL_WORKER")
   )
   const [selectedPartyId, setSelectedPartyId] = useState(preselectedExternalCounterpartyId || preselectedWorkerId || "")
-  const [reasonCategory, setReasonCategory] = useState<string>("SALARY_ADVANCE")
+  const [reasonCategory, setReasonCategory] = useState<"INVOICE_DRIVEN" | "SALARY_ADVANCE" | "REIMBURSEMENT" | "CASH_TAKE" | "EQUIPMENT_DAMAGE" | "PERSONAL_LOAN" | "DIRECT_LOAN_GIVEN" | "DIRECT_LOAN_TAKEN" | "OTHER">("SALARY_ADVANCE")
   const [reasonDetail, setReasonDetail] = useState("")
   const [direction, setDirection] = useState<"owed-to-us" | "owed-by-us">("owed-to-us")
   const [amount, setAmount] = useState("")
