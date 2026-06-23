@@ -2,6 +2,7 @@ import type { InvoiceRepository } from "../invoice.repository";
 import type {
   Invoice,
   InvoiceCurrency,
+  InvoiceDirection,
   InvoiceLineItem,
   InvoiceListFilters,
   InvoiceListSortField,
@@ -165,6 +166,7 @@ export function createInMemoryInvoiceRepository(): InvoiceRepository & {
     async create(data) {
       const invoice: Invoice & { lineItems: InvoiceLineItem[] } = {
         ...data,
+        direction: data.direction ?? "PURCHASE",
         debtAccountId: data.debtAccountId ?? null,
         lineItems: data.lineItems.map((li) => ({
           ...li,

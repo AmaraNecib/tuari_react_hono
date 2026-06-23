@@ -12,6 +12,7 @@ import type {
   InvoiceActorContext,
   InvoiceCurrency,
   InvoiceDebtPort,
+  InvoiceDirection,
   InvoiceLineItem,
   InvoiceListFilters,
   InvoiceListSortField,
@@ -82,6 +83,7 @@ export class InvoiceModule {
       total: li.quantity * li.unitPrice,
     }));
     const currency: InvoiceCurrency = input.currency ?? "DZD";
+    const direction: InvoiceDirection = input.direction ?? "PURCHASE";
 
     return this.repo.create({
       id: input.id,
@@ -91,6 +93,7 @@ export class InvoiceModule {
       warehouseId: input.warehouseId ?? null,
       projectId: input.projectId ?? null,
       status: "DRAFT",
+      direction,
       invoiceDate: input.invoiceDate ?? null,
       dueDate: input.dueDate ?? null,
       currency,
@@ -162,6 +165,12 @@ export class InvoiceModule {
       throw new InvalidInvoiceStatusError(id, "DRAFT", existing.status);
     }
 
+    // Workers cannot have sale invoices (they don't sell to the company).
+    // This validation depends on the caller providing context — the
+    // RPC handler must check party type before calling receive.
+    // If direction is SALE, we still proceed but mark the debt as
+    // RECEIVABLE.
+
     let debtAccountId: string;
     try {
       const result = await this.debtPort.createInvoiceDebt({
@@ -170,6 +179,7 @@ export class InvoiceModule {
         supplierPhone: existing.supplierPhone,
         amount: existing.totalAmount,
         currency: existing.currency,
+        direction: existing.direction,
         actorUserId: actor.actorUserId,
         actorLabel: actor.actorLabel,
         transactionId: actor.transactionId,
@@ -202,6 +212,7 @@ export class InvoiceModule {
     id: string,
     amount: number,
     actor: InvoiceActorContext,
+    direction?: InvoiceDirection,
   ): Promise<Invoice> {
     if (amount <= 0) {
       throw new InvoiceDebtPortError("amount must be positive");
@@ -222,6 +233,7 @@ export class InvoiceModule {
         payment = await this.debtPort.recordInvoicePayment({
           invoiceId: id,
           amount,
+          direction: direction ?? existing.direction,
           actorUserId: actor.actorUserId,
           actorLabel: actor.actorLabel,
           transactionId: actor.transactionId,

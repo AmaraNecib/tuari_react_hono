@@ -256,6 +256,8 @@ export function createSqliteInvoiceDebtPort(
             entryDate: new Date().toISOString(),
             note: `Invoice ${input.invoiceId} payment`,
             balanceAfterDzd: nextBalance,
+            paymentMethod: "CASH",
+            reasonCategory: "INVOICE_DRIVEN",
           },
           audit,
         );
@@ -339,11 +341,13 @@ export function createInMemoryInvoiceDebtPort(): InvoiceDebtPort & {
 
   function ensureDebtAccountId(
     counterpartyId: string,
+    direction: "PAYABLE" | "RECEIVABLE",
     openingSignedAmount: number,
   ): { id: string; previousBalance: number } {
-    // Issue #22: invoice flow writes to PAYABLE ledger only. Sale
-    // invoices (Issue #26) will use the RECEIVABLE ledger.
-    const key = accountKey(counterpartyId, "PAYABLE");
+    // Issue #22: each counterparty can have one PAYABLE and one
+    // RECEIVABLE account. Purchase invoices write to the PAYABLE
+    // ledger; sale invoices write to the RECEIVABLE ledger.
+    const key = accountKey(counterpartyId, direction);
     const existing = state.debtAccounts.get(key);
     if (existing) {
       return { id: existing.id, previousBalance: existing.balance };
@@ -352,7 +356,7 @@ export function createInMemoryInvoiceDebtPort(): InvoiceDebtPort & {
     state.debtAccounts.set(key, {
       id,
       counterpartyId,
-      direction: "PAYABLE",
+      direction,
       balance: openingSignedAmount,
       settled: false,
     });
@@ -400,7 +404,9 @@ export function createInMemoryInvoiceDebtPort(): InvoiceDebtPort & {
         input.supplierName,
         input.supplierPhone,
       );
-      const account = ensureDebtAccountId(counterpartyId, input.amount);
+      const debtDirection: "PAYABLE" | "RECEIVABLE" =
+        input.direction === "SALE" ? "RECEIVABLE" : "PAYABLE";
+      const account = ensureDebtAccountId(counterpartyId, debtDirection, input.amount);
       const balanceAfter = account.previousBalance + input.amount;
       // Stamp running balance onto the account so successive OPENING
       // entries from the same counterparty layer on top of each other.
@@ -408,7 +414,7 @@ export function createInMemoryInvoiceDebtPort(): InvoiceDebtPort & {
       // from a prior full settlement); otherwise subsequent payments
       // would settle against the stale zero balance and corrupt
       // financial tracking.
-      const accountState = state.debtAccounts.get(accountKey(counterpartyId, "PAYABLE"))!;
+      const accountState = state.debtAccounts.get(accountKey(counterpartyId, debtDirection))!;
       accountState.balance = balanceAfter;
       accountState.settled = false;
 

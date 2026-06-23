@@ -6,6 +6,13 @@ import { z } from "zod";
 export const invoiceCurrencySchema = z.enum(["DZD"]);
 export type InvoiceCurrency = z.infer<typeof invoiceCurrencySchema>;
 
+// Invoice direction. PURCHASE means we owe the supplier (default);
+// SALE means the counterparty owes us (receivable direction on the
+// linked debt account). Workers cannot have SALE — they don't sell
+// to the company.
+export const invoiceDirectionSchema = z.enum(["PURCHASE", "SALE"]);
+export type InvoiceDirection = z.infer<typeof invoiceDirectionSchema>;
+
 // --- Invoice line item ---
 export const invoiceLineItemSchema = z.object({
   id: z.string().uuid(),
@@ -27,6 +34,7 @@ export const invoiceSchema = z.object({
   warehouseId: z.string().uuid().nullable(),
   projectId: z.string().uuid().nullable(),
   status: invoiceStatusSchema,
+  direction: invoiceDirectionSchema,
   invoiceDate: z.string().nullable(),
   dueDate: z.string().nullable(),
   currency: invoiceCurrencySchema,
@@ -53,6 +61,7 @@ export const invoiceCreateInputSchema = z.object({
   supplierPhone: z.string().max(20).nullable().optional(),
   warehouseId: z.string().uuid().nullable().optional(),
   projectId: z.string().uuid().nullable().optional(),
+  direction: invoiceDirectionSchema.optional().default("PURCHASE"),
   invoiceDate: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
   currency: invoiceCurrencySchema.optional(),
@@ -84,6 +93,7 @@ export const invoiceListFiltersSchema = z.object({
 export const invoiceMarkPaidInputSchema = z.object({
   id: z.string().uuid(),
   amountDzd: z.number().positive(),
+  direction: invoiceDirectionSchema.optional().default("PURCHASE"),
 });
 
 // --- Paginated list input ---

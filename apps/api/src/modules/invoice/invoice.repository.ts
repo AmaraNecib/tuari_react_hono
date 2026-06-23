@@ -1,6 +1,7 @@
 import type {
   Invoice,
   InvoiceCurrency,
+  InvoiceDirection,
   InvoiceLineItem,
   InvoiceListFilters,
   InvoiceListSortField,
@@ -27,6 +28,7 @@ export interface InvoiceRepository {
     warehouseId: string | null;
     projectId: string | null;
     status: "DRAFT";
+    direction: InvoiceDirection;
     invoiceDate: string | null;
     dueDate: string | null;
     currency: InvoiceCurrency;
@@ -55,6 +57,7 @@ export interface InvoiceRepository {
       projectId?: string | null;
       invoiceDate?: string | null;
       dueDate?: string | null;
+      direction?: InvoiceDirection;
       currency?: InvoiceCurrency;
       notes?: string | null;
       totalAmount?: number;
