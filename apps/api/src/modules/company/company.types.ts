@@ -286,6 +286,13 @@ export type DebtEntryCreateData = {
   entryDate: string;
   note?: string | null;
   balanceAfterDzd: number;
+  reasonCategory?: DebtEntryRecord["reasonCategory"];
+  reasonDetail?: DebtEntryRecord["reasonDetail"];
+  paymentMethod?: DebtEntryRecord["paymentMethod"];
+  status?: DebtEntryRecord["status"];
+  voidedAt?: DebtEntryRecord["voidedAt"];
+  voidedBy?: DebtEntryRecord["voidedBy"];
+  voidReason?: DebtEntryRecord["voidReason"];
 };
 
 export type EmployeeListFilters = {

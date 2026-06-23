@@ -228,6 +228,13 @@ describe("debts MVP web UI", () => {
               signedAmountDzd: 300,
               transactionId: null,
               updatedAt: "2026-03-27T10:00:00.000Z",
+              reasonCategory: "INVOICE_DRIVEN",
+              reasonDetail: null,
+              paymentMethod: null,
+              status: "LIVE",
+              voidedAt: null,
+              voidedBy: null,
+              voidReason: null,
             },
           ],
         }}

@@ -1,5 +1,6 @@
 import {
   type DebtAccountCreateInput,
+  type DebtEntry,
   type DebtPartyDetailInput,
   type DebtEntryCreateInput,
   type DebtSettlementInput,
@@ -252,6 +253,8 @@ export class CompanyService {
             signedAmountDzd: openingBalance,
             entryDate,
             note: normalizeText(input.openingEntryNote) ?? normalizeText(input.note),
+            reasonCategory: input.reasonCategory ?? "INVOICE_DRIVEN",
+            reasonDetail: input.reasonDetail ?? null,
           },
           audit,
         )
@@ -285,6 +288,8 @@ export class CompanyService {
             entryDate,
             note: normalizeText(input.openingEntryNote) ?? normalizeText(input.note),
             balanceAfterDzd: openingBalance,
+            reasonCategory: input.reasonCategory ?? "INVOICE_DRIVEN",
+            reasonDetail: input.reasonDetail ?? null,
           },
           audit,
         )
@@ -307,6 +312,10 @@ export class CompanyService {
       ])
     }
 
+    // Derive reason category: use provided one or default to INVOICE_DRIVEN
+    const reasonCategory = input.reasonCategory ?? "INVOICE_DRIVEN";
+    const reasonDetail = input.reasonDetail ?? null;
+
     const signedAmountDzd = normalizeSignedMoneyAmount(input.signedAmountDzd)
     const entryDate = normalizeAlgeriaTimestamp(input.entryDate)
     assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate ?? null, "entryDate")
@@ -322,6 +331,8 @@ export class CompanyService {
           entryDate,
           note: normalizeText(input.note),
           balanceAfterDzd: nextBalance,
+          reasonCategory,
+          reasonDetail,
         },
         audit,
       )
@@ -1757,7 +1768,7 @@ export class CompanyService {
     return accounts[0] || null;
   }
 
-  createEmployeeDebtEntry(input: { employeeId: string; entryType: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE"; amountDzd: number; entryDate?: string; note?: string }, auditContext?: MutationAuditContext) {
+  createEmployeeDebtEntry(input: { employeeId: string; entryType: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE"; amountDzd: number; entryDate?: string; note?: string; reasonCategory?: DebtEntry["reasonCategory"] }, auditContext?: MutationAuditContext) {
     const employee = this.requireEmployee(input.employeeId);
 
     let account = this.getEmployeeDebtAccount(input.employeeId);
@@ -1781,6 +1792,7 @@ export class CompanyService {
         signedAmountDzd: input.amountDzd,
         entryDate: input.entryDate,
         note: input.note || `${input.entryType}: ${employee.firstName} ${employee.lastName}`,
+        reasonCategory: input.reasonCategory,
       },
       auditContext,
     );

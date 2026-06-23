@@ -287,12 +287,19 @@ export const schemaStatements = [
     "id" TEXT NOT NULL PRIMARY KEY,
     "debt_account_id" TEXT NOT NULL,
     "invoice_id" TEXT,
-    "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT')),
+    "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT', 'ADVANCE')),
     "currency" TEXT NOT NULL DEFAULT 'DZD',
     "signed_amount" REAL NOT NULL,
     "entry_date" DATETIME NOT NULL,
     "note" TEXT,
     "balance_after" REAL NOT NULL,
+    "reason_category" TEXT NOT NULL DEFAULT 'INVOICE_DRIVEN',
+    "reason_detail" TEXT,
+    "payment_method" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'LIVE',
+    "voided_at" DATETIME,
+    "voided_by" TEXT,
+    "void_reason" TEXT,
     "actor_user_id" TEXT,
     "actor_label" TEXT,
     "transaction_id" TEXT,
@@ -669,6 +676,14 @@ export const additiveStatements = [
   'ALTER TABLE "invoice" ADD COLUMN "currency" TEXT NOT NULL DEFAULT \'DZD\'',
   'ALTER TABLE "debt_entry" ADD COLUMN "invoice_id" TEXT',
   'ALTER TABLE "debt_entry" ADD COLUMN "currency" TEXT NOT NULL DEFAULT \'DZD\'',
+  // Issue #25: reason category, payment method, void metadata
+  'ALTER TABLE "debt_entry" ADD COLUMN "reason_category" TEXT NOT NULL DEFAULT \'INVOICE_DRIVEN\'',
+  'ALTER TABLE "debt_entry" ADD COLUMN "reason_detail" TEXT',
+  'ALTER TABLE "debt_entry" ADD COLUMN "payment_method" TEXT',
+  'ALTER TABLE "debt_entry" ADD COLUMN "status" TEXT NOT NULL DEFAULT \'LIVE\'',
+  'ALTER TABLE "debt_entry" ADD COLUMN "voided_at" DATETIME',
+  'ALTER TABLE "debt_entry" ADD COLUMN "voided_by" TEXT',
+  'ALTER TABLE "debt_entry" ADD COLUMN "void_reason" TEXT',
   'ALTER TABLE "debt_account" ADD COLUMN "direction" TEXT NOT NULL DEFAULT \'PAYABLE\' CHECK ("direction" IN (\'PAYABLE\', \'RECEIVABLE\'))',
 ]
 
@@ -683,6 +698,7 @@ export const addAdvanceDebtEntryMigrationKey = "add_advance_debt_entry_type_v1"
 export const invoiceDebtLinkageMigrationKey = "link_invoices_to_debt_accounts_v1"
 export const debtAccountBalanceRenameMigrationKey = "rename_debt_account_balance_drop_dzd_v1"
 export const debtAccountDirectionMigrationKey = "add_debt_account_direction_v1"
+export const debtEntryReasonCategoryMigrationKey = "add_debt_entry_reason_category_v1"
 
 export const companyIndexStatements = [
   'CREATE INDEX IF NOT EXISTS "employee_role_id_idx" ON "employee" ("role_id")',

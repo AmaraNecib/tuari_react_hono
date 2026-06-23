@@ -6,10 +6,13 @@ import {
   auditTransactionIdSchema,
   debtAccountDirectionSchema,
   debtAccountStatusSchema,
+  debtEntryStatusSchema,
   debtEntryTypeSchema,
   debtPartyTypeSchema,
+  debtReasonCategorySchema,
   entityIdSchema,
   nullableTextSchema,
+  paymentMethodSchema,
   timestampSchema,
 } from "./core";
 
@@ -55,6 +58,14 @@ export const debtEntrySchema = z.object({
   transactionId: auditTransactionIdSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
+  // Issue #25: reason category, payment method, void metadata
+  reasonCategory: debtReasonCategorySchema,
+  reasonDetail: nullableTextSchema,
+  paymentMethod: paymentMethodSchema.nullable(),
+  status: debtEntryStatusSchema,
+  voidedAt: timestampSchema.nullable(),
+  voidedBy: nullableTextSchema,
+  voidReason: nullableTextSchema,
 });
 
 export const debtPartySummaryItemSchema = z.object({
@@ -133,6 +144,8 @@ export const debtAccountCreateInputSchema = z
     openingBalanceDzd: z.number().finite().optional(),
     openingEntryDate: timestampSchema.optional(),
     openingEntryNote: z.string().trim().max(1000).nullable().optional(),
+    reasonCategory: debtReasonCategorySchema.optional(),
+    reasonDetail: z.string().trim().max(1000).nullable().optional(),
   })
   .superRefine((input, ctx) => {
     const hasWorker = Boolean(input.workerId);
@@ -169,7 +182,61 @@ export const debtEntryCreateInputSchema = z.object({
   signedAmountDzd: z.number().finite(),
   entryDate: timestampSchema.optional(),
   note: z.string().trim().max(1000).nullable().optional(),
+  reasonCategory: debtReasonCategorySchema.optional(),
+  reasonDetail: z.string().trim().max(1000).nullable().optional(),
 });
+
+/**
+ * Input for creating a direct debt entry (not tied to an invoice).
+ * Requires a reason category; direction is derived from the category.
+ */
+export const directDebtEntryCreateInputSchema = z
+  .object({
+    partyType: debtPartyTypeSchema,
+    workerId: entityIdSchema.nullable().optional(),
+    externalCounterpartyId: entityIdSchema.nullable().optional(),
+    reasonCategory: debtReasonCategorySchema,
+    reasonDetail: z.string().trim().min(1).max(1000).nullable().optional(),
+    amountDzd: z.number().positive(),
+    entryDate: timestampSchema.optional(),
+    note: z.string().trim().max(1000).nullable().optional(),
+  })
+  .superRefine((input, ctx) => {
+    // Must link to exactly one party
+    const hasWorker = Boolean(input.workerId);
+    const hasExternal = Boolean(input.externalCounterpartyId);
+    if (hasWorker === hasExternal) {
+      ctx.addIssue({
+        code: "custom",
+        message: "يجب ربط الحساب بطرف واحد فقط.",
+        path: ["workerId"],
+      });
+    }
+    if (input.partyType === "INTERNAL_WORKER" && !hasWorker) {
+      ctx.addIssue({
+        code: "custom",
+        message: "يجب اختيار عامل صالح.",
+        path: ["workerId"],
+      });
+    }
+    if (input.partyType === "EXTERNAL_COUNTERPARTY" && !hasExternal) {
+      ctx.addIssue({
+        code: "custom",
+        message: "يجب اختيار طرف خارجي صالح.",
+        path: ["externalCounterpartyId"],
+      });
+    }
+
+    // OTHER category requires reasonDetail
+    if (input.reasonCategory === "OTHER" && !input.reasonDetail?.trim()) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "يرجى تقديم تفصيل للسبب عند اختيار فئة 'أخرى'.",
+        path: ["reasonDetail"],
+      });
+    }
+  });
 
 export const debtSettlementInputSchema = z.object({
   id: entityIdSchema,
@@ -218,6 +285,7 @@ export const employeeDebtEntryCreateInputSchema = z.object({
   amountDzd: z.number().positive(),
   entryDate: timestampSchema.optional(),
   note: z.string().trim().max(1000).nullable().optional(),
+  reasonCategory: debtReasonCategorySchema.optional(),
 });
 
 export const employeeDebtAccountGetInputSchema = z.object({
@@ -234,6 +302,7 @@ export type DebtsSummary = z.infer<typeof debtsSummarySchema>;
 export type ExternalCounterpartyCreateInput = z.infer<typeof externalCounterpartyCreateInputSchema>;
 export type DebtAccountCreateInput = z.infer<typeof debtAccountCreateInputSchema>;
 export type DebtEntryCreateInput = z.infer<typeof debtEntryCreateInputSchema>;
+export type DirectDebtEntryCreateInput = z.infer<typeof directDebtEntryCreateInputSchema>;
 export type DebtSettlementInput = z.infer<typeof debtSettlementInputSchema>;
 export type DebtPartyDetailInput = z.infer<typeof debtPartyDetailInputSchema>;
 export type EmployeeDebtEntryCreateInput = z.infer<typeof employeeDebtEntryCreateInputSchema>;

@@ -98,6 +98,54 @@ export const debtPartyTypeSchema = z.enum(["INTERNAL_WORKER", "EXTERNAL_COUNTERP
 export const debtAccountStatusSchema = z.enum(["OPEN", "SETTLED"]);
 export const debtAccountDirectionSchema = z.enum(["PAYABLE", "RECEIVABLE"]);
 export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT", "ADVANCE"]);
+export const debtEntryStatusSchema = z.enum(["LIVE", "VOIDED"]);
+export const paymentMethodSchema = z.enum(["CASH", "BANK_TRANSFER", "CHECK"]);
+export const debtReasonCategorySchema = z.enum([
+  "INVOICE_DRIVEN",
+  "SALARY_ADVANCE",
+  "REIMBURSEMENT",
+  "CASH_TAKE",
+  "EQUIPMENT_DAMAGE",
+  "PERSONAL_LOAN",
+  "DIRECT_LOAN_GIVEN",
+  "DIRECT_LOAN_TAKEN",
+  "OTHER",
+]);
+
+/**
+ * Maps each reason category to its locked direction.
+ * "UNCONSTRAINED" means the caller provides the direction (INVOICE_DRIVEN, OTHER).
+ */
+export const debtReasonCategoryDirectionMap: Record<string, "PAYABLE" | "RECEIVABLE" | "UNCONSTRAINED"> = {
+  INVOICE_DRIVEN: "UNCONSTRAINED",
+  SALARY_ADVANCE: "PAYABLE",
+  REIMBURSEMENT: "PAYABLE",
+  CASH_TAKE: "RECEIVABLE",
+  EQUIPMENT_DAMAGE: "RECEIVABLE",
+  PERSONAL_LOAN: "RECEIVABLE",
+  DIRECT_LOAN_GIVEN: "RECEIVABLE",
+  DIRECT_LOAN_TAKEN: "PAYABLE",
+  OTHER: "UNCONSTRAINED",
+};
+
+/**
+ * Derives the debt account direction from a reason category.
+ * Throws if the category direction is unknown.
+ */
+export function deriveDirectionFromCategory(
+  category: string,
+): "PAYABLE" | "RECEIVABLE" {
+  const mapped = debtReasonCategoryDirectionMap[category];
+  if (mapped === "UNCONSTRAINED") {
+    throw new Error(
+      `Category "${category}" does not lock direction; caller must provide it.`,
+    );
+  }
+  if (mapped === undefined) {
+    throw new Error(`Unknown reason category: "${category}"`);
+  }
+  return mapped;
+}
 export const projectStatusSchema = z.enum([
   "ACTIVE",
   "STOPPED",

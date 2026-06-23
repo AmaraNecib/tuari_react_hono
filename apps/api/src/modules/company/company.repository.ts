@@ -1065,7 +1065,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const audit = normalizeAuditContext(auditContext)
     this.database
       .prepare(
-        'INSERT INTO debt_entry (id, debt_account_id, entry_type, signed_amount, entry_date, note, balance_after, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO debt_entry (id, debt_account_id, entry_type, signed_amount, entry_date, note, balance_after, reason_category, reason_detail, payment_method, status, voided_at, voided_by, void_reason, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         id,
@@ -1075,6 +1075,13 @@ export class SqliteCompanyRepository implements CompanyRepository {
         data.entryDate,
         data.note ?? null,
         data.balanceAfterDzd,
+        data.reasonCategory ?? 'INVOICE_DRIVEN',
+        data.reasonDetail ?? null,
+        data.paymentMethod ?? null,
+        data.status ?? 'LIVE',
+        data.voidedAt ?? null,
+        data.voidedBy ?? null,
+        data.voidReason ?? null,
         audit.actorUserId,
         audit.actorLabel,
         audit.transactionId,
