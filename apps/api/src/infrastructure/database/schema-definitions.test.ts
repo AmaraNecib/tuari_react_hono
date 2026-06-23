@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  additiveStatements,
   createSchemaDefinitions,
   debtAccountBalanceRenameMigrationKey,
   rolePermissionSeeds,
@@ -130,5 +131,65 @@ describe("rolePermissionSeeds", () => {
       expect(typeof seed.permission).toBe("string");
       expect(seed.permission).toMatch(/^\w+\.\w+$/);
     }
+  });
+});
+
+describe("debt_entry schema (#25 reason category, void, payment method)", () => {
+  const definitions = createSchemaDefinitions();
+
+  function getDebtEntryDefinition() {
+    const def = definitions.find((d) => d.includes('"debt_entry"'));
+    if (!def) {
+      throw new Error("debt_entry CREATE TABLE statement not found in schemaStatements");
+    }
+    return def;
+  }
+
+  it("includes `reason_category` column with default INVOICE_DRIVEN", () => {
+    const def = getDebtEntryDefinition();
+    expect(def).toContain('"reason_category"');
+    expect(def).toMatch(/"reason_category"\s+TEXT\s+NOT\s+NULL\s+DEFAULT\s+'INVOICE_DRIVEN'/);
+  });
+
+  it("includes `reason_detail` column (nullable)", () => {
+    const def = getDebtEntryDefinition();
+    expect(def).toContain('"reason_detail"');
+  });
+
+  it("includes `payment_method` column (nullable)", () => {
+    const def = getDebtEntryDefinition();
+    expect(def).toContain('"payment_method"');
+  });
+
+  it("includes `status` column with default LIVE", () => {
+    const def = getDebtEntryDefinition();
+    expect(def).toContain('"status"');
+    expect(def).toMatch(/"status"\s+TEXT\s+NOT\s+NULL\s+DEFAULT\s+'LIVE'/);
+  });
+
+  it("includes void metadata columns (voided_at, voided_by, void_reason)", () => {
+    const def = getDebtEntryDefinition();
+    expect(def).toContain('"voided_at"');
+    expect(def).toContain('"voided_by"');
+    expect(def).toContain('"void_reason"');
+  });
+
+  it("includes ADVANCE in entry_type CHECK constraint", () => {
+    const def = getDebtEntryDefinition();
+    expect(def).toContain("ADVANCE");
+  });
+
+  it("additive statements include all new columns", () => {
+    expect(additiveStatements).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('ALTER TABLE "debt_entry" ADD COLUMN "reason_category"'),
+        expect.stringContaining('ALTER TABLE "debt_entry" ADD COLUMN "reason_detail"'),
+        expect.stringContaining('ALTER TABLE "debt_entry" ADD COLUMN "payment_method"'),
+        expect.stringContaining('ALTER TABLE "debt_entry" ADD COLUMN "status"'),
+        expect.stringContaining('ALTER TABLE "debt_entry" ADD COLUMN "voided_at"'),
+        expect.stringContaining('ALTER TABLE "debt_entry" ADD COLUMN "voided_by"'),
+        expect.stringContaining('ALTER TABLE "debt_entry" ADD COLUMN "void_reason"'),
+      ]),
+    );
   });
 });

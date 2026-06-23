@@ -587,6 +587,8 @@ export function useCreateDebtAccountMutation() {
       openingBalanceDzd?: number
       openingEntryDate?: string
       openingEntryNote?: string | null
+      reasonCategory?: string
+      reasonDetail?: string | null
     }) => {
       const result = await rpcClient.debtAccountsCreate({
         externalCounterpartyId: input.externalCounterpartyId ?? null,
@@ -598,6 +600,8 @@ export function useCreateDebtAccountMutation() {
         openingBalanceDzd: input.openingBalanceDzd ?? 0,
         openingEntryDate: input.openingEntryDate,
         openingEntryNote: input.openingEntryNote ?? null,
+        reasonCategory: input.reasonCategory,
+        reasonDetail: input.reasonDetail ?? null,
         partyType: input.partyType,
         workerId: input.workerId ?? null,
       })

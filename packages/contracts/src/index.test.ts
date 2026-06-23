@@ -7,8 +7,10 @@ import {
   debtPartyDetailSchema,
   debtEntryCreateInputSchema,
   debtEntrySchema,
+  debtReasonCategoryDirectionMap,
   debtSummaryItemSchema,
   debtsSummarySchema,
+  directDebtEntryCreateInputSchema,
   externalCounterpartyCreateInputSchema,
   externalCounterpartySchema,
   employeeBatchCreateInputSchema,
@@ -344,6 +346,14 @@ describe("contracts", () => {
         transactionId: "550e8400-e29b-41d4-a716-446655440000",
         createdAt: "2026-03-17T10:00:00.000Z",
         updatedAt: "2026-03-17T10:00:00.000Z",
+        // Issue #25: reason category, payment method, void metadata
+        reasonCategory: "INVOICE_DRIVEN",
+        reasonDetail: null,
+        paymentMethod: null,
+        status: "LIVE",
+        voidedAt: null,
+        voidedBy: null,
+        voidReason: null,
       }).entryType,
     ).toBe("SETTLEMENT")
 
@@ -402,6 +412,84 @@ describe("contracts", () => {
       }).actionType,
     ).toBe("DEBT_ENTRY_RECORDED")
   })
+
+  it("derives direction from reason category (category locks direction)", () => {
+    // SALARY_ADVANCE and REIMBURSEMENT are PAYABLE
+    expect(debtReasonCategoryDirectionMap.SALARY_ADVANCE).toBe("PAYABLE");
+    expect(debtReasonCategoryDirectionMap.REIMBURSEMENT).toBe("PAYABLE");
+    expect(debtReasonCategoryDirectionMap.DIRECT_LOAN_TAKEN).toBe("PAYABLE");
+
+    // CASH_TAKE, EQUIPMENT_DAMAGE, PERSONAL_LOAN, DIRECT_LOAN_GIVEN are RECEIVABLE
+    expect(debtReasonCategoryDirectionMap.CASH_TAKE).toBe("RECEIVABLE");
+    expect(debtReasonCategoryDirectionMap.EQUIPMENT_DAMAGE).toBe("RECEIVABLE");
+    expect(debtReasonCategoryDirectionMap.PERSONAL_LOAN).toBe("RECEIVABLE");
+    expect(debtReasonCategoryDirectionMap.DIRECT_LOAN_GIVEN).toBe("RECEIVABLE");
+
+    // OTHER is unconstrained (caller provides direction)
+    expect(debtReasonCategoryDirectionMap.OTHER).toBe("UNCONSTRAINED");
+
+    // INVOICE_DRIVEN is unconstrained (derived from invoice direction)
+    expect(debtReasonCategoryDirectionMap.INVOICE_DRIVEN).toBe("UNCONSTRAINED");
+  });
+
+  it("validates reason category on debt entry create input", () => {
+    // Valid: required reason category for direct debts
+    const validInput = directDebtEntryCreateInputSchema.parse({
+      partyType: "INTERNAL_WORKER",
+      workerId: "worker-1",
+      reasonCategory: "SALARY_ADVANCE",
+      amountDzd: 5000,
+      entryDate: "2026-03-17T10:00:00.000Z",
+    });
+    expect(validInput.reasonCategory).toBe("SALARY_ADVANCE");
+
+    // OTHER category requires reasonDetail
+    expect(() =>
+      directDebtEntryCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        reasonCategory: "OTHER",
+        amountDzd: 1000,
+      }),
+    ).toThrow();
+
+    // OTHER category with reasonDetail is valid
+    const validOther = directDebtEntryCreateInputSchema.parse({
+      partyType: "INTERNAL_WORKER",
+      workerId: "worker-1",
+      reasonCategory: "OTHER",
+      amountDzd: 1000,
+      reasonDetail: "قرض شخصي لشراء مواد",
+    });
+    expect(validOther.reasonDetail).toBe("قرض شخصي لشراء مواد");
+  });
+
+  it("validates payment method on debt entry", () => {
+    const entry = debtEntrySchema.parse({
+      id: "debt-entry-1",
+      debtAccountId: "debt-account-1",
+      entryType: "PAYMENT",
+      signedAmountDzd: -500,
+      entryDate: "2026-03-17T10:00:00.000Z",
+      note: null,
+      balanceAfterDzd: 0,
+      actorUserId: "user-1",
+      actorLabel: "Admin",
+      transactionId: "550e8400-e29b-41d4-a716-446655440000",
+      createdAt: "2026-03-17T10:00:00.000Z",
+      updatedAt: "2026-03-17T10:00:00.000Z",
+      reasonCategory: "INVOICE_DRIVEN",
+      status: "LIVE",
+      paymentMethod: null,
+      reasonDetail: null,
+      voidedAt: null,
+      voidedBy: null,
+      voidReason: null,
+    });
+    expect(entry.reasonCategory).toBe("INVOICE_DRIVEN");
+    expect(entry.status).toBe("LIVE");
+    expect(entry.paymentMethod).toBeNull();
+  });
 
   it("rejects duplicate phones inside the same employee batch", () => {
     expect(() =>
