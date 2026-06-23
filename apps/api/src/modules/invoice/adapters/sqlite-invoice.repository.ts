@@ -197,6 +197,7 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     warehouseId: string | null;
     projectId: string | null;
     status: "DRAFT";
+    direction: InvoiceDirection;
     invoiceDate: string | null;
     dueDate: string | null;
     currency: InvoiceCurrency;

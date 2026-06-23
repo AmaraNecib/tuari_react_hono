@@ -212,7 +212,6 @@ export class InvoiceModule {
     id: string,
     amount: number,
     actor: InvoiceActorContext,
-    direction?: InvoiceDirection,
   ): Promise<Invoice> {
     if (amount <= 0) {
       throw new InvoiceDebtPortError("amount must be positive");
@@ -233,7 +232,7 @@ export class InvoiceModule {
         payment = await this.debtPort.recordInvoicePayment({
           invoiceId: id,
           amount,
-          direction: direction ?? existing.direction,
+          direction: existing.direction,
           actorUserId: actor.actorUserId,
           actorLabel: actor.actorLabel,
           transactionId: actor.transactionId,

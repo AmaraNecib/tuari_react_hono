@@ -93,7 +93,7 @@ export const invoiceListFiltersSchema = z.object({
 export const invoiceMarkPaidInputSchema = z.object({
   id: z.string().uuid(),
   amountDzd: z.number().positive(),
-  direction: invoiceDirectionSchema.optional().default("PURCHASE"),
+  direction: invoiceDirectionSchema.optional(),
 });
 
 // --- Paginated list input ---

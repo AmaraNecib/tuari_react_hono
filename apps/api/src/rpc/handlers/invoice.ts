@@ -185,12 +185,12 @@ export function createInvoiceHandlers(
             input: unknown;
             auditContext: { actorUserId: string; actorLabel: string; transactionId: string };
           }) => {
-            const { id, amountDzd, direction } = input as { id: string; amountDzd: number; direction?: string };
+            const { id, amountDzd } = input as { id: string; amountDzd: number };
             return invoiceModule.markPaid(id, amountDzd, {
               actorUserId: auditContext.actorUserId,
               actorLabel: auditContext.actorLabel,
               transactionId: auditContext.transactionId,
-            }, direction as any);
+            });
           },
           (error: unknown) => {
             if (error instanceof InvoiceNotFoundError) {

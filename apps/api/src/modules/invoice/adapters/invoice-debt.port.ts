@@ -70,17 +70,17 @@ export function createSqliteInvoiceDebtPort(
 
   function ensureDebtAccountId(
     counterpartyId: string,
+    direction: "PAYABLE" | "RECEIVABLE",
     openingSignedAmount: number,
     note: string,
     audit: MutationAuditContext,
   ): { id: string; previousBalance: number } {
     // Issue #22: each counterparty can have one PAYABLE and one
     // RECEIVABLE account. Purchase invoices always write to the
-    // PAYABLE ledger. Sale-invoice support (Issue #26) will pass
-    // 'RECEIVABLE' instead.
+    // PAYABLE ledger; sale invoices write to the RECEIVABLE ledger.
     const existing = repository.getDebtAccountByExternalCounterpartyIdAndDirection(
       counterpartyId,
-      "PAYABLE",
+      direction,
     );
     if (existing) {
       return { id: existing.id, previousBalance: existing.currentBalance };
@@ -92,7 +92,7 @@ export function createSqliteInvoiceDebtPort(
         externalCounterpartyId: counterpartyId,
         workerId: null,
         status: "OPEN",
-        direction: "PAYABLE",
+        direction,
         currentBalance: openingSignedAmount,
         note,
         settledAt: null,
@@ -185,9 +185,13 @@ export function createSqliteInvoiceDebtPort(
         input.supplierPhone,
       );
 
+      const debtDirection: "PAYABLE" | "RECEIVABLE" =
+        input.direction === "SALE" ? "RECEIVABLE" : "PAYABLE";
+
       const createOpening = db.transaction(() => {
         const account = ensureDebtAccountId(
           counterpartyId,
+          debtDirection,
           input.amount,
           `Invoice ${input.invoiceId} opening balance`,
           audit,

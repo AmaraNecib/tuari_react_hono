@@ -1079,6 +1079,9 @@ async function runDebtEntryConstraintsMigration() {
       await tx.$executeRawUnsafe(
         'CREATE INDEX IF NOT EXISTS "debt_entry_debt_account_id_idx" ON "debt_entry" ("debt_account_id", "entry_date")',
       );
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "debt_entry_invoice_id_idx" ON "debt_entry" ("invoice_id")',
+      );
 
       await tx.$executeRawUnsafe(
         'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
@@ -1268,9 +1271,15 @@ async function runInvoiceDirectionMigration() {
     return;
   }
 
-  await prisma.$executeRawUnsafe(
-    `ALTER TABLE "invoice" ADD COLUMN "direction" TEXT NOT NULL DEFAULT 'PURCHASE'`,
-  );
+  // Only add the column if it does not already exist (e.g. from
+  // additive statements that run on every startup). If the column
+  // already exists we still write the migration key so future
+  // startups skip this check entirely.
+  if (!(await hasColumn("invoice", "direction"))) {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "invoice" ADD COLUMN "direction" TEXT NOT NULL DEFAULT 'PURCHASE' CHECK ("direction" IN ('PURCHASE', 'SALE'))`,
+    );
+  }
 
   await prisma.$executeRawUnsafe(
     'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
@@ -1441,8 +1450,8 @@ export async function ensureDatabaseSchema(): Promise<void> {
   await runDebtSingleAccountMigration();
   await runAddOutboundTransferMigration();
   await runAddAdvanceDebtEntryMigration();
-  await runDebtEntryConstraintsMigration();
   await runInvoiceDebtLinkageMigration();
+  await runDebtEntryConstraintsMigration();
   await runDebtAccountBalanceRenameMigration();
   await runDebtAccountDirectionMigration();
 

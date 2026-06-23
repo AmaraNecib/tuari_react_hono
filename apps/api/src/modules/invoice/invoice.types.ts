@@ -75,6 +75,7 @@ export interface UpdateInvoiceInput {
   projectId?: string | null;
   invoiceDate?: string | null;
   dueDate?: string | null;
+  direction?: InvoiceDirection;
   currency?: InvoiceCurrency;
   notes?: string | null;
   lineItems?: {
