@@ -734,6 +734,7 @@ describe("SqliteInvoiceRepository findPaged", () => {
         "warehouse_id" TEXT,
         "project_id" TEXT,
         "status" TEXT NOT NULL,
+        "direction" TEXT NOT NULL DEFAULT 'PURCHASE',
         "invoice_date" DATETIME,
         "due_date" DATETIME,
         "currency" TEXT NOT NULL DEFAULT 'DZD',

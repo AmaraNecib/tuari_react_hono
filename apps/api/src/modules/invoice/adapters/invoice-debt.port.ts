@@ -206,6 +206,7 @@ export function createSqliteInvoiceDebtPort(
             entryDate: new Date().toISOString(),
             note: `Invoice ${input.invoiceId} opening balance`,
             balanceAfterDzd: balanceAfter,
+            reasonCategory: "INVOICE_DRIVEN",
           },
           audit,
         );
