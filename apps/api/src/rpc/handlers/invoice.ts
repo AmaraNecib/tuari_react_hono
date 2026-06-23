@@ -63,7 +63,7 @@ export function createInvoiceHandlers(
         "invoices.create",
         m.withAudit(
           async ({ input }: { context: RpcContext; input: unknown; auditContext: unknown }) => {
-            const raw = input as { lineItems: Array<{ id?: string }> };
+            const raw = input as { direction?: string; lineItems: Array<{ id?: string }> };
             const id = crypto.randomUUID();
             const lineItemsWithIds = raw.lineItems.map((li) => ({
               ...li,

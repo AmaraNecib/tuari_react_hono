@@ -571,6 +571,7 @@ export const schemaStatements = [
     "warehouse_id" TEXT,
     "project_id" TEXT,
     "status" TEXT NOT NULL DEFAULT 'DRAFT' CHECK ("status" IN ('DRAFT', 'RECEIVED', 'PAID')),
+    "direction" TEXT NOT NULL DEFAULT 'PURCHASE' CHECK ("direction" IN ('PURCHASE', 'SALE')),
     "invoice_date" DATETIME,
     "due_date" DATETIME,
     "currency" TEXT NOT NULL DEFAULT 'DZD',
@@ -674,6 +675,7 @@ export const additiveStatements = [
   'ALTER TABLE "inventory_item_definition" ADD COLUMN "transaction_id" TEXT',
   'ALTER TABLE "invoice" ADD COLUMN "debt_account_id" TEXT',
   'ALTER TABLE "invoice" ADD COLUMN "currency" TEXT NOT NULL DEFAULT \'DZD\'',
+  'ALTER TABLE "invoice" ADD COLUMN "direction" TEXT NOT NULL DEFAULT \'PURCHASE\'',
   'ALTER TABLE "debt_entry" ADD COLUMN "invoice_id" TEXT',
   'ALTER TABLE "debt_entry" ADD COLUMN "currency" TEXT NOT NULL DEFAULT \'DZD\'',
   // Issue #25: reason category, payment method, void metadata
@@ -699,6 +701,7 @@ export const invoiceDebtLinkageMigrationKey = "link_invoices_to_debt_accounts_v1
 export const debtAccountBalanceRenameMigrationKey = "rename_debt_account_balance_drop_dzd_v1"
 export const debtAccountDirectionMigrationKey = "add_debt_account_direction_v1"
 export const debtEntryReasonCategoryMigrationKey = "add_debt_entry_reason_category_v1"
+export const invoiceDirectionMigrationKey = "add_invoice_direction_v1"
 
 export const companyIndexStatements = [
   'CREATE INDEX IF NOT EXISTS "employee_role_id_idx" ON "employee" ("role_id")',

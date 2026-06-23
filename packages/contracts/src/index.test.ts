@@ -19,6 +19,10 @@ import {
   employeeSalaryPaymentCreateInputSchema,
   employeeWarehouseAssignmentSchema,
   employeeSchema,
+  invoiceCreateInputSchema,
+  invoiceDirectionSchema,
+  invoiceMarkPaidInputSchema,
+  invoiceSchema,
   managerAssignmentCreateInputSchema,
   phonePasswordSignInSchema,
   projectAssignmentCreateInputSchema,
@@ -514,5 +518,144 @@ describe("contracts", () => {
     ).toThrowError();
 
     expect(employeeBatchLimit).toBe(24);
+  });
+
+  describe("invoice direction (#26 PURCHASE/SALE)", () => {
+    describe("invoiceDirectionSchema", () => {
+      it("accepts PURCHASE", () => {
+        expect(invoiceDirectionSchema.parse("PURCHASE")).toBe("PURCHASE");
+      });
+
+      it("accepts SALE", () => {
+        expect(invoiceDirectionSchema.parse("SALE")).toBe("SALE");
+      });
+
+      it("rejects invalid direction values", () => {
+        expect(() => invoiceDirectionSchema.parse("INVALID")).toThrow();
+        expect(() => invoiceDirectionSchema.parse("PAYABLE")).toThrow();
+        expect(() => invoiceDirectionSchema.parse("")).toThrow();
+      });
+    });
+
+    describe("invoiceCreateInputSchema", () => {
+      const baseInput = {
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        supplierName: "Supplier Co",
+        lineItems: [
+          { description: "Item", quantity: 10, unitPrice: 100 },
+        ],
+      };
+
+      it("defaults direction to PURCHASE when omitted", () => {
+        const result = invoiceCreateInputSchema.parse(baseInput);
+        expect(result.direction).toBe("PURCHASE");
+      });
+
+      it("accepts explicit SALE direction", () => {
+        const result = invoiceCreateInputSchema.parse({
+          ...baseInput,
+          direction: "SALE",
+        });
+        expect(result.direction).toBe("SALE");
+      });
+
+      it("accepts explicit PURCHASE direction", () => {
+        const result = invoiceCreateInputSchema.parse({
+          ...baseInput,
+          direction: "PURCHASE",
+        });
+        expect(result.direction).toBe("PURCHASE");
+      });
+
+      it("rejects invalid direction values", () => {
+        expect(() =>
+          invoiceCreateInputSchema.parse({
+            ...baseInput,
+            direction: "INVALID",
+          }),
+        ).toThrow();
+      });
+    });
+
+    describe("invoiceMarkPaidInputSchema", () => {
+      const baseInput = {
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        amountDzd: 500,
+      };
+
+      it("direction is undefined when omitted (no default, unlike create)", () => {
+        const result = invoiceMarkPaidInputSchema.parse(baseInput);
+        expect(result.direction).toBeUndefined();
+      });
+
+      it("accepts explicit direction", () => {
+        const result = invoiceMarkPaidInputSchema.parse({
+          ...baseInput,
+          direction: "SALE",
+        });
+        expect(result.direction).toBe("SALE");
+      });
+
+      it("rejects invalid direction values", () => {
+        expect(() =>
+          invoiceMarkPaidInputSchema.parse({
+            ...baseInput,
+            direction: "INVALID",
+          }),
+        ).toThrow();
+      });
+    });
+
+    describe("invoiceSchema", () => {
+      const baseInvoice = {
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        invoiceNumber: null,
+        supplierName: "Supplier Co",
+        supplierPhone: null,
+        warehouseId: null,
+        projectId: null,
+        status: "DRAFT" as const,
+        invoiceDate: null,
+        dueDate: null,
+        currency: "DZD" as const,
+        totalAmount: 1000,
+        paidAmount: 0,
+        remainingAmount: 1000,
+        notes: null,
+        debtAccountId: null,
+        createdAt: "2026-03-17T10:00:00.000Z",
+        updatedAt: "2026-03-17T10:00:00.000Z",
+        lineItems: [],
+      };
+
+      it("requires direction (no default — entity schema reflects stored data)", () => {
+        expect(() => invoiceSchema.parse(baseInvoice)).toThrow();
+      });
+
+      it("accepts invoice with SALE direction", () => {
+        const result = invoiceSchema.parse({
+          ...baseInvoice,
+          direction: "SALE",
+        });
+        expect(result.direction).toBe("SALE");
+      });
+
+      it("accepts invoice with PURCHASE direction", () => {
+        const result = invoiceSchema.parse({
+          ...baseInvoice,
+          direction: "PURCHASE",
+        });
+        expect(result.direction).toBe("PURCHASE");
+      });
+
+      it("rejects invalid direction", () => {
+        expect(() =>
+          invoiceSchema.parse({
+            ...baseInvoice,
+            direction: "INVALID",
+          }),
+        ).toThrow();
+      });
+    });
   });
 });

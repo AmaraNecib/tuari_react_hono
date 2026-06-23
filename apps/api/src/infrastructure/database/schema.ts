@@ -8,8 +8,10 @@ import {
   companyStatusConstraintChecks,
   debtAccountBalanceRenameMigrationKey,
   debtAccountDirectionMigrationKey,
+  debtEntryReasonCategoryMigrationKey,
   debtSingleAccountMigrationKey,
   invoiceDebtLinkageMigrationKey,
+  invoiceDirectionMigrationKey,
   obsoleteMigrationKey,
   rolePermissionSeeds,
   roleSeeds,
@@ -996,6 +998,102 @@ async function runAddAdvanceDebtEntryMigration() {
   }
 }
 
+async function runDebtEntryConstraintsMigration() {
+  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    debtEntryReasonCategoryMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "debt_entry_checked"');
+      await tx.$executeRawUnsafe(
+        `CREATE TABLE "debt_entry_checked" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "debt_account_id" TEXT NOT NULL,
+          "invoice_id" TEXT,
+          "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT', 'ADVANCE')),
+          "currency" TEXT NOT NULL DEFAULT 'DZD',
+          "signed_amount" REAL NOT NULL,
+          "entry_date" DATETIME NOT NULL,
+          "note" TEXT,
+          "balance_after" REAL NOT NULL,
+          "reason_category" TEXT NOT NULL DEFAULT 'INVOICE_DRIVEN' CHECK ("reason_category" IN ('INVOICE_DRIVEN', 'SALARY_ADVANCE', 'REIMBURSEMENT', 'CASH_TAKE', 'EQUIPMENT_DAMAGE', 'PERSONAL_LOAN', 'DIRECT_LOAN_GIVEN', 'DIRECT_LOAN_TAKEN', 'OTHER')),
+          "reason_detail" TEXT,
+          "payment_method" TEXT CHECK ("payment_method" IN ('CASH', 'BANK_TRANSFER', 'CHECK')),
+          "status" TEXT NOT NULL DEFAULT 'LIVE' CHECK ("status" IN ('LIVE', 'VOIDED')),
+          "voided_at" DATETIME,
+          "voided_by" TEXT,
+          "void_reason" TEXT,
+          "actor_user_id" TEXT,
+          "actor_label" TEXT,
+          "transaction_id" TEXT,
+          "created_at" DATETIME NOT NULL,
+          "updated_at" DATETIME NOT NULL,
+          CONSTRAINT "debt_entry_debt_account_id_fkey"
+            FOREIGN KEY ("debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+          CONSTRAINT "debt_entry_invoice_id_fkey"
+            FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+        )`,
+      );
+
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "debt_entry_checked" (
+          "id", "debt_account_id", "invoice_id", "entry_type", "currency",
+          "signed_amount", "entry_date", "note", "balance_after",
+          "reason_category", "reason_detail", "payment_method", "status",
+          "voided_at", "voided_by", "void_reason",
+          "actor_user_id", "actor_label", "transaction_id",
+          "created_at", "updated_at"
+        )
+        SELECT
+          "id", "debt_account_id", "invoice_id", "entry_type", "currency",
+          "signed_amount", "entry_date", "note", "balance_after",
+          COALESCE("reason_category", 'INVOICE_DRIVEN'), "reason_detail", "payment_method",
+          COALESCE("status", 'LIVE'),
+          "voided_at", "voided_by", "void_reason",
+          "actor_user_id", "actor_label", "transaction_id",
+          "created_at", "updated_at"
+        FROM "debt_entry"`,
+      );
+
+      const [sourceRow] = await tx.$queryRawUnsafe<Array<{ count: number | bigint }>>(
+        'SELECT COUNT(*) AS count FROM "debt_entry"',
+      );
+      const [checkedRow] = await tx.$queryRawUnsafe<Array<{ count: number | bigint }>>(
+        'SELECT COUNT(*) AS count FROM "debt_entry_checked"',
+      );
+
+      if (Number(sourceRow?.count ?? 0) !== Number(checkedRow?.count ?? 0)) {
+        throw new Error("debt_entry migration row count mismatch.");
+      }
+
+      await tx.$executeRawUnsafe('DROP TABLE "debt_entry"');
+      await tx.$executeRawUnsafe('ALTER TABLE "debt_entry_checked" RENAME TO "debt_entry"');
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "debt_entry_debt_account_id_idx" ON "debt_entry" ("debt_account_id", "entry_date")',
+      );
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "debt_entry_invoice_id_idx" ON "debt_entry" ("invoice_id")',
+      );
+
+      await tx.$executeRawUnsafe(
+        'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+        debtEntryReasonCategoryMigrationKey,
+        new Date().toISOString(),
+      );
+    });
+  } finally {
+    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+  }
+}
+
 async function runInvoiceDebtLinkageMigration() {
   const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
@@ -1163,6 +1261,33 @@ async function columnExists(
   return rows.some((column) => column.name === columnName);
 }
 
+async function runInvoiceDirectionMigration() {
+  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    invoiceDirectionMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  // Only add the column if it does not already exist (e.g. from
+  // additive statements that run on every startup). If the column
+  // already exists we still write the migration key so future
+  // startups skip this check entirely.
+  if (!(await hasColumn("invoice", "direction"))) {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "invoice" ADD COLUMN "direction" TEXT NOT NULL DEFAULT 'PURCHASE' CHECK ("direction" IN ('PURCHASE', 'SALE'))`,
+    );
+  }
+
+  await prisma.$executeRawUnsafe(
+    'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+    invoiceDirectionMigrationKey,
+    new Date().toISOString(),
+  );
+}
+
 async function runDebtAccountBalanceRenameMigration() {
   await applyDebtAccountBalanceRename(prisma);
 }
@@ -1326,6 +1451,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
   await runAddOutboundTransferMigration();
   await runAddAdvanceDebtEntryMigration();
   await runInvoiceDebtLinkageMigration();
+  await runDebtEntryConstraintsMigration();
   await runDebtAccountBalanceRenameMigration();
   await runDebtAccountDirectionMigration();
 

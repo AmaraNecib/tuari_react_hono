@@ -3,6 +3,7 @@ import {
   additiveStatements,
   createSchemaDefinitions,
   debtAccountBalanceRenameMigrationKey,
+  invoiceDirectionMigrationKey,
   rolePermissionSeeds,
 } from "./schema-definitions";
 import { DEFAULT_ROLE_PERMISSIONS } from "../../modules/rbac/role-seeds";
@@ -204,6 +205,42 @@ describe("debt_entry schema (#25 reason category, void, payment method)", () => 
         expect.stringContaining('ALTER TABLE "debt_entry" ADD COLUMN "voided_at"'),
         expect.stringContaining('ALTER TABLE "debt_entry" ADD COLUMN "voided_by"'),
         expect.stringContaining('ALTER TABLE "debt_entry" ADD COLUMN "void_reason"'),
+      ]),
+    );
+  });
+});
+
+describe("invoice schema (#26 direction column)", () => {
+  const definitions = createSchemaDefinitions();
+
+  function getInvoiceDefinition() {
+    const def = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "invoice"'),
+    );
+    expect(def).toBeDefined();
+    return def!;
+  }
+
+  it("includes a `direction` column with PURCHASE/SALE check constraint", () => {
+    const def = getInvoiceDefinition();
+    expect(def).toMatch(/CHECK\s*\("direction"\s*IN/);
+  });
+
+  it("defaults `direction` to PURCHASE so legacy rows backfill correctly", () => {
+    const def = getInvoiceDefinition();
+    expect(def).toMatch(/DEFAULT\s+'PURCHASE'/);
+  });
+
+  it("declares a unique migration key for the direction column", () => {
+    expect(invoiceDirectionMigrationKey).toBeDefined();
+    expect(typeof invoiceDirectionMigrationKey).toBe("string");
+    expect(invoiceDirectionMigrationKey.length).toBeGreaterThan(0);
+  });
+
+  it("additive statements include the direction column", () => {
+    expect(additiveStatements).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('ALTER TABLE "invoice" ADD COLUMN "direction"'),
       ]),
     );
   });

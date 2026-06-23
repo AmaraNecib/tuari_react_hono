@@ -3,6 +3,7 @@ import type { InvoiceRepository } from "../invoice.repository";
 import type {
   Invoice,
   InvoiceCurrency,
+  InvoiceDirection,
   InvoiceLineItem,
   InvoiceListFilters,
   InvoiceListSortField,
@@ -196,6 +197,7 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     warehouseId: string | null;
     projectId: string | null;
     status: "DRAFT";
+    direction: InvoiceDirection;
     invoiceDate: string | null;
     dueDate: string | null;
     currency: InvoiceCurrency;
@@ -217,9 +219,9 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     const insertInvoice = this.db.prepare(`
       INSERT INTO "invoice" (
         id, invoice_number, supplier_name, supplier_phone, warehouse_id, project_id,
-        status, invoice_date, due_date, currency, total_amount, paid_amount, remaining_amount,
+        status, direction, invoice_date, due_date, currency, total_amount, paid_amount, remaining_amount,
         notes, debt_account_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const insertLineItem = this.db.prepare(`
@@ -237,6 +239,7 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
         data.warehouseId,
         data.projectId,
         data.status,
+        data.direction,
         data.invoiceDate,
         data.dueDate,
         data.currency,
@@ -270,6 +273,7 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
       projectId?: string | null;
       invoiceDate?: string | null;
       dueDate?: string | null;
+      direction?: InvoiceDirection;
       notes?: string | null;
       currency?: InvoiceCurrency;
       totalAmount?: number;
@@ -300,6 +304,7 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
     if (data.totalAmount !== undefined) { setClauses.push(`total_amount = ?`); params.push(data.totalAmount); }
     if (data.remainingAmount !== undefined) { setClauses.push(`remaining_amount = ?`); params.push(data.remainingAmount); }
     if (data.debtAccountId !== undefined) { setClauses.push(`debt_account_id = ?`); params.push(data.debtAccountId); }
+    if (data.direction !== undefined) { setClauses.push(`direction = ?`); params.push(data.direction); }
     if (data.updatedAt !== undefined) { setClauses.push(`updated_at = ?`); params.push(data.updatedAt); }
 
     const updateInvoice = this.db.transaction(() => {
@@ -414,6 +419,7 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
       remainingAmount: row.remaining_amount as number,
       notes: row.notes as string | null,
       debtAccountId: row.debt_account_id as string | null,
+      direction: (row.direction as InvoiceDirection) ?? "PURCHASE",
       createdAt: row.created_at as string,
       updatedAt: row.updated_at as string,
       lineItems: [],

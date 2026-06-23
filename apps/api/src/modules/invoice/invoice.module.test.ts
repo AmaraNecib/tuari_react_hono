@@ -77,6 +77,21 @@ describe("InvoiceModule", () => {
       expect(result.currency).toBe("DZD");
     });
 
+    it("defaults direction to PURCHASE when not specified", async () => {
+      const result = await module.create(makeInput({ id: "inv-1" }));
+      expect(result.direction).toBe("PURCHASE");
+    });
+
+    it("accepts explicit SALE direction on create", async () => {
+      const result = await module.create(makeInput({ id: "inv-1", direction: "SALE" }));
+      expect(result.direction).toBe("SALE");
+    });
+
+    it("accepts explicit PURCHASE direction on create", async () => {
+      const result = await module.create(makeInput({ id: "inv-1", direction: "PURCHASE" }));
+      expect(result.direction).toBe("PURCHASE");
+    });
+
     it("throws EmptyLineItemsError when no line items", async () => {
       await expect(
         module.create(makeInput({ id: "inv-1", lineItems: [] })),
@@ -116,6 +131,15 @@ describe("InvoiceModule", () => {
         currency: "DZD",
       } satisfies UpdateInvoiceInput);
       expect(updated.currency).toBe("DZD");
+    });
+
+    it("updates direction on a DRAFT invoice", async () => {
+      await module.create(makeInput({ id: "inv-1" }));
+      const updated = await module.update({
+        id: "inv-1",
+        direction: "SALE",
+      } satisfies UpdateInvoiceInput);
+      expect(updated.direction).toBe("SALE");
     });
 
     it("throws InvoiceNotFoundError when invoice missing", async () => {
@@ -268,6 +292,41 @@ describe("InvoiceModule", () => {
       await expect(
         failingModule.receive("inv-1", ACTOR),
       ).rejects.toBeInstanceOf(InvoiceDebtPortError);
+    });
+
+    it("creates RECEIVABLE debt account when direction is SALE", async () => {
+      await module.create(makeInput({ id: "inv-1", direction: "SALE" }));
+      await module.receive("inv-1", ACTOR);
+
+      // In-memory debt port stores direction alongside the account
+      const accounts = Array.from(debtPort.state.debtAccounts.entries());
+      const accountKey = accounts.find(([, acct]) =>
+        acct.direction === "RECEIVABLE",
+      );
+      expect(accountKey).toBeDefined();
+
+      // A SALE invoice should NOT create a PAYABLE account
+      const payableKey = accounts.find(([, acct]) =>
+        acct.direction === "PAYABLE",
+      );
+      expect(payableKey).toBeUndefined();
+    });
+
+    it("creates PAYABLE debt account when direction is PURCHASE (default)", async () => {
+      await module.create(makeInput({ id: "inv-2" }));
+      await module.receive("inv-2", ACTOR);
+
+      const accounts = Array.from(debtPort.state.debtAccounts.entries());
+      const payableKey = accounts.find(([, acct]) =>
+        acct.direction === "PAYABLE",
+      );
+      expect(payableKey).toBeDefined();
+
+      // A PURCHASE invoice should NOT create a RECEIVABLE account
+      const receivableKey = accounts.find(([, acct]) =>
+        acct.direction === "RECEIVABLE",
+      );
+      expect(receivableKey).toBeUndefined();
     });
 
   });
@@ -734,6 +793,7 @@ describe("SqliteInvoiceRepository findPaged", () => {
         "warehouse_id" TEXT,
         "project_id" TEXT,
         "status" TEXT NOT NULL,
+        "direction" TEXT NOT NULL DEFAULT 'PURCHASE',
         "invoice_date" DATETIME,
         "due_date" DATETIME,
         "currency" TEXT NOT NULL DEFAULT 'DZD',

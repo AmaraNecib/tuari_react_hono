@@ -1,6 +1,12 @@
 export type InvoiceStatus = "DRAFT" | "RECEIVED" | "PAID";
 
 /**
+ * Invoice direction. PURCHASE (default) means we owe the supplier;
+ * SALE means the counterparty owes us.
+ */
+export type InvoiceDirection = "PURCHASE" | "SALE";
+
+/**
  * Supported currencies. Today only DZD (Algerian Dinar) is wired
  * end-to-end; the schema and types are forward-compatible so adding
  * EUR / USD later is a config change, not a refactor.
@@ -26,6 +32,7 @@ export interface Invoice {
   warehouseId: string | null;
   projectId: string | null;
   status: InvoiceStatus;
+  direction: InvoiceDirection;
   invoiceDate: string | null;
   dueDate: string | null;
   currency: InvoiceCurrency;
@@ -46,6 +53,7 @@ export interface CreateInvoiceInput {
   supplierPhone?: string | null;
   warehouseId?: string | null;
   projectId?: string | null;
+  direction?: InvoiceDirection;
   invoiceDate?: string | null;
   dueDate?: string | null;
   currency?: InvoiceCurrency;
@@ -67,6 +75,7 @@ export interface UpdateInvoiceInput {
   projectId?: string | null;
   invoiceDate?: string | null;
   dueDate?: string | null;
+  direction?: InvoiceDirection;
   currency?: InvoiceCurrency;
   notes?: string | null;
   lineItems?: {
@@ -120,6 +129,7 @@ export interface CreateInvoiceDebtInput {
   supplierPhone: string | null;
   amount: number;
   currency: InvoiceCurrency;
+  direction: InvoiceDirection;
   actorUserId: string;
   actorLabel?: string;
   transactionId?: string;
@@ -128,6 +138,7 @@ export interface CreateInvoiceDebtInput {
 export interface RecordInvoicePaymentInput {
   invoiceId: string;
   amount: number;
+  direction: InvoiceDirection;
   actorUserId: string;
   actorLabel?: string;
   transactionId?: string;
