@@ -98,8 +98,25 @@ export const debtPartyTypeSchema = z.enum(["INTERNAL_WORKER", "EXTERNAL_COUNTERP
 export const debtAccountStatusSchema = z.enum(["OPEN", "SETTLED"]);
 export const debtAccountDirectionSchema = z.enum(["PAYABLE", "RECEIVABLE"]);
 export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT", "ADVANCE"]);
+/**
+ * Current lifecycle status of a single debt entry row.
+ * - LIVE: normal, active entry
+ * - VOIDED: entry has been voided (reversed)
+ */
 export const debtEntryStatusSchema = z.enum(["LIVE", "VOIDED"]);
+/**
+ * Physical or electronic means used to settle a debt entry.
+ * - CASH: cash payment/receipt
+ * - BANK_TRANSFER: wire or mobile money transfer
+ * - CHECK: cheque
+ */
 export const paymentMethodSchema = z.enum(["CASH", "BANK_TRANSFER", "CHECK"]);
+/**
+ * Reason categories for a debt entry.
+ * Each category (except INVOICE_DRIVEN and OTHER) locks the account direction
+ * to either PAYABLE or RECEIVABLE. See {@link debtReasonCategoryDirectionMap}
+ * and {@link deriveDirectionFromCategory}.
+ */
 export const debtReasonCategorySchema = z.enum([
   "INVOICE_DRIVEN",
   "SALARY_ADVANCE",
