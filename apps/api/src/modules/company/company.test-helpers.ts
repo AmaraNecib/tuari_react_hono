@@ -237,8 +237,7 @@ const schemaStatements = [
     "transaction_id" TEXT,
     "created_at" DATETIME NOT NULL,
     "updated_at" DATETIME NOT NULL,
-    FOREIGN KEY ("debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    FOREIGN KEY ("debt_account_id") REFERENCES "debt_account" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
   )`,
   `CREATE UNIQUE INDEX "employee_manager_assignment_active_worker_key" ON "employee_manager_assignment" ("worker_id") WHERE "status" = 'ACTIVE'`,
   `CREATE UNIQUE INDEX "employee_project_assignment_active_employee_key" ON "employee_project_assignment" ("employee_id") WHERE "status" = 'ACTIVE'`,
