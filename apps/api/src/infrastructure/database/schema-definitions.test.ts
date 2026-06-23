@@ -179,6 +179,21 @@ describe("debt_entry schema (#25 reason category, void, payment method)", () => 
     expect(def).toContain("ADVANCE");
   });
 
+  it("includes CHECK constraint on reason_category", () => {
+    const def = getDebtEntryDefinition();
+    expect(def).toMatch(/CHECK\s*\("reason_category"\s*IN/);
+  });
+
+  it("includes CHECK constraint on payment_method", () => {
+    const def = getDebtEntryDefinition();
+    expect(def).toMatch(/CHECK\s*\("payment_method"\s*IN/);
+  });
+
+  it("includes CHECK constraint on status", () => {
+    const def = getDebtEntryDefinition();
+    expect(def).toMatch(/CHECK\s*\("status"\s*IN/);
+  });
+
   it("additive statements include all new columns", () => {
     expect(additiveStatements).toEqual(
       expect.arrayContaining([
