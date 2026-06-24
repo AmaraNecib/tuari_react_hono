@@ -6,7 +6,9 @@ import {
   debtAccountSchema,
   debtPartyDetailSchema,
   debtEntryCreateInputSchema,
+  debtEntryRecordPaymentInputSchema,
   debtEntrySchema,
+  debtEntryVoidInputSchema,
   debtReasonCategoryDirectionMap,
   debtSummaryItemSchema,
   debtsSummarySchema,
@@ -466,6 +468,57 @@ describe("contracts", () => {
       reasonDetail: "قرض شخصي لشراء مواد",
     });
     expect(validOther.reasonDetail).toBe("قرض شخصي لشراء مواد");
+  });
+
+  it("validates inline debt payment input", () => {
+    expect(
+      debtEntryRecordPaymentInputSchema.parse({
+        debtEntryId: "debt-entry-1",
+        amountDzd: 500,
+      }),
+    ).toEqual({
+      debtEntryId: "debt-entry-1",
+      amountDzd: 500,
+      paymentMethod: "CASH",
+    });
+
+    expect(
+      debtEntryRecordPaymentInputSchema.parse({
+        debtEntryId: "debt-entry-1",
+        amountDzd: 500,
+        paymentMethod: "BANK_TRANSFER",
+        note: "دفعة جزئية",
+      }),
+    ).toMatchObject({
+      paymentMethod: "BANK_TRANSFER",
+      note: "دفعة جزئية",
+    });
+
+    expect(() =>
+      debtEntryRecordPaymentInputSchema.parse({
+        debtEntryId: "debt-entry-1",
+        amountDzd: 0,
+      }),
+    ).toThrow();
+  });
+
+  it("validates debt entry void input", () => {
+    expect(
+      debtEntryVoidInputSchema.parse({
+        entryId: "debt-entry-1",
+        voidReason: "تم التسجيل بالخطأ",
+      }),
+    ).toEqual({
+      entryId: "debt-entry-1",
+      voidReason: "تم التسجيل بالخطأ",
+    });
+
+    expect(() =>
+      debtEntryVoidInputSchema.parse({
+        entryId: "debt-entry-1",
+        voidReason: "   ",
+      }),
+    ).toThrow();
   });
 
   it("validates payment method on debt entry", () => {

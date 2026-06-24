@@ -2,6 +2,8 @@ import type {
   ExternalCounterpartyCreateInput,
   DebtAccountCreateInput,
   DebtEntryCreateInput,
+  DebtEntryRecordPaymentInput,
+  DebtEntryVoidInput,
   DebtSettlementInput,
   DebtPartyDetailInput,
 } from "@tuari/contracts";
@@ -47,6 +49,14 @@ export class FinanceService {
 
   createDebtEntry(input: DebtEntryCreateInput, auditContext?: MutationAuditContext) {
     return this.companyService.createDebtEntry(input, auditContext);
+  }
+
+  recordDebtPayment(input: DebtEntryRecordPaymentInput, auditContext?: MutationAuditContext) {
+    return this.companyService.recordDebtPayment(input, auditContext);
+  }
+
+  voidDebtEntry(input: DebtEntryVoidInput, auditContext?: MutationAuditContext) {
+    return this.companyService.voidDebtEntry(input, auditContext);
   }
 
   settleDebtAccount(input: DebtSettlementInput, auditContext?: MutationAuditContext) {

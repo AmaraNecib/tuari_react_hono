@@ -669,6 +669,48 @@ describe("CompanyService", () => {
     expect(service.getDebtAccount(account.id).item.status).toBe("SETTLED")
   })
 
+  it("records inline payments against a live opening entry", () => {
+    const { service, roleIds } = createHarness()
+    const audit = createAuditContext()
+    const worker = service.createEmployee(
+      {
+        firstName: "سمير",
+        lastName: "مراد",
+        phone: "0612345672",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      },
+      audit,
+    ).item
+
+    const account = service.createDebtAccount(
+      {
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.id,
+        openingBalanceDzd: 1500,
+        note: "رصيد افتتاحي",
+      },
+      audit,
+    ).item
+    const opening = service.listDebtEntries({ debtAccountId: account.id }).items[0]!
+
+    const payment = service.recordDebtPayment(
+      {
+        debtEntryId: opening.id,
+        amountDzd: 500,
+        paymentMethod: "BANK_TRANSFER",
+        note: "دفعة جزئية",
+      },
+      audit,
+    ).item
+
+    expect(payment.entryType).toBe("PAYMENT")
+    expect(payment.signedAmountDzd).toBe(-500)
+    expect(payment.paymentMethod).toBe("BANK_TRANSFER")
+    expect(payment.balanceAfterDzd).toBe(1000)
+    expect(service.getDebtAccount(account.id).item.currentBalance).toBe(1000)
+  })
+
   it("creates external counterparties and summarizes debt balances", () => {
     const { service } = createHarness()
     const audit = createAuditContext()

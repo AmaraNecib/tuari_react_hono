@@ -37,6 +37,7 @@ import type {
   DebtEntryCreateData,
   DebtEntryListFilters,
   DebtEntryRecord,
+  DebtEntryVoidData,
   EmployeeBatchCreateData,
   EmployeeBatchCreateResultRecord,
   EmployeeCreateData,
@@ -145,9 +146,11 @@ export interface CompanyRepository {
   updateDebtAccount(data: DebtAccountUpdateData, auditContext?: MutationAuditContext): DebtAccountRecord | null;
 
   listDebtEntries(filters: DebtEntryListFilters): DebtEntryRecord[];
+  getDebtEntryById(id: string): DebtEntryRecord | null;
   getLatestDebtEntry(accountId: string): DebtEntryRecord | null;
   listAllDebtEntries(): DebtEntryRecord[];
   createDebtEntry(data: DebtEntryCreateData, auditContext?: MutationAuditContext): DebtEntryRecord;
+  voidDebtEntry(data: DebtEntryVoidData, auditContext?: MutationAuditContext): DebtEntryRecord | null;
 
   listProjects(filters?: ProjectListFilters): ProjectRecord[];
   getProjectById(id: string): ProjectRecord | null;
@@ -1045,6 +1048,13 @@ export class SqliteCompanyRepository implements CompanyRepository {
     return rows.map(mapDebtEntry)
   }
 
+  getDebtEntryById(id: string): DebtEntryRecord | null {
+    const row = this.database
+      .prepare('SELECT * FROM debt_entry WHERE id = ?')
+      .get(id) as SqliteRow | undefined
+    return row ? mapDebtEntry(row) : null
+  }
+
   getLatestDebtEntry(accountId: string): DebtEntryRecord | null {
     const row = this.database
       .prepare('SELECT * FROM debt_entry WHERE debt_account_id = ? ORDER BY entry_date DESC, created_at DESC LIMIT 1')
@@ -1091,6 +1101,28 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
     const [entry] = this.listDebtEntries({ debtAccountId: data.debtAccountId }).filter((item) => item.id === id)
     return entry!
+  }
+
+  voidDebtEntry(data: DebtEntryVoidData, auditContext?: MutationAuditContext): DebtEntryRecord | null {
+    const timestamp = createAlgeriaTimestamp()
+    const audit = normalizeAuditContext(auditContext)
+    this.database
+      .prepare(
+        'UPDATE debt_entry SET status = ?, voided_at = ?, voided_by = ?, void_reason = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?',
+      )
+      .run(
+        'VOIDED',
+        data.voidedAt,
+        data.voidedBy ?? audit.actorLabel ?? audit.actorUserId,
+        data.voidReason,
+        audit.actorUserId,
+        audit.actorLabel,
+        audit.transactionId,
+        timestamp,
+        data.id,
+      )
+
+    return this.getDebtEntryById(data.id)
   }
 
   listProjects(filters?: ProjectListFilters): ProjectRecord[] {

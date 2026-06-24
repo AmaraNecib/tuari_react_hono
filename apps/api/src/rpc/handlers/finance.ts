@@ -40,6 +40,14 @@ export function createFinanceHandlers(
       ({ input, auditContext }: any) => financeService.createDebtEntry(input as any, auditContext),
       toFailureResult,
     )),
+    debtEntriesRecordPayment: os.debtEntriesRecordPayment.handler(m.mutationAudit(
+      ({ input, auditContext }: any) => financeService.recordDebtPayment(input as any, auditContext),
+      toFailureResult,
+    )),
+    debtEntriesVoid: os.debtEntriesVoid.handler(m.mutationAudit(
+      ({ input, auditContext }: any) => financeService.voidDebtEntry(input as any, auditContext),
+      toFailureResult,
+    )),
     debtAccountsSettle: os.debtAccountsSettle.handler(m.mutationAudit(
       ({ input, auditContext }: any) => financeService.settleDebtAccount(input as any, auditContext),
       toFailureResult,
