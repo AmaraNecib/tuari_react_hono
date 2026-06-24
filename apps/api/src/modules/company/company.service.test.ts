@@ -1066,6 +1066,65 @@ describe("CompanyService", () => {
     ).toThrow()
   })
 
+  it("rejects consolidating an OPENING that has live payments", () => {
+    const { service } = createHarness()
+    const audit = createAuditContext()
+    const counterparty = service.createExternalCounterparty({
+      fullName: "حركات نشطة",
+      phoneNumber: "0677777775",
+    }).item
+
+    const payableAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: 1000,
+      },
+      audit,
+    ).item
+    const receivableAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 600,
+      },
+      audit,
+    ).item
+
+    const payableEntry = service.listDebtEntries({ debtAccountId: payableAccount.id }).items[0]!
+    const receivableEntry = service.listDebtEntries({ debtAccountId: receivableAccount.id }).items[0]!
+
+    // Record a payment against the payable OPENING (creates live activity)
+    service.recordDebtPayment(
+      {
+        debtEntryId: payableEntry.id,
+        amountDzd: 200,
+        paymentMethod: "CASH",
+      },
+      audit,
+    )
+
+    // Consolidation should now fail because the payable account has other LIVE entries
+    expect(() =>
+      service.consolidateDebtEntries(
+        {
+          payableEntryId: payableEntry.id,
+          receivableEntryId: receivableEntry.id,
+        },
+        audit,
+      ),
+    ).toThrow("حركات دين نشطة")
+
+    // No entries should have been voided
+    expect(
+      findEntryStatus(service, payableAccount.id, payableEntry.id),
+    ).toBe("LIVE")
+    expect(
+      findEntryStatus(service, receivableAccount.id, receivableEntry.id),
+    ).toBe("LIVE")
+  })
+
   it("rejects consolidating two entries with the same direction", () => {
     const { service } = createHarness()
     const audit = createAuditContext()

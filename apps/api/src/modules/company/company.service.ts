@@ -574,6 +574,29 @@ export class CompanyService {
     const payableAccount = this.requireDebtAccount(payableEntry.debtAccountId)
     const receivableAccount = this.requireDebtAccount(receivableEntry.debtAccountId)
 
+    // Guard: neither account may have other LIVE entries beyond the selected
+    // OPENING. Consolidation voids the originals — if live payments exist,
+    // they would be orphaned (the original OPENING no longer backs them).
+    const payableLiveCount = this.repository
+      .listDebtEntries({ debtAccountId: payableAccount.id })
+      .filter((e) => e.status === "LIVE" && e.id !== payableEntry.id).length
+    if (payableLiveCount > 0) {
+      throw new CompanyError(
+        "BUSINESS_RULE",
+        "لا يمكن تجميد رصيد افتتاحي لديه حركات دين نشطة أخرى على الحساب الدائن.",
+      )
+    }
+
+    const receivableLiveCount = this.repository
+      .listDebtEntries({ debtAccountId: receivableAccount.id })
+      .filter((e) => e.status === "LIVE" && e.id !== receivableEntry.id).length
+    if (receivableLiveCount > 0) {
+      throw new CompanyError(
+        "BUSINESS_RULE",
+        "لا يمكن تجميد رصيد افتتاحي لديه حركات دين نشطة أخرى على الحساب المدين.",
+      )
+    }
+
     // Must be opposite directions
     if (payableAccount.direction !== "PAYABLE" || receivableAccount.direction !== "RECEIVABLE") {
       throw new CompanyError(
