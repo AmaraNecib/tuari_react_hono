@@ -108,7 +108,6 @@ export function ConsolidationDialog({
   }
 
   const hasMultiplePayableOptions = livePayableOpenings.length > 1
-  const hasMultipleReceivableOptions = liveReceivableOpenings.length > 1
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
