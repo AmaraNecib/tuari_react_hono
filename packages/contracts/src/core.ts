@@ -97,7 +97,7 @@ export const salaryPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
 export const debtPartyTypeSchema = z.enum(["INTERNAL_WORKER", "EXTERNAL_COUNTERPARTY"]);
 export const debtAccountStatusSchema = z.enum(["OPEN", "SETTLED"]);
 export const debtAccountDirectionSchema = z.enum(["PAYABLE", "RECEIVABLE"]);
-export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT", "ADVANCE", "CONSOLIDATION"]);
+export const debtEntryTypeSchema = z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "SETTLEMENT", "ADVANCE"]);
 /**
  * Current lifecycle status of a single debt entry row.
  * - LIVE: normal, active entry

@@ -557,6 +557,20 @@ export class CompanyService {
       throw new CompanyError("BUSINESS_RULE", "الحركة المستحقة القبض ملغاة ولا يمكن تجميدها.")
     }
 
+    // Only OPENING-type entries can be consolidated
+    if (payableEntry.entryType !== "OPENING") {
+      throw new CompanyError(
+        "BUSINESS_RULE",
+        "يمكن تجميد الحركات الافتتاحية فقط. الحركة المحددة ليست افتتاحية.",
+      )
+    }
+    if (receivableEntry.entryType !== "OPENING") {
+      throw new CompanyError(
+        "BUSINESS_RULE",
+        "يمكن تجميد الحركات الافتتاحية فقط. الحركة المحددة ليست افتتاحية.",
+      )
+    }
+
     const payableAccount = this.requireDebtAccount(payableEntry.debtAccountId)
     const receivableAccount = this.requireDebtAccount(receivableEntry.debtAccountId)
 
@@ -575,11 +589,11 @@ export class CompanyService {
       throw new CompanyError("BUSINESS_RULE", "يجب أن تنتمي الحركتان لنفس الطرف لتجميدهما.")
     }
 
-    // The consolidation amount is the smaller of the two absolute balances
-    const consolidationAmount = Math.min(
-      Math.abs(payableAccount.currentBalance),
-      Math.abs(receivableAccount.currentBalance),
-    )
+    // The consolidation amount is the smaller of the two OPENING amounts
+    const payableAmount = Math.abs(payableEntry.signedAmountDzd)
+    const receivableAmount = Math.abs(receivableEntry.signedAmountDzd)
+    const consolidationAmount = Math.min(payableAmount, receivableAmount)
+    const netAmount = payableAmount - receivableAmount // positive = payable is larger
 
     if (consolidationAmount <= 0) {
       throw new CompanyError("BUSINESS_RULE", "لا يمكن تجميد حركات برصيد صفري.")
@@ -587,54 +601,114 @@ export class CompanyService {
 
     const entryDate = normalizeAlgeriaTimestamp(undefined)
 
+    // Void both originals and create remainder OPENING if needed
     this.repository.withTransaction(() => {
-      // Create CONSOLIDATION entry on the payable account (reduces it)
-      const payableNextBalance = payableAccount.currentBalance - consolidationAmount
-      this.repository.createDebtEntry(
+      // 1. Void payable OPENING
+      this.repository.voidDebtEntry(
         {
-          debtAccountId: payableAccount.id,
-          entryType: "CONSOLIDATION",
-          signedAmountDzd: -consolidationAmount,
-          entryDate,
-          note: `تجميد مع ${receivableEntry.id.slice(0, 8)}`,
-          balanceAfterDzd: payableNextBalance,
-          reasonCategory: "INVOICE_DRIVEN",
-        },
-        audit,
-      )
-      this.repository.updateDebtAccount(
-        {
-          id: payableAccount.id,
-          currentBalance: payableNextBalance,
-          status: getDebtAccountStatus(payableNextBalance),
-          settledAt: payableNextBalance === 0 ? entryDate : null,
+          id: payableEntry.id,
+          voidedAt: entryDate,
+          voidReason: `تجميد مع ${receivableEntry.id.slice(0, 8)}`,
         },
         audit,
       )
 
-      // Create CONSOLIDATION entry on the receivable account (reduces it)
-      const receivableNextBalance = receivableAccount.currentBalance - consolidationAmount
-      this.repository.createDebtEntry(
+      // 2. Void receivable OPENING
+      this.repository.voidDebtEntry(
         {
-          debtAccountId: receivableAccount.id,
-          entryType: "CONSOLIDATION",
-          signedAmountDzd: -consolidationAmount,
-          entryDate,
-          note: `تجميد مع ${payableEntry.id.slice(0, 8)}`,
-          balanceAfterDzd: receivableNextBalance,
-          reasonCategory: "INVOICE_DRIVEN",
+          id: receivableEntry.id,
+          voidedAt: entryDate,
+          voidReason: `تجميد مع ${payableEntry.id.slice(0, 8)}`,
+        },
+        audit,
+      )
+
+      // 3. If netAmount !== 0, create a new OPENING on the larger account
+      if (netAmount > 0) {
+        // Payable was larger — create remainder OPENING on payable account
+        const liveBalance = this.repository
+          .listDebtEntries({ debtAccountId: payableAccount.id })
+          .filter((e) => e.status === "LIVE")
+          .reduce((sum, e) => sum + e.signedAmountDzd, 0)
+
+        this.repository.createDebtEntry(
+          {
+            debtAccountId: payableAccount.id,
+            entryType: "OPENING",
+            signedAmountDzd: netAmount,
+            entryDate,
+            note: `رصيد متبقي بعد تجميد ${receivableEntry.id.slice(0, 8)}`,
+            balanceAfterDzd: liveBalance + netAmount,
+            reasonCategory: "INVOICE_DRIVEN",
+          },
+          audit,
+        )
+      } else if (netAmount < 0) {
+        // Receivable was larger — create remainder OPENING on receivable account
+        const liveBalance = this.repository
+          .listDebtEntries({ debtAccountId: receivableAccount.id })
+          .filter((e) => e.status === "LIVE")
+          .reduce((sum, e) => sum + e.signedAmountDzd, 0)
+
+        this.repository.createDebtEntry(
+          {
+            debtAccountId: receivableAccount.id,
+            entryType: "OPENING",
+            signedAmountDzd: Math.abs(netAmount),
+            entryDate,
+            note: `رصيد متبقي بعد تجميد ${payableEntry.id.slice(0, 8)}`,
+            balanceAfterDzd: liveBalance + Math.abs(netAmount),
+            reasonCategory: "INVOICE_DRIVEN",
+          },
+          audit,
+        )
+      }
+      // netAmount === 0: perfect cancellation, no remainder needed
+
+      // 4. Recalculate both account balances from remaining LIVE entries
+      const payableBalance = this.repository
+        .listDebtEntries({ debtAccountId: payableAccount.id })
+        .filter((e) => e.status === "LIVE")
+        .reduce((sum, e) => sum + e.signedAmountDzd, 0)
+      const payableStatus = getDebtAccountStatus(payableBalance)
+
+      const receivableBalance = this.repository
+        .listDebtEntries({ debtAccountId: receivableAccount.id })
+        .filter((e) => e.status === "LIVE")
+        .reduce((sum, e) => sum + e.signedAmountDzd, 0)
+      const receivableStatus = getDebtAccountStatus(receivableBalance)
+
+      this.repository.updateDebtAccount(
+        {
+          id: payableAccount.id,
+          currentBalance: payableBalance,
+          status: payableStatus,
+          settledAt: payableStatus === "SETTLED" ? entryDate : null,
         },
         audit,
       )
       this.repository.updateDebtAccount(
         {
           id: receivableAccount.id,
-          currentBalance: receivableNextBalance,
-          status: getDebtAccountStatus(receivableNextBalance),
-          settledAt: receivableNextBalance === 0 ? entryDate : null,
+          currentBalance: receivableBalance,
+          status: receivableStatus,
+          settledAt: receivableStatus === "SETTLED" ? entryDate : null,
         },
         audit,
       )
+
+      // 5. Recalculate balanceAfterDzd for remaining LIVE entries on both accounts
+      for (const accountId of [payableAccount.id, receivableAccount.id]) {
+        const sortedLive = this.repository
+          .listDebtEntries({ debtAccountId: accountId })
+          .filter((e) => e.status === "LIVE")
+          .sort((a, b) => a.entryDate.localeCompare(b.entryDate) || a.id.localeCompare(b.id))
+        let running = 0
+        for (const entry of sortedLive) {
+          running += entry.signedAmountDzd
+          this.repository.updateDebtEntryBalanceAfter(entry.id, running)
+        }
+      }
     })
 
     return successResult(

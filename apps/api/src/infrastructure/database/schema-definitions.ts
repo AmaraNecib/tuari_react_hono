@@ -287,7 +287,7 @@ export const schemaStatements = [
     "id" TEXT NOT NULL PRIMARY KEY,
     "debt_account_id" TEXT NOT NULL,
     "invoice_id" TEXT,
-    "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT', 'ADVANCE', 'CONSOLIDATION')),
+    "entry_type" TEXT NOT NULL CHECK ("entry_type" IN ('OPENING', 'PAYMENT', 'ADJUSTMENT', 'SETTLEMENT', 'ADVANCE')),
     "currency" TEXT NOT NULL DEFAULT 'DZD',
     "signed_amount" REAL NOT NULL,
     "entry_date" DATETIME NOT NULL,

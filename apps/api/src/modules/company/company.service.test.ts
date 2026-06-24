@@ -846,85 +846,227 @@ describe("CompanyService", () => {
     expect(service.getDebtAccount(account.id).item.status).toBe("SETTLED")
   })
 
-  it("consolidates two opposite-direction entries for the same party", () => {
-    const { service, roleIds } = createHarness()
+  it("consolidates same-party opposite-direction OPENINGs — perfect cancellation", () => {
+    const { service } = createHarness()
     const audit = createAuditContext()
     const counterparty = service.createExternalCounterparty({
-      fullName: "طرش التجميد",
-      phoneNumber: "0677777777",
-      note: "اختبار تجميد",
+      fullName: "إلغاء متبادل",
+      phoneNumber: "0677777771",
     }).item
 
-    // Create a PAYABLE account (we owe them)
+    // PAYABLE: 500, RECEIVABLE: 500 → perfect cancellation
+    const payableAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: 500,
+      },
+      audit,
+    ).item
+    const receivableAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 500,
+      },
+      audit,
+    ).item
+
+    const payableEntry = service.listDebtEntries({ debtAccountId: payableAccount.id }).items[0]!
+    const receivableEntry = service.listDebtEntries({ debtAccountId: receivableAccount.id }).items[0]!
+
+    const result = service.consolidateDebtEntries(
+      { payableEntryId: payableEntry.id, receivableEntryId: receivableEntry.id },
+      audit,
+    ).item
+    expect(result).toBeDefined()
+
+    // Both originals should be VOIDED
+    expect(findEntryStatus(service, payableAccount.id, payableEntry.id)).toBe("VOIDED")
+    expect(findEntryStatus(service, receivableAccount.id, receivableEntry.id)).toBe("VOIDED")
+
+    // Both accounts should be SETTLED with zero balance
+    expect(service.getDebtAccount(payableAccount.id).item.currentBalance).toBe(0)
+    expect(service.getDebtAccount(payableAccount.id).item.status).toBe("SETTLED")
+    expect(service.getDebtAccount(receivableAccount.id).item.currentBalance).toBe(0)
+    expect(service.getDebtAccount(receivableAccount.id).item.status).toBe("SETTLED")
+
+    // No new OPENING entry created on either account
+    const payableEntries = service.listDebtEntries({ debtAccountId: payableAccount.id }).items
+    expect(payableEntries.filter((e) => e.status === "LIVE")).toHaveLength(0)
+    const receivableEntries = service.listDebtEntries({ debtAccountId: receivableAccount.id }).items
+    expect(receivableEntries.filter((e) => e.status === "LIVE")).toHaveLength(0)
+  })
+
+  function findEntryStatus(service: any, accountId: string, entryId: string): string {
+    return service.listDebtEntries({ debtAccountId: accountId }).items.find((e: any) => e.id === entryId)!.status
+  }
+
+  it("consolidates same-party opposite-direction OPENINGs — remainder on payable", () => {
+    const { service } = createHarness()
+    const audit = createAuditContext()
+    const counterparty = service.createExternalCounterparty({
+      fullName: "باقي دائن",
+      phoneNumber: "0677777772",
+    }).item
+
+    // PAYABLE: 1000, RECEIVABLE: 600 → remainder 400 on PAYABLE
     const payableAccount = service.createDebtAccount(
       {
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 1000,
-        note: "payable account",
       },
       audit,
     ).item
-
-    // Create a RECEIVABLE account (they owe us)
     const receivableAccount = service.createDebtAccount(
       {
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         direction: "RECEIVABLE",
         openingBalanceDzd: 600,
-        note: "receivable account",
       },
       audit,
     ).item
 
-    // Create another opening entry on each account to have something to consolidate
-    // The existing OPENING is the first entry on each account
+    const payableEntry = service.listDebtEntries({ debtAccountId: payableAccount.id }).items[0]!
+    const receivableEntry = service.listDebtEntries({ debtAccountId: receivableAccount.id }).items[0]!
+
+    service.consolidateDebtEntries(
+      { payableEntryId: payableEntry.id, receivableEntryId: receivableEntry.id },
+      audit,
+    )
+
+    // Originals voided
+    expect(findEntryStatus(service, payableAccount.id, payableEntry.id)).toBe("VOIDED")
+    expect(findEntryStatus(service, receivableAccount.id, receivableEntry.id)).toBe("VOIDED")
+
+    // Payable should have a remainder OPENING of 400
     const payableEntries = service.listDebtEntries({ debtAccountId: payableAccount.id }).items
+    const livePayable = payableEntries.filter((e) => e.status === "LIVE")
+    expect(livePayable).toHaveLength(1)
+    expect(livePayable[0]!.entryType).toBe("OPENING")
+    expect(livePayable[0]!.signedAmountDzd).toBe(400)
+
+    expect(service.getDebtAccount(payableAccount.id).item.currentBalance).toBe(400)
+    expect(service.getDebtAccount(payableAccount.id).item.status).toBe("OPEN")
+
+    // Receivable should be SETTLED with no live entries
     const receivableEntries = service.listDebtEntries({ debtAccountId: receivableAccount.id }).items
-
-    const payableEntry = payableEntries[0]!
-    const receivableEntry = receivableEntries[0]!
-
-    expect(payableAccount.direction).toBe("PAYABLE")
-    expect(receivableAccount.direction).toBe("RECEIVABLE")
-
-    // Consolidate
-    const result = service.consolidateDebtEntries(
-      {
-        payableEntryId: payableEntry.id,
-        receivableEntryId: receivableEntry.id,
-      },
-      audit,
-    ).item
-
-    expect(result).toBeDefined()
-
-    // Both accounts should have been reduced by the smaller amount (600)
-    const updatedPayableAccount = service.getDebtAccount(payableAccount.id).item
-    const updatedReceivableAccount = service.getDebtAccount(receivableAccount.id).item
-
-    expect(updatedPayableAccount.currentBalance).toBe(400) // 1000 - 600
-    expect(updatedReceivableAccount.currentBalance).toBe(0) // 600 - 600
-    expect(updatedReceivableAccount.status).toBe("SETTLED")
-
-    // CONSOLIDATION entries should appear in the ledger
-    const payableConsolidation = service.listDebtEntries({ debtAccountId: payableAccount.id }).items.find(
-      (e) => e.entryType === "CONSOLIDATION",
-    )
-    expect(payableConsolidation).toBeDefined()
-    expect(payableConsolidation!.signedAmountDzd).toBe(-600)
-    expect(payableConsolidation!.balanceAfterDzd).toBe(400)
-
-    const receivableConsolidation = service.listDebtEntries({ debtAccountId: receivableAccount.id }).items.find(
-      (e) => e.entryType === "CONSOLIDATION",
-    )
-    expect(receivableConsolidation).toBeDefined()
-    expect(receivableConsolidation!.signedAmountDzd).toBe(-600)
-    expect(receivableConsolidation!.balanceAfterDzd).toBe(0)
+    expect(receivableEntries.filter((e) => e.status === "LIVE")).toHaveLength(0)
+    expect(service.getDebtAccount(receivableAccount.id).item.currentBalance).toBe(0)
+    expect(service.getDebtAccount(receivableAccount.id).item.status).toBe("SETTLED")
   })
 
-  it("rejects consolidating two PAYABLE entries (same direction)", () => {
+  it("consolidates same-party opposite-direction OPENINGs — remainder on receivable", () => {
+    const { service } = createHarness()
+    const audit = createAuditContext()
+    const counterparty = service.createExternalCounterparty({
+      fullName: "باقي مدين",
+      phoneNumber: "0677777773",
+    }).item
+
+    // PAYABLE: 300, RECEIVABLE: 800 → remainder 500 on RECEIVABLE
+    const payableAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: 300,
+      },
+      audit,
+    ).item
+    const receivableAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 800,
+      },
+      audit,
+    ).item
+
+    const payableEntry = service.listDebtEntries({ debtAccountId: payableAccount.id }).items[0]!
+    const receivableEntry = service.listDebtEntries({ debtAccountId: receivableAccount.id }).items[0]!
+
+    service.consolidateDebtEntries(
+      { payableEntryId: payableEntry.id, receivableEntryId: receivableEntry.id },
+      audit,
+    )
+
+    // Originals voided
+    expect(findEntryStatus(service, payableAccount.id, payableEntry.id)).toBe("VOIDED")
+    expect(findEntryStatus(service, receivableAccount.id, receivableEntry.id)).toBe("VOIDED")
+
+    // Receivable should have a remainder OPENING of 500
+    const receivableEntries = service.listDebtEntries({ debtAccountId: receivableAccount.id }).items
+    const liveReceivable = receivableEntries.filter((e) => e.status === "LIVE")
+    expect(liveReceivable).toHaveLength(1)
+    expect(liveReceivable[0]!.entryType).toBe("OPENING")
+    expect(liveReceivable[0]!.signedAmountDzd).toBe(500)
+
+    expect(service.getDebtAccount(receivableAccount.id).item.currentBalance).toBe(500)
+    expect(service.getDebtAccount(receivableAccount.id).item.status).toBe("OPEN")
+
+    // Payable should be SETTLED with no live entries
+    const payableEntries = service.listDebtEntries({ debtAccountId: payableAccount.id }).items
+    expect(payableEntries.filter((e) => e.status === "LIVE")).toHaveLength(0)
+    expect(service.getDebtAccount(payableAccount.id).item.currentBalance).toBe(0)
+    expect(service.getDebtAccount(payableAccount.id).item.status).toBe("SETTLED")
+  })
+
+  it("rejects consolidating non-OPENING entries", () => {
+    const { service } = createHarness()
+    const audit = createAuditContext()
+    const counterparty = service.createExternalCounterparty({
+      fullName: "غير افتتاحي",
+      phoneNumber: "0677777774",
+    }).item
+
+    const payableAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: 500,
+      },
+      audit,
+    ).item
+    const receivableAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 600,
+      },
+      audit,
+    ).item
+
+    const payableEntry = service.listDebtEntries({ debtAccountId: payableAccount.id }).items[0]!
+    const receivableEntry = service.listDebtEntries({ debtAccountId: receivableAccount.id }).items[0]!
+
+    // Record a payment on the payable account (creates a PAYMENT entry)
+    const payment = service.recordDebtPayment(
+      {
+        debtEntryId: payableEntry.id,
+        amountDzd: 100,
+        paymentMethod: "CASH",
+      },
+      audit,
+    ).item
+
+    // Try to consolidate the PAYMENT entry — should fail
+    expect(() =>
+      service.consolidateDebtEntries(
+        {
+          payableEntryId: payment.id,
+          receivableEntryId: receivableEntry.id,
+        },
+        audit,
+      ),
+    ).toThrow()
+  })
+
+  it("rejects consolidating two entries with the same direction", () => {
     const { service } = createHarness()
     const audit = createAuditContext()
     const counterparty = service.createExternalCounterparty({
@@ -937,15 +1079,14 @@ describe("CompanyService", () => {
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         direction: "PAYABLE",
-        openingBalanceDzd: 500,
-        note: "payable",
+        openingBalanceDzd: 300,
       },
       audit,
     ).item
 
     const payableEntries = service.listDebtEntries({ debtAccountId: payableAccount.id }).items
 
-    // Try to consolidate a payable entry as if it were both payable and receivable
+    // Using same entry for both payable and receivable slots — direction check fails
     expect(() =>
       service.consolidateDebtEntries(
         {
@@ -954,7 +1095,7 @@ describe("CompanyService", () => {
         },
         audit,
       ),
-    ).toThrow()
+    ).toThrow("متعاكسين")
   })
 
   it("creates external counterparties and summarizes debt balances", () => {
