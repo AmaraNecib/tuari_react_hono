@@ -222,14 +222,16 @@
     text-rendering: optimizeLegibility;
   }
 
-  html.dark {
-    background-color: #16140f;  /* matches dark --bg */
-  }
+  html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-family: var(--font-body);
     font-size: 15px;
     line-height: 1.5;
+  }
+
+  html.dark {
+    background-color: #16140f;  /* matches dark --bg */
   }
 
   body {

@@ -150,9 +150,11 @@ export function DebtsHubPage({
                           variant="outline"
                           onClick={(event) => {
                             event.stopPropagation()
-                            row.type === "worker"
-                              ? onOpenWorker(row.partyId)
-                              : onOpenExternalCounterparty(row.partyId)
+                            if (row.type === "worker") {
+                              onOpenWorker(row.partyId)
+                            } else {
+                              onOpenExternalCounterparty(row.partyId)
+                            }
                           }}
                         >
                           فتح التفاصيل
