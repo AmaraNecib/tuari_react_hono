@@ -220,6 +220,11 @@
     min-height: 100%;
     background-color: var(--background);
     text-rendering: optimizeLegibility;
+  }
+
+  html.dark {
+    background-color: #16140f;  /* matches dark --bg */
+  }
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-family: var(--font-body);
@@ -231,6 +236,7 @@
     min-width: 320px;
     min-height: 100vh;
     overflow: hidden;
+    overscroll-behavior: none;
     background-color: var(--background);
     color: var(--foreground);
     line-height: 1.45;
