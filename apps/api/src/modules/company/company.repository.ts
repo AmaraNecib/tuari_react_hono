@@ -1129,7 +1129,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
   updateDebtEntryBalanceAfter(id: string, balanceAfterDzd: number): void {
     this.database
       .prepare(
-        'UPDATE debt_entry SET balance_after_dzd = ?, updated_at = ? WHERE id = ?',
+        'UPDATE debt_entry SET balance_after = ?, updated_at = ? WHERE id = ?',
       )
       .run(balanceAfterDzd, createAlgeriaTimestamp(), id)
   }
