@@ -198,6 +198,11 @@ export const debtEntryVoidInputSchema = z.object({
   voidReason: z.string().trim().min(1).max(1000),
 });
 
+export const debtConsolidationInputSchema = z.object({
+  payableEntryId: entityIdSchema,
+  receivableEntryId: entityIdSchema,
+});
+
 /**
  * Input for creating a direct debt entry (not tied to an invoice).
  * Requires a reason category; direction is derived from the category.
@@ -321,3 +326,4 @@ export type DebtSettlementInput = z.infer<typeof debtSettlementInputSchema>;
 export type DebtPartyDetailInput = z.infer<typeof debtPartyDetailInputSchema>;
 export type EmployeeDebtEntryCreateInput = z.infer<typeof employeeDebtEntryCreateInputSchema>;
 export type EmployeeDebtAccountGetInput = z.infer<typeof employeeDebtAccountGetInputSchema>;
+export type DebtConsolidationInput = z.infer<typeof debtConsolidationInputSchema>;

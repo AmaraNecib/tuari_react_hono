@@ -1,11 +1,12 @@
 import type {
-  ExternalCounterpartyCreateInput,
   DebtAccountCreateInput,
+  DebtConsolidationInput,
   DebtEntryCreateInput,
   DebtEntryRecordPaymentInput,
   DebtEntryVoidInput,
-  DebtSettlementInput,
   DebtPartyDetailInput,
+  DebtSettlementInput,
+  ExternalCounterpartyCreateInput,
 } from "@tuari/contracts";
 
 import type {
@@ -57,6 +58,10 @@ export class FinanceService {
 
   voidDebtEntry(input: DebtEntryVoidInput, auditContext?: MutationAuditContext) {
     return this.companyService.voidDebtEntry(input, auditContext);
+  }
+
+  consolidateDebtEntries(input: DebtConsolidationInput, auditContext?: MutationAuditContext) {
+    return this.companyService.consolidateDebtEntries(input, auditContext);
   }
 
   settleDebtAccount(input: DebtSettlementInput, auditContext?: MutationAuditContext) {

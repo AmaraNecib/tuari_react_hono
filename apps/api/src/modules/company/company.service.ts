@@ -1,5 +1,6 @@
 import {
   type DebtAccountCreateInput,
+  type DebtConsolidationInput,
   type DebtEntry,
   type DebtPartyDetailInput,
   type DebtEntryCreateInput,
@@ -534,6 +535,112 @@ export class CompanyService {
     })
 
     return successResult("تمت تسوية حساب الدين بنجاح.", entry)
+  }
+
+  consolidateDebtEntries(input: DebtConsolidationInput, auditContext?: MutationAuditContext) {
+    const audit = this.createMutationAuditContext(auditContext)
+
+    const payableEntry = this.repository.getDebtEntryById(input.payableEntryId)
+    if (!payableEntry) {
+      throw new CompanyError("NOT_FOUND", "الحركة القابلة للدفع المطلوبة غير موجودة.")
+    }
+    const receivableEntry = this.repository.getDebtEntryById(input.receivableEntryId)
+    if (!receivableEntry) {
+      throw new CompanyError("NOT_FOUND", "الحركة المستحقة القبض المطلوبة غير موجودة.")
+    }
+
+    // Both must be LIVE
+    if (payableEntry.status !== "LIVE") {
+      throw new CompanyError("BUSINESS_RULE", "الحركة القابلة للدفع ملغاة ولا يمكن تجميدها.")
+    }
+    if (receivableEntry.status !== "LIVE") {
+      throw new CompanyError("BUSINESS_RULE", "الحركة المستحقة القبض ملغاة ولا يمكن تجميدها.")
+    }
+
+    const payableAccount = this.requireDebtAccount(payableEntry.debtAccountId)
+    const receivableAccount = this.requireDebtAccount(receivableEntry.debtAccountId)
+
+    // Must be opposite directions
+    if (payableAccount.direction !== "PAYABLE" || receivableAccount.direction !== "RECEIVABLE") {
+      throw new CompanyError(
+        "BUSINESS_RULE",
+        "يجب أن تكون الحركتان من اتجاهين متعاكسين (واحدة دائن وأخرى مدين) للتجميد.",
+      )
+    }
+
+    // Must belong to the same party (same worker or same external counterparty)
+    const payablePartyRef = payableAccount.workerId ?? payableAccount.externalCounterpartyId
+    const receivablePartyRef = receivableAccount.workerId ?? receivableAccount.externalCounterpartyId
+    if (payablePartyRef !== receivablePartyRef) {
+      throw new CompanyError("BUSINESS_RULE", "يجب أن تنتمي الحركتان لنفس الطرف لتجميدهما.")
+    }
+
+    // The consolidation amount is the smaller of the two absolute balances
+    const consolidationAmount = Math.min(
+      Math.abs(payableAccount.currentBalance),
+      Math.abs(receivableAccount.currentBalance),
+    )
+
+    if (consolidationAmount <= 0) {
+      throw new CompanyError("BUSINESS_RULE", "لا يمكن تجميد حركات برصيد صفري.")
+    }
+
+    const entryDate = normalizeAlgeriaTimestamp(undefined)
+
+    this.repository.withTransaction(() => {
+      // Create CONSOLIDATION entry on the payable account (reduces it)
+      const payableNextBalance = payableAccount.currentBalance - consolidationAmount
+      this.repository.createDebtEntry(
+        {
+          debtAccountId: payableAccount.id,
+          entryType: "CONSOLIDATION",
+          signedAmountDzd: -consolidationAmount,
+          entryDate,
+          note: `تجميد مع ${receivableEntry.id.slice(0, 8)}`,
+          balanceAfterDzd: payableNextBalance,
+          reasonCategory: "INVOICE_DRIVEN",
+        },
+        audit,
+      )
+      this.repository.updateDebtAccount(
+        {
+          id: payableAccount.id,
+          currentBalance: payableNextBalance,
+          status: getDebtAccountStatus(payableNextBalance),
+          settledAt: payableNextBalance === 0 ? entryDate : null,
+        },
+        audit,
+      )
+
+      // Create CONSOLIDATION entry on the receivable account (reduces it)
+      const receivableNextBalance = receivableAccount.currentBalance - consolidationAmount
+      this.repository.createDebtEntry(
+        {
+          debtAccountId: receivableAccount.id,
+          entryType: "CONSOLIDATION",
+          signedAmountDzd: -consolidationAmount,
+          entryDate,
+          note: `تجميد مع ${payableEntry.id.slice(0, 8)}`,
+          balanceAfterDzd: receivableNextBalance,
+          reasonCategory: "INVOICE_DRIVEN",
+        },
+        audit,
+      )
+      this.repository.updateDebtAccount(
+        {
+          id: receivableAccount.id,
+          currentBalance: receivableNextBalance,
+          status: getDebtAccountStatus(receivableNextBalance),
+          settledAt: receivableNextBalance === 0 ? entryDate : null,
+        },
+        audit,
+      )
+    })
+
+    return successResult(
+      "تم تجميد الحركتين بنجاح.",
+      this.repository.getDebtEntryById(payableEntry.id)!,
+    )
   }
 
   getDebtPartyDetail(input: DebtPartyDetailInput) {

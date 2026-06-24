@@ -15,6 +15,7 @@ import {
   debtEntryCreateInputSchema,
   debtEntryRecordPaymentInputSchema,
   debtEntrySchema,
+  debtConsolidationInputSchema,
   debtEntryVoidInputSchema,
   debtPartyDetailInputSchema,
   debtPartyDetailSchema,
@@ -48,6 +49,9 @@ export const debtsContract = {
     .output(createEntityResultSchema(debtEntrySchema)),
   debtEntriesVoid: oc
     .input(debtEntryVoidInputSchema)
+    .output(createEntityResultSchema(debtEntrySchema)),
+  debtEntriesConsolidate: oc
+    .input(debtConsolidationInputSchema)
     .output(createEntityResultSchema(debtEntrySchema)),
   debtAccountsSettle: oc
     .input(debtSettlementInputSchema)

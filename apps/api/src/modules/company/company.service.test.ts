@@ -846,6 +846,117 @@ describe("CompanyService", () => {
     expect(service.getDebtAccount(account.id).item.status).toBe("SETTLED")
   })
 
+  it("consolidates two opposite-direction entries for the same party", () => {
+    const { service, roleIds } = createHarness()
+    const audit = createAuditContext()
+    const counterparty = service.createExternalCounterparty({
+      fullName: "طرش التجميد",
+      phoneNumber: "0677777777",
+      note: "اختبار تجميد",
+    }).item
+
+    // Create a PAYABLE account (we owe them)
+    const payableAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: 1000,
+        note: "payable account",
+      },
+      audit,
+    ).item
+
+    // Create a RECEIVABLE account (they owe us)
+    const receivableAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 600,
+        note: "receivable account",
+      },
+      audit,
+    ).item
+
+    // Create another opening entry on each account to have something to consolidate
+    // The existing OPENING is the first entry on each account
+    const payableEntries = service.listDebtEntries({ debtAccountId: payableAccount.id }).items
+    const receivableEntries = service.listDebtEntries({ debtAccountId: receivableAccount.id }).items
+
+    const payableEntry = payableEntries[0]!
+    const receivableEntry = receivableEntries[0]!
+
+    expect(payableAccount.direction).toBe("PAYABLE")
+    expect(receivableAccount.direction).toBe("RECEIVABLE")
+
+    // Consolidate
+    const result = service.consolidateDebtEntries(
+      {
+        payableEntryId: payableEntry.id,
+        receivableEntryId: receivableEntry.id,
+      },
+      audit,
+    ).item
+
+    expect(result).toBeDefined()
+
+    // Both accounts should have been reduced by the smaller amount (600)
+    const updatedPayableAccount = service.getDebtAccount(payableAccount.id).item
+    const updatedReceivableAccount = service.getDebtAccount(receivableAccount.id).item
+
+    expect(updatedPayableAccount.currentBalance).toBe(400) // 1000 - 600
+    expect(updatedReceivableAccount.currentBalance).toBe(0) // 600 - 600
+    expect(updatedReceivableAccount.status).toBe("SETTLED")
+
+    // CONSOLIDATION entries should appear in the ledger
+    const payableConsolidation = service.listDebtEntries({ debtAccountId: payableAccount.id }).items.find(
+      (e) => e.entryType === "CONSOLIDATION",
+    )
+    expect(payableConsolidation).toBeDefined()
+    expect(payableConsolidation!.signedAmountDzd).toBe(-600)
+    expect(payableConsolidation!.balanceAfterDzd).toBe(400)
+
+    const receivableConsolidation = service.listDebtEntries({ debtAccountId: receivableAccount.id }).items.find(
+      (e) => e.entryType === "CONSOLIDATION",
+    )
+    expect(receivableConsolidation).toBeDefined()
+    expect(receivableConsolidation!.signedAmountDzd).toBe(-600)
+    expect(receivableConsolidation!.balanceAfterDzd).toBe(0)
+  })
+
+  it("rejects consolidating two PAYABLE entries (same direction)", () => {
+    const { service } = createHarness()
+    const audit = createAuditContext()
+    const counterparty = service.createExternalCounterparty({
+      fullName: "نفس الاتجاه",
+      phoneNumber: "0688888888",
+    }).item
+
+    const payableAccount = service.createDebtAccount(
+      {
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "PAYABLE",
+        openingBalanceDzd: 500,
+        note: "payable",
+      },
+      audit,
+    ).item
+
+    const payableEntries = service.listDebtEntries({ debtAccountId: payableAccount.id }).items
+
+    // Try to consolidate a payable entry as if it were both payable and receivable
+    expect(() =>
+      service.consolidateDebtEntries(
+        {
+          payableEntryId: payableEntries[0]!.id,
+          receivableEntryId: payableEntries[0]!.id,
+        },
+        audit,
+      ),
+    ).toThrow()
+  })
+
   it("creates external counterparties and summarizes debt balances", () => {
     const { service } = createHarness()
     const audit = createAuditContext()
