@@ -12,6 +12,8 @@ import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria
 import { cn } from "@/lib/utils"
 
 import { formatDebtMoney, getDebtAccountBalance, getDebtAccountBalanceMeta, getDebtBalanceMeta, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
+import { RecordEntryPaymentDialog } from "./record-entry-payment-dialog"
+import { VoidEntryDialog } from "./void-entry-dialog"
 
 function DebtStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
@@ -35,6 +37,8 @@ export function DebtLedgerPanel({
 }) {
   const createDebtEntryMutation = useCreateDebtEntryMutation()
   const settleDebtAccountMutation = useSettleDebtAccountMutation()
+  const [paymentTargetEntry, setPaymentTargetEntry] = useState<DebtEntry | null>(null)
+  const [voidTargetEntry, setVoidTargetEntry] = useState<DebtEntry | null>(null)
   const [entryDate, setEntryDate] = useState(() => getAlgeriaDateInputValue())
   const [note, setNote] = useState("")
   const [signedAmount, setSignedAmount] = useState("")
@@ -156,13 +160,15 @@ export function DebtLedgerPanel({
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-muted/40 text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 text-start font-medium">التاريخ</th>
-                <th className="px-4 py-3 text-start font-medium">النوع</th>
-                <th className="px-4 py-3 text-start font-medium">المبلغ</th>
-                <th className="px-4 py-3 text-start font-medium">الرصيد بعد الحركة</th>
-                <th className="px-4 py-3 text-start font-medium">ملاحظة</th>
-              </tr>
+                              <tr>
+                  <th className="px-4 py-3 text-start font-medium">التاريخ</th>
+                  <th className="px-4 py-3 text-start font-medium">النوع</th>
+                  <th className="px-4 py-3 text-start font-medium">المبلغ</th>
+                  <th className="px-4 py-3 text-start font-medium">الرصيد بعد الحركة</th>
+                  <th className="px-4 py-3 text-start font-medium">الحالة</th>
+                  <th className="px-4 py-3 text-start font-medium">ملاحظة</th>
+                  <th className="px-4 py-3 text-start font-medium">الإجراءات</th>
+                </tr>
             </thead>
             <tbody>
               {sortedEntries.length > 0 ? (
@@ -178,23 +184,65 @@ export function DebtLedgerPanel({
                       })
                     : getDebtBalanceMeta(entry.balanceAfterDzd)
 
+                  const isLive = entry.status === "LIVE"
+
                   return (
-                    <tr key={entry.id} className="border-t border-border/60 bg-background/75">
-                      <td className="px-4 py-4 text-start text-foreground">{new Intl.DateTimeFormat("ar-DZ").format(new Date(entry.entryDate))}</td>
-                      <td className="px-4 py-4 text-start text-muted-foreground">{getDebtEntryTypeLabel(entry.entryType)}</td>
+                    <tr key={entry.id} className={cn("border-t border-border/60", !isLive && "opacity-50")}>
+                      <td className="px-4 py-4 text-start text-foreground">
+                        {new Intl.DateTimeFormat("ar-DZ").format(new Date(entry.entryDate))}
+                      </td>
+                      <td className="px-4 py-4 text-start text-muted-foreground">
+                        {getDebtEntryTypeLabel(entry.entryType)}
+                      </td>
                       <td className={cn("px-4 py-4 text-start font-mono", amountMeta.textClassName)} dir="ltr">
                         دج {formatDebtMoney(entry.signedAmountDzd)}
                       </td>
                       <td className={cn("px-4 py-4 text-start font-mono", balanceAfterMeta.textClassName)} dir="ltr">
                         دج {formatDebtMoney(entry.balanceAfterDzd)}
                       </td>
-                      <td className="px-4 py-4 text-start text-muted-foreground">{entry.note?.trim() || "—"}</td>
+                      <td className="px-4 py-4 text-start">
+                        {isLive ? (
+                          <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                            نشط
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300">
+                            ملغية
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-start text-muted-foreground">
+                        {entry.note?.trim() || "—"}
+                      </td>
+                      <td className="px-4 py-4 text-start">
+                        <div className="flex gap-1.5">
+                          {isLive && entry.entryType === "OPENING" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setPaymentTargetEntry(entry)}
+                            >
+                              دفعة
+                            </Button>
+                          )}
+                          {isLive && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-rose-600 hover:text-rose-700"
+                              onClick={() => setVoidTargetEntry(entry)}
+                            >
+                              إلغاء
+                            </Button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   )
                 })
               ) : (
                 <tr>
-                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
+                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={7}>
                     لا توجد حركات دين بعد.
                   </td>
                 </tr>
@@ -203,6 +251,18 @@ export function DebtLedgerPanel({
           </table>
         </div>
       </Surface>
+
+      <RecordEntryPaymentDialog
+        entry={paymentTargetEntry}
+        open={paymentTargetEntry !== null}
+        onOpenChange={() => setPaymentTargetEntry(null)}
+      />
+      <VoidEntryDialog
+        entry={voidTargetEntry}
+        livePaymentEntries={sortedEntries.filter(e => e.entryType === "PAYMENT" && e.status === "LIVE")}
+        open={voidTargetEntry !== null}
+        onOpenChange={() => setVoidTargetEntry(null)}
+      />
     </div>
   )
 }

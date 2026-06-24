@@ -649,6 +649,62 @@ export function useCreateDebtEntryMutation() {
   })
 }
 
+export function useRecordDebtPaymentMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "debts", "entries", "recordPayment"],
+    mutationFn: async (input: {
+      debtEntryId: string
+      amountDzd: number
+      paymentMethod?: "CASH" | "BANK_TRANSFER" | "CHECK"
+      note?: string | null
+    }) => {
+      const result = await rpcClient.debtEntriesRecordPayment({
+        debtEntryId: input.debtEntryId,
+        amountDzd: input.amountDzd,
+        paymentMethod: input.paymentMethod ?? "CASH",
+        note: input.note ?? null,
+      })
+
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"])
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useVoidDebtEntryMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "debts", "entries", "void"],
+    mutationFn: async (input: {
+      entryId: string
+      voidReason: string
+    }) => {
+      const result = await rpcClient.debtEntriesVoid({
+        entryId: input.entryId,
+        voidReason: input.voidReason,
+      })
+
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"])
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
 export function useSettleDebtAccountMutation() {
   const queryClient = useQueryClient()
 
