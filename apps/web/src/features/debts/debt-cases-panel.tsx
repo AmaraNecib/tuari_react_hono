@@ -47,11 +47,37 @@ export function DebtCasesPanel({
   const [consolidationDialogOpen, setConsolidationDialogOpen] = useState(false)
   const sortedAccounts = useMemo(() => sortDebtAccounts(accounts), [accounts])
   const debtAccount = sortedAccounts[0] ?? null
-  const balanceMeta = debtAccount ? getDebtAccountBalanceMeta(debtAccount) : getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" })
   const normalizedOpeningBalance = openingBalance.trim()
   const openingBalanceValue = normalizedOpeningBalance.length > 0 ? Number(normalizedOpeningBalance) : 0
   const hasValidOpeningBalance = Number.isFinite(openingBalanceValue)
-  const accountEntries = debtAccount ? debtEntriesByAccountId[debtAccount.id] ?? [] : []
+
+  // Aggregate stats across all accounts
+  const totalEntryCount = useMemo(
+    () =>
+      sortedAccounts.reduce(
+        (sum, a) => sum + (debtEntriesByAccountId[a.id] ?? []).length,
+        0,
+      ),
+    [sortedAccounts, debtEntriesByAccountId],
+  )
+  const totalBalanceDzd = useMemo(
+    () => sortedAccounts.reduce((sum, a) => sum + a.currentBalance, 0),
+    [sortedAccounts],
+  )
+  const hasPayable = sortedAccounts.some((a) => a.direction === "PAYABLE")
+  const hasReceivable = sortedAccounts.some((a) => a.direction === "RECEIVABLE")
+  const isBidirectional = hasPayable && hasReceivable
+  const netDirection: "PAYABLE" | "RECEIVABLE" =
+    totalBalanceDzd > 0 ? "RECEIVABLE" : totalBalanceDzd < 0 ? "PAYABLE" : "PAYABLE"
+  const balanceMeta = useMemo(
+    () =>
+      isBidirectional
+        ? getDebtAccountBalanceMeta({ currentBalance: totalBalanceDzd, direction: netDirection })
+        : debtAccount
+          ? getDebtAccountBalanceMeta(debtAccount)
+          : getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" }),
+    [isBidirectional, totalBalanceDzd, netDirection, debtAccount],
+  )
 
   const payableAccount = useMemo(
     () => sortedAccounts.find((a) => a.direction === "PAYABLE") ?? null,
@@ -73,12 +99,12 @@ export function DebtCasesPanel({
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <CasesStatCard
-          label={debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
-          value={`دج ${formatDebtMoney(debtAccount?.currentBalance ?? 0)}`}
+          label={isBidirectional ? "صافي الرصيد" : debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
+          value={`دج ${formatDebtMoney(isBidirectional ? totalBalanceDzd : (debtAccount?.currentBalance ?? 0))}`}
           valueClassName={balanceMeta.textClassName}
         />
-        <CasesStatCard label="الحساب" value={debtAccount ? "1" : "0"} />
-        <CasesStatCard label="عدد الحركات" value={String(accountEntries.length)} />
+        <CasesStatCard label="عدد الحسابات" value={String(sortedAccounts.length)} />
+        <CasesStatCard label="عدد الحركات" value={String(totalEntryCount)} />
       </div>
 
       {hasBothDirections ? (

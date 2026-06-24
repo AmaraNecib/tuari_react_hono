@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import {
@@ -51,6 +51,37 @@ export function ConsolidationDialog({
     [receivableEntries],
   )
 
+  const livePayableIds = useMemo(
+    () => new Set(livePayableOpenings.map((e) => e.id)),
+    [livePayableOpenings],
+  )
+
+  const liveReceivableIds = useMemo(
+    () => new Set(liveReceivableOpenings.map((e) => e.id)),
+    [liveReceivableOpenings],
+  )
+
+  // Reset stale selections when the chosen entry is no longer live
+  useEffect(() => {
+    if (selectedPayableId && !livePayableIds.has(selectedPayableId)) {
+      setSelectedPayableId("")
+    }
+  }, [livePayableIds, selectedPayableId])
+
+  useEffect(() => {
+    if (selectedReceivableId && !liveReceivableIds.has(selectedReceivableId)) {
+      setSelectedReceivableId("")
+    }
+  }, [liveReceivableIds, selectedReceivableId])
+
+  // Reset on dialog open
+  useEffect(() => {
+    if (open) {
+      setSelectedPayableId("")
+      setSelectedReceivableId("")
+    }
+  }, [open])
+
   const selectedPayable = useMemo(
     () => payableEntries.find((e) => e.id === selectedPayableId) ?? null,
     [payableEntries, selectedPayableId],
@@ -64,7 +95,7 @@ export function ConsolidationDialog({
   const payableAmount = selectedPayable ? Math.abs(selectedPayable.signedAmountDzd) : 0
   const receivableAmount = selectedReceivable ? Math.abs(selectedReceivable.signedAmountDzd) : 0
   const netAmount = payableAmount - receivableAmount
-  const canConsolidate = selectedPayableId && selectedReceivableId && selectedPayableId !== selectedReceivableId
+  const canConsolidate = selectedPayableId !== "" && selectedReceivableId !== "" && selectedPayableId !== selectedReceivableId
 
   const consolidationPreview = useMemo(() => {
     if (!selectedPayable || !selectedReceivable) return null
@@ -89,23 +120,20 @@ export function ConsolidationDialog({
     }
   }, [selectedPayable, selectedReceivable, payableAmount, receivableAmount, netAmount, payableAccount.direction, receivableAccount.direction])
 
-  useEffect(() => {
-    if (open) {
-      setSelectedPayableId("")
-      setSelectedReceivableId("")
-    }
-  }, [open])
-
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (!canConsolidate) return
 
-    await consolidateMutation.mutateAsync({
-      payableEntryId: selectedPayableId,
-      receivableEntryId: selectedReceivableId,
-    })
-
-    onOpenChange(false)
-  }
+    try {
+      await consolidateMutation.mutateAsync({
+        payableEntryId: selectedPayableId,
+        receivableEntryId: selectedReceivableId,
+      })
+      onOpenChange(false)
+    } catch {
+      // Error is handled by the mutation's onError callback (toast).
+      // Dialog stays open so the user can retry or change selections.
+    }
+  }, [canConsolidate, consolidateMutation, selectedPayableId, selectedReceivableId, onOpenChange])
 
   const hasMultiplePayableOptions = livePayableOpenings.length > 1
 
