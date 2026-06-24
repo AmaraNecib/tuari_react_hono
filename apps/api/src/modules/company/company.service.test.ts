@@ -669,6 +669,183 @@ describe("CompanyService", () => {
     expect(service.getDebtAccount(account.id).item.status).toBe("SETTLED")
   })
 
+  it("records inline payments against a live opening entry", () => {
+    const { service, roleIds } = createHarness()
+    const audit = createAuditContext()
+    const worker = service.createEmployee(
+      {
+        firstName: "سمير",
+        lastName: "مراد",
+        phone: "0612345672",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      },
+      audit,
+    ).item
+
+    const account = service.createDebtAccount(
+      {
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.id,
+        openingBalanceDzd: 1500,
+        note: "رصيد افتتاحي",
+      },
+      audit,
+    ).item
+    const opening = service.listDebtEntries({ debtAccountId: account.id }).items[0]!
+
+    const payment = service.recordDebtPayment(
+      {
+        debtEntryId: opening.id,
+        amountDzd: 500,
+        paymentMethod: "BANK_TRANSFER",
+        note: "دفعة جزئية",
+      },
+      audit,
+    ).item
+
+    expect(payment.entryType).toBe("PAYMENT")
+    expect(payment.signedAmountDzd).toBe(-500)
+    expect(payment.paymentMethod).toBe("BANK_TRANSFER")
+    expect(payment.balanceAfterDzd).toBe(1000)
+    expect(service.getDebtAccount(account.id).item.currentBalance).toBe(1000)
+  })
+
+  it("voids a PAYMENT entry and recomputes the account balance", () => {
+    const { service, roleIds } = createHarness()
+    const audit = createAuditContext()
+    const worker = service.createEmployee(
+      {
+        firstName: "نور",
+        lastName: "سعيد",
+        phone: "0612345678",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      },
+      audit,
+    ).item
+
+    const account = service.createDebtAccount(
+      {
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.id,
+        openingBalanceDzd: 1000,
+        note: "test void payment",
+      },
+      audit,
+    ).item
+
+    const opening = service.listDebtEntries({ debtAccountId: account.id }).items[0]!
+    expect(opening.status).toBe("LIVE")
+    expect(account.currentBalance).toBe(1000)
+
+    // Record a payment via recordDebtPayment
+    const payment = service.recordDebtPayment(
+      {
+        debtEntryId: opening.id,
+        amountDzd: 300,
+        paymentMethod: "CASH",
+        note: "دفعة 1",
+      },
+      audit,
+    ).item
+
+    expect(payment.status).toBe("LIVE")
+    expect(service.getDebtAccount(account.id).item.currentBalance).toBe(700)
+
+    // Void the PAYMENT entry; balance should revert to 1000
+    const voidResult = service.voidDebtEntry(
+      {
+        entryId: payment.id,
+        voidReason: "دفعة خاطئة",
+      },
+      audit,
+    ).item
+
+    expect(voidResult.status).toBe("VOIDED")
+    expect(voidResult.voidReason).toBe("دفعة خاطئة")
+    expect(service.getDebtAccount(account.id).item.currentBalance).toBe(1000)
+
+    // Verify the remaining LIVE entry's balanceAfterDzd was recalculated
+    const remainingEntries = service.listDebtEntries({ debtAccountId: account.id }).items
+    const liveEntries = remainingEntries.filter((e) => e.status === "LIVE")
+    expect(liveEntries).toHaveLength(1)
+    expect(liveEntries[0]!.balanceAfterDzd).toBe(1000)
+  })
+
+  it("voids an OPENING entry, cascades void to linked payments, and recomputes balance", () => {
+    const { service, roleIds } = createHarness()
+    const audit = createAuditContext()
+    const worker = service.createEmployee(
+      {
+        firstName: "أمل",
+        lastName: "علي",
+        phone: "0612345679",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      },
+      audit,
+    ).item
+
+    const account = service.createDebtAccount(
+      {
+        partyType: "INTERNAL_WORKER",
+        workerId: worker.id,
+        openingBalanceDzd: 2000,
+        note: "test void opening cascade",
+      },
+      audit,
+    ).item
+
+    const opening = service.listDebtEntries({ debtAccountId: account.id }).items[0]!
+    expect(opening.status).toBe("LIVE")
+    expect(account.currentBalance).toBe(2000)
+
+    // Record two payments
+    const payment1 = service.recordDebtPayment(
+      {
+        debtEntryId: opening.id,
+        amountDzd: 500,
+        paymentMethod: "CASH",
+        note: "دفعة 1",
+      },
+      audit,
+    ).item
+    const payment2 = service.recordDebtPayment(
+      {
+        debtEntryId: opening.id,
+        amountDzd: 300,
+        paymentMethod: "CASH",
+        note: "دفعة 2",
+      },
+      audit,
+    ).item
+
+    expect(service.getDebtAccount(account.id).item.currentBalance).toBe(1200)
+
+    // Void the OPENING; both payments should cascade-void, balance should go to 0
+    const voidResult = service.voidDebtEntry(
+      {
+        entryId: opening.id,
+        voidReason: "فتح خطأ",
+      },
+      audit,
+    ).item
+
+    expect(voidResult.status).toBe("VOIDED")
+
+    // Check all entries are voided
+    const entries = service.listDebtEntries({ debtAccountId: account.id }).items
+    expect(entries).toHaveLength(3)
+    for (const entry of entries) {
+      expect(entry.status).toBe("VOIDED")
+    }
+
+    // Balance should be 0 (no live entries)
+    expect(service.getDebtAccount(account.id).item.currentBalance).toBe(0)
+    expect(service.getDebtAccount(account.id).item.status).toBe("SETTLED")
+  })
+
   it("creates external counterparties and summarizes debt balances", () => {
     const { service } = createHarness()
     const audit = createAuditContext()

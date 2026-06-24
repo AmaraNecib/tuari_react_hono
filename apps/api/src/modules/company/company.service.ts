@@ -3,6 +3,8 @@ import {
   type DebtEntry,
   type DebtPartyDetailInput,
   type DebtEntryCreateInput,
+  type DebtEntryRecordPaymentInput,
+  type DebtEntryVoidInput,
   type DebtSettlementInput,
   type EmployeeBatchCreateInput,
   type EmployeeAssignWorkplaceInput,
@@ -351,6 +353,146 @@ export class CompanyService {
     })
 
     return successResult("تم تسجيل حركة الدين بنجاح.", entry)
+  }
+
+  recordDebtPayment(input: DebtEntryRecordPaymentInput, auditContext?: MutationAuditContext) {
+    const audit = this.createMutationAuditContext(auditContext)
+
+    if (!Number.isFinite(input.amountDzd) || input.amountDzd <= 0) {
+      throw new CompanyError("VALIDATION", "يجب إدخال مبلغ دفع صحيح وموجب.", [
+        { field: "amountDzd", message: "مبلغ الدفعة يجب أن يكون رقماً موجباً." },
+      ])
+    }
+
+    const entry = this.repository.getDebtEntryById(input.debtEntryId)
+    if (!entry) {
+      throw new CompanyError("NOT_FOUND", "تعذر العثور على حركة الدين المطلوبة.")
+    }
+    if (entry.status !== "LIVE") {
+      throw new CompanyError("BUSINESS_RULE", "لا يمكن تسديد حركة دين ملغية.")
+    }
+    if (entry.entryType !== "OPENING") {
+      throw new CompanyError("BUSINESS_RULE", "يمكن تسديد حركات الفتح فقط.")
+    }
+    const account = this.requireDebtAccount(entry.debtAccountId)
+    if (input.amountDzd > account.currentBalance) {
+      throw new CompanyError("VALIDATION", "مبلغ التسديد يتجاوز الرصيد الحالي للحساب.", [
+        { field: "amountDzd", message: "مبلغ التسديد أكبر من الرصيد المتاح." },
+      ])
+    }
+
+    const signedAmountDzd = -Math.abs(input.amountDzd)
+    const entryDate = normalizeAlgeriaTimestamp(undefined)
+    const latestEntry = this.repository.getLatestDebtEntry(account.id)
+    assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate ?? null, "entryDate")
+    const nextBalance = account.currentBalance + signedAmountDzd
+    const nextStatus = getDebtAccountStatus(nextBalance)
+
+    const payment = this.repository.withTransaction(() => {
+      const createdEntry = this.repository.createDebtEntry(
+        {
+          debtAccountId: account.id,
+          entryType: "PAYMENT",
+          signedAmountDzd,
+          entryDate,
+          note: normalizeText(input.note),
+          balanceAfterDzd: nextBalance,
+          reasonCategory: "INVOICE_DRIVEN",
+          paymentMethod: input.paymentMethod ?? "CASH",
+        },
+        audit,
+      )
+
+      this.repository.updateDebtAccount(
+        {
+          id: account.id,
+          currentBalance: nextBalance,
+          status: nextStatus,
+          settledAt: nextStatus === "SETTLED" ? entryDate : null,
+        },
+        audit,
+      )
+
+      return createdEntry
+    })
+
+    return successResult("تم تسجيل الدفعة بنجاح.", payment)
+  }
+
+  voidDebtEntry(input: DebtEntryVoidInput, auditContext?: MutationAuditContext) {
+    const audit = this.createMutationAuditContext(auditContext)
+    const entry = this.repository.getDebtEntryById(input.entryId)
+    if (!entry) {
+      throw new CompanyError("NOT_FOUND", "تعذر العثور على حركة الدين المطلوبة.")
+    }
+    if (entry.status !== "LIVE") {
+      throw new CompanyError("BUSINESS_RULE", "حركة الدين ملغية بالفعل.")
+    }
+
+    const account = this.requireDebtAccount(entry.debtAccountId)
+    const voidedAt = normalizeAlgeriaTimestamp(undefined)
+
+    this.repository.withTransaction(() => {
+      // Void the target entry
+      this.repository.voidDebtEntry(
+        {
+          id: entry.id,
+          voidedAt,
+          voidedBy: audit.actorLabel ?? audit.actorUserId,
+          voidReason: input.voidReason,
+        },
+        audit,
+      )
+
+      // If voiding an OPENING, cascade void all LIVE PAYMENTs linked to this account
+      if (entry.entryType === "OPENING") {
+        const entries = this.repository.listDebtEntries({ debtAccountId: account.id })
+        const livePayments = entries.filter(
+          (e) => e.entryType === "PAYMENT" && e.status === "LIVE",
+        )
+        for (const payment of livePayments) {
+          this.repository.voidDebtEntry(
+            {
+              id: payment.id,
+              voidedAt,
+              voidedBy: audit.actorLabel ?? audit.actorUserId,
+              voidReason: `ملغاة تلقائياً مع فتح الحركة #${entry.id.slice(0, 8)}`,
+            },
+            audit,
+          )
+        }
+      }
+
+      // Recompute balance after every void (OPENING, PAYMENT, ADJUSTMENT, SETTLEMENT)
+      const liveEntries = this.repository.listDebtEntries({ debtAccountId: account.id }).filter(
+        (e) => e.status === "LIVE",
+      )
+      const recomputedBalance = liveEntries.reduce((sum, e) => sum + e.signedAmountDzd, 0)
+      const recomputedStatus = getDebtAccountStatus(recomputedBalance)
+
+      this.repository.updateDebtAccount(
+        {
+          id: account.id,
+          currentBalance: recomputedBalance,
+          status: recomputedStatus,
+          settledAt: recomputedStatus === "SETTLED" ? voidedAt : null,
+        },
+        audit,
+      )
+
+      // Recalculate balanceAfterDzd for every remaining LIVE entry so the
+      // running-balance chain stays consistent after voiding one or more entries
+      const sortedLiveEntries = [...liveEntries].sort(
+        (a, b) => a.entryDate.localeCompare(b.entryDate) || a.id.localeCompare(b.id),
+      )
+      let runningBalance = 0
+      for (const liveEntry of sortedLiveEntries) {
+        runningBalance += liveEntry.signedAmountDzd
+        this.repository.updateDebtEntryBalanceAfter(liveEntry.id, runningBalance)
+      }
+    })
+
+    return successResult("تم إلغاء حركة الدين بنجاح.", this.repository.getDebtEntryById(entry.id)!)
   }
 
   settleDebtAccount(input: DebtSettlementInput, auditContext?: MutationAuditContext) {

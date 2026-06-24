@@ -58,6 +58,8 @@ vi.mock("@/features/app-shell/mock-dashboard", () => ({
     mutateAsync: createCounterpartyMutateAsync,
   }),
   useCreateSalaryPaymentMutation: () => ({ isPending: false, mutate: vi.fn() }),
+  useRecordDebtPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }))
 
 function renderWithProviders(ui: ReactNode) {

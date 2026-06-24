@@ -295,6 +295,13 @@ export type DebtEntryCreateData = {
   voidReason?: DebtEntryRecord["voidReason"];
 };
 
+export type DebtEntryVoidData = {
+  id: string;
+  voidedAt: string;
+  voidedBy?: string | null;
+  voidReason: string;
+};
+
 export type EmployeeListFilters = {
   roleId?: string;
   status?: EmployeeStatus;
