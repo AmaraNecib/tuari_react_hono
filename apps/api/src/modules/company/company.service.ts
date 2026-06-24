@@ -1,5 +1,6 @@
 import {
   type DebtAccountCreateInput,
+  type DebtConsolidationInput,
   type DebtEntry,
   type DebtPartyDetailInput,
   type DebtEntryCreateInput,
@@ -534,6 +535,209 @@ export class CompanyService {
     })
 
     return successResult("تمت تسوية حساب الدين بنجاح.", entry)
+  }
+
+  consolidateDebtEntries(input: DebtConsolidationInput, auditContext?: MutationAuditContext) {
+    const audit = this.createMutationAuditContext(auditContext)
+
+    const payableEntry = this.repository.getDebtEntryById(input.payableEntryId)
+    if (!payableEntry) {
+      throw new CompanyError("NOT_FOUND", "الحركة القابلة للدفع المطلوبة غير موجودة.")
+    }
+    const receivableEntry = this.repository.getDebtEntryById(input.receivableEntryId)
+    if (!receivableEntry) {
+      throw new CompanyError("NOT_FOUND", "الحركة المستحقة القبض المطلوبة غير موجودة.")
+    }
+
+    // Both must be LIVE
+    if (payableEntry.status !== "LIVE") {
+      throw new CompanyError("BUSINESS_RULE", "الحركة القابلة للدفع ملغاة ولا يمكن تجميدها.")
+    }
+    if (receivableEntry.status !== "LIVE") {
+      throw new CompanyError("BUSINESS_RULE", "الحركة المستحقة القبض ملغاة ولا يمكن تجميدها.")
+    }
+
+    // Only OPENING-type entries can be consolidated
+    if (payableEntry.entryType !== "OPENING") {
+      throw new CompanyError(
+        "BUSINESS_RULE",
+        "يمكن تجميد الحركات الافتتاحية فقط. الحركة المحددة ليست افتتاحية.",
+      )
+    }
+    if (receivableEntry.entryType !== "OPENING") {
+      throw new CompanyError(
+        "BUSINESS_RULE",
+        "يمكن تجميد الحركات الافتتاحية فقط. الحركة المحددة ليست افتتاحية.",
+      )
+    }
+
+    const payableAccount = this.requireDebtAccount(payableEntry.debtAccountId)
+    const receivableAccount = this.requireDebtAccount(receivableEntry.debtAccountId)
+
+    // Guard: neither account may have other LIVE entries beyond the selected
+    // OPENING. Consolidation voids the originals — if live payments exist,
+    // they would be orphaned (the original OPENING no longer backs them).
+    const payableLiveCount = this.repository
+      .listDebtEntries({ debtAccountId: payableAccount.id })
+      .filter((e) => e.status === "LIVE" && e.id !== payableEntry.id).length
+    if (payableLiveCount > 0) {
+      throw new CompanyError(
+        "BUSINESS_RULE",
+        "لا يمكن تجميد رصيد افتتاحي لديه حركات دين نشطة أخرى على الحساب الدائن.",
+      )
+    }
+
+    const receivableLiveCount = this.repository
+      .listDebtEntries({ debtAccountId: receivableAccount.id })
+      .filter((e) => e.status === "LIVE" && e.id !== receivableEntry.id).length
+    if (receivableLiveCount > 0) {
+      throw new CompanyError(
+        "BUSINESS_RULE",
+        "لا يمكن تجميد رصيد افتتاحي لديه حركات دين نشطة أخرى على الحساب المدين.",
+      )
+    }
+
+    // Must be opposite directions
+    if (payableAccount.direction !== "PAYABLE" || receivableAccount.direction !== "RECEIVABLE") {
+      throw new CompanyError(
+        "BUSINESS_RULE",
+        "يجب أن تكون الحركتان من اتجاهين متعاكسين (واحدة دائن وأخرى مدين) للتجميد.",
+      )
+    }
+
+    // Must belong to the same party (same worker or same external counterparty)
+    const payablePartyRef = payableAccount.workerId ?? payableAccount.externalCounterpartyId
+    const receivablePartyRef = receivableAccount.workerId ?? receivableAccount.externalCounterpartyId
+    if (payablePartyRef !== receivablePartyRef) {
+      throw new CompanyError("BUSINESS_RULE", "يجب أن تنتمي الحركتان لنفس الطرف لتجميدهما.")
+    }
+
+    // The consolidation amount is the smaller of the two OPENING amounts
+    const payableAmount = Math.abs(payableEntry.signedAmountDzd)
+    const receivableAmount = Math.abs(receivableEntry.signedAmountDzd)
+    const consolidationAmount = Math.min(payableAmount, receivableAmount)
+    const netAmount = payableAmount - receivableAmount // positive = payable is larger
+
+    if (consolidationAmount <= 0) {
+      throw new CompanyError("BUSINESS_RULE", "لا يمكن تجميد حركات برصيد صفري.")
+    }
+
+    const entryDate = normalizeAlgeriaTimestamp(undefined)
+
+    // Void both originals and create remainder OPENING if needed
+    this.repository.withTransaction(() => {
+      // 1. Void payable OPENING
+      this.repository.voidDebtEntry(
+        {
+          id: payableEntry.id,
+          voidedAt: entryDate,
+          voidReason: `تجميد مع ${receivableEntry.id.slice(0, 8)}`,
+        },
+        audit,
+      )
+
+      // 2. Void receivable OPENING
+      this.repository.voidDebtEntry(
+        {
+          id: receivableEntry.id,
+          voidedAt: entryDate,
+          voidReason: `تجميد مع ${payableEntry.id.slice(0, 8)}`,
+        },
+        audit,
+      )
+
+      // 3. If netAmount !== 0, create a new OPENING on the larger account
+      if (netAmount > 0) {
+        // Payable was larger — create remainder OPENING on payable account
+        const liveBalance = this.repository
+          .listDebtEntries({ debtAccountId: payableAccount.id })
+          .filter((e) => e.status === "LIVE")
+          .reduce((sum, e) => sum + e.signedAmountDzd, 0)
+
+        this.repository.createDebtEntry(
+          {
+            debtAccountId: payableAccount.id,
+            entryType: "OPENING",
+            signedAmountDzd: netAmount,
+            entryDate,
+            note: `رصيد متبقي بعد تجميد ${receivableEntry.id.slice(0, 8)}`,
+            balanceAfterDzd: liveBalance + netAmount,
+            reasonCategory: "INVOICE_DRIVEN",
+          },
+          audit,
+        )
+      } else if (netAmount < 0) {
+        // Receivable was larger — create remainder OPENING on receivable account
+        const liveBalance = this.repository
+          .listDebtEntries({ debtAccountId: receivableAccount.id })
+          .filter((e) => e.status === "LIVE")
+          .reduce((sum, e) => sum + e.signedAmountDzd, 0)
+
+        this.repository.createDebtEntry(
+          {
+            debtAccountId: receivableAccount.id,
+            entryType: "OPENING",
+            signedAmountDzd: Math.abs(netAmount),
+            entryDate,
+            note: `رصيد متبقي بعد تجميد ${payableEntry.id.slice(0, 8)}`,
+            balanceAfterDzd: liveBalance + Math.abs(netAmount),
+            reasonCategory: "INVOICE_DRIVEN",
+          },
+          audit,
+        )
+      }
+      // netAmount === 0: perfect cancellation, no remainder needed
+
+      // 4. Recalculate both account balances from remaining LIVE entries
+      const payableBalance = this.repository
+        .listDebtEntries({ debtAccountId: payableAccount.id })
+        .filter((e) => e.status === "LIVE")
+        .reduce((sum, e) => sum + e.signedAmountDzd, 0)
+      const payableStatus = getDebtAccountStatus(payableBalance)
+
+      const receivableBalance = this.repository
+        .listDebtEntries({ debtAccountId: receivableAccount.id })
+        .filter((e) => e.status === "LIVE")
+        .reduce((sum, e) => sum + e.signedAmountDzd, 0)
+      const receivableStatus = getDebtAccountStatus(receivableBalance)
+
+      this.repository.updateDebtAccount(
+        {
+          id: payableAccount.id,
+          currentBalance: payableBalance,
+          status: payableStatus,
+          settledAt: payableStatus === "SETTLED" ? entryDate : null,
+        },
+        audit,
+      )
+      this.repository.updateDebtAccount(
+        {
+          id: receivableAccount.id,
+          currentBalance: receivableBalance,
+          status: receivableStatus,
+          settledAt: receivableStatus === "SETTLED" ? entryDate : null,
+        },
+        audit,
+      )
+
+      // 5. Recalculate balanceAfterDzd for remaining LIVE entries on both accounts
+      for (const accountId of [payableAccount.id, receivableAccount.id]) {
+        const sortedLive = this.repository
+          .listDebtEntries({ debtAccountId: accountId })
+          .filter((e) => e.status === "LIVE")
+          .sort((a, b) => a.entryDate.localeCompare(b.entryDate) || a.id.localeCompare(b.id))
+        let running = 0
+        for (const entry of sortedLive) {
+          running += entry.signedAmountDzd
+          this.repository.updateDebtEntryBalanceAfter(entry.id, running)
+        }
+      }
+    })
+
+    return successResult(
+      "تم تجميد الحركتين بنجاح.",
+      this.repository.getDebtEntryById(payableEntry.id)!,
+    )
   }
 
   getDebtPartyDetail(input: DebtPartyDetailInput) {

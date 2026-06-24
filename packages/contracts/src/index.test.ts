@@ -8,6 +8,7 @@ import {
   debtEntryCreateInputSchema,
   debtEntryRecordPaymentInputSchema,
   debtEntrySchema,
+  debtConsolidationInputSchema,
   debtEntryVoidInputSchema,
   debtReasonCategoryDirectionMap,
   debtSummaryItemSchema,
@@ -517,6 +518,25 @@ describe("contracts", () => {
       debtEntryVoidInputSchema.parse({
         entryId: "debt-entry-1",
         voidReason: "   ",
+      }),
+    ).toThrow();
+  });
+
+  it("validates debt consolidation input", () => {
+    expect(
+      debtConsolidationInputSchema.parse({
+        payableEntryId: "entry-payable-1",
+        receivableEntryId: "entry-receivable-1",
+      }),
+    ).toEqual({
+      payableEntryId: "entry-payable-1",
+      receivableEntryId: "entry-receivable-1",
+    });
+
+    // Missing receivable entry should fail
+    expect(() =>
+      debtConsolidationInputSchema.parse({
+        payableEntryId: "entry-payable-1",
       }),
     ).toThrow();
   });
