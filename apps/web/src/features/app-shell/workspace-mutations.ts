@@ -705,6 +705,32 @@ export function useVoidDebtEntryMutation() {
   })
 }
 
+export function useDebtEntriesConsolidateMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "debts", "entries", "consolidate"],
+    mutationFn: async (input: {
+      payableEntryId: string
+      receivableEntryId: string
+    }) => {
+      const result = await rpcClient.debtEntriesConsolidate({
+        payableEntryId: input.payableEntryId,
+        receivableEntryId: input.receivableEntryId,
+      })
+
+      return requireEntitySuccess(result)
+    },
+    onSuccess: async ({ message }) => {
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"])
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
 export function useSettleDebtAccountMutation() {
   const queryClient = useQueryClient()
 

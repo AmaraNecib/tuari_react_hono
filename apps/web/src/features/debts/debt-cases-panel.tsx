@@ -7,6 +7,7 @@ import { useCreateDebtAccountMutation } from "@/features/app-shell/mock-dashboar
 import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 
+import { ConsolidationDialog } from "./consolidation-dialog"
 import { DebtLedgerPanel } from "./debt-ledger-panel"
 import {
   formatDebtMoney,
@@ -43,6 +44,7 @@ export function DebtCasesPanel({
   const [createDate, setCreateDate] = useState(() => getAlgeriaDateInputValue())
   const [openingBalance, setOpeningBalance] = useState("")
   const [note, setNote] = useState("")
+  const [consolidationDialogOpen, setConsolidationDialogOpen] = useState(false)
   const sortedAccounts = useMemo(() => sortDebtAccounts(accounts), [accounts])
   const debtAccount = sortedAccounts[0] ?? null
   const balanceMeta = debtAccount ? getDebtAccountBalanceMeta(debtAccount) : getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" })
@@ -50,6 +52,22 @@ export function DebtCasesPanel({
   const openingBalanceValue = normalizedOpeningBalance.length > 0 ? Number(normalizedOpeningBalance) : 0
   const hasValidOpeningBalance = Number.isFinite(openingBalanceValue)
   const accountEntries = debtAccount ? debtEntriesByAccountId[debtAccount.id] ?? [] : []
+
+  const payableAccount = useMemo(
+    () => sortedAccounts.find((a) => a.direction === "PAYABLE") ?? null,
+    [sortedAccounts],
+  )
+  const receivableAccount = useMemo(
+    () => sortedAccounts.find((a) => a.direction === "RECEIVABLE") ?? null,
+    [sortedAccounts],
+  )
+  const hasBothDirections = payableAccount !== null && receivableAccount !== null
+  const payableEntries = payableAccount ? debtEntriesByAccountId[payableAccount.id] ?? [] : []
+  const receivableEntries = receivableAccount ? debtEntriesByAccountId[receivableAccount.id] ?? [] : []
+  const hasConsolidatableOpenings =
+    hasBothDirections &&
+    payableEntries.some((e) => e.status === "LIVE" && e.entryType === "OPENING") &&
+    receivableEntries.some((e) => e.status === "LIVE" && e.entryType === "OPENING")
 
   return (
     <div className="space-y-6">
@@ -62,6 +80,39 @@ export function DebtCasesPanel({
         <CasesStatCard label="الحساب" value={debtAccount ? "1" : "0"} />
         <CasesStatCard label="عدد الحركات" value={String(accountEntries.length)} />
       </div>
+
+      {hasBothDirections ? (
+        <Surface className="p-5" variant="card">
+          <SurfaceHeader
+            description="ادمج حركتين افتتاحيتين من اتجاهين متعاكسين (دائن ومدين) لنفس الطرف في رصيد واحد صافٍ."
+            title="تجميد الديون"
+          />
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <p className="text-sm text-muted-foreground">
+                {getDebtDirectionLabel(payableAccount!.direction)}{` `}
+                دج {formatDebtMoney(payableAccount!.currentBalance)}
+                {` — `}
+                {getDebtDirectionLabel(receivableAccount!.direction)}{` `}
+                دج {formatDebtMoney(receivableAccount!.currentBalance)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {hasConsolidatableOpenings
+                  ? "حدد حركة من كل جانب لتجميدهما."
+                  : "لا توجد حركات افتتاحية نشطة قابلة للتجميد."}
+              </p>
+            </div>
+            <Button
+              disabled={!hasConsolidatableOpenings}
+              variant="outline"
+              onClick={() => setConsolidationDialogOpen(true)}
+            >
+              فتح التجميد
+            </Button>
+          </div>
+        </Surface>
+      ) : null}
 
       <Surface className="p-5" variant="card">
         <SurfaceHeader
@@ -113,11 +164,25 @@ export function DebtCasesPanel({
         </PageFooterActions>
       </Surface>
 
-      <DebtLedgerPanel
-        debtAccount={debtAccount}
-        debtEntries={accountEntries}
-        title={title}
-      />
+      {sortedAccounts.map((account) => (
+        <DebtLedgerPanel
+          key={account.id}
+          debtAccount={account}
+          debtEntries={debtEntriesByAccountId[account.id] ?? []}
+          title={`${title} — ${getDebtDirectionLabel(account.direction)}`}
+        />
+      ))}
+
+      {payableAccount && receivableAccount ? (
+        <ConsolidationDialog
+          payableAccount={payableAccount}
+          receivableAccount={receivableAccount}
+          payableEntries={payableEntries}
+          receivableEntries={receivableEntries}
+          open={consolidationDialogOpen}
+          onOpenChange={setConsolidationDialogOpen}
+        />
+      ) : null}
     </div>
   )
 }
