@@ -151,6 +151,7 @@ export interface CompanyRepository {
   listAllDebtEntries(): DebtEntryRecord[];
   createDebtEntry(data: DebtEntryCreateData, auditContext?: MutationAuditContext): DebtEntryRecord;
   voidDebtEntry(data: DebtEntryVoidData, auditContext?: MutationAuditContext): DebtEntryRecord | null;
+  updateDebtEntryBalanceAfter(id: string, balanceAfterDzd: number): void;
 
   listProjects(filters?: ProjectListFilters): ProjectRecord[];
   getProjectById(id: string): ProjectRecord | null;
@@ -1123,6 +1124,14 @@ export class SqliteCompanyRepository implements CompanyRepository {
       )
 
     return this.getDebtEntryById(data.id)
+  }
+
+  updateDebtEntryBalanceAfter(id: string, balanceAfterDzd: number): void {
+    this.database
+      .prepare(
+        'UPDATE debt_entry SET balance_after_dzd = ?, updated_at = ? WHERE id = ?',
+      )
+      .run(balanceAfterDzd, createAlgeriaTimestamp(), id)
   }
 
   listProjects(filters?: ProjectListFilters): ProjectRecord[] {

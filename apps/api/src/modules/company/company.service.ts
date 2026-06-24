@@ -479,6 +479,17 @@ export class CompanyService {
         },
         audit,
       )
+
+      // Recalculate balanceAfterDzd for every remaining LIVE entry so the
+      // running-balance chain stays consistent after voiding one or more entries
+      const sortedLiveEntries = [...liveEntries].sort(
+        (a, b) => a.entryDate.localeCompare(b.entryDate) || a.id.localeCompare(b.id),
+      )
+      let runningBalance = 0
+      for (const liveEntry of sortedLiveEntries) {
+        runningBalance += liveEntry.signedAmountDzd
+        this.repository.updateDebtEntryBalanceAfter(liveEntry.id, runningBalance)
+      }
     })
 
     return successResult("تم إلغاء حركة الدين بنجاح.", this.repository.getDebtEntryById(entry.id)!)

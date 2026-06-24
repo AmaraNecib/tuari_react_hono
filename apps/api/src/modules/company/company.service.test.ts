@@ -744,6 +744,7 @@ describe("CompanyService", () => {
       {
         debtEntryId: opening.id,
         amountDzd: 300,
+        paymentMethod: "CASH",
         note: "دفعة 1",
       },
       audit,
@@ -764,6 +765,12 @@ describe("CompanyService", () => {
     expect(voidResult.status).toBe("VOIDED")
     expect(voidResult.voidReason).toBe("دفعة خاطئة")
     expect(service.getDebtAccount(account.id).item.currentBalance).toBe(1000)
+
+    // Verify the remaining LIVE entry's balanceAfterDzd was recalculated
+    const remainingEntries = service.listDebtEntries({ debtAccountId: account.id }).items
+    const liveEntries = remainingEntries.filter((e) => e.status === "LIVE")
+    expect(liveEntries).toHaveLength(1)
+    expect(liveEntries[0]!.balanceAfterDzd).toBe(1000)
   })
 
   it("voids an OPENING entry, cascades void to linked payments, and recomputes balance", () => {
@@ -799,6 +806,7 @@ describe("CompanyService", () => {
       {
         debtEntryId: opening.id,
         amountDzd: 500,
+        paymentMethod: "CASH",
         note: "دفعة 1",
       },
       audit,
@@ -807,6 +815,7 @@ describe("CompanyService", () => {
       {
         debtEntryId: opening.id,
         amountDzd: 300,
+        paymentMethod: "CASH",
         note: "دفعة 2",
       },
       audit,
