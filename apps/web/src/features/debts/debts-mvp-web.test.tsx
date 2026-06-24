@@ -277,7 +277,7 @@ describe("debts MVP web UI", () => {
       />,
     )
 
-    expect(screen.getByText("ديون العامل")).toBeTruthy()
+    expect(screen.getByText(/ديون العامل/)).toBeTruthy()
     expect(screen.getAllByText("رصيد افتتاحي").length).toBeGreaterThan(0)
     expect(screen.getAllByText(/\+300/).length).toBeGreaterThan(0)
   })

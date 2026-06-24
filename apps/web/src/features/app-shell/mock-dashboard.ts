@@ -18,6 +18,7 @@ export {
   useLeaveEmployeeMutation,
   useRemoveWorkspaceRecordMutation,
   useResetWorkspaceMutation,
+  useDebtEntriesConsolidateMutation,
   useRecordDebtPaymentMutation,
   useSettleDebtAccountMutation,
   useVoidDebtEntryMutation,
