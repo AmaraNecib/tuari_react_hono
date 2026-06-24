@@ -11,7 +11,9 @@ import { ConsolidationDialog } from "./consolidation-dialog"
 import { DebtLedgerPanel } from "./debt-ledger-panel"
 import {
   formatDebtMoney,
+  getCombinedDebtBalance,
   getDebtAccountBalanceMeta,
+  getDebtBalanceMeta,
   getDebtDirectionLabel,
   sortDebtAccounts,
 } from "./debt-utils"
@@ -61,22 +63,20 @@ export function DebtCasesPanel({
     [sortedAccounts, debtEntriesByAccountId],
   )
   const totalBalanceDzd = useMemo(
-    () => sortedAccounts.reduce((sum, a) => sum + a.currentBalance, 0),
+    () => getCombinedDebtBalance(sortedAccounts),
     [sortedAccounts],
   )
   const hasPayable = sortedAccounts.some((a) => a.direction === "PAYABLE")
   const hasReceivable = sortedAccounts.some((a) => a.direction === "RECEIVABLE")
   const isBidirectional = hasPayable && hasReceivable
-  const netDirection: "PAYABLE" | "RECEIVABLE" =
-    totalBalanceDzd > 0 ? "RECEIVABLE" : totalBalanceDzd < 0 ? "PAYABLE" : "PAYABLE"
   const balanceMeta = useMemo(
     () =>
       isBidirectional
-        ? getDebtAccountBalanceMeta({ currentBalance: totalBalanceDzd, direction: netDirection })
+        ? getDebtBalanceMeta(totalBalanceDzd)
         : debtAccount
           ? getDebtAccountBalanceMeta(debtAccount)
           : getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" }),
-    [isBidirectional, totalBalanceDzd, netDirection, debtAccount],
+    [isBidirectional, totalBalanceDzd, debtAccount],
   )
 
   const payableAccount = useMemo(
