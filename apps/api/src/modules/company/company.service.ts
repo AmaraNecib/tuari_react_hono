@@ -357,6 +357,13 @@ export class CompanyService {
 
   recordDebtPayment(input: DebtEntryRecordPaymentInput, auditContext?: MutationAuditContext) {
     const audit = this.createMutationAuditContext(auditContext)
+
+    if (!Number.isFinite(input.amountDzd) || input.amountDzd <= 0) {
+      throw new CompanyError("VALIDATION", "يجب إدخال مبلغ دفع صحيح وموجب.", [
+        { field: "amountDzd", message: "مبلغ الدفعة يجب أن يكون رقماً موجباً." },
+      ])
+    }
+
     const entry = this.repository.getDebtEntryById(input.debtEntryId)
     if (!entry) {
       throw new CompanyError("NOT_FOUND", "تعذر العثور على حركة الدين المطلوبة.")
@@ -454,24 +461,24 @@ export class CompanyService {
             audit,
           )
         }
-
-        // Recompute balance by excluding all voided entries
-        const liveEntries = this.repository.listDebtEntries({ debtAccountId: account.id }).filter(
-          (e) => e.status === "LIVE",
-        )
-        const recomputedBalance = liveEntries.reduce((sum, e) => sum + e.signedAmountDzd, 0)
-        const recomputedStatus = getDebtAccountStatus(recomputedBalance)
-
-        this.repository.updateDebtAccount(
-          {
-            id: account.id,
-            currentBalance: recomputedBalance,
-            status: recomputedStatus,
-            settledAt: recomputedStatus === "SETTLED" ? voidedAt : null,
-          },
-          audit,
-        )
       }
+
+      // Recompute balance after every void (OPENING, PAYMENT, ADJUSTMENT, SETTLEMENT)
+      const liveEntries = this.repository.listDebtEntries({ debtAccountId: account.id }).filter(
+        (e) => e.status === "LIVE",
+      )
+      const recomputedBalance = liveEntries.reduce((sum, e) => sum + e.signedAmountDzd, 0)
+      const recomputedStatus = getDebtAccountStatus(recomputedBalance)
+
+      this.repository.updateDebtAccount(
+        {
+          id: account.id,
+          currentBalance: recomputedBalance,
+          status: recomputedStatus,
+          settledAt: recomputedStatus === "SETTLED" ? voidedAt : null,
+        },
+        audit,
+      )
     })
 
     return successResult("تم إلغاء حركة الدين بنجاح.", this.repository.getDebtEntryById(entry.id)!)

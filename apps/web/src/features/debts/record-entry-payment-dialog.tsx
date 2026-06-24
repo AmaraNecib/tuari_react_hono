@@ -19,10 +19,13 @@ import { cn } from "@/lib/utils"
 
 export function RecordEntryPaymentDialog({
   entry,
+  accountCurrentBalance,
   open,
   onOpenChange,
 }: {
   entry: DebtEntry | null
+  /** The account's current balance at dialog open time (used for max-payment validation) */
+  accountCurrentBalance: number
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -33,7 +36,7 @@ export function RecordEntryPaymentDialog({
 
   const amountValue = amount.trim() ? Number(amount.trim()) : null
   const hasValidAmount = amountValue !== null && Number.isFinite(amountValue) && amountValue > 0
-  const maxPayment = entry ? Math.abs(entry.signedAmountDzd) : 0
+  const maxPayment = entry ? accountCurrentBalance : 0
   const amountExceedsMax = amountValue !== null && amountValue > maxPayment
 
   useEffect(() => {

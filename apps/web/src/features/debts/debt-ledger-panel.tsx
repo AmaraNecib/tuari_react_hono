@@ -254,6 +254,7 @@ export function DebtLedgerPanel({
 
       <RecordEntryPaymentDialog
         entry={paymentTargetEntry}
+        accountCurrentBalance={debtAccount?.currentBalance ?? 0}
         open={paymentTargetEntry !== null}
         onOpenChange={() => setPaymentTargetEntry(null)}
       />
