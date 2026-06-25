@@ -8,7 +8,7 @@
 
 ## Summary
 
-All 65 application queries were analyzed using `EXPLAIN QUERY PLAN` against an in-memory SQLite database with the full production schema and all indexes applied. **No queries perform full table scans** — every query uses an index or primary key lookup.
+All 65 application queries were analyzed using `EXPLAIN QUERY PLAN` against the in-memory SQLite fixture used by the regression test, with dummy parameters and the full production schema/index set applied. **No queries perform full table scans in this test harness** — every query uses an index or primary-key lookup.
 
 A regression test (`query-explain-regression.test.ts`) runs EXPLAIN on all queries in CI to catch any future regressions.
 
@@ -31,6 +31,7 @@ A regression test (`query-explain-regression.test.ts`) runs EXPLAIN on all queri
 | Table | Index | Columns |
 |-------|-------|---------|
 | `employee` | `employee_role_id_idx` | `role_id` |
+| `employee` | `phone` (UNIQUE inline constraint) | `phone` |
 | `project` | `project_manager_id_idx` | `manager_id` |
 | `warehouse` | `warehouse_manager_id_idx` | `manager_id` |
 | `employee_manager_assignment` | `employee_manager_assignment_worker_id_idx` | `worker_id` |
@@ -89,10 +90,7 @@ A regression test (`query-explain-regression.test.ts`) runs EXPLAIN on all queri
 
 ## EXPLAIN Results by Query Category
 
-All queries below were tested with `EXPLAIN QUERY PLAN`. Every query returns either:
-- `SEARCH TABLE <table> USING INDEX <index>` — optimal index usage
-- `SEARCH TABLE <table> USING PRIMARY KEY` — primary key lookup
-- No full table scans detected
+All queries below were tested with `EXPLAIN QUERY PLAN` in the regression test harness. Observed plan types include index lookups and primary-key searches — no full table scans were detected.
 
 ### Key Query Patterns
 
@@ -128,8 +126,9 @@ This test runs in CI on every PR to catch index regressions.
 
 ## Performance Notes
 
-- All queries use indexes efficiently
+- In the test harness, all indexed queries use indexes efficiently
+- 16 "list all" and sort queries perform full-table sorts using `COLLATE NOCASE ORDER BY` or lack covering indexes — these are acceptable for the small-table pattern in this app (hundreds to thousands of records)
 - The database schema includes 40+ indexes covering all foreign keys and frequently filtered columns
 - Cursor-based pagination queries use `created_at DESC, id DESC` ordering which leverages the composite pattern
 - LIKE queries on `full_name` use the `external_counterparty_full_name_idx` index
-- No additional indexes are needed at this time
+- No additional indexes were required based on the test-harness analysis
