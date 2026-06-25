@@ -48,7 +48,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionSeed[] = [
       description: "مسؤول عن متابعة العمال والمشاريع الميدانية",
       isSystem: true,
     },
-    permissions: ["employees.read", "employees.update", "invoices.read", "invoices.create", "invoices.update"],
+    permissions: ["employees.read", "employees.update", "invoices.read", "invoices.create", "invoices.update", "payments.read", "payments.create"],
   },
   {
     role: {
@@ -57,7 +57,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionSeed[] = [
       description: "مسؤول عن تشغيل وإدارة المستودعات",
       isSystem: true,
     },
-    permissions: ["employees.read", "invoices.read", "invoices.create", "invoices.update"],
+    permissions: ["employees.read", "invoices.read", "invoices.create", "invoices.update", "payments.read"],
   },
 ];
 

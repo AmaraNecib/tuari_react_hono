@@ -55,13 +55,14 @@ describe("role seeds", () => {
       expect(pm.permissions).not.toContain("employees.delete");
     });
 
-    it("warehouse_manager has employees.read and invoice access", () => {
+    it("warehouse_manager has employees.read, invoice access, and payments.read", () => {
       const wm = DEFAULT_ROLE_PERMISSIONS.find((r) => r.role.key === "warehouse_manager")!;
       expect(wm.permissions).toEqual([
         "employees.read",
         "invoices.read",
         "invoices.create",
         "invoices.update",
+        "payments.read",
       ]);
     });
   });
