@@ -49,3 +49,16 @@ export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDat
   // Runtime API is identical; only TypeScript types differ at the boundary.
   return sqlite as unknown as BetterSqliteDatabase
 }
+
+/**
+ * Change the SQLCipher encryption key on an open database connection.
+ * This re-encrypts the database in place via PRAGMA rekey.
+ *
+ * @param sqlite - Open SQLCipher database connection
+ * @param newKey - New encryption key to apply
+ */
+export function changeDatabaseKey(sqlite: BetterSqliteDatabase, newKey: string): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = sqlite as any
+  db.pragma(`rekey = '${newKey.replace(/'/g, "''")}'`)
+}
