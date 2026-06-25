@@ -68,9 +68,10 @@ export interface RecoveryKeyPoolStatus {
  * Generate a recovery key in PREFIX-XXXX-XXXX-XXXX format.
  * The key is cryptographically random hex characters.
  */
+/** Generate a recovery key string in PREFIX-XXXX-XXXX-XXXX format with 128-bit entropy. */
 function generateRecoveryKeyString(): string {
-  // 12 bytes = 24 hex chars → 3 segments of 6 hex chars (72 bits of entropy)
-  const bytes = randomBytes(12)
+  // 16 bytes = 32 hex chars → 3 segments of 6 hex chars (128 bits of entropy)
+  const bytes = randomBytes(16)
   const hex = bytes.toString("hex")
   const segments: string[] = []
   for (let i = 0; i < KEY_SEGMENTS; i++) {

@@ -19,8 +19,8 @@ export const recoveryKey = sqliteTable("recovery_key", {
   id: text("id").primaryKey(),
   /** Key prefix (first 4 chars) for visual identification when masked. */
   prefix: text("prefix").notNull(),
-  /** SHA-256 hash of the full recovery key (for verification). */
-  keyHash: text("key_hash").notNull(),
+  /** SHA-256 hash of the full recovery key (for verification). Unique constraint enforced at DB level. */
+  keyHash: text("key_hash").notNull().unique(),
   /** Current status: AVAILABLE, CONSUMED, or REVOKED. */
   status: text("status").notNull().default("AVAILABLE"),
   /** Timestamp when the key was consumed (null if unused). */

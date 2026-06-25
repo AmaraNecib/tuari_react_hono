@@ -650,7 +650,7 @@ export const schemaStatements = [
   `CREATE TABLE IF NOT EXISTS "recovery_key" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "prefix" TEXT NOT NULL,
-    "key_hash" TEXT NOT NULL,
+    "key_hash" TEXT NOT NULL UNIQUE,
     "status" TEXT NOT NULL DEFAULT 'AVAILABLE' CHECK ("status" IN ('AVAILABLE', 'CONSUMED', 'REVOKED')),
     "consumed_at" TEXT,
     "revoked_at" TEXT,
