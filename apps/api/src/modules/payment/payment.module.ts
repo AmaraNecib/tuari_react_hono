@@ -105,10 +105,11 @@ export function createPaymentModule(
         });
 
         // Update invoice paid_amount / remaining_amount and possibly
-        // transition to PAID when fully settled.
+        // transition to PAID when fully paid.
+        const invoiceFullyPaid = paymentResult.newRemainingAmount <= 0;
         await invoiceRepo.updateStatus(
           alloc.invoiceId,
-          paymentResult.settled ? "PAID" : "RECEIVED",
+          invoiceFullyPaid ? "PAID" : "RECEIVED",
           {
             paidAmount: paymentResult.newPaidAmount,
             remainingAmount: paymentResult.newRemainingAmount,
