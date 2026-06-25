@@ -2,12 +2,14 @@ import { eq, and } from "drizzle-orm";
 import type { AppDrizzle } from "../../infrastructure/database/drizzle";
 import { account, user, userProfileHistory } from "../../schema";
 
+/** Represents a user's profile record (id, name, phone). */
 export type AccountProfileRecord = {
   id: string;
   name: string | null;
   phone: string;
 };
 
+/** Transaction-scoped operations for account data mutations. */
 export type AccountRepositoryTransaction = {
   createProfileHistory(input: {
     actorLabel: string | null;
@@ -33,6 +35,7 @@ export type AccountRepositoryTransaction = {
   }): Promise<AccountProfileRecord>;
 };
 
+/** Repository interface for account data access with transaction support. */
 export type AccountRepository = {
   withTransaction<T>(run: (transaction: AccountRepositoryTransaction) => Promise<T>): Promise<T>;
 };
@@ -136,6 +139,10 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
   }
 }
 
+/**
+ * Drizzle-based implementation of AccountRepository.
+ * Uses Drizzle ORM for type-safe queries against the user/account tables.
+ */
 export class DrizzleAccountRepository implements AccountRepository {
   constructor(private readonly db: AppDrizzle) {}
 

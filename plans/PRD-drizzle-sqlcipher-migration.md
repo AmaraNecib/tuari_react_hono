@@ -33,11 +33,11 @@ Migrate the entire data layer from Prisma + raw better-sqlite3 to **Drizzle ORM 
 **Recovery key system:**
 
 - 3 recovery keys generated on first launch, configurable maximum (5)
-- Each key is an independent one-time-use encryption credential (not derived from the DB password)
+- Each key is an independent one-time-use **app-layer credential** that authorizes a password reset — not a direct SQLCipher unlock key
 - Keys are shown **once** at generation time, then masked forever (`TUARI-A1B2-****-****`)
 - Admin can **revoke** any key without using it (if compromised)
 - Admin can **generate new keys** from the dashboard (up to max)
-- Recovery keys survive DB password changes (they are independent)
+- Recovery keys survive DB password changes (they are independent app-layer tokens)
 - DB password changes survive recovery key usage (they are independent)
 
 **Key independence matrix:**
@@ -51,10 +51,14 @@ Migrate the entire data layer from Prisma + raw better-sqlite3 to **Drizzle ORM 
 
 **Password change flow:**
 - Admin enters current DB key → enters new DB key → `PRAGMA rekey = 'new-key'` re-encrypts in place (<1 second)
-- Recovery keys remain valid (they are independent)
+- Recovery keys remain valid (they are independent app-layer tokens)
 
 **Recovery flow:**
-- User forgets app password → enters recovery key → DB decrypts → key consumed → user sets new app password → prompted to generate replacement recovery key
+1. User forgets app password → opens the app → sees the login screen
+2. User clicks "Forgot password?" → enters a recovery key
+3. The app validates the recovery key against the stored verification hash (app-layer check, DB is already unlocked at this point since the app holds the key in memory)
+4. Key is marked as consumed → user is prompted to set a new app password
+5. User is prompted to generate a replacement recovery key from Settings
 
 ### Multi-User Model
 
@@ -264,7 +268,7 @@ Migrate the entire data layer from Prisma + raw better-sqlite3 to **Drizzle ORM 
 ### Risk Mitigation
 
 **Risk: better-sqlite3-sqlcipher compilation fails on CI**
-- Mitigation: Pre-build the native binary locally and commit it, or use prebuilt binaries from the npm package. Blacksmith Windows runners have build tools available.
+- Mitigation: Use prebuilt binaries from the npm package. Blacksmith Windows runners have build tools available. Do not commit native binaries to the repo — rely on deterministic CI builds or published npm prebuilt binaries.
 
 **Risk: better-auth Drizzle adapter has incompatibilities**
 - Mitigation: Test auth flow early in PR 1. The adapter is officially maintained by better-auth. Fallback: keep Prisma for auth only.

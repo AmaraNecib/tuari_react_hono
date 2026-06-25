@@ -9,17 +9,20 @@ import { ensureDatabaseSchema } from "./infrastructure/database/schema";
 import { BetterSqlite3Executor } from "./infrastructure/database/sqlite-executor";
 
 async function main() {
-  // Create raw better-sqlite3 connection for migrations and Drizzle
+  // Create a single shared SQLite connection for the entire app.
+  // Both raw SQL (migrations, company/inventory repos) and Drizzle
+  // (auth, account) share this handle.
   const sqlite = createDatabaseConnection();
   const executor = new BetterSqlite3Executor(sqlite);
 
   // Run schema migrations with raw executor
   await ensureDatabaseSchema(executor);
 
-  // Create Drizzle connection for the rest of the app
+  // Create Drizzle connection from the same handle
   const drizzleDb = createDrizzleFromSqlite(sqlite);
 
-  const appDependencies = await createAppDependencies(drizzleDb);
+  // Pass the shared handle — no second connection is opened
+  const appDependencies = await createAppDependencies(sqlite, drizzleDb);
   const app = createApp(appDependencies, {
     allowedOrigins: env.allowedOrigins,
     trustProxyHeaders: env.trustProxyHeaders,

@@ -1,6 +1,5 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
-import { project, warehouse, debtAccount } from "./company";
-import { externalCounterparty } from "./company";
+import { project, warehouse, debtAccount, externalCounterparty } from "./company";
 
 /**
  * Inventory domain tables.

@@ -36,6 +36,10 @@ function isUniqueConstraintError(error: unknown) {
   return error instanceof Error && /unique|constraint/i.test(error.message);
 }
 
+/**
+ * Handles first-user bootstrap and bootstrap state queries.
+ * Uses Drizzle ORM for database operations.
+ */
 export class AuthBootstrapService {
   constructor(
     private readonly db: AppDrizzle,

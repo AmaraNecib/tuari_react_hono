@@ -18,10 +18,15 @@ export class BetterSqlite3Executor implements DbExecutor {
   }
 
   async $transaction<T>(work: (tx: DbExecutor) => Promise<T>): Promise<T> {
-    // better-sqlite3 transactions are synchronous, but we need to support
-    // async work functions. We'll wrap the transaction in a savepoint.
     const tx = new BetterSqlite3TransactionExecutor(this.db);
-    return work(tx);
+    try {
+      const result = await work(tx);
+      tx.release();
+      return result;
+    } catch (error) {
+      tx.rollback();
+      throw error;
+    }
   }
 }
 
@@ -32,7 +37,6 @@ export class BetterSqlite3Executor implements DbExecutor {
  */
 class BetterSqlite3TransactionExecutor implements DbExecutor {
   private savepointName: string;
-  private counter = 0;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(private readonly db: any) {

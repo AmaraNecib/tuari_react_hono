@@ -6,6 +6,11 @@ import { user } from "./auth";
  * Schema matches the existing SQL definitions in schema-definitions.ts.
  */
 
+/**
+ * Application bootstrap and role tables.
+ * Schema matches the existing SQL definitions in schema-definitions.ts.
+ */
+
 export const appBootstrapState = sqliteTable("app_bootstrap_state", {
   singleton: integer("singleton").primaryKey(),
   createdAt: text("created_at").notNull(),

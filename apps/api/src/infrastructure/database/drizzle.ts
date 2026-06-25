@@ -3,6 +3,7 @@ import type Database from "better-sqlite3-sqlcipher";
 
 import * as schema from "../../schema";
 
+/** Inferred type of a Drizzle instance configured with the app schema. */
 export type AppDrizzle = ReturnType<typeof createDrizzleFromSqlite>;
 
 /**

@@ -4,6 +4,9 @@ import { role } from "./app";
 /**
  * Company domain tables (employee, project, warehouse, assignments, etc.).
  * Schema matches the existing SQL definitions in schema-definitions.ts.
+ *
+ * Foreign key actions (ON DELETE RESTRICT / ON UPDATE CASCADE) and CHECK
+ * constraints are included to mirror the legacy SQLite schema exactly.
  */
 
 export const employee = sqliteTable("employee", {
@@ -13,7 +16,7 @@ export const employee = sqliteTable("employee", {
   phone: text("phone").notNull().unique(),
   roleId: text("role_id")
     .notNull()
-    .references(() => role.id),
+    .references(() => role.id, { onDelete: "restrict", onUpdate: "cascade" }),
   status: text("status").notNull(),
   salaryAmountDzd: real("salary_amount_dzd"),
   salaryPeriod: text("salary_period"),
@@ -28,6 +31,7 @@ export const project = sqliteTable("project", {
   location: text("location"),
   managerId: text("manager_id").references(() => employee.id, {
     onDelete: "set null",
+    onUpdate: "cascade",
   }),
   status: text("status").notNull(),
   notes: text("notes"),
@@ -41,6 +45,7 @@ export const warehouse = sqliteTable("warehouse", {
   address: text("address"),
   managerId: text("manager_id").references(() => employee.id, {
     onDelete: "set null",
+    onUpdate: "cascade",
   }),
   status: text("status").notNull(),
   notes: text("notes"),
@@ -54,10 +59,10 @@ export const employeeManagerAssignment = sqliteTable(
     id: text("id").primaryKey(),
     workerId: text("worker_id")
       .notNull()
-      .references(() => employee.id),
+      .references(() => employee.id, { onDelete: "restrict", onUpdate: "cascade" }),
     managerId: text("manager_id")
       .notNull()
-      .references(() => employee.id),
+      .references(() => employee.id, { onDelete: "restrict", onUpdate: "cascade" }),
     status: text("status").notNull(),
     startDate: text("start_date").notNull(),
     endDate: text("end_date"),
@@ -76,10 +81,10 @@ export const employeeProjectAssignment = sqliteTable(
     id: text("id").primaryKey(),
     employeeId: text("employee_id")
       .notNull()
-      .references(() => employee.id),
+      .references(() => employee.id, { onDelete: "restrict", onUpdate: "cascade" }),
     projectId: text("project_id")
       .notNull()
-      .references(() => project.id),
+      .references(() => project.id, { onDelete: "restrict", onUpdate: "cascade" }),
     status: text("status").notNull(),
     startDate: text("start_date").notNull(),
     endDate: text("end_date"),
@@ -98,10 +103,10 @@ export const employeeWarehouseAssignment = sqliteTable(
     id: text("id").primaryKey(),
     employeeId: text("employee_id")
       .notNull()
-      .references(() => employee.id),
+      .references(() => employee.id, { onDelete: "restrict", onUpdate: "cascade" }),
     warehouseId: text("warehouse_id")
       .notNull()
-      .references(() => warehouse.id),
+      .references(() => warehouse.id, { onDelete: "restrict", onUpdate: "cascade" }),
     status: text("status").notNull(),
     startDate: text("start_date").notNull(),
     endDate: text("end_date"),
@@ -120,10 +125,10 @@ export const employeeStateHistory = sqliteTable(
     id: text("id").primaryKey(),
     employeeId: text("employee_id")
       .notNull()
-      .references(() => employee.id),
+      .references(() => employee.id, { onDelete: "restrict", onUpdate: "cascade" }),
     roleId: text("role_id")
       .notNull()
-      .references(() => role.id),
+      .references(() => role.id, { onDelete: "restrict", onUpdate: "cascade" }),
     status: text("status").notNull(),
     salaryAmountDzd: real("salary_amount_dzd"),
     salaryPeriod: text("salary_period"),
@@ -145,10 +150,10 @@ export const projectManagerOwnershipHistory = sqliteTable(
     id: text("id").primaryKey(),
     projectId: text("project_id")
       .notNull()
-      .references(() => project.id),
+      .references(() => project.id, { onDelete: "restrict", onUpdate: "cascade" }),
     managerId: text("manager_id")
       .notNull()
-      .references(() => employee.id),
+      .references(() => employee.id, { onDelete: "restrict", onUpdate: "cascade" }),
     status: text("status").notNull(),
     startDate: text("start_date").notNull(),
     endDate: text("end_date"),
@@ -167,10 +172,10 @@ export const warehouseManagerOwnershipHistory = sqliteTable(
     id: text("id").primaryKey(),
     warehouseId: text("warehouse_id")
       .notNull()
-      .references(() => warehouse.id),
+      .references(() => warehouse.id, { onDelete: "restrict", onUpdate: "cascade" }),
     managerId: text("manager_id")
       .notNull()
-      .references(() => employee.id),
+      .references(() => employee.id, { onDelete: "restrict", onUpdate: "cascade" }),
     status: text("status").notNull(),
     startDate: text("start_date").notNull(),
     endDate: text("end_date"),
@@ -189,7 +194,7 @@ export const employeeSalaryPayment = sqliteTable(
     id: text("id").primaryKey(),
     employeeId: text("employee_id")
       .notNull()
-      .references(() => employee.id),
+      .references(() => employee.id, { onDelete: "restrict", onUpdate: "cascade" }),
     periodType: text("period_type").notNull(),
     expectedAmountDzd: real("expected_amount_dzd").notNull(),
     actualAmountDzd: real("actual_amount_dzd").notNull(),
@@ -215,9 +220,13 @@ export const externalCounterparty = sqliteTable("external_counterparty", {
 export const debtAccount = sqliteTable("debt_account", {
   id: text("id").primaryKey(),
   partyType: text("party_type").notNull(),
-  workerId: text("worker_id").references(() => employee.id),
+  workerId: text("worker_id").references(() => employee.id, {
+    onDelete: "restrict",
+    onUpdate: "cascade",
+  }),
   externalCounterpartyId: text("external_counterparty_id").references(
     () => externalCounterparty.id,
+    { onDelete: "restrict", onUpdate: "cascade" },
   ),
   status: text("status").notNull(),
   direction: text("direction").notNull().default("PAYABLE"),
@@ -235,7 +244,7 @@ export const debtEntry = sqliteTable("debt_entry", {
   id: text("id").primaryKey(),
   debtAccountId: text("debt_account_id")
     .notNull()
-    .references(() => debtAccount.id),
+    .references(() => debtAccount.id, { onDelete: "restrict", onUpdate: "cascade" }),
   invoiceId: text("invoice_id"),
   entryType: text("entry_type").notNull(),
   currency: text("currency").notNull().default("DZD"),
@@ -247,6 +256,8 @@ export const debtEntry = sqliteTable("debt_entry", {
   reasonDetail: text("reason_detail"),
   paymentMethod: text("payment_method"),
   status: text("status").notNull().default("LIVE"),
+  voidedAt: text("voided_at"),
+  voidedBy: text("voided_by"),
   voidReason: text("void_reason"),
   actorUserId: text("actor_user_id"),
   actorLabel: text("actor_label"),

@@ -1,3 +1,5 @@
+import type Database from "better-sqlite3-sqlcipher";
+
 import { env } from "../infrastructure/config/runtime-env";
 import { auth } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
@@ -25,8 +27,18 @@ import { SqliteEmployeeRepository } from "../modules/workforce/adapters/sqlite-e
 import { SqliteRoleRepository } from "../modules/workforce/adapters/sqlite-role.repository";
 import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice-debt.port";
 
-export async function createAppDependencies(drizzleDb?: AppDrizzle) {
-  const sharedDatabase = await createDatabaseConnection();
+/**
+ * Create all application dependencies.
+ *
+ * @param sqlite - Shared SQLite handle (caller is responsible for lifecycle).
+ *                 If omitted, a new connection is created (backwards compat).
+ * @param drizzleDb - Pre-built Drizzle instance. If omitted, created from sqlite.
+ */
+export async function createAppDependencies(
+  sqlite?: Database.Database,
+  drizzleDb?: AppDrizzle,
+) {
+  const sharedDatabase = sqlite ?? createDatabaseConnection();
   const db = drizzleDb ?? createDrizzleFromSqlite(sharedDatabase);
 
   const companyRepository = createCompanyRepository(sharedDatabase);
@@ -69,4 +81,5 @@ export async function createAppDependencies(drizzleDb?: AppDrizzle) {
   } as const;
 }
 
+/** All resolved application dependencies, created once at startup. */
 export type AppDependencies = Awaited<ReturnType<typeof createAppDependencies>>;
