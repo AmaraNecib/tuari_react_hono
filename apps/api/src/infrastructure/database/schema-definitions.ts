@@ -647,6 +647,17 @@ export const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "payment_counterparty_type_id_idx" ON "payment" ("counterparty_type", "counterparty_id", "payment_date")',
   'CREATE INDEX IF NOT EXISTS "payment_allocation_payment_id_idx" ON "payment_allocation" ("payment_id")',
   'CREATE INDEX IF NOT EXISTS "payment_allocation_invoice_id_idx" ON "payment_allocation" ("invoice_id")',
+  `CREATE TABLE IF NOT EXISTS "recovery_key" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "prefix" TEXT NOT NULL,
+    "key_hash" TEXT NOT NULL UNIQUE,
+    "status" TEXT NOT NULL DEFAULT 'AVAILABLE' CHECK ("status" IN ('AVAILABLE', 'CONSUMED', 'REVOKED')),
+    "consumed_at" TEXT,
+    "revoked_at" TEXT,
+    "created_at" TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS "recovery_key_status_idx" ON "recovery_key" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "recovery_key_key_hash_idx" ON "recovery_key" ("key_hash")`,
 ]
 
 export const additiveStatements = [
