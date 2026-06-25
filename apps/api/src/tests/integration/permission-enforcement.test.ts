@@ -5,6 +5,7 @@ import { createRpcMiddleware } from "../../rpc/rpc-middleware";
 import type { RpcContext } from "../../rpc/context";
 import type { SessionUser } from "../../modules/session/session.types";
 import type { Permission } from "../../modules/rbac/permissions";
+import { DEFAULT_ROLE_PERMISSIONS } from "../../modules/rbac/role-seeds";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,40 +27,16 @@ function createContext(user: (SessionUser & { permissions: string[] }) | null): 
   };
 }
 
-// Permissions by role (mirrors role-seeds.ts)
-const ROLE_PERMISSIONS: {
-  admin: Permission[];
-  project_manager: Permission[];
-  warehouse_manager: Permission[];
-  worker: Permission[];
-  viewer: Permission[];
-} = {
-  admin: [
-    "employees.create", "employees.read", "employees.update", "employees.delete",
-    "projects.create", "projects.read", "projects.update", "projects.delete",
-    "warehouses.create", "warehouses.read", "warehouses.update", "warehouses.delete",
-    "inventory.create", "inventory.read", "inventory.update", "inventory.delete", "inventory.transfer",
-    "debts.create", "debts.read", "debts.update", "debts.settle",
-    "invoices.create", "invoices.read", "invoices.update", "invoices.delete",
-    "payments.create", "payments.read", "payments.update", "payments.delete",
-  ],
-  project_manager: [
-    "employees.read", "employees.update",
-    "invoices.read", "invoices.create", "invoices.update",
-    "payments.read",
-  ],
-  warehouse_manager: [
-    "employees.read",
-    "invoices.read", "invoices.create", "invoices.update",
-    "payments.read",
-  ],
-  worker: [
-    "employees.read",
-  ],
-  viewer: [
-    "employees.read",
-  ],
-};
+// Derive permissions from the canonical RBAC seeds so role drift is caught.
+// Build a typed lookup where every known role key is guaranteed present.
+const _roleSeeds = DEFAULT_ROLE_PERMISSIONS;
+const ROLE_PERMISSIONS = {
+  admin: _roleSeeds.find((s) => s.role.key === "admin")!.permissions,
+  project_manager: _roleSeeds.find((s) => s.role.key === "project_manager")!.permissions,
+  warehouse_manager: _roleSeeds.find((s) => s.role.key === "warehouse_manager")!.permissions,
+  worker: _roleSeeds.find((s) => s.role.key === "worker")!.permissions,
+  viewer: _roleSeeds.find((s) => s.role.key === "viewer")!.permissions,
+} as const satisfies Record<string, readonly Permission[]>;
 
 // All domains that should be gated by permissions
 const DOMAINS = [
