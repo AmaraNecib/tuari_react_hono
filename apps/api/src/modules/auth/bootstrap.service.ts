@@ -30,6 +30,7 @@ type BootstrapResult =
 const BOOTSTRAP_CONFLICT_MESSAGE = "تم إعداد الحساب الأول بالفعل.";
 const BOOTSTRAP_SECRET_MESSAGE = "رمز الإعداد الأول غير صحيح.";
 
+/** Check if an error is a SQLite UNIQUE constraint violation. */
 function isUniqueConstraintError(error: unknown) {
   return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
 }
@@ -46,6 +47,7 @@ export class AuthBootstrapService {
     private readonly bootstrapSetupKey: string | null,
   ) {}
 
+  /** Check whether the first user has already been configured. */
   async getSetupStatus(): Promise<AuthSetupStatus> {
     return {
       hasUsers: await this.hasConfiguredUsers(),
@@ -53,6 +55,7 @@ export class AuthBootstrapService {
     };
   }
 
+  /** Create the first user account (admin) with phone credentials. */
   async bootstrapFirstUser(input: AuthBootstrapInput): Promise<BootstrapResult> {
     if (this.bootstrapSetupKey && input.setupSecret?.trim() !== this.bootstrapSetupKey) {
       return {
@@ -123,6 +126,7 @@ export class AuthBootstrapService {
     }
   }
 
+  /** Check if a user is the bootstrap owner (first user). */
   async isBootstrapOwner(userId: string): Promise<boolean> {
     const stateRows = await this.db
       .select({ userId: appBootstrapState.userId })
@@ -143,6 +147,7 @@ export class AuthBootstrapService {
     return firstUser[0]?.id === userId;
   }
 
+  /** Check if any users with valid phone numbers exist. */
   private async hasConfiguredUsers(): Promise<boolean> {
     const userCount = await this.db
       .select({ count: count() })
@@ -157,6 +162,7 @@ export class AuthBootstrapService {
     return (userCount[0]?.count ?? 0) > 0 || (stateCount[0]?.count ?? 0) > 0;
   }
 
+  /** Check if any users exist within a transaction context. */
   private async hasConfiguredUsersTx(
     tx: AppDrizzle,
   ): Promise<boolean> {

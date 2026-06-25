@@ -9,15 +9,18 @@ export class BetterSqlite3Executor implements DbExecutor {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(private readonly db: any) {}
 
+  /** Execute a SQL query and return all matching rows. */
   async $queryRawUnsafe<T>(sql: string, ...params: unknown[]): Promise<T> {
     return this.db.prepare(sql).all(...params) as T;
   }
 
+  /** Execute a SQL statement and return the number of affected rows. */
   async $executeRawUnsafe(sql: string, ...params: unknown[]): Promise<number> {
     const result = this.db.prepare(sql).run(...params);
     return result.changes;
   }
 
+  /** Run work inside a savepoint transaction with auto-commit/rollback. */
   async $transaction<T>(work: (tx: DbExecutor) => Promise<T>): Promise<T> {
     const tx = new BetterSqlite3TransactionExecutor(this.db);
     try {
@@ -47,15 +50,18 @@ class BetterSqlite3TransactionExecutor implements DbExecutor {
 
   private static globalCounter = 0;
 
+  /** Execute a SQL query inside this savepoint. */
   async $queryRawUnsafe<T>(sql: string, ...params: unknown[]): Promise<T> {
     return this.db.prepare(sql).all(...params) as T;
   }
 
+  /** Execute a SQL statement inside this savepoint. */
   async $executeRawUnsafe(sql: string, ...params: unknown[]): Promise<number> {
     const result = this.db.prepare(sql).run(...params);
     return result.changes;
   }
 
+  /** Run nested work inside a child savepoint. */
   async $transaction<T>(work: (tx: DbExecutor) => Promise<T>): Promise<T> {
     const child = new BetterSqlite3TransactionExecutor(this.db);
     try {

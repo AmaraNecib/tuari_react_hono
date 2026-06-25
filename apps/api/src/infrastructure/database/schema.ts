@@ -21,6 +21,7 @@ import {
 // Module-level executor set during initialization
 let _executor: DbExecutor | null = null;
 
+/** Get the initialized database executor (throws if not set). */
 function getExecutor(): DbExecutor {
   if (!_executor) {
     throw new Error("Database executor not initialized. Call ensureDatabaseSchema(db) first.");
@@ -28,24 +29,29 @@ function getExecutor(): DbExecutor {
   return _executor;
 }
 
+/** Check if an error is a duplicate column warning (safe to ignore). */
 function isDuplicateColumnError(error: unknown) {
   return error instanceof Error && error.message.includes("duplicate column name");
 }
 
+/** Check if an error is a missing column warning (safe to ignore). */
 function isMissingColumnError(error: unknown) {
   return error instanceof Error && error.message.includes("no such column")
 }
 
+/** Get column metadata for a table via PRAGMA table_info. */
 async function getTableColumns(tableName: string) {
   return getExecutor().$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info(\"${tableName}\")`);
 }
 
+/** Check if a table has a specific column. */
 async function hasColumn(tableName: string, columnName: string) {
   const columns = await getTableColumns(tableName);
 
   return columns.some((column) => column.name === columnName);
 }
 
+/** Get the CREATE TABLE statement for a table from sqlite_master. */
 async function getTableSql(tableName: string) {
   const [row] = await getExecutor().$queryRawUnsafe<Array<{ sql: string | null }>>(
     'SELECT "sql" FROM "sqlite_master" WHERE "type" = ? AND "name" = ? LIMIT 1',
@@ -56,6 +62,7 @@ async function getTableSql(tableName: string) {
   return row?.sql ?? "";
 }
 
+/** Check if all status CHECK constraints are already applied. */
 async function hasStatusCheckConstraints() {
   const tableSql = await Promise.all(
     companyStatusConstraintChecks.map(async ({ table, fragment }) => ({
@@ -67,6 +74,7 @@ async function hasStatusCheckConstraints() {
   return tableSql.every((entry) => entry.hasFragment);
 }
 
+/** Migrate legacy camelCase timestamp columns to snake_case. */
 async function syncLegacyTimestampColumns() {
   if ((await hasColumn("user", "createdAt")) || (await hasColumn("user", "updatedAt"))) {
     await getExecutor().$executeRawUnsafe(
@@ -96,6 +104,7 @@ async function syncLegacyTimestampColumns() {
   }
 }
 
+/** Create missing inventory project/warehouse indexes. */
 async function ensureInventoryProjectIndexes() {
   if (await hasColumn("inventory_invoice_group", "project_id")) {
     await getExecutor().$executeRawUnsafe(
@@ -147,6 +156,7 @@ async function ensureInventoryProjectIndexes() {
   )
 }
 
+/** Repair legacy auth tables with wrong column naming. */
 async function repairLegacyAuthTables() {
   if ((await hasColumn("account", "created_at")) || (await hasColumn("account", "updated_at"))) {
     await getExecutor().$transaction(async (tx) => {
@@ -280,6 +290,7 @@ async function repairLegacyAuthTables() {
   }
 }
 
+/** Drop obsolete tables and mark migration complete. */
 async function runObsoleteMigrations() {
   const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
@@ -300,6 +311,7 @@ async function runObsoleteMigrations() {
   });
 }
 
+/** Add CHECK constraints on status columns via table recreation. */
 async function runStatusConstraintMigrations() {
   const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
@@ -494,6 +506,7 @@ async function runStatusConstraintMigrations() {
   }
 }
 
+ /** Backfill actor_label from user names for audit records. */
 async function runActorLabelBackfillMigration() {
   const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
@@ -530,6 +543,7 @@ async function runActorLabelBackfillMigration() {
   });
 }
 
+ /** Consolidate duplicate debt accounts per party into single accounts. */
 async function runDebtSingleAccountMigration() {
   const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
@@ -845,6 +859,7 @@ async function runDebtSingleAccountMigration() {
   }
 }
 
+ /** Add OUTBOUND_SALE to inventory movement type CHECK constraint. */
 async function runAddOutboundTransferMigration() {
   const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
@@ -932,6 +947,7 @@ async function runAddOutboundTransferMigration() {
   }
 }
 
+ /** Add ADVANCE to debt entry type CHECK constraint. */
 async function runAddAdvanceDebtEntryMigration() {
   const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
@@ -1007,6 +1023,7 @@ async function runAddAdvanceDebtEntryMigration() {
   }
 }
 
+ /** Add reason_category, currency, status, and void columns to debt_entry. */
 async function runDebtEntryConstraintsMigration() {
   const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
@@ -1103,6 +1120,7 @@ async function runDebtEntryConstraintsMigration() {
   }
 }
 
+ /** Rename *_dzd columns, add invoice-debt linkage columns. */
 async function runInvoiceDebtLinkageMigration() {
   const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
@@ -1218,6 +1236,7 @@ export interface DbExecutor {
 
 export { applyDebtAccountBalanceRename };
 
+/** Rename current_balance_dzd to current_balance on debt_account. */
 async function applyDebtAccountBalanceRename(db: DbExecutor) {
   const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
@@ -1259,6 +1278,7 @@ async function applyDebtAccountBalanceRename(db: DbExecutor) {
   }
 }
 
+ /** Check if a column exists in a table via PRAGMA table_info. */
 async function columnExists(
   db: DbExecutor,
   tableName: string,
@@ -1270,6 +1290,7 @@ async function columnExists(
   return rows.some((column) => column.name === columnName);
 }
 
+ /** Add direction column to invoice table (PURCHASE/SALE). */
 async function runInvoiceDirectionMigration() {
   const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
@@ -1297,6 +1318,7 @@ async function runInvoiceDirectionMigration() {
   );
 }
 
+ /** Apply debt_account balance column rename migration. */
 async function runDebtAccountBalanceRenameMigration() {
   await applyDebtAccountBalanceRename(getExecutor());
 }
@@ -1358,10 +1380,12 @@ export async function applyDebtAccountDirectionMigration(db: DbExecutor): Promis
   });
 }
 
+ /** Add direction column and composite unique index to debt_account. */
 async function runDebtAccountDirectionMigration() {
   await applyDebtAccountDirectionMigration(getExecutor());
 }
 
+ /** Seed or update default roles from role-seeds.ts. */
 async function ensureSeedRoles() {
   for (const role of roleSeeds) {
     const existing = (await getExecutor().$queryRawUnsafe<Array<{ id: string }>>(
@@ -1396,6 +1420,7 @@ async function ensureSeedRoles() {
   }
 }
 
+ /** Seed role-permission mappings from role-seeds.ts. */
 async function ensureSeedRolePermissions() {
   // Get all role IDs (key → UUID mapping)
   const roles = (await getExecutor().$queryRawUnsafe<Array<{ id: string; key: string }>>(

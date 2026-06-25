@@ -43,6 +43,7 @@ export type AccountRepository = {
 class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransaction {
   constructor(private readonly tx: AppDrizzle) {}
 
+  /** Record a user profile change in the audit trail. */
   async createProfileHistory(input: {
     actorLabel: string | null;
     actorUserId: string;
@@ -73,6 +74,7 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
     });
   }
 
+  /** Look up the hashed password for a credential-type account. */
   async findCredentialPasswordByUserId(userId: string) {
     const rows = await this.tx
       .select({ password: account.password })
@@ -83,6 +85,7 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
     return rows[0]?.password ?? null;
   }
 
+  /** Find a user ID by their phone number. */
   async findUserIdByPhoneNumber(phone: string) {
     const rows = await this.tx
       .select({ id: user.id })
@@ -93,6 +96,7 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
     return rows[0]?.id ?? null;
   }
 
+  /** Update a user's name and/or phone number. */
   async updateUserProfile(input: {
     id: string;
     name?: string;
