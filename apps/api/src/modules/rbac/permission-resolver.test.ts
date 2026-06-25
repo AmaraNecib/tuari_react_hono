@@ -64,6 +64,8 @@ describe("SqlitePermissionResolver", () => {
     ]);
 
     const perms = await resolver.getPermissionsForUserId("user-1");
-    expect(perms).toEqual(["employees.create", "employees.read"]);
+    expect(perms).toHaveLength(2);
+    expect(perms).toContain("employees.create");
+    expect(perms).toContain("employees.read");
   });
 });
