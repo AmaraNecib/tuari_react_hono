@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { SqlitePermissionResolver } from "./sqlite-permission-resolver";
+import { SqlitePermissionResolver } from "./permission-resolver";
 import type { Permission } from "../rbac/permissions";
 import { ALL_PERMISSIONS } from "./permissions";
 
 function createMockDb() {
   return {
-    prepare: vi.fn().mockReturnThis(),
+    select: vi.fn().mockReturnThis(),
+    from: vi.fn().mockReturnThis(),
+    innerJoin: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
     all: vi.fn(),
   };
 }
@@ -24,7 +27,7 @@ describe("SqlitePermissionResolver", () => {
   beforeEach(() => {
     db = createMockDb();
     authBootstrap = createMockAuthBootstrap();
-    resolver = new SqlitePermissionResolver(db as any, authBootstrap as any);
+    resolver = new SqlitePermissionResolver({} as any, authBootstrap as any, db as any);
   });
 
   it("returns permissions for a user", async () => {
@@ -50,23 +53,17 @@ describe("SqlitePermissionResolver", () => {
     const perms = await resolver.getPermissionsForUserId("user-1");
     expect(perms).toEqual([...ALL_PERMISSIONS]);
     // Should not query the DB at all
-    expect(db.prepare).not.toHaveBeenCalled();
+    expect(db.select).not.toHaveBeenCalled();
   });
 
-  it("queries with correct SQL for non-owners", async () => {
-    db.all.mockReturnValue([]);
+  it("deduplicates permissions from multiple roles", async () => {
+    db.all.mockReturnValue([
+      { permission: "employees.create" },
+      { permission: "employees.create" },
+      { permission: "employees.read" },
+    ]);
 
-    await resolver.getPermissionsForUserId("user-1");
-
-    expect(db.prepare).toHaveBeenCalledTimes(1);
-    const call = db.prepare.mock.calls[0];
-    expect(call).toBeDefined();
-    const sql = call![0];
-    expect(sql).toContain("role_permission");
-    expect(sql).toContain("employee");
-    expect(sql).toContain("role");
-    expect(sql).toContain("user");
-    expect(sql).toContain("phoneNumber");
-    expect(db.all).toHaveBeenCalledWith("user-1");
+    const perms = await resolver.getPermissionsForUserId("user-1");
+    expect(perms).toEqual(["employees.create", "employees.read"]);
   });
 });

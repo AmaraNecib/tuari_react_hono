@@ -20,11 +20,11 @@ import { InvoiceModule } from "../modules/invoice/invoice.module";
 import { InvoiceRepository } from "../modules/invoice/adapters/invoice.repository";
 import { createPaymentModule } from "../modules/payment/payment.module";
 import { PaymentRepositoryImpl } from "../modules/payment/adapters/payment.repository";
-import { SqlitePermissionResolver } from "../modules/rbac/sqlite-permission-resolver";
+import { SqlitePermissionResolver } from "../modules/rbac/permission-resolver";
 import { SessionService } from "../modules/session/session.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
-import { SqliteEmployeeRepository } from "../modules/workforce/adapters/sqlite-employee.repository";
-import { SqliteRoleRepository } from "../modules/workforce/adapters/sqlite-role.repository";
+import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
+import { SqliteRoleRepository } from "../modules/workforce/adapters/role.repository";
 import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice-debt.port";
 import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 

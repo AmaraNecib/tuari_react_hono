@@ -9,8 +9,8 @@ import { FinanceService } from "../modules/company/finance.service";
 import { createRouter } from "./router";
 import type { RpcContext } from "./context";
 import { EmployeeModule } from "../modules/workforce/employee.module";
-import { SqliteEmployeeRepository } from "../modules/workforce/adapters/sqlite-employee.repository";
-import { SqliteRoleRepository } from "../modules/workforce/adapters/sqlite-role.repository";
+import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
+import { SqliteRoleRepository } from "../modules/workforce/adapters/role.repository";
 
 function expectSuccess<T extends { success: boolean }>(result: T): Extract<T, { success: true }> {
   expect(result.success).toBe(true);
