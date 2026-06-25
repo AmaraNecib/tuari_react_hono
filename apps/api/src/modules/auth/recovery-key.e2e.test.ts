@@ -1,8 +1,8 @@
 /**
- * End-to-end test: SQLCipher encryption + recovery key lifecycle.
+ * End-to-end test: Recovery key lifecycle.
  *
- * Flow: create DB → encrypt → set password → generate recovery keys →
- * revoke one → use one → change password → verify recovery keys survive.
+ * Covers: generate → revoke → use → verify masked keys never leak plain text.
+ * Password change is simulated (recovery keys are app-layer, independent of DB key).
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { mkdtempSync, rmSync } from "node:fs"
@@ -35,7 +35,7 @@ function createTestEnv() {
   }
 }
 
-describe("End-to-end: SQLCipher encryption + recovery key lifecycle", () => {
+describe("End-to-end: recovery key lifecycle", () => {
   let env: ReturnType<typeof createTestEnv>
 
   beforeEach(() => {
@@ -128,11 +128,13 @@ describe("End-to-end: SQLCipher encryption + recovery key lifecycle", () => {
     const keys = env.service.generateKeys()
     const status = env.service.getPoolStatus()
 
-    // Plain text keys are not in the database
+    // Plain text keys are never in the database — verify against ALL generated keys
+    const allKeyStrings = keys.map((k) => k.key)
     for (const mk of status.maskedKeys) {
       expect(mk.prefix).toHaveLength(4)
-      // No full key in the status
-      expect(JSON.stringify(mk)).not.toContain(keys[0]!.key)
+      for (const plainKey of allKeyStrings) {
+        expect(JSON.stringify(mk)).not.toContain(plainKey)
+      }
     }
 
     // Only prefix is stored
