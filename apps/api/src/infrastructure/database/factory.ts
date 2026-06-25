@@ -15,10 +15,9 @@ type BetterSqliteDatabase = any
 /**
  * Create a database connection using better-sqlite3-sqlcipher.
  *
- * The connection is keyed immediately (if dbKey is provided) so every
- * caller receives an encrypted-ready handle. If no key is provided the
- * database is opened in plaintext mode (backwards compatibility during
- * migration or in development).
+ * If `dbKey` is provided it is used directly. Otherwise the factory
+ * reads `APP_DB_KEY` from the environment (via `resolveDatabaseEnv`)
+ * so every caller gets encrypted initialization automatically.
  *
  * better-sqlite3-sqlcipher is API-compatible with better-sqlite3 but
  * has different TypeScript types. We cast at this boundary so downstream
@@ -33,8 +32,11 @@ export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDat
   // Create connection and key it immediately
   const sqlite = new SqlCipherDatabase(databasePath)
 
-  if (dbKey) {
-    sqlite.pragma(`key = '${dbKey.replace(/'/g, "''")}'`)
+  // Resolve encryption key: explicit parameter > environment variable
+  const resolvedKey = dbKey ?? process.env.APP_DB_KEY ?? null
+
+  if (resolvedKey) {
+    sqlite.pragma(`key = '${resolvedKey.replace(/'/g, "''")}'`)
     sqlite.pragma("cipher_compatibility = 4")
   }
 

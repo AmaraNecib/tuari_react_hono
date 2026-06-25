@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3-sqlcipher";
 
 import { env } from "../infrastructure/config/runtime-env";
-import { auth } from "../infrastructure/auth/auth";
+import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
 import type { AppDrizzle } from "../infrastructure/database/drizzle";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
@@ -37,9 +37,11 @@ import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice
 export async function createAppDependencies(
   sqlite?: Database.Database,
   drizzleDb?: AppDrizzle,
+  authInstance?: BetterAuthInstance,
 ) {
   const sharedDatabase = sqlite ?? createDatabaseConnection();
   const db = drizzleDb ?? createDrizzleFromSqlite(sharedDatabase);
+  const auth = authInstance ?? (await import("../infrastructure/auth/auth")).createAuth(db);
 
   const companyRepository = createCompanyRepository(sharedDatabase);
   const inventoryRepository = createInventoryRepository(sharedDatabase);

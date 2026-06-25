@@ -74,6 +74,7 @@ class BetterSqlite3TransactionExecutor implements DbExecutor {
   rollback() {
     try {
       this.db.exec(`ROLLBACK TO SAVEPOINT ${this.savepointName}`);
+      this.db.exec(`RELEASE SAVEPOINT ${this.savepointName}`);
     } catch {
       // Savepoint may already be released/rolled back
     }

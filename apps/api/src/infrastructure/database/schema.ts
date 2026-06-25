@@ -1428,10 +1428,8 @@ async function ensureSeedRolePermissions() {
   }
 }
 
-export async function ensureDatabaseSchema(db?: DbExecutor): Promise<void> {
-  if (db) {
-    _executor = db;
-  }
+export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
+  _executor = db;
   const executor = getExecutor();
 
   await executor.$executeRawUnsafe("PRAGMA foreign_keys = ON");

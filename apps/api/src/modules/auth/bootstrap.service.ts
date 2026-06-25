@@ -5,9 +5,7 @@ import type { AuthBootstrapInput, SessionUser } from "@tuari/contracts";
 
 import type { AppDrizzle } from "../../infrastructure/database/drizzle";
 import { user, account, appBootstrapState } from "../../schema";
-import type { auth } from "../../infrastructure/auth/auth";
-
-type BetterAuthInstance = typeof auth;
+import type { BetterAuthInstance } from "../../infrastructure/auth/auth";
 
 type AuthSetupStatus = {
   hasUsers: boolean;
@@ -33,7 +31,7 @@ const BOOTSTRAP_CONFLICT_MESSAGE = "تم إعداد الحساب الأول با
 const BOOTSTRAP_SECRET_MESSAGE = "رمز الإعداد الأول غير صحيح.";
 
 function isUniqueConstraintError(error: unknown) {
-  return error instanceof Error && /unique|constraint/i.test(error.message);
+  return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
 }
 
 /**
