@@ -23,7 +23,7 @@ function createTestEnv() {
     rawDb.exec(stmt)
   }
   const db = drizzle(rawDb as any, { schema })
-  const service = new RecoveryKeyService(db, rawDb)
+  const service = new RecoveryKeyService(db, rawDb as any)
   return {
     service,
     teardown: () => {

@@ -81,6 +81,7 @@ export async function createAppDependencies(
     ),
     sessionService: new SessionService(auth, permissionResolver),
     recoveryKeyService,
+    rawDatabase: sharedDatabase,
     employeeModule,
     invoiceModule,
     paymentModule,

@@ -23,6 +23,10 @@ import { createReportsHandlers } from "./handlers/reports";
 import { createInvoiceHandlers } from "./handlers/invoice";
 import { createPaymentHandlers } from "./handlers/payment";
 
+import type { RecoveryKeyService } from "../modules/auth/recovery-key.service";
+
+import type Database from "better-sqlite3-sqlcipher";
+
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
   companyService: CompanyService;
@@ -33,6 +37,8 @@ type RouterDependencies = {
   employeeModule: EmployeeModule;
   invoiceModule: InvoiceModule;
   paymentModule: PaymentModule;
+  recoveryKeyService: RecoveryKeyService;
+  rawDatabase: Database.Database;
 };
 
 export function createRouter(dependencies: RouterDependencies) {
@@ -59,7 +65,7 @@ export function createRouter(dependencies: RouterDependencies) {
 
   const allHandlers = Object.assign(
     baseHandlers,
-    createSystemHandlers(os, m, dependencies.companyService),
+    createSystemHandlers(os, m, dependencies.companyService, dependencies.recoveryKeyService, dependencies.rawDatabase),
     createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
     createOperationsHandlers(os, m, dependencies.operationsService),
     createFinanceHandlers(os, m, dependencies.financeService),

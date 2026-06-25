@@ -14,6 +14,7 @@
 import { createHash, randomBytes } from "node:crypto"
 import { eq, and, sql } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
+import type Database from "better-sqlite3-sqlcipher"
 import * as schema from "../../schema"
 import { createAlgeriaTimestamp } from "../company/company-time"
 
@@ -99,8 +100,7 @@ function hashRecoveryKey(key: string): string {
 export class RecoveryKeyService {
   constructor(
     private readonly db: BetterSQLite3Database<any>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private readonly raw: any,
+    private readonly raw: Database.Database,
   ) {}
 
   /** Count of available keys in the pool. */
