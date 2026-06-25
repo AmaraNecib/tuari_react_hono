@@ -30,6 +30,16 @@ const createDependencies = () => ({
   sessionService: {
     getCurrentUser: vi.fn(),
   },
+  recoveryKeyService: {
+    getPoolStatus: vi.fn().mockReturnValue({ availableCount: 0, totalCount: 0, maxPoolSize: 5, maskedKeys: [] }),
+    generateKeys: vi.fn().mockReturnValue([]),
+    consumeKey: vi.fn().mockReturnValue(false),
+    revokeKey: vi.fn().mockReturnValue(false),
+  },
+  rawDatabase: {
+    pragma: vi.fn(),
+    prepare: vi.fn().mockReturnValue({ get: vi.fn() }),
+  } as any,
 });
 
 describe("createApp RPC wiring", () => {
