@@ -920,8 +920,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
 // ---------------------------------------------------------------------------
 
 /**
- * Create a Drizzle-backed CompanyRepository.
- * Accepts a raw SQLite handle or a path string (for backwards compat).
+ * Create a CompanyRepository from a raw SQLite handle.
  */
 /** Create a CompanyRepository from a raw SQLite handle. */
 export function createCompanyRepository(
