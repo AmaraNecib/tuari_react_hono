@@ -8,7 +8,7 @@
  * Architecture: Drizzle queries + raw better-sqlite3 handle for transactions
  * (same pattern as CompanyRepository).
  */
-import { eq, and, asc, desc, sql } from "drizzle-orm"
+import { eq, and, asc, desc, sql, inArray } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import type Database from "better-sqlite3"
 import * as schema from "../../schema"
@@ -178,7 +178,7 @@ function mapOutboundTransfer(row: Record<string, unknown>): InventoryOutboundTra
     fromId: String(row.fromId),
     counterpartyId: String(row.counterpartyId),
     transferType: row.transferType as InventoryOutboundTransferRecord["transferType"],
-    status: "COMPLETED" as const,
+    status: (row.status as InventoryOutboundTransferRecord["status"]) ?? "COMPLETED" as const,
     associatedDebtAccountId: row.associatedDebtAccountId != null ? String(row.associatedDebtAccountId) : null,
     notes: row.notes != null ? String(row.notes) : null,
     createdAt: String(row.createdAt),
@@ -399,7 +399,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   listEntriesByInvoiceGroupId(invoiceGroupId: string) {
     const assetRows = this.db.select().from(schema.inventoryAssetUnit)
-      .where(eq(schema.inventoryAssetUnit.inventoryEntryId, sql`(SELECT id FROM inventory_entry WHERE invoice_group_id = ${invoiceGroupId})`))
+      .where(inArray(schema.inventoryAssetUnit.inventoryEntryId, sql`(SELECT id FROM inventory_entry WHERE invoice_group_id = ${invoiceGroupId})`))
       .orderBy(asc(schema.inventoryAssetUnit.createdAt)).all()
     const assetsByEntryId = new Map<string, InventoryAssetUnitRecord[]>()
     for (const row of assetRows) {
@@ -532,9 +532,18 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   }
 
   getConsumableBalanceByEntryAndLocation(filters: { inventoryEntryId: string; warehouseId?: string | null; projectId?: string | null }) {
-    const locationClause = filters.warehouseId
-      ? "b.warehouse_id = ? AND b.project_id IS NULL"
-      : "b.project_id = ? AND b.warehouse_id IS NULL"
+    let locationClause: string
+    let locationParam: string | null
+    if (filters.warehouseId) {
+      locationClause = "b.warehouse_id = ? AND b.project_id IS NULL"
+      locationParam = filters.warehouseId
+    } else if (filters.projectId) {
+      locationClause = "b.project_id = ? AND b.warehouse_id IS NULL"
+      locationParam = filters.projectId
+    } else {
+      locationClause = "b.warehouse_id IS NULL AND b.project_id IS NULL"
+      locationParam = null
+    }
     const row = this.raw.prepare(`
       SELECT b.*, e.item_name AS item_name,
         COALESCE('المستودع: ' || w.name, 'المشروع: ' || p.name, 'غير محدد') AS location_label
@@ -543,7 +552,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       LEFT JOIN warehouse w ON w.id = b.warehouse_id
       LEFT JOIN project p ON p.id = b.project_id
       WHERE b.inventory_entry_id = ? AND ${locationClause} LIMIT 1
-    `).get(filters.inventoryEntryId, filters.warehouseId ?? filters.projectId ?? "") as Record<string, unknown> | undefined
+    `).get(filters.inventoryEntryId, locationParam) as Record<string, unknown> | undefined
     return row ? mapConsumableBalance(row) : null
   }
 
@@ -578,7 +587,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   listMovementsByInvoiceGroupId(invoiceGroupId: string) {
     return this.db.select().from(schema.inventoryMovement)
-      .where(eq(schema.inventoryMovement.inventoryEntryId, sql`(SELECT id FROM inventory_entry WHERE invoice_group_id = ${invoiceGroupId})`))
+      .where(inArray(schema.inventoryMovement.inventoryEntryId, sql`(SELECT id FROM inventory_entry WHERE invoice_group_id = ${invoiceGroupId})`))
       .orderBy(desc(schema.inventoryMovement.occurredAt), desc(schema.inventoryMovement.createdAt))
       .all().map(mapMovement)
   }
