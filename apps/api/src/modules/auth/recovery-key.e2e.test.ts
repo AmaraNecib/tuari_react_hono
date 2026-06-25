@@ -14,6 +14,7 @@ import { schemaStatements } from "../../infrastructure/database/schema-definitio
 import * as schema from "../../schema"
 import { RecoveryKeyService } from "./recovery-key.service"
 
+/** Create a test environment with file-based SQLite and RecoveryKeyService. */
 function createTestEnv() {
   const dbDir = mkdtempSync(join(tmpdir(), "e2e-encryption-test-"))
   const dbPath = join(dbDir, "test.sqlite")
