@@ -26,6 +26,7 @@ import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/sqlite-employee.repository";
 import { SqliteRoleRepository } from "../modules/workforce/adapters/sqlite-role.repository";
 import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice-debt.port";
+import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 
 /**
  * Create all application dependencies.
@@ -62,6 +63,7 @@ export async function createAppDependencies(
   const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
   const authBootstrapService = new AuthBootstrapService(db, auth, env.bootstrapSetupKey);
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
+  const recoveryKeyService = new RecoveryKeyService(db, sharedDatabase);
 
   return {
     auth,
@@ -78,6 +80,7 @@ export async function createAppDependencies(
       companyRepository,
     ),
     sessionService: new SessionService(auth, permissionResolver),
+    recoveryKeyService,
     employeeModule,
     invoiceModule,
     paymentModule,
