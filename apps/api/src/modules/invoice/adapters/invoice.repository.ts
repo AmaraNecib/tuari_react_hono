@@ -26,27 +26,27 @@ const SORT_COLUMN_MAP: Record<InvoiceListSortField, string> = {
   totalAmount: "total_amount",
 };
 
-/** Map a raw Drizzle row to Invoice. */
+/** Map a raw row to Invoice. Handles both Drizzle camelCase and raw SQL snake_case. */
 function mapInvoice(row: Record<string, unknown>): Invoice {
   return {
     id: String(row.id),
-    invoiceNumber: row.invoiceNumber != null ? String(row.invoiceNumber) : null,
-    supplierName: String(row.supplierName),
-    supplierPhone: row.supplierPhone != null ? String(row.supplierPhone) : null,
-    warehouseId: row.warehouseId != null ? String(row.warehouseId) : null,
-    projectId: row.projectId != null ? String(row.projectId) : null,
-    status: row.status as Invoice["status"],
-    invoiceDate: row.invoiceDate != null ? String(row.invoiceDate) : null,
-    dueDate: row.dueDate != null ? String(row.dueDate) : null,
-    currency: (row.currency as InvoiceCurrency) ?? "DZD",
-    totalAmount: Number(row.totalAmount ?? 0),
-    paidAmount: Number(row.paidAmount ?? 0),
-    remainingAmount: Number(row.remainingAmount ?? 0),
+    invoiceNumber: (row.invoiceNumber ?? row.invoice_number) != null ? String(row.invoiceNumber ?? row.invoice_number) : null,
+    supplierName: String(row.supplierName ?? row.supplier_name),
+    supplierPhone: (row.supplierPhone ?? row.supplier_phone) != null ? String(row.supplierPhone ?? row.supplier_phone) : null,
+    warehouseId: (row.warehouseId ?? row.warehouse_id) != null ? String(row.warehouseId ?? row.warehouse_id) : null,
+    projectId: (row.projectId ?? row.project_id) != null ? String(row.projectId ?? row.project_id) : null,
+    status: (row.status as Invoice["status"]) ?? "DRAFT",
+    invoiceDate: (row.invoiceDate ?? row.invoice_date) != null ? String(row.invoiceDate ?? row.invoice_date) : null,
+    dueDate: (row.dueDate ?? row.due_date) != null ? String(row.dueDate ?? row.due_date) : null,
+    currency: ((row.currency as InvoiceCurrency) ?? "DZD") as InvoiceCurrency,
+    totalAmount: Number(row.totalAmount ?? row.total_amount ?? 0),
+    paidAmount: Number(row.paidAmount ?? row.paid_amount ?? 0),
+    remainingAmount: Number(row.remainingAmount ?? row.remaining_amount ?? 0),
     notes: row.notes != null ? String(row.notes) : null,
-    debtAccountId: row.debtAccountId != null ? String(row.debtAccountId) : null,
-    direction: (row.direction as InvoiceDirection) ?? "PURCHASE",
-    createdAt: String(row.createdAt),
-    updatedAt: String(row.updatedAt),
+    debtAccountId: (row.debtAccountId ?? row.debt_account_id) != null ? String(row.debtAccountId ?? row.debt_account_id) : null,
+    direction: ((row.direction as InvoiceDirection) ?? "PURCHASE") as InvoiceDirection,
+    createdAt: String(row.createdAt ?? row.created_at),
+    updatedAt: String(row.updatedAt ?? row.updated_at),
     lineItems: [],
   };
 }
@@ -87,7 +87,7 @@ export class InvoiceRepository implements IInvoiceRepository {
   async findById(id: string): Promise<(Invoice & { lineItems: InvoiceLineItem[] }) | null> {
     const row = this.db.select().from(schema.invoice)
       .where(eq(schema.invoice.id, id))
-      .limit(1).all()[0];
+      .limit(1).all()[0] as Record<string, unknown> | undefined;
     if (!row) return null;
 
     const lineItemRows = this.db.select().from(schema.invoiceLineItem)
@@ -296,6 +296,9 @@ export class InvoiceRepository implements IInvoiceRepository {
   async count(filters?: InvoiceListFilters): Promise<number> {
     const conditions: ReturnType<typeof eq>[] = [];
     if (filters?.status) conditions.push(eq(schema.invoice.status, filters.status));
+    if (filters?.supplierName) conditions.push(sql`${schema.invoice.supplierName} LIKE ${"%" + filters.supplierName + "%"}`);
+    if (filters?.warehouseId) conditions.push(eq(schema.invoice.warehouseId, filters.warehouseId));
+    if (filters?.projectId) conditions.push(eq(schema.invoice.projectId, filters.projectId));
     const q = this.db.select({ value: sql<number>`count(*)` }).from(schema.invoice);
     const result = (conditions.length > 0 ? q.where(and(...conditions)) : q).all();
     return result[0]?.value ?? 0;
@@ -303,6 +306,9 @@ export class InvoiceRepository implements IInvoiceRepository {
 
   /** Execute a function within a serialized transaction. */
   async runInTransaction<T>(fn: () => Promise<T>): Promise<T> {
+    // Serial mutex: better-sqlite3 has a single connection and BEGIN
+    // cannot be issued while another transaction is open. Queue every
+    // transaction through a single promise chain so they execute one at a time.
     const next = this.transactionChain.then(async () => {
       this.raw.exec("BEGIN");
       try {
