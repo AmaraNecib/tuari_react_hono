@@ -98,6 +98,11 @@ function hashRecoveryKey(key: string): string {
  * Keys are one-time-use app-layer credentials that authorize password resets.
  */
 export class RecoveryKeyService {
+  /**
+   * Create a RecoveryKeyService.
+   * @param db - Drizzle database instance for queries
+   * @param raw - Raw SQLite handle for transactions
+   */
   constructor(
     private readonly db: BetterSQLite3Database<any>,
     private readonly raw: Database.Database,

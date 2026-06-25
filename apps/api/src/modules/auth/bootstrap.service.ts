@@ -43,6 +43,7 @@ function isUniqueConstraintError(error: unknown) {
 export class AuthBootstrapService {
   constructor(
     private readonly db: AppDrizzle,
+    private readonly raw: { exec: (sql: string) => void },
     private readonly authInstance: BetterAuthInstance,
     private readonly bootstrapSetupKey: string | null,
   ) {}
@@ -72,51 +73,62 @@ export class AuthBootstrapService {
     const passwordHash = await context.password.hash(input.password);
 
     try {
-      return await this.db.transaction(async (tx) => {
-        if (await this.hasConfiguredUsersTx(tx as unknown as AppDrizzle)) {
-          return this.toConflictResult();
-        }
+      // Use raw SQLite transaction — Drizzle's db.transaction() doesn't
+      // support async callbacks with better-sqlite3. Use BEGIN IMMEDIATE
+      // to acquire the write lock before any checks.
+      let result: BootstrapResult | undefined;
+      this.raw.exec("BEGIN IMMEDIATE");
+      try {
+        if (await this.hasConfiguredUsersTx(this.db)) {
+          result = this.toConflictResult();
+        } else {
+          const timestamp = new Date().toISOString();
+          const userId = crypto.randomUUID();
 
-        const timestamp = new Date().toISOString();
-        const userId = crypto.randomUUID();
+          this.db
+            .insert(appBootstrapState)
+            .values({
+              singleton: 1,
+              createdAt: timestamp,
+              userId,
+            })
+            .run();
 
-        await tx
-          .insert(appBootstrapState)
-          .values({
-            singleton: 1,
-            createdAt: timestamp,
-            userId,
-          });
-
-        await tx.insert(user).values({
-          id: userId,
-          name: input.name.trim(),
-          phoneNumber: input.phone,
-          phoneNumberVerified: true,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
-
-        await tx.insert(account).values({
-          id: crypto.randomUUID(),
-          accountId: userId,
-          providerId: "credential",
-          userId,
-          password: passwordHash,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
-
-        return {
-          success: true,
-          message: "تم إنشاء أول مستخدم بنجاح.",
-          item: {
+          this.db.insert(user).values({
             id: userId,
             name: input.name.trim(),
-            phone: input.phone,
-          },
-        } satisfies BootstrapResult;
-      });
+            phoneNumber: input.phone,
+            phoneNumberVerified: true,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }).run();
+
+          this.db.insert(account).values({
+            id: crypto.randomUUID(),
+            accountId: userId,
+            providerId: "credential",
+            userId,
+            password: passwordHash,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }).run();
+
+          result = {
+            success: true,
+            message: "تم إنشاء أول مستخدم بنجاح.",
+            item: {
+              id: userId,
+              name: input.name.trim(),
+              phone: input.phone,
+            },
+          } satisfies BootstrapResult;
+        }
+        this.raw.exec("COMMIT");
+        return result!;
+      } catch (err) {
+        this.raw.exec("ROLLBACK");
+        throw err;
+      }
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         return this.toConflictResult();
