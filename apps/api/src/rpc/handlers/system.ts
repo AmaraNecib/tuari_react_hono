@@ -64,10 +64,10 @@ export function createSystemHandlers(
 
     changeDbEncryptionKey: os.changeDbEncryptionKey.handler(m.mutationAudit(
       ({ input, auditContext }: any) => {
-        // Verify current key works by attempting a read
+        // Verify current key works by reading actual data (touches encrypted pages)
         try {
           rawDatabase.pragma(`key = '${input.currentKey.replace(/'/g, "''")}'`);
-          rawDatabase.prepare("SELECT 1").get();
+          rawDatabase.prepare("SELECT COUNT(*) FROM sqlite_master").get();
         } catch {
           return { success: false, error: "Current encryption key is invalid" };
         }

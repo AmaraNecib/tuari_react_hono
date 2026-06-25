@@ -9,6 +9,7 @@ import {
   consumeRecoveryKeyInputSchema,
   revokeRecoveryKeyInputSchema,
   changeDbKeyInputSchema,
+  changeDbKeyOutputSchema,
 } from "./security"
 
 export const systemContract = {
@@ -27,7 +28,7 @@ export const systemContract = {
     .output(z.object({ success: z.boolean() })),
   changeDbEncryptionKey: oc
     .input(changeDbKeyInputSchema)
-    .output(z.object({ success: z.boolean() })),
+    .output(changeDbKeyOutputSchema),
 } as const
 
 export type SystemContract = typeof systemContract

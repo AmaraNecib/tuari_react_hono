@@ -15,9 +15,9 @@ export const maskedRecoveryKeySchema = z.object({
 
 /** Recovery key pool status returned by the Settings UI. */
 export const recoveryKeyPoolStatusSchema = z.object({
-  availableCount: z.number(),
-  totalCount: z.number(),
-  maxPoolSize: z.number(),
+  availableCount: z.number().int().nonnegative(),
+  totalCount: z.number().int().nonnegative(),
+  maxPoolSize: z.number().int().positive(),
   maskedKeys: z.array(maskedRecoveryKeySchema),
 })
 
@@ -44,6 +44,12 @@ export const revokeRecoveryKeyInputSchema = z.object({
 export const changeDbKeyInputSchema = z.object({
   currentKey: z.string().min(1),
   newKey: z.string().min(8),
+})
+
+/** Output for DB key change result. */
+export const changeDbKeyOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
 })
 
 /** Input for changing the app password. */
