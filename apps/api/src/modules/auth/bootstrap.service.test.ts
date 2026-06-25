@@ -19,7 +19,7 @@ function createDrizzleMock() {
   const db = {
     select: vi.fn(() => createChainable()),
     insert: vi.fn(() => ({
-      values: vi.fn().mockResolvedValue(undefined),
+      values: vi.fn().mockReturnValue({ run: vi.fn().mockReturnValue(undefined) }),
     })),
     update: vi.fn(() => ({
       set: vi.fn().mockReturnThis(),
@@ -57,7 +57,7 @@ describe("AuthBootstrapService", () => {
   })
 
   it("reports whether configured phone users already exist", async () => {
-    const service = new AuthBootstrapService(db as never, authInstance as never, null)
+    const service = new AuthBootstrapService(db as never, { exec: vi.fn() } as never, authInstance as never, null)
 
     // No users initially
     db._setSelectResults([{ count: 0 }], [{ count: 0 }])
@@ -71,7 +71,7 @@ describe("AuthBootstrapService", () => {
   })
 
   it("creates the first auth user with phone credentials inside a transaction", async () => {
-    const service = new AuthBootstrapService(db as never, authInstance as never, null)
+    const service = new AuthBootstrapService(db as never, { exec: vi.fn() } as never, authInstance as never, null)
 
     db.transaction.mockImplementationOnce(async (callback: (tx: ReturnType<typeof createDrizzleMock>) => Promise<unknown>) => {
       const tx = createDrizzleMock()
@@ -95,13 +95,10 @@ describe("AuthBootstrapService", () => {
   })
 
   it("refuses bootstrap after the system is already configured", async () => {
-    const service = new AuthBootstrapService(db as never, authInstance as never, null)
+    const service = new AuthBootstrapService(db as never, { exec: vi.fn() } as never, authInstance as never, null)
 
-    db.transaction.mockImplementationOnce(async (callback: (tx: ReturnType<typeof createDrizzleMock>) => Promise<unknown>) => {
-      const tx = createDrizzleMock()
-      tx._setSelectResults([{ count: 1 }], [{ count: 0 }])
-      return callback(tx)
-    })
+    // hasConfiguredUsersTx calls db.select() — return count > 0 to indicate users exist
+    db._setSelectResults([{ count: 1 }])
 
     await expect(
       service.bootstrapFirstUser({
@@ -113,16 +110,22 @@ describe("AuthBootstrapService", () => {
   })
 
   it("returns a conflict when the bootstrap lock is already taken concurrently", async () => {
-    const service = new AuthBootstrapService(db as never, authInstance as never, null)
+    const service = new AuthBootstrapService(db as never, { exec: vi.fn() } as never, authInstance as never, null)
 
-    db.transaction.mockImplementationOnce(async (callback: (tx: ReturnType<typeof createDrizzleMock>) => Promise<unknown>) => {
-      const tx = createDrizzleMock()
-      tx._setSelectResults([{ count: 0 }], [{ count: 0 }])
-      tx.insert.mockReturnValueOnce({
-        values: vi.fn().mockRejectedValue(new Error("UNIQUE constraint failed")),
-      } as never)
-      return callback(tx)
-    })
+    // First select (getSetupStatus) returns 0 users, second select (inside bootstrap) returns 1
+    let callCount = 0
+    db.select = vi.fn(() => {
+      callCount++
+      if (callCount === 1) return createChainable([{ count: 0 }])
+      return createChainable([{ count: 1 }])
+    }) as typeof db.select
+
+    // Insert will fail with UNIQUE constraint
+    db.insert = vi.fn(() => ({
+      values: vi.fn().mockReturnValue({ run: vi.fn().mockImplementation(() => {
+        throw new Error("UNIQUE constraint failed")
+      }) }),
+    })) as typeof db.insert
 
     await expect(
       service.bootstrapFirstUser({
@@ -134,7 +137,7 @@ describe("AuthBootstrapService", () => {
   })
 
   it("requires the optional bootstrap setup key when configured", async () => {
-    const service = new AuthBootstrapService(db as never, authInstance as never, "setup-secret")
+    const service = new AuthBootstrapService(db as never, { exec: vi.fn() } as never, authInstance as never, "setup-secret")
 
     await expect(
       service.bootstrapFirstUser({

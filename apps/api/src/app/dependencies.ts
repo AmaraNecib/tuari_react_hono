@@ -61,7 +61,7 @@ export async function createAppDependencies(
   const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
   const paymentRepository = new PaymentRepositoryImpl(sharedDatabase);
   const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
-  const authBootstrapService = new AuthBootstrapService(db, auth, env.bootstrapSetupKey);
+  const authBootstrapService = new AuthBootstrapService(db, sharedDatabase, auth, env.bootstrapSetupKey);
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
   const recoveryKeyService = new RecoveryKeyService(db, sharedDatabase);
 
