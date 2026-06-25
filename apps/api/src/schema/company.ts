@@ -261,7 +261,7 @@ export const debtEntry = sqliteTable("debt_entry", {
   invoiceId: text("invoice_id"),
   entryType: text("entry_type").notNull(),
   currency: text("currency").notNull().default("DZD"),
-  signedAmount: real("signed_amount_dzd").notNull(),
+  signedAmount: real("signed_amount").notNull(),
   entryDate: text("entry_date").notNull(),
   note: text("note"),
   balanceAfter: real("balance_after").notNull(),

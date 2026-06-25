@@ -179,6 +179,7 @@ export class AuthBootstrapService {
     return (userCount[0]?.count ?? 0) > 0 || (stateCount[0]?.count ?? 0) > 0;
   }
 
+  /** Build a conflict result for bootstrap errors. */
   private toConflictResult(): BootstrapResult {
     return {
       success: false,
