@@ -81,7 +81,7 @@ describe("PaymentModule", () => {
         createdAt: "2026-06-01T00:00:00.000Z",
         updatedAt: "2026-06-01T00:00:00.000Z",
         lineItems: [
-          { id: "li-1", invoiceId: "inv-1", description: "Cement", quantity: 10, unitPrice: 500, total: 5000 },
+          { id: "li-1", description: "Cement", quantity: 10, unitPrice: 500, total: 5000 },
         ],
       });
 
