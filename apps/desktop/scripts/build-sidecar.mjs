@@ -81,6 +81,14 @@ const betterSqlite3PackageJson = copyPackage("better-sqlite3");
 const bindingsPackageJson = copyPackage("bindings", betterSqlite3PackageJson);
 copyPackage("file-uri-to-path", bindingsPackageJson);
 
+// Also copy better-sqlite3-sqlcipher for SQLCipher support
+try {
+  const sqlcipherPackageJson = copyPackage("better-sqlite3-sqlcipher");
+  console.log(`Copied better-sqlite3-sqlcipher`);
+} catch {
+  console.warn(`Warning: better-sqlite3-sqlcipher not found, skipping`);
+}
+
 writeFileSync(
   path.resolve(runtimeDir, "package.json"),
   JSON.stringify(
