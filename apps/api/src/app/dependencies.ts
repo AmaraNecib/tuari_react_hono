@@ -1,8 +1,11 @@
+import type Database from "better-sqlite3-sqlcipher";
+
 import { env } from "../infrastructure/config/runtime-env";
-import { auth } from "../infrastructure/auth/auth";
+import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
-import { prisma } from "../infrastructure/database/prisma";
-import { PrismaAccountRepository } from "../modules/account/account.repository";
+import type { AppDrizzle } from "../infrastructure/database/drizzle";
+import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
+import { DrizzleAccountRepository } from "../modules/account/account.repository";
 import { AccountService } from "../modules/account/account.service";
 import { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import { createCompanyRepository } from "../modules/company/company.repository";
@@ -24,12 +27,26 @@ import { SqliteEmployeeRepository } from "../modules/workforce/adapters/sqlite-e
 import { SqliteRoleRepository } from "../modules/workforce/adapters/sqlite-role.repository";
 import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice-debt.port";
 
-export async function createAppDependencies() {
-  const sharedDatabase = await createDatabaseConnection();
+/**
+ * Create all application dependencies.
+ *
+ * @param sqlite - Shared SQLite handle (caller is responsible for lifecycle).
+ *                 If omitted, a new connection is created (backwards compat).
+ * @param drizzleDb - Pre-built Drizzle instance. If omitted, created from sqlite.
+ */
+/** Wire all application dependencies from a shared SQLite connection. */
+export async function createAppDependencies(
+  sqlite?: Database.Database,
+  drizzleDb?: AppDrizzle,
+  authInstance?: BetterAuthInstance,
+) {
+  const sharedDatabase = sqlite ?? createDatabaseConnection();
+  const db = drizzleDb ?? createDrizzleFromSqlite(sharedDatabase);
+  const auth = authInstance ?? (await import("../infrastructure/auth/auth")).createAuth(db);
 
   const companyRepository = createCompanyRepository(sharedDatabase);
   const inventoryRepository = createInventoryRepository(sharedDatabase);
-  const accountRepository = new PrismaAccountRepository(prisma);
+  const accountRepository = new DrizzleAccountRepository(db);
   const companyService = new CompanyService(companyRepository, companyRepository);
 
   const employeeRepository = new SqliteEmployeeRepository(companyRepository);
@@ -43,7 +60,7 @@ export async function createAppDependencies() {
   const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
   const paymentRepository = new SqlitePaymentRepository(sharedDatabase);
   const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
-  const authBootstrapService = new AuthBootstrapService(prisma, auth, env.bootstrapSetupKey);
+  const authBootstrapService = new AuthBootstrapService(db, auth, env.bootstrapSetupKey);
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
 
   return {
@@ -67,4 +84,5 @@ export async function createAppDependencies() {
   } as const;
 }
 
+/** All resolved application dependencies, created once at startup. */
 export type AppDependencies = Awaited<ReturnType<typeof createAppDependencies>>;

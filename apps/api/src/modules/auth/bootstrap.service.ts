@@ -1,70 +1,61 @@
-import crypto from "node:crypto"
+import crypto from "node:crypto";
 
-import type { AuthBootstrapInput, SessionUser } from "@tuari/contracts"
-import type { PrismaClient } from "@prisma/client"
+import { eq, count, sql } from "drizzle-orm";
+import type { AuthBootstrapInput, SessionUser } from "@tuari/contracts";
 
-import type { auth } from "../../infrastructure/auth/auth"
-
-type BetterAuthInstance = typeof auth
+import type { AppDrizzle } from "../../infrastructure/database/drizzle";
+import { user, account, appBootstrapState } from "../../schema";
+import type { BetterAuthInstance } from "../../infrastructure/auth/auth";
 
 type AuthSetupStatus = {
-  hasUsers: boolean
-  requiresSetupKey: boolean
-}
+  hasUsers: boolean;
+  requiresSetupKey: boolean;
+};
 
 type BootstrapResult =
   | {
-      success: true
-      message: string
-      item: SessionUser
+      success: true;
+      message: string;
+      item: SessionUser;
     }
   | {
-      success: false
+      success: false;
       error: {
-        code: "CONFLICT" | "UNAUTHORIZED"
-        message: string
-        fieldErrors: Array<{ field: string; message: string }>
-      }
-    }
+        code: "CONFLICT" | "UNAUTHORIZED";
+        message: string;
+        fieldErrors: Array<{ field: string; message: string }>;
+      };
+    };
 
-type RawQueryClient = Pick<PrismaClient, "$queryRawUnsafe" | "$executeRawUnsafe"> & {
-  user: PrismaClient["user"]
-  account: PrismaClient["account"]
-}
+const BOOTSTRAP_CONFLICT_MESSAGE = "تم إعداد الحساب الأول بالفعل.";
+const BOOTSTRAP_SECRET_MESSAGE = "رمز الإعداد الأول غير صحيح.";
 
-const BOOTSTRAP_CONFLICT_MESSAGE = "تم إعداد الحساب الأول بالفعل."
-const BOOTSTRAP_SECRET_MESSAGE = "رمز الإعداد الأول غير صحيح."
-
-function toCount(value: unknown) {
-  if (typeof value === "bigint") {
-    return Number(value)
-  }
-
-  if (typeof value === "number") {
-    return value
-  }
-
-  return 0
-}
-
+/** Check if an error is a SQLite UNIQUE constraint violation. */
 function isUniqueConstraintError(error: unknown) {
-  return error instanceof Error && /unique|constraint/i.test(error.message)
+  return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
 }
 
+/**
+ * Handles first-user bootstrap and bootstrap state queries.
+ * Uses Drizzle ORM for database operations.
+ */
+/** First-user bootstrap service — creates initial admin account and checks setup state. */
 export class AuthBootstrapService {
   constructor(
-    private readonly prisma: PrismaClient,
+    private readonly db: AppDrizzle,
     private readonly authInstance: BetterAuthInstance,
     private readonly bootstrapSetupKey: string | null,
   ) {}
 
+  /** Check whether the first user has already been configured. */
   async getSetupStatus(): Promise<AuthSetupStatus> {
     return {
-      hasUsers: await this.hasConfiguredUsers(this.prisma),
+      hasUsers: await this.hasConfiguredUsers(),
       requiresSetupKey: Boolean(this.bootstrapSetupKey),
-    }
+    };
   }
 
+  /** Create the first user account (admin) with phone credentials. */
   async bootstrapFirstUser(input: AuthBootstrapInput): Promise<BootstrapResult> {
     if (this.bootstrapSetupKey && input.setupSecret?.trim() !== this.bootstrapSetupKey) {
       return {
@@ -74,95 +65,118 @@ export class AuthBootstrapService {
           message: BOOTSTRAP_SECRET_MESSAGE,
           fieldErrors: [{ field: "setupSecret", message: BOOTSTRAP_SECRET_MESSAGE }],
         },
-      }
+      };
     }
 
-    const context = await this.authInstance.$context
-    const passwordHash = await context.password.hash(input.password)
+    const context = await this.authInstance.$context;
+    const passwordHash = await context.password.hash(input.password);
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        if (await this.hasConfiguredUsers(tx)) {
-          return this.toConflictResult()
+      return await this.db.transaction(async (tx) => {
+        if (await this.hasConfiguredUsersTx(tx as unknown as AppDrizzle)) {
+          return this.toConflictResult();
         }
 
-        const timestamp = new Date()
-        const userId = crypto.randomUUID()
+        const timestamp = new Date().toISOString();
+        const userId = crypto.randomUUID();
 
-        await tx.$executeRawUnsafe(
-          'INSERT INTO "app_bootstrap_state" ("singleton", "created_at", "user_id") VALUES (1, ?, ?)',
-          timestamp.toISOString(),
+        await tx
+          .insert(appBootstrapState)
+          .values({
+            singleton: 1,
+            createdAt: timestamp,
+            userId,
+          });
+
+        await tx.insert(user).values({
+          id: userId,
+          name: input.name.trim(),
+          phoneNumber: input.phone,
+          phoneNumberVerified: true,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
+
+        await tx.insert(account).values({
+          id: crypto.randomUUID(),
+          accountId: userId,
+          providerId: "credential",
           userId,
-        )
-
-        const user = await tx.user.create({
-          data: {
-            id: userId,
-            name: input.name.trim(),
-            phoneNumber: input.phone,
-            phoneNumberVerified: true,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          },
-        })
-
-        await tx.account.create({
-          data: {
-            id: crypto.randomUUID(),
-            accountId: user.id,
-            providerId: "credential",
-            userId: user.id,
-            password: passwordHash,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          },
-        })
+          password: passwordHash,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
 
         return {
           success: true,
           message: "تم إنشاء أول مستخدم بنجاح.",
           item: {
-            id: user.id,
-            name: user.name,
-            phone: user.phoneNumber,
+            id: userId,
+            name: input.name.trim(),
+            phone: input.phone,
           },
-        } satisfies BootstrapResult
-      })
+        } satisfies BootstrapResult;
+      });
     } catch (error) {
       if (isUniqueConstraintError(error)) {
-        return this.toConflictResult()
+        return this.toConflictResult();
       }
 
-      throw error
+      throw error;
     }
   }
 
+  /** Check if a user is the bootstrap owner (first user). */
   async isBootstrapOwner(userId: string): Promise<boolean> {
-    const [stateRow] = await this.prisma.$queryRawUnsafe<Array<{ user_id: string | null }>>(
-      'SELECT "user_id" FROM "app_bootstrap_state" WHERE "singleton" = 1 LIMIT 1',
-    )
+    const stateRows = await this.db
+      .select({ userId: appBootstrapState.userId })
+      .from(appBootstrapState)
+      .where(eq(appBootstrapState.singleton, 1))
+      .limit(1);
 
-    if (stateRow?.user_id) {
-      return stateRow.user_id === userId
+    if (stateRows[0]?.userId) {
+      return stateRows[0].userId === userId;
     }
 
-    const firstUser = await this.prisma.user.findFirst({
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    })
+    const firstUser = await this.db
+      .select({ id: user.id })
+      .from(user)
+      .orderBy(user.createdAt)
+      .limit(1);
 
-    return firstUser?.id === userId
+    return firstUser[0]?.id === userId;
   }
 
-  private async hasConfiguredUsers(db: Pick<RawQueryClient, "$queryRawUnsafe">): Promise<boolean> {
-    const [userRow] = await db.$queryRawUnsafe<Array<{ count: number | bigint }>>(
-      `SELECT COUNT(*) as count FROM "user" WHERE "phoneNumber" IS NOT NULL AND TRIM("phoneNumber") != ''`,
-    )
-    const [stateRow] = await db.$queryRawUnsafe<Array<{ count: number | bigint }>>(
-      'SELECT COUNT(*) as count FROM "app_bootstrap_state" WHERE "singleton" = 1',
-    )
+  /** Check if any users with valid phone numbers exist. */
+  private async hasConfiguredUsers(): Promise<boolean> {
+    const userCount = await this.db
+      .select({ count: count() })
+      .from(user)
+      .where(sql`${user.phoneNumber} IS NOT NULL AND TRIM(${user.phoneNumber}) != ''`);
 
-    return toCount(userRow?.count) > 0 || toCount(stateRow?.count) > 0
+    const stateCount = await this.db
+      .select({ count: count() })
+      .from(appBootstrapState)
+      .where(eq(appBootstrapState.singleton, 1));
+
+    return (userCount[0]?.count ?? 0) > 0 || (stateCount[0]?.count ?? 0) > 0;
+  }
+
+  /** Check if any users exist within a transaction context. */
+  private async hasConfiguredUsersTx(
+    tx: AppDrizzle,
+  ): Promise<boolean> {
+    const userCount = await tx
+      .select({ count: count() })
+      .from(user)
+      .where(sql`${user.phoneNumber} IS NOT NULL AND TRIM(${user.phoneNumber}) != ''`);
+
+    const stateCount = await tx
+      .select({ count: count() })
+      .from(appBootstrapState)
+      .where(eq(appBootstrapState.singleton, 1));
+
+    return (userCount[0]?.count ?? 0) > 0 || (stateCount[0]?.count ?? 0) > 0;
   }
 
   private toConflictResult(): BootstrapResult {
@@ -173,6 +187,6 @@ export class AuthBootstrapService {
         message: BOOTSTRAP_CONFLICT_MESSAGE,
         fieldErrors: [{ field: "phone", message: BOOTSTRAP_CONFLICT_MESSAGE }],
       },
-    }
+    };
   }
 }

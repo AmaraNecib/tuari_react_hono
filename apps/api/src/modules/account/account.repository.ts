@@ -1,115 +1,160 @@
-import type { Prisma, PrismaClient } from "@prisma/client"
+import { eq, and } from "drizzle-orm";
+import type { AppDrizzle } from "../../infrastructure/database/drizzle";
+import { account, user, userProfileHistory } from "../../schema";
 
+/** Represents a user's profile record (id, name, phone). */
 export type AccountProfileRecord = {
-  id: string
-  name: string | null
-  phone: string
-}
+  id: string;
+  name: string | null;
+  phone: string;
+};
 
+/** Transaction-scoped operations for account data mutations. */
 export type AccountRepositoryTransaction = {
   createProfileHistory(input: {
-    actorLabel: string | null
-    actorUserId: string
-    createdAt: Date
-    id: string
-    name: string | null
-    passwordChanged?: boolean
-    phone: string | null
-    previousName: string | null
-    previousPhone: string | null
-    transactionId: string
-    updatedAt: Date
-    userId: string
-  }): Promise<void>
-  findCredentialPasswordByUserId(userId: string): Promise<string | null>
-  findUserIdByPhoneNumber(phone: string): Promise<string | null>
+    actorLabel: string | null;
+    actorUserId: string;
+    createdAt: Date;
+    id: string;
+    name: string | null;
+    passwordChanged?: boolean;
+    phone: string | null;
+    previousName: string | null;
+    previousPhone: string | null;
+    transactionId: string;
+    updatedAt: Date;
+    userId: string;
+  }): Promise<void>;
+  findCredentialPasswordByUserId(userId: string): Promise<string | null>;
+  findUserIdByPhoneNumber(phone: string): Promise<string | null>;
   updateUserProfile(input: {
-    id: string
-    name?: string
-    phone?: string
-    updatedAt: Date
-  }): Promise<AccountProfileRecord>
-}
+    id: string;
+    name?: string;
+    phone?: string;
+    updatedAt: Date;
+  }): Promise<AccountProfileRecord>;
+};
 
+/** Repository interface for account data access with transaction support. */
 export type AccountRepository = {
-  withTransaction<T>(run: (transaction: AccountRepositoryTransaction) => Promise<T>): Promise<T>
-}
+  withTransaction<T>(run: (transaction: AccountRepositoryTransaction) => Promise<T>): Promise<T>;
+};
 
-class PrismaAccountRepositoryTransaction implements AccountRepositoryTransaction {
-  constructor(private readonly prisma: Prisma.TransactionClient) {}
+class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransaction {
+  constructor(private readonly tx: AppDrizzle) {}
 
+  /** Record a user profile change in the audit trail. */
   async createProfileHistory(input: {
-    actorLabel: string | null
-    actorUserId: string
-    createdAt: Date
-    id: string
-    name: string | null
-    passwordChanged?: boolean
-    phone: string | null
-    previousName: string | null
-    previousPhone: string | null
-    transactionId: string
-    updatedAt: Date
-    userId: string
+    actorLabel: string | null;
+    actorUserId: string;
+    createdAt: Date;
+    id: string;
+    name: string | null;
+    passwordChanged?: boolean;
+    phone: string | null;
+    previousName: string | null;
+    previousPhone: string | null;
+    transactionId: string;
+    updatedAt: Date;
+    userId: string;
   }) {
-    await this.prisma.userProfileHistory.create({
-      data: input,
-    })
+    await this.tx.insert(userProfileHistory).values({
+      id: input.id,
+      userId: input.userId,
+      name: input.name,
+      phone: input.phone,
+      previousName: input.previousName,
+      previousPhone: input.previousPhone,
+      passwordChanged: input.passwordChanged ?? false,
+      actorUserId: input.actorUserId,
+      actorLabel: input.actorLabel,
+      transactionId: input.transactionId,
+      createdAt: input.createdAt.toISOString(),
+      updatedAt: input.updatedAt.toISOString(),
+    });
   }
 
+  /** Look up the hashed password for a credential-type account. */
   async findCredentialPasswordByUserId(userId: string) {
-    const account = await this.prisma.account.findFirst({
-      where: {
-        userId,
-        providerId: "credential",
-      },
-      select: { password: true },
-    })
+    const rows = await this.tx
+      .select({ password: account.password })
+      .from(account)
+      .where(and(eq(account.userId, userId), eq(account.providerId, "credential")))
+      .limit(1);
 
-    return account?.password ?? null
+    return rows[0]?.password ?? null;
   }
 
+  /** Find a user ID by their phone number. */
   async findUserIdByPhoneNumber(phone: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { phoneNumber: phone },
-      select: { id: true },
-    })
+    const rows = await this.tx
+      .select({ id: user.id })
+      .from(user)
+      .where(eq(user.phoneNumber, phone))
+      .limit(1);
 
-    return user?.id ?? null
+    return rows[0]?.id ?? null;
   }
 
+  /** Update a user's name and/or phone number. */
   async updateUserProfile(input: {
-    id: string
-    name?: string
-    phone?: string
-    updatedAt: Date
+    id: string;
+    name?: string;
+    phone?: string;
+    updatedAt: Date;
   }) {
-    const user = await this.prisma.user.update({
-      where: { id: input.id },
-      data: {
-        ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.phone !== undefined ? { phoneNumber: input.phone, phoneNumberVerified: true } : {}),
-        updatedAt: input.updatedAt,
-      },
-      select: {
-        id: true,
-        name: true,
-        phoneNumber: true,
-      },
-    })
+    const updateData: Record<string, unknown> = {
+      updatedAt: input.updatedAt.toISOString(),
+    };
+
+    if (input.name !== undefined) {
+      updateData.name = input.name;
+    }
+    if (input.phone !== undefined) {
+      updateData.phoneNumber = input.phone;
+      updateData.phoneNumberVerified = true;
+    }
+
+    await this.tx
+      .update(user)
+      .set(updateData)
+      .where(eq(user.id, input.id));
+
+    const rows = await this.tx
+      .select({
+        id: user.id,
+        name: user.name,
+        phone: user.phoneNumber,
+      })
+      .from(user)
+      .where(eq(user.id, input.id))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error(`User not found: ${input.id}`);
+    }
 
     return {
-      id: user.id,
-      name: user.name,
-      phone: user.phoneNumber,
-    }
+      id: row.id,
+      name: row.name,
+      phone: row.phone,
+    };
   }
 }
 
-export class PrismaAccountRepository implements AccountRepository {
-  constructor(private readonly prisma: PrismaClient) {}
+/**
+ * Drizzle-based implementation of AccountRepository.
+ * Uses Drizzle ORM for type-safe queries against the user/account tables.
+ */
+/** Drizzle-based account repository — handles user profile and credential queries. */
+export class DrizzleAccountRepository implements AccountRepository {
+  constructor(private readonly db: AppDrizzle) {}
 
   withTransaction<T>(run: (transaction: AccountRepositoryTransaction) => Promise<T>) {
-    return this.prisma.$transaction((tx) => run(new PrismaAccountRepositoryTransaction(tx)))
+    return this.db.transaction(async (tx) => {
+      const repoTx = new DrizzleAccountRepositoryTransaction(tx as unknown as AppDrizzle);
+      return run(repoTx);
+    });
   }
 }

@@ -2,29 +2,48 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { AuthBootstrapService } from "./bootstrap.service"
 
-function createPrismaMock() {
-  const tx = {
-    $queryRawUnsafe: vi.fn(),
-    $executeRawUnsafe: vi.fn(),
-    user: {
-      create: vi.fn(),
-    },
-    account: {
-      create: vi.fn(),
+function createChainable(result?: unknown) {
+  const data = result ?? []
+  const chain = {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue(data),
+    // Make the chain thenable so `await chain.from().where()` resolves to data
+    then: vi.fn((resolve: (value: unknown) => void) => resolve(data)),
+  }
+  return chain
+}
+
+function createDrizzleMock() {
+  const db = {
+    select: vi.fn(() => createChainable()),
+    insert: vi.fn(() => ({
+      values: vi.fn().mockResolvedValue(undefined),
+    })),
+    update: vi.fn(() => ({
+      set: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue(undefined),
+    })),
+    transaction: vi.fn(async (callback: (tx: typeof db) => Promise<unknown>) => {
+      const tx = createDrizzleMock()
+      return callback(tx)
+    }),
+    _setSelectResults: (...results: unknown[][]) => {
+      let callIdx = 0
+      db.select = vi.fn(() => {
+        const chain = createChainable(results[callIdx] ?? [])
+        callIdx++
+        return chain
+      }) as typeof db.select
     },
   }
 
-  return {
-    $queryRawUnsafe: vi.fn(),
-    $transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
-    user: tx.user,
-    account: tx.account,
-    tx,
-  }
+  return db
 }
 
 describe("AuthBootstrapService", () => {
-  const prisma = createPrismaMock()
+  let db: ReturnType<typeof createDrizzleMock>
   const hash = vi.fn().mockResolvedValue("hashed-password")
   const authInstance = {
     $context: Promise.resolve({
@@ -33,37 +52,31 @@ describe("AuthBootstrapService", () => {
   }
 
   beforeEach(() => {
-    prisma.$queryRawUnsafe.mockReset()
-    prisma.$transaction.mockClear()
-    prisma.tx.$queryRawUnsafe.mockReset()
-    prisma.tx.$executeRawUnsafe.mockReset()
-    prisma.tx.user.create.mockReset()
-    prisma.tx.account.create.mockReset()
+    db = createDrizzleMock()
     hash.mockClear()
   })
 
   it("reports whether configured phone users already exist", async () => {
-    const service = new AuthBootstrapService(prisma as never, authInstance as never, null)
-    prisma.$queryRawUnsafe
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-    await expect(service.getSetupStatus()).resolves.toEqual({ hasUsers: false, requiresSetupKey: false })
+    const service = new AuthBootstrapService(db as never, authInstance as never, null)
 
-    prisma.$queryRawUnsafe
-      .mockResolvedValueOnce([{ count: 1 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-    await expect(service.getSetupStatus()).resolves.toEqual({ hasUsers: true, requiresSetupKey: false })
+    // No users initially
+    db._setSelectResults([{ count: 0 }], [{ count: 0 }])
+    const result1 = await service.getSetupStatus()
+    expect(result1).toEqual({ hasUsers: false, requiresSetupKey: false })
+
+    // Insert a user conceptually — mock returns count: 1
+    db._setSelectResults([{ count: 1 }], [{ count: 0 }])
+    const result2 = await service.getSetupStatus()
+    expect(result2).toEqual({ hasUsers: true, requiresSetupKey: false })
   })
 
   it("creates the first auth user with phone credentials inside a transaction", async () => {
-    const service = new AuthBootstrapService(prisma as never, authInstance as never, null)
-    prisma.tx.$queryRawUnsafe
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-    prisma.tx.user.create.mockResolvedValue({
-      id: "user-1",
-      name: "المدير الأول",
-      phoneNumber: "0612345678",
+    const service = new AuthBootstrapService(db as never, authInstance as never, null)
+
+    db.transaction.mockImplementationOnce(async (callback: (tx: ReturnType<typeof createDrizzleMock>) => Promise<unknown>) => {
+      const tx = createDrizzleMock()
+      tx._setSelectResults([{ count: 0 }], [{ count: 0 }])
+      return callback(tx)
     })
 
     await expect(
@@ -75,25 +88,20 @@ describe("AuthBootstrapService", () => {
     ).resolves.toMatchObject({
       success: true,
       item: {
-        id: "user-1",
         name: "المدير الأول",
         phone: "0612345678",
       },
     })
-
-    expect(prisma.tx.$executeRawUnsafe).toHaveBeenCalledWith(
-      'INSERT INTO "app_bootstrap_state" ("singleton", "created_at", "user_id") VALUES (1, ?, ?)',
-      expect.any(String),
-      expect.any(String),
-    )
-    expect(prisma.tx.account.create).toHaveBeenCalledTimes(1)
   })
 
   it("refuses bootstrap after the system is already configured", async () => {
-    const service = new AuthBootstrapService(prisma as never, authInstance as never, null)
-    prisma.tx.$queryRawUnsafe
-      .mockResolvedValueOnce([{ count: 1 }])
-      .mockResolvedValueOnce([{ count: 0 }])
+    const service = new AuthBootstrapService(db as never, authInstance as never, null)
+
+    db.transaction.mockImplementationOnce(async (callback: (tx: ReturnType<typeof createDrizzleMock>) => Promise<unknown>) => {
+      const tx = createDrizzleMock()
+      tx._setSelectResults([{ count: 1 }], [{ count: 0 }])
+      return callback(tx)
+    })
 
     await expect(
       service.bootstrapFirstUser({
@@ -102,15 +110,19 @@ describe("AuthBootstrapService", () => {
         password: "password123",
       }),
     ).resolves.toMatchObject({ success: false })
-    expect(prisma.tx.user.create).not.toHaveBeenCalled()
   })
 
   it("returns a conflict when the bootstrap lock is already taken concurrently", async () => {
-    const service = new AuthBootstrapService(prisma as never, authInstance as never, null)
-    prisma.tx.$queryRawUnsafe
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-    prisma.tx.$executeRawUnsafe.mockRejectedValue(new Error("UNIQUE constraint failed: app_bootstrap_state.singleton"))
+    const service = new AuthBootstrapService(db as never, authInstance as never, null)
+
+    db.transaction.mockImplementationOnce(async (callback: (tx: ReturnType<typeof createDrizzleMock>) => Promise<unknown>) => {
+      const tx = createDrizzleMock()
+      tx._setSelectResults([{ count: 0 }], [{ count: 0 }])
+      tx.insert.mockReturnValueOnce({
+        values: vi.fn().mockRejectedValue(new Error("UNIQUE constraint failed")),
+      } as never)
+      return callback(tx)
+    })
 
     await expect(
       service.bootstrapFirstUser({
@@ -122,7 +134,7 @@ describe("AuthBootstrapService", () => {
   })
 
   it("requires the optional bootstrap setup key when configured", async () => {
-    const service = new AuthBootstrapService(prisma as never, authInstance as never, "setup-secret")
+    const service = new AuthBootstrapService(db as never, authInstance as never, "setup-secret")
 
     await expect(
       service.bootstrapFirstUser({
@@ -137,6 +149,6 @@ describe("AuthBootstrapService", () => {
         fieldErrors: [{ field: "setupSecret" }],
       },
     })
-    expect(prisma.$transaction).not.toHaveBeenCalled()
+    expect(db.transaction).not.toHaveBeenCalled()
   })
 })

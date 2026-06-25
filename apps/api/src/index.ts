@@ -3,11 +3,28 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app/create-app";
 import { createAppDependencies } from "./app/dependencies";
 import { env } from "./infrastructure/config/runtime-env";
+import { createAuth } from "./infrastructure/auth/auth";
+import { createDatabaseConnection } from "./infrastructure/database/factory";
+import { createDrizzleFromSqlite } from "./infrastructure/database/drizzle";
 import { ensureDatabaseSchema } from "./infrastructure/database/schema";
+import { BetterSqlite3Executor } from "./infrastructure/database/sqlite-executor";
 
 async function main() {
-  const appDependencies = await createAppDependencies();
-  await ensureDatabaseSchema();
+  // Create a single shared SQLite connection for the entire app.
+  const sqlite = createDatabaseConnection();
+  const executor = new BetterSqlite3Executor(sqlite);
+
+  // Run schema migrations with raw executor
+  await ensureDatabaseSchema(executor);
+
+  // Create Drizzle connection from the same handle
+  const drizzleDb = createDrizzleFromSqlite(sqlite);
+
+  // Create better-auth from the shared Drizzle handle
+  const auth = createAuth(drizzleDb);
+
+  // Pass shared handle + auth — no duplicate connections
+  const appDependencies = await createAppDependencies(sqlite, drizzleDb, auth);
   const app = createApp(appDependencies, {
     allowedOrigins: env.allowedOrigins,
     trustProxyHeaders: env.trustProxyHeaders,
