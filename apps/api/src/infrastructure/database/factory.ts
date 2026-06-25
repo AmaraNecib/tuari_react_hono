@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs"
 import { dirname } from "node:path"
-import Database from "better-sqlite3"
+import SqlCipherDatabase from "better-sqlite3-sqlcipher"
 
 import { resolveDatabaseEnv } from "../config/database-env"
 
@@ -31,7 +31,7 @@ export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDat
   mkdirSync(dirname(databasePath), { recursive: true })
 
   // Create connection and key it immediately
-  const sqlite = new Database(databasePath)
+  const sqlite = new SqlCipherDatabase(databasePath)
 
   // Resolve encryption key: explicit parameter > environment variable
   const resolvedKey = dbKey ?? process.env.APP_DB_KEY ?? null
