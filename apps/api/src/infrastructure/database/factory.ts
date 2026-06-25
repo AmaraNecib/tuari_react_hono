@@ -5,19 +5,26 @@ import SqlCipherDatabase from "better-sqlite3-sqlcipher"
 import { resolveDatabaseEnv } from "../config/database-env"
 
 /**
+ * Database instance type expected by downstream repositories.
+ * Matches the `better-sqlite3` interface that company/inventory
+ * repositories consume.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BetterSqliteDatabase = any
+
+/**
  * Create a database connection using better-sqlite3-sqlcipher.
  *
- * The connection is keyed immediately (if APP_DB_KEY is set) so every
+ * The connection is keyed immediately (if dbKey is provided) so every
  * caller receives an encrypted-ready handle. If no key is provided the
  * database is opened in plaintext mode (backwards compatibility during
  * migration or in development).
  *
- * better-sqlite3-sqlcipher is API-compatible with better-sqlite3.
- * The TypeScript types differ at the boundary; we cast once here so
- * downstream code sees the familiar better-sqlite3 shape.
+ * better-sqlite3-sqlcipher is API-compatible with better-sqlite3 but
+ * has different TypeScript types. We cast at this boundary so downstream
+ * code sees the familiar shape.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createDatabaseConnection(dbKey?: string | null): any {
+export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDatabase {
   const { databasePath } = resolveDatabaseEnv()
 
   // Ensure directory exists
@@ -35,5 +42,7 @@ export function createDatabaseConnection(dbKey?: string | null): any {
   sqlite.pragma("journal_mode = WAL")
   sqlite.pragma("foreign_keys = ON")
 
-  return sqlite
+  // Cast to the shape downstream repositories expect.
+  // Runtime API is identical; only TypeScript types differ at the boundary.
+  return sqlite as unknown as BetterSqliteDatabase
 }

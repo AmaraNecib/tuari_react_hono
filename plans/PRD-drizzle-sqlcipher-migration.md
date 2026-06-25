@@ -95,7 +95,7 @@ Migrate the entire data layer from Prisma + raw better-sqlite3 to **Drizzle ORM 
 - Add SQLCipher initialization (PRAGMA key on connection)
 - Implement recovery key generation, storage, revocation, and consumption
 - Add Settings UI for: change DB key, change app password, manage recovery keys
-- Update portable build script to include `better-sqlite3-sqlcipher` native binary
+- Update portable build script to include `better-sqlite3-sqlcipher` (prebuilt from npm, not committed to repo)
 - Switch CI from GitHub Actions to Blacksmith (Windows build support)
 - Update `database-env.ts` to support encryption key parameter
 - End-to-end test: create DB → encrypt → set password → generate recovery keys → revoke one → use one → change password
@@ -193,7 +193,7 @@ Migrate the entire data layer from Prisma + raw better-sqlite3 to **Drizzle ORM 
 - Tests use file-based SQLite in temp directories (not `:memory:`)
 - Temp directory created per test suite, deleted in `afterAll`
 - Test helpers create Drizzle instances pointing to temp files
-- Schema applied via Drizzle's `migrate()` or manual `db.exec()` for test setup
+- Schema applied via manual `db.exec()` with the same SQL statements as production (not Drizzle migration tooling)
 - Each test gets an isolated database file
 
 ### CI Changes
