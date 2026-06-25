@@ -11,6 +11,7 @@ import type { FinanceService } from "../modules/company/finance.service";
 import type { InventoryService } from "../modules/inventory/inventory.service";
 import type { EmployeeModule } from "../modules/workforce/employee.module";
 import type { InvoiceModule } from "../modules/invoice/invoice.module";
+import type { PaymentModule } from "../modules/payment/payment-module.interface";
 import { getCurrentUser, type RpcContext } from "./context";
 import { createRpcMiddleware } from "./rpc-middleware";
 import { createWorkforceHandlers } from "./handlers/workforce";
@@ -20,6 +21,7 @@ import { createInventoryHandlers } from "./handlers/inventory";
 import { createSystemHandlers } from "./handlers/system";
 import { createReportsHandlers } from "./handlers/reports";
 import { createInvoiceHandlers } from "./handlers/invoice";
+import { createPaymentHandlers } from "./handlers/payment";
 
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
@@ -30,6 +32,7 @@ type RouterDependencies = {
   inventoryService: InventoryService;
   employeeModule: EmployeeModule;
   invoiceModule: InvoiceModule;
+  paymentModule: PaymentModule;
 };
 
 export function createRouter(dependencies: RouterDependencies) {
@@ -63,6 +66,7 @@ export function createRouter(dependencies: RouterDependencies) {
     createInventoryHandlers(os, m, dependencies.inventoryService),
     createReportsHandlers(os, m, dependencies.companyService, dependencies.inventoryService),
     createInvoiceHandlers(os, m, dependencies.invoiceModule),
+    createPaymentHandlers(os, m, dependencies.paymentModule),
   );
 
   return os.router(allHandlers as any);

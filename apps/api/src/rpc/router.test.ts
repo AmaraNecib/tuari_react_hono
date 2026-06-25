@@ -52,6 +52,14 @@ describe("RPC router", () => {
     const employeeRepository = new SqliteEmployeeRepository(repository);
     const roleRepository = new SqliteRoleRepository(repository);
     const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
+    const invoiceRepository = {} as never;
+    const invoiceDebtPort = {} as never;
+    const paymentModule = {
+      create: async () => ({ id: "", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: "", paymentDate: "", paymentMethod: "CASH", totalAmount: 0, notes: null, actorUserId: null, actorLabel: null, transactionId: null, createdAt: "", updatedAt: "", allocations: [] }),
+      findById: async () => null,
+      listPaged: async () => ({ items: [], nextCursor: null, totalCount: 0 }),
+      delete: async () => undefined,
+    } as never;
     return createRouter({
       authBootstrapService: { ...authBootstrapService, ...authOverrides },
       companyService: service,
@@ -60,6 +68,8 @@ describe("RPC router", () => {
       financeService: new FinanceService(service),
       inventoryService: {} as never,
       employeeModule,
+      invoiceModule: {} as never,
+      paymentModule,
     });
   }
 

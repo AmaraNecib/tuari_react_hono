@@ -1,0 +1,175 @@
+import type { PaymentModule } from "./payment-module.interface";
+import type { PaymentRepository } from "./payment.repository";
+import type { InvoiceRepository } from "../invoice/invoice.repository";
+import type { InvoiceDebtPort } from "../invoice/invoice.types";
+import {
+  PaymentAllocationSumMismatchError,
+  PaymentInvoiceNotFoundError,
+  PaymentInvoiceNotReceivedError,
+  PaymentInvoiceOverAllocationError,
+  PaymentNotFoundError,
+} from "./payment.types";
+import type {
+  CreatePaymentInput,
+  PaymentWithAllocations,
+  Payment,
+  PaymentListFilters,
+  PaymentListSortField,
+  SortDirection,
+} from "./payment.types";
+
+/**
+ * PaymentModule — records payments against supplier invoices and
+ * allocates the payment amount across one or more invoices.
+ *
+ * Each allocation:
+ *  1. Validates the invoice exists, is RECEIVED, and has capacity
+ *  2. Records a debt entry (PAYMENT) via the debt port
+ *  3. Updates the invoice's paid_amount / remaining_amount
+ *  4. Creates the payment_allocation link record
+ *
+ * The entire create+allocate operation is ACID within a single
+ * SQLite transaction.
+ */
+export function createPaymentModule(
+  paymentRepo: PaymentRepository,
+  invoiceRepo: InvoiceRepository,
+  debtPort: InvoiceDebtPort,
+): PaymentModule {
+  async function create(input: CreatePaymentInput): Promise<PaymentWithAllocations> {
+    const totalAllocated = input.allocations.reduce((sum, a) => sum + a.amount, 0);
+    if (Math.abs(totalAllocated - input.totalAmount) > 0.001) {
+      throw new PaymentAllocationSumMismatchError(input.totalAmount, totalAllocated);
+    }
+
+    // Pre-validate all invoices before entering the transaction.
+    for (const alloc of input.allocations) {
+      const invoice = await invoiceRepo.findById(alloc.invoiceId);
+      if (!invoice) {
+        throw new PaymentInvoiceNotFoundError(alloc.invoiceId);
+      }
+      if (invoice.status !== "RECEIVED") {
+        throw new PaymentInvoiceNotReceivedError(alloc.invoiceId, invoice.status);
+      }
+      if (alloc.amount > invoice.remainingAmount) {
+        throw new PaymentInvoiceOverAllocationError(
+          alloc.invoiceId,
+          alloc.amount,
+          invoice.remainingAmount,
+        );
+      }
+    }
+
+    const now = new Date().toISOString();
+
+    const result = await paymentRepo.runInTransaction(async () => {
+      const payment = await paymentRepo.createPayment({
+        id: input.id,
+        counterpartyType: input.counterpartyType,
+        counterpartyId: input.counterpartyId,
+        paymentDate: input.paymentDate,
+        paymentMethod: input.paymentMethod,
+        totalAmount: input.totalAmount,
+        notes: input.notes ?? null,
+        actorUserId: null,
+        actorLabel: null,
+        transactionId: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      for (const alloc of input.allocations) {
+        // Record payment against the invoice's debt account.
+        const paymentResult = await debtPort.recordInvoicePayment({
+          invoiceId: alloc.invoiceId,
+          amount: alloc.amount,
+          direction: "PURCHASE",
+          actorUserId: "",
+          actorLabel: "",
+          transactionId: "",
+        });
+
+        // Update invoice paid_amount / remaining_amount and possibly
+        // transition to PAID when fully settled.
+        await invoiceRepo.updateStatus(
+          alloc.invoiceId,
+          paymentResult.settled ? "PAID" : "RECEIVED",
+          {
+            paidAmount: paymentResult.newPaidAmount,
+            remainingAmount: paymentResult.newRemainingAmount,
+          },
+        );
+
+        // Create the allocation link.
+        await paymentRepo.createAllocation({
+          id: crypto.randomUUID(),
+          paymentId: payment.id,
+          invoiceId: alloc.invoiceId,
+          amount: alloc.amount,
+          createdAt: now,
+        });
+      }
+
+      return paymentRepo.findById(payment.id);
+    });
+
+    return result!;
+  }
+
+  return {
+    async create(input: CreatePaymentInput): Promise<PaymentWithAllocations> {
+      return create(input);
+    },
+
+    async findById(id: string): Promise<PaymentWithAllocations | null> {
+      return paymentRepo.findById(id);
+    },
+
+    async listPaged(query: {
+      filters?: PaymentListFilters;
+      sort?: { field: PaymentListSortField; direction: SortDirection };
+      cursor?: string;
+      limit: number;
+    }): Promise<{ items: Payment[]; nextCursor: string | null; totalCount: number }> {
+      const after = query.cursor
+        ? (() => {
+            try {
+              const decoded = JSON.parse(
+                Buffer.from(query.cursor!, "base64url").toString("utf8"),
+              );
+              return {
+                sortValue: decoded.sortValue as string | number | null,
+                id: decoded.id as string,
+              };
+            } catch {
+              return undefined;
+            }
+          })()
+        : undefined;
+
+      return paymentRepo.findPaged({
+        filters: query.filters,
+        sort: query.sort,
+        after,
+        limit: query.limit,
+      });
+    },
+
+    async delete(id: string): Promise<void> {
+      const existing = await paymentRepo.findById(id);
+      if (!existing) {
+        throw new PaymentNotFoundError(id);
+      }
+      // Check that no allocations exist — if they do, the payment
+      // has already been applied and cannot be deleted.
+      const allocs = await paymentRepo.findAllocationsByPaymentId(id);
+      if (allocs.length > 0) {
+        throw new Error(
+          "Cannot delete payment with existing allocations. " +
+          "Void the allocations first.",
+        );
+      }
+      await paymentRepo.deletePayment(id);
+    },
+  };
+}
