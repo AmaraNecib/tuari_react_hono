@@ -25,8 +25,9 @@ export function createAuth(drizzleDb: AppDrizzle) {
       bearer(),
       phoneNumber({
         phoneNumberValidator: async (phoneNumberValue) => algerianPhonePattern.test(phoneNumberValue),
-        sendOTP: ({ phoneNumber: requestedPhoneNumber }) => {
-          console.info(`[better-auth] Phone verification requested for ${requestedPhoneNumber}`);
+        sendOTP: ({ phoneNumber }) => {
+          const masked = phoneNumber.replace(/(\d{3})\d{4}(\d{3})/, "$1****$2");
+          console.info(`[better-auth] Phone verification requested for ${masked}`);
         },
       }),
     ],
