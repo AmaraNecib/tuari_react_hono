@@ -12,6 +12,7 @@ import {
   PaymentInvoiceNotReceivedError,
   PaymentInvoiceOverAllocationError,
   PaymentNotFoundError,
+  PaymentHasAllocationsError,
 } from "./payment.types";
 
 function makeInvoiceInput(overrides: Partial<{
@@ -275,8 +276,8 @@ describe("PaymentModule", () => {
         allocations: [{ invoiceId: "inv-del", amount: 3000 }],
       }));
 
-      await expect(paymentModule.delete("pmt-del")).rejects.toThrow(
-        "Cannot delete payment with existing allocations",
+      await expect(paymentModule.delete("pmt-del")).rejects.toBeInstanceOf(
+        PaymentHasAllocationsError,
       );
     });
 

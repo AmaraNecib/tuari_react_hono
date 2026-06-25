@@ -48,7 +48,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionSeed[] = [
       description: "مسؤول عن متابعة العمال والمشاريع الميدانية",
       isSystem: true,
     },
-    permissions: ["employees.read", "employees.update", "invoices.read", "invoices.create", "invoices.update", "payments.read", "payments.create"],
+    permissions: ["employees.read", "employees.update", "invoices.read", "invoices.create", "invoices.update", "payments.read"],
   },
   {
     role: {

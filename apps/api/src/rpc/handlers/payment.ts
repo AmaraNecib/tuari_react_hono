@@ -8,6 +8,7 @@ import {
   PaymentInvoiceNotReceivedError,
   PaymentInvoiceOverAllocationError,
   PaymentNotFoundError,
+  PaymentHasAllocationsError,
 } from "../../modules/payment/payment.types";
 import type { RpcContext } from "../context";
 import type { RpcMiddleware } from "../rpc-middleware";
@@ -117,6 +118,9 @@ export function createPaymentHandlers(
           (error: unknown) => {
             if (error instanceof PaymentNotFoundError) {
               return new ORPCError("NOT_FOUND", { message: error.message });
+            }
+            if (error instanceof PaymentHasAllocationsError) {
+              return new ORPCError("CONFLICT", { message: error.message });
             }
             throw error;
           },

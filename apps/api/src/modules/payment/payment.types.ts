@@ -93,3 +93,13 @@ export class PaymentInvoiceNotReceivedError extends Error {
     this.name = "PaymentInvoiceNotReceivedError";
   }
 }
+
+export class PaymentHasAllocationsError extends Error {
+  constructor(public readonly paymentId: string, public readonly allocationCount: number) {
+    super(
+      `Cannot delete payment ${paymentId}: ${allocationCount} allocation(s) exist. ` +
+      "Void the allocations first.",
+    );
+    this.name = "PaymentHasAllocationsError";
+  }
+}

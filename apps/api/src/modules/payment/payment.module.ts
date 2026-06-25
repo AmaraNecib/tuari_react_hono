@@ -8,6 +8,7 @@ import {
   PaymentInvoiceNotReceivedError,
   PaymentInvoiceOverAllocationError,
   PaymentNotFoundError,
+  PaymentHasAllocationsError,
 } from "./payment.types";
 import type {
   CreatePaymentInput,
@@ -37,32 +38,35 @@ export function createPaymentModule(
   debtPort: InvoiceDebtPort,
 ): PaymentModule {
   async function create(input: CreatePaymentInput): Promise<PaymentWithAllocations> {
+    // Allocation-sum mismatch is a structural validation — safe
+    // to check outside the transaction (pure input, no DB state).
     const totalAllocated = input.allocations.reduce((sum, a) => sum + a.amount, 0);
-    if (Math.abs(totalAllocated - input.totalAmount) > 0.001) {
+    if (totalAllocated !== input.totalAmount) {
       throw new PaymentAllocationSumMismatchError(input.totalAmount, totalAllocated);
-    }
-
-    // Pre-validate all invoices before entering the transaction.
-    for (const alloc of input.allocations) {
-      const invoice = await invoiceRepo.findById(alloc.invoiceId);
-      if (!invoice) {
-        throw new PaymentInvoiceNotFoundError(alloc.invoiceId);
-      }
-      if (invoice.status !== "RECEIVED") {
-        throw new PaymentInvoiceNotReceivedError(alloc.invoiceId, invoice.status);
-      }
-      if (alloc.amount > invoice.remainingAmount) {
-        throw new PaymentInvoiceOverAllocationError(
-          alloc.invoiceId,
-          alloc.amount,
-          invoice.remainingAmount,
-        );
-      }
     }
 
     const now = new Date().toISOString();
 
     const result = await paymentRepo.runInTransaction(async () => {
+      // Re-read invoices inside the transaction so remainingAmount
+      // cannot become stale between validation and write.
+      for (const alloc of input.allocations) {
+        const invoice = await invoiceRepo.findById(alloc.invoiceId);
+        if (!invoice) {
+          throw new PaymentInvoiceNotFoundError(alloc.invoiceId);
+        }
+        if (invoice.status !== "RECEIVED") {
+          throw new PaymentInvoiceNotReceivedError(alloc.invoiceId, invoice.status);
+        }
+        if (alloc.amount > invoice.remainingAmount) {
+          throw new PaymentInvoiceOverAllocationError(
+            alloc.invoiceId,
+            alloc.amount,
+            invoice.remainingAmount,
+          );
+        }
+      }
+
       const payment = await paymentRepo.createPayment({
         id: input.id,
         counterpartyType: input.counterpartyType,
@@ -164,10 +168,7 @@ export function createPaymentModule(
       // has already been applied and cannot be deleted.
       const allocs = await paymentRepo.findAllocationsByPaymentId(id);
       if (allocs.length > 0) {
-        throw new Error(
-          "Cannot delete payment with existing allocations. " +
-          "Void the allocations first.",
-        );
+        throw new PaymentHasAllocationsError(id, allocs.length);
       }
       await paymentRepo.deletePayment(id);
     },
