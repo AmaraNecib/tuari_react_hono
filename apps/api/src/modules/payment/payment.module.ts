@@ -48,20 +48,31 @@ export function createPaymentModule(
     const now = new Date().toISOString();
 
     const result = await paymentRepo.runInTransaction(async () => {
-      // Re-read invoices inside the transaction so remainingAmount
-      // cannot become stale between validation and write.
+      // Group allocations by invoiceId so we validate the *combined*
+      // amount against remainingCapacity (not each allocation in isolation).
+      const allocGroups = new Map<string, { total: number; items: typeof input.allocations }>();
       for (const alloc of input.allocations) {
-        const invoice = await invoiceRepo.findById(alloc.invoiceId);
+        const existing = allocGroups.get(alloc.invoiceId);
+        if (existing) {
+          existing.total += alloc.amount;
+          existing.items.push(alloc);
+        } else {
+          allocGroups.set(alloc.invoiceId, { total: alloc.amount, items: [alloc] });
+        }
+      }
+
+      for (const [invoiceId, group] of allocGroups) {
+        const invoice = await invoiceRepo.findById(invoiceId);
         if (!invoice) {
-          throw new PaymentInvoiceNotFoundError(alloc.invoiceId);
+          throw new PaymentInvoiceNotFoundError(invoiceId);
         }
         if (invoice.status !== "RECEIVED") {
-          throw new PaymentInvoiceNotReceivedError(alloc.invoiceId, invoice.status);
+          throw new PaymentInvoiceNotReceivedError(invoiceId, invoice.status);
         }
-        if (alloc.amount > invoice.remainingAmount) {
+        if (group.total > invoice.remainingAmount) {
           throw new PaymentInvoiceOverAllocationError(
-            alloc.invoiceId,
-            alloc.amount,
+            invoiceId,
+            group.total,
             invoice.remainingAmount,
           );
         }
@@ -141,9 +152,19 @@ export function createPaymentModule(
               const decoded = JSON.parse(
                 Buffer.from(query.cursor!, "base64url").toString("utf8"),
               );
+              if (
+                !decoded ||
+                typeof decoded !== "object" ||
+                typeof decoded.id !== "string" ||
+                (decoded.sortValue !== null &&
+                  typeof decoded.sortValue !== "string" &&
+                  typeof decoded.sortValue !== "number")
+              ) {
+                return undefined;
+              }
               return {
-                sortValue: decoded.sortValue as string | number | null,
-                id: decoded.id as string,
+                sortValue: decoded.sortValue,
+                id: decoded.id,
               };
             } catch {
               return undefined;

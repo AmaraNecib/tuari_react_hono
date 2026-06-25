@@ -47,17 +47,16 @@ describe("role seeds", () => {
       expect(worker.permissions).toContain("employees.read");
     });
 
-    it("project_manager has employees.read, employees.update, invoices access, and payments.read only", () => {
+    it("project_manager has exact permission set", () => {
       const pm = DEFAULT_ROLE_PERMISSIONS.find((r) => r.role.key === "project_manager")!;
-      expect(pm.permissions).toContain("employees.read");
-      expect(pm.permissions).toContain("employees.update");
-      expect(pm.permissions).toContain("invoices.read");
-      expect(pm.permissions).toContain("invoices.create");
-      expect(pm.permissions).toContain("invoices.update");
-      expect(pm.permissions).toContain("payments.read");
-      expect(pm.permissions).not.toContain("employees.create");
-      expect(pm.permissions).not.toContain("employees.delete");
-      expect(pm.permissions).not.toContain("payments.create");
+      expect(pm.permissions).toEqual([
+        "employees.read",
+        "employees.update",
+        "invoices.read",
+        "invoices.create",
+        "invoices.update",
+        "payments.read",
+      ]);
     });
 
     it("warehouse_manager has employees.read, invoice access, and payments.read", () => {
