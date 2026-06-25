@@ -1,33 +1,28 @@
+/**
+ * Drizzle-based CompanyRepository implementation.
+ *
+ * This file replaces the raw-SQL SqliteCompanyRepository with Drizzle ORM
+ * queries. It implements the same CompanyRepository interface so callers
+ * don't need to change.
+ *
+ * The migration is incremental: this file is being built alongside the
+ * existing SqliteCompanyRepository. Once all tests pass, the factory
+ * will be updated to use this implementation.
+ */
+
+import crypto from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-
-import Database from "better-sqlite3";
+import { eq, and, desc, asc, sql, count, like, isNull } from "drizzle-orm";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import { resolveDatabaseEnv } from "../../infrastructure/config/database-env";
 import {
   encodeCursor as encodeCursorToken,
   decodeCursor as decodeCursorToken,
 } from "../shared/cursor";
-import {
-  mapDebtAccount,
-  mapDebtEntry,
-  mapExternalCounterparty,
-  mapAuthUserDisplay,
-  mapEmployee,
-  mapEmployeeSalaryPayment,
-  mapEmployeeStateHistory,
-  mapManagerAssignment,
-  mapProject,
-  mapProjectAssignment,
-  mapProjectManagerOwnershipHistory,
-  mapRole,
-  mapUserProfileHistory,
-  mapWarehouse,
-  mapWarehouseAssignment,
-  mapWarehouseManagerOwnershipHistory,
-  normalizeAuditContext,
-  type SqliteRow,
-} from "./company.repository-mappers";
+import * as schema from "../../schema";
+import { createDrizzleFromSqlite } from "../../infrastructure/database/drizzle";
 import { createAlgeriaTimestamp } from "./company-time";
 import type {
   DebtAccountCreateData,
@@ -88,9 +83,97 @@ import type {
   WarehouseUpdateData,
 } from "./company.types";
 
-// Architecture note: business-domain persistence intentionally uses explicit
-// better-sqlite3 SQL. See docs/architecture-decisions.md (ADR-001) before
-// adding or migrating business queries to Prisma.
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Normalize audit context with null defaults. */
+function normalizeAudit(ctx?: MutationAuditContext) {
+  return {
+    actorUserId: ctx?.actorUserId ?? null,
+    actorLabel: ctx?.actorLabel ?? null,
+    transactionId: ctx?.transactionId ?? null,
+  };
+}
+
+type WhereCond = ReturnType<typeof eq> | ReturnType<typeof and> | ReturnType<typeof isNull>;
+
+/** Build a Drizzle WHERE clause from an array of conditions. */
+function buildWhere(conditions: WhereCond[]): WhereCond | undefined {
+  if (conditions.length === 0) return undefined;
+  if (conditions.length === 1) return conditions[0];
+  return and(...conditions);
+}
+
+// ---------------------------------------------------------------------------
+// Drizzle row → Record mappers
+// ---------------------------------------------------------------------------
+
+function toRole(r: typeof schema.role.$inferSelect): RoleRecord {
+  return { id: r.id, key: r.key, name: r.name, description: r.description ?? null, isSystem: r.isSystem, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toEmployee(r: typeof schema.employee.$inferSelect): EmployeeRecord {
+  return { id: r.id, firstName: r.firstName, lastName: r.lastName, phone: r.phone, roleId: r.roleId, status: r.status as EmployeeRecord["status"], salaryAmountDzd: r.salaryAmountDzd ?? null, salaryPeriod: r.salaryPeriod as EmployeeRecord["salaryPeriod"], notes: r.notes ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toProject(r: typeof schema.project.$inferSelect): ProjectRecord {
+  return { id: r.id, name: r.name, location: r.location ?? null, managerId: r.managerId ?? null, status: r.status as ProjectRecord["status"], notes: r.notes ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toWarehouse(r: typeof schema.warehouse.$inferSelect): WarehouseRecord {
+  return { id: r.id, name: r.name, address: r.address ?? null, managerId: r.managerId ?? null, status: r.status as WarehouseRecord["status"], notes: r.notes ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toManagerAssignment(r: typeof schema.employeeManagerAssignment.$inferSelect): EmployeeManagerAssignmentRecord {
+  return { id: r.id, workerId: r.workerId, managerId: r.managerId, status: r.status as EmployeeManagerAssignmentRecord["status"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toProjectAssignment(r: typeof schema.employeeProjectAssignment.$inferSelect): EmployeeProjectAssignmentRecord {
+  return { id: r.id, employeeId: r.employeeId, projectId: r.projectId, status: r.status as EmployeeProjectAssignmentRecord["status"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toWarehouseAssignment(r: typeof schema.employeeWarehouseAssignment.$inferSelect): EmployeeWarehouseAssignmentRecord {
+  return { id: r.id, employeeId: r.employeeId, warehouseId: r.warehouseId, status: r.status as EmployeeWarehouseAssignmentRecord["status"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toStateHistory(r: typeof schema.employeeStateHistory.$inferSelect): EmployeeStateHistoryRecord {
+  return { id: r.id, employeeId: r.employeeId, roleId: r.roleId, status: r.status as EmployeeStateHistoryRecord["status"], salaryAmountDzd: r.salaryAmountDzd ?? null, salaryPeriod: r.salaryPeriod as EmployeeStateHistoryRecord["salaryPeriod"], eventType: r.eventType as EmployeeStateHistoryRecord["eventType"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toProjectManagerHistory(r: typeof schema.projectManagerOwnershipHistory.$inferSelect): ProjectManagerOwnershipHistoryRecord {
+  return { id: r.id, projectId: r.projectId, managerId: r.managerId, status: r.status as ProjectManagerOwnershipHistoryRecord["status"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toWarehouseManagerHistory(r: typeof schema.warehouseManagerOwnershipHistory.$inferSelect): WarehouseManagerOwnershipHistoryRecord {
+  return { id: r.id, warehouseId: r.warehouseId, managerId: r.managerId, status: r.status as WarehouseManagerOwnershipHistoryRecord["status"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toExternalCounterparty(r: typeof schema.externalCounterparty.$inferSelect): ExternalCounterpartyRecord {
+  return { id: r.id, fullName: r.fullName, phoneNumber: r.phoneNumber, note: r.note ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toDebtAccount(r: typeof schema.debtAccount.$inferSelect): DebtAccountRecord {
+  return { id: r.id, partyType: r.partyType as DebtAccountRecord["partyType"], workerId: r.workerId ?? null, externalCounterpartyId: r.externalCounterpartyId ?? null, status: r.status as DebtAccountRecord["status"], direction: r.direction as DebtAccountRecord["direction"], currentBalance: r.currentBalance, note: r.note ?? null, settledAt: r.settledAt ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toDebtEntry(r: typeof schema.debtEntry.$inferSelect): DebtEntryRecord {
+  return { id: r.id, debtAccountId: r.debtAccountId, entryType: r.entryType as DebtEntryRecord["entryType"], signedAmountDzd: r.signedAmount, entryDate: r.entryDate, note: r.note ?? null, balanceAfterDzd: r.balanceAfter, reasonCategory: r.reasonCategory as DebtEntryRecord["reasonCategory"], reasonDetail: r.reasonDetail ?? null, paymentMethod: r.paymentMethod as DebtEntryRecord["paymentMethod"], status: r.status as DebtEntryRecord["status"], voidedAt: r.voidedAt ?? null, voidedBy: r.voidedBy ?? null, voidReason: r.voidReason ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toSalaryPayment(r: typeof schema.employeeSalaryPayment.$inferSelect): EmployeeSalaryPaymentRecord {
+  return { id: r.id, employeeId: r.employeeId, periodType: r.periodType as EmployeeSalaryPaymentRecord["periodType"], expectedAmountDzd: r.expectedAmountDzd, actualAmountDzd: r.actualAmountDzd, paymentDate: r.paymentDate, note: r.note ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+function toUserProfileHistory(r: typeof schema.userProfileHistory.$inferSelect): UserProfileHistoryRecord {
+  return { id: r.id, userId: r.userId, name: r.name ?? null, phone: r.phone ?? null, previousName: r.previousName ?? null, previousPhone: r.previousPhone ?? null, passwordChanged: r.passwordChanged, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+// ---------------------------------------------------------------------------
+// SqliteCompanyRepository
+// ---------------------------------------------------------------------------
+
+type DrizzleDb = BetterSQLite3Database<typeof schema>;
 
 export interface CompanyRepository {
   withTransaction<T>(callback: () => T): T;
@@ -188,1778 +271,632 @@ export interface CompanyRepository {
   listInventoryItemDefinitionsForLog(): InventoryItemDefinitionAuditRecord[];
   getAuthUserById(id: string): AuthUserDisplayRecord | null;
 }
-
 export class SqliteCompanyRepository implements CompanyRepository {
-  constructor(private readonly database: Database.Database) {
-    this.database.pragma("foreign_keys = ON");
+  private readonly db: DrizzleDb;
+  private readonly raw: any;
+
+  constructor(
+    dbOrRaw: DrizzleDb | any,
+    rawHandle?: any,
+  ) {
+    // Support both (drizzleDb, rawDb) and (rawDb) signatures
+    if (rawHandle) {
+      this.db = dbOrRaw;
+      this.raw = rawHandle;
+    } else {
+      this.raw = dbOrRaw;
+      this.raw.pragma("foreign_keys = ON");
+      this.db = createDrizzleFromSqlite(this.raw);
+    }
   }
 
   withTransaction<T>(callback: () => T): T {
-    return this.database.transaction(callback)()
+    return this.raw.transaction(callback)();
   }
+
+  // ── Bootstrap ────────────────────────────────────────────────────────
 
   isBootstrapOwner(userId: string): boolean {
-    const stateRow = this.database
-      .prepare('SELECT "user_id" FROM "app_bootstrap_state" WHERE "singleton" = 1 LIMIT 1')
-      .get() as { user_id: string | null } | undefined
+    const state = this.db.select({ userId: schema.appBootstrapState.userId }).from(schema.appBootstrapState).where(eq(schema.appBootstrapState.singleton, 1)).limit(1).all();
+    if (state[0]?.userId) return state[0].userId === userId;
 
-    if (stateRow?.user_id) {
-      return stateRow.user_id === userId
-    }
-
-    const firstUser = this.database
-      .prepare('SELECT "id" FROM "user" ORDER BY "created_at" ASC LIMIT 1')
-      .get() as { id: string } | undefined
-
-    return firstUser?.id === userId
+    const first = this.db.select({ id: schema.user.id }).from(schema.user).orderBy(asc(schema.user.createdAt)).limit(1).all();
+    return first[0]?.id === userId;
   }
 
-  listRoles(): RoleRecord[] {
-    const rows = this.database
-      .prepare('SELECT * FROM "role" ORDER BY name COLLATE NOCASE ASC, created_at ASC')
-      .all() as SqliteRow[];
+  // ── Roles ────────────────────────────────────────────────────────────
 
-    return rows.map(mapRole);
+  listRoles(): RoleRecord[] {
+    return this.db.select().from(schema.role).orderBy(asc(sql`name COLLATE NOCASE`), asc(schema.role.createdAt)).all().map(toRole);
   }
 
   getRoleById(id: string): RoleRecord | null {
-    const row = this.database.prepare('SELECT * FROM "role" WHERE id = ?').get(id) as SqliteRow | undefined;
-    return row ? mapRole(row) : null;
+    return this.db.select().from(schema.role).where(eq(schema.role.id, id)).limit(1).all().map(toRole)[0] ?? null;
   }
 
   getRoleByKey(key: string): RoleRecord | null {
-    const row = this.database.prepare('SELECT * FROM "role" WHERE key = ?').get(key) as SqliteRow | undefined;
-    return row ? mapRole(row) : null;
+    return this.db.select().from(schema.role).where(eq(schema.role.key, key)).limit(1).all().map(toRole)[0] ?? null;
   }
 
   createRole(data: RoleCreateData): RoleRecord {
     const id = crypto.randomUUID();
-    const timestamp = createAlgeriaTimestamp();
-    this.database
-      .prepare(
-        'INSERT INTO "role" (id, key, name, description, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(id, data.key, data.name, data.description ?? null, 0, timestamp, timestamp);
-
+    const ts = createAlgeriaTimestamp();
+    this.db.insert(schema.role).values({ id, key: data.key, name: data.name, description: data.description ?? null, isSystem: false, createdAt: ts, updatedAt: ts }).run();
     return this.getRoleById(id)!;
   }
 
   updateRole(data: RoleUpdateData): RoleRecord | null {
-    const current = this.getRoleById(data.id);
-    if (!current) {
-      return null;
-    }
-
-    const next = {
-      key: data.key ?? current.key,
-      name: data.name ?? current.name,
-      description: data.description !== undefined ? data.description : current.description,
-      updatedAt: createAlgeriaTimestamp(),
-    };
-
-    this.database
-      .prepare('UPDATE "role" SET key = ?, name = ?, description = ?, updated_at = ? WHERE id = ?')
-      .run(next.key, next.name, next.description ?? null, next.updatedAt, data.id);
-
+    const cur = this.getRoleById(data.id);
+    if (!cur) return null;
+    const ts = createAlgeriaTimestamp();
+    this.db.update(schema.role).set({ key: data.key ?? cur.key, name: data.name ?? cur.name, description: data.description !== undefined ? data.description : cur.description, updatedAt: ts }).where(eq(schema.role.id, data.id)).run();
     return this.getRoleById(data.id);
   }
 
   deleteRole(id: string): boolean {
-    const result = this.database.prepare('DELETE FROM "role" WHERE id = ?').run(id);
-    return result.changes > 0;
+    return this.db.delete(schema.role).where(eq(schema.role.id, id)).run().changes > 0;
   }
 
   countEmployeesByRoleId(roleId: string): number {
-    const row = this.database
-      .prepare('SELECT COUNT(*) AS count FROM employee WHERE role_id = ?')
-      .get(roleId) as { count: number };
-    return Number(row.count);
+    return Number(this.db.select({ count: count() }).from(schema.employee).where(eq(schema.employee.roleId, roleId)).all()[0]?.count ?? 0);
   }
 
+  // ── Employees ────────────────────────────────────────────────────────
+
   listEmployees(filters?: EmployeeListFilters): EmployeeRecord[] {
-    const conditions: string[] = [];
-    const params: Array<string> = [];
-
-    if (filters?.roleId) {
-      conditions.push("role_id = ?");
-      params.push(filters.roleId);
-    }
-
-    if (filters?.status) {
-      conditions.push("status = ?");
-      params.push(filters.status);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const rows = this.database
-      .prepare(
-        `SELECT * FROM employee ${whereClause} ORDER BY first_name COLLATE NOCASE ASC, last_name COLLATE NOCASE ASC, created_at ASC`,
-      )
-      .all(...params) as SqliteRow[];
-
-    return rows.map(mapEmployee);
+    const conds: WhereCond[] = [];
+    if (filters?.roleId) conds.push(eq(schema.employee.roleId, filters.roleId));
+    if (filters?.status) conds.push(eq(schema.employee.status, filters.status));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.employee);
+    return (w ? q.where(w) : q).orderBy(asc(sql`first_name COLLATE NOCASE`), asc(sql`last_name COLLATE NOCASE`), asc(schema.employee.createdAt)).all().map(toEmployee);
   }
 
   getEmployeeById(id: string): EmployeeRecord | null {
-    const row = this.database.prepare("SELECT * FROM employee WHERE id = ?").get(id) as SqliteRow | undefined;
-    return row ? mapEmployee(row) : null;
+    return this.db.select().from(schema.employee).where(eq(schema.employee.id, id)).limit(1).all().map(toEmployee)[0] ?? null;
   }
 
   getEmployeeByPhone(phone: string): EmployeeRecord | null {
-    const row = this.database.prepare("SELECT * FROM employee WHERE phone = ?").get(phone) as SqliteRow | undefined;
-    return row ? mapEmployee(row) : null;
+    return this.db.select().from(schema.employee).where(eq(schema.employee.phone, phone)).limit(1).all().map(toEmployee)[0] ?? null;
   }
 
   getAuthUserById(id: string): AuthUserDisplayRecord | null {
-    const row = this.database
-      .prepare('SELECT id, name, phoneNumber as phone FROM "user" WHERE id = ?')
-      .get(id) as SqliteRow | undefined
-
-    return row ? mapAuthUserDisplay(row) : null
+    const r = this.db.select({ id: schema.user.id, name: schema.user.name, phone: schema.user.phoneNumber }).from(schema.user).where(eq(schema.user.id, id)).limit(1).all()[0];
+    return r ? { id: r.id, name: r.name, phone: r.phone } : null;
   }
 
-  createEmployee(data: EmployeeCreateData, auditContext?: MutationAuditContext): EmployeeRecord {
+  createEmployee(data: EmployeeCreateData, audit?: MutationAuditContext): EmployeeRecord {
     const id = crypto.randomUUID();
-    const timestamp = createAlgeriaTimestamp();
-    const audit = normalizeAuditContext(auditContext)
-    const transaction = this.database.transaction(() => {
-      this.database
-        .prepare(
-          "INSERT INTO employee (id, first_name, last_name, phone, role_id, status, salary_amount_dzd, salary_period, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run(
-          id,
-          data.firstName,
-          data.lastName,
-          data.phone,
-          data.roleId,
-          data.status,
-          data.salaryAmountDzd ?? null,
-          data.salaryPeriod ?? null,
-          data.notes ?? null,
-          timestamp,
-          timestamp,
-        );
-
-        this.insertEmployeeStateHistory({
-          employeeId: id,
-          roleId: data.roleId,
-          status: data.status,
-          salaryAmountDzd: data.salaryAmountDzd ?? null,
-          salaryPeriod: data.salaryPeriod ?? null,
-          eventType: "CREATED",
-          startDate: timestamp,
-          notes: data.notes ?? null,
-          actorUserId: audit.actorUserId,
-          actorLabel: audit.actorLabel,
-          transactionId: audit.transactionId,
-        });
-    });
-
-    transaction();
-
+    const ts = createAlgeriaTimestamp();
+    const a = normalizeAudit(audit);
+    this.raw.transaction(() => {
+      this.db.insert(schema.employee).values({ id, firstName: data.firstName, lastName: data.lastName, phone: data.phone, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd ?? null, salaryPeriod: data.salaryPeriod ?? null, notes: data.notes ?? null, createdAt: ts, updatedAt: ts }).run();
+      this.insertStateHistory({ employeeId: id, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd ?? null, salaryPeriod: data.salaryPeriod ?? null, eventType: "CREATED", startDate: ts, notes: data.notes ?? null, ...a });
+    })();
     return this.getEmployeeById(id)!;
   }
 
-  createEmployeesBatch(data: EmployeeBatchCreateData[], auditContext?: MutationAuditContext): EmployeeBatchCreateResultRecord {
-    const audit = normalizeAuditContext(auditContext)
-    const insertEmployees = this.database.prepare(
-      "INSERT INTO employee (id, first_name, last_name, phone, role_id, status, salary_amount_dzd, salary_period, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    );
-    const insertManagerAssignments = this.database.prepare(
-      "INSERT INTO employee_manager_assignment (id, worker_id, manager_id, status, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    );
-    const insertProjectAssignments = this.database.prepare(
-      "INSERT INTO employee_project_assignment (id, employee_id, project_id, status, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    );
-
-    const transaction = this.database.transaction((rows: EmployeeBatchCreateData[]) => {
-      const employees: EmployeeRecord[] = [];
-      const managerAssignments: EmployeeManagerAssignmentRecord[] = [];
-      const projectAssignments: EmployeeProjectAssignmentRecord[] = [];
-
-      for (const row of rows) {
-        const employeeId = crypto.randomUUID();
-        const employeeTimestamp = createAlgeriaTimestamp();
-
-        insertEmployees.run(
-          employeeId,
-          row.firstName,
-          row.lastName,
-          row.phone,
-          row.roleId,
-          row.status,
-          row.salaryAmountDzd ?? null,
-          row.salaryPeriod ?? null,
-          row.notes ?? null,
-          employeeTimestamp,
-          employeeTimestamp,
-        );
-
-        employees.push({
-          id: employeeId,
-          firstName: row.firstName,
-          lastName: row.lastName,
-          phone: row.phone,
-          roleId: row.roleId,
-          status: row.status,
-          salaryAmountDzd: row.salaryAmountDzd ?? null,
-          salaryPeriod: row.salaryPeriod ?? null,
-          notes: row.notes ?? null,
-          createdAt: employeeTimestamp,
-          updatedAt: employeeTimestamp,
-        });
-
-        this.insertEmployeeStateHistory({
-          employeeId,
-          roleId: row.roleId,
-          status: row.status,
-          salaryAmountDzd: row.salaryAmountDzd ?? null,
-          salaryPeriod: row.salaryPeriod ?? null,
-          eventType: "CREATED",
-          startDate: employeeTimestamp,
-          notes: row.notes ?? null,
-          actorUserId: audit.actorUserId,
-          actorLabel: audit.actorLabel,
-          transactionId: audit.transactionId,
-        });
-
-        if (!row.managerId) {
-          continue;
-        }
-
-        const assignmentId = crypto.randomUUID();
-        const assignmentTimestamp = createAlgeriaTimestamp();
-
-        insertManagerAssignments.run(
-          assignmentId,
-          employeeId,
-          row.managerId,
-          "ACTIVE",
-          assignmentTimestamp,
-          null,
-          null,
-          audit.actorUserId,
-          audit.actorLabel,
-          audit.transactionId,
-          assignmentTimestamp,
-          assignmentTimestamp,
-        );
-
-        managerAssignments.push({
-          id: assignmentId,
-          workerId: employeeId,
-          managerId: row.managerId,
-          status: "ACTIVE",
-          startDate: assignmentTimestamp,
-          endDate: null,
-          notes: null,
-          actorUserId: audit.actorUserId,
-          actorLabel: audit.actorLabel,
-          transactionId: audit.transactionId,
-          createdAt: assignmentTimestamp,
-          updatedAt: assignmentTimestamp,
-        });
-
-        if (!row.projectId) {
-          continue;
-        }
-
-        const projectAssignmentId = crypto.randomUUID();
-        const projectAssignmentTimestamp = createAlgeriaTimestamp();
-
-        insertProjectAssignments.run(
-          projectAssignmentId,
-          employeeId,
-          row.projectId,
-          "ACTIVE",
-          projectAssignmentTimestamp,
-          null,
-          null,
-          audit.actorUserId,
-          audit.actorLabel,
-          audit.transactionId,
-          projectAssignmentTimestamp,
-          projectAssignmentTimestamp,
-        );
-
-        projectAssignments.push({
-          id: projectAssignmentId,
-          employeeId,
-          projectId: row.projectId,
-          status: "ACTIVE",
-          startDate: projectAssignmentTimestamp,
-          endDate: null,
-          notes: null,
-          actorUserId: audit.actorUserId,
-          actorLabel: audit.actorLabel,
-          transactionId: audit.transactionId,
-          createdAt: projectAssignmentTimestamp,
-          updatedAt: projectAssignmentTimestamp,
-        });
+  createEmployeesBatch(data: EmployeeBatchCreateData[], audit?: MutationAuditContext): EmployeeBatchCreateResultRecord {
+    const a = normalizeAudit(audit);
+    const employees: EmployeeRecord[] = [];
+    const managerAssignments: EmployeeManagerAssignmentRecord[] = [];
+    const projectAssignments: EmployeeProjectAssignmentRecord[] = [];
+    this.raw.transaction(() => {
+      for (const row of data) {
+        const eid = crypto.randomUUID();
+        const ts = createAlgeriaTimestamp();
+        this.db.insert(schema.employee).values({ id: eid, firstName: row.firstName, lastName: row.lastName, phone: row.phone, roleId: row.roleId, status: row.status, salaryAmountDzd: row.salaryAmountDzd ?? null, salaryPeriod: row.salaryPeriod ?? null, notes: row.notes ?? null, createdAt: ts, updatedAt: ts }).run();
+        employees.push(this.getEmployeeById(eid)!);
+        if (row.managerId) managerAssignments.push(this.createManagerAssignment({ workerId: eid, managerId: row.managerId, status: "ACTIVE", startDate: ts, endDate: null, notes: null }, audit));
+        if (row.projectId) projectAssignments.push(this.createProjectAssignment({ employeeId: eid, projectId: row.projectId, status: "ACTIVE", startDate: ts, endDate: null, notes: null }, audit));
       }
-
-      return {
-        employees,
-        managerAssignments,
-        projectAssignments,
-      };
-    });
-
-    return transaction(data);
+    })();
+    return { employees, managerAssignments, projectAssignments };
   }
 
-  updateEmployee(data: EmployeeUpdateData, auditContext?: MutationAuditContext): EmployeeRecord | null {
-    const current = this.getEmployeeById(data.id);
-    if (!current) {
-      return null;
-    }
-
-    const audit = normalizeAuditContext(auditContext)
-
-      const next = {
-      firstName: data.firstName ?? current.firstName,
-      lastName: data.lastName ?? current.lastName,
-        phone: data.phone ?? current.phone,
-        roleId: data.roleId ?? current.roleId,
-        status: data.status ?? current.status,
-        salaryAmountDzd: data.salaryAmountDzd !== undefined ? data.salaryAmountDzd : current.salaryAmountDzd,
-        salaryPeriod: data.salaryPeriod !== undefined ? data.salaryPeriod : current.salaryPeriod,
-        notes: data.notes !== undefined ? data.notes : current.notes,
-        updatedAt: createAlgeriaTimestamp(),
-      };
-
-    this.database.transaction(() => {
-      this.database
-        .prepare(
-          "UPDATE employee SET first_name = ?, last_name = ?, phone = ?, role_id = ?, status = ?, salary_amount_dzd = ?, salary_period = ?, notes = ?, updated_at = ? WHERE id = ?",
-        )
-        .run(
-          next.firstName,
-          next.lastName,
-          next.phone,
-          next.roleId,
-          next.status,
-          next.salaryAmountDzd ?? null,
-          next.salaryPeriod ?? null,
-          next.notes ?? null,
-          next.updatedAt,
-          data.id,
-        );
-
-      const changedState =
-        current.roleId !== next.roleId ||
-        current.status !== next.status ||
-        current.salaryAmountDzd !== next.salaryAmountDzd ||
-        current.salaryPeriod !== next.salaryPeriod
-
-      if (changedState) {
-        this.endActiveEmployeeStateHistory(data.id, next.updatedAt, audit)
-        this.insertEmployeeStateHistory({
-          employeeId: data.id,
-          roleId: next.roleId,
-          status: next.status,
-          salaryAmountDzd: next.salaryAmountDzd ?? null,
-          salaryPeriod: next.salaryPeriod ?? null,
-          eventType: "UPDATED",
-          startDate: next.updatedAt,
-          notes: next.notes ?? null,
-          actorUserId: audit.actorUserId,
-          actorLabel: audit.actorLabel,
-          transactionId: audit.transactionId,
-        })
+  updateEmployee(data: EmployeeUpdateData, audit?: MutationAuditContext): EmployeeRecord | null {
+    const cur = this.getEmployeeById(data.id);
+    if (!cur) return null;
+    const a = normalizeAudit(audit);
+    const ts = createAlgeriaTimestamp();
+    this.raw.transaction(() => {
+      const u: Record<string, unknown> = { updatedAt: ts };
+      if (data.firstName !== undefined) u.firstName = data.firstName;
+      if (data.lastName !== undefined) u.lastName = data.lastName;
+      if (data.phone !== undefined) u.phone = data.phone;
+      if (data.roleId !== undefined) u.roleId = data.roleId;
+      if (data.status !== undefined) u.status = data.status;
+      if (data.salaryAmountDzd !== undefined) u.salaryAmountDzd = data.salaryAmountDzd;
+      if (data.salaryPeriod !== undefined) u.salaryPeriod = data.salaryPeriod;
+      if (data.notes !== undefined) u.notes = data.notes;
+      this.db.update(schema.employee).set(u).where(eq(schema.employee.id, data.id)).run();
+      if (data.status !== undefined || data.roleId !== undefined || data.salaryAmountDzd !== undefined || data.salaryPeriod !== undefined) {
+        this.endActiveStateHistory(data.id, ts, a);
+        this.insertStateHistory({ employeeId: data.id, roleId: data.roleId ?? cur.roleId, status: data.status ?? cur.status, salaryAmountDzd: data.salaryAmountDzd !== undefined ? data.salaryAmountDzd : cur.salaryAmountDzd, salaryPeriod: data.salaryPeriod !== undefined ? data.salaryPeriod : cur.salaryPeriod, eventType: "UPDATED", startDate: ts, notes: data.notes ?? null, ...a });
       }
-    })()
-
+    })();
     return this.getEmployeeById(data.id);
   }
 
   deleteEmployee(id: string): boolean {
-    const transaction = this.database.transaction((employeeId: string) => {
-      this.database.prepare('DELETE FROM "employee_state_history" WHERE employee_id = ?').run(employeeId)
-      return this.database.prepare('DELETE FROM "employee" WHERE id = ?').run(employeeId).changes > 0
-    })
-
-    return transaction(id)
+    return this.raw.transaction(() => {
+      this.db.delete(schema.employeeStateHistory).where(eq(schema.employeeStateHistory.employeeId, id)).run();
+      return this.db.delete(schema.employee).where(eq(schema.employee.id, id)).run().changes > 0;
+    })();
   }
 
-  listEmployeesPaged(query: {
-    filters?: EmployeeListFilters;
-    cursor?: string;
-    limit: number;
-  }): { items: EmployeeRecord[]; total: number; nextCursor: string | null } {
-    const filterConditions: string[] = [];
-    const filterParams: Array<string | number> = [];
+  listEmployeesPaged(query: { filters?: EmployeeListFilters; cursor?: string; limit: number }): { items: EmployeeRecord[]; total: number; nextCursor: string | null } {
+    const fc: WhereCond[] = [];
+    if (query.filters?.roleId) fc.push(eq(schema.employee.roleId, query.filters.roleId));
+    if (query.filters?.status) fc.push(eq(schema.employee.status, query.filters.status));
+    const fw = buildWhere(fc);
+    const total = Number((fw ? this.db.select({ count: count() }).from(schema.employee).where(fw) : this.db.select({ count: count() }).from(schema.employee)).all()[0]?.count ?? 0);
 
-    if (query.filters?.roleId) {
-      filterConditions.push("role_id = ?");
-      filterParams.push(query.filters.roleId);
+    const ac = [...fc];
+    if (query.cursor) {
+      const d = decodeCursorToken(query.cursor);
+      ac.push(sql`(${schema.employee.createdAt} < ${d.createdAt} OR (${schema.employee.createdAt} = ${d.createdAt} AND ${schema.employee.id} < ${d.id}))`);
     }
-    if (query.filters?.status) {
-      filterConditions.push("status = ?");
-      filterParams.push(query.filters.status);
-    }
-
-    // The total-count query uses only the filter conditions (no cursor).
-    // The cursor is a position marker for the items query, not a filter
-    // that should shrink the displayed total.
-    const filterWhereClause = filterConditions.length > 0 ? `WHERE ${filterConditions.join(" AND ")}` : "";
-    const totalRow = this.database
-      .prepare(
-        `SELECT COUNT(*) AS count FROM employee ${filterWhereClause}`,
-      )
-      .get(...filterParams) as { count: number };
-
-    // Cursor encodes (created_at, id). We translate the opaque token back
-    // into SQL only inside this adapter so the rest of the codebase stays
-    // free of cursor parsing. The ordering is created_at DESC, id DESC.
-    const allConditions = [...filterConditions];
-    const allParams = [...filterParams];
-
-    if (query.cursor !== undefined) {
-      const decoded = decodeCursorToken(query.cursor);
-      allConditions.push("(created_at < ? OR (created_at = ? AND id < ?))");
-      allParams.push(decoded.createdAt, decoded.createdAt, decoded.id);
-    }
-
-    const whereClause = allConditions.length > 0 ? `WHERE ${allConditions.join(" AND ")}` : "";
-    // Fetch one extra row to determine hasMore without a false positive
-    // when the remaining set is exactly a multiple of the page size.
-    const fetchLimit = query.limit + 1;
-    const rows = this.database
-      .prepare(
-        `SELECT * FROM employee ${whereClause} ORDER BY created_at DESC, id DESC LIMIT ?`,
-      )
-      .all(...allParams, fetchLimit) as SqliteRow[];
-
-    const allItems = rows.map(mapEmployee);
-    const hasMore = allItems.length > query.limit;
-    const items = allItems.slice(0, query.limit);
+    const w = buildWhere(ac);
+    const q = this.db.select().from(schema.employee);
+    const rows = (w ? q.where(w) : q).orderBy(desc(schema.employee.createdAt), desc(schema.employee.id)).limit(query.limit + 1).all().map(toEmployee);
+    const hasMore = rows.length > query.limit;
+    const items = rows.slice(0, query.limit);
     const last = items[items.length - 1];
-    const nextCursor = hasMore && last
-      ? encodeCursorToken({ createdAt: last.createdAt, id: last.id })
-      : null;
-
-    return { items, total: Number(totalRow.count), nextCursor };
+    return { items, total, nextCursor: hasMore && last ? encodeCursorToken({ createdAt: last.createdAt, id: last.id }) : null };
   }
 
   upsertEmployee(data: EmployeeCreateData | (EmployeeUpdateData & { id: string })): EmployeeRecord {
-    // The deep EmployeeModule's save() generates the UUID itself, so this
-    // method is the bridge that bridges "create with known id" and "update".
-    // We check existence to decide which path to take.
     const existing = this.getEmployeeById((data as { id: string }).id);
     if (existing) {
-      const updateData: EmployeeUpdateData = {
-        id: (data as { id: string }).id,
-        firstName: (data as Partial<EmployeeCreateData>).firstName,
-        lastName: (data as Partial<EmployeeCreateData>).lastName,
-        phone: (data as Partial<EmployeeCreateData>).phone,
-        roleId: (data as Partial<EmployeeCreateData>).roleId,
-        status: (data as Partial<EmployeeCreateData>).status,
-        salaryAmountDzd: (data as Partial<EmployeeCreateData>).salaryAmountDzd,
-        salaryPeriod: (data as Partial<EmployeeCreateData>).salaryPeriod,
-        notes: (data as Partial<EmployeeCreateData>).notes,
-      };
-      const result = this.updateEmployee(updateData);
-      if (!result) throw new Error(`Failed to upsert employee ${updateData.id}`);
-      return result;
+      const r = this.updateEmployee({ id: (data as { id: string }).id, firstName: (data as Partial<EmployeeCreateData>).firstName, lastName: (data as Partial<EmployeeCreateData>).lastName, phone: (data as Partial<EmployeeCreateData>).phone, roleId: (data as Partial<EmployeeCreateData>).roleId, status: (data as Partial<EmployeeCreateData>).status, salaryAmountDzd: (data as Partial<EmployeeCreateData>).salaryAmountDzd, salaryPeriod: (data as Partial<EmployeeCreateData>).salaryPeriod, notes: (data as Partial<EmployeeCreateData>).notes });
+      if (!r) throw new Error(`Failed to upsert employee ${(data as { id: string }).id}`);
+      return r;
     }
-
-    // Create path: ensure required fields are present.
-    const createData = data as EmployeeCreateData;
-    if (!createData.firstName || !createData.lastName || !createData.phone || !createData.roleId || !createData.status) {
-      throw new Error("upsertEmployee: missing required fields for create path");
-    }
-    // Use the caller-supplied id (generated by EmployeeModule.create) so
-    // the persisted row matches the id returned to the caller. createEmployee
-    // would generate a fresh UUID, breaking the module's id contract.
+    const cd = data as EmployeeCreateData;
+    if (!cd.firstName || !cd.lastName || !cd.phone || !cd.roleId || !cd.status) throw new Error("upsertEmployee: missing required fields");
     const id = (data as { id?: string }).id ?? crypto.randomUUID();
-    // Forward caller-supplied timestamps (set by EmployeeModule.create) so
-    // the persisted row matches exactly what the caller will see on read.
-    const createdAt = (data as { createdAt?: string }).createdAt ?? createAlgeriaTimestamp();
-    const updatedAt = (data as { updatedAt?: string }).updatedAt ?? createdAt;
-    this.database
-      .prepare(
-        "INSERT INTO employee (id, first_name, last_name, phone, role_id, status, salary_amount_dzd, salary_period, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(
-        id,
-        createData.firstName,
-        createData.lastName,
-        createData.phone,
-        createData.roleId,
-        createData.status,
-        createData.salaryAmountDzd ?? null,
-        createData.salaryPeriod ?? null,
-        createData.notes ?? null,
-        createdAt,
-        updatedAt,
-      );
-    this.insertEmployeeStateHistory({
-      employeeId: id,
-      roleId: createData.roleId,
-      status: createData.status,
-      salaryAmountDzd: createData.salaryAmountDzd ?? null,
-      salaryPeriod: createData.salaryPeriod ?? null,
-      eventType: "CREATED",
-      startDate: createdAt,
-      notes: createData.notes ?? null,
-      actorUserId: null,
-      actorLabel: null,
-      transactionId: null,
-    });
-    const created = this.getEmployeeById(id)!;
-    return created;
+    const ca = (data as { createdAt?: string }).createdAt ?? createAlgeriaTimestamp();
+    const ua = (data as { updatedAt?: string }).updatedAt ?? ca;
+    this.db.insert(schema.employee).values({ id, firstName: cd.firstName, lastName: cd.lastName, phone: cd.phone, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, notes: cd.notes ?? null, createdAt: ca, updatedAt: ua }).run();
+    this.insertStateHistory({ employeeId: id, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, eventType: "CREATED", startDate: ca, notes: cd.notes ?? null, actorUserId: null, actorLabel: null, transactionId: null });
+    return this.getEmployeeById(id)!;
   }
 
-  assignEmployeeWorkplace(data: EmployeeWorkplaceAssignmentData, auditContext?: MutationAuditContext): void {
-    const audit = normalizeAuditContext(auditContext)
-    const transaction = this.database.transaction((input: EmployeeWorkplaceAssignmentData) => {
-      const activeManager = this.getActiveManagerAssignmentByWorkerId(input.employeeId);
-      const activeProject = this.getActiveProjectAssignmentByEmployeeId(input.employeeId);
-      const activeWarehouse = this.getActiveWarehouseAssignmentByEmployeeId(input.employeeId);
-      const timestamp = createAlgeriaTimestamp();
-
-      const keepsSameProjectAssignment =
-        input.nextType === "PROJECT" &&
-        Boolean(activeProject) &&
-        activeProject?.projectId === input.projectId &&
-        activeManager?.managerId === (input.managerId ?? null) &&
-        !activeWarehouse
-
-      const keepsSameWarehouseAssignment =
-        input.nextType === "WAREHOUSE" &&
-        Boolean(activeWarehouse) &&
-        activeWarehouse?.warehouseId === input.warehouseId &&
-        !activeManager &&
-        !activeProject
-
-      if (keepsSameProjectAssignment || keepsSameWarehouseAssignment) {
-        return
+  assignEmployeeWorkplace(data: EmployeeWorkplaceAssignmentData, audit?: MutationAuditContext): void {
+    const a = normalizeAudit(audit);
+    this.raw.transaction(() => {
+      const am = this.getActiveManagerAssignmentByWorkerId(data.employeeId);
+      const ap = this.getActiveProjectAssignmentByEmployeeId(data.employeeId);
+      const aw = this.getActiveWarehouseAssignmentByEmployeeId(data.employeeId);
+      const ts = createAlgeriaTimestamp();
+      if ((data.nextType === "PROJECT" && Boolean(ap) && ap?.projectId === data.projectId && am?.managerId === (data.managerId ?? null) && !aw) || (data.nextType === "WAREHOUSE" && Boolean(aw) && aw?.warehouseId === data.warehouseId && !am && !ap)) return;
+      if (am && am.managerId !== (data.managerId ?? null)) this.endManagerAssignment({ id: am.id, endDate: ts, notes: data.notes ?? am.notes }, audit);
+      if (ap) this.endProjectAssignment({ id: ap.id, endDate: ts, notes: data.notes ?? ap.notes }, audit);
+      if (aw) this.endWarehouseAssignment({ id: aw.id, endDate: ts, notes: data.notes ?? aw.notes }, audit);
+      if (data.nextType === "PROJECT" && data.projectId) {
+        if (!am || am.managerId !== data.managerId) this.createManagerAssignment({ workerId: data.employeeId, managerId: data.managerId!, status: "ACTIVE", startDate: ts, endDate: null, notes: data.notes ?? null }, audit);
+        this.createProjectAssignment({ employeeId: data.employeeId, projectId: data.projectId, status: "ACTIVE", startDate: ts, endDate: null, notes: data.notes ?? null }, audit);
       }
-
-      if (activeManager && activeManager.managerId !== (input.managerId ?? null)) {
-        this.database
-          .prepare(
-            "UPDATE employee_manager_assignment SET status = 'ENDED', end_date = ?, notes = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?",
-          )
-          .run(timestamp, input.notes ?? activeManager.notes, audit.actorUserId, audit.actorLabel, audit.transactionId, timestamp, activeManager.id);
-      }
-
-      if (activeProject) {
-        this.database
-          .prepare(
-            "UPDATE employee_project_assignment SET status = 'ENDED', end_date = ?, notes = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?",
-          )
-          .run(timestamp, input.notes ?? activeProject.notes, audit.actorUserId, audit.actorLabel, audit.transactionId, timestamp, activeProject.id);
-      }
-
-      if (activeWarehouse) {
-        this.database
-          .prepare(
-            "UPDATE employee_warehouse_assignment SET status = 'ENDED', end_date = ?, notes = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?",
-          )
-          .run(timestamp, input.notes ?? activeWarehouse.notes, audit.actorUserId, audit.actorLabel, audit.transactionId, timestamp, activeWarehouse.id);
-      }
-
-      if (input.nextType === "PROJECT" && input.projectId) {
-        if (!activeManager || activeManager.managerId !== input.managerId) {
-          this.createManagerAssignment({
-            workerId: input.employeeId,
-            managerId: input.managerId!,
-            status: "ACTIVE",
-            startDate: timestamp,
-            endDate: null,
-            notes: input.notes ?? null,
-          }, audit);
-        }
-
-        this.createProjectAssignment({
-          employeeId: input.employeeId,
-          projectId: input.projectId,
-          status: "ACTIVE",
-          startDate: timestamp,
-          endDate: null,
-          notes: input.notes ?? null,
-        }, audit);
-      }
-
-      if (input.nextType === "WAREHOUSE" && input.warehouseId) {
-        this.createWarehouseAssignment({
-          employeeId: input.employeeId,
-          warehouseId: input.warehouseId,
-          status: "ACTIVE",
-          startDate: timestamp,
-          endDate: null,
-          notes: input.notes ?? null,
-        }, audit);
-      }
-
-      if (input.nextType === "NONE" && activeManager && input.managerId === null) {
-        // manager link already ended above when applicable
-      }
-    });
-
-    transaction(data);
+      if (data.nextType === "WAREHOUSE" && data.warehouseId) this.createWarehouseAssignment({ employeeId: data.employeeId, warehouseId: data.warehouseId, status: "ACTIVE", startDate: ts, endDate: null, notes: data.notes ?? null }, audit);
+    })();
   }
 
-  syncManagedProjects(data: EmployeeManagedProjectsSyncData, auditContext?: MutationAuditContext): void {
-    const audit = normalizeAuditContext(auditContext)
-    const transaction = this.database.transaction((input: EmployeeManagedProjectsSyncData) => {
-      const currentProjects = this.listProjects({ managerId: input.employeeId })
-      const currentProjectIds = new Set(currentProjects.map((project) => project.id))
-      const nextProjectIds = new Set(input.projectIds)
-      const timestamp = createAlgeriaTimestamp()
-
-      for (const project of currentProjects) {
-        if (!nextProjectIds.has(project.id)) {
-          this.endActiveProjectManagerOwnershipHistory(project.id, timestamp, audit)
-        }
+  syncManagedProjects(data: EmployeeManagedProjectsSyncData, audit?: MutationAuditContext): void {
+    const a = normalizeAudit(audit);
+    this.raw.transaction(() => {
+      const cur = this.listProjects({ managerId: data.employeeId }).map((p) => p.id);
+      const curSet = new Set(cur);
+      const nextSet = new Set(data.projectIds);
+      const ts = createAlgeriaTimestamp();
+      for (const pid of cur) { if (!nextSet.has(pid)) this.endActiveProjectManagerOwnershipHistory(pid, ts, a); }
+      for (const pid of data.projectIds) {
+        if (!curSet.has(pid)) this.insertProjectManagerOwnershipHistory({ projectId: pid, managerId: data.employeeId, status: "ACTIVE", startDate: ts, notes: null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
+        this.db.update(schema.project).set({ managerId: data.employeeId, updatedAt: ts }).where(eq(schema.project.id, pid)).run();
       }
-
-      this.database
-        .prepare('UPDATE "project" SET manager_id = NULL, updated_at = ? WHERE manager_id = ? AND id NOT IN (' + (input.projectIds.length > 0 ? input.projectIds.map(() => '?').join(',') : "''") + ')')
-        .run(timestamp, input.employeeId, ...input.projectIds)
-
-      for (const projectId of input.projectIds) {
-        if (!currentProjectIds.has(projectId)) {
-          this.insertProjectManagerOwnershipHistory({
-            projectId,
-            managerId: input.employeeId,
-            status: "ACTIVE",
-            startDate: timestamp,
-            notes: null,
-            actorUserId: audit.actorUserId,
-            actorLabel: audit.actorLabel,
-            transactionId: audit.transactionId,
-          })
-        }
-        this.database
-          .prepare('UPDATE "project" SET manager_id = ?, updated_at = ? WHERE id = ?')
-          .run(input.employeeId, timestamp, projectId)
-      }
-    })
-
-    transaction(data)
+      // Clear manager from projects not in the list
+      for (const pid of cur) { if (!nextSet.has(pid)) this.db.update(schema.project).set({ managerId: null, updatedAt: ts }).where(eq(schema.project.id, pid)).run(); }
+    })();
   }
 
-  syncManagedWarehouses(data: EmployeeManagedWarehousesSyncData, auditContext?: MutationAuditContext): void {
-    const audit = normalizeAuditContext(auditContext)
-    const transaction = this.database.transaction((input: EmployeeManagedWarehousesSyncData) => {
-      const currentWarehouses = this.listWarehouses({ managerId: input.employeeId })
-      const currentWarehouseIds = new Set(currentWarehouses.map((warehouse) => warehouse.id))
-      const nextWarehouseIds = new Set(input.warehouseIds)
-      const timestamp = createAlgeriaTimestamp()
-
-      for (const warehouse of currentWarehouses) {
-        if (!nextWarehouseIds.has(warehouse.id)) {
-          this.endActiveWarehouseManagerOwnershipHistory(warehouse.id, timestamp, audit)
-        }
+  syncManagedWarehouses(data: EmployeeManagedWarehousesSyncData, audit?: MutationAuditContext): void {
+    const a = normalizeAudit(audit);
+    this.raw.transaction(() => {
+      const cur = this.listWarehouses({ managerId: data.employeeId }).map((w) => w.id);
+      const curSet = new Set(cur);
+      const nextSet = new Set(data.warehouseIds);
+      const ts = createAlgeriaTimestamp();
+      for (const wid of cur) { if (!nextSet.has(wid)) this.endActiveWarehouseManagerOwnershipHistory(wid, ts, a); }
+      for (const wid of data.warehouseIds) {
+        if (!curSet.has(wid)) this.insertWarehouseManagerOwnershipHistory({ warehouseId: wid, managerId: data.employeeId, status: "ACTIVE", startDate: ts, notes: null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
+        this.db.update(schema.warehouse).set({ managerId: data.employeeId, updatedAt: ts }).where(eq(schema.warehouse.id, wid)).run();
       }
-
-      this.database
-        .prepare('UPDATE "warehouse" SET manager_id = NULL, updated_at = ? WHERE manager_id = ? AND id NOT IN (' + (input.warehouseIds.length > 0 ? input.warehouseIds.map(() => '?').join(',') : "''") + ')')
-        .run(timestamp, input.employeeId, ...input.warehouseIds)
-
-      for (const warehouseId of input.warehouseIds) {
-        if (!currentWarehouseIds.has(warehouseId)) {
-          this.insertWarehouseManagerOwnershipHistory({
-            warehouseId,
-            managerId: input.employeeId,
-            status: "ACTIVE",
-            startDate: timestamp,
-            notes: null,
-            actorUserId: audit.actorUserId,
-            actorLabel: audit.actorLabel,
-            transactionId: audit.transactionId,
-          })
-        }
-        this.database
-          .prepare('UPDATE "warehouse" SET manager_id = ?, updated_at = ? WHERE id = ?')
-          .run(input.employeeId, timestamp, warehouseId)
-      }
-    })
-
-    transaction(data)
+      for (const wid of cur) { if (!nextSet.has(wid)) this.db.update(schema.warehouse).set({ managerId: null, updatedAt: ts }).where(eq(schema.warehouse.id, wid)).run(); }
+    })();
   }
+
+  // ── External Counterparties ──────────────────────────────────────────
 
   listExternalCounterparties(filters?: ExternalCounterpartyListFilters): ExternalCounterpartyRecord[] {
-    const conditions: string[] = []
-    const params: Array<string> = []
-
-    if (filters?.fullName) {
-      conditions.push('full_name LIKE ?')
-      params.push(`%${filters.fullName}%`)
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
-    const rows = this.database
-      .prepare(`SELECT * FROM external_counterparty ${whereClause} ORDER BY full_name COLLATE NOCASE ASC, created_at ASC`)
-      .all(...params) as SqliteRow[]
-
-    return rows.map(mapExternalCounterparty)
+    const conds: WhereCond[] = [];
+    if (filters?.fullName) conds.push(like(schema.externalCounterparty.fullName, `%${filters.fullName}%`));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.externalCounterparty);
+    return (w ? q.where(w) : q).orderBy(asc(sql`full_name COLLATE NOCASE`), asc(schema.externalCounterparty.createdAt)).all().map(toExternalCounterparty);
   }
 
   getExternalCounterpartyById(id: string): ExternalCounterpartyRecord | null {
-    const row = this.database.prepare('SELECT * FROM external_counterparty WHERE id = ?').get(id) as SqliteRow | undefined
-    return row ? mapExternalCounterparty(row) : null
+    return this.db.select().from(schema.externalCounterparty).where(eq(schema.externalCounterparty.id, id)).limit(1).all().map(toExternalCounterparty)[0] ?? null;
   }
 
   createExternalCounterparty(data: ExternalCounterpartyCreateData): ExternalCounterpartyRecord {
-    const id = crypto.randomUUID()
-    const timestamp = createAlgeriaTimestamp()
-    this.database
-      .prepare(
-        'INSERT INTO external_counterparty (id, full_name, phone_number, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-      )
-      .run(id, data.fullName, data.phoneNumber, data.note ?? null, timestamp, timestamp)
-
-    return this.getExternalCounterpartyById(id)!
+    const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp();
+    this.db.insert(schema.externalCounterparty).values({ id, fullName: data.fullName, phoneNumber: data.phoneNumber, note: data.note ?? null, createdAt: ts, updatedAt: ts }).run();
+    return this.getExternalCounterpartyById(id)!;
   }
 
+  // ── Debt Accounts ────────────────────────────────────────────────────
+
   listDebtAccounts(filters?: DebtAccountListFilters): DebtAccountRecord[] {
-    const conditions: string[] = []
-    const params: Array<string> = []
-
-    if (filters?.partyType) {
-      conditions.push('party_type = ?')
-      params.push(filters.partyType)
-    }
-
-    if (filters?.workerId) {
-      conditions.push('worker_id = ?')
-      params.push(filters.workerId)
-    }
-
-    if (filters?.externalCounterpartyId) {
-      conditions.push('external_counterparty_id = ?')
-      params.push(filters.externalCounterpartyId)
-    }
-
-    if (filters?.direction) {
-      conditions.push('direction = ?')
-      params.push(filters.direction)
-    }
-
-    if (filters?.status) {
-      conditions.push('status = ?')
-      params.push(filters.status)
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
-    const rows = this.database
-      .prepare(`SELECT * FROM debt_account ${whereClause} ORDER BY updated_at DESC, created_at DESC`)
-      .all(...params) as SqliteRow[]
-
-    return rows.map(mapDebtAccount)
+    const conds: WhereCond[] = [];
+    if (filters?.partyType) conds.push(eq(schema.debtAccount.partyType, filters.partyType));
+    if (filters?.workerId) conds.push(eq(schema.debtAccount.workerId, filters.workerId));
+    if (filters?.externalCounterpartyId) conds.push(eq(schema.debtAccount.externalCounterpartyId, filters.externalCounterpartyId));
+    if (filters?.direction) conds.push(eq(schema.debtAccount.direction, filters.direction));
+    if (filters?.status) conds.push(eq(schema.debtAccount.status, filters.status));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.debtAccount);
+    return (w ? q.where(w) : q).orderBy(desc(schema.debtAccount.updatedAt), desc(schema.debtAccount.createdAt)).all().map(toDebtAccount);
   }
 
   getDebtAccountById(id: string): DebtAccountRecord | null {
-    const row = this.database.prepare('SELECT * FROM debt_account WHERE id = ?').get(id) as SqliteRow | undefined
-    return row ? mapDebtAccount(row) : null
+    return this.db.select().from(schema.debtAccount).where(eq(schema.debtAccount.id, id)).limit(1).all().map(toDebtAccount)[0] ?? null;
   }
 
   getDebtAccountByWorkerId(workerId: string): DebtAccountRecord | null {
-    const row = this.database
-      .prepare('SELECT * FROM debt_account WHERE worker_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1')
-      .get(workerId) as SqliteRow | undefined
-    return row ? mapDebtAccount(row) : null
+    return this.db.select().from(schema.debtAccount).where(eq(schema.debtAccount.workerId, workerId)).orderBy(desc(schema.debtAccount.updatedAt), desc(schema.debtAccount.createdAt)).limit(1).all().map(toDebtAccount)[0] ?? null;
   }
 
-  getDebtAccountByExternalCounterpartyId(externalCounterpartyId: string): DebtAccountRecord | null {
-    const row = this.database
-      .prepare(
-        'SELECT * FROM debt_account WHERE external_counterparty_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1',
-      )
-      .get(externalCounterpartyId) as SqliteRow | undefined
-    return row ? mapDebtAccount(row) : null
+  getDebtAccountByExternalCounterpartyId(ecId: string): DebtAccountRecord | null {
+    return this.db.select().from(schema.debtAccount).where(eq(schema.debtAccount.externalCounterpartyId, ecId)).orderBy(desc(schema.debtAccount.updatedAt), desc(schema.debtAccount.createdAt)).limit(1).all().map(toDebtAccount)[0] ?? null;
   }
 
-  getDebtAccountByExternalCounterpartyIdAndDirection(
-    externalCounterpartyId: string,
-    direction: DebtAccountRecord["direction"],
-  ): DebtAccountRecord | null {
-    const row = this.database
-      .prepare(
-        'SELECT * FROM debt_account WHERE external_counterparty_id = ? AND direction = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1',
-      )
-      .get(externalCounterpartyId, direction) as SqliteRow | undefined
-    return row ? mapDebtAccount(row) : null
+  getDebtAccountByExternalCounterpartyIdAndDirection(ecId: string, direction: DebtAccountRecord["direction"]): DebtAccountRecord | null {
+    return this.db.select().from(schema.debtAccount).where(and(eq(schema.debtAccount.externalCounterpartyId, ecId), eq(schema.debtAccount.direction, direction))).orderBy(desc(schema.debtAccount.updatedAt), desc(schema.debtAccount.createdAt)).limit(1).all().map(toDebtAccount)[0] ?? null;
   }
 
-  createDebtAccount(data: DebtAccountCreateData, auditContext?: MutationAuditContext): DebtAccountRecord {
-    const id = crypto.randomUUID()
-    const timestamp = createAlgeriaTimestamp()
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare(
-        'INSERT INTO debt_account (id, party_type, worker_id, external_counterparty_id, status, direction, current_balance, note, settled_at, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(
-        id,
-        data.partyType,
-        data.workerId ?? null,
-        data.externalCounterpartyId ?? null,
-        data.status,
-        data.direction,
-        data.currentBalance,
-        data.note ?? null,
-        data.settledAt ?? null,
-        audit.actorUserId,
-        audit.actorLabel,
-        audit.transactionId,
-        timestamp,
-        timestamp,
-      )
-
-    return this.getDebtAccountById(id)!
+  createDebtAccount(data: DebtAccountCreateData, audit?: MutationAuditContext): DebtAccountRecord {
+    const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
+    this.db.insert(schema.debtAccount).values({ id, partyType: data.partyType, workerId: data.workerId ?? null, externalCounterpartyId: data.externalCounterpartyId ?? null, status: data.status, direction: data.direction, currentBalance: data.currentBalance, note: data.note ?? null, settledAt: data.settledAt ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    return this.getDebtAccountById(id)!;
   }
 
-  updateDebtAccount(data: DebtAccountUpdateData, auditContext?: MutationAuditContext): DebtAccountRecord | null {
-    const current = this.getDebtAccountById(data.id)
-    if (!current) {
-      return null
-    }
-
-    const audit = normalizeAuditContext(auditContext)
-    const timestamp = createAlgeriaTimestamp()
-    this.database
-      .prepare(
-        'UPDATE debt_account SET status = ?, current_balance = ?, settled_at = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?',
-      )
-      .run(
-        data.status,
-        data.currentBalance,
-        data.settledAt ?? null,
-        audit.actorUserId,
-        audit.actorLabel,
-        audit.transactionId,
-        timestamp,
-        data.id,
-      )
-
-    return this.getDebtAccountById(data.id)
+  updateDebtAccount(data: DebtAccountUpdateData, audit?: MutationAuditContext): DebtAccountRecord | null {
+    const cur = this.getDebtAccountById(data.id);
+    if (!cur) return null;
+    const a = normalizeAudit(audit); const ts = createAlgeriaTimestamp();
+    this.db.update(schema.debtAccount).set({ status: data.status, currentBalance: data.currentBalance, settledAt: data.settledAt ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: ts }).where(eq(schema.debtAccount.id, data.id)).run();
+    return this.getDebtAccountById(data.id);
   }
+
+  // ── Debt Entries ─────────────────────────────────────────────────────
 
   listDebtEntries(filters: DebtEntryListFilters): DebtEntryRecord[] {
-    const rows = this.database
-      .prepare('SELECT * FROM debt_entry WHERE debt_account_id = ? ORDER BY entry_date DESC, created_at DESC')
-      .all(filters.debtAccountId) as SqliteRow[]
-
-    return rows.map(mapDebtEntry)
+    return this.db.select().from(schema.debtEntry).where(eq(schema.debtEntry.debtAccountId, filters.debtAccountId)).orderBy(desc(schema.debtEntry.entryDate), desc(schema.debtEntry.createdAt)).all().map(toDebtEntry);
   }
 
   getDebtEntryById(id: string): DebtEntryRecord | null {
-    const row = this.database
-      .prepare('SELECT * FROM debt_entry WHERE id = ?')
-      .get(id) as SqliteRow | undefined
-    return row ? mapDebtEntry(row) : null
+    return this.db.select().from(schema.debtEntry).where(eq(schema.debtEntry.id, id)).limit(1).all().map(toDebtEntry)[0] ?? null;
   }
 
   getLatestDebtEntry(accountId: string): DebtEntryRecord | null {
-    const row = this.database
-      .prepare('SELECT * FROM debt_entry WHERE debt_account_id = ? ORDER BY entry_date DESC, created_at DESC LIMIT 1')
-      .get(accountId) as SqliteRow | undefined
-    return row ? mapDebtEntry(row) : null
+    return this.db.select().from(schema.debtEntry).where(eq(schema.debtEntry.debtAccountId, accountId)).orderBy(desc(schema.debtEntry.entryDate), desc(schema.debtEntry.createdAt)).limit(1).all().map(toDebtEntry)[0] ?? null;
   }
 
   listAllDebtEntries(): DebtEntryRecord[] {
-    const rows = this.database
-      .prepare('SELECT * FROM debt_entry ORDER BY debt_account_id, entry_date DESC, created_at DESC')
-      .all() as SqliteRow[]
-    return rows.map(mapDebtEntry)
+    return this.db.select().from(schema.debtEntry).orderBy(schema.debtEntry.debtAccountId, desc(schema.debtEntry.entryDate), desc(schema.debtEntry.createdAt)).all().map(toDebtEntry);
   }
 
-  createDebtEntry(data: DebtEntryCreateData, auditContext?: MutationAuditContext): DebtEntryRecord {
-    const id = crypto.randomUUID()
-    const timestamp = createAlgeriaTimestamp()
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare(
-        'INSERT INTO debt_entry (id, debt_account_id, entry_type, signed_amount, entry_date, note, balance_after, reason_category, reason_detail, payment_method, status, voided_at, voided_by, void_reason, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(
-        id,
-        data.debtAccountId,
-        data.entryType,
-        data.signedAmountDzd,
-        data.entryDate,
-        data.note ?? null,
-        data.balanceAfterDzd,
-        data.reasonCategory ?? 'INVOICE_DRIVEN',
-        data.reasonDetail ?? null,
-        data.paymentMethod ?? null,
-        data.status ?? 'LIVE',
-        data.voidedAt ?? null,
-        data.voidedBy ?? null,
-        data.voidReason ?? null,
-        audit.actorUserId,
-        audit.actorLabel,
-        audit.transactionId,
-        timestamp,
-        timestamp,
-      )
-
-    const [entry] = this.listDebtEntries({ debtAccountId: data.debtAccountId }).filter((item) => item.id === id)
-    return entry!
+  createDebtEntry(data: DebtEntryCreateData, audit?: MutationAuditContext): DebtEntryRecord {
+    const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
+    this.db.insert(schema.debtEntry).values({ id, debtAccountId: data.debtAccountId, entryType: data.entryType, signedAmount: data.signedAmountDzd, entryDate: data.entryDate, note: data.note ?? null, balanceAfter: data.balanceAfterDzd, reasonCategory: data.reasonCategory ?? "INVOICE_DRIVEN", reasonDetail: data.reasonDetail ?? null, paymentMethod: data.paymentMethod ?? null, status: data.status ?? "LIVE", voidedAt: data.voidedAt ?? null, voidedBy: data.voidedBy ?? null, voidReason: data.voidReason ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    return this.getDebtEntryById(id)!;
   }
 
-  voidDebtEntry(data: DebtEntryVoidData, auditContext?: MutationAuditContext): DebtEntryRecord | null {
-    const timestamp = createAlgeriaTimestamp()
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare(
-        'UPDATE debt_entry SET status = ?, voided_at = ?, voided_by = ?, void_reason = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?',
-      )
-      .run(
-        'VOIDED',
-        data.voidedAt,
-        data.voidedBy ?? audit.actorLabel ?? audit.actorUserId,
-        data.voidReason,
-        audit.actorUserId,
-        audit.actorLabel,
-        audit.transactionId,
-        timestamp,
-        data.id,
-      )
-
-    return this.getDebtEntryById(data.id)
+  voidDebtEntry(data: DebtEntryVoidData, audit?: MutationAuditContext): DebtEntryRecord | null {
+    const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
+    this.db.update(schema.debtEntry).set({ status: "VOIDED", voidedAt: data.voidedAt, voidedBy: data.voidedBy ?? a.actorLabel ?? a.actorUserId, voidReason: data.voidReason, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: ts }).where(eq(schema.debtEntry.id, data.id)).run();
+    return this.getDebtEntryById(data.id);
   }
 
   updateDebtEntryBalanceAfter(id: string, balanceAfterDzd: number): void {
-    this.database
-      .prepare(
-        'UPDATE debt_entry SET balance_after = ?, updated_at = ? WHERE id = ?',
-      )
-      .run(balanceAfterDzd, createAlgeriaTimestamp(), id)
+    this.db.update(schema.debtEntry).set({ balanceAfter: balanceAfterDzd, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.debtEntry.id, id)).run();
   }
 
+  // ── Projects ─────────────────────────────────────────────────────────
+
   listProjects(filters?: ProjectListFilters): ProjectRecord[] {
-    const conditions: string[] = [];
-    const params: Array<string> = [];
-
-    if (filters?.managerId) {
-      conditions.push("manager_id = ?");
-      params.push(filters.managerId);
-    }
-
-    if (filters?.status) {
-      conditions.push("status = ?");
-      params.push(filters.status);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const rows = this.database
-      .prepare(
-        `SELECT * FROM project ${whereClause} ORDER BY name COLLATE NOCASE ASC, created_at ASC`,
-      )
-      .all(...params) as SqliteRow[];
-
-    return rows.map(mapProject);
+    const conds: WhereCond[] = [];
+    if (filters?.managerId) conds.push(eq(schema.project.managerId, filters.managerId));
+    if (filters?.status) conds.push(eq(schema.project.status, filters.status));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.project);
+    return (w ? q.where(w) : q).orderBy(asc(sql`name COLLATE NOCASE`), asc(schema.project.createdAt)).all().map(toProject);
   }
 
   getProjectById(id: string): ProjectRecord | null {
-    const row = this.database.prepare("SELECT * FROM project WHERE id = ?").get(id) as SqliteRow | undefined;
-    return row ? mapProject(row) : null;
+    return this.db.select().from(schema.project).where(eq(schema.project.id, id)).limit(1).all().map(toProject)[0] ?? null;
   }
 
-  createProject(data: ProjectCreateData, auditContext?: MutationAuditContext): ProjectRecord {
-    const id = crypto.randomUUID();
-    const timestamp = createAlgeriaTimestamp();
-    const audit = normalizeAuditContext(auditContext)
-    const transaction = this.database.transaction(() => {
-      this.database
-        .prepare(
-          "INSERT INTO project (id, name, location, manager_id, status, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run(
-          id,
-          data.name,
-          data.location ?? null,
-          data.managerId ?? null,
-          data.status,
-          data.notes ?? null,
-          timestamp,
-          timestamp,
-        )
-
-      if (data.managerId && data.status === "ACTIVE") {
-        this.insertProjectManagerOwnershipHistory({
-          projectId: id,
-          managerId: data.managerId,
-          status: "ACTIVE",
-          startDate: timestamp,
-          notes: data.notes ?? null,
-          actorUserId: audit.actorUserId,
-          actorLabel: audit.actorLabel,
-          transactionId: audit.transactionId,
-        })
-      }
-    })
-
-    transaction();
-
+  createProject(data: ProjectCreateData, audit?: MutationAuditContext): ProjectRecord {
+    const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
+    this.raw.transaction(() => {
+      this.db.insert(schema.project).values({ id, name: data.name, location: data.location ?? null, managerId: data.managerId ?? null, status: data.status, notes: data.notes ?? null, createdAt: ts, updatedAt: ts }).run();
+      if (data.managerId && data.status === "ACTIVE") this.insertProjectManagerOwnershipHistory({ projectId: id, managerId: data.managerId, status: "ACTIVE", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
+    })();
     return this.getProjectById(id)!;
   }
 
-  updateProject(data: ProjectUpdateData, auditContext?: MutationAuditContext): ProjectRecord | null {
-    const current = this.getProjectById(data.id);
-    if (!current) {
-      return null;
-    }
-
-    const audit = normalizeAuditContext(auditContext)
-
-    const next = {
-      name: data.name ?? current.name,
-      location: data.location !== undefined ? data.location : current.location,
-      managerId: data.managerId !== undefined ? data.managerId : current.managerId,
-      status: data.status ?? current.status,
-      notes: data.notes !== undefined ? data.notes : current.notes,
-      updatedAt: createAlgeriaTimestamp(),
-    };
-
-    this.database.transaction(() => {
-      this.database
-        .prepare(
-          "UPDATE project SET name = ?, location = ?, manager_id = ?, status = ?, notes = ?, updated_at = ? WHERE id = ?",
-        )
-        .run(
-          next.name,
-          next.location ?? null,
-          next.managerId ?? null,
-          next.status,
-          next.notes ?? null,
-          next.updatedAt,
-          data.id,
-        );
-
-      if (current.managerId !== next.managerId || current.status !== next.status) {
-        if (current.managerId && current.status === "ACTIVE") {
-          this.endActiveProjectManagerOwnershipHistory(data.id, next.updatedAt, audit)
-        }
-
-        if (next.managerId && next.status === "ACTIVE") {
-          this.insertProjectManagerOwnershipHistory({
-            projectId: data.id,
-            managerId: next.managerId,
-            status: "ACTIVE",
-            startDate: next.updatedAt,
-            notes: next.notes ?? null,
-            actorUserId: audit.actorUserId,
-            actorLabel: audit.actorLabel,
-            transactionId: audit.transactionId,
-          })
-        }
+  updateProject(data: ProjectUpdateData, audit?: MutationAuditContext): ProjectRecord | null {
+    const cur = this.getProjectById(data.id);
+    if (!cur) return null;
+    const a = normalizeAudit(audit); const ts = createAlgeriaTimestamp();
+    this.raw.transaction(() => {
+      const nm = data.managerId !== undefined ? data.managerId : cur.managerId;
+      const ns = data.status ?? cur.status;
+      this.db.update(schema.project).set({ name: data.name ?? cur.name, location: data.location !== undefined ? data.location : cur.location, managerId: nm, status: ns, notes: data.notes !== undefined ? data.notes : cur.notes, updatedAt: ts }).where(eq(schema.project.id, data.id)).run();
+      if (cur.managerId !== nm || cur.status !== ns) {
+        if (cur.managerId && cur.status === "ACTIVE") this.endActiveProjectManagerOwnershipHistory(data.id, ts, a);
+        if (nm && ns === "ACTIVE") this.insertProjectManagerOwnershipHistory({ projectId: data.id, managerId: nm, status: "ACTIVE", startDate: ts, notes: (data.notes !== undefined ? data.notes : cur.notes) ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
       }
-
-      if (next.managerId && next.status === "ACTIVE" && data.reassignWorkerIds && data.reassignWorkerIds.length > 0) {
-        this.reassignWorkersToManagerWithinTransaction({
-          workerIds: data.reassignWorkerIds,
-          managerId: next.managerId,
-          timestamp: next.updatedAt,
-        }, audit)
-      }
-    })()
-
+      if (nm && ns === "ACTIVE" && data.reassignWorkerIds?.length) this.reassignWorkers({ workerIds: data.reassignWorkerIds, managerId: nm, timestamp: ts }, audit);
+    })();
     return this.getProjectById(data.id);
   }
 
+  // ── Warehouses ───────────────────────────────────────────────────────
+
   listWarehouses(filters?: WarehouseListFilters): WarehouseRecord[] {
-    const conditions: string[] = [];
-    const params: Array<string> = [];
-
-    if (filters?.managerId) {
-      conditions.push("manager_id = ?");
-      params.push(filters.managerId);
-    }
-
-    if (filters?.status) {
-      conditions.push("status = ?");
-      params.push(filters.status);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const rows = this.database
-      .prepare(
-        `SELECT * FROM warehouse ${whereClause} ORDER BY name COLLATE NOCASE ASC, created_at ASC`,
-      )
-      .all(...params) as SqliteRow[];
-
-    return rows.map(mapWarehouse);
+    const conds: WhereCond[] = [];
+    if (filters?.managerId) conds.push(eq(schema.warehouse.managerId, filters.managerId));
+    if (filters?.status) conds.push(eq(schema.warehouse.status, filters.status));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.warehouse);
+    return (w ? q.where(w) : q).orderBy(asc(sql`name COLLATE NOCASE`), asc(schema.warehouse.createdAt)).all().map(toWarehouse);
   }
 
   getWarehouseById(id: string): WarehouseRecord | null {
-    const row = this.database.prepare("SELECT * FROM warehouse WHERE id = ?").get(id) as SqliteRow | undefined;
-    return row ? mapWarehouse(row) : null;
+    return this.db.select().from(schema.warehouse).where(eq(schema.warehouse.id, id)).limit(1).all().map(toWarehouse)[0] ?? null;
   }
 
-  createWarehouse(data: WarehouseCreateData, auditContext?: MutationAuditContext): WarehouseRecord {
-    const id = crypto.randomUUID();
-    const timestamp = createAlgeriaTimestamp();
-    const audit = normalizeAuditContext(auditContext)
-    const transaction = this.database.transaction(() => {
-      this.database
-        .prepare(
-          "INSERT INTO warehouse (id, name, address, manager_id, status, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run(
-          id,
-          data.name,
-          data.address ?? null,
-          data.managerId ?? null,
-          data.status,
-          data.notes ?? null,
-          timestamp,
-          timestamp,
-        )
-
-      if (data.managerId && data.status === "ACTIVE") {
-        this.insertWarehouseManagerOwnershipHistory({
-          warehouseId: id,
-          managerId: data.managerId,
-          status: "ACTIVE",
-          startDate: timestamp,
-          notes: data.notes ?? null,
-          actorUserId: audit.actorUserId,
-          actorLabel: audit.actorLabel,
-          transactionId: audit.transactionId,
-        })
-      }
-    })
-
-    transaction();
-
+  createWarehouse(data: WarehouseCreateData, audit?: MutationAuditContext): WarehouseRecord {
+    const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
+    this.raw.transaction(() => {
+      this.db.insert(schema.warehouse).values({ id, name: data.name, address: data.address ?? null, managerId: data.managerId ?? null, status: data.status, notes: data.notes ?? null, createdAt: ts, updatedAt: ts }).run();
+      if (data.managerId && data.status === "ACTIVE") this.insertWarehouseManagerOwnershipHistory({ warehouseId: id, managerId: data.managerId, status: "ACTIVE", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
+    })();
     return this.getWarehouseById(id)!;
   }
 
-  updateWarehouse(data: WarehouseUpdateData, auditContext?: MutationAuditContext): WarehouseRecord | null {
-    const current = this.getWarehouseById(data.id);
-    if (!current) {
-      return null;
-    }
-
-    const audit = normalizeAuditContext(auditContext)
-
-    const next = {
-      name: data.name ?? current.name,
-      address: data.address !== undefined ? data.address : current.address,
-      managerId: data.managerId !== undefined ? data.managerId : current.managerId,
-      status: data.status ?? current.status,
-      notes: data.notes !== undefined ? data.notes : current.notes,
-      updatedAt: createAlgeriaTimestamp(),
-    };
-
-    this.database.transaction(() => {
-      this.database
-        .prepare(
-          "UPDATE warehouse SET name = ?, address = ?, manager_id = ?, status = ?, notes = ?, updated_at = ? WHERE id = ?",
-        )
-        .run(
-          next.name,
-          next.address ?? null,
-          next.managerId ?? null,
-          next.status,
-          next.notes ?? null,
-          next.updatedAt,
-          data.id,
-        );
-
-      if (current.managerId !== next.managerId || current.status !== next.status) {
-        if (current.managerId && current.status === "ACTIVE") {
-          this.endActiveWarehouseManagerOwnershipHistory(data.id, next.updatedAt, audit)
-        }
-
-        if (next.managerId && next.status === "ACTIVE") {
-          this.insertWarehouseManagerOwnershipHistory({
-            warehouseId: data.id,
-            managerId: next.managerId,
-            status: "ACTIVE",
-            startDate: next.updatedAt,
-            notes: next.notes ?? null,
-            actorUserId: audit.actorUserId,
-            actorLabel: audit.actorLabel,
-            transactionId: audit.transactionId,
-          })
-        }
+  updateWarehouse(data: WarehouseUpdateData, audit?: MutationAuditContext): WarehouseRecord | null {
+    const cur = this.getWarehouseById(data.id);
+    if (!cur) return null;
+    const a = normalizeAudit(audit); const ts = createAlgeriaTimestamp();
+    this.raw.transaction(() => {
+      const nm = data.managerId !== undefined ? data.managerId : cur.managerId;
+      const ns = data.status ?? cur.status;
+      this.db.update(schema.warehouse).set({ name: data.name ?? cur.name, address: data.address !== undefined ? data.address : cur.address, managerId: nm, status: ns, notes: data.notes !== undefined ? data.notes : cur.notes, updatedAt: ts }).where(eq(schema.warehouse.id, data.id)).run();
+      if (cur.managerId !== nm || cur.status !== ns) {
+        if (cur.managerId && cur.status === "ACTIVE") this.endActiveWarehouseManagerOwnershipHistory(data.id, ts, a);
+        if (nm && ns === "ACTIVE") this.insertWarehouseManagerOwnershipHistory({ warehouseId: data.id, managerId: nm, status: "ACTIVE", startDate: ts, notes: (data.notes !== undefined ? data.notes : cur.notes) ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
       }
-    })()
-
+    })();
     return this.getWarehouseById(data.id);
   }
 
+  // ── Manager Assignments ──────────────────────────────────────────────
+
   listManagerAssignments(filters?: ManagerAssignmentListFilters): EmployeeManagerAssignmentRecord[] {
-    const conditions: string[] = [];
-    const params: Array<string> = [];
-
-    if (filters?.workerId) {
-      conditions.push("worker_id = ?");
-      params.push(filters.workerId);
-    }
-
-    if (filters?.managerId) {
-      conditions.push("manager_id = ?");
-      params.push(filters.managerId);
-    }
-
-    if (filters?.status) {
-      conditions.push("status = ?");
-      params.push(filters.status);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const rows = this.database
-      .prepare(
-        `SELECT * FROM employee_manager_assignment ${whereClause} ORDER BY start_date DESC, created_at DESC`,
-      )
-      .all(...params) as SqliteRow[];
-
-    return rows.map(mapManagerAssignment);
+    const conds: WhereCond[] = [];
+    if (filters?.workerId) conds.push(eq(schema.employeeManagerAssignment.workerId, filters.workerId));
+    if (filters?.managerId) conds.push(eq(schema.employeeManagerAssignment.managerId, filters.managerId));
+    if (filters?.status) conds.push(eq(schema.employeeManagerAssignment.status, filters.status));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.employeeManagerAssignment);
+    return (w ? q.where(w) : q).orderBy(desc(schema.employeeManagerAssignment.startDate), desc(schema.employeeManagerAssignment.createdAt)).all().map(toManagerAssignment);
   }
 
   getManagerAssignmentById(id: string): EmployeeManagerAssignmentRecord | null {
-    const row = this.database
-      .prepare("SELECT * FROM employee_manager_assignment WHERE id = ?")
-      .get(id) as SqliteRow | undefined;
-    return row ? mapManagerAssignment(row) : null;
+    return this.db.select().from(schema.employeeManagerAssignment).where(eq(schema.employeeManagerAssignment.id, id)).limit(1).all().map(toManagerAssignment)[0] ?? null;
   }
 
   getActiveManagerAssignmentByWorkerId(workerId: string): EmployeeManagerAssignmentRecord | null {
-    const row = this.database
-      .prepare(
-        "SELECT * FROM employee_manager_assignment WHERE worker_id = ? AND status = 'ACTIVE' ORDER BY start_date DESC, created_at DESC LIMIT 1",
-      )
-      .get(workerId) as SqliteRow | undefined;
-    return row ? mapManagerAssignment(row) : null;
+    return this.db.select().from(schema.employeeManagerAssignment).where(and(eq(schema.employeeManagerAssignment.workerId, workerId), eq(schema.employeeManagerAssignment.status, "ACTIVE"))).orderBy(desc(schema.employeeManagerAssignment.startDate), desc(schema.employeeManagerAssignment.createdAt)).limit(1).all().map(toManagerAssignment)[0] ?? null;
   }
 
-  createManagerAssignment(data: ManagerAssignmentCreateData, auditContext?: MutationAuditContext): EmployeeManagerAssignmentRecord {
-    const id = crypto.randomUUID();
-    const timestamp = createAlgeriaTimestamp();
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare(
-        "INSERT INTO employee_manager_assignment (id, worker_id, manager_id, status, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(
-        id,
-        data.workerId,
-        data.managerId,
-        data.status,
-        data.startDate,
-        data.endDate ?? null,
-        data.notes ?? null,
-        audit.actorUserId,
-        audit.actorLabel,
-        audit.transactionId,
-        timestamp,
-        timestamp,
-      );
-
+  createManagerAssignment(data: ManagerAssignmentCreateData, audit?: MutationAuditContext): EmployeeManagerAssignmentRecord {
+    const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
+    this.db.insert(schema.employeeManagerAssignment).values({ id, workerId: data.workerId, managerId: data.managerId, status: data.status, startDate: data.startDate, endDate: data.endDate ?? null, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
     return this.getManagerAssignmentById(id)!;
   }
 
-  endManagerAssignment(data: ManagerAssignmentEndData, auditContext?: MutationAuditContext): EmployeeManagerAssignmentRecord | null {
-    const current = this.getManagerAssignmentById(data.id);
-    if (!current) {
-      return null;
-    }
-
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare(
-        "UPDATE employee_manager_assignment SET status = 'ENDED', end_date = ?, notes = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?",
-      )
-      .run(data.endDate, data.notes ?? current.notes, audit.actorUserId, audit.actorLabel, audit.transactionId, createAlgeriaTimestamp(), data.id);
-
+  endManagerAssignment(data: ManagerAssignmentEndData, audit?: MutationAuditContext): EmployeeManagerAssignmentRecord | null {
+    const cur = this.getManagerAssignmentById(data.id);
+    if (!cur) return null;
+    const a = normalizeAudit(audit);
+    this.db.update(schema.employeeManagerAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeManagerAssignment.id, data.id)).run();
     return this.getManagerAssignmentById(data.id);
   }
 
+  // ── Project Assignments ──────────────────────────────────────────────
+
   listProjectAssignments(filters?: ProjectAssignmentListFilters): EmployeeProjectAssignmentRecord[] {
-    const conditions: string[] = [];
-    const params: Array<string> = [];
-
-    if (filters?.employeeId) {
-      conditions.push("employee_id = ?");
-      params.push(filters.employeeId);
-    }
-
-    if (filters?.projectId) {
-      conditions.push("project_id = ?");
-      params.push(filters.projectId);
-    }
-
-    if (filters?.status) {
-      conditions.push("status = ?");
-      params.push(filters.status);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const rows = this.database
-      .prepare(
-        `SELECT * FROM employee_project_assignment ${whereClause} ORDER BY start_date DESC, created_at DESC`,
-      )
-      .all(...params) as SqliteRow[];
-
-    return rows.map(mapProjectAssignment);
+    const conds: WhereCond[] = [];
+    if (filters?.employeeId) conds.push(eq(schema.employeeProjectAssignment.employeeId, filters.employeeId));
+    if (filters?.projectId) conds.push(eq(schema.employeeProjectAssignment.projectId, filters.projectId));
+    if (filters?.status) conds.push(eq(schema.employeeProjectAssignment.status, filters.status));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.employeeProjectAssignment);
+    return (w ? q.where(w) : q).orderBy(desc(schema.employeeProjectAssignment.startDate), desc(schema.employeeProjectAssignment.createdAt)).all().map(toProjectAssignment);
   }
 
   getProjectAssignmentById(id: string): EmployeeProjectAssignmentRecord | null {
-    const row = this.database
-      .prepare("SELECT * FROM employee_project_assignment WHERE id = ?")
-      .get(id) as SqliteRow | undefined;
-    return row ? mapProjectAssignment(row) : null;
+    return this.db.select().from(schema.employeeProjectAssignment).where(eq(schema.employeeProjectAssignment.id, id)).limit(1).all().map(toProjectAssignment)[0] ?? null;
   }
 
   getActiveProjectAssignmentByEmployeeId(employeeId: string): EmployeeProjectAssignmentRecord | null {
-    const row = this.database
-      .prepare(
-        "SELECT * FROM employee_project_assignment WHERE employee_id = ? AND status = 'ACTIVE' ORDER BY start_date DESC, created_at DESC LIMIT 1",
-      )
-      .get(employeeId) as SqliteRow | undefined;
-    return row ? mapProjectAssignment(row) : null;
+    return this.db.select().from(schema.employeeProjectAssignment).where(and(eq(schema.employeeProjectAssignment.employeeId, employeeId), eq(schema.employeeProjectAssignment.status, "ACTIVE"))).orderBy(desc(schema.employeeProjectAssignment.startDate), desc(schema.employeeProjectAssignment.createdAt)).limit(1).all().map(toProjectAssignment)[0] ?? null;
   }
 
-  createProjectAssignment(data: ProjectAssignmentCreateData, auditContext?: MutationAuditContext): EmployeeProjectAssignmentRecord {
-    const id = crypto.randomUUID();
-    const timestamp = createAlgeriaTimestamp();
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare(
-        "INSERT INTO employee_project_assignment (id, employee_id, project_id, status, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(
-        id,
-        data.employeeId,
-        data.projectId,
-        data.status,
-        data.startDate,
-        data.endDate ?? null,
-        data.notes ?? null,
-        audit.actorUserId,
-        audit.actorLabel,
-        audit.transactionId,
-        timestamp,
-        timestamp,
-      );
-
+  createProjectAssignment(data: ProjectAssignmentCreateData, audit?: MutationAuditContext): EmployeeProjectAssignmentRecord {
+    const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
+    this.db.insert(schema.employeeProjectAssignment).values({ id, employeeId: data.employeeId, projectId: data.projectId, status: data.status, startDate: data.startDate, endDate: data.endDate ?? null, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
     return this.getProjectAssignmentById(id)!;
   }
 
-  endProjectAssignment(data: ProjectAssignmentEndData, auditContext?: MutationAuditContext): EmployeeProjectAssignmentRecord | null {
-    const current = this.getProjectAssignmentById(data.id);
-    if (!current) {
-      return null;
-    }
-
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare(
-        "UPDATE employee_project_assignment SET status = 'ENDED', end_date = ?, notes = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?",
-      )
-      .run(data.endDate, data.notes ?? current.notes, audit.actorUserId, audit.actorLabel, audit.transactionId, createAlgeriaTimestamp(), data.id);
-
+  endProjectAssignment(data: ProjectAssignmentEndData, audit?: MutationAuditContext): EmployeeProjectAssignmentRecord | null {
+    const cur = this.getProjectAssignmentById(data.id);
+    if (!cur) return null;
+    const a = normalizeAudit(audit);
+    this.db.update(schema.employeeProjectAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeProjectAssignment.id, data.id)).run();
     return this.getProjectAssignmentById(data.id);
   }
 
+  // ── Warehouse Assignments ────────────────────────────────────────────
+
   listWarehouseAssignments(filters?: WarehouseAssignmentListFilters): EmployeeWarehouseAssignmentRecord[] {
-    const conditions: string[] = [];
-    const params: Array<string> = [];
-
-    if (filters?.employeeId) {
-      conditions.push("employee_id = ?");
-      params.push(filters.employeeId);
-    }
-
-    if (filters?.warehouseId) {
-      conditions.push("warehouse_id = ?");
-      params.push(filters.warehouseId);
-    }
-
-    if (filters?.status) {
-      conditions.push("status = ?");
-      params.push(filters.status);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const rows = this.database
-      .prepare(
-        `SELECT * FROM employee_warehouse_assignment ${whereClause} ORDER BY start_date DESC, created_at DESC`,
-      )
-      .all(...params) as SqliteRow[];
-
-    return rows.map(mapWarehouseAssignment);
+    const conds: WhereCond[] = [];
+    if (filters?.employeeId) conds.push(eq(schema.employeeWarehouseAssignment.employeeId, filters.employeeId));
+    if (filters?.warehouseId) conds.push(eq(schema.employeeWarehouseAssignment.warehouseId, filters.warehouseId));
+    if (filters?.status) conds.push(eq(schema.employeeWarehouseAssignment.status, filters.status));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.employeeWarehouseAssignment);
+    return (w ? q.where(w) : q).orderBy(desc(schema.employeeWarehouseAssignment.startDate), desc(schema.employeeWarehouseAssignment.createdAt)).all().map(toWarehouseAssignment);
   }
 
   getWarehouseAssignmentById(id: string): EmployeeWarehouseAssignmentRecord | null {
-    const row = this.database
-      .prepare("SELECT * FROM employee_warehouse_assignment WHERE id = ?")
-      .get(id) as SqliteRow | undefined;
-    return row ? mapWarehouseAssignment(row) : null;
+    return this.db.select().from(schema.employeeWarehouseAssignment).where(eq(schema.employeeWarehouseAssignment.id, id)).limit(1).all().map(toWarehouseAssignment)[0] ?? null;
   }
 
   getActiveWarehouseAssignmentByEmployeeId(employeeId: string): EmployeeWarehouseAssignmentRecord | null {
-    const row = this.database
-      .prepare(
-        "SELECT * FROM employee_warehouse_assignment WHERE employee_id = ? AND status = 'ACTIVE' ORDER BY start_date DESC, created_at DESC LIMIT 1",
-      )
-      .get(employeeId) as SqliteRow | undefined;
-    return row ? mapWarehouseAssignment(row) : null;
+    return this.db.select().from(schema.employeeWarehouseAssignment).where(and(eq(schema.employeeWarehouseAssignment.employeeId, employeeId), eq(schema.employeeWarehouseAssignment.status, "ACTIVE"))).orderBy(desc(schema.employeeWarehouseAssignment.startDate), desc(schema.employeeWarehouseAssignment.createdAt)).limit(1).all().map(toWarehouseAssignment)[0] ?? null;
   }
 
-  createWarehouseAssignment(data: WarehouseAssignmentCreateData, auditContext?: MutationAuditContext): EmployeeWarehouseAssignmentRecord {
-    const id = crypto.randomUUID();
-    const timestamp = createAlgeriaTimestamp();
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare(
-        "INSERT INTO employee_warehouse_assignment (id, employee_id, warehouse_id, status, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(
-        id,
-        data.employeeId,
-        data.warehouseId,
-        data.status,
-        data.startDate,
-        data.endDate ?? null,
-        data.notes ?? null,
-        audit.actorUserId,
-        audit.actorLabel,
-        audit.transactionId,
-        timestamp,
-        timestamp,
-      );
-
+  createWarehouseAssignment(data: WarehouseAssignmentCreateData, audit?: MutationAuditContext): EmployeeWarehouseAssignmentRecord {
+    const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
+    this.db.insert(schema.employeeWarehouseAssignment).values({ id, employeeId: data.employeeId, warehouseId: data.warehouseId, status: data.status, startDate: data.startDate, endDate: data.endDate ?? null, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
     return this.getWarehouseAssignmentById(id)!;
   }
 
-  endWarehouseAssignment(data: WarehouseAssignmentEndData, auditContext?: MutationAuditContext): EmployeeWarehouseAssignmentRecord | null {
-    const current = this.getWarehouseAssignmentById(data.id);
-    if (!current) {
-      return null;
-    }
-
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare(
-        "UPDATE employee_warehouse_assignment SET status = 'ENDED', end_date = ?, notes = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?",
-      )
-      .run(data.endDate, data.notes ?? current.notes, audit.actorUserId, audit.actorLabel, audit.transactionId, createAlgeriaTimestamp(), data.id);
-
+  endWarehouseAssignment(data: WarehouseAssignmentEndData, audit?: MutationAuditContext): EmployeeWarehouseAssignmentRecord | null {
+    const cur = this.getWarehouseAssignmentById(data.id);
+    if (!cur) return null;
+    const a = normalizeAudit(audit);
+    this.db.update(schema.employeeWarehouseAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeWarehouseAssignment.id, data.id)).run();
     return this.getWarehouseAssignmentById(data.id);
   }
 
+  // ── History ──────────────────────────────────────────────────────────
+
   listEmployeeStateHistory(filters?: EmployeeStateHistoryListFilters): EmployeeStateHistoryRecord[] {
-    const conditions: string[] = []
-    const params: Array<string> = []
-
-    if (filters?.employeeId) {
-      conditions.push("employee_id = ?")
-      params.push(filters.employeeId)
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
-    const rows = this.database
-      .prepare(`SELECT * FROM employee_state_history ${whereClause} ORDER BY start_date DESC, created_at DESC`)
-      .all(...params) as SqliteRow[]
-
-    return rows.map(mapEmployeeStateHistory)
+    const conds: WhereCond[] = [];
+    if (filters?.employeeId) conds.push(eq(schema.employeeStateHistory.employeeId, filters.employeeId));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.employeeStateHistory);
+    return (w ? q.where(w) : q).orderBy(desc(schema.employeeStateHistory.startDate), desc(schema.employeeStateHistory.createdAt)).all().map(toStateHistory);
   }
 
   listProjectManagerOwnershipHistory(filters?: ProjectManagerOwnershipHistoryListFilters): ProjectManagerOwnershipHistoryRecord[] {
-    const conditions: string[] = []
-    const params: Array<string> = []
-
-    if (filters?.managerId) {
-      conditions.push("manager_id = ?")
-      params.push(filters.managerId)
-    }
-
-    if (filters?.projectId) {
-      conditions.push("project_id = ?")
-      params.push(filters.projectId)
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
-    const rows = this.database
-      .prepare(`SELECT * FROM project_manager_ownership_history ${whereClause} ORDER BY start_date DESC, created_at DESC`)
-      .all(...params) as SqliteRow[]
-
-    return rows.map(mapProjectManagerOwnershipHistory)
+    const conds: WhereCond[] = [];
+    if (filters?.managerId) conds.push(eq(schema.projectManagerOwnershipHistory.managerId, filters.managerId));
+    if (filters?.projectId) conds.push(eq(schema.projectManagerOwnershipHistory.projectId, filters.projectId));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.projectManagerOwnershipHistory);
+    return (w ? q.where(w) : q).orderBy(desc(schema.projectManagerOwnershipHistory.startDate), desc(schema.projectManagerOwnershipHistory.createdAt)).all().map(toProjectManagerHistory);
   }
 
   listWarehouseManagerOwnershipHistory(filters?: WarehouseManagerOwnershipHistoryListFilters): WarehouseManagerOwnershipHistoryRecord[] {
-    const conditions: string[] = []
-    const params: Array<string> = []
-
-    if (filters?.managerId) {
-      conditions.push("manager_id = ?")
-      params.push(filters.managerId)
-    }
-
-    if (filters?.warehouseId) {
-      conditions.push("warehouse_id = ?")
-      params.push(filters.warehouseId)
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
-    const rows = this.database
-      .prepare(`SELECT * FROM warehouse_manager_ownership_history ${whereClause} ORDER BY start_date DESC, created_at DESC`)
-      .all(...params) as SqliteRow[]
-
-    return rows.map(mapWarehouseManagerOwnershipHistory)
+    const conds: WhereCond[] = [];
+    if (filters?.managerId) conds.push(eq(schema.warehouseManagerOwnershipHistory.managerId, filters.managerId));
+    if (filters?.warehouseId) conds.push(eq(schema.warehouseManagerOwnershipHistory.warehouseId, filters.warehouseId));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.warehouseManagerOwnershipHistory);
+    return (w ? q.where(w) : q).orderBy(desc(schema.warehouseManagerOwnershipHistory.startDate), desc(schema.warehouseManagerOwnershipHistory.createdAt)).all().map(toWarehouseManagerHistory);
   }
 
   listSalaryPayments(filters?: EmployeeSalaryPaymentListFilters): EmployeeSalaryPaymentRecord[] {
-    const conditions: string[] = []
-    const params: Array<string> = []
+    const conds: WhereCond[] = [];
+    if (filters?.employeeId) conds.push(eq(schema.employeeSalaryPayment.employeeId, filters.employeeId));
+    const w = buildWhere(conds);
+    const q = this.db.select().from(schema.employeeSalaryPayment);
+    return (w ? q.where(w) : q).orderBy(desc(schema.employeeSalaryPayment.paymentDate), desc(schema.employeeSalaryPayment.createdAt)).all().map(toSalaryPayment);
+  }
 
-    if (filters?.employeeId) {
-      conditions.push("employee_id = ?")
-      params.push(filters.employeeId)
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
-    const rows = this.database
-      .prepare(`SELECT * FROM employee_salary_payment ${whereClause} ORDER BY payment_date DESC, created_at DESC`)
-      .all(...params) as SqliteRow[]
-
-    return rows.map(mapEmployeeSalaryPayment)
+  createSalaryPayment(data: EmployeeSalaryPaymentCreateData, audit?: MutationAuditContext): EmployeeSalaryPaymentRecord {
+    const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
+    this.db.insert(schema.employeeSalaryPayment).values({ id, employeeId: data.employeeId, periodType: data.periodType, expectedAmountDzd: data.expectedAmountDzd, actualAmountDzd: data.actualAmountDzd, paymentDate: data.paymentDate, note: data.note ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    return this.listSalaryPayments({ employeeId: data.employeeId }).find((e) => e.id === id)!;
   }
 
   listUserProfileHistory(): UserProfileHistoryRecord[] {
-    const rows = this.database
-      .prepare('SELECT * FROM "user_profile_history" ORDER BY updated_at DESC, created_at DESC')
-      .all() as SqliteRow[]
-
-    return rows.map(mapUserProfileHistory)
+    return this.db.select().from(schema.userProfileHistory).orderBy(desc(schema.userProfileHistory.updatedAt), desc(schema.userProfileHistory.createdAt)).all().map(toUserProfileHistory);
   }
 
   listInventoryItemDefinitionsForLog(): InventoryItemDefinitionAuditRecord[] {
-    let rows: SqliteRow[]
-
     try {
-      rows = this.database
-        .prepare('SELECT * FROM inventory_item_definition ORDER BY created_at DESC')
-        .all() as SqliteRow[]
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("no such table")) {
-        return []
-      }
-
-      throw error
-    }
-
-    return rows.map((row) => ({
-      id: String(row.id),
-      name: String(row.name),
-      itemType: String(row.item_type) as InventoryItemDefinitionAuditRecord["itemType"],
-      unit: row.unit ? String(row.unit) : null,
-      description: row.description ? String(row.description) : null,
-      isActive: Number(row.is_active) === 1,
-      actorUserId: row.actor_user_id ? String(row.actor_user_id) : null,
-      actorLabel: row.actor_label ? String(row.actor_label) : null,
-      transactionId: row.transaction_id ? String(row.transaction_id) : null,
-      createdAt: String(row.created_at),
-      updatedAt: String(row.updated_at),
-    }))
+      return this.db.select().from(schema.inventoryItemDefinition).orderBy(desc(schema.inventoryItemDefinition.createdAt)).all().map((r) => ({ id: r.id, name: r.name, itemType: r.itemType as InventoryItemDefinitionAuditRecord["itemType"], unit: r.unit ?? null, description: r.description ?? null, isActive: r.isActive, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt }));
+    } catch (e) { if (e instanceof Error && e.message.includes("no such table")) return []; throw e; }
   }
 
-  createSalaryPayment(data: EmployeeSalaryPaymentCreateData, auditContext?: MutationAuditContext): EmployeeSalaryPaymentRecord {
-    const id = crypto.randomUUID()
-    const timestamp = createAlgeriaTimestamp()
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare(
-        'INSERT INTO "employee_salary_payment" (id, employee_id, period_type, expected_amount_dzd, actual_amount_dzd, payment_date, note, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(
-        id,
-        data.employeeId,
-        data.periodType,
-        data.expectedAmountDzd,
-        data.actualAmountDzd,
-        data.paymentDate,
-        data.note ?? null,
-        audit.actorUserId,
-        audit.actorLabel,
-        audit.transactionId,
-        timestamp,
-        timestamp,
-      )
+  // ── Private helpers ──────────────────────────────────────────────────
 
-    const [payment] = this.listSalaryPayments({ employeeId: data.employeeId }).filter((entry) => entry.id === id)
-    return payment!
+  private insertStateHistory(data: { employeeId: string; roleId: string; status: string; salaryAmountDzd: number | null; salaryPeriod: string | null; eventType: string; startDate: string; notes: string | null; actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
+    this.db.insert(schema.employeeStateHistory).values({ id: crypto.randomUUID(), employeeId: data.employeeId, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd, salaryPeriod: data.salaryPeriod, eventType: data.eventType, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
   }
 
-  private insertEmployeeStateHistory(data: {
-    employeeId: string
-    roleId: string
-    status: string
-    salaryAmountDzd: number | null
-    salaryPeriod: string | null
-    eventType: string
-    startDate: string
-    notes: string | null
-    actorUserId: string | null
-    actorLabel: string | null
-    transactionId: string | null
-  }) {
-    const id = crypto.randomUUID()
-    this.database
-      .prepare(
-        'INSERT INTO "employee_state_history" (id, employee_id, role_id, status, salary_amount_dzd, salary_period, event_type, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(
-        id,
-        data.employeeId,
-        data.roleId,
-        data.status,
-        data.salaryAmountDzd,
-        data.salaryPeriod,
-        data.eventType,
-        data.startDate,
-        null,
-        data.notes,
-        data.actorUserId,
-        data.actorLabel,
-        data.transactionId,
-        data.startDate,
-        data.startDate,
-      )
+  private endActiveStateHistory(employeeId: string, endDate: string, a: { actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
+    this.db.update(schema.employeeStateHistory).set({ endDate, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.employeeStateHistory.employeeId, employeeId), isNull(schema.employeeStateHistory.endDate))).run();
   }
 
-  private reassignWorkersToManagerWithinTransaction(
-    data: {
-      workerIds: string[]
-      managerId: string
-      timestamp: string
-    },
-    auditContext?: MutationAuditContext,
-  ) {
-    const audit = normalizeAuditContext(auditContext)
-
-    for (const workerId of data.workerIds) {
-      const activeManagerAssignment = this.getActiveManagerAssignmentByWorkerId(workerId)
-
-      if (activeManagerAssignment?.managerId === data.managerId) {
-        continue
-      }
-
-      if (activeManagerAssignment) {
-        this.database
-          .prepare(
-            "UPDATE employee_manager_assignment SET status = 'ENDED', end_date = ?, notes = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE id = ?",
-          )
-          .run(
-            data.timestamp,
-            activeManagerAssignment.notes,
-            audit.actorUserId,
-            audit.actorLabel,
-            audit.transactionId,
-            data.timestamp,
-            activeManagerAssignment.id,
-          )
-      }
-
-      const assignmentId = crypto.randomUUID()
-      this.database
-        .prepare(
-          "INSERT INTO employee_manager_assignment (id, worker_id, manager_id, status, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run(
-          assignmentId,
-          workerId,
-          data.managerId,
-          "ACTIVE",
-          data.timestamp,
-          null,
-          null,
-          audit.actorUserId,
-          audit.actorLabel,
-          audit.transactionId,
-          data.timestamp,
-          data.timestamp,
-        )
+  private reassignWorkers(data: { workerIds: string[]; managerId: string; timestamp: string }, audit?: MutationAuditContext) {
+    const a = normalizeAudit(audit);
+    for (const wid of data.workerIds) {
+      const cur = this.getActiveManagerAssignmentByWorkerId(wid);
+      if (cur?.managerId === data.managerId) continue;
+      if (cur) this.db.update(schema.employeeManagerAssignment).set({ status: "ENDED", endDate: data.timestamp, notes: cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: data.timestamp }).where(eq(schema.employeeManagerAssignment.id, cur.id)).run();
+      this.db.insert(schema.employeeManagerAssignment).values({ id: crypto.randomUUID(), workerId: wid, managerId: data.managerId, status: "ACTIVE", startDate: data.timestamp, endDate: null, notes: null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: data.timestamp, updatedAt: data.timestamp }).run();
     }
   }
 
-  private endActiveEmployeeStateHistory(
-    employeeId: string,
-    endDate: string,
-    auditContext?: MutationAuditContext,
-  ) {
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare('UPDATE "employee_state_history" SET end_date = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ? WHERE employee_id = ? AND end_date IS NULL')
-      .run(endDate, audit.actorUserId, audit.actorLabel, audit.transactionId, endDate, employeeId)
+  private insertProjectManagerOwnershipHistory(data: { projectId: string; managerId: string; status: string; startDate: string; notes: string | null; actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
+    this.db.insert(schema.projectManagerOwnershipHistory).values({ id: crypto.randomUUID(), projectId: data.projectId, managerId: data.managerId, status: data.status, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
   }
 
-  private insertProjectManagerOwnershipHistory(data: {
-    projectId: string
-    managerId: string
-    status: string
-    startDate: string
-    notes: string | null
-    actorUserId: string | null
-    actorLabel: string | null
-    transactionId: string | null
-  }) {
-    const id = crypto.randomUUID()
-    this.database
-      .prepare(
-        'INSERT INTO "project_manager_ownership_history" (id, project_id, manager_id, status, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(id, data.projectId, data.managerId, data.status, data.startDate, null, data.notes, data.actorUserId, data.actorLabel, data.transactionId, data.startDate, data.startDate)
+  private endActiveProjectManagerOwnershipHistory(projectId: string, endDate: string, a: { actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
+    this.db.update(schema.projectManagerOwnershipHistory).set({ endDate, status: "ENDED", actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.projectManagerOwnershipHistory.projectId, projectId), isNull(schema.projectManagerOwnershipHistory.endDate))).run();
   }
 
-  private endActiveProjectManagerOwnershipHistory(
-    projectId: string,
-    endDate: string,
-    auditContext?: MutationAuditContext,
-  ) {
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare('UPDATE "project_manager_ownership_history" SET end_date = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ?, status = ? WHERE project_id = ? AND end_date IS NULL')
-      .run(endDate, audit.actorUserId, audit.actorLabel, audit.transactionId, endDate, "ENDED", projectId)
+  private insertWarehouseManagerOwnershipHistory(data: { warehouseId: string; managerId: string; status: string; startDate: string; notes: string | null; actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
+    this.db.insert(schema.warehouseManagerOwnershipHistory).values({ id: crypto.randomUUID(), warehouseId: data.warehouseId, managerId: data.managerId, status: data.status, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
   }
 
-  private insertWarehouseManagerOwnershipHistory(data: {
-    warehouseId: string
-    managerId: string
-    status: string
-    startDate: string
-    notes: string | null
-    actorUserId: string | null
-    actorLabel: string | null
-    transactionId: string | null
-  }) {
-    const id = crypto.randomUUID()
-    this.database
-      .prepare(
-        'INSERT INTO "warehouse_manager_ownership_history" (id, warehouse_id, manager_id, status, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(id, data.warehouseId, data.managerId, data.status, data.startDate, null, data.notes, data.actorUserId, data.actorLabel, data.transactionId, data.startDate, data.startDate)
-  }
-
-  private endActiveWarehouseManagerOwnershipHistory(
-    warehouseId: string,
-    endDate: string,
-    auditContext?: MutationAuditContext,
-  ) {
-    const audit = normalizeAuditContext(auditContext)
-    this.database
-      .prepare('UPDATE "warehouse_manager_ownership_history" SET end_date = ?, actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ?, status = ? WHERE warehouse_id = ? AND end_date IS NULL')
-      .run(endDate, audit.actorUserId, audit.actorLabel, audit.transactionId, endDate, "ENDED", warehouseId)
+  private endActiveWarehouseManagerOwnershipHistory(warehouseId: string, endDate: string, a: { actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
+    this.db.update(schema.warehouseManagerOwnershipHistory).set({ endDate, status: "ENDED", actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.warehouseManagerOwnershipHistory.warehouseId, warehouseId), isNull(schema.warehouseManagerOwnershipHistory.endDate))).run();
   }
 }
 
-export function createCompanyRepository(database?: Database.Database | string) {
-  if (database !== undefined && typeof database !== 'string') {
-    return new SqliteCompanyRepository(database);
-  }
+// ---------------------------------------------------------------------------
+// Factory
+// ---------------------------------------------------------------------------
 
-  const path = typeof database === 'string' ? database : resolveDatabaseEnv().databasePath;
-  mkdirSync(dirname(path), { recursive: true });
-  return new SqliteCompanyRepository(new Database(path));
+/**
+ * Create a Drizzle-backed CompanyRepository.
+ * Accepts a raw SQLite handle or a path string (for backwards compat).
+ */
+export function createCompanyRepository(
+  rawDb: any,
+): CompanyRepository {
+  rawDb.pragma("foreign_keys = ON");
+  const drizzleDb = createDrizzleFromSqlite(rawDb);
+  return new SqliteCompanyRepository(drizzleDb, rawDb);
 }
