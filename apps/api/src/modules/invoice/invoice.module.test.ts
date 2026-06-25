@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 
 import { createInMemoryInvoiceDebtPort } from "./adapters/invoice-debt.port";
 import { createInMemoryInvoiceRepository } from "./adapters/in-memory-invoice.repository";
-import { SqliteInvoiceRepository } from "./adapters/sqlite-invoice.repository";
+import { InvoiceRepository } from "./adapters/invoice.repository";
 import { InvoiceModule } from "./invoice.module";
 import type {
   CreateInvoiceInput,
@@ -770,14 +770,14 @@ describe("InvoiceModule", () => {
   });
 });
 
-describe("SqliteInvoiceRepository findPaged", () => {
+describe("InvoiceRepository findPaged", () => {
   // Regression test for Greptile 3/5 P1: the SQLite findPaged previously
   // hard-coded lineItems: [] and never queried invoice_line_item. This
   // integration test exercises the real adapter to prove the list
   // endpoint now returns populated line-item arrays matching what the
   // get endpoint returns for the same record.
   let db: Database.Database;
-  let repo: SqliteInvoiceRepository;
+  let repo: InvoiceRepository;
   let module: InvoiceModule;
   let debtPort: ReturnType<typeof createInMemoryInvoiceDebtPort>;
 
@@ -815,7 +815,7 @@ describe("SqliteInvoiceRepository findPaged", () => {
         FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE CASCADE
       );
     `);
-    repo = new SqliteInvoiceRepository(db);
+    repo = new InvoiceRepository(db);
     debtPort = createInMemoryInvoiceDebtPort();
     module = new InvoiceModule(repo, debtPort);
   });
