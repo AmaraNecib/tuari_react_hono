@@ -48,7 +48,7 @@ describe("RecoveryKeyService", () => {
       const keys = env.service.generateKeys()
       expect(keys).toHaveLength(3)
       for (const k of keys) {
-        expect(k.key).toMatch(/^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$/)
+        expect(k.key).toMatch(/^[0-9a-f]{6}-[0-9a-f]{6}-[0-9a-f]{6}$/)
         expect(k.prefix).toHaveLength(4)
         expect(k.createdAt).toBeTruthy()
       }
@@ -145,10 +145,14 @@ describe("RecoveryKeyService", () => {
     it("reflects consumed and revoked keys", () => {
       const keys = env.service.generateKeys()
       env.service.consumeKey(keys[0]!.key)
+      const keyId = env.service.getPoolStatus().maskedKeys[1]!.id
+      env.service.revokeKey(keyId)
       const status = env.service.getPoolStatus()
       const consumed = status.maskedKeys.find((k) => k.status === "CONSUMED")
+      const revoked = status.maskedKeys.find((k) => k.status === "REVOKED")
       expect(consumed).toBeTruthy()
-      expect(status.availableCount).toBe(2)
+      expect(revoked).toBeTruthy()
+      expect(status.availableCount).toBe(1)
     })
   })
 })

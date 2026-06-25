@@ -20,7 +20,7 @@ import { createAlgeriaTimestamp } from "../company/company-time"
 /** Recovery key prefix format: first 4 hex chars of the key. */
 const KEY_PREFIX_LENGTH = 4
 /** Recovery key segment length (3 segments of 4 chars). */
-const KEY_SEGMENT_LENGTH = 4
+const KEY_SEGMENT_LENGTH = 6
 /** Number of key segments. */
 const KEY_SEGMENTS = 3
 /** Maximum number of available keys in the pool. */
@@ -69,8 +69,9 @@ export interface RecoveryKeyPoolStatus {
  * The key is cryptographically random hex characters.
  */
 function generateRecoveryKeyString(): string {
-  const bytes = randomBytes(Math.ceil((KEY_SEGMENT_LENGTH * KEY_SEGMENTS) / 2))
-  const hex = bytes.toString("hex").slice(0, KEY_SEGMENT_LENGTH * KEY_SEGMENTS)
+  // 12 bytes = 24 hex chars → 3 segments of 6 hex chars (72 bits of entropy)
+  const bytes = randomBytes(12)
+  const hex = bytes.toString("hex")
   const segments: string[] = []
   for (let i = 0; i < KEY_SEGMENTS; i++) {
     segments.push(hex.slice(i * KEY_SEGMENT_LENGTH, (i + 1) * KEY_SEGMENT_LENGTH))
@@ -122,26 +123,29 @@ export class RecoveryKeyService {
     const keys: GeneratedRecoveryKey[] = []
     const timestamp = createAlgeriaTimestamp()
 
-    for (let i = 0; i < toGenerate; i++) {
-      const plainKey = generateRecoveryKeyString()
-      const prefix = plainKey.slice(0, KEY_PREFIX_LENGTH)
-      const keyHash = hashRecoveryKey(plainKey)
+    // Atomic: generate all keys in a single transaction
+    this.raw.transaction(() => {
+      for (let i = 0; i < toGenerate; i++) {
+        const plainKey = generateRecoveryKeyString()
+        const prefix = plainKey.slice(0, KEY_PREFIX_LENGTH)
+        const keyHash = hashRecoveryKey(plainKey)
 
-      this.db
-        .insert(schema.recoveryKey)
-        .values({
-          id: crypto.randomUUID(),
-          prefix,
-          keyHash,
-          status: "AVAILABLE",
-          consumedAt: null,
-          revokedAt: null,
-          createdAt: timestamp,
-        })
-        .run()
+        this.db
+          .insert(schema.recoveryKey)
+          .values({
+            id: crypto.randomUUID(),
+            prefix,
+            keyHash,
+            status: "AVAILABLE",
+            consumedAt: null,
+            revokedAt: null,
+            createdAt: timestamp,
+          })
+          .run()
 
-      keys.push({ key: plainKey, prefix, createdAt: timestamp })
-    }
+        keys.push({ key: plainKey, prefix, createdAt: timestamp })
+      }
+    })()
 
     return keys
   }
@@ -154,27 +158,37 @@ export class RecoveryKeyService {
     const keyHash = hashRecoveryKey(plainKey)
     const timestamp = createAlgeriaTimestamp()
 
-    const row = this.db
-      .select()
-      .from(schema.recoveryKey)
-      .where(
-        and(
-          eq(schema.recoveryKey.keyHash, keyHash),
-          eq(schema.recoveryKey.status, "AVAILABLE"),
-        ),
-      )
-      .limit(1)
-      .all()[0]
+    // Atomic: read + update in a single transaction
+    let consumed = false
+    this.raw.transaction(() => {
+      const row = this.db
+        .select()
+        .from(schema.recoveryKey)
+        .where(
+          and(
+            eq(schema.recoveryKey.keyHash, keyHash),
+            eq(schema.recoveryKey.status, "AVAILABLE"),
+          ),
+        )
+        .limit(1)
+        .all()[0]
 
-    if (!row) return false
+      if (!row) return
 
-    this.db
-      .update(schema.recoveryKey)
-      .set({ status: "CONSUMED", consumedAt: timestamp })
-      .where(eq(schema.recoveryKey.id, row.id))
-      .run()
+      this.db
+        .update(schema.recoveryKey)
+        .set({ status: "CONSUMED", consumedAt: timestamp })
+        .where(
+          and(
+            eq(schema.recoveryKey.id, row.id),
+            eq(schema.recoveryKey.status, "AVAILABLE"),
+          ),
+        )
+        .run()
+      consumed = true
+    })()
 
-    return true
+    return consumed
   }
 
   /**
@@ -184,27 +198,37 @@ export class RecoveryKeyService {
   revokeKey(keyId: string): boolean {
     const timestamp = createAlgeriaTimestamp()
 
-    const row = this.db
-      .select()
-      .from(schema.recoveryKey)
-      .where(
-        and(
-          eq(schema.recoveryKey.id, keyId),
-          eq(schema.recoveryKey.status, "AVAILABLE"),
-        ),
-      )
-      .limit(1)
-      .all()[0]
+    // Atomic: read + update in a single transaction
+    let revoked = false
+    this.raw.transaction(() => {
+      const row = this.db
+        .select()
+        .from(schema.recoveryKey)
+        .where(
+          and(
+            eq(schema.recoveryKey.id, keyId),
+            eq(schema.recoveryKey.status, "AVAILABLE"),
+          ),
+        )
+        .limit(1)
+        .all()[0]
 
-    if (!row) return false
+      if (!row) return
 
-    this.db
-      .update(schema.recoveryKey)
-      .set({ status: "REVOKED", revokedAt: timestamp })
-      .where(eq(schema.recoveryKey.id, keyId))
-      .run()
+      this.db
+        .update(schema.recoveryKey)
+        .set({ status: "REVOKED", revokedAt: timestamp })
+        .where(
+          and(
+            eq(schema.recoveryKey.id, keyId),
+            eq(schema.recoveryKey.status, "AVAILABLE"),
+          ),
+        )
+        .run()
+      revoked = true
+    })()
 
-    return true
+    return revoked
   }
 
   /**

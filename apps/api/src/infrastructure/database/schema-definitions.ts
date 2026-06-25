@@ -651,7 +651,7 @@ export const schemaStatements = [
     "id" TEXT NOT NULL PRIMARY KEY,
     "prefix" TEXT NOT NULL,
     "key_hash" TEXT NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'AVAILABLE',
+    "status" TEXT NOT NULL DEFAULT 'AVAILABLE' CHECK ("status" IN ('AVAILABLE', 'CONSUMED', 'REVOKED')),
     "consumed_at" TEXT,
     "revoked_at" TEXT,
     "created_at" TEXT NOT NULL
