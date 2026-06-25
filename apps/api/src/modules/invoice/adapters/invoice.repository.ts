@@ -1,5 +1,15 @@
-import type Database from "better-sqlite3";
-import type { InvoiceRepository } from "../invoice.repository";
+/**
+ * InvoiceRepository — Drizzle-backed implementation.
+ *
+ * Replaces the raw-SQL InvoiceRepository. Uses Drizzle query builders
+ * for type-safe reads/writes. Cursor-based pagination uses raw SQL
+ * for dynamic query building (too complex for Drizzle's query builder).
+ */
+import { eq, and, asc, desc, sql, inArray } from "drizzle-orm";
+import type Database from "better-sqlite3-sqlcipher";
+import * as schema from "../../../schema";
+import { createDrizzleFromSqlite, type AppDrizzle } from "../../../infrastructure/database/drizzle";
+import type { InvoiceRepository as IInvoiceRepository } from "../invoice.repository";
 import type {
   Invoice,
   InvoiceCurrency,
@@ -16,116 +26,127 @@ const SORT_COLUMN_MAP: Record<InvoiceListSortField, string> = {
   totalAmount: "total_amount",
 };
 
-export class InvoiceRepository implements InvoiceRepository {
+/** Map a raw Drizzle row to Invoice. */
+function mapInvoice(row: Record<string, unknown>): Invoice {
+  return {
+    id: String(row.id),
+    invoiceNumber: row.invoiceNumber != null ? String(row.invoiceNumber) : null,
+    supplierName: String(row.supplierName),
+    supplierPhone: row.supplierPhone != null ? String(row.supplierPhone) : null,
+    warehouseId: row.warehouseId != null ? String(row.warehouseId) : null,
+    projectId: row.projectId != null ? String(row.projectId) : null,
+    status: row.status as Invoice["status"],
+    invoiceDate: row.invoiceDate != null ? String(row.invoiceDate) : null,
+    dueDate: row.dueDate != null ? String(row.dueDate) : null,
+    currency: (row.currency as InvoiceCurrency) ?? "DZD",
+    totalAmount: Number(row.totalAmount ?? 0),
+    paidAmount: Number(row.paidAmount ?? 0),
+    remainingAmount: Number(row.remainingAmount ?? 0),
+    notes: row.notes != null ? String(row.notes) : null,
+    debtAccountId: row.debtAccountId != null ? String(row.debtAccountId) : null,
+    direction: (row.direction as InvoiceDirection) ?? "PURCHASE",
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt),
+    lineItems: [],
+  };
+}
+
+/** Map a raw Drizzle row to InvoiceLineItem. Handles both camelCase and snake_case. */
+function mapLineItem(row: Record<string, unknown>): InvoiceLineItem {
+  return {
+    id: String(row.id),
+    invoiceId: String(row.invoiceId ?? row.invoice_id),
+    description: String(row.description),
+    quantity: Number(row.quantity),
+    unitPrice: Number(row.unitPrice ?? row.unit_price),
+    total: Number(row.total),
+  };
+}
+
+/** Drizzle-backed InvoiceRepository. */
+export class InvoiceRepository implements IInvoiceRepository {
   private transactionChain: Promise<unknown> = Promise.resolve();
+  private readonly db: AppDrizzle;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private readonly raw: any;
 
-  constructor(private readonly db: Database.Database) {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(rawDb: any, drizzleDb?: AppDrizzle) {
+    // Support both (rawDb) and (rawDb, drizzleDb) signatures
+    if (drizzleDb) {
+      this.db = drizzleDb;
+      this.raw = rawDb;
+    } else {
+      // Backwards compat: single arg is rawDb, create Drizzle internally
+      this.raw = rawDb;
+      this.db = createDrizzleFromSqlite(rawDb);
+    }
+  }
 
+  /** Find invoice by ID with line items. */
   async findById(id: string): Promise<(Invoice & { lineItems: InvoiceLineItem[] }) | null> {
-    const row = this.db
-      .prepare(`SELECT * FROM "invoice" WHERE id = ?`)
-      .get(id) as Record<string, unknown> | undefined;
-
+    const row = this.db.select().from(schema.invoice)
+      .where(eq(schema.invoice.id, id))
+      .limit(1).all()[0];
     if (!row) return null;
 
-    const lineItemRows = this.db
-      .prepare(`SELECT * FROM "invoice_line_item" WHERE invoice_id = ? ORDER BY rowid`)
-      .all(id) as Record<string, unknown>[];
+    const lineItemRows = this.db.select().from(schema.invoiceLineItem)
+      .where(eq(schema.invoiceLineItem.invoiceId, id))
+      .all();
 
     return {
-      ...this.mapRowToInvoice(row),
-      lineItems: lineItemRows.map((li) => this.mapRowToLineItem(li)),
+      ...mapInvoice(row),
+      lineItems: lineItemRows.map(mapLineItem),
     };
   }
 
+  /** Cursor-based paginated invoice list. */
   async findPaged(query: {
     filters?: InvoiceListFilters;
     sort?: { field: InvoiceListSortField; direction: SortDirection };
-    after?: {
-      sortValue: number | string | null;
-      id: string;
-      nullBoundaryPassed?: boolean;
-    };
+    after?: { sortValue: number | string | null; id: string; nullBoundaryPassed?: boolean };
     limit: number;
   }): Promise<{ items: Invoice[]; nextCursor: string | null; totalCount: number }> {
+    // Cursor pagination requires dynamic SQL — use raw queries for clarity
     const sortCol = SORT_COLUMN_MAP[query.sort?.field ?? "createdAt"];
     const sortDir = query.sort?.direction === "asc" ? "ASC" : "DESC";
 
     const conditions: string[] = [];
     const params: unknown[] = [];
 
-    if (query.filters?.status) {
-      conditions.push(`status = ?`);
-      params.push(query.filters.status);
-    }
-    if (query.filters?.supplierName) {
-      conditions.push(`supplier_name LIKE ?`);
-      params.push(`%${query.filters.supplierName}%`);
-    }
-    if (query.filters?.warehouseId) {
-      conditions.push(`warehouse_id = ?`);
-      params.push(query.filters.warehouseId);
-    }
-    if (query.filters?.projectId) {
-      conditions.push(`project_id = ?`);
-      params.push(query.filters.projectId);
-    }
+    if (query.filters?.status) { conditions.push("status = ?"); params.push(query.filters.status); }
+    if (query.filters?.supplierName) { conditions.push("supplier_name LIKE ?"); params.push(`%${query.filters.supplierName}%`); }
+    if (query.filters?.warehouseId) { conditions.push("warehouse_id = ?"); params.push(query.filters.warehouseId); }
+    if (query.filters?.projectId) { conditions.push("project_id = ?"); params.push(query.filters.projectId); }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-    const countRow = this.db
-      .prepare(`SELECT COUNT(*) as cnt FROM "invoice" ${whereClause}`)
-      .get(...params) as { cnt: number };
+    const countRow = this.raw.prepare(`SELECT COUNT(*) as cnt FROM "invoice" ${whereClause}`).get(...params) as { cnt: number };
     const totalCount = countRow.cnt;
 
     let cursorClause = "";
     const cursorParams: unknown[] = [];
     if (query.after) {
       const connector = conditions.length > 0 ? "AND" : "WHERE";
-      // The cursor encodes three cases:
-      //   1. nullBoundaryPassed=true: previous page ended in the null
-      //      group; fetch remaining null rows (id > cursor.id) PLUS
-      //      all non-null rows. Sorted ASC puts nulls first, so the
-      //      natural ORDER BY (sortCol ASC, id ASC) gives the right
-      //      result. The id filter only applies to the null branch
-      //      (non-null rows have id > any null row by ASCII ordering
-      //      of id, but we don't rely on that).
-      //   2. sortValue=null: still inside the null group; continue by
-      //      id only.
-      //   3. sortValue=number|string: standard keyset on (sortCol, id).
       if (query.after.nullBoundaryPassed) {
         cursorClause = `${connector} ((${sortCol} IS NULL AND id > ?) OR ${sortCol} IS NOT NULL)`;
         cursorParams.push(query.after.id);
       } else if (query.after.sortValue === null) {
-        if (sortDir === "DESC") {
-          cursorClause = `${connector} (${sortCol} IS NULL AND id < ?)`;
-        } else {
-          cursorClause = `${connector} (${sortCol} IS NULL AND id > ?)`;
-        }
+        cursorClause = `${connector} (${sortCol} IS NULL AND id ${sortDir === "DESC" ? "<" : ">"} ?)`;
         cursorParams.push(query.after.id);
       } else if (sortDir === "DESC") {
         cursorClause = `${connector} (${sortCol} < ? OR (${sortCol} = ? AND id < ?))`;
-        cursorParams.push(
-          query.after.sortValue,
-          query.after.sortValue,
-          query.after.id,
-        );
+        cursorParams.push(query.after.sortValue, query.after.sortValue, query.after.id);
       } else {
         cursorClause = `${connector} (${sortCol} > ? OR (${sortCol} = ? AND id > ?))`;
-        cursorParams.push(
-          query.after.sortValue,
-          query.after.sortValue,
-          query.after.id,
-        );
+        cursorParams.push(query.after.sortValue, query.after.sortValue, query.after.id);
       }
     }
 
     const allParams = [...params, ...cursorParams, query.limit + 1];
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM "invoice" ${whereClause} ${cursorClause} ORDER BY ${sortCol} ${sortDir}, id ${sortDir} LIMIT ?`,
-      )
-      .all(...allParams) as Record<string, unknown>[];
+    const rows = this.raw.prepare(
+      `SELECT * FROM "invoice" ${whereClause} ${cursorClause} ORDER BY ${sortCol} ${sortDir}, id ${sortDir} LIMIT ?`,
+    ).all(...allParams) as Record<string, unknown>[];
 
     const hasMore = rows.length > query.limit;
     const pageRows = hasMore ? rows.slice(0, query.limit) : rows;
@@ -134,334 +155,166 @@ export class InvoiceRepository implements InvoiceRepository {
     if (hasMore && pageRows.length > 0) {
       const lastRow = pageRows[pageRows.length - 1]!;
       const lastSortValue = lastRow[sortCol];
-      // For ASC + last row has null sortValue: emit nullBoundaryPassed
-      // when the cursor filter still has rows beyond the current page
-      // (totalCount > pageRows.length + rows.length - query.limit).
-      // The firstNonNullIdx scan of `rows` finds non-null rows in the
-      // window; when totalCount > rows.length, non-null rows exist
-      // beyond and we need the boundary flag to cross over.
       let firstNonNullIdx = -1;
       for (let i = query.limit; i < rows.length; i++) {
         const r = rows[i]!;
-        if (r[sortCol] !== null && r[sortCol] !== undefined) {
-          firstNonNullIdx = i;
-          break;
-        }
+        if (r[sortCol] !== null && r[sortCol] !== undefined) { firstNonNullIdx = i; break; }
       }
       const moreRowsBeyond = totalCount > pageRows.length + (rows.length - query.limit);
-      const isAscNullBoundary =
-        sortDir === "ASC" &&
-        (lastSortValue === null || lastSortValue === undefined) &&
-        (firstNonNullIdx !== -1 || moreRowsBeyond);
-      nextCursor = Buffer.from(
-        JSON.stringify({
-          sortValue: isAscNullBoundary ? null : lastSortValue,
-          id: lastRow.id as string,
-          ...(isAscNullBoundary ? { nullBoundaryPassed: true } : {}),
-        }),
-      ).toString("base64url");
+      const isAscNullBoundary = sortDir === "ASC" && (lastSortValue === null || lastSortValue === undefined) && (firstNonNullIdx !== -1 || moreRowsBeyond);
+      nextCursor = Buffer.from(JSON.stringify({
+        sortValue: isAscNullBoundary ? null : lastSortValue,
+        id: lastRow.id as string,
+        ...(isAscNullBoundary ? { nullBoundaryPassed: true } : {}),
+      })).toString("base64url");
     }
 
     const invoiceIds = pageRows.map((row) => row.id as string);
-    const lineItemRows = invoiceIds.length === 0
-      ? []
-      : (this.db
-          .prepare(
-            `SELECT * FROM "invoice_line_item" WHERE invoice_id IN (${invoiceIds.map(() => "?").join(",")}) ORDER BY invoice_id, rowid`,
-          )
-          .all(...invoiceIds) as Record<string, unknown>[]);
+    const lineItemRows = invoiceIds.length === 0 ? [] : this.raw.prepare(
+      `SELECT * FROM "invoice_line_item" WHERE invoice_id IN (${invoiceIds.map(() => "?").join(",")}) ORDER BY invoice_id, rowid`,
+    ).all(...invoiceIds) as Record<string, unknown>[];
     const lineItemsByInvoiceId = new Map<string, InvoiceLineItem[]>();
     for (const liRow of lineItemRows) {
-      const li = this.mapRowToLineItem(liRow);
+      const li = mapLineItem(liRow);
       const arr = lineItemsByInvoiceId.get(li.invoiceId) ?? [];
       arr.push(li);
       lineItemsByInvoiceId.set(li.invoiceId, arr);
     }
     const items = pageRows.map((row) => ({
-      ...this.mapRowToInvoice(row),
+      ...mapInvoice(row),
       lineItems: lineItemsByInvoiceId.get(row.id as string) ?? [],
     }));
 
-    return {
-      items,
-      nextCursor,
-      totalCount,
-    };
+    return { items, nextCursor, totalCount };
   }
 
+  /** Create a new invoice with line items. */
   async create(data: {
-    id: string;
-    invoiceNumber: string | null;
-    supplierName: string;
-    supplierPhone: string | null;
-    warehouseId: string | null;
-    projectId: string | null;
-    status: "DRAFT";
-    direction: InvoiceDirection;
-    invoiceDate: string | null;
-    dueDate: string | null;
-    currency: InvoiceCurrency;
-    totalAmount: number;
-    paidAmount: number;
-    remainingAmount: number;
-    notes: string | null;
-    debtAccountId?: string | null;
-    createdAt: string;
-    updatedAt: string;
-    lineItems: {
-      id: string;
-      description: string;
-      quantity: number;
-      unitPrice: number;
-      total: number;
-    }[];
+    id: string; invoiceNumber: string | null; supplierName: string; supplierPhone: string | null;
+    warehouseId: string | null; projectId: string | null; status: "DRAFT"; direction: InvoiceDirection;
+    invoiceDate: string | null; dueDate: string | null; currency: InvoiceCurrency;
+    totalAmount: number; paidAmount: number; remainingAmount: number;
+    notes: string | null; debtAccountId?: string | null;
+    createdAt: string; updatedAt: string;
+    lineItems: { id: string; description: string; quantity: number; unitPrice: number; total: number }[];
   }): Promise<Invoice> {
-    const insertInvoice = this.db.prepare(`
-      INSERT INTO "invoice" (
-        id, invoice_number, supplier_name, supplier_phone, warehouse_id, project_id,
-        status, direction, invoice_date, due_date, currency, total_amount, paid_amount, remaining_amount,
-        notes, debt_account_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const insertLineItem = this.db.prepare(`
-      INSERT INTO "invoice_line_item" (
-        id, invoice_id, description, quantity, unit_price, total
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-    const transaction = this.db.transaction(() => {
-      insertInvoice.run(
-        data.id,
-        data.invoiceNumber,
-        data.supplierName,
-        data.supplierPhone,
-        data.warehouseId,
-        data.projectId,
-        data.status,
-        data.direction,
-        data.invoiceDate,
-        data.dueDate,
-        data.currency,
-        data.totalAmount,
-        data.paidAmount,
-        data.remainingAmount,
-        data.notes,
-        data.debtAccountId ?? null,
-        data.createdAt,
-        data.updatedAt,
-      );
-
+    this.raw.transaction(() => {
+      this.db.insert(schema.invoice).values({
+        id: data.id, invoiceNumber: data.invoiceNumber, supplierName: data.supplierName,
+        supplierPhone: data.supplierPhone, warehouseId: data.warehouseId, projectId: data.projectId,
+        status: data.status, direction: data.direction, invoiceDate: data.invoiceDate,
+        dueDate: data.dueDate, currency: data.currency, totalAmount: data.totalAmount,
+        paidAmount: data.paidAmount, remainingAmount: data.remainingAmount,
+        notes: data.notes, debtAccountId: data.debtAccountId ?? null,
+        createdAt: data.createdAt, updatedAt: data.updatedAt,
+      }).run();
       for (const li of data.lineItems) {
-        insertLineItem.run(li.id, data.id, li.description, li.quantity, li.unitPrice, li.total);
+        this.db.insert(schema.invoiceLineItem).values({
+          id: li.id, invoiceId: data.id, description: li.description,
+          quantity: li.quantity, unitPrice: li.unitPrice, total: li.total,
+        }).run();
       }
-    });
-
-    transaction();
-
+    })();
     const created = await this.findById(data.id);
     return created!;
   }
 
-  async update(
-    id: string,
-    data: {
-      invoiceNumber?: string | null;
-      supplierName?: string;
-      supplierPhone?: string | null;
-      warehouseId?: string | null;
-      projectId?: string | null;
-      invoiceDate?: string | null;
-      dueDate?: string | null;
-      direction?: InvoiceDirection;
-      notes?: string | null;
-      currency?: InvoiceCurrency;
-      totalAmount?: number;
-      remainingAmount?: number;
-      debtAccountId?: string | null;
-      updatedAt?: string;
-      lineItems?: {
-        id: string;
-        description: string;
-        quantity: number;
-        unitPrice: number;
-        total: number;
-      }[];
-    },
-  ): Promise<Invoice> {
-    const setClauses: string[] = [];
-    const params: unknown[] = [];
+  /** Update an invoice and optionally replace line items. */
+  async update(id: string, data: {
+    invoiceNumber?: string | null; supplierName?: string; supplierPhone?: string | null;
+    warehouseId?: string | null; projectId?: string | null; invoiceDate?: string | null;
+    dueDate?: string | null; direction?: InvoiceDirection; notes?: string | null;
+    currency?: InvoiceCurrency; totalAmount?: number; remainingAmount?: number;
+    debtAccountId?: string | null; updatedAt?: string;
+    lineItems?: { id: string; description: string; quantity: number; unitPrice: number; total: number }[];
+  }): Promise<Invoice> {
+    const updates: Record<string, unknown> = {};
+    if (data.invoiceNumber !== undefined) updates.invoiceNumber = data.invoiceNumber;
+    if (data.supplierName !== undefined) updates.supplierName = data.supplierName;
+    if (data.supplierPhone !== undefined) updates.supplierPhone = data.supplierPhone;
+    if (data.warehouseId !== undefined) updates.warehouseId = data.warehouseId;
+    if (data.projectId !== undefined) updates.projectId = data.projectId;
+    if (data.invoiceDate !== undefined) updates.invoiceDate = data.invoiceDate;
+    if (data.dueDate !== undefined) updates.dueDate = data.dueDate;
+    if (data.notes !== undefined) updates.notes = data.notes;
+    if (data.currency !== undefined) updates.currency = data.currency;
+    if (data.totalAmount !== undefined) updates.totalAmount = data.totalAmount;
+    if (data.remainingAmount !== undefined) updates.remainingAmount = data.remainingAmount;
+    if (data.debtAccountId !== undefined) updates.debtAccountId = data.debtAccountId;
+    if (data.direction !== undefined) updates.direction = data.direction;
+    if (data.updatedAt !== undefined) updates.updatedAt = data.updatedAt;
 
-    if (data.invoiceNumber !== undefined) { setClauses.push(`invoice_number = ?`); params.push(data.invoiceNumber); }
-    if (data.supplierName !== undefined) { setClauses.push(`supplier_name = ?`); params.push(data.supplierName); }
-    if (data.supplierPhone !== undefined) { setClauses.push(`supplier_phone = ?`); params.push(data.supplierPhone); }
-    if (data.warehouseId !== undefined) { setClauses.push(`warehouse_id = ?`); params.push(data.warehouseId); }
-    if (data.projectId !== undefined) { setClauses.push(`project_id = ?`); params.push(data.projectId); }
-    if (data.invoiceDate !== undefined) { setClauses.push(`invoice_date = ?`); params.push(data.invoiceDate); }
-    if (data.dueDate !== undefined) { setClauses.push(`due_date = ?`); params.push(data.dueDate); }
-    if (data.notes !== undefined) { setClauses.push(`notes = ?`); params.push(data.notes); }
-    if (data.currency !== undefined) { setClauses.push(`currency = ?`); params.push(data.currency); }
-    if (data.totalAmount !== undefined) { setClauses.push(`total_amount = ?`); params.push(data.totalAmount); }
-    if (data.remainingAmount !== undefined) { setClauses.push(`remaining_amount = ?`); params.push(data.remainingAmount); }
-    if (data.debtAccountId !== undefined) { setClauses.push(`debt_account_id = ?`); params.push(data.debtAccountId); }
-    if (data.direction !== undefined) { setClauses.push(`direction = ?`); params.push(data.direction); }
-    if (data.updatedAt !== undefined) { setClauses.push(`updated_at = ?`); params.push(data.updatedAt); }
-
-    const updateInvoice = this.db.transaction(() => {
-      if (setClauses.length > 0) {
-        params.push(id);
-        this.db
-          .prepare(`UPDATE "invoice" SET ${setClauses.join(", ")} WHERE id = ?`)
-          .run(...params);
+    this.raw.transaction(() => {
+      if (Object.keys(updates).length > 0) {
+        this.db.update(schema.invoice).set(updates).where(eq(schema.invoice.id, id)).run();
       }
-
       if (data.lineItems) {
-        this.db.prepare(`DELETE FROM "invoice_line_item" WHERE invoice_id = ?`).run(id);
-        const insertLineItem = this.db.prepare(`
-          INSERT INTO "invoice_line_item" (id, invoice_id, description, quantity, unit_price, total)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `);
-        for (const li of data.lineItems!) {
-          insertLineItem.run(li.id, id, li.description, li.quantity, li.unitPrice, li.total);
+        this.db.delete(schema.invoiceLineItem).where(eq(schema.invoiceLineItem.invoiceId, id)).run();
+        for (const li of data.lineItems) {
+          this.db.insert(schema.invoiceLineItem).values({
+            id: li.id, invoiceId: id, description: li.description,
+            quantity: li.quantity, unitPrice: li.unitPrice, total: li.total,
+          }).run();
         }
       }
-    });
-    updateInvoice();
-
+    })();
     const result = await this.findById(id);
     if (!result) throw new Error(`Invoice ${id} not found after update`);
     return result;
   }
 
-  async updateStatus(
-    id: string,
-    status: "RECEIVED" | "PAID",
-    additionalUpdates?: { paidAmount?: number; remainingAmount?: number },
-  ): Promise<Invoice> {
-    const setClauses = [`status = ?`];
-    const params: unknown[] = [status];
-
-    if (additionalUpdates?.paidAmount !== undefined) {
-      setClauses.push(`paid_amount = ?`);
-      params.push(additionalUpdates.paidAmount);
-    }
-    if (additionalUpdates?.remainingAmount !== undefined) {
-      setClauses.push(`remaining_amount = ?`);
-      params.push(additionalUpdates.remainingAmount);
-    }
-
-    setClauses.push(`updated_at = ?`);
-    params.push(new Date().toISOString());
-    params.push(id);
-    this.db
-      .prepare(`UPDATE "invoice" SET ${setClauses.join(", ")} WHERE id = ?`)
-      .run(...params);
-
+  /** Update invoice status with optional amount changes. */
+  async updateStatus(id: string, status: "RECEIVED" | "PAID", additionalUpdates?: { paidAmount?: number; remainingAmount?: number }): Promise<Invoice> {
+    const updates: Record<string, unknown> = { status, updatedAt: new Date().toISOString() };
+    if (additionalUpdates?.paidAmount !== undefined) updates.paidAmount = additionalUpdates.paidAmount;
+    if (additionalUpdates?.remainingAmount !== undefined) updates.remainingAmount = additionalUpdates.remainingAmount;
+    this.db.update(schema.invoice).set(updates).where(eq(schema.invoice.id, id)).run();
     const result = await this.findById(id);
     if (!result) throw new Error(`Invoice ${id} not found after status update`);
     return result;
   }
 
-  async markReceivedWithDebtAccount(
-    id: string,
-    debtAccountId: string,
-  ): Promise<Invoice> {
-    this.db
-      .prepare(
-        `UPDATE "invoice" SET status = ?, debt_account_id = ?, updated_at = ? WHERE id = ?`,
-      )
-      .run("RECEIVED", debtAccountId, new Date().toISOString(), id);
-
+  /** Mark invoice as received with debt account. */
+  async markReceivedWithDebtAccount(id: string, debtAccountId: string): Promise<Invoice> {
+    this.db.update(schema.invoice).set({
+      status: "RECEIVED", debtAccountId, updatedAt: new Date().toISOString(),
+    }).where(eq(schema.invoice.id, id)).run();
     const result = await this.findById(id);
     if (!result) throw new Error(`Invoice ${id} not found after receive`);
     return result;
   }
 
+  /** Delete invoice and its line items. */
   async delete(id: string): Promise<void> {
-    const transaction = this.db.transaction(() => {
-      this.db.prepare(`DELETE FROM "invoice_line_item" WHERE invoice_id = ?`).run(id);
-      this.db.prepare(`DELETE FROM "invoice" WHERE id = ?`).run(id);
-    });
-    transaction();
+    this.raw.transaction(() => {
+      this.db.delete(schema.invoiceLineItem).where(eq(schema.invoiceLineItem.invoiceId, id)).run();
+      this.db.delete(schema.invoice).where(eq(schema.invoice.id, id)).run();
+    })();
   }
 
+  /** Count invoices matching filters. */
   async count(filters?: InvoiceListFilters): Promise<number> {
-    const conditions: string[] = [];
-    const params: unknown[] = [];
-
-    if (filters?.status) {
-      conditions.push(`status = ?`);
-      params.push(filters.status);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const row = this.db
-      .prepare(`SELECT COUNT(*) as cnt FROM "invoice" ${whereClause}`)
-      .get(...params) as { cnt: number };
-
-    return row.cnt;
+    const conditions: ReturnType<typeof eq>[] = [];
+    if (filters?.status) conditions.push(eq(schema.invoice.status, filters.status));
+    const q = this.db.select({ value: sql<number>`count(*)` }).from(schema.invoice);
+    const result = (conditions.length > 0 ? q.where(and(...conditions)) : q).all();
+    return result[0]?.value ?? 0;
   }
 
-  private mapRowToInvoice(row: Record<string, unknown>): Invoice {
-    return {
-      id: row.id as string,
-      invoiceNumber: row.invoice_number as string | null,
-      supplierName: row.supplier_name as string,
-      supplierPhone: row.supplier_phone as string | null,
-      warehouseId: row.warehouse_id as string | null,
-      projectId: row.project_id as string | null,
-      status: row.status as "DRAFT" | "RECEIVED" | "PAID",
-      invoiceDate: row.invoice_date as string | null,
-      dueDate: row.due_date as string | null,
-      currency: (row.currency as InvoiceCurrency) ?? "DZD",
-      totalAmount: row.total_amount as number,
-      paidAmount: row.paid_amount as number,
-      remainingAmount: row.remaining_amount as number,
-      notes: row.notes as string | null,
-      debtAccountId: row.debt_account_id as string | null,
-      direction: (row.direction as InvoiceDirection) ?? "PURCHASE",
-      createdAt: row.created_at as string,
-      updatedAt: row.updated_at as string,
-      lineItems: [],
-    };
-  }
-
-  private mapRowToLineItem(row: Record<string, unknown>): InvoiceLineItem {
-    return {
-      id: row.id as string,
-      invoiceId: row.invoice_id as string,
-      description: row.description as string,
-      quantity: row.quantity as number,
-      unitPrice: row.unit_price as number,
-      total: row.total as number,
-    };
-  }
-
+  /** Execute a function within a serialized transaction. */
   async runInTransaction<T>(fn: () => Promise<T>): Promise<T> {
-    // Serial mutex: better-sqlite3 has a single connection and BEGIN
-    // cannot be issued while another transaction is open. Two
-    // concurrent markPaid calls that both await inside `fn` would
-    // otherwise collide with a "cannot start a transaction within a
-    // transaction" error. Queue every transaction through a single
-    // promise chain so they execute one at a time. Errors are caught
-    // at the chain boundary so the next caller isn't poisoned by a
-    // previous failure.
     const next = this.transactionChain.then(async () => {
-      this.db.exec("BEGIN");
+      this.raw.exec("BEGIN");
       try {
         const result = await fn();
-        this.db.exec("COMMIT");
+        this.raw.exec("COMMIT");
         return result;
       } catch (err) {
-        try {
-          this.db.exec("ROLLBACK");
-        } catch {
-          // Ignore ROLLBACK failures (e.g. connection already closed).
-        }
+        try { this.raw.exec("ROLLBACK"); } catch { /* ignore */ }
         throw err;
       }
     });
-    this.transactionChain = next.catch(() => undefined);
+    this.transactionChain = next.catch(() => undefined as unknown as T);
     return next;
   }
 }

@@ -15,7 +15,7 @@ const SORT_COLUMN_MAP: Record<PaymentListSortField, string> = {
   createdAt: "created_at",
 };
 
-export class PaymentRepository implements PaymentRepository {
+export class PaymentRepositoryImpl implements PaymentRepository {
   private transactionChain: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly db: Database.Database) {}

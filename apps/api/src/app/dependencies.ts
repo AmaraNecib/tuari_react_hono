@@ -19,7 +19,7 @@ import { InventoryAttachmentStorage } from "../modules/inventory/inventory.stora
 import { InvoiceModule } from "../modules/invoice/invoice.module";
 import { InvoiceRepository } from "../modules/invoice/adapters/invoice.repository";
 import { createPaymentModule } from "../modules/payment/payment.module";
-import { PaymentRepository } from "../modules/payment/adapters/payment.repository";
+import { PaymentRepositoryImpl } from "../modules/payment/adapters/payment.repository";
 import { SqlitePermissionResolver } from "../modules/rbac/sqlite-permission-resolver";
 import { SessionService } from "../modules/session/session.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
@@ -53,13 +53,13 @@ export async function createAppDependencies(
   const employeeRepository = new SqliteEmployeeRepository(companyRepository);
   const roleRepository = new SqliteRoleRepository(companyRepository);
   const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
-  const invoiceRepository = new InvoiceRepository(sharedDatabase);
+  const invoiceRepository = new InvoiceRepository(sharedDatabase, db);
   const invoiceDebtPort = createSqliteInvoiceDebtPort({
     db: sharedDatabase,
     repository: companyRepository,
   });
   const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
-  const paymentRepository = new PaymentRepository(sharedDatabase);
+  const paymentRepository = new PaymentRepositoryImpl(sharedDatabase);
   const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
   const authBootstrapService = new AuthBootstrapService(db, auth, env.bootstrapSetupKey);
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
