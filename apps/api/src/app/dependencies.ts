@@ -1,8 +1,9 @@
 import { env } from "../infrastructure/config/runtime-env";
 import { auth } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
-import { prisma } from "../infrastructure/database/prisma";
-import { PrismaAccountRepository } from "../modules/account/account.repository";
+import type { AppDrizzle } from "../infrastructure/database/drizzle";
+import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
+import { DrizzleAccountRepository } from "../modules/account/account.repository";
 import { AccountService } from "../modules/account/account.service";
 import { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import { createCompanyRepository } from "../modules/company/company.repository";
@@ -24,12 +25,13 @@ import { SqliteEmployeeRepository } from "../modules/workforce/adapters/sqlite-e
 import { SqliteRoleRepository } from "../modules/workforce/adapters/sqlite-role.repository";
 import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice-debt.port";
 
-export async function createAppDependencies() {
+export async function createAppDependencies(drizzleDb?: AppDrizzle) {
   const sharedDatabase = await createDatabaseConnection();
+  const db = drizzleDb ?? createDrizzleFromSqlite(sharedDatabase);
 
   const companyRepository = createCompanyRepository(sharedDatabase);
   const inventoryRepository = createInventoryRepository(sharedDatabase);
-  const accountRepository = new PrismaAccountRepository(prisma);
+  const accountRepository = new DrizzleAccountRepository(db);
   const companyService = new CompanyService(companyRepository, companyRepository);
 
   const employeeRepository = new SqliteEmployeeRepository(companyRepository);
@@ -43,7 +45,7 @@ export async function createAppDependencies() {
   const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
   const paymentRepository = new SqlitePaymentRepository(sharedDatabase);
   const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
-  const authBootstrapService = new AuthBootstrapService(prisma, auth, env.bootstrapSetupKey);
+  const authBootstrapService = new AuthBootstrapService(db, auth, env.bootstrapSetupKey);
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
 
   return {

@@ -1,4 +1,3 @@
-import { prisma } from "./prisma";
 import {
   actorLabelBackfillMigrationKey,
   additiveStatements,
@@ -19,6 +18,16 @@ import {
   statusConstraintMigrationKey,
 } from "./schema-definitions";
 
+// Module-level executor set during initialization
+let _executor: DbExecutor | null = null;
+
+function getExecutor(): DbExecutor {
+  if (!_executor) {
+    throw new Error("Database executor not initialized. Call ensureDatabaseSchema(db) first.");
+  }
+  return _executor;
+}
+
 function isDuplicateColumnError(error: unknown) {
   return error instanceof Error && error.message.includes("duplicate column name");
 }
@@ -28,7 +37,7 @@ function isMissingColumnError(error: unknown) {
 }
 
 async function getTableColumns(tableName: string) {
-  return prisma.$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info(\"${tableName}\")`);
+  return getExecutor().$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info(\"${tableName}\")`);
 }
 
 async function hasColumn(tableName: string, columnName: string) {
@@ -38,7 +47,7 @@ async function hasColumn(tableName: string, columnName: string) {
 }
 
 async function getTableSql(tableName: string) {
-  const [row] = await prisma.$queryRawUnsafe<Array<{ sql: string | null }>>(
+  const [row] = await getExecutor().$queryRawUnsafe<Array<{ sql: string | null }>>(
     'SELECT "sql" FROM "sqlite_master" WHERE "type" = ? AND "name" = ? LIMIT 1',
     "table",
     tableName,
@@ -60,19 +69,19 @@ async function hasStatusCheckConstraints() {
 
 async function syncLegacyTimestampColumns() {
   if ((await hasColumn("user", "createdAt")) || (await hasColumn("user", "updatedAt"))) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'UPDATE "user" SET "created_at" = COALESCE("created_at", "createdAt"), "updated_at" = COALESCE("updated_at", "updatedAt") WHERE "createdAt" IS NOT NULL OR "updatedAt" IS NOT NULL',
     );
   }
 
   if ((await hasColumn("session", "createdAt")) || (await hasColumn("session", "updatedAt"))) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'UPDATE "session" SET "created_at" = COALESCE("created_at", "createdAt"), "updated_at" = COALESCE("updated_at", "updatedAt") WHERE "createdAt" IS NOT NULL OR "updatedAt" IS NOT NULL',
     );
   }
 
   if ((await hasColumn("account", "created_at")) || (await hasColumn("account", "updated_at"))) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'UPDATE "account" SET "createdAt" = COALESCE("createdAt", "created_at"), "updatedAt" = COALESCE("updatedAt", "updated_at") WHERE "created_at" IS NOT NULL OR "updated_at" IS NOT NULL',
     );
   }
@@ -81,7 +90,7 @@ async function syncLegacyTimestampColumns() {
     (await hasColumn("verification", "created_at")) ||
     (await hasColumn("verification", "updated_at"))
   ) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'UPDATE "verification" SET "createdAt" = COALESCE("createdAt", "created_at"), "updatedAt" = COALESCE("updatedAt", "updated_at") WHERE "created_at" IS NOT NULL OR "updated_at" IS NOT NULL',
     );
   }
@@ -89,58 +98,58 @@ async function syncLegacyTimestampColumns() {
 
 async function ensureInventoryProjectIndexes() {
   if (await hasColumn("inventory_invoice_group", "project_id")) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "inventory_invoice_group_project_id_idx" ON "inventory_invoice_group" ("project_id", "created_at")',
     )
   }
 
   if (await hasColumn("inventory_entry", "project_id")) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "inventory_entry_project_id_idx" ON "inventory_entry" ("project_id")',
     )
   }
 
   if (await hasColumn("inventory_invoice_group", "external_counterparty_id")) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "inventory_invoice_group_external_counterparty_id_idx" ON "inventory_invoice_group" ("external_counterparty_id")',
     )
   }
 
   if (await hasColumn("inventory_asset_unit", "current_warehouse_id")) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "inventory_asset_unit_current_warehouse_id_idx" ON "inventory_asset_unit" ("current_warehouse_id")',
     )
   }
 
   if (await hasColumn("inventory_asset_unit", "current_project_id")) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "inventory_asset_unit_current_project_id_idx" ON "inventory_asset_unit" ("current_project_id")',
     )
   }
 
-  await prisma.$executeRawUnsafe(
+  await getExecutor().$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_inventory_entry_id_idx" ON "inventory_consumable_balance" ("inventory_entry_id")',
   )
-  await prisma.$executeRawUnsafe(
+  await getExecutor().$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_item_definition_id_idx" ON "inventory_consumable_balance" ("item_definition_id")',
   )
-  await prisma.$executeRawUnsafe(
+  await getExecutor().$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_warehouse_id_idx" ON "inventory_consumable_balance" ("warehouse_id")',
   )
-  await prisma.$executeRawUnsafe(
+  await getExecutor().$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_project_id_idx" ON "inventory_consumable_balance" ("project_id")',
   )
-  await prisma.$executeRawUnsafe(
+  await getExecutor().$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_movement_inventory_entry_id_idx" ON "inventory_movement" ("inventory_entry_id", "occurred_at")',
   )
-  await prisma.$executeRawUnsafe(
+  await getExecutor().$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_movement_asset_unit_id_idx" ON "inventory_movement" ("asset_unit_id", "occurred_at")',
   )
 }
 
 async function repairLegacyAuthTables() {
   if ((await hasColumn("account", "created_at")) || (await hasColumn("account", "updated_at"))) {
-    await prisma.$transaction(async (tx) => {
+    await getExecutor().$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "account_repaired"');
       await tx.$executeRawUnsafe(
         `CREATE TABLE "account_repaired" (
@@ -219,7 +228,7 @@ async function repairLegacyAuthTables() {
     (await hasColumn("verification", "created_at")) ||
     (await hasColumn("verification", "updated_at"))
   ) {
-    await prisma.$transaction(async (tx) => {
+    await getExecutor().$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "verification_repaired"');
       await tx.$executeRawUnsafe(
         `CREATE TABLE "verification_repaired" (
@@ -272,7 +281,7 @@ async function repairLegacyAuthTables() {
 }
 
 async function runObsoleteMigrations() {
-  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     obsoleteMigrationKey,
   );
@@ -281,7 +290,7 @@ async function runObsoleteMigrations() {
     return;
   }
 
-  await prisma.$transaction(async (tx) => {
+  await getExecutor().$transaction(async (tx) => {
     await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "todos"');
     await tx.$executeRawUnsafe(
       'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
@@ -292,7 +301,7 @@ async function runObsoleteMigrations() {
 }
 
 async function runStatusConstraintMigrations() {
-  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     statusConstraintMigrationKey,
   );
@@ -302,7 +311,7 @@ async function runStatusConstraintMigrations() {
   }
 
   if (await hasStatusCheckConstraints()) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
       statusConstraintMigrationKey,
       new Date().toISOString(),
@@ -312,10 +321,10 @@ async function runStatusConstraintMigrations() {
 
   const hasWarehouseAssignmentTable = Boolean(await getTableSql("employee_warehouse_assignment"));
 
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await getExecutor().$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "employee_warehouse_assignment_checked"');
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "employee_project_assignment_checked"');
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "employee_manager_assignment_checked"');
@@ -481,12 +490,12 @@ async function runStatusConstraintMigrations() {
       );
     });
   } finally {
-    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
 }
 
 async function runActorLabelBackfillMigration() {
-  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     actorLabelBackfillMigrationKey,
   );
@@ -497,7 +506,7 @@ async function runActorLabelBackfillMigration() {
 
   const timestamp = new Date().toISOString();
 
-  await prisma.$transaction(async (tx) => {
+  await getExecutor().$transaction(async (tx) => {
     const statements = [
       'UPDATE "employee_manager_assignment" SET "actor_label" = (SELECT "name" FROM "user" WHERE "id" = "actor_user_id") WHERE "actor_label" IS NULL AND "actor_user_id" IS NOT NULL',
       'UPDATE "employee_project_assignment" SET "actor_label" = (SELECT "name" FROM "user" WHERE "id" = "actor_user_id") WHERE "actor_label" IS NULL AND "actor_user_id" IS NOT NULL',
@@ -522,7 +531,7 @@ async function runActorLabelBackfillMigration() {
 }
 
 async function runDebtSingleAccountMigration() {
-  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     debtSingleAccountMigrationKey,
   )
@@ -536,7 +545,7 @@ async function runDebtSingleAccountMigration() {
   // Detect this via column existence and mark the migration done so
   // subsequent startups are no-ops.
   if (!(await hasColumn("debt_account", "current_balance_dzd"))) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
       debtSingleAccountMigrationKey,
       new Date().toISOString(),
@@ -610,10 +619,10 @@ async function runDebtSingleAccountMigration() {
     return entryType
   }
 
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF")
+  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF")
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await getExecutor().$transaction(async (tx) => {
       const accounts = await tx.$queryRawUnsafe<DebtAccountRow[]>(
         'SELECT * FROM "debt_account" ORDER BY "created_at" ASC, "updated_at" ASC, "id" ASC',
       )
@@ -832,12 +841,12 @@ async function runDebtSingleAccountMigration() {
       )
     })
   } finally {
-    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON")
+    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON")
   }
 }
 
 async function runAddOutboundTransferMigration() {
-  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     addOutboundTransferMigrationKey,
   );
@@ -846,10 +855,10 @@ async function runAddOutboundTransferMigration() {
     return;
   }
 
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await getExecutor().$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "inventory_movement_updated"');
       await tx.$executeRawUnsafe(
         `CREATE TABLE "inventory_movement_updated" (
@@ -919,12 +928,12 @@ async function runAddOutboundTransferMigration() {
       );
     });
   } finally {
-    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
 }
 
 async function runAddAdvanceDebtEntryMigration() {
-  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     addAdvanceDebtEntryMigrationKey,
   );
@@ -933,10 +942,10 @@ async function runAddAdvanceDebtEntryMigration() {
     return;
   }
 
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await getExecutor().$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "debt_entry_updated"');
       await tx.$executeRawUnsafe(
         `CREATE TABLE "debt_entry_updated" (
@@ -994,12 +1003,12 @@ async function runAddAdvanceDebtEntryMigration() {
       );
     });
   } finally {
-    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
 }
 
 async function runDebtEntryConstraintsMigration() {
-  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     debtEntryReasonCategoryMigrationKey,
   );
@@ -1008,10 +1017,10 @@ async function runDebtEntryConstraintsMigration() {
     return;
   }
 
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await getExecutor().$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "debt_entry_checked"');
       await tx.$executeRawUnsafe(
         `CREATE TABLE "debt_entry_checked" (
@@ -1090,12 +1099,12 @@ async function runDebtEntryConstraintsMigration() {
       );
     });
   } finally {
-    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
 }
 
 async function runInvoiceDebtLinkageMigration() {
-  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     invoiceDebtLinkageMigrationKey,
   );
@@ -1138,9 +1147,9 @@ async function runInvoiceDebtLinkageMigration() {
     { column: "remaining_amount", ddl: 'REAL NOT NULL DEFAULT 0' },
   ] as const;
 
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
   try {
-    await prisma.$transaction(async (tx) => {
+    await getExecutor().$transaction(async (tx) => {
       for (const { table, from, to } of renamePairs) {
         const fromExists = await hasColumn(table, from);
         const toExists = await hasColumn(table, to);
@@ -1182,7 +1191,7 @@ async function runInvoiceDebtLinkageMigration() {
       );
     });
   } finally {
-    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
 }
 
@@ -1262,7 +1271,7 @@ async function columnExists(
 }
 
 async function runInvoiceDirectionMigration() {
-  const [migrationRow] = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     invoiceDirectionMigrationKey,
   );
@@ -1276,12 +1285,12 @@ async function runInvoiceDirectionMigration() {
   // already exists we still write the migration key so future
   // startups skip this check entirely.
   if (!(await hasColumn("invoice", "direction"))) {
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       `ALTER TABLE "invoice" ADD COLUMN "direction" TEXT NOT NULL DEFAULT 'PURCHASE' CHECK ("direction" IN ('PURCHASE', 'SALE'))`,
     );
   }
 
-  await prisma.$executeRawUnsafe(
+  await getExecutor().$executeRawUnsafe(
     'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
     invoiceDirectionMigrationKey,
     new Date().toISOString(),
@@ -1289,7 +1298,7 @@ async function runInvoiceDirectionMigration() {
 }
 
 async function runDebtAccountBalanceRenameMigration() {
-  await applyDebtAccountBalanceRename(prisma);
+  await applyDebtAccountBalanceRename(getExecutor());
 }
 
 // Issue #22: split each counterparty's debt into a payable and a
@@ -1350,12 +1359,12 @@ export async function applyDebtAccountDirectionMigration(db: DbExecutor): Promis
 }
 
 async function runDebtAccountDirectionMigration() {
-  await applyDebtAccountDirectionMigration(prisma);
+  await applyDebtAccountDirectionMigration(getExecutor());
 }
 
 async function ensureSeedRoles() {
   for (const role of roleSeeds) {
-    const existing = (await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+    const existing = (await getExecutor().$queryRawUnsafe<Array<{ id: string }>>(
       'SELECT id FROM "role" WHERE key = ? LIMIT 1',
       role.key,
     ))[0];
@@ -1363,7 +1372,7 @@ async function ensureSeedRoles() {
     const timestamp = new Date().toISOString();
 
     if (!existing) {
-      await prisma.$executeRawUnsafe(
+      await getExecutor().$executeRawUnsafe(
         'INSERT INTO "role" (id, key, name, description, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         crypto.randomUUID(),
         role.key,
@@ -1376,7 +1385,7 @@ async function ensureSeedRoles() {
       continue;
     }
 
-    await prisma.$executeRawUnsafe(
+    await getExecutor().$executeRawUnsafe(
       'UPDATE "role" SET name = ?, description = ?, is_system = ?, updated_at = ? WHERE key = ?',
       role.name,
       role.description,
@@ -1389,7 +1398,7 @@ async function ensureSeedRoles() {
 
 async function ensureSeedRolePermissions() {
   // Get all role IDs (key → UUID mapping)
-  const roles = (await prisma.$queryRawUnsafe<Array<{ id: string; key: string }>>(
+  const roles = (await getExecutor().$queryRawUnsafe<Array<{ id: string; key: string }>>(
     'SELECT id, key FROM "role"',
   ));
   const roleIdByKey = new Map(roles.map((r) => [r.key, r.id]));
@@ -1400,14 +1409,14 @@ async function ensureSeedRolePermissions() {
     const roleId = roleIdByKey.get(roleKey);
     if (!roleId) continue;
 
-    const existing = (await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+    const existing = (await getExecutor().$queryRawUnsafe<Array<{ id: string }>>(
       'SELECT id FROM "role_permission" WHERE role_id = ? AND permission = ? LIMIT 1',
       roleId,
       permission,
     ))[0];
 
     if (!existing) {
-      await prisma.$executeRawUnsafe(
+      await getExecutor().$executeRawUnsafe(
         'INSERT INTO "role_permission" (id, role_id, permission, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
         crypto.randomUUID(),
         roleId,
@@ -1419,12 +1428,17 @@ async function ensureSeedRolePermissions() {
   }
 }
 
-export async function ensureDatabaseSchema(): Promise<void> {
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+export async function ensureDatabaseSchema(db?: DbExecutor): Promise<void> {
+  if (db) {
+    _executor = db;
+  }
+  const executor = getExecutor();
+
+  await executor.$executeRawUnsafe("PRAGMA foreign_keys = ON");
 
   for (const statement of schemaStatements) {
     try {
-      await prisma.$executeRawUnsafe(statement)
+      await getExecutor().$executeRawUnsafe(statement)
     } catch (error) {
       if (!isMissingColumnError(error) || (!statement.includes("project_id") && !statement.includes("external_counterparty_id") && !statement.includes("current_warehouse_id") && !statement.includes("current_project_id"))) {
         throw error
@@ -1434,7 +1448,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
 
   for (const statement of additiveStatements) {
     try {
-      await prisma.$executeRawUnsafe(statement);
+      await getExecutor().$executeRawUnsafe(statement);
     } catch (error) {
       if (!isDuplicateColumnError(error)) {
         throw error;

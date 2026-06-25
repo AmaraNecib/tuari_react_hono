@@ -1,14 +1,19 @@
 import { betterAuth } from "better-auth";
-import { prismaAdapter } from "better-auth/adapters/prisma";
+import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { bearer, phoneNumber } from "better-auth/plugins";
 
 import { env } from "../config/runtime-env";
-import { prisma } from "../database/prisma";
+import { createDatabaseConnection } from "../database/factory";
+import { createDrizzleFromSqlite } from "../database/drizzle";
 
 const algerianPhonePattern = /^(05|06|07)\d{8}$/;
 
+// Create connection for better-auth (unencrypted — auth tables don't need SQLCipher)
+const sqlite = createDatabaseConnection();
+const db = createDrizzleFromSqlite(sqlite);
+
 export const auth = betterAuth({
-  database: prismaAdapter(prisma, {
+  database: drizzleAdapter(db, {
     provider: "sqlite",
     usePlural: false,
   }),

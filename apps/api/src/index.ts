@@ -3,11 +3,23 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app/create-app";
 import { createAppDependencies } from "./app/dependencies";
 import { env } from "./infrastructure/config/runtime-env";
+import { createDatabaseConnection } from "./infrastructure/database/factory";
+import { createDrizzleFromSqlite } from "./infrastructure/database/drizzle";
 import { ensureDatabaseSchema } from "./infrastructure/database/schema";
+import { BetterSqlite3Executor } from "./infrastructure/database/sqlite-executor";
 
 async function main() {
-  const appDependencies = await createAppDependencies();
-  await ensureDatabaseSchema();
+  // Create raw better-sqlite3 connection for migrations and Drizzle
+  const sqlite = createDatabaseConnection();
+  const executor = new BetterSqlite3Executor(sqlite);
+
+  // Run schema migrations with raw executor
+  await ensureDatabaseSchema(executor);
+
+  // Create Drizzle connection for the rest of the app
+  const drizzleDb = createDrizzleFromSqlite(sqlite);
+
+  const appDependencies = await createAppDependencies(drizzleDb);
   const app = createApp(appDependencies, {
     allowedOrigins: env.allowedOrigins,
     trustProxyHeaders: env.trustProxyHeaders,

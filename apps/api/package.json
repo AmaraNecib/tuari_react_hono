@@ -14,15 +14,18 @@
     "typecheck": "pnpm prisma:generate && tsc --noEmit"
   },
   "dependencies": {
+    "@better-auth/drizzle-adapter": "^1.6.20",
     "@better-auth/prisma-adapter": "^1.6.2",
     "@hono/node-server": "^1.19.14",
     "@orpc/server": "^1.13.6",
     "@prisma/adapter-better-sqlite3": "^7.5.0",
     "@prisma/client": "^7.5.0",
     "@tuari/contracts": "workspace:*",
-    "better-auth": "^1.6.2",
+    "better-auth": "^1.6.20",
     "better-sqlite3": "^12.6.2",
+    "better-sqlite3-sqlcipher": "5.4.3-3",
     "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.12.12",
     "prisma": "^7.5.0"
   },
@@ -30,6 +33,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.17",
     "@vitest/coverage-v8": "4.1.4",
+    "drizzle-kit": "^0.31.10",
     "tsup": "^8.5.0",
     "tsx": "^4.20.5",
     "typescript": "^5.8.2"
