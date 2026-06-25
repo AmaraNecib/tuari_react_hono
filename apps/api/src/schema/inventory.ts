@@ -151,3 +151,45 @@ export const inventoryInvoiceAttachment = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
 );
+
+/** Outbound transfer records — goods leaving inventory. */
+export const inventoryOutboundTransfer = sqliteTable(
+  "inventory_outbound_transfer",
+  {
+    id: text("id").primaryKey(),
+    transferDate: text("transfer_date").notNull(),
+    fromType: text("from_type").notNull(),
+    fromId: text("from_id").notNull(),
+    counterpartyId: text("counterparty_id").notNull().references(
+      () => externalCounterparty.id,
+    ),
+    transferType: text("transfer_type").notNull(),
+    status: text("status").notNull(),
+    associatedDebtAccountId: text("associated_debt_account_id").references(
+      () => debtAccount.id,
+    ),
+    notes: text("notes"),
+    actorUserId: text("actor_user_id"),
+    actorLabel: text("actor_label"),
+    transactionId: text("transaction_id"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
+
+/** Individual items within an outbound transfer. */
+export const inventoryOutboundTransferItem = sqliteTable(
+  "inventory_outbound_transfer_item",
+  {
+    id: text("id").primaryKey(),
+    transferId: text("transfer_id")
+      .notNull()
+      .references(() => inventoryOutboundTransfer.id, { onDelete: "cascade" }),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => inventoryItemDefinition.id),
+    quantity: real("quantity").notNull(),
+    unitPriceDzd: real("unit_price_dzd"),
+    createdAt: text("created_at").notNull(),
+  },
+);

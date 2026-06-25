@@ -1,9 +1,18 @@
-import { mkdirSync } from "node:fs"
-import { dirname } from "node:path"
-
-import Database from "better-sqlite3"
-
-import { resolveDatabaseEnv } from "../../infrastructure/config/database-env"
+/**
+ * InventoryRepository — Drizzle-backed implementation.
+ *
+ * Replaces the raw-SQL SqliteInventoryRepository. Uses Drizzle query builders
+ * for type-safe, maintainable persistence. Keeps the same InventoryRepository
+ * interface so callers don't change.
+ *
+ * Architecture: Drizzle queries + raw better-sqlite3 handle for transactions
+ * (same pattern as CompanyRepository).
+ */
+import { eq, and, asc, desc, sql, inArray } from "drizzle-orm"
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
+import type Database from "better-sqlite3"
+import * as schema from "../../schema"
+import { createDrizzleFromSqlite } from "../../infrastructure/database/drizzle"
 import { normalizeAuditContext } from "../company/company.repository-mappers"
 import { createAlgeriaTimestamp } from "../company/company-time"
 import type { MutationAuditContext } from "../company/company.types"
@@ -29,174 +38,172 @@ import type {
   InventoryOutboundTransferRecord,
 } from "./inventory.types"
 
-// Architecture note: business-domain persistence intentionally uses explicit
-// better-sqlite3 SQL. See docs/architecture-decisions.md (ADR-001) before
-// adding or migrating business queries to Prisma.
+// ---------------------------------------------------------------------------
+// Mapper functions — raw Drizzle row → domain record
+// ---------------------------------------------------------------------------
 
-type SqliteRow = Record<string, unknown>
-
-function toNullableString(value: unknown) {
-  return typeof value === "string" ? value : null
-}
-
-function toBoolean(value: unknown) {
-  return value === 1 || value === true
-}
-
-function toNumber(value: unknown) {
-  return typeof value === "number" ? value : Number(value ?? 0)
-}
-
-function mapItemDefinition(row: SqliteRow): InventoryItemDefinitionRecord {
+/** Map a raw Drizzle row to InventoryItemDefinitionRecord. */
+function mapItemDefinition(row: Record<string, unknown>): InventoryItemDefinitionRecord {
   return {
     id: String(row.id),
     name: String(row.name),
-    itemType: row.item_type as InventoryItemDefinitionRecord["itemType"],
-    unit: toNullableString(row.unit),
-    description: toNullableString(row.description),
-    isActive: toBoolean(row.is_active),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
+    itemType: row.itemType as InventoryItemDefinitionRecord["itemType"],
+    unit: row.unit != null ? String(row.unit) : null,
+    description: row.description != null ? String(row.description) : null,
+    isActive: row.isActive === 1 || row.isActive === true,
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt),
   }
 }
 
-function mapInvoiceGroup(row: SqliteRow): InventoryInvoiceGroupRecord {
+/** Map a raw Drizzle row to InventoryInvoiceGroupRecord. */
+function mapInvoiceGroup(row: Record<string, unknown>): InventoryInvoiceGroupRecord {
   return {
     id: String(row.id),
-    invoiceNumber: toNullableString(row.invoice_number),
-    supplierName: toNullableString(row.supplier_name),
-    invoiceDate: toNullableString(row.invoice_date),
-    warehouseId: toNullableString(row.warehouse_id),
-    projectId: toNullableString(row.project_id),
-    externalCounterpartyId: toNullableString(row.external_counterparty_id),
-    grossTotalDzd: toNumber(row.gross_total_dzd),
-    paidAmountDzd: toNumber(row.paid_amount_dzd),
-    remainingDebtDzd: toNumber(row.remaining_debt_dzd),
-    debtAccountId: toNullableString(row.debt_account_id),
-    note: toNullableString(row.note),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
+    invoiceNumber: row.invoiceNumber != null ? String(row.invoiceNumber) : null,
+    supplierName: row.supplierName != null ? String(row.supplierName) : null,
+    invoiceDate: row.invoiceDate != null ? String(row.invoiceDate) : null,
+    warehouseId: row.warehouseId != null ? String(row.warehouseId) : null,
+    projectId: row.projectId != null ? String(row.projectId) : null,
+    externalCounterpartyId: row.externalCounterpartyId != null ? String(row.externalCounterpartyId) : null,
+    grossTotalDzd: Number(row.grossTotalDzd ?? 0),
+    paidAmountDzd: Number(row.paidAmountDzd ?? 0),
+    remainingDebtDzd: Number(row.remainingDebtDzd ?? 0),
+    debtAccountId: row.debtAccountId != null ? String(row.debtAccountId) : null,
+    note: row.note != null ? String(row.note) : null,
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt),
   }
 }
 
-function mapAssetUnit(row: SqliteRow): InventoryAssetUnitRecord {
+/** Map a raw Drizzle row to InventoryAssetUnitRecord. */
+function mapAssetUnit(row: Record<string, unknown>): InventoryAssetUnitRecord {
   return {
     id: String(row.id),
-    inventoryEntryId: String(row.inventory_entry_id),
-    assetName: String(row.asset_name),
-    assetTag: toNullableString(row.asset_tag),
-    serialNumber: toNullableString(row.serial_number),
-    condition: (toNullableString(row.condition) as InventoryAssetUnitRecord["condition"]) ?? null,
-    purchaseDate: toNullableString(row.purchase_date),
-    purchasePriceDzd: toNumber(row.purchase_price_dzd),
-    currentWarehouseId: toNullableString(row.current_warehouse_id),
-    currentProjectId: toNullableString(row.current_project_id),
-    currentLocationLabel: toNullableString(row.current_location_label),
-    note: toNullableString(row.note),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
+    inventoryEntryId: String(row.inventoryEntryId),
+    assetName: String(row.assetName),
+    assetTag: row.assetTag != null ? String(row.assetTag) : null,
+    serialNumber: row.serialNumber != null ? String(row.serialNumber) : null,
+    condition: (row.condition as InventoryAssetUnitRecord["condition"]) ?? null,
+    purchaseDate: row.purchaseDate != null ? String(row.purchaseDate) : null,
+    purchasePriceDzd: Number(row.purchasePriceDzd ?? 0),
+    currentWarehouseId: row.currentWarehouseId != null ? String(row.currentWarehouseId) : null,
+    currentProjectId: row.currentProjectId != null ? String(row.currentProjectId) : null,
+    currentLocationLabel: row.currentLocationLabel != null ? String(row.currentLocationLabel) : null,
+    note: row.note != null ? String(row.note) : null,
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt),
   }
 }
 
-function mapConsumableBalance(row: SqliteRow): InventoryConsumableBalanceRecord {
+/** Map a raw row to InventoryConsumableBalanceRecord. Handles both Drizzle (camelCase) and raw SQL (snake_case) results. */
+function mapConsumableBalance(row: Record<string, unknown>): InventoryConsumableBalanceRecord {
   return {
     id: String(row.id),
-    inventoryEntryId: String(row.inventory_entry_id),
-    itemDefinitionId: String(row.item_definition_id),
-    itemName: String(row.item_name),
-    warehouseId: toNullableString(row.warehouse_id),
-    projectId: toNullableString(row.project_id),
-    quantity: toNumber(row.quantity),
-    locationLabel: String(row.location_label ?? "غير محدد"),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
+    inventoryEntryId: String(row.inventoryEntryId ?? row.inventory_entry_id),
+    itemDefinitionId: String(row.itemDefinitionId ?? row.item_definition_id),
+    itemName: String(row.itemName ?? row.item_name ?? ""),
+    warehouseId: (row.warehouseId ?? row.warehouse_id) != null ? String(row.warehouseId ?? row.warehouse_id) : null,
+    projectId: (row.projectId ?? row.project_id) != null ? String(row.projectId ?? row.project_id) : null,
+    quantity: Number(row.quantity ?? 0),
+    locationLabel: String(row.locationLabel ?? row.location_label ?? "غير محدد"),
+    createdAt: String(row.createdAt ?? row.created_at),
+    updatedAt: String(row.updatedAt ?? row.updated_at),
   }
 }
 
-function mapMovement(row: SqliteRow): InventoryMovementRecord {
+/** Map a raw Drizzle row to InventoryMovementRecord. */
+function mapMovement(row: Record<string, unknown>): InventoryMovementRecord {
   return {
     id: String(row.id),
-    movementType: row.movement_type as InventoryMovementRecord["movementType"],
-    itemType: row.item_type as InventoryMovementRecord["itemType"],
-    inventoryEntryId: toNullableString(row.inventory_entry_id),
-    assetUnitId: toNullableString(row.asset_unit_id),
-    quantity: toNumber(row.quantity),
-    fromWarehouseId: toNullableString(row.from_warehouse_id),
-    fromProjectId: toNullableString(row.from_project_id),
-    toWarehouseId: toNullableString(row.to_warehouse_id),
-    toProjectId: toNullableString(row.to_project_id),
-    note: toNullableString(row.note),
-    occurredAt: String(row.occurred_at),
-    createdAt: String(row.created_at),
+    movementType: row.movementType as InventoryMovementRecord["movementType"],
+    itemType: row.itemType as InventoryMovementRecord["itemType"],
+    inventoryEntryId: row.inventoryEntryId != null ? String(row.inventoryEntryId) : null,
+    assetUnitId: row.assetUnitId != null ? String(row.assetUnitId) : null,
+    quantity: Number(row.quantity ?? 0),
+    fromWarehouseId: row.fromWarehouseId != null ? String(row.fromWarehouseId) : null,
+    fromProjectId: row.fromProjectId != null ? String(row.fromProjectId) : null,
+    toWarehouseId: row.toWarehouseId != null ? String(row.toWarehouseId) : null,
+    toProjectId: row.toProjectId != null ? String(row.toProjectId) : null,
+    note: row.note != null ? String(row.note) : null,
+    occurredAt: String(row.occurredAt),
+    createdAt: String(row.createdAt),
   }
 }
 
-function mapEntry(row: SqliteRow, assets: InventoryAssetUnitRecord[]): InventoryEntryRecord {
+/** Map a raw Drizzle row to InventoryEntryRecord. */
+function mapEntry(row: Record<string, unknown>, assets: InventoryAssetUnitRecord[]): InventoryEntryRecord {
   return {
     id: String(row.id),
-    invoiceGroupId: String(row.invoice_group_id),
-    itemDefinitionId: String(row.item_definition_id),
-    warehouseId: toNullableString(row.warehouse_id),
-    projectId: toNullableString(row.project_id),
-    itemType: row.item_type as InventoryEntryRecord["itemType"],
-    itemName: String(row.item_name),
-    unit: toNullableString(row.unit),
-    quantity: toNumber(row.quantity),
-    unitPriceDzd: row.unit_price_dzd === null || row.unit_price_dzd === undefined ? null : toNumber(row.unit_price_dzd),
-    totalPriceDzd: toNumber(row.total_price_dzd),
-    note: toNullableString(row.note),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
+    invoiceGroupId: String(row.invoiceGroupId),
+    itemDefinitionId: String(row.itemDefinitionId),
+    warehouseId: row.warehouseId != null ? String(row.warehouseId) : null,
+    projectId: row.projectId != null ? String(row.projectId) : null,
+    itemType: row.itemType as InventoryEntryRecord["itemType"],
+    itemName: String(row.itemName),
+    unit: row.unit != null ? String(row.unit) : null,
+    quantity: Number(row.quantity ?? 0),
+    unitPriceDzd: row.unitPriceDzd != null ? Number(row.unitPriceDzd) : null,
+    totalPriceDzd: Number(row.totalPriceDzd ?? 0),
+    note: row.note != null ? String(row.note) : null,
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt),
     assets,
   }
 }
 
-function mapAttachment(row: SqliteRow): InventoryInvoiceAttachmentRecord {
+/** Map a raw Drizzle row to InventoryInvoiceAttachmentRecord. */
+function mapAttachment(row: Record<string, unknown>): InventoryInvoiceAttachmentRecord {
   const id = String(row.id)
   return {
     id,
-    invoiceGroupId: String(row.invoice_group_id),
-    originalName: String(row.original_name),
-    mimeType: String(row.mime_type),
-    byteSize: Number(row.byte_size),
-    storageKey: String(row.storage_key),
-    relativePath: String(row.relative_path),
+    invoiceGroupId: String(row.invoiceGroupId),
+    originalName: String(row.originalName),
+    mimeType: String(row.mimeType),
+    byteSize: Number(row.byteSize),
+    storageKey: String(row.storageKey),
+    relativePath: String(row.relativePath),
     downloadUrl: `/api/inventory/attachments/${id}`,
-    sha256: toNullableString(row.sha256),
-    createdAt: String(row.created_at),
+    sha256: row.sha256 != null ? String(row.sha256) : null,
+    createdAt: String(row.createdAt),
   }
 }
 
-function mapOutboundTransfer(row: SqliteRow): InventoryOutboundTransferRecord {
+/** Map a raw Drizzle row to InventoryOutboundTransferRecord. */
+function mapOutboundTransfer(row: Record<string, unknown>): InventoryOutboundTransferRecord {
   return {
     id: String(row.id),
-    transferDate: String(row.transfer_date),
-    fromType: row.from_type as InventoryOutboundTransferRecord["fromType"],
-    fromId: String(row.from_id),
-    counterpartyId: String(row.counterparty_id),
-    transferType: row.transfer_type as InventoryOutboundTransferRecord["transferType"],
-    status: "COMPLETED" as const,
-    associatedDebtAccountId: toNullableString(row.associated_debt_account_id),
-    notes: toNullableString(row.notes),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
+    transferDate: String(row.transferDate),
+    fromType: row.fromType as InventoryOutboundTransferRecord["fromType"],
+    fromId: String(row.fromId),
+    counterpartyId: String(row.counterpartyId),
+    transferType: row.transferType as InventoryOutboundTransferRecord["transferType"],
+    status: (row.status as InventoryOutboundTransferRecord["status"]) ?? "COMPLETED" as const,
+    associatedDebtAccountId: row.associatedDebtAccountId != null ? String(row.associatedDebtAccountId) : null,
+    notes: row.notes != null ? String(row.notes) : null,
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt),
   }
 }
 
-function resolveLocationLabelByIds(database: Database.Database, warehouseId?: string | null, projectId?: string | null) {
+/** Resolve location label from warehouse/project IDs. */
+function resolveLocationLabelByIds(database: Database.Database, warehouseId?: string | null, projectId?: string | null): string {
   if (warehouseId) {
-    const row = database.prepare('SELECT name FROM warehouse WHERE id = ?').get(warehouseId) as SqliteRow | undefined
+    const row = database.prepare("SELECT name FROM warehouse WHERE id = ?").get(warehouseId) as Record<string, unknown> | undefined
     return row ? `المستودع: ${String(row.name)}` : "المستودع"
   }
-
   if (projectId) {
-    const row = database.prepare('SELECT name FROM project WHERE id = ?').get(projectId) as SqliteRow | undefined
+    const row = database.prepare("SELECT name FROM project WHERE id = ?").get(projectId) as Record<string, unknown> | undefined
     return row ? `المشروع: ${String(row.name)}` : "المشروع"
   }
-
   return "غير محدد"
 }
 
+// ---------------------------------------------------------------------------
+// Repository interface
+// ---------------------------------------------------------------------------
+
+/** Inventory persistence interface. */
 export interface InventoryRepository {
   withTransaction<T>(callback: () => T): T
   listItemDefinitions(filters?: InventoryItemDefinitionListFilters): InventoryItemDefinitionRecord[]
@@ -235,39 +242,48 @@ export interface InventoryRepository {
   getOutboundTransferById(id: string): InventoryOutboundTransferRecord | null
 }
 
-export class SqliteInventoryRepository implements InventoryRepository {
-  constructor(private readonly database: Database.Database) {
-    this.database.pragma("foreign_keys = ON")
+// ---------------------------------------------------------------------------
+// Drizzle-backed implementation
+// ---------------------------------------------------------------------------
+
+/**
+ * Drizzle-backed InventoryRepository.
+ *
+ * Uses Drizzle query builders for type-safe reads/writes, plus raw
+ * better-sqlite3 handle for transactions and location label resolution.
+ */
+export class DrizzleInventoryRepository implements InventoryRepository {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(
+    private readonly db: BetterSQLite3Database<any>,
+    private readonly raw: Database.Database,
+  ) {
+    this.raw.pragma("foreign_keys = ON")
   }
 
+  /** Execute a callback inside a raw SQLite transaction. */
   withTransaction<T>(callback: () => T): T {
-    return this.database.transaction(callback)()
+    return this.raw.transaction(callback)()
   }
+
+  // ── Item Definitions ────────────────────────────────────────────────
 
   listItemDefinitions(filters?: InventoryItemDefinitionListFilters) {
-    const conditions: string[] = []
-    const params: Array<string | number> = []
+    const conditions: ReturnType<typeof eq>[] = []
+    if (filters?.itemType) conditions.push(eq(schema.inventoryItemDefinition.itemType, filters.itemType))
+    if (typeof filters?.isActive === "boolean") conditions.push(eq(schema.inventoryItemDefinition.isActive, filters.isActive))
 
-    if (filters?.itemType) {
-      conditions.push('item_type = ?')
-      params.push(filters.itemType)
-    }
-
-    if (typeof filters?.isActive === "boolean") {
-      conditions.push('is_active = ?')
-      params.push(filters.isActive ? 1 : 0)
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
-    const rows = this.database
-      .prepare(`SELECT * FROM inventory_item_definition ${whereClause} ORDER BY name COLLATE NOCASE ASC, created_at ASC`)
-      .all(...params) as SqliteRow[]
-
+    const q = this.db.select().from(schema.inventoryItemDefinition)
+    const rows = (conditions.length > 0 ? q.where(and(...conditions)) : q)
+      .orderBy(asc(schema.inventoryItemDefinition.name), asc(schema.inventoryItemDefinition.createdAt))
+      .all()
     return rows.map(mapItemDefinition)
   }
 
   getItemDefinitionById(id: string) {
-    const row = this.database.prepare('SELECT * FROM inventory_item_definition WHERE id = ?').get(id) as SqliteRow | undefined
+    const row = this.db.select().from(schema.inventoryItemDefinition)
+      .where(eq(schema.inventoryItemDefinition.id, id))
+      .limit(1).all()[0]
     return row ? mapItemDefinition(row) : null
   }
 
@@ -275,17 +291,18 @@ export class SqliteInventoryRepository implements InventoryRepository {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
     const audit = normalizeAuditContext(auditContext)
-    this.database.prepare(
-      'INSERT INTO inventory_item_definition (id, name, item_type, unit, description, is_active, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(id, data.name, data.itemType, data.unit ?? null, data.description ?? null, 1, audit.actorUserId, audit.actorLabel, audit.transactionId, timestamp, timestamp)
+    this.db.insert(schema.inventoryItemDefinition).values({
+      id, name: data.name, itemType: data.itemType, unit: data.unit ?? null,
+      description: data.description ?? null, isActive: true,
+      actorUserId: audit.actorUserId, actorLabel: audit.actorLabel,
+      transactionId: audit.transactionId, createdAt: timestamp, updatedAt: timestamp,
+    }).run()
     return this.getItemDefinitionById(id)!
   }
 
   updateItemDefinition(data: InventoryItemDefinitionUpdateData, _auditContext?: MutationAuditContext) {
     const current = this.getItemDefinitionById(data.id)
-    if (!current) {
-      return null
-    }
+    if (!current) return null
 
     const next = {
       name: data.name ?? current.name,
@@ -296,337 +313,364 @@ export class SqliteInventoryRepository implements InventoryRepository {
       updatedAt: createAlgeriaTimestamp(),
     }
 
-    this.database.prepare(
-      'UPDATE inventory_item_definition SET name = ?, item_type = ?, unit = ?, description = ?, is_active = ?, updated_at = ? WHERE id = ?',
-    ).run(next.name, next.itemType, next.unit ?? null, next.description ?? null, next.isActive ? 1 : 0, next.updatedAt, data.id)
+    this.db.update(schema.inventoryItemDefinition).set({
+      name: next.name, itemType: next.itemType, unit: next.unit ?? null,
+      description: next.description ?? null, isActive: next.isActive,
+      updatedAt: next.updatedAt,
+    }).where(eq(schema.inventoryItemDefinition.id, data.id)).run()
 
     return this.getItemDefinitionById(data.id)
   }
 
+  // ── Existence checks ────────────────────────────────────────────────
+
   warehouseExists(id: string) {
-    const row = this.database.prepare('SELECT id FROM warehouse WHERE id = ? LIMIT 1').get(id) as SqliteRow | undefined
-    return Boolean(row)
+    return this.db.select({ id: schema.warehouse.id }).from(schema.warehouse)
+      .where(eq(schema.warehouse.id, id))
+      .limit(1).all().length > 0
   }
 
   projectExists(id: string) {
-    const row = this.database.prepare('SELECT id FROM project WHERE id = ? LIMIT 1').get(id) as SqliteRow | undefined
-    return Boolean(row)
+    return this.db.select({ id: schema.project.id }).from(schema.project)
+      .where(eq(schema.project.id, id))
+      .limit(1).all().length > 0
   }
 
   externalCounterpartyExists(id: string) {
-    const row = this.database.prepare('SELECT id FROM external_counterparty WHERE id = ? LIMIT 1').get(id) as SqliteRow | undefined
-    return Boolean(row)
+    return this.db.select({ id: schema.externalCounterparty.id }).from(schema.externalCounterparty)
+      .where(eq(schema.externalCounterparty.id, id))
+      .limit(1).all().length > 0
   }
 
+  // ── Invoice Groups ──────────────────────────────────────────────────
+
   listInvoiceGroups(filters?: InventoryInvoiceGroupListFilters) {
-    const conditions: string[] = []
-    const params: string[] = []
+    const conditions: ReturnType<typeof eq>[] = []
+    if (filters?.warehouseId) conditions.push(eq(schema.inventoryInvoiceGroup.warehouseId, filters.warehouseId))
+    if (filters?.projectId) conditions.push(eq(schema.inventoryInvoiceGroup.projectId, filters.projectId))
 
-    if (filters?.warehouseId) {
-      conditions.push('warehouse_id = ?')
-      params.push(filters.warehouseId)
-    }
-
-    if (filters?.projectId) {
-      conditions.push('project_id = ?')
-      params.push(filters.projectId)
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
-    const rows = this.database.prepare(
-      `SELECT * FROM inventory_invoice_group ${whereClause} ORDER BY COALESCE(invoice_date, created_at) DESC, created_at DESC`,
-    ).all(...params) as SqliteRow[]
-    return rows.map(mapInvoiceGroup)
+    const q = this.db.select().from(schema.inventoryInvoiceGroup)
+    return (conditions.length > 0 ? q.where(and(...conditions)) : q)
+      .orderBy(desc(schema.inventoryInvoiceGroup.invoiceDate), desc(schema.inventoryInvoiceGroup.createdAt))
+      .all().map(mapInvoiceGroup)
   }
 
   getLatestInvoiceNumber() {
-    const row = this.database.prepare(
-      "SELECT invoice_number FROM inventory_invoice_group WHERE invoice_number IS NOT NULL AND invoice_number LIKE 'IN-%' ORDER BY created_at DESC LIMIT 1",
-    ).get() as SqliteRow | undefined
-
-    return row ? toNullableString(row.invoice_number) : null
+    const row = this.db.select({ invoiceNumber: schema.inventoryInvoiceGroup.invoiceNumber })
+      .from(schema.inventoryInvoiceGroup)
+      .where(and(
+        sql`${schema.inventoryInvoiceGroup.invoiceNumber} IS NOT NULL`,
+        sql`${schema.inventoryInvoiceGroup.invoiceNumber} LIKE 'IN-%'`,
+      ))
+      .orderBy(desc(schema.inventoryInvoiceGroup.createdAt))
+      .limit(1).all()[0]
+    return row?.invoiceNumber ?? null
   }
 
   getInvoiceGroupById(id: string) {
-    const row = this.database.prepare('SELECT * FROM inventory_invoice_group WHERE id = ?').get(id) as SqliteRow | undefined
+    const row = this.db.select().from(schema.inventoryInvoiceGroup)
+      .where(eq(schema.inventoryInvoiceGroup.id, id))
+      .limit(1).all()[0]
     return row ? mapInvoiceGroup(row) : null
   }
 
   createInvoiceGroup(data: InventoryInvoiceGroupCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
-    this.database.prepare(
-      'INSERT INTO inventory_invoice_group (id, invoice_number, supplier_name, invoice_date, warehouse_id, project_id, external_counterparty_id, gross_total_dzd, paid_amount_dzd, remaining_debt_dzd, debt_account_id, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(id, data.invoiceNumber ?? null, data.supplierName ?? null, data.invoiceDate ?? null, data.warehouseId ?? null, data.projectId ?? null, data.externalCounterpartyId ?? null, data.grossTotalDzd ?? 0, data.paidAmountDzd ?? 0, data.remainingDebtDzd ?? 0, data.debtAccountId ?? null, data.note ?? null, timestamp, timestamp)
+    this.db.insert(schema.inventoryInvoiceGroup).values({
+      id, invoiceNumber: data.invoiceNumber ?? null, supplierName: data.supplierName ?? null,
+      invoiceDate: data.invoiceDate ?? null, warehouseId: data.warehouseId ?? null,
+      projectId: data.projectId ?? null, externalCounterpartyId: data.externalCounterpartyId ?? null,
+      grossTotalDzd: data.grossTotalDzd ?? 0, paidAmountDzd: data.paidAmountDzd ?? 0,
+      remainingDebtDzd: data.remainingDebtDzd ?? 0, debtAccountId: data.debtAccountId ?? null,
+      note: data.note ?? null, createdAt: timestamp, updatedAt: timestamp,
+    }).run()
     return this.getInvoiceGroupById(id)!
   }
 
-  listEntriesByInvoiceGroupId(invoiceGroupId: string) {
-    const assetRows = this.database.prepare(
-      'SELECT * FROM inventory_asset_unit WHERE inventory_entry_id IN (SELECT id FROM inventory_entry WHERE invoice_group_id = ?) ORDER BY created_at ASC',
-    ).all(invoiceGroupId) as SqliteRow[]
-    const assetsByEntryId = new Map<string, InventoryAssetUnitRecord[]>()
+  updateInvoiceGroupPayment(id: string, paidAmountDzd: number, remainingDebtDzd: number, _auditContext?: MutationAuditContext) {
+    this.db.update(schema.inventoryInvoiceGroup).set({
+      paidAmountDzd, remainingDebtDzd, updatedAt: createAlgeriaTimestamp(),
+    }).where(eq(schema.inventoryInvoiceGroup.id, id)).run()
+    return this.getInvoiceGroupById(id)
+  }
 
+  // ── Entries ─────────────────────────────────────────────────────────
+
+  listEntriesByInvoiceGroupId(invoiceGroupId: string) {
+    const assetRows = this.db.select().from(schema.inventoryAssetUnit)
+      .where(inArray(schema.inventoryAssetUnit.inventoryEntryId, sql`(SELECT id FROM inventory_entry WHERE invoice_group_id = ${invoiceGroupId})`))
+      .orderBy(asc(schema.inventoryAssetUnit.createdAt)).all()
+    const assetsByEntryId = new Map<string, InventoryAssetUnitRecord[]>()
     for (const row of assetRows) {
       const asset = mapAssetUnit(row)
       const existing = assetsByEntryId.get(asset.inventoryEntryId)
-      if (existing) {
-        existing.push(asset)
-      } else {
-        assetsByEntryId.set(asset.inventoryEntryId, [asset])
-      }
+      if (existing) existing.push(asset)
+      else assetsByEntryId.set(asset.inventoryEntryId, [asset])
     }
 
-    const rows = this.database.prepare(
-      'SELECT * FROM inventory_entry WHERE invoice_group_id = ? ORDER BY created_at ASC',
-    ).all(invoiceGroupId) as SqliteRow[]
-
+    const rows = this.db.select().from(schema.inventoryEntry)
+      .where(eq(schema.inventoryEntry.invoiceGroupId, invoiceGroupId))
+      .orderBy(asc(schema.inventoryEntry.createdAt)).all()
     return rows.map((row) => mapEntry(row, assetsByEntryId.get(String(row.id)) ?? []))
   }
 
   getEntryById(id: string) {
-    const row = this.database.prepare('SELECT * FROM inventory_entry WHERE id = ?').get(id) as SqliteRow | undefined
-    if (!row) {
-      return null
-    }
-
-    const assets = (this.database.prepare('SELECT * FROM inventory_asset_unit WHERE inventory_entry_id = ? ORDER BY created_at ASC').all(id) as SqliteRow[]).map(mapAssetUnit)
+    const row = this.db.select().from(schema.inventoryEntry)
+      .where(eq(schema.inventoryEntry.id, id))
+      .limit(1).all()[0]
+    if (!row) return null
+    const assets = this.db.select().from(schema.inventoryAssetUnit)
+      .where(eq(schema.inventoryAssetUnit.inventoryEntryId, id))
+      .orderBy(asc(schema.inventoryAssetUnit.createdAt)).all().map(mapAssetUnit)
     return mapEntry(row, assets)
   }
 
   createEntry(data: InventoryEntryCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
-    this.database.prepare(
-      'INSERT INTO inventory_entry (id, invoice_group_id, item_definition_id, warehouse_id, project_id, item_type, item_name, unit, quantity, unit_price_dzd, total_price_dzd, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(
-      id,
-      data.invoiceGroupId,
-      data.itemDefinitionId,
-      data.warehouseId ?? null,
-      data.projectId ?? null,
-      data.itemType,
-      data.itemName,
-      data.unit ?? null,
-      data.quantity,
-      data.unitPriceDzd ?? null,
-      data.totalPriceDzd,
-      data.note ?? null,
-      timestamp,
-      timestamp,
-    )
-
+    this.db.insert(schema.inventoryEntry).values({
+      id, invoiceGroupId: data.invoiceGroupId, itemDefinitionId: data.itemDefinitionId,
+      warehouseId: data.warehouseId ?? null, projectId: data.projectId ?? null,
+      itemType: data.itemType, itemName: data.itemName, unit: data.unit ?? null,
+      quantity: data.quantity, unitPriceDzd: data.unitPriceDzd ?? null,
+      totalPriceDzd: data.totalPriceDzd, note: data.note ?? null,
+      createdAt: timestamp, updatedAt: timestamp,
+    }).run()
     return this.listEntriesByInvoiceGroupId(data.invoiceGroupId).find((entry) => entry.id === id)!
   }
+
+  // ── Asset Units ─────────────────────────────────────────────────────
 
   createAssetUnit(data: InventoryAssetUnitCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
-    this.database.prepare(
-      'INSERT INTO inventory_asset_unit (id, inventory_entry_id, asset_name, asset_tag, serial_number, condition, purchase_date, purchase_price_dzd, current_warehouse_id, current_project_id, current_location_label, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(
-      id,
-      data.inventoryEntryId,
-      data.assetName,
-      data.assetTag ?? null,
-      data.serialNumber ?? null,
-      data.condition ?? null,
-      data.purchaseDate ?? null,
-      data.purchasePriceDzd,
-      data.currentWarehouseId ?? null,
-      data.currentProjectId ?? null,
-      resolveLocationLabelByIds(this.database, data.currentWarehouseId, data.currentProjectId),
-      data.note ?? null,
-      timestamp,
-      timestamp,
-    )
-    const row = this.database.prepare('SELECT * FROM inventory_asset_unit WHERE id = ?').get(id) as SqliteRow
-    return mapAssetUnit(row)
+    this.db.insert(schema.inventoryAssetUnit).values({
+      id, inventoryEntryId: data.inventoryEntryId, assetName: data.assetName,
+      assetTag: data.assetTag ?? null, serialNumber: data.serialNumber ?? null,
+      condition: data.condition ?? null, purchaseDate: data.purchaseDate ?? null,
+      purchasePriceDzd: data.purchasePriceDzd, currentWarehouseId: data.currentWarehouseId ?? null,
+      currentProjectId: data.currentProjectId ?? null,
+      currentLocationLabel: resolveLocationLabelByIds(this.raw, data.currentWarehouseId, data.currentProjectId),
+      note: data.note ?? null, createdAt: timestamp, updatedAt: timestamp,
+    }).run()
+    const row = this.db.select().from(schema.inventoryAssetUnit)
+      .where(eq(schema.inventoryAssetUnit.id, id)).limit(1).all()[0]
+    return mapAssetUnit(row!)
   }
 
   getAssetUnitById(id: string) {
-    const row = this.database.prepare('SELECT * FROM inventory_asset_unit WHERE id = ?').get(id) as SqliteRow | undefined
+    const row = this.db.select().from(schema.inventoryAssetUnit)
+      .where(eq(schema.inventoryAssetUnit.id, id))
+      .limit(1).all()[0]
     return row ? mapAssetUnit(row) : null
   }
 
   updateAssetUnitLocation(id: string, location: { currentWarehouseId?: string | null; currentProjectId?: string | null; currentLocationLabel?: string | null }) {
-    this.database.prepare(
-      'UPDATE inventory_asset_unit SET current_warehouse_id = ?, current_project_id = ?, current_location_label = ?, updated_at = ? WHERE id = ?',
-    ).run(location.currentWarehouseId ?? null, location.currentProjectId ?? null, location.currentLocationLabel ?? resolveLocationLabelByIds(this.database, location.currentWarehouseId, location.currentProjectId), createAlgeriaTimestamp(), id)
+    this.db.update(schema.inventoryAssetUnit).set({
+      currentWarehouseId: location.currentWarehouseId ?? null,
+      currentProjectId: location.currentProjectId ?? null,
+      currentLocationLabel: location.currentLocationLabel ?? resolveLocationLabelByIds(this.raw, location.currentWarehouseId, location.currentProjectId),
+      updatedAt: createAlgeriaTimestamp(),
+    }).where(eq(schema.inventoryAssetUnit.id, id)).run()
     return this.getAssetUnitById(id)
   }
 
   listAssetUnitsByLocation(filters: { warehouseId?: string; projectId?: string }) {
-    const rows = this.database.prepare(
-      `SELECT * FROM inventory_asset_unit WHERE ${filters.warehouseId ? 'current_warehouse_id = ?' : 'current_project_id = ?'} ORDER BY updated_at DESC`,
-    ).all(filters.warehouseId ?? filters.projectId ?? "") as SqliteRow[]
-    return rows.map(mapAssetUnit)
+    const condition = filters.warehouseId
+      ? eq(schema.inventoryAssetUnit.currentWarehouseId, filters.warehouseId)
+      : eq(schema.inventoryAssetUnit.currentProjectId, filters.projectId ?? "")
+    return this.db.select().from(schema.inventoryAssetUnit)
+      .where(condition)
+      .orderBy(desc(schema.inventoryAssetUnit.updatedAt))
+      .all().map(mapAssetUnit)
   }
+
+  // ── Consumable Balances ─────────────────────────────────────────────
 
   createConsumableBalance(data: InventoryConsumableBalanceCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
-    this.database.prepare(
-      'INSERT INTO inventory_consumable_balance (id, inventory_entry_id, item_definition_id, warehouse_id, project_id, quantity, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(id, data.inventoryEntryId, data.itemDefinitionId, data.warehouseId ?? null, data.projectId ?? null, data.quantity, timestamp, timestamp)
-    return this.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: data.inventoryEntryId, warehouseId: data.warehouseId, projectId: data.projectId })!
+    this.db.insert(schema.inventoryConsumableBalance).values({
+      id, inventoryEntryId: data.inventoryEntryId, itemDefinitionId: data.itemDefinitionId,
+      warehouseId: data.warehouseId ?? null, projectId: data.projectId ?? null,
+      quantity: data.quantity, createdAt: timestamp, updatedAt: timestamp,
+    }).run()
+    return this.getConsumableBalanceByEntryAndLocation({
+      inventoryEntryId: data.inventoryEntryId, warehouseId: data.warehouseId, projectId: data.projectId,
+    })!
   }
 
   listConsumableBalancesByInvoiceGroupId(invoiceGroupId: string) {
-    const rows = this.database.prepare(
-      `SELECT b.*, e.item_name AS item_name, COALESCE('المستودع: ' || w.name, 'المشروع: ' || p.name, 'غير محدد') AS location_label
-       FROM inventory_consumable_balance b
-       INNER JOIN inventory_entry e ON e.id = b.inventory_entry_id
-       LEFT JOIN warehouse w ON w.id = b.warehouse_id
-       LEFT JOIN project p ON p.id = b.project_id
-       WHERE b.inventory_entry_id IN (SELECT id FROM inventory_entry WHERE invoice_group_id = ?) AND b.quantity > 0
-       ORDER BY b.updated_at DESC`,
-    ).all(invoiceGroupId) as SqliteRow[]
+    const rows = this.raw.prepare(`
+      SELECT b.*, e.item_name AS item_name,
+        COALESCE('المستودع: ' || w.name, 'المشروع: ' || p.name, 'غير محدد') AS location_label
+      FROM inventory_consumable_balance b
+      INNER JOIN inventory_entry e ON e.id = b.inventory_entry_id
+      LEFT JOIN warehouse w ON w.id = b.warehouse_id
+      LEFT JOIN project p ON p.id = b.project_id
+      WHERE b.inventory_entry_id IN (SELECT id FROM inventory_entry WHERE invoice_group_id = ?)
+        AND b.quantity > 0
+      ORDER BY b.updated_at DESC
+    `).all(invoiceGroupId) as Record<string, unknown>[]
     return rows.map(mapConsumableBalance)
   }
 
   listConsumableBalancesByLocation(filters: { warehouseId?: string; projectId?: string }) {
-    const rows = this.database.prepare(
-      `SELECT b.*, e.item_name AS item_name, COALESCE('المستودع: ' || w.name, 'المشروع: ' || p.name, 'غير محدد') AS location_label
-       FROM inventory_consumable_balance b
-       INNER JOIN inventory_entry e ON e.id = b.inventory_entry_id
-       LEFT JOIN warehouse w ON w.id = b.warehouse_id
-       LEFT JOIN project p ON p.id = b.project_id
-       WHERE ${filters.warehouseId ? 'b.warehouse_id = ?' : 'b.project_id = ?'} AND b.quantity > 0
-       ORDER BY b.updated_at DESC`,
-    ).all(filters.warehouseId ?? filters.projectId ?? "") as SqliteRow[]
+    const locationCol = filters.warehouseId ? "b.warehouse_id" : "b.project_id"
+    const rows = this.raw.prepare(`
+      SELECT b.*, e.item_name AS item_name,
+        COALESCE('المستودع: ' || w.name, 'المشروع: ' || p.name, 'غير محدد') AS location_label
+      FROM inventory_consumable_balance b
+      INNER JOIN inventory_entry e ON e.id = b.inventory_entry_id
+      LEFT JOIN warehouse w ON w.id = b.warehouse_id
+      LEFT JOIN project p ON p.id = b.project_id
+      WHERE ${locationCol} = ? AND b.quantity > 0
+      ORDER BY b.updated_at DESC
+    `).all(filters.warehouseId ?? filters.projectId ?? "") as Record<string, unknown>[]
     return rows.map(mapConsumableBalance)
   }
 
   getConsumableBalanceByEntryAndLocation(filters: { inventoryEntryId: string; warehouseId?: string | null; projectId?: string | null }) {
-    const row = this.database.prepare(
-      `SELECT b.*, e.item_name AS item_name, COALESCE('المستودع: ' || w.name, 'المشروع: ' || p.name, 'غير محدد') AS location_label
-       FROM inventory_consumable_balance b
-       INNER JOIN inventory_entry e ON e.id = b.inventory_entry_id
-       LEFT JOIN warehouse w ON w.id = b.warehouse_id
-       LEFT JOIN project p ON p.id = b.project_id
-       WHERE b.inventory_entry_id = ? AND ${filters.warehouseId ? 'b.warehouse_id = ? AND b.project_id IS NULL' : 'b.project_id = ? AND b.warehouse_id IS NULL'} LIMIT 1`,
-    ).get(filters.inventoryEntryId, filters.warehouseId ?? filters.projectId ?? "") as SqliteRow | undefined
+    let locationClause: string
+    let locationParam: string | null
+    if (filters.warehouseId) {
+      locationClause = "b.warehouse_id = ? AND b.project_id IS NULL"
+      locationParam = filters.warehouseId
+    } else if (filters.projectId) {
+      locationClause = "b.project_id = ? AND b.warehouse_id IS NULL"
+      locationParam = filters.projectId
+    } else {
+      locationClause = "b.warehouse_id IS NULL AND b.project_id IS NULL"
+      locationParam = null
+    }
+    const row = this.raw.prepare(`
+      SELECT b.*, e.item_name AS item_name,
+        COALESCE('المستودع: ' || w.name, 'المشروع: ' || p.name, 'غير محدد') AS location_label
+      FROM inventory_consumable_balance b
+      INNER JOIN inventory_entry e ON e.id = b.inventory_entry_id
+      LEFT JOIN warehouse w ON w.id = b.warehouse_id
+      LEFT JOIN project p ON p.id = b.project_id
+      WHERE b.inventory_entry_id = ? AND ${locationClause} LIMIT 1
+    `).get(filters.inventoryEntryId, locationParam) as Record<string, unknown> | undefined
     return row ? mapConsumableBalance(row) : null
   }
 
   updateConsumableBalanceQuantity(id: string, quantity: number) {
-    this.database.prepare('UPDATE inventory_consumable_balance SET quantity = ?, updated_at = ? WHERE id = ?').run(quantity, createAlgeriaTimestamp(), id)
+    this.db.update(schema.inventoryConsumableBalance).set({
+      quantity, updatedAt: createAlgeriaTimestamp(),
+    }).where(eq(schema.inventoryConsumableBalance.id, id)).run()
   }
 
   deleteConsumableBalance(id: string) {
-    this.database.prepare('DELETE FROM inventory_consumable_balance WHERE id = ?').run(id)
+    this.db.delete(schema.inventoryConsumableBalance)
+      .where(eq(schema.inventoryConsumableBalance.id, id)).run()
   }
+
+  // ── Movements ───────────────────────────────────────────────────────
 
   createMovement(data: InventoryMovementCreateData) {
     const id = crypto.randomUUID()
     const createdAt = createAlgeriaTimestamp()
-    this.database.prepare(
-      'INSERT INTO inventory_movement (id, movement_type, item_type, inventory_entry_id, asset_unit_id, quantity, from_warehouse_id, from_project_id, to_warehouse_id, to_project_id, note, occurred_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(id, data.movementType, data.itemType, data.inventoryEntryId ?? null, data.assetUnitId ?? null, data.quantity, data.fromWarehouseId ?? null, data.fromProjectId ?? null, data.toWarehouseId ?? null, data.toProjectId ?? null, data.note ?? null, data.occurredAt, createdAt)
-    const row = this.database.prepare('SELECT * FROM inventory_movement WHERE id = ?').get(id) as SqliteRow
-    return mapMovement(row)
+    this.db.insert(schema.inventoryMovement).values({
+      id, movementType: data.movementType, itemType: data.itemType,
+      inventoryEntryId: data.inventoryEntryId ?? null, assetUnitId: data.assetUnitId ?? null,
+      quantity: data.quantity, fromWarehouseId: data.fromWarehouseId ?? null,
+      fromProjectId: data.fromProjectId ?? null, toWarehouseId: data.toWarehouseId ?? null,
+      toProjectId: data.toProjectId ?? null, note: data.note ?? null,
+      occurredAt: data.occurredAt, createdAt,
+    }).run()
+    const row = this.db.select().from(schema.inventoryMovement)
+      .where(eq(schema.inventoryMovement.id, id)).limit(1).all()[0]
+    return mapMovement(row!)
   }
 
   listMovementsByInvoiceGroupId(invoiceGroupId: string) {
-    const rows = this.database.prepare('SELECT * FROM inventory_movement WHERE inventory_entry_id IN (SELECT id FROM inventory_entry WHERE invoice_group_id = ?) ORDER BY occurred_at DESC, created_at DESC').all(invoiceGroupId) as SqliteRow[]
-    return rows.map(mapMovement)
+    return this.db.select().from(schema.inventoryMovement)
+      .where(inArray(schema.inventoryMovement.inventoryEntryId, sql`(SELECT id FROM inventory_entry WHERE invoice_group_id = ${invoiceGroupId})`))
+      .orderBy(desc(schema.inventoryMovement.occurredAt), desc(schema.inventoryMovement.createdAt))
+      .all().map(mapMovement)
   }
 
   listMovementsByAssetUnitId(assetUnitId: string) {
-    const rows = this.database.prepare('SELECT * FROM inventory_movement WHERE asset_unit_id = ? ORDER BY occurred_at DESC, created_at DESC').all(assetUnitId) as SqliteRow[]
-    return rows.map(mapMovement)
+    return this.db.select().from(schema.inventoryMovement)
+      .where(eq(schema.inventoryMovement.assetUnitId, assetUnitId))
+      .orderBy(desc(schema.inventoryMovement.occurredAt), desc(schema.inventoryMovement.createdAt))
+      .all().map(mapMovement)
   }
 
+  // ── Attachments ─────────────────────────────────────────────────────
+
   listAttachmentsByInvoiceGroupId(invoiceGroupId: string) {
-    const rows = this.database.prepare(
-      'SELECT * FROM inventory_invoice_attachment WHERE invoice_group_id = ? ORDER BY created_at DESC',
-    ).all(invoiceGroupId) as SqliteRow[]
-    return rows.map(mapAttachment)
+    return this.db.select().from(schema.inventoryInvoiceAttachment)
+      .where(eq(schema.inventoryInvoiceAttachment.invoiceGroupId, invoiceGroupId))
+      .orderBy(desc(schema.inventoryInvoiceAttachment.createdAt))
+      .all().map(mapAttachment)
   }
 
   createAttachment(data: InventoryInvoiceAttachmentCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
-    this.database.prepare(
-      'INSERT INTO inventory_invoice_attachment (id, invoice_group_id, original_name, mime_type, byte_size, storage_key, relative_path, sha256, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(
-      id,
-      data.invoiceGroupId,
-      data.originalName,
-      data.mimeType,
-      data.byteSize,
-      data.storageKey,
-      data.relativePath,
-      data.sha256 ?? null,
-      timestamp,
-    )
+    this.db.insert(schema.inventoryInvoiceAttachment).values({
+      id, invoiceGroupId: data.invoiceGroupId, originalName: data.originalName,
+      mimeType: data.mimeType, byteSize: data.byteSize, storageKey: data.storageKey,
+      relativePath: data.relativePath, sha256: data.sha256 ?? null, createdAt: timestamp,
+    }).run()
     return this.getAttachmentById(id)!
   }
 
   getAttachmentById(id: string) {
-    const row = this.database.prepare('SELECT * FROM inventory_invoice_attachment WHERE id = ?').get(id) as SqliteRow | undefined
+    const row = this.db.select().from(schema.inventoryInvoiceAttachment)
+      .where(eq(schema.inventoryInvoiceAttachment.id, id))
+      .limit(1).all()[0]
     return row ? mapAttachment(row) : null
   }
 
-  updateInvoiceGroupPayment(id: string, paidAmountDzd: number, remainingDebtDzd: number, _auditContext?: MutationAuditContext) {
-    const timestamp = createAlgeriaTimestamp()
-    this.database.prepare(
-      'UPDATE inventory_invoice_group SET paid_amount_dzd = ?, remaining_debt_dzd = ?, updated_at = ? WHERE id = ?',
-    ).run(paidAmountDzd, remainingDebtDzd, timestamp, id)
-    return this.getInvoiceGroupById(id)
-  }
+  // ── Outbound Transfers ──────────────────────────────────────────────
 
   createOutboundTransfer(data: InventoryOutboundTransferCreateData, auditContext?: MutationAuditContext) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
     const audit = normalizeAuditContext(auditContext)
-    this.database.prepare(
-      'INSERT INTO inventory_outbound_transfer (id, transfer_date, from_type, from_id, counterparty_id, transfer_type, status, associated_debt_account_id, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(
-      id,
-      timestamp,
-      data.fromType,
-      data.fromId,
-      data.counterpartyId,
-      data.transferType,
-      "COMPLETED",
-      data.associatedDebtAccountId ?? null,
-      data.notes ?? null,
-      audit.actorUserId,
-      audit.actorLabel,
-      audit.transactionId,
-      timestamp,
-      timestamp,
-    )
+    this.raw.transaction(() => {
+      this.raw.prepare(
+        `INSERT INTO inventory_outbound_transfer (id, transfer_date, from_type, from_id, counterparty_id, transfer_type, status, associated_debt_account_id, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, timestamp, data.fromType, data.fromId, data.counterpartyId, data.transferType,
+        "COMPLETED", data.associatedDebtAccountId ?? null, data.notes ?? null,
+        audit.actorUserId, audit.actorLabel, audit.transactionId, timestamp, timestamp)
 
-    for (const item of data.items) {
-      const itemId = crypto.randomUUID()
-      this.database.prepare(
-        'INSERT INTO inventory_outbound_transfer_item (id, transfer_id, item_id, quantity, unit_price_dzd, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      ).run(itemId, id, item.itemId, item.quantity, item.unitPriceDzd ?? null, timestamp)
-    }
-
+      for (const item of data.items) {
+        const itemId = crypto.randomUUID()
+        this.raw.prepare(
+          "INSERT INTO inventory_outbound_transfer_item (id, transfer_id, item_id, quantity, unit_price_dzd, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        ).run(itemId, id, item.itemId, item.quantity, item.unitPriceDzd ?? null, timestamp)
+      }
+    })()
     return this.getOutboundTransferById(id)!
   }
 
   listOutboundTransfers() {
-    const rows = this.database.prepare('SELECT * FROM inventory_outbound_transfer ORDER BY transfer_date DESC, created_at DESC').all() as SqliteRow[]
-    return rows.map(mapOutboundTransfer)
+    return this.db.select().from(schema.inventoryOutboundTransfer)
+      .orderBy(desc(schema.inventoryOutboundTransfer.transferDate), desc(schema.inventoryOutboundTransfer.createdAt))
+      .all().map(mapOutboundTransfer)
   }
 
   getOutboundTransferById(id: string) {
-    const row = this.database.prepare('SELECT * FROM inventory_outbound_transfer WHERE id = ?').get(id) as SqliteRow | undefined
+    const row = this.db.select().from(schema.inventoryOutboundTransfer)
+      .where(eq(schema.inventoryOutboundTransfer.id, id))
+      .limit(1).all()[0]
     return row ? mapOutboundTransfer(row) : null
   }
 }
 
-export function createInventoryRepository(database?: Database.Database) {
-  if (database) {
-    return new SqliteInventoryRepository(database)
-  }
+// ---------------------------------------------------------------------------
+// Factory
+// ---------------------------------------------------------------------------
 
-  const { databasePath } = resolveDatabaseEnv()
-  mkdirSync(dirname(databasePath), { recursive: true })
-  return new SqliteInventoryRepository(new Database(databasePath))
+/** Create a Drizzle-backed InventoryRepository from a raw SQLite handle. */
+export function createInventoryRepository(rawDb: Database.Database): InventoryRepository {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const drizzleDb = createDrizzleFromSqlite(rawDb as any)
+  return new DrizzleInventoryRepository(drizzleDb, rawDb)
 }
