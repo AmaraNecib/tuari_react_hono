@@ -619,6 +619,34 @@ export const schemaStatements = [
   // therefore created inside runInvoiceDebtLinkageMigration (after the
   // column is added back) to avoid crashing startup on existing
   // deployments.
+  `CREATE TABLE IF NOT EXISTS "payment" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "counterparty_type" TEXT NOT NULL CHECK ("counterparty_type" IN ('EXTERNAL_COUNTERPARTY', 'WORKER')),
+    "counterparty_id" TEXT NOT NULL,
+    "payment_date" DATETIME NOT NULL,
+    "payment_method" TEXT NOT NULL CHECK ("payment_method" IN ('CASH', 'BANK_TRANSFER', 'CHECK')),
+    "total_amount" REAL NOT NULL CHECK ("total_amount" > 0),
+    "notes" TEXT,
+    "actor_user_id" TEXT,
+    "actor_label" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    "updated_at" DATETIME NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS "payment_allocation" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "payment_id" TEXT NOT NULL,
+    "invoice_id" TEXT NOT NULL,
+    "amount" REAL NOT NULL CHECK ("amount" > 0),
+    "created_at" DATETIME NOT NULL,
+    CONSTRAINT "payment_allocation_payment_id_fkey"
+      FOREIGN KEY ("payment_id") REFERENCES "payment" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "payment_allocation_invoice_id_fkey"
+      FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+  )`,
+  'CREATE INDEX IF NOT EXISTS "payment_counterparty_type_id_idx" ON "payment" ("counterparty_type", "counterparty_id", "payment_date")',
+  'CREATE INDEX IF NOT EXISTS "payment_allocation_payment_id_idx" ON "payment_allocation" ("payment_id")',
+  'CREATE INDEX IF NOT EXISTS "payment_allocation_invoice_id_idx" ON "payment_allocation" ("invoice_id")',
 ]
 
 export const additiveStatements = [

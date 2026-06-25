@@ -15,6 +15,8 @@ import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { InvoiceModule } from "../modules/invoice/invoice.module";
 import { SqliteInvoiceRepository } from "../modules/invoice/adapters/sqlite-invoice.repository";
+import { createPaymentModule } from "../modules/payment/payment.module";
+import { SqlitePaymentRepository } from "../modules/payment/adapters/sqlite-payment.repository";
 import { SqlitePermissionResolver } from "../modules/rbac/sqlite-permission-resolver";
 import { SessionService } from "../modules/session/session.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
@@ -39,6 +41,8 @@ export async function createAppDependencies() {
     repository: companyRepository,
   });
   const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
+  const paymentRepository = new SqlitePaymentRepository(sharedDatabase);
+  const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
   const authBootstrapService = new AuthBootstrapService(prisma, auth, env.bootstrapSetupKey);
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
 
@@ -59,6 +63,7 @@ export async function createAppDependencies() {
     sessionService: new SessionService(auth, permissionResolver),
     employeeModule,
     invoiceModule,
+    paymentModule,
   } as const;
 }
 
