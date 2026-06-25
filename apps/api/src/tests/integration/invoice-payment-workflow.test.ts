@@ -281,6 +281,58 @@ describe("Cross-domain: Invoice → Payment flow", () => {
   });
 
   // -----------------------------------------------------------------------
+  // Mixed allocation regression (Issue #12 bug where settled flag was
+  // checked at the debt-account level instead of per-invoice)
+  // -----------------------------------------------------------------------
+
+  it("fully pays one invoice while leaving another partially unpaid on same debt account", async () => {
+    // Invoice A: 5000 (will be paid in full)
+    await invoiceModule.create(invoiceInput({ id: "inv-mix-a" }));
+    await invoiceModule.receive("inv-mix-a", { ...ACTOR });
+
+    // Invoice B: 5000 (will be paid only 2000)
+    await invoiceModule.create(invoiceInput({
+      id: "inv-mix-b",
+      lineItems: makeLineItems([{ description: "Pipes", quantity: 5, unitPrice: 1000 }]),
+    }));
+    await invoiceModule.receive("inv-mix-b", { ...ACTOR });
+
+    // Single payment: 5000 to inv-mix-a + 2000 to inv-mix-b = 7000
+    const payment = await paymentModule.create({
+      id: "pmt-mix",
+      counterpartyType: "EXTERNAL_COUNTERPARTY",
+      counterpartyId: "cp-1",
+      paymentDate: "2026-06-25T10:00:00.000Z",
+      paymentMethod: "CASH",
+      totalAmount: 7000,
+      notes: null,
+      allocations: [
+        { invoiceId: "inv-mix-a", amount: 5000 },
+        { invoiceId: "inv-mix-b", amount: 2000 },
+      ],
+    });
+
+    expect(payment).not.toBeNull();
+
+    // Invoice A is fully paid
+    const invA = await invoiceModule.findById("inv-mix-a");
+    expect(invA!.status).toBe("PAID");
+    expect(invA!.paidAmount).toBe(5000);
+    expect(invA!.remainingAmount).toBe(0);
+
+    // Invoice B is still receivable (partially paid)
+    const invB = await invoiceModule.findById("inv-mix-b");
+    expect(invB!.status).toBe("RECEIVED");
+    expect(invB!.paidAmount).toBe(2000);
+    expect(invB!.remainingAmount).toBe(3000);
+
+    // Debt account is NOT settled (inv-mix-b still owes)
+    const debtAccounts = Array.from(debtPort.state.debtAccounts.values());
+    expect(debtAccounts).toHaveLength(1);
+    expect(debtAccounts[0]!.settled).toBe(false);
+  });
+
+  // -----------------------------------------------------------------------
   // Delete behaviours
   // -----------------------------------------------------------------------
 

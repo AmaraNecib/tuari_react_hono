@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { ORPCError } from "@orpc/server";
 
 import { createRpcMiddleware } from "../../rpc/rpc-middleware";
@@ -74,16 +74,16 @@ const DOMAINS = [
 
 // ---------------------------------------------------------------------------
 // Suite: Permission enforcement across domains
+//
+// The middleware instance is created once at suite level to avoid spawning
+// repeated background timers (rate-limiter cleanup) per test.
 // ---------------------------------------------------------------------------
 
-describe("Cross-domain: Permission enforcement", () => {
-  let middleware: ReturnType<typeof createRpcMiddleware>;
+const middleware = createRpcMiddleware({
+  authBootstrapService: { isBootstrapOwner: vi.fn().mockResolvedValue(true) },
+});
 
-  beforeEach(() => {
-    middleware = createRpcMiddleware({
-      authBootstrapService: { isBootstrapOwner: vi.fn().mockResolvedValue(true) },
-    });
-  });
+describe("Cross-domain: Permission enforcement", () => {
 
   // -----------------------------------------------------------------------
   // Admin has unrestricted access
@@ -126,7 +126,7 @@ describe("Cross-domain: Permission enforcement", () => {
       ).resolves.toEqual({ allowed: true });
     }
 
-    // Should be denied for every mutation action across all domains
+    // Should be denied (FORBIDDEN) for every mutation action across all domains
     const mutationPerms: Permission[] = [
       "employees.create", "employees.update", "employees.delete",
       "projects.create", "projects.read", "projects.update", "projects.delete",
@@ -144,7 +144,7 @@ describe("Cross-domain: Permission enforcement", () => {
           context: createContext(mockUser(viewerPerms)),
           input: {},
         }),
-      ).rejects.toBeInstanceOf(ORPCError);
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
   });
 
@@ -169,10 +169,10 @@ describe("Cross-domain: Permission enforcement", () => {
   });
 
   // -----------------------------------------------------------------------
-  // Unauthenticated users are rejected
+  // Unauthenticated users are rejected with UNAUTHORIZED
   // -----------------------------------------------------------------------
 
-  it("rejects unauthenticated access for every domain", async () => {
+  it("rejects unauthenticated access with UNAUTHORIZED for every domain", async () => {
     for (const { resource, actions } of DOMAINS) {
       for (const action of actions) {
         const permission = `${resource}.${action}` as Permission;
@@ -186,7 +186,7 @@ describe("Cross-domain: Permission enforcement", () => {
             context: createContext(null),
             input: {},
           }),
-        ).rejects.toBeInstanceOf(ORPCError);
+        ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
       }
     }
   });
@@ -213,7 +213,7 @@ describe("Cross-domain: Permission enforcement", () => {
       ).resolves.toEqual({ allowed: true });
     }
 
-    // Permissions not in the role's set are denied
+    // Permissions not in the role's set are denied with FORBIDDEN
     const allPerms: Permission[] = [
       "employees.create", "employees.read", "employees.update", "employees.delete",
       "projects.create", "projects.read", "projects.update", "projects.delete",
@@ -233,7 +233,7 @@ describe("Cross-domain: Permission enforcement", () => {
           context: createContext(mockUser(expected as unknown as string[])),
           input: {},
         }),
-      ).rejects.toBeInstanceOf(ORPCError);
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
   });
 });

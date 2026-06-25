@@ -1,4 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
+import { randomUUID } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import Database from "better-sqlite3";
 
 import { schemaStatements as fullSchema } from "../../infrastructure/database/schema-definitions";
@@ -38,9 +42,14 @@ function createTestEnvironment() {
   const db = createTestDb();
   const companyRepo = new SqliteCompanyRepository(db);
   const inventoryRepo = createInventoryRepository(db);
-  const storage = new InventoryAttachmentStorage("/tmp/inventory-test-attachments");
+  const attachDir = mkdtempSync(join(tmpdir(), "inventory-test-"));
+  const storage = new InventoryAttachmentStorage(attachDir);
   const service = new InventoryService(inventoryRepo, storage);
-  return { db, companyRepo, inventoryRepo, service };
+  const teardown = () => {
+    db.close();
+    rmSync(attachDir, { recursive: true, force: true });
+  };
+  return { db, companyRepo, inventoryRepo, service, teardown };
 }
 
 function createWarehouse(companyRepo: SqliteCompanyRepository): WarehouseRecord {
@@ -64,11 +73,18 @@ describe("Cross-domain: Inventory transfer", () => {
   let inventoryRepo: InventoryRepository;
   let service: InventoryService;
 
+  let teardown: () => void;
+
   beforeEach(() => {
     const env = createTestEnvironment();
     companyRepo = env.companyRepo;
     inventoryRepo = env.inventoryRepo;
     service = env.service;
+    teardown = env.teardown;
+  });
+
+  afterEach(() => {
+    teardown();
   });
 
   it("creates consumable items → transfers between warehouses → verifies quantities and history", () => {

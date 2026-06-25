@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 
 import { schemaStatements as fullSchema } from "../../infrastructure/database/schema-definitions";
@@ -55,6 +55,10 @@ describe("Cross-domain: Employee lifecycle", () => {
     db = createTestDb();
     repo = new SqliteCompanyRepository(db);
     service = new CompanyService(repo);
+  });
+
+  afterEach(() => {
+    db.close();
   });
 
   it("creates employee → creates debt account → records salary → terminates", () => {
