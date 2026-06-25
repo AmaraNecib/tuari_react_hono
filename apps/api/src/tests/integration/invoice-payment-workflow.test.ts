@@ -95,7 +95,6 @@ describe("Cross-domain: Invoice → Payment flow", () => {
     // 3. Pay the invoice in full
     const payment = await paymentModule.create(paymentInput());
     expect(payment).not.toBeNull();
-    expect(payment!.status).toBeUndefined(); // payments don't have status
 
     // 4. Verify invoice now PAID
     const paidInvoice = await invoiceModule.findById("inv-1");

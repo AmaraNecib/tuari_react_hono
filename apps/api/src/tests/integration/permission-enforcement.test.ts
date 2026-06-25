@@ -4,19 +4,19 @@ import { ORPCError } from "@orpc/server";
 import { createRpcMiddleware } from "../../rpc/rpc-middleware";
 import type { RpcContext } from "../../rpc/context";
 import type { SessionUser } from "../../modules/session/session.types";
+import type { Permission } from "../../modules/rbac/permissions";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function mockUser(overrides: Partial<SessionUser & { permissions: string[] }> = {}): SessionUser & { permissions: string[] } {
+function mockUser(permissions: string[] = []): SessionUser & { permissions: string[] } {
   return {
     id: "user-1",
     name: "Test User",
     phone: "0555000001",
-    permissions: [],
-    ...overrides,
-  };
+    permissions,
+  } as SessionUser & { permissions: string[] };
 }
 
 function createContext(user: (SessionUser & { permissions: string[] }) | null): RpcContext {
@@ -27,7 +27,13 @@ function createContext(user: (SessionUser & { permissions: string[] }) | null): 
 }
 
 // Permissions by role (mirrors role-seeds.ts)
-const ROLE_PERMISSIONS = {
+const ROLE_PERMISSIONS: {
+  admin: Permission[];
+  project_manager: Permission[];
+  warehouse_manager: Permission[];
+  worker: Permission[];
+  viewer: Permission[];
+} = {
   admin: [
     "employees.create", "employees.read", "employees.update", "employees.delete",
     "projects.create", "projects.read", "projects.update", "projects.delete",
@@ -86,7 +92,7 @@ describe("Cross-domain: Permission enforcement", () => {
   it("admin can access all resource actions", async () => {
     for (const { resource, actions } of DOMAINS) {
       for (const action of actions) {
-        const permission = `${resource}.${action}` as const;
+        const permission = `${resource}.${action}` as Permission;
         const handler = middleware.withPermission(
           permission,
           async () => ({ allowed: true }),
@@ -94,7 +100,7 @@ describe("Cross-domain: Permission enforcement", () => {
 
         await expect(
           handler({
-            context: createContext(mockUser({ permissions: ROLE_PERMISSIONS.admin })),
+            context: createContext(mockUser(ROLE_PERMISSIONS.admin)),
             input: {},
           }),
         ).resolves.toEqual({ allowed: true });
@@ -114,14 +120,14 @@ describe("Cross-domain: Permission enforcement", () => {
       const handler = middleware.withPermission(perm as any, async () => ({ allowed: true }));
       await expect(
         handler({
-          context: createContext(mockUser({ permissions: viewerPerms })),
+          context: createContext(mockUser(viewerPerms)),
           input: {},
         }),
       ).resolves.toEqual({ allowed: true });
     }
 
     // Should be denied for every mutation action across all domains
-    const mutationPerms = [
+    const mutationPerms: Permission[] = [
       "employees.create", "employees.update", "employees.delete",
       "projects.create", "projects.read", "projects.update", "projects.delete",
       "warehouses.create", "warehouses.read", "warehouses.update", "warehouses.delete",
@@ -129,13 +135,13 @@ describe("Cross-domain: Permission enforcement", () => {
       "debts.create", "debts.read", "debts.update", "debts.settle",
       "invoices.create", "invoices.read", "invoices.update", "invoices.delete",
       "payments.create", "payments.read", "payments.update", "payments.delete",
-    ].filter((p) => !viewerPerms.includes(p as any));
+    ].filter((p): p is Permission => !(viewerPerms as Permission[]).includes(p as Permission));
 
     for (const perm of mutationPerms) {
       const handler = middleware.withPermission(perm as any, async () => ({ allowed: true }));
       await expect(
         handler({
-          context: createContext(mockUser({ permissions: viewerPerms })),
+          context: createContext(mockUser(viewerPerms)),
           input: {},
         }),
       ).rejects.toBeInstanceOf(ORPCError);
@@ -169,7 +175,7 @@ describe("Cross-domain: Permission enforcement", () => {
   it("rejects unauthenticated access for every domain", async () => {
     for (const { resource, actions } of DOMAINS) {
       for (const action of actions) {
-        const permission = `${resource}.${action}` as const;
+        const permission = `${resource}.${action}` as Permission;
         const handler = middleware.withPermission(
           permission,
           async () => ({ allowed: true }),
@@ -195,26 +201,36 @@ describe("Cross-domain: Permission enforcement", () => {
     ["warehouse_manager", ROLE_PERMISSIONS.warehouse_manager],
     ["worker", ROLE_PERMISSIONS.worker],
     ["viewer", ROLE_PERMISSIONS.viewer],
-  ] as const)("role %s has the correct permission grants and denials", async (role, expected) => {
+  ] as const)("role %s has the correct permission grants and denials", async (role: string, expected: Permission[]) => {
     // All expected permissions are granted
     for (const perm of expected) {
-      const handler = middleware.withPermission(perm as any, async () => ({ allowed: true }));
+      const handler = middleware.withPermission(perm, async () => ({ allowed: true }));
       await expect(
         handler({
-          context: createContext(mockUser({ permissions: expected as string[] })),
+          context: createContext(mockUser(expected as unknown as string[])),
           input: {},
         }),
       ).resolves.toEqual({ allowed: true });
     }
 
     // Permissions not in the role's set are denied
-    const allPerms = ROLE_PERMISSIONS.admin; // admin has all
-    const denied = allPerms.filter((p) => !(expected as string[]).includes(p));
+    const allPerms: Permission[] = [
+      "employees.create", "employees.read", "employees.update", "employees.delete",
+      "projects.create", "projects.read", "projects.update", "projects.delete",
+      "warehouses.create", "warehouses.read", "warehouses.update", "warehouses.delete",
+      "inventory.create", "inventory.read", "inventory.update", "inventory.delete", "inventory.transfer",
+      "debts.create", "debts.read", "debts.update", "debts.settle",
+      "invoices.create", "invoices.read", "invoices.update", "invoices.delete",
+      "payments.create", "payments.read", "payments.update", "payments.delete",
+    ];
+    const denied = allPerms.filter(
+      (p) => !(expected as Permission[]).includes(p),
+    ) as Permission[];
     for (const perm of denied.slice(0, 5)) { // sample size to keep test fast
-      const handler = middleware.withPermission(perm as any, async () => ({ allowed: true }));
+      const handler = middleware.withPermission(perm, async () => ({ allowed: true }));
       await expect(
         handler({
-          context: createContext(mockUser({ permissions: expected as string[] })),
+          context: createContext(mockUser(expected as unknown as string[])),
           input: {},
         }),
       ).rejects.toBeInstanceOf(ORPCError);

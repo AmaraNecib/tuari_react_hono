@@ -62,7 +62,6 @@ describe("Cross-domain: Employee lifecycle", () => {
     // Repository always generates its own id via crypto.randomUUID()
     const employee = repo.createEmployee(
       {
-        id: "ignored-by-repo",
         firstName: "Ahmed",
         lastName: "Ben Ali",
         phone: "0555123456",
@@ -140,11 +139,11 @@ describe("Cross-domain: Employee lifecycle", () => {
   it("creates multiple employees with separate debt accounts", () => {
     // Create two employees
     const emp1 = repo.createEmployee(
-      { id: "ignored", firstName: "Karim", lastName: "Mokhtar", phone: "0666123456", roleId: "role-worker", status: "ACTIVE", salaryAmountDzd: null, salaryPeriod: null, notes: null },
+      { firstName: "Karim", lastName: "Mokhtar", phone: "0666123456", roleId: "role-worker", status: "ACTIVE", salaryAmountDzd: null, salaryPeriod: null, notes: null },
       AUDIT,
     );
     const emp2 = repo.createEmployee(
-      { id: "ignored", firstName: "Sami", lastName: "Bensalem", phone: "0777123456", roleId: "role-worker", status: "ACTIVE", salaryAmountDzd: null, salaryPeriod: null, notes: null },
+      { firstName: "Sami", lastName: "Bensalem", phone: "0777123456", roleId: "role-worker", status: "ACTIVE", salaryAmountDzd: null, salaryPeriod: null, notes: null },
       AUDIT,
     );
 

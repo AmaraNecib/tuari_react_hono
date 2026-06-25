@@ -46,13 +46,10 @@ function createTestEnvironment() {
 function createWarehouse(companyRepo: SqliteCompanyRepository): WarehouseRecord {
   return companyRepo.createWarehouse(
     {
-      id: "ignored",
       name: "مستودع الاختبار",
-      location: "الجزائر",
+      address: "الجزائر",
       status: "ACTIVE",
       notes: null,
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
     },
     AUDIT,
   );
@@ -79,13 +76,10 @@ describe("Cross-domain: Inventory transfer", () => {
     const wh1 = createWarehouse(companyRepo);
     const wh2 = companyRepo.createWarehouse(
       {
-        id: "ignored",
         name: "المستودع الفرعي",
-        location: "باب الزوار",
+        address: "باب الزوار",
         status: "ACTIVE",
         notes: null,
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
       },
       AUDIT,
     );
@@ -100,16 +94,12 @@ describe("Cross-domain: Inventory transfer", () => {
 
     // ---- 3. Create invoice group (stock receipt in WH1) ----
     const invoiceGroup = inventoryRepo.createInvoiceGroup({
-      id: "ignored",
-      warehouseId: wh1.id,
-      invoiceType: "PURCHASE",
       supplierName: "مورد الإسمنت",
-      totalAmountDzd: 500000,
+      warehouseId: wh1.id,
+      grossTotalDzd: 500000,
       paidAmountDzd: 0,
       remainingDebtDzd: 500000,
       note: "توريد أسمنت",
-      createdAt: "2026-01-15T00:00:00.000Z",
-      updatedAt: "2026-01-15T00:00:00.000Z",
     });
     expect(invoiceGroup).not.toBeNull();
 
@@ -185,13 +175,10 @@ describe("Cross-domain: Inventory transfer", () => {
     const wh1 = createWarehouse(companyRepo);
     const wh2 = companyRepo.createWarehouse(
       {
-        id: "ignored",
         name: "مستودع آخر",
-        location: "مكان آخر",
+        address: "مكان آخر",
         status: "ACTIVE",
         notes: null,
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
       },
       AUDIT,
     );
@@ -202,16 +189,12 @@ describe("Cross-domain: Inventory transfer", () => {
     );
 
     const invoiceGroup = inventoryRepo.createInvoiceGroup({
-      id: "ignored",
-      warehouseId: wh1.id,
-      invoiceType: "PURCHASE",
       supplierName: "مورد",
-      totalAmountDzd: 50000,
+      warehouseId: wh1.id,
+      grossTotalDzd: 50000,
       paidAmountDzd: 0,
       remainingDebtDzd: 50000,
       note: null,
-      createdAt: "2026-01-15T00:00:00.000Z",
-      updatedAt: "2026-01-15T00:00:00.000Z",
     });
 
     const entry = inventoryRepo.createEntry({
