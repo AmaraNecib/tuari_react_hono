@@ -38,6 +38,7 @@ function isUniqueConstraintError(error: unknown) {
  * Handles first-user bootstrap and bootstrap state queries.
  * Uses Drizzle ORM for database operations.
  */
+/** First-user bootstrap service — creates initial admin account and checks setup state. */
 export class AuthBootstrapService {
   constructor(
     private readonly db: AppDrizzle,

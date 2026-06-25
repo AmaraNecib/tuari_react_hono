@@ -9,6 +9,7 @@ import { role } from "./app";
  * constraints are included to mirror the legacy SQLite schema exactly.
  */
 
+/** Employee records — core workforce entity. */
 export const employee = sqliteTable("employee", {
   id: text("id").primaryKey(),
   firstName: text("first_name").notNull(),
@@ -25,6 +26,7 @@ export const employee = sqliteTable("employee", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Construction projects. */
 export const project = sqliteTable("project", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -39,6 +41,7 @@ export const project = sqliteTable("project", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Material storage locations. */
 export const warehouse = sqliteTable("warehouse", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -53,6 +56,7 @@ export const warehouse = sqliteTable("warehouse", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Worker-to-manager assignment history. */
 export const employeeManagerAssignment = sqliteTable(
   "employee_manager_assignment",
   {
@@ -75,6 +79,7 @@ export const employeeManagerAssignment = sqliteTable(
   },
 );
 
+/** Employee-to-project assignment history. */
 export const employeeProjectAssignment = sqliteTable(
   "employee_project_assignment",
   {
@@ -97,6 +102,7 @@ export const employeeProjectAssignment = sqliteTable(
   },
 );
 
+/** Employee-to-warehouse assignment history. */
 export const employeeWarehouseAssignment = sqliteTable(
   "employee_warehouse_assignment",
   {
@@ -119,6 +125,7 @@ export const employeeWarehouseAssignment = sqliteTable(
   },
 );
 
+/** Employee lifecycle state changes (hire, role change, termination). */
 export const employeeStateHistory = sqliteTable(
   "employee_state_history",
   {
@@ -144,6 +151,7 @@ export const employeeStateHistory = sqliteTable(
   },
 );
 
+/** Project manager ownership changes over time. */
 export const projectManagerOwnershipHistory = sqliteTable(
   "project_manager_ownership_history",
   {
@@ -166,6 +174,7 @@ export const projectManagerOwnershipHistory = sqliteTable(
   },
 );
 
+/** Warehouse manager ownership changes over time. */
 export const warehouseManagerOwnershipHistory = sqliteTable(
   "warehouse_manager_ownership_history",
   {
@@ -188,6 +197,7 @@ export const warehouseManagerOwnershipHistory = sqliteTable(
   },
 );
 
+/** Salary payment records per employee. */
 export const employeeSalaryPayment = sqliteTable(
   "employee_salary_payment",
   {
@@ -208,6 +218,7 @@ export const employeeSalaryPayment = sqliteTable(
   },
 );
 
+/** External business contacts (suppliers, customers, lenders). */
 export const externalCounterparty = sqliteTable("external_counterparty", {
   id: text("id").primaryKey(),
   fullName: text("full_name").notNull(),
@@ -217,6 +228,7 @@ export const externalCounterparty = sqliteTable("external_counterparty", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Debt ledger accounts — tracks payable/receivable balances per party. */
 export const debtAccount = sqliteTable("debt_account", {
   id: text("id").primaryKey(),
   partyType: text("party_type").notNull(),
@@ -240,6 +252,7 @@ export const debtAccount = sqliteTable("debt_account", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Individual debt entries — OPENING, PAYMENT, ADJUSTMENT, ADVANCE records. */
 export const debtEntry = sqliteTable("debt_entry", {
   id: text("id").primaryKey(),
   debtAccountId: text("debt_account_id")

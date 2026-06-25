@@ -6,6 +6,7 @@ import { project, warehouse, debtAccount, externalCounterparty } from "./company
  * Schema matches the existing SQL definitions in schema-definitions.ts.
  */
 
+/** Item type definitions (cement, rebar, tools, etc.). */
 export const inventoryItemDefinition = sqliteTable(
   "inventory_item_definition",
   {
@@ -23,6 +24,7 @@ export const inventoryItemDefinition = sqliteTable(
   },
 );
 
+/** Purchase/sale invoice headers — groups line items from one transaction. */
 export const inventoryInvoiceGroup = sqliteTable("inventory_invoice_group", {
   id: text("id").primaryKey(),
   invoiceNumber: text("invoice_number"),
@@ -46,6 +48,7 @@ export const inventoryInvoiceGroup = sqliteTable("inventory_invoice_group", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Invoice line items — individual items within an invoice group. */
 export const inventoryEntry = sqliteTable("inventory_entry", {
   id: text("id").primaryKey(),
   invoiceGroupId: text("invoice_group_id")
@@ -71,6 +74,7 @@ export const inventoryEntry = sqliteTable("inventory_entry", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Individual asset units (each with unique serial/tag). */
 export const inventoryAssetUnit = sqliteTable("inventory_asset_unit", {
   id: text("id").primaryKey(),
   inventoryEntryId: text("inventory_entry_id")
@@ -92,6 +96,7 @@ export const inventoryAssetUnit = sqliteTable("inventory_asset_unit", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Consumable stock balances per entry and location. */
 export const inventoryConsumableBalance = sqliteTable(
   "inventory_consumable_balance",
   {
@@ -110,6 +115,7 @@ export const inventoryConsumableBalance = sqliteTable(
   },
 );
 
+/** Inventory movements — purchase, transfer, outbound sale records. */
 export const inventoryMovement = sqliteTable("inventory_movement", {
   id: text("id").primaryKey(),
   movementType: text("movement_type").notNull(),
@@ -128,6 +134,7 @@ export const inventoryMovement = sqliteTable("inventory_movement", {
   createdAt: text("created_at").notNull(),
 });
 
+/** File attachments linked to invoice groups. */
 export const inventoryInvoiceAttachment = sqliteTable(
   "inventory_invoice_attachment",
   {

@@ -6,6 +6,7 @@ import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqli
  * Indexes match the production schema for query performance.
  */
 
+/** User accounts — core identity table for authentication. */
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -18,6 +19,7 @@ export const user = sqliteTable("user", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Active user sessions for authentication token management. */
 export const session = sqliteTable(
   "session",
   {
@@ -35,6 +37,7 @@ export const session = sqliteTable(
   (t) => [index("session_userId_idx").on(t.userId)],
 );
 
+/** Authentication provider accounts (credential, OAuth, etc.). */
 export const account = sqliteTable(
   "account",
   {
@@ -60,6 +63,7 @@ export const account = sqliteTable(
   ],
 );
 
+/** One-time verification tokens for phone/email verification flows. */
 export const verification = sqliteTable(
   "verification",
   {

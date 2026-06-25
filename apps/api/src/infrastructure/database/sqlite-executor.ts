@@ -4,6 +4,7 @@ import type { DbExecutor } from "./schema";
  * Implements DbExecutor using raw better-sqlite3(-sqlcipher).
  * This replaces Prisma for migration and schema operations.
  */
+/** Raw SQL executor using better-sqlite3-sqlcipher. Replaces Prisma for migrations. */
 export class BetterSqlite3Executor implements DbExecutor {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(private readonly db: any) {}

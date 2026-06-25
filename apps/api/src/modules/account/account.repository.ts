@@ -143,6 +143,7 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
  * Drizzle-based implementation of AccountRepository.
  * Uses Drizzle ORM for type-safe queries against the user/account tables.
  */
+/** Drizzle-based account repository — handles user profile and credential queries. */
 export class DrizzleAccountRepository implements AccountRepository {
   constructor(private readonly db: AppDrizzle) {}
 

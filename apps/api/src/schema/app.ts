@@ -11,17 +11,20 @@ import { user } from "./auth";
  * Schema matches the existing SQL definitions in schema-definitions.ts.
  */
 
+/** Singleton tracking whether the first user has been bootstrapped. */
 export const appBootstrapState = sqliteTable("app_bootstrap_state", {
   singleton: integer("singleton").primaryKey(),
   createdAt: text("created_at").notNull(),
   userId: text("user_id"),
 });
 
+/** Schema migration tracking — records which migrations have been applied. */
 export const appSchemaState = sqliteTable("app_schema_state", {
   key: text("key").primaryKey(),
   executedAt: text("executed_at").notNull(),
 });
 
+/** Audit trail for user profile changes (name, phone, password). */
 export const userProfileHistory = sqliteTable("user_profile_history", {
   id: text("id").primaryKey(),
   userId: text("user_id")
@@ -41,6 +44,7 @@ export const userProfileHistory = sqliteTable("user_profile_history", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Role definitions (admin, worker, manager, etc.). */
 export const role = sqliteTable("role", {
   id: text("id").primaryKey(),
   key: text("key").notNull().unique(),
@@ -51,6 +55,7 @@ export const role = sqliteTable("role", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Many-to-many mapping between roles and permissions. */
 export const rolePermission = sqliteTable("role_permission", {
   id: text("id").primaryKey(),
   roleId: text("role_id")

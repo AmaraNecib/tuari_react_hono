@@ -13,6 +13,7 @@ export type AppDrizzle = ReturnType<typeof createDrizzleFromSqlite>;
  * better-sqlite3-sqlcipher is API-compatible with better-sqlite3.
  * We cast at the boundary since TypeScript types differ but runtime is identical.
  */
+/** Create a Drizzle ORM instance from an existing SQLite connection. */
 export function createDrizzleFromSqlite(sqlite: Database.Database) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return drizzle(sqlite as any, { schema });

@@ -34,6 +34,7 @@ import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice
  *                 If omitted, a new connection is created (backwards compat).
  * @param drizzleDb - Pre-built Drizzle instance. If omitted, created from sqlite.
  */
+/** Wire all application dependencies from a shared SQLite connection. */
 export async function createAppDependencies(
   sqlite?: Database.Database,
   drizzleDb?: AppDrizzle,

@@ -12,6 +12,7 @@ const algerianPhonePattern = /^(05|06|07)\d{8}$/;
  * The caller provides the shared Drizzle handle so auth shares the
  * same database connection as the rest of the app.
  */
+/** Create the better-auth instance from a shared Drizzle connection. */
 export function createAuth(drizzleDb: AppDrizzle) {
   return betterAuth({
     database: drizzleAdapter(drizzleDb, {
@@ -34,4 +35,5 @@ export function createAuth(drizzleDb: AppDrizzle) {
   });
 }
 
+/** Type of the better-auth instance created by createAuth. */
 export type BetterAuthInstance = ReturnType<typeof createAuth>;

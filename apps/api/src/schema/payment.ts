@@ -5,6 +5,7 @@ import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
  * Schema matches the existing SQL definitions in schema-definitions.ts.
  */
 
+/** Payment records — cash, bank transfer, or check transactions. */
 export const payment = sqliteTable("payment", {
   id: text("id").primaryKey(),
   counterpartyId: text("counterparty_id").notNull(),
@@ -20,6 +21,8 @@ export const payment = sqliteTable("payment", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Payment records — cash, bank transfer, or check transactions. */
+/** Payment-to-invoice allocation — distributes one payment across invoices. */
 export const paymentAllocation = sqliteTable("payment_allocation", {
   id: text("id").primaryKey(),
   paymentId: text("payment_id")

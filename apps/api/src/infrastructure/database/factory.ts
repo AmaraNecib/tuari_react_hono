@@ -23,6 +23,7 @@ type BetterSqliteDatabase = any
  * has different TypeScript types. We cast at this boundary so downstream
  * code sees the familiar shape.
  */
+/** Create a SQLCipher-encrypted SQLite connection with WAL mode. */
 export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDatabase {
   const { databasePath } = resolveDatabaseEnv()
 
