@@ -90,6 +90,12 @@ function hashRecoveryKey(key: string): string {
  *
  * Uses Drizzle for queries and raw SQLite handle for transactions.
  */
+/**
+ * Service for managing recovery key lifecycle.
+ *
+ * Uses Drizzle for queries and raw SQLite handle for transactions.
+ * Keys are one-time-use app-layer credentials that authorize password resets.
+ */
 export class RecoveryKeyService {
   constructor(
     private readonly db: BetterSQLite3Database<any>,
