@@ -73,10 +73,11 @@ export class AuthBootstrapService {
     const passwordHash = await context.password.hash(input.password);
 
     try {
-      // Use raw SQLite transaction (synchronous) — Drizzle's db.transaction()
-      // doesn't support async callbacks with better-sqlite3.
+      // Use raw SQLite transaction — Drizzle's db.transaction() doesn't
+      // support async callbacks with better-sqlite3. Use BEGIN IMMEDIATE
+      // to acquire the write lock before any checks.
       let result: BootstrapResult | undefined;
-      this.raw.exec("BEGIN");
+      this.raw.exec("BEGIN IMMEDIATE");
       try {
         if (await this.hasConfiguredUsersTx(this.db)) {
           result = this.toConflictResult();

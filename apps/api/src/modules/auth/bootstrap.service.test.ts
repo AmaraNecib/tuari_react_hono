@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { AuthBootstrapService } from "./bootstrap.service"
 
+/** Create a chainable mock for Drizzle query builder methods. */
 function createChainable(result?: unknown) {
   const data = result ?? []
   const chain = {
@@ -15,6 +16,7 @@ function createChainable(result?: unknown) {
   return chain
 }
 
+/** Create a mock Drizzle database for testing. */
 function createDrizzleMock() {
   const db = {
     select: vi.fn(() => createChainable()),
