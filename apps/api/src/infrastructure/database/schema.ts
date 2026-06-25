@@ -958,6 +958,18 @@ async function runAddAdvanceDebtEntryMigration() {
     return;
   }
 
+  // If the old column names don't exist, the schema is already new — skip.
+  const hasOldColumn = await columnExists(getExecutor(), "debt_entry", "signed_amount_dzd");
+  if (!hasOldColumn) {
+    // Mark as done so we don't retry on every startup.
+    await getExecutor().$executeRawUnsafe(
+      'INSERT OR IGNORE INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+      addAdvanceDebtEntryMigrationKey,
+      new Date().toISOString(),
+    );
+    return;
+  }
+
   await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
