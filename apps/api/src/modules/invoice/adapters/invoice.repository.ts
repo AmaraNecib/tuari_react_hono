@@ -16,7 +16,7 @@ const SORT_COLUMN_MAP: Record<InvoiceListSortField, string> = {
   totalAmount: "total_amount",
 };
 
-export class SqliteInvoiceRepository implements InvoiceRepository {
+export class InvoiceRepository implements InvoiceRepository {
   private transactionChain: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly db: Database.Database) {}

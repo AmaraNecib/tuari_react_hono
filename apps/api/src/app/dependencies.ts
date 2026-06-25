@@ -17,9 +17,9 @@ import { createInventoryRepository } from "../modules/inventory/inventory.reposi
 import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { InvoiceModule } from "../modules/invoice/invoice.module";
-import { SqliteInvoiceRepository } from "../modules/invoice/adapters/sqlite-invoice.repository";
+import { InvoiceRepository } from "../modules/invoice/adapters/invoice.repository";
 import { createPaymentModule } from "../modules/payment/payment.module";
-import { SqlitePaymentRepository } from "../modules/payment/adapters/sqlite-payment.repository";
+import { PaymentRepository } from "../modules/payment/adapters/payment.repository";
 import { SqlitePermissionResolver } from "../modules/rbac/sqlite-permission-resolver";
 import { SessionService } from "../modules/session/session.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
@@ -53,13 +53,13 @@ export async function createAppDependencies(
   const employeeRepository = new SqliteEmployeeRepository(companyRepository);
   const roleRepository = new SqliteRoleRepository(companyRepository);
   const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
-  const invoiceRepository = new SqliteInvoiceRepository(sharedDatabase);
+  const invoiceRepository = new InvoiceRepository(sharedDatabase);
   const invoiceDebtPort = createSqliteInvoiceDebtPort({
     db: sharedDatabase,
     repository: companyRepository,
   });
   const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
-  const paymentRepository = new SqlitePaymentRepository(sharedDatabase);
+  const paymentRepository = new PaymentRepository(sharedDatabase);
   const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
   const authBootstrapService = new AuthBootstrapService(db, auth, env.bootstrapSetupKey);
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);

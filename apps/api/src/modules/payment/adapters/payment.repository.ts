@@ -15,7 +15,7 @@ const SORT_COLUMN_MAP: Record<PaymentListSortField, string> = {
   createdAt: "created_at",
 };
 
-export class SqlitePaymentRepository implements PaymentRepository {
+export class PaymentRepository implements PaymentRepository {
   private transactionChain: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly db: Database.Database) {}
