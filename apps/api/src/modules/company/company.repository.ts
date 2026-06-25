@@ -88,6 +88,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 /** Normalize audit context with null defaults. */
+/** Normalize audit context with null defaults. */
 function normalizeAudit(ctx?: MutationAuditContext) {
   return {
     actorUserId: ctx?.actorUserId ?? null,
@@ -99,6 +100,7 @@ function normalizeAudit(ctx?: MutationAuditContext) {
 type WhereCond = ReturnType<typeof eq> | ReturnType<typeof and> | ReturnType<typeof isNull>;
 
 /** Build a Drizzle WHERE clause from an array of conditions. */
+/** Build a Drizzle WHERE clause from an array of conditions. */
 function buildWhere(conditions: WhereCond[]): WhereCond | undefined {
   if (conditions.length === 0) return undefined;
   if (conditions.length === 1) return conditions[0];
@@ -109,62 +111,81 @@ function buildWhere(conditions: WhereCond[]): WhereCond | undefined {
 // Drizzle row → Record mappers
 // ---------------------------------------------------------------------------
 
+/** Map Drizzle role row to RoleRecord. */
 function toRole(r: typeof schema.role.$inferSelect): RoleRecord {
   return { id: r.id, key: r.key, name: r.name, description: r.description ?? null, isSystem: r.isSystem, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle employee row to EmployeeRecord. */
 function toEmployee(r: typeof schema.employee.$inferSelect): EmployeeRecord {
   return { id: r.id, firstName: r.firstName, lastName: r.lastName, phone: r.phone, roleId: r.roleId, status: r.status as EmployeeRecord["status"], salaryAmountDzd: r.salaryAmountDzd ?? null, salaryPeriod: r.salaryPeriod as EmployeeRecord["salaryPeriod"], notes: r.notes ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle project row to ProjectRecord. */
 function toProject(r: typeof schema.project.$inferSelect): ProjectRecord {
   return { id: r.id, name: r.name, location: r.location ?? null, managerId: r.managerId ?? null, status: r.status as ProjectRecord["status"], notes: r.notes ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle warehouse row to WarehouseRecord. */
 function toWarehouse(r: typeof schema.warehouse.$inferSelect): WarehouseRecord {
   return { id: r.id, name: r.name, address: r.address ?? null, managerId: r.managerId ?? null, status: r.status as WarehouseRecord["status"], notes: r.notes ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle manager assignment row. */
 function toManagerAssignment(r: typeof schema.employeeManagerAssignment.$inferSelect): EmployeeManagerAssignmentRecord {
   return { id: r.id, workerId: r.workerId, managerId: r.managerId, status: r.status as EmployeeManagerAssignmentRecord["status"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle project row to ProjectRecord. */
+/** Map Drizzle project assignment row. */
 function toProjectAssignment(r: typeof schema.employeeProjectAssignment.$inferSelect): EmployeeProjectAssignmentRecord {
   return { id: r.id, employeeId: r.employeeId, projectId: r.projectId, status: r.status as EmployeeProjectAssignmentRecord["status"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle warehouse row to WarehouseRecord. */
+/** Map Drizzle warehouse assignment row. */
 function toWarehouseAssignment(r: typeof schema.employeeWarehouseAssignment.$inferSelect): EmployeeWarehouseAssignmentRecord {
   return { id: r.id, employeeId: r.employeeId, warehouseId: r.warehouseId, status: r.status as EmployeeWarehouseAssignmentRecord["status"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle state history row. */
 function toStateHistory(r: typeof schema.employeeStateHistory.$inferSelect): EmployeeStateHistoryRecord {
   return { id: r.id, employeeId: r.employeeId, roleId: r.roleId, status: r.status as EmployeeStateHistoryRecord["status"], salaryAmountDzd: r.salaryAmountDzd ?? null, salaryPeriod: r.salaryPeriod as EmployeeStateHistoryRecord["salaryPeriod"], eventType: r.eventType as EmployeeStateHistoryRecord["eventType"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle project row to ProjectRecord. */
+/** Map Drizzle project manager history row. */
 function toProjectManagerHistory(r: typeof schema.projectManagerOwnershipHistory.$inferSelect): ProjectManagerOwnershipHistoryRecord {
   return { id: r.id, projectId: r.projectId, managerId: r.managerId, status: r.status as ProjectManagerOwnershipHistoryRecord["status"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle warehouse row to WarehouseRecord. */
+/** Map Drizzle warehouse manager history row. */
 function toWarehouseManagerHistory(r: typeof schema.warehouseManagerOwnershipHistory.$inferSelect): WarehouseManagerOwnershipHistoryRecord {
   return { id: r.id, warehouseId: r.warehouseId, managerId: r.managerId, status: r.status as WarehouseManagerOwnershipHistoryRecord["status"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle external counterparty row. */
 function toExternalCounterparty(r: typeof schema.externalCounterparty.$inferSelect): ExternalCounterpartyRecord {
   return { id: r.id, fullName: r.fullName, phoneNumber: r.phoneNumber, note: r.note ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle debt account row. */
 function toDebtAccount(r: typeof schema.debtAccount.$inferSelect): DebtAccountRecord {
   return { id: r.id, partyType: r.partyType as DebtAccountRecord["partyType"], workerId: r.workerId ?? null, externalCounterpartyId: r.externalCounterpartyId ?? null, status: r.status as DebtAccountRecord["status"], direction: r.direction as DebtAccountRecord["direction"], currentBalance: r.currentBalance, note: r.note ?? null, settledAt: r.settledAt ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle debt entry row. */
 function toDebtEntry(r: typeof schema.debtEntry.$inferSelect): DebtEntryRecord {
   return { id: r.id, debtAccountId: r.debtAccountId, entryType: r.entryType as DebtEntryRecord["entryType"], signedAmountDzd: r.signedAmount, entryDate: r.entryDate, note: r.note ?? null, balanceAfterDzd: r.balanceAfter, reasonCategory: r.reasonCategory as DebtEntryRecord["reasonCategory"], reasonDetail: r.reasonDetail ?? null, paymentMethod: r.paymentMethod as DebtEntryRecord["paymentMethod"], status: r.status as DebtEntryRecord["status"], voidedAt: r.voidedAt ?? null, voidedBy: r.voidedBy ?? null, voidReason: r.voidReason ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle salary payment row. */
 function toSalaryPayment(r: typeof schema.employeeSalaryPayment.$inferSelect): EmployeeSalaryPaymentRecord {
   return { id: r.id, employeeId: r.employeeId, periodType: r.periodType as EmployeeSalaryPaymentRecord["periodType"], expectedAmountDzd: r.expectedAmountDzd, actualAmountDzd: r.actualAmountDzd, paymentDate: r.paymentDate, note: r.note ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
+/** Map Drizzle user profile history row. */
 function toUserProfileHistory(r: typeof schema.userProfileHistory.$inferSelect): UserProfileHistoryRecord {
   return { id: r.id, userId: r.userId, name: r.name ?? null, phone: r.phone ?? null, previousName: r.previousName ?? null, previousPhone: r.previousPhone ?? null, passwordChanged: r.passwordChanged, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
@@ -175,6 +196,7 @@ function toUserProfileHistory(r: typeof schema.userProfileHistory.$inferSelect):
 
 type DrizzleDb = BetterSQLite3Database<typeof schema>;
 
+/** Repository interface for company domain data access (employees, projects, debts, etc.). */
 export interface CompanyRepository {
   withTransaction<T>(callback: () => T): T;
   isBootstrapOwner(userId: string): boolean;
@@ -271,6 +293,7 @@ export interface CompanyRepository {
   listInventoryItemDefinitionsForLog(): InventoryItemDefinitionAuditRecord[];
   getAuthUserById(id: string): AuthUserDisplayRecord | null;
 }
+/** Drizzle-based implementation of CompanyRepository. */
 export class SqliteCompanyRepository implements CompanyRepository {
   private readonly db: DrizzleDb;
   private readonly raw: any;
@@ -850,14 +873,17 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   // ── Private helpers ──────────────────────────────────────────────────
 
+  /** Insert an employee state history record (hire, update, termination). */
   private insertStateHistory(data: { employeeId: string; roleId: string; status: string; salaryAmountDzd: number | null; salaryPeriod: string | null; eventType: string; startDate: string; notes: string | null; actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
     this.db.insert(schema.employeeStateHistory).values({ id: crypto.randomUUID(), employeeId: data.employeeId, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd, salaryPeriod: data.salaryPeriod, eventType: data.eventType, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
   }
 
+  /** End the current active state history for an employee. */
   private endActiveStateHistory(employeeId: string, endDate: string, a: { actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
     this.db.update(schema.employeeStateHistory).set({ endDate, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.employeeStateHistory.employeeId, employeeId), isNull(schema.employeeStateHistory.endDate))).run();
   }
 
+  /** Reassign workers to a new manager within a transaction. */
   private reassignWorkers(data: { workerIds: string[]; managerId: string; timestamp: string }, audit?: MutationAuditContext) {
     const a = normalizeAudit(audit);
     for (const wid of data.workerIds) {
@@ -868,18 +894,22 @@ export class SqliteCompanyRepository implements CompanyRepository {
     }
   }
 
+  /** Insert a project manager ownership history record. */
   private insertProjectManagerOwnershipHistory(data: { projectId: string; managerId: string; status: string; startDate: string; notes: string | null; actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
     this.db.insert(schema.projectManagerOwnershipHistory).values({ id: crypto.randomUUID(), projectId: data.projectId, managerId: data.managerId, status: data.status, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
   }
 
+  /** End the active project manager ownership history. */
   private endActiveProjectManagerOwnershipHistory(projectId: string, endDate: string, a: { actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
     this.db.update(schema.projectManagerOwnershipHistory).set({ endDate, status: "ENDED", actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.projectManagerOwnershipHistory.projectId, projectId), isNull(schema.projectManagerOwnershipHistory.endDate))).run();
   }
 
+  /** Insert a warehouse manager ownership history record. */
   private insertWarehouseManagerOwnershipHistory(data: { warehouseId: string; managerId: string; status: string; startDate: string; notes: string | null; actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
     this.db.insert(schema.warehouseManagerOwnershipHistory).values({ id: crypto.randomUUID(), warehouseId: data.warehouseId, managerId: data.managerId, status: data.status, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
   }
 
+  /** End the active warehouse manager ownership history. */
   private endActiveWarehouseManagerOwnershipHistory(warehouseId: string, endDate: string, a: { actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
     this.db.update(schema.warehouseManagerOwnershipHistory).set({ endDate, status: "ENDED", actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.warehouseManagerOwnershipHistory.warehouseId, warehouseId), isNull(schema.warehouseManagerOwnershipHistory.endDate))).run();
   }
@@ -893,6 +923,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
  * Create a Drizzle-backed CompanyRepository.
  * Accepts a raw SQLite handle or a path string (for backwards compat).
  */
+/** Create a CompanyRepository from a raw SQLite handle. */
 export function createCompanyRepository(
   rawDb: any,
 ): CompanyRepository {
