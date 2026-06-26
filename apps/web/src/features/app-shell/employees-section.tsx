@@ -19,7 +19,6 @@ import {
   type EmployeeTableRow,
 } from "@/features/employees/employee-table"
 import type { EmployeeManagerOption } from "@/features/employees/employee-batch-row-card"
-import { PaginationControls } from "@/features/shared/pagination-controls"
 import { cn } from "@/lib/utils"
 import type { Role } from "@tuari/contracts"
 
@@ -226,19 +225,6 @@ export function EmployeesSection({
             onLeave={(row) => setPendingAction({ type: "leave", employee: row })}
             onView={(row) => void navigation.goToEmployeeDetails(row.id)}
         />
-        <div className="mt-4">
-          <PaginationControls
-            shownCount={rows.length}
-            total={total}
-            hasMore={hasMore}
-            isLoading={pagedQuery.isPending || pagedQuery.isFetching}
-            pageSize={resolvedLimit}
-            availablePageSizes={PAGE_SIZES}
-            onPageSizeChange={handlePageSizeChange}
-            onPrevious={previousCursorStack.length > 0 ? handlePrevious : undefined}
-            onNext={hasMore && nextCursor ? handleNext : undefined}
-          />
-        </div>
       </RecordPageFrame>
 
       <AlertDialog open={Boolean(pendingAction)} onOpenChange={(open) => (!open && !actionPending ? setPendingAction(null) : null)}>

@@ -122,6 +122,21 @@ async function invalidateWorkspaceDomains(
   }
 }
 
+/** Invalidate both workspace AND inventory query caches so dropdowns/lists refresh everywhere. */
+async function invalidateAll(
+  queryClient: ReturnType<typeof useQueryClient>,
+  userId: string | null,
+  domains: Array<keyof typeof workspaceDomainQueryKeys>,
+  inventoryDomains?: string[],
+) {
+  await invalidateWorkspaceDomains(queryClient, userId, domains)
+  if (inventoryDomains) {
+    for (const domain of inventoryDomains) {
+      await queryClient.invalidateQueries({ queryKey: ["inventory", domain] })
+    }
+  }
+}
+
 function getCachedSessionUserId(queryClient: ReturnType<typeof useQueryClient>) {
   return queryClient.getQueryData<{ user?: { id?: string } | null }>(orpc.session.key())?.user?.id ?? null
 }
@@ -269,7 +284,7 @@ export function useCreateEmployeesBatchMutation() {
     },
     onSuccess: async ({ createdCount }) => {
       if (createdCount > 0) {
-        await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses"])
+        await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses"], ["warehouses", "projects"])
       }
     },
   })
