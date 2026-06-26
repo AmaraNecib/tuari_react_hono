@@ -13,8 +13,6 @@ const binDir = path.resolve(desktopRoot, "src-tauri", "bin");
 const runtimeDir = path.resolve(binDir, "api-runtime");
 const nodeBinaryOutput = path.resolve(binDir, "node.exe");
 const apiDistDir = path.resolve(apiRoot, "dist");
-const prismaClientDir = realpathSync(path.resolve(apiRoot, "node_modules", "@prisma", "client"));
-const generatedPrismaDir = path.resolve(prismaClientDir, "..", "..", ".prisma", "client");
 
 const findPackageRoot = (resolvedPath) => {
   let currentDir = path.dirname(resolvedPath);
@@ -86,13 +84,6 @@ const ensureSqlcipherBinary = () => {
 
 rmSync(runtimeDir, { recursive: true, force: true });
 rmSync(nodeBinaryOutput, { force: true });
-mkdirSync(path.resolve(runtimeDir, "node_modules", "@prisma"), { recursive: true });
-mkdirSync(path.resolve(runtimeDir, "node_modules", ".prisma"), { recursive: true });
-
-console.log("Generating Prisma client...");
-runPnpmCommand(["--filter", "@tuari/api", "prisma:generate"], {
-  cwd: workspaceRoot,
-});
 
 console.log("Building bundled API runtime...");
 runPnpmCommand(["--filter", "@tuari/api", "build"], {
@@ -103,9 +94,6 @@ ensureBetterSqliteBinary();
 const hasSqlcipher = ensureSqlcipherBinary();
 
 copyValidatedTree(apiDistDir, path.resolve(runtimeDir, "dist"));
-copyValidatedTree(prismaClientDir, path.resolve(runtimeDir, "node_modules", "@prisma", "client"));
-copyValidatedTree(generatedPrismaDir, path.resolve(runtimeDir, "node_modules", ".prisma", "client"));
-copyPackage("@prisma/client-runtime-utils", path.join(prismaClientDir, "package.json"));
 
 // Copy the SQLite library: prefer sqlcipher if available, otherwise plain better-sqlite3
 if (hasSqlcipher) {
