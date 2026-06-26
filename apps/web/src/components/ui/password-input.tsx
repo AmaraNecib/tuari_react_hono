@@ -27,7 +27,7 @@ export function PasswordInput({ hideLabel, showLabel, ...props }: PasswordInputP
         aria-controls={inputId}
         aria-label={visible ? hideLabel : showLabel}
         aria-pressed={visible}
-        className="absolute inset-y-1/2 left-2 z-10 size-8 -translate-y-1/2"
+        className="absolute inset-y-1/2 left-2 z-10 size-8 -translate-y-1/2 active:translate-y-0 active:transition-none"
         size="icon-sm"
         type="button"
         variant="ghost"

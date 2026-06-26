@@ -80,7 +80,7 @@ export function HomeViewAuthScreen({
             <p className="text-sm leading-6 text-muted-foreground">{copy.auth.startupErrorDescription}</p>
           </div>
 
-          <Button className="mt-6 h-11 w-full rounded-2xl text-base" type="button" variant="outline" onClick={onRetryAuthState}>
+          <Button className="mt-6 h-11 w-full rounded-xl text-base" type="button" variant="outline" onClick={onRetryAuthState}>
             {copy.common.retry}
           </Button>
         </Surface>
@@ -162,7 +162,7 @@ export function HomeViewAuthScreen({
           </div>
 
           <Button
-            className="mt-2 h-12 w-full rounded-2xl text-base"
+            className="mt-2 h-12 w-full rounded-xl text-base"
             disabled={signInPending || bootstrapPending}
             type="submit"
           >

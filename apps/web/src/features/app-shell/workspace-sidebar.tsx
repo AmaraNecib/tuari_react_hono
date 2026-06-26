@@ -186,7 +186,7 @@ export function WorkspaceSidebar({
     <aside className="flex flex-col h-full bg-bg-2 border-s border-line overflow-hidden min-w-0">
       {/* Brand */}
       <div className="flex items-center gap-3 px-5 border-b border-line flex-shrink-0" style={{ height: "var(--header-h)" }}>
-        <div className="w-[22px] h-[22px] rounded-[5px] bg-ink text-bg grid place-items-center text-sm font-display italic font-medium flex-shrink-0">
+        <div className="w-[22px] h-[22px] rounded-[0.3125rem] bg-ink text-bg grid place-items-center text-sm font-display italic font-medium flex-shrink-0">
           ط
         </div>
         <span className="sb-collapse-hide font-display italic text-[19px] tracking-[-0.01em] whitespace-nowrap overflow-hidden">
@@ -213,7 +213,7 @@ export function WorkspaceSidebar({
                   <WorkspaceLink
                     key={key}
                     className={cn(
-                      "flex items-center gap-3 px-3 py-[6px] rounded-[6px] text-[13.5px] cursor-pointer select-none transition-colors",
+                      "flex items-center gap-3 px-3 py-[6px] rounded-[0.375rem] text-[13.5px] cursor-pointer select-none transition-colors",
                       "relative",
                       active
                         ? "bg-surface text-ink font-medium shadow-[var(--shadow-sm)] sb-item-active"
@@ -260,7 +260,7 @@ export function WorkspaceSidebar({
           <button
             type="button"
             aria-label={t("shell.expand")}
-            className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors"
+            className="w-[30px] h-[30px] grid place-items-center rounded-[0.4375rem] text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors"
             onClick={() => onSetCollapsed(false)}
           >
             <PanelRightOpen size={16} />

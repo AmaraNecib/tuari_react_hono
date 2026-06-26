@@ -53,7 +53,7 @@ type EmployeeBatchRowCardProps = {
 }
 
 const fieldClassName =
-  "flex h-12 w-full rounded-2xl border border-border/80 bg-sidebar px-4 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-background dark:[color-scheme:dark] dark:shadow-none"
+  "flex h-12 w-full rounded-xl border border-border/80 bg-sidebar px-4 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-background dark:[color-scheme:dark] dark:shadow-none"
 
 export function EmployeeBatchRowCard({
   copy,
@@ -72,7 +72,7 @@ export function EmployeeBatchRowCard({
   const availableProjects = selectedManager?.projectOptions ?? []
 
   return (
-    <article className="rounded-xl border border-border/55 bg-sidebar p-5 shadow-sm">
+    <article className="rounded-xl border border-border/55 bg-sidebar p-5">
       <div className="mb-5 flex items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-foreground">{copy.title}</h3>
         {canRemove ? (

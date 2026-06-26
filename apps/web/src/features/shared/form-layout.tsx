@@ -67,7 +67,7 @@ export function FormSection({
         </div>
       </div>
       
-      <div className="rounded-xl border border-border/50 bg-sidebar/50 p-6 shadow-sm surface-panel md:w-2/3 xl:p-8">
+      <div className="rounded-xl border border-border/50 bg-sidebar/50 p-6 surface-panel md:w-2/3 xl:p-8">
         <div className="grid gap-6 sm:grid-cols-2">
           {children}
         </div>

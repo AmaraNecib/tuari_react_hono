@@ -38,7 +38,7 @@ export function DashboardSkeleton() {
       </div>
 
       {/* StatBand 4-col */}
-      <div className="grid grid-cols-2 md:grid-cols-4 border border-line rounded-xl overflow-hidden bg-surface shadow-[var(--shadow-sm)]">
+      <div className="grid grid-cols-2 md:grid-cols-4 border border-line rounded-xl overflow-hidden bg-surface">
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
@@ -68,7 +68,7 @@ export function ListPageSkeleton({ rowCount = 6 }: { rowCount?: number }) {
       </div>
 
       {/* Table skeleton */}
-      <div className="rounded-xl border border-line bg-surface shadow-[var(--shadow-sm)] overflow-hidden">
+      <div className="rounded-xl border border-line bg-surface overflow-hidden">
         {/* Table header */}
         <div className="flex items-center gap-4 px-4 py-3 border-b border-line bg-bg-2">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -129,7 +129,7 @@ export function DetailPageSkeleton() {
       {/* Content cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-line bg-surface p-5 space-y-3 shadow-[var(--shadow-sm)]">
+          <div key={i} className="rounded-xl border border-line bg-surface p-5 space-y-3">
             <ShimmerLine className="w-24 h-4" />
             <ShimmerLine className="w-full h-3" />
             <ShimmerLine className="w-3/4 h-3" />
@@ -148,14 +148,14 @@ export function SettingsPageSkeleton() {
     <div className="p-7 space-y-6" role="status" aria-label="loading settings">
       <ShimmerLine className="w-32 h-9" />
 
-      <div className="rounded-xl border border-line bg-surface p-6 space-y-5 shadow-[var(--shadow-sm)]">
+      <div className="rounded-xl border border-line bg-surface p-6 space-y-5">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="space-y-2">
             <ShimmerLine className="w-20 h-3" />
-            <ShimmerBlock className="h-10 w-full rounded-2xl" />
+            <ShimmerBlock className="h-10 w-full rounded-xl" />
           </div>
         ))}
-        <ShimmerBlock className="w-28 h-10 rounded-2xl" />
+        <ShimmerBlock className="w-28 h-10 rounded-xl" />
       </div>
     </div>
   )
@@ -167,7 +167,7 @@ export function ContentSkeleton({ lines = 8 }: { lines?: number }) {
   return (
     <div className="p-7 space-y-4" role="status" aria-label="loading content">
       <ShimmerLine className="w-32 h-9" />
-      <div className="rounded-xl border border-line bg-surface p-5 space-y-3 shadow-[var(--shadow-sm)]">
+          <div className="rounded-xl border border-line bg-surface p-5 space-y-3">
         {Array.from({ length: lines }).map((_, i) => (
           <ShimmerLine key={i} className={cn(i % 3 === 0 ? "w-full" : i % 3 === 1 ? "w-5/6" : "w-2/3")} />
         ))}
@@ -184,7 +184,7 @@ export function AppShellSkeleton() {
       {/* Sidebar skeleton */}
       <aside className="w-[240px] flex flex-col bg-bg-2 border-s border-line">
         <div className="flex items-center gap-3 px-5 border-b border-line" style={{ height: "var(--header-h)" }}>
-          <Shimmer className="size-[22px] rounded-[5px]" />
+          <Shimmer className="size-[22px] rounded-[0.3125rem]" />
           <ShimmerLine className="w-16 h-4" />
         </div>
         <nav className="flex-1 p-3 space-y-6 overflow-hidden" aria-label="القائمة الرئيسية">
@@ -215,11 +215,11 @@ export function AppShellSkeleton() {
           className="flex items-center gap-3 px-4 border-b border-line bg-bg flex-shrink-0"
           style={{ height: "var(--header-h)" }}
         >
-          <Shimmer className="size-[30px] rounded-[7px]" />
+          <Shimmer className="size-[30px] rounded-[0.4375rem]" />
           <ShimmerLine className="w-32 h-4" />
           <div className="flex-1" />
-          <Shimmer className="size-[30px] rounded-[7px]" />
-          <Shimmer className="size-[30px] rounded-[7px]" />
+          <Shimmer className="size-[30px] rounded-[0.4375rem]" />
+          <Shimmer className="size-[30px] rounded-[0.4375rem]" />
         </header>
 
         <main className="flex-1 overflow-auto">
@@ -240,12 +240,12 @@ export function AuthScreenSkeleton() {
           <ShimmerLine className="w-32 h-6 mx-auto" />
           <ShimmerLine className="w-64 h-3 mx-auto" />
         </div>
-        <div className="rounded-xl border border-line bg-surface p-6 space-y-4 shadow-[var(--shadow-sm)]">
+        <div className="rounded-xl border border-line bg-surface p-6 space-y-4">
           <div className="space-y-2">
             <ShimmerLine className="w-16 h-3" />
-            <ShimmerBlock className="h-10 w-full rounded-2xl" />
+            <ShimmerBlock className="h-10 w-full rounded-xl" />
           </div>
-          <ShimmerBlock className="h-10 w-full rounded-2xl" />
+          <ShimmerBlock className="h-10 w-full rounded-xl" />
         </div>
       </div>
     </main>

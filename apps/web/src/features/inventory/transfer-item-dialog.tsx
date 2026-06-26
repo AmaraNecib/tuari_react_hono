@@ -179,7 +179,7 @@ export function TransferItemDialog({
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium">{t("salaries.paymentDate")}</span>
             <input
-              className="h-10 w-full rounded-2xl border border-border/75 bg-background/82 px-4 text-sm outline-none focus-visible:border-primary/45 focus-visible:ring-4 focus-visible:ring-primary/10"
+              className="h-10 w-full rounded-xl border border-border/75 bg-background/82 px-4 text-sm outline-none focus-visible:border-primary/45 focus-visible:ring-4 focus-visible:ring-primary/10"
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}

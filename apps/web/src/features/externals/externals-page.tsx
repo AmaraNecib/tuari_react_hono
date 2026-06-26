@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next"
+
 import { Button } from "@/components/ui/button"
 import { Surface } from "@/features/shared/page-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
@@ -21,23 +23,25 @@ export function ExternalCounterpartiesPage({
   onCreate: () => void
   onOpen: (counterpartyId: string) => void
 }) {
+  const { t } = useTranslation()
+
   return (
     <RecordPageFrame
-      title="الجهات الخارجية"
-      description="قائمة مستقلة للجهات الخارجية مع إجمالي الرصيد وعدد حالات الدين المنفصلة لكل جهة."
-      action={<Button size="lg" onClick={onCreate}>إضافة جهة خارجية</Button>}
+      title={t("externalsPage.title")}
+      description={t("externalsPage.description")}
+      action={<Button size="lg" onClick={onCreate}>{t("externalsPage.addButton")}</Button>}
     >
       <Surface className="overflow-hidden" variant="table">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-muted/40 text-muted-foreground">
               <tr>
-                <th className="px-4 py-3 text-start font-medium">الاسم</th>
-                <th className="px-4 py-3 text-start font-medium">الهاتف</th>
-                <th className="px-4 py-3 text-start font-medium">إجمالي الرصيد</th>
-                <th className="px-4 py-3 text-start font-medium">الحالات</th>
-                <th className="px-4 py-3 text-start font-medium">ملاحظات</th>
-                <th className="px-4 py-3 text-start font-medium">الإجراء</th>
+                <th className="px-4 py-3 text-start font-medium">{t("columns.name")}</th>
+                <th className="px-4 py-3 text-start font-medium">{t("columns.phone")}</th>
+                <th className="px-4 py-3 text-start font-medium">{t("columns.totalBalance", "إجمالي الرصيد")}</th>
+                <th className="px-4 py-3 text-start font-medium">{t("columns.cases", "الحالات")}</th>
+                <th className="px-4 py-3 text-start font-medium">{t("columns.notes", "ملاحظات")}</th>
+                <th className="px-4 py-3 text-start font-medium">{t("common.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -55,12 +59,12 @@ export function ExternalCounterpartiesPage({
                         دج {formatDebtMoney(counterparty.totalBalanceDzd)}
                       </td>
                       <td className="px-4 py-4 text-start text-foreground">
-                        {counterparty.totalCaseCount} حالة{counterparty.openCaseCount ? `، ${counterparty.openCaseCount} مفتوحة` : ""}
+                        {counterparty.totalCaseCount} {t("externalsPage.caseUnit", "حالة")}{counterparty.openCaseCount ? `، ${counterparty.openCaseCount} ${t("externalsPage.openCases", "مفتوحة")}` : ""}
                       </td>
                       <td className="px-4 py-4 text-start text-muted-foreground">{counterparty.note?.trim() || "—"}</td>
                       <td className="px-4 py-4 text-start">
                         <Button size="sm" variant="outline" onClick={() => onOpen(counterparty.id)}>
-                          فتح الملف
+                          {t("externalsPage.openFile")}
                         </Button>
                       </td>
                     </tr>
@@ -68,8 +72,11 @@ export function ExternalCounterpartiesPage({
                 })
               ) : (
                 <tr>
-                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={6}>
-                    لا توجد أطراف خارجية بعد.
+                  <td className="px-4 py-12 text-center" colSpan={6}>
+                    <div className="flex flex-col items-center gap-3">
+                      <p className="text-sm text-muted-foreground">{t("externalsPage.empty")}</p>
+                      <Button size="sm" onClick={onCreate}>{t("externalsPage.addButton")}</Button>
+                    </div>
                   </td>
                 </tr>
               )}

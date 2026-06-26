@@ -96,16 +96,16 @@
   --row-h:               40px;
 
   /* Neutral off-white color system — brand warmth in accent, not body */
-  --bg:          #f6f4f0;
-  --bg-2:        #eeebe4;
-  --surface:     #fbfaf7;
-  --surface-2:   #f1efe7;
-  --line:        #e3e0d6;
-  --line-2:      #d5d0c4;
-  --ink:         #1a1714;
-  --ink-2:       #4a443c;
-  --ink-3:       #7a7367;
-  --ink-4:       #a89f91;
+  --bg:          #fafafa;
+  --bg-2:        #f4f4f4;
+  --surface:     #ffffff;
+  --surface-2:   #f0f0f0;
+  --line:        #e5e5e5;
+  --line-2:      #d4d4d4;
+  --ink:         #171717;
+  --ink-2:       #404040;
+  --ink-3:       #737373;
+  --ink-4:       #a3a3a3;
 
   /* Terracotta accent */
   --accent-brand:  #b4502a;
@@ -140,7 +140,7 @@
   --border:                  var(--line);
   --input:                   var(--line);
   --ring:                    #b4502a;
-  --radius:                  7px;
+  --radius:                  0.4375rem;
   --chart-1: oklch(0.62 0.14 35);  --chart-2: oklch(0.60 0.12 160);
   --chart-3: oklch(0.70 0.10 85);  --chart-4: oklch(0.55 0.12 260);
   --chart-5: oklch(0.65 0.14 300);
@@ -334,7 +334,6 @@
   grid-template-columns: var(--sidebar-w) 1fr;
   height: 100vh;
   overflow: hidden;
-  transition: grid-template-columns 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 .tauri-shell[data-collapsed="true"] {
   grid-template-columns: var(--sidebar-collapsed-w) 1fr;

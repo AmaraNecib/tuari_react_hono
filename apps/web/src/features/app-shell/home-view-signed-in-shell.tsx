@@ -98,7 +98,7 @@ export function HomeViewSignedInShell({
           <button
             type="button"
             aria-label={sidebarCollapsed ? copy.shell.expand : copy.shell.collapse}
-            className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors flex-shrink-0"
+            className="w-[30px] h-[30px] grid place-items-center rounded-[0.4375rem] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors flex-shrink-0"
             onClick={() => onSetSidebarCollapsed(!sidebarCollapsed)}
           >
             {sidebarCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
@@ -118,7 +118,7 @@ export function HomeViewSignedInShell({
             <button
               type="button"
               aria-label={copy.shell.themeToggle}
-              className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
+              className="w-[30px] h-[30px] grid place-items-center rounded-[0.4375rem] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
               onClick={onThemeToggle}
             >
               {theme === "light" ? <MoonStar size={16} /> : <SunMedium size={16} />}
@@ -126,7 +126,7 @@ export function HomeViewSignedInShell({
 
             <WorkspaceLink
               aria-label={copy.sections.settings.label}
-              className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
+              className="w-[30px] h-[30px] grid place-items-center rounded-[0.4375rem] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
               target={workspaceRoutes.settings()}
             >
               <Settings size={16} />
@@ -135,7 +135,7 @@ export function HomeViewSignedInShell({
             <button
               type="button"
               aria-label={copy.shell.signOut}
-              className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-bad hover:bg-bad-soft transition-colors"
+              className="w-[30px] h-[30px] grid place-items-center rounded-[0.4375rem] text-bad hover:bg-bad-soft transition-colors"
               onClick={() => onSignOutOpenChange(true)}
             >
               <LogOut size={16} />

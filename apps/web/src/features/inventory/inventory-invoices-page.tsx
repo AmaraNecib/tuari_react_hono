@@ -1,4 +1,5 @@
 import { useMemo, useState, type ChangeEvent } from "react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { NativeSelect } from "@/components/ui/form-controls"
@@ -19,6 +20,7 @@ interface InventoryInvoicesPageProps {
 type InvoiceStatusFilter = "ALL" | "PAID" | "UNPAID"
 
 export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPageProps) {
+  const { t } = useTranslation()
   const invoicesQuery = useInventoryInvoiceGroupsQuery()
   const [query, setQuery] = useState("")
   const [filters, setFilters] = useState<Record<string, unknown>>({})
@@ -57,9 +59,9 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
     <Surface variant="panel">
       <PageSurfaceContent>
         <PageHeader
-          title="الفواتير"
-          description="كل فاتورة تجمع العناصر التي تمت إضافتها دفعة واحدة مع الملفات المرفقة بها."
-          action={<PageActionGroup><Button onClick={onCreate}>فاتورة جديدة</Button></PageActionGroup>}
+          title={t("inventoryPage.invoices.title")}
+          description={t("inventoryPage.invoices.description")}
+          action={<PageActionGroup><Button onClick={onCreate}>{t("inventoryPage.invoices.createButton")}</Button></PageActionGroup>}
         />
 
         <AppShellFilterShell>
@@ -73,11 +75,11 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
             />
           </div>
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">الحالة</span>
+            <span className="text-sm font-medium text-foreground">{t("inventoryPage.invoices.statusLabel")}</span>
             <NativeSelect value={status} onChange={(e: ChangeEvent<HTMLSelectElement>) => setFilters(prev => ({ ...prev, status: e.target.value }))}>
-              <option value="ALL">الكل</option>
-              <option value="PAID">مدفوعة</option>
-              <option value="UNPAID">متبقي دين</option>
+              <option value="ALL">{t("inventoryPage.invoices.statusAll")}</option>
+              <option value="PAID">{t("inventoryPage.invoices.statusPaid")}</option>
+              <option value="UNPAID">{t("inventoryPage.invoices.statusUnpaid")}</option>
             </NativeSelect>
           </label>
         </AppShellFilterShell>
@@ -88,7 +90,7 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
             return (
               <div
                 key={invoice.id}
-                className={`flex items-start gap-3 rounded-2xl border border-border/70 px-4 py-4 transition ${
+                className={`flex items-start gap-3 rounded-xl border border-border/70 px-4 py-4 transition ${
                   isSelected ? "bg-muted/30" : "bg-surface"
                 }`}
               >
@@ -106,16 +108,21 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div className="space-y-1">
-                      <div className="font-medium text-foreground">{invoice.invoiceNumber || "فاتورة بدون رقم"}</div>
-                      <div className="text-sm text-muted-foreground">{invoice.supplierName || "بدون مورد محدد"}</div>
+                      <div className="font-medium text-foreground">{invoice.invoiceNumber || t("inventoryPage.invoices.untitled")}</div>
+                      <div className="text-sm text-muted-foreground">{invoice.supplierName || t("inventoryPage.invoices.noSupplier")}</div>
                     </div>
-                    <div className="text-xs text-muted-foreground">{invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString("ar-DZ") : "بدون تاريخ"}</div>
+                    <div className="text-xs text-muted-foreground">{invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString("ar-DZ") : t("inventoryPage.invoices.noDate")}</div>
                   </div>
                 </button>
               </div>
             );
           })}
-          {filteredInvoices.length === 0 ? <p className="text-sm text-muted-foreground">لا توجد فواتير بعد.</p> : null}
+          {filteredInvoices.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <p className="text-sm text-muted-foreground">{t("inventoryPage.invoices.empty")}</p>
+              <Button size="sm" onClick={onCreate}>{t("inventoryPage.invoices.createButton")}</Button>
+            </div>
+          ) : null}
         </div>
 
         <BatchOperationsToolbar
@@ -123,8 +130,8 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
           isAllSelected={batchSelection.isAllSelected}
           isPartiallySelected={batchSelection.isPartiallySelected}
           operations={[
-            { id: "export", label: "تصدير", variant: "outline" },
-            { id: "delete", label: "حذف", variant: "destructive", requiresConfirmation: true },
+            { id: "export", label: t("inventoryPage.invoices.export"), variant: "outline" },
+            { id: "delete", label: t("inventoryPage.invoices.delete"), variant: "destructive", requiresConfirmation: true },
           ]}
           onToggleAll={batchSelection.toggleAll}
           onClearSelection={batchSelection.clearSelection}
