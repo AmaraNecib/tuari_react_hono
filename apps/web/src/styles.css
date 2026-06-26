@@ -85,9 +85,9 @@
   --font-arabic:  "IBM Plex Sans Arabic", "Noto Sans Arabic Variable", system-ui, sans-serif;
 
   /* Spacing */
-  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem;
   --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
-  --s-12: 48px; --s-16: 64px;
+  --s-12: 3rem; --s-16: 4rem;
 
   /* Layout */
   --sidebar-w:           14.5rem;
@@ -207,8 +207,8 @@
 }
 
 /* Density */
-[data-density="compact"] { --header-h: 44px; --row-h: 32px; }
-[data-density="regular"] { --header-h: 52px; --row-h: 40px; }
+[data-density="compact"] { --header-h: 2.75rem; --row-h: 2rem; }
+[data-density="regular"] { --header-h: 3.25rem; --row-h: 40px; }
 [data-density="comfy"]   { --header-h: 60px; --row-h: 48px; }
 
 /* ─── Base ─── */
@@ -226,7 +226,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-family: var(--font-body);
-    font-size: 15px;
+    font-size: 0.9375rem;
     line-height: 1.5;
   }
 
@@ -291,7 +291,7 @@
   *::-webkit-scrollbar-track { background: transparent; }
   *::-webkit-scrollbar-thumb {
     background: var(--line-2);
-    border-radius: 5px;
+    border-radius: 0.3125rem;
     border: 2px solid var(--bg);
     background-clip: padding-box;
   }
@@ -321,7 +321,7 @@
     inset-inline-start: 0;
     bottom: -1px;
     width: min(7rem, 24vw);
-    height: 1px;
+    height: 0.0625rem;
     background: linear-gradient(90deg, color-mix(in oklab, var(--primary) 55%, transparent), transparent 88%);
   }
 }

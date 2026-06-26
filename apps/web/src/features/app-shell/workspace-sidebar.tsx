@@ -186,10 +186,10 @@ export function WorkspaceSidebar({
     <aside className="flex flex-col h-full bg-bg-2 border-e border-line overflow-hidden min-w-0">
       {/* Brand */}
       <div className="flex items-center gap-3 px-5 border-b border-line flex-shrink-0" style={{ height: "var(--header-h)" }}>
-        <div className="w-[22px] h-[22px] rounded-[0.3125rem] bg-ink text-bg grid place-items-center text-sm font-display italic font-medium flex-shrink-0">
+        <div className="w-[1.375rem] h-[1.375rem] rounded-[0.3125rem] bg-ink text-bg grid place-items-center text-sm font-display italic font-medium flex-shrink-0">
           ط
         </div>
-        <span className="sb-collapse-hide font-display italic text-[19px] tracking-[-0.01em] whitespace-nowrap overflow-hidden">
+        <span className="sb-collapse-hide font-display italic text-[1.1875rem] tracking-[-0.01em] whitespace-nowrap overflow-hidden">
           نظام
         </span>
       </div>
@@ -199,7 +199,7 @@ export function WorkspaceSidebar({
         {groups.map((group) => (
           <div key={group.labelKey}>
             {/* Group header */}
-            <div className="sb-collapse-hide px-3 pb-1 pt-2 text-[11px] font-semibold tracking-wider uppercase text-ink-4">
+            <div className="sb-collapse-hide px-3 pb-1 pt-2 text-[0.6875rem] font-semibold tracking-wider uppercase text-ink-4">
               {t(group.labelKey, group.fallback)}
             </div>
 
@@ -213,7 +213,7 @@ export function WorkspaceSidebar({
                   <WorkspaceLink
                     key={key}
                     className={cn(
-                      "flex items-center gap-3 px-3 py-[6px] rounded-[0.375rem] text-[13.5px] cursor-pointer select-none transition-colors",
+                      "flex items-center gap-3 px-3 py-[0.375rem] rounded-[0.375rem] text-[0.84375rem] cursor-pointer select-none transition-colors",
                       "relative",
                       active
                         ? "bg-surface text-ink font-medium shadow-[var(--shadow-sm)] sb-item-active"
@@ -253,29 +253,29 @@ export function WorkspaceSidebar({
       {collapsed ? (
         <div className="border-t border-line py-3 flex flex-col items-center gap-2 flex-shrink-0">
           <div
-            className="w-[26px] h-[26px] rounded-full grid place-items-center text-white text-[11px] font-semibold flex-shrink-0 bg-primary"
+            className="w-[1.625rem] h-[1.625rem] rounded-full grid place-items-center text-white text-[0.6875rem] font-semibold flex-shrink-0 bg-primary"
           >
             {getInitials(session.name)}
           </div>
           <button
             type="button"
             aria-label={t("shell.expand")}
-            className="w-[30px] h-[30px] grid place-items-center rounded-[0.4375rem] text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors"
+            className="w-[1.875rem] h-[1.875rem] grid place-items-center rounded-[0.4375rem] text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors"
             onClick={() => onSetCollapsed(false)}
           >
             <PanelRightOpen size={16} />
           </button>
         </div>
       ) : (
-        <div className="border-t border-line px-3 py-3 flex items-center gap-3 text-[12.5px] flex-shrink-0">
+        <div className="border-t border-line px-3 py-3 flex items-center gap-3 text-[0.78125rem] flex-shrink-0">
           <div
-            className="w-[26px] h-[26px] rounded-full grid place-items-center text-white text-[11px] font-semibold flex-shrink-0 bg-primary"
+            className="w-[1.625rem] h-[1.625rem] rounded-full grid place-items-center text-white text-[0.6875rem] font-semibold flex-shrink-0 bg-primary"
           >
             {getInitials(session.name)}
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-medium truncate">{session.name ?? session.phone}</div>
-            <div className="text-ink-3 text-[11px] truncate">{session.phone}</div>
+            <div className="text-ink-3 text-[0.6875rem] truncate">{session.phone}</div>
           </div>
         </div>
       )}

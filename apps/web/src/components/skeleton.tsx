@@ -184,7 +184,7 @@ export function AppShellSkeleton() {
       {/* Sidebar skeleton */}
       <aside className="w-[var(--sidebar-w)] flex flex-col bg-bg-2 border-e border-line">
         <div className="flex items-center gap-3 px-5 border-b border-line" style={{ height: "var(--header-h)" }}>
-          <Shimmer className="size-[22px] rounded-[0.3125rem]" />
+          <Shimmer className="size-[1.375rem] rounded-[0.3125rem]" />
           <ShimmerLine className="w-16 h-4" />
         </div>
         <nav className="flex-1 p-3 space-y-6 overflow-hidden" aria-label="القائمة الرئيسية">
@@ -192,7 +192,7 @@ export function AppShellSkeleton() {
             <div key={group} className="space-y-1">
               <ShimmerLine className="w-20 h-3 ms-3" />
               {Array.from({ length: group === 0 ? 2 : group === 1 ? 5 : 2 }).map((_, item) => (
-                <div key={item} className="flex items-center gap-3 px-3 py-[6px]">
+                <div key={item} className="flex items-center gap-3 px-3 py-[0.375rem]">
                   <Shimmer className="size-4 rounded" />
                   <ShimmerLine className="w-16 h-3" />
                 </div>
@@ -215,11 +215,11 @@ export function AppShellSkeleton() {
           className="flex items-center gap-3 px-4 border-b border-line bg-bg flex-shrink-0"
           style={{ height: "var(--header-h)" }}
         >
-          <Shimmer className="size-[30px] rounded-[0.4375rem]" />
+          <Shimmer className="size-[1.875rem] rounded-[0.4375rem]" />
           <ShimmerLine className="w-32 h-4" />
           <div className="flex-1" />
-          <Shimmer className="size-[30px] rounded-[0.4375rem]" />
-          <Shimmer className="size-[30px] rounded-[0.4375rem]" />
+          <Shimmer className="size-[1.875rem] rounded-[0.4375rem]" />
+          <Shimmer className="size-[1.875rem] rounded-[0.4375rem]" />
         </header>
 
         <main className="flex-1 overflow-auto">
