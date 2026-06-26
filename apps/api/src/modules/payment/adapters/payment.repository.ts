@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import type { PaymentRepository } from "../payment.repository";
 import type {
   Payment,
@@ -18,7 +18,7 @@ const SORT_COLUMN_MAP: Record<PaymentListSortField, string> = {
 export class PaymentRepositoryImpl implements PaymentRepository {
   private transactionChain: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: BetterSqliteDatabase) {}
 
   async findById(id: string): Promise<PaymentWithAllocations | null> {
     const row = this.db

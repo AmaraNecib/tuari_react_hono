@@ -4,30 +4,25 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm prisma:generate && tsx watch src/index.ts",
-    "build": "pnpm prisma:generate && tsup",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
     "start": "node dist/index.cjs",
-    "auth:generate": "pnpm dlx @better-auth/cli@latest generate --config ./src/infrastructure/auth/auth.ts --output ./prisma/schema.prisma --yes",
-    "prisma:generate": "prisma generate",
+    "auth:generate": "pnpm dlx @better-auth/cli@latest generate --config ./src/infrastructure/auth/auth.ts --yes",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "pnpm prisma:generate && tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.6.20",
-    "@better-auth/prisma-adapter": "^1.6.2",
     "@hono/node-server": "^1.19.14",
     "@orpc/server": "^1.13.6",
-    "@prisma/adapter-better-sqlite3": "^7.5.0",
-    "@prisma/client": "^7.5.0",
     "@tuari/contracts": "workspace:*",
     "better-auth": "^1.6.20",
     "better-sqlite3": "^12.6.2",
     "better-sqlite3-sqlcipher": "5.4.3-3",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.12",
-    "prisma": "^7.5.0"
+    "hono": "^4.12.12"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

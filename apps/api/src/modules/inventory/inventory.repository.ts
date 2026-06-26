@@ -10,7 +10,7 @@
  */
 import { eq, and, asc, desc, sql, inArray } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
-import type Database from "better-sqlite3"
+import type { BetterSqliteDatabase } from "../../types/sqlite"
 import * as schema from "../../schema"
 import { createDrizzleFromSqlite } from "../../infrastructure/database/drizzle"
 import { normalizeAuditContext } from "../company/company.repository-mappers"
@@ -187,7 +187,7 @@ function mapOutboundTransfer(row: Record<string, unknown>): InventoryOutboundTra
 }
 
 /** Resolve location label from warehouse/project IDs. */
-function resolveLocationLabelByIds(database: Database.Database, warehouseId?: string | null, projectId?: string | null): string {
+function resolveLocationLabelByIds(database: BetterSqliteDatabase, warehouseId?: string | null, projectId?: string | null): string {
   if (warehouseId) {
     const row = database.prepare("SELECT name FROM warehouse WHERE id = ?").get(warehouseId) as Record<string, unknown> | undefined
     return row ? `المستودع: ${String(row.name)}` : "المستودع"
@@ -256,7 +256,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(
     private readonly db: BetterSQLite3Database<any>,
-    private readonly raw: Database.Database,
+    private readonly raw: BetterSqliteDatabase,
   ) {
     this.raw.pragma("foreign_keys = ON")
   }
@@ -669,7 +669,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 // ---------------------------------------------------------------------------
 
 /** Create a Drizzle-backed InventoryRepository from a raw SQLite handle. */
-export function createInventoryRepository(rawDb: Database.Database): InventoryRepository {
+export function createInventoryRepository(rawDb: BetterSqliteDatabase): InventoryRepository {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const drizzleDb = createDrizzleFromSqlite(rawDb as any)
   return new DrizzleInventoryRepository(drizzleDb, rawDb)

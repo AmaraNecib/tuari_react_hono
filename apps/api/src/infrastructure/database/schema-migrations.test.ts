@@ -15,9 +15,9 @@ import {
 /**
  * Adapter that turns a `better-sqlite3` `Database` into a `DbExecutor`
  * so the migration can be exercised directly against an in-memory SQLite
- * without going through the global Prisma client.
+ * using raw SQLite.
  *
- * Mirrors the minimal Prisma surface used by the migration: raw query,
+ * Implements the raw SQLite interface used by the migration:
  * raw execute, and a synchronous transaction callback that yields a
  * same-shaped `DbExecutor` for the txn body.
  */

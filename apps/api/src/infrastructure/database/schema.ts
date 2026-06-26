@@ -1239,7 +1239,7 @@ async function runInvoiceDebtLinkageMigration() {
 //
 // The migration is split into a pure function (`applyDebtAccountBalanceRename`)
 // that takes a `DbExecutor` so it can be exercised directly against an
-// in-memory SQLite in tests, plus a thin Prisma wrapper for production.
+// in-memory SQLite in tests, .
 export interface DbExecutor {
   $queryRawUnsafe<T>(sql: string, ...params: unknown[]): Promise<T>;
   $executeRawUnsafe(sql: string, ...params: unknown[]): Promise<number>;

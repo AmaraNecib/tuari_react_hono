@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type Database from "better-sqlite3";
+import type { BetterSqliteDatabase } from "../../../types/sqlite";
 
 import type { CompanyRepository } from "../../company/company.repository";
 import type { MutationAuditContext } from "../../company/company.types";
@@ -39,7 +39,7 @@ import type {
  * top of this single-invoice flow.
  */
 export interface SqliteInvoiceDebtPortDeps {
-  db: Database.Database;
+  db: BetterSqliteDatabase;
   repository: CompanyRepository;
 }
 

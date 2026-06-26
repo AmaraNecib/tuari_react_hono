@@ -5,7 +5,7 @@ import { appContract } from "@tuari/contracts";
 import { toFailureResult } from "../../modules/company/company.errors";
 import type { CompanyService } from "../../modules/company/company.service";
 import type { RecoveryKeyService } from "../../modules/auth/recovery-key.service";
-import type Database from "better-sqlite3-sqlcipher";
+import type { BetterSqliteDatabase } from "../../types/sqlite";
 import type { RpcContext } from "../context";
 import type { RpcMiddleware } from "../rpc-middleware";
 
@@ -23,7 +23,7 @@ export function createSystemHandlers(
   m: RpcMiddleware,
   companyService: CompanyService,
   recoveryKeyService: RecoveryKeyService,
-  rawDatabase: Database.Database,
+  rawDatabase: BetterSqliteDatabase,
 ): Record<string, any> {
   return {
     workspaceSnapshot: os.workspaceSnapshot.handler(m.queryAuth(async ({ context, input }: any) =>
