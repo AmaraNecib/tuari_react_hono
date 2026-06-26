@@ -86,6 +86,7 @@ async function postAuthenticatedJson<TResponse>(path: string, body: Record<strin
   return responseBody as TResponse
 }
 
+/** Extracts a user-friendly error message from auth errors. */
 export function extractAuthErrorMessage(error: unknown, fallbackMessage: string) {
   if (typeof error === "string" && error.trim().length > 0) {
     return error
@@ -120,6 +121,7 @@ export function extractAuthErrorMessage(error: unknown, fallbackMessage: string)
   return fallbackMessage
 }
 
+/** Signs in via phone number (desktop mode). */
 export async function signInDesktopWithPhoneNumber(input: {
   phoneNumber: string
   password: string

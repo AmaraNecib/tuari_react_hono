@@ -8,6 +8,7 @@ interface BatchSelectableRowProps {
   className?: string;
 }
 
+/** Table row with batch selection checkbox. */
 export function BatchSelectableRow({
   id,
   isSelected,
@@ -18,7 +19,7 @@ export function BatchSelectableRow({
   return (
     <div
       className={`flex items-start gap-3 rounded-lg border border-border/60 p-4 transition ${
-        isSelected ? "bg-muted/30" : "bg-background/10"
+        isSelected ? "bg-muted/30" : "bg-surface"
       } ${className || ""}`}
     >
       <input

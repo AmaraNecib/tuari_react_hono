@@ -25,6 +25,7 @@ export function createWarehouseFormState(warehouse?: WarehousePageRecord | null)
   }
 }
 
+/** Reusable form fields for warehouse create/edit. */
 export function WarehouseFormFields({
   errors,
   labels,
@@ -94,10 +95,10 @@ export function WarehouseFormFields({
 
 function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
-    <label className="flex flex-col gap-2">
-      <span className="text-sm font-medium text-foreground">{label}</span>
+    <label className="space-y-1.5 text-sm">
+      <span className="font-medium text-foreground">{label}</span>
       {children}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? <p className="text-destructive">{error}</p> : null}
     </label>
   )
 }

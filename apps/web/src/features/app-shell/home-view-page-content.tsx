@@ -7,6 +7,7 @@ import {
   buildWarehouseEditManagerOptions,
 } from "./home-view-page-content-view-model"
 
+/** Routes page content to the correct section component. */
 export function HomeViewPageContent({
   copy,
   derived,

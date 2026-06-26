@@ -57,6 +57,7 @@ export function AppPreferencesProvider({
   )
 }
 
+/** Returns current theme and locale preferences. */
 export function useAppPreferences() {
   const context = useContext(AppPreferencesContext)
 

@@ -44,7 +44,7 @@ export function RecurringPatternsPage() {
             خطأ في تحميل الأنماط
           </div>
         ) : filteredPatterns.length === 0 ? (
-          <div className="rounded-lg border border-border/60 bg-background/10 p-8 text-center">
+          <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
             <p className="text-muted-foreground">لا توجد أنماط متكررة</p>
             <Button className="mt-4">إنشاء نمط أول</Button>
           </div>
@@ -55,7 +55,7 @@ export function RecurringPatternsPage() {
               const statusColor = daysUntil !== null && daysUntil <= 3 ? "text-amber-600" : "text-green-600";
 
               return (
-                <div key={pattern.id} className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div key={pattern.id} className="rounded-lg border border-border/60 bg-surface p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 space-y-2">
                       <div className="font-medium">{pattern.name}</div>

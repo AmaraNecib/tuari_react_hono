@@ -253,6 +253,47 @@ vi.mock("./mock-dashboard", () => ({
   },
 }))
 
+vi.mock("./workspace-mutations", () => ({
+  useCreateWarehouseMutation: () => ({ isPending: false, mutateAsync: createWarehouseMutate }),
+  useUpdateWarehouseMutation: () => ({ isPending: false, mutateAsync: updateWarehouseMutate }),
+  useCreateProjectMutation: () => ({ isPending: false, mutateAsync: createProjectMutate }),
+  useUpdateProjectMutation: () => ({ isPending: false, mutateAsync: updateProjectMutate }),
+  useCreateEmployeesBatchMutation: () => ({ isPending: false, mutateAsync: createEmployeesBatchMutate }),
+  useCreateExternalCounterpartyMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useUpdateEmployeeMutation: () => ({ isPending: false, mutateAsync: updateEmployeeMutate }),
+  useLeaveEmployeeMutation: () => ({ isPending: false, mutateAsync: leaveEmployeeMutate }),
+  useDeleteEmployeeMutation: () => ({ isPending: false, mutateAsync: deleteEmployeeMutate }),
+  useUpdateEmployeeWorkplaceMutation: () => ({ isPending: false, mutateAsync: updateEmployeeWorkplaceMutate }),
+  useSyncManagedProjectsMutation: () => ({ isPending: false, mutateAsync: syncManagedProjectsMutate }),
+  useSyncManagedWarehousesMutation: () => ({ isPending: false, mutateAsync: syncManagedWarehousesMutate }),
+  useResetWorkspaceMutation: () => ({ isPending: false, mutateAsync: resetMutate }),
+  useUpdateAccountSettingsMutation: () => ({ isPending: false, mutateAsync: updateAccountMutateAsync }),
+  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutateAsync: createSalaryPaymentMutate }),
+  useCreateDebtAccountMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useCreateDebtEntryMutation: () => ({ isPending: false, mutate: vi.fn() }),
+  useSettleDebtAccountMutation: () => ({ isPending: false, mutate: vi.fn() }),
+  useRecordDebtPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useConsolidateDebtEntriesMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useAuthSetupStatusQuery: () => ({
+    data: setupStatusData,
+    error: setupStatusError,
+    isPending: setupStatusPending,
+    refetch: vi.fn(),
+  }),
+  useDemoSessionQuery: () => ({
+    data: sessionData.user,
+    error: sessionQueryError,
+    isPending: sessionQueryPending,
+    refetch: vi.fn(),
+  }),
+  useDemoSignInMutation: () => ({ isPending: false, mutateAsync: signInMutate }),
+  useDemoSignOutMutation: () => ({ isPending: false, mutateAsync: signOutMutate }),
+  useBootstrapFirstUserMutation: () => ({ isPending: false, mutateAsync: bootstrapMutate }),
+  useCompositeWorkspaceQuery: () => ({ data: workspaceData, isError: Boolean(workspaceQueryError), isPending: workspaceQueryPending, refetch: workspaceRefetch }),
+  useSystemLogQuery: () => ({ data: systemLogData, error: null, isPending: false }),
+}))
+
 vi.mock("./workspace-queries", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./workspace-queries")>()
   return {
@@ -372,7 +413,7 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView()
 
-    expect(screen.getByText("جارٍ تحميل بيانات الدخول...")).toBeTruthy()
+    expect(screen.getByRole("status", { name: "loading auth" })).toBeTruthy()
     expect(screen.queryByRole("button", { name: "دخول إلى مساحة العمل" })).toBeNull()
   })
 

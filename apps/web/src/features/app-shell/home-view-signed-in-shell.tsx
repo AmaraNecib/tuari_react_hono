@@ -21,6 +21,7 @@ import { WorkspaceBreadcrumbs } from "./workspace-breadcrumbs"
 import { WorkspaceSidebar } from "./workspace-sidebar"
 import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
 
+/** Main app shell with sidebar, header, and content area. */
 export function HomeViewSignedInShell({
   breadcrumbItems,
   children,
@@ -75,8 +76,8 @@ export function HomeViewSignedInShell({
         employeesLabel={copy.sections.employees.label}
         externalsLabel={copy.sections.externals.label}
         expandLabel={copy.shell.expand}
-        inventoryLabel={t("workspace.shell.itemsGuide")}
-        invoicesLabel={t("workspace.shell.invoices")}
+        inventoryLabel={t("shell.itemsGuide")}
+        invoicesLabel={t("shell.invoices")}
         projectsLabel={copy.sections.projects.label}
         rolesLabel={copy.sections.roles.label}
         salariesLabel={copy.sections.salaries.label}
@@ -98,7 +99,7 @@ export function HomeViewSignedInShell({
           <button
             type="button"
             aria-label={sidebarCollapsed ? copy.shell.expand : copy.shell.collapse}
-            className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors flex-shrink-0"
+            className="w-[30px] h-[30px] grid place-items-center rounded-[0.4375rem] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors flex-shrink-0"
             onClick={() => onSetSidebarCollapsed(!sidebarCollapsed)}
           >
             {sidebarCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
@@ -118,7 +119,7 @@ export function HomeViewSignedInShell({
             <button
               type="button"
               aria-label={copy.shell.themeToggle}
-              className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
+              className="w-[30px] h-[30px] grid place-items-center rounded-[0.4375rem] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
               onClick={onThemeToggle}
             >
               {theme === "light" ? <MoonStar size={16} /> : <SunMedium size={16} />}
@@ -126,7 +127,7 @@ export function HomeViewSignedInShell({
 
             <WorkspaceLink
               aria-label={copy.sections.settings.label}
-              className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
+              className="w-[30px] h-[30px] grid place-items-center rounded-[0.4375rem] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
               target={workspaceRoutes.settings()}
             >
               <Settings size={16} />
@@ -135,7 +136,7 @@ export function HomeViewSignedInShell({
             <button
               type="button"
               aria-label={copy.shell.signOut}
-              className="w-[30px] h-[30px] grid place-items-center rounded-[7px] text-bad hover:bg-bad-soft transition-colors"
+              className="w-[30px] h-[30px] grid place-items-center rounded-[0.4375rem] text-bad hover:bg-bad-soft transition-colors"
               onClick={() => onSignOutOpenChange(true)}
             >
               <LogOut size={16} />

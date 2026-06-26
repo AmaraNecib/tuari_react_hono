@@ -1,9 +1,12 @@
+import { useTranslation } from "react-i18next";
+
 import { useInventoryReport, useDebtReport } from "@/hooks/use-report-queries";
 import type { DebtReport, InventoryReport } from "@tuari/contracts";
 import { Button } from "@/components/ui/button";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
 
 export function DashboardOverview() {
+  const { t } = useTranslation();
   const inventoryReport = useInventoryReport();
   const debtReport = useDebtReport();
 
@@ -14,59 +17,59 @@ export function DashboardOverview() {
     <Surface variant="panel">
       <PageSurfaceContent>
         <PageHeader
-          title="لوحة التحكم"
-          description="نظرة عامة على الحالة الحالية للمخزون والديون والحركات"
+          title={t("dashboardPage.title")}
+          description={t("dashboardPage.description")}
         />
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {/* Value Summary Card */}
-          <div className="rounded-lg border border-border/60 bg-background/10 p-4">
-            <p className="text-sm text-muted-foreground">إجمالي القيمة</p>
+          <div className="rounded-xl border border-border/60 bg-surface p-4">
+            <p className="text-sm text-muted-foreground">{t("dashboardPage.totalValue")}</p>
             <div className="mt-2 space-y-1">
               {inventoryReport.isLoading ? (
-                <p className="text-lg font-bold">جاري التحميل...</p>
-              ) : inventoryData?.summary?.totalValueDzd ? (
+                <p className="text-lg font-bold">{t("common.loading")}</p>
+              ) : inventoryData?.summary?.totalValueDzd != null ? (
                 <>
                   <p className="text-2xl font-bold">
-                    {inventoryData.summary.totalValueDzd.toLocaleString("ar-DZ")} د.ج
+                    {inventoryData.summary.totalValueDzd.toLocaleString()} د.ج
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    أصول: {inventoryData.summary.totalAssetsDzd.toLocaleString("ar-DZ")} د.ج
+                    {t("dashboardPage.assets")}: {inventoryData.summary.totalAssetsDzd.toLocaleString()} د.ج
                   </p>
                 </>
               ) : (
-                <p className="text-lg">لا توجد بيانات</p>
+                <p className="text-lg">{t("dashboardPage.noData")}</p>
               )}
             </div>
           </div>
 
           {/* Debt Summary Card */}
-          <div className="rounded-lg border border-border/60 bg-background/10 p-4">
-            <p className="text-sm text-muted-foreground">الديون المتبقية</p>
+          <div className="rounded-xl border border-border/60 bg-surface p-4">
+            <p className="text-sm text-muted-foreground">{t("dashboardPage.outstandingDebts")}</p>
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
-                <p className="text-lg font-bold">جاري التحميل...</p>
+                <p className="text-lg font-bold">{t("common.loading")}</p>
               ) : debtData?.summary?.totalOutstandingDzd !== undefined ? (
                 <>
                   <p className="text-2xl font-bold">
-                    {debtData.summary.totalOutstandingDzd.toLocaleString("ar-DZ")} د.ج
+                    {debtData.summary.totalOutstandingDzd.toLocaleString()} د.ج
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    متأخرة: {debtData.summary.overdueDzd.toLocaleString("ar-DZ")} د.ج
+                    {t("dashboardPage.overdue")}: {debtData.summary.overdueDzd.toLocaleString()} د.ج
                   </p>
                 </>
               ) : (
-                <p className="text-lg">لا توجد بيانات</p>
+                <p className="text-lg">{t("dashboardPage.noData")}</p>
               )}
             </div>
           </div>
 
           {/* Aging Analysis Card */}
-          <div className="rounded-lg border border-border/60 bg-background/10 p-4">
-            <p className="text-sm text-muted-foreground">تحليل الأعمار</p>
+          <div className="rounded-xl border border-border/60 bg-surface p-4">
+            <p className="text-sm text-muted-foreground">{t("dashboardPage.agingAnalysis")}</p>
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
-                <p className="text-sm">جاري التحميل...</p>
+                <p className="text-sm">{t("common.loading")}</p>
               ) : debtData?.agingBreakdown ? (
                 <>
                   {debtData.agingBreakdown.slice(0, 2).map((item) => (
@@ -81,48 +84,48 @@ export function DashboardOverview() {
                   ))}
                 </>
               ) : (
-                <p className="text-sm">لا توجد بيانات</p>
+                <p className="text-sm">{t("dashboardPage.noData")}</p>
               )}
             </div>
           </div>
 
           {/* Top Debtors Card */}
-          <div className="rounded-lg border border-border/60 bg-background/10 p-4">
-            <p className="text-sm text-muted-foreground">أكبر المدينين</p>
+          <div className="rounded-xl border border-border/60 bg-surface p-4">
+            <p className="text-sm text-muted-foreground">{t("dashboardPage.topDebtors")}</p>
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
-                <p className="text-sm">جاري التحميل...</p>
+                <p className="text-sm">{t("common.loading")}</p>
               ) : debtData?.topDebtors?.[0] ? (
                 <>
                   <div className="text-sm font-medium">
                     {debtData.topDebtors[0].partyName}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {debtData.topDebtors[0].amountDzd.toLocaleString("ar-DZ")} د.ج
+                    {debtData.topDebtors[0].amountDzd.toLocaleString()} د.ج
                   </p>
                 </>
               ) : (
-                <p className="text-sm">لا توجد ديون</p>
+                <p className="text-sm">{t("dashboardPage.noDebts")}</p>
               )}
             </div>
           </div>
         </div>
 
         {/* Quick Actions */}
-        <div className="mt-6 rounded-lg border border-border/60 bg-background/10 p-4">
-          <p className="mb-3 text-sm font-medium">الإجراءات السريعة</p>
+        <div className="mt-6 rounded-xl border border-border/60 bg-surface p-4">
+          <p className="mb-3 text-sm font-medium">{t("dashboardPage.quickActions")}</p>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm">إضافة فاتورة</Button>
-            <Button variant="outline" size="sm">تسجيل دفعة</Button>
-            <Button variant="outline" size="sm">تحويل مخزون</Button>
-            <Button variant="outline" size="sm">عرض التقارير</Button>
+            <Button variant="outline" size="sm">{t("dashboardPage.addInvoice")}</Button>
+            <Button variant="outline" size="sm">{t("dashboardPage.recordPayment")}</Button>
+            <Button variant="outline" size="sm">{t("dashboardPage.transferStock")}</Button>
+            <Button variant="outline" size="sm">{t("dashboardPage.viewReports")}</Button>
           </div>
         </div>
 
         {/* Loading or Error States */}
         {(inventoryReport.error || debtReport.error) && (
-          <div className="mt-4 rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
-            خطأ في تحميل بعض البيانات. حاول التحديث.
+          <div className="mt-4 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+            {t("dashboardPage.loadError")}
           </div>
         )}
       </PageSurfaceContent>

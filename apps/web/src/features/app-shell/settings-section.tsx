@@ -44,6 +44,7 @@ type SettingsSectionProps = {
   onToggleTheme: () => void
 }
 
+/** Settings section with account, theme, and security. */
 export function SettingsSection({
   accountCurrentPasswordLabel,
   accountCurrentPasswordPlaceholder,

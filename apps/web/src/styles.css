@@ -85,27 +85,27 @@
   --font-arabic:  "IBM Plex Sans Arabic", "Noto Sans Arabic Variable", system-ui, sans-serif;
 
   /* Spacing */
-  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem;
   --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
-  --s-12: 48px; --s-16: 64px;
+  --s-12: 3rem; --s-16: 4rem;
 
   /* Layout */
-  --sidebar-w:           232px;
-  --sidebar-collapsed-w: 56px;
+  --sidebar-w:           14.5rem;
+  --sidebar-collapsed-w: 3.5rem;
   --header-h:            52px;
   --row-h:               40px;
 
-  /* Warm paper color system */
-  --bg:          #f6f3ee;
-  --bg-2:        #efeae2;
-  --surface:     #fbf9f5;
-  --surface-2:   #f1ece4;
-  --line:        #e3dccf;
-  --line-2:      #d5cdbe;
-  --ink:         #1a1714;
-  --ink-2:       #4a443c;
-  --ink-3:       #7a7367;
-  --ink-4:       #a89f91;
+  /* Neutral off-white color system — brand warmth in accent, not body */
+  --bg:          #fafafa;
+  --bg-2:        #f4f4f4;
+  --surface:     #ffffff;
+  --surface-2:   #f0f0f0;
+  --line:        #e5e5e5;
+  --line-2:      #d4d4d4;
+  --ink:         #171717;
+  --ink-2:       #404040;
+  --ink-3:       #737373;
+  --ink-4:       #a3a3a3;
 
   /* Terracotta accent */
   --accent-brand:  #b4502a;
@@ -140,7 +140,7 @@
   --border:                  var(--line);
   --input:                   var(--line);
   --ring:                    #b4502a;
-  --radius:                  7px;
+  --radius:                  0.4375rem;
   --chart-1: oklch(0.62 0.14 35);  --chart-2: oklch(0.60 0.12 160);
   --chart-3: oklch(0.70 0.10 85);  --chart-4: oklch(0.55 0.12 260);
   --chart-5: oklch(0.65 0.14 300);
@@ -165,9 +165,9 @@
 
 /* Dark theme */
 .dark {
-  --bg:          #16140f; --bg-2:      #1c1914;
-  --surface:     #1f1c16; --surface-2: #25211a;
-  --line:        #2c2820; --line-2:    #3a3528;
+  --bg:          #171512; --bg-2:      #1d1a16;
+  --surface:     #1f1c18; --surface-2: #25221d;
+  --line:        #2d2a22; --line-2:    #3b3528;
   --ink:         #f0ebe0; --ink-2:     #c9c2b3;
   --ink-3:       #8a8276; --ink-4:     #5a5448;
   --accent-brand:  #d97a4a;
@@ -207,8 +207,8 @@
 }
 
 /* Density */
-[data-density="compact"] { --header-h: 44px; --row-h: 32px; }
-[data-density="regular"] { --header-h: 52px; --row-h: 40px; }
+[data-density="compact"] { --header-h: 2.75rem; --row-h: 2rem; }
+[data-density="regular"] { --header-h: 3.25rem; --row-h: 40px; }
 [data-density="comfy"]   { --header-h: 60px; --row-h: 48px; }
 
 /* ─── Base ─── */
@@ -226,7 +226,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-family: var(--font-body);
-    font-size: 15px;
+    font-size: 0.9375rem;
     line-height: 1.5;
   }
 
@@ -291,7 +291,7 @@
   *::-webkit-scrollbar-track { background: transparent; }
   *::-webkit-scrollbar-thumb {
     background: var(--line-2);
-    border-radius: 5px;
+    border-radius: 0.3125rem;
     border: 2px solid var(--bg);
     background-clip: padding-box;
   }
@@ -302,13 +302,13 @@
 @layer utilities {
   .text-balance { text-wrap: balance; }
 
-  .surface-card    { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-sm); }
-  .surface-panel   { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-md); }
+  .surface-card    { background: var(--surface); border: 1px solid var(--line); }
+  .surface-panel   { background: var(--surface); border: 1px solid var(--line); }
   .surface-inset   { background: var(--bg-2);    border: 1px solid var(--line); }
-  .surface-table   { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-sm); }
+  .surface-table   { background: var(--surface); border: 1px solid var(--line); }
   .surface-subtle  { background: var(--surface-2); border: 1px solid var(--line); }
   .shell-sidebar   { background: var(--bg-2); border-inline-start: 1px solid var(--line); }
-  .surface-auth    { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-md); }
+  .surface-auth    { background: var(--surface); border: 1px solid var(--line); }
 
   .page-header {
     position: relative;
@@ -321,7 +321,7 @@
     inset-inline-start: 0;
     bottom: -1px;
     width: min(7rem, 24vw);
-    height: 1px;
+    height: 0.0625rem;
     background: linear-gradient(90deg, color-mix(in oklab, var(--primary) 55%, transparent), transparent 88%);
   }
 }
@@ -334,26 +334,15 @@
   grid-template-columns: var(--sidebar-w) 1fr;
   height: 100vh;
   overflow: hidden;
-  transition: grid-template-columns 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 .tauri-shell[data-collapsed="true"] {
   grid-template-columns: var(--sidebar-collapsed-w) 1fr;
 }
 
-/* ─── Sidebar active indicator pseudo-element (Tailwind can't do ::before on arbitrary elements) ─── */
+/* ─── Sidebar active state — background tint, not side-stripe ─── */
 
 .sb-item-active {
-  position: relative;
-}
-.sb-item-active::before {
-  content: "";
-  position: absolute;
-  inset-inline-end: -1px;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  background: var(--primary);
-  border-radius: 2px;
+  background: var(--accent-soft);
 }
 
 /* ─── Sidebar collapse: fade text, keep icons ─── */

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import {
@@ -17,7 +18,7 @@ import { VoidEntryDialog } from "./void-entry-dialog"
 
 function DebtStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
-    <Surface className="rounded-[22px] px-5 py-4" variant="card">
+    <Surface className="rounded-xl px-5 py-4" variant="card">
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className={cn("mt-2 font-mono text-xl font-semibold", valueClassName)} dir="ltr">
         {value}
@@ -87,12 +88,7 @@ export function DebtLedgerPanel({
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">التاريخ</span>
-            <input
-              className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
-              type="date"
-              value={entryDate}
-              onChange={(event) => setEntryDate(event.target.value)}
-            />
+            <DatePicker value={entryDate} onChange={setEntryDate} />
           </label>
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">المبلغ الموقّع</span>

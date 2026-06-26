@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
-import { AppShellFilterShell, usePaginatedRows } from "@/features/app-shell/app-shell-table-primitives";
+import { AppShellFilterShell, DateRangeFilter, usePaginatedRows } from "@/features/app-shell/app-shell-table-primitives";
 import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls";
 import { rpcClient } from "@/lib/orpc-client";
 
@@ -19,6 +19,7 @@ interface AuditLog {
   changes: string;
 }
 
+/** Audit log page with date filtering and search. */
 export function AuditLogPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [domain, setDomain] = useState("ALL");
@@ -123,8 +124,8 @@ export function AuditLogPage() {
         />
 
         <AppShellFilterShell>
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">البحث</span>
+          <label className="flex flex-col gap-2 min-w-[14rem]">
+            <span className="text-sm font-medium text-foreground">البحث</span>
             <Input
               placeholder="ابحث عن مستخدم أو مورد..."
               value={searchQuery}
@@ -132,8 +133,8 @@ export function AuditLogPage() {
             />
           </label>
 
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">النطاق</span>
+          <label className="flex flex-col gap-2 min-w-[10rem]">
+            <span className="text-sm font-medium text-foreground">النطاق</span>
             <NativeSelect value={domain} onChange={(e) => setDomain(e.target.value)}>
               <option value="ALL">الكل</option>
               <option value="المخزون">المخزون</option>
@@ -143,8 +144,8 @@ export function AuditLogPage() {
             </NativeSelect>
           </label>
 
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">الإجراء</span>
+          <label className="flex flex-col gap-2 min-w-[10rem]">
+            <span className="text-sm font-medium text-foreground">الإجراء</span>
             <NativeSelect value={action} onChange={(e) => setAction(e.target.value)}>
               <option value="ALL">الكل</option>
               <option value="create">إنشاء</option>
@@ -153,27 +154,18 @@ export function AuditLogPage() {
             </NativeSelect>
           </label>
 
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">من</span>
-            <Input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </label>
-
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">إلى</span>
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </label>
+          <DateRangeFilter
+            fromLabel="من التاريخ"
+            toLabel="إلى التاريخ"
+            fromDate={startDate}
+            toDate={endDate}
+            onFromDateChange={setStartDate}
+            onToDateChange={setEndDate}
+          />
         </AppShellFilterShell>
 
         {isLoading && (
-          <div className="rounded-lg border border-border/60 bg-background/10 p-8 text-center">
+          <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
             <p className="text-muted-foreground">جاري تحميل السجل...</p>
           </div>
         )}
@@ -185,7 +177,7 @@ export function AuditLogPage() {
         )}
 
         {!isLoading && !error && filteredLogs.length === 0 ? (
-          <div className="rounded-lg border border-border/60 bg-background/10 p-8 text-center">
+          <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
             <p className="text-muted-foreground">لا توجد عمليات مطابقة للفلاتر</p>
           </div>
         ) : (!isLoading && !error) && (
@@ -193,7 +185,7 @@ export function AuditLogPage() {
             {pagedLogs.map((log: unknown) => {
               const auditLog = log as AuditLog;
               return (
-                <div key={auditLog.id} className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div key={auditLog.id} className="rounded-lg border border-border/60 bg-surface p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 space-y-2">
                       <div className="flex flex-wrap gap-2">

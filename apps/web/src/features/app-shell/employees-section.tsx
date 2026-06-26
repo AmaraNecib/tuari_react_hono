@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "@tanstack/react-router"
 
 import {
   AlertDialog,
@@ -19,7 +18,6 @@ import {
   type EmployeeTableRow,
 } from "@/features/employees/employee-table"
 import type { EmployeeManagerOption } from "@/features/employees/employee-batch-row-card"
-import { PaginationControls } from "@/features/shared/pagination-controls"
 import { cn } from "@/lib/utils"
 import type { Role } from "@tuari/contracts"
 
@@ -39,7 +37,6 @@ import { useEmployeesPagedQuery } from "./workspace-queries"
 import type { DemoWorkspace } from "./workspace-queries"
 
 const DEFAULT_LIMIT = 50
-const PAGE_SIZES = [10, 20, 50, 100] as const
 
 type EmployeesSectionProps = {
   createTarget: WorkspaceRouteTarget
@@ -71,7 +68,6 @@ type EmployeesSectionProps = {
     deleteDescription: string
   }
   cursor?: string
-  prevCursors?: string
   limit?: number
   workspace: DemoWorkspace
 }
@@ -80,6 +76,7 @@ type PendingAction =
   | { type: "leave"; employee: EmployeeTableRow }
   | { type: "delete"; employee: EmployeeTableRow }
 
+/** Employees section with table, pagination, and CRUD actions. */
 export function EmployeesSection({
   createTarget,
   emptyLabel,
@@ -93,23 +90,16 @@ export function EmployeesSection({
   columns,
   actionLabels,
   cursor,
-  prevCursors,
   limit,
   workspace,
 }: EmployeesSectionProps) {
   const { t } = useTranslation()
   const navigation = useHomeViewNavigation()
-  const navigate = useNavigate()
-  const leaveEmployeeMutation = useLeaveEmployeeMutation()
+    const leaveEmployeeMutation = useLeaveEmployeeMutation()
   const deleteEmployeeMutation = useDeleteEmployeeMutation()
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const actionInFlightRef = useRef(false)
-  // Initialize cursor stack from URL so it survives page refresh.
-  const [previousCursorStack, setPreviousCursorStack] = useState<string[]>(() => {
-    if (prevCursors === undefined) return [];
-    return prevCursors.split(",");
-  });
-
+  
   const resolvedLimit = limit ?? DEFAULT_LIMIT
   const pagedQuery = useEmployeesPagedQuery({
     cursor,
@@ -135,23 +125,8 @@ export function EmployeesSection({
     )
   }, [pagedQuery.data?.items, lookups, relationshipFacts, noManagerLabel, noProjectLabel, t])
 
-  const nextCursor = pagedQuery.data?.nextCursor ?? null
-  const hasMore = pagedQuery.data?.hasMore ?? false
-  const total = pagedQuery.data?.total ?? 0
-
-  // Reset the previous-cursor stack when the user changes page size —
-  // the stored cursors were computed against the old limit and would point
-  // at the wrong rows in the new grid. Skip the initial mount so the
-  // URL-restored stack is preserved.
-  const isInitialMount = useRef(true)
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false
-      return
-    }
-    setPreviousCursorStack([])
-  }, [resolvedLimit])
-
+      
+  
   if (employeePage === "create") {
     return (
       <EmployeeBatchCreatePage
@@ -166,33 +141,7 @@ export function EmployeesSection({
   const actionEmployee = pendingAction?.employee ?? null
   const actionPending = pendingAction?.type === "delete" ? deleteEmployeeMutation.isPending : leaveEmployeeMutation.isPending
 
-  const handleNext = () => {
-    if (!nextCursor) return
-    // Push the current position so we can return to it. On the first page
-    // (cursor is undefined) we push an empty-string sentinel to keep the
-    // stack non-empty and enable the Previous button on page 2.
-    const newStack = [...previousCursorStack, cursor ?? ""]
-    setPreviousCursorStack(newStack)
-    const prevParam = newStack.length > 0 ? newStack.join(",") : undefined
-    navigate({ to: "/employees", search: { cursor: nextCursor, limit: resolvedLimit, prevCursors: prevParam } })
-  }
-
-  const handlePrevious = () => {
-    const previousCursor = previousCursorStack[previousCursorStack.length - 1]
-    if (previousCursor === undefined) return
-    const newStack = previousCursorStack.slice(0, -1)
-    setPreviousCursorStack(newStack)
-    const prevParam = newStack.length > 0 ? newStack.join(",") : undefined
-    // Empty string is the sentinel for "page 1" (no cursor).
-    navigate({ to: "/employees", search: { cursor: previousCursor === "" ? undefined : previousCursor, limit: resolvedLimit, prevCursors: prevParam } })
-  }
-
-  const handlePageSizeChange = (nextSize: number) => {
-    setPreviousCursorStack([])
-    navigate({ to: "/employees", search: { limit: nextSize } })
-  }
-
-  return (
+      return (
     <>
       <RecordPageFrame
         action={
@@ -226,19 +175,6 @@ export function EmployeesSection({
             onLeave={(row) => setPendingAction({ type: "leave", employee: row })}
             onView={(row) => void navigation.goToEmployeeDetails(row.id)}
         />
-        <div className="mt-4">
-          <PaginationControls
-            shownCount={rows.length}
-            total={total}
-            hasMore={hasMore}
-            isLoading={pagedQuery.isPending || pagedQuery.isFetching}
-            pageSize={resolvedLimit}
-            availablePageSizes={PAGE_SIZES}
-            onPageSizeChange={handlePageSizeChange}
-            onPrevious={previousCursorStack.length > 0 ? handlePrevious : undefined}
-            onNext={hasMore && nextCursor ? handleNext : undefined}
-          />
-        </div>
       </RecordPageFrame>
 
       <AlertDialog open={Boolean(pendingAction)} onOpenChange={(open) => (!open && !actionPending ? setPendingAction(null) : null)}>

@@ -22,3 +22,13 @@ node_modules/
 Thumbs.db
 
 /apps/api/data
+/tmp/*
+# Agent skills (not part of the app)
+.agents/
+.claude/
+.opencode/
+.codex/
+.github/skills/
+.github/hooks/
+.pi/
+PRODUCT.md

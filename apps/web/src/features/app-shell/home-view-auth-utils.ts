@@ -3,6 +3,7 @@ import { authBootstrapInputSchema, phonePasswordSignInSchema } from "@tuari/cont
 import type { HomeViewCopy } from "./home-view-copy"
 import type { FormErrors } from "./home-view-types"
 
+/** Validates login form fields and returns error map. */
 export function mapCredentialErrors(copy: HomeViewCopy, phone: string, password: string) {
   const errors: FormErrors = {}
   const result = phonePasswordSignInSchema.safeParse({
@@ -25,6 +26,7 @@ export function mapCredentialErrors(copy: HomeViewCopy, phone: string, password:
   return errors
 }
 
+/** Validates first-user bootstrap form fields. */
 export function mapBootstrapErrors(
   copy: HomeViewCopy,
   name: string,

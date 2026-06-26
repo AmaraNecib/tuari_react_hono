@@ -39,5 +39,8 @@
     "turbo": "^2.8.16",
     "typescript": "^5.9.3",
     "vitest": "^4.1.4"
+  },
+  "dependencies": {
+    "puppeteer-core": "^25.2.1"
   }
 }

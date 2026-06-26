@@ -48,6 +48,7 @@ function requireEntitySuccess<T>(result: { success: boolean; message?: string; i
   return { item: result.item, message: result.message ?? "تم الحفظ بنجاح." }
 }
 
+/** Fetches item definitions for the inventory. */
 export function useInventoryItemDefinitionsQuery() {
   return useQuery({
     queryKey: inventoryKeys.itemDefinitions,
@@ -98,6 +99,7 @@ export function useInventoryAssetQuery(assetId: string | undefined) {
   })
 }
 
+/** Fetches warehouses for the inventory. */
 export function useInventoryWarehousesQuery(enabled = true) {
   return useQuery({
     queryKey: inventoryKeys.warehouses,
@@ -106,6 +108,7 @@ export function useInventoryWarehousesQuery(enabled = true) {
   })
 }
 
+/** Fetches projects for the inventory. */
 export function useInventoryProjectsQuery(enabled = true) {
   return useQuery({
     queryKey: inventoryKeys.projects,
@@ -114,6 +117,7 @@ export function useInventoryProjectsQuery(enabled = true) {
   })
 }
 
+/** Fetches external counterparties. */
 export function useInventoryExternalCounterpartiesQuery() {
   return useQuery({
     queryKey: inventoryKeys.counterparties,
@@ -137,6 +141,7 @@ export function useCreateInventoryItemDefinitionMutation() {
   })
 }
 
+/** Creates an inventory invoice group. */
 export function useCreateInventoryInvoiceGroupMutation() {
   const queryClient = useQueryClient()
 
@@ -154,6 +159,7 @@ export function useCreateInventoryInvoiceGroupMutation() {
   })
 }
 
+/** Transfers an asset between locations. */
 export function useTransferInventoryAssetMutation() {
   const queryClient = useQueryClient()
 
@@ -176,6 +182,7 @@ export function useTransferInventoryAssetMutation() {
   })
 }
 
+/** Transfers consumable items between locations. */
 export function useTransferInventoryConsumableMutation() {
   const queryClient = useQueryClient()
 

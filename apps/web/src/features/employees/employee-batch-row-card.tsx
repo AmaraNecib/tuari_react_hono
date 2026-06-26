@@ -3,7 +3,6 @@ import type { Role } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
-import { cn } from "@/lib/utils"
 
 import type { EmployeeDraft, EmployeeDraftErrors } from "./employee-batch-schema"
 
@@ -53,7 +52,7 @@ type EmployeeBatchRowCardProps = {
 }
 
 const fieldClassName =
-  "flex h-12 w-full rounded-2xl border border-border/80 bg-sidebar px-4 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-background dark:[color-scheme:dark] dark:shadow-none"
+  "flex h-12 w-full rounded-xl border border-border/80 bg-sidebar px-4 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-background dark:[color-scheme:dark] dark:shadow-none"
 
 export function EmployeeBatchRowCard({
   copy,
@@ -72,7 +71,7 @@ export function EmployeeBatchRowCard({
   const availableProjects = selectedManager?.projectOptions ?? []
 
   return (
-    <article className="rounded-[28px] border border-border/55 bg-sidebar/82 p-5 shadow-sm backdrop-blur-xl">
+    <article className="rounded-xl border border-border/55 bg-sidebar p-5">
       <div className="mb-5 flex items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-foreground">{copy.title}</h3>
         {canRemove ? (
@@ -160,12 +159,12 @@ export function EmployeeBatchRowCard({
           {errors.salaryPeriod ? <p className="text-sm text-destructive">{errors.salaryPeriod}</p> : null}
         </label>
 
-        <div className="flex flex-col gap-2.5 xl:col-span-2">
+        <div className="flex flex-col gap-2.5">
           <label className="text-sm font-medium text-foreground" htmlFor={`employee-manager-${index}`}>
             {copy.managerLabel}
           </label>
           <select
-            className={cn(fieldClassName, "xl:max-w-xl")}
+            className={fieldClassName}
             disabled={!canAssignManager || managerOptions.length === 0}
             id={`employee-manager-${index}`}
             name={`employee-manager-${index}`}
@@ -186,12 +185,12 @@ export function EmployeeBatchRowCard({
         </div>
 
         {canAssignManager ? (
-          <div className="flex flex-col gap-2.5 xl:col-span-3">
+          <div className="flex flex-col gap-2.5 xl:col-span-2">
             <label className="text-sm font-medium text-foreground" htmlFor={`employee-project-${index}`}>
               {copy.projectLabel}
             </label>
             <select
-              className={cn(fieldClassName, "xl:max-w-xl")}
+              className={fieldClassName}
               disabled={!draft.managerId || availableProjects.length === 0}
               id={`employee-project-${index}`}
               name={`employee-project-${index}`}
@@ -215,7 +214,7 @@ export function EmployeeBatchRowCard({
         <label className="flex flex-col gap-2.5 xl:col-span-3">
           <span className="text-sm font-medium text-foreground">{copy.notesLabel}</span>
           <textarea
-            className="min-h-[120px] w-full rounded-[24px] border border-border/80 bg-sidebar px-4 py-3 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition placeholder:text-muted-foreground/80 focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 dark:bg-background dark:shadow-none"
+            className="min-h-[120px] w-full rounded-xl border border-border/80 bg-sidebar px-4 py-3 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition placeholder:text-muted-foreground/80 focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 dark:bg-background dark:shadow-none"
             name={`employee-notes-${index}`}
             placeholder={copy.notesPlaceholder}
             value={draft.notes}

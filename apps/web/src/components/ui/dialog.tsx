@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 
+/** Modal dialog container component. */
 export function Dialog({
   open,
   onOpenChange,
@@ -31,7 +32,7 @@ export function DialogContent({ className, children }: { className?: string; chi
   return (
     <div
       className={cn(
-        "relative z-10 w-full max-w-md rounded-[28px] border border-border/60 bg-background p-6 shadow-2xl",
+        "relative z-10 w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-lg",
         className,
       )}
       onClick={(e) => e.stopPropagation()}

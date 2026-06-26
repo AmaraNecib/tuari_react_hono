@@ -42,12 +42,12 @@ function WorkspaceStateMessage({
 }) {
   return (
     <div className="min-h-screen p-6">
-      <section className="rounded-[32px] border border-border/35 bg-background/18 p-6 backdrop-blur-xl xl:p-7">
+      <section className="rounded-xl border border-border/35 bg-surface p-6 xl:p-7">
         <div className="space-y-4">
           <p className="text-sm leading-6 text-muted-foreground">{message}</p>
           {actionLabel && onAction ? (
             <button
-              className="inline-flex h-10 items-center justify-center rounded-2xl border border-border/70 px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-border/70 px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               type="button"
               onClick={onAction}
             >
@@ -60,6 +60,7 @@ function WorkspaceStateMessage({
   )
 }
 
+/** Root workspace component: auth gate + shell. */
 export function HomeView({
   detailTab,
   page = "dashboard",

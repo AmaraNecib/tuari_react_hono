@@ -12,10 +12,8 @@ import {
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
-  usePaginatedRows,
 } from "@/features/app-shell/app-shell-table-primitives"
 import { getArabicStatusLabel, getStatusTone } from "@/features/shared/status-meta"
-import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 
 export type EmployeeTableRow = {
@@ -72,13 +70,14 @@ type EmployeeTableProps = {
   onView: (row: EmployeeTableRow) => void
 }
 
+/** Employee table with row actions for view/edit/leave/delete. */
 export function EmployeeTable({ copy, rows, onDelete, onEdit, onLeave, onView }: EmployeeTableProps) {
   const { t } = useTranslation()
-  const { page, pageSize, pagedRows, setPage, setPageSize } = usePaginatedRows({ rows })
+  // rows are already paginated by the parent (cursor-based pagination)
   const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
 
   return (
-    <div className="overflow-hidden rounded-[28px] border border-border/60">
+    <div className="overflow-hidden rounded-xl border border-border/60">
       <AddSalaryPaymentDialog
         employeeId={paymentTarget?.id ?? null}
         employeeName={paymentTarget?.name}
@@ -99,8 +98,8 @@ export function EmployeeTable({ copy, rows, onDelete, onEdit, onLeave, onView }:
             </tr>
           </AppShellTableHead>
           <tbody>
-            {pagedRows.length > 0 ? (
-              pagedRows.map((row) => (
+            {rows.length > 0 ? (
+              rows.map((row) => (
                 <AppShellTableRow key={row.id} className="align-middle">
                   <td className="px-4 py-4 text-start">
                     <div className="space-y-1">
@@ -175,16 +174,6 @@ export function EmployeeTable({ copy, rows, onDelete, onEdit, onLeave, onView }:
           </tbody>
         </table>
       </AppShellTableFrame>
-      <TablePaginationControls
-        page={page}
-        pageSize={pageSize}
-        totalCount={rows.length}
-        onPageChange={setPage}
-        onPageSizeChange={(nextPageSize) => {
-          setPage(1)
-          setPageSize(nextPageSize)
-        }}
-      />
     </div>
   )
 }

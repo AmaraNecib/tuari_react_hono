@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import { useCreateDebtEntryMutation, useSettleDebtAccountMutation } from "@/features/app-shell/mock-dashboard"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
@@ -18,6 +19,7 @@ import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
 import { cn } from "@/lib/utils"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 
+/** Dialog for recording a debt payment. */
 export function RecordPaymentDialog({
   debtAccount,
   open,
@@ -104,7 +106,7 @@ export function RecordPaymentDialog({
 
         {!showSettlePrompt ? (
           <div className="space-y-4">
-            <div className="rounded-[22px] border border-border/60 bg-background/60 p-4">
+            <div className="rounded-xl border border-border/60 bg-surface p-4">
               <p className="text-sm text-muted-foreground">{t("detailPages.debt.payment.currentBalance")}</p>
               <p className={cn("mt-2 font-mono text-2xl font-semibold", balanceMeta.textClassName)} dir="ltr">
                 {t("detailPages.debt.currency")} {formatDebtMoney(balance)}
@@ -128,16 +130,11 @@ export function RecordPaymentDialog({
 
             <label className="flex flex-col gap-2">
               <span className="text-sm font-medium text-foreground">{t("detailPages.debt.createDate")}</span>
-              <input
-                className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
-                type="date"
-                value={paymentDate}
-                onChange={(e) => setPaymentDate(e.target.value)}
-              />
+              <DatePicker value={paymentDate} onChange={setPaymentDate} />
             </label>
           </div>
         ) : (
-          <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
             <p className="text-sm font-medium text-emerald-900 dark:text-emerald-300">{t("detailPages.debt.payment.settlePrompt")}</p>
           </div>
         )}

@@ -11,6 +11,7 @@ import { SettingsSection } from "./settings-section"
 import { SystemLogSection } from "./system-log-section"
 import { WarehousesSection } from "./warehouses-section"
 
+/** Renders the main content section for each workspace page. */
 export function HomeViewPageSectionContent({
   copy,
   derived,
@@ -31,7 +32,6 @@ export function HomeViewPageSectionContent({
   updateAccountPending,
   paginationCursor,
   paginationLimit,
-  paginationPrevCursors,
   workspace,
 }: Pick<
   HomeViewPageContentProps,
@@ -103,7 +103,7 @@ export function HomeViewPageSectionContent({
           }}
           createTarget={workspaceRoutes.employeeCreate()}
           cursor={paginationCursor}
-          prevCursors={paginationPrevCursors}
+          
           employeePage={employeePage}
           emptyLabel={copy.shell.empty}
           limit={paginationLimit}

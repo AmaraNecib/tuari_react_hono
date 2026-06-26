@@ -64,6 +64,7 @@ function parseSalaryAmount(value: string) {
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : Number.NaN
 }
 
+/** Employee edit page with form fields. */
 export function EmployeeEditPage({
   currentManagedProjectIds,
   currentManagedWarehouseIds,
@@ -381,7 +382,7 @@ export function EmployeeEditPage({
             ) : null}
 
             {hasWarehouseWorkerPlacement ? (
-              <div className="md:col-span-2 xl:col-span-3 rounded-[18px] border border-border/60 bg-sidebar/90 px-4 py-3 text-sm text-muted-foreground shadow-sm">
+              <div className="md:col-span-2 xl:col-span-3 rounded-xl border border-border/60 bg-sidebar/90 px-4 py-3 text-sm text-muted-foreground">
                 {t("detailPages.employee.editPage.warehousePlacementNotice")}
               </div>
             ) : null}
@@ -478,7 +479,7 @@ function ManagedScopeSection({
   onToggle: (id: string) => void
 }) {
   return (
-    <div className="space-y-4 rounded-[20px] border border-border/60 bg-sidebar/82 p-4 shadow-sm md:col-span-2 xl:col-span-3">
+    <div className="space-y-4 rounded-lg border border-border/60 bg-sidebar p-4 md:col-span-2 xl:col-span-3">
       <div className="space-y-1">
         <h3 className="text-base font-semibold text-foreground">{title}</h3>
         <p className="text-sm leading-6 text-muted-foreground">{description}</p>
@@ -490,7 +491,7 @@ function ManagedScopeSection({
           return (
             <label
               key={item.id}
-              className={`flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-3 transition ${checked ? "border-primary/60 bg-primary/8" : "border-border/70 bg-sidebar dark:bg-background/70"}`}
+              className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition ${checked ? "border-primary/60 bg-primary/8" : "border-border/70 bg-sidebar dark:bg-background/70"}`}
             >
               <input
                 checked={checked}

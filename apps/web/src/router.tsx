@@ -9,16 +9,12 @@ import { useTranslation } from "react-i18next"
 
 import type { HomeViewPage } from "@/features/app-shell/home-view"
 import { AppProviders } from "@/providers/app-providers"
+import { AppShellSkeleton } from "@/components/skeleton"
 
 const HomeView = lazy(async () => import("@/features/app-shell/home-view").then((module) => ({ default: module.HomeView })))
 
 function WorkspaceRouteFallback() {
-  const { t } = useTranslation()
-  return (
-    <div className="flex min-h-screen items-center justify-center p-6 text-sm text-muted-foreground" dir="rtl">
-      {t("workspace.notFound.loadingWorkspace")}
-    </div>
-  )
+  return <AppShellSkeleton />
 }
 
 function renderHomeView(node: ReactNode) {
@@ -245,6 +241,7 @@ const routeTree = rootRoute.addChildren([
   settingsRoute,
 ])
 
+/** TanStack Router instance with all routes. */
 export const router = createRouter({
   routeTree,
   defaultPreload: "intent",

@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { formInputClassName } from "@/components/ui/form-controls"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
@@ -39,6 +40,7 @@ type TransferConsumableTarget = {
 
 export type TransferTarget = TransferAssetTarget | TransferConsumableTarget
 
+/** Dialog for transferring inventory items between locations. */
 export function TransferItemDialog({
   open,
   target,
@@ -178,12 +180,7 @@ export function TransferItemDialog({
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium">{t("salaries.paymentDate")}</span>
-            <input
-              className="h-10 w-full rounded-2xl border border-border/75 bg-background/82 px-4 text-sm outline-none focus-visible:border-primary/45 focus-visible:ring-4 focus-visible:ring-primary/10"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <DatePicker value={date} onChange={setDate} />
           </label>
 
           <label className="flex flex-col gap-2">

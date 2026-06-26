@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router"
 
 import { createWorkspaceNavigator, workspaceRoutes } from "@/router/navigation"
 
+/** Navigation helpers for workspace pages. */
 export function useHomeViewNavigation() {
   const goToRoute = createWorkspaceNavigator(useNavigate())
 

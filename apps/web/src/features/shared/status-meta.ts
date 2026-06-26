@@ -1,5 +1,6 @@
 import { i18n } from "@/i18n"
 
+/** Returns CSS tone class for a status value. */
 export function getStatusTone(status: string) {
   if (status === "ACTIVE") {
     return "bg-emerald-500/12 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-400/14 dark:text-emerald-200"
@@ -22,6 +23,7 @@ const statusLabelKeys: Record<string, string> = {
   ENDED: "status.ended",
 }
 
+/** Returns the Arabic label for a status value. */
 export function getArabicStatusLabel(status: string) {
   return statusLabelKeys[status]
     ? i18n.t(statusLabelKeys[status])

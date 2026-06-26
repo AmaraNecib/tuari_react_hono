@@ -28,6 +28,7 @@ function buildLocationHref(location: { warehouseId?: string | null; projectId?: 
   return null
 }
 
+/** Invoice detail page with item list and payment recording. */
 export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: string; onBack: () => void }) {
   const invoiceQuery = useInventoryInvoiceGroupQuery(invoiceId)
   const [transferSectionExpanded] = useState(false)
@@ -56,10 +57,10 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
           <PageHeader title={detail?.group.invoiceNumber || "تفاصيل الفاتورة"} description={detail?.group.supplierName || "بدون مورد محدد"} action={<PageActionGroup><Button variant="outline" onClick={onBack}>العودة إلى الفواتير</Button>{detail && detail.group.remainingDebtDzd > 0 && <Button onClick={() => setPaymentDialogOpen(true)}>تسجيل دفعة</Button>}</PageActionGroup>} />
           {detail ? (
             <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-border/70 p-4">تاريخ الفاتورة: {detail.group.invoiceDate ? new Date(detail.group.invoiceDate).toLocaleDateString("ar-DZ") : "غير محدد"}</div>
-              <div className="rounded-2xl border border-border/70 p-4">الإجمالي: {detail.group.grossTotalDzd.toFixed(2)} دج</div>
-              <div className="rounded-2xl border border-border/70 p-4">المدفوع: {detail.group.paidAmountDzd.toFixed(2)} دج</div>
-              <div className="rounded-2xl border border-border/70 p-4">الدين المتبقي: {detail.group.remainingDebtDzd.toFixed(2)} دج</div>
+              <div className="rounded-xl border border-border/70 p-4">تاريخ الفاتورة: {detail.group.invoiceDate ? new Date(detail.group.invoiceDate).toLocaleDateString("ar-DZ") : "غير محدد"}</div>
+              <div className="rounded-xl border border-border/70 p-4">الإجمالي: {detail.group.grossTotalDzd.toFixed(2)} دج</div>
+              <div className="rounded-xl border border-border/70 p-4">المدفوع: {detail.group.paidAmountDzd.toFixed(2)} دج</div>
+              <div className="rounded-xl border border-border/70 p-4">الدين المتبقي: {detail.group.remainingDebtDzd.toFixed(2)} دج</div>
             </div>
           ) : <p className="text-sm text-muted-foreground">جارٍ تحميل بيانات الفاتورة...</p>}
         </PageSurfaceContent>
@@ -70,7 +71,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
           <SurfaceHeader title="العناصر" description="يمكنك متابعة مكان كل أصل وتحويله، وكذلك تحويل كميات المواد بين المواقع." />
           <div className="grid gap-4">
             {detail?.entries.map((entry) => (
-              <div key={entry.id} className="rounded-2xl border border-border/70 p-4 text-sm">
+              <div key={entry.id} className="rounded-xl border border-border/70 p-4 text-sm">
                 <div className="flex items-center justify-between gap-4">
                   <div className="font-medium text-foreground">{entry.itemName}</div>
                   <div className="text-muted-foreground">{entry.itemType === "CONSUMABLE" ? `كمية: ${entry.quantity} ${entry.unit ?? ""}` : `عدد الأصول: ${entry.assets.length}`}</div>
@@ -123,7 +124,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
               const target = consumableTargets[balance.id] ?? { quantity: String(balance.quantity), warehouseId: "", projectId: "" }
               const href = buildLocationHref({ warehouseId: balance.warehouseId, projectId: balance.projectId })
               return (
-                <div key={balance.id} className="rounded-2xl border border-border/70 p-4 text-sm">
+                <div key={balance.id} className="rounded-xl border border-border/70 p-4 text-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="font-medium text-foreground">{balance.itemName}</div>
@@ -157,7 +158,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
           <SurfaceHeader title="سجل الحركات" description="كل المشتريات والتحويلات تبقى محفوظة هنا كسجل تاريخي." />
           <div className="grid gap-2">
             {detail?.movements.map((movement) => (
-              <div key={movement.id} className="rounded-2xl border border-border/70 px-4 py-3 text-sm">
+              <div key={movement.id} className="rounded-xl border border-border/70 px-4 py-3 text-sm">
                 <div className="font-medium text-foreground">{movement.movementType === "PURCHASE" ? "شراء" : "تحويل"} - {movement.itemType === "ASSET" ? "أصل" : "مادة"}</div>
                 <div className="text-muted-foreground">{new Date(movement.occurredAt).toLocaleString("ar-DZ")}</div>
               </div>
@@ -175,14 +176,14 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
               isDesktop ? (
                 <button
                   key={attachment.id}
-                  className="rounded-2xl border border-border/70 px-4 py-3 text-start text-sm transition hover:bg-muted/30"
+                  className="rounded-xl border border-border/70 px-4 py-3 text-start text-sm transition hover:bg-muted/30"
                   type="button"
                   onClick={() => void handleAttachmentOpen(attachment)}
                 >
                   {attachment.originalName}
                 </button>
               ) : (
-                <a key={attachment.id} className="rounded-2xl border border-border/70 px-4 py-3 text-sm transition hover:bg-muted/30" href={resolveApiUrl(`/api/inventory/attachments/${attachment.id}`)} rel="noreferrer" target="_blank">
+                <a key={attachment.id} className="rounded-xl border border-border/70 px-4 py-3 text-sm transition hover:bg-muted/30" href={resolveApiUrl(`/api/inventory/attachments/${attachment.id}`)} rel="noreferrer" target="_blank">
                   {attachment.originalName}
                 </a>
               )

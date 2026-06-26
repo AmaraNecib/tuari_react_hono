@@ -51,6 +51,7 @@ type ProjectsSectionProps = {
   onView: (row: ProjectRow) => void
 }
 
+/** Projects section with table and CRUD actions. */
 export function ProjectsSection({
   addLabel,
   archiveLabel,

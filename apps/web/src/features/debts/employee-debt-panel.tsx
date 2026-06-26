@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput } from "@/components/ui/form-controls"
 import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
@@ -9,6 +10,7 @@ import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 import { useEmployeeDebtAccountQuery, useCreateEmployeeDebtEntryMutation } from "./employee-debt-hooks"
 import { formatDebtMoney, getDebtAccountBalanceMeta, getDebtDirectionLabel } from "./debt-utils"
 
+/** Employee debt panel with balance and entry history. */
 export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
   const debtAccountQuery = useEmployeeDebtAccountQuery(employeeId)
   const createEntryMutation = useCreateEmployeeDebtEntryMutation()
@@ -47,7 +49,7 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
   return (
     <div className="space-y-6">
       <div className="grid gap-4">
-        <Surface className="rounded-[22px] px-5 py-4" variant="card">
+        <Surface className="rounded-xl px-5 py-4" variant="card">
           <p className="text-sm text-muted-foreground">
             {debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
           </p>
@@ -79,11 +81,9 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">التاريخ</span>
-            <input
-              className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
-              type="date"
+            <DatePicker
               value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
+              onChange={setEntryDate}
               disabled={createEntryMutation.isPending}
             />
           </label>

@@ -8,8 +8,16 @@ function Input({ className, type = "text", ...props }: React.ComponentProps<"inp
     <input
       className={cn(
         formInputClassName,
+        // Date inputs: force RTL layout + Arabic locale so the native calendar
+        // renders day-first (DD/MM/YYYY) with Arabic month/day names.
+        // NOTE: Chrome uses the *browser* language for the calendar popup.
+        // The lang="ar" hint works in Firefox; Chrome users must set their
+        // browser language to Arabic for full localized calendar display.
+        type === "date" && "text-right [direction:rtl]",
         className,
       )}
+      lang={type === "date" ? "ar" : undefined}
+      dir={type === "date" ? "rtl" : undefined}
       type={type}
       {...props}
     />

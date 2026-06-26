@@ -13,12 +13,14 @@ function ToastMessage({ id, message }: { id: string | number; message: ReactNode
   )
 }
 
+/** Shows a success toast notification. */
 export function showSuccessToast(message: ReactNode) {
   const id = `toast-${crypto.randomUUID()}`
   toast.success(<ToastMessage id={id} message={message} />, { id })
   return id
 }
 
+/** Shows an error toast notification. */
 export function showErrorToast(message: ReactNode) {
   const id = `toast-${crypto.randomUUID()}`
   toast.error(<ToastMessage id={id} message={message} />, { id })

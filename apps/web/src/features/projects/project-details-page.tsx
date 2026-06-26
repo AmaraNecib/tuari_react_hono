@@ -22,6 +22,7 @@ export type ProjectPageRecord = {
   notes: string | null
 }
 
+/** Project detail page with overview and worker assignments. */
 export function ProjectDetailsPage({
   activeTab,
   managementHistoryRows,

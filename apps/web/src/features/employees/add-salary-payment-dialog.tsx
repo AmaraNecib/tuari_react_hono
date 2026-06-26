@@ -10,10 +10,12 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
+import { DatePicker } from "@/components/ui/date-picker"
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/workspace-mutations"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 
+/** Dialog for recording a salary payment. */
 export function AddSalaryPaymentDialog({
   employeeId,
   employeeName,
@@ -79,12 +81,7 @@ export function AddSalaryPaymentDialog({
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium">{t("salaries.paymentDate")}</span>
-            <input
-              className="h-10 w-full rounded-2xl border border-border/75 bg-background/82 px-4 text-sm outline-none focus-visible:border-primary/45 focus-visible:ring-4 focus-visible:ring-primary/10"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <DatePicker value={date} onChange={setDate} />
           </label>
 
           <label className="flex flex-col gap-2">

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Surface } from "@/features/shared/page-primitives"
+import { AuthScreenSkeleton } from "@/components/skeleton"
 
 import type { HomeViewCopy } from "./home-view-copy"
 
@@ -14,6 +15,7 @@ type FormErrors = {
   setupSecret?: string
 }
 
+/** Login/bootstrap form with phone and password fields. */
 export function HomeViewAuthScreen({
   authError,
   authStartupError,
@@ -62,13 +64,7 @@ export function HomeViewAuthScreen({
   signInPending: boolean
 }) {
   if (isAuthStateLoading) {
-    return (
-      <main className="flex h-screen items-center justify-center overflow-y-auto px-6 py-8" dir="rtl">
-        <Surface className="surface-auth w-full max-w-lg p-8 text-center lg:p-10">
-          <p className="text-sm text-muted-foreground">{copy.common.loadingAuth}</p>
-        </Surface>
-      </main>
-    )
+    return <AuthScreenSkeleton />
   }
 
   if (authStartupError) {
@@ -80,7 +76,7 @@ export function HomeViewAuthScreen({
             <p className="text-sm leading-6 text-muted-foreground">{copy.auth.startupErrorDescription}</p>
           </div>
 
-          <Button className="mt-6 h-11 w-full rounded-2xl text-base" type="button" variant="outline" onClick={onRetryAuthState}>
+          <Button className="mt-6 h-11 w-full rounded-xl text-base" type="button" variant="outline" onClick={onRetryAuthState}>
             {copy.common.retry}
           </Button>
         </Surface>
@@ -162,7 +158,7 @@ export function HomeViewAuthScreen({
           </div>
 
           <Button
-            className="mt-2 h-12 w-full rounded-2xl text-base"
+            className="mt-2 h-12 w-full rounded-xl text-base"
             disabled={signInPending || bootstrapPending}
             type="submit"
           >

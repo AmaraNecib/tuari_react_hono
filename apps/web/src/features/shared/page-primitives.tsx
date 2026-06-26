@@ -5,10 +5,10 @@ import { cn } from "@/lib/utils"
 type SurfaceVariant = "panel" | "card" | "inset" | "table" | "subtle"
 
 const surfaceVariantClassNames: Record<SurfaceVariant, string> = {
-  panel:  "bg-surface border border-line shadow-[var(--shadow-md)]",
-  card:   "bg-surface border border-line shadow-[var(--shadow-sm)]",
+  panel:  "bg-surface border border-line",
+  card:   "bg-surface border border-line",
   inset:  "bg-bg-2 border border-line",
-  table:  "bg-surface border border-line shadow-[var(--shadow-sm)]",
+  table:  "bg-surface border border-line",
   subtle: "bg-surface-2 border border-line",
 }
 
@@ -143,7 +143,7 @@ function StatBand({
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 border border-line rounded-xl overflow-hidden bg-surface shadow-[var(--shadow-sm)]">
+    <div className="grid grid-cols-2 md:grid-cols-4 border border-line rounded-xl overflow-hidden bg-surface">
       {stats.map((stat, i) => (
         <div
           key={i}

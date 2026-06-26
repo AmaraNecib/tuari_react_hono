@@ -22,6 +22,7 @@ interface BatchOperationsToolbarProps {
   onOperation: (operationId: string) => void;
 }
 
+/** Toolbar for batch operations on selected rows. */
 export function BatchOperationsToolbar({
   selectCount,
   isAllSelected,
@@ -61,7 +62,7 @@ export function BatchOperationsToolbar({
   const confirmingOp = operations.find((op) => op.id === confirming);
 
   return (
-    <div className="sticky bottom-0 left-0 right-0 space-y-3 border-t border-border/60 bg-background/95 p-4 backdrop-blur-sm">
+    <div className="sticky bottom-0 left-0 right-0 space-y-3 border-t border-border/60 bg-background/95 p-4">
       {/* Confirmation Dialog */}
       {confirming && confirmingOp && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3">

@@ -149,7 +149,7 @@ export function ConsolidationDialog({
 
         <div className="space-y-5">
           {/* Payable side */}
-          <div className="rounded-[22px] border border-border/60 bg-background/60 p-4">
+          <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
               {getDebtDirectionLabel(payableAccount.direction)} — رصيد الحساب: دج{" "}
               {formatDebtMoney(payableAccount.currentBalance)}
@@ -194,7 +194,7 @@ export function ConsolidationDialog({
           </div>
 
           {/* Receivable side */}
-          <div className="rounded-[22px] border border-border/60 bg-background/60 p-4">
+          <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
               {getDebtDirectionLabel(receivableAccount.direction)} — رصيد الحساب: دج{" "}
               {formatDebtMoney(receivableAccount.currentBalance)}
@@ -239,7 +239,7 @@ export function ConsolidationDialog({
 
           {/* Preview */}
           {selectedPayable && selectedReceivable && (
-            <div className="rounded-[22px] border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-800 dark:bg-amber-950/20">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-800 dark:bg-amber-950/20">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-amber-800 dark:text-amber-300">
                   {consolidationPreview?.label ?? ""}

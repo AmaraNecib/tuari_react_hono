@@ -103,6 +103,7 @@ function mapServerErrors(error: AppMutationError, rowCount: number) {
   return rowErrors
 }
 
+/** Batch employee creation page with CSV/inline input. */
 export function EmployeeBatchCreatePage({
   roles,
   managerOptions,

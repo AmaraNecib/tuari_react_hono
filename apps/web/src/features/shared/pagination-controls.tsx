@@ -36,6 +36,7 @@ export type PaginationControlsProps = {
 
 const DEFAULT_PAGE_SIZES = [10, 20, 50, 100] as const
 
+/** Cursor-based pagination controls with page size selector and prev/next buttons. */
 export function PaginationControls({
   shownCount,
   total,
