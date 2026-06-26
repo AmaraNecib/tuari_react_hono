@@ -1,7 +1,9 @@
+import { useTranslation } from "react-i18next"
 import { useMemo, useState } from "react"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import { useCreateDebtAccountMutation } from "@/features/app-shell/mock-dashboard"
 import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
@@ -95,6 +97,7 @@ export function DebtCasesPanel({
     payableEntries.some((e) => e.status === "LIVE" && e.entryType === "OPENING") &&
     receivableEntries.some((e) => e.status === "LIVE" && e.entryType === "OPENING")
 
+  const { t } = useTranslation()
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
@@ -110,7 +113,7 @@ export function DebtCasesPanel({
       {hasBothDirections ? (
         <Surface className="p-5" variant="card">
           <SurfaceHeader
-            description="ادمج حركتين افتتاحيتين من اتجاهين متعاكسين (دائن ومدين) لنفس الطرف في رصيد واحد صافٍ."
+            description={t("debts.consolidateDescription")}
             title="تجميد الديون"
           />
 
@@ -125,7 +128,7 @@ export function DebtCasesPanel({
               </p>
               <p className="text-xs text-muted-foreground">
                 {hasConsolidatableOpenings
-                  ? "حدد حركة من كل جانب لتجميدهما."
+                  ? t("debts.selectOneFromEachSide")
                   : "لا توجد حركات افتتاحية نشطة قابلة للتجميد."}
               </p>
             </div>
@@ -149,12 +152,7 @@ export function DebtCasesPanel({
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">التاريخ</span>
-            <input
-              className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
-              type="date"
-              value={createDate}
-              onChange={(event) => setCreateDate(event.target.value)}
-            />
+            <DatePicker value={createDate} onChange={setCreateDate} />
           </label>
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">المبلغ الموقّع</span>

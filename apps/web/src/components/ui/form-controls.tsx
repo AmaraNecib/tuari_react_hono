@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next"
 import type { ComponentProps, ReactNode } from "react"
 
 import { ChevronDown } from "lucide-react"
@@ -72,4 +73,26 @@ function CurrencyInput({
   )
 }
 
-export { CurrencyInput, FieldSection, NativeSelect, Textarea }
+
+function FileInput({ className, label, chooseLabel, ...props }: ComponentProps<"input"> & { label?: string; chooseLabel?: string }) {
+  const { t } = useTranslation()
+  const resolvedLabel = label ?? t("common.noFileChosen")
+  const resolvedChooseLabel = chooseLabel ?? t("common.chooseFile")
+  return (
+    <span className={cn("relative block w-full", className)}>
+      <input
+        type="file"
+        className="peer absolute inset-0 cursor-pointer opacity-0"
+        {...props}
+      />
+      <span className={cn(formInputClassName, "flex items-center gap-2 pointer-events-none")}>
+        <span className="truncate text-muted-foreground">
+          {props.multiple ? resolvedLabel : resolvedLabel}
+        </span>
+        <span className="ms-auto text-primary text-xs font-medium">{resolvedChooseLabel}</span>
+      </span>
+    </span>
+  )
+}
+
+export { CurrencyInput, FieldSection, FileInput, NativeSelect, Textarea }

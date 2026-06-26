@@ -1,8 +1,10 @@
+import { useTranslation } from "react-i18next"
 import { useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
-import { NativeSelect } from "@/components/ui/form-controls"
+import { FileInput, NativeSelect } from "@/components/ui/form-controls"
 import { CreateableSelect } from "@/components/ui/createable-select"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 
@@ -213,6 +215,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     onCreated(result.item.group.id)
   }
 
+  const { t } = useTranslation()
   return (
     <div className="space-y-6">
       <Surface variant="panel">
@@ -236,8 +239,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
               <Input placeholder="تلقائي" value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} />
             </label>
             <label className="space-y-1.5 text-sm">
-              <FieldLabel label="تاريخ الفاتورة" />
-              <Input type="date" value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} />
+              <FieldLabel label={t("common.invoiceDate")} />
+              <DatePicker value={invoiceDate} onChange={setInvoiceDate} />
             </label>
             <label className="space-y-1.5 text-sm">
               <FieldLabel label="هل هذه دين؟" />
@@ -362,7 +365,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
             </label>
             <label className="space-y-1.5 text-sm">
               <FieldLabel label="ملفات الفاتورة" />
-              <Input type="file" multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+              <FileInput multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
             </label>
           </div>
         </PageSurfaceContent>
@@ -464,7 +467,10 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                       </label>
                       <label className="space-y-1.5 text-sm">
                         <FieldLabel label="تاريخ الشراء" />
-                        <Input type="date" value={asset.purchaseDate} onChange={(event) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: currentLine.assets.map((currentAsset, currentAssetIndex) => currentAssetIndex === assetIndex ? { ...currentAsset, purchaseDate: event.target.value } : currentAsset) }))} />
+                        <DatePicker
+                          value={asset.purchaseDate}
+                          onChange={(value) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: currentLine.assets.map((currentAsset, currentAssetIndex) => currentAssetIndex === assetIndex ? { ...currentAsset, purchaseDate: value } : currentAsset) }))}
+                        />
                       </label>
                       <label className="space-y-1.5 text-sm">
                         <FieldLabel label="سعر الأصل" required />

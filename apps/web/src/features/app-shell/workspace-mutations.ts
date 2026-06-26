@@ -429,7 +429,7 @@ export function useUpdateWarehouseMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["warehouses", "employees", "projects", "inventory"])
+      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["warehouses", "employees", "projects", "inventory"], ["warehouses", "projects", "counterparties"])
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -454,7 +454,7 @@ export function useCreateWarehouseMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["warehouses", "employees", "projects", "inventory"])
+      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["warehouses", "employees", "projects", "inventory"], ["warehouses", "projects", "counterparties"])
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -532,7 +532,7 @@ export function useSyncManagedWarehousesMutation() {
       )
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["warehouses", "employees", "projects", "inventory"])
+      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["warehouses", "employees", "projects", "inventory"], ["warehouses", "projects", "counterparties"])
       showSuccessToast(message)
     },
     onError: (error) => {
