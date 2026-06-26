@@ -469,7 +469,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                         <FieldLabel label="تاريخ الشراء" />
                         <DatePicker
                           value={asset.purchaseDate}
-                          onChange={(value) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: currentLine.assets.map((currentAsset, currentAssetIndex) => currentAssetIndex === assetIndex ? { ...currentAsset, purchaseDate: value } : currentAsset) }))}
+                          onChange={(value: string) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: currentLine.assets.map((currentAsset, currentAssetIndex) => currentAssetIndex === assetIndex ? { ...currentAsset, purchaseDate: value } : currentAsset) }))}
                         />
                       </label>
                       <label className="space-y-1.5 text-sm">
