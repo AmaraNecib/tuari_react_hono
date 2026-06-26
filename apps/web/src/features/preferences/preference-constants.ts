@@ -19,7 +19,8 @@ export function getNextLocale(locale: AppLocale): AppLocale {
 
 /** Returns the text direction for a given locale. Arabic = RTL, others = LTR. */
 export function getLocaleDirection(locale?: AppLocale) {
-  return locale === "ar" ? "rtl" : "ltr"
+  const resolved = locale ?? "ar"
+  return resolved === "ar" ? "rtl" : "ltr"
 }
 
 function readStoredTheme(): AppTheme {
