@@ -5,28 +5,36 @@ import type { BetterSqliteDatabase } from "../../types/sqlite"
 
 import { resolveDatabaseEnv } from "../config/database-env"
 
-/** Detect whether better-sqlite3-sqlcipher is available at runtime. */
-function hasSqlcipher(): boolean {
+/**
+ * Resolve the SQLite constructor to use.
+ * When a database key is configured, use better-sqlite3-sqlcipher for encryption.
+ * Falls back to plain better-sqlite3 when no key is needed.
+ * @throws Error if encryption is required but better-sqlite3-sqlcipher is unavailable.
+ */
+function resolveDatabaseConstructor(key: string | null): typeof Database {
+  if (!key) return Database
+
   try {
-    require.resolve("better-sqlite3-sqlcipher")
-    return true
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require("better-sqlite3-sqlcipher") as typeof Database
   } catch {
-    return false
+    throw new Error(
+      "Database encryption requires better-sqlite3-sqlcipher, which is not installed. "
+      + "Install it or remove APP_DB_KEY to use an unencrypted database."
+    )
   }
 }
 
 /** Create a SQLite database connection. */
 export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDatabase {
   const { databasePath } = resolveDatabaseEnv()
-
   mkdirSync(dirname(databasePath), { recursive: true })
 
-  const sqlite = new Database(databasePath)
-
-  // Encryption pragmas only work with better-sqlite3-sqlcipher.
-  // When using plain better-sqlite3, these are silently skipped.
   const resolvedKey = dbKey ?? process.env.APP_DB_KEY ?? null
-  if (resolvedKey && hasSqlcipher()) {
+  const SqliteConstructor = resolveDatabaseConstructor(resolvedKey)
+  const sqlite = new SqliteConstructor(databasePath)
+
+  if (resolvedKey) {
     sqlite.pragma(`key = '${resolvedKey.replace(/'/g, "''")}'`)
     sqlite.pragma("cipher_compatibility = 4")
   }
@@ -34,17 +42,15 @@ export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDat
   sqlite.pragma("journal_mode = WAL")
   sqlite.pragma("foreign_keys = ON")
 
-  return sqlite as BetterSqliteDatabase
+  return sqlite as unknown as BetterSqliteDatabase
 }
 
 /**
  * Change the SQLCipher encryption key on an open database connection.
  * This re-encrypts the database in place via PRAGMA rekey.
  *
- * @returns true if rekey succeeded, false if SQLCipher is unavailable.
+ * @throws Error if better-sqlite3-sqlcipher is unavailable.
  */
-export function changeDatabaseKey(sqlite: BetterSqliteDatabase, newKey: string): boolean {
-  if (!hasSqlcipher()) return false
+export function changeDatabaseKey(sqlite: BetterSqliteDatabase, newKey: string): void {
   sqlite.pragma(`rekey = '${newKey.replace(/'/g, "''")}'`)
-  return true
 }
