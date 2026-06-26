@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3-sqlcipher";
+import Database from "better-sqlite3";
 
 import { env } from "../infrastructure/config/runtime-env";
 import type { BetterAuthInstance } from "../infrastructure/auth/auth";

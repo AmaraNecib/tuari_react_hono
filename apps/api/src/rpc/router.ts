@@ -25,7 +25,7 @@ import { createPaymentHandlers } from "./handlers/payment";
 
 import type { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 
-import type Database from "better-sqlite3-sqlcipher";
+import Database from "better-sqlite3";
 
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;

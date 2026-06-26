@@ -14,7 +14,7 @@
 import { createHash, randomBytes } from "node:crypto"
 import { eq, and, sql } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
-import type Database from "better-sqlite3-sqlcipher"
+import Database from "better-sqlite3"
 import * as schema from "../../schema"
 import { createAlgeriaTimestamp } from "../company/company-time"
 

@@ -5,7 +5,7 @@
  * Bootstrap owners get all permissions regardless of employee record.
  */
 import { eq, and } from "drizzle-orm";
-import type Database from "better-sqlite3-sqlcipher";
+import Database from "better-sqlite3";
 import * as schema from "../../schema";
 import { createDrizzleFromSqlite, type AppDrizzle } from "../../infrastructure/database/drizzle";
 import type { Permission } from "./permissions";

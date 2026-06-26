@@ -5,7 +5,7 @@ import { appContract } from "@tuari/contracts";
 import { toFailureResult } from "../../modules/company/company.errors";
 import type { CompanyService } from "../../modules/company/company.service";
 import type { RecoveryKeyService } from "../../modules/auth/recovery-key.service";
-import type Database from "better-sqlite3-sqlcipher";
+import Database from "better-sqlite3";
 import type { RpcContext } from "../context";
 import type { RpcMiddleware } from "../rpc-middleware";
 

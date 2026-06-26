@@ -1,13 +1,12 @@
-import type { DbExecutor } from "./schema";
+import Database from "better-sqlite3"
+import type { DbExecutor } from "./schema"
 
 /**
- * Implements DbExecutor using raw better-sqlite3(-sqlcipher).
- * This replaces Prisma for migration and schema operations.
+ * Implements DbExecutor using raw better-sqlite3.
+ * .
  */
-/** Raw SQL executor using better-sqlite3-sqlcipher. Replaces Prisma for migrations. */
 export class BetterSqlite3Executor implements DbExecutor {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(private readonly db: any) {}
+  constructor(private readonly db: Database.Database) {}
 
   /** Execute a SQL query and return all matching rows. */
   async $queryRawUnsafe<T>(sql: string, ...params: unknown[]): Promise<T> {
@@ -42,8 +41,7 @@ export class BetterSqlite3Executor implements DbExecutor {
 class BetterSqlite3TransactionExecutor implements DbExecutor {
   private savepointName: string;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(private readonly db: any) {
+  constructor(private readonly db: Database.Database) {
     this.savepointName = `tx_${++BetterSqlite3TransactionExecutor.globalCounter}`;
     this.db.exec(`SAVEPOINT ${this.savepointName}`);
   }

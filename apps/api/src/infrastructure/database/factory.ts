@@ -4,20 +4,8 @@ import Database from "better-sqlite3"
 
 import { resolveDatabaseEnv } from "../config/database-env"
 
-/**
- * Database instance type expected by downstream repositories.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type BetterSqliteDatabase = any
-
-/**
- * Create a SQLite database connection.
- *
- * Uses better-sqlite3 at runtime. When better-sqlite3-sqlcipher is available
- * (encryption enabled), swap the import to get SQLCipher support — the API
- * is identical.
- */
-export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDatabase {
+/** Create a SQLite database connection. */
+export function createDatabaseConnection(dbKey?: string | null): Database.Database {
   const { databasePath } = resolveDatabaseEnv()
 
   mkdirSync(dirname(databasePath), { recursive: true })
@@ -34,18 +22,13 @@ export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDat
   sqlite.pragma("journal_mode = WAL")
   sqlite.pragma("foreign_keys = ON")
 
-  return sqlite as unknown as BetterSqliteDatabase
+  return sqlite
 }
 
 /**
  * Change the SQLCipher encryption key on an open database connection.
  * This re-encrypts the database in place via PRAGMA rekey.
- *
- * @param sqlite - Open SQLCipher database connection
- * @param newKey - New encryption key to apply
  */
-export function changeDatabaseKey(sqlite: BetterSqliteDatabase, newKey: string): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = sqlite as any
-  db.pragma(`rekey = '${newKey.replace(/'/g, "''")}'`)
+export function changeDatabaseKey(sqlite: Database.Database, newKey: string): void {
+  sqlite.pragma(`rekey = '${newKey.replace(/'/g, "''")}'`)
 }

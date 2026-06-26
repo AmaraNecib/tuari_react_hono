@@ -6,7 +6,7 @@
  * for dynamic query building (too complex for Drizzle's query builder).
  */
 import { eq, and, asc, desc, sql, inArray } from "drizzle-orm";
-import type Database from "better-sqlite3-sqlcipher";
+import Database from "better-sqlite3";
 import * as schema from "../../../schema";
 import { createDrizzleFromSqlite, type AppDrizzle } from "../../../infrastructure/database/drizzle";
 import type { InvoiceRepository as IInvoiceRepository } from "../invoice.repository";
