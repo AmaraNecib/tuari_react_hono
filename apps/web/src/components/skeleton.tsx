@@ -187,7 +187,7 @@ export function AppShellSkeleton() {
           <Shimmer className="size-[1.375rem] rounded-[0.3125rem]" />
           <ShimmerLine className="w-16 h-4" />
         </div>
-        <nav className="flex-1 p-3 space-y-6 overflow-hidden" aria-label="القائمة الرئيسية">
+        <nav className="flex-1 p-3 space-y-6 overflow-hidden" aria-label="navigation">
           {Array.from({ length: 3 }).map((_, group) => (
             <div key={group} className="space-y-1">
               <ShimmerLine className="w-20 h-3 ms-3" />

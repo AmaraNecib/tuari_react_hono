@@ -116,10 +116,9 @@ async function invalidateWorkspaceDomains(
     await queryClient.invalidateQueries({ queryKey: workspaceDomainQueryPrefix })
     return
   }
-
-  for (const domain of domains) {
-    await queryClient.invalidateQueries({ queryKey: workspaceDomainQueryKeys[domain](userId) })
-  }
+  await Promise.all(
+    domains.map((domain) => queryClient.invalidateQueries({ queryKey: workspaceDomainQueryKeys[domain](userId) }))
+  )
 }
 
 /** Invalidate both workspace AND inventory query caches so dropdowns/lists refresh everywhere. */
@@ -129,12 +128,12 @@ async function invalidateAll(
   domains: Array<keyof typeof workspaceDomainQueryKeys>,
   inventoryDomains?: string[],
 ) {
-  await invalidateWorkspaceDomains(queryClient, userId, domains)
-  if (inventoryDomains) {
-    for (const domain of inventoryDomains) {
-      await queryClient.invalidateQueries({ queryKey: ["inventory", domain] })
-    }
-  }
+  await Promise.all([
+    invalidateWorkspaceDomains(queryClient, userId, domains),
+    ...(inventoryDomains
+      ? inventoryDomains.map((domain) => queryClient.invalidateQueries({ queryKey: ["inventory", domain] }))
+      : []),
+  ])
 }
 
 function getCachedSessionUserId(queryClient: ReturnType<typeof useQueryClient>) {

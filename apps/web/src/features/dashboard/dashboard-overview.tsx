@@ -28,13 +28,13 @@ export function DashboardOverview() {
             <div className="mt-2 space-y-1">
               {inventoryReport.isLoading ? (
                 <p className="text-lg font-bold">{t("common.loading")}</p>
-              ) : inventoryData?.summary?.totalValueDzd ? (
+              ) : inventoryData?.summary?.totalValueDzd != null ? (
                 <>
                   <p className="text-2xl font-bold">
-                    {inventoryData.summary.totalValueDzd.toLocaleString("ar-DZ")} د.ج
+                    {inventoryData.summary.totalValueDzd.toLocaleString()} د.ج
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {t("dashboardPage.assets")}: {inventoryData.summary.totalAssetsDzd.toLocaleString("ar-DZ")} د.ج
+                    {t("dashboardPage.assets")}: {inventoryData.summary.totalAssetsDzd.toLocaleString()} د.ج
                   </p>
                 </>
               ) : (
@@ -52,10 +52,10 @@ export function DashboardOverview() {
               ) : debtData?.summary?.totalOutstandingDzd !== undefined ? (
                 <>
                   <p className="text-2xl font-bold">
-                    {debtData.summary.totalOutstandingDzd.toLocaleString("ar-DZ")} د.ج
+                    {debtData.summary.totalOutstandingDzd.toLocaleString()} د.ج
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {t("dashboardPage.overdue")}: {debtData.summary.overdueDzd.toLocaleString("ar-DZ")} د.ج
+                    {t("dashboardPage.overdue")}: {debtData.summary.overdueDzd.toLocaleString()} د.ج
                   </p>
                 </>
               ) : (
@@ -101,7 +101,7 @@ export function DashboardOverview() {
                     {debtData.topDebtors[0].partyName}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {debtData.topDebtors[0].amountDzd.toLocaleString("ar-DZ")} د.ج
+                    {debtData.topDebtors[0].amountDzd.toLocaleString()} د.ج
                   </p>
                 </>
               ) : (

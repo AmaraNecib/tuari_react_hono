@@ -88,6 +88,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   const createWarehouseMutation = useCreateWarehouseMutation()
   const createProjectMutation = useCreateProjectMutation()
   const createCounterpartyMutation = useCreateExternalCounterpartyMutation()
+  const { t } = useTranslation()
   const [invoiceNumber, setInvoiceNumber] = useState("")
   const [supplierName, setSupplierName] = useState("")
   const [invoiceDate, setInvoiceDate] = useState(getTodayDateValue())
@@ -215,7 +216,6 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     onCreated(result.item.group.id)
   }
 
-  const { t } = useTranslation()
   return (
     <div className="space-y-6">
       <Surface variant="panel">

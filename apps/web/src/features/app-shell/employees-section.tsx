@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import {
@@ -125,19 +125,7 @@ export function EmployeesSection({
   }, [pagedQuery.data?.items, lookups, relationshipFacts, noManagerLabel, noProjectLabel, t])
 
       
-  // Reset the previous-cursor stack when the user changes page size —
-  // the stored cursors were computed against the old limit and would point
-  // at the wrong rows in the new grid. Skip the initial mount so the
-  // URL-restored stack is preserved.
-  const isInitialMount = useRef(true)
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false
-      return
-    }
-    setPreviousCursorStack([])
-  }, [resolvedLimit])
-
+  
   if (employeePage === "create") {
     return (
       <EmployeeBatchCreatePage
