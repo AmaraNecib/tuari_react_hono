@@ -3,7 +3,6 @@ import type { Role } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
-import { cn } from "@/lib/utils"
 
 import type { EmployeeDraft, EmployeeDraftErrors } from "./employee-batch-schema"
 
@@ -160,12 +159,12 @@ export function EmployeeBatchRowCard({
           {errors.salaryPeriod ? <p className="text-sm text-destructive">{errors.salaryPeriod}</p> : null}
         </label>
 
-        <div className="flex flex-col gap-2.5 xl:col-span-2">
+        <div className="flex flex-col gap-2.5">
           <label className="text-sm font-medium text-foreground" htmlFor={`employee-manager-${index}`}>
             {copy.managerLabel}
           </label>
           <select
-            className={cn(fieldClassName, "xl:max-w-xl")}
+            className={fieldClassName}
             disabled={!canAssignManager || managerOptions.length === 0}
             id={`employee-manager-${index}`}
             name={`employee-manager-${index}`}
@@ -186,12 +185,12 @@ export function EmployeeBatchRowCard({
         </div>
 
         {canAssignManager ? (
-          <div className="flex flex-col gap-2.5 xl:col-span-3">
+          <div className="flex flex-col gap-2.5 xl:col-span-2">
             <label className="text-sm font-medium text-foreground" htmlFor={`employee-project-${index}`}>
               {copy.projectLabel}
             </label>
             <select
-              className={cn(fieldClassName, "xl:max-w-xl")}
+              className={fieldClassName}
               disabled={!draft.managerId || availableProjects.length === 0}
               id={`employee-project-${index}`}
               name={`employee-project-${index}`}

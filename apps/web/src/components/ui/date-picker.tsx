@@ -41,7 +41,7 @@ export function DatePicker({
   className,
   name,
   id,
-  mode = "single",
+  
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)

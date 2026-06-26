@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Surface } from "@/features/shared/page-primitives"
 import { cn } from "@/lib/utils"
@@ -99,10 +100,68 @@ export function AppShellActionButtonWithReason({
   )
 }
 
+/**
+ * Extensible filter bar. Uses flex-wrap so filters naturally flow into rows
+ * without cramping. Each direct child should be a filter <label> with a
+ * consistent min-width so alignment stays clean at every breakpoint.
+ */
 export function AppShellFilterShell({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("grid gap-3 rounded-xl border border-line bg-bg-2 p-4 md:grid-cols-2 xl:grid-cols-5", className)} dir="rtl">
+    <div
+      className={cn(
+        "flex flex-wrap items-end gap-x-4 gap-y-3 rounded-xl border border-line bg-bg-2 p-4",
+        className,
+      )}
+      dir="rtl"
+    >
       {children}
+    </div>
+  )
+}
+
+/**
+ * Pairs two date inputs (from / to) on a single row so they always stay
+ * together and never split across lines.  Labels use i18n keys for Arabic
+ * RTL display: "من تاريخ" and "إلى تاريخ".
+ */
+export function DateRangeFilter({
+  fromLabel,
+  toLabel,
+  fromDate,
+  toDate,
+  onFromDateChange,
+  onToDateChange,
+  fromPlaceholder,
+  toPlaceholder,
+}: {
+  fromLabel: string
+  toLabel: string
+  fromDate: string
+  toDate: string
+  onFromDateChange: (value: string) => void
+  onToDateChange: (value: string) => void
+  fromPlaceholder?: string
+  toPlaceholder?: string
+}) {
+  return (
+    <div className="flex items-end gap-3">
+      <label className="flex flex-col gap-2">
+        <span className="text-sm font-medium text-foreground">{fromLabel}</span>
+        <DatePicker
+          value={fromDate}
+          placeholder={fromPlaceholder}
+          onChange={onFromDateChange}
+        />
+      </label>
+      <span className="pb-2.5 text-sm text-muted-foreground">—</span>
+      <label className="flex flex-col gap-2">
+        <span className="text-sm font-medium text-foreground">{toLabel}</span>
+        <DatePicker
+          value={toDate}
+          placeholder={toPlaceholder}
+          onChange={onToDateChange}
+        />
+      </label>
     </div>
   )
 }

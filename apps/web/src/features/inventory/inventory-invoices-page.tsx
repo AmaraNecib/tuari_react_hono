@@ -65,7 +65,7 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
         />
 
         <AppShellFilterShell>
-          <div className="col-span-full lg:col-span-3">
+          <div className="flex-1 min-w-[16rem]">
             <AdvancedSearchBar
               onSearch={(searchQuery, filtersObj) => {
                 setQuery(searchQuery)
@@ -74,7 +74,7 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
               storageKey="invoices-search-filters"
             />
           </div>
-          <label className="flex flex-col gap-2">
+          <label className="flex flex-col gap-2 min-w-[10rem]">
             <span className="text-sm font-medium text-foreground">{t("inventoryPage.invoices.statusLabel")}</span>
             <NativeSelect value={status} onChange={(e: ChangeEvent<HTMLSelectElement>) => setFilters(prev => ({ ...prev, status: e.target.value }))}>
               <option value="ALL">{t("inventoryPage.invoices.statusAll")}</option>

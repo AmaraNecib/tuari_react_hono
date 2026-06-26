@@ -4,6 +4,7 @@ import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
+import { DatePicker } from "@/components/ui/date-picker"
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashboard"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
@@ -298,7 +299,7 @@ export function EmployeeDetailsPage({
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <label className="flex flex-col gap-2">
                     <span className="text-sm font-medium text-foreground">{t("detailPages.employee.financePaymentDate")}</span>
-                    <input className="h-10 rounded-xl border border-border/80 bg-sidebar px-3.5 text-sm text-foreground outline-none dark:bg-background" type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} />
+                    <DatePicker value={paymentDate} onChange={setPaymentDate} />
                   </label>
                   <label className="flex flex-col gap-2">
                     <span className="text-sm font-medium text-foreground">{t("detailPages.employee.financeExpectedAmount")}</span>

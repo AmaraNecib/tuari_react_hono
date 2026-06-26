@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import { useCreateDebtEntryMutation, useSettleDebtAccountMutation } from "@/features/app-shell/mock-dashboard"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
@@ -128,12 +129,7 @@ export function RecordPaymentDialog({
 
             <label className="flex flex-col gap-2">
               <span className="text-sm font-medium text-foreground">{t("detailPages.debt.createDate")}</span>
-              <input
-                className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
-                type="date"
-                value={paymentDate}
-                onChange={(e) => setPaymentDate(e.target.value)}
-              />
+              <DatePicker value={paymentDate} onChange={setPaymentDate} />
             </label>
           </div>
         ) : (

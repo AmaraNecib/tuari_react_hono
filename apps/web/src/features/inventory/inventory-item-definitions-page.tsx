@@ -44,14 +44,14 @@ export function InventoryItemDefinitionsPage() {
       <Surface variant="panel">
         <PageSurfaceContent>
           <PageHeader title={t("inventoryPage.itemDefinitions.title")} description={t("inventoryPage.itemDefinitions.description")} />
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <label className="space-y-2 text-sm">
               <FieldLabel label={t("inventoryPage.itemDefinitions.nameLabel")} required />
               <Input value={name} onChange={(event) => setName(event.target.value)} />
             </label>
             <label className="space-y-2 text-sm">
               <FieldLabel label={t("inventoryPage.itemDefinitions.typeLabel")} required />
-              <select className="h-10 rounded-xl border border-border bg-background px-3" value={itemType} onChange={(event) => setItemType(event.target.value as "CONSUMABLE" | "ASSET") }>
+              <select className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground" value={itemType} onChange={(event) => setItemType(event.target.value as "CONSUMABLE" | "ASSET") }>
                 <option value="CONSUMABLE">{t("inventoryPage.itemDefinitions.typeConsumable")}</option>
                 <option value="ASSET">{t("inventoryPage.itemDefinitions.typeAsset")}</option>
               </select>
@@ -62,7 +62,7 @@ export function InventoryItemDefinitionsPage() {
                 <Input placeholder={t("inventoryPage.itemDefinitions.unitPlaceholder")} value={unit} onChange={(event) => setUnit(event.target.value)} />
               </label>
             ) : null}
-            <label className="space-y-2 text-sm md:col-span-2">
+            <label className="space-y-2 text-sm md:col-span-3">
               <FieldLabel label={t("inventoryPage.itemDefinitions.descriptionLabel")} />
               <Input value={description} onChange={(event) => setDescription(event.target.value)} />
             </label>

@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput } from "@/components/ui/form-controls"
 import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
@@ -79,11 +80,9 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">التاريخ</span>
-            <input
-              className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
-              type="date"
+            <DatePicker
               value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
+              onChange={setEntryDate}
               disabled={createEntryMutation.isPending}
             />
           </label>

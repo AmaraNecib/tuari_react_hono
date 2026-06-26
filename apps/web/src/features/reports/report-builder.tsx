@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
+import { DateRangeFilter } from "@/features/app-shell/app-shell-table-primitives";
 import { useReportQuery, formatReportAsCSV } from "@/hooks/use-report-queries";
 
 type ReportType = "INVENTORY" | "DEBT" | "MOVEMENT";
@@ -54,9 +54,9 @@ export function ReportBuilder() {
         />
 
         {/* Report Generator Controls */}
-        <div className="grid gap-4 rounded-lg border border-border/60 bg-surface p-4 md:grid-cols-4">
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">نوع التقرير</span>
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3 rounded-lg border border-border/60 bg-surface p-4">
+          <label className="flex flex-col gap-2 min-w-[10rem]">
+            <span className="text-sm font-medium text-foreground">نوع التقرير</span>
             <NativeSelect value={reportType} onChange={(e) => setReportType(e.target.value as ReportType)}>
               <option value="INVENTORY">تقرير المخزون</option>
               <option value="DEBT">تقرير الديون</option>
@@ -64,25 +64,16 @@ export function ReportBuilder() {
             </NativeSelect>
           </label>
 
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">من التاريخ</span>
-            <Input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </label>
+          <DateRangeFilter
+            fromLabel="من التاريخ"
+            toLabel="إلى التاريخ"
+            fromDate={startDate}
+            toDate={endDate}
+            onFromDateChange={setStartDate}
+            onToDateChange={setEndDate}
+          />
 
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">إلى التاريخ</span>
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </label>
-
-          <div className="flex items-end gap-2">
+          <div className="flex items-end">
             <Button onClick={handleGenerateReport} disabled={isLoading}>
               {isLoading ? "جاري التحميل..." : "إنشاء التقرير"}
             </Button>

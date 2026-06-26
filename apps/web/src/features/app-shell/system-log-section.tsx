@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 import {
   AppShellEmptyStateRow,
   AppShellFilterShell,
+  DateRangeFilter,
   AppShellTableFrame,
   AppShellTableHead,
   AppShellTableHeaderCell,
@@ -204,7 +205,7 @@ export function SystemLogSection({
   return (
     <RecordPageFrame title={title}>
         <AppShellFilterShell>
-          <label className="flex flex-col gap-2">
+          <label className="flex flex-col gap-2 min-w-[10rem]">
             <span className="text-sm font-medium text-foreground">{t("systemLog.actor")}</span>
             <NativeSelect value={filters.actorUserId ?? "ALL"} onChange={(event) => onFiltersChange({ ...filters, actorUserId: event.target.value === "ALL" ? undefined : event.target.value })}>
               <option value="ALL">{t("systemLog.actorAll")}</option>
@@ -215,7 +216,7 @@ export function SystemLogSection({
               ))}
             </NativeSelect>
           </label>
-          <label className="flex flex-col gap-2">
+          <label className="flex flex-col gap-2 min-w-[14rem]">
             <span className="text-sm font-medium text-foreground">{t("systemLog.actorSearch")}</span>
             <Input
               value={filters.actorQuery ?? ""}
@@ -223,7 +224,7 @@ export function SystemLogSection({
               onChange={(event) => onFiltersChange({ ...filters, actorQuery: event.target.value || undefined })}
             />
           </label>
-          <label className="flex flex-col gap-2">
+          <label className="flex flex-col gap-2 min-w-[10rem]">
             <span className="text-sm font-medium text-foreground">{t("systemLog.action")}</span>
             <NativeSelect value={filters.actionType ?? "ALL"} onChange={(event) => onFiltersChange({ ...filters, actionType: event.target.value === "ALL" ? undefined : (event.target.value as SystemLogEntry["actionType"]) })}>
               <option value="ALL">{t("systemLog.actionAll")}</option>
@@ -234,7 +235,7 @@ export function SystemLogSection({
               ))}
             </NativeSelect>
           </label>
-          <label className="flex flex-col gap-2">
+          <label className="flex flex-col gap-2 min-w-[10rem]">
             <span className="text-sm font-medium text-foreground">{t("systemLog.entity")}</span>
             <NativeSelect value={filters.entityType ?? "ALL"} onChange={(event) => onFiltersChange({ ...filters, entityType: event.target.value === "ALL" ? undefined : (event.target.value as SystemLogEntry["entityType"]) })}>
               <option value="ALL">{t("systemLog.entityAll")}</option>
@@ -245,14 +246,14 @@ export function SystemLogSection({
               ))}
             </NativeSelect>
           </label>
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("systemLog.dateFrom")}</span>
-            <Input type="date" value={filters.fromDate ?? ""} onChange={(event) => onFiltersChange({ ...filters, fromDate: event.target.value || undefined })} />
-          </label>
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("systemLog.dateTo")}</span>
-            <Input type="date" value={filters.toDate ?? ""} onChange={(event) => onFiltersChange({ ...filters, toDate: event.target.value || undefined })} />
-          </label>
+          <DateRangeFilter
+            fromLabel={t("systemLog.dateFrom")}
+            toLabel={t("systemLog.dateTo")}
+            fromDate={filters.fromDate ?? ""}
+            toDate={filters.toDate ?? ""}
+            onFromDateChange={(value) => onFiltersChange({ ...filters, fromDate: value || undefined })}
+            onToDateChange={(value) => onFiltersChange({ ...filters, toDate: value || undefined })}
+          />
         </AppShellFilterShell>
 
         <AppShellTableFrame>

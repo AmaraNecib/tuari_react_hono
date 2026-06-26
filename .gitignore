@@ -22,3 +22,4 @@ node_modules/
 Thumbs.db
 
 /apps/api/data
+/tmp/*

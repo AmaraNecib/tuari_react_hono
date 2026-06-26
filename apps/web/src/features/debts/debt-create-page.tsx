@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { PageFooterActions, Surface } from "@/features/shared/page-primitives"
@@ -371,12 +372,7 @@ export function DebtCreatePage({
 
             <label className="flex flex-col gap-2">
               <span className="text-sm font-medium text-foreground">{t("detailPages.debt.createDate")}</span>
-              <input
-                className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none [color-scheme:light] dark:[color-scheme:dark]"
-                type="date"
-                value={createDate}
-                onChange={(e) => setCreateDate(e.target.value)}
-              />
+              <DatePicker value={createDate} onChange={setCreateDate} />
             </label>
           </div>
 

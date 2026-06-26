@@ -12,7 +12,6 @@ import {
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
-  usePaginatedRows,
 } from "@/features/app-shell/app-shell-table-primitives"
 import { getArabicStatusLabel, getStatusTone } from "@/features/shared/status-meta"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"

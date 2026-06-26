@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
-import { AppShellFilterShell, usePaginatedRows } from "@/features/app-shell/app-shell-table-primitives";
+import { AppShellFilterShell, DateRangeFilter, usePaginatedRows } from "@/features/app-shell/app-shell-table-primitives";
 import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls";
 import { rpcClient } from "@/lib/orpc-client";
 
@@ -123,8 +123,8 @@ export function AuditLogPage() {
         />
 
         <AppShellFilterShell>
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">البحث</span>
+          <label className="flex flex-col gap-2 min-w-[14rem]">
+            <span className="text-sm font-medium text-foreground">البحث</span>
             <Input
               placeholder="ابحث عن مستخدم أو مورد..."
               value={searchQuery}
@@ -132,8 +132,8 @@ export function AuditLogPage() {
             />
           </label>
 
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">النطاق</span>
+          <label className="flex flex-col gap-2 min-w-[10rem]">
+            <span className="text-sm font-medium text-foreground">النطاق</span>
             <NativeSelect value={domain} onChange={(e) => setDomain(e.target.value)}>
               <option value="ALL">الكل</option>
               <option value="المخزون">المخزون</option>
@@ -143,8 +143,8 @@ export function AuditLogPage() {
             </NativeSelect>
           </label>
 
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">الإجراء</span>
+          <label className="flex flex-col gap-2 min-w-[10rem]">
+            <span className="text-sm font-medium text-foreground">الإجراء</span>
             <NativeSelect value={action} onChange={(e) => setAction(e.target.value)}>
               <option value="ALL">الكل</option>
               <option value="create">إنشاء</option>
@@ -153,23 +153,14 @@ export function AuditLogPage() {
             </NativeSelect>
           </label>
 
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">من</span>
-            <Input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </label>
-
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">إلى</span>
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </label>
+          <DateRangeFilter
+            fromLabel="من التاريخ"
+            toLabel="إلى التاريخ"
+            fromDate={startDate}
+            toDate={endDate}
+            onFromDateChange={setStartDate}
+            onToDateChange={setEndDate}
+          />
         </AppShellFilterShell>
 
         {isLoading && (
