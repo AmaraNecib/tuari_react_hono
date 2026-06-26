@@ -98,7 +98,7 @@ export class AuthBootstrapService {
             id: userId,
             name: input.name.trim(),
             phoneNumber: input.phone,
-            phoneNumberVerified: 1,
+            phoneNumberVerified: true,
             createdAt: timestamp,
             updatedAt: timestamp,
           }).run();

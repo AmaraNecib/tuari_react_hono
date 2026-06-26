@@ -293,7 +293,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     const audit = normalizeAuditContext(auditContext)
     this.db.insert(schema.inventoryItemDefinition).values({
       id, name: data.name, itemType: data.itemType, unit: data.unit ?? null,
-      description: data.description ?? null, isActive: 1,
+      description: data.description ?? null, isActive: true,
       actorUserId: audit.actorUserId, actorLabel: audit.actorLabel,
       transactionId: audit.transactionId, createdAt: timestamp, updatedAt: timestamp,
     }).run()

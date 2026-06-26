@@ -65,7 +65,7 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
       phone: input.phone,
       previousName: input.previousName,
       previousPhone: input.previousPhone,
-      passwordChanged: (input.passwordChanged ?? false) ? 1 : 0,
+      passwordChanged: input.passwordChanged ?? false,
       actorUserId: input.actorUserId,
       actorLabel: input.actorLabel,
       transactionId: input.transactionId,
