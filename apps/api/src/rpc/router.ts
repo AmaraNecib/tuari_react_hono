@@ -25,7 +25,7 @@ import { createPaymentHandlers } from "./handlers/payment";
 
 import type { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 
-import Database from "better-sqlite3";
+import type { BetterSqliteDatabase } from "../types/sqlite";
 
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
@@ -38,7 +38,7 @@ type RouterDependencies = {
   invoiceModule: InvoiceModule;
   paymentModule: PaymentModule;
   recoveryKeyService: RecoveryKeyService;
-  rawDatabase: Database.Database;
+  rawDatabase: BetterSqliteDatabase;
 };
 
 export function createRouter(dependencies: RouterDependencies) {

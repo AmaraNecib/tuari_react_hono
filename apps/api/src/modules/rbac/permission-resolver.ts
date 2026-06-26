@@ -5,7 +5,7 @@
  * Bootstrap owners get all permissions regardless of employee record.
  */
 import { eq, and } from "drizzle-orm";
-import Database from "better-sqlite3";
+import type { BetterSqliteDatabase } from "../../types/sqlite";
 import * as schema from "../../schema";
 import { createDrizzleFromSqlite, type AppDrizzle } from "../../infrastructure/database/drizzle";
 import type { Permission } from "./permissions";
@@ -23,11 +23,11 @@ export class SqlitePermissionResolver {
   private readonly db: AppDrizzle;
 
   constructor(
-    rawDb: Database.Database | { exec: (sql: string) => void },
+    rawDb: BetterSqliteDatabase | { exec: (sql: string) => void },
     private readonly authBootstrap: AuthBootstrapGateway,
     drizzleDb?: AppDrizzle,
   ) {
-    this.db = drizzleDb ?? createDrizzleFromSqlite(rawDb as Database.Database);
+    this.db = drizzleDb ?? createDrizzleFromSqlite(rawDb as BetterSqliteDatabase);
   }
 
   /**

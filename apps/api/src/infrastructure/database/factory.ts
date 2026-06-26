@@ -1,11 +1,12 @@
 import { mkdirSync } from "node:fs"
 import { dirname } from "node:path"
 import Database from "better-sqlite3"
+import type { BetterSqliteDatabase } from "../../types/sqlite"
 
 import { resolveDatabaseEnv } from "../config/database-env"
 
 /** Create a SQLite database connection. */
-export function createDatabaseConnection(dbKey?: string | null): Database.Database {
+export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDatabase {
   const { databasePath } = resolveDatabaseEnv()
 
   mkdirSync(dirname(databasePath), { recursive: true })
@@ -22,13 +23,13 @@ export function createDatabaseConnection(dbKey?: string | null): Database.Databa
   sqlite.pragma("journal_mode = WAL")
   sqlite.pragma("foreign_keys = ON")
 
-  return sqlite
+  return sqlite as BetterSqliteDatabase
 }
 
 /**
  * Change the SQLCipher encryption key on an open database connection.
  * This re-encrypts the database in place via PRAGMA rekey.
  */
-export function changeDatabaseKey(sqlite: Database.Database, newKey: string): void {
+export function changeDatabaseKey(sqlite: BetterSqliteDatabase, newKey: string): void {
   sqlite.pragma(`rekey = '${newKey.replace(/'/g, "''")}'`)
 }

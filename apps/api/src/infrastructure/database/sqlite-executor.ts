@@ -1,4 +1,4 @@
-import Database from "better-sqlite3"
+import type { BetterSqliteDatabase } from "../../types/sqlite"
 import type { DbExecutor } from "./schema"
 
 /**
@@ -6,7 +6,7 @@ import type { DbExecutor } from "./schema"
  * .
  */
 export class BetterSqlite3Executor implements DbExecutor {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: BetterSqliteDatabase) {}
 
   /** Execute a SQL query and return all matching rows. */
   async $queryRawUnsafe<T>(sql: string, ...params: unknown[]): Promise<T> {
@@ -41,7 +41,7 @@ export class BetterSqlite3Executor implements DbExecutor {
 class BetterSqlite3TransactionExecutor implements DbExecutor {
   private savepointName: string;
 
-  constructor(private readonly db: Database.Database) {
+  constructor(private readonly db: BetterSqliteDatabase) {
     this.savepointName = `tx_${++BetterSqlite3TransactionExecutor.globalCounter}`;
     this.db.exec(`SAVEPOINT ${this.savepointName}`);
   }

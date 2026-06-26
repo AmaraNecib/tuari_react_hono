@@ -1,10 +1,9 @@
-import Database from "better-sqlite3";
-
 import { env } from "../infrastructure/config/runtime-env";
 import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
 import type { AppDrizzle } from "../infrastructure/database/drizzle";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
+import type { BetterSqliteDatabase } from "../types/sqlite";
 import { DrizzleAccountRepository } from "../modules/account/account.repository";
 import { AccountService } from "../modules/account/account.service";
 import { AuthBootstrapService } from "../modules/auth/bootstrap.service";
@@ -37,7 +36,8 @@ import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
  */
 /** Wire all application dependencies from a shared SQLite connection. */
 export async function createAppDependencies(
-  sqlite?: Database.Database,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sqlite?: any,
   drizzleDb?: AppDrizzle,
   authInstance?: BetterAuthInstance,
 ) {
