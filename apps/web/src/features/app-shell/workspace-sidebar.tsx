@@ -10,6 +10,7 @@ import {
   Users,
   Warehouse,
   Settings,
+  PanelRightOpen,
 } from "lucide-react"
 import type React from "react"
 import { useTranslation } from "react-i18next"
@@ -182,7 +183,7 @@ export function WorkspaceSidebar({
   ]
 
   return (
-    <aside className="flex flex-col h-full bg-bg-2 border-r border-line overflow-hidden min-w-0">
+    <aside className="flex flex-col h-full bg-bg-2 border-e border-line overflow-hidden min-w-0">
       {/* Brand */}
       <div className="flex items-center gap-3 px-5 border-b border-line flex-shrink-0" style={{ height: "var(--header-h)" }}>
         <div className="w-[22px] h-[22px] rounded-[0.3125rem] bg-ink text-bg grid place-items-center text-sm font-display italic font-medium flex-shrink-0">
@@ -250,12 +251,20 @@ export function WorkspaceSidebar({
 
       {/* Footer: user info */}
       {collapsed ? (
-        <div className="border-t border-line py-3 flex flex-col items-center flex-shrink-0">
+        <div className="border-t border-line py-3 flex flex-col items-center gap-2 flex-shrink-0">
           <div
             className="w-[26px] h-[26px] rounded-full grid place-items-center text-white text-[11px] font-semibold flex-shrink-0 bg-primary"
           >
             {getInitials(session.name)}
           </div>
+          <button
+            type="button"
+            aria-label={t("shell.expand")}
+            className="w-[30px] h-[30px] grid place-items-center rounded-[0.4375rem] text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors"
+            onClick={() => onSetCollapsed(false)}
+          >
+            <PanelRightOpen size={16} />
+          </button>
         </div>
       ) : (
         <div className="border-t border-line px-3 py-3 flex items-center gap-3 text-[12.5px] flex-shrink-0">

@@ -182,7 +182,7 @@ export function AppShellSkeleton() {
   return (
     <div className="flex h-screen" role="status" aria-label="loading application">
       {/* Sidebar skeleton */}
-      <aside className="w-[240px] flex flex-col bg-bg-2 border-s border-line">
+      <aside className="w-[var(--sidebar-w)] flex flex-col bg-bg-2 border-e border-line">
         <div className="flex items-center gap-3 px-5 border-b border-line" style={{ height: "var(--header-h)" }}>
           <Shimmer className="size-[22px] rounded-[0.3125rem]" />
           <ShimmerLine className="w-16 h-4" />

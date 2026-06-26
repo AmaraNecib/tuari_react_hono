@@ -75,8 +75,8 @@ export function HomeViewSignedInShell({
         employeesLabel={copy.sections.employees.label}
         externalsLabel={copy.sections.externals.label}
         expandLabel={copy.shell.expand}
-        inventoryLabel={t("workspace.shell.itemsGuide")}
-        invoicesLabel={t("workspace.shell.invoices")}
+        inventoryLabel={t("shell.itemsGuide")}
+        invoicesLabel={t("shell.invoices")}
         projectsLabel={copy.sections.projects.label}
         rolesLabel={copy.sections.roles.label}
         salariesLabel={copy.sections.salaries.label}

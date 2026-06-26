@@ -41,7 +41,7 @@ export function applyTheme(theme: AppTheme) {
 export function applyLocale(locale: AppLocale) {
   const root = document.documentElement
   root.lang = locale
-  root.dir = getLocaleDirection()
+  root.dir = getLocaleDirection(locale)
   root.dataset.locale = locale
   window.localStorage.setItem(STORAGE_KEYS.locale, locale)
 }
