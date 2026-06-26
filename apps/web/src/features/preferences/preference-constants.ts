@@ -17,8 +17,8 @@ export function getNextLocale(locale: AppLocale): AppLocale {
   return locale
 }
 
-export function getLocaleDirection() {
-  return "rtl"
+export function getLocaleDirection(locale?: AppLocale) {
+  return locale === "ar" ? "rtl" : "ltr"
 }
 
 function readStoredTheme(): AppTheme {

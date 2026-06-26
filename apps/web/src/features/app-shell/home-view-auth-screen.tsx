@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Surface } from "@/features/shared/page-primitives"
+import { AuthScreenSkeleton } from "@/components/skeleton"
 
 import type { HomeViewCopy } from "./home-view-copy"
 
@@ -62,13 +63,7 @@ export function HomeViewAuthScreen({
   signInPending: boolean
 }) {
   if (isAuthStateLoading) {
-    return (
-      <main className="flex h-screen items-center justify-center overflow-y-auto px-6 py-8" dir="rtl">
-        <Surface className="surface-auth w-full max-w-lg p-8 text-center lg:p-10">
-          <p className="text-sm text-muted-foreground">{copy.common.loadingAuth}</p>
-        </Surface>
-      </main>
-    )
+    return <AuthScreenSkeleton />
   }
 
   if (authStartupError) {

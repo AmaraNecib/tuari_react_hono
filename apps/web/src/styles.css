@@ -90,8 +90,8 @@
   --s-12: 48px; --s-16: 64px;
 
   /* Layout */
-  --sidebar-w:           232px;
-  --sidebar-collapsed-w: 56px;
+  --sidebar-w:           14.5rem;
+  --sidebar-collapsed-w: 3.5rem;
   --header-h:            52px;
   --row-h:               40px;
 
