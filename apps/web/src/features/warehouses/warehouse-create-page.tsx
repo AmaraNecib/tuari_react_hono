@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
-import { AppMutationError, useCreateWarehouseMutation } from "@/features/app-shell/mock-dashboard"
+import { AppMutationError, useCreateWarehouseMutation } from "@/features/app-shell/workspace-mutations"
 import { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
