@@ -2,6 +2,7 @@ import { getCombinedDebtBalance, sortDebtAccounts } from "@/features/debts/debt-
 
 import type { DemoWorkspace } from "./workspace-queries"
 
+/** Derives debt summary data from workspace. */
 export function buildDebtDerivedCollections({
   employeeRows,
   workspace,

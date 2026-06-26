@@ -8,6 +8,7 @@ interface BatchSelectableRowProps {
   className?: string;
 }
 
+/** Table row with batch selection checkbox. */
 export function BatchSelectableRow({
   id,
   isSelected,

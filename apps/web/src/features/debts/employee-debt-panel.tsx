@@ -10,6 +10,7 @@ import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 import { useEmployeeDebtAccountQuery, useCreateEmployeeDebtEntryMutation } from "./employee-debt-hooks"
 import { formatDebtMoney, getDebtAccountBalanceMeta, getDebtDirectionLabel } from "./debt-utils"
 
+/** Employee debt panel with balance and entry history. */
 export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
   const debtAccountQuery = useEmployeeDebtAccountQuery(employeeId)
   const createEntryMutation = useCreateEmployeeDebtEntryMutation()

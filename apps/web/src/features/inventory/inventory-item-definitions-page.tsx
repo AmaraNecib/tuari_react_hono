@@ -16,6 +16,7 @@ function FieldLabel({ label, required = false }: { label: string; required?: boo
   )
 }
 
+/** Item definitions management page. */
 export function InventoryItemDefinitionsPage() {
   const { t } = useTranslation()
   const listQuery = useInventoryItemDefinitionsQuery()

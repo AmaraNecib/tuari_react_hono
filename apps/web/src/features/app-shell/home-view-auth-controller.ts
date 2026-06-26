@@ -17,6 +17,7 @@ type SessionQuery = ReturnType<typeof useDemoSessionQuery>
 type BootstrapMutation = ReturnType<typeof useBootstrapFirstUserMutation>
 type SignInMutation = ReturnType<typeof useDemoSignInMutation>
 
+/** Manages auth state: login, bootstrap, error handling. */
 export function useHomeViewAuthController({
   bootstrapMutation,
   copy,

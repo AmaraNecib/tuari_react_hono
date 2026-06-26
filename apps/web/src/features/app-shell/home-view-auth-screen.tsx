@@ -15,6 +15,7 @@ type FormErrors = {
   setupSecret?: string
 }
 
+/** Login/bootstrap form with phone and password fields. */
 export function HomeViewAuthScreen({
   authError,
   authStartupError,

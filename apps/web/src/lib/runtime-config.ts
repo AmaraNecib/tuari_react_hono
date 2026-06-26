@@ -56,11 +56,13 @@ function normalizeApiBaseUrl(value: string) {
   return parsedUrl.toString().replace(/\/+$/, "")
 }
 
+/** Resolves a full API URL from a relative path. */
 export function resolveApiUrl(path: string) {
   const baseUrl = new URL(`${resolveApiBaseUrl().replace(/\/+$/, "")}/`)
   return new URL(path.replace(/^\//, ""), baseUrl).toString()
 }
 
+/** Returns the configured API base URL. */
 export function resolveApiBaseUrl() {
   return runtimeConfig.apiBaseUrl
 }

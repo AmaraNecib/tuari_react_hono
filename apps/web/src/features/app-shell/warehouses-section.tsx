@@ -49,6 +49,7 @@ type WarehousesSectionProps = {
   onView: (row: WarehouseRow) => void
 }
 
+/** Warehouses section with table and CRUD actions. */
 export function WarehousesSection({
   addLabel,
   archiveLabel,

@@ -64,6 +64,7 @@ function parseSalaryAmount(value: string) {
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : Number.NaN
 }
 
+/** Employee edit page with form fields. */
 export function EmployeeEditPage({
   currentManagedProjectIds,
   currentManagedWarehouseIds,

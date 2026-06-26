@@ -97,6 +97,7 @@ function renderMoneyValue(
   )
 }
 
+/** Employee detail page with tabs for personal, work, and finance. */
 export function EmployeeDetailsPage({
   activeTab,
   debtAccounts,

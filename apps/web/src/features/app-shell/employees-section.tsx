@@ -76,6 +76,7 @@ type PendingAction =
   | { type: "leave"; employee: EmployeeTableRow }
   | { type: "delete"; employee: EmployeeTableRow }
 
+/** Employees section with table, pagination, and CRUD actions. */
 export function EmployeesSection({
   createTarget,
   emptyLabel,

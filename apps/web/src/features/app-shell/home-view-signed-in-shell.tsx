@@ -21,6 +21,7 @@ import { WorkspaceBreadcrumbs } from "./workspace-breadcrumbs"
 import { WorkspaceSidebar } from "./workspace-sidebar"
 import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
 
+/** Main app shell with sidebar, header, and content area. */
 export function HomeViewSignedInShell({
   breadcrumbItems,
   children,

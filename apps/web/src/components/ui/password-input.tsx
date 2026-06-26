@@ -10,6 +10,7 @@ type PasswordInputProps = Omit<ComponentProps<typeof Input>, "type"> & {
   showLabel: string
 }
 
+/** Password input with show/hide toggle. */
 export function PasswordInput({ hideLabel, showLabel, ...props }: PasswordInputProps) {
   const [visible, setVisible] = useState(false)
   const inputId = useId()

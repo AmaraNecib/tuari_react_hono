@@ -19,6 +19,7 @@ import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
 import { cn } from "@/lib/utils"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 
+/** Dialog for recording a debt payment. */
 export function RecordPaymentDialog({
   debtAccount,
   open,

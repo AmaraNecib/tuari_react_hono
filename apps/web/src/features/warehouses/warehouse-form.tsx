@@ -25,6 +25,7 @@ export function createWarehouseFormState(warehouse?: WarehousePageRecord | null)
   }
 }
 
+/** Reusable form fields for warehouse create/edit. */
 export function WarehouseFormFields({
   errors,
   labels,

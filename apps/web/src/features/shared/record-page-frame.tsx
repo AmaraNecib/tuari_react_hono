@@ -22,6 +22,7 @@ function getPanelId(baseId: string, tabId: string) {
   return `${baseId}-panel-${tabId}`
 }
 
+/** Frame for detail/edit pages with action bar. */
 export function RecordPageFrame({
   title,
   description,

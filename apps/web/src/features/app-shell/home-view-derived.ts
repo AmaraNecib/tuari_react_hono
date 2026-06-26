@@ -21,6 +21,7 @@ import type { DemoWorkspace } from "./workspace-queries"
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
+/** Computes derived workspace data from raw query results. */
 export function buildHomeViewDerived({
   copy,
   detailCopy,

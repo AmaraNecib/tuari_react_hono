@@ -22,6 +22,7 @@ interface BatchOperationsToolbarProps {
   onOperation: (operationId: string) => void;
 }
 
+/** Toolbar for batch operations on selected rows. */
 export function BatchOperationsToolbar({
   selectCount,
   isAllSelected,

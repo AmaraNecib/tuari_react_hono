@@ -44,6 +44,7 @@ type WorkspaceLinkProps = Omit<ComponentProps<typeof Link>, "to" | "params" | "s
   target: WorkspaceRouteTarget
 }
 
+/** Route path builders for workspace pages. */
 export const workspaceRoutes = {
   dashboard: (): WorkspaceRouteTarget => ({ to: "/" }),
   employees: (): WorkspaceRouteTarget => ({ to: "/employees" }),
@@ -130,6 +131,7 @@ export function navigateToWorkspaceRoute(
   return createWorkspaceNavigator(navigate)(target)
 }
 
+/** Navigation link component for workspace routes. */
 export function WorkspaceLink({ target, ...props }: WorkspaceLinkProps) {
   return <Link {...props} {...getWorkspaceLinkProps(target)} />
 }

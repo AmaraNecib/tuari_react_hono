@@ -8,6 +8,7 @@ import type { DemoWorkspace } from "./workspace-queries"
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
+/** Derives project list data from workspace. */
 export function deriveProjectArchiveState(activeWorkers: number, t: Translate) {
   const canArchive = activeWorkers === 0
 

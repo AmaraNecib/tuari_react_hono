@@ -79,6 +79,7 @@ function createAssetLine(defaultName = "", purchaseDate = getTodayDateValue()): 
   return { kind: "ASSET", itemDefinitionId: "", warehouseId: "", projectId: "", note: "", assets: [createAssetRow(defaultName, purchaseDate)] }
 }
 
+/** Invoice creation page with line items and file attachments. */
 export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceId: string) => void }) {
   const definitionsQuery = useInventoryItemDefinitionsQuery()
   const warehousesQuery = useInventoryWarehousesQuery()

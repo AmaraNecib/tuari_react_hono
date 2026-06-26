@@ -36,4 +36,5 @@ export const rpcLink = new RPCLink({
 })
 
 export const rpcClient: AppClient = createORPCClient(rpcLink)
+/** Configured oRPC client for API calls. */
 export const orpc = createTanstackQueryUtils(rpcClient)

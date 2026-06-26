@@ -241,6 +241,7 @@ const routeTree = rootRoute.addChildren([
   settingsRoute,
 ])
 
+/** TanStack Router instance with all routes. */
 export const router = createRouter({
   routeTree,
   defaultPreload: "intent",

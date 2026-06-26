@@ -70,6 +70,7 @@ type EmployeeTableProps = {
   onView: (row: EmployeeTableRow) => void
 }
 
+/** Employee table with row actions for view/edit/leave/delete. */
 export function EmployeeTable({ copy, rows, onDelete, onEdit, onLeave, onView }: EmployeeTableProps) {
   const { t } = useTranslation()
   // rows are already paginated by the parent (cursor-based pagination)

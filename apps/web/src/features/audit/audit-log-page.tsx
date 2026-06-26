@@ -19,6 +19,7 @@ interface AuditLog {
   changes: string;
 }
 
+/** Audit log page with date filtering and search. */
 export function AuditLogPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [domain, setDomain] = useState("ALL");

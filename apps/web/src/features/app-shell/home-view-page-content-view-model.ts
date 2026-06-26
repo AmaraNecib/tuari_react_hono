@@ -4,6 +4,7 @@ import {
   includeCurrentWarehouseManagerOption,
 } from "./home-view-page-content-shared"
 
+/** Builds view model for page content rendering. */
 export function buildEmployeeEditManagerOptions(
   derived: HomeViewPageContentProps["derived"],
   selectedEmployee: HomeViewPageContentProps["selectedEmployee"],

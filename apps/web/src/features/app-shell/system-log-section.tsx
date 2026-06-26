@@ -146,6 +146,7 @@ function SystemLogDetailsCell({ detail }: { detail: string | null | undefined })
   )
 }
 
+/** System log section with filtered activity list. */
 export function SystemLogSection({
   entries,
   filters,

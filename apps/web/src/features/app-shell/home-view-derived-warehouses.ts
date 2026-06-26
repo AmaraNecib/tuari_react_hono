@@ -8,6 +8,7 @@ import type { DemoWorkspace } from "./workspace-queries"
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
+/** Derives warehouse list data from workspace. */
 export function deriveWarehouseArchiveState({
   hasActiveManagerRelation,
   hasActiveWarehouseWorkers,

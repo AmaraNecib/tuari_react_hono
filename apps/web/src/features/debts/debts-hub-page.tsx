@@ -24,6 +24,7 @@ const FILTER_OPTIONS: Array<{ id: FilterOption; label: string }> = [
   { id: "settled", label: "مغلقة" },
 ]
 
+/** Debts hub with summary cards and employee/external lists. */
 export function DebtsHubPage({
   onCreateDebt,
   onOpenExternalCounterparty,

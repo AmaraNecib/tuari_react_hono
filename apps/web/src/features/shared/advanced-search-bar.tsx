@@ -9,6 +9,7 @@ interface AdvancedSearchBarProps {
   debounceMs?: number;
 }
 
+/** Search bar with filters and preset management. */
 export function AdvancedSearchBar({
   onSearch,
   storageKey,

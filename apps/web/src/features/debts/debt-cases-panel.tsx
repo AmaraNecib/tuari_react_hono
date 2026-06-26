@@ -31,6 +31,7 @@ function CasesStatCard({ label, value, valueClassName }: { label: string; value:
   )
 }
 
+/** Debt cases panel with consolidation actions. */
 export function DebtCasesPanel({
   accounts,
   debtEntriesByAccountId,

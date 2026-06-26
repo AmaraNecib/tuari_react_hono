@@ -60,6 +60,7 @@ function createFormState(employee: EmployeeTableRow): FormState {
 //   return Number.isFinite(numeric) && numeric >= 0 ? numeric : Number.NaN
 // }
 
+/** Employee edit page with improved form layout. */
 export function EmployeeEditPageV2({
   currentManagedProjectIds,
   currentManagedWarehouseIds,

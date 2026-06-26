@@ -52,6 +52,7 @@ export type EmployeeRelationshipFacts = {
   warehousesByManagerId: Map<string, DemoWorkspace["warehouses"]>
 }
 
+/** Derives employee list data from workspace. */
 export function buildEmployeeRelationshipFacts(workspace: DemoWorkspace): EmployeeRelationshipFacts {
   const employeeIdsWithManagerHistory = new Set<string>()
 

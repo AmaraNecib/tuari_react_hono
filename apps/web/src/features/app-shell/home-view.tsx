@@ -60,6 +60,7 @@ function WorkspaceStateMessage({
   )
 }
 
+/** Root workspace component: auth gate + shell. */
 export function HomeView({
   detailTab,
   page = "dashboard",

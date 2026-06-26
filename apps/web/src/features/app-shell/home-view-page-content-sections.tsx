@@ -11,6 +11,7 @@ import { SettingsSection } from "./settings-section"
 import { SystemLogSection } from "./system-log-section"
 import { WarehousesSection } from "./warehouses-section"
 
+/** Renders the main content section for each workspace page. */
 export function HomeViewPageSectionContent({
   copy,
   derived,

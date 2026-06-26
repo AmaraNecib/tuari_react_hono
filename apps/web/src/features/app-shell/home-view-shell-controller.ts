@@ -18,6 +18,7 @@ type RemoveRecordMutation = ReturnType<typeof useRemoveWorkspaceRecordMutation>
 type SignOutMutation = ReturnType<typeof useDemoSignOutMutation>
 type ResetWorkspaceMutation = ReturnType<typeof useResetWorkspaceMutation>
 
+/** Manages shell state: sidebar, delete dialog, sign-out dialog. */
 export function useHomeViewShellController({
   copy,
   removeRecordMutation,

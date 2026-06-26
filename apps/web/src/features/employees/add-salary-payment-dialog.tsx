@@ -15,6 +15,7 @@ import { useCreateSalaryPaymentMutation } from "@/features/app-shell/workspace-m
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 
+/** Dialog for recording a salary payment. */
 export function AddSalaryPaymentDialog({
   employeeId,
   employeeName,

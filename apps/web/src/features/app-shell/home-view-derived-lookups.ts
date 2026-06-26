@@ -1,5 +1,6 @@
 import type { DemoWorkspace } from "./workspace-queries"
 
+/** Builds lookup maps for roles, warehouses, projects. */
 export function buildHomeViewDerivedLookups(workspace: DemoWorkspace) {
   return {
     roleById: new Map(workspace.roles.map((role) => [role.id, role])),
