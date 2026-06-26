@@ -113,7 +113,7 @@ function buildWhere(conditions: WhereCond[]): WhereCond | undefined {
 
 /** Map Drizzle role row to RoleRecord. */
 function toRole(r: typeof schema.role.$inferSelect): RoleRecord {
-  return { id: r.id, key: r.key, name: r.name, description: r.description ?? null, isSystem: r.isSystem, createdAt: r.createdAt, updatedAt: r.updatedAt };
+  return { id: r.id, key: r.key, name: r.name, description: r.description ?? null, isSystem: r.isSystem === 1, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
 /** Map Drizzle employee row to EmployeeRecord. */
@@ -187,7 +187,7 @@ function toSalaryPayment(r: typeof schema.employeeSalaryPayment.$inferSelect): E
 
 /** Map Drizzle user profile history row. */
 function toUserProfileHistory(r: typeof schema.userProfileHistory.$inferSelect): UserProfileHistoryRecord {
-  return { id: r.id, userId: r.userId, name: r.name ?? null, phone: r.phone ?? null, previousName: r.previousName ?? null, previousPhone: r.previousPhone ?? null, passwordChanged: r.passwordChanged, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+  return { id: r.id, userId: r.userId, name: r.name ?? null, phone: r.phone ?? null, previousName: r.previousName ?? null, previousPhone: r.previousPhone ?? null, passwordChanged: r.passwordChanged === 1, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
 // ---------------------------------------------------------------------------
@@ -344,7 +344,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
   createRole(data: RoleCreateData): RoleRecord {
     const id = crypto.randomUUID();
     const ts = createAlgeriaTimestamp();
-    this.db.insert(schema.role).values({ id, key: data.key, name: data.name, description: data.description ?? null, isSystem: false, createdAt: ts, updatedAt: ts }).run();
+    this.db.insert(schema.role).values({ id, key: data.key, name: data.name, description: data.description ?? null, isSystem: 0, createdAt: ts, updatedAt: ts }).run();
     return this.getRoleById(id)!;
   }
 
@@ -867,7 +867,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   listInventoryItemDefinitionsForLog(): InventoryItemDefinitionAuditRecord[] {
     try {
-      return this.db.select().from(schema.inventoryItemDefinition).orderBy(desc(schema.inventoryItemDefinition.createdAt)).all().map((r) => ({ id: r.id, name: r.name, itemType: r.itemType as InventoryItemDefinitionAuditRecord["itemType"], unit: r.unit ?? null, description: r.description ?? null, isActive: r.isActive, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt }));
+      return this.db.select().from(schema.inventoryItemDefinition).orderBy(desc(schema.inventoryItemDefinition.createdAt)).all().map((r) => ({ id: r.id, name: r.name, itemType: r.itemType as InventoryItemDefinitionAuditRecord["itemType"], unit: r.unit ?? null, description: r.description ?? null, isActive: r.isActive === 1, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt }));
     } catch (e) { if (e instanceof Error && e.message.includes("no such table")) return []; throw e; }
   }
 

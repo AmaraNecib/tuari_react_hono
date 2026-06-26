@@ -17,7 +17,7 @@ export type AccountRepositoryTransaction = {
     createdAt: Date;
     id: string;
     name: string | null;
-    passwordChanged?: boolean;
+    passwordChanged?: number;
     phone: string | null;
     previousName: string | null;
     previousPhone: string | null;
@@ -50,7 +50,7 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
     createdAt: Date;
     id: string;
     name: string | null;
-    passwordChanged?: boolean;
+    passwordChanged?: number;
     phone: string | null;
     previousName: string | null;
     previousPhone: string | null;
@@ -65,7 +65,7 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
       phone: input.phone,
       previousName: input.previousName,
       previousPhone: input.previousPhone,
-      passwordChanged: input.passwordChanged ?? false,
+      passwordChanged: (input.passwordChanged ?? false) ? 1 : 0,
       actorUserId: input.actorUserId,
       actorLabel: input.actorLabel,
       transactionId: input.transactionId,
@@ -112,7 +112,7 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
     }
     if (input.phone !== undefined) {
       updateData.phoneNumber = input.phone;
-      updateData.phoneNumberVerified = true;
+      updateData.phoneNumberVerified = 1;
     }
 
     await this.tx

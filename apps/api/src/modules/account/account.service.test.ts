@@ -162,7 +162,7 @@ describe("AccountService", () => {
 
     expect(createProfileHistory).toHaveBeenCalledWith(
       expect.objectContaining({
-        passwordChanged: true,
+        passwordChanged: 1,
         previousName: null,
         previousPhone: null,
       }),
@@ -202,7 +202,7 @@ describe("AccountService", () => {
     expect(createProfileHistory).toHaveBeenCalledWith(
       expect.objectContaining({
         actorLabel: "عمارة",
-        passwordChanged: true,
+        passwordChanged: 1,
       }),
     )
   })
