@@ -271,7 +271,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   listItemDefinitions(filters?: InventoryItemDefinitionListFilters) {
     const conditions: ReturnType<typeof eq>[] = []
     if (filters?.itemType) conditions.push(eq(schema.inventoryItemDefinition.itemType, filters.itemType))
-    if (typeof filters?.isActive === "boolean") conditions.push(eq(schema.inventoryItemDefinition.isActive, filters.isActive))
+    if (typeof filters?.isActive === "boolean") conditions.push(eq(schema.inventoryItemDefinition.isActive, filters.isActive ? 1 : 0))
 
     const q = this.db.select().from(schema.inventoryItemDefinition)
     const rows = (conditions.length > 0 ? q.where(and(...conditions)) : q)
@@ -293,7 +293,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     const audit = normalizeAuditContext(auditContext)
     this.db.insert(schema.inventoryItemDefinition).values({
       id, name: data.name, itemType: data.itemType, unit: data.unit ?? null,
-      description: data.description ?? null, isActive: true,
+      description: data.description ?? null, isActive: 1,
       actorUserId: audit.actorUserId, actorLabel: audit.actorLabel,
       transactionId: audit.transactionId, createdAt: timestamp, updatedAt: timestamp,
     }).run()
@@ -315,7 +315,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
     this.db.update(schema.inventoryItemDefinition).set({
       name: next.name, itemType: next.itemType, unit: next.unit ?? null,
-      description: next.description ?? null, isActive: next.isActive,
+      description: next.description ?? null, isActive: next.isActive ? 1 : 0,
       updatedAt: next.updatedAt,
     }).where(eq(schema.inventoryItemDefinition.id, data.id)).run()
 

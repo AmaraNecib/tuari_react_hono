@@ -15,7 +15,7 @@ export const inventoryItemDefinition = sqliteTable(
     itemType: text("item_type").notNull(),
     unit: text("unit"),
     description: text("description"),
-    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    isActive: integer("is_active", { mode: "number" }).notNull().default(1),
     actorUserId: text("actor_user_id"),
     actorLabel: text("actor_label"),
     transactionId: text("transaction_id"),
