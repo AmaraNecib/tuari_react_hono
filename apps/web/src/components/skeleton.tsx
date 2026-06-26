@@ -28,6 +28,7 @@ function ShimmerAvatar({ className }: { className?: string }) {
 
 /* ─── Dashboard skeleton ────────────────────────────── */
 
+/** Shimmer skeleton for the dashboard loading state. */
 export function DashboardSkeleton() {
   return (
     <div className="space-y-8 p-7" role="status" aria-label="loading dashboard">
@@ -55,6 +56,7 @@ export function DashboardSkeleton() {
 
 /* ─── List page skeleton (employees, projects, etc.) ── */
 
+/** Shimmer skeleton for list page loading states (employees, projects, etc.). */
 export function ListPageSkeleton({ rowCount = 6 }: { rowCount?: number }) {
   return (
     <div className="p-7 space-y-6" role="status" aria-label="loading list">
@@ -103,6 +105,7 @@ export function ListPageSkeleton({ rowCount = 6 }: { rowCount?: number }) {
 
 /* ─── Detail page skeleton (employee, project, etc.) ── */
 
+/** Shimmer skeleton for detail page loading states. */
 export function DetailPageSkeleton() {
   return (
     <div className="p-7 space-y-6" role="status" aria-label="loading detail">
@@ -143,6 +146,7 @@ export function DetailPageSkeleton() {
 
 /* ─── Settings skeleton ─────────────────────────────── */
 
+/** Shimmer skeleton for settings page loading state. */
 export function SettingsPageSkeleton() {
   return (
     <div className="p-7 space-y-6" role="status" aria-label="loading settings">
@@ -163,6 +167,7 @@ export function SettingsPageSkeleton() {
 
 /* ─── Simple content skeleton (transactions, etc.) ──── */
 
+/** Generic content skeleton with configurable number of lines. */
 export function ContentSkeleton({ lines = 8 }: { lines?: number }) {
   return (
     <div className="p-7 space-y-4" role="status" aria-label="loading content">
@@ -178,6 +183,7 @@ export function ContentSkeleton({ lines = 8 }: { lines?: number }) {
 
 /* ─── App shell skeleton (for initial load) ─────────── */
 
+/** Full app shell skeleton with sidebar and main content area. */
 export function AppShellSkeleton() {
   return (
     <div className="flex h-screen" role="status" aria-label="loading application">
@@ -232,6 +238,7 @@ export function AppShellSkeleton() {
 
 /* ─── Auth screen skeleton ──────────────────────────── */
 
+/** Auth screen skeleton with form fields. */
 export function AuthScreenSkeleton() {
   return (
     <main className="flex h-screen items-center justify-center bg-bg" role="status" aria-label="loading auth">

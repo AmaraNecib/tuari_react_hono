@@ -11,6 +11,7 @@ export const formControlClassName =
 export const formInputClassName = cn(formControlClassName, "h-10")
 export const formTextareaClassName = cn(formControlClassName, "min-h-24 py-3")
 
+/** Styled native select with chevron icon. Wraps <select> with consistent form control styling. */
 function NativeSelect({ className, children, ...props }: ComponentProps<"select">) {
   return (
     <span className="relative block w-full">
@@ -25,6 +26,7 @@ function NativeSelect({ className, children, ...props }: ComponentProps<"select"
   )
 }
 
+/** Styled textarea with consistent form control styling. */
 function Textarea({ className, ...props }: ComponentProps<"textarea">) {
   return <textarea className={cn(formTextareaClassName, className)} {...props} />
 }
@@ -74,6 +76,7 @@ function CurrencyInput({
 }
 
 
+/** Styled file input with translated "No file chosen" / "Choose Files" text. */
 function FileInput({ className, label, chooseLabel, ...props }: ComponentProps<"input"> & { label?: string; chooseLabel?: string }) {
   const { t } = useTranslation()
   const resolvedLabel = label ?? t("common.noFileChosen")

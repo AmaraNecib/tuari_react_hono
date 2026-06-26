@@ -17,6 +17,7 @@ export function getNextLocale(locale: AppLocale): AppLocale {
   return locale
 }
 
+/** Returns the text direction for a given locale. Arabic = RTL, others = LTR. */
 export function getLocaleDirection(locale?: AppLocale) {
   return locale === "ar" ? "rtl" : "ltr"
 }
@@ -31,6 +32,7 @@ function readStoredLocale(): AppLocale {
   return storedLocale === "ar" ? "ar" : DEFAULT_LOCALE
 }
 
+/** Applies the theme to the document root and persists to localStorage. */
 export function applyTheme(theme: AppTheme) {
   const root = document.documentElement
   root.classList.toggle("dark", theme === "dark")
@@ -38,6 +40,7 @@ export function applyTheme(theme: AppTheme) {
   window.localStorage.setItem(STORAGE_KEYS.theme, theme)
 }
 
+/** Applies the locale to the document root (lang, dir, data-locale) and persists. */
 export function applyLocale(locale: AppLocale) {
   const root = document.documentElement
   root.lang = locale
@@ -54,6 +57,7 @@ export function readAppliedLocale(): AppLocale {
   return "ar"
 }
 
+/** Applies stored theme and locale on app startup. */
 export function bootstrapPreferences() {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return

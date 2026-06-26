@@ -33,6 +33,7 @@ type DatePickerProps = {
   id?: string
 } & Pick<DayPickerProps, "mode">
 
+/** Date picker with Arabic locale support. Uses DD/MM/YYYY format. */
 export function DatePicker({
   value,
   onChange,

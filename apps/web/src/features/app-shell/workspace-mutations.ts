@@ -107,6 +107,7 @@ async function ensureWorkspace(queryClient: ReturnType<typeof useQueryClient>, u
   }
 }
 
+/** Invalidate workspace query caches for the given domains. */
 async function invalidateWorkspaceDomains(
   queryClient: ReturnType<typeof useQueryClient>,
   userId: string | null,
@@ -121,7 +122,7 @@ async function invalidateWorkspaceDomains(
   )
 }
 
-/** Invalidate both workspace AND inventory query caches so dropdowns/lists refresh everywhere. */
+/** Invalidate both workspace AND inventory query caches so dropdowns/lists refresh everywhere. Uses Promise.all for concurrent invalidation. */
 async function invalidateAll(
   queryClient: ReturnType<typeof useQueryClient>,
   userId: string | null,
