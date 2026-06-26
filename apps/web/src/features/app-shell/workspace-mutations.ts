@@ -378,7 +378,7 @@ export function useUpdateProjectMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["projects", "employees", "warehouses", "debtsSummary", "debtsDetail"])
+      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["projects", "employees", "warehouses", "debtsSummary", "debtsDetail"], ["projects"])
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -403,7 +403,7 @@ export function useCreateProjectMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["projects", "employees", "warehouses", "debtsSummary", "debtsDetail"])
+      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["projects", "employees", "warehouses", "debtsSummary", "debtsDetail"], ["projects"])
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -486,7 +486,7 @@ export function useUpdateEmployeeWorkplaceMutation() {
       )
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses"])
+      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses"], ["warehouses", "projects"])
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -509,7 +509,7 @@ export function useSyncManagedProjectsMutation() {
       )
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["projects", "employees", "warehouses"])
+      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["projects", "employees", "warehouses"], ["warehouses", "projects"])
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -579,7 +579,7 @@ export function useCreateExternalCounterpartyMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"])
+      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"], ["counterparties"])
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -624,7 +624,7 @@ export function useCreateDebtAccountMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"])
+      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"], ["counterparties"])
       showSuccessToast(message)
     },
     onError: (error) => {
