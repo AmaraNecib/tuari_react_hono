@@ -34,9 +34,9 @@ export const userProfileHistory = sqliteTable("user_profile_history", {
   phone: text("phone"),
   previousName: text("previous_name"),
   previousPhone: text("previous_phone"),
-  passwordChanged: integer("password_changed", { mode: "number" })
+  passwordChanged: integer("password_changed", { mode: "boolean" })
     .notNull()
-    .default(0),
+    .default(false),
   actorUserId: text("actor_user_id"),
   actorLabel: text("actor_label"),
   transactionId: text("transaction_id"),
@@ -50,7 +50,7 @@ export const role = sqliteTable("role", {
   key: text("key").notNull().unique(),
   name: text("name").notNull(),
   description: text("description"),
-  isSystem: integer("is_system", { mode: "number" }).notNull().default(0),
+  isSystem: integer("is_system", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

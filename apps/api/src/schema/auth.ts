@@ -12,9 +12,9 @@ export const user = sqliteTable("user", {
   name: text("name").notNull(),
   image: text("image"),
   phoneNumber: text("phoneNumber").notNull().unique(),
-  phoneNumberVerified: integer("phoneNumberVerified", { mode: "number" })
+  phoneNumberVerified: integer("phoneNumberVerified", { mode: "boolean" })
     .notNull()
-    .default(0),
+    .default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

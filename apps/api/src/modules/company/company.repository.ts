@@ -344,7 +344,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
   createRole(data: RoleCreateData): RoleRecord {
     const id = crypto.randomUUID();
     const ts = createAlgeriaTimestamp();
-    this.db.insert(schema.role).values({ id, key: data.key, name: data.name, description: data.description ?? null, isSystem: false, createdAt: ts, updatedAt: ts }).run();
+    this.db.insert(schema.role).values({ id, key: data.key, name: data.name, description: data.description ?? null, isSystem: 0, createdAt: ts, updatedAt: ts }).run();
     return this.getRoleById(id)!;
   }
 

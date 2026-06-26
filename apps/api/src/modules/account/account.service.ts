@@ -71,7 +71,7 @@ export class AccountService {
         phone: null,
         previousName: null,
         previousPhone: null,
-        passwordChanged: true,
+        passwordChanged: 1,
         actorUserId: user.id,
         actorLabel: user.name ?? user.phoneNumber,
         transactionId: crypto.randomUUID(),
