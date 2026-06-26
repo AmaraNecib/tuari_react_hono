@@ -44,7 +44,7 @@ function AlertDialogContent({
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-[min(92vw,28rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-3xl border border-white/70 bg-card/95 p-6 text-card-foreground shadow-[0_24px_80px_rgba(15,23,42,0.22)] backdrop-blur-xl dark:border-white/10",
+          "fixed top-1/2 left-1/2 z-50 grid w-[min(92vw,28rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-3xl border border-white/70 bg-card/95 p-6 text-card-foreground shadow-[0_24px_80px_rgba(15,23,42,0.22)] dark:border-white/10",
           className,
         )}
         data-slot="alert-dialog-content"

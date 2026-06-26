@@ -47,7 +47,7 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
   return (
     <div className="space-y-6">
       <div className="grid gap-4">
-        <Surface className="rounded-[22px] px-5 py-4" variant="card">
+        <Surface className="rounded-xl px-5 py-4" variant="card">
           <p className="text-sm text-muted-foreground">
             {debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
           </p>

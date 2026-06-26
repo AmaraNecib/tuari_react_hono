@@ -38,7 +38,7 @@ function FieldSection({
   children: ReactNode
 }) {
   return (
-    <section className="surface-card space-y-4 rounded-[26px] p-5">
+    <section className="surface-card space-y-4 rounded-xl p-5">
       <div className="space-y-1">
         <h2 className="text-lg font-semibold text-foreground">{title}</h2>
         {description ? <p className="text-sm leading-6 text-muted-foreground">{description}</p> : null}

@@ -295,7 +295,7 @@ export function RecordHistoryCard({
       <div className="mt-4 space-y-3">
         {items.length > 0 ? (
           items.map((item) => (
-            <Surface key={item.id} className="rounded-[22px] px-4 py-3" variant="inset">
+            <Surface key={item.id} className="rounded-xl px-4 py-3" variant="inset">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
                   <p className="font-medium text-foreground">{item.label}</p>

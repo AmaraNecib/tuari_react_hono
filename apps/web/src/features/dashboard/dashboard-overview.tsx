@@ -20,7 +20,7 @@ export function DashboardOverview() {
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {/* Value Summary Card */}
-          <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+          <div className="rounded-lg border border-border/60 bg-surface p-4">
             <p className="text-sm text-muted-foreground">إجمالي القيمة</p>
             <div className="mt-2 space-y-1">
               {inventoryReport.isLoading ? (
@@ -41,7 +41,7 @@ export function DashboardOverview() {
           </div>
 
           {/* Debt Summary Card */}
-          <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+          <div className="rounded-lg border border-border/60 bg-surface p-4">
             <p className="text-sm text-muted-foreground">الديون المتبقية</p>
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
@@ -62,7 +62,7 @@ export function DashboardOverview() {
           </div>
 
           {/* Aging Analysis Card */}
-          <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+          <div className="rounded-lg border border-border/60 bg-surface p-4">
             <p className="text-sm text-muted-foreground">تحليل الأعمار</p>
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
@@ -87,7 +87,7 @@ export function DashboardOverview() {
           </div>
 
           {/* Top Debtors Card */}
-          <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+          <div className="rounded-lg border border-border/60 bg-surface p-4">
             <p className="text-sm text-muted-foreground">أكبر المدينين</p>
             <div className="mt-2 space-y-1">
               {debtReport.isLoading ? (
@@ -109,7 +109,7 @@ export function DashboardOverview() {
         </div>
 
         {/* Quick Actions */}
-        <div className="mt-6 rounded-lg border border-border/60 bg-background/10 p-4">
+        <div className="mt-6 rounded-lg border border-border/60 bg-surface p-4">
           <p className="mb-3 text-sm font-medium">الإجراءات السريعة</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm">إضافة فاتورة</Button>

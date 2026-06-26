@@ -17,7 +17,7 @@ import { VoidEntryDialog } from "./void-entry-dialog"
 
 function DebtStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
-    <Surface className="rounded-[22px] px-5 py-4" variant="card">
+    <Surface className="rounded-xl px-5 py-4" variant="card">
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className={cn("mt-2 font-mono text-xl font-semibold", valueClassName)} dir="ltr">
         {value}

@@ -12,7 +12,7 @@ export function DebtPartySummaryCard({ accounts, personName }: { accounts: DebtA
   const settledCount = accounts.filter((a) => a.status === "SETTLED").length
 
   return (
-    <Surface className="rounded-[22px] p-5" variant="card">
+    <Surface className="rounded-xl p-5" variant="card">
       <div className="space-y-4">
         <div>
           <p className="text-sm text-muted-foreground">{t("detailPages.debt.partySummaryCard.balanceLabel", { personName })}</p>

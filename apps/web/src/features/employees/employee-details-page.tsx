@@ -263,7 +263,7 @@ export function EmployeeDetailsPage({
             />
           </RecordInfoGrid>
 
-          <div className="rounded-[28px] border border-border/70 bg-sidebar p-5 shadow-sm dark:bg-background/60" dir="rtl">
+          <div className="rounded-xl border border-border/70 bg-sidebar p-5 shadow-sm dark:bg-surface" dir="rtl">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between" dir="rtl">
               <div className="space-y-1 text-start">
                 <h3 className="text-lg font-semibold text-foreground">{t("detailPages.employee.financeSectionTitle")}</h3>
@@ -288,7 +288,7 @@ export function EmployeeDetailsPage({
             ) : null}
 
             {showPaymentForm ? (
-              <div className="mt-5 space-y-4 rounded-[24px] border border-border/60 bg-background/28 p-4">
+              <div className="mt-5 space-y-4 rounded-xl border border-border/60 bg-surface-2 p-4">
                 <div className="space-y-1">
                   <h4 className="text-base font-semibold text-foreground">{t("detailPages.employee.financeFormTitle")}</h4>
                   <p className="text-sm leading-6 text-muted-foreground">
@@ -345,7 +345,7 @@ export function EmployeeDetailsPage({
             ) : null}
           </div>
 
-          <div className="overflow-hidden rounded-[28px] border border-border/70 bg-sidebar shadow-sm dark:bg-background/60" dir="rtl">
+          <div className="overflow-hidden rounded-xl border border-border/70 bg-sidebar shadow-sm dark:bg-surface" dir="rtl">
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm" aria-label={t("detailPages.employee.financeSectionTitle")}>
                 <thead className="bg-muted/40 text-muted-foreground">

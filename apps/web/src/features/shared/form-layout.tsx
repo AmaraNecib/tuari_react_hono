@@ -67,7 +67,7 @@ export function FormSection({
         </div>
       </div>
       
-      <div className="rounded-[30px] border border-border/50 bg-sidebar/50 p-6 shadow-sm surface-panel md:w-2/3 xl:p-8">
+      <div className="rounded-xl border border-border/50 bg-sidebar/50 p-6 shadow-sm surface-panel md:w-2/3 xl:p-8">
         <div className="grid gap-6 sm:grid-cols-2">
           {children}
         </div>
@@ -84,7 +84,7 @@ export function FormStickyFooter({
   className?: string
 }) {
   return (
-    <div className={cn("fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/80 p-4 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] backdrop-blur-md", className)} dir="rtl">
+    <div className={cn("fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/80 p-4 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]", className)} dir="rtl">
       <div className="mx-auto flex max-w-5xl justify-end gap-3 px-4">
         {children}
       </div>

@@ -78,7 +78,7 @@ export function RecordInvoicePaymentDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="rounded-[22px] border border-border/60 bg-background/60 p-4">
+          <div className="rounded-xl border border-border/60 bg-surface p-4">
             <p className="text-sm text-muted-foreground">الدين المتبقي</p>
             <p className={cn("mt-2 font-mono text-2xl font-semibold", remainingDebt > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400")} dir="ltr">
               {remainingDebt.toFixed(2)} دج

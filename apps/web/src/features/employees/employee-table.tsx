@@ -78,7 +78,7 @@ export function EmployeeTable({ copy, rows, onDelete, onEdit, onLeave, onView }:
   const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
 
   return (
-    <div className="overflow-hidden rounded-[28px] border border-border/60">
+    <div className="overflow-hidden rounded-xl border border-border/60">
       <AddSalaryPaymentDialog
         employeeId={paymentTarget?.id ?? null}
         employeeName={paymentTarget?.name}

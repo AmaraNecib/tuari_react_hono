@@ -73,7 +73,7 @@ export function VoidEntryDialog({
 
         <div className="space-y-4">
           {/* Entry summary */}
-          <div className="rounded-[22px] border border-border/60 bg-background/60 p-4">
+          <div className="rounded-xl border border-border/60 bg-surface p-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
                 {entry.entryType === "OPENING" ? "رصيد افتتاحي" : "دفعة"}
@@ -90,7 +90,7 @@ export function VoidEntryDialog({
 
           {/* Cascade warning for OPENING void */}
           {hasLivePayments && (
-            <div className="rounded-[22px] border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/20">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/20">
               <p className="text-sm font-medium text-amber-900 dark:text-amber-300">
                 تحذير: إلغاء الرصيد الافتتاحي
               </p>

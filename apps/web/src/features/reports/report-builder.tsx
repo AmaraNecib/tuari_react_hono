@@ -54,7 +54,7 @@ export function ReportBuilder() {
         />
 
         {/* Report Generator Controls */}
-        <div className="grid gap-4 rounded-lg border border-border/60 bg-background/10 p-4 md:grid-cols-4">
+        <div className="grid gap-4 rounded-lg border border-border/60 bg-surface p-4 md:grid-cols-4">
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium">نوع التقرير</span>
             <NativeSelect value={reportType} onChange={(e) => setReportType(e.target.value as ReportType)}>
@@ -115,15 +115,15 @@ export function ReportBuilder() {
             {/* Summary Cards */}
             {reportType === "INVENTORY" && data.type === "INVENTORY" && (
               <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">إجمالي الأصول</p>
                   <p className="text-2xl font-bold">{data.summary.totalAssetsDzd.toLocaleString("ar-DZ")} د.ج</p>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">إجمالي المستهلكات</p>
                   <p className="text-2xl font-bold">{data.summary.totalConsumablesDzd.toLocaleString("ar-DZ")} د.ج</p>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">القيمة الإجمالية</p>
                   <p className="text-2xl font-bold">{data.summary.totalValueDzd.toLocaleString("ar-DZ")} د.ج</p>
                 </div>
@@ -132,19 +132,19 @@ export function ReportBuilder() {
 
             {reportType === "DEBT" && data.type === "DEBT" && (
               <div className="grid gap-4 md:grid-cols-4">
-                <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المتبقية</p>
                   <p className="text-2xl font-bold">{data.summary.totalOutstandingDzd.toLocaleString("ar-DZ")} د.ج</p>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المسددة</p>
                   <p className="text-2xl font-bold">{data.summary.totalSettledDzd.toLocaleString("ar-DZ")} د.ج</p>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المتأخرة</p>
                   <p className="text-2xl font-bold">{data.summary.overdueDzd.toLocaleString("ar-DZ")} د.ج</p>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">عدد الأطراف</p>
                   <p className="text-2xl font-bold">{data.summary.partyCount}</p>
                 </div>
@@ -153,19 +153,19 @@ export function ReportBuilder() {
 
             {reportType === "MOVEMENT" && data.type === "MOVEMENT" && (
               <div className="grid gap-4 md:grid-cols-4">
-                <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">إجمالي الحركات</p>
                   <p className="text-2xl font-bold">{data.summary.totalMovements}</p>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">تحويلات الأصول</p>
                   <p className="text-2xl font-bold">{data.summary.assetTransfers}</p>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">تحويلات المستهلكات</p>
                   <p className="text-2xl font-bold">{data.summary.consumableTransfers}</p>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">المبيعات الخارجية</p>
                   <p className="text-2xl font-bold">{data.summary.outboundSales}</p>
                 </div>

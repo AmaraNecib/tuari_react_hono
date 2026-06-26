@@ -173,7 +173,7 @@ export function AuditLogPage() {
         </AppShellFilterShell>
 
         {isLoading && (
-          <div className="rounded-lg border border-border/60 bg-background/10 p-8 text-center">
+          <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
             <p className="text-muted-foreground">جاري تحميل السجل...</p>
           </div>
         )}
@@ -185,7 +185,7 @@ export function AuditLogPage() {
         )}
 
         {!isLoading && !error && filteredLogs.length === 0 ? (
-          <div className="rounded-lg border border-border/60 bg-background/10 p-8 text-center">
+          <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
             <p className="text-muted-foreground">لا توجد عمليات مطابقة للفلاتر</p>
           </div>
         ) : (!isLoading && !error) && (
@@ -193,7 +193,7 @@ export function AuditLogPage() {
             {pagedLogs.map((log: unknown) => {
               const auditLog = log as AuditLog;
               return (
-                <div key={auditLog.id} className="rounded-lg border border-border/60 bg-background/10 p-4">
+                <div key={auditLog.id} className="rounded-lg border border-border/60 bg-surface p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 space-y-2">
                       <div className="flex flex-wrap gap-2">

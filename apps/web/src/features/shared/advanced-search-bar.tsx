@@ -112,7 +112,7 @@ export function AdvancedSearchBar({
 
       {/* Save Preset Dialog */}
       {showSaveDialog && (
-        <div className="flex gap-2 rounded-lg border border-border/60 bg-background/10 p-3">
+        <div className="flex gap-2 rounded-lg border border-border/60 bg-surface p-3">
           <Input
             placeholder="اسم البحث المحفوظ..."
             value={presetName}
@@ -141,7 +141,7 @@ export function AdvancedSearchBar({
 
       {/* Saved Presets */}
       {showPresets && presets.length > 0 && (
-        <div className="flex flex-wrap gap-2 rounded-lg border border-border/60 bg-background/10 p-3">
+        <div className="flex flex-wrap gap-2 rounded-lg border border-border/60 bg-surface p-3">
           {presets.map((preset) => (
             <div
               key={preset.id}

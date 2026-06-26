@@ -89,7 +89,7 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
               <div
                 key={invoice.id}
                 className={`flex items-start gap-3 rounded-2xl border border-border/70 px-4 py-4 transition ${
-                  isSelected ? "bg-muted/30" : "bg-background/10"
+                  isSelected ? "bg-muted/30" : "bg-surface"
                 }`}
               >
                 <input

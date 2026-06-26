@@ -72,7 +72,7 @@ export function EmployeeBatchRowCard({
   const availableProjects = selectedManager?.projectOptions ?? []
 
   return (
-    <article className="rounded-[28px] border border-border/55 bg-sidebar/82 p-5 shadow-sm backdrop-blur-xl">
+    <article className="rounded-xl border border-border/55 bg-sidebar p-5 shadow-sm">
       <div className="mb-5 flex items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-foreground">{copy.title}</h3>
         {canRemove ? (
@@ -215,7 +215,7 @@ export function EmployeeBatchRowCard({
         <label className="flex flex-col gap-2.5 xl:col-span-3">
           <span className="text-sm font-medium text-foreground">{copy.notesLabel}</span>
           <textarea
-            className="min-h-[120px] w-full rounded-[24px] border border-border/80 bg-sidebar px-4 py-3 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition placeholder:text-muted-foreground/80 focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 dark:bg-background dark:shadow-none"
+            className="min-h-[120px] w-full rounded-xl border border-border/80 bg-sidebar px-4 py-3 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition placeholder:text-muted-foreground/80 focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 dark:bg-background dark:shadow-none"
             name={`employee-notes-${index}`}
             placeholder={copy.notesPlaceholder}
             value={draft.notes}

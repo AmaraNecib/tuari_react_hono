@@ -76,7 +76,7 @@ export function RecordEntryPaymentDialog({
 
         <div className="space-y-4">
           {/* Entry summary */}
-          <div className="rounded-[22px] border border-border/60 bg-background/60 p-4">
+          <div className="rounded-xl border border-border/60 bg-surface p-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">رصيد افتتاحي</span>
               <span className={cn("font-mono text-lg font-semibold", amountMeta.textClassName)} dir="ltr">

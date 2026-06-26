@@ -8,7 +8,7 @@ type FilterOption = "all" | "owed-to-us" | "owed-by-us" | "settled"
 
 function HubStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
-    <Surface className="rounded-[22px] px-5 py-4" variant="card">
+    <Surface className="rounded-xl px-5 py-4" variant="card">
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className={`mt-2 font-mono text-xl font-semibold ${valueClassName ?? ""}`.trim()} dir="ltr">
         {value}

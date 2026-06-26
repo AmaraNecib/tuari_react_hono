@@ -189,7 +189,7 @@ export function DebtCreatePage({
             <div className="grid gap-3 md:grid-cols-2">
               <button
                 className={cn(
-                  "rounded-[22px] border p-4 text-center transition-all",
+                  "rounded-xl border p-4 text-center transition-all",
                   partyType === "INTERNAL_WORKER"
                     ? "border-primary/35 bg-primary/8"
                     : "border-border/60 hover:border-primary/20 hover:bg-muted/40",
@@ -204,7 +204,7 @@ export function DebtCreatePage({
               </button>
               <button
                 className={cn(
-                  "rounded-[22px] border p-4 text-center transition-all",
+                  "rounded-xl border p-4 text-center transition-all",
                   partyType === "EXTERNAL_COUNTERPARTY"
                     ? "border-primary/35 bg-primary/8"
                     : "border-border/60 hover:border-primary/20 hover:bg-muted/40",
@@ -267,7 +267,7 @@ export function DebtCreatePage({
                 <button
                   key={category.value}
                   className={cn(
-                    "rounded-[22px] border p-4 text-start transition-all",
+                    "rounded-xl border p-4 text-start transition-all",
                     reasonCategory === category.value
                       ? "border-primary/35 bg-primary/8"
                       : "border-border/60 hover:border-primary/20 hover:bg-muted/40",
@@ -285,7 +285,7 @@ export function DebtCreatePage({
           {/* Direction indicator */}
           <div
             className={cn(
-              "rounded-[22px] border p-4 text-center",
+              "rounded-xl border p-4 text-center",
               resolvedDirection === "owed-to-us"
                 ? "border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20"
                 : "border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20",
@@ -314,7 +314,7 @@ export function DebtCreatePage({
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <button
                   className={cn(
-                    "rounded-[22px] border p-3 transition-all",
+                    "rounded-xl border p-3 transition-all",
                     direction === "owed-to-us"
                       ? "border-emerald-500/30 bg-primary/8"
                       : "border-border/60 hover:bg-muted/40",
@@ -328,7 +328,7 @@ export function DebtCreatePage({
                 </button>
                 <button
                   className={cn(
-                    "rounded-[22px] border p-3 transition-all",
+                    "rounded-xl border p-3 transition-all",
                     direction === "owed-by-us"
                       ? "border-rose-500/30 bg-primary/8"
                       : "border-border/60 hover:bg-muted/40",

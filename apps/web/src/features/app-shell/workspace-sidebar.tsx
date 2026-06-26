@@ -253,8 +253,7 @@ export function WorkspaceSidebar({
       {collapsed ? (
         <div className="border-t border-line py-3 flex flex-col items-center gap-2 flex-shrink-0">
           <div
-            className="w-[26px] h-[26px] rounded-full grid place-items-center text-white text-[11px] font-semibold flex-shrink-0"
-            style={{ background: "linear-gradient(135deg, var(--primary), color-mix(in oklab, var(--primary) 70%, white))" }}
+            className="w-[26px] h-[26px] rounded-full grid place-items-center text-white text-[11px] font-semibold flex-shrink-0 bg-primary"
           >
             {getInitials(session.name)}
           </div>
@@ -270,8 +269,7 @@ export function WorkspaceSidebar({
       ) : (
         <div className="border-t border-line px-3 py-3 flex items-center gap-3 text-[12.5px] flex-shrink-0">
           <div
-            className="w-[26px] h-[26px] rounded-full grid place-items-center text-white text-[11px] font-semibold flex-shrink-0"
-            style={{ background: "linear-gradient(135deg, var(--primary), color-mix(in oklab, var(--primary) 70%, white))" }}
+            className="w-[26px] h-[26px] rounded-full grid place-items-center text-white text-[11px] font-semibold flex-shrink-0 bg-primary"
           >
             {getInitials(session.name)}
           </div>
