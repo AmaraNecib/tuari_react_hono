@@ -79,6 +79,9 @@ export async function initializeRuntimeConfig() {
   return runtimeConfig
 }
 
+/**
+ * resetRuntimeConfigForTests() component.
+ */
 export function resetRuntimeConfigForTests() {
   runtimeConfig = {
     apiBaseUrl: normalizeApiBaseUrl(import.meta.env.VITE_API_URL?.trim() || getDefaultApiBaseUrl()),

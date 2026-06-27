@@ -19,6 +19,9 @@ type AppPreferencesContextValue = {
 
 const AppPreferencesContext = createContext<AppPreferencesContextValue | null>(null)
 
+/**
+ * @description Component
+ */
 export function AppPreferencesProvider({
   children,
 }: {

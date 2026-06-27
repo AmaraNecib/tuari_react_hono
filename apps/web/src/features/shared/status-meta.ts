@@ -41,9 +41,15 @@ const systemRoleLabelKeys: Record<string, string> = {
   warehouse_manager: "systemRoles.warehouseManager",
 }
 
+/**
+ * getArabicHistoryEventLabel(eventType component.
+ */
 export function getArabicHistoryEventLabel(eventType: string) {
   return historyEventLabelKeys[eventType]
     ? i18n.t(historyEventLabelKeys[eventType])
+/**
+ * getArabicRoleLabel(role component.
+ */
     : i18n.t("detailPages.shared.unexpectedValue", { value: eventType })
 }
 

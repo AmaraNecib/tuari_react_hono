@@ -1,3 +1,6 @@
+/**
+ * Runtime bridge for cross-platform compatibility.
+ */
 export type RuntimeConfig = {
   apiBaseUrl: string;
 };

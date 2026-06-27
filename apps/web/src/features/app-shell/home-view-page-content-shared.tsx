@@ -1,3 +1,7 @@
+/**
+ * Shared page content components for the home view.
+ * Provides reusable UI elements for page content.
+ */
 import type { TFunction } from "i18next"
 import type { SystemLogEntry } from "@tuari/contracts"
 
@@ -47,6 +51,9 @@ export type HomeViewPageContentProps = {
   workspace?: import("./workspace-queries").DemoWorkspace
 }
 
+/**
+ * includeCurrentProjectManagerOption( component.
+ */
 export function includeCurrentProjectManagerOption(
   options: HomeViewProjectManagerOption[],
   currentManager: CurrentManagerOption,
@@ -71,6 +78,9 @@ export function includeCurrentProjectManagerOption(
           : [],
     },
     ...options,
+/**
+ * includeCurrentWarehouseManagerOption( component.
+ */
   ]
 }
 
@@ -82,9 +92,15 @@ export function includeCurrentWarehouseManagerOption(
     return options
   }
 
+/**
+ * MissingRecordState({ component.
+ */
   return [{ id: currentManager.id, label: currentManager.label }, ...options]
 }
 
+/**
+ * @description Component
+ */
 export function MissingRecordState({
   backLabel,
   description,

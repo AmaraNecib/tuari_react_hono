@@ -1,3 +1,7 @@
+/**
+ * Employee history derivation for the home view.
+ * Formats and displays employee history events.
+ */
 import { getArabicHistoryEventLabel, getArabicRoleLabel, getArabicStatusLabel } from "@/features/shared/status-meta"
 
 import type { HomeViewCopy, HomeViewDetailCopy } from "./home-view-copy"
@@ -107,6 +111,9 @@ function buildEmployeeWorkHistory({
     .map(omitSortValue)
 }
 
+/**
+ * buildEmployeeHistoryCollections({ component.
+ */
 export function buildEmployeeHistoryCollections({
   copy,
   detailCopy,

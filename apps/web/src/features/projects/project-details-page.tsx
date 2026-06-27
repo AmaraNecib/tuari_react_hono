@@ -23,6 +23,9 @@ export type ProjectPageRecord = {
 }
 
 /** Project detail page with overview and worker assignments. */
+/**
+ * @description Component
+ */
 export function ProjectDetailsPage({
   activeTab,
   managementHistoryRows,

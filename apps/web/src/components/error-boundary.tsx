@@ -1,14 +1,27 @@
+/**
+ * Error boundary component for catching JavaScript errors.
+ * Shows fallback UI when an error occurs.
+ */
 import { Component, type ReactNode } from "react"
 
+/**
+ * Error boundary props interface.
+ */
 interface Props {
   children: ReactNode
   fallback?: ReactNode
 }
 
+/**
+ * Error boundary state interface.
+ */
 interface State {
   hasError: boolean
 }
 
+/**
+ * Error boundary class component.
+ */
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props)

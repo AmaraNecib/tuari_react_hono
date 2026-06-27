@@ -1,3 +1,7 @@
+/**
+ * Hook for persisting sidebar collapsed state in localStorage.
+ * Maintains sidebar state across page reloads.
+ */
 import { useEffect, useState } from "react"
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "tuari.workspace.sidebar.collapsed"
@@ -44,6 +48,9 @@ function getInitialSidebarCollapsedState() {
   return readStoredSidebarCollapsed() ?? window.innerWidth < 1200
 }
 
+/**
+ * usePersistedSidebarState() component.
+ */
 export function usePersistedSidebarState() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsedState)
 

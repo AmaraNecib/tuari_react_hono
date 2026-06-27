@@ -116,8 +116,17 @@ function castWorkspaceRouteTarget(target: WorkspaceRouteTarget): InternalWorkspa
   return target as never
 }
 
+/**
+ * getWorkspaceLinkProps(target component.
+ */
 export function getWorkspaceLinkProps(target: WorkspaceRouteTarget) {
+/**
+ * createWorkspaceNavigator(navigate component.
+ */
   return castWorkspaceRouteTarget(target)
+/**
+ * navigateToWorkspaceRoute( component.
+ */
 }
 
 export function createWorkspaceNavigator(navigate: (options: InternalWorkspaceRouteTarget) => unknown) {
@@ -126,12 +135,18 @@ export function createWorkspaceNavigator(navigate: (options: InternalWorkspaceRo
 
 export function navigateToWorkspaceRoute(
   navigate: (options: InternalWorkspaceRouteTarget) => unknown,
+/**
+ * WorkspaceLink({ target, ...props } component.
+ */
   target: WorkspaceRouteTarget,
 ) {
   return createWorkspaceNavigator(navigate)(target)
 }
 
 /** Navigation link component for workspace routes. */
+/**
+ * @description Component
+ */
 export function WorkspaceLink({ target, ...props }: WorkspaceLinkProps) {
   return <Link {...props} {...getWorkspaceLinkProps(target)} />
 }

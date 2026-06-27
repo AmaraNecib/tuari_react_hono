@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import type { SystemLogEntry } from "@tuari/contracts";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,11 @@ interface AuditLog {
 }
 
 /** Audit log page with date filtering and search. */
+/**
+ * @description Component
+ */
 export function AuditLogPage() {
+  const { t } = useTranslation()
   const [searchQuery, setSearchQuery] = useState("");
   const [domain, setDomain] = useState("ALL");
   const [action, setAction] = useState("ALL");
@@ -43,13 +48,13 @@ export function AuditLogPage() {
     return apiResponse.map((entry: SystemLogEntry) => ({
       id: entry.id,
       timestamp: entry.createdAt,
-      actor: entry.actorLabel ?? entry.actorCurrentLabel ?? "غير معروف",
+      actor: entry.actorLabel ?? entry.actorCurrentLabel ?? t("systemLog.actorUnknown"),
       domain: entry.entityType ?? "unknown",
       action: entry.actionType ?? "unknown",
       resourceId: entry.entityId ?? "",
       changes: entry.summary ?? "",
     }));
-  }, [apiResponse]);
+  }, [apiResponse, t]);
 
   const filteredLogs = useMemo((): AuditLog[] => {
     let result = logs;
@@ -113,11 +118,11 @@ export function AuditLogPage() {
       <PageSurfaceContent>
         <PageHeader
           title="سجل التدقيق"
-          description="عرض ومراجعة جميع التغييرات والعمليات المنفذة في النظام"
+          description={t("auditLog.description", "عرض ومراجعة جميع التغييرات والعمليات المنفذة في النظام")}
           action={
             filteredLogs.length > 0 && (
               <Button variant="outline" size="sm" onClick={handleExportCSV}>
-                تصدير CSV
+                {t("auditLog.exportCsv", "تصدير CSV")}
               </Button>
             )
           }
@@ -125,38 +130,38 @@ export function AuditLogPage() {
 
         <AppShellFilterShell>
           <label className="flex flex-col gap-2 min-w-[14rem]">
-            <span className="text-sm font-medium text-foreground">البحث</span>
+            <span className="text-sm font-medium text-foreground">{t("auditLog.search", "البحث")}</span>
             <Input
-              placeholder="ابحث عن مستخدم أو مورد..."
+              placeholder={t("auditLog.searchPlaceholder", "ابحث عن مستخدم أو مورد...")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </label>
 
           <label className="flex flex-col gap-2 min-w-[10rem]">
-            <span className="text-sm font-medium text-foreground">النطاق</span>
+            <span className="text-sm font-medium text-foreground">{t("auditLog.domain", "النطاق")}</span>
             <NativeSelect value={domain} onChange={(e) => setDomain(e.target.value)}>
-              <option value="ALL">الكل</option>
-              <option value="المخزون">المخزون</option>
-              <option value="الديون">الديون</option>
-              <option value="الموظفون">الموظفون</option>
-              <option value="المشاريع">المشاريع</option>
+              <option value="ALL">{t("common.all", "الكل")}</option>
+              <option value="المخزون">{t("auditLog.domainInventory", "المخزون")}</option>
+              <option value="الديون">{t("auditLog.domainDebts", "الديون")}</option>
+              <option value="الموظفون">{t("auditLog.domainEmployees", "الموظفون")}</option>
+              <option value="المشاريع">{t("auditLog.domainProjects", "المشاريع")}</option>
             </NativeSelect>
           </label>
 
           <label className="flex flex-col gap-2 min-w-[10rem]">
-            <span className="text-sm font-medium text-foreground">الإجراء</span>
+            <span className="text-sm font-medium text-foreground">{t("auditLog.action", "الإجراء")}</span>
             <NativeSelect value={action} onChange={(e) => setAction(e.target.value)}>
-              <option value="ALL">الكل</option>
-              <option value="create">إنشاء</option>
-              <option value="update">تحديث</option>
-              <option value="delete">حذف</option>
+              <option value="ALL">{t("common.all", "الكل")}</option>
+              <option value="create">{t("historyEvent.created", "إنشاء")}</option>
+              <option value="update">{t("historyEvent.updated", "تحديث")}</option>
+              <option value="delete">{t("common.delete", "حذف")}</option>
             </NativeSelect>
           </label>
 
           <DateRangeFilter
-            fromLabel="من التاريخ"
-            toLabel="إلى التاريخ"
+            fromLabel={t("common.dateFrom", "من التاريخ")}
+            toLabel={t("common.dateTo", "إلى التاريخ")}
             fromDate={startDate}
             toDate={endDate}
             onFromDateChange={setStartDate}
@@ -166,19 +171,19 @@ export function AuditLogPage() {
 
         {isLoading && (
           <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
-            <p className="text-muted-foreground">جاري تحميل السجل...</p>
+            <p className="text-muted-foreground">{t("systemLog.loading", "جاري تحميل السجل...")}</p>
           </div>
         )}
 
         {error && (
           <div className="rounded-lg border border-destructive/60 bg-destructive/10 p-4 text-sm text-destructive">
-            خطأ في تحميل السجل: {error instanceof Error ? error.message : "حدث خطأ"}
+            {t("auditLog.loadError", "خطأ في تحميل السجل:")} {error instanceof Error ? error.message : t("common.error", "حدث خطأ")}
           </div>
         )}
 
         {!isLoading && !error && filteredLogs.length === 0 ? (
           <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
-            <p className="text-muted-foreground">لا توجد عمليات مطابقة للفلاتر</p>
+            <p className="text-muted-foreground">{t("auditLog.noResults", "لا توجد عمليات مطابقة للفلاتر")}</p>
           </div>
         ) : (!isLoading && !error) && (
           <div className="space-y-3">
@@ -193,9 +198,9 @@ export function AuditLogPage() {
                           {auditLog.domain}
                         </span>
                         <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
-                          {auditLog.action === "create" && "إنشاء"}
-                          {auditLog.action === "update" && "تحديث"}
-                          {auditLog.action === "delete" && "حذف"}
+                          {auditLog.action === "create" && t("historyEvent.created", "إنشاء")}
+                          {auditLog.action === "update" && t("historyEvent.updated", "تحديث")}
+                          {auditLog.action === "delete" && t("common.delete", "حذف")}
                         </span>
                       </div>
                       <div className="text-sm font-medium">{auditLog.changes}</div>

@@ -16,6 +16,9 @@ import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 
 /** Dialog for recording a salary payment. */
+/**
+ * @description Component
+ */
 export function AddSalaryPaymentDialog({
   employeeId,
   employeeName,

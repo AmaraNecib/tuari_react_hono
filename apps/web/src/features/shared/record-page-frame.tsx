@@ -1,8 +1,9 @@
-import { type KeyboardEvent, type ReactNode, useId, useMemo, useRef } from "react"
+import type { ReactNode } from "react"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { buttonVariants } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   AppShellEmptyStateRow,
   AppShellTableFrame,
@@ -14,15 +15,10 @@ import { cn } from "@/lib/utils"
 
 import { PageActionGroup, PageHeader, Surface } from "./page-primitives"
 
-function getTabId(baseId: string, tabId: string) {
-  return `${baseId}-tab-${tabId}`
-}
-
-function getPanelId(baseId: string, tabId: string) {
-  return `${baseId}-panel-${tabId}`
-}
-
 /** Frame for detail/edit pages with action bar. */
+/**
+ * @description Component
+ */
 export function RecordPageFrame({
   title,
   description,
@@ -71,9 +67,15 @@ export function RecordPageFrame({
   )
 }
 
+/**
+ * RecordTabs — wraps the shadcn Tabs component with a consistent
+ * underline-style variant for detail page navigation.
+ */
+/**
+ * @description Component
+ */
 export function RecordTabs({
   activeTab,
-  baseId,
   tabs,
   onChange,
 }: {
@@ -82,126 +84,69 @@ export function RecordTabs({
   tabs: Array<{ id: string; label: string }>
   onChange: (tabId: string) => void
 }) {
-  const { t } = useTranslation()
-  const generatedId = useId()
-  const resolvedBaseId = useMemo(() => (baseId ?? `record-tabs-${generatedId}`).replace(/:/g, ""), [baseId, generatedId])
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
-
-  function focusTab(index: number) {
-    tabRefs.current[index]?.focus()
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    const closestDirection = event.currentTarget.closest("[dir]")?.getAttribute("dir")
-    const isRtl = (closestDirection ?? document.documentElement.dir) === "rtl"
-    const previousIndex = index === 0 ? tabs.length - 1 : index - 1
-    const nextIndex = index === tabs.length - 1 ? 0 : index + 1
-
-    let targetIndex: number | null = null
-
-    switch (event.key) {
-      case "ArrowLeft":
-        targetIndex = isRtl ? nextIndex : previousIndex
-        break
-      case "ArrowRight":
-        targetIndex = isRtl ? previousIndex : nextIndex
-        break
-      case "Home":
-        targetIndex = 0
-        break
-      case "End":
-        targetIndex = tabs.length - 1
-        break
-      default:
-        break
-    }
-
-    if (targetIndex === null) {
-      return
-    }
-
-    const targetTab = tabs[targetIndex]
-
-    if (!targetTab) {
-      return
-    }
-
-    event.preventDefault()
-    onChange(targetTab.id)
-    focusTab(targetIndex)
-  }
-
   return (
-    <div
-      aria-label={t("detailPages.shared.recordTabsLabel")}
-      aria-orientation="horizontal"
-      className="flex flex-wrap gap-0 border-b border-line"
-      role="tablist"
-    >
-      {tabs.map((tab, index) => (
-        <button
-          ref={(node) => {
-            tabRefs.current[index] = node
-          }}
-          aria-controls={getPanelId(resolvedBaseId, tab.id)}
-          aria-selected={activeTab === tab.id}
-          id={getTabId(resolvedBaseId, tab.id)}
-          key={tab.id}
-          role="tab"
-          tabIndex={activeTab === tab.id ? 0 : -1}
-          type="button"
-          className={cn(
-            "relative px-5 py-2.5 text-[13px] font-medium transition-colors outline-none",
-            activeTab === tab.id
-              ? "text-ink after:absolute after:inset-x-0 after:bottom-[-1px] after:h-[2px] after:bg-primary after:rounded-full"
-              : "text-ink-3 hover:text-ink-2",
-          )}
-          onClick={() => onChange(tab.id)}
-          onKeyDown={(event) => handleKeyDown(event, index)}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
+    <Tabs value={activeTab} onValueChange={onChange}>
+      <TabsList variant="line" className="w-full justify-start">
+        {tabs.map((tab) => (
+          <TabsTrigger
+            key={tab.id}
+            value={tab.id}
+            id={`tab-trigger-${tab.id}`}
+            aria-controls={`tab-${tab.id}`}
+          >
+            {tab.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }
 
+/**
+ * RecordTabPanel — conditionally renders content based on active tab.
+ * Use this outside the Tabs component to control visibility.
+ */
+/**
+ * @description Component
+ */
 export function RecordTabPanel({
   activeTab,
-  baseId,
   tabId,
   children,
   className,
 }: {
   activeTab: string
-  baseId: string
+  baseId?: string
   tabId: string
   children: ReactNode
   className?: string
 }) {
-  const isActive = activeTab === tabId
-
-  if (!isActive) {
+  if (activeTab !== tabId) {
     return null
   }
 
   return (
     <div
-      aria-labelledby={getTabId(baseId, tabId)}
-      className={className}
-      id={getPanelId(baseId, tabId)}
       role="tabpanel"
-      tabIndex={0}
+      id={`tab-${tabId}`}
+      aria-labelledby={`tab-trigger-${tabId}`}
+      className={className}
     >
       {children}
     </div>
   )
 }
 
+/**
+ * @description Component
+ */
 export function RecordInfoGrid({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("grid gap-4 md:grid-cols-2 xl:grid-cols-3", className)}>{children}</div>
 }
 
+/**
+ * @description Component
+ */
 export function RecordInfoCard({
   label,
   value,
@@ -214,7 +159,7 @@ export function RecordInfoCard({
   valueClassName?: string
 }) {
   return (
-    <article className={cn("min-w-0 flex flex-col gap-1 border border-line rounded-xl px-4 py-3 bg-surface", wide ? "md:col-span-2 xl:col-span-3" : "")}>
+    <article className={cn("min-w-0 flex flex-col gap-1 px-4 py-3", wide ? "md:col-span-2 xl:col-span-3" : "")}>
       <p className="text-[12px] font-mono font-semibold uppercase tracking-widest text-ink-4">{label}</p>
       <div className={cn("min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[14px] font-medium text-ink leading-snug", valueClassName)}>
         {value}
@@ -223,6 +168,9 @@ export function RecordInfoCard({
   )
 }
 
+/**
+ * @description Component
+ */
 export function RecordHistoryTable({
   columns,
   emptyLabel,
@@ -281,6 +229,9 @@ export function RecordHistoryTable({
   )
 }
 
+/**
+ * @description Component
+ */
 export function RecordHistoryCard({
   title,
   emptyLabel,

@@ -1,3 +1,7 @@
+/**
+ * Employee salary derivation for the home view.
+ * Formats and displays employee salary information.
+ */
 import { getArabicRoleLabel } from "@/features/shared/status-meta"
 
 import type { HomeViewCopy, HomeViewDetailCopy } from "./home-view-copy"
@@ -6,6 +10,9 @@ import type { HomeViewDerivedLookups } from "./home-view-derived-lookups"
 import type { buildEmployeeRows } from "./home-view-derived-employees"
 import type { DemoWorkspace } from "./workspace-queries"
 
+/**
+ * buildEmployeeSalaryCollections({ component.
+ */
 export function buildEmployeeSalaryCollections({
   copy,
   detailCopy,

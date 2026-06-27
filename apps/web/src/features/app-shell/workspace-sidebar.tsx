@@ -1,3 +1,7 @@
+/**
+ * Workspace sidebar navigation component.
+ * Provides main navigation for the application.
+ */
 import {
   BriefcaseBusiness,
   Boxes,
@@ -10,7 +14,6 @@ import {
   Users,
   Warehouse,
   Settings,
-  PanelRightOpen,
 } from "lucide-react"
 import type React from "react"
 import { useTranslation } from "react-i18next"
@@ -109,6 +112,9 @@ function getInitials(name: string | null): string {
     : name.slice(0, 2).toUpperCase()
 }
 
+/**
+ * @description Component
+ */
 export function WorkspaceSidebar({
   collapsed,
   currentPage,
@@ -213,7 +219,7 @@ export function WorkspaceSidebar({
                   <WorkspaceLink
                     key={key}
                     className={cn(
-                      "flex items-center gap-3 px-3 py-[0.375rem] rounded-[0.375rem] text-[0.84375rem] cursor-pointer select-none transition-colors",
+                      "flex items-center gap-3 px-3 py-[0.375rem] rounded-[0.375rem] text-[0.875rem] cursor-pointer select-none transition-colors",
                       "relative",
                       active
                         ? "bg-surface text-ink font-medium shadow-[var(--shadow-sm)] sb-item-active"
@@ -252,22 +258,22 @@ export function WorkspaceSidebar({
       {/* Footer: user info */}
       {collapsed ? (
         <div className="border-t border-line py-3 flex flex-col items-center gap-2 flex-shrink-0">
-          <div
-            className="w-[1.625rem] h-[1.625rem] rounded-full grid place-items-center text-white text-[0.6875rem] font-semibold flex-shrink-0 bg-primary"
-          >
-            {getInitials(session.name)}
-          </div>
-          <button
-            type="button"
-            aria-label={t("shell.expand")}
-            className="w-[1.875rem] h-[1.875rem] grid place-items-center rounded-[0.4375rem] text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors"
-            onClick={() => onSetCollapsed(false)}
-          >
-            <PanelRightOpen size={16} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <div
+                  className="w-[1.625rem] h-[1.625rem] rounded-full grid place-items-center text-white text-[0.6875rem] font-semibold flex-shrink-0 bg-primary cursor-pointer"
+                  onClick={() => onSetCollapsed(false)}
+                />
+              }
+            >
+              {getInitials(session.name)}
+            </TooltipTrigger>
+            <TooltipContent side="left">{session.name ?? session.phone}</TooltipContent>
+          </Tooltip>
         </div>
       ) : (
-        <div className="border-t border-line px-3 py-3 flex items-center gap-3 text-[0.78125rem] flex-shrink-0">
+        <div className="border-t border-line px-3 py-3 flex items-center gap-3 text-[0.8125rem] flex-shrink-0">
           <div
             className="w-[1.625rem] h-[1.625rem] rounded-full grid place-items-center text-white text-[0.6875rem] font-semibold flex-shrink-0 bg-primary"
           >
@@ -275,7 +281,7 @@ export function WorkspaceSidebar({
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-medium truncate">{session.name ?? session.phone}</div>
-            <div className="text-ink-3 text-[0.6875rem] truncate">{session.phone}</div>
+            <div className="text-ink-3 text-[0.75rem] truncate">{session.phone}</div>
           </div>
         </div>
       )}

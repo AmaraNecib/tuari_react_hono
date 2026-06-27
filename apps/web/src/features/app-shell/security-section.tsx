@@ -45,6 +45,9 @@ type SecuritySectionProps = {
  * Security section for the Settings page.
  * Manages recovery keys and DB encryption key.
  */
+/**
+ * @description Component
+ */
 export function SecuritySection({
   poolStatus,
   isLoadingPool,

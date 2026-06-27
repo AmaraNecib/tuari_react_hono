@@ -9,6 +9,7 @@ export function useHomeViewNavigation() {
   return {
     goToRoute,
     goToEmployees: () => goToRoute(workspaceRoutes.employees()),
+    goToEmployeeCreate: () => goToRoute(workspaceRoutes.employeeCreate()),
     goToEmployeeDetails: (employeeId: string) => goToRoute(workspaceRoutes.employeeDetails(employeeId)),
     goToEmployeeEdit: (employeeId: string) => goToRoute(workspaceRoutes.employeeEdit(employeeId)),
     goToEmployeeFinance: (employeeId: string) => goToRoute(workspaceRoutes.employeeTab(employeeId, "finance")),

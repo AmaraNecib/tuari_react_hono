@@ -1,3 +1,7 @@
+/**
+ * Table pagination controls for navigating through data.
+ * Provides page size selection and navigation buttons.
+ */
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -6,6 +10,9 @@ import { Surface } from "@/features/shared/page-primitives"
 
 const presetPageSizes = [10, 25, 50, 100]
 
+/**
+ * @description Component
+ */
 export function TablePaginationControls({
   page,
   pageSize,

@@ -1,6 +1,16 @@
+/**
+ * Formatting utilities for home view data.
+ * Provides helper functions for formatting names, dates, etc.
+ */
 import type { DemoWorkspace } from "./workspace-queries"
 
+/**
+ * formatName(employee component.
+ */
 export function formatName(employee: DemoWorkspace["employees"][number]) {
+/**
+ * formatDateLabel(value component.
+ */
   return `${employee.firstName} ${employee.lastName}`
 }
 
@@ -10,7 +20,13 @@ export function formatDateLabel(value: string | null) {
   }
 
   return new Intl.DateTimeFormat("ar-DZ", {
+/**
+ * formatDateRange(startDate component.
+ */
     year: "numeric",
+/**
+ * formatSalaryPeriodLabel( component.
+ */
     month: "short",
     day: "numeric",
   }).format(new Date(value))

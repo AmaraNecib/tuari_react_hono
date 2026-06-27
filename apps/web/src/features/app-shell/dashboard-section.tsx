@@ -20,6 +20,9 @@ type DashboardSectionProps = {
 }
 
 /** Dashboard section showing overview metrics and quick actions. */
+/**
+ * @description Component
+ */
 export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
   const { t } = useTranslation()
 

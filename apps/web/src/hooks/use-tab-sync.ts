@@ -1,3 +1,6 @@
+/**
+ * Hook for synchronizing state across browser tabs.
+ */
 import { useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -44,6 +47,9 @@ export type TabSyncMessage =
   | TabSyncCacheInvalidateMessage
   | TabSyncMutationMessage;
 
+/**
+ * useTabSync() component.
+ */
 export function useTabSync() {
   const queryClient = useQueryClient();
   const isInitializedRef = useRef(false);
@@ -137,6 +143,9 @@ export function useTabSync() {
     broadcastLogout,
     broadcastCacheInvalidate,
     broadcastMutation,
+/**
+ * useTabSyncListener( component.
+ */
   };
 }
 
