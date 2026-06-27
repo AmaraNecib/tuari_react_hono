@@ -1,3 +1,6 @@
+/**
+ * Algeria timezone utilities for date handling.
+ */
 const ALGERIA_TIME_ZONE = "Africa/Algiers"
 const ALGERIA_OFFSET_HOURS = 1
 

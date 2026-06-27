@@ -1,3 +1,6 @@
+/**
+ * Extracts error messages from RPC errors.
+ */
 export function extractRpcIssueMessage(error: unknown): string | null {
   if (error instanceof Error && error.message.trim().length > 0 && error.message !== "Input validation failed") {
     return error.message

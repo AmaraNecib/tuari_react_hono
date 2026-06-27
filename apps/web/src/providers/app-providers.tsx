@@ -1,3 +1,6 @@
+/**
+ * Application providers for context and state management.
+ */
 import { useEffect } from "react"
 
 import { QueryClientProvider } from "@tanstack/react-query"

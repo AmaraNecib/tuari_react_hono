@@ -1,3 +1,6 @@
+/**
+ * Startup query retry configuration.
+ */
 const STARTUP_QUERY_RETRY_LIMIT = 20
 const STARTUP_QUERY_MAX_DELAY_MS = 1_500
 

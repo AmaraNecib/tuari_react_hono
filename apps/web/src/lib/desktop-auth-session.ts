@@ -1,3 +1,6 @@
+/**
+ * Desktop auth session management for Electron/Tauri.
+ */
 let desktopAuthInitialized = false
 let desktopAuthInitializationPromise: Promise<void> | null = null
 

@@ -1,3 +1,6 @@
+/**
+ * Hook for querying recurring patterns data.
+ */
 import { useQuery } from "@tanstack/react-query";
 import type { RecurringPattern, RecurringPatternList } from "@tuari/contracts";
 import { rpcClient } from "@/lib/orpc-client";

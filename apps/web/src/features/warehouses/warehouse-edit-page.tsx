@@ -1,3 +1,6 @@
+/**
+ * Warehouse edit page for modifying existing warehouses.
+ */
 import type { FormEvent } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"

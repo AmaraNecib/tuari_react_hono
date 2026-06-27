@@ -1,3 +1,6 @@
+/**
+ * Warehouse details page for viewing and managing warehouse information.
+ */
 import { useTranslation } from "react-i18next"
 
 import { getArabicStatusLabel } from "@/features/shared/status-meta"

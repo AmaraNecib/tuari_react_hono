@@ -1,3 +1,6 @@
+/**
+ * Hook for synchronizing state across browser tabs.
+ */
 import { useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 

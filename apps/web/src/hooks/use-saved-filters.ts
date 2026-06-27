@@ -1,3 +1,6 @@
+/**
+ * Hook for managing saved filter presets.
+ */
 import { useCallback, useEffect, useState } from "react";
 
 export interface FilterPreset {

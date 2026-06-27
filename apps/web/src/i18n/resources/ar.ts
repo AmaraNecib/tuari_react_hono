@@ -1,3 +1,6 @@
+/**
+ * Arabic translations for the application.
+ */
 export const ar = {
   translation: {
     common: {

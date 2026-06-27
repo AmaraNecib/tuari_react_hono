@@ -1,3 +1,6 @@
+/**
+ * Hook for detecting mobile/tablet layout and managing responsive state.
+ */
 import { useCallback, useEffect, useState } from "react";
 
 const TABLET_BREAKPOINT = 768; // md: 768px

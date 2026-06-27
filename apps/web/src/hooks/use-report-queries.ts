@@ -1,3 +1,6 @@
+/**
+ * Hooks for querying report data.
+ */
 import { useQuery } from "@tanstack/react-query";
 import type { DebtReport, InventoryReport, MovementReport, Report, ReportType } from "@tuari/contracts";
 import { rpcClient } from "@/lib/orpc-client";
