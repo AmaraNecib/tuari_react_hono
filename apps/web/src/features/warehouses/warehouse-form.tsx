@@ -1,7 +1,10 @@
 import type { ReactNode } from "react"
+import { useTranslation } from "react-i18next"
 
 import { FieldSection, NativeSelect, Textarea } from "@/components/ui/form-controls"
+import { Field } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { CreateableSelect } from "@/components/ui/createable-select"
 
 import type { WarehousePageRecord } from "./warehouse-details-page"
 
@@ -30,11 +33,13 @@ export function WarehouseFormFields({
   errors,
   labels,
   managerOptions,
+  onCreateManager,
   state,
   statusOptions,
   title,
   description,
   onChange,
+  translations,
 }: {
   errors: WarehouseFormErrors
   labels: {
@@ -46,6 +51,16 @@ export function WarehouseFormFields({
     noManager: string
   }
   managerOptions: Array<{ id: string; label: string }>
+  onCreateManager?: (data: Record<string, string>) => Promise<{ id: string; name: string }>
+  translations?: {
+    firstName: string
+    firstNamePlaceholder: string
+    lastName: string
+    lastNamePlaceholder: string
+    phone: string
+    phonePlaceholder: string
+    createManager: string
+  }
   state: WarehouseFormState
   statusOptions: Array<{ value: WarehouseFormState["status"]; label: string }>
   title: string
@@ -54,24 +69,32 @@ export function WarehouseFormFields({
 }) {
   return (
     <FieldSection description={description} title={title}>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <Field error={errors.name} label={labels.name}>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label={labels.name} error={errors.name}>
           <Input required value={state.name} onChange={(event) => onChange({ ...state, name: event.target.value })} />
         </Field>
-        <Field error={errors.address} label={labels.address}>
+        <Field label={labels.address} error={errors.address}>
           <Input value={state.address} onChange={(event) => onChange({ ...state, address: event.target.value })} />
         </Field>
-        <Field error={errors.managerId} label={labels.manager}>
-          <NativeSelect value={state.managerId} onChange={(event) => onChange({ ...state, managerId: event.target.value })}>
-            <option value="">{labels.noManager}</option>
-            {managerOptions.map((manager) => (
-              <option key={manager.id} value={manager.id}>
-                {manager.label}
-              </option>
-            ))}
-          </NativeSelect>
+        <Field label={labels.manager} error={errors.managerId}>
+          <CreateableSelect
+            value={state.managerId}
+            onChange={(value) => onChange({ ...state, managerId: value })}
+            options={managerOptions.map((m) => ({ id: m.id, name: m.label }))}
+            emptyLabel={labels.noManager}
+            createLabel={translations?.createManager ?? "إضافة موظف"}
+            createFields={[
+              { key: "firstName", label: translations?.firstName ?? "الاسم", placeholder: translations?.firstNamePlaceholder ?? "اسم الموظف...", required: true },
+              { key: "lastName", label: translations?.lastName ?? "اللقب", placeholder: translations?.lastNamePlaceholder ?? "لقب الموظف...", required: true },
+              { key: "phone", label: translations?.phone ?? "رقم الهاتف", placeholder: translations?.phonePlaceholder ?? "0612345678" },
+            ]}
+            onCreate={onCreateManager ? async (data) => {
+              const result = await onCreateManager(data)
+              return result
+            } : undefined}
+          />
         </Field>
-        <Field error={errors.status} label={labels.status}>
+        <Field label={labels.status} error={errors.status}>
           <NativeSelect
             value={state.status}
             onChange={(event) => onChange({ ...state, status: event.target.value as WarehouseFormState["status"] })}
@@ -83,22 +106,10 @@ export function WarehouseFormFields({
             ))}
           </NativeSelect>
         </Field>
-        <label className="flex flex-col gap-2 md:col-span-2 xl:col-span-3">
-          <span className="text-sm font-medium text-foreground">{labels.notes}</span>
+        <Field label={labels.notes} error={errors.notes} className="md:col-span-2">
           <Textarea value={state.notes} onChange={(event) => onChange({ ...state, notes: event.target.value })} />
-          {errors.notes ? <p className="text-sm text-destructive">{errors.notes}</p> : null}
-        </label>
+        </Field>
       </div>
     </FieldSection>
-  )
-}
-
-function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
-  return (
-    <label className="space-y-1.5 text-sm">
-      <span className="font-medium text-foreground">{label}</span>
-      {children}
-      {error ? <p className="text-destructive">{error}</p> : null}
-    </label>
   )
 }

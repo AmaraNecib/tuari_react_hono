@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
@@ -8,6 +9,7 @@ import { useReportQuery, formatReportAsCSV } from "@/hooks/use-report-queries";
 type ReportType = "INVENTORY" | "DEBT" | "MOVEMENT";
 
 export function ReportBuilder() {
+  const { t } = useTranslation()
   const [reportType, setReportType] = useState<ReportType>("INVENTORY");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -75,7 +77,7 @@ export function ReportBuilder() {
 
           <div className="flex items-end">
             <Button onClick={handleGenerateReport} disabled={isLoading}>
-              {isLoading ? "جاري التحميل..." : "إنشاء التقرير"}
+              {isLoading ? t("common.loading", "جاري التحميل...") : t("reports.generate", "إنشاء التقرير")}
             </Button>
           </div>
         </div>
@@ -95,7 +97,7 @@ export function ReportBuilder() {
                   {reportType === "INVENTORY" ? "تقرير المخزون" : reportType === "DEBT" ? "تقرير الديون" : "تقرير الحركات"}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  تم الإنشاء: {new Date(data.generatedAt).toLocaleString("ar-DZ")}
+                  {t("reports.generatedAt", "تم الإنشاء:")} {new Date(data.generatedAt).toLocaleString("ar-DZ")}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={handleDownloadCSV}>
@@ -149,11 +151,11 @@ export function ReportBuilder() {
                   <p className="text-2xl font-bold">{data.summary.totalMovements}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">تحويلات الأصول</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.assetTransfers", "تحويلات الأصول")}</p>
                   <p className="text-2xl font-bold">{data.summary.assetTransfers}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">تحويلات المستهلكات</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.consumableTransfers", "تحويلات المستهلكات")}</p>
                   <p className="text-2xl font-bold">{data.summary.consumableTransfers}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">

@@ -55,6 +55,7 @@ type EmployeeTableCopy = {
   status: string
   actions: string
   empty: string
+  addWorker: string
   view: string
   edit: string
   leave: string
@@ -64,6 +65,7 @@ type EmployeeTableCopy = {
 type EmployeeTableProps = {
   copy: EmployeeTableCopy
   rows: EmployeeTableRow[]
+  onAdd?: () => void
   onDelete: (row: EmployeeTableRow) => void
   onEdit: (row: EmployeeTableRow) => void
   onLeave: (row: EmployeeTableRow) => void
@@ -71,20 +73,20 @@ type EmployeeTableProps = {
 }
 
 /** Employee table with row actions for view/edit/leave/delete. */
-export function EmployeeTable({ copy, rows, onDelete, onEdit, onLeave, onView }: EmployeeTableProps) {
+export function EmployeeTable({ copy, rows, onAdd, onDelete, onEdit, onLeave, onView }: EmployeeTableProps) {
   const { t } = useTranslation()
   // rows are already paginated by the parent (cursor-based pagination)
   const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border/60">
+    <>
       <AddSalaryPaymentDialog
         employeeId={paymentTarget?.id ?? null}
         employeeName={paymentTarget?.name}
         open={paymentTarget !== null}
         onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
       />
-      <AppShellTableFrame className="rounded-none border-0">
+      <AppShellTableFrame>
         <table className="min-w-full text-sm">
           <AppShellTableHead>
             <tr>
@@ -169,11 +171,18 @@ export function EmployeeTable({ copy, rows, onDelete, onEdit, onLeave, onView }:
                 </AppShellTableRow>
               ))
             ) : (
-              <AppShellEmptyStateRow colSpan={7}>{copy.empty}</AppShellEmptyStateRow>
+              <AppShellEmptyStateRow colSpan={7}>
+                <div className="flex flex-col items-center gap-3">
+                  <p className="text-muted-foreground">{copy.empty}</p>
+                  {onAdd ? (
+                    <Button size="sm" onClick={onAdd}>{copy.addWorker}</Button>
+                  ) : null}
+                </div>
+              </AppShellEmptyStateRow>
             )}
           </tbody>
         </table>
       </AppShellTableFrame>
-    </div>
+    </>
   )
 }

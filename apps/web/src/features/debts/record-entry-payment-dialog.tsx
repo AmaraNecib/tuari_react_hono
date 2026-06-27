@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import type { DebtEntry } from "@tuari/contracts"
 
 import {
@@ -29,6 +30,7 @@ export function RecordEntryPaymentDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { t } = useTranslation()
   const recordPaymentMutation = useRecordDebtPaymentMutation()
   const [amount, setAmount] = useState("")
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "BANK_TRANSFER" | "CHECK">("CASH")
@@ -68,9 +70,9 @@ export function RecordEntryPaymentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>تسديد دفعة</DialogTitle>
+          <DialogTitle>{t("debts.payment.title", "تسديد دفعة")}</DialogTitle>
           <DialogDescription>
-            سجل دفعة مقابل حركة الفتح هذه
+            {t("debts.payment.description", "سجل دفعة مقابل حركة الفتح هذه")}
           </DialogDescription>
         </DialogHeader>
 
@@ -78,7 +80,7 @@ export function RecordEntryPaymentDialog({
           {/* Entry summary */}
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">رصيد افتتاحي</span>
+              <span className="text-sm text-muted-foreground">{t("debts.payment.openingBalance", "رصيد افتتاحي")}</span>
               <span className={cn("font-mono text-lg font-semibold", amountMeta.textClassName)} dir="ltr">
                 دج {formatDebtMoney(entry.signedAmountDzd)}
               </span>
@@ -88,42 +90,42 @@ export function RecordEntryPaymentDialog({
               {entry.note?.trim() ? ` — ${entry.note.trim()}` : ""}
             </p>
             <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-              الحد الأقصى للدفعة: دج {formatDebtMoney(maxPayment)}
+              {t("debts.payment.maxAmount", "الحد الأقصى للدفعة:")} دج {formatDebtMoney(maxPayment)}
             </p>
           </div>
 
           {/* Amount */}
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">مبلغ الدفعة</span>
+            <span className="text-sm font-medium text-foreground">{t("debts.payment.amount", "مبلغ الدفعة")}</span>
             <CurrencyInput
-              placeholder="أدخل المبلغ المدفوع"
+              placeholder={t("debts.payment.amountPlaceholder", "أدخل المبلغ المدفوع")}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
             {amountExceedsMax && (
-              <p className="text-xs text-rose-600">مبلغ الدفعة يتجاوز الرصيد المتبقي.</p>
+              <p className="text-xs text-rose-600">{t("debts.payment.amountExceeds", "مبلغ الدفعة يتجاوز الرصيد المتبقي.")}</p>
             )}
           </label>
 
           {/* Payment method */}
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">طريقة الدفع</span>
+            <span className="text-sm font-medium text-foreground">{t("debts.payment.method", "طريقة الدفع")}</span>
             <select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value as "CASH" | "BANK_TRANSFER" | "CHECK")}
               className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
             >
-              <option value="CASH">نقداً</option>
-              <option value="BANK_TRANSFER">تحويل بنكي</option>
-              <option value="CHECK">شيك</option>
+              <option value="CASH">{t("debts.payment.cash", "نقداً")}</option>
+              <option value="BANK_TRANSFER">{t("debts.payment.bankTransfer", "تحويل بنكي")}</option>
+              <option value="CHECK">{t("debts.payment.check", "شيك")}</option>
             </select>
           </label>
 
           {/* Note */}
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">ملاحظة</span>
+            <span className="text-sm font-medium text-foreground">{t("common.note", "ملاحظة")}</span>
             <Textarea
-              placeholder="اختياري — تفصيل عن الدفعة"
+              placeholder={t("debts.payment.notePlaceholder", "اختياري — تفصيل عن الدفعة")}
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
@@ -132,13 +134,13 @@ export function RecordEntryPaymentDialog({
 
         <DialogFooter className="flex gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            إلغاء
+            {t("common.cancel", "إلغاء")}
           </Button>
           <Button
             disabled={!hasValidAmount || amountExceedsMax || recordPaymentMutation.isPending}
             onClick={handleSubmit}
           >
-            {recordPaymentMutation.isPending ? "جاري التسجيل..." : "تأكيد الدفعة"}
+            {recordPaymentMutation.isPending ? t("debts.payment.pending", "جاري التسجيل...") : t("debts.payment.confirm", "تأكيد الدفعة")}
           </Button>
         </DialogFooter>
       </DialogContent>

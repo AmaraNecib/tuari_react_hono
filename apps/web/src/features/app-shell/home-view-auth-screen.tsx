@@ -3,6 +3,7 @@ import type { FormEventHandler } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
+import { Field } from "@/components/ui/field"
 import { Surface } from "@/features/shared/page-primitives"
 import { AuthScreenSkeleton } from "@/components/skeleton"
 
@@ -56,11 +57,11 @@ export function HomeViewAuthScreen({
   onSetupSecretChange: (value: string) => void
   onSignInSubmit: FormEventHandler<HTMLFormElement>
   password: string
-  passwordHideLabel: string
-  passwordShowLabel: string
   phone: string
   requiresSetupKey: boolean
   setupSecret: string
+  passwordHideLabel: string
+  passwordShowLabel: string
   signInPending: boolean
 }) {
   if (isAuthStateLoading) {
@@ -97,8 +98,7 @@ export function HomeViewAuthScreen({
 
           <div className="space-y-5">
             {isFirstRun ? (
-              <label className="flex flex-col gap-2.5">
-                <span className="text-sm font-medium text-foreground">{copy.auth.nameLabel}</span>
+              <Field label={copy.auth.nameLabel} error={errors.name}>
                 <Input
                   autoComplete="name"
                   name="name"
@@ -106,12 +106,10 @@ export function HomeViewAuthScreen({
                   value={name}
                   onChange={(event) => onNameChange(event.target.value)}
                 />
-                {errors.name ? <p className="text-sm text-destructive">{errors.name}</p> : null}
-              </label>
+              </Field>
             ) : null}
 
-            <label className="flex flex-col gap-2.5">
-              <span className="text-sm font-medium text-foreground">{copy.auth.phoneLabel}</span>
+            <Field label={copy.auth.phoneLabel} error={errors.phone}>
               <Input
                 autoComplete="tel"
                 dir="ltr"
@@ -121,11 +119,9 @@ export function HomeViewAuthScreen({
                 value={phone}
                 onChange={(event) => onPhoneChange(event.target.value)}
               />
-              {errors.phone ? <p className="text-sm text-destructive">{errors.phone}</p> : null}
-            </label>
+            </Field>
 
-            <label className="flex flex-col gap-2.5">
-              <span className="text-sm font-medium text-foreground">{copy.auth.passwordLabel}</span>
+            <Field label={copy.auth.passwordLabel} error={errors.password}>
               <PasswordInput
                 autoComplete="current-password"
                 hideLabel={passwordHideLabel}
@@ -136,12 +132,10 @@ export function HomeViewAuthScreen({
                 dir="rtl"
                 onChange={(event) => onPasswordChange(event.target.value)}
               />
-              {errors.password ? <p className="text-sm text-destructive">{errors.password}</p> : null}
-            </label>
+            </Field>
 
             {isFirstRun && requiresSetupKey ? (
-              <label className="flex flex-col gap-2.5">
-                <span className="text-sm font-medium text-foreground">{copy.auth.setupSecretLabel}</span>
+              <Field label={copy.auth.setupSecretLabel} error={errors.setupSecret}>
                 <PasswordInput
                   autoComplete="off"
                   hideLabel={passwordHideLabel}
@@ -152,8 +146,7 @@ export function HomeViewAuthScreen({
                   dir="rtl"
                   onChange={(event) => onSetupSecretChange(event.target.value)}
                 />
-                {errors.setupSecret ? <p className="text-sm text-destructive">{errors.setupSecret}</p> : null}
-              </label>
+              </Field>
             ) : null}
           </div>
 

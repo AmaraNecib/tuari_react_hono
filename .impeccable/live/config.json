@@ -1,0 +1,7 @@
+{
+  "files": ["index.html"],
+  "devServerUrl": "http://localhost:3000",
+  "framework": "vite",
+  "insertBefore": "</head>",
+  "commentSyntax": "html"
+}

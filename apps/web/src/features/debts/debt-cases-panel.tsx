@@ -5,6 +5,7 @@ import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
+import { Field } from "@/components/ui/field"
 import { useCreateDebtAccountMutation } from "@/features/app-shell/mock-dashboard"
 import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
@@ -103,19 +104,19 @@ export function DebtCasesPanel({
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <CasesStatCard
-          label={isBidirectional ? "صافي الرصيد" : debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
+          label={isBidirectional ? t("debts.cases.netBalance", "صافي الرصيد") : debtAccount ? `${t("debts.cases.currentBalance", "الرصيد الحالي")} — ${getDebtDirectionLabel(debtAccount.direction)}` : t("debts.cases.currentBalance", "الرصيد الحالي")}
           value={`دج ${formatDebtMoney(isBidirectional ? totalBalanceDzd : (debtAccount?.currentBalance ?? 0))}`}
           valueClassName={balanceMeta.textClassName}
         />
-        <CasesStatCard label="عدد الحسابات" value={String(sortedAccounts.length)} />
-        <CasesStatCard label="عدد الحركات" value={String(totalEntryCount)} />
+        <CasesStatCard label={t("debts.cases.accountCount", "عدد الحسابات")} value={String(sortedAccounts.length)} />
+        <CasesStatCard label={t("debts.cases.entryCount", "عدد الحركات")} value={String(totalEntryCount)} />
       </div>
 
       {hasBothDirections ? (
         <Surface className="p-5" variant="card">
           <SurfaceHeader
             description={t("debts.consolidateDescription")}
-            title="تجميد الديون"
+            title={t("debts.cases.consolidateTitle", "تجميد الديون")}
           />
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -123,14 +124,14 @@ export function DebtCasesPanel({
               <p className="text-sm text-muted-foreground">
                 {getDebtDirectionLabel(payableAccount!.direction)}{` `}
                 دج {formatDebtMoney(payableAccount!.currentBalance)}
-                {` — `}
+                {` - `}
                 {getDebtDirectionLabel(receivableAccount!.direction)}{` `}
                 دج {formatDebtMoney(receivableAccount!.currentBalance)}
               </p>
               <p className="text-xs text-muted-foreground">
                 {hasConsolidatableOpenings
                   ? t("debts.selectOneFromEachSide")
-                  : "لا توجد حركات افتتاحية نشطة قابلة للتجميد."}
+                  : t("debts.cases.noConsolidatable", "لا توجد حركات افتتاحية نشطة قابلة للتجميد.")}
               </p>
             </div>
             <Button
@@ -138,7 +139,7 @@ export function DebtCasesPanel({
               variant="outline"
               onClick={() => setConsolidationDialogOpen(true)}
             >
-              فتح التجميد
+              {t("debts.cases.openConsolidation", "فتح التجميد")}
             </Button>
           </div>
         </Surface>
@@ -146,23 +147,20 @@ export function DebtCasesPanel({
 
       <Surface className="p-5" variant="card">
         <SurfaceHeader
-          description="لكل طرف حساب دين واحد فقط. إذا كان الحساب موجودًا فسيُسجَّل المبلغ كدفعة جديدة على نفس الحساب الموحد."
-          title={debtAccount ? "تسجيل دفعة على الحساب" : "إنشاء الحساب"}
+          description={t("debts.cases.accountDescription", "لكل طرف حساب دين واحد فقط. إذا كان الحساب موجودًا فسيُسجَّل المبلغ كدفعة جديدة على نفس الحساب الموحد.")}
+          title={debtAccount ? t("debts.cases.recordPayment", "تسجيل دفعة على الحساب") : t("debts.cases.createAccount", "إنشاء الحساب")}
         />
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">التاريخ</span>
+          <Field label={t("common.createDate", "التاريخ")}>
             <DatePicker value={createDate} onChange={setCreateDate} />
-          </label>
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">المبلغ الموقّع</span>
+          </Field>
+          <Field label={t("debts.cases.amount", "المبلغ الموقّع")}>
             <CurrencyInput placeholder="0 أو 2500 أو -2500" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} />
-          </label>
-          <label className="flex flex-col gap-2 md:col-span-2">
-            <span className="text-sm font-medium text-foreground">ملاحظة الدفعة</span>
+          </Field>
+          <Field label={t("debts.cases.note", "ملاحظة الدفعة")} className="md:col-span-2">
             <Textarea placeholder="مثال: دين جديد، دفعة وصلت، دفعة خرجت" value={note} onChange={(event) => setNote(event.target.value)} />
-          </label>
+          </Field>
         </div>
 
         <PageFooterActions className="mt-4">
@@ -184,7 +182,7 @@ export function DebtCasesPanel({
               setNote("")
             }}
           >
-            {debtAccount ? "تسجيل الدفعة" : "إنشاء الحساب"}
+            {debtAccount ? t("debts.cases.recordPaymentButton", "تسجيل الدفعة") : t("debts.cases.createAccountButton", "إنشاء الحساب")}
           </Button>
         </PageFooterActions>
       </Surface>
@@ -194,7 +192,7 @@ export function DebtCasesPanel({
           key={account.id}
           debtAccount={account}
           debtEntries={debtEntriesByAccountId[account.id] ?? []}
-          title={`${title} — ${getDebtDirectionLabel(account.direction)}`}
+          title={`${title} - ${getDebtDirectionLabel(account.direction)}`}
         />
       ))}
 

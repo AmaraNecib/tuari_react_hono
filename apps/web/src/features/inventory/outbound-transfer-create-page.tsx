@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,6 +9,7 @@ import { ItemListEditor, type ItemEditorRow } from "./item-list-editor"
 import { useCreateOutboundTransferMutation, useInventoryExternalCounterpartiesQuery, useInventoryWarehousesQuery, useInventoryProjectsQuery, useInventoryItemDefinitionsQuery } from "./inventory-hooks"
 
 export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
+  const { t } = useTranslation()
   const counterpartiesQuery = useInventoryExternalCounterpartiesQuery()
   const warehousesQuery = useInventoryWarehousesQuery()
   const projectsQuery = useInventoryProjectsQuery()
@@ -208,10 +210,10 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
         <PageSurfaceContent>
           <div className="flex gap-3">
             <Button variant="outline" onClick={onBack}>
-              إلغاء
+              {t("common.cancel")}
             </Button>
             <Button disabled={!fromId || !counterpartyId || items.length === 0 || createTransferMutation.isPending} onClick={handleSubmit}>
-              {createTransferMutation.isPending ? "جاري الإنشاء..." : "إنشاء التحويل"}
+              {createTransferMutation.isPending ? t("inventory.transfer.creating") : t("inventory.transfer.create")}
             </Button>
           </div>
         </PageSurfaceContent>

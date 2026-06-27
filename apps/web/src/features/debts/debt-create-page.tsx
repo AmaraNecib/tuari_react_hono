@@ -2,11 +2,13 @@ import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { CreateableSelect } from "@/components/ui/createable-select"
 import { DatePicker } from "@/components/ui/date-picker"
-import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
+import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
+import { Field } from "@/components/ui/field"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { PageFooterActions, Surface } from "@/features/shared/page-primitives"
-import { useCreateDebtAccountMutation } from "@/features/app-shell/mock-dashboard"
+import { useCreateDebtAccountMutation, useCreateExternalCounterpartyMutation, useCreateEmployeesBatchMutation } from "@/features/app-shell/mock-dashboard"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 import type { useHomeViewNavigation } from "@/features/app-shell/home-view-navigation"
@@ -113,6 +115,8 @@ export function DebtCreatePage({
 }) {
   const { t } = useTranslation()
   const createDebtAccountMutation = useCreateDebtAccountMutation()
+  const createExternalMutation = useCreateExternalCounterpartyMutation()
+  const createEmployeeMutation = useCreateEmployeesBatchMutation()
 
   // Form state
   const [partyType, setPartyType] = useState<"INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY">(
@@ -223,41 +227,58 @@ export function DebtCreatePage({
           </div>
 
           {/* Party Selection */}
-          <div className="space-y-2">
-            <label className="flex items-center justify-between">
-              <span className="text-sm font-medium text-foreground">{t("detailPages.debt.partySelect")}</span>
-              <button
-                className="inline-flex items-center justify-center text-primary hover:text-primary/80 transition-colors"
-                type="button"
-                onClick={() => {
-                  if (partyType === "INTERNAL_WORKER") {
-                    // TODO: Navigate to create new employee
-                  } else {
-                    navigation.goToExternalCreate()
-                  }
-                }}
-              >
-                <span className="text-lg font-semibold">+</span>
-              </button>
-            </label>
-            <NativeSelect
+          <Field label={t("detailPages.debt.partySelect")}>
+            <CreateableSelect
               value={selectedPartyId}
-              onChange={(e) => setSelectedPartyId(e.target.value)}
-            >
-              <option value="">{t("detailPages.debt.partySelect")}</option>
-              {partyType === "INTERNAL_WORKER"
-                ? employees.map((party) => (
-                    <option key={party.id} value={party.id}>
-                      {party.name} ({party.phone})
-                    </option>
-                  ))
-                : externalCounterparties.map((party) => (
-                    <option key={party.id} value={party.id}>
-                      {party.fullName}
-                    </option>
-                  ))}
-            </NativeSelect>
-          </div>
+              onChange={setSelectedPartyId}
+              options={
+                partyType === "INTERNAL_WORKER"
+                  ? employees.map((p) => ({ id: p.id, name: `${p.name} (${p.phone})` }))
+                  : externalCounterparties.map((p) => ({ id: p.id, name: p.fullName }))
+              }
+              emptyLabel={t("detailPages.debt.partySelect")}
+              createLabel={partyType === "INTERNAL_WORKER" ? t("detailPages.debt.createEmployee") : t("detailPages.debt.createExternal")}
+              createFields={
+                partyType === "INTERNAL_WORKER"
+                  ? [
+                      { key: "firstName", label: t("detailPages.debt.employeeFields.firstName"), placeholder: t("detailPages.debt.employeeFields.firstNamePlaceholder"), required: true },
+                      { key: "lastName", label: t("detailPages.debt.employeeFields.lastName"), placeholder: t("detailPages.debt.employeeFields.lastNamePlaceholder"), required: true },
+                      { key: "phone", label: t("detailPages.debt.employeeFields.phone"), placeholder: t("detailPages.debt.employeeFields.phonePlaceholder") },
+                    ]
+                  : [
+                      { key: "fullName", label: t("detailPages.debt.externalFields.fullName"), placeholder: t("detailPages.debt.externalFields.fullNamePlaceholder"), required: true },
+                      { key: "phone", label: t("detailPages.debt.externalFields.phone"), placeholder: t("detailPages.debt.externalFields.phonePlaceholder") },
+                    ]
+              }
+              onCreate={async (data) => {
+                if (partyType === "INTERNAL_WORKER") {
+                  const result = await createEmployeeMutation.mutateAsync({
+                    employees: [{
+                      firstName: data.firstName ?? "",
+                      lastName: data.lastName ?? "",
+                      phone: data.phone || "",
+                      roleId: "",
+                      status: "ACTIVE",
+                      managerId: null,
+                      salaryAmountDzd: null,
+                      salaryPeriod: null,
+                      notes: null,
+                    }],
+                  })
+                  return result.createdCount > 0
+                    ? { id: "new", name: `${data.firstName} ${data.lastName}` }
+                    : { id: "", name: "" }
+                } else {
+                  const result = await createExternalMutation.mutateAsync({
+                    fullName: data.fullName ?? "",
+                    phoneNumber: data.phone || "",
+                    note: null,
+                  })
+                  return { id: result.item.id, name: data.fullName ?? "" }
+                }
+              }}
+            />
+          </Field>
 
           {/* Reason Category */}
           <div className="space-y-3">
@@ -348,60 +369,54 @@ export function DebtCreatePage({
 
           {/* Reason Detail (required for OTHER) */}
           {needsReasonDetail ? (
-            <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-foreground">
-                {t("detailPages.debt.reasonDetail")}
-              </span>
+            <Field label={t("detailPages.debt.reasonDetail")}>
               <Textarea
                 placeholder={t("detailPages.debt.reasonDetailPlaceholder")}
                 value={reasonDetail}
                 onChange={(e) => setReasonDetail(e.target.value)}
               />
-            </label>
+            </Field>
           ) : null}
 
           {/* Amount & Date */}
           <div className="grid gap-4 md:grid-cols-2">
-            <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-foreground">{t("detailPages.debt.amount")}</span>
+            <Field label={t("detailPages.debt.amount")}>
               <CurrencyInput
                 placeholder={t("detailPages.debt.zeroPlaceholder")}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
-            </label>
+            </Field>
 
-            <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-foreground">{t("detailPages.debt.createDate")}</span>
+            <Field label={t("detailPages.debt.createDate")}>
               <DatePicker value={createDate} onChange={setCreateDate} />
-            </label>
+            </Field>
           </div>
 
           {/* Note */}
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("detailPages.debt.note")}</span>
+          <Field label={t("detailPages.debt.note")}>
             <Textarea
               placeholder={t("detailPages.debt.caseLabelPlaceholder")}
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
-          </label>
+          </Field>
 
           {/* Action Buttons */}
-          <PageFooterActions className="mt-6">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-line" dir="rtl">
+            <Button
+              disabled={!selectedPartyId || !hasValidAmount || !hasValidReasonDetail || createDebtAccountMutation.isPending}
+              onClick={handleCreateDebt}
+            >
+              {createDebtAccountMutation.isPending ? t("common.saving") : t("detailPages.debt.createButton")}
+            </Button>
             <Button
               variant="outline"
               onClick={() => navigation.goToDebts()}
             >
               {t("common.cancel")}
             </Button>
-            <Button
-              disabled={!selectedPartyId || !hasValidAmount || !hasValidReasonDetail || createDebtAccountMutation.isPending}
-              onClick={handleCreateDebt}
-            >
-              {createDebtAccountMutation.isPending ? t("common.saving") : "تسجيل الدفعة على الحساب"}
-            </Button>
-          </PageFooterActions>
+          </div>
         </div>
       </Surface>
     </RecordPageFrame>

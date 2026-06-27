@@ -8,6 +8,7 @@ import {
   isDesktopRuntime,
 } from "./desktop-auth-session"
 import { resolveApiUrl } from "./runtime-config"
+import { i18n } from "@/i18n"
 
 type SignInResponse = {
   token?: string
@@ -21,21 +22,36 @@ type ProfileUpdateResponse = {
   }
 }
 
-function translateAuthApiErrorMessage(message: string) {
+/**
+ * Maps API error messages to i18n keys for translation.
+ * 
+ * Why this approach:
+ * - API (better-auth) returns English messages we can't control
+ * - UI translates them using i18n for any language
+ * - Easy to add new translations when building mobile apps
+ * - Fallback to original message if no translation exists
+ * 
+ * To add a new language:
+ * 1. Add translations in src/i18n/resources/<lang>.ts under auth.errors
+ * 2. The mapping below handles the rest automatically
+ */
+const API_ERROR_TO_I18N_KEY: Record<string, string> = {
+  "invalid password": "auth.errors.invalidPassword",
+  "invalid phone number or password": "auth.errors.invalidCredentials",
+  "invalid credentials": "auth.errors.invalidCredentials",
+  "user not found": "auth.errors.userNotFound",
+  "session expired": "auth.errors.sessionExpired",
+}
+
+function translateAuthApiErrorMessage(message: string): string {
   const normalized = message.trim().toLowerCase()
-
-  if (normalized === "invalid password") {
-    return "كلمة المرور الحالية غير صحيحة."
+  const i18nKey = API_ERROR_TO_I18N_KEY[normalized]
+  
+  if (i18nKey) {
+    return i18n.t(i18nKey)
   }
-
-  if (normalized === "user not found") {
-    return "تعذر العثور على المستخدم الحالي."
-  }
-
-  if (normalized === "session expired") {
-    return "انتهت الجلسة الحالية. يرجى تسجيل الدخول مرة أخرى."
-  }
-
+  
+  // Fallback: return original message if no translation exists
   return message
 }
 

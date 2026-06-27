@@ -164,12 +164,14 @@ export function EmployeesSection({
               status: columns.status,
               actions: columns.actions,
               empty: emptyLabel,
+              addWorker: addWorkerLabel,
               view: actionLabels.view,
               edit: actionLabels.edit,
               leave: actionLabels.leave,
               delete: actionLabels.delete,
             }}
             rows={rows}
+            onAdd={() => void navigation.goToEmployeeCreate()}
             onDelete={(row) => setPendingAction({ type: "delete", employee: row })}
             onEdit={(row) => void navigation.goToEmployeeEdit(row.id)}
             onLeave={(row) => setPendingAction({ type: "leave", employee: row })}

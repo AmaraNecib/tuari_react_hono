@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import {
@@ -31,6 +32,7 @@ export function ConsolidationDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { t } = useTranslation()
   const consolidateMutation = useDebtEntriesConsolidateMutation()
   const [selectedPayableId, setSelectedPayableId] = useState("")
   const [selectedReceivableId, setSelectedReceivableId] = useState("")
@@ -155,7 +157,7 @@ export function ConsolidationDialog({
               {formatDebtMoney(payableAccount.currentBalance)}
             </h4>
             {livePayableOpenings.length === 0 ? (
-              <p className="text-xs text-muted-foreground">لا توجد حركات افتتاحية نشطة.</p>
+              <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings", "لا توجد حركات افتتاحية نشطة.")}</p>
             ) : (
               <div className="space-y-2">
                 {livePayableOpenings.map((entry) => {
@@ -200,7 +202,7 @@ export function ConsolidationDialog({
               {formatDebtMoney(receivableAccount.currentBalance)}
             </h4>
             {liveReceivableOpenings.length === 0 ? (
-              <p className="text-xs text-muted-foreground">لا توجد حركات افتتاحية نشطة.</p>
+              <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings", "لا توجد حركات افتتاحية نشطة.")}</p>
             ) : (
               <div className="space-y-2">
                 {liveReceivableOpenings.map((entry) => {

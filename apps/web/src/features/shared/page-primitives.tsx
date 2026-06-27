@@ -2,6 +2,12 @@ import type { ComponentPropsWithoutRef, ElementType, ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 
+/* ─── Entrance animation utilities ───
+ * stagger-child: Applied to children of a stagger container.
+ * Uses CSS animation with a custom property for delay.
+ */
+const staggerChild = "animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-300 ease-out"
+
 type SurfaceVariant = "panel" | "card" | "inset" | "table" | "subtle"
 
 const surfaceVariantClassNames: Record<SurfaceVariant, string> = {
@@ -16,19 +22,26 @@ function Surface<TElement extends ElementType = "section">({
   as,
   className,
   variant = "panel",
+  animate = false,
   children,
   ...props
 }: {
   as?: TElement
   className?: string
   variant?: SurfaceVariant
+  animate?: boolean
   children: ReactNode
 } & Omit<ComponentPropsWithoutRef<TElement>, "as" | "children" | "className">) {
   const Component = as ?? "section"
 
   return (
     <Component
-      className={cn("rounded-xl", surfaceVariantClassNames[variant], className)}
+      className={cn(
+        "rounded-xl",
+        surfaceVariantClassNames[variant],
+        animate && staggerChild,
+        className
+      )}
       {...props}
     >
       {children}
@@ -57,7 +70,7 @@ function PageHeader({
     <header className={cn("page-header flex w-full items-start justify-between gap-6", className)}>
       <div className="space-y-1 min-w-0">
         {eyebrow ? (
-          <p className="font-mono text-[12px] font-semibold tracking-widest uppercase text-ink-4">{eyebrow}</p>
+          <p className={cn("font-mono text-[12px] font-semibold tracking-widest uppercase text-ink-4", staggerChild, "[animation-delay:0ms]")}>{eyebrow}</p>
         ) : null}
         <TitleTag
           className={cn(
@@ -65,16 +78,17 @@ function PageHeader({
             titleAs === "h1"
               ? "text-[2.4rem] italic"
               : "text-[1.8rem] italic",
+            staggerChild, "[animation-delay:50ms]"
           )}
         >
           {title}
         </TitleTag>
         {description ? (
-          <p className="text-[14px] leading-snug text-ink-3 mt-1 max-w-[54ch]">{description}</p>
+          <p className={cn("text-[14px] leading-snug text-ink-3 mt-1 max-w-[54ch]", staggerChild, "[animation-delay:100ms]")}>{description}</p>
         ) : null}
       </div>
       {action ? (
-        <div className="flex items-center gap-2 shrink-0 pt-1">{action}</div>
+        <div className={cn("flex items-center gap-2 shrink-0 pt-1", staggerChild, "[animation-delay:100ms]")}>{action}</div>
       ) : null}
     </header>
   )
@@ -116,7 +130,7 @@ function SurfaceHeader({
   return (
     <div className={cn("flex w-full items-start justify-between gap-4", className)}>
       <div className="space-y-0.5 text-start min-w-0">
-        <h3 className="text-[14px] font-semibold tracking-tight text-ink">{title}</h3>
+        <h2 className="text-[14px] font-semibold tracking-tight text-ink">{title}</h2>
         {description ? <p className="text-[12.5px] leading-5 text-ink-3">{description}</p> : null}
       </div>
       {action ? <div className="flex items-center gap-2 shrink-0">{action}</div> : null}
@@ -124,9 +138,30 @@ function SurfaceHeader({
   )
 }
 
+/* ─── Stagger container ───
+ * Use this wrapper to animate children sequentially.
+ * Children with staggerChild class will animate with increasing delays.
+ */
+function StaggerContainer({
+  children,
+  className,
+  as: Component = "div",
+}: {
+  children: ReactNode
+  className?: string
+  as?: ElementType
+}) {
+  return (
+    <Component className={cn("[&>*]:stagger-child", className)}>
+      {children}
+    </Component>
+  )
+}
+
 /* Flat 4-col stat band */
 function StatBand({
   stats,
+  className,
 }: {
   stats: Array<{
     label: string
@@ -134,6 +169,7 @@ function StatBand({
     meta?: string
     tone?: "good" | "warn" | "bad" | "neutral"
   }>
+  className?: string
 }) {
   const toneClass: Record<string, string> = {
     good:    "text-good",
@@ -143,7 +179,7 @@ function StatBand({
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 border border-line rounded-xl overflow-hidden bg-surface">
+    <div className={cn("grid grid-cols-2 md:grid-cols-4", staggerChild, className)}>
       {stats.map((stat, i) => (
         <div
           key={i}
@@ -165,4 +201,4 @@ function StatBand({
   )
 }
 
-export { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, StatBand, Surface, SurfaceHeader }
+export { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, StaggerContainer, StatBand, Surface, SurfaceHeader, staggerChild }

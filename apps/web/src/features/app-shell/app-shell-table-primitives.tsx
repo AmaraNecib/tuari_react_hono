@@ -54,7 +54,7 @@ export function AppShellTableRow({ children, className }: { children: ReactNode;
 export function AppShellEmptyStateRow({ colSpan, children }: { colSpan: number; children: ReactNode }) {
   return (
     <tr>
-      <td className="px-4 py-8 text-center text-[13px] text-ink-3" colSpan={colSpan}>
+      <td className="px-4 py-8 text-center text-[13px] text-ink-3 animate-in fade-in-0 duration-300" colSpan={colSpan}>
         {children}
       </td>
     </tr>
@@ -109,7 +109,7 @@ export function AppShellFilterShell({ children, className }: { children: ReactNo
   return (
     <div
       className={cn(
-        "flex flex-wrap items-end gap-x-4 gap-y-3 rounded-xl border border-line bg-bg-2 p-4",
+        "flex flex-wrap items-end gap-x-4 gap-y-3 p-4",
         className,
       )}
       dir="rtl"

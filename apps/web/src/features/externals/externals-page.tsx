@@ -1,10 +1,22 @@
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Surface } from "@/features/shared/page-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls"
 
 import { formatDebtMoney, getDebtBalanceMeta } from "@/features/debts/debt-utils"
+
+const DEFAULT_PAGE_SIZE = 25
 
 export function ExternalCounterpartiesPage({
   counterparties,
@@ -24,6 +36,13 @@ export function ExternalCounterpartiesPage({
   onOpen: (counterpartyId: string) => void
 }) {
   const { t } = useTranslation()
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+
+  const totalPages = Math.max(1, Math.ceil(counterparties.length / pageSize))
+  const start = counterparties.length === 0 ? 0 : (page - 1) * pageSize + 1
+  const end = counterparties.length === 0 ? 0 : Math.min(page * pageSize, counterparties.length)
+  const pagedCounterparties = counterparties.slice((page - 1) * pageSize, page * pageSize)
 
   return (
     <RecordPageFrame
@@ -31,59 +50,70 @@ export function ExternalCounterpartiesPage({
       description={t("externalsPage.description")}
       action={<Button size="lg" onClick={onCreate}>{t("externalsPage.addButton")}</Button>}
     >
-      <Surface className="overflow-hidden" variant="table">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-muted/40 text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 text-start font-medium">{t("columns.name")}</th>
-                <th className="px-4 py-3 text-start font-medium">{t("columns.phone")}</th>
-                <th className="px-4 py-3 text-start font-medium">{t("columns.totalBalance", "إجمالي الرصيد")}</th>
-                <th className="px-4 py-3 text-start font-medium">{t("columns.cases", "الحالات")}</th>
-                <th className="px-4 py-3 text-start font-medium">{t("columns.notes", "ملاحظات")}</th>
-                <th className="px-4 py-3 text-start font-medium">{t("common.actions")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {counterparties.length > 0 ? (
-                counterparties.map((counterparty) => {
-                  const balanceMeta = getDebtBalanceMeta(counterparty.totalBalanceDzd)
+      <div className="overflow-hidden rounded-xl border border-line">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("columns.name")}</TableHead>
+              <TableHead>{t("columns.phone")}</TableHead>
+              <TableHead>{t("columns.totalBalance", "إجمالي الرصيد")}</TableHead>
+              <TableHead>{t("columns.cases", "الحالات")}</TableHead>
+              <TableHead>{t("columns.notes", "ملاحظات")}</TableHead>
+              <TableHead>{t("common.actions")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pagedCounterparties.length > 0 ? (
+              pagedCounterparties.map((counterparty) => {
+                const balanceMeta = getDebtBalanceMeta(counterparty.totalBalanceDzd)
 
-                  return (
-                    <tr key={counterparty.id} className="border-t border-border/60 bg-background/75">
-                      <td className="px-4 py-4 text-start font-medium text-foreground">{counterparty.fullName}</td>
-                      <td className="px-4 py-4 text-start text-foreground">
-                        <bdi dir="ltr">{counterparty.phone}</bdi>
-                      </td>
-                      <td className={balanceMeta.textClassName + " px-4 py-4 text-start font-mono"} dir="ltr">
-                        دج {formatDebtMoney(counterparty.totalBalanceDzd)}
-                      </td>
-                      <td className="px-4 py-4 text-start text-foreground">
-                        {counterparty.totalCaseCount} {t("externalsPage.caseUnit", "حالة")}{counterparty.openCaseCount ? `، ${counterparty.openCaseCount} ${t("externalsPage.openCases", "مفتوحة")}` : ""}
-                      </td>
-                      <td className="px-4 py-4 text-start text-muted-foreground">{counterparty.note?.trim() || "—"}</td>
-                      <td className="px-4 py-4 text-start">
-                        <Button size="sm" variant="outline" onClick={() => onOpen(counterparty.id)}>
-                          {t("externalsPage.openFile")}
-                        </Button>
-                      </td>
-                    </tr>
-                  )
-                })
-              ) : (
-                <tr>
-                  <td className="px-4 py-12 text-center" colSpan={6}>
-                    <div className="flex flex-col items-center gap-3">
-                      <p className="text-sm text-muted-foreground">{t("externalsPage.empty")}</p>
-                      <Button size="sm" onClick={onCreate}>{t("externalsPage.addButton")}</Button>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Surface>
+                return (
+                  <TableRow key={counterparty.id}>
+                    <TableCell className="font-medium">{counterparty.fullName}</TableCell>
+                    <TableCell>
+                      <bdi dir="ltr">{counterparty.phone}</bdi>
+                    </TableCell>
+                    <TableCell className={balanceMeta.textClassName} dir="ltr">
+                      دج {formatDebtMoney(counterparty.totalBalanceDzd)}
+                    </TableCell>
+                    <TableCell>
+                      {counterparty.totalCaseCount} {t("externalsPage.caseUnit", "حالة")}{counterparty.openCaseCount ? `، ${counterparty.openCaseCount} ${t("externalsPage.openCases", "مفتوحة")}` : ""}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{counterparty.note?.trim() || "—"}</TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline" onClick={() => onOpen(counterparty.id)}>
+                        {t("externalsPage.openFile")}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
+            ) : (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <p className="text-sm text-muted-foreground">{t("externalsPage.empty")}</p>
+                    <Button size="sm" onClick={onCreate}>{t("externalsPage.addButton")}</Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {counterparties.length > 0 && (
+        <TablePaginationControls
+          page={page}
+          pageSize={pageSize}
+          totalCount={counterparties.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            setPage(1)
+          }}
+        />
+      )}
     </RecordPageFrame>
   )
 }

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
+import { Field } from "@/components/ui/field"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
@@ -143,7 +144,7 @@ export function SettingsSection({
       setFieldErrors({})
     } catch (error) {
       const message = error instanceof Error ? error.message : t("toasts.actionError")
-      if (message.includes("كلمة المرور الحالية غير صحيحة") || message.toLowerCase().includes("invalid password")) {
+      if (message.includes(t("auth.errors.invalidPassword", "كلمة المرور الحالية غير صحيحة")) || message.toLowerCase().includes("invalid password")) {
         setFieldErrors({ currentPassword: t("toasts.accountPasswordCurrentInvalid") })
         return
       }
@@ -165,17 +166,14 @@ export function SettingsSection({
   return (
     <RecordPageFrame title={title}>
       <div className="grid gap-4 xl:grid-cols-2">
-        <Surface as="article" className="p-5 xl:col-span-2">
+        <div className="p-5 xl:col-span-2">
           <form className="space-y-5" onSubmit={(event) => void handleSave(event)}>
             <SurfaceHeader description={accountDescription} title={accountTitle} />
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-foreground">{accountNameLabel}</span>
+              <Field label={accountNameLabel} error={fieldErrors.name} hint={accountPhoneHint}>
                 <Input placeholder={accountNamePlaceholder} value={name} onChange={(event) => setName(event.target.value)} />
-                {fieldErrors.name ? <span className="text-xs leading-5 text-destructive">{fieldErrors.name}</span> : null}
-              </label>
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-foreground">{accountPhoneLabel}</span>
+              </Field>
+              <Field label={accountPhoneLabel} error={fieldErrors.phone}>
                 <Input
                   dir="ltr"
                   inputMode="tel"
@@ -183,11 +181,8 @@ export function SettingsSection({
                   value={phone}
                   onChange={(event) => setPhone(event.target.value)}
                 />
-                <span className="text-xs leading-5 text-muted-foreground">{accountPhoneHint}</span>
-                {fieldErrors.phone ? <span className="text-xs leading-5 text-destructive">{fieldErrors.phone}</span> : null}
-              </label>
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-foreground">{accountCurrentPasswordLabel}</span>
+              </Field>
+              <Field label={accountCurrentPasswordLabel} error={fieldErrors.currentPassword}>
                 <PasswordInput
                   hideLabel={passwordHideLabel}
                   placeholder={accountCurrentPasswordPlaceholder}
@@ -195,10 +190,8 @@ export function SettingsSection({
                   value={currentPassword}
                   onChange={(event) => setCurrentPassword(event.target.value)}
                 />
-                {fieldErrors.currentPassword ? <span className="text-xs leading-5 text-destructive">{fieldErrors.currentPassword}</span> : null}
-              </label>
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-foreground">{accountNewPasswordLabel}</span>
+              </Field>
+              <Field label={accountNewPasswordLabel} error={fieldErrors.newPassword}>
                 <PasswordInput
                   hideLabel={passwordHideLabel}
                   placeholder={accountNewPasswordPlaceholder}
@@ -206,8 +199,7 @@ export function SettingsSection({
                   value={newPassword}
                   onChange={(event) => setNewPassword(event.target.value)}
                 />
-                {fieldErrors.newPassword ? <span className="text-xs leading-5 text-destructive">{fieldErrors.newPassword}</span> : null}
-              </label>
+              </Field>
             </div>
             <div className="flex justify-start" dir="rtl">
               <Button disabled={isSavingAccount} type="submit">
@@ -215,8 +207,8 @@ export function SettingsSection({
               </Button>
             </div>
           </form>
-        </Surface>
-        <Surface as="article" className="p-5" variant="card">
+        </div>
+        <div className="p-5 border border-line rounded-xl">
           <div className="flex items-start justify-between gap-4" dir="rtl">
             <div className="text-start">
               <h3 className="text-lg font-semibold text-foreground">{themeLabel}</h3>
@@ -226,8 +218,8 @@ export function SettingsSection({
               {themeValueLabel}
             </Button>
           </div>
-        </Surface>
-        <Surface as="article" className="p-5" variant="card">
+        </div>
+        <div className="p-5 border border-line rounded-xl">
           <div className="flex items-start justify-between gap-4" dir="rtl">
             <div className="text-start">
               <h3 className="text-lg font-semibold text-foreground">{resetLabel}</h3>
@@ -237,7 +229,7 @@ export function SettingsSection({
               {resetLabel}
             </Button>
           </div>
-        </Surface>
+        </div>
       </div>
     </RecordPageFrame>
   )

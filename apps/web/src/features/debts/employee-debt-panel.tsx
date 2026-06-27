@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -12,6 +13,7 @@ import { formatDebtMoney, getDebtAccountBalanceMeta, getDebtDirectionLabel } fro
 
 /** Employee debt panel with balance and entry history. */
 export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
+  const { t } = useTranslation()
   const debtAccountQuery = useEmployeeDebtAccountQuery(employeeId)
   const createEntryMutation = useCreateEmployeeDebtEntryMutation()
 
@@ -51,7 +53,7 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
       <div className="grid gap-4">
         <Surface className="rounded-xl px-5 py-4" variant="card">
           <p className="text-sm text-muted-foreground">
-            {debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
+            {debtAccount ? `${t("debts.cases.currentBalance", "الرصيد الحالي")} — ${getDebtDirectionLabel(debtAccount.direction)}` : t("debts.cases.currentBalance", "الرصيد الحالي")}
           </p>
           <p className={cn("mt-2 font-mono text-2xl font-semibold", balanceMeta.textClassName)} dir="ltr">
             دج {formatDebtMoney(debtAccount?.currentBalance ?? 0)}
@@ -61,26 +63,26 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
       </div>
 
       <Surface className="p-5" variant="card">
-        <SurfaceHeader title="إضافة حركة دين" description="سجل دفعات أو مستحقات أو تسويات للعامل" />
+        <SurfaceHeader title={t("debts.employee.addEntry", "إضافة حركة دين")} description={t("debts.employee.addEntryDescription", "سجل دفعات أو مستحقات أو تسويات للعامل")} />
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">نوع الحركة</span>
+            <span className="text-sm font-medium text-foreground">{t("debts.employee.entryType", "نوع الحركة")}</span>
             <select
               value={entryType}
               onChange={(e) => setEntryType(e.target.value as "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE")}
               className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
               disabled={createEntryMutation.isPending}
             >
-              <option value="OPENING">فتح الحساب</option>
-              <option value="PAYMENT">دفعة</option>
-              <option value="ADJUSTMENT">تسوية</option>
-              <option value="ADVANCE">سلفة</option>
+              <option value="OPENING">{t("debts.employee.opening", "فتح الحساب")}</option>
+              <option value="PAYMENT">{t("debts.employee.payment", "دفعة")}</option>
+              <option value="ADJUSTMENT">{t("debts.employee.adjustment", "تسوية")}</option>
+              <option value="ADVANCE">{t("debts.employee.advance", "سلفة")}</option>
             </select>
           </label>
 
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">التاريخ</span>
+            <span className="text-sm font-medium text-foreground">{t("common.createDate", "التاريخ")}</span>
             <DatePicker
               value={entryDate}
               onChange={setEntryDate}
@@ -89,7 +91,7 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
           </label>
 
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">المبلغ (دج)</span>
+            <span className="text-sm font-medium text-foreground">{t("debts.employee.amount", "المبلغ (دج)")}</span>
             <CurrencyInput
               placeholder="0.00"
               value={amount}
@@ -99,10 +101,10 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
           </label>
 
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">ملاحظة</span>
+            <span className="text-sm font-medium text-foreground">{t("common.note", "ملاحظة")}</span>
             <input
               type="text"
-              placeholder="إضافة تفصيل"
+              placeholder={t("debts.employee.notePlaceholder", "إضافة تفصيل")}
               value={note}
               onChange={(e) => setNote(e.target.value)}
               className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
@@ -113,10 +115,10 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
 
         <PageFooterActions>
           <Button variant="outline" onClick={resetForm} disabled={createEntryMutation.isPending}>
-            إعادة تعيين
+            {t("common.reset", "إعادة تعيين")}
           </Button>
           <Button disabled={!hasValidAmount || createEntryMutation.isPending} onClick={handleSubmit}>
-            {createEntryMutation.isPending ? "جاري الحفظ..." : "حفظ الحركة"}
+            {createEntryMutation.isPending ? t("debts.employee.saving", "جاري الحفظ...") : t("debts.employee.saveEntry", "حفظ الحركة")}
           </Button>
         </PageFooterActions>
       </Surface>

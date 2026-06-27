@@ -1,10 +1,22 @@
 import { useState } from "react"
-
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { NativeSelect } from "@/components/ui/form-controls"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 type CreateableSelectProps = {
   /** Current value */
@@ -40,26 +52,30 @@ type CreateableSelectProps = {
  * When "Create new" is selected, a dialog opens to create the item,
  * then the select is updated with the new value.
  */
-/** Select with inline "Create new" option. Opens a dialog for creating items without leaving the current form. */
 export function CreateableSelect({
   value,
   onChange,
   options,
-  emptyLabel = "اختر...",
-  placeholder = "لا توجد خيارات",
-  createLabel = "إنشاء جديد",
-  createFields = [{ key: "name", label: "الاسم", placeholder: "الاسم...", required: true }],
+  emptyLabel,
+  placeholder,
+  createLabel,
+  createFields = [{ key: "name", label: "Name", placeholder: "Name...", required: true }],
   onCreate,
   disabled = false,
   className,
 }: CreateableSelectProps) {
+  const { t } = useTranslation()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [createData, setCreateData] = useState<Record<string, string>>({})
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
 
-  function handleSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
-    const selectedValue = event.target.value
+  const resolvedEmptyLabel = emptyLabel ?? t("common.selectPlaceholder", "اختر...")
+  const resolvedPlaceholder = placeholder ?? t("common.noOptions", "لا توجد خيارات")
+  const resolvedCreateLabel = createLabel ?? t("common.createNew", "إنشاء جديد")
+
+  function handleValueChange(selectedValue: string | null) {
+    if (!selectedValue) return
     if (selectedValue === "__create_new__") {
       setShowCreateDialog(true)
       setCreateData({})
@@ -75,7 +91,7 @@ export function CreateableSelect({
     // Validate required fields
     for (const field of createFields) {
       if (field.required && !createData[field.key]?.trim()) {
-        setCreateError(`حقل "${field.label}" مطلوب`)
+        setCreateError(t("common.fieldRequired", { field: field.label }))
         return
       }
     }
@@ -89,7 +105,7 @@ export function CreateableSelect({
       setShowCreateDialog(false)
       setCreateData({})
     } catch (error) {
-      setCreateError(error instanceof Error ? error.message : "حدث خطأ أثناء الإنشاء")
+      setCreateError(error instanceof Error ? error.message : t("common.creationError"))
     } finally {
       setIsCreating(false)
     }
@@ -103,24 +119,33 @@ export function CreateableSelect({
 
   return (
     <>
-      <NativeSelect
-        value={value}
-        onChange={handleSelectChange}
-        disabled={disabled}
-        className={className}
-      >
-        <option value="">{emptyLabel}</option>
-        {options.length === 0 && <option value="" disabled>{placeholder}</option>}
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>{option.name}</option>
-        ))}
-        {onCreate && <option value="__create_new__">+ {createLabel}</option>}
-      </NativeSelect>
+      <Select value={value} onValueChange={handleValueChange} disabled={disabled}>
+        <SelectTrigger className={className}>
+          <SelectValue placeholder={resolvedEmptyLabel} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.length === 0 && (
+            <SelectItem value="" disabled>
+              {resolvedPlaceholder}
+            </SelectItem>
+          )}
+          {options.map((option) => (
+            <SelectItem key={option.id} value={option.id}>
+              {option.name}
+            </SelectItem>
+          ))}
+          {onCreate && (
+            <SelectItem value="__create_new__">
+              + {resolvedCreateLabel}
+            </SelectItem>
+          )}
+        </SelectContent>
+      </Select>
 
       <Dialog open={showCreateDialog} onOpenChange={(open) => !open && handleCloseDialog()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{createLabel}</DialogTitle>
+            <DialogTitle>{resolvedCreateLabel}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {createFields.map((field) => (
@@ -146,13 +171,15 @@ export function CreateableSelect({
               </label>
             ))}
             {createError && <p className="text-sm text-destructive">{createError}</p>}
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={handleCloseDialog}>إلغاء</Button>
-              <Button onClick={handleCreate} disabled={isCreating}>
-                {isCreating ? "جارٍ الإنشاء..." : "إنشاء"}
-              </Button>
-            </div>
           </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseDialog}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={handleCreate} disabled={isCreating}>
+              {isCreating ? t("common.creating") : t("common.create")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { KeyboardShortcutsProvider } from "@/components/ui/keyboard-shortcuts-provider"
 import { AppPreferencesProvider, useAppPreferences } from "@/features/preferences/preferences"
 import { i18n, resources } from "@/i18n"
 import { queryClient } from "@/lib/query-client"
@@ -16,10 +17,12 @@ function AppProvidersContent({ children }: { children: React.ReactNode }) {
   }, [locale])
 
   return (
-    <TooltipProvider>
-      {children}
-      <Toaster />
-    </TooltipProvider>
+    <KeyboardShortcutsProvider>
+      <TooltipProvider>
+        {children}
+        <Toaster />
+      </TooltipProvider>
+    </KeyboardShortcutsProvider>
   )
 }
 
