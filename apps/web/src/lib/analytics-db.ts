@@ -86,6 +86,9 @@ export async function getEventCount(event: string): Promise<number> {
 
 // Convenience functions for onboarding events
 
+/**
+ * onboardingAnalytics = component.
+ */
 export const onboardingAnalytics = {
   trackTourStarted: (tourId: string) =>
     trackEvent("tour_started", { tourId }),

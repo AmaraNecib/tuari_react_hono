@@ -7,6 +7,9 @@ import * as React from "react"
 import { formInputClassName } from "@/components/ui/form-controls"
 import { cn } from "@/lib/utils"
 
+/**
+ * Input component.
+ */
 function Input({ className, type = "text", ...props }: React.ComponentProps<"input">) {
   return (
     <input

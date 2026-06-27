@@ -39,6 +39,9 @@ function mapServerErrors(error: AppMutationError): WarehouseFormErrors {
 }
 
 /** Warehouse creation page with form fields. */
+/**
+ * @description Component
+ */
 export function WarehouseCreatePage({ managerOptions }: { managerOptions: Array<{ id: string; label: string }> }) {
   const { t } = useTranslation()
   const navigate = useNavigate()

@@ -36,6 +36,9 @@ interface BatchOperationsToolbarProps {
 }
 
 /** Toolbar for batch operations on selected rows. */
+/**
+ * @description Component
+ */
 export function BatchOperationsToolbar({
   selectCount,
   isAllSelected,

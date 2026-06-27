@@ -11,6 +11,9 @@ import { showErrorToast } from "@/lib/toast"
 import { ItemListEditor, type ItemEditorRow } from "./item-list-editor"
 import { useCreateOutboundTransferMutation, useInventoryExternalCounterpartiesQuery, useInventoryWarehousesQuery, useInventoryProjectsQuery, useInventoryItemDefinitionsQuery } from "./inventory-hooks"
 
+/**
+ * @description Component
+ */
 export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation()
   const counterpartiesQuery = useInventoryExternalCounterpartiesQuery()

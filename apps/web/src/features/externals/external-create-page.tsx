@@ -10,6 +10,9 @@ import { Textarea } from "@/components/ui/form-controls"
 import { useCreateExternalCounterpartyMutation } from "@/features/app-shell/mock-dashboard"
 import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 
+/**
+ * @description Component
+ */
 export function ExternalCounterpartyCreatePage({ onCreated }: { onCreated: (counterpartyId: string) => void }) {
   const { t } = useTranslation()
   const createMutation = useCreateExternalCounterpartyMutation()

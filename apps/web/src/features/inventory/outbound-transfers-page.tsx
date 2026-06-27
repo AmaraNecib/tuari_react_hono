@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { useOutboundTransfersQuery } from "./inventory-hooks"
 
+/**
+ * @description Component
+ */
 export function OutboundTransfersPage({ onCreate }: { onCreate: () => void }) {
   const { t } = useTranslation()
   const transfersQuery = useOutboundTransfersQuery()

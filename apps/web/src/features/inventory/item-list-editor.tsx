@@ -18,6 +18,9 @@ export interface ItemEditorRow {
   unitPrice: string
 }
 
+/**
+ * @description Component
+ */
 export function ItemListEditor({
   items,
   itemDefinitions,

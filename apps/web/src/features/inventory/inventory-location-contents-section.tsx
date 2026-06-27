@@ -10,6 +10,9 @@ import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { useInventoryLocationContentsQuery } from "./inventory-hooks"
 import { TransferItemDialog, type TransferTarget } from "./transfer-item-dialog"
 
+/**
+ * @description Component
+ */
 export function InventoryLocationContentsSection({ warehouseId, projectId }: { warehouseId?: string; projectId?: string }) {
   const { t } = useTranslation()
   const query = useInventoryLocationContentsQuery({ warehouseId, projectId })

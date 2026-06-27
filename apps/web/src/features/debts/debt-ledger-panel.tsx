@@ -31,6 +31,9 @@ function DebtStatCard({ label, value, valueClassName }: { label: string; value: 
   )
 }
 
+/**
+ * @description Component
+ */
 export function DebtLedgerPanel({
   debtAccount,
   debtEntries,

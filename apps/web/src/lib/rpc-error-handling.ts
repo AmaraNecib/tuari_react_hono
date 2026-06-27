@@ -29,6 +29,9 @@ export function extractRpcIssueMessage(error: unknown): string | null {
   return null
 }
 
+/**
+ * buildErrorMessage(error component.
+ */
 export function buildErrorMessage(error: unknown, fallbackMessage: string): string {
   return extractRpcIssueMessage(error) ?? (error instanceof Error && error.message.trim().length > 0 ? error.message : fallbackMessage)
 }

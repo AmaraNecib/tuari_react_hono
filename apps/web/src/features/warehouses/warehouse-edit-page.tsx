@@ -19,6 +19,9 @@ import {
   type WarehouseFormState,
 } from "./warehouse-form"
 
+/**
+ * @description Component
+ */
 export function WarehouseEditPage({
   managerOptions,
   warehouse,

@@ -30,6 +30,9 @@ interface SearchDialogProps {
  * Hierarchical search dialog triggered by Ctrl+K / Alt+K.
  * Supports Tab-to-expand sub-actions within entities.
  */
+/**
+ * @description Component
+ */
 export function SearchDialog({ isOpen, onClose, onQueryChange, results = [], className }: SearchDialogProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState("")

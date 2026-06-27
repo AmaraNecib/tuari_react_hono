@@ -5,6 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import type { RecurringPattern, RecurringPatternList } from "@tuari/contracts";
 import { rpcClient } from "@/lib/orpc-client";
 
+/**
+ * useRecurringPatternsQuery() component.
+ */
 export function useRecurringPatternsQuery() {
   return useQuery<RecurringPatternList>({
     queryKey: ["recurring-patterns"],
@@ -12,6 +15,9 @@ export function useRecurringPatternsQuery() {
       return rpcClient.recurringPatternsList({});
     },
     staleTime: 5 * 60 * 1000,
+/**
+ * useRecurringPatternQuery(id component.
+ */
   });
 }
 
@@ -20,9 +26,15 @@ export function useRecurringPatternQuery(id: string) {
     queryKey: ["recurring-patterns", id],
     queryFn: async () => {
       return rpcClient.recurringPatternsGet({ id });
+/**
+ * formatNextOccurrence(pattern component.
+ */
     },
     enabled: !!id,
     staleTime: 5 * 60 * 1000,
+/**
+ * calculateDaysUntilOccurrence(pattern component.
+ */
   });
 }
 

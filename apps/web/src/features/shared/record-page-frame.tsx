@@ -16,6 +16,9 @@ import { cn } from "@/lib/utils"
 import { PageActionGroup, PageHeader, Surface } from "./page-primitives"
 
 /** Frame for detail/edit pages with action bar. */
+/**
+ * @description Component
+ */
 export function RecordPageFrame({
   title,
   description,
@@ -68,6 +71,9 @@ export function RecordPageFrame({
  * RecordTabs — wraps the shadcn Tabs component with a consistent
  * underline-style variant for detail page navigation.
  */
+/**
+ * @description Component
+ */
 export function RecordTabs({
   activeTab,
   tabs,
@@ -100,6 +106,9 @@ export function RecordTabs({
  * RecordTabPanel — conditionally renders content based on active tab.
  * Use this outside the Tabs component to control visibility.
  */
+/**
+ * @description Component
+ */
 export function RecordTabPanel({
   activeTab,
   tabId,
@@ -128,10 +137,16 @@ export function RecordTabPanel({
   )
 }
 
+/**
+ * @description Component
+ */
 export function RecordInfoGrid({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("grid gap-4 md:grid-cols-2 xl:grid-cols-3", className)}>{children}</div>
 }
 
+/**
+ * @description Component
+ */
 export function RecordInfoCard({
   label,
   value,
@@ -153,6 +168,9 @@ export function RecordInfoCard({
   )
 }
 
+/**
+ * @description Component
+ */
 export function RecordHistoryTable({
   columns,
   emptyLabel,
@@ -211,6 +229,9 @@ export function RecordHistoryTable({
   )
 }
 
+/**
+ * @description Component
+ */
 export function RecordHistoryCard({
   title,
   emptyLabel,

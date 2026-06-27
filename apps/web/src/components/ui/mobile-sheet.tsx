@@ -13,6 +13,9 @@ interface MobileSheetProps {
   actions?: ReactNode;
 }
 
+/**
+ * @description Component
+ */
 export function MobileSheet({
   isOpen,
   onOpenChange,

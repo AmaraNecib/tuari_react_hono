@@ -17,6 +17,9 @@ interface ProgressiveOnboardingProps {
  * Shows/hides features based on user's progress level.
  * Teaches complexity gradually.
  */
+/**
+ * @description Component
+ */
 export function ProgressiveOnboarding({
   level,
   children,
@@ -48,6 +51,9 @@ interface OnboardingLevelProps {
  * Container for onboarding levels.
  * Shows different content based on user's progress.
  */
+/**
+ * @description Component
+ */
 export function OnboardingLevel({
   children,
   className,
@@ -70,6 +76,9 @@ interface OnboardingLevelItemProps {
 
 /**
  * Individual level item with badge and description.
+ */
+/**
+ * @description Component
  */
 export function OnboardingLevelItem({
   level,
@@ -117,6 +126,9 @@ interface OnboardingProgressProps {
 /**
  * Progress indicator showing onboarding levels.
  * Allows users to see their progress and advance.
+ */
+/**
+ * @description Component
  */
 export function OnboardingProgress({
   currentLevel,

@@ -65,6 +65,9 @@ function parseSalaryAmount(value: string) {
 }
 
 /** Employee edit page with form fields. */
+/**
+ * @description Component
+ */
 export function EmployeeEditPage({
   currentManagedProjectIds,
   currentManagedWarehouseIds,

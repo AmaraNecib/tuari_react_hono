@@ -98,6 +98,9 @@ type EmployeeOption = { id: string; name: string; phone: string; roleKey: string
 type ReasonCategory = "INVOICE_DRIVEN" | "SALARY_ADVANCE" | "REIMBURSEMENT" | "CASH_TAKE" | "EQUIPMENT_DAMAGE" | "PERSONAL_LOAN" | "DIRECT_LOAN_GIVEN" | "DIRECT_LOAN_TAKEN" | "OTHER"
 
 /** Debt entry creation page. */
+/**
+ * @description Component
+ */
 export function DebtCreatePage({
   employees,
   externalCounterparties,

@@ -3,6 +3,9 @@
  */
 import { useState } from "react"
 
+/**
+ * useFormAmount(initialValue = "") component.
+ */
 export function useFormAmount(initialValue = "") {
   const [amount, setAmount] = useState(initialValue)
 
@@ -17,6 +20,9 @@ export function useFormAmount(initialValue = "") {
     isValid,
     reset: () => setAmount(initialValue),
     isEmpty: normalized.length === 0,
+/**
+ * useDateField(initialValue = "") component.
+ */
   }
 }
 

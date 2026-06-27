@@ -6,6 +6,9 @@ let desktopAuthInitializationPromise: Promise<void> | null = null
 
 const DESKTOP_AUTH_STORAGE_KEY = "tuari.desktop.auth.token"
 
+/**
+ * isDesktopRuntime() component.
+ */
 export function isDesktopRuntime() {
   if (typeof window === "undefined") {
     return false

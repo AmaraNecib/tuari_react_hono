@@ -41,6 +41,9 @@ interface ResponsiveTableCellProps {
 /**
  * Responsive table that switches to card view on mobile.
  */
+/**
+ * @description Component
+ */
 export function ResponsiveTable({ children, className, cardView = true }: ResponsiveTableProps) {
   const { isMobile } = useMobileLayout()
 
@@ -55,14 +58,23 @@ export function ResponsiveTable({ children, className, cardView = true }: Respon
   )
 }
 
+/**
+ * @description Component
+ */
 export function ResponsiveTableHeader({ children, className }: ResponsiveTableHeaderProps) {
   return <thead className={cn("border-b border-line bg-bg-2", className)}>{children}</thead>
 }
 
+/**
+ * @description Component
+ */
 export function ResponsiveTableBody({ children, className }: ResponsiveTableBodyProps) {
   return <tbody className={cn("[&_tr:last-child]:border-0", className)}>{children}</tbody>
 }
 
+/**
+ * @description Component
+ */
 export function ResponsiveTableRow({ children, className }: ResponsiveTableRowProps) {
   const { isMobile } = useMobileLayout()
 
@@ -79,6 +91,9 @@ export function ResponsiveTableRow({ children, className }: ResponsiveTableRowPr
   )
 }
 
+/**
+ * @description Component
+ */
 export function ResponsiveTableHead({ children, className }: ResponsiveTableHeadProps) {
   const { isMobile } = useMobileLayout()
 
@@ -99,6 +114,9 @@ export function ResponsiveTableHead({ children, className }: ResponsiveTableHead
   )
 }
 
+/**
+ * @description Component
+ */
 export function ResponsiveTableCell({ children, className, mobileLabel }: ResponsiveTableCellProps) {
   const { isMobile } = useMobileLayout()
 

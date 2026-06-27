@@ -112,6 +112,9 @@ function getInitials(name: string | null): string {
     : name.slice(0, 2).toUpperCase()
 }
 
+/**
+ * @description Component
+ */
 export function WorkspaceSidebar({
   collapsed,
   currentPage,

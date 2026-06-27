@@ -48,6 +48,9 @@ function getInitialSidebarCollapsedState() {
   return readStoredSidebarCollapsed() ?? window.innerWidth < 1200
 }
 
+/**
+ * usePersistedSidebarState() component.
+ */
 export function usePersistedSidebarState() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsedState)
 

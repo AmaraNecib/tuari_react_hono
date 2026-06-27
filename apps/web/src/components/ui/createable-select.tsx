@@ -52,6 +52,9 @@ type CreateableSelectProps = {
  * When "Create new" is selected, a dialog opens to create the item,
  * then the select is updated with the new value.
  */
+/**
+ * @description Component
+ */
 export function CreateableSelect({
   value,
   onChange,

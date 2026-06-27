@@ -7,22 +7,34 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
+/**
+ * Alert dialog root component.
+ */
 function AlertDialog({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
 }
 
+/**
+ * Alert dialog trigger component.
+ */
 function AlertDialogTrigger({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
   return <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />
 }
 
+/**
+ * Alert dialog portal component.
+ */
 function AlertDialogPortal({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
   return <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />
 }
 
+/**
+ * Alert dialog overlay component.
+ */
 function AlertDialogOverlay({
   className,
   ...props
@@ -39,6 +51,9 @@ function AlertDialogOverlay({
   )
 }
 
+/**
+ * Alert dialog content component.
+ */
 function AlertDialogContent({
   className,
   ...props
@@ -58,6 +73,9 @@ function AlertDialogContent({
   )
 }
 
+/**
+ * Alert dialog header component.
+ */
 function AlertDialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -68,6 +86,9 @@ function AlertDialogHeader({ className, ...props }: React.ComponentProps<"div">)
   )
 }
 
+/**
+ * Alert dialog footer component.
+ */
 function AlertDialogFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -78,6 +99,9 @@ function AlertDialogFooter({ className, ...props }: React.ComponentProps<"div">)
   )
 }
 
+/**
+ * Alert dialog title component.
+ */
 function AlertDialogTitle({
   className,
   ...props
@@ -91,6 +115,9 @@ function AlertDialogTitle({
   )
 }
 
+/**
+ * Alert dialog description component.
+ */
 function AlertDialogDescription({
   className,
   ...props
@@ -104,6 +131,9 @@ function AlertDialogDescription({
   )
 }
 
+/**
+ * Alert dialog action button component.
+ */
 function AlertDialogAction({
   className,
   ...props

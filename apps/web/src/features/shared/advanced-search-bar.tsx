@@ -11,6 +11,9 @@ interface AdvancedSearchBarProps {
 }
 
 /** Search bar with filters and preset management. */
+/**
+ * @description Component
+ */
 export function AdvancedSearchBar({
   onSearch,
   storageKey,

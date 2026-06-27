@@ -20,6 +20,9 @@ interface InventoryInvoicesPageProps {
 type InvoiceStatusFilter = "ALL" | "PAID" | "UNPAID"
 
 /** Invoice listing page with filters and batch operations. */
+/**
+ * @description Component
+ */
 export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPageProps) {
   const { t } = useTranslation()
   const invoicesQuery = useInventoryInvoiceGroupsQuery()

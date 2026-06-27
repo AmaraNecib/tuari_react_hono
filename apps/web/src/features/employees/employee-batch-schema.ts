@@ -9,6 +9,9 @@ import {
   type EmployeeBatchCreateInput,
 } from "@tuari/contracts"
 
+/**
+ * duplicatePhoneInBatchMessage = "تم تكرار رقم الهاتف داخل نفس الدفعة." component.
+ */
 export const duplicatePhoneInBatchMessage = "تم تكرار رقم الهاتف داخل نفس الدفعة."
 
 export type EmployeeDraft = {
@@ -22,6 +25,9 @@ export type EmployeeDraft = {
   projectId: string
   notes: string
 }
+/**
+ * createEmptyEmployeeDraft(defaultRoleId = "") component.
+ */
 
 export type EmployeeDraftErrors = Partial<Record<keyof EmployeeDraft, string>>
 
@@ -33,6 +39,9 @@ export function createEmptyEmployeeDraft(defaultRoleId = ""): EmployeeDraft {
     roleId: defaultRoleId,
     salaryAmountDzd: "",
     salaryPeriod: "",
+/**
+ * parseSalaryAmount(value component.
+ */
     managerId: "",
     projectId: "",
     notes: "",
@@ -41,6 +50,9 @@ export function createEmptyEmployeeDraft(defaultRoleId = ""): EmployeeDraft {
 
 export function parseSalaryAmount(value: string) {
   const trimmed = value.trim()
+/**
+ * normalizeEmployeeDraft(draft component.
+ */
 
   if (trimmed.length === 0) {
     return null
@@ -53,6 +65,9 @@ export function parseSalaryAmount(value: string) {
 export function normalizeEmployeeDraft(draft: EmployeeDraft) {
   return {
     firstName: draft.firstName.trim(),
+/**
+ * validateEmployeeDraft(draft component.
+ */
     lastName: draft.lastName.trim(),
     phone: draft.phone.trim(),
     roleId: draft.roleId,
@@ -112,6 +127,9 @@ export function validateEmployeeDraft(draft: EmployeeDraft) {
     }
   }
 
+/**
+ * validateEmployeeBatch(drafts component.
+ */
   if (Number.isNaN(salaryAmount)) {
     errors.salaryAmountDzd = errors.salaryAmountDzd ?? "invalid"
   }

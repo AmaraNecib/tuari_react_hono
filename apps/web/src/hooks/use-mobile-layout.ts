@@ -19,6 +19,9 @@ function getInitialState() {
   };
 }
 
+/**
+ * useMobileLayout() component.
+ */
 export function useMobileLayout() {
   const initial = getInitialState();
   const [isMobile, setIsMobile] = useState(initial.isMobile);

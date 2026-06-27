@@ -8,8 +8,14 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
+/**
+ * Select root component.
+ */
 const Select = SelectPrimitive.Root
 
+/**
+ * Select group component.
+ */
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
     <SelectPrimitive.Group
@@ -20,6 +26,9 @@ function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   )
 }
 
+/**
+ * Select value component.
+ */
 function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
   return (
     <SelectPrimitive.Value
@@ -30,6 +39,9 @@ function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
   )
 }
 
+/**
+ * Select trigger component.
+ */
 function SelectTrigger({
   className,
   size = "default",
@@ -61,6 +73,9 @@ function SelectTrigger({
   )
 }
 
+/**
+ * Select content component.
+ */
 function SelectContent({
   className,
   children,
@@ -103,6 +118,9 @@ function SelectContent({
   )
 }
 
+/**
+ * Select label component.
+ */
 function SelectLabel({
   className,
   ...props
@@ -116,6 +134,9 @@ function SelectLabel({
   )
 }
 
+/**
+ * Select item component.
+ */
 function SelectItem({
   className,
   children,
@@ -144,6 +165,9 @@ function SelectItem({
   )
 }
 
+/**
+ * Select separator component.
+ */
 function SelectSeparator({
   className,
   ...props
@@ -157,6 +181,9 @@ function SelectSeparator({
   )
 }
 
+/**
+ * Select scroll up button component.
+ */
 function SelectScrollUpButton({
   className,
   ...props
@@ -175,6 +202,9 @@ function SelectScrollUpButton({
   )
 }
 
+/**
+ * Select scroll down button component.
+ */
 function SelectScrollDownButton({
   className,
   ...props

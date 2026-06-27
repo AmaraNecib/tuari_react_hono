@@ -36,6 +36,9 @@ const FILTER_OPTIONS: Array<{ id: FilterOption; label: string }> = [
 const DEFAULT_PAGE_SIZE = 25
 
 /** Debts hub with summary cards and employee/external lists. */
+/**
+ * @description Component
+ */
 export function DebtsHubPage({
   onCreateDebt,
   onOpenExternalCounterparty,

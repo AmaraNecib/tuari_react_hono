@@ -8,6 +8,9 @@ import { Input } from "@/components/ui/input";
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
 import { useRecurringPatternsQuery, formatNextOccurrence, calculateDaysUntilOccurrence } from "@/hooks/use-recurring-patterns";
 
+/**
+ * @description Component
+ */
 export function RecurringPatternsPage() {
   const { t } = useTranslation()
   const patternsQuery = useRecurringPatternsQuery();

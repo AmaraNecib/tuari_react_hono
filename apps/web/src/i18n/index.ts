@@ -6,6 +6,9 @@ import { initReactI18next } from "react-i18next"
 
 import { ar } from "./resources/ar"
 
+/**
+ * resources = component.
+ */
 export const resources = {
   ar,
 } as const

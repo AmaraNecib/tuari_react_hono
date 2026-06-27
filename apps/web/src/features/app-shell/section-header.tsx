@@ -6,6 +6,9 @@ import type { ReactNode } from "react"
 
 import { PageHeader } from "@/features/shared/page-primitives"
 
+/**
+ * @description Component
+ */
 export function SectionHeader({
   title,
   description,

@@ -80,6 +80,9 @@ function createAssetLine(defaultName = "", purchaseDate = getTodayDateValue()): 
 }
 
 /** Invoice creation page with line items and file attachments. */
+/**
+ * @description Component
+ */
 export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceId: string) => void }) {
   const definitionsQuery = useInventoryItemDefinitionsQuery()
   const warehousesQuery = useInventoryWarehousesQuery()

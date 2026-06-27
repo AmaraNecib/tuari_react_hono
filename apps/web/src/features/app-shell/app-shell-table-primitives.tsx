@@ -7,6 +7,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Surface } from "@/features/shared/page-primitives"
 import { cn } from "@/lib/utils"
 
+/**
+ * @description Component
+ */
 export function AppShellSectionSurface({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <Surface variant="panel" className={cn("overflow-hidden", className)} dir="rtl">
@@ -15,10 +18,16 @@ export function AppShellSectionSurface({ children, className }: { children: Reac
   )
 }
 
+/**
+ * @description Component
+ */
 export function AppShellSectionBody({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("space-y-6 p-6 xl:p-7", className)} dir="rtl">{children}</div>
 }
 
+/**
+ * @description Component
+ */
 export function AppShellTableFrame({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div className={cn("overflow-hidden rounded-xl border border-line", className)} dir="rtl">
@@ -27,6 +36,9 @@ export function AppShellTableFrame({ children, className }: { children: ReactNod
   )
 }
 
+/**
+ * @description Component
+ */
 export function AppShellTableHead({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <thead className={cn("bg-bg-2 border-b border-line", className)}>
@@ -35,6 +47,9 @@ export function AppShellTableHead({ children, className }: { children: ReactNode
   )
 }
 
+/**
+ * @description Component
+ */
 export function AppShellTableHeaderCell({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <th className={cn("px-4 py-2.5 text-start text-[12px] font-mono font-semibold uppercase tracking-widest text-ink-4", className)} scope="col">
@@ -43,6 +58,9 @@ export function AppShellTableHeaderCell({ children, className }: { children: Rea
   )
 }
 
+/**
+ * @description Component
+ */
 export function AppShellTableRow({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <tr className={cn("border-t border-line bg-surface hover:bg-surface-2 transition-colors", className)}>
@@ -51,6 +69,9 @@ export function AppShellTableRow({ children, className }: { children: ReactNode;
   )
 }
 
+/**
+ * @description Component
+ */
 export function AppShellEmptyStateRow({ colSpan, children }: { colSpan: number; children: ReactNode }) {
   return (
     <tr>
@@ -61,10 +82,16 @@ export function AppShellEmptyStateRow({ colSpan, children }: { colSpan: number; 
   )
 }
 
+/**
+ * @description Component
+ */
 export function AppShellActionGroup({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("flex flex-wrap justify-start gap-1.5", className)} dir="rtl">{children}</div>
 }
 
+/**
+ * @description Component
+ */
 export function AppShellActionButtonWithReason({
   children,
   disabled,
@@ -105,6 +132,9 @@ export function AppShellActionButtonWithReason({
  * without cramping. Each direct child should be a filter <label> with a
  * consistent min-width so alignment stays clean at every breakpoint.
  */
+/**
+ * @description Component
+ */
 export function AppShellFilterShell({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
@@ -123,6 +153,9 @@ export function AppShellFilterShell({ children, className }: { children: ReactNo
  * Pairs two date inputs (from / to) on a single row so they always stay
  * together and never split across lines.  Labels use i18n keys for Arabic
  * RTL display: "من تاريخ" and "إلى تاريخ".
+ */
+/**
+ * @description Component
  */
 export function DateRangeFilter({
   fromLabel,
@@ -166,6 +199,9 @@ export function DateRangeFilter({
   )
 }
 
+/**
+ * usePaginatedRows<T>({ component.
+ */
 export function usePaginatedRows<T>({
   rows,
   initialPageSize = 10,

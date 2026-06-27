@@ -12,6 +12,9 @@ import { useEmployeeDebtAccountQuery, useCreateEmployeeDebtEntryMutation } from 
 import { formatDebtMoney, getDebtAccountBalanceMeta, getDebtDirectionLabel } from "./debt-utils"
 
 /** Employee debt panel with balance and entry history. */
+/**
+ * @description Component
+ */
 export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
   const { t } = useTranslation()
   const debtAccountQuery = useEmployeeDebtAccountQuery(employeeId)

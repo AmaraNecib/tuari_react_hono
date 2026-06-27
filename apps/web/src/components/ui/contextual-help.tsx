@@ -22,6 +22,9 @@ interface ContextualHelpProps {
  * Contextual help tooltip that appears on hover or click.
  * Shows help information near the relevant UI element.
  */
+/**
+ * @description Component
+ */
 export function ContextualHelp({
   content,
   title,
@@ -101,6 +104,9 @@ interface HelpHintProps {
 /**
  * Simple help hint that shows on hover.
  */
+/**
+ * @description Component
+ */
 export function HelpHint({ hint, className }: HelpHintProps) {
   return (
     <span
@@ -129,6 +135,9 @@ interface FieldHelpProps {
 /**
  * Help icon for form fields.
  * Shows contextual help next to field labels.
+ */
+/**
+ * @description Component
  */
 export function FieldHelp({ content, className }: FieldHelpProps) {
   return (

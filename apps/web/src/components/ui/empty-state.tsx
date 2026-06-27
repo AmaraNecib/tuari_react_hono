@@ -31,6 +31,9 @@ interface EmptyStateProps {
  * Enhanced empty state component following onboarding best practices.
  * Shows what will appear here, why it matters, and how to get started.
  */
+/**
+ * @description Component
+ */
 export function EmptyState({
   icon: Icon,
   title,
@@ -103,6 +106,9 @@ interface EmptyStateCardProps {
 
 /**
  * Empty state with card styling for use in tables or grids.
+ */
+/**
+ * @description Component
  */
 export function EmptyStateCard({
   icon: Icon,

@@ -111,6 +111,9 @@ function buildEmployeeWorkHistory({
     .map(omitSortValue)
 }
 
+/**
+ * buildEmployeeHistoryCollections({ component.
+ */
 export function buildEmployeeHistoryCollections({
   copy,
   detailCopy,

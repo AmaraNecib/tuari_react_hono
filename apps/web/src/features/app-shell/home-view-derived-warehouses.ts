@@ -32,6 +32,9 @@ export function deriveWarehouseArchiveState({
   }
 }
 
+/**
+ * buildWarehouseRows({ component.
+ */
 export function buildWarehouseRows({
   copy,
   lookups,
@@ -58,6 +61,9 @@ export function buildWarehouseRows({
       managerName: manager ? formatName(manager) : copy.shell.noManager,
       ...deriveWarehouseArchiveState({ hasActiveManagerRelation, hasActiveWarehouseWorkers, t }),
     }
+/**
+ * buildWarehouseDerivedCollections({ component.
+ */
   })
 }
 
@@ -116,6 +122,9 @@ export function buildWarehouseDerivedCollections({
     ]),
   )
 
+/**
+ * buildWarehouseOptions(workspace component.
+ */
   return {
     warehouseManagementHistoryByWarehouseId,
     warehouseWorkersByWarehouseId,

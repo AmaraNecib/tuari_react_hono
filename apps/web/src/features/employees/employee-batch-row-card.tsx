@@ -57,6 +57,9 @@ type EmployeeBatchRowCardProps = {
 const fieldClassName =
   "flex h-12 w-full rounded-xl border border-border/80 bg-sidebar px-4 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-background dark:[color-scheme:dark] dark:shadow-none"
 
+/**
+ * @description Component
+ */
 export function EmployeeBatchRowCard({
   copy,
   draft,

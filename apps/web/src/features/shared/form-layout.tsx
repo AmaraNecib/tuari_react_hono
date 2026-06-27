@@ -4,6 +4,9 @@
 import type { ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
+/**
+ * @description Component
+ */
 export function FormLayout({
   children,
   onSubmit,
@@ -28,6 +31,9 @@ export function FormLayout({
   )
 }
 
+/**
+ * @description Component
+ */
 export function FormHeader({
   title,
   description,
@@ -50,6 +56,9 @@ export function FormHeader({
   )
 }
 
+/**
+ * @description Component
+ */
 export function FormSection({
   title,
   description,
@@ -79,6 +88,9 @@ export function FormSection({
   )
 }
 
+/**
+ * @description Component
+ */
 export function FormStickyFooter({
   children,
   className,

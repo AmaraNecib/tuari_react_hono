@@ -198,6 +198,9 @@ export type HomeViewCopy = {
 
 export type HomeViewDetailCopy = HomeViewCopy["detailPages"]
 
+/**
+ * buildHomeViewCopy(t component.
+ */
 export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
   return {
     auth: {

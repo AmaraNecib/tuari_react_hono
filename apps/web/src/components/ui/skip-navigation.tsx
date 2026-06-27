@@ -12,6 +12,9 @@ interface SkipNavigationProps {
  * Skip navigation link for keyboard users.
  * Allows screen reader and keyboard users to skip repetitive navigation.
  */
+/**
+ * @description Component
+ */
 export function SkipNavigation({
   targetId = "main-content",
   className,
@@ -49,6 +52,9 @@ interface MainContentProps {
 
 /**
  * Main content wrapper with id for skip navigation.
+ */
+/**
+ * @description Component
  */
 export function MainContent({ children, className }: MainContentProps) {
   return (

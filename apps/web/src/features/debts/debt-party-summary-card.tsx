@@ -8,6 +8,9 @@ import { Surface } from "@/features/shared/page-primitives"
 import { formatDebtMoney, getCombinedDebtBalance, getDebtBalanceMeta } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
+/**
+ * @description Component
+ */
 export function DebtPartySummaryCard({ accounts, personName }: { accounts: DebtAccount[]; personName: string }) {
   const { t } = useTranslation()
   const combinedBalance = getCombinedDebtBalance(accounts)

@@ -41,6 +41,9 @@ interface InteractiveTutorialProps {
  * Interactive tutorial component with step-by-step instructions.
  * Guides users through tasks with validation and progress tracking.
  */
+/**
+ * @description Component
+ */
 export function InteractiveTutorial({
   steps,
   title,
@@ -228,6 +231,9 @@ interface TutorialCardProps {
 
 /**
  * Compact tutorial card for use in dashboards or help sections.
+ */
+/**
+ * @description Component
  */
 export function TutorialCard({
   title,

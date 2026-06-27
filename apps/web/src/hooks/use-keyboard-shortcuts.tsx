@@ -116,6 +116,9 @@ interface ShortcutHintProps {
 /**
  * Displays keyboard shortcut hint.
  */
+/**
+ * @description Component
+ */
 export function ShortcutHint({ shortcut, description, className }: ShortcutHintProps) {
   return (
     <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", className)}>

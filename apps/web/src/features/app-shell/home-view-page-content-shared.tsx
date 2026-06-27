@@ -51,6 +51,9 @@ export type HomeViewPageContentProps = {
   workspace?: import("./workspace-queries").DemoWorkspace
 }
 
+/**
+ * includeCurrentProjectManagerOption( component.
+ */
 export function includeCurrentProjectManagerOption(
   options: HomeViewProjectManagerOption[],
   currentManager: CurrentManagerOption,
@@ -75,6 +78,9 @@ export function includeCurrentProjectManagerOption(
           : [],
     },
     ...options,
+/**
+ * includeCurrentWarehouseManagerOption( component.
+ */
   ]
 }
 
@@ -86,9 +92,15 @@ export function includeCurrentWarehouseManagerOption(
     return options
   }
 
+/**
+ * MissingRecordState({ component.
+ */
   return [{ id: currentManager.id, label: currentManager.label }, ...options]
 }
 
+/**
+ * @description Component
+ */
 export function MissingRecordState({
   backLabel,
   description,

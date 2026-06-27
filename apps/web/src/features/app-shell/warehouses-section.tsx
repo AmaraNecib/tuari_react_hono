@@ -50,6 +50,9 @@ type WarehousesSectionProps = {
 }
 
 /** Warehouses section with table and CRUD actions. */
+/**
+ * @description Component
+ */
 export function WarehousesSection({
   addLabel,
   archiveLabel,

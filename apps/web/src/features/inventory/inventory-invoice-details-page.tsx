@@ -29,6 +29,9 @@ function buildLocationHref(location: { warehouseId?: string | null; projectId?: 
 }
 
 /** Invoice detail page with item list and payment recording. */
+/**
+ * @description Component
+ */
 export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: string; onBack: () => void }) {
   const invoiceQuery = useInventoryInvoiceGroupQuery(invoiceId)
   const [transferSectionExpanded] = useState(false)

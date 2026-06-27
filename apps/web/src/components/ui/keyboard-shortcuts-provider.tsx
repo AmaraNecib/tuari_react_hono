@@ -35,6 +35,9 @@ interface KeyboardShortcutsProviderProps {
  * Provider for keyboard shortcuts context.
  * Manages global keyboard shortcuts and provides context for registration.
  */
+/**
+ * @description Component
+ */
 export function KeyboardShortcutsProvider({
   children,
   onSearch,
@@ -107,6 +110,9 @@ function useShortcuts() {
 /**
  * Keyboard shortcuts help dialog.
  * Shows all available keyboard shortcuts.
+ */
+/**
+ * @description Component
  */
 export function KeyboardShortcutsHelp({ isOpen, onClose, className }: KeyboardShortcutsHelpProps) {
   const { t } = useTranslation()

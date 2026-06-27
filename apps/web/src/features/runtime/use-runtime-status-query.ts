@@ -8,6 +8,9 @@ function getRuntimeStatusRefetchInterval(query: Query<RuntimeStatus, Error, Runt
   return query.state.data?.environment === "browser" ? false : 60_000;
 }
 
+/**
+ * useRuntimeStatusQuery() component.
+ */
 export function useRuntimeStatusQuery() {
   return useQuery<RuntimeStatus, Error, RuntimeStatus, ["runtime-status"]>({
     queryKey: ["runtime-status"],

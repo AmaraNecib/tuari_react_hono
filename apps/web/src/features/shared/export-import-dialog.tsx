@@ -27,6 +27,9 @@ interface ExportImportDialogProps {
   onImport: (file: File, format: ExportFormat) => Promise<void>
 }
 
+/**
+ * @description Component
+ */
 export function ExportImportDialog({
   isOpen,
   onOpenChange,

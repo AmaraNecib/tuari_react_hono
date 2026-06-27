@@ -20,6 +20,9 @@ interface LabeledIconProps {
  * Icon with label that shows on hover or always.
  * Used for icon-only navigation elements.
  */
+/**
+ * @description Component
+ */
 export function LabeledIcon({
   icon: Icon,
   label,
@@ -69,6 +72,9 @@ interface SidebarNavItemProps {
  * Sidebar navigation item with icon and label.
  * Shows label only when sidebar is expanded.
  */
+/**
+ * @description Component
+ */
 export function SidebarNavItem({
   icon: Icon,
   label,
@@ -117,6 +123,9 @@ interface IconButtonWithLabelProps {
 
 /**
  * Icon button with accessible label and tooltip.
+ */
+/**
+ * @description Component
  */
 export function IconButtonWithLabel({
   icon: Icon,

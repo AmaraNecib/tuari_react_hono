@@ -31,6 +31,9 @@ import { WorkspaceSidebar } from "./workspace-sidebar"
 import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
 
 /** Main app shell with sidebar, header, and content area. */
+/**
+ * @description Component
+ */
 export function HomeViewSignedInShell({
   breadcrumbItems,
   children,

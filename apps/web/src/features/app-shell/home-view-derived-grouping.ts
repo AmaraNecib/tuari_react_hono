@@ -25,6 +25,9 @@ export function groupItemsBy<T>(items: readonly T[], getKey: (item: T) => string
   return groupedItems
 }
 
+/**
+ * countItemsBy<T>(items component.
+ */
 export function countItemsBy<T>(items: readonly T[], getKey: (item: T) => string | null | undefined) {
   const counts = new Map<string, number>()
 
@@ -38,6 +41,9 @@ export function countItemsBy<T>(items: readonly T[], getKey: (item: T) => string
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
 
+/**
+ * collectIds<T>(items component.
+ */
   return counts
 }
 

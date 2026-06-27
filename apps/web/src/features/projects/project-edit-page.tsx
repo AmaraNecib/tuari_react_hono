@@ -14,6 +14,9 @@ import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 import type { ProjectPageRecord } from "./project-details-page"
 import { createProjectFormState, ProjectFormFields, type ProjectFormErrors, type ProjectFormState } from "./project-form"
 
+/**
+ * @description Component
+ */
 export function ProjectEditPage({
   managerOptions,
   project,

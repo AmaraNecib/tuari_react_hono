@@ -24,6 +24,9 @@ interface WelcomeScreenProps {
  * Welcome screen for first-run experience.
  * Shows value proposition, benefits, and time estimate.
  */
+/**
+ * @description Component
+ */
 export function WelcomeScreen({
   productName,
   valueProposition,

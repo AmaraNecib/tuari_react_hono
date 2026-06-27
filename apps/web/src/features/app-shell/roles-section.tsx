@@ -27,6 +27,9 @@ type RolesSectionProps = {
   yesLabel: string
 }
 
+/**
+ * @description Component
+ */
 export function RolesSection({
   columns,
   emptyLabel,

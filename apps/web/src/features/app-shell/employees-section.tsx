@@ -77,6 +77,9 @@ type PendingAction =
   | { type: "delete"; employee: EmployeeTableRow }
 
 /** Employees section with table, pagination, and CRUD actions. */
+/**
+ * @description Component
+ */
 export function EmployeesSection({
   createTarget,
   emptyLabel,

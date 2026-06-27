@@ -115,6 +115,9 @@ interface UndoToastProps {
  * Undo toast component for showing undo notifications.
  * Displays a toast with an undo button for reversible actions.
  */
+/**
+ * @description Component
+ */
 export function UndoToast({ description, onUndo }: UndoToastProps) {
   const { t } = useTranslation()
   const [isVisible, setIsVisible] = useState(true)

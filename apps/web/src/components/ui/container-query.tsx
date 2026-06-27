@@ -14,6 +14,9 @@ interface ContainerQueryProps {
  * Container that uses CSS Container Queries for component-level adaptation.
  * Children can use @container queries to adapt based on container width.
  */
+/**
+ * @description Component
+ */
 export function ContainerQuery({
   children,
   className,
@@ -42,6 +45,9 @@ interface ContainerQueryBlockProps {
 /**
  * Block that adapts based on container width.
  * Uses CSS Container Queries internally.
+ */
+/**
+ * @description Component
  */
 export function ContainerQueryBlock({ children, className }: ContainerQueryBlockProps) {
   return (

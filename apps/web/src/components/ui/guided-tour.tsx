@@ -49,6 +49,9 @@ function isRtl(): boolean {
  * Guided tour component with spotlight and step-by-step walkthrough.
  * Persists completion status and allows replay.
  */
+/**
+ * @description Component
+ */
 export function GuidedTour({
   steps,
   storageKey,
@@ -360,6 +363,9 @@ interface GuidedTourTriggerProps {
  * Trigger button to start/restart a guided tour.
  * Shows "Start Tour" or "Restart Tour" based on completion status.
  */
+/**
+ * @description Component
+ */
 export function GuidedTourTrigger({
   steps,
   storageKey,
@@ -433,6 +439,9 @@ interface GuidedTourManagerProps {
 /**
  * Manager component that wraps content and provides tour functionality.
  * Auto-starts tour on first visit if autoStart is true.
+ */
+/**
+ * @description Component
  */
 export function GuidedTourManager({
   steps,

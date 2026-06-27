@@ -11,6 +11,9 @@ import { useReportQuery, formatReportAsCSV } from "@/hooks/use-report-queries";
 
 type ReportType = "INVENTORY" | "DEBT" | "MOVEMENT";
 
+/**
+ * @description Component
+ */
 export function ReportBuilder() {
   const { t } = useTranslation()
   const [reportType, setReportType] = useState<ReportType>("INVENTORY");

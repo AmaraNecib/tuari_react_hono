@@ -24,6 +24,9 @@ import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/featur
 import { useCreateInventoryItemDefinitionMutation, useInventoryItemDefinitionsQuery } from "./inventory-hooks"
 
 /** Item definitions management page. */
+/**
+ * @description Component
+ */
 export function InventoryItemDefinitionsPage() {
   const { t } = useTranslation()
   const listQuery = useInventoryItemDefinitionsQuery()

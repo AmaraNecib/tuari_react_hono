@@ -21,6 +21,9 @@ import {
 import { formatDebtMoney, getDebtBalanceMeta, getDebtDirectionLabel } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
+/**
+ * @description Component
+ */
 export function ConsolidationDialog({
   payableAccount,
   receivableAccount,

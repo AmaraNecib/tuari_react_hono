@@ -6,6 +6,9 @@ import { phoneNumberClient } from "better-auth/client/plugins"
 
 import { resolveApiBaseUrl } from "./runtime-config"
 
+/**
+ * getAuthClient() component.
+ */
 export function getAuthClient() {
   return createAuthClient({
     baseURL: resolveApiBaseUrl(),

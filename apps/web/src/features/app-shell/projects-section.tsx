@@ -52,6 +52,9 @@ type ProjectsSectionProps = {
 }
 
 /** Projects section with table and CRUD actions. */
+/**
+ * @description Component
+ */
 export function ProjectsSection({
   addLabel,
   archiveLabel,

@@ -21,6 +21,9 @@ interface AuditLog {
 }
 
 /** Audit log page with date filtering and search. */
+/**
+ * @description Component
+ */
 export function AuditLogPage() {
   const { t } = useTranslation()
   const [searchQuery, setSearchQuery] = useState("");

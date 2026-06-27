@@ -2,6 +2,9 @@ import { cn } from "@/lib/utils"
 
 /* ─── Base ─────────────────────────────────────────── */
 
+/**
+ * Shimmer animation component.
+ */
 function Shimmer({ className }: { className?: string }) {
   return (
     <div
@@ -14,14 +17,23 @@ function Shimmer({ className }: { className?: string }) {
   )
 }
 
+/**
+ * Shimmer line component.
+ */
 function ShimmerLine({ className }: { className?: string }) {
   return <Shimmer className={cn("h-3 w-full", className)} />
 }
 
+/**
+ * Shimmer block component.
+ */
 function ShimmerBlock({ className }: { className?: string }) {
   return <Shimmer className={cn("h-10 w-full", className)} />
 }
 
+/**
+ * Shimmer avatar component.
+ */
 function ShimmerAvatar({ className }: { className?: string }) {
   return <Shimmer className={cn("size-8 rounded-full", className)} />
 }
@@ -29,6 +41,12 @@ function ShimmerAvatar({ className }: { className?: string }) {
 /* ─── Dashboard skeleton ────────────────────────────── */
 
 /** Shimmer skeleton for the dashboard loading state. */
+/**
+ * @description Component
+ */
+/**
+ * Dashboard skeleton component.
+ */
 export function DashboardSkeleton() {
   return (
     <div className="space-y-8 p-7" role="status" aria-label="loading dashboard">
@@ -57,6 +75,12 @@ export function DashboardSkeleton() {
 /* ─── List page skeleton (employees, projects, etc.) ── */
 
 /** Shimmer skeleton for list page loading states (employees, projects, etc.). */
+/**
+ * @description Component
+ */
+/**
+ * List page skeleton component.
+ */
 export function ListPageSkeleton({ rowCount = 6 }: { rowCount?: number }) {
   return (
     <div className="p-7 space-y-6" role="status" aria-label="loading list">
@@ -106,6 +130,12 @@ export function ListPageSkeleton({ rowCount = 6 }: { rowCount?: number }) {
 /* ─── Detail page skeleton (employee, project, etc.) ── */
 
 /** Shimmer skeleton for detail page loading states. */
+/**
+ * @description Component
+ */
+/**
+ * Detail page skeleton component.
+ */
 export function DetailPageSkeleton() {
   return (
     <div className="p-7 space-y-6" role="status" aria-label="loading detail">
@@ -147,6 +177,12 @@ export function DetailPageSkeleton() {
 /* ─── Settings skeleton ─────────────────────────────── */
 
 /** Shimmer skeleton for settings page loading state. */
+/**
+ * @description Component
+ */
+/**
+ * Settings page skeleton component.
+ */
 export function SettingsPageSkeleton() {
   return (
     <div className="p-7 space-y-6" role="status" aria-label="loading settings">
@@ -168,6 +204,12 @@ export function SettingsPageSkeleton() {
 /* ─── Simple content skeleton (transactions, etc.) ──── */
 
 /** Generic content skeleton with configurable number of lines. */
+/**
+ * @description Component
+ */
+/**
+ * Content skeleton component.
+ */
 export function ContentSkeleton({ lines = 8 }: { lines?: number }) {
   return (
     <div className="p-7 space-y-4" role="status" aria-label="loading content">
@@ -184,6 +226,12 @@ export function ContentSkeleton({ lines = 8 }: { lines?: number }) {
 /* ─── App shell skeleton (for initial load) ─────────── */
 
 /** Full app shell skeleton with sidebar and main content area. */
+/**
+ * @description Component
+ */
+/**
+ * App shell skeleton component.
+ */
 export function AppShellSkeleton() {
   return (
     <div className="flex h-screen" role="status" aria-label="loading application">
@@ -239,6 +287,9 @@ export function AppShellSkeleton() {
 /* ─── Auth screen skeleton ──────────────────────────── */
 
 /** Auth screen skeleton with form fields. */
+/**
+ * @description Component
+ */
 export function AuthScreenSkeleton() {
   return (
     <main className="flex h-screen items-center justify-center bg-bg" role="status" aria-label="loading auth">

@@ -4,6 +4,9 @@
 const ALGERIA_TIME_ZONE = "Africa/Algiers"
 const ALGERIA_OFFSET_HOURS = 1
 
+/**
+ * toAlgeriaDayBoundaryIso(value component.
+ */
 export function toAlgeriaDayBoundaryIso(value: string, boundary: "start" | "end") {
   const [rawYear, rawMonth, rawDay] = value.split("-").map((part) => Number.parseInt(part, 10))
   const year = rawYear ?? Number.NaN
@@ -16,17 +19,26 @@ export function toAlgeriaDayBoundaryIso(value: string, boundary: "start" | "end"
 
   return boundary === "start"
     ? new Date(Date.UTC(year, month - 1, day, 0 - ALGERIA_OFFSET_HOURS, 0, 0, 0)).toISOString()
+/**
+ * getAlgeriaDateInputValue(date = new Date()) component.
+ */
     : new Date(Date.UTC(year, month - 1, day, 23 - ALGERIA_OFFSET_HOURS, 59, 59, 999)).toISOString()
 }
 
 export function getAlgeriaDateInputValue(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: ALGERIA_TIME_ZONE,
+/**
+ * formatDateTimeInAlgeria(date component.
+ */
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(date)
 }
+/**
+ * getAlgeriaTimeZone() component.
+ */
 
 export function formatDateTimeInAlgeria(date: Date, locale = "ar-DZ") {
   return new Intl.DateTimeFormat(locale, {

@@ -23,6 +23,9 @@ interface OnboardingTooltipProps {
  * Onboarding tooltip that shows once and persists dismissal.
  * Used for feature discovery and contextual help.
  */
+/**
+ * @description Component
+ */
 export function OnboardingTooltip({
   storageKey,
   children,
@@ -118,6 +121,9 @@ interface FeatureHighlightProps {
 /**
  * Simple feature highlight with badge indicator.
  * Shows a small badge on first visit, persists dismissal.
+ */
+/**
+ * @description Component
  */
 export function FeatureHighlight({
   storageKey,

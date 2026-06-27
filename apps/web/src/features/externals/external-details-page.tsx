@@ -8,6 +8,9 @@ import { RecordInfoCard, RecordInfoGrid, RecordPageFrame } from "@/features/shar
 
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 
+/**
+ * @description Component
+ */
 export function ExternalCounterpartyDetailsPage({
   counterparty,
   debtAccounts,

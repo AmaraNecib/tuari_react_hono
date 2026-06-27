@@ -25,6 +25,9 @@ const directionClasses = {
  * Scroll-triggered reveal animation using Intersection Observer.
  * Animates children into view when they enter the viewport.
  */
+/**
+ * @description Component
+ */
 export function ScrollReveal({
   children,
   direction = "up",

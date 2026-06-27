@@ -9,6 +9,9 @@ import { useRender } from "@base-ui/react/use-render"
 import { cn } from "@/lib/utils"
 import { ChevronRightIcon, MoreHorizontalIcon } from "lucide-react"
 
+/**
+ * Breadcrumb navigation component.
+ */
 function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
   return (
     <nav
@@ -20,6 +23,9 @@ function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
   )
 }
 
+/**
+ * Breadcrumb list component.
+ */
 function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
   return (
     <ol
@@ -33,6 +39,9 @@ function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
   )
 }
 
+/**
+ * Breadcrumb item component.
+ */
 function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
   return (
     <li
@@ -43,6 +52,9 @@ function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
   )
 }
 
+/**
+ * Breadcrumb link component.
+ */
 function BreadcrumbLink({
   className,
   render,
@@ -63,6 +75,9 @@ function BreadcrumbLink({
   })
 }
 
+/**
+ * Breadcrumb page component.
+ */
 function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
@@ -76,6 +91,9 @@ function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
   )
 }
 
+/**
+ * Breadcrumb separator component.
+ */
 function BreadcrumbSeparator({
   children,
   className,
@@ -96,6 +114,9 @@ function BreadcrumbSeparator({
   )
 }
 
+/**
+ * Breadcrumb ellipsis component.
+ */
 function BreadcrumbEllipsis({
   className,
   ...props

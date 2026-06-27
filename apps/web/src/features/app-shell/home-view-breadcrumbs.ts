@@ -9,6 +9,9 @@ import { workspaceRoutes, type WorkspaceRouteTarget } from "@/router/navigation"
 import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewPage } from "./home-view-types"
 
+/**
+ * buildHomeViewBreadcrumbItems({ component.
+ */
 export function buildHomeViewBreadcrumbItems({
   copy,
   page,

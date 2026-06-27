@@ -17,6 +17,9 @@ type FormErrors = {
 }
 
 /** Login/bootstrap form with phone and password fields. */
+/**
+ * @description Component
+ */
 export function HomeViewAuthScreen({
   authError,
   authStartupError,

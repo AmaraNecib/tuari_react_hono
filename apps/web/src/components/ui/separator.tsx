@@ -8,6 +8,9 @@ import { Separator as SeparatorPrimitive } from "@base-ui/react/separator"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * Separator component.
+ */
 function Separator({
   className,
   orientation = "horizontal",

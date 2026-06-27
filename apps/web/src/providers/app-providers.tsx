@@ -29,6 +29,9 @@ function AppProvidersContent({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * @description Component
+ */
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>

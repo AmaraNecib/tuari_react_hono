@@ -19,6 +19,9 @@ import { cn } from "@/lib/utils"
 import { useFormAmount } from "@/features/shared/use-form-amount"
 import { useRecordInvoicePaymentMutation } from "./inventory-hooks"
 
+/**
+ * @description Component
+ */
 export function RecordInvoicePaymentDialog({
   invoiceDetail,
   open,

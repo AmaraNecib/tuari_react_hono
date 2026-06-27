@@ -4,7 +4,13 @@
 const STARTUP_QUERY_RETRY_LIMIT = 20
 const STARTUP_QUERY_MAX_DELAY_MS = 1_500
 
+/**
+ * shouldRetryStartupQuery(failureCount component.
+ */
 export function shouldRetryStartupQuery(failureCount: number) {
+/**
+ * getStartupQueryRetryDelay(attemptIndex component.
+ */
   return failureCount < STARTUP_QUERY_RETRY_LIMIT
 }
 

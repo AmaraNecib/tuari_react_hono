@@ -17,6 +17,9 @@ interface CopyButtonProps {
  * Copy-to-clipboard button with visual feedback.
  * Shows a checkmark animation when copied.
  */
+/**
+ * @description Component
+ */
 export function CopyButton({ text, className, size = "icon-sm" }: CopyButtonProps) {
   const { t } = useTranslation()
   const { copied, copy } = useCopyClipboard()

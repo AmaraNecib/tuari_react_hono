@@ -24,6 +24,9 @@ const iconSizeClasses = {
  * Animated success checkmark with flourish effect.
  * Use for confirming successful actions.
  */
+/**
+ * @description Component
+ */
 export function SuccessCheckmark({ size = "md", className }: SuccessCheckmarkProps) {
   return (
     <div

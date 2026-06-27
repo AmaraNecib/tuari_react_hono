@@ -44,6 +44,9 @@ function renderLazy(node: ReactNode) {
   return <Suspense fallback={detailPageFallback}>{node}</Suspense>
 }
 
+/**
+ * @description Component
+ */
 export function HomeViewPageDetailContent({
   copy,
   derived,

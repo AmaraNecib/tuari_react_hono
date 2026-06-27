@@ -28,6 +28,9 @@ interface ProgressTrackingProps {
  * Progress tracking component showing onboarding completion.
  * Persists progress in localStorage.
  */
+/**
+ * @description Component
+ */
 export function ProgressTracking({ tasks, className }: ProgressTrackingProps) {
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set())
 
@@ -175,6 +178,9 @@ interface ProgressTrackingCardProps {
 
 /**
  * Compact progress tracking card for dashboards.
+ */
+/**
+ * @description Component
  */
 export function ProgressTrackingCard({
   tasks,

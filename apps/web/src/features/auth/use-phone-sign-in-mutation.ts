@@ -12,6 +12,9 @@ import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { orpc } from "@/lib/orpc-client"
 import { showErrorToast } from "@/lib/toast"
 
+/**
+ * usePhoneSignInMutation() component.
+ */
 export function usePhoneSignInMutation() {
   const queryClient = useQueryClient()
 

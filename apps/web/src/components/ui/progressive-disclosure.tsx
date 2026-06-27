@@ -20,6 +20,9 @@ interface ProgressiveDisclosureProps {
  * Progressive disclosure component that hides secondary content on mobile.
  * Users can tap to reveal more details.
  */
+/**
+ * @description Component
+ */
 export function ProgressiveDisclosure({
   primary,
   secondary,

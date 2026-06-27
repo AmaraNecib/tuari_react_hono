@@ -24,6 +24,9 @@ export function buildEmployeeEditManagerOptions(
     : derived.managerOptions
 }
 
+/**
+ * buildProjectEditManagerOptions( component.
+ */
 export function buildProjectEditManagerOptions(
   derived: HomeViewPageContentProps["derived"],
   selectedProject: HomeViewPageContentProps["selectedProject"],
@@ -33,6 +36,9 @@ export function buildProjectEditManagerOptions(
         id: selectedProject.managerId,
         label: selectedProject.managerName,
       })
+/**
+ * buildWarehouseEditManagerOptions( component.
+ */
     : derived.projectManagerOptions
 }
 

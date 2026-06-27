@@ -21,6 +21,9 @@ import { formatDebtMoney, getDebtBalanceMeta } from "@/features/debts/debt-utils
 
 const DEFAULT_PAGE_SIZE = 25
 
+/**
+ * @description Component
+ */
 export function ExternalCounterpartiesPage({
   counterparties,
   onCreate,

@@ -15,6 +15,9 @@ export type WarehouseFormState = {
 
 export type WarehouseFormErrors = Partial<Record<keyof WarehouseFormState, string>>
 
+/**
+ * createWarehouseFormState(warehouse? component.
+ */
 export function createWarehouseFormState(warehouse?: WarehousePageRecord | null): WarehouseFormState {
   return {
     name: warehouse?.name ?? "",
@@ -26,6 +29,9 @@ export function createWarehouseFormState(warehouse?: WarehousePageRecord | null)
 }
 
 /** Reusable form fields for warehouse create/edit. */
+/**
+ * @description Component
+ */
 export function WarehouseFormFields({
   errors,
   labels,

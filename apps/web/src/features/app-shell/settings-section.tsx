@@ -46,6 +46,9 @@ type SettingsSectionProps = {
 }
 
 /** Settings section with account, theme, and security. */
+/**
+ * @description Component
+ */
 export function SettingsSection({
   accountCurrentPasswordLabel,
   accountCurrentPasswordPlaceholder,

@@ -41,6 +41,9 @@ type TransferConsumableTarget = {
 export type TransferTarget = TransferAssetTarget | TransferConsumableTarget
 
 /** Dialog for transferring inventory items between locations. */
+/**
+ * @description Component
+ */
 export function TransferItemDialog({
   open,
   target,

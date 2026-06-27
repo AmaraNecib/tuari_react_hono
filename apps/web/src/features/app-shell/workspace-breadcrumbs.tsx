@@ -20,6 +20,9 @@ type BreadcrumbItemRecord = {
   to?: WorkspaceRouteTarget
 }
 
+/**
+ * @description Component
+ */
 export function WorkspaceBreadcrumbs({ items }: { items: BreadcrumbItemRecord[] }) {
   return (
     <Breadcrumb>

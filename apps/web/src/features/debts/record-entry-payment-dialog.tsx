@@ -21,6 +21,9 @@ import {
 import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
+/**
+ * @description Component
+ */
 export function RecordEntryPaymentDialog({
   entry,
   accountCurrentBalance,

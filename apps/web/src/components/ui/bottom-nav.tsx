@@ -3,6 +3,9 @@ import { Gauge, Users, Warehouse, FileText, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { WorkspaceLink, workspaceRoutes, type WorkspaceRouteTarget } from "@/router/navigation"
 
+/**
+ * Bottom navigation item interface.
+ */
 interface BottomNavItem {
   key: string
   label: string
@@ -10,6 +13,9 @@ interface BottomNavItem {
   target: WorkspaceRouteTarget
 }
 
+/**
+ * Bottom navigation props interface.
+ */
 interface BottomNavProps {
   currentPage: string
   className?: string
@@ -18,6 +24,9 @@ interface BottomNavProps {
 /**
  * Bottom navigation bar for mobile devices.
  * Shows main navigation items with icons and labels.
+ */
+/**
+ * @description Component
  */
 export function BottomNav({ currentPage, className }: BottomNavProps) {
   const { t } = useTranslation()

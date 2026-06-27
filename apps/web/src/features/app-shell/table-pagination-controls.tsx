@@ -10,6 +10,9 @@ import { Surface } from "@/features/shared/page-primitives"
 
 const presetPageSizes = [10, 25, 50, 100]
 
+/**
+ * @description Component
+ */
 export function TablePaginationControls({
   page,
   pageSize,

@@ -13,4 +13,7 @@ export function createAppQueryClient() {
   })
 }
 
+/**
+ * queryClient = createAppQueryClient() component.
+ */
 export const queryClient = createAppQueryClient()

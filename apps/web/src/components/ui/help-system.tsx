@@ -44,6 +44,9 @@ const defaultArticles: HelpArticle[] = [
  * Help system component with searchable articles and keyboard shortcuts.
  * Provides contextual help and documentation for the application.
  */
+/**
+ * @description Component
+ */
 export function HelpSystem({ className }: HelpSystemProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -170,6 +173,9 @@ interface KeyboardShortcutHintProps {
 
 /**
  * Shows keyboard shortcut hint near UI elements.
+ */
+/**
+ * @description Component
  */
 export function KeyboardShortcutHint({
   keys,

@@ -23,12 +23,18 @@ interface ResponsiveFormActionsProps {
 /**
  * Responsive form wrapper with consistent spacing.
  */
+/**
+ * @description Component
+ */
 export function ResponsiveForm({ children, className }: ResponsiveFormProps) {
   return <form className={cn("space-y-6", className)}>{children}</form>
 }
 
 /**
  * Responsive form grid that adapts columns based on screen size.
+ */
+/**
+ * @description Component
  */
 export function ResponsiveFormGrid({ children, className, columns = 2 }: ResponsiveFormGridProps) {
   const columnClasses = {
@@ -45,6 +51,9 @@ export function ResponsiveFormGrid({ children, className, columns = 2 }: Respons
   )
 }
 
+/**
+ * @description Component
+ */
 export function ResponsiveFormActions({ children, className, stackOnMobile = true }: ResponsiveFormActionsProps) {
   return (
     <div
@@ -69,6 +78,9 @@ interface ResponsiveFormFieldProps {
   className?: string
 }
 
+/**
+ * @description Component
+ */
 export function ResponsiveFormField({ label, description, error, required, children, className }: ResponsiveFormFieldProps) {
   return (
     <div className={cn("space-y-2", className)}>

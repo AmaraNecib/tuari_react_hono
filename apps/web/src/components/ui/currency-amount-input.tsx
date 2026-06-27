@@ -5,6 +5,9 @@
 import { Button } from "@/components/ui/button"
 import { CurrencyInput } from "@/components/ui/form-controls"
 
+/**
+ * @description Component
+ */
 export function CurrencyAmountInput({
   label,
   value,

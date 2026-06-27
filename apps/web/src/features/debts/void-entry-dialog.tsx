@@ -19,6 +19,9 @@ import { useVoidDebtEntryMutation } from "@/features/app-shell/mock-dashboard"
 import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
+/**
+ * @description Component
+ */
 export function VoidEntryDialog({
   entry,
   livePaymentEntries,

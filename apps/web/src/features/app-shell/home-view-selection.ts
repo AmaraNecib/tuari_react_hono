@@ -9,6 +9,9 @@ import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewDerived } from "./home-view-derived"
 import type { HomeViewPage } from "./home-view-types"
 
+/**
+ * buildHomeViewSelection({ component.
+ */
 export function buildHomeViewSelection({
   counterpartyId,
   copy,

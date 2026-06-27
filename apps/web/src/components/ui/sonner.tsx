@@ -3,6 +3,9 @@ import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { useAppPreferences } from "@/features/preferences/preferences"
 
 /** Toast notification container. */
+/**
+ * @description Component
+ */
 export function Toaster(props: ToasterProps) {
   const { locale, theme } = useAppPreferences()
 

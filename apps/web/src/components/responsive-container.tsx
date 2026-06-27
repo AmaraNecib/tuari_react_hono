@@ -14,6 +14,12 @@ interface ResponsiveContainerProps {
   desktopClassName?: string;
 }
 
+/**
+ * @description Component
+ */
+/**
+ * Responsive container component.
+ */
 export function ResponsiveContainer({
   children,
   className,
@@ -34,6 +40,12 @@ export function ResponsiveContainer({
 }
 
 // Utility component for responsive grid layouts
+/**
+ * @description Component
+ */
+/**
+ * Responsive grid component.
+ */
 export function ResponsiveGrid({
   children,
   className,
@@ -54,6 +66,12 @@ export function ResponsiveGrid({
 }
 
 // Utility component for touch-friendly buttons
+/**
+ * @description Component
+ */
+/**
+ * Touch button component.
+ */
 export function TouchButton({
   children,
   onClick,

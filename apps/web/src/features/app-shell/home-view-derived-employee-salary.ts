@@ -10,6 +10,9 @@ import type { HomeViewDerivedLookups } from "./home-view-derived-lookups"
 import type { buildEmployeeRows } from "./home-view-derived-employees"
 import type { DemoWorkspace } from "./workspace-queries"
 
+/**
+ * buildEmployeeSalaryCollections({ component.
+ */
 export function buildEmployeeSalaryCollections({
   copy,
   detailCopy,

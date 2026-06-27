@@ -24,6 +24,9 @@ export type WarehousePageRecord = {
   notes: string | null
 }
 
+/**
+ * @description Component
+ */
 export function WarehouseDetailsPage({
   activeTab,
   managementHistoryRows,
