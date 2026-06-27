@@ -1,3 +1,7 @@
+/**
+ * Formatting utilities for home view data.
+ * Provides helper functions for formatting names, dates, etc.
+ */
 import type { DemoWorkspace } from "./workspace-queries"
 
 export function formatName(employee: DemoWorkspace["employees"][number]) {

@@ -1,3 +1,7 @@
+/**
+ * Detail page content for the home view.
+ * Lazy-loads detail pages based on route.
+ */
 import { lazy, Suspense, type ReactNode } from "react"
 
 import { getArabicStatusLabel } from "@/features/shared/status-meta"

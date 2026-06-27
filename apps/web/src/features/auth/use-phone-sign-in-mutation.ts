@@ -1,3 +1,7 @@
+/**
+ * Phone sign-in mutation hook.
+ * Handles authentication with phone number and password.
+ */
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { phonePasswordSignInSchema, type PhonePasswordSignInInput } from "@tuari/contracts"
 

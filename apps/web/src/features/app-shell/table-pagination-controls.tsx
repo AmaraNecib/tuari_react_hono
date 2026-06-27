@@ -1,3 +1,7 @@
+/**
+ * Table pagination controls for navigating through data.
+ * Provides page size selection and navigation buttons.
+ */
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"

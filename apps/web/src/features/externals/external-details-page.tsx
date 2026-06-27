@@ -1,3 +1,6 @@
+/**
+ * External counterparty details page.
+ */
 import type { DebtAccount, DebtEntry, ExternalCounterparty } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 

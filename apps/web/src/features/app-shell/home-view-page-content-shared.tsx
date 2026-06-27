@@ -1,3 +1,7 @@
+/**
+ * Shared page content components for the home view.
+ * Provides reusable UI elements for page content.
+ */
 import type { TFunction } from "i18next"
 import type { SystemLogEntry } from "@tuari/contracts"
 

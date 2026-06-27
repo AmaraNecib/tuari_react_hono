@@ -1,3 +1,6 @@
+/**
+ * Employee batch row card for displaying individual employee data in batch creation.
+ */
 import type { Role } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"

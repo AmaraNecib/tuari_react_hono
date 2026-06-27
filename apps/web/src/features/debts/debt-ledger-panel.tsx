@@ -1,3 +1,7 @@
+/**
+ * Debt ledger panel for viewing transaction history.
+ * Displays all debt entries with filtering and sorting.
+ */
 import { useEffect, useMemo, useState } from "react"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 

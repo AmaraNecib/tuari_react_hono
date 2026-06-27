@@ -1,3 +1,6 @@
+/**
+ * Record entry payment dialog for recording payments against debt entries.
+ */
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtEntry } from "@tuari/contracts"

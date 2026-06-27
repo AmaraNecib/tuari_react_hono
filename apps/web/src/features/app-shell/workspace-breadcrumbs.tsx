@@ -1,3 +1,7 @@
+/**
+ * Workspace breadcrumbs for navigation.
+ * Shows current location in the app hierarchy.
+ */
 import { Link } from "@tanstack/react-router"
 import { Fragment } from "react"
 

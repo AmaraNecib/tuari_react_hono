@@ -1,3 +1,7 @@
+/**
+ * Dashboard overview component.
+ * Displays key metrics and reports.
+ */
 import { useTranslation } from "react-i18next";
 
 import { useInventoryReport, useDebtReport } from "@/hooks/use-report-queries";

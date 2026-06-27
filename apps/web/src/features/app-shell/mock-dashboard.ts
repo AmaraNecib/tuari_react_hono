@@ -1,3 +1,7 @@
+/**
+ * Mock dashboard exports for development.
+ * Re-exports workspace mutations and queries.
+ */
 export {
   authSetupStatusQueryKey,
   AppMutationError,

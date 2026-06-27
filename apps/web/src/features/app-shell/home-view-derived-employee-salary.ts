@@ -1,3 +1,7 @@
+/**
+ * Employee salary derivation for the home view.
+ * Formats and displays employee salary information.
+ */
 import { getArabicRoleLabel } from "@/features/shared/status-meta"
 
 import type { HomeViewCopy, HomeViewDetailCopy } from "./home-view-copy"

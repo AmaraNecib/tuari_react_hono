@@ -1,3 +1,7 @@
+/**
+ * Roles section component for the home view.
+ * Displays and manages user roles.
+ */
 import type { Role } from "@tuari/contracts"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 

@@ -1,3 +1,7 @@
+/**
+ * Debt party summary card component.
+ * Displays summary information for a debt party.
+ */
 import { useTranslation } from "react-i18next"
 import type { DebtAccount } from "@tuari/contracts"
 import { Surface } from "@/features/shared/page-primitives"

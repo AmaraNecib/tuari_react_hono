@@ -1,3 +1,6 @@
+/**
+ * Employee debt hooks for querying and mutating employee debt data.
+ */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
   AppError,

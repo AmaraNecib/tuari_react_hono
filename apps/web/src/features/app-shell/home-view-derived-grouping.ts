@@ -1,3 +1,7 @@
+/**
+ * Group items by a key function.
+ * Used for organizing data by category, status, etc.
+ */
 export function groupItemsBy<T>(items: readonly T[], getKey: (item: T) => string | null | undefined) {
   const groupedItems = new Map<string, T[]>()
 

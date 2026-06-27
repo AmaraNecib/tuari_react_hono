@@ -1,3 +1,7 @@
+/**
+ * Type definitions for the home view.
+ * Includes page types, view models, and navigation.
+ */
 import type { SystemLogEntry } from "@tuari/contracts"
 
 import type { WorkspaceSidebarPage } from "./workspace-sidebar"

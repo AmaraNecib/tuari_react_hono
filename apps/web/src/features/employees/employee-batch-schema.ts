@@ -1,3 +1,6 @@
+/**
+ * Employee batch creation schema validation.
+ */
 import {
   employeeBatchCreateInputSchema,
   employeeBatchCreateRowInputSchema,

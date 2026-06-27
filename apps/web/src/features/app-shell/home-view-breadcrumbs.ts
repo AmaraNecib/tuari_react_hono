@@ -1,3 +1,7 @@
+/**
+ * Breadcrumb generation for the home view navigation.
+ * Creates breadcrumb items based on current route.
+ */
 import type { TFunction } from "i18next"
 
 import { workspaceRoutes, type WorkspaceRouteTarget } from "@/router/navigation"

@@ -1,3 +1,7 @@
+/**
+ * Workspace sidebar navigation component.
+ * Provides main navigation for the application.
+ */
 import {
   BriefcaseBusiness,
   Boxes,

@@ -1,3 +1,7 @@
+/**
+ * Selection logic for the home view.
+ * Handles item selection and navigation state.
+ */
 import type { TFunction } from "i18next"
 
 import { buildHomeViewBreadcrumbItems } from "./home-view-breadcrumbs"

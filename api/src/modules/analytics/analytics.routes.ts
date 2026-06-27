@@ -45,11 +45,13 @@ function isAuthorized(auth: AuthContext | null, targetUserId: string): boolean {
 
 /**
  * Check if user has admin role.
- * For local analytics, any authenticated user is considered admin.
+ * Uses trusted server-side admin claim from authenticated session.
  */
 function isAdmin(auth: AuthContext | null): boolean {
-  // In local analytics, any authenticated user can view stats
-  return auth !== null;
+  if (!auth) return false;
+  // Check for trusted admin role claim from session
+  // In production, this should come from JWT claims or session data
+  return auth.role === "admin" || auth.role === "ADMIN";
 }
 
 export function createAnalyticsRoutes(
@@ -151,7 +153,9 @@ export function createAnalyticsRoutes(
   /** Get user's onboarding level */
   app.get("/level/:userId", async (c) => {
     try {
+      const userId = c.req.param("userId");
       const auth = await getAuthContext(c, sessionResolver);
+      
       // Users can only access their own level
       if (!isAuthorized(auth, userId)) {
         return c.json({ error: "Unauthorized" }, 403);

@@ -1,3 +1,7 @@
+/**
+ * Consolidation dialog for combining multiple debt entries.
+ * Allows users to merge related debt records.
+ */
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
