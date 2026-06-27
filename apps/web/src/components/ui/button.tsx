@@ -1,3 +1,7 @@
+/**
+ * Button component with multiple variants and sizes.
+ * Built on Base UI Button primitive with custom styling.
+ */
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 

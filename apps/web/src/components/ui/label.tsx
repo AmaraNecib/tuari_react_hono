@@ -1,3 +1,7 @@
+/**
+ * Label component for form controls.
+ * Provides consistent styling and accessibility.
+ */
 "use client"
 
 import * as React from "react"

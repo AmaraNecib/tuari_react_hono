@@ -1,3 +1,7 @@
+/**
+ * Form field component with label, error, and hint support.
+ * Provides consistent spacing and accessibility for form controls.
+ */
 import type { ReactNode } from "react"
 import { cn } from "@/lib/utils"
 

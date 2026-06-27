@@ -1,3 +1,7 @@
+/**
+ * Breadcrumb navigation component with RTL support.
+ * Shows navigation hierarchy with collapsible items.
+ */
 import * as React from "react"
 import { mergeProps } from "@base-ui/react/merge-props"
 import { useRender } from "@base-ui/react/use-render"

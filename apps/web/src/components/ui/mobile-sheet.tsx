@@ -1,3 +1,7 @@
+/**
+ * Mobile sheet component for touch-friendly side drawers.
+ * Adapts behavior based on screen size.
+ */
 import type { ReactNode } from "react";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
 

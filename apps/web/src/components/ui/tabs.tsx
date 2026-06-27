@@ -1,3 +1,7 @@
+/**
+ * Tabs component built on Base UI Tabs primitive.
+ * Supports horizontal and vertical orientations with line and pill variants.
+ */
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs"
 import { cva, type VariantProps } from "class-variance-authority"
 

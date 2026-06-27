@@ -1,58 +1,74 @@
 import { Hono } from "hono";
 import type { AnalyticsService } from "./analytics.service";
+import type { SessionUser } from "@/modules/session/session.types";
 
 /**
- * Helper to extract user ID from request context.
- * In production, this should come from session/auth middleware.
+ * Session resolver interface for extracting authenticated user from headers.
  */
-function getUserIdFromContext(c: any): string | null {
-  // In development, use session ID from header or query
-  // In production, this should come from authenticated session
-  const userId = c.req.header("X-User-Id") || c.req.query("userId");
-  return userId || null;
+type SessionResolver = {
+  getCurrentUser: (headers: Headers) => Promise<SessionUser | null>;
+};
+
+/**
+ * Authenticated user context extracted from request.
+ */
+type AuthContext = {
+  userId: string;
+  role?: string;
+};
+
+/**
+ * Extract authenticated user from request headers using session resolver.
+ * This is the ONLY way to get user identity - no caller-controlled fallbacks.
+ */
+async function getAuthContext(
+  c: any,
+  sessionResolver: SessionResolver,
+): Promise<AuthContext | null> {
+  const user = await sessionResolver.getCurrentUser(c.req.raw.headers);
+  if (!user) return null;
+  
+  return {
+    userId: user.id,
+    role: (user as any).role,
+  };
 }
 
 /**
  * Check if user is authorized to access analytics data.
- * For now, any authenticated user can access their own data.
- * Admin routes require admin role.
+ * Users can only access their own data.
  */
-function isAuthorized(c: any, targetUserId?: string): boolean {
-  const userId = getUserIdFromContext(c);
-  if (!userId) return false;
-  
-  // If accessing specific user data, ensure it's the same user
-  if (targetUserId && userId !== targetUserId) {
-    return false;
-  }
-  
-  return true;
+function isAuthorized(auth: AuthContext | null, targetUserId: string): boolean {
+  if (!auth) return false;
+  return auth.userId === targetUserId;
 }
 
 /**
  * Check if user has admin role.
- * For now, any authenticated user is considered admin for local analytics.
+ * For local analytics, any authenticated user is considered admin.
  */
-function isAdmin(c: any): boolean {
-  const userId = getUserIdFromContext(c);
+function isAdmin(auth: AuthContext | null): boolean {
   // In local analytics, any authenticated user can view stats
-  return !!userId;
+  return auth !== null;
 }
 
-export function createAnalyticsRoutes(analyticsService: AnalyticsService) {
+export function createAnalyticsRoutes(
+  analyticsService: AnalyticsService,
+  sessionResolver: SessionResolver,
+) {
   const app = new Hono();
 
   /** Track an analytics event */
   app.post("/track", async (c) => {
     try {
-      const userId = getUserIdFromContext(c);
-      if (!userId) {
+      const auth = await getAuthContext(c, sessionResolver);
+      if (!auth) {
         return c.json({ error: "Authentication required" }, 401);
       }
       
       const body = await c.req.json();
       // Ensure the event belongs to the authenticated user
-      await analyticsService.trackEvent({ ...body, userId });
+      await analyticsService.trackEvent({ ...body, userId: auth.userId });
       return c.json({ success: true });
     } catch (error) {
       console.error("Failed to track event:", error);
@@ -63,7 +79,8 @@ export function createAnalyticsRoutes(analyticsService: AnalyticsService) {
   /** Get events with optional filters (admin only) */
   app.get("/events", async (c) => {
     try {
-      if (!isAdmin(c)) {
+      const auth = await getAuthContext(c, sessionResolver);
+      if (!isAdmin(auth)) {
         return c.json({ error: "Admin access required" }, 403);
       }
       
@@ -95,7 +112,8 @@ export function createAnalyticsRoutes(analyticsService: AnalyticsService) {
   /** Get event count (admin only) */
   app.get("/count", async (c) => {
     try {
-      if (!isAdmin(c)) {
+      const auth = await getAuthContext(c, sessionResolver);
+      if (!isAdmin(auth)) {
         return c.json({ error: "Admin access required" }, 403);
       }
       
@@ -115,14 +133,14 @@ export function createAnalyticsRoutes(analyticsService: AnalyticsService) {
   /** Track onboarding progress */
   app.post("/progress", async (c) => {
     try {
-      const userId = getUserIdFromContext(c);
-      if (!userId) {
+      const auth = await getAuthContext(c, sessionResolver);
+      if (!auth) {
         return c.json({ error: "Authentication required" }, 401);
       }
       
       const body = await c.req.json();
       // Ensure the progress belongs to the authenticated user
-      await analyticsService.trackProgress({ ...body, userId });
+      await analyticsService.trackProgress({ ...body, userId: auth.userId });
       return c.json({ success: true });
     } catch (error) {
       console.error("Failed to track progress:", error);
@@ -133,10 +151,9 @@ export function createAnalyticsRoutes(analyticsService: AnalyticsService) {
   /** Get user's onboarding level */
   app.get("/level/:userId", async (c) => {
     try {
-      const userId = c.req.param("userId");
-      
+      const auth = await getAuthContext(c, sessionResolver);
       // Users can only access their own level
-      if (!isAuthorized(c, userId)) {
+      if (!isAuthorized(auth, userId)) {
         return c.json({ error: "Unauthorized" }, 403);
       }
       
@@ -151,10 +168,11 @@ export function createAnalyticsRoutes(analyticsService: AnalyticsService) {
   /** Update user's onboarding level */
   app.put("/level/:userId", async (c) => {
     try {
+      const auth = await getAuthContext(c, sessionResolver);
       const userId = c.req.param("userId");
       
       // Users can only update their own level
-      if (!isAuthorized(c, userId)) {
+      if (!isAuthorized(auth, userId)) {
         return c.json({ error: "Unauthorized" }, 403);
       }
       
@@ -170,7 +188,8 @@ export function createAnalyticsRoutes(analyticsService: AnalyticsService) {
   /** Get onboarding statistics (admin only) */
   app.get("/stats", async (c) => {
     try {
-      if (!isAdmin(c)) {
+      const auth = await getAuthContext(c, sessionResolver);
+      if (!isAdmin(auth)) {
         return c.json({ error: "Admin access required" }, 403);
       }
       

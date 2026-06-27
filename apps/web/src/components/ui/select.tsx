@@ -1,3 +1,7 @@
+/**
+ * Select component built on Base UI Select primitive.
+ * Supports RTL layout and custom styling.
+ */
 import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 

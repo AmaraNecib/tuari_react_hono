@@ -1,3 +1,7 @@
+/**
+ * Input component with consistent styling and RTL support.
+ * Handles date inputs with Arabic locale formatting.
+ */
 import * as React from "react"
 
 import { formInputClassName } from "@/components/ui/form-controls"

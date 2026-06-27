@@ -1,3 +1,7 @@
+/**
+ * Checkbox component built on Base UI Checkbox primitive.
+ * Supports indeterminate state and RTL layout.
+ */
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox"
 
 import { cn } from "@/lib/utils"

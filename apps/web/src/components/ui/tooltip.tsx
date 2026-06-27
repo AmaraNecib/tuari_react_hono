@@ -1,3 +1,7 @@
+/**
+ * Tooltip component built on Base UI Tooltip primitive.
+ * Provides accessible tooltips with RTL support.
+ */
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 
 import { cn } from "@/lib/utils"

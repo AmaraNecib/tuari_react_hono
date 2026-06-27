@@ -1,3 +1,7 @@
+/**
+ * Responsive container that adapts layout based on screen size.
+ * Applies different styles for mobile, tablet, and desktop.
+ */
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { cn } from "@/lib/utils";

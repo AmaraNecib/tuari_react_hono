@@ -1,3 +1,7 @@
+/**
+ * Error boundary component for catching JavaScript errors.
+ * Shows fallback UI when an error occurs.
+ */
 import { Component, type ReactNode } from "react"
 
 interface Props {

@@ -1,3 +1,7 @@
+/**
+ * Alert dialog component built on Radix UI AlertDialog primitive.
+ * For critical confirmations that require user attention.
+ */
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
 import { buttonVariants } from "@/components/ui/button"

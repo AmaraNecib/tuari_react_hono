@@ -1,3 +1,7 @@
+/**
+ * Popover component built on Base UI Popover primitive.
+ * Provides floating content anchored to a trigger element.
+ */
 "use client"
 
 import * as React from "react"

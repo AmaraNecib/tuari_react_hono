@@ -1,3 +1,7 @@
+/**
+ * Dialog component built on Base UI Dialog primitive.
+ * Provides modal dialogs with RTL support and accessibility.
+ */
 "use client"
 
 import * as React from "react"

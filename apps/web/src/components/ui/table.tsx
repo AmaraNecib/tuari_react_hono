@@ -1,3 +1,7 @@
+/**
+ * Table component with consistent styling and RTL support.
+ * Provides responsive table layout with overflow handling.
+ */
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

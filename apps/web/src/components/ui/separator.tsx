@@ -1,3 +1,7 @@
+/**
+ * Separator component for visual division of content.
+ * Supports horizontal and vertical orientations.
+ */
 "use client"
 
 import { Separator as SeparatorPrimitive } from "@base-ui/react/separator"

@@ -1,3 +1,7 @@
+/**
+ * Sheet component (side drawer) built on Base UI Dialog primitive.
+ * Supports RTL layout and multiple positions.
+ */
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
