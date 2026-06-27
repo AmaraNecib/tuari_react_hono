@@ -47,7 +47,6 @@ export function GuidedTour({
   isActive,
   onComplete,
   onSkip,
-  onRestart,
 }: GuidedTourProps) {
   const { t } = useTranslation()
   const [currentStep, setCurrentStep] = useState(0)
@@ -131,11 +130,6 @@ export function GuidedTour({
     localStorage.setItem(`tour-${storageKey}`, "skipped")
     onSkip()
   }, [storageKey, onSkip])
-
-  const handleRestart = useCallback(() => {
-    setCurrentStep(0)
-    onRestart?.()
-  }, [onRestart])
 
   // Keyboard navigation
   useEffect(() => {

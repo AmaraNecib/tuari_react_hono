@@ -128,7 +128,7 @@ interface FieldHelpProps {
  * Help icon for form fields.
  * Shows contextual help next to field labels.
  */
-export function FieldHelp({ content, fieldLabel, className }: FieldHelpProps) {
+export function FieldHelp({ content, className }: FieldHelpProps) {
   return (
     <ContextualHelp
       content={content}

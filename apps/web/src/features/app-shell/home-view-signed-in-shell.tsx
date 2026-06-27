@@ -69,7 +69,7 @@ export function HomeViewSignedInShell({
   onThemeToggle: () => void
 }) {
   const { t } = useTranslation()
-  const { isMobile, sidebarOpen, toggleSidebar, closeSidebar } = useMobileLayout()
+  const { isMobile, sidebarOpen, toggleSidebar } = useMobileLayout()
 
   const [searchOpen, setSearchOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)

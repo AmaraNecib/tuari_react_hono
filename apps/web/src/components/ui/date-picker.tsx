@@ -46,7 +46,6 @@ export function DatePicker({
   disabled = false,
   className,
   name,
-  id,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
   const selectedDate = value ? parseDateAr(value) : undefined

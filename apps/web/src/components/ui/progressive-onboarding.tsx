@@ -18,7 +18,6 @@ interface ProgressiveOnboardingProps {
  * Teaches complexity gradually.
  */
 export function ProgressiveOnboarding({
-  featureKey,
   level,
   children,
   className,

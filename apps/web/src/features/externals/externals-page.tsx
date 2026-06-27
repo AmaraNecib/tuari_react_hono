@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Surface } from "@/features/shared/page-primitives"
+
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls"
 
@@ -39,9 +39,6 @@ export function ExternalCounterpartiesPage({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
-  const totalPages = Math.max(1, Math.ceil(counterparties.length / pageSize))
-  const start = counterparties.length === 0 ? 0 : (page - 1) * pageSize + 1
-  const end = counterparties.length === 0 ? 0 : Math.min(page * pageSize, counterparties.length)
   const pagedCounterparties = counterparties.slice((page - 1) * pageSize, page * pageSize)
 
   return (

@@ -51,7 +51,7 @@ export function AuditLogPage() {
       resourceId: entry.entityId ?? "",
       changes: entry.summary ?? "",
     }));
-  }, [apiResponse]);
+  }, [apiResponse, t]);
 
   const filteredLogs = useMemo((): AuditLog[] => {
     let result = logs;

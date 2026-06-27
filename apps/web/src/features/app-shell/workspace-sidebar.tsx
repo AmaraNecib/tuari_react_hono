@@ -10,7 +10,6 @@ import {
   Users,
   Warehouse,
   Settings,
-  PanelRightOpen,
 } from "lucide-react"
 import type React from "react"
 import { useTranslation } from "react-i18next"

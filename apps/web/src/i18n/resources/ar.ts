@@ -29,6 +29,7 @@ export const ar = {
       showPassword: "إظهار كلمة المرور",
       hidePassword: "إخفاء كلمة المرور",
       close: "إغلاق",
+      undo: "تراجع",
     },
     status: {
       active: "نشط",

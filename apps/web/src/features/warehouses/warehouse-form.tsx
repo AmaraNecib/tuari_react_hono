@@ -1,6 +1,3 @@
-import type { ReactNode } from "react"
-import { useTranslation } from "react-i18next"
-
 import { FieldSection, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Field } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"

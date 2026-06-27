@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
-import { Check, Circle, Clock } from "lucide-react"
+import { Check, Circle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface OnboardingTask {
@@ -94,8 +94,6 @@ export function ProgressTracking({ tasks, className }: ProgressTrackingProps) {
         const categoryCompleted = categoryTasks.filter((t) =>
           completedTasks.has(t.id),
         ).length
-        const categoryProgress =
-          (categoryCompleted / categoryTasks.length) * 100
 
         return (
           <div key={category} className="space-y-3">

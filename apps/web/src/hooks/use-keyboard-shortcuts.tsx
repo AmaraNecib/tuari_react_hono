@@ -84,7 +84,11 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcuts) {
 
       // Escape: Close/Back
       if (event.key === "Escape") {
-        shortcuts.onClose?.() ?? shortcuts.onBack?.()
+        if (shortcuts.onClose) {
+          shortcuts.onClose()
+        } else {
+          shortcuts.onBack?.()
+        }
         return
       }
 

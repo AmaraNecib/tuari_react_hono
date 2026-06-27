@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Field } from "@/components/ui/field"
-import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { SurfaceHeader } from "@/features/shared/page-primitives"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 

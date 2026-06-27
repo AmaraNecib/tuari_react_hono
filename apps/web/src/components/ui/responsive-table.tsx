@@ -76,7 +76,7 @@ export function ResponsiveTableRow({ children, className }: ResponsiveTableRowPr
   )
 }
 
-export function ResponsiveTableHead({ children, className, mobileLabel }: ResponsiveTableHeadProps) {
+export function ResponsiveTableHead({ children, className }: ResponsiveTableHeadProps) {
   const { isMobile } = useMobileLayout()
 
   if (isMobile) {

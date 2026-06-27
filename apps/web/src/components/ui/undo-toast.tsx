@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react"
+import { useTranslation } from "react-i18next"
 import { Undo2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -106,7 +107,8 @@ interface UndoToastProps {
 /**
  * Undo toast component for showing undo notifications.
  */
-export function UndoToast({ description, onUndo, duration = 5000 }: UndoToastProps) {
+export function UndoToast({ description, onUndo }: UndoToastProps) {
+  const { t } = useTranslation()
   const [isVisible, setIsVisible] = useState(true)
 
   const handleUndo = () => {
@@ -121,7 +123,7 @@ export function UndoToast({ description, onUndo, duration = 5000 }: UndoToastPro
       <p className="flex-1 text-sm text-foreground">{description}</p>
       <Button size="sm" variant="ghost" onClick={handleUndo}>
         <Undo2 size={14} className="me-1" />
-        تراجع
+        {t("common.undo")}
       </Button>
     </div>
   )
