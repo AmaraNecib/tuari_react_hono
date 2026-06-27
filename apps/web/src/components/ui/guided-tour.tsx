@@ -4,6 +4,10 @@ import { X, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
+/**
+ * A single step in a guided tour.
+ * Defines the target element, content, and positioning for each step.
+ */
 interface TourStep {
   /** Unique identifier for the step */
   id: string
@@ -17,6 +21,10 @@ interface TourStep {
   position?: "top" | "bottom" | "left" | "right"
 }
 
+/**
+ * Props for the GuidedTour component.
+ * Controls the tour's behavior, steps, and callbacks.
+ */
 interface GuidedTourProps {
   /** Tour steps */
   steps: TourStep[]

@@ -37,6 +37,10 @@ interface InteractiveTutorialProps {
  * Interactive tutorial with step-by-step validation.
  * Users perform real actions and get feedback.
  */
+/**
+ * Interactive tutorial component with step-by-step instructions.
+ * Guides users through tasks with validation and progress tracking.
+ */
 export function InteractiveTutorial({
   steps,
   title,

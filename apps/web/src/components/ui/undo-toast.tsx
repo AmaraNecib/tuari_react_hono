@@ -39,6 +39,10 @@ interface UseUndoReturn<T = unknown> {
  * Hook for undoable actions with toast notifications.
  * Shows a toast with undo button after destructive actions.
  */
+/**
+ * Hook for managing undo operations with toast notifications.
+ * Provides undo functionality with automatic expiration.
+ */
 export function useUndo<T = unknown>({
   defaultDuration = 5000,
   onUndo,
@@ -106,6 +110,10 @@ interface UndoToastProps {
 
 /**
  * Undo toast component for showing undo notifications.
+ */
+/**
+ * Undo toast component for showing undo notifications.
+ * Displays a toast with an undo button for reversible actions.
  */
 export function UndoToast({ description, onUndo }: UndoToastProps) {
   const { t } = useTranslation()

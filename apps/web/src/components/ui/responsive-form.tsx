@@ -20,10 +20,16 @@ interface ResponsiveFormActionsProps {
   stackOnMobile?: boolean
 }
 
+/**
+ * Responsive form wrapper with consistent spacing.
+ */
 export function ResponsiveForm({ children, className }: ResponsiveFormProps) {
   return <form className={cn("space-y-6", className)}>{children}</form>
 }
 
+/**
+ * Responsive form grid that adapts columns based on screen size.
+ */
 export function ResponsiveFormGrid({ children, className, columns = 2 }: ResponsiveFormGridProps) {
   const columnClasses = {
     1: "grid-cols-1",

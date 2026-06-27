@@ -15,6 +15,10 @@ interface BottomNavProps {
   className?: string
 }
 
+/**
+ * Bottom navigation bar for mobile devices.
+ * Shows main navigation items with icons and labels.
+ */
 export function BottomNav({ currentPage, className }: BottomNavProps) {
   const { t } = useTranslation()
 

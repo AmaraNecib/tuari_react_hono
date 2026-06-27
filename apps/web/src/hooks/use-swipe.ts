@@ -14,6 +14,10 @@ interface SwipeHandlers {
   onTouchEnd: (e: React.TouchEvent) => void
 }
 
+/**
+ * Hook for detecting swipe gestures on touch devices.
+ * Returns event handlers to attach to the target element.
+ */
 export function useSwipe({
   onSwipeLeft,
   onSwipeRight,

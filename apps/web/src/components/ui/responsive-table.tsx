@@ -38,6 +38,9 @@ interface ResponsiveTableCellProps {
   mobileLabel?: string
 }
 
+/**
+ * Responsive table that switches to card view on mobile.
+ */
 export function ResponsiveTable({ children, className, cardView = true }: ResponsiveTableProps) {
   const { isMobile } = useMobileLayout()
 

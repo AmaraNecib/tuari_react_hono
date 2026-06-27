@@ -31,6 +31,10 @@ interface KeyboardShortcutsProviderProps {
  * Global keyboard shortcuts provider.
  * Registers keyboard shortcuts and provides context for dynamic shortcuts.
  */
+/**
+ * Provider for keyboard shortcuts context.
+ * Manages global keyboard shortcuts and provides context for registration.
+ */
 export function KeyboardShortcutsProvider({
   children,
   onSearch,
@@ -60,6 +64,10 @@ export function KeyboardShortcutsProvider({
 
 /**
  * Hook to access keyboard shortcuts context.
+ */
+/**
+ * Hook to access keyboard shortcuts context.
+ * Must be used within KeyboardShortcutsProvider.
  */
 export function useKeyboardShortcutsContext() {
   const context = useContext(KeyboardShortcutsContext)

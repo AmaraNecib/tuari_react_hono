@@ -40,6 +40,10 @@ const defaultArticles: HelpArticle[] = [
  * In-product help system with searchable articles.
  * Provides contextual help and documentation.
  */
+/**
+ * Help system component with searchable articles and keyboard shortcuts.
+ * Provides contextual help and documentation for the application.
+ */
 export function HelpSystem({ className }: HelpSystemProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
