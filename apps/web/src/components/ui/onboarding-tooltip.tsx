@@ -76,7 +76,7 @@ export function OnboardingTooltip({
           type="button"
           className="absolute top-2 end-2 text-muted-foreground hover:text-foreground transition-colors"
           onClick={handleDismiss}
-          aria-label="Dismiss"
+          aria-label={t("common.close")}
         >
           <X size={14} />
         </button>

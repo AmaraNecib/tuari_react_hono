@@ -166,7 +166,7 @@ export function SettingsSection({
   return (
     <RecordPageFrame title={title}>
       <div className="grid gap-4 xl:grid-cols-2">
-        <div className="p-5 xl:col-span-2">
+        <div className="p-5 xl:col-span-2 border border-line rounded-xl">
           <form className="space-y-5" onSubmit={(event) => void handleSave(event)}>
             <SurfaceHeader description={accountDescription} title={accountTitle} />
             <div className="grid gap-4 md:grid-cols-2">
