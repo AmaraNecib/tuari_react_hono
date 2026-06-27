@@ -1,3 +1,6 @@
+/**
+ * Project edit page for modifying existing projects.
+ */
 import type { FormEvent } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"

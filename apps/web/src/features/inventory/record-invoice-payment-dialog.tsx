@@ -1,3 +1,6 @@
+/**
+ * Record invoice payment dialog for recording payments against inventory invoices.
+ */
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { InventoryInvoiceGroupDetail } from "@tuari/contracts"

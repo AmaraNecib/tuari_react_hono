@@ -1,3 +1,6 @@
+/**
+ * Project form component for creating and editing projects.
+ */
 import type { ReactNode } from "react"
 
 import { FieldSection, NativeSelect, Textarea } from "@/components/ui/form-controls"

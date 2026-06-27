@@ -1,3 +1,6 @@
+/**
+ * Project creation page for creating new projects.
+ */
 import type { FormEvent } from "react"
 import { useMemo, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"

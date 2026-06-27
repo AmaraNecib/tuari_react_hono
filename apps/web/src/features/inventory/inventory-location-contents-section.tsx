@@ -1,3 +1,6 @@
+/**
+ * Inventory location contents section for viewing items at a specific location.
+ */
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 

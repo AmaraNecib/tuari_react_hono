@@ -87,15 +87,39 @@ export function createAnalyticsRoutes(
       }
       
       const event = c.req.query("event");
-      const startTime = c.req.query("startTime")
-        ? Number(c.req.query("startTime"))
-        : undefined;
-      const endTime = c.req.query("endTime")
-        ? Number(c.req.query("endTime"))
-        : undefined;
-      const limit = c.req.query("limit")
-        ? Number(c.req.query("limit"))
-        : undefined;
+      const startTimeRaw = c.req.query("startTime");
+      const endTimeRaw = c.req.query("endTime");
+      const limitRaw = c.req.query("limit");
+      
+      // Validate startTime
+      let startTime: number | undefined;
+      if (startTimeRaw) {
+        const parsed = Number(startTimeRaw);
+        if (!Number.isFinite(parsed)) {
+          return c.json({ error: "Invalid startTime: must be a finite number" }, 400);
+        }
+        startTime = parsed;
+      }
+      
+      // Validate endTime
+      let endTime: number | undefined;
+      if (endTimeRaw) {
+        const parsed = Number(endTimeRaw);
+        if (!Number.isFinite(parsed)) {
+          return c.json({ error: "Invalid endTime: must be a finite number" }, 400);
+        }
+        endTime = parsed;
+      }
+      
+      // Validate limit (1-1000)
+      let limit: number | undefined;
+      if (limitRaw) {
+        const parsed = Number(limitRaw);
+        if (!Number.isFinite(parsed) || parsed < 1 || parsed > 1000 || !Number.isInteger(parsed)) {
+          return c.json({ error: "Invalid limit: must be an integer between 1 and 1000" }, 400);
+        }
+        limit = parsed;
+      }
 
       const events = await analyticsService.getEvents({
         event,
@@ -181,6 +205,12 @@ export function createAnalyticsRoutes(
       }
       
       const { level } = await c.req.json();
+      
+      // Validate level is a valid number
+      if (typeof level !== "number" || !Number.isFinite(level) || level < 1 || level > 3) {
+        return c.json({ error: "Invalid level: must be 1, 2, or 3" }, 400);
+      }
+      
       await analyticsService.updateUserLevel(userId, level);
       return c.json({ success: true });
     } catch (error) {

@@ -1,3 +1,6 @@
+/**
+ * Hook for managing form amount values with formatting.
+ */
 import { useState } from "react"
 
 export function useFormAmount(initialValue = "") {

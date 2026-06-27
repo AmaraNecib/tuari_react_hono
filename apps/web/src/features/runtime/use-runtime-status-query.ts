@@ -1,3 +1,6 @@
+/**
+ * Hook for querying runtime status.
+ */
 import { useQuery, type Query } from "@tanstack/react-query";
 import { getRuntimeStatus, type RuntimeStatus } from "@/lib/runtime-bridge";
 

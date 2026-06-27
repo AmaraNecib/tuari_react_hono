@@ -1,3 +1,6 @@
+/**
+ * Hook for querying user session data.
+ */
 import { useQuery } from "@tanstack/react-query"
 
 import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"

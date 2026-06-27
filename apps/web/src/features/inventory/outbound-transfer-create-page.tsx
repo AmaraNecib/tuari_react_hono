@@ -1,3 +1,6 @@
+/**
+ * Outbound transfer creation page for creating new inventory transfers.
+ */
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
