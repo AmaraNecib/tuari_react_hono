@@ -40,7 +40,7 @@ export function LabeledIcon({
       <span
         className={cn(
           "text-xs text-muted-foreground transition-opacity",
-          showLabel ? "opacity-100" : "opacity-0 group-hover/labeled-icon:opacity-100",
+          showLabel ? "opacity-100" : "opacity-0 group-hover/labeled-icon:opacity-100 absolute",
           direction === "horizontal" && "whitespace-nowrap",
         )}
       >

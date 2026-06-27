@@ -487,7 +487,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
         )
       })}
 
-      <div className="flex items-center justify-end gap-3" dir="rtl">
+      <div className="flex items-center justify-end gap-3">
         <Button disabled={createMutation.isPending || lines.length === 0} onClick={() => void handleSubmit()}>
           {createMutation.isPending ? t("common.saving") : t("inventory.invoiceCreate.save", "حفظ الفاتورة")}
         </Button>

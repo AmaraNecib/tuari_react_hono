@@ -170,10 +170,10 @@ export function SettingsSection({
           <form className="space-y-5" onSubmit={(event) => void handleSave(event)}>
             <SurfaceHeader description={accountDescription} title={accountTitle} />
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label={accountNameLabel} error={fieldErrors.name} hint={accountPhoneHint}>
+              <Field label={accountNameLabel} error={fieldErrors.name}>
                 <Input placeholder={accountNamePlaceholder} value={name} onChange={(event) => setName(event.target.value)} />
               </Field>
-              <Field label={accountPhoneLabel} error={fieldErrors.phone}>
+              <Field label={accountPhoneLabel} error={fieldErrors.phone} hint={accountPhoneHint}>
                 <Input
                   dir="ltr"
                   inputMode="tel"

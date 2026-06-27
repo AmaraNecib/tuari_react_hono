@@ -42,7 +42,7 @@ export function ProgressTracking({ tasks, className }: ProgressTrackingProps) {
     setCompletedTasks(completed)
   }, [tasks])
 
-  const progress = (completedTasks.size / tasks.length) * 100
+  const progress = tasks.length === 0 ? 0 : (completedTasks.size / tasks.length) * 100
 
   const categories = {
     setup: { label: "الإعداد الأساسي", color: "text-blue-600 dark:text-blue-400" },
@@ -194,7 +194,7 @@ export function ProgressTrackingCard({
     setCompletedTasks(completed)
   }, [tasks])
 
-  const progress = (completedTasks.size / tasks.length) * 100
+  const progress = tasks.length === 0 ? 0 : (completedTasks.size / tasks.length) * 100
 
   return (
     <div

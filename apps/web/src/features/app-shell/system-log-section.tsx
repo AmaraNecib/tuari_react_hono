@@ -95,16 +95,16 @@ function parseDetailTokens(line: string) {
   return line
     .split(/\s+[•—]\s+/)
     .map((part) => part.trim())
-    .filter((part) => !part.startsWith("نوع الحركة"))
+    .filter((part) => !part.startsWith(i18n.t("systemLog.entryType")))
     .filter((part) => part.length > 0)
 }
 
 function getDetailTokenClassName(token: string) {
-  if (token.startsWith("القيمة") || token.startsWith("الرصيد")) {
+  if (token.startsWith(i18n.t("systemLog.value")) || token.startsWith(i18n.t("systemLog.balance"))) {
     return "border-emerald-300 bg-emerald-100 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-200 font-mono font-semibold"
   }
 
-  if (token.startsWith("نوع الحركة") || token.startsWith("الحالة")) {
+  if (token.startsWith(i18n.t("systemLog.entryType")) || token.startsWith(i18n.t("systemLog.status"))) {
     return "border-sky-300 bg-sky-100 text-sky-950 dark:border-sky-800 dark:bg-sky-950/35 dark:text-sky-200 font-semibold"
   }
 

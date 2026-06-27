@@ -1,4 +1,5 @@
 import { useState, useEffect, type ReactNode } from "react"
+import { useTranslation } from "react-i18next"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -30,6 +31,7 @@ export function OnboardingTooltip({
   showOnce = true,
   className,
 }: OnboardingTooltipProps) {
+  const { t } = useTranslation()
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
@@ -82,15 +84,17 @@ export function OnboardingTooltip({
           {children}
         </div>
         <div className="mt-3 flex items-center justify-between">
-          <button
-            type="button"
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            onClick={handleDismiss}
-          >
-            لا تظهر مرة أخرى
-          </button>
+          {showOnce && (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={handleDismiss}
+            >
+              {t("common.showOnce")}
+            </button>
+          )}
           <Button size="sm" onClick={handleDismiss}>
-            حسناً
+            {t("common.gotIt")}
           </Button>
         </div>
       </div>

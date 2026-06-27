@@ -50,16 +50,3 @@ Tuari is a local-first ERP system with a warm, crafted aesthetic that prioritize
 - Reduced motion support
 
 ---
-
-## Resolved Context
-
-```json
-{
-  "targetPath": "apps/web",
-  "targetExists": true,
-  "projectRoot": "D:\\projects\\tuari_react_hono\\apps\\web",
-  "repoRoot": "D:\\projects\\tuari_react_hono",
-  "productPath": "PRODUCT.md",
-  "designPath": "DESIGN.md"
-}
-```

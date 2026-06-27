@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { useMobileLayout } from "@/hooks/use-mobile-layout"
 import { cn } from "@/lib/utils"
@@ -26,7 +27,9 @@ export function ProgressiveDisclosure({
   defaultExpanded = false,
   className,
 }: ProgressiveDisclosureProps) {
+  const { t } = useTranslation()
   const { isMobile } = useMobileLayout()
+  const resolvedToggleLabel = toggleLabel ?? t("common.showMore")
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
   if (!isMobile) {
@@ -50,12 +53,12 @@ export function ProgressiveDisclosure({
       >
         {isExpanded ? (
           <>
-            <span>{toggleLabel}</span>
+            <span>{resolvedToggleLabel}</span>
             <ChevronUp size={14} />
           </>
         ) : (
           <>
-            <span>{toggleLabel}</span>
+            <span>{resolvedToggleLabel}</span>
             <ChevronDown size={14} />
           </>
         )}

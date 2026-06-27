@@ -97,7 +97,7 @@ export function VoidEntryDialog({
                 {t("debts.voidEntry.cascadeWarning", "تحذير: إلغاء الرصيد الافتتاحي")}
               </p>
               <p className="mt-2 text-sm text-amber-800 dark:text-amber-400">
-                {t("debts.voidEntry.cascadeDescription", "سيتم إلغاء {{count}} دفعة مرتبطة تلقائياً بقيمة إجمالية {{amount}} دج.").replace("{{count}}", String(livePaymentEntries.length)).replace("{{amount}}", formatDebtMoney(totalCascadeAmount))}
+                {t("debts.voidEntry.cascadeDescription", "سيتم إلغاء {{count}} دفعة مرتبطة تلقائياً بقيمة إجمالية {{amount}} دج.", { count: livePaymentEntries.length, amount: formatDebtMoney(totalCascadeAmount) })}
               </p>
               <label className="mt-3 flex items-start gap-2">
                 <input

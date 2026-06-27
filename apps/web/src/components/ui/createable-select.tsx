@@ -59,12 +59,15 @@ export function CreateableSelect({
   emptyLabel,
   placeholder,
   createLabel,
-  createFields = [{ key: "name", label: "Name", placeholder: "Name...", required: true }],
+  createFields,
   onCreate,
   disabled = false,
   className,
 }: CreateableSelectProps) {
   const { t } = useTranslation()
+  const resolvedCreateFields = createFields ?? [
+    { key: "name", label: t("common.name"), placeholder: t("common.namePlaceholder"), required: true },
+  ]
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [createData, setCreateData] = useState<Record<string, string>>({})
   const [isCreating, setIsCreating] = useState(false)
@@ -89,7 +92,7 @@ export function CreateableSelect({
     if (!onCreate) return
 
     // Validate required fields
-    for (const field of createFields) {
+    for (const field of resolvedCreateFields) {
       if (field.required && !createData[field.key]?.trim()) {
         setCreateError(t("common.fieldRequired", { field: field.label }))
         return
@@ -148,7 +151,7 @@ export function CreateableSelect({
             <DialogTitle>{resolvedCreateLabel}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {createFields.map((field) => (
+            {resolvedCreateFields.map((field) => (
               <label key={field.key} className="space-y-1.5 text-sm">
                 <span className="font-medium text-foreground">
                   {field.label}

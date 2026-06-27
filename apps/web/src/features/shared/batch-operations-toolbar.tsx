@@ -85,6 +85,7 @@ export function BatchOperationsToolbar({
             <Checkbox
               ref={checkboxRef}
               checked={isAllSelected}
+              indeterminate={isPartiallySelected}
               onCheckedChange={onToggleAll}
             />
             <span className="font-medium text-foreground">

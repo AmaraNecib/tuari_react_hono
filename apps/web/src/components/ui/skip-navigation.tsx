@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
 
 interface SkipNavigationProps {
@@ -15,6 +16,7 @@ export function SkipNavigation({
   targetId = "main-content",
   className,
 }: SkipNavigationProps) {
+  const { t } = useTranslation()
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
     const target = document.getElementById(targetId)
@@ -33,7 +35,7 @@ export function SkipNavigation({
       )}
       onClick={handleClick}
     >
-      تخطي إلى المحتوى الرئيسي
+      {t("common.skipToContent")}
     </a>
   )
 }

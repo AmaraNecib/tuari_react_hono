@@ -82,7 +82,12 @@ export function RecordTabs({
     <Tabs value={activeTab} onValueChange={onChange}>
       <TabsList variant="line" className="w-full justify-start">
         {tabs.map((tab) => (
-          <TabsTrigger key={tab.id} value={tab.id}>
+          <TabsTrigger
+            key={tab.id}
+            value={tab.id}
+            id={`tab-trigger-${tab.id}`}
+            aria-controls={`tab-${tab.id}`}
+          >
             {tab.label}
           </TabsTrigger>
         ))}
@@ -112,7 +117,12 @@ export function RecordTabPanel({
   }
 
   return (
-    <div className={className}>
+    <div
+      role="tabpanel"
+      id={`tab-${tabId}`}
+      aria-labelledby={`tab-trigger-${tabId}`}
+      className={className}
+    >
       {children}
     </div>
   )
