@@ -1,8 +1,15 @@
+/**
+ * Tabs component built on Base UI Tabs primitive.
+ * Supports horizontal and vertical orientations with line and pill variants.
+ */
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * Tabs root component.
+ */
 function Tabs({
   className,
   orientation = "horizontal",
@@ -36,6 +43,9 @@ const tabsListVariants = cva(
   }
 )
 
+/**
+ * Tabs list component.
+ */
 function TabsList({
   className,
   variant = "default",
@@ -51,6 +61,9 @@ function TabsList({
   )
 }
 
+/**
+ * Tabs trigger component.
+ */
 function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   return (
     <TabsPrimitive.Tab
@@ -67,11 +80,14 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   )
 }
 
+/**
+ * Tabs content component.
+ */
 function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
   return (
     <TabsPrimitive.Panel
       data-slot="tabs-content"
-      className={cn("flex-1 text-sm outline-none", className)}
+      className={cn("flex-1 text-sm outline-none animate-in fade-in-0 duration-200 ease-out", className)}
       {...props}
     />
   )
