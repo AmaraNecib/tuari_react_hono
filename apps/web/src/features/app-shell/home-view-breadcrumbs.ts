@@ -1,3 +1,7 @@
+/**
+ * Breadcrumb generation for the home view navigation.
+ * Creates breadcrumb items based on current route.
+ */
 import type { TFunction } from "i18next"
 
 import { workspaceRoutes, type WorkspaceRouteTarget } from "@/router/navigation"
@@ -5,6 +9,9 @@ import { workspaceRoutes, type WorkspaceRouteTarget } from "@/router/navigation"
 import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewPage } from "./home-view-types"
 
+/**
+ * buildHomeViewBreadcrumbItems({ component.
+ */
 export function buildHomeViewBreadcrumbItems({
   copy,
   page,

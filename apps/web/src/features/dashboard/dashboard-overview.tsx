@@ -1,3 +1,7 @@
+/**
+ * Dashboard overview component.
+ * Displays key metrics and reports.
+ */
 import { useTranslation } from "react-i18next";
 
 import { useInventoryReport, useDebtReport } from "@/hooks/use-report-queries";
@@ -5,6 +9,9 @@ import type { DebtReport, InventoryReport } from "@tuari/contracts";
 import { Button } from "@/components/ui/button";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
 
+/**
+ * @description Component
+ */
 export function DashboardOverview() {
   const { t } = useTranslation();
   const inventoryReport = useInventoryReport();

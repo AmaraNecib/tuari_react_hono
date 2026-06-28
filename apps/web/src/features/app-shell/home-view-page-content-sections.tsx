@@ -12,6 +12,9 @@ import { SystemLogSection } from "./system-log-section"
 import { WarehousesSection } from "./warehouses-section"
 
 /** Renders the main content section for each workspace page. */
+/**
+ * @description Component
+ */
 export function HomeViewPageSectionContent({
   copy,
   derived,

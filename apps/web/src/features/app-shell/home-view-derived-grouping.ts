@@ -1,3 +1,7 @@
+/**
+ * Group items by a key function.
+ * Used for organizing data by category, status, etc.
+ */
 export function groupItemsBy<T>(items: readonly T[], getKey: (item: T) => string | null | undefined) {
   const groupedItems = new Map<string, T[]>()
 
@@ -21,6 +25,9 @@ export function groupItemsBy<T>(items: readonly T[], getKey: (item: T) => string
   return groupedItems
 }
 
+/**
+ * countItemsBy<T>(items component.
+ */
 export function countItemsBy<T>(items: readonly T[], getKey: (item: T) => string | null | undefined) {
   const counts = new Map<string, number>()
 
@@ -34,6 +41,9 @@ export function countItemsBy<T>(items: readonly T[], getKey: (item: T) => string
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
 
+/**
+ * collectIds<T>(items component.
+ */
   return counts
 }
 

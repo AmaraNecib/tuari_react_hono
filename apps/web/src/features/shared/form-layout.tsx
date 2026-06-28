@@ -1,6 +1,12 @@
+/**
+ * Form layout components for consistent form styling.
+ */
 import type { ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
+/**
+ * @description Component
+ */
 export function FormLayout({
   children,
   onSubmit,
@@ -25,6 +31,9 @@ export function FormLayout({
   )
 }
 
+/**
+ * @description Component
+ */
 export function FormHeader({
   title,
   description,
@@ -47,6 +56,9 @@ export function FormHeader({
   )
 }
 
+/**
+ * @description Component
+ */
 export function FormSection({
   title,
   description,
@@ -76,6 +88,9 @@ export function FormSection({
   )
 }
 
+/**
+ * @description Component
+ */
 export function FormStickyFooter({
   children,
   className,
@@ -84,7 +99,7 @@ export function FormStickyFooter({
   className?: string
 }) {
   return (
-    <div className={cn("fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/80 p-4 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]", className)} dir="rtl">
+    <div className={cn("fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/80 p-4 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] backdrop-blur-sm", className)} dir="rtl">
       <div className="mx-auto flex max-w-5xl justify-end gap-3 px-4">
         {children}
       </div>

@@ -1,3 +1,6 @@
+/**
+ * Hooks for querying report data.
+ */
 import { useQuery } from "@tanstack/react-query";
 import type { DebtReport, InventoryReport, MovementReport, Report, ReportType } from "@tuari/contracts";
 import { rpcClient } from "@/lib/orpc-client";
@@ -8,6 +11,9 @@ interface GenerateReportInput {
   endDate?: string;
 }
 
+/**
+ * useReportQuery(input component.
+ */
 export function useReportQuery(input: GenerateReportInput, enabled = true) {
   return useQuery({
     queryKey: ["reports", input.type, input.startDate, input.endDate],
@@ -19,9 +25,21 @@ export function useReportQuery(input: GenerateReportInput, enabled = true) {
     enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 1,
+/**
+ * useInventoryReport(startDate? component.
+ */
   });
+/**
+ * useDebtReport(startDate? component.
+ */
 }
+/**
+ * useMovementReport(startDate? component.
+ */
 
+/**
+ * formatReportAsCSV(report component.
+ */
 export function useInventoryReport(startDate?: string, endDate?: string) {
   return useReportQuery({ type: "INVENTORY", startDate, endDate });
 }

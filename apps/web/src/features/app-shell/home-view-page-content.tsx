@@ -8,6 +8,9 @@ import {
 } from "./home-view-page-content-view-model"
 
 /** Routes page content to the correct section component. */
+/**
+ * @description Component
+ */
 export function HomeViewPageContent({
   copy,
   derived,

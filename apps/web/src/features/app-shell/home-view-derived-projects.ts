@@ -18,6 +18,9 @@ export function deriveProjectArchiveState(activeWorkers: number, t: Translate) {
   }
 }
 
+/**
+ * buildProjectRows({ component.
+ */
 export function buildProjectRows({
   copy,
   lookups,
@@ -44,6 +47,9 @@ export function buildProjectRows({
       activeWorkers,
       ...deriveProjectArchiveState(activeWorkers, t),
     }
+/**
+ * buildProjectDerivedCollections({ component.
+ */
   })
 }
 
@@ -102,6 +108,9 @@ export function buildProjectDerivedCollections({
     ]),
   )
 
+/**
+ * buildProjectOptions(workspace component.
+ */
   return {
     projectManagementHistoryByProjectId,
     projectWorkersByProjectId,

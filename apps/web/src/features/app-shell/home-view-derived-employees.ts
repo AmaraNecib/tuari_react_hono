@@ -85,6 +85,9 @@ export function buildEmployeeRelationshipFacts(workspace: DemoWorkspace): Employ
   }
 }
 
+/**
+ * deriveEmployeeDeleteState(facts component.
+ */
 export function deriveEmployeeDeleteState(facts: EmployeeDeleteFacts, t: Translate) {
   const canDelete =
     !facts.hasManagerHistory &&
@@ -109,6 +112,9 @@ export function deriveEmployeeDeleteState(facts: EmployeeDeleteFacts, t: Transla
             : facts.managesAnyProject || facts.managesAnyWarehouse
               ? t("detailPages.employee.deleteReasonManagedScope")
               : t("detailPages.employee.deleteReasonFallback"),
+/**
+ * deriveEmployeeLeaveState(facts component.
+ */
   }
 }
 
@@ -136,6 +142,9 @@ export function deriveEmployeeLeaveState(facts: EmployeeLeaveFacts, t: Translate
           ? t("detailPages.employee.leaveReasonWorkerLinked")
           : projectManagerStillLinked
             ? t("detailPages.employee.leaveReasonProjectManagerLinked")
+/**
+ * buildEmployeeRow({ component.
+ */
             : warehouseManagerStillLinked
               ? t("detailPages.employee.leaveReasonWarehouseManagerLinked")
               : t("detailPages.employee.leaveReasonFallback"),
@@ -211,6 +220,9 @@ export function buildEmployeeRow({
     currentWarehouseId: warehouse?.id ?? null,
     currentWarehouseAssignmentId: warehouseAssignment?.id ?? null,
     currentWorkplace: project?.name ?? warehouse?.name ?? copy.shell.noProject,
+/**
+ * buildEmployeeRows({ component.
+ */
     notes: employee.notes,
     isWorker: role?.key === "worker",
     ...deleteState,
@@ -229,6 +241,9 @@ export function buildEmployeeRows({
   copy: Pick<HomeViewCopy, "shell">
   lookups: HomeViewDerivedLookups
   t: Translate
+/**
+ * buildManagerOptions({ component.
+ */
   workspace: DemoWorkspace
 }) {
   const relationshipFacts = buildEmployeeRelationshipFacts(workspace)
@@ -250,6 +265,9 @@ export function buildManagerOptions({
 }) {
   const activeProjectsByManagerId = groupItemsBy(
     workspace.projects,
+/**
+ * buildWarehouseManagerOptions({ component.
+ */
     (project) => (project.status === "ACTIVE" && project.managerId ? project.managerId : null),
   )
 
@@ -263,6 +281,9 @@ export function buildManagerOptions({
         .sort((left, right) => left.label.localeCompare(right.label, "ar")),
     }))
     .sort((left, right) => left.label.localeCompare(right.label, "ar"))
+/**
+ * buildEmployeeDerivedCollections({ component.
+ */
 }
 
 export function buildWarehouseManagerOptions({

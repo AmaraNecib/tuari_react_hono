@@ -1,3 +1,7 @@
+/**
+ * Responsive container that adapts layout based on screen size.
+ * Applies different styles for mobile, tablet, and desktop.
+ */
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { cn } from "@/lib/utils";
@@ -10,6 +14,12 @@ interface ResponsiveContainerProps {
   desktopClassName?: string;
 }
 
+/**
+ * @description Component
+ */
+/**
+ * Responsive container component.
+ */
 export function ResponsiveContainer({
   children,
   className,
@@ -30,6 +40,12 @@ export function ResponsiveContainer({
 }
 
 // Utility component for responsive grid layouts
+/**
+ * @description Component
+ */
+/**
+ * Responsive grid component.
+ */
 export function ResponsiveGrid({
   children,
   className,
@@ -50,6 +66,12 @@ export function ResponsiveGrid({
 }
 
 // Utility component for touch-friendly buttons
+/**
+ * @description Component
+ */
+/**
+ * Touch button component.
+ */
 export function TouchButton({
   children,
   onClick,

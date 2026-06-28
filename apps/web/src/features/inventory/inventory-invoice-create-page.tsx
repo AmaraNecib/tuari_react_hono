@@ -80,6 +80,9 @@ function createAssetLine(defaultName = "", purchaseDate = getTodayDateValue()): 
 }
 
 /** Invoice creation page with line items and file attachments. */
+/**
+ * @description Component
+ */
 export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceId: string) => void }) {
   const definitionsQuery = useInventoryItemDefinitionsQuery()
   const warehousesQuery = useInventoryWarehousesQuery()
@@ -147,7 +150,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
           }
 
           if (Number(asset.purchasePriceDzd) < 0) {
-            return `سعر الأصل غير صالح في السطر ${index + 1} - الأصل ${assetIndex + 1}.`
+            return t("inventory.invoiceCreate.invalidAssetPrice", `سعر الأصل غير صالح في السطر ${index + 1} - الأصل ${assetIndex + 1}.`)
           }
         }
       }
@@ -222,12 +225,12 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       <Surface variant="panel">
         <PageSurfaceContent>
           <PageHeader
-            title="إضافة مخزون بالفاتورة"
+            title={t("inventory.invoiceCreate.title", "إضافة مخزون بالفاتورة")}
             description="أنشئ فاتورة واحدة، أرفق ملفاتها، ثم أضف كل العناصر المرتبطة بها دفعة واحدة."
             action={
               <PageActionGroup>
-                <Button variant="outline" onClick={() => setLines((current) => [...current, createConsumableLine()])}>إضافة مادة</Button>
-                <Button variant="outline" onClick={() => setLines((current) => [...current, createAssetLine()])}>إضافة أصل</Button>
+                <Button variant="outline" onClick={() => setLines((current) => [...current, createConsumableLine()])}>{t("inventory.invoiceCreate.addConsumable", "إضافة مادة")}</Button>
+                <Button variant="outline" onClick={() => setLines((current) => [...current, createAssetLine()])}>{t("inventory.invoiceCreate.addAsset", "إضافة أصل")}</Button>
               </PageActionGroup>
             }
           />
@@ -244,10 +247,10 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
               <DatePicker value={invoiceDate} onChange={setInvoiceDate} />
             </label>
             <label className="space-y-1.5 text-sm">
-              <FieldLabel label="هل هذه دين؟" />
+              <FieldLabel label={t("inventory.invoiceCreate.isDebt", "هل هذه دين؟")} />
               <NativeSelect value={createDebt ? "YES" : "NO"} onChange={(event) => setCreateDebt(event.target.value === "YES")}>
-                <option value="NO">لا</option>
-                <option value="YES">نعم</option>
+                <option value="NO">{t("common.no", "لا")}</option>
+                <option value="YES">{t("common.yes", "نعم")}</option>
               </NativeSelect>
             </label>
           </div>
@@ -269,7 +272,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                 emptyLabel="بدون جهة خارجية"
                 createLabel="إنشاء جهة خارجية"
                 createFields={[
-                  { key: "fullName", label: "الاسم الكامل", placeholder: "اسم الجهة...", required: true },
+                  { key: "fullName", label: t("externals.create.fullName", "الاسم الكامل"), placeholder: t("externals.create.fullNamePlaceholder", "اسم الجهة..."), required: true },
                   { key: "phoneNumber", label: "رقم الهاتف", placeholder: "0612345678" },
                 ]}
                 onCreate={async (data) => {
@@ -292,7 +295,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
           {/* Warehouse, Project, Debt fields — 3 columns */}
           <div className="grid gap-3 md:grid-cols-3">
             <label className="space-y-1.5 text-sm">
-              <FieldLabel label="المستودع الافتراضي" />
+              <FieldLabel label={t("inventory.invoiceCreate.defaultWarehouse", "المستودع الافتراضي")} />
               <CreateableSelect
                 value={warehouseId}
                 onChange={(id) => { setWarehouseId(id); if (id) setProjectId("") }}
@@ -317,7 +320,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
               />
             </label>
             <label className="space-y-1.5 text-sm">
-              <FieldLabel label="المشروع الافتراضي" />
+              <FieldLabel label={t("inventory.invoiceCreate.defaultProject", "المشروع الافتراضي")} />
               <CreateableSelect
                 value={projectId}
                 onChange={(id) => { setProjectId(id); if (id) setWarehouseId("") }}
@@ -361,7 +364,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
           {/* Note and files — full width */}
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1.5 text-sm">
-              <FieldLabel label="ملاحظات" />
+              <FieldLabel label={t("common.note", "ملاحظات")} />
               <Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="اختياري" />
             </label>
             <label className="space-y-1.5 text-sm">
@@ -379,8 +382,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
             <PageSurfaceContent>
               <SurfaceHeader
                 title={`العنصر ${index + 1}`}
-                description={line.kind === "CONSUMABLE" ? "مادة استهلاكية" : "أصل مع بيانات كل أصل"}
-                action={<Button variant="outline" size="sm" onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}>حذف</Button>}
+                description={line.kind === "CONSUMABLE" ? t("inventory.invoiceCreate.consumable", "مادة استهلاكية") : t("inventory.invoiceCreate.asset", "أصل مع بيانات كل أصل")}
+                action={<Button variant="outline" size="sm" onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}>{t("common.delete", "حذف")}</Button>}
               />
               <div className="grid gap-3 md:grid-cols-3">
                 <label className="space-y-1.5 text-sm">
@@ -394,20 +397,20 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                     updateLine(index, { kind: "CONSUMABLE", itemDefinitionId: event.target.value, warehouseId: line.warehouseId, projectId: line.projectId, quantity: line.kind === "CONSUMABLE" ? line.quantity : "1", unitPriceDzd: line.kind === "CONSUMABLE" ? line.unitPriceDzd : "0", totalPriceDzd: line.kind === "CONSUMABLE" ? line.totalPriceDzd : "0", note: line.note })
                   }}>
                     <option value="">اختر العنصر</option>
-                    {definitions.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.itemType === "CONSUMABLE" ? "استهلاكي" : "أصل"}</option>)}
+                    {definitions.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.itemType === "CONSUMABLE" ? t("inventory.invoiceCreate.consumableType", "استهلاكي") : t("inventory.invoiceCreate.assetType", "أصل")}</option>)}
                   </NativeSelect>
                 </label>
                 <label className="space-y-1.5 text-sm">
-                  <FieldLabel label="المستودع" />
+                  <FieldLabel label={t("inventory.invoiceCreate.warehouse", "المستودع")} />
                   <NativeSelect value={line.warehouseId} onChange={(event) => updateLine(index, { ...line, warehouseId: event.target.value, projectId: event.target.value ? "" : line.projectId } as LineState)}>
-                    <option value="">الافتراضي</option>
+                    <option value="">{t("common.default", "الافتراضي")}</option>
                     {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
                   </NativeSelect>
                 </label>
                 <label className="space-y-1.5 text-sm">
-                  <FieldLabel label="المشروع" />
+                  <FieldLabel label={t("inventory.invoiceCreate.project", "المشروع")} />
                   <NativeSelect value={line.projectId} onChange={(event) => updateLine(index, { ...line, projectId: event.target.value, warehouseId: event.target.value ? "" : line.warehouseId } as LineState)}>
-                    <option value="">الافتراضي</option>
+                    <option value="">{t("common.default", "الافتراضي")}</option>
                     {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                   </NativeSelect>
                 </label>
@@ -487,8 +490,13 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
         )
       })}
 
-      <div className="flex justify-end">
-        <Button disabled={createMutation.isPending || lines.length === 0} onClick={() => void handleSubmit()}>حفظ الفاتورة</Button>
+      <div className="flex items-center justify-end gap-3">
+        <Button disabled={createMutation.isPending || lines.length === 0} onClick={() => void handleSubmit()}>
+          {createMutation.isPending ? t("common.saving") : t("inventory.invoiceCreate.save", "حفظ الفاتورة")}
+        </Button>
+        <Button variant="outline" onClick={() => window.history.back()}>
+          {t("common.cancel")}
+        </Button>
       </div>
     </div>
   )

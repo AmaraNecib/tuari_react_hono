@@ -1,9 +1,16 @@
+/**
+ * Debt party summary card component.
+ * Displays summary information for a debt party.
+ */
 import { useTranslation } from "react-i18next"
 import type { DebtAccount } from "@tuari/contracts"
 import { Surface } from "@/features/shared/page-primitives"
 import { formatDebtMoney, getCombinedDebtBalance, getDebtBalanceMeta } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
+/**
+ * @description Component
+ */
 export function DebtPartySummaryCard({ accounts, personName }: { accounts: DebtAccount[]; personName: string }) {
   const { t } = useTranslation()
   const combinedBalance = getCombinedDebtBalance(accounts)

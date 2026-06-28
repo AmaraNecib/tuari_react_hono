@@ -1,3 +1,6 @@
+/**
+ * Desktop API bridge for Electron/Tauri integration.
+ */
 import { isDesktopRuntime } from "./desktop-auth-session"
 import { resolveApiBaseUrl } from "./runtime-config"
 

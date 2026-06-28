@@ -1,3 +1,6 @@
+/**
+ * Hook for managing saved filter presets.
+ */
 import { useCallback, useEffect, useState } from "react";
 
 export interface FilterPreset {
@@ -12,6 +15,9 @@ interface UseSavedFiltersOptions {
   maxPresets?: number;
 }
 
+/**
+ * useSavedFilters(options component.
+ */
 export function useSavedFilters(options: UseSavedFiltersOptions) {
   const { storageKey, maxPresets = 10 } = options;
   const [presets, setPresets] = useState<FilterPreset[]>([]);

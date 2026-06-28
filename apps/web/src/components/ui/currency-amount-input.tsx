@@ -1,6 +1,13 @@
+/**
+ * Currency amount input with optional "Pay Full" button.
+ * Used for payment and financial forms.
+ */
 import { Button } from "@/components/ui/button"
 import { CurrencyInput } from "@/components/ui/form-controls"
 
+/**
+ * @description Component
+ */
 export function CurrencyAmountInput({
   label,
   value,

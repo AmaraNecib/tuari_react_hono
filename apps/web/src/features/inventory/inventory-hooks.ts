@@ -56,10 +56,16 @@ export function useInventoryItemDefinitionsQuery() {
   })
 }
 
+/**
+ * useInventoryInvoiceGroupsQuery() component.
+ */
 export function useInventoryInvoiceGroupsQuery() {
   return useQuery({
     queryKey: inventoryKeys.invoiceGroups,
     queryFn: async (): Promise<{ items: InventoryInvoiceGroup[] }> => rpcClient.inventoryInvoiceGroupsList(undefined),
+/**
+ * useInventoryInvoiceGroupQuery(invoiceId component.
+ */
   })
 }
 
@@ -68,6 +74,9 @@ export function useInventoryInvoiceGroupQuery(invoiceId: string | undefined) {
     queryKey: inventoryKeys.invoiceGroup(invoiceId ?? "missing"),
     enabled: Boolean(invoiceId),
     queryFn: async (): Promise<InventoryInvoiceGroupDetail> => {
+/**
+ * useInventoryLocationContentsQuery(input component.
+ */
       const result = await rpcClient.inventoryInvoiceGroupsGet({ id: invoiceId! })
       return requireEntitySuccess(result).item
     },
@@ -79,6 +88,9 @@ export function useInventoryLocationContentsQuery(input: { warehouseId?: string;
     queryKey: inventoryKeys.locationContents(input),
     enabled: Boolean(input.warehouseId || input.projectId),
     queryFn: async (): Promise<InventoryLocationContents> => {
+/**
+ * useInventoryAssetQuery(assetId component.
+ */
       const result = await rpcClient.inventoryLocationContentsGet({
         warehouseId: input.warehouseId ?? null,
         projectId: input.projectId ?? null,
@@ -88,12 +100,18 @@ export function useInventoryLocationContentsQuery(input: { warehouseId?: string;
   })
 }
 
+/**
+ * useInventoryWarehousesQuery(enabled = true) component.
+ */
 export function useInventoryAssetQuery(assetId: string | undefined) {
   return useQuery({
     queryKey: inventoryKeys.asset(assetId ?? "missing"),
     enabled: Boolean(assetId),
     queryFn: async (): Promise<InventoryAssetDetail> => {
       const result = await rpcClient.inventoryAssetsGet({ id: assetId! })
+/**
+ * useInventoryProjectsQuery(enabled = true) component.
+ */
       return requireEntitySuccess(result).item
     },
   })
@@ -107,6 +125,9 @@ export function useInventoryWarehousesQuery(enabled = true) {
     queryFn: async (): Promise<{ items: Warehouse[] }> => rpcClient.warehousesList(undefined),
   })
 }
+/**
+ * useCreateInventoryItemDefinitionMutation() component.
+ */
 
 /** Fetches projects for the inventory. */
 export function useInventoryProjectsQuery(enabled = true) {
@@ -121,6 +142,9 @@ export function useInventoryProjectsQuery(enabled = true) {
 export function useInventoryExternalCounterpartiesQuery() {
   return useQuery({
     queryKey: inventoryKeys.counterparties,
+/**
+ * useCreateInventoryInvoiceGroupMutation() component.
+ */
     queryFn: async (): Promise<{ items: ExternalCounterparty[] }> => rpcClient.externalCounterpartiesList(undefined),
   })
 }
@@ -136,6 +160,9 @@ export function useCreateInventoryItemDefinitionMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
+/**
+ * useTransferInventoryAssetMutation() component.
+ */
       showErrorToast(buildErrorMessage(error, "تعذر إنشاء تعريف العنصر."))
     },
   })
@@ -156,6 +183,9 @@ export function useCreateInventoryInvoiceGroupMutation() {
     onError: (error) => {
       showErrorToast(buildErrorMessage(error, "تعذر إنشاء الفاتورة."))
     },
+/**
+ * useTransferInventoryConsumableMutation() component.
+ */
   })
 }
 
@@ -219,10 +249,16 @@ export async function uploadInvoiceAttachments(invoiceGroupId: string, files: Fi
           fieldName: "files",
           fileName: file.name,
           mimeType: file.type || null,
+/**
+ * useOutboundTransfersQuery() component.
+ */
         })),
       ),
     })
     : await fetch(resolveApiUrl(`/api/inventory/invoice-groups/${invoiceGroupId}/attachments`), {
+/**
+ * useRecordInvoicePaymentMutation() component.
+ */
       method: "POST",
       headers: {
         ...createRpcHeaders(),
@@ -238,6 +274,9 @@ export async function uploadInvoiceAttachments(invoiceGroupId: string, files: Fi
     })
 
   const body = (await response.json().catch(() => null)) as
+/**
+ * useCreateOutboundTransferMutation() component.
+ */
     | { success: true; items: unknown[] }
     | { success: false; error?: { message?: string } }
     | null

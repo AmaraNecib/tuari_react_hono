@@ -20,6 +20,9 @@ import { cn } from "@/lib/utils"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 
 /** Dialog for recording a debt payment. */
+/**
+ * @description Component
+ */
 export function RecordPaymentDialog({
   debtAccount,
   open,

@@ -20,6 +20,9 @@ interface InventoryInvoicesPageProps {
 type InvoiceStatusFilter = "ALL" | "PAID" | "UNPAID"
 
 /** Invoice listing page with filters and batch operations. */
+/**
+ * @description Component
+ */
 export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPageProps) {
   const { t } = useTranslation()
   const invoicesQuery = useInventoryInvoiceGroupsQuery()
@@ -91,8 +94,8 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
             return (
               <div
                 key={invoice.id}
-                className={`flex items-start gap-3 rounded-xl border border-border/70 px-4 py-4 transition ${
-                  isSelected ? "bg-muted/30" : "bg-surface"
+                className={`flex items-start gap-3 rounded-xl px-4 py-4 transition ${
+                  isSelected ? "bg-muted/30" : "hover:bg-surface-2"
                 }`}
               >
                 <input

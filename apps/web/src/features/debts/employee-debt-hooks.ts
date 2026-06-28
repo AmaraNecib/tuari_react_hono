@@ -1,3 +1,6 @@
+/**
+ * Employee debt hooks for querying and mutating employee debt data.
+ */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
   AppError,
@@ -26,6 +29,9 @@ function requireEntitySuccess<T>(result: { success: boolean; message?: string; i
   return { item: result.item, message: result.message ?? "تم الحفظ بنجاح." }
 }
 
+/**
+ * useEmployeeDebtAccountQuery(employeeId component.
+ */
 export function useEmployeeDebtAccountQuery(employeeId: string | undefined) {
   return useQuery({
     queryKey: employeeDebtKeys.account(employeeId ?? "missing"),
@@ -34,6 +40,9 @@ export function useEmployeeDebtAccountQuery(employeeId: string | undefined) {
       const result = await rpcClient.employeeDebtAccountGet({ employeeId: employeeId! })
       return requireEntitySuccess(result).item
     },
+/**
+ * useCreateEmployeeDebtEntryMutation() component.
+ */
   })
 }
 

@@ -61,6 +61,9 @@ function createFormState(employee: EmployeeTableRow): FormState {
 // }
 
 /** Employee edit page with improved form layout. */
+/**
+ * @description Component
+ */
 export function EmployeeEditPageV2({
   currentManagedProjectIds,
   currentManagedWarehouseIds,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { type FilterPreset, useSavedFilters } from "@/hooks/use-saved-filters";
@@ -10,11 +11,15 @@ interface AdvancedSearchBarProps {
 }
 
 /** Search bar with filters and preset management. */
+/**
+ * @description Component
+ */
 export function AdvancedSearchBar({
   onSearch,
   storageKey,
   debounceMs = 300,
 }: AdvancedSearchBarProps) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<Record<string, unknown>>({});
   const [showPresets, setShowPresets] = useState(false);
@@ -94,7 +99,7 @@ export function AdvancedSearchBar({
                 setShowSaveDialog(true);
               }}
             >
-              حفظ البحث الحالي
+              {t("search.saveCurrent", "حفظ البحث الحالي")}
             </Button>
             <Button
               variant="ghost"
@@ -115,7 +120,7 @@ export function AdvancedSearchBar({
       {showSaveDialog && (
         <div className="flex gap-2 rounded-lg border border-border/60 bg-surface p-3">
           <Input
-            placeholder="اسم البحث المحفوظ..."
+            placeholder={t("search.presetNamePlaceholder", "اسم البحث المحفوظ...")}
             value={presetName}
             onChange={(e) => setPresetName(e.target.value)}
             onKeyDown={(e) => {
@@ -125,7 +130,7 @@ export function AdvancedSearchBar({
             className="flex-1 text-sm"
           />
           <Button size="sm" onClick={handleSavePreset}>
-            حفظ
+            {t("common.save", "حفظ")}
           </Button>
           <Button
             size="sm"
@@ -135,7 +140,7 @@ export function AdvancedSearchBar({
               setPresetName("");
             }}
           >
-            إلغاء
+            {t("common.cancel")}
           </Button>
         </div>
       )}

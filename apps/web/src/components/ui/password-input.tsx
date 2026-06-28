@@ -11,30 +11,35 @@ type PasswordInputProps = Omit<ComponentProps<typeof Input>, "type"> & {
 }
 
 /** Password input with show/hide toggle. */
+/**
+ * @description Component
+ */
 export function PasswordInput({ hideLabel, showLabel, ...props }: PasswordInputProps) {
   const [visible, setVisible] = useState(false)
   const inputId = useId()
 
   return (
-    <div className="relative">
+    <div className="relative flex items-center">
       <Input
         id={inputId}
         type={visible ? "text" : "password"}
+        autoComplete="current-password"
         {...props}
-        className={cn("pl-11 text-right", props.className)}
+        className={cn("pe-11", props.className)}
         dir={props.dir ?? "rtl"}
       />
       <Button
         aria-controls={inputId}
         aria-label={visible ? hideLabel : showLabel}
         aria-pressed={visible}
-        className="absolute inset-y-1/2 left-2 z-10 size-8 -translate-y-1/2 active:translate-y-0 active:transition-none"
+        className="absolute end-2 z-10 flex items-center justify-center p-0 size-4"
         size="icon-sm"
         type="button"
         variant="ghost"
         onClick={() => setVisible((current) => !current)}
       >
-        {visible ? <EyeOff key="hide" className="size-4" /> : <Eye key="show" className="size-4" />}
+        <EyeOff className={cn("size-4 transition-transform", visible ? "scale-100" : "scale-0 absolute")} />
+        <Eye className={cn("size-4 transition-transform", visible ? "scale-0 absolute" : "scale-100")} />
       </Button>
     </div>
   )

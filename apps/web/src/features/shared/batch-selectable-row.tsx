@@ -9,6 +9,9 @@ interface BatchSelectableRowProps {
 }
 
 /** Table row with batch selection checkbox. */
+/**
+ * @description Component
+ */
 export function BatchSelectableRow({
   id,
   isSelected,
