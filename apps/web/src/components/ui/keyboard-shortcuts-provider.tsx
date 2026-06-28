@@ -1,6 +1,16 @@
-import { createContext, useContext, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useCallback, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { useKeyboardShortcuts, type ShortcutDefinition } from "@/lib/keyboard-shortcuts"
+
+// ============ Types ============
+
+interface ShortcutDefinition {
+  /** Key combination (e.g., "Ctrl+K", "Cmd+N", "Escape") */
+  key: string
+  /** Handler function */
+  handler: () => void
+  /** Whether this shortcut works in input fields */
+  allowInInput?: boolean
+}
 
 interface KeyboardShortcutsContextValue {
   registerShortcut: (key: string, handler: () => void) => void
@@ -16,12 +26,75 @@ interface KeyboardShortcutsProviderProps {
 }
 
 /**
+ * Parse a key combo string into components.
+ */
+function parseKeyCombo(combo: string): { key: string; ctrl: boolean; shift: boolean; alt: boolean } {
+  const parts = combo.toLowerCase().split("+").map(s => s.trim())
+  return {
+    key: parts.find(p => !["ctrl", "cmd", "meta", "shift", "alt"].includes(p)) || "",
+    ctrl: parts.includes("ctrl") || parts.includes("cmd") || parts.includes("meta"),
+    shift: parts.includes("shift"),
+    alt: parts.includes("alt"),
+  }
+}
+
+/**
+ * Check if a keyboard event matches a shortcut combo.
+ */
+function matchesShortcut(event: KeyboardEvent, combo: string): boolean {
+  const parsed = parseKeyCombo(combo)
+  const isMod = event.metaKey || event.ctrlKey
+  
+  if (parsed.ctrl && !isMod) return false
+  if (parsed.shift && !event.shiftKey) return false
+  if (parsed.alt && !event.altKey) return false
+  
+  return event.key.toLowerCase() === parsed.key
+}
+
+/**
+ * Check if the target is an input field.
+ */
+function isInputField(target: EventTarget | null): boolean {
+  const el = target as HTMLElement
+  return (
+    el?.tagName === "INPUT" ||
+    el?.tagName === "TEXTAREA" ||
+    el?.tagName === "SELECT" ||
+    el?.isContentEditable
+  )
+}
+
+/**
+ * Hook to register keyboard shortcuts.
+ */
+function useKeyboardShortcuts(shortcuts: ShortcutDefinition[] = []) {
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    for (const shortcut of shortcuts) {
+      if (matchesShortcut(event, shortcut.key)) {
+        if (isInputField(event.target) && !shortcut.allowInInput) {
+          continue
+        }
+        event.preventDefault()
+        shortcut.handler()
+        return
+      }
+    }
+  }, [shortcuts])
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [handleKeyDown])
+}
+
+/**
  * Global keyboard shortcuts provider.
  * Registers keyboard shortcuts and provides context for dynamic shortcuts.
  */
 export function KeyboardShortcutsProvider({
   children,
-  shortcuts,
+  shortcuts = [],
 }: KeyboardShortcutsProviderProps) {
   useKeyboardShortcuts(shortcuts)
 
@@ -34,9 +107,6 @@ export function KeyboardShortcutsProvider({
 
 /**
  * Hook to access keyboard shortcuts context.
- */
-/**
- * Hook to access keyboard shortcuts context.
  * Must be used within KeyboardShortcutsProvider.
  */
 export function useKeyboardShortcutsContext() {
@@ -47,12 +117,11 @@ export function useKeyboardShortcutsContext() {
   return context
 }
 
+// ============ Help Dialog ============
+
 interface KeyboardShortcutsHelpProps {
-  /** Whether the dialog is open */
   isOpen: boolean
-  /** Close handler */
   onClose: () => void
-  /** Additional className */
   className?: string
 }
 
@@ -77,9 +146,6 @@ function useShortcuts() {
 /**
  * Keyboard shortcuts help dialog.
  * Shows all available keyboard shortcuts.
- */
-/**
- * @description Component
  */
 export function KeyboardShortcutsHelp({ isOpen, onClose, className }: KeyboardShortcutsHelpProps) {
   const { t } = useTranslation()
