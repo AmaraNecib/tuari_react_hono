@@ -47,6 +47,8 @@ function matchesShortcut(event: KeyboardEvent, combo: string): boolean {
   // Mod-key exclusivity: if shortcut does NOT require a modifier,
   // reject when Ctrl/Cmd IS held (prevents Ctrl+K from matching bare "K")
   if (!parsed.ctrl && isMod) return false
+  // Same for Alt: if shortcut does NOT require Alt, reject when Alt IS held
+  if (!parsed.alt && event.altKey) return false
   
   return event.key.toLowerCase() === parsed.key
 }
