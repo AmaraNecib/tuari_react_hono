@@ -1,4 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react"
+import { useTranslation } from "react-i18next"
 import { useKeyboardShortcuts, type ShortcutDefinition } from "@/lib/keyboard-shortcuts"
 
 interface KeyboardShortcutsContextValue {
@@ -10,8 +11,8 @@ const KeyboardShortcutsContext = createContext<KeyboardShortcutsContextValue | n
 
 interface KeyboardShortcutsProviderProps {
   children: ReactNode
-  /** Shortcut definitions */
-  shortcuts: ShortcutDefinition[]
+  /** Shortcut definitions (optional - defaults to empty) */
+  shortcuts?: ShortcutDefinition[]
 }
 
 /**
