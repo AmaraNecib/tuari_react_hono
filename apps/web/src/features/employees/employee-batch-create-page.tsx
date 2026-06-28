@@ -104,6 +104,9 @@ function mapServerErrors(error: AppMutationError, rowCount: number) {
 }
 
 /** Batch employee creation page with CSV/inline input. */
+/**
+ * @description Component
+ */
 export function EmployeeBatchCreatePage({
   roles,
   managerOptions,
@@ -350,9 +353,12 @@ export function EmployeeBatchCreatePage({
           />
         ))}
 
-        <div className="flex justify-start" dir="rtl">
+        <div className="flex items-center justify-end gap-3">
           <Button className="min-w-44" disabled={createEmployeesBatchMutation.isPending} type="submit">
             {rows.length === 1 ? copy.submitSingle : copy.submitBatch}
+          </Button>
+          <Button type="button" variant="outline" onClick={onCancel}>
+            {copy.cancel}
           </Button>
         </div>
       </form>

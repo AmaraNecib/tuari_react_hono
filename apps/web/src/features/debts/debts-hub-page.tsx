@@ -1,19 +1,28 @@
 import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { Surface } from "@/features/shared/page-primitives"
+import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls"
 import { getDebtBalanceMeta, formatDebtMoney } from "./debt-utils"
 
 type FilterOption = "all" | "owed-to-us" | "owed-by-us" | "settled"
 
 function HubStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
-    <Surface className="rounded-xl px-5 py-4" variant="card">
+    <div className="px-5 py-4">
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className={`mt-2 font-mono text-xl font-semibold ${valueClassName ?? ""}`.trim()} dir="ltr">
         {value}
       </p>
-    </Surface>
+    </div>
   )
 }
 
@@ -24,7 +33,12 @@ const FILTER_OPTIONS: Array<{ id: FilterOption; label: string }> = [
   { id: "settled", label: "مغلقة" },
 ]
 
+const DEFAULT_PAGE_SIZE = 25
+
 /** Debts hub with summary cards and employee/external lists. */
+/**
+ * @description Component
+ */
 export function DebtsHubPage({
   onCreateDebt,
   onOpenExternalCounterparty,
@@ -48,6 +62,8 @@ export function DebtsHubPage({
   totals: { openCount: number; owedByUsDzd: number; owedToUsDzd: number }
 }) {
   const [filter, setFilter] = useState<FilterOption>("all")
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -68,6 +84,11 @@ export function DebtsHubPage({
     () => filteredRows.filter((r) => r.status === "OPEN").length,
     [filteredRows],
   )
+
+  const pagedRows = useMemo(() => {
+    const start = (page - 1) * pageSize
+    return filteredRows.slice(start, start + pageSize)
+  }, [filteredRows, page, pageSize])
 
   return (
     <RecordPageFrame
@@ -96,7 +117,10 @@ export function DebtsHubPage({
                 ? "border-primary bg-primary/10 text-primary"
                 : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground"
             }`}
-            onClick={() => setFilter(option.id)}
+            onClick={() => {
+              setFilter(option.id)
+              setPage(1)
+            }}
             type="button"
           >
             {option.label}
@@ -105,76 +129,87 @@ export function DebtsHubPage({
       </div>
 
       <Surface className="overflow-hidden" variant="table">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-muted/40 text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 text-start font-medium">الطرف</th>
-                <th className="px-4 py-3 text-start font-medium">النوع</th>
-                <th className="px-4 py-3 text-start font-medium">الهاتف</th>
-                <th className="px-4 py-3 text-start font-medium">عدد الحسابات</th>
-                <th className="px-4 py-3 text-start font-medium">الرصيد</th>
-                <th className="px-4 py-3 text-start font-medium">الدلالة</th>
-                <th className="px-4 py-3 text-start font-medium">الإجراء</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.length > 0 ? (
-                filteredRows.map((row) => {
-                  const balanceMeta = getDebtBalanceMeta(row.balanceDzd)
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>الطرف</TableHead>
+              <TableHead>النوع</TableHead>
+              <TableHead>الهاتف</TableHead>
+              <TableHead>عدد الحسابات</TableHead>
+              <TableHead>الرصيد</TableHead>
+              <TableHead>الدلالة</TableHead>
+              <TableHead>الإجراء</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pagedRows.length > 0 ? (
+              pagedRows.map((row) => {
+                const balanceMeta = getDebtBalanceMeta(row.balanceDzd)
 
-                  return (
-                    <tr
-                      key={row.accountId}
-                      className="cursor-pointer border-t border-border/60 bg-background/75 transition-colors hover:bg-muted/30"
-                      onClick={() =>
-                        row.type === "worker"
-                          ? onOpenWorker(row.partyId)
-                          : onOpenExternalCounterparty(row.partyId)
-                      }
-                    >
-                      <td className="px-4 py-4 text-start font-medium text-foreground">{row.name}</td>
-                      <td className="px-4 py-4 text-start text-muted-foreground">{row.type === "worker" ? "عامل داخلي" : "طرف خارجي"}</td>
-                      <td className="px-4 py-4 text-start text-foreground"><bdi dir="ltr">{row.phone}</bdi></td>
-                      <td className="px-4 py-4 text-start text-foreground">{row.caseCount}</td>
-                      <td className={`px-4 py-4 text-start font-mono ${balanceMeta.textClassName}`.trim()} dir="ltr">
-                        دج {formatDebtMoney(row.balanceDzd)}
-                      </td>
-                      <td className="px-4 py-4 text-start">
-                        <span className={`rounded-full border px-3 py-1 text-xs font-medium ${balanceMeta.badgeClassName}`.trim()}>
-                          {balanceMeta.shortLabel}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-start">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            if (row.type === "worker") {
-                              onOpenWorker(row.partyId)
-                            } else {
-                              onOpenExternalCounterparty(row.partyId)
-                            }
-                          }}
-                        >
-                          فتح التفاصيل
-                        </Button>
-                      </td>
-                    </tr>
-                  )
-                })
-              ) : (
-                <tr>
-                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={7}>
-                    {filter === "all" ? "لا توجد حسابات ديون بعد." : "لا توجد نتائج للفلتر المحدد."}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                return (
+                  <TableRow
+                    key={row.accountId}
+                    className="cursor-pointer"
+                    onClick={() =>
+                      row.type === "worker"
+                        ? onOpenWorker(row.partyId)
+                        : onOpenExternalCounterparty(row.partyId)
+                    }
+                  >
+                    <TableCell className="font-medium">{row.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{row.type === "worker" ? "عامل داخلي" : "طرف خارجي"}</TableCell>
+                    <TableCell><bdi dir="ltr">{row.phone}</bdi></TableCell>
+                    <TableCell>{row.caseCount}</TableCell>
+                    <TableCell className={balanceMeta.textClassName} dir="ltr">
+                      دج {formatDebtMoney(row.balanceDzd)}
+                    </TableCell>
+                    <TableCell>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-medium ${balanceMeta.badgeClassName}`.trim()}>
+                        {balanceMeta.shortLabel}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          if (row.type === "worker") {
+                            onOpenWorker(row.partyId)
+                          } else {
+                            onOpenExternalCounterparty(row.partyId)
+                          }
+                        }}
+                      >
+                        فتح التفاصيل
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
+            ) : (
+              <TableRow>
+                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                  {filter === "all" ? "لا توجد حسابات ديون بعد." : "لا توجد نتائج للفلتر المحدد."}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
       </Surface>
+
+      {filteredRows.length > 0 && (
+        <TablePaginationControls
+          page={page}
+          pageSize={pageSize}
+          totalCount={filteredRows.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            setPage(1)
+          }}
+        />
+      )}
     </RecordPageFrame>
   )
 }

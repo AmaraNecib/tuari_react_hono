@@ -1,7 +1,13 @@
+/**
+ * Hook for managing batch selection of items.
+ */
 import { useCallback, useState } from "react";
 
 const MAX_BATCH_SIZE = 100;
 
+/**
+ * useBatchSelection<T extends component.
+ */
 export function useBatchSelection<T extends { id: string }>(items: T[]) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 

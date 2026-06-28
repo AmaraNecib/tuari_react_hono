@@ -4,6 +4,7 @@ import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
+import { Field } from "@/components/ui/field"
 import { DatePicker } from "@/components/ui/date-picker"
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashboard"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
@@ -98,6 +99,9 @@ function renderMoneyValue(
 }
 
 /** Employee detail page with tabs for personal, work, and finance. */
+/**
+ * @description Component
+ */
 export function EmployeeDetailsPage({
   activeTab,
   debtAccounts,
@@ -298,31 +302,26 @@ export function EmployeeDetailsPage({
                   </p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <label className="flex flex-col gap-2">
-                    <span className="text-sm font-medium text-foreground">{t("detailPages.employee.financePaymentDate")}</span>
+                  <Field label={t("detailPages.employee.financePaymentDate")}>
                     <DatePicker value={paymentDate} onChange={setPaymentDate} />
-                  </label>
-                  <label className="flex flex-col gap-2">
-                    <span className="text-sm font-medium text-foreground">{t("detailPages.employee.financeExpectedAmount")}</span>
+                  </Field>
+                  <Field label={t("detailPages.employee.financeExpectedAmount")}>
                     <CurrencyInput currencyLabel={currencyLabel} readOnly value={employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : t("detailPages.salary.notSpecified")} />
-                  </label>
-                  <label className="flex flex-col gap-2">
-                    <span className="text-sm font-medium text-foreground">{t("detailPages.employee.financeActualAmount")}</span>
+                  </Field>
+                  <Field label={t("detailPages.employee.financeActualAmount")}>
                     <CurrencyInput currencyLabel={currencyLabel} placeholder="0" value={actualAmount} onChange={(event) => setActualAmount(event.target.value)} />
-                  </label>
-                  <label className="flex flex-col gap-2">
-                    <span className="text-sm font-medium text-foreground">{t("detailPages.employee.financePeriod")}</span>
+                  </Field>
+                  <Field label={t("detailPages.employee.financePeriod")}>
                     <NativeSelect disabled value={employee.salaryPeriod ?? ""}>
                       <option value="">{t("detailPages.salary.notSpecified")}</option>
                       <option value="DAILY">{t("detailPages.salary.daily")}</option>
                       <option value="WEEKLY">{t("detailPages.salary.weekly")}</option>
                       <option value="MONTHLY">{t("detailPages.salary.monthly")}</option>
                     </NativeSelect>
-                  </label>
-                  <label className="flex flex-col gap-2 md:col-span-2 xl:col-span-4">
-                    <span className="text-sm font-medium text-foreground">{t("detailPages.employee.notes")}</span>
+                  </Field>
+                  <Field label={t("detailPages.employee.notes")} className="md:col-span-2 xl:col-span-4">
                     <Textarea value={note} onChange={(event) => setNote(event.target.value)} />
-                  </label>
+                  </Field>
                 </div>
                 <div className="flex justify-start gap-3" dir="rtl">
                   <Button size="lg" variant="outline" onClick={() => setShowPaymentForm(false)}>

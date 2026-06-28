@@ -32,6 +32,9 @@ function MoneyCell({ value, currencyLabel }: { value: number; currencyLabel: str
 }
 
 /** Salaries section with payment history and quick actions. */
+/**
+ * @description Component
+ */
 export function SalariesSection({
   recentPayments,
   workers,

@@ -56,6 +56,9 @@ export type EmployeeBatchCreateResult = {
   createdCount: number
 }
 
+/**
+ * authSetupStatusQueryKey = ["auth", "setup-status"] as const component.
+ */
 export const authSetupStatusQueryKey = ["auth", "setup-status"] as const
 
 function requireEntitySuccess<T>(result: EntityResult<T>) {
@@ -138,6 +141,9 @@ async function invalidateAll(
 }
 
 function getCachedSessionUserId(queryClient: ReturnType<typeof useQueryClient>) {
+/**
+ * useAuthSetupStatusQuery() component.
+ */
   return queryClient.getQueryData<{ user?: { id?: string } | null }>(orpc.session.key())?.user?.id ?? null
 }
 
@@ -145,12 +151,18 @@ export function useAuthSetupStatusQuery() {
   return useQuery({
     queryKey: authSetupStatusQueryKey,
     queryFn: () => rpcClient.authSetupStatus(),
+/**
+ * useDemoSessionQuery() component.
+ */
     staleTime: 5_000,
     retry: shouldRetryStartupQuery,
     retryDelay: getStartupQueryRetryDelay,
   })
 }
 
+/**
+ * useBootstrapFirstUserMutation() component.
+ */
 export function useDemoSessionQuery() {
   const sessionQuery = useSessionQuery()
 
@@ -166,7 +178,13 @@ export function useBootstrapFirstUserMutation() {
   return useMutation({
     mutationKey: ["auth", "bootstrap-first-user"],
     mutationFn: async (input: AuthBootstrapInput) => {
+/**
+ * useDemoSignInMutation() component.
+ */
       const result = await rpcClient.authBootstrap(input)
+/**
+ * useDemoSignOutMutation() component.
+ */
       return requireEntitySuccess(result)
     },
     onSuccess: async () => {
@@ -186,6 +204,9 @@ export function useDemoSignOutMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
+/**
+ * useUpdateAccountSettingsMutation() component.
+ */
     mutationKey: ["phase1", "sign-out"],
     mutationFn: async () => {
       if (isDesktopRuntime()) {
@@ -248,6 +269,9 @@ export function useUpdateAccountSettingsMutation() {
       if (name || phone) {
         await updateCurrentProfile({ currentPassword, name, phone })
       }
+/**
+ * useCreateEmployeesBatchMutation() component.
+ */
 
       if (currentPassword && newPassword) {
         await changeCurrentPassword({
@@ -266,6 +290,9 @@ export function useUpdateAccountSettingsMutation() {
     onError: (error) => {
       showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
     },
+/**
+ * useUpdateEmployeeMutation() component.
+ */
   })
 }
 
@@ -292,6 +319,9 @@ export function useCreateEmployeesBatchMutation() {
 
 export function useUpdateEmployeeMutation() {
   const queryClient = useQueryClient()
+/**
+ * useLeaveEmployeeMutation() component.
+ */
 
   return useMutation({
     mutationKey: ["phase1", "workspace", "employees", "update"],
@@ -312,6 +342,9 @@ export function useUpdateEmployeeMutation() {
     onSuccess: async ({ message }) => {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses", "debtsSummary", "debtsDetail"])
       showSuccessToast(message)
+/**
+ * useDeleteEmployeeMutation() component.
+ */
     },
     onError: (error) => {
       showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
@@ -328,6 +361,9 @@ export function useLeaveEmployeeMutation() {
       const result = await rpcClient.employeesUpdate({
         id,
         status: "LEFT",
+/**
+ * useUpdateProjectMutation() component.
+ */
       })
 
       return requireEntitySuccess(result)
@@ -351,6 +387,9 @@ export function useDeleteEmployeeMutation() {
       const result = await rpcClient.employeesDelete({ id })
       return requireDeleteSuccess(result)
     },
+/**
+ * useCreateProjectMutation() component.
+ */
     onSuccess: async ({ message }) => {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses", "debtsSummary", "debtsDetail"])
       showSuccessToast(message)
@@ -373,6 +412,9 @@ export function useUpdateProjectMutation() {
       managerId?: string | null
       status?: Project["status"]
       notes?: string | null
+/**
+ * useUpdateWarehouseMutation() component.
+ */
     }) => {
       const result = await rpcClient.projectsUpdate(input)
       return requireEntitySuccess(result)
@@ -396,6 +438,9 @@ export function useCreateProjectMutation() {
       name: string
       location?: string | null
       managerId?: string | null
+/**
+ * useCreateWarehouseMutation() component.
+ */
       status?: Project["status"]
       notes?: string | null
     }) => {
@@ -418,6 +463,9 @@ export function useUpdateWarehouseMutation() {
   return useMutation({
     mutationKey: ["phase1", "workspace", "warehouses", "update"],
     mutationFn: async (input: {
+/**
+ * useUpdateEmployeeWorkplaceMutation() component.
+ */
       id: string
       name?: string
       address?: string | null
@@ -447,6 +495,9 @@ export function useCreateWarehouseMutation() {
       name: string
       address?: string | null
       managerId?: string | null
+/**
+ * useSyncManagedProjectsMutation() component.
+ */
       status?: Warehouse["status"]
       notes?: string | null
     }) => {
@@ -467,6 +518,9 @@ export function useUpdateEmployeeWorkplaceMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
+/**
+ * useSyncManagedWarehousesMutation() component.
+ */
     mutationKey: ["phase1", "workspace", "employees", "workplace"],
     mutationFn: async (input: {
       employeeId: string
@@ -487,6 +541,9 @@ export function useUpdateEmployeeWorkplaceMutation() {
     },
     onSuccess: async ({ message }) => {
       await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses"], ["warehouses", "projects"])
+/**
+ * useCreateSalaryPaymentMutation() component.
+ */
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -508,6 +565,9 @@ export function useSyncManagedProjectsMutation() {
         }),
       )
     },
+/**
+ * useCreateExternalCounterpartyMutation() component.
+ */
     onSuccess: async ({ message }) => {
       await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["projects", "employees", "warehouses"], ["warehouses", "projects"])
       showSuccessToast(message)

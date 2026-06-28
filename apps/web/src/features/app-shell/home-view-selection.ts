@@ -1,3 +1,7 @@
+/**
+ * Selection logic for the home view.
+ * Handles item selection and navigation state.
+ */
 import type { TFunction } from "i18next"
 
 import { buildHomeViewBreadcrumbItems } from "./home-view-breadcrumbs"
@@ -5,6 +9,9 @@ import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewDerived } from "./home-view-derived"
 import type { HomeViewPage } from "./home-view-types"
 
+/**
+ * buildHomeViewSelection({ component.
+ */
 export function buildHomeViewSelection({
   counterpartyId,
   copy,

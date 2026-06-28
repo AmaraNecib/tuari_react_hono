@@ -52,6 +52,9 @@ type ProjectsSectionProps = {
 }
 
 /** Projects section with table and CRUD actions. */
+/**
+ * @description Component
+ */
 export function ProjectsSection({
   addLabel,
   archiveLabel,
@@ -135,7 +138,12 @@ export function ProjectsSection({
                     </AppShellTableRow>
                   ))
                 ) : (
-                  <AppShellEmptyStateRow colSpan={6}>{emptyLabel}</AppShellEmptyStateRow>
+                  <AppShellEmptyStateRow colSpan={6}>
+                    <div className="flex flex-col items-center gap-3">
+                      <p className="text-muted-foreground">{emptyLabel}</p>
+                      <Button size="sm" onClick={onAdd}>{addLabel}</Button>
+                    </div>
+                  </AppShellEmptyStateRow>
                 )}
               </tbody>
             </table>

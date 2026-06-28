@@ -1,5 +1,16 @@
+/**
+ * Item list editor for managing inventory items in invoices.
+ */
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 export interface ItemEditorRow {
   itemId: string
@@ -7,6 +18,9 @@ export interface ItemEditorRow {
   unitPrice: string
 }
 
+/**
+ * @description Component
+ */
 export function ItemListEditor({
   items,
   itemDefinitions,
@@ -20,27 +34,31 @@ export function ItemListEditor({
   onRemove: (index: number) => void
   onUpdate: (index: number, field: string, value: string) => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="space-y-3">
       {items.map((item, idx) => (
         <div key={idx} className="flex gap-3 rounded-xl border border-border/70 p-3">
-          <select
+          <Select
             value={item.itemId}
-            onChange={(e) => onUpdate(idx, "itemId", e.target.value)}
-            className="h-10 flex-1 rounded-lg border border-border bg-background px-2 text-sm"
+            onValueChange={(value) => { if (value) onUpdate(idx, "itemId", value) }}
           >
-            <option value="">اختر العنصر</option>
-            {itemDefinitions.map((def) => (
-              <option key={def.id} value={def.id}>
-                {def.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="flex-1">
+              <SelectValue placeholder={t("inventory.items.selectItem", "اختر العنصر")} />
+            </SelectTrigger>
+            <SelectContent>
+              {itemDefinitions.map((def) => (
+                <SelectItem key={def.id} value={def.id}>
+                  {def.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Input
             type="number"
             min="0"
             step="0.01"
-            placeholder="الكمية"
+            placeholder={t("inventory.items.quantity", "الكمية")}
             value={item.quantity}
             onChange={(e) => onUpdate(idx, "quantity", e.target.value)}
             className="w-20"
@@ -49,18 +67,18 @@ export function ItemListEditor({
             type="number"
             min="0"
             step="0.01"
-            placeholder="السعر"
+            placeholder={t("inventory.items.price", "السعر")}
             value={item.unitPrice}
             onChange={(e) => onUpdate(idx, "unitPrice", e.target.value)}
             className="w-24"
           />
-          <Button variant="ghost" size="sm" onClick={() => onRemove(idx)} className="text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20">
-            حذف
+          <Button variant="ghost" size="sm" onClick={() => onRemove(idx)} className="text-destructive hover:bg-destructive/10">
+            {t("common.delete", "حذف")}
           </Button>
         </div>
       ))}
       <Button variant="outline" size="sm" onClick={onAdd} className="w-full">
-        + إضافة عنصر
+        + {t("inventory.items.addItem", "إضافة عنصر")}
       </Button>
     </div>
   )

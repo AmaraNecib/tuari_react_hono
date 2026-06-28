@@ -2,6 +2,7 @@ import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
 import type { SystemLogEntry } from "@tuari/contracts"
+import { i18n } from "@/i18n"
 
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
@@ -29,7 +30,7 @@ function getActionTypeLabel(t: (key: string) => string, actionType: SystemLogEnt
     DEBT_SETTLED: t("systemLog.debtSettled"),
     EMPLOYEE_CREATED: t("systemLog.employeeCreated"),
     EMPLOYEE_UPDATED: t("systemLog.employeeUpdated"),
-    INVENTORY_ITEM_CREATED: "إنشاء تعريف عنصر",
+    INVENTORY_ITEM_CREATED: t("systemLog.inventoryItemCreated"),
     PROJECT_MANAGER_CHANGED: t("systemLog.projectManagerChanged"),
     SALARY_PAYMENT_RECORDED: t("systemLog.salaryPaymentRecorded"),
     WAREHOUSE_MANAGER_CHANGED: t("systemLog.warehouseManagerChanged"),
@@ -46,7 +47,7 @@ function getEntityTypeLabel(t: (key: string) => string, entityType: SystemLogEnt
     DEBT_ENTRY: t("systemLog.entityDebtEntry"),
     EMPLOYEE: t("systemLog.entityEmployee"),
     EXTERNAL_COUNTERPARTY: t("systemLog.entityExternalCounterparty"),
-    INVENTORY_ITEM: "تعريف عنصر",
+    INVENTORY_ITEM: t("systemLog.entityInventoryItem"),
     MANAGER_ASSIGNMENT: t("systemLog.entityManagerAssignment"),
     PROJECT: t("systemLog.entityProject"),
     PROJECT_ASSIGNMENT: t("systemLog.entityProjectAssignment"),
@@ -67,7 +68,7 @@ function parseDetailLines(detail: string | null | undefined) {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
-    .filter((line) => !line.includes("تم إنشاء حساب دين"))
+    .filter((line) => !line.includes(i18n.t("systemLog.debtAccountCreated")))
 
   if (normalized.length > 1) {
     return normalized.map((line) => line.replace(/^•\s*/, ""))
@@ -78,13 +79,13 @@ function parseDetailLines(detail: string | null | undefined) {
 
 function parseDetailTokens(line: string) {
   const structuredPrefixes = [
-    "تم ",
-    "تمت ",
-    "نوع الحركة",
-    "القيمة",
-    "الرصيد",
-    "الحالة",
-    "المبلغ المدفوع",
+    i18n.t("systemLog.completed"),
+    i18n.t("systemLog.completedFeminine"),
+    i18n.t("systemLog.entryType"),
+    i18n.t("systemLog.value"),
+    i18n.t("systemLog.balance"),
+    i18n.t("systemLog.status"),
+    i18n.t("systemLog.paidAmount"),
   ]
 
   if (!structuredPrefixes.some((prefix) => line.startsWith(prefix))) {
@@ -94,20 +95,20 @@ function parseDetailTokens(line: string) {
   return line
     .split(/\s+[•—]\s+/)
     .map((part) => part.trim())
-    .filter((part) => !part.startsWith("نوع الحركة"))
+    .filter((part) => !part.startsWith(i18n.t("systemLog.entryType")))
     .filter((part) => part.length > 0)
 }
 
 function getDetailTokenClassName(token: string) {
-  if (token.startsWith("القيمة") || token.startsWith("الرصيد")) {
+  if (token.startsWith(i18n.t("systemLog.value")) || token.startsWith(i18n.t("systemLog.balance"))) {
     return "border-emerald-300 bg-emerald-100 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-200 font-mono font-semibold"
   }
 
-  if (token.startsWith("نوع الحركة") || token.startsWith("الحالة")) {
+  if (token.startsWith(i18n.t("systemLog.entryType")) || token.startsWith(i18n.t("systemLog.status"))) {
     return "border-sky-300 bg-sky-100 text-sky-950 dark:border-sky-800 dark:bg-sky-950/35 dark:text-sky-200 font-semibold"
   }
 
-  if (token.startsWith("تم ") || token.startsWith("تمت ")) {
+  if (token.startsWith(i18n.t("systemLog.completed")) || token.startsWith(i18n.t("systemLog.completedFeminine"))) {
     return "border-violet-300 bg-violet-100 text-violet-950 dark:border-violet-800 dark:bg-violet-950/35 dark:text-violet-200 font-semibold"
   }
 
@@ -147,6 +148,9 @@ function SystemLogDetailsCell({ detail }: { detail: string | null | undefined })
 }
 
 /** System log section with filtered activity list. */
+/**
+ * @description Component
+ */
 export function SystemLogSection({
   entries,
   filters,

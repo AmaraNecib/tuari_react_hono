@@ -1,3 +1,6 @@
+/**
+ * Application entry point.
+ */
 import "@/i18n"
 
 import React from "react";

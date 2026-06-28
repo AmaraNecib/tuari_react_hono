@@ -1,3 +1,7 @@
+/**
+ * Type definitions for home view copy/text content.
+ * Provides structured interface for i18n translations.
+ */
 import type { TFunction } from "i18next"
 
 export type HomeViewCopy = {
@@ -194,6 +198,9 @@ export type HomeViewCopy = {
 
 export type HomeViewDetailCopy = HomeViewCopy["detailPages"]
 
+/**
+ * buildHomeViewCopy(t component.
+ */
 export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
   return {
     auth: {

@@ -1,8 +1,14 @@
+/**
+ * i18n configuration for internationalization.
+ */
 import i18n from "i18next"
 import { initReactI18next } from "react-i18next"
 
 import { ar } from "./resources/ar"
 
+/**
+ * resources = component.
+ */
 export const resources = {
   ar,
 } as const

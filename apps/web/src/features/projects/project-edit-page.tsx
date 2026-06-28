@@ -1,3 +1,6 @@
+/**
+ * Project edit page for modifying existing projects.
+ */
 import type { FormEvent } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
@@ -11,6 +14,9 @@ import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 import type { ProjectPageRecord } from "./project-details-page"
 import { createProjectFormState, ProjectFormFields, type ProjectFormErrors, type ProjectFormState } from "./project-form"
 
+/**
+ * @description Component
+ */
 export function ProjectEditPage({
   managerOptions,
   project,

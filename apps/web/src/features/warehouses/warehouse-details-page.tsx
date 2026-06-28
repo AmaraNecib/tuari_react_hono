@@ -1,3 +1,6 @@
+/**
+ * Warehouse details page for viewing and managing warehouse information.
+ */
 import { useTranslation } from "react-i18next"
 
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
@@ -21,6 +24,9 @@ export type WarehousePageRecord = {
   notes: string | null
 }
 
+/**
+ * @description Component
+ */
 export function WarehouseDetailsPage({
   activeTab,
   managementHistoryRows,

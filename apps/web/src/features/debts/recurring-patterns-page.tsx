@@ -1,10 +1,18 @@
+/**
+ * Recurring patterns page for managing recurring debt transactions.
+ */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
 import { useRecurringPatternsQuery, formatNextOccurrence, calculateDaysUntilOccurrence } from "@/hooks/use-recurring-patterns";
 
+/**
+ * @description Component
+ */
 export function RecurringPatternsPage() {
+  const { t } = useTranslation()
   const patternsQuery = useRecurringPatternsQuery();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -18,18 +26,18 @@ export function RecurringPatternsPage() {
     <Surface variant="panel">
       <PageSurfaceContent>
         <PageHeader
-          title="الأنماط المتكررة"
-          description="إنشاء وإدارة العمليات المتكررة التي تحدث بشكل منتظم"
+          title={t("recurringPatterns.title", "الأنماط المتكررة")}
+          description={t("recurringPatterns.description", "إنشاء وإدارة العمليات المتكررة التي تحدث بشكل منتظم")}
           action={
             <PageActionGroup>
-              <Button>نمط جديد</Button>
+              <Button>{t("recurringPatterns.newPattern", "نمط جديد")}</Button>
             </PageActionGroup>
           }
         />
 
         <div className="mb-4">
           <Input
-            placeholder="بحث في الأنماط..."
+            placeholder={t("recurringPatterns.searchPlaceholder", "بحث في الأنماط...")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -37,16 +45,16 @@ export function RecurringPatternsPage() {
 
         {patternsQuery.isLoading ? (
           <div className="text-center py-8">
-            <p className="text-muted-foreground">جاري التحميل...</p>
+            <p className="text-muted-foreground">{t("common.loading", "جاري التحميل...")}</p>
           </div>
         ) : patternsQuery.error ? (
           <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
-            خطأ في تحميل الأنماط
+            {t("recurringPatterns.loadError", "خطأ في تحميل الأنماط")}
           </div>
         ) : filteredPatterns.length === 0 ? (
           <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
-            <p className="text-muted-foreground">لا توجد أنماط متكررة</p>
-            <Button className="mt-4">إنشاء نمط أول</Button>
+            <p className="text-muted-foreground">{t("recurringPatterns.empty", "لا توجد أنماط متكررة")}</p>
+            <Button className="mt-4">{t("recurringPatterns.createFirst", "إنشاء نمط أول")}</Button>
           </div>
         ) : (
           <div className="space-y-3">
@@ -84,13 +92,13 @@ export function RecurringPatternsPage() {
                     </div>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm">
-                        تعديل
+                        {t("common.edit", "تعديل")}
                       </Button>
                       <Button
                         variant={pattern.isActive ? "outline" : "ghost"}
                         size="sm"
                       >
-                        {pattern.isActive ? "تعطيل" : "تفعيل"}
+                        {pattern.isActive ? t("recurringPatterns.deactivate", "تعطيل") : t("recurringPatterns.activate", "تفعيل")}
                       </Button>
                     </div>
                   </div>

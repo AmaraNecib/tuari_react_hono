@@ -1,3 +1,6 @@
+/**
+ * Project creation page for creating new projects.
+ */
 import type { FormEvent } from "react"
 import { useMemo, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
@@ -38,6 +41,9 @@ function mapServerErrors(error: AppMutationError): ProjectFormErrors {
   return errors
 }
 
+/**
+ * @description Component
+ */
 export function ProjectCreatePage({ managerOptions }: { managerOptions: Array<{ id: string; label: string }> }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
