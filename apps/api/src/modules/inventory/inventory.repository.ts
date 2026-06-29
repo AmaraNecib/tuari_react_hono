@@ -602,6 +602,12 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   }
 
   listMovementsByLocation(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }) {
+    const hasWarehouse = !!input.warehouseId
+    const hasProject = !!input.projectId
+    if ((hasWarehouse && hasProject) || (!hasWarehouse && !hasProject)) {
+      throw new Error("listMovementsByLocation requires exactly one of warehouseId or projectId")
+    }
+
     const conditions = []
 
     if (input.warehouseId) {
