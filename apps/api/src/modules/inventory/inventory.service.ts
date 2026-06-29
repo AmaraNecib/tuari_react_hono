@@ -875,6 +875,7 @@ export class InventoryService {
           projectId: input.projectId,
           dateFrom: input.dateFrom,
           dateTo: input.dateTo,
+          movementType: input.movementType,
           limit: input.limit,
         })
       }
