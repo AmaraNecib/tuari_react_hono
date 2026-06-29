@@ -36,7 +36,7 @@ type DatePickerProps = {
   className?: string
   name?: string
   id?: string
-} & Pick<DayPickerProps, "mode">
+}
 
 /** Date picker with Arabic locale support. Uses DD/MM/YYYY format. */
 /**
@@ -50,7 +50,6 @@ export function DatePicker({
   className,
   name,
   id,
-  mode: modeProp,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
   const selectedDate = value ? parseDateAr(value) : undefined
@@ -87,7 +86,7 @@ export function DatePicker({
         <PopoverContent align="start" side="bottom" sideOffset={4} className="w-auto p-0">
           <div dir="ltr">
             <DayPicker
-              mode={modeProp ?? "single"}
+              mode="single"
               selected={selectedDate}
               onSelect={handleSelect}
               locale={ar}
