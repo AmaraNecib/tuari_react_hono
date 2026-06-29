@@ -115,6 +115,15 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
     }
   }
 
+  const updateItemTotal = (index: number, total: number) => {
+    const newItems = [...items]
+    const item = newItems[index]
+    if (item && item.quantity > 0) {
+      newItems[index] = { ...item, unitPrice: Math.max(0, Math.round(total / item.quantity * 100) / 100) }
+      onItemsChange(newItems)
+    }
+  }
+
   const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
 
   return (
@@ -243,9 +252,17 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
                     />
                   </label>
 
-                  <span className="text-xs font-medium text-ink min-w-[80px] text-start">
-                    {(item.quantity * item.unitPrice).toLocaleString("ar-DZ")} {t("common.currency", "دج")}
-                  </span>
+                  <label className="flex items-center gap-1 text-xs text-ink-4">
+                    {t("inventory.transfer.total", "المجموع")}
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.quantity * item.unitPrice}
+                      onChange={(e) => updateItemTotal(index, Number(e.target.value))}
+                      className="h-8 w-24 text-center"
+                    />
+                  </label>
 
                   <Button
                     type="button"
