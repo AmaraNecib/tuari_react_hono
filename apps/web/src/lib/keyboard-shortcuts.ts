@@ -130,7 +130,7 @@ export function useKeyboardShortcuts(shortcuts: ShortcutDefinition[]): void {
 
     return () => {
       // Unregister all shortcuts on cleanup
-      shortcuts.forEach(s => manager.unregister(s))
+      shortcuts.forEach(s => manager.unregister(s.key))
     }
   }, [shortcuts])
 }
