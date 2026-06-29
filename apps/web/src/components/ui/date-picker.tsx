@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { DayPicker, type DayPickerProps } from "react-day-picker"
+import { DayPicker } from "react-day-picker"
 import { ar } from "date-fns/locale/ar"
 import { format, parse, isValid } from "date-fns"
 import { CalendarIcon } from "lucide-react"
