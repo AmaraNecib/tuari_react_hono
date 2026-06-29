@@ -371,15 +371,4 @@ export type InventoryInvoiceGroupCreateInput = z.infer<typeof inventoryInvoiceGr
 export type InventoryInvoiceGroupRecordPaymentInput = z.infer<typeof inventoryInvoiceGroupRecordPaymentInputSchema>;
 export type OutboundTransferItemInput = z.infer<typeof outboundTransferItemInputSchema>;
 export type InventoryOutboundTransferCreateInput = z.infer<typeof inventoryOutboundTransferCreateInputSchema>;
-export type InventoryOutboundTransfer = z.infer<typeof inventoryOutboundTransferSchema>
-
-export const inventoryTransferHistoryInputSchema = z.object({
-  warehouseId: entityIdSchema.optional(),
-  projectId: entityIdSchema.optional(),
-  dateFrom: z.string().optional(),
-  dateTo: z.string().optional(),
-  movementType: inventoryMovementTypeSchema.optional(),
-  limit: z.number().int().positive().optional(),
-})
-
-export type InventoryTransferHistoryInput = z.infer<typeof inventoryTransferHistoryInputSchema>;
+export type InventoryOutboundTransfer = z.infer<typeof inventoryOutboundTransferSchema>;
