@@ -6,7 +6,7 @@
  * behind a small interface.
  */
 
-import { useState, useEffect, useCallback, type ReactNode } from "react"
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 // ============ Types ============
@@ -111,13 +111,31 @@ export interface UserJourneyReturn {
  * Provides a unified interface for tours, tutorials, and onboarding.
  */
 export function useUserJourney(config: JourneyConfig): UserJourneyReturn {
-  const manager = new JourneyStateManager(config.key)
+  const managerRef = useRef<JourneyStateManager | null>(null)
+  const configKeyRef = useRef(config.key)
+  if (configKeyRef.current !== config.key) {
+    configKeyRef.current = config.key
+    managerRef.current = new JourneyStateManager(config.key)
+  }
+  if (managerRef.current === null) {
+    managerRef.current = new JourneyStateManager(config.key)
+  }
+  const manager = managerRef.current
 
   const [state, setState] = useState<JourneyState>(() => ({
     status: manager.getStatus(),
     currentStep: manager.getCurrentStep(),
     level: manager.getLevel(),
   }))
+
+  // Rehydrate state when config.key changes
+  useEffect(() => {
+    setState({
+      status: manager.getStatus(),
+      currentStep: manager.getCurrentStep(),
+      level: manager.getLevel(),
+    })
+  }, [config.key])
 
   // Auto-start on first visit
   useEffect(() => {

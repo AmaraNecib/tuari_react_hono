@@ -31,7 +31,7 @@ function updateSearchParams(updates: Record<string, string | null>, replace = tr
   }
   
   const newSearch = params.toString()
-  const newUrl = `${window.location.pathname}${newSearch ? `?${newSearch}` : ""}`
+  const newUrl = `${window.location.pathname}${newSearch ? `?${newSearch}` : ""}${window.location.hash}`
   
   if (replace) {
     window.history.replaceState({}, "", newUrl)
