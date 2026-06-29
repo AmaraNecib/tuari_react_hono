@@ -16,7 +16,8 @@ type PasswordInputProps = Omit<ComponentProps<typeof Input>, "type"> & {
  */
 export function PasswordInput({ hideLabel, showLabel, id, className, dir, ...props }: PasswordInputProps) {
   const [visible, setVisible] = useState(false)
-  const inputId = id ?? useId()
+  const generatedId = useId()
+  const inputId = id ?? generatedId
 
   return (
     <div className="relative flex items-center">

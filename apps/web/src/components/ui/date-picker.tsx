@@ -87,7 +87,7 @@ export function DatePicker({
         <PopoverContent align="start" side="bottom" sideOffset={4} className="w-auto p-0">
           <div dir="ltr">
             <DayPicker
-              mode="single"
+              mode={modeProp ?? "single"}
               selected={selectedDate}
               onSelect={handleSelect}
               locale={ar}
