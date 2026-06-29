@@ -8,6 +8,7 @@ import type { InventoryService } from "../../modules/inventory/inventory.service
 import type { RpcContext } from "../context";
 import type { RpcMiddleware } from "../rpc-middleware";
 
+/** createInventoryHandlers. */
 export function createInventoryHandlers(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,

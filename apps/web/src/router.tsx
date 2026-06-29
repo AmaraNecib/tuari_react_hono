@@ -1,3 +1,4 @@
+// Route definitions for the TauriOS application
 import {
   Outlet,
   createRootRoute,
