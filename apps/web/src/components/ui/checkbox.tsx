@@ -1,11 +1,8 @@
-/**
- * Checkbox component built on Base UI Checkbox primitive.
- * Supports indeterminate state and RTL layout.
- */
+import * as React from "react"
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox"
 
 import { cn } from "@/lib/utils"
-import { CheckIcon } from "lucide-react"
+import { CheckIcon, MinusIcon } from "lucide-react"
 
 /**
  * Checkbox component.
@@ -24,6 +21,9 @@ function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
         data-slot="checkbox-indicator"
         className="grid place-content-center text-current [&>svg]:size-3.5 [&>svg]:animate-in [&>svg]:zoom-in-50 [&>svg]:duration-200"
       >
+        <CheckboxPrimitive.MixedIndicator>
+          <MinusIcon />
+        </CheckboxPrimitive.MixedIndicator>
         <CheckIcon />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>

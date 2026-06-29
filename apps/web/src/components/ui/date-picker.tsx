@@ -49,6 +49,8 @@ export function DatePicker({
   disabled = false,
   className,
   name,
+  id,
+  mode: modeProp,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
   const selectedDate = value ? parseDateAr(value) : undefined
@@ -67,6 +69,7 @@ export function DatePicker({
 
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
+          id={id}
           disabled={disabled}
           className={cn(
             formInputClassName,
