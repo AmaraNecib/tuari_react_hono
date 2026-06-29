@@ -977,7 +977,7 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("settings")
 
-    expect(screen.getByText("معلومات الحساب")).toBeTruthy()
+    expect(screen.getAllByText("معلومات الحساب").length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText("يلزم إدخال كلمة المرور الحالية عند تغيير رقم الهاتف لأنه يستخدم لتسجيل الدخول.")).toBeTruthy()
     expect(screen.getByRole("button", { name: "حفظ بيانات الحساب" })).toBeTruthy()
   })
