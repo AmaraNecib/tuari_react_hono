@@ -866,6 +866,31 @@ export class InventoryService {
     return this.repository.listOutboundTransfers()
   }
 
+  listTransferHistory(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }) {
+    if (input.warehouseId || input.projectId) {
+      // Location-specific transfer history
+      return {
+        items: this.repository.listMovementsByLocation({
+          warehouseId: input.warehouseId,
+          projectId: input.projectId,
+          dateFrom: input.dateFrom,
+          dateTo: input.dateTo,
+          limit: input.limit,
+        })
+      }
+    }
+
+    // Global transfer history
+    return {
+      items: this.repository.listAllMovements({
+        dateFrom: input.dateFrom,
+        dateTo: input.dateTo,
+        movementType: input.movementType,
+        limit: input.limit,
+      })
+    }
+  }
+
   getOutboundTransferById(id: string) {
     const transfer = this.repository.getOutboundTransferById(id)
     if (!transfer) {

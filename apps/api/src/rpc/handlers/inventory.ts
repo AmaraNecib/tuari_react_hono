@@ -66,5 +66,8 @@ export function createInventoryHandlers(
       ({ input, auditContext }: any) => inventoryService.createOutboundTransfer(input as any, auditContext),
       toInventoryFailureResult,
     )),
+    inventoryTransferHistoryList: os.inventoryTransferHistoryList.handler(m.queryAuth(async ({ context, input }: any) =>
+      inventoryService.listTransferHistory(input as any)
+    )),
   };
 }

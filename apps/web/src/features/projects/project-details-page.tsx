@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next"
 
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { InventoryLocationContentsSection } from "@/features/inventory/inventory-location-contents-section"
+import { LocationTransferHistory } from "@/features/inventory/location-transfer-history"
 import {
   RecordHistoryTable,
   RecordInfoCard,
@@ -54,7 +55,7 @@ export function ProjectDetailsPage({
   }>
 }) {
   const { t } = useTranslation()
-  const resolvedTab = ["overview", "history", "workers", "items"].includes(activeTab) ? activeTab : "overview"
+  const resolvedTab = ["overview", "history", "workers", "items", "transfers"].includes(activeTab) ? activeTab : "overview"
   const hasExpandedNotes = (project.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `project-record-${project.id}`
 
@@ -75,6 +76,7 @@ export function ProjectDetailsPage({
           { id: "history", label: t("detailPages.project.historyTab") },
           { id: "workers", label: t("detailPages.project.workersTab") },
           { id: "items", label: "العناصر" },
+          { id: "transfers", label: "سجل التحويلات" },
         ]}
         onChange={onTabChange}
       />
@@ -112,6 +114,10 @@ export function ProjectDetailsPage({
 
       <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items">
         <InventoryLocationContentsSection projectId={project.id} />
+      </RecordTabPanel>
+
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="transfers">
+        <LocationTransferHistory locationId={project.id} locationType="PROJECT" />
       </RecordTabPanel>
     </RecordPageFrame>
   )

@@ -21,8 +21,10 @@ import {
   inventoryItemDefinitionUpdateInputSchema,
   inventoryLocationContentsInputSchema,
   inventoryLocationContentsSchema,
+  inventoryMovementSchema,
   inventoryOutboundTransferCreateInputSchema,
   inventoryOutboundTransferSchema,
+  inventoryTransferHistoryInputSchema,
 } from "./inventory"
 
 export const inventoryContract = {
@@ -71,6 +73,9 @@ export const inventoryContract = {
   inventoryOutboundTransfersCreate: oc
     .input(inventoryOutboundTransferCreateInputSchema)
     .output(createEntityResultSchema(inventoryOutboundTransferSchema)),
+  inventoryTransferHistoryList: oc
+    .input(inventoryTransferHistoryInputSchema)
+    .output(createListSchema(inventoryMovementSchema)),
 } as const
 
 export type InventoryContract = typeof inventoryContract

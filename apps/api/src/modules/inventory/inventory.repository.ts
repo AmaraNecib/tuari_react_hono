@@ -240,6 +240,8 @@ export interface InventoryRepository {
   createOutboundTransfer(data: InventoryOutboundTransferCreateData, auditContext?: MutationAuditContext): InventoryOutboundTransferRecord
   listOutboundTransfers(): InventoryOutboundTransferRecord[]
   getOutboundTransferById(id: string): InventoryOutboundTransferRecord | null
+  listMovementsByLocation(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; limit?: number }): InventoryMovementRecord[]
+  listAllMovements(input: { dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }): InventoryMovementRecord[]
 }
 
 // ---------------------------------------------------------------------------
@@ -596,6 +598,62 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return this.db.select().from(schema.inventoryMovement)
       .where(eq(schema.inventoryMovement.assetUnitId, assetUnitId))
       .orderBy(desc(schema.inventoryMovement.occurredAt), desc(schema.inventoryMovement.createdAt))
+      .all().map(mapMovement)
+  }
+
+  listMovementsByLocation(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; limit?: number }) {
+    const conditions = []
+
+    if (input.warehouseId) {
+      conditions.push(
+        sql`(${schema.inventoryMovement.fromWarehouseId} = ${input.warehouseId} OR ${schema.inventoryMovement.toWarehouseId} = ${input.warehouseId})`
+      )
+    }
+
+    if (input.projectId) {
+      conditions.push(
+        sql`(${schema.inventoryMovement.fromProjectId} = ${input.projectId} OR ${schema.inventoryMovement.toProjectId} = ${input.projectId})`
+      )
+    }
+
+    if (input.dateFrom) {
+      conditions.push(sql`${schema.inventoryMovement.occurredAt} >= ${input.dateFrom}`)
+    }
+
+    if (input.dateTo) {
+      conditions.push(sql`${schema.inventoryMovement.occurredAt} <= ${input.dateTo}`)
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+    return this.db.select().from(schema.inventoryMovement)
+      .where(whereClause)
+      .orderBy(desc(schema.inventoryMovement.occurredAt), desc(schema.inventoryMovement.createdAt))
+      .limit(input.limit ?? 100)
+      .all().map(mapMovement)
+  }
+
+  listAllMovements(input: { dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }) {
+    const conditions = []
+
+    if (input.dateFrom) {
+      conditions.push(sql`${schema.inventoryMovement.occurredAt} >= ${input.dateFrom}`)
+    }
+
+    if (input.dateTo) {
+      conditions.push(sql`${schema.inventoryMovement.occurredAt} <= ${input.dateTo}`)
+    }
+
+    if (input.movementType) {
+      conditions.push(eq(schema.inventoryMovement.movementType, input.movementType))
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+    return this.db.select().from(schema.inventoryMovement)
+      .where(whereClause)
+      .orderBy(desc(schema.inventoryMovement.occurredAt), desc(schema.inventoryMovement.createdAt))
+      .limit(input.limit ?? 100)
       .all().map(mapMovement)
   }
 
