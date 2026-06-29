@@ -1,3 +1,4 @@
+/** Inventory RPC handler registrations. */
 import { implement } from "@orpc/server";
 
 import { appContract } from "@tuari/contracts";
@@ -7,6 +8,7 @@ import type { InventoryService } from "../../modules/inventory/inventory.service
 import type { RpcContext } from "../context";
 import type { RpcMiddleware } from "../rpc-middleware";
 
+/** createInventoryHandlers. */
 export function createInventoryHandlers(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,
@@ -65,6 +67,9 @@ export function createInventoryHandlers(
     inventoryOutboundTransfersCreate: os.inventoryOutboundTransfersCreate.handler(m.mutationAudit(
       ({ input, auditContext }: any) => inventoryService.createOutboundTransfer(input as any, auditContext),
       toInventoryFailureResult,
+    )),
+    inventoryTransferHistoryList: os.inventoryTransferHistoryList.handler(m.queryAuth(async ({ context, input }: any) =>
+      inventoryService.listTransferHistory(input as any)
     )),
   };
 }

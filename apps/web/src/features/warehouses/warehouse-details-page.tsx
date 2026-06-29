@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next"
 
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { InventoryLocationContentsSection } from "@/features/inventory/inventory-location-contents-section"
+import { LocationTransferHistory } from "@/features/inventory/location-transfer-history"
 import {
   RecordHistoryTable,
   RecordInfoCard,
@@ -55,7 +56,7 @@ export function WarehouseDetailsPage({
   warehouse: WarehousePageRecord
 }) {
   const { t } = useTranslation()
-  const resolvedTab = ["overview", "history", "team", "items"].includes(activeTab) ? activeTab : "overview"
+  const resolvedTab = ["overview", "history", "team", "items", "transfers"].includes(activeTab) ? activeTab : "overview"
   const hasExpandedNotes = (warehouse.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `warehouse-record-${warehouse.id}`
 
@@ -76,6 +77,7 @@ export function WarehouseDetailsPage({
           { id: "history", label: t("detailPages.warehouse.historyTab") },
           { id: "team", label: t("detailPages.warehouse.teamTab") },
           { id: "items", label: "العناصر" },
+          { id: "transfers", label: "سجل التحويلات" },
         ]}
         onChange={onTabChange}
       />
@@ -113,6 +115,10 @@ export function WarehouseDetailsPage({
 
       <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items">
         <InventoryLocationContentsSection warehouseId={warehouse.id} />
+      </RecordTabPanel>
+
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="transfers">
+        <LocationTransferHistory locationId={warehouse.id} locationType="WAREHOUSE" />
       </RecordTabPanel>
     </RecordPageFrame>
   )

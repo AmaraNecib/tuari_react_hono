@@ -49,7 +49,11 @@ type WorkspaceSidebarPage =
   | "invoice-details"
   | "outbound-transfers"
   | "outbound-transfer-create"
+  | "outbound-transfer-create-v2"
+  | "transfer-history"
   | "roles"
+  | "outbound-transfer-create-v2"
+  | "transfer-history"
   | "settings"
 
 type WorkspaceSidebarProps = {
@@ -64,6 +68,7 @@ type WorkspaceSidebarProps = {
   projectsLabel: string
   inventoryLabel: string
   invoicesLabel: string
+  transferHistoryLabel: string
   salariesLabel: string
   rolesLabel: string
   transactionsLabel: string
@@ -100,8 +105,10 @@ const ACTIVE_KEY_MAP: Partial<Record<WorkspaceSidebarPage, WorkspaceSidebarPage>
   "warehouse-edit":   "warehouses",
   "invoice-create":   "invoices",
   "invoice-details":  "invoices",
-  "outbound-transfers":       "inventory",
-  "outbound-transfer-create": "inventory",
+  "outbound-transfers":          "inventory",
+  "outbound-transfer-create":    "inventory",
+  "outbound-transfer-create-v2": "inventory",
+  "transfer-history":            "transfer-history",
 }
 
 function getInitials(name: string | null): string {
@@ -127,7 +134,9 @@ export function WorkspaceSidebar({
   projectsLabel,
   salariesLabel,
   transactionsLabel,
+  transferHistoryLabel,
   warehousesLabel,
+  expandLabel,
   session,
   onSetCollapsed,
 }: WorkspaceSidebarProps) {
@@ -135,17 +144,18 @@ export function WorkspaceSidebar({
   const activeKey: WorkspaceSidebarPage = ACTIVE_KEY_MAP[currentPage] ?? currentPage
 
   const labels: Record<string, string> = {
-    dashboard:    dashboardLabel,
-    debts:        debtsLabel,
-    employees:    employeesLabel,
-    externals:    externalsLabel,
-    inventory:    inventoryLabel,
-    invoices:     invoicesLabel,
-    projects:     projectsLabel,
-    salaries:     salariesLabel,
-    transactions: transactionsLabel,
-    warehouses:   warehousesLabel,
-    settings:     t("shell.settings"),
+    dashboard:         dashboardLabel,
+    debts:             debtsLabel,
+    employees:         employeesLabel,
+    externals:         externalsLabel,
+    inventory:         inventoryLabel,
+    invoices:          invoicesLabel,
+    projects:          projectsLabel,
+    salaries:          salariesLabel,
+    transactions:      transactionsLabel,
+    "transfer-history": transferHistoryLabel,
+    warehouses:        warehousesLabel,
+    settings:          t("shell.settings"),
   }
 
   const groups: NavGroup[] = [
@@ -158,19 +168,20 @@ export function WorkspaceSidebar({
       labelKey: "shell.navGroupOps",
       fallback: "العمليات",
       items: [
-        { key: "projects",   target: workspaceRoutes.projects(),   Icon: BriefcaseBusiness },
-        { key: "warehouses", target: workspaceRoutes.warehouses(), Icon: Warehouse },
-        { key: "inventory",  target: workspaceRoutes.inventory(),  Icon: Boxes },
-        { key: "salaries",   target: workspaceRoutes.salaries(),   Icon: ReceiptText },
+        { key: "projects",          target: workspaceRoutes.projects(),          Icon: BriefcaseBusiness },
+        { key: "warehouses",        target: workspaceRoutes.warehouses(),        Icon: Warehouse },
+        { key: "inventory",         target: workspaceRoutes.inventory(),         Icon: Boxes },
+        { key: "salaries",          target: workspaceRoutes.salaries(),          Icon: ReceiptText },
       ],
     },
     {
-      labelKey: "shell.navGroupMoney",
+      labelKey: "shell.navGroupFinance",
       fallback: "المالية",
       items: [
-        { key: "invoices",     target: workspaceRoutes.invoices(),     Icon: FileText },
-        { key: "debts",        target: workspaceRoutes.debts(),        Icon: HandCoins },
-        { key: "transactions", target: workspaceRoutes.transactions(), Icon: Logs },
+        { key: "invoices",          target: workspaceRoutes.invoices(),          Icon: FileText },
+        { key: "debts",             target: workspaceRoutes.debts(),             Icon: HandCoins },
+        { key: "transfer-history",  target: workspaceRoutes.transferHistory(),  Icon: Logs },
+        { key: "transactions",      target: workspaceRoutes.transactions(),      Icon: Logs },
       ],
     },
     {
@@ -261,9 +272,10 @@ export function WorkspaceSidebar({
           <Tooltip>
             <TooltipTrigger
               render={
-                <div
+                <button
                   className="w-[1.625rem] h-[1.625rem] rounded-full grid place-items-center text-white text-[0.6875rem] font-semibold flex-shrink-0 bg-primary cursor-pointer"
                   onClick={() => onSetCollapsed(false)}
+                  aria-label={expandLabel}
                 />
               }
             >

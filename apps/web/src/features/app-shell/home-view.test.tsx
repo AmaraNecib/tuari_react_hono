@@ -977,7 +977,7 @@ describe("HomeView workspace shell", () => {
 
     renderHomeView("settings")
 
-    expect(screen.getByText("معلومات الحساب")).toBeTruthy()
+    expect(screen.getAllByText("معلومات الحساب").length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText("يلزم إدخال كلمة المرور الحالية عند تغيير رقم الهاتف لأنه يستخدم لتسجيل الدخول.")).toBeTruthy()
     expect(screen.getByRole("button", { name: "حفظ بيانات الحساب" })).toBeTruthy()
   })
@@ -1087,7 +1087,7 @@ describe("HomeView workspace shell", () => {
     expect(screen.getByRole("button", { name: "تصغير الشريط الجانبي" })).toBeTruthy()
   })
 
-  it("auto-collapses below 1200px without auto-expanding again", () => {
+  it("auto-collapses below 1200px without persisting to localStorage", () => {
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: 1400,
@@ -1110,7 +1110,8 @@ describe("HomeView workspace shell", () => {
     fireEvent(window, new Event("resize"))
 
     expect(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]).toBeTruthy()
-    expect(window.localStorage.getItem("tuari.workspace.sidebar.collapsed")).toBe("true")
+    // Forced collapse should not persist to localStorage
+    expect(window.localStorage.getItem("tuari.workspace.sidebar.collapsed")).not.toBe("true")
 
     window.innerWidth = 1400
     fireEvent(window, new Event("resize"))

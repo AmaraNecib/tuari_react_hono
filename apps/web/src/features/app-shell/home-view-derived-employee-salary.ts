@@ -4,7 +4,7 @@
  */
 import { getArabicRoleLabel } from "@/features/shared/status-meta"
 
-import type { HomeViewCopy, HomeViewDetailCopy } from "./home-view-copy"
+import type { HomeViewDetailCopy } from "./home-view-copy"
 import { formatName } from "./home-view-derived-formatters"
 import type { HomeViewDerivedLookups } from "./home-view-derived-lookups"
 import type { buildEmployeeRows } from "./home-view-derived-employees"
@@ -14,13 +14,11 @@ import type { DemoWorkspace } from "./workspace-queries"
  * buildEmployeeSalaryCollections({ component.
  */
 export function buildEmployeeSalaryCollections({
-  copy,
   detailCopy,
   employeeRows,
   lookups,
   workspace,
 }: {
-  copy: Pick<HomeViewCopy, "shell">
   detailCopy: HomeViewDetailCopy
   employeeRows: ReturnType<typeof buildEmployeeRows>
   lookups: HomeViewDerivedLookups
@@ -43,7 +41,7 @@ export function buildEmployeeSalaryCollections({
       return {
         ...payment,
         employeeName: employee ? formatName(employee) : detailCopy.shared.activeWorkerMissing,
-        employeePhone: employee?.phone ?? copy.shell.noManager,
+        employeePhone: employee?.phone ?? "—",
         employeeRole: getArabicRoleLabel(role ?? null),
       }
     })

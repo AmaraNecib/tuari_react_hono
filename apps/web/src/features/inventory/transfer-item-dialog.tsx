@@ -38,6 +38,7 @@ type TransferConsumableTarget = {
   sourceProjectId?: string | null
 }
 
+/** TransferTarget. */
 export type TransferTarget = TransferAssetTarget | TransferConsumableTarget
 
 /** Dialog for transferring inventory items between locations. */

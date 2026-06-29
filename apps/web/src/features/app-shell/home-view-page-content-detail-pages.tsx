@@ -26,6 +26,8 @@ const InventoryInvoiceDetailsPage = lazy(async () => import("@/features/inventor
 const InventoryInvoicesPage = lazy(async () => import("@/features/inventory/inventory-invoices-page").then((module) => ({ default: module.InventoryInvoicesPage })))
 const OutboundTransfersPage = lazy(async () => import("@/features/inventory/outbound-transfers-page").then((module) => ({ default: module.OutboundTransfersPage })))
 const OutboundTransferCreatePage = lazy(async () => import("@/features/inventory/outbound-transfer-create-page").then((module) => ({ default: module.OutboundTransferCreatePage })))
+const OutboundTransferCreatePageV2 = lazy(async () => import("@/features/inventory/outbound-transfer-create-page-v2").then((module) => ({ default: module.OutboundTransferCreatePageV2 })))
+const TransferHistoryPage = lazy(async () => import("@/features/inventory/transfer-history-page").then((module) => ({ default: module.TransferHistoryPage })))
 const WarehouseDetailsPage = lazy(async () => import("@/features/warehouses/warehouse-details-page").then((module) => ({ default: module.WarehouseDetailsPage })))
 const WarehouseCreatePage = lazy(async () => import("@/features/warehouses/warehouse-create-page").then((module) => ({ default: module.WarehouseCreatePage })))
 const WarehouseEditPage = lazy(async () => import("@/features/warehouses/warehouse-edit-page").then((module) => ({ default: module.WarehouseEditPage })))
@@ -33,10 +35,14 @@ const WarehouseEditPage = lazy(async () => import("@/features/warehouses/warehou
 const detailPageFallback = (
   <div
     aria-live="polite"
-    className="flex min-h-[240px] items-center justify-center rounded-xl border border-border/35 bg-surface p-6 text-sm text-muted-foreground"
+    className="min-h-[240px] space-y-4 p-6"
     role="status"
   >
-    جارٍ تحميل الصفحة...
+    {/* Skeleton shimmer instead of text */}
+    <div className="h-8 w-48 animate-pulse rounded-lg bg-ink/5" />
+    <div className="h-4 w-64 animate-pulse rounded-lg bg-ink/5" />
+    <div className="mt-6 h-32 w-full animate-pulse rounded-xl bg-ink/5" />
+    <div className="h-4 w-32 animate-pulse rounded-lg bg-ink/5" />
   </div>
 )
 
@@ -318,6 +324,7 @@ export function HomeViewPageDetailContent({
       return renderLazy(
         <OutboundTransfersPage
           onCreate={() => void navigation.goToOutboundTransferCreate()}
+          onCreateV2={() => void navigation.goToOutboundTransferCreateV2()}
         />,
       )
 
@@ -327,6 +334,16 @@ export function HomeViewPageDetailContent({
           onBack={() => void navigation.goToOutboundTransfers()}
         />,
       )
+
+    case "outbound-transfer-create-v2":
+      return renderLazy(
+        <OutboundTransferCreatePageV2
+          onBack={() => void navigation.goToOutboundTransfers()}
+        />,
+      )
+
+    case "transfer-history":
+      return renderLazy(<TransferHistoryPage />)
 
     default:
       return null

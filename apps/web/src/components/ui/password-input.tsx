@@ -14,9 +14,10 @@ type PasswordInputProps = Omit<ComponentProps<typeof Input>, "type"> & {
 /**
  * @description Component
  */
-export function PasswordInput({ hideLabel, showLabel, ...props }: PasswordInputProps) {
+export function PasswordInput({ hideLabel, showLabel, id, className, dir, ...props }: PasswordInputProps) {
   const [visible, setVisible] = useState(false)
-  const inputId = useId()
+  const generatedId = useId()
+  const inputId = id ?? generatedId
 
   return (
     <div className="relative flex items-center">
@@ -25,8 +26,8 @@ export function PasswordInput({ hideLabel, showLabel, ...props }: PasswordInputP
         type={visible ? "text" : "password"}
         autoComplete="current-password"
         {...props}
-        className={cn("pe-11", props.className)}
-        dir={props.dir ?? "rtl"}
+        className={cn("pe-11", className)}
+        dir={dir ?? "rtl"}
       />
       <Button
         aria-controls={inputId}

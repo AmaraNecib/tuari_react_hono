@@ -4,13 +4,7 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { NativeSelect } from "@/components/ui/form-controls"
 import {
   Table,
   TableBody,
@@ -62,15 +56,10 @@ export function InventoryItemDefinitionsPage() {
               <Input value={name} onChange={(event) => setName(event.target.value)} />
             </Field>
             <Field label={t("inventoryPage.itemDefinitions.typeLabel")} required>
-              <Select value={itemType} onValueChange={(value) => setItemType(value as "CONSUMABLE" | "ASSET")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CONSUMABLE">{t("inventoryPage.itemDefinitions.typeConsumable")}</SelectItem>
-                  <SelectItem value="ASSET">{t("inventoryPage.itemDefinitions.typeAsset")}</SelectItem>
-                </SelectContent>
-              </Select>
+              <NativeSelect value={itemType} onChange={(e) => setItemType(e.target.value as "CONSUMABLE" | "ASSET")}>
+                <option value="CONSUMABLE">{t("inventoryPage.itemDefinitions.typeConsumable")}</option>
+                <option value="ASSET">{t("inventoryPage.itemDefinitions.typeAsset")}</option>
+              </NativeSelect>
             </Field>
             {itemType === "CONSUMABLE" ? (
               <Field label={t("inventoryPage.itemDefinitions.unitLabel")} required>

@@ -7,7 +7,7 @@ import { useMobileLayout } from "@/hooks/use-mobile-layout"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import { useEmployeesQuery, useProjectsQuery, useWarehousesQuery, useDebtAccountsQuery, useExternalCounterpartiesQuery } from "./workspace-queries"
 import { useInventoryItemDefinitionsQuery, useInventoryInvoiceGroupsQuery } from "@/features/inventory/inventory-hooks"
-import { GuidedTourManager } from "@/components/ui/guided-tour"
+import { UserJourneyTour } from "@/hooks/use-user-journey"
 import { SearchDialog, type SearchItem } from "@/components/ui/search-dialog"
 import { KeyboardShortcutsHelp } from "@/components/ui/keyboard-shortcuts-provider"
 
@@ -302,7 +302,7 @@ export function HomeViewSignedInShell({
   ]
 
   return (
-    <GuidedTourManager steps={tourSteps} storageKey="home-tour" autoStart>
+    <UserJourneyTour steps={tourSteps} storageKey="home-tour" autoStart>
     <div
       className="tauri-shell"
       data-collapsed={sidebarCollapsed ? "true" : "false"}
@@ -326,6 +326,7 @@ export function HomeViewSignedInShell({
         salariesLabel={copy.sections.salaries.label}
         session={session}
         transactionsLabel={copy.sections.transactions.label}
+        transferHistoryLabel={t("shell.transferHistory", "سجل التحويلات")}
         warehousesLabel={copy.sections.warehouses.label}
         width=""
         onSetCollapsed={onSetSidebarCollapsed}
@@ -472,6 +473,6 @@ export function HomeViewSignedInShell({
         </AlertDialogContent>
       </AlertDialog>
     </div>
-    </GuidedTourManager>
+    </UserJourneyTour>
   )
 }

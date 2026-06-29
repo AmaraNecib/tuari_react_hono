@@ -27,7 +27,7 @@ export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
   const { t } = useTranslation()
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         eyebrow={t("detailPages.shell.itemsGuide")}
         title={labels.title}
@@ -41,6 +41,38 @@ export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
           { label: labels.roles,      value: metrics.roles,      tone: "neutral" },
         ]}
       />
+
+      {/* Quick Actions */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <a
+          href="/projects/create"
+          className="flex flex-col items-center gap-2 p-4 rounded-xl border border-line hover:bg-surface-2 transition-colors"
+        >
+          <span className="text-2xl">📋</span>
+          <span className="text-sm font-medium">{t("dashboard.quickActions.addProject", "إضافة مشروع")}</span>
+        </a>
+        <a
+          href="/warehouses/create"
+          className="flex flex-col items-center gap-2 p-4 rounded-xl border border-line hover:bg-surface-2 transition-colors"
+        >
+          <span className="text-2xl">🏭</span>
+          <span className="text-sm font-medium">{t("dashboard.quickActions.addWarehouse", "إضافة مستودع")}</span>
+        </a>
+        <a
+          href="/invoices/create"
+          className="flex flex-col items-center gap-2 p-4 rounded-xl border border-line hover:bg-surface-2 transition-colors"
+        >
+          <span className="text-2xl">📄</span>
+          <span className="text-sm font-medium">{t("dashboard.quickActions.addInvoice", "إضافة فاتورة")}</span>
+        </a>
+        <a
+          href="/outbound-transfers/create-v2"
+          className="flex flex-col items-center gap-2 p-4 rounded-xl border border-line hover:bg-surface-2 transition-colors"
+        >
+          <span className="text-2xl">🔄</span>
+          <span className="text-sm font-medium">{t("dashboard.quickActions.newTransfer", "تحويل جديد")}</span>
+        </a>
+      </div>
     </div>
   )
 }
