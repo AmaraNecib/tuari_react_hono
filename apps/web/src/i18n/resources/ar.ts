@@ -37,6 +37,8 @@ export const ar = {
       gotIt: "حسناً",
       showMore: "عرض المزيد",
       skipToContent: "تخطي إلى المحتوى",
+      done: "تم",
+      stepOf: "{{current}} من {{total}}",
       help: "مساعدة",
       learnMore: "اعرف المزيد",
       copyToClipboard: "نسخ إلى الحافظة",
