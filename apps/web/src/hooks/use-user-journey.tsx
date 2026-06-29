@@ -1,3 +1,4 @@
+// TauriOS onboarding tour component
 /**
  * UserJourney - Unified onboarding and help system
  * 
@@ -7,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
+import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
 
 // ============ Types ============
@@ -222,58 +224,104 @@ export function UserJourneyTour({
   className,
 }: UserJourneyTourProps) {
   const journey = useUserJourney({ key: storageKey, steps, autoStart })
+  const { t } = useTranslation()
+  const dialogRef = useRef<HTMLDivElement>(null)
 
-  // Render tour overlay when active
+  // Clamp currentStep to valid range to prevent bad persisted state
+  const clampedStep = Math.max(0, Math.min(journey.state.currentStep, steps.length - 1))
+
+  // Focus the dialog on open
+  useEffect(() => {
+    if (journey.isActive && dialogRef.current) {
+      dialogRef.current.focus()
+    }
+  }, [journey.isActive, journey.state.currentStep])
+
   if (journey.isActive && steps.length > 0) {
-    const currentStep = steps[journey.state.currentStep]
-    if (currentStep) {
-      return (
-        <div className={cn("relative", className)}>
-          {children}
-          <div className="fixed inset-0 z-50 bg-black/50" />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-lg p-6 max-w-md shadow-xl">
-            <h3 className="text-lg font-semibold mb-2">{currentStep.title}</h3>
-            <p className="text-gray-600 mb-4">{currentStep.content}</p>
-            <div className="flex justify-between">
-              <button
-                onClick={journey.skip}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
-                Skip
-              </button>
-              <div className="flex gap-2">
-                {journey.state.currentStep > 0 && (
-                  <button
-                    onClick={journey.back}
-                    className="px-3 py-1 text-sm border rounded"
-                  >
-                    Back
-                  </button>
+    const currentStep = steps[clampedStep]
+    if (!currentStep) return <>{children}</>
+
+    const isFirst = clampedStep === 0
+    const isLast = clampedStep === steps.length - 1
+    const stepNumber = clampedStep + 1
+    const titleId = `journey-title-${storageKey}`
+
+    return (
+      <div className={cn("relative", className)}>
+        {children}
+        {/* Backdrop */}
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] transition-opacity" />
+        {/* Dialog */}
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
+          className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(24rem,90vw)] bg-surface border border-line rounded-2xl shadow-lg overflow-hidden outline-none"
+        >
+          {/* Progress bar */}
+          <div className="flex gap-1 px-5 pt-5">
+            {steps.map((_, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "h-1 flex-1 rounded-full transition-colors",
+                  i < stepNumber ? "bg-accent-brand" : "bg-line"
                 )}
-                {journey.state.currentStep < steps.length - 1 ? (
-                  <button
-                    onClick={journey.advance}
-                    className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
-                  >
-                    Next
-                  </button>
-                ) : (
-                  <button
-                    onClick={journey.complete}
-                    className="px-3 py-1 text-sm bg-green-600 text-white rounded"
-                  >
-                    Finish
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="mt-3 text-xs text-gray-400">
-              Step {journey.state.currentStep + 1} of {steps.length}
+              />
+            ))}
+          </div>
+          {/* Content */}
+          <div className="px-5 pt-4 pb-2">
+            <h3 id={titleId} className="text-base font-semibold text-ink mb-1">
+              {currentStep.title}
+            </h3>
+            <p className="text-sm text-ink-2 leading-relaxed">
+              {currentStep.content}
+            </p>
+          </div>
+          {/* Footer */}
+          <div className="flex items-center justify-between px-5 py-4">
+            <button
+              onClick={journey.skip}
+              className="text-sm text-ink-3 hover:text-ink transition-colors"
+            >
+              {t("common.skip")}
+            </button>
+            <div className="flex gap-2">
+              {!isFirst && (
+                <button
+                  onClick={journey.back}
+                  className="px-3 py-1.5 text-sm font-medium rounded-lg border border-line text-ink hover:bg-surface-2 transition-colors"
+                >
+                  {t("common.previous")}
+                </button>
+              )}
+              {!isLast ? (
+                <button
+                  onClick={journey.advance}
+                  className="px-4 py-1.5 text-sm font-medium rounded-lg bg-accent-brand text-white hover:opacity-90 transition-opacity"
+                >
+                  {t("common.next")}
+                </button>
+              ) : (
+                <button
+                  onClick={journey.complete}
+                  className="px-4 py-1.5 text-sm font-medium rounded-lg bg-accent-brand text-white hover:opacity-90 transition-opacity"
+                >
+                  {t("common.done")}
+                </button>
+              )}
             </div>
           </div>
+          {/* Step counter */}
+          <div className="px-5 pb-4 text-xs text-ink-3">
+            {t("common.stepOf", { current: stepNumber, total: steps.length })}
+          </div>
         </div>
-      )
-    }
+      </div>
+    )
   }
 
   return <div className={cn("relative", className)}>{children}</div>
