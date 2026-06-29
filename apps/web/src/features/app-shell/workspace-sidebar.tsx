@@ -300,3 +300,4 @@ export function WorkspaceSidebar({
 }
 
 export type { WorkspaceSidebarPage }
+// CI trigger
