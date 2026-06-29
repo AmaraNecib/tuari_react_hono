@@ -1,91 +1,112 @@
-import { createContext, useContext, type ReactNode } from "react"
+import { useEffect, useCallback, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 
-interface KeyboardShortcutsContextValue {
-  registerShortcut: (key: string, handler: () => void) => void
-  unregisterShortcut: (key: string) => void
+// ============ Types ============
+
+interface ShortcutDefinition {
+  /** Key combination (e.g., "Ctrl+K", "Cmd+N", "Escape") */
+  key: string
+  /** Handler function */
+  handler: () => void
+  /** Whether this shortcut works in input fields */
+  allowInInput?: boolean
 }
-
-const KeyboardShortcutsContext = createContext<KeyboardShortcutsContextValue | null>(null)
 
 interface KeyboardShortcutsProviderProps {
   children: ReactNode
-  /** Search handler (Ctrl+K) */
-  onSearch?: () => void
-  /** New item handler (Ctrl+N) */
-  onNew?: () => void
-  /** Save handler (Ctrl+S) */
-  onSave?: () => void
-  /** Delete handler (Delete) */
-  onDelete?: () => void
-  /** Back handler (Escape) */
-  onBack?: () => void
-  /** Help handler (?) */
-  onHelp?: () => void
-  /** Toggle sidebar handler (Ctrl+B) */
-  onToggleSidebar?: () => void
+  /** Shortcut definitions (optional - defaults to empty) */
+  shortcuts?: ShortcutDefinition[]
+}
+
+/**
+ * Parse a key combo string into components.
+ */
+function parseKeyCombo(combo: string): { key: string; ctrl: boolean; shift: boolean; alt: boolean } {
+  const parts = combo.toLowerCase().split("+").map(s => s.trim())
+  return {
+    key: parts.find(p => !["ctrl", "cmd", "meta", "shift", "alt"].includes(p)) || "",
+    ctrl: parts.includes("ctrl") || parts.includes("cmd") || parts.includes("meta"),
+    shift: parts.includes("shift"),
+    alt: parts.includes("alt"),
+  }
+}
+
+/**
+ * Check if a keyboard event matches a shortcut combo.
+ * Rejects unexpected Ctrl/Cmd usage for shortcuts that don't require it.
+ */
+function matchesShortcut(event: KeyboardEvent, combo: string): boolean {
+  const parsed = parseKeyCombo(combo)
+  const isMod = event.metaKey || event.ctrlKey
+  
+  // If shortcut requires a modifier, check it's present
+  if (parsed.ctrl && !isMod) return false
+  if (parsed.shift && !event.shiftKey) return false
+  if (parsed.alt && !event.altKey) return false
+  
+  // Mod-key exclusivity: if shortcut does NOT require a modifier,
+  // reject when Ctrl/Cmd IS held (prevents Ctrl+K from matching bare "K")
+  if (!parsed.ctrl && isMod) return false
+  // Same for Alt: if shortcut does NOT require Alt, reject when Alt IS held
+  if (!parsed.alt && event.altKey) return false
+  
+  return event.key.toLowerCase() === parsed.key
+}
+
+/**
+ * Check if the target is an input field.
+ */
+function isInputField(target: EventTarget | null): boolean {
+  const el = target as HTMLElement
+  return (
+    el?.tagName === "INPUT" ||
+    el?.tagName === "TEXTAREA" ||
+    el?.tagName === "SELECT" ||
+    el?.isContentEditable
+  )
+}
+
+/**
+ * Hook to register keyboard shortcuts.
+ */
+function useKeyboardShortcuts(shortcuts: ShortcutDefinition[] = []) {
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    for (const shortcut of shortcuts) {
+      if (matchesShortcut(event, shortcut.key)) {
+        if (isInputField(event.target) && !shortcut.allowInInput) {
+          continue
+        }
+        event.preventDefault()
+        shortcut.handler()
+        return
+      }
+    }
+  }, [shortcuts])
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [handleKeyDown])
 }
 
 /**
  * Global keyboard shortcuts provider.
  * Registers keyboard shortcuts and provides context for dynamic shortcuts.
  */
-/**
- * Provider for keyboard shortcuts context.
- * Manages global keyboard shortcuts and provides context for registration.
- */
-/**
- * @description Component
- */
 export function KeyboardShortcutsProvider({
   children,
-  onSearch,
-  onNew,
-  onSave,
-  onDelete,
-  onBack,
-  onHelp,
-  onToggleSidebar,
+  shortcuts = [],
 }: KeyboardShortcutsProviderProps) {
-  useKeyboardShortcuts({
-    onSearch,
-    onNew,
-    onSave,
-    onDelete,
-    onBack,
-    onHelp,
-    onToggleSidebar,
-  })
+  useKeyboardShortcuts(shortcuts)
 
-  return (
-    <KeyboardShortcutsContext.Provider value={{ registerShortcut: () => {}, unregisterShortcut: () => {} }}>
-      {children}
-    </KeyboardShortcutsContext.Provider>
-  )
+  return <>{children}</>
 }
 
-/**
- * Hook to access keyboard shortcuts context.
- */
-/**
- * Hook to access keyboard shortcuts context.
- * Must be used within KeyboardShortcutsProvider.
- */
-export function useKeyboardShortcutsContext() {
-  const context = useContext(KeyboardShortcutsContext)
-  if (!context) {
-    throw new Error("useKeyboardShortcutsContext must be used within KeyboardShortcutsProvider")
-  }
-  return context
-}
+// ============ Help Dialog ============
 
 interface KeyboardShortcutsHelpProps {
-  /** Whether the dialog is open */
   isOpen: boolean
-  /** Close handler */
   onClose: () => void
-  /** Additional className */
   className?: string
 }
 
@@ -110,9 +131,6 @@ function useShortcuts() {
 /**
  * Keyboard shortcuts help dialog.
  * Shows all available keyboard shortcuts.
- */
-/**
- * @description Component
  */
 export function KeyboardShortcutsHelp({ isOpen, onClose, className }: KeyboardShortcutsHelpProps) {
   const { t } = useTranslation()

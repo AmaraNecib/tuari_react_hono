@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { DayPicker, type DayPickerProps } from "react-day-picker"
+import { DayPicker } from "react-day-picker"
 import { ar } from "date-fns/locale/ar"
 import { format, parse, isValid } from "date-fns"
 import { CalendarIcon } from "lucide-react"
@@ -36,7 +36,7 @@ type DatePickerProps = {
   className?: string
   name?: string
   id?: string
-} & Pick<DayPickerProps, "mode">
+}
 
 /** Date picker with Arabic locale support. Uses DD/MM/YYYY format. */
 /**
@@ -49,6 +49,7 @@ export function DatePicker({
   disabled = false,
   className,
   name,
+  id,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
   const selectedDate = value ? parseDateAr(value) : undefined
@@ -67,6 +68,7 @@ export function DatePicker({
 
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
+          id={id}
           disabled={disabled}
           className={cn(
             formInputClassName,

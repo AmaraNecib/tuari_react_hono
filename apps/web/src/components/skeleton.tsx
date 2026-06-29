@@ -1,20 +1,13 @@
 import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 
 /* ─── Base ─────────────────────────────────────────── */
 
 /**
- * Shimmer animation component.
+ * Shimmer animation component - uses UI Skeleton.
  */
 function Shimmer({ className }: { className?: string }) {
-  return (
-    <div
-      aria-hidden="true"
-      className={cn(
-        "animate-pulse rounded-md bg-ink/7",
-        className,
-      )}
-    />
-  )
+  return <Skeleton className={cn("bg-ink/7", className)} />
 }
 
 /**
