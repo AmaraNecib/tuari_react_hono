@@ -1,3 +1,4 @@
+// TauriOS onboarding tour component
 /**
  * UserJourney - Unified onboarding and help system
  * 
