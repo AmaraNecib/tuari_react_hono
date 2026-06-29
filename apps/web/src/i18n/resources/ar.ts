@@ -37,6 +37,7 @@ export const ar = {
       gotIt: "حسناً",
       showMore: "عرض المزيد",
       skipToContent: "تخطي إلى المحتوى",
+      skip: "تخطي",
       done: "تم",
       stepOf: "{{current}} من {{total}}",
       help: "مساعدة",

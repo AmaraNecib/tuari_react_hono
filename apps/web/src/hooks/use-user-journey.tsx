@@ -224,14 +224,26 @@ export function UserJourneyTour({
 }: UserJourneyTourProps) {
   const journey = useUserJourney({ key: storageKey, steps, autoStart })
   const { t } = useTranslation()
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  // Clamp currentStep to valid range to prevent bad persisted state
+  const clampedStep = Math.max(0, Math.min(journey.state.currentStep, steps.length - 1))
+
+  // Focus the dialog on open
+  useEffect(() => {
+    if (journey.isActive && dialogRef.current) {
+      dialogRef.current.focus()
+    }
+  }, [journey.isActive, journey.state.currentStep])
 
   if (journey.isActive && steps.length > 0) {
-    const currentStep = steps[journey.state.currentStep]
+    const currentStep = steps[clampedStep]
     if (!currentStep) return <>{children}</>
 
-    const isFirst = journey.state.currentStep === 0
-    const isLast = journey.state.currentStep === steps.length - 1
-    const stepNumber = journey.state.currentStep + 1
+    const isFirst = clampedStep === 0
+    const isLast = clampedStep === steps.length - 1
+    const stepNumber = clampedStep + 1
+    const titleId = `journey-title-${storageKey}`
 
     return (
       <div className={cn("relative", className)}>
@@ -239,7 +251,14 @@ export function UserJourneyTour({
         {/* Backdrop */}
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] transition-opacity" />
         {/* Dialog */}
-        <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(24rem,90vw)] bg-surface border border-line rounded-2xl shadow-lg overflow-hidden">
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
+          className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(24rem,90vw)] bg-surface border border-line rounded-2xl shadow-lg overflow-hidden outline-none"
+        >
           {/* Progress bar */}
           <div className="flex gap-1 px-5 pt-5">
             {steps.map((_, i) => (
@@ -254,7 +273,7 @@ export function UserJourneyTour({
           </div>
           {/* Content */}
           <div className="px-5 pt-4 pb-2">
-            <h3 className="text-base font-semibold text-ink mb-1">
+            <h3 id={titleId} className="text-base font-semibold text-ink mb-1">
               {currentStep.title}
             </h3>
             <p className="text-sm text-ink-2 leading-relaxed">
