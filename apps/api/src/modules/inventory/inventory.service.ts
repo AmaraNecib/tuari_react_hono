@@ -129,6 +129,7 @@ export class InventoryService {
     private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
   ) {}
 
+  /** createMutationAuditContext. */
   private createMutationAuditContext(auditContext?: MutationAuditContext): Required<MutationAuditContext> {
     const audit = normalizeMutationAuditContext(auditContext)
 
@@ -637,6 +638,7 @@ export class InventoryService {
     return this.getLocationContents({ warehouseId: input.toWarehouseId ?? null, projectId: input.toProjectId ?? null })
   }
 
+  /** addInvoiceAttachments. */
   async addInvoiceAttachments(invoiceGroupId: string, files: InventoryUploadFile[], auditContext?: MutationAuditContext) {
     this.createMutationAuditContext(auditContext)
 
@@ -712,6 +714,7 @@ export class InventoryService {
     }
   }
 
+  /** getAttachmentDownload. */
   async getAttachmentDownload(id: string) {
     const attachment = this.repository.getAttachmentById(id)
     if (!attachment) {

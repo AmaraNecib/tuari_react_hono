@@ -10,6 +10,7 @@ import {
   timestampSchema,
 } from "./core";
 
+/** inventoryItemDefinitionSchema - Item definition schema. */
 export const inventoryItemDefinitionSchema = z.object({
   id: entityIdSchema,
   name: z.string().trim().min(1).max(160),
@@ -21,6 +22,7 @@ export const inventoryItemDefinitionSchema = z.object({
   updatedAt: timestampSchema,
 });
 
+/** inventoryInvoiceAttachmentSchema - Invoice attachment schema. */
 export const inventoryInvoiceAttachmentSchema = z.object({
   id: entityIdSchema,
   invoiceGroupId: entityIdSchema,
@@ -34,6 +36,7 @@ export const inventoryInvoiceAttachmentSchema = z.object({
   createdAt: timestampSchema,
 });
 
+/** inventoryAssetUnitSchema - Asset unit schema. */
 export const inventoryAssetUnitSchema = z.object({
   id: entityIdSchema,
   inventoryEntryId: entityIdSchema,
@@ -51,6 +54,7 @@ export const inventoryAssetUnitSchema = z.object({
   updatedAt: timestampSchema,
 });
 
+/** inventoryConsumableBalanceSchema - Consumable balance schema. */
 export const inventoryConsumableBalanceSchema = z.object({
   id: entityIdSchema,
   inventoryEntryId: entityIdSchema,
@@ -64,6 +68,7 @@ export const inventoryConsumableBalanceSchema = z.object({
   updatedAt: timestampSchema,
 });
 
+/** inventoryMovementSchema - Movement schema. */
 export const inventoryMovementSchema = z.object({
   id: entityIdSchema,
   movementType: inventoryMovementTypeSchema,
@@ -80,17 +85,20 @@ export const inventoryMovementSchema = z.object({
   createdAt: timestampSchema,
 });
 
+/** inventoryAssetDetailSchema - Asset detail schema. */
 export const inventoryAssetDetailSchema = z.object({
   asset: inventoryAssetUnitSchema,
   invoiceGroup: z.lazy(() => inventoryInvoiceGroupSchema),
   movements: z.array(inventoryMovementSchema),
 });
 
+/** inventoryLocationContentsSchema - Location contents schema. */
 export const inventoryLocationContentsSchema = z.object({
   assets: z.array(inventoryAssetUnitSchema),
   consumables: z.array(inventoryConsumableBalanceSchema),
 });
 
+/** inventoryEntrySchema - Entry schema. */
 export const inventoryEntrySchema = z.object({
   id: entityIdSchema,
   invoiceGroupId: entityIdSchema,
@@ -109,6 +117,7 @@ export const inventoryEntrySchema = z.object({
   assets: z.array(inventoryAssetUnitSchema),
 });
 
+/** inventoryInvoiceGroupSchema - Invoice group schema. */
 export const inventoryInvoiceGroupSchema = z.object({
   id: entityIdSchema,
   invoiceNumber: nullableTextSchema,
@@ -126,6 +135,7 @@ export const inventoryInvoiceGroupSchema = z.object({
   updatedAt: timestampSchema,
 });
 
+/** inventoryInvoiceGroupDetailSchema - Invoice group detail schema. */
 export const inventoryInvoiceGroupDetailSchema = z.object({
   group: inventoryInvoiceGroupSchema,
   entries: z.array(inventoryEntrySchema),
@@ -134,6 +144,7 @@ export const inventoryInvoiceGroupDetailSchema = z.object({
   consumableBalances: z.array(inventoryConsumableBalanceSchema),
 });
 
+/** inventoryItemDefinitionCreateInputSchema - Item definition create input schema. */
 export const inventoryItemDefinitionCreateInputSchema = z
   .object({
     name: z.string().trim().min(1).max(160),
@@ -161,6 +172,7 @@ export const inventoryItemDefinitionCreateInputSchema = z
     }
   });
 
+/** inventoryItemDefinitionUpdateInputSchema - Item definition update input schema. */
 export const inventoryItemDefinitionUpdateInputSchema = z
   .object({
     id: entityIdSchema,
@@ -180,6 +192,7 @@ export const inventoryItemDefinitionUpdateInputSchema = z
     }
   });
 
+/** inventoryItemDefinitionListInputSchema - Item definition list input schema. */
 export const inventoryItemDefinitionListInputSchema = z
   .object({
     itemType: inventoryItemTypeSchema.optional(),
@@ -187,6 +200,7 @@ export const inventoryItemDefinitionListInputSchema = z
   })
   .optional();
 
+/** inventoryAssetUnitCreateInputSchema - Asset unit create input schema. */
 export const inventoryAssetUnitCreateInputSchema = z.object({
   assetName: z.string().trim().min(1).max(160),
   assetTag: z.string().trim().max(120).nullable().optional(),
@@ -197,6 +211,7 @@ export const inventoryAssetUnitCreateInputSchema = z.object({
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
+/** inventoryConsumableEntryCreateInputSchema - Consumable entry create input schema. */
 export const inventoryConsumableEntryCreateInputSchema = z.object({
   kind: z.literal("CONSUMABLE"),
   itemDefinitionId: entityIdSchema,
@@ -212,6 +227,7 @@ export const inventoryConsumableEntryCreateInputSchema = z.object({
   }
 });
 
+/** inventoryAssetEntryCreateInputSchema - Asset entry create input schema. */
 export const inventoryAssetEntryCreateInputSchema = z.object({
   kind: z.literal("ASSET"),
   itemDefinitionId: entityIdSchema,
@@ -225,11 +241,13 @@ export const inventoryAssetEntryCreateInputSchema = z.object({
   }
 });
 
+/** inventoryInvoiceEntryCreateInputSchema - Invoice entry create input schema. */
 export const inventoryInvoiceEntryCreateInputSchema = z.discriminatedUnion("kind", [
   inventoryConsumableEntryCreateInputSchema,
   inventoryAssetEntryCreateInputSchema,
 ]);
 
+/** inventoryInvoiceGroupCreateInputSchema - Invoice group create input schema. */
 export const inventoryInvoiceGroupCreateInputSchema = z.object({
   invoiceNumber: z.string().trim().max(160).nullable().optional(),
   supplierName: z.string().trim().max(160).nullable().optional(),
@@ -261,6 +279,7 @@ export const inventoryInvoiceGroupCreateInputSchema = z.object({
   }
 });
 
+/** inventoryInvoiceGroupListInputSchema - Invoice group list input schema. */
 export const inventoryInvoiceGroupListInputSchema = z
   .object({
     warehouseId: entityIdSchema.optional(),
@@ -268,6 +287,7 @@ export const inventoryInvoiceGroupListInputSchema = z
   })
   .optional();
 
+/** inventoryAssetTransferInputSchema - Asset transfer input schema. */
 export const inventoryAssetTransferInputSchema = z.object({
   assetUnitId: entityIdSchema,
   toWarehouseId: entityIdSchema.nullable().optional(),
@@ -283,6 +303,7 @@ export const inventoryAssetTransferInputSchema = z.object({
   }
 });
 
+/** inventoryConsumableTransferInputSchema - Consumable transfer input schema. */
 export const inventoryConsumableTransferInputSchema = z.object({
   inventoryEntryId: entityIdSchema,
   quantity: z.number().positive(),
@@ -307,6 +328,7 @@ export const inventoryConsumableTransferInputSchema = z.object({
   }
 });
 
+/** inventoryLocationContentsInputSchema - Location contents input schema. */
 export const inventoryLocationContentsInputSchema = z.object({
   warehouseId: entityIdSchema.nullable().optional(),
   projectId: entityIdSchema.nullable().optional(),
@@ -319,18 +341,21 @@ export const inventoryLocationContentsInputSchema = z.object({
   }
 });
 
+/** inventoryInvoiceGroupRecordPaymentInputSchema - Invoice group record payment input schema. */
 export const inventoryInvoiceGroupRecordPaymentInputSchema = z.object({
   invoiceGroupId: entityIdSchema,
   amountDzd: z.number().positive(),
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
+/** outboundTransferItemInputSchema - Outbound transfer item input schema. */
 export const outboundTransferItemInputSchema = z.object({
   itemId: entityIdSchema,
   quantity: z.number().positive(),
   unitPriceDzd: z.number().nonnegative().optional(),
 });
 
+/** inventoryOutboundTransferCreateInputSchema - Outbound transfer create input schema. */
 export const inventoryOutboundTransferCreateInputSchema = z.object({
   fromType: z.enum(["WAREHOUSE", "PROJECT"]),
   fromId: entityIdSchema,
@@ -341,6 +366,7 @@ export const inventoryOutboundTransferCreateInputSchema = z.object({
   notes: z.string().trim().max(1000).nullable().optional(),
 });
 
+/** inventoryOutboundTransferSchema - Outbound transfer schema. */
 export const inventoryOutboundTransferSchema = z.object({
   id: entityIdSchema,
   transferDate: timestampSchema,
@@ -355,24 +381,42 @@ export const inventoryOutboundTransferSchema = z.object({
   updatedAt: timestampSchema,
 });
 
+/** InventoryItemDefinition - Inventory item definition. */
 export type InventoryItemDefinition = z.infer<typeof inventoryItemDefinitionSchema>;
+/** InventoryInvoiceAttachment - Inventory invoice attachment. */
 export type InventoryInvoiceAttachment = z.infer<typeof inventoryInvoiceAttachmentSchema>;
+/** InventoryAssetUnit - Inventory asset unit. */
 export type InventoryAssetUnit = z.infer<typeof inventoryAssetUnitSchema>;
+/** InventoryConsumableBalance - Inventory consumable balance. */
 export type InventoryConsumableBalance = z.infer<typeof inventoryConsumableBalanceSchema>;
+/** InventoryMovement - Inventory movement. */
 export type InventoryMovement = z.infer<typeof inventoryMovementSchema>;
+/** InventoryAssetDetail - Inventory asset detail. */
 export type InventoryAssetDetail = z.infer<typeof inventoryAssetDetailSchema>;
+/** InventoryLocationContents - Inventory location contents. */
 export type InventoryLocationContents = z.infer<typeof inventoryLocationContentsSchema>;
+/** InventoryEntry - Inventory entry. */
 export type InventoryEntry = z.infer<typeof inventoryEntrySchema>;
+/** InventoryInvoiceGroup - Inventory invoice group. */
 export type InventoryInvoiceGroup = z.infer<typeof inventoryInvoiceGroupSchema>;
+/** InventoryInvoiceGroupDetail - Inventory invoice group detail. */
 export type InventoryInvoiceGroupDetail = z.infer<typeof inventoryInvoiceGroupDetailSchema>;
+/** InventoryItemDefinitionCreateInput - Inventory item definition create input. */
 export type InventoryItemDefinitionCreateInput = z.infer<typeof inventoryItemDefinitionCreateInputSchema>;
+/** InventoryItemDefinitionUpdateInput - Inventory item definition update input. */
 export type InventoryItemDefinitionUpdateInput = z.infer<typeof inventoryItemDefinitionUpdateInputSchema>;
+/** InventoryInvoiceGroupCreateInput - Inventory invoice group create input. */
 export type InventoryInvoiceGroupCreateInput = z.infer<typeof inventoryInvoiceGroupCreateInputSchema>;
+/** InventoryInvoiceGroupRecordPaymentInput - Inventory invoice group record payment input. */
 export type InventoryInvoiceGroupRecordPaymentInput = z.infer<typeof inventoryInvoiceGroupRecordPaymentInputSchema>;
+/** OutboundTransferItemInput - Outbound transfer item input. */
 export type OutboundTransferItemInput = z.infer<typeof outboundTransferItemInputSchema>;
+/** InventoryOutboundTransferCreateInput - Inventory outbound transfer create input. */
 export type InventoryOutboundTransferCreateInput = z.infer<typeof inventoryOutboundTransferCreateInputSchema>;
+/** InventoryOutboundTransfer - Inventory outbound transfer. */
 export type InventoryOutboundTransfer = z.infer<typeof inventoryOutboundTransferSchema>
 
+/** inventoryTransferHistoryInputSchema - Transfer history input schema. */
 export const inventoryTransferHistoryInputSchema = z.object({
   warehouseId: entityIdSchema.optional(),
   projectId: entityIdSchema.optional(),
@@ -382,4 +426,5 @@ export const inventoryTransferHistoryInputSchema = z.object({
   limit: z.number().int().positive().optional(),
 })
 
+/** InventoryTransferHistoryInput - Inventory transfer history input. */
 export type InventoryTransferHistoryInput = z.infer<typeof inventoryTransferHistoryInputSchema>;
