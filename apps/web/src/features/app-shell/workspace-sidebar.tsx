@@ -136,6 +136,7 @@ export function WorkspaceSidebar({
   transactionsLabel,
   transferHistoryLabel,
   warehousesLabel,
+  expandLabel,
   session,
   onSetCollapsed,
 }: WorkspaceSidebarProps) {
