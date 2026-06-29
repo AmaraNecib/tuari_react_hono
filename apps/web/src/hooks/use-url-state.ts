@@ -136,7 +136,7 @@ export function useUrlFilters<T extends Record<string, string>>(
   const [values, setValuesState] = useState<T>(() => {
     const params = getSearchParams()
     const result = { ...defaults }
-    for (const [key, defaultValue] of Object.entries(defaults)) {
+    for (const key of Object.keys(defaults)) {
       const fullKey = `f_${key}`
       const rawValue = params[fullKey]
       if (rawValue !== undefined && rawValue !== null && rawValue !== "") {
@@ -151,7 +151,7 @@ export function useUrlFilters<T extends Record<string, string>>(
     const handlePopState = () => {
       const params = getSearchParams()
       const result = { ...defaults }
-      for (const [key, defaultValue] of Object.entries(defaults)) {
+      for (const key of Object.keys(defaults)) {
         const fullKey = `f_${key}`
         const rawValue = params[fullKey]
         if (rawValue !== undefined && rawValue !== null && rawValue !== "") {

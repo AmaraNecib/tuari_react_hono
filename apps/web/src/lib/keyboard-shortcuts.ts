@@ -8,7 +8,7 @@
  * - Conflict resolution
  */
 
-import { useEffect, useCallback, useRef } from "react"
+import { useEffect, useRef } from "react"
 
 // ============ Types ============
 
@@ -19,11 +19,6 @@ interface ShortcutDefinition {
   handler: () => void
   /** Whether this shortcut works in input fields */
   allowInInput?: boolean
-}
-
-interface ShortcutConfig {
-  /** Global shortcuts that work everywhere */
-  shortcuts: ShortcutDefinition[]
 }
 
 // ============ Internal Helpers ============
