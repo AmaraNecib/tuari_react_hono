@@ -1116,7 +1116,7 @@ describe("HomeView workspace shell", () => {
     window.innerWidth = 1400
     fireEvent(window, new Event("resize"))
 
-    expect(screen.getAllByRole("button", { name: "تصغير الشريط الجانبي" })[0]).toBeTruthy()
+    expect(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]).toBeTruthy()
   })
 
   it("does not resubmit workplace links when worker placement stays unchanged", async () => {
