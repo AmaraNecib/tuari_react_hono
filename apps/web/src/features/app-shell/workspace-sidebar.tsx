@@ -52,6 +52,8 @@ type WorkspaceSidebarPage =
   | "outbound-transfer-create-v2"
   | "transfer-history"
   | "roles"
+  | "outbound-transfer-create-v2"
+  | "transfer-history"
   | "settings"
 
 type WorkspaceSidebarProps = {
