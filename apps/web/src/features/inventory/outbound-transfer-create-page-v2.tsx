@@ -179,7 +179,6 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
                 value={counterpartyId}
                 onChange={setCounterpartyId}
                 options={counterparties.map((c) => ({ id: c.id, name: c.fullName }))}
-                displayValue={counterparties.find((c) => c.id === counterpartyId)?.fullName ?? ""}
                 emptyLabel={t("inventory.transfer.selectCounterparty", "اختر الطرف الخارجي")}
                 createLabel={t("inventory.transfer.createCounterparty", "إنشاء طرف خارجي")}
                 createFields={[
