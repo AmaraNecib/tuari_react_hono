@@ -27,6 +27,7 @@ import {
   inventoryTransferHistoryInputSchema,
 } from "./inventory"
 
+/** Inventory RPC contract defining all inventory API procedures. */
 export const inventoryContract = {
   inventoryItemDefinitionsList: oc
     .input(inventoryItemDefinitionListInputSchema)

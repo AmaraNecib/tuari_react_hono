@@ -204,6 +204,7 @@ function resolveLocationLabelByIds(database: BetterSqliteDatabase, warehouseId?:
 // ---------------------------------------------------------------------------
 
 /** Inventory persistence interface. */
+/** Repository interface for inventory data access. */
 export interface InventoryRepository {
   withTransaction<T>(callback: () => T): T
   listItemDefinitions(filters?: InventoryItemDefinitionListFilters): InventoryItemDefinitionRecord[]
@@ -253,6 +254,9 @@ export interface InventoryRepository {
  *
  * Uses Drizzle query builders for type-safe reads/writes, plus raw
  * better-sqlite3 handle for transactions and location label resolution.
+ */
+/**
+ * Drizzle-backed inventory repository implementation.
  */
 export class DrizzleInventoryRepository implements InventoryRepository {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -28,6 +28,7 @@ type MultiSourceItemPickerProps = {
   onItemsChange: (items: SelectedItem[]) => void
 }
 
+/** MultiSourceItemPicker component. */
 export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemPickerProps) {
   const { t } = useTranslation()
   const warehousesQuery = useInventoryWarehousesQuery()

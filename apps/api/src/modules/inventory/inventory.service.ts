@@ -118,6 +118,9 @@ const MAX_INVOICE_ATTACHMENT_COUNT = 10
 const MAX_INVOICE_ATTACHMENT_SIZE = 5 * 1024 * 1024
 const MAX_INVOICE_ATTACHMENT_TOTAL_SIZE = 15 * 1024 * 1024
 
+/**
+ * Inventory service handling item definitions, movements, invoices, transfers, and location contents.
+ */
 export class InventoryService {
   constructor(
     private readonly repository: InventoryRepository,
@@ -140,6 +143,7 @@ export class InventoryService {
     return audit
   }
 
+/** List item definitions with optional filters. */
   listItemDefinitions(filters?: { itemType?: "CONSUMABLE" | "ASSET"; isActive?: boolean }) {
     return { items: this.repository.listItemDefinitions(filters) }
   }
@@ -153,6 +157,7 @@ export class InventoryService {
     return successResult("تم تحميل تعريف العنصر بنجاح.", item)
   }
 
+/** Create a new item definition. */
   createItemDefinition(input: InventoryItemDefinitionCreateInput, auditContext?: MutationAuditContext) {
     const audit = this.createMutationAuditContext(auditContext)
 
@@ -166,6 +171,7 @@ export class InventoryService {
     return successResult("تم إنشاء تعريف العنصر بنجاح.", item)
   }
 
+/** Update an existing item definition. */
   updateItemDefinition(input: InventoryItemDefinitionUpdateInput, auditContext?: MutationAuditContext) {
     const audit = this.createMutationAuditContext(auditContext)
 
@@ -197,10 +203,12 @@ export class InventoryService {
     return successResult("تم تحديث تعريف العنصر بنجاح.", item!)
   }
 
+/** List invoice groups with optional filters. */
   listInvoiceGroups(filters?: { warehouseId?: string; projectId?: string }) {
     return { items: this.repository.listInvoiceGroups(filters) }
   }
 
+/** Get a single invoice group by ID. */
   getInvoiceGroup(id: string) {
     const group = this.repository.getInvoiceGroupById(id)
     if (!group) {
@@ -216,6 +224,7 @@ export class InventoryService {
     })
   }
 
+/** Create a new invoice group. */
   createInvoiceGroup(input: InventoryInvoiceGroupCreateInput, auditContext?: MutationAuditContext) {
     const audit = this.createMutationAuditContext(auditContext)
 
@@ -486,6 +495,7 @@ export class InventoryService {
     return this.createInvoiceGroup(input, auditContext)
   }
 
+/** Get inventory contents at a specific warehouse or project location. */
   getLocationContents(input: { warehouseId?: string | null; projectId?: string | null }) {
     validateSingleDestination(input.warehouseId ?? null, input.projectId ?? null, "warehouseId")
 
@@ -716,6 +726,7 @@ export class InventoryService {
     }
   }
 
+/** Record a payment against an invoice group. */
   recordInvoicePayment(input: { invoiceGroupId: string; amountDzd: number; note?: string }, auditContext?: MutationAuditContext) {
     if (!this.debtService) {
       throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
@@ -762,6 +773,7 @@ export class InventoryService {
     })
   }
 
+/** Create an outbound transfer. */
   createOutboundTransfer(input: { fromType: "WAREHOUSE" | "PROJECT"; fromId: string; counterpartyId: string; transferType: "SALE" | "GIFT" | "RETURN"; items: Array<{ itemId: string; quantity: number; unitPriceDzd?: number }>; debtAmountDzd?: number; notes?: string }, auditContext?: MutationAuditContext) {
     if (!this.debtService) {
       throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
@@ -862,10 +874,12 @@ export class InventoryService {
     })
   }
 
+/** List all outbound transfers. */
   listOutboundTransfers() {
     return this.repository.listOutboundTransfers()
   }
 
+/** List inventory transfer history with optional location and movement type filters. */
   listTransferHistory(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }) {
     if (input.warehouseId || input.projectId) {
       // Location-specific transfer history
@@ -892,6 +906,7 @@ export class InventoryService {
     }
   }
 
+/** Get a single outbound transfer by ID. */
   getOutboundTransferById(id: string) {
     const transfer = this.repository.getOutboundTransferById(id)
     if (!transfer) {

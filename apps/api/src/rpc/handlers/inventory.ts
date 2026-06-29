@@ -1,3 +1,4 @@
+/** Inventory RPC handler registrations. */
 import { implement } from "@orpc/server";
 
 import { appContract } from "@tuari/contracts";
