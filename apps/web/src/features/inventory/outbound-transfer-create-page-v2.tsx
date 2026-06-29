@@ -65,6 +65,7 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
   const createCounterpartyMutation = useCreateExternalCounterpartyMutation()
 
   const [counterpartyId, setCounterpartyId] = useState("")
+  const [counterpartyDisplayName, setCounterpartyDisplayName] = useState("")
   const [transferType, setTransferType] = useState<"SALE" | "GIFT" | "RETURN">("SALE")
   const [items, setItems] = useState<SelectedItem[]>([])
   const [notes, setNotes] = useState("")
@@ -177,9 +178,13 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
               <span className="font-medium">{t("inventory.transfer.counterparty", "الطرف الخارجي")} *</span>
               <CreateableSelect
                 value={counterpartyId}
-                onChange={setCounterpartyId}
+                onChange={(val) => {
+                  setCounterpartyId(val)
+                  const found = counterparties.find((c) => c.id === val)
+                  if (found) setCounterpartyDisplayName(found.fullName)
+                }}
                 options={counterparties.map((c) => ({ id: c.id, name: c.fullName }))}
-                displayValue={counterparties.find((c) => c.id === counterpartyId)?.fullName ?? ""}
+                displayValue={counterpartyDisplayName}
                 emptyLabel={t("inventory.transfer.selectCounterparty", "اختر الطرف الخارجي")}
                 createLabel={t("inventory.transfer.createCounterparty", "إنشاء طرف خارجي")}
                 createFields={[
@@ -193,7 +198,9 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
                     note: null,
                   })
                   const item = result.item as { id: string; fullName: string | null } | undefined
-                  return { id: item?.id ?? "", name: item?.fullName ?? "" }
+                  const name = item?.fullName ?? data.fullName ?? ""
+                  setCounterpartyDisplayName(name)
+                  return { id: item?.id ?? "", name }
                 }}
               />
             </label>

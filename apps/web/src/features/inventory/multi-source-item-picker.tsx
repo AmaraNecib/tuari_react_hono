@@ -119,7 +119,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
     const newItems = [...items]
     const item = newItems[index]
     if (item && item.quantity > 0) {
-      newItems[index] = { ...item, unitPrice: Math.max(0, Math.round(total / item.quantity * 100) / 100) }
+      newItems[index] = { ...item, unitPrice: Math.max(0, total / item.quantity) }
       onItemsChange(newItems)
     }
   }

@@ -132,7 +132,7 @@ export function CreateableSelect({
         <SelectTrigger className={className}>
           <SelectValue
             placeholder={resolvedEmptyLabel}
-            children={displayValue ?? undefined}
+            children={displayValue && displayValue.length > 0 ? displayValue : undefined}
           />
         </SelectTrigger>
         <SelectContent>
