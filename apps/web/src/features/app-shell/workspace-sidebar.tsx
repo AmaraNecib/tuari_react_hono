@@ -271,9 +271,10 @@ export function WorkspaceSidebar({
           <Tooltip>
             <TooltipTrigger
               render={
-                <div
+                <button
                   className="w-[1.625rem] h-[1.625rem] rounded-full grid place-items-center text-white text-[0.6875rem] font-semibold flex-shrink-0 bg-primary cursor-pointer"
                   onClick={() => onSetCollapsed(false)}
+                  aria-label={expandLabel}
                 />
               }
             >

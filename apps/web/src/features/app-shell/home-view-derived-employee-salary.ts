@@ -43,7 +43,7 @@ export function buildEmployeeSalaryCollections({
       return {
         ...payment,
         employeeName: employee ? formatName(employee) : detailCopy.shared.activeWorkerMissing,
-        employeePhone: employee?.phone ?? copy.shell.noManager,
+        employeePhone: employee?.phone ?? "—",
         employeeRole: getArabicRoleLabel(role ?? null),
       }
     })
