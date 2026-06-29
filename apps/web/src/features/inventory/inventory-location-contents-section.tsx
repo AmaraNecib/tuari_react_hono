@@ -5,7 +5,7 @@ import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
-import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { SurfaceHeader } from "@/features/shared/page-primitives"
 
 import { useInventoryLocationContentsQuery } from "./inventory-hooks"
 import { TransferItemDialog, type TransferTarget } from "./transfer-item-dialog"

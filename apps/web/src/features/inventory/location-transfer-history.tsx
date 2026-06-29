@@ -6,7 +6,6 @@ import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
-import { NativeSelect } from "@/components/ui/form-controls"
 import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useLocationTransferHistoryQuery, type TransferHistoryItem } from "./transfer-history-hooks"
 

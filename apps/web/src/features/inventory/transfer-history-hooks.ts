@@ -61,8 +61,10 @@ export function useTransferHistoryQuery(filters: TransferHistoryFilters = {}) {
   return useQuery({
     queryKey: transferHistoryKeys.filtered(filters),
     queryFn: async (): Promise<{ items: TransferHistoryItem[] }> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await rpcClient.inventoryTransferHistoryList(filters)
       // Map InventoryMovement to TransferHistoryItem
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const items: TransferHistoryItem[] = (result.items ?? []).map((movement: any) => ({
         id: movement.id,
         date: movement.occurredAt,
@@ -107,6 +109,7 @@ export function useLocationTransferHistoryQuery(
         : { projectId: locationId }
       const result = await rpcClient.inventoryTransferHistoryList(input)
       // Map InventoryMovement to TransferHistoryItem
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const items: TransferHistoryItem[] = (result.items ?? []).map((movement: any) => ({
         id: movement.id,
         date: movement.occurredAt,

@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
-import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useInventoryWarehousesQuery, useInventoryProjectsQuery, useInventoryLocationContentsQuery } from "./inventory-hooks"
 
 export type SelectedItem = {

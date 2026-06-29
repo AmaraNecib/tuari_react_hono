@@ -18,14 +18,9 @@ import {
 import {
   useCreateOutboundTransferMutation,
   useInventoryExternalCounterpartiesQuery,
-  useInventoryWarehousesQuery,
-  useInventoryProjectsQuery,
-  uploadInvoiceAttachments,
 } from "./inventory-hooks"
 import {
   useCreateExternalCounterpartyMutation,
-  useCreateWarehouseMutation,
-  useCreateProjectMutation,
 } from "@/features/app-shell/workspace-mutations"
 
 type PaymentType = "CASH" | "DEBT"
@@ -72,7 +67,7 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
   const [transferType, setTransferType] = useState<"SALE" | "GIFT" | "RETURN">("SALE")
   const [items, setItems] = useState<SelectedItem[]>([])
   const [notes, setNotes] = useState("")
-  const [files, setFiles] = useState<File[]>([])
+  const [, setFiles] = useState<File[]>([])
 
   // Payment state
   const [paymentType, setPaymentType] = useState<PaymentType>("CASH")
@@ -144,7 +139,7 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
       // For now, we'll skip this or use the last transfer ID
 
       onBack()
-    } catch (error) {
+    } catch {
       // Error is handled by the mutation
     }
   }
