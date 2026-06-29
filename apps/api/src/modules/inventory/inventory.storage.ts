@@ -7,6 +7,7 @@ function sanitizeFileName(fileName: string) {
   return normalized.length > 0 ? normalized : "file"
 }
 
+/** InventoryAttachmentStorage. */
 export class InventoryAttachmentStorage {
   private readonly rootPath: string
 

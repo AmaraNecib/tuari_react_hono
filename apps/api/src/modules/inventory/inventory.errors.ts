@@ -1,5 +1,6 @@
 import type { AppError, AppErrorCode } from "@tuari/contracts"
 
+/** InventoryError. */
 export class InventoryError extends Error {
   readonly appError: AppError
 
@@ -14,6 +15,7 @@ export class InventoryError extends Error {
   }
 }
 
+/** toFailureResult. */
 export function toFailureResult<T>(error: unknown) {
   if (error instanceof InventoryError) {
     return {
