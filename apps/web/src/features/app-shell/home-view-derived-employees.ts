@@ -323,7 +323,6 @@ export function buildEmployeeDerivedCollections({
       workspace,
     }),
     ...buildEmployeeSalaryCollections({
-      copy,
       detailCopy,
       employeeRows,
       lookups,

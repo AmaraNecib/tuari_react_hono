@@ -30,7 +30,7 @@ export function AppShellSectionBody({ children, className }: { children: ReactNo
  */
 export function AppShellTableFrame({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("overflow-hidden rounded-xl border border-line", className)} dir="rtl">
+    <div className={cn("overflow-hidden", className)} dir="rtl">
       <div className="overflow-x-auto">{children}</div>
     </div>
   )
@@ -41,7 +41,7 @@ export function AppShellTableFrame({ children, className }: { children: ReactNod
  */
 export function AppShellTableHead({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <thead className={cn("bg-bg-2 border-b border-line", className)}>
+    <thead className={cn("border-b border-line", className)}>
       {children}
     </thead>
   )

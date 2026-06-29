@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Field } from "@/components/ui/field"
 import { SurfaceHeader } from "@/features/shared/page-primitives"
+import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 
@@ -166,10 +167,41 @@ export function SettingsSection({
     }
   }
 
+  const [activeTab, setActiveTab] = useUrlTab(
+    ['account', 'appearance', 'system'] as const,
+    'account'
+  )
+
   return (
     <RecordPageFrame title={title}>
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div className="p-5 xl:col-span-2 border border-line rounded-xl">
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-line mb-6">
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'account' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveTab('account')}
+        >
+          {t('settings.tabs.account', 'معلومات الحساب')}
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'appearance' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveTab('appearance')}
+        >
+          {t('settings.tabs.appearance', 'المظهر')}
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'system' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveTab('system')}
+        >
+          {t('settings.tabs.system', 'النظام')}
+        </button>
+      </div>
+
+      {/* Account Tab */}
+      {activeTab === 'account' && (
+        <div className="p-5 border border-line rounded-xl">
           <form className="space-y-5" onSubmit={(event) => void handleSave(event)}>
             <SurfaceHeader description={accountDescription} title={accountTitle} />
             <div className="grid gap-4 md:grid-cols-2">
@@ -211,6 +243,10 @@ export function SettingsSection({
             </div>
           </form>
         </div>
+      )}
+
+      {/* Appearance Tab */}
+      {activeTab === 'appearance' && (
         <div className="p-5 border border-line rounded-xl">
           <div className="flex items-start justify-between gap-4" dir="rtl">
             <div className="text-start">
@@ -222,18 +258,42 @@ export function SettingsSection({
             </Button>
           </div>
         </div>
-        <div className="p-5 border border-line rounded-xl">
-          <div className="flex items-start justify-between gap-4" dir="rtl">
-            <div className="text-start">
-              <h3 className="text-lg font-semibold text-foreground">{resetLabel}</h3>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{resetDescription}</p>
+      )}
+
+      {/* System Tab */}
+      {activeTab === 'system' && (
+        <div className="space-y-4">
+          <div className="p-5 border border-line rounded-xl">
+            <div className="flex items-start justify-between gap-4" dir="rtl">
+              <div className="text-start">
+                <h3 className="text-lg font-semibold text-foreground">{resetLabel}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{resetDescription}</p>
+              </div>
+              <Button disabled={isResetPending} type="button" variant="outline" onClick={onReset}>
+                {resetLabel}
+              </Button>
             </div>
-            <Button disabled={isResetPending} type="button" variant="outline" onClick={onReset}>
-              {resetLabel}
-            </Button>
+          </div>
+          <div className="p-5 border border-line rounded-xl">
+            <div className="text-start">
+              <h3 className="text-lg font-semibold text-foreground">{t('settings.database.export', 'تصدير قاعدة البيانات')}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('settings.database.exportDescription', 'تصدير جميع البيانات إلى ملف')}</p>
+              <Button type="button" variant="outline" className="mt-4">
+                {t('settings.database.exportButton', 'تصدير')}
+              </Button>
+            </div>
+          </div>
+          <div className="p-5 border border-line rounded-xl">
+            <div className="text-start">
+              <h3 className="text-lg font-semibold text-foreground">{t('settings.database.import', 'استيراد قاعدة البيانات')}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('settings.database.importDescription', 'استيراد البيانات من ملف محفوظ')}</p>
+              <Button type="button" variant="outline" className="mt-4">
+                {t('settings.database.importButton', 'استيراد')}
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </RecordPageFrame>
   )
 }
