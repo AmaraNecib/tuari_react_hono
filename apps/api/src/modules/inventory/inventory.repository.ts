@@ -240,7 +240,7 @@ export interface InventoryRepository {
   createOutboundTransfer(data: InventoryOutboundTransferCreateData, auditContext?: MutationAuditContext): InventoryOutboundTransferRecord
   listOutboundTransfers(): InventoryOutboundTransferRecord[]
   getOutboundTransferById(id: string): InventoryOutboundTransferRecord | null
-  listMovementsByLocation(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; limit?: number }): InventoryMovementRecord[]
+  listMovementsByLocation(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }): InventoryMovementRecord[]
   listAllMovements(input: { dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }): InventoryMovementRecord[]
 }
 
@@ -601,7 +601,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       .all().map(mapMovement)
   }
 
-  listMovementsByLocation(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; limit?: number }) {
+  listMovementsByLocation(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }) {
     const conditions = []
 
     if (input.warehouseId) {
@@ -622,6 +622,10 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
     if (input.dateTo) {
       conditions.push(sql`${schema.inventoryMovement.occurredAt} <= ${input.dateTo}`)
+    }
+
+    if (input.movementType) {
+      conditions.push(sql`${schema.inventoryMovement.movementType} = ${input.movementType}`)
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined
