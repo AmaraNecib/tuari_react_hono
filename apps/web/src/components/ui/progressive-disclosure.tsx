@@ -26,7 +26,7 @@ interface ProgressiveDisclosureProps {
 export function ProgressiveDisclosure({
   primary,
   secondary,
-  toggleLabel = "Show more",
+  toggleLabel,
   defaultExpanded = false,
   className,
 }: ProgressiveDisclosureProps) {

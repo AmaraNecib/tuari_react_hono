@@ -16,6 +16,7 @@ import {
 } from "./inventory-hooks"
 import { RecordInvoicePaymentDialog } from "./record-invoice-payment-dialog"
 
+/** buildLocationHref - helper function. */
 function buildLocationHref(location: { warehouseId?: string | null; projectId?: string | null }) {
   if (location.warehouseId) {
     return `/warehouses/${encodeURIComponent(location.warehouseId)}?tab=items`

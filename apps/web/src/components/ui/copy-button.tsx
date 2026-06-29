@@ -26,6 +26,7 @@ export function CopyButton({ text, className, size = "icon-sm" }: CopyButtonProp
 
   return (
     <Button
+      type="button"
       variant="ghost"
       size={size}
       className={cn(

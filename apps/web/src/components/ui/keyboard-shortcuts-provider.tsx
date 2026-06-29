@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useCallback, type ReactNode } from "react"
+import { useEffect, useCallback, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 // ============ Types ============
@@ -11,13 +11,6 @@ interface ShortcutDefinition {
   /** Whether this shortcut works in input fields */
   allowInInput?: boolean
 }
-
-interface KeyboardShortcutsContextValue {
-  registerShortcut: (key: string, handler: () => void) => void
-  unregisterShortcut: (key: string) => void
-}
-
-const KeyboardShortcutsContext = createContext<KeyboardShortcutsContextValue | null>(null)
 
 interface KeyboardShortcutsProviderProps {
   children: ReactNode
@@ -40,14 +33,22 @@ function parseKeyCombo(combo: string): { key: string; ctrl: boolean; shift: bool
 
 /**
  * Check if a keyboard event matches a shortcut combo.
+ * Rejects unexpected Ctrl/Cmd usage for shortcuts that don't require it.
  */
 function matchesShortcut(event: KeyboardEvent, combo: string): boolean {
   const parsed = parseKeyCombo(combo)
   const isMod = event.metaKey || event.ctrlKey
   
+  // If shortcut requires a modifier, check it's present
   if (parsed.ctrl && !isMod) return false
   if (parsed.shift && !event.shiftKey) return false
   if (parsed.alt && !event.altKey) return false
+  
+  // Mod-key exclusivity: if shortcut does NOT require a modifier,
+  // reject when Ctrl/Cmd IS held (prevents Ctrl+K from matching bare "K")
+  if (!parsed.ctrl && isMod) return false
+  // Same for Alt: if shortcut does NOT require Alt, reject when Alt IS held
+  if (!parsed.alt && event.altKey) return false
   
   return event.key.toLowerCase() === parsed.key
 }
@@ -98,23 +99,7 @@ export function KeyboardShortcutsProvider({
 }: KeyboardShortcutsProviderProps) {
   useKeyboardShortcuts(shortcuts)
 
-  return (
-    <KeyboardShortcutsContext.Provider value={{ registerShortcut: () => {}, unregisterShortcut: () => {} }}>
-      {children}
-    </KeyboardShortcutsContext.Provider>
-  )
-}
-
-/**
- * Hook to access keyboard shortcuts context.
- * Must be used within KeyboardShortcutsProvider.
- */
-export function useKeyboardShortcutsContext() {
-  const context = useContext(KeyboardShortcutsContext)
-  if (!context) {
-    throw new Error("useKeyboardShortcutsContext must be used within KeyboardShortcutsProvider")
-  }
-  return context
+  return <>{children}</>
 }
 
 // ============ Help Dialog ============

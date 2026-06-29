@@ -30,6 +30,8 @@ export type WorkspaceRouteTarget =
   | { to: "/invoices/$invoiceId"; params: { invoiceId: string } }
   | { to: "/outbound-transfers" }
   | { to: "/outbound-transfers/create" }
+  | { to: "/outbound-transfers/create-v2" }
+  | { to: "/transfer-history" }
   | { to: "/transactions" }
   | { to: "/roles" }
   | { to: "/settings" }
@@ -94,6 +96,8 @@ export const workspaceRoutes = {
   invoiceDetails: (invoiceId: string): WorkspaceRouteTarget => ({ to: "/invoices/$invoiceId", params: { invoiceId } }),
   outboundTransfers: (): WorkspaceRouteTarget => ({ to: "/outbound-transfers" }),
   outboundTransferCreate: (): WorkspaceRouteTarget => ({ to: "/outbound-transfers/create" }),
+  outboundTransferCreateV2: (): WorkspaceRouteTarget => ({ to: "/outbound-transfers/create-v2" }),
+  transferHistory: (): WorkspaceRouteTarget => ({ to: "/transfer-history" }),
   warehouseDetails: (warehouseId: string): WorkspaceRouteTarget => ({
     to: "/warehouses/$warehouseId",
     params: { warehouseId },

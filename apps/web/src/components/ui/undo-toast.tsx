@@ -48,6 +48,7 @@ export function useUndo<T = unknown>({
   onUndo,
   onExpire,
 }: UseUndoOptions<T>): UseUndoReturn<T> {
+  const { t } = useTranslation()
   const [pendingAction, setPendingAction] = useState<UndoableAction<T> | null>(null)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -69,7 +70,7 @@ export function useUndo<T = unknown>({
       toast(action.description, {
         duration,
         action: {
-          label: "تراجع",
+          label: t("common.undo"),
           onClick: async () => {
             await onUndo(action.data)
             clearUndo()

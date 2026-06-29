@@ -54,6 +54,7 @@ type AssetLine = {
 
 type LineState = ConsumableLine | AssetLine
 
+/** FieldLabel - helper function. */
 function FieldLabel({ label, required = false }: { label: string; required?: boolean }) {
   return (
     <span>
@@ -63,18 +64,22 @@ function FieldLabel({ label, required = false }: { label: string; required?: boo
   )
 }
 
+/** getTodayDateValue - helper function. */
 function getTodayDateValue() {
   return new Date().toISOString().slice(0, 10)
 }
 
+/** createConsumableLine - helper function. */
 function createConsumableLine(): ConsumableLine {
   return { kind: "CONSUMABLE", itemDefinitionId: "", warehouseId: "", projectId: "", quantity: "1", unitPriceDzd: "0", totalPriceDzd: "0", note: "" }
 }
 
+/** createAssetRow - helper function. */
 function createAssetRow(defaultName = "", purchaseDate = getTodayDateValue()): AssetRow {
   return { assetName: defaultName, assetTag: "", serialNumber: "", condition: "NEW", purchaseDate, purchasePriceDzd: "0", note: "" }
 }
 
+/** createAssetLine - helper function. */
 function createAssetLine(defaultName = "", purchaseDate = getTodayDateValue()): AssetLine {
   return { kind: "ASSET", itemDefinitionId: "", warehouseId: "", projectId: "", note: "", assets: [createAssetRow(defaultName, purchaseDate)] }
 }
@@ -115,10 +120,12 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   const selectedDefinitions = useMemo(() => new Map(definitions.map((item) => [item.id, item])), [definitions])
   const selectedCounterparty = counterparties.find((counterparty) => counterparty.id === externalCounterpartyId) ?? null
 
+/** updateLine - helper function. */
   function updateLine(index: number, next: LineState) {
     setLines((current) => current.map((line, lineIndex) => (lineIndex === index ? next : line)))
   }
 
+/** validateForm - helper function. */
   function validateForm() {
     if (warehouseId && projectId) {
       return "اختر مستودعًا أو مشروعًا واحدًا فقط كوجهة افتراضية."
