@@ -149,6 +149,7 @@ export class InventoryService {
     return { items: this.repository.listItemDefinitions(filters) }
   }
 
+  /** getItemDefinition. */
   getItemDefinition(id: string) {
     const item = this.repository.getItemDefinitionById(id)
     if (!item) {
@@ -492,6 +493,7 @@ export class InventoryService {
     return successResult("تم إنشاء الفاتورة والعناصر المرتبطة بها بنجاح.", detail)
   }
 
+  /** receiveInventory. */
   receiveInventory(input: InventoryInvoiceGroupCreateInput, auditContext?: MutationAuditContext) {
     return this.createInvoiceGroup(input, auditContext)
   }
@@ -506,6 +508,7 @@ export class InventoryService {
     })
   }
 
+  /** getAsset. */
   getAsset(id: string) {
     const asset = this.repository.getAssetUnitById(id)
     if (!asset) {
@@ -525,6 +528,7 @@ export class InventoryService {
     })
   }
 
+  /** transferAsset. */
   transferAsset(input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
     this.createMutationAuditContext(auditContext)
 
@@ -564,6 +568,7 @@ export class InventoryService {
     return this.getAsset(asset.id)
   }
 
+  /** transferConsumable. */
   transferConsumable(input: { inventoryEntryId: string; quantity: number; fromWarehouseId?: string | null; fromProjectId?: string | null; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
     this.createMutationAuditContext(auditContext)
 

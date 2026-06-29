@@ -11,6 +11,7 @@ import { NativeSelect } from "@/components/ui/form-controls"
 import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader, StatBand } from "@/features/shared/page-primitives"
 import { useTransferHistoryQuery, type TransferHistoryFilters, type TransferHistoryItem } from "./transfer-history-hooks"
 
+/** formatDate - helper function. */
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString("ar-DZ", {
     year: "numeric",
@@ -19,10 +20,12 @@ function formatDate(dateString: string): string {
   })
 }
 
+/** formatCurrency - helper function. */
 function formatCurrency(amount: number): string {
   return amount.toLocaleString("ar-DZ")
 }
 
+/** getTransferTypeLabel - helper function. */
 function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
   const labels: Record<string, string> = {
     INTERNAL: "تحويل داخلي",
@@ -33,6 +36,7 @@ function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
   return labels[type] ?? type
 }
 
+/** getTransferTypeColor - helper function. */
 function getTransferTypeColor(type: TransferHistoryItem["type"]): string {
   const colors: Record<string, string> = {
     INTERNAL: "bg-ink/10 text-ink",
@@ -43,6 +47,7 @@ function getTransferTypeColor(type: TransferHistoryItem["type"]): string {
   return colors[type] ?? "bg-ink/10 text-ink"
 }
 
+/** getPaymentStatusLabel - helper function. */
 function getPaymentStatusLabel(status: TransferHistoryItem["paymentStatus"]): string {
   const labels: Record<string, string> = {
     PAID: "مدفوع",
@@ -53,6 +58,7 @@ function getPaymentStatusLabel(status: TransferHistoryItem["paymentStatus"]): st
   return labels[status ?? "N/A"] ?? "—"
 }
 
+/** getPaymentStatusColor - helper function. */
 function getPaymentStatusColor(status: TransferHistoryItem["paymentStatus"]): string {
   const colors: Record<string, string> = {
     PAID: "text-good",
@@ -228,6 +234,7 @@ export function TransferHistoryPage() {
   )
 }
 
+/** TransferHistoryItem - helper function. */
 function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
   const { t } = useTranslation()
 

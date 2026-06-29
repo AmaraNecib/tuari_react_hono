@@ -311,6 +311,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   // ── Item Definitions ────────────────────────────────────────────────
 
+  /** listItemDefinitions. */
   listItemDefinitions(filters?: InventoryItemDefinitionListFilters) {
     const conditions: ReturnType<typeof eq>[] = []
     if (filters?.itemType) conditions.push(eq(schema.inventoryItemDefinition.itemType, filters.itemType))
@@ -323,6 +324,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return rows.map(mapItemDefinition)
   }
 
+  /** getItemDefinitionById. */
   getItemDefinitionById(id: string) {
     const row = this.db.select().from(schema.inventoryItemDefinition)
       .where(eq(schema.inventoryItemDefinition.id, id))
@@ -330,6 +332,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return row ? mapItemDefinition(row) : null
   }
 
+  /** createItemDefinition. */
   createItemDefinition(data: InventoryItemDefinitionCreateData, auditContext?: MutationAuditContext) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
@@ -343,6 +346,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return this.getItemDefinitionById(id)!
   }
 
+  /** updateItemDefinition. */
   updateItemDefinition(data: InventoryItemDefinitionUpdateData, _auditContext?: MutationAuditContext) {
     const current = this.getItemDefinitionById(data.id)
     if (!current) return null
@@ -367,18 +371,21 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   // ── Existence checks ────────────────────────────────────────────────
 
+  /** warehouseExists. */
   warehouseExists(id: string) {
     return this.db.select({ id: schema.warehouse.id }).from(schema.warehouse)
       .where(eq(schema.warehouse.id, id))
       .limit(1).all().length > 0
   }
 
+  /** projectExists. */
   projectExists(id: string) {
     return this.db.select({ id: schema.project.id }).from(schema.project)
       .where(eq(schema.project.id, id))
       .limit(1).all().length > 0
   }
 
+  /** externalCounterpartyExists. */
   externalCounterpartyExists(id: string) {
     return this.db.select({ id: schema.externalCounterparty.id }).from(schema.externalCounterparty)
       .where(eq(schema.externalCounterparty.id, id))
@@ -387,6 +394,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   // ── Invoice Groups ──────────────────────────────────────────────────
 
+  /** listInvoiceGroups. */
   listInvoiceGroups(filters?: InventoryInvoiceGroupListFilters) {
     const conditions: ReturnType<typeof eq>[] = []
     if (filters?.warehouseId) conditions.push(eq(schema.inventoryInvoiceGroup.warehouseId, filters.warehouseId))
@@ -398,6 +406,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       .all().map(mapInvoiceGroup)
   }
 
+  /** getLatestInvoiceNumber. */
   getLatestInvoiceNumber() {
     const row = this.db.select({ invoiceNumber: schema.inventoryInvoiceGroup.invoiceNumber })
       .from(schema.inventoryInvoiceGroup)
@@ -410,6 +419,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return row?.invoiceNumber ?? null
   }
 
+  /** getInvoiceGroupById. */
   getInvoiceGroupById(id: string) {
     const row = this.db.select().from(schema.inventoryInvoiceGroup)
       .where(eq(schema.inventoryInvoiceGroup.id, id))
@@ -417,6 +427,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return row ? mapInvoiceGroup(row) : null
   }
 
+  /** createInvoiceGroup. */
   createInvoiceGroup(data: InventoryInvoiceGroupCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
@@ -431,6 +442,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return this.getInvoiceGroupById(id)!
   }
 
+  /** updateInvoiceGroupPayment. */
   updateInvoiceGroupPayment(id: string, paidAmountDzd: number, remainingDebtDzd: number, _auditContext?: MutationAuditContext) {
     this.db.update(schema.inventoryInvoiceGroup).set({
       paidAmountDzd, remainingDebtDzd, updatedAt: createAlgeriaTimestamp(),
@@ -440,6 +452,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   // ── Entries ─────────────────────────────────────────────────────────
 
+  /** listEntriesByInvoiceGroupId. */
   listEntriesByInvoiceGroupId(invoiceGroupId: string) {
     const assetRows = this.db.select().from(schema.inventoryAssetUnit)
       .where(inArray(schema.inventoryAssetUnit.inventoryEntryId, sql`(SELECT id FROM inventory_entry WHERE invoice_group_id = ${invoiceGroupId})`))
@@ -458,6 +471,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return rows.map((row) => mapEntry(row, assetsByEntryId.get(String(row.id)) ?? []))
   }
 
+  /** getEntryById. */
   getEntryById(id: string) {
     const row = this.db.select().from(schema.inventoryEntry)
       .where(eq(schema.inventoryEntry.id, id))
@@ -469,6 +483,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return mapEntry(row, assets)
   }
 
+  /** createEntry. */
   createEntry(data: InventoryEntryCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
@@ -485,6 +500,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   // ── Asset Units ─────────────────────────────────────────────────────
 
+  /** createAssetUnit. */
   createAssetUnit(data: InventoryAssetUnitCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
@@ -502,6 +518,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return mapAssetUnit(row!)
   }
 
+  /** getAssetUnitById. */
   getAssetUnitById(id: string) {
     const row = this.db.select().from(schema.inventoryAssetUnit)
       .where(eq(schema.inventoryAssetUnit.id, id))
@@ -509,6 +526,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return row ? mapAssetUnit(row) : null
   }
 
+  /** updateAssetUnitLocation. */
   updateAssetUnitLocation(id: string, location: { currentWarehouseId?: string | null; currentProjectId?: string | null; currentLocationLabel?: string | null }) {
     this.db.update(schema.inventoryAssetUnit).set({
       currentWarehouseId: location.currentWarehouseId ?? null,
@@ -519,6 +537,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return this.getAssetUnitById(id)
   }
 
+  /** listAssetUnitsByLocation. */
   listAssetUnitsByLocation(filters: { warehouseId?: string; projectId?: string }) {
     const condition = filters.warehouseId
       ? eq(schema.inventoryAssetUnit.currentWarehouseId, filters.warehouseId)
@@ -531,6 +550,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   // ── Consumable Balances ─────────────────────────────────────────────
 
+  /** createConsumableBalance. */
   createConsumableBalance(data: InventoryConsumableBalanceCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
@@ -544,6 +564,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     })!
   }
 
+  /** listConsumableBalancesByInvoiceGroupId. */
   listConsumableBalancesByInvoiceGroupId(invoiceGroupId: string) {
     const rows = this.raw.prepare(`
       SELECT b.*, e.item_name AS item_name,
@@ -559,6 +580,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return rows.map(mapConsumableBalance)
   }
 
+  /** listConsumableBalancesByLocation. */
   listConsumableBalancesByLocation(filters: { warehouseId?: string; projectId?: string }) {
     const locationCol = filters.warehouseId ? "b.warehouse_id" : "b.project_id"
     const rows = this.raw.prepare(`
@@ -574,6 +596,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return rows.map(mapConsumableBalance)
   }
 
+  /** getConsumableBalanceByEntryAndLocation. */
   getConsumableBalanceByEntryAndLocation(filters: { inventoryEntryId: string; warehouseId?: string | null; projectId?: string | null }) {
     let locationClause: string
     let locationParam: string | null
@@ -599,12 +622,14 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return row ? mapConsumableBalance(row) : null
   }
 
+  /** updateConsumableBalanceQuantity. */
   updateConsumableBalanceQuantity(id: string, quantity: number) {
     this.db.update(schema.inventoryConsumableBalance).set({
       quantity, updatedAt: createAlgeriaTimestamp(),
     }).where(eq(schema.inventoryConsumableBalance.id, id)).run()
   }
 
+  /** deleteConsumableBalance. */
   deleteConsumableBalance(id: string) {
     this.db.delete(schema.inventoryConsumableBalance)
       .where(eq(schema.inventoryConsumableBalance.id, id)).run()
@@ -612,6 +637,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   // ── Movements ───────────────────────────────────────────────────────
 
+  /** createMovement. */
   createMovement(data: InventoryMovementCreateData) {
     const id = crypto.randomUUID()
     const createdAt = createAlgeriaTimestamp()
@@ -628,6 +654,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return mapMovement(row!)
   }
 
+  /** listMovementsByInvoiceGroupId. */
   listMovementsByInvoiceGroupId(invoiceGroupId: string) {
     return this.db.select().from(schema.inventoryMovement)
       .where(inArray(schema.inventoryMovement.inventoryEntryId, sql`(SELECT id FROM inventory_entry WHERE invoice_group_id = ${invoiceGroupId})`))
@@ -635,6 +662,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       .all().map(mapMovement)
   }
 
+  /** listMovementsByAssetUnitId. */
   listMovementsByAssetUnitId(assetUnitId: string) {
     return this.db.select().from(schema.inventoryMovement)
       .where(eq(schema.inventoryMovement.assetUnitId, assetUnitId))
@@ -642,6 +670,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       .all().map(mapMovement)
   }
 
+  /** listMovementsByLocation. */
   listMovementsByLocation(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }) {
     const hasWarehouse = !!input.warehouseId
     const hasProject = !!input.projectId
@@ -684,6 +713,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       .all().map(mapMovement)
   }
 
+  /** listAllMovements. */
   listAllMovements(input: { dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }) {
     const conditions = []
 
@@ -710,6 +740,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   // ── Attachments ─────────────────────────────────────────────────────
 
+  /** listAttachmentsByInvoiceGroupId. */
   listAttachmentsByInvoiceGroupId(invoiceGroupId: string) {
     return this.db.select().from(schema.inventoryInvoiceAttachment)
       .where(eq(schema.inventoryInvoiceAttachment.invoiceGroupId, invoiceGroupId))
@@ -717,6 +748,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       .all().map(mapAttachment)
   }
 
+  /** createAttachment. */
   createAttachment(data: InventoryInvoiceAttachmentCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
@@ -728,6 +760,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return this.getAttachmentById(id)!
   }
 
+  /** getAttachmentById. */
   getAttachmentById(id: string) {
     const row = this.db.select().from(schema.inventoryInvoiceAttachment)
       .where(eq(schema.inventoryInvoiceAttachment.id, id))
@@ -737,6 +770,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   // ── Outbound Transfers ──────────────────────────────────────────────
 
+  /** createOutboundTransfer. */
   createOutboundTransfer(data: InventoryOutboundTransferCreateData, auditContext?: MutationAuditContext) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
@@ -759,12 +793,14 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return this.getOutboundTransferById(id)!
   }
 
+  /** listOutboundTransfers. */
   listOutboundTransfers() {
     return this.db.select().from(schema.inventoryOutboundTransfer)
       .orderBy(desc(schema.inventoryOutboundTransfer.transferDate), desc(schema.inventoryOutboundTransfer.createdAt))
       .all().map(mapOutboundTransfer)
   }
 
+  /** getOutboundTransferById. */
   getOutboundTransferById(id: string) {
     const row = this.db.select().from(schema.inventoryOutboundTransfer)
       .where(eq(schema.inventoryOutboundTransfer.id, id))

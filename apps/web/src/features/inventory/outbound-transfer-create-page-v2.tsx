@@ -26,6 +26,7 @@ import {
 type PaymentType = "CASH" | "DEBT"
 type FirstPaymentInputType = "AMOUNT" | "PERCENT"
 
+/** calculateDebt - helper function. */
 function calculateDebt(
   totalAmount: number,
   paymentType: PaymentType,

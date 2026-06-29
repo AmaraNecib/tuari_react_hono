@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useLocationTransferHistoryQuery, type TransferHistoryItem } from "./transfer-history-hooks"
 
+/** formatDate - helper function. */
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString("ar-DZ", {
     year: "numeric",
@@ -17,6 +18,7 @@ function formatDate(dateString: string): string {
   })
 }
 
+/** getTransferTypeLabel - helper function. */
 function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
   const labels: Record<string, string> = {
     INTERNAL: "تحويل داخلي",
@@ -27,6 +29,7 @@ function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
   return labels[type] ?? type
 }
 
+/** getTransferTypeColor - helper function. */
 function getTransferTypeColor(type: TransferHistoryItem["type"]): string {
   const colors: Record<string, string> = {
     INTERNAL: "bg-ink/10 text-ink",
@@ -37,6 +40,7 @@ function getTransferTypeColor(type: TransferHistoryItem["type"]): string {
   return colors[type] ?? "bg-ink/10 text-ink"
 }
 
+/** getMovementDirection - helper function. */
 function getMovementDirection(
   transfer: TransferHistoryItem,
   locationId: string,
@@ -53,6 +57,7 @@ function getMovementDirection(
   return "BETWEEN"
 }
 
+/** getMovementLabel - helper function. */
 function getMovementLabel(direction: "INCOMING" | "OUTGOING" | "BETWEEN"): string {
   const labels: Record<string, string> = {
     INCOMING: "وارد",
@@ -62,6 +67,7 @@ function getMovementLabel(direction: "INCOMING" | "OUTGOING" | "BETWEEN"): strin
   return labels[direction] ?? "—"
 }
 
+/** getMovementColor - helper function. */
 function getMovementColor(direction: "INCOMING" | "OUTGOING" | "BETWEEN"): string {
   const colors: Record<string, string> = {
     INCOMING: "text-good",
@@ -136,6 +142,7 @@ export function LocationTransferHistory({ locationId, locationType }: LocationTr
   )
 }
 
+/** LocationTransferItem - helper function. */
 function LocationTransferItem({
   transfer,
   locationId,
