@@ -45,6 +45,8 @@ type CreateableSelectProps = {
   disabled?: boolean
   /** Additional className for the select */
   className?: string
+  /** Display text for the selected value (fallback when options haven't loaded yet) */
+  displayValue?: string
 }
 
 /**
@@ -66,6 +68,7 @@ export function CreateableSelect({
   onCreate,
   disabled = false,
   className,
+  displayValue,
 }: CreateableSelectProps) {
   const { t } = useTranslation()
   const resolvedCreateFields = createFields ?? [
@@ -127,7 +130,10 @@ export function CreateableSelect({
     <>
       <Select value={value} onValueChange={handleValueChange} disabled={disabled}>
         <SelectTrigger className={className}>
-          <SelectValue placeholder={resolvedEmptyLabel} />
+          <SelectValue
+            placeholder={resolvedEmptyLabel}
+            children={displayValue ?? undefined}
+          />
         </SelectTrigger>
         <SelectContent>
           {options.length === 0 && (
