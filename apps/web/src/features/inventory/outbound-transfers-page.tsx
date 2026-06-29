@@ -10,7 +10,7 @@ import { useOutboundTransfersQuery } from "./inventory-hooks"
 /**
  * @description Component
  */
-export function OutboundTransfersPage({ onCreate }: { onCreate: () => void }) {
+export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () => void; onCreateV2?: () => void }) {
   const { t } = useTranslation()
   const transfersQuery = useOutboundTransfersQuery()
 
@@ -21,7 +21,7 @@ export function OutboundTransfersPage({ onCreate }: { onCreate: () => void }) {
     <div className="space-y-6">
       <Surface variant="panel">
         <PageSurfaceContent>
-          <PageHeader title={t("inventoryPage.transfers.title")} description={t("inventoryPage.transfers.description")} action={<PageActionGroup><Button onClick={onCreate}>{t("inventoryPage.transfers.createButton")}</Button></PageActionGroup>} />
+          <PageHeader title={t("inventoryPage.transfers.title")} description={t("inventoryPage.transfers.description")} action={<PageActionGroup><Button variant="outline" onClick={onCreateV2}>النسخة الجديدة (V2)</Button><Button onClick={onCreate}>{t("inventoryPage.transfers.createButton")}</Button></PageActionGroup>} />
         </PageSurfaceContent>
       </Surface>
 

@@ -69,6 +69,7 @@ export function useInventoryInvoiceGroupsQuery() {
   })
 }
 
+/** useInventoryInvoiceGroupQuery. */
 export function useInventoryInvoiceGroupQuery(invoiceId: string | undefined) {
   return useQuery({
     queryKey: inventoryKeys.invoiceGroup(invoiceId ?? "missing"),
@@ -83,6 +84,7 @@ export function useInventoryInvoiceGroupQuery(invoiceId: string | undefined) {
   })
 }
 
+/** useInventoryLocationContentsQuery. */
 export function useInventoryLocationContentsQuery(input: { warehouseId?: string; projectId?: string }) {
   return useQuery({
     queryKey: inventoryKeys.locationContents(input),
@@ -149,6 +151,7 @@ export function useInventoryExternalCounterpartiesQuery() {
   })
 }
 
+/** useCreateInventoryItemDefinitionMutation. */
 export function useCreateInventoryItemDefinitionMutation() {
   const queryClient = useQueryClient()
 
@@ -288,6 +291,7 @@ export async function uploadInvoiceAttachments(invoiceGroupId: string, files: Fi
   return body.items
 }
 
+/** useOutboundTransfersQuery. */
 export function useOutboundTransfersQuery() {
   return useQuery({
     queryKey: inventoryKeys.outboundTransfers,
@@ -295,6 +299,7 @@ export function useOutboundTransfersQuery() {
   })
 }
 
+/** useRecordInvoicePaymentMutation. */
 export function useRecordInvoicePaymentMutation() {
   const queryClient = useQueryClient()
 
@@ -313,6 +318,7 @@ export function useRecordInvoicePaymentMutation() {
   })
 }
 
+/** useCreateOutboundTransferMutation. */
 export function useCreateOutboundTransferMutation() {
   const queryClient = useQueryClient()
 

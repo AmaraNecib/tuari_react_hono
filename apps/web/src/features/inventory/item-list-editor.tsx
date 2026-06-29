@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+/** ItemEditorRow. */
 export interface ItemEditorRow {
   itemId: string
   quantity: string

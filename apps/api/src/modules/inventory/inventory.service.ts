@@ -118,6 +118,9 @@ const MAX_INVOICE_ATTACHMENT_COUNT = 10
 const MAX_INVOICE_ATTACHMENT_SIZE = 5 * 1024 * 1024
 const MAX_INVOICE_ATTACHMENT_TOTAL_SIZE = 15 * 1024 * 1024
 
+/**
+ * Inventory service handling item definitions, movements, invoices, transfers, and location contents.
+ */
 export class InventoryService {
   constructor(
     private readonly repository: InventoryRepository,
@@ -126,6 +129,7 @@ export class InventoryService {
     private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
   ) {}
 
+  /** createMutationAuditContext. */
   private createMutationAuditContext(auditContext?: MutationAuditContext): Required<MutationAuditContext> {
     const audit = normalizeMutationAuditContext(auditContext)
 
@@ -140,10 +144,12 @@ export class InventoryService {
     return audit
   }
 
+/** List item definitions with optional filters. */
   listItemDefinitions(filters?: { itemType?: "CONSUMABLE" | "ASSET"; isActive?: boolean }) {
     return { items: this.repository.listItemDefinitions(filters) }
   }
 
+  /** getItemDefinition. */
   getItemDefinition(id: string) {
     const item = this.repository.getItemDefinitionById(id)
     if (!item) {
@@ -153,6 +159,7 @@ export class InventoryService {
     return successResult("تم تحميل تعريف العنصر بنجاح.", item)
   }
 
+/** Create a new item definition. */
   createItemDefinition(input: InventoryItemDefinitionCreateInput, auditContext?: MutationAuditContext) {
     const audit = this.createMutationAuditContext(auditContext)
 
@@ -166,6 +173,7 @@ export class InventoryService {
     return successResult("تم إنشاء تعريف العنصر بنجاح.", item)
   }
 
+/** Update an existing item definition. */
   updateItemDefinition(input: InventoryItemDefinitionUpdateInput, auditContext?: MutationAuditContext) {
     const audit = this.createMutationAuditContext(auditContext)
 
@@ -197,10 +205,12 @@ export class InventoryService {
     return successResult("تم تحديث تعريف العنصر بنجاح.", item!)
   }
 
+/** List invoice groups with optional filters. */
   listInvoiceGroups(filters?: { warehouseId?: string; projectId?: string }) {
     return { items: this.repository.listInvoiceGroups(filters) }
   }
 
+/** Get a single invoice group by ID. */
   getInvoiceGroup(id: string) {
     const group = this.repository.getInvoiceGroupById(id)
     if (!group) {
@@ -216,6 +226,7 @@ export class InventoryService {
     })
   }
 
+/** Create a new invoice group. */
   createInvoiceGroup(input: InventoryInvoiceGroupCreateInput, auditContext?: MutationAuditContext) {
     const audit = this.createMutationAuditContext(auditContext)
 
@@ -482,10 +493,12 @@ export class InventoryService {
     return successResult("تم إنشاء الفاتورة والعناصر المرتبطة بها بنجاح.", detail)
   }
 
+  /** receiveInventory. */
   receiveInventory(input: InventoryInvoiceGroupCreateInput, auditContext?: MutationAuditContext) {
     return this.createInvoiceGroup(input, auditContext)
   }
 
+/** Get inventory contents at a specific warehouse or project location. */
   getLocationContents(input: { warehouseId?: string | null; projectId?: string | null }) {
     validateSingleDestination(input.warehouseId ?? null, input.projectId ?? null, "warehouseId")
 
@@ -495,6 +508,7 @@ export class InventoryService {
     })
   }
 
+  /** getAsset. */
   getAsset(id: string) {
     const asset = this.repository.getAssetUnitById(id)
     if (!asset) {
@@ -514,6 +528,7 @@ export class InventoryService {
     })
   }
 
+  /** transferAsset. */
   transferAsset(input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
     this.createMutationAuditContext(auditContext)
 
@@ -553,6 +568,7 @@ export class InventoryService {
     return this.getAsset(asset.id)
   }
 
+  /** transferConsumable. */
   transferConsumable(input: { inventoryEntryId: string; quantity: number; fromWarehouseId?: string | null; fromProjectId?: string | null; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
     this.createMutationAuditContext(auditContext)
 
@@ -627,6 +643,7 @@ export class InventoryService {
     return this.getLocationContents({ warehouseId: input.toWarehouseId ?? null, projectId: input.toProjectId ?? null })
   }
 
+  /** addInvoiceAttachments. */
   async addInvoiceAttachments(invoiceGroupId: string, files: InventoryUploadFile[], auditContext?: MutationAuditContext) {
     this.createMutationAuditContext(auditContext)
 
@@ -702,6 +719,7 @@ export class InventoryService {
     }
   }
 
+  /** getAttachmentDownload. */
   async getAttachmentDownload(id: string) {
     const attachment = this.repository.getAttachmentById(id)
     if (!attachment) {
@@ -716,6 +734,7 @@ export class InventoryService {
     }
   }
 
+/** Record a payment against an invoice group. */
   recordInvoicePayment(input: { invoiceGroupId: string; amountDzd: number; note?: string }, auditContext?: MutationAuditContext) {
     if (!this.debtService) {
       throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
@@ -762,6 +781,7 @@ export class InventoryService {
     })
   }
 
+/** Create an outbound transfer. */
   createOutboundTransfer(input: { fromType: "WAREHOUSE" | "PROJECT"; fromId: string; counterpartyId: string; transferType: "SALE" | "GIFT" | "RETURN"; items: Array<{ itemId: string; quantity: number; unitPriceDzd?: number }>; debtAmountDzd?: number; notes?: string }, auditContext?: MutationAuditContext) {
     if (!this.debtService) {
       throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
@@ -862,10 +882,39 @@ export class InventoryService {
     })
   }
 
+/** List all outbound transfers. */
   listOutboundTransfers() {
     return this.repository.listOutboundTransfers()
   }
 
+/** List inventory transfer history with optional location and movement type filters. */
+  listTransferHistory(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }) {
+    if (input.warehouseId || input.projectId) {
+      // Location-specific transfer history
+      return {
+        items: this.repository.listMovementsByLocation({
+          warehouseId: input.warehouseId,
+          projectId: input.projectId,
+          dateFrom: input.dateFrom,
+          dateTo: input.dateTo,
+          movementType: input.movementType,
+          limit: input.limit,
+        })
+      }
+    }
+
+    // Global transfer history
+    return {
+      items: this.repository.listAllMovements({
+        dateFrom: input.dateFrom,
+        dateTo: input.dateTo,
+        movementType: input.movementType,
+        limit: input.limit,
+      })
+    }
+  }
+
+/** Get a single outbound transfer by ID. */
   getOutboundTransferById(id: string) {
     const transfer = this.repository.getOutboundTransferById(id)
     if (!transfer) {

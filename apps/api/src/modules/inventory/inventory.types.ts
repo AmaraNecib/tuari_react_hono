@@ -13,27 +13,40 @@ import type {
   OutboundTransferItemInput,
 } from "@tuari/contracts"
 
+/** InventoryItemDefinitionRecord. */
 export type InventoryItemDefinitionRecord = InventoryItemDefinition
+/** InventoryInvoiceAttachmentRecord. */
 export type InventoryInvoiceAttachmentRecord = InventoryInvoiceAttachment
+/** InventoryInvoiceGroupRecord. */
 export type InventoryInvoiceGroupRecord = InventoryInvoiceGroup
+/** InventoryEntryRecord. */
 export type InventoryEntryRecord = InventoryEntry
+/** InventoryAssetUnitRecord. */
 export type InventoryAssetUnitRecord = InventoryAssetUnit
+/** InventoryConsumableBalanceRecord. */
 export type InventoryConsumableBalanceRecord = InventoryConsumableBalance
+/** InventoryMovementRecord. */
 export type InventoryMovementRecord = InventoryMovement
+/** InventoryAssetDetailRecord. */
 export type InventoryAssetDetailRecord = InventoryAssetDetail
+/** InventoryLocationContentsRecord. */
 export type InventoryLocationContentsRecord = InventoryLocationContents
+/** InventoryInvoiceGroupDetailRecord. */
 export type InventoryInvoiceGroupDetailRecord = InventoryInvoiceGroupDetail
 
+/** InventoryItemDefinitionListFilters. */
 export type InventoryItemDefinitionListFilters = {
   itemType?: InventoryItemDefinition["itemType"]
   isActive?: boolean
 }
 
+/** InventoryInvoiceGroupListFilters. */
 export type InventoryInvoiceGroupListFilters = {
   warehouseId?: string
   projectId?: string
 }
 
+/** InventoryItemDefinitionCreateData. */
 export type InventoryItemDefinitionCreateData = {
   name: string
   itemType: InventoryItemDefinition["itemType"]
@@ -41,6 +54,7 @@ export type InventoryItemDefinitionCreateData = {
   description?: string | null
 }
 
+/** InventoryItemDefinitionUpdateData. */
 export type InventoryItemDefinitionUpdateData = {
   id: string
   name?: string
@@ -50,6 +64,7 @@ export type InventoryItemDefinitionUpdateData = {
   isActive?: boolean
 }
 
+/** InventoryInvoiceGroupCreateData. */
 export type InventoryInvoiceGroupCreateData = {
   invoiceNumber?: string | null
   supplierName?: string | null
@@ -64,6 +79,7 @@ export type InventoryInvoiceGroupCreateData = {
   note?: string | null
 }
 
+/** InventoryEntryCreateData. */
 export type InventoryEntryCreateData = {
   invoiceGroupId: string
   itemDefinitionId: string
@@ -78,6 +94,7 @@ export type InventoryEntryCreateData = {
   note?: string | null
 }
 
+/** InventoryAssetUnitCreateData. */
 export type InventoryAssetUnitCreateData = {
   inventoryEntryId: string
   assetName: string
@@ -91,6 +108,7 @@ export type InventoryAssetUnitCreateData = {
   note?: string | null
 }
 
+/** InventoryConsumableBalanceCreateData. */
 export type InventoryConsumableBalanceCreateData = {
   inventoryEntryId: string
   itemDefinitionId: string
@@ -99,6 +117,7 @@ export type InventoryConsumableBalanceCreateData = {
   quantity: number
 }
 
+/** InventoryMovementCreateData. */
 export type InventoryMovementCreateData = {
   movementType: InventoryMovement["movementType"]
   itemType: InventoryMovement["itemType"]
@@ -113,6 +132,7 @@ export type InventoryMovementCreateData = {
   occurredAt: string
 }
 
+/** InventoryInvoiceAttachmentCreateData. */
 export type InventoryInvoiceAttachmentCreateData = {
   invoiceGroupId: string
   originalName: string
@@ -123,6 +143,7 @@ export type InventoryInvoiceAttachmentCreateData = {
   sha256?: string | null
 }
 
+/** InventoryStoredUpload. */
 export type InventoryStoredUpload = {
   id: string
   originalName: string
@@ -133,6 +154,7 @@ export type InventoryStoredUpload = {
   sha256: string
 }
 
+/** InventoryUploadFile. */
 export type InventoryUploadFile = {
   name: string
   type: string
@@ -140,9 +162,12 @@ export type InventoryUploadFile = {
   bytes: Uint8Array
 }
 
+/** InventoryOutboundTransferRecord. */
 export type InventoryOutboundTransferRecord = InventoryOutboundTransfer
+/** OutboundTransferItemRecord. */
 export type OutboundTransferItemRecord = OutboundTransferItemInput & { id: string; createdAt: string }
 
+/** InventoryOutboundTransferCreateData. */
 export type InventoryOutboundTransferCreateData = {
   fromType: InventoryOutboundTransfer["fromType"]
   fromId: string
