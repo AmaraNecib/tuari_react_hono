@@ -1,0 +1,30 @@
+# CodeRabbit Configuration
+# See https://coderabbit.ai/docs/config for full documentation
+
+reviews:
+  request_review: manual
+  review_status: false
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/target/**"
+    - "!**/.git/**"
+    - "!**/dist/**"
+  path_instructions:
+    - path: "apps/desktop/src-tauri/src/**/*.rs"
+      instructions: |
+        These are Rust Core (Trust Authority) modules.
+        - Must not import `tauri::` or any Tauri types.
+        - Must return `Result<T, RustCoreError>` for fallible operations.
+        - Must be testable with `cargo test` without Tauri.
+    - path: "packages/contracts/src/**/*.ts"
+      instructions: |
+        These are shared Zod schemas.
+        - Must match the corresponding Rust structs field-by-field.
+        - Must be exported from `packages/contracts/src/index.ts`.
+  auto_review:
+    enabled: false
+  auto_merge:
+    enabled: false
+
+chat:
+  auto_reply: true
