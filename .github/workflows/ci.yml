@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [master]
+    branches: [main, develop]
 
 jobs:
   quality:
@@ -20,6 +20,9 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -32,10 +35,13 @@ jobs:
       - name: Lint
         run: pnpm turbo lint
 
-      - name: Test + Coverage (API)
+      - name: Test Rust Core
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      - name: Test API
         run: pnpm --filter @tuari/api test:coverage
 
-      - name: Test (Web)
+      - name: Test Web
         run: pnpm test:web
 
       - name: Build

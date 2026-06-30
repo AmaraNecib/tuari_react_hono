@@ -1,84 +1,37 @@
 # Pull Request
 
-## Scope Statement
+## Summary
 
 <!-- One paragraph: what does this PR deliver? -->
 
-## Phase & Type
+## Linked Issue
 
-- [ ] Agent branch (implementation work for a single phase)
-- [ ] Integration branch (merging multiple agent branches)
-- [ ] Hotfix (urgent repair after integration validation)
+Closes #...
 
-**Phase:** Phase [0/1/2/3/4/5]
-
-## Affected Surfaces
-
-<!-- Which parts of the codebase change? List files or areas -->
-- API
-- Web frontend
-- Desktop/Tauri
-- Database schema
-- Configuration/workflow
-
-## Files Changed
-
-<!-- Major files or directories affected -->
-
-## Test Coverage
-
-<!-- What testing was added or updated? -->
+## Tests Performed
 
 - [ ] Unit tests added/updated
 - [ ] Integration tests added/updated
 - [ ] E2E tests added/updated
 - [ ] Manual testing completed (describe below)
 
-**Test results:**
-```
-npm test passes
-npm run typecheck passes
-npm run lint passes
-```
+## Architecture Impact
 
-## Verification Commands
+- [ ] No architectural impact
+- [ ] Requires Architecture Decision Record (ADR)
+- [ ] Updates existing architecture documentation
 
-<!-- Which commands did you run locally? Paste output or confirm pass -->
+## ADR Required?
 
-```bash
-npm install
-npm run typecheck
-npm run lint
-npm test
-npm run build (if applicable)
-```
+**Yes / No**
 
-**All passing:** Yes / No (if no, describe blocker below)
-
-## Known Risks & Follow-ups
-
-<!-- What could go wrong? What's deferred? -->
-
-- Risky decisions:
-- Deferred items:
-- Cross-cutting concerns (auth, schema, contracts):
-- Manual verification needed:
-
-## Integration Notes (For Integration Branches Only)
-
-<!-- If merging multiple agent branches, call out conflicts, intentional omissions -->
-
-- Branches merged:
-- Conflicts resolved: Yes / No
-- Regressions fixed: Yes / No
-- Unresolved blockers: None / [list]
+If yes, link to the ADR: ADR-...
 
 ## Checklist
 
-- [ ] Branch naming follows rules (`agent/phaseN-*` or `integration/phaseN-*`)
-- [ ] Scope matches declared phase
-- [ ] Verification checklist from `.claude/branch-verification-checklist.md` completed
+- [ ] Branch naming follows `feature/<issue-id>-<description>` convention
+- [ ] All acceptance criteria from the issue are met
+- [ ] Tests are passing (`cargo test` / `pnpm test`)
+- [ ] Type checks pass (`cargo check` / `pnpm typecheck`)
 - [ ] No sensitive files committed
-- [ ] All tests passing
-- [ ] PR template sections filled in
-- [ ] Known risks documented
+- [ ] PR description is filled out

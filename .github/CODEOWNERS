@@ -1,0 +1,24 @@
+# CODEOWNERS
+# Each line is a file pattern followed by one or more owners.
+# Order matters: the last matching pattern takes precedence.
+
+# Default owner for everything
+* @AmaraNecib
+
+# Rust Core (Trust Authority)
+/apps/desktop/src-tauri/src/license.rs @AmaraNecib
+/apps/desktop/src-tauri/src/crypto.rs @AmaraNecib
+/apps/desktop/src-tauri/src/clock.rs @AmaraNecib
+/apps/desktop/src-tauri/src/error.rs @AmaraNecib
+/apps/desktop/src-tauri/src/update.rs @AmaraNecib
+/apps/desktop/src-tauri/src/recovery.rs @AmaraNecib
+
+# Architecture and ADRs
+/docs/architecture-decisions.md @AmaraNecib
+/docs/*-architecture.md @AmaraNecib
+
+# CI and workflows
+/.github/workflows/ @AmaraNecib
+
+# Shared contracts
+/packages/contracts/ @AmaraNecib
