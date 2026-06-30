@@ -1,0 +1,286 @@
+# Development Workflow
+
+This document defines the permanent development workflow for the Tuari project. It covers branching, issue tracking, releases, and versioning.
+
+---
+
+## 1. Planning Flow
+
+```
+Architecture (docs/)
+    ↓
+PRD (docs/prd/)
+    ↓
+.scratch/issues (draft planning)
+    ↓
+GitHub Issues (execution)
+    ↓
+Implementation
+```
+
+| Stage | Location | Purpose |
+|-------|----------|---------|
+| Architecture | `docs/*.md` | Permanent, approved. Changes only through ADRs. |
+| PRD | `docs/prd/*.md` | Approved product requirements. Read-only during implementation. |
+| Draft planning | `.scratch/issues/` | Temporary workspace for issue breakdown before GitHub. |
+| Execution | GitHub Issues | Source of truth during implementation. |
+
+---
+
+## 2. Issue Taxonomy
+
+### 2.1 Labels — Priority
+
+| Label | Meaning |
+|-------|---------|
+| `priority:high` | Blocking. Must be completed in current milestone. |
+| `priority:medium` | Important. Should be completed in current milestone. |
+| `priority:low` | Nice to have. Deferred if time runs short. |
+
+### 2.2 Labels — Area
+
+| Label | Scope |
+|-------|-------|
+| `area:rust-core` | Rust Core (Trust Authority): `crypto.rs`, `license.rs`, `clock.rs`, `update.rs`, `recovery.rs` |
+| `area:licensing` | Licensing system: `LicenseManager`, activation, grace period, key rotation |
+| `area:update` | Update system: update packages, rollback, recovery environment |
+| `area:desktop` | Tauri Adapter: IPC commands, sidecar lifecycle, platform integration |
+| `area:contracts` | `packages/contracts`: shared Zod schemas, TypeScript types |
+| `area:cli` | CLI tools: `generate-license.mjs`, `sign-update.mjs` |
+| `area:testing` | Integration tests, E2E tests, test infrastructure |
+
+### 2.3 Labels — Type
+
+| Label | Meaning |
+|-------|---------|
+| `type:feature` | New functionality |
+| `type:bug` | Defect fix |
+| `type:architecture` | Architectural change (requires ADR) |
+| `type:refactor` | Code restructuring without behavior change |
+| `type:test` | Test addition or improvement |
+| `type:documentation` | Documentation-only |
+
+### 2.4 Labels — Status
+
+| Label | Meaning |
+|-------|---------|
+| `blocked` | Waiting on another issue, external dependency, or decision |
+| `ready` | Dependencies resolved, available for implementation |
+| `review` | Implementation complete, awaiting code review |
+| `needs-adr` | Requires an Architecture Decision Record before implementation can proceed |
+
+---
+
+## 3. Branch Strategy
+
+### 3.1 Permanent Branches
+
+| Branch | Purpose | Protected? |
+|--------|---------|------------|
+| `main` | Production history. Only receives merges from `release/*` and `hotfix/*`. | Yes |
+| `develop` | Integration branch for active development. Receives `feature/*` branches. | Yes |
+| `release/*` | Release stabilization. Branch from `develop`, merge to `main` and back to `develop`. | Yes |
+| `hotfix/*` | Emergency fixes for released versions. Branch from `main`, merge to `main` and `develop`. | Yes |
+| `feature/*` | One feature per branch, one GitHub Issue per branch. Branch from `develop`, merge to `develop`. | No |
+
+### 3.2 Typical Flow
+
+```
+feature/m1.3-license-manager
+         ↓
+       develop
+         ↓
+    release/0.1.0
+         ↓
+        main
+```
+
+### 3.3 Hotfix Flow
+
+```
+  main (0.1.0)
+    ↓
+hotfix/0.1.1
+    ↓
+  main (0.1.1)  ──→  develop (merge back)
+```
+
+The hotfix must always be merged back into `develop` so fixes are never lost.
+
+### 3.4 Branch Naming
+
+```
+feature/<issue-id>-<short-description>
+feature/m1.3-license-manager
+feature/m1.7-license-cli
+
+hotfix/<version>-<short-description>
+hotfix/0.1.1-crash-on-startup
+
+release/<version>
+release/0.1.0
+release/0.2.0
+```
+
+---
+
+## 4. GitHub Milestones
+
+Milestones map directly to the implementation roadmap.
+
+| Milestone | Version | Description |
+|-----------|---------|-------------|
+| Milestone 1 | 0.1.0 | Rust Trusted Computing Base |
+| Milestone 2 | 0.2.0 | Updater Engine |
+| Milestone 3 | 0.3.0 | Tauri Integration |
+| Milestone 4 | 0.4.0 | Business Authority (Hono) |
+| Milestone 5 | 0.5.0 | React UI |
+| Milestone 6 | 0.6.0 | Release Engineering |
+| Milestone 7 | 0.7.0 | Production Hardening |
+| — | 1.0.0 | First public production release |
+
+Each GitHub Milestone contains the issues for that phase. Issues are labeled by priority and area.
+
+---
+
+## 5. Release Channels
+
+| Channel | Description | Source Branch | Version Suffix |
+|---------|-------------|---------------|----------------|
+| **Nightly** | Automatic development builds | `develop` | `-nightly.N` |
+| **Preview** | Feature-complete pre-releases | `release/*` | `-preview.N` |
+| **Stable** | Production releases | `main` | None |
+
+These names communicate stability:
+- **Nightly** = may break, use at your own risk
+- **Preview** = feature-complete, collecting feedback
+- **Stable** = production-ready
+
+---
+
+## 6. Versioning
+
+Semantic Versioning (`MAJOR.MINOR.PATCH`).
+
+### Pre-1.0 (current phase)
+
+```
+0.1.0  — Milestone 1 complete
+0.2.0  — Milestone 2 complete
+0.2.1  — Patch after 0.2.0
+0.3.0  — Milestone 3 complete
+```
+
+### First Stable Release
+
+```
+1.0.0  — First public production release
+```
+
+### Post-1.0
+
+```
+1.0.1  — Bug fix
+1.1.0  — New feature (backward-compatible)
+2.0.0  — Breaking change
+```
+
+### Pre-release Suffixes
+
+```
+0.3.0-nightly.15    — 15th nightly build toward 0.3.0
+1.1.0-preview.2     — 2nd preview of 1.1.0
+```
+
+---
+
+## 7. Hotfix Policy
+
+| Situation | Action |
+|-----------|--------|
+| Critical bug in stable release | Create `hotfix/<version>-<description>` from `main`, fix, release as patch |
+| Non-critical bug | Schedule in next milestone |
+| Security vulnerability | Create hotfix immediately, then file ADR if architectural change is needed |
+
+Hotfixes bypass the `develop` branch but must be merged back into `develop` after release.
+
+---
+
+## 8. GitHub Releases
+
+Every tagged release includes:
+
+- Semantic version tag (e.g., `v0.1.0`)
+- Release channel (Stable / Preview / Nightly)
+- Changelog (list of changes since last release)
+- Upgrade notes (migration steps, if any)
+- Breaking changes (if any)
+- Downloadable artifacts (installer, portable, update package)
+
+This integrates with the Update Architecture, where clients subscribe to one channel and receive only compatible updates.
+
+---
+
+## 9. Issue Template
+
+Every GitHub Issue should follow this structure:
+
+```markdown
+## Objective
+
+<!-- One-sentence description of what this issue accomplishes -->
+
+## Dependencies
+
+- #123 (must be merged first)
+- #456 (must be merged first)
+
+## Implementation Tasks
+
+- [ ] Task 1
+- [ ] Task 2
+- [ ] Task 3
+
+## Testing Requirements
+
+- [ ] Unit test: scenario X
+- [ ] Integration test: scenario Y
+
+## Acceptance Criteria
+
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## References
+
+- **PRD:** docs/prd/licensing-prd.md
+- **Architecture:** docs/licensing-architecture.md (§15.1)
+- **ADRs:** ADR-LIC-001
+```
+
+---
+
+## 10. Mapping: `.scratch` → GitHub
+
+| `.scratch` | GitHub |
+|------------|--------|
+| `.scratch/issues/milestone-1-backlog.md` | Milestone 1 |
+| Each issue in backlog | One GitHub Issue |
+| Complexity estimate (S/M/L) | `priority:*` label |
+| Dependencies | Linked issues |
+| — | Milestone progress tracking |
+
+Once an issue is approved in `.scratch`, it is created as a GitHub Issue. The `.scratch` version is archived or deleted. GitHub becomes the source of truth for execution.
+
+---
+
+## 11. Definition of Done
+
+An issue is complete when:
+
+- [ ] All implementation tasks are complete
+- [ ] All acceptance criteria pass
+- [ ] Automated tests are written and passing
+- [ ] Code has been reviewed and approved
+- [ ] Feature branch has been merged into `develop`
+- [ ] All acceptance criteria pass
