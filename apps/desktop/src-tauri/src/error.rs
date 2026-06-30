@@ -53,53 +53,21 @@ pub enum RustCoreError {
 impl fmt::Display for RustCoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RustCoreError::InvalidSignature => {
-                write!(f, "invalid cryptographic signature")
+            RustCoreError::InvalidSignature => write!(f, "invalid cryptographic signature"),
+            RustCoreError::CryptoError(msg) => write!(f, "cryptographic error: {msg}"),
+            RustCoreError::LicenseFileNotFound => write!(f, "license file not found"),
+            RustCoreError::Expired => write!(f, "license has expired"),
+            RustCoreError::InvalidFormat => write!(f, "invalid file format"),
+            RustCoreError::InvalidPayload => write!(f, "invalid license payload"),
+            RustCoreError::ActivationFailed(reason) => write!(f, "license activation failed: {reason}"),
+            RustCoreError::ClockTampered { estimated_time, reason } => {
+                write!(f, "clock integrity check failed: {reason} (estimated time: {estimated_time})")
             }
-            RustCoreError::CryptoError(msg) => {
-                write!(f, "cryptographic error: {}", msg)
+            RustCoreError::IoError(msg) => write!(f, "I/O error: {msg}"),
+            RustCoreError::InsufficientDiskSpace { required, available } => {
+                write!(f, "insufficient disk space: required {required} bytes, available {available} bytes")
             }
-            RustCoreError::LicenseFileNotFound => {
-                write!(f, "license file not found")
-            }
-            RustCoreError::Expired => {
-                write!(f, "license has expired")
-            }
-            RustCoreError::InvalidFormat => {
-                write!(f, "invalid file format")
-            }
-            RustCoreError::InvalidPayload => {
-                write!(f, "invalid license payload")
-            }
-            RustCoreError::ActivationFailed(reason) => {
-                write!(f, "license activation failed: {}", reason)
-            }
-            RustCoreError::ClockTampered {
-                estimated_time,
-                reason,
-            } => {
-                write!(
-                    f,
-                    "clock integrity check failed: {} (estimated time: {})",
-                    reason, estimated_time
-                )
-            }
-            RustCoreError::IoError(msg) => {
-                write!(f, "I/O error: {}", msg)
-            }
-            RustCoreError::InsufficientDiskSpace {
-                required,
-                available,
-            } => {
-                write!(
-                    f,
-                    "insufficient disk space: required {} bytes, available {} bytes",
-                    required, available
-                )
-            }
-            RustCoreError::Internal(msg) => {
-                write!(f, "internal error: {}", msg)
-            }
+            RustCoreError::Internal(msg) => write!(f, "internal error: {msg}"),
         }
     }
 }

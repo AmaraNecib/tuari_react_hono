@@ -18,7 +18,7 @@ impl std::fmt::Display for CryptoError {
             CryptoError::InvalidSignature => write!(f, "invalid signature"),
             CryptoError::InvalidKey => write!(f, "invalid public key"),
             CryptoError::InvalidInput => write!(f, "invalid input"),
-            CryptoError::CryptoBackend(msg) => write!(f, "crypto backend error: {}", msg),
+            CryptoError::CryptoBackend(msg) => write!(f, "crypto backend error: {msg}"),
         }
     }
 }
