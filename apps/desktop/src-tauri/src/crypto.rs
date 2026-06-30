@@ -71,18 +71,17 @@ pub fn generate_random_bytes(len: usize) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::Signer;
+    use ed25519_dalek::{SigningKey, VerifyingKey, Signer};
+    use rand_core::CryptoRngCore;
 
     /// Generate an ed25519 keypair for testing.
-    /// Uses `From<[u8; 32]>` for SecretKey and `from_bytes` for SigningKey.
-    fn test_keypair() -> (ed25519_dalek::SigningKey, [u8; 32]) {
-        let mut secret = [0u8; 32];
-        rand::rngs::OsRng.fill_bytes(&mut secret);
-
-        let secret_key: ed25519_dalek::SecretKey = secret.into();
-        let signing_key = ed25519_dalek::SigningKey::from_bytes(&secret_key);
+    /// Uses `SigningKey::generate` with a `CryptoRngCore`-implementing RNG.
+    fn test_keypair() -> (SigningKey, [u8; 32]) {
+        // OsRng implements CryptoRngCore via rand_core::0.6.4
+        // We bring CryptoRngCore into scope so SigningKey::generate can resolve
+        use rand_core::CryptoRngCore;
+        let signing_key = SigningKey::generate(&mut rand::rngs::OsRng);
         let verifying_key = signing_key.verifying_key().to_bytes();
-
         (signing_key, verifying_key)
     }
 
