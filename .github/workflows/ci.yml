@@ -58,6 +58,27 @@ jobs:
       - name: Lint
         run: pnpm turbo lint
 
+      - name: Verify Rust Core module boundaries (no tauri:: imports)
+        run: |
+          echo "Checking for forbidden 'tauri::' imports in Rust Core modules..."
+          CORE_MODULES="apps/desktop/src-tauri/src/crypto.rs apps/desktop/src-tauri/src/error.rs apps/desktop/src-tauri/src/clock.rs apps/desktop/src-tauri/src/license.rs apps/desktop/src-tauri/src/recovery.rs"
+          HAS_TAURI=false
+          for mod in $CORE_MODULES; do
+            if [ -f "$mod" ]; then
+              LINES=$(grep -n "tauri::\|use tauri" "$mod" | grep -v "^[0-9]*://" || true)
+              if [ -n "$LINES" ]; then
+                echo "ERROR: Found tauri:: import in $mod"
+                echo "$LINES"
+                HAS_TAURI=true
+              fi
+            fi
+          done
+          if [ "$HAS_TAURI" = true ]; then
+            echo "FAILED: Rust Core modules must not import tauri::"
+            exit 1
+          fi
+          echo "PASSED: No forbidden imports found"
+
       - name: Test Rust Core
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 
