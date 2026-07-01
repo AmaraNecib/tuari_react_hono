@@ -223,6 +223,153 @@ CodeRabbit should review only after the Pull Request CI is passing. This avoids 
 
 ---
 
+## Solo-Developer Agent Workflow
+
+This section defines the protocol for a **single human developer** working with an **AI agent** (e.g., a coding assistant) and **CodeRabbit** as the only reviewer.
+
+In this workflow, the **agent is the de facto reviewer**. The human sets policy, the agent executes, and CodeRabbit provides the automated code review. The agent MUST NOT merge a PR until all three gates below pass.
+
+### Branch Protection Policy
+
+| Branch | Approval required | Status checks required | Notes |
+|---|---|---|---|
+| `develop` | **No** | **Yes (all 6 CI jobs)** | Agent can merge when checks pass |
+| `main` | **Yes** | Yes | Human approval required; harder to roll back |
+
+The `main` branch is intentionally stricter because releases are harder to revert.
+
+### Pre-Merge Gate (Three-Step)
+
+Before merging any PR into `develop`, the agent MUST verify **all three steps** pass. If any step fails, the agent MUST NOT merge; it must surface the issue to the human.
+
+#### Step 1 — CI Status
+
+All 6 required CI jobs must be `pass`:
+1. Lint
+2. Type Check
+3. Test API
+4. Test Web
+5. Test Rust Core (no tauri:: imports)
+6. Build
+
+If any job is `fail` or `pending` → **fix and re-run, do not merge**.
+
+If any job is `pending` for an extended period (e.g., >10 minutes), investigate via `gh run watch`.
+
+#### Step 2 — CodeRabbit Two-Condition Check
+
+A CodeRabbit review is considered **"done and clean"** when **BOTH** conditions are true:
+
+**Condition 1 — Verbal check**: CodeRabbit's most recent review comment (the one with the Pre-merge checks section) says **"No actionable comments were generated"** OR only contains `⚠️ Warning` checks (advisory only, not blockers).
+
+**Condition 2 — Temporal check**: There are **no CodeRabbit summary comments or acknowledgment comments created or edited after the last commit** on the PR branch. In other words, CodeRabbit has finished posting — it hasn't left anything new after the latest push.
+
+Use the `gh` CLI to fetch all comments:
+
+```bash
+# Issue-style comments (summary, "Action performed", "Walkthrough")
+gh pr view <num> --comments --json comments
+
+# Inline review comments (file/line level, with "Outdated" badges)
+gh api repos/AmaraNecib/tuari_react_hono/pulls/<num>/comments
+
+# Compare to latest commit
+gh pr view <num> --json headRefOid
+```
+
+For **inline review comments marked "Outdated"** (file-level, line-level Nitpicks), the agent MUST:
+1. Note the file and the original concern
+2. Read the current state of that file
+3. Determine: was the concern addressed in a later commit?
+4. If yes → concern is resolved, no action
+5. If no → concern still stands, treat as open finding
+
+**Decision tree for Step 2:**
+
+| Situation | Action |
+|---|---|
+| CodeRabbit check is `pending` / `in_progress` | ⏳ **Wait** — do not trigger anything |
+| CodeRabbit check is `fail` (actionable findings) | 🔧 **Fix findings locally, push, re-trigger CodeRabbit** |
+| CodeRabbit check is `pass` AND Condition 1 + 2 both pass | ✅ **Proceed to Step 3** |
+| CodeRabbit check is `pass` BUT Condition 2 fails (stale review) | 🔧 **Apply narrow workaround** (see below) |
+| CodeRabbit check is `pass` BUT inline concerns remain unresolved | 🔧 **Fix the concerns, push, re-trigger** |
+
+#### Step 3 — Agent's Own Judgment (Soft Check)
+
+Even with green CI and clean CodeRabbit review, the agent MUST also consider:
+
+- Is the architecture impact captured in the PR description?
+- Are there security implications not addressed?
+- Do tests cover the change adequately?
+- Is the diff suspicious (unrelated file changes, large generated files, secrets, etc.)?
+- Does the PR description accurately reflect the changes?
+
+If **all of the above are clean** → ✅ **Merge** (proceed to merge command).
+
+If **any of the above raises a real concern** but Steps 1 + 2 pass → ⚠️ **Merge with flag** (see uncertainty fallback).
+
+### Narrow Workaround (Stale Review Only)
+
+The workaround is a **narrow tool** for one specific situation: CodeRabbit is `pass` but its review doesn't reflect the latest commit.
+
+**When to apply:**
+- We are confident the code is correct
+- CodeRabbit check is `pass` but no fresh review exists (Condition 2 fails)
+- Goal: get a fresh review, NOT bypass a real concern
+
+**Steps:**
+
+1. Delete CodeRabbit's old review summary and acknowledgment comments
+2. Make a small cosmetic commit (e.g., a comment, formatting, whitespace — no behavior change)
+3. Push and wait for CI to pass
+4. Re-trigger CodeRabbit with `gh pr comment <num> --body "@coderabbitai review"`
+5. Wait for the new review
+6. Re-apply the two-condition check
+
+**When NOT to apply:**
+- CodeRabbit has unresolved findings → fix them, don't workaround
+- The agent has its own concerns (Step 3) → surface to human
+- The PR is in any other uncertain state → don't bypass, leave for human
+
+### Uncertainty Fallback — Merge with Flag
+
+When the agent is **uncertain** about merging (e.g., a finding is ambiguous, edge case not covered, but not a hard blocker):
+
+**Do NOT refuse to merge** if dependent PRs may be blocked. Instead:
+
+1. Add the `status:needs-investigation` label to the PR
+2. Merge anyway (the work is done, and downstream PRs may be waiting)
+3. Report clearly to the human:
+   > "I merged PR #X with `status:needs-investigation` because [reason]. Dependent PRs #Y, #Z continue to work. Please review the merged PR when convenient."
+
+The label persists on the merged PR and is searchable via `gh pr list --label status:needs-investigation`.
+
+### Merge Command
+
+When all three steps pass, the agent executes:
+
+```bash
+gh pr merge <num> --squash --subject "M<x.y>: <title> (closes #<issue>)"
+```
+
+**No `--delete-branch` flag** — feature branches are kept for reference.
+
+**Merge commit format:** `M<milestone>: <short description> (closes #<issue>)`
+
+Example: `M1.1: implement Rust Core scaffolding and shared crypto module (closes #71)`
+
+### Why This Workflow Exists
+
+A solo developer cannot approve their own PR. Traditional branch protection (require 1 approval) blocks all merges. This workflow replaces the human-approval gate with an **automated, deterministic agent gate** that:
+
+1. **CI** = "did the build pass?"
+2. **CodeRabbit two-condition check** = "is the review complete and clean?"
+3. **Agent judgment** = "is anything obviously wrong that the tools missed?"
+
+The agent is accountable for following this gate. The human is accountable for the policy and for reviewing any `status:needs-investigation` PRs after the fact.
+
+---
+
 ## Definition of Done
 
 A feature is complete when:
