@@ -100,8 +100,13 @@ pnpm test
 # Contracts
 pnpm --filter @tuari/contracts build
 
-# Architecture guardrails
-apps/desktop/src-tauri/src/*.rs   # must not import tauri::
+# Architecture guardrails (no tauri:: imports in Rust Core)
+if grep -rnE '(^use tauri|tauri::)' apps/desktop/src-tauri/src/ --include='*.rs'; then
+  echo "ERROR: Rust Core modules must not import tauri::"
+  exit 1
+else
+  echo "PASSED: No tauri:: imports found in core modules"
+fi
 ```
 
 GitHub Actions **must not** be the first place failures are discovered. The objective is:

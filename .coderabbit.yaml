@@ -2,7 +2,6 @@
 # See https://coderabbit.ai/docs/config for full documentation
 
 reviews:
-  request_review: manual
   review_status: false
   path_filters:
     - "!**/node_modules/**"

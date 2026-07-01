@@ -36,7 +36,7 @@ pub enum RustCoreError {
 
     // --- File system errors ---
     /// An I/O operation failed.
-    IoError(String),
+    IoError(Box<dyn std::error::Error + Send + Sync>),
     /// Not enough disk space to perform the requested operation.
     InsufficientDiskSpace {
         /// Amount of space required, in bytes.
@@ -63,7 +63,7 @@ impl fmt::Display for RustCoreError {
             RustCoreError::ClockTampered { estimated_time, reason } => {
                 write!(f, "clock integrity check failed: {reason} (estimated time: {estimated_time})")
             }
-            RustCoreError::IoError(msg) => write!(f, "I/O error: {msg}"),
+            RustCoreError::IoError(err) => write!(f, "I/O error: {err}"),
             RustCoreError::InsufficientDiskSpace { required, available } => {
                 write!(f, "insufficient disk space: required {required} bytes, available {available} bytes")
             }
@@ -72,11 +72,18 @@ impl fmt::Display for RustCoreError {
     }
 }
 
-impl std::error::Error for RustCoreError {}
+impl std::error::Error for RustCoreError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            RustCoreError::IoError(err) => Some(err.as_ref()),
+            _ => None,
+        }
+    }
+}
 
 impl From<io::Error> for RustCoreError {
     fn from(err: io::Error) -> Self {
-        RustCoreError::IoError(err.to_string())
+        RustCoreError::IoError(Box::new(err))
     }
 }
 
