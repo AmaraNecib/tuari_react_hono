@@ -262,7 +262,16 @@ A CodeRabbit review is considered **"done and clean"** when **BOTH** conditions 
 
 **Condition 1 — Verbal check**: CodeRabbit's most recent review comment (the one with the Pre-merge checks section) says **"No actionable comments were generated"** OR only contains `⚠️ Warning` checks (advisory only, not blockers).
 
-**Condition 2 — Temporal check**: There are **no CodeRabbit summary comments or acknowledgment comments created or edited after the last commit** on the PR branch. In other words, CodeRabbit has finished posting — it hasn't left anything new after the latest push.
+**Condition 2 — Temporal check**: Does the latest commit change **reviewable code**?
+
+Reviewable code means: Rust, TypeScript, tests, CI config, or any file that *could* produce a new CodeRabbit finding.
+
+Non-reviewable code means: docs (.md), .gitignore, .gitattributes, .coderabbit.yaml, README, scratch files (.scratch/), or any config that doesn't affect the code being reviewed.
+
+- If the latest commit changes **reviewable code** → review IS stale, needs re-trigger
+- If the latest commit changes **only non-reviewable code** → old review is still valid, no re-trigger needed
+
+This avoids unnecessary re-triggers for docs-only or config-only commits.
 
 Use the `gh` CLI to fetch all comments:
 
