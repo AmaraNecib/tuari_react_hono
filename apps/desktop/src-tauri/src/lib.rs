@@ -26,6 +26,12 @@ const DESKTOP_REQUEST_ORIGIN: &str = "https://tauri.localhost";
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+// Rust Core module declarations
+pub mod error;
+pub mod crypto;
+pub mod clock;
+pub mod license;
+
 struct ApiProcess {
     child: Mutex<Option<Child>>,
 }
