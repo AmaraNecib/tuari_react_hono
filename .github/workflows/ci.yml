@@ -6,7 +6,54 @@ on:
   workflow_dispatch:
 
 jobs:
-  smoke:
+  quality:
+    name: Lint, Type Check, Test, Build
     runs-on: ubuntu-latest
+
     steps:
-      - run: echo "smoke test ok"
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/desktop/src-tauri"
+
+      - name: Install system dependencies (Tauri)
+        run: echo "apt-get step placeholder"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build contracts
+        run: pnpm --filter @tuari/contracts build
+
+      - name: Type check
+        run: pnpm turbo typecheck --filter='!@tuari/desktop'
+
+      - name: Lint
+        run: pnpm turbo lint
+
+      - name: Verify Rust Core module boundaries (no tauri:: imports)
+        run: echo "boundary check placeholder"
+
+      - name: Test Rust Core
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      - name: Test API
+        run: pnpm --filter @tuari/api test:coverage
+
+      - name: Test Web
+        run: pnpm test:web
+
+      - name: Build
+        run: pnpm turbo build --filter='!@tuari/desktop'
