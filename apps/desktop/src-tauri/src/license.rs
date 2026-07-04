@@ -513,40 +513,16 @@ pub struct RotationCertificate {
 impl RotationCertificate {
     /// Verify this certificate's signature against the Root CA public key.
     pub fn verify(&self) -> Result<[u8; 32], RustCoreError> {
-        // Decode the new public key
-        use base64::Engine;
-        let engine = base64::engine::general_purpose::URL_SAFE;
-        let new_key_bytes = engine
-            .decode(&self.new_public_key)
-            .map_err(|_| RustCoreError::InvalidFormat)?;
-        if new_key_bytes.len() != 32 {
-            return Err(RustCoreError::InvalidFormat);
-        }
-        let mut new_key = [0u8; 32];
-        new_key.copy_from_slice(&new_key_bytes);
-
-        // Decode the signature
-        let sig_bytes = engine
-            .decode(&self.root_ca_signature)
-            .map_err(|_| RustCoreError::InvalidFormat)?;
-        if sig_bytes.len() != 64 {
-            return Err(RustCoreError::InvalidFormat);
-        }
-        let mut sig = [0u8; 64];
-        sig.copy_from_slice(&sig_bytes);
-
-        // Build the canonical message that was signed (all fields except signature)
-        let msg = self.to_canonical_json();
-
-        // Verify against Root CA key
-        match crate::crypto::ed25519_verify(&ROOT_CA_PUBLIC_KEY, msg.as_bytes(), &sig) {
-            Ok(()) => Ok(new_key),
-            Err(_) => Err(RustCoreError::InvalidSignature),
-        }
+        self.verify_inner(&ROOT_CA_PUBLIC_KEY)
     }
 
     /// Verify against a specific Root CA key (useful for testing).
     pub fn verify_with_key(&self, root_ca_key: &[u8; 32]) -> Result<[u8; 32], RustCoreError> {
+        self.verify_inner(root_ca_key)
+    }
+
+    /// Shared verification logic.
+    fn verify_inner(&self, root_ca_key: &[u8; 32]) -> Result<[u8; 32], RustCoreError> {
         use base64::Engine;
         let engine = base64::engine::general_purpose::URL_SAFE;
 
@@ -567,6 +543,13 @@ impl RotationCertificate {
         }
         let mut sig = [0u8; 64];
         sig.copy_from_slice(&sig_bytes);
+
+        // Reject if not yet effective
+        let effective = chrono::DateTime::parse_from_rfc3339(&self.effective_from)
+            .map_err(|_| RustCoreError::InvalidPayload)?;
+        if chrono::Utc::now() < effective {
+            return Err(RustCoreError::InvalidPayload);
+        }
 
         let msg = self.to_canonical_json();
 
@@ -577,11 +560,16 @@ impl RotationCertificate {
     }
 
     /// Produce the canonical JSON that was signed (all fields except signature).
+    /// Uses serde_json for deterministic, properly-escaped output.
     fn to_canonical_json(&self) -> String {
-        format!(
-            r#"{{"type":"{}","newPublicKey":"{}","effectiveFrom":"{}","previousKeyId":"{}","rotationReason":"{}"}}"#,
-            self.cert_type, self.new_public_key, self.effective_from, self.previous_key_id, self.rotation_reason
-        )
+        let value = serde_json::json!({
+            "effectiveFrom": self.effective_from,
+            "newPublicKey": self.new_public_key,
+            "previousKeyId": self.previous_key_id,
+            "rotationReason": self.rotation_reason,
+            "type": self.cert_type,
+        });
+        serde_json::to_string(&value).unwrap_or_default()
     }
 }
 
@@ -591,35 +579,38 @@ impl RotationCertificate {
 pub fn load_rotation_certificates(data_dir: &Path) -> Result<Vec<[u8; 32]>, RustCoreError> {
     let mut trusted_keys = Vec::new();
 
-    let dir = std::fs::read_dir(data_dir).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            return RustCoreError::LicenseFileNotFound;
-        }
-        RustCoreError::IoError(Box::new(e))
-    })?;
+    let dir = match std::fs::read_dir(data_dir) {
+        Ok(d) => d,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(RustCoreError::IoError(Box::new(e))),
+    };
 
     for entry in dir {
-        let entry = entry.map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
         let path = entry.path();
-        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let file_name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n,
+            None => continue,
+        };
 
         if !file_name.starts_with("key-rotation-") || !file_name.ends_with(".json") {
             continue;
         }
 
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
-        let cert: RotationCertificate = serde_json::from_str(&content)
-            .map_err(|_| RustCoreError::InvalidPayload)?;
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let cert: RotationCertificate = match serde_json::from_str(&content) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
 
-        match cert.verify() {
-            Ok(public_key) => {
-                trusted_keys.push(public_key);
-            }
-            Err(_) => {
-                // Invalid rotation cert — skip it
-                continue;
-            }
+        if let Ok(public_key) = cert.verify() {
+            trusted_keys.push(public_key);
         }
     }
 
@@ -950,9 +941,15 @@ mod tests {
         let new_pk_b64 = engine.encode(new_pk);
 
         // Create the unsigned certificate JSON (what we'll sign)
-        let cert_json = format!(
-            r#"{{"type":"key_rotation","newPublicKey":"{new_pk_b64}","effectiveFrom":"2026-01-01T00:00:00Z","previousKeyId":"abc123","rotationReason":"scheduled"}}"#
-        );
+        // Use serde_json to generate the canonical form (matching to_canonical_json)
+        let cert_value = serde_json::json!({
+            "effectiveFrom": "2026-01-01T00:00:00Z",
+            "newPublicKey": new_pk_b64,
+            "previousKeyId": "abc123",
+            "rotationReason": "scheduled",
+            "type": "key_rotation",
+        });
+        let cert_json = serde_json::to_string(&cert_value).unwrap();
 
         // Sign with the Root CA private key
         let sig = root_ca_sk.sign(cert_json.as_bytes());
@@ -982,9 +979,14 @@ mod tests {
         let engine = base64::engine::general_purpose::URL_SAFE;
         let new_pk_b64 = engine.encode(new_pk);
 
-        let cert_json = format!(
-            r#"{{"type":"key_rotation","newPublicKey":"{new_pk_b64}","effectiveFrom":"2026-01-01T00:00:00Z","previousKeyId":"abc123","rotationReason":"scheduled"}}"#
-        );
+        let cert_value = serde_json::json!({
+            "effectiveFrom": "2026-01-01T00:00:00Z",
+            "newPublicKey": new_pk_b64,
+            "previousKeyId": "abc123",
+            "rotationReason": "scheduled",
+            "type": "key_rotation",
+        });
+        let cert_json = serde_json::to_string(&cert_value).unwrap();
 
         let sig = root_ca_sk.sign(cert_json.as_bytes());
         let sig_b64 = engine.encode(sig.to_bytes());
@@ -1014,9 +1016,14 @@ mod tests {
         let engine = base64::engine::general_purpose::URL_SAFE;
         let new_pk_b64 = engine.encode(new_pk);
 
-        let cert_json = format!(
-            r#"{{"type":"key_rotation","newPublicKey":"{new_pk_b64}","effectiveFrom":"2026-01-01T00:00:00Z","previousKeyId":"abc123","rotationReason":"scheduled"}}"#
-        );
+        let cert_value = serde_json::json!({
+            "effectiveFrom": "2026-01-01T00:00:00Z",
+            "newPublicKey": new_pk_b64,
+            "previousKeyId": "abc123",
+            "rotationReason": "scheduled",
+            "type": "key_rotation",
+        });
+        let cert_json = serde_json::to_string(&cert_value).unwrap();
         let sig = root_ca_sk.sign(cert_json.as_bytes());
         let sig_b64 = engine.encode(sig.to_bytes());
 
@@ -1058,9 +1065,14 @@ mod tests {
         use base64::Engine;
         let engine = base64::engine::general_purpose::URL_SAFE;
         let rotated_pk_b64 = engine.encode(rotated_pk);
-        let cert_json_str = format!(
-            r#"{{"type":"key_rotation","newPublicKey":"{rotated_pk_b64}","effectiveFrom":"2026-01-01T00:00:00Z","previousKeyId":"abc123","rotationReason":"scheduled"}}"#
-        );
+        let cert_value = serde_json::json!({
+            "effectiveFrom": "2026-01-01T00:00:00Z",
+            "newPublicKey": rotated_pk_b64,
+            "previousKeyId": "abc123",
+            "rotationReason": "scheduled",
+            "type": "key_rotation",
+        });
+        let cert_json_str = serde_json::to_string(&cert_value).unwrap();
         let sig = root_ca_sk.sign(cert_json_str.as_bytes());
         let sig_b64 = engine.encode(sig.to_bytes());
 
