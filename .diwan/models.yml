@@ -14,7 +14,7 @@ providers:
         priority: 1
         roles: [general, code, orchestration]
 
-      - id: opencode-go/mimo-2.5
+      - id: opencode-go/mimo-v2-5
         priority: 2
         roles: [review, validation, analysis]
 

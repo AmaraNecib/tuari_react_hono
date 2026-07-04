@@ -36,11 +36,19 @@ pub struct CustomerInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LicenseStatus {
     Valid,
+    /// Expiry warning period (last 30 days before validUntil).
+    Warning,
     Expired,
+    /// Post-expiry grace period (up to 30 days after validUntil).
+    ExpiredGrace,
     NotYetActive,
+    /// Clock tampering detected.
     Tampered,
+    /// Within post-install 30-day trial period (no license).
     Grace,
     Invalid,
+    /// Post-grace locked state.
+    Locked,
 }
 
 /// Result of a license activation attempt.
@@ -62,6 +70,8 @@ pub enum ActivationResult {
 pub struct LicenseManager {
     license: Mutex<Option<LicenseInfo>>,
     trusted_keys: Vec<[u8; 32]>,
+    /// Path to the app data directory (for clock tracker access).
+    data_dir: Option<std::path::PathBuf>,
 }
 
 /// Embedded Ed25519 public key for verifying license signatures at runtime.
@@ -81,6 +91,7 @@ impl LicenseManager {
         Self {
             license: Mutex::new(None),
             trusted_keys: Vec::new(),
+            data_dir: None,
         }
     }
 
@@ -89,6 +100,7 @@ impl LicenseManager {
         Self {
             license: Mutex::new(None),
             trusted_keys: keys,
+            data_dir: None,
         }
     }
 
@@ -96,22 +108,43 @@ impl LicenseManager {
     ///
     /// Reads `<data_dir>/license.lic`, verifies the Ed25519 signature against
     /// the embedded public key, parses the JSON payload, and validates dates.
+    /// Also checks clock consistency (creates/updates clock-tracker.json).
     pub fn initialize(data_dir: &Path) -> Result<Self, RustCoreError> {
-        let license_path = data_dir.join("license.lic");
-        let content = std::fs::read_to_string(&license_path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                RustCoreError::LicenseFileNotFound
-            } else {
-                RustCoreError::IoError(Box::new(e))
+        // Run clock consistency check (creates clock-tracker.json on first run)
+        match crate::clock::check_clock_consistency(data_dir)? {
+            crate::clock::ClockStatus::Trusted => {}
+            crate::clock::ClockStatus::Suspicious {
+                estimated_time,
+                reason,
+            } => {
+                return Err(RustCoreError::ClockTampered {
+                    estimated_time,
+                    reason,
+                });
             }
-        })?;
+        }
 
-        let info = Self::parse_and_verify(&content, &[EMBEDDED_PUBLIC_KEY])?;
-
-        Ok(Self {
-            license: Mutex::new(Some(info)),
-            trusted_keys: vec![EMBEDDED_PUBLIC_KEY],
-        })
+        let license_path = data_dir.join("license.lic");
+        match std::fs::read_to_string(&license_path) {
+            Ok(content) => {
+                let info = Self::parse_and_verify(&content, &[EMBEDDED_PUBLIC_KEY])?;
+                Ok(Self {
+                    license: Mutex::new(Some(info)),
+                    trusted_keys: vec![EMBEDDED_PUBLIC_KEY],
+                    data_dir: Some(data_dir.to_path_buf()),
+                })
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // No license file — return a manager with data_dir set
+                // so grace period checks can work
+                Ok(Self {
+                    license: Mutex::new(None),
+                    trusted_keys: vec![EMBEDDED_PUBLIC_KEY],
+                    data_dir: Some(data_dir.to_path_buf()),
+                })
+            }
+            Err(e) => Err(RustCoreError::IoError(Box::new(e))),
+        }
     }
 
     /// Activate a new license from its signed wire-format content.
@@ -316,7 +349,22 @@ impl LicenseManager {
     }
 
     /// Current license status.
+    ///
+    /// Uses the clock tracker to detect tampering and check grace period.
     pub fn status(&self) -> LicenseStatus {
+        // Check clock tampering — fail closed on errors
+        if let Some(ref data_dir) = self.data_dir {
+            match crate::clock::check_clock_consistency(data_dir) {
+                Ok(crate::clock::ClockStatus::Suspicious { .. }) => {
+                    return LicenseStatus::Tampered;
+                }
+                Ok(_) => {} // Trusted
+                Err(_) => {
+                    return LicenseStatus::Tampered; // fail closed on I/O errors
+                }
+            }
+        }
+
         let guard = match self.license.lock() {
             Ok(g) => g,
             Err(_) => return LicenseStatus::Invalid,
@@ -324,7 +372,15 @@ impl LicenseManager {
 
         let info = match guard.as_ref() {
             Some(i) => i,
-            None => return LicenseStatus::Invalid,
+            None => {
+                // No license — check grace period
+                if let Some(ref data_dir) = self.data_dir {
+                    if crate::clock::is_within_grace_period(data_dir).unwrap_or(false) {
+                        return LicenseStatus::Grace;
+                    }
+                }
+                return LicenseStatus::Invalid;
+            }
         };
 
         let now = chrono::Utc::now();
@@ -334,14 +390,27 @@ impl LicenseManager {
         }
 
         match info.valid_until {
-            Some(expiry) if now > expiry => LicenseStatus::Expired,
-            Some(_) => LicenseStatus::Valid,
-            None => LicenseStatus::Valid,
+            Some(expiry) => {
+                if now > expiry {
+                    // Check if still within post-expiry grace (precise 30-day window)
+                    if now <= expiry + chrono::Duration::days(30) {
+                        return LicenseStatus::ExpiredGrace;
+                    }
+                    return LicenseStatus::Locked;
+                }
+                // Warning period: last 30 days before expiry (precise duration)
+                if expiry - now <= chrono::Duration::days(30) {
+                    return LicenseStatus::Warning;
+                }
+                LicenseStatus::Valid
+            }
+            None => LicenseStatus::Valid, // perpetual
         }
     }
 
     /// Remaining days until expiry (negative = expired).
     /// Returns i64::MAX for perpetual licenses.
+    /// Returns grace days remaining if no active license.
     pub fn days_remaining(&self) -> i64 {
         let guard = match self.license.lock() {
             Ok(g) => g,
@@ -350,7 +419,16 @@ impl LicenseManager {
 
         let info = match guard.as_ref() {
             Some(i) => i,
-            None => return 0,
+            None => {
+                // No license — return grace days remaining
+                if let Some(ref data_dir) = self.data_dir {
+                    return crate::clock::grace_days_remaining(data_dir)
+                        .ok()
+                        .flatten()
+                        .unwrap_or(0);
+                }
+                return 0;
+            }
         };
 
         match info.valid_until {
@@ -463,11 +541,14 @@ mod tests {
     }
 
     #[test]
-    fn initialize_returns_license_file_not_found() {
+    fn initialize_without_license_file_returns_manager_with_grace() {
         let dir = temp_dir();
         fs::create_dir_all(&dir).unwrap();
-        let result = LicenseManager::initialize(&dir);
-        assert!(matches!(result, Err(RustCoreError::LicenseFileNotFound)));
+        let manager = LicenseManager::initialize(&dir).unwrap();
+        // No license file means no active license, but data_dir is set
+        assert_eq!(manager.edition(), "standard");
+        assert!(!manager.has_feature("lan_server"));
+        assert_eq!(manager.status(), LicenseStatus::Grace);
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -623,6 +704,34 @@ mod tests {
     }
 
     #[test]
+    fn status_returns_expired_grace_for_recently_expired() {
+        let (signing_key, public_key) = generate_keypair();
+        let manager = LicenseManager::with_keys(vec![public_key]);
+        // License that expired 15 days ago (within 30-day grace)
+        let fifteen_days_ago = (chrono::Utc::now() - chrono::Duration::days(15))
+            .format("%Y-%m-%dT00:00:00Z")
+            .to_string();
+        let content = sign_payload(
+            &format!(
+                r#"{{
+                    "licenseId": "LCE-20260701-GRC001",
+                    "issuedTo": "Grace Co",
+                    "email": "grace@test.com",
+                    "edition": "standard",
+                    "features": [],
+                    "maxUsers": 1,
+                    "validFrom": "2020-01-01T00:00:00Z",
+                    "validUntil": "{fifteen_days_ago}",
+                    "licenseType": "subscription"
+                }}"#
+            ),
+            &signing_key,
+        );
+        manager.activate(&content).unwrap();
+        assert_eq!(manager.status(), LicenseStatus::ExpiredGrace);
+    }
+
+    #[test]
     fn status_returns_not_yet_active() {
         let (signing_key, public_key) = generate_keypair();
         let manager = LicenseManager::with_keys(vec![public_key]);
@@ -663,7 +772,7 @@ mod tests {
             &signing_key,
         );
         manager.activate(&content).unwrap();
-        assert_eq!(manager.status(), LicenseStatus::Expired);
+        assert_eq!(manager.status(), LicenseStatus::Locked);
     }
 
     #[test]
