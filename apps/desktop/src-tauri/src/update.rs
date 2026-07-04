@@ -204,6 +204,45 @@ impl UpdateProvider for LocalFileProvider {
 /// No-op provider for testing.
 pub struct NoopProvider;
 
+// ─── Platform-Specific File Locking ───────────────────────────────
+
+/// Platform-specific file lock to prevent concurrent updates.
+pub struct UpdateFileLock {
+    lock_path: std::path::PathBuf,
+}
+
+impl UpdateFileLock {
+    pub fn new(lock_path: &Path) -> Self {
+        Self {
+            lock_path: lock_path.to_path_buf(),
+        }
+    }
+
+    /// Acquire the lock. Returns Ok if lock acquired, Err if already locked.
+    pub fn acquire(&self) -> Result<(), RustCoreError> {
+        if self.lock_path.exists() {
+            return Err(RustCoreError::Internal("update lock already held".to_string()));
+        }
+        // Create parent dir if needed
+        if let Some(parent) = self.lock_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+        }
+        std::fs::write(&self.lock_path, format!("{}", std::process::id()))
+            .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+        Ok(())
+    }
+
+    /// Release the lock.
+    pub fn release(&self) -> Result<(), RustCoreError> {
+        if self.lock_path.exists() {
+            std::fs::remove_file(&self.lock_path)
+                .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+        }
+        Ok(())
+    }
+}
+
 // ─── Database Migration Runner ────────────────────────────────────
 
 /// A single database migration.
@@ -604,6 +643,17 @@ mod tests {
         let strategy = FullReplaceStrategy::new(&std::path::Path::new("/tmp"));
         let result = strategy.apply_update(&std::path::Path::new("/tmp/package")).unwrap();
         assert!(result.success);
+    }
+
+    #[test]
+    fn file_lock_acquire_and_release() {
+        let dir = temp_dir();
+        let lock = UpdateFileLock::new(&dir.join("update.lock"));
+        assert!(lock.acquire().is_ok());
+        assert!(dir.join("update.lock").exists());
+        assert!(lock.release().is_ok());
+        assert!(!dir.join("update.lock").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
