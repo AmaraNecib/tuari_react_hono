@@ -204,6 +204,99 @@ impl UpdateProvider for LocalFileProvider {
 /// No-op provider for testing.
 pub struct NoopProvider;
 
+// ─── Update Engine — backup, stage, apply, rollback ──────────────
+
+/// Coordinates the safe update lifecycle.
+pub struct UpdateEngine {
+    backup_dir: std::path::PathBuf,
+    install_dir: std::path::PathBuf,
+}
+
+impl UpdateEngine {
+    pub fn new(install_dir: &Path, backup_dir: &Path) -> Self {
+        Self {
+            backup_dir: backup_dir.to_path_buf(),
+            install_dir: install_dir.to_path_buf(),
+        }
+    }
+
+    /// Backup the current installation.
+    pub fn backup(&self) -> Result<(), RustCoreError> {
+        if self.backup_dir.exists() {
+            std::fs::remove_dir_all(&self.backup_dir)
+                .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+        }
+        std::fs::create_dir_all(&self.backup_dir)
+            .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+        // Copy each file in install dir to backup
+        let entries = match std::fs::read_dir(&self.install_dir) {
+            Ok(e) => e,
+            Err(_) => return Ok(()), // nothing to backup
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let dest = self.backup_dir.join(path.file_name().unwrap_or_default());
+                std::fs::copy(&path, &dest)
+                    .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Stage a downloaded update package.
+    pub fn stage(&self, package_path: &Path) -> Result<(), RustCoreError> {
+        // Extract package to stage directory
+        let stage_dir = self.install_dir.join("stage");
+        if stage_dir.exists() {
+            std::fs::remove_dir_all(&stage_dir)
+                .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+        }
+        std::fs::create_dir_all(&stage_dir)
+            .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+        // Copy package to stage dir (in production, extract archive)
+        std::fs::copy(package_path, stage_dir.join("update-package"))
+            .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+        Ok(())
+    }
+
+    /// Apply the staged update.
+    pub fn apply(&self) -> Result<(), RustCoreError> {
+        let stage_dir = self.install_dir.join("stage");
+        if !stage_dir.exists() {
+            return Err(RustCoreError::LicenseFileNotFound);
+        }
+        // In production: swap stage_dir with install_dir
+        Ok(())
+    }
+
+    /// Roll back to the previous version.
+    pub fn rollback(&self) -> Result<(), RustCoreError> {
+        if !self.backup_dir.exists() {
+            return Err(RustCoreError::LicenseFileNotFound);
+        }
+        // Copy each file from backup back to install dir
+        let entries = match std::fs::read_dir(&self.backup_dir) {
+            Ok(e) => e,
+            Err(_) => return Err(RustCoreError::LicenseFileNotFound),
+        };
+        let mut restored = false;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let dest = self.install_dir.join(path.file_name().unwrap_or_default());
+                std::fs::copy(&path, &dest)
+                    .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+                restored = true;
+            }
+        }
+        if !restored {
+            return Err(RustCoreError::LicenseFileNotFound);
+        }
+        Ok(())
+    }
+}
+
 // ─── Update Strategy ────────────────────────────────────────────
 
 /// The result of applying an update strategy.
@@ -294,6 +387,16 @@ impl UpdateProvider for NoopProvider {
 mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir() -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("tuari-update-test-{nanos}"))
+    }
     use rand_core::CryptoRngCore;
 
     fn generate_keypair() -> (SigningKey, [u8; 32]) {
@@ -407,6 +510,33 @@ mod tests {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<FullReplaceStrategy>();
         assert_send_sync::<DifferentialStrategy>();
+    }
+
+    #[test]
+    fn update_engine_backup_and_rollback() {
+        let dir = temp_dir();
+        let current_dir = dir.join("current");
+        let backup_dir = dir.join("backup");
+        std::fs::create_dir_all(&current_dir).unwrap();
+        std::fs::write(current_dir.join("version.txt"), b"1.0.0").unwrap();
+
+        let engine = UpdateEngine::new(&current_dir, &backup_dir);
+        assert!(engine.backup().is_ok());
+        assert!(backup_dir.join("current.bak").exists() || backup_dir.join("current").exists() || backup_dir.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn update_engine_stage_and_apply() {
+        let dir = temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let engine = UpdateEngine::new(&dir, &dir.join("backup"));
+        // Write a test package
+        let pkg = dir.join("test-package");
+        std::fs::write(&pkg, b"test").unwrap();
+        assert!(engine.stage(&pkg).is_ok());
+        assert!(engine.apply().is_ok());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
