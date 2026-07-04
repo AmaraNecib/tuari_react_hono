@@ -33,6 +33,7 @@ pub mod crypto;
 pub mod clock;
 pub mod license;
 pub mod recovery;
+pub mod update;
 
 struct ApiProcess {
     child: Mutex<Option<Child>>,
