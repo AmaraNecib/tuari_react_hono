@@ -12,6 +12,7 @@ use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, RunEvent};
+use crate::update::{UpdateProvider, UpdateStrategy};
 
 const API_HOST: &str = "127.0.0.1";
 const API_PORT: u16 = 4318;
@@ -516,6 +517,55 @@ async fn desktop_sign_out_session(
     Ok(())
 }
 
+// ─── Update Tauri Commands ───────────────────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateCheckResult {
+    update_available: bool,
+    latest_version: String,
+    download_url: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateApplyResult {
+    success: bool,
+    message: String,
+}
+
+#[tauri::command]
+fn check_for_updates() -> Result<UpdateCheckResult, String> {
+    let provider = crate::update::GithubReleasesProvider::new("AmaraNecib", "tuari_react_hono");
+    let info = provider
+        .check_for_updates(env!("CARGO_PKG_VERSION"))
+        .map_err(|e| e.to_string())?;
+    match info {
+        Some(update) => Ok(UpdateCheckResult {
+            update_available: true,
+            latest_version: update.version,
+            download_url: update.download_url,
+        }),
+        None => Ok(UpdateCheckResult {
+            update_available: false,
+            latest_version: String::new(),
+            download_url: String::new(),
+        }),
+    }
+}
+
+#[tauri::command]
+fn apply_update(path: String) -> Result<UpdateApplyResult, String> {
+    let strategy = crate::update::FullReplaceStrategy::new(&std::path::PathBuf::from("."));
+    let result = strategy
+        .apply_update(&std::path::PathBuf::from(&path))
+        .map_err(|e| e.to_string())?;
+    Ok(UpdateApplyResult {
+        success: result.success,
+        message: result.message,
+    })
+}
+
 fn has_portable_runtime_layout(root: &Path) -> bool {
     let node_binary_name = if cfg!(target_os = "windows") {
         "node.exe"
@@ -1007,7 +1057,9 @@ pub fn run() {
             desktop_api_request,
             desktop_sign_in_with_phone_number,
             desktop_change_password,
-            desktop_sign_out_session
+            desktop_sign_out_session,
+            check_for_updates,
+            apply_update
         ])
         .setup(|app| {
             let child = spawn_api_process(app.handle())?;
