@@ -2,7 +2,7 @@
 //
 // LicenseManager is the single source of truth for all licensing state.
 // No other module reads license.lic files or evaluates feature flags.
-// Zero tauri:: imports — this is a pure Rust Core module.
+// Zero tauri imports — this is a pure Rust Core module.
 
 use crate::error::RustCoreError;
 use std::collections::HashMap;
