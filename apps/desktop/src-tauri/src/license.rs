@@ -98,8 +98,13 @@ impl LicenseManager {
     /// the embedded public key, parses the JSON payload, and validates dates.
     pub fn initialize(data_dir: &Path) -> Result<Self, RustCoreError> {
         let license_path = data_dir.join("license.lic");
-        let content = std::fs::read_to_string(&license_path)
-            .map_err(|_| RustCoreError::LicenseFileNotFound)?;
+        let content = std::fs::read_to_string(&license_path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                RustCoreError::LicenseFileNotFound
+            } else {
+                RustCoreError::IoError(Box::new(e))
+            }
+        })?;
 
         let info = Self::parse_and_verify(&content, &[EMBEDDED_PUBLIC_KEY])?;
 
@@ -165,22 +170,22 @@ impl LicenseManager {
         let mut signature_bytes = [0u8; 64];
         signature_bytes.copy_from_slice(&sig_vec);
 
-        // Verify against any trusted key
-        if !trusted_keys.is_empty() {
-            let mut verified = false;
-            for key_bytes in trusted_keys {
-                if crate::crypto::ed25519_verify(key_bytes, &payload_bytes, &signature_bytes)
-                    .is_ok()
-                {
-                    verified = true;
-                    break;
-                }
-            }
-            if !verified {
-                return Err(RustCoreError::InvalidSignature);
+        if trusted_keys.is_empty() {
+            return Err(RustCoreError::InvalidSignature);
+        }
+
+        let mut verified = false;
+        for key_bytes in trusted_keys {
+            if crate::crypto::ed25519_verify(key_bytes, &payload_bytes, &signature_bytes)
+                .is_ok()
+            {
+                verified = true;
+                break;
             }
         }
-        // If no trusted keys, skip verification (for builds without embedded keys yet)
+        if !verified {
+            return Err(RustCoreError::InvalidSignature);
+        }
 
         let payload: serde_json::Value = serde_json::from_slice(&payload_bytes)
             .map_err(|_| RustCoreError::InvalidPayload)?;
