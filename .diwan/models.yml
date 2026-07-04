@@ -1,0 +1,48 @@
+# Model Registry
+# The architect reads this to choose the right model for each subagent task.
+# Higher priority = preferred (1 is highest).
+# Roles: orchestration, code, review, validation, testing, research, analysis
+
+default_provider: opencode-go
+default_model: deepseek-v4-flash
+
+providers:
+  opencode-go:
+    name: OpenCode Go
+    models:
+      - id: opencode-go/deepseek-v4-flash
+        priority: 1
+        roles: [general, code, orchestration]
+
+      - id: opencode-go/mimo-2.5
+        priority: 2
+        roles: [review, validation, analysis]
+
+  opencode-zen:
+    name: OpenCode Zen
+    models:
+      - id: "<placeholder-zen-1>"
+        priority: 3
+        roles: [research]
+
+      - id: "<placeholder-zen-2>"
+        priority: 4
+        roles: [testing]
+
+      - id: "<placeholder-zen-3>"
+        priority: 5
+        roles: [analysis]
+
+  freemodel:
+    name: Free Model
+    models:
+      - id: freemodel/gpt-5.5
+        priority: 10
+        roles: [general, research]
+
+  tokenrouter:
+    name: Token Router
+    models:
+      - id: tokenrouter/MiniMax-M3
+        priority: 6
+        roles: [general, analysis]

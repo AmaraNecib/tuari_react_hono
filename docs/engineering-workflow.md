@@ -17,6 +17,8 @@ Implementation (TDD: Red → Green → Refactor)
     ↓
 Local Verification
     ↓
+Pre-Push Self-Review (review skill)
+    ↓
 Push Feature Branch
     ↓
 Open Pull Request (draft until CI passes)
@@ -113,6 +115,44 @@ GitHub Actions **must not** be the first place failures are discovered. The obje
 
 > GitHub Actions should verify the work, not discover predictable failures.
 
+### 5.5 Pre-Push Self-Review (review skill)
+
+After local verification passes but **before pushing**, the agent runs the
+`review` skill against the current branch to catch issues locally.
+
+**How it works:**
+
+1. The parent agent reads `.diwan/models.yml` to select a review-capable model
+   (e.g., `opencode-go/mimo-2.5` for review tasks).
+2. The parent invokes the builtin `review` skill with the fixed point being
+   `develop` (or the merge-base of the feature branch):
+   ```
+   git diff develop...HEAD
+   ```
+3. The review skill spawns **two parallel sub-agents**:
+   - **Standards** — checks code against documented coding standards +
+     Fowler smell baseline
+   - **Spec** — checks if the implementation matches the originating
+     issue / PRD / spec
+4. The skill aggregates findings into a single report.
+
+**Pass/Fail:**
+
+- **No actionable findings** from either axis → ✅ safe to push. Proceed to step 6.
+- **Actionable findings** → 🔧 fix them locally, re-run local verification
+  (step 5), then re-run the self-review.
+- **Only advisory warnings** (non-blocking) → agent uses judgment: push
+  with `status:needs-investigation` label or fix before pushing.
+
+**Why this exists:**
+
+- Catches issues before they reach CodeRabbit or CI, reducing feedback loops.
+- Runs on Windows natively (no WSL required for the review itself).
+- Uses the `.diwan/` model registry to enable model diversity — the reviewer
+  can use a different model than the parent.
+- The `review` skill's Standards + Spec axes catch problems CodeRabbit might
+  miss (spec drift, smell violations, missing tests).
+
 ### 6. Push Feature Branch
 
 ```bash
@@ -204,22 +244,42 @@ The CI workflow (`.github/workflows/ci.yml`) executes the following. Each must p
 ## Review Policy
 
 ```
-Push feature branch
+Local Verification (step 5)
     ↓
-Open Pull Request
+Pre-Push Self-Review (step 5.5) — review skill, local agent review
+    ↓
+Push Feature Branch (step 6)
+    ↓
+Open Pull Request (step 7)
     ↓
 GitHub Actions (all required checks green)
     ↓
-Request CodeRabbit Review
+Request CodeRabbit Review (step 9)
     ↓
-Address comments
+Address comments (step 10)
     ↓
 GitHub Actions green again (if new commits)
     ↓
 Ready for merge
 ```
 
-CodeRabbit should review only after the Pull Request CI is passing. This avoids wasting reviewer time on failures that would have been caught by CI.
+### Two-Layer Review
+
+The project uses a **two-layer review system**:
+
+**Layer 1: Pre-Push Self-Review** (`review` skill, step 5.5)
+- Runs locally before pushing
+- Uses the `review` skill with parallel Standards + Spec sub-agents
+- Can use a different model (e.g., `opencode-go/mimo-2.5`) via `.diwan/models.yml`
+- Catches spec drift, smell violations, missing tests, standard breaches
+- Runs on Windows, no WSL required
+
+**Layer 2: CodeRabbit Review** (step 9)
+- Runs in CI after all checks pass
+- Provides automated code review with pre-merge checks
+- Catches pattern-level issues the local review might miss
+
+CodeRabbit should review only after the Pull Request CI is passing. This avoids wasting reviewer time on failures that would have been caught by CI. The local self-review avoids wasting CI and CodeRabbit on issues that could have been caught locally.
 
 ---
 
@@ -384,6 +444,7 @@ The agent is accountable for following this gate. The human is accountable for t
 A feature is complete when:
 
 - [ ] Local verification passes
+- [ ] Pre-Push Self-Review (review skill) passes with no actionable findings
 - [ ] Feature branch is pushed
 - [ ] Pull Request exists in GitHub
 - [ ] GitHub Actions are green
