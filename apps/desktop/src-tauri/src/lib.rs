@@ -18,6 +18,7 @@ const API_PORT: u16 = 4318;
 const ALLOWED_ORIGINS: &str =
   "http://localhost:1420,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost";
 const BETTER_AUTH_SECRET_BYTES: usize = 48;
+const APP_DB_KEY_BYTES: usize = 32;
 const API_STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const API_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_AUTH_SERVICE: &str = "com.tuari.desktop.auth";
@@ -667,7 +668,7 @@ fn load_runtime_secrets(app: &AppHandle) -> Result<RuntimeSecrets, String> {
 
     let app_db_key = load_or_create_secret(
         &secrets_dir.join("app-db.key"),
-        BETTER_AUTH_SECRET_BYTES,
+        APP_DB_KEY_BYTES,
     )?;
 
     Ok(RuntimeSecrets {
