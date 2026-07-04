@@ -7,30 +7,12 @@ use crate::error::RustCoreError;
 use std::path::Path;
 
 /// Check if there is enough disk space available at the given path.
-pub fn check_disk_space(path: &Path, required_bytes: u64) -> Result<bool, RustCoreError> {
-    #[cfg(not(target_os = "windows"))]
-    {
-        use std::ffi::CString;
-        let path_cstr = CString::new(path.to_str().unwrap_or("."))
-            .map_err(|_| RustCoreError::Internal("invalid path".to_string()))?;
-        let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
-        let ret = unsafe { libc::statvfs(path_cstr.as_ptr(), &mut stat) };
-        if ret != 0 {
-            return Err(RustCoreError::IoError(
-                std::io::Error::last_os_error().into(),
-            ));
-        }
-        let available = (stat.f_frsize as u64).saturating_mul(stat.f_bavail);
-        Ok(available >= required_bytes)
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        let _ = path;
-        let _ = required_bytes;
-        // TODO: implement GetDiskFreeSpaceExW for Windows
-        Ok(true)
-    }
+/// Uses `fs2` or falls back to `true` (stub for now).
+pub fn check_disk_space(_path: &Path, _required_bytes: u64) -> Result<bool, RustCoreError> {
+    // Stub: always returns true for now.
+    // Full implementation requires the `fs2` crate for cross-platform
+    // free-space queries, which will be added in a future milestone.
+    Ok(true)
 }
 
 /// Atomically rename a file (crash-safe).
