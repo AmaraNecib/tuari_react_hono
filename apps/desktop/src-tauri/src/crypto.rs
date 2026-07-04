@@ -1,7 +1,7 @@
 //! # Rust Core — Cryptographic Primitives
 //!
 //! Ed25519 signature verification, SHA-256 hashing, and secure random bytes.
-//! This module has zero `tauri::` imports.
+//! This module has zero `tauri` imports.
 
 use ed25519_dalek::{Signature, VerifyingKey};
 use rand::rngs::OsRng;

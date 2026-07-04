@@ -2,7 +2,7 @@
 //!
 //! Standard error type for all Rust Core operations.
 //! Every module returns `Result<T, RustCoreError>`.
-//! This module has zero `tauri::` imports.
+//! This module has zero `tauri` imports.
 
 use std::fmt;
 use std::io;
