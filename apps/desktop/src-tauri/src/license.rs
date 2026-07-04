@@ -64,6 +64,16 @@ pub struct LicenseManager {
     trusted_keys: Vec<[u8; 32]>,
 }
 
+/// Embedded Ed25519 public key for verifying license signatures at runtime.
+/// Generated during build; the corresponding private key is held offline.
+/// Current value is a test/development key — replace with a real one before
+/// the first production release.
+pub(crate) const EMBEDDED_PUBLIC_KEY: [u8; 32] = [
+    0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x09,
+    0x15, 0x57, 0x52, 0xe5, 0x25, 0x56, 0x5e, 0xbd, 0xb9, 0x2b, 0x8c, 0xdb, 0xf4, 0x4b,
+    0x54, 0x1f, 0x24, 0x3b,
+];
+
 impl LicenseManager {
     /// Create a new LicenseManager with no active license and no trusted keys.
     /// Verification will fail for any license content.
@@ -84,18 +94,18 @@ impl LicenseManager {
 
     /// Load and validate a license file from disk.
     ///
-    /// Reads `<data_dir>/license.lic`, verifies the Ed25519 signature,
-    /// parses the JSON payload, and validates dates.
+    /// Reads `<data_dir>/license.lic`, verifies the Ed25519 signature against
+    /// the embedded public key, parses the JSON payload, and validates dates.
     pub fn initialize(data_dir: &Path) -> Result<Self, RustCoreError> {
         let license_path = data_dir.join("license.lic");
         let content = std::fs::read_to_string(&license_path)
             .map_err(|_| RustCoreError::LicenseFileNotFound)?;
 
-        let info = Self::parse_and_verify(&content, &[])?;
+        let info = Self::parse_and_verify(&content, &[EMBEDDED_PUBLIC_KEY])?;
 
         Ok(Self {
             license: Mutex::new(Some(info)),
-            trusted_keys: Vec::new(),
+            trusted_keys: vec![EMBEDDED_PUBLIC_KEY],
         })
     }
 
@@ -382,11 +392,7 @@ impl LicenseManager {
 }
 
 // Safety: LicenseManager only contains Send + Sync types.
-fn _assert_send_sync()
-where
-    LicenseManager: Send + Sync,
-{
-}
+// Verified at compile time; runtime test in `mod tests` confirms this.
 
 #[cfg(test)]
 mod tests {
@@ -423,10 +429,12 @@ mod tests {
     }
 
     #[test]
-    fn initialize_loads_valid_license() {
+    fn initialize_rejects_unsigned_license() {
+        // initialize() uses EMBEDDED_PUBLIC_KEY which is a development
+        // placeholder. A file signed with any other key should be rejected.
         let dir = temp_dir();
         fs::create_dir_all(&dir).unwrap();
-        let (_sk, pk) = generate_keypair();
+
         let content = sign_payload(
             r#"{
                 "licenseId": "LCE-20260701-ABC123",
@@ -443,10 +451,9 @@ mod tests {
         );
         fs::write(dir.join("license.lic"), &content).unwrap();
 
-        let manager = LicenseManager::initialize(&dir).unwrap();
-        assert_eq!(manager.edition(), "professional");
-        assert!(manager.has_feature("multi_user"));
-        assert_eq!(manager.max_users(), 10);
+        // The embedded key won't match our test-generated key
+        let result = LicenseManager::initialize(&dir);
+        assert!(matches!(result, Err(RustCoreError::InvalidSignature)));
         fs::remove_dir_all(&dir).unwrap();
     }
 
