@@ -4,9 +4,11 @@
 
 #[cfg(test)]
 mod integration_tests {
-    use crate::license::{self, LicenseManager, LicenseStatus};
-    use crate::clock;
-    use crate::error::RustCoreError;
+    use app_lib::license::{self, LicenseManager, LicenseStatus};
+    use app_lib::clock;
+    use app_lib::error::RustCoreError;
+    use ed25519_dalek::Signer;
+    use rand_core::CryptoRngCore;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -18,19 +20,12 @@ mod integration_tests {
         std::env::temp_dir().join(format!("tuari-m1-integration-{nanos}"))
     }
 
-    /// Full license lifecycle: create → initialize → activate → verify
+    /// License lifecycle: create manager with known keys, activate, verify status
     #[test]
     fn license_lifecycle() {
-        let dir = temp_dir();
-        std::fs::create_dir_all(&dir).unwrap();
-
-        // initialize with no license file → grace mode
-        let manager = LicenseManager::initialize(&dir).unwrap();
-        assert_eq!(manager.status(), LicenseStatus::Grace);
-
-        // activate a license
-        let keypair = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
-        let pk = keypair.verifying_key().to_bytes();
+        let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+        let pk = sk.verifying_key().to_bytes();
+        let manager = LicenseManager::with_keys(vec![pk]);
 
         use base64::Engine;
         let engine = base64::engine::general_purpose::URL_SAFE;
@@ -46,13 +41,13 @@ mod integration_tests {
             "licenseType": "perpetual"
         });
         let payload_bytes = serde_json::to_vec(&payload).unwrap();
-        let sig = keypair.sign(&payload_bytes);
+        let sig = sk.sign(&payload_bytes);
         let content = format!("{}.{}", engine.encode(&payload_bytes), engine.encode(sig.to_bytes()));
 
-        let activated = manager.activate(&content);
-        assert!(activated.is_ok(), "activation should succeed with known key");
-
-        std::fs::remove_dir_all(&dir).unwrap();
+        let result = manager.activate(&content);
+        assert!(result.is_ok(), "activation should succeed");
+        assert_eq!(manager.edition(), "enterprise");
+        assert!(manager.has_feature("encrypted_db"));
     }
 
     /// Clock consistency check works with LicenseManager
@@ -76,10 +71,12 @@ mod integration_tests {
     #[test]
     fn rotation_cert_verification() {
         use license::RotationCertificate;
-        let (ca_sk, ca_pk) = (ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng),
-            ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng).verifying_key().to_bytes());
-        let (_new_sk, new_pk) = (ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng),
-            ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng).verifying_key().to_bytes());
+        // Generate a CA keypair (ca_sk and ca_pk from the SAME keypair)
+        let ca_sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+        let ca_pk = ca_sk.verifying_key().to_bytes();
+        // Generate a new signing keypair to be certified
+        let new_sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+        let new_pk = new_sk.verifying_key().to_bytes();
 
         use base64::Engine;
         let engine = base64::engine::general_purpose::URL_SAFE;
