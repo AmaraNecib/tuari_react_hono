@@ -87,6 +87,11 @@ pub(crate) const EMBEDDED_PUBLIC_KEY: [u8; 32] = [
 /// Root CA public key used to verify key rotation certificates.
 /// Embedded at build time; the corresponding private key is held offline
 /// on an air-gapped HSM with dual-control access.
+///
+/// **Development placeholder:** This value is all zeros. Before the first
+/// production build, replace this with the real Root CA public key generated
+/// on the air-gapped HSM. Tests use `verify_with_key()` to bypass this
+/// placeholder and test rotation cert verification with generated keys.
 pub(crate) const ROOT_CA_PUBLIC_KEY: [u8; 32] = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
