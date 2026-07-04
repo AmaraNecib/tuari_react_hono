@@ -38,6 +38,7 @@ struct ApiProcess {
 
 struct RuntimeSecrets {
     better_auth_secret: String,
+    app_db_key: String,
 }
 
 struct DesktopAuthRuntimeState {
@@ -664,7 +665,15 @@ fn load_runtime_secrets(app: &AppHandle) -> Result<RuntimeSecrets, String> {
         BETTER_AUTH_SECRET_BYTES,
     )?;
 
-    Ok(RuntimeSecrets { better_auth_secret })
+    let app_db_key = load_or_create_secret(
+        &secrets_dir.join("app-db.key"),
+        BETTER_AUTH_SECRET_BYTES,
+    )?;
+
+    Ok(RuntimeSecrets {
+        better_auth_secret,
+        app_db_key,
+    })
 }
 
 fn ensure_file_exists(file_path: &PathBuf) -> Result<(), String> {
@@ -944,6 +953,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     command.creation_flags(CREATE_NO_WINDOW);
 
     command
+        .env_clear()
         .env("API_HOST", API_HOST)
         .env("API_PORT", API_PORT.to_string())
         .env("ALLOWED_ORIGINS", ALLOWED_ORIGINS)
@@ -958,6 +968,15 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .env("DATABASE_URL", to_sqlite_url(&app_db_path))
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(error_log_file));
+
+    // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
+    if let Ok(tuari_dir) = resolve_tuari_dir(app) {
+        if let Ok(manager) = crate::license::LicenseManager::initialize(&tuari_dir) {
+            if manager.has_feature("encrypted_db") {
+                command.env("APP_DB_KEY", runtime_secrets.app_db_key);
+            }
+        }
+    }
 
     let mut child = command
         .spawn()
