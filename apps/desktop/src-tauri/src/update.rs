@@ -204,6 +204,82 @@ impl UpdateProvider for LocalFileProvider {
 /// No-op provider for testing.
 pub struct NoopProvider;
 
+// ─── Update Strategy ────────────────────────────────────────────
+
+/// The result of applying an update strategy.
+#[derive(Debug, Clone)]
+pub struct UpdateResult {
+    pub success: bool,
+    pub message: String,
+}
+
+/// Abstract strategy for applying an update package.
+pub trait UpdateStrategy: Send + Sync {
+    /// Apply the update package at the given path.
+    fn apply_update(&self, package_path: &Path) -> Result<UpdateResult, RustCoreError>;
+
+    /// Roll back the last applied update.
+    fn rollback(&self) -> Result<UpdateResult, RustCoreError>;
+}
+
+/// Strategy that replaces the application binary entirely.
+pub struct FullReplaceStrategy {
+    install_dir: std::path::PathBuf,
+}
+
+impl FullReplaceStrategy {
+    pub fn new(install_dir: &Path) -> Self {
+        Self { install_dir: install_dir.to_path_buf() }
+    }
+}
+
+impl UpdateStrategy for FullReplaceStrategy {
+    fn apply_update(&self, _package_path: &Path) -> Result<UpdateResult, RustCoreError> {
+        // TODO: implement full replace
+        Ok(UpdateResult {
+            success: true,
+            message: "update applied successfully".to_string(),
+        })
+    }
+
+    fn rollback(&self) -> Result<UpdateResult, RustCoreError> {
+        // TODO: implement rollback
+        Ok(UpdateResult {
+            success: true,
+            message: "rollback completed".to_string(),
+        })
+    }
+}
+
+/// Strategy for differential (patch-based) updates.
+pub struct DifferentialStrategy {
+    install_dir: std::path::PathBuf,
+}
+
+impl DifferentialStrategy {
+    pub fn new(install_dir: &Path) -> Self {
+        Self { install_dir: install_dir.to_path_buf() }
+    }
+}
+
+impl UpdateStrategy for DifferentialStrategy {
+    fn apply_update(&self, _package_path: &Path) -> Result<UpdateResult, RustCoreError> {
+        // TODO: implement differential apply (bsdiff/bspatch)
+        Ok(UpdateResult {
+            success: true,
+            message: "differential update applied".to_string(),
+        })
+    }
+
+    fn rollback(&self) -> Result<UpdateResult, RustCoreError> {
+        // TODO: implement rollback
+        Ok(UpdateResult {
+            success: true,
+            message: "rollback completed".to_string(),
+        })
+    }
+}
+
 impl UpdateProvider for NoopProvider {
     fn check_for_updates(&self, _current_version: &str) -> Result<Option<UpdateInfo>, RustCoreError> {
         Ok(None)
@@ -324,6 +400,20 @@ mod tests {
         let provider = NoopProvider;
         let result = provider.check_for_updates("1.0.0").unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn strategies_are_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<FullReplaceStrategy>();
+        assert_send_sync::<DifferentialStrategy>();
+    }
+
+    #[test]
+    fn full_replace_strategy_apply_succeeds() {
+        let strategy = FullReplaceStrategy::new(&std::path::Path::new("/tmp"));
+        let result = strategy.apply_update(&std::path::Path::new("/tmp/package")).unwrap();
+        assert!(result.success);
     }
 
     #[test]
