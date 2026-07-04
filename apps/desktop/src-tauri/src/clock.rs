@@ -85,8 +85,9 @@ pub fn check_clock_consistency(state_dir: &Path) -> Result<ClockStatus, RustCore
     };
 
     // Always update the tracker so the clock can recover on next launch
+    // But never advance last_seen_wall to a known-rollback time — use max
     let updated_tracker = ClockTracker {
-        last_seen_wall: now_wall,
+        last_seen_wall: tracker.last_seen_wall.max(now_wall),
         install_wall: tracker.install_wall,
     };
     let json = serde_json::to_string(&updated_tracker)
@@ -260,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn tracker_updated_on_suspicious_path() {
+    fn tracker_preserves_high_water_mark_on_suspicious_path() {
         let dir = temp_dir();
         let _ = check_clock_consistency(&dir).unwrap();
 
@@ -285,13 +286,15 @@ mod tests {
             "expected Suspicious for backward clock jump, got: {status:?}"
         );
 
-        // But the tracker should still be updated, so a subsequent call
-        // with a consistent clock should recover
-        let status2 = check_clock_consistency(&dir).unwrap();
-        assert_eq!(
-            status2,
-            ClockStatus::Trusted,
-            "should recover after suspicious path updates tracker"
+        // The tracker should have preserved the high-water mark
+        // (last_seen_wall should not have been lowered)
+        let updated_content = fs::read_to_string(dir.join("clock-tracker.json")).unwrap();
+        let updated_tracker: ClockTracker = serde_json::from_str(&updated_content).unwrap();
+        assert!(
+            updated_tracker.last_seen_wall >= saved_wall,
+            "high-water mark should not decrease: {} < {}",
+            updated_tracker.last_seen_wall,
+            saved_wall
         );
 
         fs::remove_dir_all(&dir).unwrap();

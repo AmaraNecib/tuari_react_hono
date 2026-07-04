@@ -111,24 +111,40 @@ impl LicenseManager {
     /// Also checks clock consistency (creates/updates clock-tracker.json).
     pub fn initialize(data_dir: &Path) -> Result<Self, RustCoreError> {
         // Run clock consistency check (creates clock-tracker.json on first run)
-        let _clock_status = crate::clock::check_clock_consistency(data_dir)?;
+        match crate::clock::check_clock_consistency(data_dir)? {
+            crate::clock::ClockStatus::Trusted => {}
+            crate::clock::ClockStatus::Suspicious {
+                estimated_time,
+                reason,
+            } => {
+                return Err(RustCoreError::ClockTampered {
+                    estimated_time,
+                    reason,
+                });
+            }
+        }
 
         let license_path = data_dir.join("license.lic");
-        let content = std::fs::read_to_string(&license_path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                RustCoreError::LicenseFileNotFound
-            } else {
-                RustCoreError::IoError(Box::new(e))
+        match std::fs::read_to_string(&license_path) {
+            Ok(content) => {
+                let info = Self::parse_and_verify(&content, &[EMBEDDED_PUBLIC_KEY])?;
+                Ok(Self {
+                    license: Mutex::new(Some(info)),
+                    trusted_keys: vec![EMBEDDED_PUBLIC_KEY],
+                    data_dir: Some(data_dir.to_path_buf()),
+                })
             }
-        })?;
-
-        let info = Self::parse_and_verify(&content, &[EMBEDDED_PUBLIC_KEY])?;
-
-        Ok(Self {
-            license: Mutex::new(Some(info)),
-            trusted_keys: vec![EMBEDDED_PUBLIC_KEY],
-            data_dir: Some(data_dir.to_path_buf()),
-        })
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // No license file — return a manager with data_dir set
+                // so grace period checks can work
+                Ok(Self {
+                    license: Mutex::new(None),
+                    trusted_keys: vec![EMBEDDED_PUBLIC_KEY],
+                    data_dir: Some(data_dir.to_path_buf()),
+                })
+            }
+            Err(e) => Err(RustCoreError::IoError(Box::new(e))),
+        }
     }
 
     /// Activate a new license from its signed wire-format content.
@@ -336,14 +352,16 @@ impl LicenseManager {
     ///
     /// Uses the clock tracker to detect tampering and check grace period.
     pub fn status(&self) -> LicenseStatus {
-        // Check clock tampering
+        // Check clock tampering — fail closed on errors
         if let Some(ref data_dir) = self.data_dir {
             match crate::clock::check_clock_consistency(data_dir) {
                 Ok(crate::clock::ClockStatus::Suspicious { .. }) => {
                     return LicenseStatus::Tampered;
                 }
-                Err(_) => {}
-                _ => {}
+                Ok(_) => {} // Trusted
+                Err(_) => {
+                    return LicenseStatus::Tampered; // fail closed on I/O errors
+                }
             }
         }
 
@@ -374,16 +392,14 @@ impl LicenseManager {
         match info.valid_until {
             Some(expiry) => {
                 if now > expiry {
-                    // Check if still within post-expiry grace
-                    let days_overdue = (now - expiry).num_days();
-                    if days_overdue <= 30 {
+                    // Check if still within post-expiry grace (precise 30-day window)
+                    if now <= expiry + chrono::Duration::days(30) {
                         return LicenseStatus::ExpiredGrace;
                     }
                     return LicenseStatus::Locked;
                 }
-                // Warning period: last 30 days before expiry
-                let days_until_expiry = (expiry - now).num_days();
-                if days_until_expiry <= 30 {
+                // Warning period: last 30 days before expiry (precise duration)
+                if expiry - now <= chrono::Duration::days(30) {
                     return LicenseStatus::Warning;
                 }
                 LicenseStatus::Valid
@@ -525,11 +541,14 @@ mod tests {
     }
 
     #[test]
-    fn initialize_returns_license_file_not_found() {
+    fn initialize_without_license_file_returns_manager_with_grace() {
         let dir = temp_dir();
         fs::create_dir_all(&dir).unwrap();
-        let result = LicenseManager::initialize(&dir);
-        assert!(matches!(result, Err(RustCoreError::LicenseFileNotFound)));
+        let manager = LicenseManager::initialize(&dir).unwrap();
+        // No license file means no active license, but data_dir is set
+        assert_eq!(manager.edition(), "standard");
+        assert!(!manager.has_feature("lan_server"));
+        assert_eq!(manager.status(), LicenseStatus::Grace);
         fs::remove_dir_all(&dir).unwrap();
     }
 
