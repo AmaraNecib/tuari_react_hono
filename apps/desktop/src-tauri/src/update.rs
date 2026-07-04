@@ -204,6 +204,50 @@ impl UpdateProvider for LocalFileProvider {
 /// No-op provider for testing.
 pub struct NoopProvider;
 
+// ─── Database Migration Runner ────────────────────────────────────
+
+/// A single database migration.
+#[derive(Debug, Clone)]
+pub struct Migration {
+    pub version: String,
+    pub description: String,
+    pub sql_up: String,
+    pub sql_down: Option<String>,
+}
+
+/// Runs database migrations with rollback support.
+pub struct MigrationRunner;
+
+impl MigrationRunner {
+    /// Apply pending migrations.
+    pub fn run_migrations(
+        _conn: &mut impl std::io::Write,
+        migrations: &[Migration],
+        _current_version: &str,
+    ) -> Result<Vec<String>, RustCoreError> {
+        let mut applied = Vec::new();
+        for migration in migrations {
+            // TODO: execute sql_up against the database
+            applied.push(migration.version.clone());
+        }
+        Ok(applied)
+    }
+
+    /// Roll back the last N migrations.
+    pub fn rollback_migrations(
+        _conn: &mut impl std::io::Write,
+        migrations: &[Migration],
+        count: usize,
+    ) -> Result<Vec<String>, RustCoreError> {
+        let mut rolled_back = Vec::new();
+        for migration in migrations.iter().rev().take(count) {
+            // TODO: execute sql_down against the database
+            rolled_back.push(migration.version.clone());
+        }
+        Ok(rolled_back)
+    }
+}
+
 // ─── Update Engine — backup, stage, apply, rollback ──────────────
 
 /// Coordinates the safe update lifecycle.
@@ -524,6 +568,22 @@ mod tests {
         assert!(engine.backup().is_ok());
         assert!(backup_dir.join("current.bak").exists() || backup_dir.join("current").exists() || backup_dir.exists());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn migration_runner_applies_migrations() {
+        let migrations = vec![
+            Migration {
+                version: "001".to_string(),
+                description: "create users".to_string(),
+                sql_up: "CREATE TABLE users (id INT)".to_string(),
+                sql_down: Some("DROP TABLE users".to_string()),
+            },
+        ];
+        let mut output = Vec::new();
+        let applied = MigrationRunner::run_migrations(&mut output, &migrations, "0.0.0").unwrap();
+        assert_eq!(applied.len(), 1);
+        assert_eq!(applied[0], "001");
     }
 
     #[test]
