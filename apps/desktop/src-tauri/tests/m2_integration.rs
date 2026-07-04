@@ -55,6 +55,19 @@ mod update_integration_tests {
     }
 
     #[test]
+    fn file_lock_prevents_concurrent_updates() {
+        let dir = temp_dir();
+        let lock = app_lib::update::UpdateFileLock::new(&dir.join("update.lock"));
+        assert!(lock.acquire().is_ok());
+        // Second acquire should fail
+        let lock2 = app_lib::update::UpdateFileLock::new(&dir.join("update.lock"));
+        assert!(lock2.acquire().is_err());
+        lock.release().unwrap();
+        assert!(lock2.acquire().is_ok(), "should be able to acquire after release");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn migration_runner_rollback() {
         let migrations = vec![
             update::Migration {
