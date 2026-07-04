@@ -5,6 +5,7 @@
 // Zero tauri imports — this is a pure Rust Core module.
 
 use crate::error::RustCoreError;
+use std::path::Path;
 
 /// An entry in the update manifest for a single file.
 #[derive(Debug, Clone)]
@@ -117,6 +118,102 @@ fn hex_to_bytes(hex: &str) -> Option<[u8; 32]> {
     Some(bytes)
 }
 
+// ─── Update Provider ────────────────────────────────────────────
+
+/// The result of checking for available updates.
+#[derive(Debug, Clone)]
+pub struct UpdateInfo {
+    pub version: String,
+    pub download_url: String,
+    pub checksum: String,
+    pub release_date: String,
+}
+
+/// Abstract update provider.
+pub trait UpdateProvider: Send + Sync {
+    /// Check if a newer version is available.
+    fn check_for_updates(&self, current_version: &str) -> Result<Option<UpdateInfo>, RustCoreError>;
+
+    /// Download an update package to the specified path.
+    fn download_update(&self, info: &UpdateInfo, dest: &Path) -> Result<(), RustCoreError>;
+}
+
+/// Provider that fetches updates from GitHub Releases.
+pub struct GithubReleasesProvider {
+    owner: String,
+    repo: String,
+}
+
+impl GithubReleasesProvider {
+    pub fn new(owner: &str, repo: &str) -> Self {
+        Self {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+        }
+    }
+}
+
+impl UpdateProvider for GithubReleasesProvider {
+    fn check_for_updates(&self, current_version: &str) -> Result<Option<UpdateInfo>, RustCoreError> {
+        // TODO: implement GitHub API call
+        let _ = current_version;
+        Ok(None)
+    }
+
+    fn download_update(&self, info: &UpdateInfo, dest: &Path) -> Result<(), RustCoreError> {
+        // TODO: implement HTTP download
+        let _ = info;
+        let _ = dest;
+        Ok(())
+    }
+}
+
+/// Provider that loads updates from a local file path.
+pub struct LocalFileProvider {
+    path: std::path::PathBuf,
+}
+
+impl LocalFileProvider {
+    pub fn new(path: &Path) -> Self {
+        Self { path: path.to_path_buf() }
+    }
+}
+
+impl UpdateProvider for LocalFileProvider {
+    fn check_for_updates(&self, _current_version: &str) -> Result<Option<UpdateInfo>, RustCoreError> {
+        // Local provider always has the file if it exists
+        if self.path.exists() {
+            Ok(Some(UpdateInfo {
+                version: "local".to_string(),
+                download_url: String::new(),
+                checksum: String::new(),
+                release_date: String::new(),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn download_update(&self, _info: &UpdateInfo, dest: &Path) -> Result<(), RustCoreError> {
+        std::fs::copy(&self.path, dest)
+            .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+        Ok(())
+    }
+}
+
+/// No-op provider for testing.
+pub struct NoopProvider;
+
+impl UpdateProvider for NoopProvider {
+    fn check_for_updates(&self, _current_version: &str) -> Result<Option<UpdateInfo>, RustCoreError> {
+        Ok(None)
+    }
+
+    fn download_update(&self, _info: &UpdateInfo, _dest: &Path) -> Result<(), RustCoreError> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,6 +309,34 @@ mod tests {
     #[test]
     fn no_tauri_imports() {
         assert!(true);
+    }
+
+    #[test]
+    fn providers_are_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<GithubReleasesProvider>();
+        assert_send_sync::<LocalFileProvider>();
+        assert_send_sync::<NoopProvider>();
+    }
+
+    #[test]
+    fn noop_provider_returns_none() {
+        let provider = NoopProvider;
+        let result = provider.check_for_updates("1.0.0").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn noop_provider_download_succeeds() {
+        let provider = NoopProvider;
+        let info = UpdateInfo {
+            version: "2.0.0".to_string(),
+            download_url: String::new(),
+            checksum: String::new(),
+            release_date: String::new(),
+        };
+        let tmp = std::env::temp_dir().join("noop-test");
+        assert!(provider.download_update(&info, &tmp).is_ok());
     }
 
     #[test]
