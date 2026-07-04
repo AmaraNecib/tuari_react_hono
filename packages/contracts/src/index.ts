@@ -14,3 +14,4 @@ export * from "./invoice";
 export * from "./invoice-contract";
 export * from "./payment";
 export * from "./payment-contract";
+export * from "./license";
