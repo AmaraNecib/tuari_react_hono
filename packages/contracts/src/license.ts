@@ -82,4 +82,4 @@ export type Edition = z.infer<typeof editionSchema>;
 export type LicenseType = z.infer<typeof licenseTypeSchema>;
 export type LicensedFeature = z.infer<typeof licensedFeatureSchema>;
 export type LicensePayload = z.infer<typeof licensePayloadSchema>;
-Added a comment to test CodeRabbit review workflow
+// test: CodeRabbit workflow demo
