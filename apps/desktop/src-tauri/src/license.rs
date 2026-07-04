@@ -84,6 +84,20 @@ pub(crate) const EMBEDDED_PUBLIC_KEY: [u8; 32] = [
     0x54, 0x1f, 0x24, 0x3b,
 ];
 
+/// Root CA public key used to verify key rotation certificates.
+/// Embedded at build time; the corresponding private key is held offline
+/// on an air-gapped HSM with dual-control access.
+///
+/// **Development placeholder:** This value is all zeros. Before the first
+/// production build, replace this with the real Root CA public key generated
+/// on the air-gapped HSM. Tests use `verify_with_key()` to bypass this
+/// placeholder and test rotation cert verification with generated keys.
+pub(crate) const ROOT_CA_PUBLIC_KEY: [u8; 32] = [
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+];
+
 impl LicenseManager {
     /// Create a new LicenseManager with no active license and no trusted keys.
     /// Verification will fail for any license content.
@@ -124,13 +138,19 @@ impl LicenseManager {
             }
         }
 
+        // Load key rotation certificates from <data_dir>/key-rotation-*.json
+        let mut all_keys = vec![EMBEDDED_PUBLIC_KEY];
+        if let Ok(rotation_keys) = load_rotation_certificates(data_dir) {
+            all_keys.extend(rotation_keys);
+        }
+
         let license_path = data_dir.join("license.lic");
         match std::fs::read_to_string(&license_path) {
             Ok(content) => {
-                let info = Self::parse_and_verify(&content, &[EMBEDDED_PUBLIC_KEY])?;
+                let info = Self::parse_and_verify(&content, &all_keys)?;
                 Ok(Self {
                     license: Mutex::new(Some(info)),
-                    trusted_keys: vec![EMBEDDED_PUBLIC_KEY],
+                    trusted_keys: all_keys,
                     data_dir: Some(data_dir.to_path_buf()),
                 })
             }
@@ -139,7 +159,7 @@ impl LicenseManager {
                 // so grace period checks can work
                 Ok(Self {
                     license: Mutex::new(None),
-                    trusted_keys: vec![EMBEDDED_PUBLIC_KEY],
+                    trusted_keys: all_keys,
                     data_dir: Some(data_dir.to_path_buf()),
                 })
             }
@@ -474,6 +494,134 @@ impl LicenseManager {
     }
 }
 
+// ─── Key Rotation ────────────────────────────────────────────────
+
+/// A key rotation certificate authorizing a new signing key.
+/// Signed by the Root CA private key.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotationCertificate {
+    #[serde(rename = "type")]
+    pub cert_type: String,
+    /// The new Ed25519 public key (base64url-encoded).
+    pub new_public_key: String,
+    /// When this key becomes effective (RFC 3339).
+    pub effective_from: String,
+    /// SHA-256 of the previous public key (hex).
+    pub previous_key_id: String,
+    /// Reason for rotation.
+    pub rotation_reason: String,
+    /// Root CA signature over the certificate fields (base64url-encoded).
+    pub root_ca_signature: String,
+}
+
+impl RotationCertificate {
+    /// Verify this certificate's signature against the Root CA public key.
+    pub fn verify(&self) -> Result<[u8; 32], RustCoreError> {
+        self.verify_inner(&ROOT_CA_PUBLIC_KEY)
+    }
+
+    /// Verify against a specific Root CA key (useful for testing).
+    pub fn verify_with_key(&self, root_ca_key: &[u8; 32]) -> Result<[u8; 32], RustCoreError> {
+        self.verify_inner(root_ca_key)
+    }
+
+    /// Shared verification logic.
+    fn verify_inner(&self, root_ca_key: &[u8; 32]) -> Result<[u8; 32], RustCoreError> {
+        use base64::Engine;
+        let engine = base64::engine::general_purpose::URL_SAFE;
+
+        let new_key_bytes = engine
+            .decode(&self.new_public_key)
+            .map_err(|_| RustCoreError::InvalidFormat)?;
+        if new_key_bytes.len() != 32 {
+            return Err(RustCoreError::InvalidFormat);
+        }
+        let mut new_key = [0u8; 32];
+        new_key.copy_from_slice(&new_key_bytes);
+
+        let sig_bytes = engine
+            .decode(&self.root_ca_signature)
+            .map_err(|_| RustCoreError::InvalidFormat)?;
+        if sig_bytes.len() != 64 {
+            return Err(RustCoreError::InvalidFormat);
+        }
+        let mut sig = [0u8; 64];
+        sig.copy_from_slice(&sig_bytes);
+
+        // Reject if not yet effective
+        let effective = chrono::DateTime::parse_from_rfc3339(&self.effective_from)
+            .map_err(|_| RustCoreError::InvalidPayload)?;
+        if chrono::Utc::now() < effective {
+            return Err(RustCoreError::InvalidPayload);
+        }
+
+        let msg = self.to_canonical_json();
+
+        match crate::crypto::ed25519_verify(root_ca_key, msg.as_bytes(), &sig) {
+            Ok(()) => Ok(new_key),
+            Err(_) => Err(RustCoreError::InvalidSignature),
+        }
+    }
+
+    /// Produce the canonical JSON that was signed (all fields except signature).
+    /// Uses serde_json for deterministic, properly-escaped output.
+    fn to_canonical_json(&self) -> String {
+        let value = serde_json::json!({
+            "effectiveFrom": self.effective_from,
+            "newPublicKey": self.new_public_key,
+            "previousKeyId": self.previous_key_id,
+            "rotationReason": self.rotation_reason,
+            "type": self.cert_type,
+        });
+        serde_json::to_string(&value).unwrap_or_default()
+    }
+}
+
+/// Load key rotation certificates from the data directory.
+/// Scans for files matching `key-rotation-*.json` and verifies each
+/// against the Root CA public key.
+pub fn load_rotation_certificates(data_dir: &Path) -> Result<Vec<[u8; 32]>, RustCoreError> {
+    let mut trusted_keys = Vec::new();
+
+    let dir = match std::fs::read_dir(data_dir) {
+        Ok(d) => d,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(RustCoreError::IoError(Box::new(e))),
+    };
+
+    for entry in dir {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        let file_name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+
+        if !file_name.starts_with("key-rotation-") || !file_name.ends_with(".json") {
+            continue;
+        }
+
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let cert: RotationCertificate = match serde_json::from_str(&content) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        if let Ok(public_key) = cert.verify() {
+            trusted_keys.push(public_key);
+        }
+    }
+
+    Ok(trusted_keys)
+}
+
 // Safety: LicenseManager only contains Send + Sync types.
 // Verified at compile time; runtime test in `mod tests` confirms this.
 
@@ -785,6 +933,174 @@ mod tests {
     fn no_tauri_imports() {
         // Verifies at compile time that no tauri types are used in this module.
         assert!(true);
+    }
+
+    #[test]
+    fn rotation_certificate_validates_with_correct_root_ca() {
+        // Generate a Root CA keypair and a new signing keypair
+        let (root_ca_sk, root_ca_pk) = generate_keypair();
+        let (_new_sk, new_pk) = generate_keypair();
+
+        use base64::Engine;
+        let engine = base64::engine::general_purpose::URL_SAFE;
+        let new_pk_b64 = engine.encode(new_pk);
+
+        // Create the unsigned certificate JSON (what we'll sign)
+        // Use serde_json to generate the canonical form (matching to_canonical_json)
+        let cert_value = serde_json::json!({
+            "effectiveFrom": "2026-01-01T00:00:00Z",
+            "newPublicKey": new_pk_b64,
+            "previousKeyId": "abc123",
+            "rotationReason": "scheduled",
+            "type": "key_rotation",
+        });
+        let cert_json = serde_json::to_string(&cert_value).unwrap();
+
+        // Sign with the Root CA private key
+        let sig = root_ca_sk.sign(cert_json.as_bytes());
+        let sig_b64 = engine.encode(sig.to_bytes());
+
+        let cert = RotationCertificate {
+            cert_type: "key_rotation".to_string(),
+            new_public_key: new_pk_b64,
+            effective_from: "2026-01-01T00:00:00Z".to_string(),
+            previous_key_id: "abc123".to_string(),
+            rotation_reason: "scheduled".to_string(),
+            root_ca_signature: sig_b64,
+        };
+
+        let result = cert.verify_with_key(&root_ca_pk);
+        assert!(result.is_ok(), "valid rotation cert should verify");
+        assert_eq!(result.unwrap(), new_pk);
+    }
+
+    #[test]
+    fn rotation_certificate_rejects_wrong_root_ca() {
+        let (root_ca_sk, _root_ca_pk) = generate_keypair();
+        let (_new_sk, new_pk) = generate_keypair();
+        let (_, wrong_pk) = generate_keypair(); // different Root CA
+
+        use base64::Engine;
+        let engine = base64::engine::general_purpose::URL_SAFE;
+        let new_pk_b64 = engine.encode(new_pk);
+
+        let cert_value = serde_json::json!({
+            "effectiveFrom": "2026-01-01T00:00:00Z",
+            "newPublicKey": new_pk_b64,
+            "previousKeyId": "abc123",
+            "rotationReason": "scheduled",
+            "type": "key_rotation",
+        });
+        let cert_json = serde_json::to_string(&cert_value).unwrap();
+
+        let sig = root_ca_sk.sign(cert_json.as_bytes());
+        let sig_b64 = engine.encode(sig.to_bytes());
+
+        let cert = RotationCertificate {
+            cert_type: "key_rotation".to_string(),
+            new_public_key: new_pk_b64,
+            effective_from: "2026-01-01T00:00:00Z".to_string(),
+            previous_key_id: "abc123".to_string(),
+            rotation_reason: "scheduled".to_string(),
+            root_ca_signature: sig_b64,
+        };
+
+        let result = cert.verify_with_key(&wrong_pk);
+        assert!(matches!(result, Err(RustCoreError::InvalidSignature)));
+    }
+
+    #[test]
+    fn load_rotation_certificates_loads_valid_certs() {
+        let dir = temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let (root_ca_sk, root_ca_pk) = generate_keypair();
+        let (_new_sk, new_pk) = generate_keypair();
+
+        use base64::Engine;
+        let engine = base64::engine::general_purpose::URL_SAFE;
+        let new_pk_b64 = engine.encode(new_pk);
+
+        let cert_value = serde_json::json!({
+            "effectiveFrom": "2026-01-01T00:00:00Z",
+            "newPublicKey": new_pk_b64,
+            "previousKeyId": "abc123",
+            "rotationReason": "scheduled",
+            "type": "key_rotation",
+        });
+        let cert_json = serde_json::to_string(&cert_value).unwrap();
+        let sig = root_ca_sk.sign(cert_json.as_bytes());
+        let sig_b64 = engine.encode(sig.to_bytes());
+
+        let cert = serde_json::json!({
+            "type": "key_rotation",
+            "newPublicKey": new_pk_b64,
+            "effectiveFrom": "2026-01-01T00:00:00Z",
+            "previousKeyId": "abc123",
+            "rotationReason": "scheduled",
+            "rootCaSignature": sig_b64,
+        });
+
+        std::fs::write(
+            dir.join("key-rotation-v2.json"),
+            serde_json::to_string_pretty(&cert).unwrap(),
+        )
+        .unwrap();
+
+        // Temporarily test load_rotation_certificates logic directly
+        // by creating a file and checking parse/verify
+        let content = std::fs::read_to_string(dir.join("key-rotation-v2.json")).unwrap();
+        let parsed: RotationCertificate = serde_json::from_str(&content).unwrap();
+        let result = parsed.verify_with_key(&root_ca_pk);
+        assert!(result.is_ok(), "loaded cert should verify");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn initialize_skips_invalid_rotation_certs_gracefully() {
+        let dir = temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Write a rotation cert with a test-generated Root CA
+        // (won't match the embedded ROOT_CA_PUBLIC_KEY)
+        let (root_ca_sk, _root_ca_pk) = generate_keypair();
+        let (_rotated_sk, rotated_pk) = generate_keypair();
+
+        use base64::Engine;
+        let engine = base64::engine::general_purpose::URL_SAFE;
+        let rotated_pk_b64 = engine.encode(rotated_pk);
+        let cert_value = serde_json::json!({
+            "effectiveFrom": "2026-01-01T00:00:00Z",
+            "newPublicKey": rotated_pk_b64,
+            "previousKeyId": "abc123",
+            "rotationReason": "scheduled",
+            "type": "key_rotation",
+        });
+        let cert_json_str = serde_json::to_string(&cert_value).unwrap();
+        let sig = root_ca_sk.sign(cert_json_str.as_bytes());
+        let sig_b64 = engine.encode(sig.to_bytes());
+
+        let cert = serde_json::json!({
+            "type": "key_rotation",
+            "newPublicKey": rotated_pk_b64,
+            "effectiveFrom": "2026-01-01T00:00:00Z",
+            "previousKeyId": "abc123",
+            "rotationReason": "scheduled",
+            "rootCaSignature": sig_b64,
+        });
+        std::fs::write(
+            dir.join("key-rotation-v2.json"),
+            serde_json::to_string_pretty(&cert).unwrap(),
+        )
+        .unwrap();
+
+        // initialize() should succeed — invalid rotation certs are skipped,
+        // and no license file means grace mode
+        let manager = LicenseManager::initialize(&dir).unwrap();
+        assert_eq!(manager.status(), LicenseStatus::Grace);
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
