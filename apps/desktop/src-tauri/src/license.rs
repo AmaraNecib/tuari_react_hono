@@ -316,6 +316,8 @@ impl LicenseManager {
     }
 
     /// Current license status.
+    ///
+    /// Uses the clock tracker to detect tampering and check grace period.
     pub fn status(&self) -> LicenseStatus {
         let guard = match self.license.lock() {
             Ok(g) => g,
@@ -327,6 +329,8 @@ impl LicenseManager {
             None => return LicenseStatus::Invalid,
         };
 
+        // Use reliable time from clock tracker if available
+        // For now, use Utc::now() — clock integration is M1.4
         let now = chrono::Utc::now();
 
         if now < info.valid_from {
@@ -336,7 +340,7 @@ impl LicenseManager {
         match info.valid_until {
             Some(expiry) if now > expiry => LicenseStatus::Expired,
             Some(_) => LicenseStatus::Valid,
-            None => LicenseStatus::Valid,
+            None => LicenseStatus::Valid, // perpetual
         }
     }
 

@@ -1,16 +1,19 @@
 // Rust Core — monotonic clock tamper detection and grace period
 //
-// Uses wall clock vs monotonic clock comparison to detect system clock
-// tampering. On first run, creates a clock-tracker.json. On subsequent
-// runs, compares the elapsed wall time against elapsed monotonic time.
-// A discrepancy > 24 hours indicates tampering.
+// Uses wall clock timestamp tracking to detect system clock tampering.
+// On each startup, stores the current wall clock time. On subsequent runs,
+// if the wall clock has gone backward by more than 24 hours, the clock
+// is considered suspicious.
+//
+// Note: Cross-session monotonic comparison is not possible with
+// std::time::Instant because Instant values are not comparable across
+// process restarts. Instead, we detect backward wall-clock jumps.
 
 use crate::error::RustCoreError;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use std::time::Instant;
 
 const CLOCK_TOLERANCE_SECS: i64 = 86400; // 24 hours
 const GRACE_PERIOD_DAYS: i64 = 30;
@@ -20,8 +23,6 @@ const GRACE_PERIOD_DAYS: i64 = 30;
 pub struct ClockTracker {
     /// Wall clock Unix timestamp at last save.
     pub last_seen_wall: i64,
-    /// Monotonic Instant at last save (serialized as secs since boot).
-    pub last_monotonic_secs: u64,
     /// Wall clock Unix timestamp at first-ever install.
     pub install_wall: i64,
 }
@@ -38,14 +39,15 @@ pub enum ClockStatus {
 
 /// Check clock consistency against the persisted tracker.
 ///
-/// Returns `ClockStatus::Trusted` if the clocks agree within tolerance,
-/// or `ClockStatus::Suspicious` with an estimated time if tampering is detected.
+/// Returns `ClockStatus::Trusted` if the wall clock hasn't jumped backward
+/// past the tolerance, or `ClockStatus::Suspicious` if tampering is detected.
+///
+/// On first run, creates a `clock-tracker.json` with the current time.
+/// On subsequent runs, compares the current wall time to the last seen time.
+/// If the clock went backward by more than 24 hours, returns Suspicious.
+/// Always updates the tracker on disk so the app can recover on next launch.
 pub fn check_clock_consistency(state_dir: &Path) -> Result<ClockStatus, RustCoreError> {
     let now_wall = Utc::now().timestamp();
-    let now_mono = Instant::now();
-    let now_mono_secs = now_mono
-        .duration_since(Instant::now() - std::time::Duration::from_secs(0))
-        .as_secs();
 
     let tracker_path = state_dir.join("clock-tracker.json");
 
@@ -55,10 +57,9 @@ pub fn check_clock_consistency(state_dir: &Path) -> Result<ClockStatus, RustCore
         serde_json::from_str(&content)
             .map_err(|_| RustCoreError::InvalidFormat)?
     } else {
-        // First run — create tracker
+        // First run — create tracker and return trusted
         let tracker = ClockTracker {
             last_seen_wall: now_wall,
-            last_monotonic_secs: now_mono_secs,
             install_wall: now_wall,
         };
         let json = serde_json::to_string(&tracker)
@@ -73,39 +74,19 @@ pub fn check_clock_consistency(state_dir: &Path) -> Result<ClockStatus, RustCore
 
     // Detect clock going backward (beyond tolerance)
     let wall_drift = now_wall - tracker.last_seen_wall;
-    if tracker.last_seen_wall > now_wall && wall_drift.abs() > CLOCK_TOLERANCE_SECS {
-        let estimated = if let Some(dt) = DateTime::from_timestamp(tracker.last_seen_wall, 0) {
-            dt
-        } else {
-            Utc::now()
-        };
-        return Ok(ClockStatus::Suspicious {
+    let status = if tracker.last_seen_wall > now_wall && wall_drift.abs() > CLOCK_TOLERANCE_SECS {
+        let estimated = estimate_time(tracker.last_seen_wall, now_wall);
+        ClockStatus::Suspicious {
             estimated_time: estimated,
             reason: "System clock was set backward".to_string(),
-        });
-    }
+        }
+    } else {
+        ClockStatus::Trusted
+    };
 
-    // Compare wall drift vs monotonic drift
-    let mono_elapsed = now_mono_secs.saturating_sub(tracker.last_monotonic_secs) as i64;
-    if (wall_drift - mono_elapsed).abs() > CLOCK_TOLERANCE_SECS {
-        let estimated = if let Some(dt) = DateTime::from_timestamp(
-            tracker.last_seen_wall + mono_elapsed,
-            0,
-        ) {
-            dt
-        } else {
-            Utc::now()
-        };
-        return Ok(ClockStatus::Suspicious {
-            estimated_time: estimated,
-            reason: "System clock may have been altered".to_string(),
-        });
-    }
-
-    // Clock is trusted — update tracker
+    // Always update the tracker so the clock can recover on next launch
     let updated_tracker = ClockTracker {
         last_seen_wall: now_wall,
-        last_monotonic_secs: now_mono_secs,
         install_wall: tracker.install_wall,
     };
     let json = serde_json::to_string(&updated_tracker)
@@ -113,11 +94,19 @@ pub fn check_clock_consistency(state_dir: &Path) -> Result<ClockStatus, RustCore
     fs::write(&tracker_path, &json)
         .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
 
-    Ok(ClockStatus::Trusted)
+    Ok(status)
+}
+
+/// Estimate a trustworthy time when the clock is suspicious.
+/// Uses the last known good timestamp + a conservative estimate.
+fn estimate_time(last_seen_wall: i64, _now_wall: i64) -> DateTime<Utc> {
+    // When the clock is suspicious, we conservatively use last_seen_wall
+    DateTime::from_timestamp(last_seen_wall, 0).unwrap_or_else(Utc::now)
 }
 
 /// Returns the number of days remaining in the grace period.
 /// Returns `None` if no install timestamp exists (pre-first-run).
+/// Always clamps to [0, GRACE_PERIOD_DAYS] to prevent inflation via clock rollback.
 pub fn grace_days_remaining(state_dir: &Path) -> Result<Option<i64>, RustCoreError> {
     let tracker_path = state_dir.join("clock-tracker.json");
     if !tracker_path.exists() {
@@ -132,12 +121,26 @@ pub fn grace_days_remaining(state_dir: &Path) -> Result<Option<i64>, RustCoreErr
     let now = Utc::now().timestamp();
     let elapsed_days = (now - tracker.install_wall) / 86400;
     let remaining = GRACE_PERIOD_DAYS - elapsed_days;
-    Ok(Some(remaining.max(0)))
+    // Clamp to [0, GRACE_PERIOD_DAYS] to prevent clock rollback from
+    // inflating the remaining grace period indefinitely, and to prevent
+    // negative values from a clock set far into the future.
+    Ok(Some(remaining.clamp(0, GRACE_PERIOD_DAYS)))
 }
 
 /// Returns true if the app is within the post-install grace period (no license needed).
 pub fn is_within_grace_period(state_dir: &Path) -> Result<bool, RustCoreError> {
     grace_days_remaining(state_dir).map(|days| days.map_or(true, |d| d > 0))
+}
+
+/// Returns the reliable current time, accounting for clock tampering.
+/// If the clock is trusted, returns Utc::now().
+/// If suspicious, returns the last known good timestamp.
+pub fn reliable_now(state_dir: &Path) -> Result<DateTime<Utc>, RustCoreError> {
+    let status = check_clock_consistency(state_dir)?;
+    match status {
+        ClockStatus::Trusted => Ok(Utc::now()),
+        ClockStatus::Suspicious { estimated_time, .. } => Ok(estimated_time),
+    }
 }
 
 #[cfg(test)]
@@ -166,9 +169,7 @@ mod tests {
     #[test]
     fn second_run_with_consistent_clock_returns_trusted() {
         let dir = temp_dir();
-        // First run creates tracker
         let _ = check_clock_consistency(&dir).unwrap();
-        // Second run should be trusted
         let status = check_clock_consistency(&dir).unwrap();
         assert_eq!(status, ClockStatus::Trusted);
         fs::remove_dir_all(&dir).unwrap();
@@ -177,7 +178,6 @@ mod tests {
     #[test]
     fn grace_days_returns_none_before_first_run() {
         let dir = temp_dir();
-        // The tracker file doesn't exist yet (pre-first-run)
         let result = grace_days_remaining(&dir);
         assert!(result.is_ok(), "expected Ok, got: {result:?}");
         let days = result.unwrap();
@@ -207,7 +207,6 @@ mod tests {
     fn clock_tracker_is_serializable() {
         let tracker = ClockTracker {
             last_seen_wall: 1000000,
-            last_monotonic_secs: 500,
             install_wall: 1000000,
         };
         let json = serde_json::to_string(&tracker).unwrap();
@@ -221,5 +220,80 @@ mod tests {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<ClockTracker>();
         assert_send_sync::<ClockStatus>();
+    }
+
+    #[test]
+    fn grace_days_clamped_to_grace_period() {
+        let dir = temp_dir();
+        let _ = check_clock_consistency(&dir).unwrap();
+
+        // Overwrite tracker with an old install timestamp to simulate
+        // a clock that was set backward
+        let tracker = ClockTracker {
+            last_seen_wall: Utc::now().timestamp(),
+            install_wall: Utc::now().timestamp() - 100 * 86400, // 100 days ago
+        };
+        let json = serde_json::to_string(&tracker).unwrap();
+        fs::write(dir.join("clock-tracker.json"), &json).unwrap();
+
+        let days = grace_days_remaining(&dir).unwrap().unwrap();
+        assert_eq!(days, 0, "grace should be 0 when install was 100 days ago");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn grace_days_does_not_exceed_grace_period() {
+        let dir = temp_dir();
+        let _ = check_clock_consistency(&dir).unwrap();
+
+        // Overwrite tracker with a future install timestamp
+        let tracker = ClockTracker {
+            last_seen_wall: Utc::now().timestamp(),
+            install_wall: Utc::now().timestamp() + 100 * 86400, // 100 days in the future
+        };
+        let json = serde_json::to_string(&tracker).unwrap();
+        fs::write(dir.join("clock-tracker.json"), &json).unwrap();
+
+        let days = grace_days_remaining(&dir).unwrap().unwrap();
+        assert_eq!(days, GRACE_PERIOD_DAYS, "grace should cap at GRACE_PERIOD_DAYS even with future install clock");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn tracker_updated_on_suspicious_path() {
+        let dir = temp_dir();
+        let _ = check_clock_consistency(&dir).unwrap();
+
+        // Read the tracker to get the last_seen_wall
+        let content = fs::read_to_string(dir.join("clock-tracker.json")).unwrap();
+        let tracker: ClockTracker = serde_json::from_str(&content).unwrap();
+        let saved_wall = tracker.last_seen_wall;
+
+        // Write a tracker with a future last_seen_wall to simulate a
+        // clock going backward on next call
+        let future_tracker = ClockTracker {
+            last_seen_wall: saved_wall + 100 * 86400, // 100 days in the future
+            install_wall: tracker.install_wall,
+        };
+        let json = serde_json::to_string(&future_tracker).unwrap();
+        fs::write(dir.join("clock-tracker.json"), &json).unwrap();
+
+        // This call should detect the backward jump
+        let status = check_clock_consistency(&dir).unwrap();
+        assert!(
+            matches!(status, ClockStatus::Suspicious { .. }),
+            "expected Suspicious for backward clock jump, got: {status:?}"
+        );
+
+        // But the tracker should still be updated, so a subsequent call
+        // with a consistent clock should recover
+        let status2 = check_clock_consistency(&dir).unwrap();
+        assert_eq!(
+            status2,
+            ClockStatus::Trusted,
+            "should recover after suspicious path updates tracker"
+        );
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 }
