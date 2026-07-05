@@ -25,6 +25,7 @@ import { createPaymentHandlers } from "./handlers/payment";
 import { createUpdateHandlers } from "./handlers/update";
 
 import type { RecoveryKeyService } from "../modules/auth/recovery-key.service";
+import type { UpdateHistoryService } from "../modules/update/update-history.service";
 import type { UpdateService } from "../modules/update/update.service";
 
 import type { BetterSqliteDatabase } from "../types/sqlite";
@@ -41,6 +42,7 @@ type RouterDependencies = {
   paymentModule: PaymentModule;
   recoveryKeyService: RecoveryKeyService;
   updateService: UpdateService;
+  updateHistoryService: UpdateHistoryService;
   rawDatabase: BetterSqliteDatabase;
 };
 
@@ -76,7 +78,7 @@ export function createRouter(dependencies: RouterDependencies) {
     createReportsHandlers(os, m, dependencies.companyService, dependencies.inventoryService),
     createInvoiceHandlers(os, m, dependencies.invoiceModule),
     createPaymentHandlers(os, m, dependencies.paymentModule),
-    createUpdateHandlers(os, m, dependencies.updateService),
+    createUpdateHandlers(os, m, dependencies.updateService, dependencies.updateHistoryService),
   );
 
   return os.router(allHandlers as any);

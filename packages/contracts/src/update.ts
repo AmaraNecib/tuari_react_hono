@@ -20,3 +20,35 @@ export const updateMetadataSchema = z.object({
 });
 
 export type UpdateMetadata = z.infer<typeof updateMetadataSchema>;
+
+// ─── M4.3 — Update history ───────────────────────────────────────
+
+/** A single applied-update record from the update_history table. */
+export const updateRecordSchema = z.object({
+  id: z.number().int().positive(),
+  version: z.string().min(1),
+  appliedAt: z.string().datetime({ offset: true }),
+  success: z.boolean(),
+  errorMessage: z.string().nullable(),
+});
+
+/** Input for recording a new update attempt. */
+export const recordUpdateInputSchema = z.object({
+  version: z.string().min(1),
+  success: z.boolean(),
+  errorMessage: z.string().nullable().optional(),
+});
+
+/** Result of a record-update operation. */
+export const recordUpdateResultSchema = z.object({
+  record: updateRecordSchema,
+});
+
+/** Response shape for listing update history. */
+export const updateHistoryListSchema = z.object({
+  items: z.array(updateRecordSchema),
+  latest: updateRecordSchema.nullable(),
+});
+
+export type UpdateRecord = z.infer<typeof updateRecordSchema>;
+export type RecordUpdateInput = z.infer<typeof recordUpdateInputSchema>;

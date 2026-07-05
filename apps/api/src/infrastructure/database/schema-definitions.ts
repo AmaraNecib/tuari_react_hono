@@ -658,6 +658,15 @@ export const schemaStatements = [
   )`,
   `CREATE INDEX IF NOT EXISTS "recovery_key_status_idx" ON "recovery_key" ("status")`,
   `CREATE INDEX IF NOT EXISTS "recovery_key_key_hash_idx" ON "recovery_key" ("key_hash")`,
+  `CREATE TABLE IF NOT EXISTS "update_history" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "version" TEXT NOT NULL,
+    "applied_at" TEXT NOT NULL,
+    "success" INTEGER NOT NULL DEFAULT 1,
+    "error_message" TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS "update_history_version_idx" ON "update_history" ("version")`,
+  `CREATE INDEX IF NOT EXISTS "update_history_applied_at_idx" ON "update_history" ("applied_at")`,
 ]
 
 export const additiveStatements = [
