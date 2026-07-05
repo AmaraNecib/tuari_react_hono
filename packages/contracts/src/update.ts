@@ -52,3 +52,5 @@ export const updateHistoryListSchema = z.object({
 
 export type UpdateRecord = z.infer<typeof updateRecordSchema>;
 export type RecordUpdateInput = z.infer<typeof recordUpdateInputSchema>;
+export type RecordUpdateResult = z.infer<typeof recordUpdateResultSchema>;
+export type UpdateHistoryList = z.infer<typeof updateHistoryListSchema>;
