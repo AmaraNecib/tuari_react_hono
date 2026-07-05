@@ -7,6 +7,13 @@
  */
 import type { UpdateMetadata } from "@tuari/contracts";
 
+/** Safe integer parser from env var. Returns `undefined` on missing/invalid input. */
+function parseEnvInt(value: string | undefined): number | undefined {
+  if (value === undefined || value === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) && Number.isInteger(n) ? n : undefined;
+}
+
 // ─── Default metadata ───────────────────────────────────────────
 // In production these values come from environment variables or a
 // remote update server.  Defaults let the endpoint be functional
@@ -25,9 +32,7 @@ function createDefaultMetadata(): UpdateMetadata {
       "0000000000000000000000000000000000000000000000000000000000000000",
     isCritical: process.env.TUARI_UPDATE_IS_CRITICAL === "true",
     releaseNotesUrl: process.env.TUARI_UPDATE_RELEASE_NOTES_URL || undefined,
-    updatePackageSize: process.env.TUARI_UPDATE_PACKAGE_SIZE
-      ? Number(process.env.TUARI_UPDATE_PACKAGE_SIZE)
-      : undefined,
+    updatePackageSize: parseEnvInt(process.env.TUARI_UPDATE_PACKAGE_SIZE),
     changelog: process.env.TUARI_UPDATE_CHANGELOG || undefined,
   };
 }

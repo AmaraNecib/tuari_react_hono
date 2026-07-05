@@ -191,6 +191,9 @@ export function createApp(
   app.get("/health", (c) => c.json({ status: "ok" }));
 
   // M4.1 — Update metadata endpoint (GET for the Rust updater engine)
+  // Intentionally unauthenticated — the updater engine runs locally and
+  // does not carry session tokens.  The RPC variant (updateMetadata) uses
+  // m.queryAuth for authenticated frontend access.
   app.get("/api/updates/latest", (c) =>
     c.json(dependencies.updateService.getLatestMetadata()),
   );
