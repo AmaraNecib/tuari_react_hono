@@ -6,8 +6,11 @@
  */
 import { implement } from "@orpc/server";
 
+import type { RecordUpdateInput } from "@tuari/contracts";
+
 import type { UpdateHistoryService } from "../../modules/update/update-history.service";
 import type { UpdateService } from "../../modules/update/update.service";
+
 import type { RpcContext } from "../context";
 import type { RpcMiddleware } from "../rpc-middleware";
 
@@ -23,34 +26,34 @@ export function createUpdateHandlers(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,
   updateService: UpdateService,
-  updateHistoryService?: UpdateHistoryService,
+  updateHistoryService: UpdateHistoryService,
 ): Record<string, any> {
-  const handlers: Record<string, any> = {
+  return {
     // M4.1 — Update metadata
     updateMetadata: os.updateMetadata.handler(
       m.queryAuth(async () => updateService.getLatestMetadata()),
     ),
-  };
 
-  // M4.3 — Update history (if the service is available)
-  if (updateHistoryService) {
-    handlers.updateHistoryList = os.updateHistoryList.handler(
+    // M4.3 — Update history list
+    updateHistoryList: os.updateHistoryList.handler(
       m.queryAuth(async () => ({
         items: updateHistoryService.getHistory(),
         latest: updateHistoryService.getLatestUpdate(),
       })),
-    );
+    ),
 
-    handlers.recordUpdate = os.recordUpdate.handler(
+    // M4.3 — Record an update attempt (called by the updater engine)
+    recordUpdate: os.recordUpdate.handler(
       m.mutationAudit(
-        ({ input }: any) => {
-          const record = updateHistoryService.recordUpdate(input as any);
+        ({ input }: { input: RecordUpdateInput }) => {
+          const record = updateHistoryService.recordUpdate(input);
           return { record };
         },
-        (error: unknown) => ({ success: false as const, error: String(error) }),
+        (error: unknown) => ({
+          success: false as const,
+          error: { code: "BUSINESS_RULE" as const, message: String(error), fieldErrors: [] },
+        }),
       ),
-    );
-  }
-
-  return handlers;
+    ),
+  };
 }
