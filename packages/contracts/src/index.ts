@@ -14,4 +14,6 @@ export * from "./invoice";
 export * from "./invoice-contract";
 export * from "./payment";
 export * from "./payment-contract";
+export * from "./update";
+export * from "./update-contract";
 export * from "./license";
