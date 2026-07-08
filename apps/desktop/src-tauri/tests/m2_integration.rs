@@ -39,11 +39,12 @@ mod update_integration_tests {
 
     #[test]
     fn signed_manifest_format_compatibility() {
-        // This test verifies that a manifest signed with the CLI format
-        // (<base64url(canonical_json)>.<base64url(signature)>) can be verified
-        // by the Rust verify_package_signature function.
+        // Verifies that the signed manifest format
+        // (<base64url(canonical_json)>.<base64url(signature)>) with unpadded
+        // base64url (matching the CLI output) can be verified by Rust.
         use base64::Engine;
-        let engine = base64::engine::general_purpose::URL_SAFE;
+        // URL_SAFE_NO_PAD matches the CLI's no-padding output
+        let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
         // Generate a keypair
         let sk = SigningKey::generate(&mut rand::rngs::OsRng);
