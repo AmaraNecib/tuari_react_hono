@@ -59,11 +59,10 @@ const defaultSystemLogData: { items: Array<Record<string, unknown>> } = {
 
 // ─── Mutable state ───────────────────────────────────────────────
 // Module-level mutable variables that vi.mock() factories close over.
-// Tests mutate these before calling renderWorkspace() to control
-// what the mocked hooks return.  Exported as mockState so that
-// importing tests can reassign properties (live ES-module binding).
+// renderWorkspace() applies options onto these before each render.
+// Module-private — consumers pass state through renderWorkspace options.
 
-export const mockState: {
+const mockState: {
   sessionUser: { id: string; name: string; phone: string } | null
   sessionPending: boolean
   sessionError: Error | null
@@ -88,9 +87,10 @@ export const mockState: {
 }
 
 // ─── Mock functions ──────────────────────────────────────────────
-// Exported via mockFns so tests can set return values / rejections.
+// Module-internal mock functions. Tests control them via the typed
+// mocks object returned by mockAllMutations().
 
-export const mockFns = {
+const mockFns = {
   signInMutate: vi.fn(),
   bootstrapMutate: vi.fn(),
   signOutMutate: vi.fn(),
@@ -495,32 +495,58 @@ export function resetAllMutations(mocks: WorkspaceMocks): void {
 restoreConsoleLog()
 
 /**
- * Set the session state to a signed-in demo user.
- * Every signed-in test starts with this, then optionally overrides further.
+ * A pre-built demo user object for signed-in session state.
  */
-export function setSignedInSession(): void {
-  mockState.sessionUser = {
-    id: "demo-session-user",
-    name: "مدير التشغيل",
-    phone: "0612345678",
-  }
+export const demoUser = {
+  id: "demo-session-user" as const,
+  name: "مدير التشغيل" as const,
+  phone: "0612345678" as const,
 }
 
 /**
  * Render the HomeView workspace shell with all required providers.
  *
+ * Every aspect of the workspace shell's behaviour is controlled through
+ * the options parameter — session state, setup status, workspace data,
+ * error conditions, and page routing.  Sensible defaults are applied
+ * for anything not specified, and all mock state is reset before each
+ * render so callers never need to worry about cross-test pollution.
+ *
  * @param page - The current workspace page to display.
- * @param options - Optional parameters passed to HomeView.
+ * @param options - Workspace state overrides, error conditions, and page routing.
  */
 export function renderWorkspace(
   page: HomeViewPage = "dashboard",
   options?: {
+    /** Signed-in user, or null/undefined for unauthenticated state. */
+    sessionUser?: { id: string; name: string; phone: string } | null
+    /** Setup status for first-user bootstrap flow. */
+    setupStatus?: { hasUsers: boolean; requiresSetupKey?: boolean } | undefined
+    /** True while setup-status query is in flight. */
+    setupPending?: boolean
+    /** Error to simulate a setup-status query failure. */
+    setupError?: Error | null
+    /** Full workspace data override. */
+    workspaceData?: WorkspaceSnapshot | undefined
+    /** Detail tab within a detail page (e.g. "finance"). */
     detailTab?: string
+    /** Currently viewed employee id. */
     employeeId?: string
+    /** Currently viewed project id. */
     projectId?: string
+    /** Currently viewed warehouse id. */
     warehouseId?: string
   },
 ): RenderResult {
+  // Apply all state options before rendering.
+  // We use an explicit "in" check so that passing `undefined` for a field
+  // is distinguishable from omitting it entirely.
+  const opts = options ?? {}
+  mockState.sessionUser = "sessionUser" in opts ? opts.sessionUser ?? null : null
+  mockState.setupStatus = "setupStatus" in opts ? opts.setupStatus : { hasUsers: true }
+  mockState.setupPending = "setupPending" in opts ? opts.setupPending! : false
+  mockState.setupError = "setupError" in opts ? opts.setupError ?? null : null
+  mockState.workspaceData = "workspaceData" in opts ? opts.workspaceData : makeWorkspaceData()
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },

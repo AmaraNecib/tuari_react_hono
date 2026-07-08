@@ -4,11 +4,11 @@ import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import {
+  demoUser,
+  makeWorkspaceData,
   mockAllMutations,
-  mockState,
   renderWorkspace,
   resetAllMutations,
-  setSignedInSession,
 } from "./__test-utils__/workspace-fixtures"
 import type { WorkspaceMocks } from "./__test-utils__/workspace-fixtures"
 
@@ -38,11 +38,10 @@ describe("HomeView workspace shell", () => {
   })
 
   it("shows first-user bootstrap when there are no auth users yet", async () => {
-    mockState.setupStatus = { hasUsers: false }
     mocks.bootstrapMutate.mockResolvedValue({ success: true })
     mocks.signInMutate.mockResolvedValue(undefined)
 
-    renderWorkspace()
+    renderWorkspace("dashboard", { setupStatus: { hasUsers: false } })
 
     fireEvent.change(screen.getByLabelText("الاسم الكامل"), {
       target: { value: "أحمد بن صالح" },
@@ -65,20 +64,17 @@ describe("HomeView workspace shell", () => {
   })
 
   it("keeps the auth shell loading until setup status is known", () => {
-    mockState.setupStatus = undefined
-    mockState.setupPending = true
-
-    renderWorkspace()
+    renderWorkspace("dashboard", { setupStatus: undefined, setupPending: true })
 
     expect(screen.getByRole("status", { name: "loading auth" })).toBeTruthy()
     expect(screen.queryByRole("button", { name: "دخول إلى مساحة العمل" })).toBeNull()
   })
 
   it("shows a retry state when auth startup fails", () => {
-    mockState.setupStatus = undefined
-    mockState.setupError = new Error("Timed out while starting the local API.")
-
-    renderWorkspace()
+    renderWorkspace("dashboard", {
+      setupStatus: undefined,
+      setupError: new Error("Timed out while starting the local API."),
+    })
 
     expect(screen.getByRole("heading", { name: "تعذر تحميل شاشة الدخول" })).toBeTruthy()
     expect(
@@ -108,10 +104,9 @@ describe("HomeView workspace shell", () => {
   })
 
   it("shows the bootstrap-specific fallback when first-user setup fails without a server message", async () => {
-    mockState.setupStatus = { hasUsers: false }
     mocks.bootstrapMutate.mockRejectedValue({})
 
-    renderWorkspace()
+    renderWorkspace("dashboard", { setupStatus: { hasUsers: false } })
 
     fireEvent.change(screen.getByLabelText("الاسم الكامل"), {
       target: { value: "أحمد بن صالح" },
@@ -134,10 +129,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("shows a retry state when workspace data settles without payload", () => {
-    setSignedInSession()
-    mockState.workspaceData = undefined
-
-    renderWorkspace("dashboard")
+    renderWorkspace("dashboard", { sessionUser: demoUser, workspaceData: undefined })
 
     expect(screen.getByText("تعذر تحميل بيانات مساحة العمل الآن.")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }))
@@ -146,8 +138,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("shows dashboard as a separate page", () => {
-    setSignedInSession()
-    renderWorkspace("dashboard")
+    renderWorkspace("dashboard", { sessionUser: demoUser })
 
     expect(screen.getByRole("heading", { name: "لوحة التحكم" })).toBeTruthy()
     expect(screen.getByText("العمال النشطون")).toBeTruthy()
@@ -155,8 +146,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("shows employees on their own page with clear action buttons", () => {
-    setSignedInSession()
-    renderWorkspace("employees")
+    renderWorkspace("employees", { sessionUser: demoUser })
 
     expect(screen.getByRole("heading", { name: "العاملون" })).toBeTruthy()
     expect(screen.getByText("علي بن حميد")).toBeTruthy()
@@ -168,10 +158,9 @@ describe("HomeView workspace shell", () => {
   })
 
   it("opens a dedicated employee create page with batch submission", async () => {
-    setSignedInSession()
     mocks.createEmployeesBatchMutate.mockResolvedValue({ createdCount: 2 })
 
-    renderWorkspace("employees-create")
+    renderWorkspace("employees-create", { sessionUser: demoUser })
 
     expect(screen.getByRole("heading", { name: "صفحة إضافة العاملين" })).toBeTruthy()
 
@@ -249,8 +238,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("blocks employee batch submission when salary period is selected without an amount", async () => {
-    setSignedInSession()
-    renderWorkspace("employees-create")
+    renderWorkspace("employees-create", { sessionUser: demoUser })
 
     fireEvent.change(screen.getByLabelText("الاسم الأول"), {
       target: { value: "سمير" },
@@ -274,8 +262,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("renders employee details as a dedicated page with tabs", async () => {
-    setSignedInSession()
-    renderWorkspace("employee-details", { employeeId: "employee-worker-1" })
+    renderWorkspace("employee-details", { sessionUser: demoUser, employeeId: "employee-worker-1" })
 
     expect(await screen.findByText("المعلومات الشخصية")).toBeTruthy()
     expect(screen.getByText("سجل العمل")).toBeTruthy()
@@ -283,8 +270,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("routes back to employees when a requested employee record is missing", () => {
-    setSignedInSession()
-    renderWorkspace("employee-details", { employeeId: "employee-missing" })
+    renderWorkspace("employee-details", { sessionUser: demoUser, employeeId: "employee-missing" })
 
     fireEvent.click(screen.getByRole("button", { name: "العودة" }))
 
@@ -294,8 +280,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("shows missing project and warehouse record fallbacks with return actions", () => {
-    setSignedInSession()
-    const { unmount } = renderWorkspace("project-details", { projectId: "project-missing" })
+    const { unmount } = renderWorkspace("project-details", { sessionUser: demoUser, projectId: "project-missing" })
 
     expect(
       screen.getByText("تعذر العثور على هذا السجل أو لم يعد متاحًا ضمن البيانات الحالية."),
@@ -307,7 +292,7 @@ describe("HomeView workspace shell", () => {
     mocks.navigateMock.mockReset()
     unmount()
 
-    renderWorkspace("warehouse-details", { warehouseId: "warehouse-missing" })
+    renderWorkspace("warehouse-details", { sessionUser: demoUser, warehouseId: "warehouse-missing" })
 
     expect(
       screen.getByText("تعذر العثور على هذا السجل أو لم يعد متاحًا ضمن البيانات الحالية."),
@@ -318,7 +303,6 @@ describe("HomeView workspace shell", () => {
   })
 
   it("shows no-notes fallback in the employee finance table when a salary payment note is missing", async () => {
-    setSignedInSession()
     const noNotePayment = {
       id: "salary-payment-2",
       employeeId: "employee-worker-1",
@@ -333,20 +317,18 @@ describe("HomeView workspace shell", () => {
       updatedAt: "2026-03-19T08:00:00.000Z",
     }
 
-    const baseData = mockState.workspaceData!
-    mockState.workspaceData = {
-      ...baseData,
-      salaryPayments: [noNotePayment],
-    }
-
-    renderWorkspace("employee-details", { detailTab: "finance", employeeId: "employee-worker-1" })
+    renderWorkspace("employee-details", {
+      sessionUser: demoUser,
+      detailTab: "finance",
+      employeeId: "employee-worker-1",
+      workspaceData: makeWorkspaceData({ salaryPayments: [noNotePayment] }),
+    })
 
     expect(await screen.findByText("لا توجد ملاحظات.")).toBeTruthy()
   })
 
   it("submits salary payment form without client-controlled expected amount fields", async () => {
-    setSignedInSession()
-    renderWorkspace("employee-details", { detailTab: "finance", employeeId: "employee-worker-1" })
+    renderWorkspace("employee-details", { sessionUser: demoUser, detailTab: "finance", employeeId: "employee-worker-1" })
 
     fireEvent.click(await screen.findByRole("button", { name: "إضافة دفعة راتب" }))
     fireEvent.change(screen.getByPlaceholderText("0"), {
@@ -366,8 +348,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("keeps salary payment save disabled when the paid amount is empty", async () => {
-    setSignedInSession()
-    renderWorkspace("employee-details", { detailTab: "finance", employeeId: "employee-worker-1" })
+    renderWorkspace("employee-details", { sessionUser: demoUser, detailTab: "finance", employeeId: "employee-worker-1" })
 
     fireEvent.click(await screen.findByRole("button", { name: "إضافة دفعة راتب" }))
     fireEvent.change(screen.getByPlaceholderText("0"), {
@@ -378,18 +359,16 @@ describe("HomeView workspace shell", () => {
   })
 
   it("renders project details as a dedicated page", async () => {
-    setSignedInSession()
-    renderWorkspace("project-details", { projectId: "project-1" })
+    renderWorkspace("project-details", { sessionUser: demoUser, projectId: "project-1" })
 
     expect(await screen.findByRole("heading", { name: "مبنى الإدارة الجديد" })).toBeTruthy()
     expect(screen.getByText("العمال المرتبطون")).toBeTruthy()
   })
 
   it("opens a dedicated project create page and navigates to the new record", async () => {
-    setSignedInSession()
     mocks.createProjectMutate.mockResolvedValue({ item: { id: "project-2" } })
 
-    renderWorkspace("project-create")
+    renderWorkspace("project-create", { sessionUser: demoUser })
 
     expect(await screen.findByRole("heading", { name: "إضافة مشروع" })).toBeTruthy()
 
@@ -424,8 +403,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("navigates project add actions to the dedicated create route", () => {
-    setSignedInSession()
-    renderWorkspace("projects")
+    renderWorkspace("projects", { sessionUser: demoUser })
 
     fireEvent.click(screen.getByRole("button", { name: "إضافة مشروع" }))
 
@@ -433,10 +411,9 @@ describe("HomeView workspace shell", () => {
   })
 
   it("opens a dedicated warehouse create page and navigates to the new record", async () => {
-    setSignedInSession()
     mocks.createWarehouseMutate.mockResolvedValue({ item: { id: "warehouse-2" } })
 
-    renderWorkspace("warehouse-create")
+    renderWorkspace("warehouse-create", { sessionUser: demoUser })
 
     expect(await screen.findByRole("heading", { name: "إضافة مستودع" })).toBeTruthy()
 
@@ -468,8 +445,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("navigates warehouse add actions to the dedicated create route", () => {
-    setSignedInSession()
-    renderWorkspace("warehouses")
+    renderWorkspace("warehouses", { sessionUser: demoUser })
 
     fireEvent.click(screen.getByRole("button", { name: "إضافة مستودع" }))
 
@@ -477,8 +453,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("renders the transactions page with grouped log rows", () => {
-    setSignedInSession()
-    renderWorkspace("transactions")
+    renderWorkspace("transactions", { sessionUser: demoUser })
 
     expect(screen.getByRole("heading", { name: "سجل المعاملات" })).toBeTruthy()
     expect(
@@ -487,8 +462,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("renders the salaries page with recent payments and worker shortcuts", () => {
-    setSignedInSession()
-    renderWorkspace("salaries")
+    renderWorkspace("salaries", { sessionUser: demoUser })
 
     expect(screen.getByRole("heading", { name: "الرواتب" })).toBeTruthy()
     expect(screen.getAllByText("آخر دفعات الرواتب").length).toBeGreaterThan(0)
@@ -498,8 +472,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("navigates from salaries page to the worker edit page", () => {
-    setSignedInSession()
-    renderWorkspace("salaries")
+    renderWorkspace("salaries", { sessionUser: demoUser })
 
     fireEvent.click(screen.getAllByRole("button", { name: "تعديل الأجر" })[0]!)
 
@@ -510,8 +483,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("renders account controls on the settings page", () => {
-    setSignedInSession()
-    renderWorkspace("settings")
+    renderWorkspace("settings", { sessionUser: demoUser })
 
     expect(screen.getAllByText("معلومات الحساب").length).toBeGreaterThanOrEqual(1)
     expect(
@@ -523,10 +495,9 @@ describe("HomeView workspace shell", () => {
   })
 
   it("submits account settings through the semantic form flow", async () => {
-    setSignedInSession()
     mocks.updateAccountMutateAsync.mockResolvedValue({ success: true })
 
-    renderWorkspace("settings")
+    renderWorkspace("settings", { sessionUser: demoUser })
 
     fireEvent.change(screen.getByDisplayValue("مدير التشغيل"), {
       target: { value: "مدير التشغيل الأول" },
@@ -545,8 +516,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("shows the externals destination in the workspace sidebar", () => {
-    setSignedInSession()
-    renderWorkspace("dashboard")
+    renderWorkspace("dashboard", { sessionUser: demoUser })
     fireEvent.click(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]!)
 
     expect(screen.getByText("الجهات الخارجية")).toBeTruthy()
@@ -554,8 +524,7 @@ describe("HomeView workspace shell", () => {
   })
 
   it("shows worker manager and project controls on the employee edit page", async () => {
-    setSignedInSession()
-    renderWorkspace("employee-edit", { employeeId: "employee-worker-1" })
+    renderWorkspace("employee-edit", { sessionUser: demoUser, employeeId: "employee-worker-1" })
 
     expect(await screen.findByText("المدير المباشر")).toBeTruthy()
     expect(screen.getByText("المشروع الحالي")).toBeTruthy()
@@ -567,15 +536,14 @@ describe("HomeView workspace shell", () => {
       value: 1400,
     })
 
-    setSignedInSession()
-    const firstRender = renderWorkspace("dashboard")
+    const firstRender = renderWorkspace("dashboard", { sessionUser: demoUser })
 
     fireEvent.click(screen.getByRole("button", { name: "تصغير الشريط الجانبي" }))
 
     expect(window.localStorage.getItem("tuari.workspace.sidebar.collapsed")).toBe("true")
 
     firstRender.unmount()
-    renderWorkspace("employees")
+    renderWorkspace("employees", { sessionUser: demoUser })
 
     expect(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]).toBeTruthy()
   })
@@ -587,8 +555,7 @@ describe("HomeView workspace shell", () => {
     })
     window.localStorage.setItem("tuari.workspace.sidebar.collapsed", "false")
 
-    setSignedInSession()
-    renderWorkspace("dashboard")
+    renderWorkspace("dashboard", { sessionUser: demoUser })
 
     expect(screen.getByRole("button", { name: "تصغير الشريط الجانبي" })).toBeTruthy()
   })
@@ -600,8 +567,7 @@ describe("HomeView workspace shell", () => {
       writable: true,
     })
 
-    setSignedInSession()
-    renderWorkspace("dashboard")
+    renderWorkspace("dashboard", { sessionUser: demoUser })
 
     expect(screen.getByRole("button", { name: "تصغير الشريط الجانبي" })).toBeTruthy()
 
@@ -618,11 +584,10 @@ describe("HomeView workspace shell", () => {
   })
 
   it("does not resubmit workplace links when worker placement stays unchanged", async () => {
-    setSignedInSession()
     mocks.updateEmployeeMutate.mockResolvedValue({ success: true })
     mocks.updateEmployeeWorkplaceMutate.mockResolvedValue({ success: true })
 
-    renderWorkspace("employee-edit", { employeeId: "employee-worker-1" })
+    renderWorkspace("employee-edit", { sessionUser: demoUser, employeeId: "employee-worker-1" })
 
     fireEvent.click(await screen.findByRole("button", { name: "حفظ كل التغييرات" }))
 
