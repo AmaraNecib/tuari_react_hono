@@ -111,6 +111,7 @@ mod update_integration_tests {
     }
 
     #[test]
+    #[ignore = "requires Node.js in PATH"]
     fn cli_signed_manifest_rust_verification() {
         // End-to-end test: sign with the Node.js CLI, verify with Rust.
         // This requires Node.js to be available in PATH.

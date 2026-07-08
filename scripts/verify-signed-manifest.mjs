@@ -84,16 +84,17 @@ async function main() {
   const encodedJson = signedContent.slice(0, dotIndex);
   const encodedSig = signedContent.slice(dotIndex + 1);
 
-  // Decode
-  let canonicalBytes;
-  let signatureBytes;
-  try {
-    canonicalBytes = Buffer.from(encodedJson, 'base64url');
-    signatureBytes = Buffer.from(encodedSig, 'base64url');
-  } catch (err) {
+  // Validate base64url encoding before decoding
+  const base64urlRegex = /^[A-Za-z0-9_-]+$/;
+  if (!base64urlRegex.test(encodedJson) || !base64urlRegex.test(encodedSig)) {
     console.error('Error: Invalid base64url encoding in signed manifest');
     process.exit(1);
   }
+
+  // Decode (Buffer.from with 'base64url' never throws on invalid input,
+  // so we validate with regex first)
+  const canonicalBytes = Buffer.from(encodedJson, 'base64url');
+  const signatureBytes = Buffer.from(encodedSig, 'base64url');
 
   if (signatureBytes.length !== 64) {
     console.error('Error: Invalid signature length. Expected 64 bytes.');
