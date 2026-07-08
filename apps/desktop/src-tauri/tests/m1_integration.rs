@@ -70,7 +70,7 @@ mod integration_tests {
     /// Rotation certificate verification (standalone)
     #[test]
     fn rotation_cert_verification() {
-        use license::RotationCertificate;
+        use app_lib::trust::RotationCertificate;
         // Generate a CA keypair (ca_sk and ca_pk from the SAME keypair)
         let ca_sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
         let ca_pk = ca_sk.verifying_key().to_bytes();
@@ -79,13 +79,15 @@ mod integration_tests {
         let new_pk = new_sk.verifying_key().to_bytes();
 
         use base64::Engine;
-        let engine = base64::engine::general_purpose::URL_SAFE;
+        // URL_SAFE_NO_PAD matches the trust module's unpadded convention
+        let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
         let new_pk_b64 = engine.encode(new_pk);
 
         let cert_value = serde_json::json!({
             "effectiveFrom": "2020-01-01T00:00:00Z",
             "newPublicKey": new_pk_b64,
             "previousKeyId": "abc123",
+            "purpose": "license-signing",
             "rotationReason": "scheduled",
             "type": "key_rotation",
         });
@@ -98,6 +100,7 @@ mod integration_tests {
             effective_from: "2020-01-01T00:00:00Z".to_string(),
             previous_key_id: "abc123".to_string(),
             rotation_reason: "scheduled".to_string(),
+            purpose: app_lib::trust::KeyPurpose::License,
             root_ca_signature: engine.encode(sig.to_bytes()),
         };
 
