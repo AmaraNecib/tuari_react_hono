@@ -10,7 +10,7 @@ import { z } from "zod";
 export const updateMetadataSchema = z.object({
   latestVersion: z.string().min(1),
   minSupportedVersion: z.string().min(1),
-  releaseDate: z.string().datetime({ offset: true }),
+  releaseDate: z.iso.datetime({ offset: true }),
   downloadUrl: z.string().url(),
   checksumSha256: z.string().length(64),
   isCritical: z.boolean(),
@@ -27,7 +27,7 @@ export type UpdateMetadata = z.infer<typeof updateMetadataSchema>;
 export const updateRecordSchema = z.object({
   id: z.number().int().positive(),
   version: z.string().min(1),
-  appliedAt: z.string().datetime({ offset: true }),
+  appliedAt: z.iso.datetime({ offset: true }),
   success: z.boolean(),
   errorMessage: z.string().nullable(),
 });
