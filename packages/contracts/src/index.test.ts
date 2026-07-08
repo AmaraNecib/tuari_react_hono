@@ -78,12 +78,24 @@ describe("contracts", () => {
           id: "user-1",
           name: null,
           phone: "0612345678",
+          version: "1.0.0",
         }),
       ).toEqual({
         id: "user-1",
         name: null,
         phone: "0612345678",
+        version: "1.0.0",
     });
+  });
+
+  it("rejects session user without version", () => {
+    expect(() =>
+      sessionUserSchema.parse({
+        id: "user-1",
+        name: null,
+        phone: "0612345678",
+      }),
+    ).toThrowError();
   });
 
   it("keeps optional manager references nullable in project and warehouse schemas", () => {

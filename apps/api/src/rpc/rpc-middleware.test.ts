@@ -32,6 +32,7 @@ describe("RPC Middleware — withPermission", () => {
         name: "Admin",
         phone: "0555000001",
         permissions: ["employees.create", "employees.read"],
+        version: "0.0.0",
       }),
       input: {},
     });
@@ -52,6 +53,7 @@ describe("RPC Middleware — withPermission", () => {
           name: "Viewer",
           phone: "0555000002",
           permissions: ["employees.read"],
+          version: "0.0.0",
         }),
         input: {},
       });
@@ -75,6 +77,7 @@ describe("RPC Middleware — withPermission", () => {
           name: "NoPerms",
           phone: "0555000003",
           permissions: [],
+          version: "0.0.0",
         }),
         input: {},
       });
@@ -115,6 +118,7 @@ describe("RPC Middleware — withPermission", () => {
         name: "PM",
         phone: "0555000004",
         permissions: ["employees.update"],
+        version: "0.0.0",
       }),
       input: {},
     });
@@ -135,6 +139,7 @@ describe("RPC Middleware — withPermission", () => {
           name: "Viewer",
           phone: "0555000005",
           permissions: ["employees.read"],
+          version: "0.0.0",
         }),
         input: {},
       });

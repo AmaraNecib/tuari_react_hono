@@ -113,6 +113,7 @@ export class AuthBootstrapService {
             updatedAt: timestamp,
           }).run();
 
+          const appVersion = process.env.TUARI_APP_VERSION ?? "0.0.0";
           result = {
             success: true,
             message: "تم إنشاء أول مستخدم بنجاح.",
@@ -120,6 +121,7 @@ export class AuthBootstrapService {
               id: userId,
               name: input.name.trim(),
               phone: input.phone,
+              version: appVersion,
             },
           } satisfies BootstrapResult;
         }
