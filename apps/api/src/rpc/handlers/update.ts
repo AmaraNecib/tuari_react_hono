@@ -49,10 +49,17 @@ export function createUpdateHandlers(
           const record = updateHistoryService.recordUpdate(input);
           return { record };
         },
-        (error: unknown) => ({
-          success: false as const,
-          error: { code: "BUSINESS_RULE" as const, message: String(error), fieldErrors: [] },
-        }),
+        (error: unknown) => {
+          console.error("[recordUpdate] failed to record update:", error);
+          return {
+            success: false as const,
+            error: {
+              code: "BUSINESS_RULE" as const,
+              message: "فشل تسجيل التحديث. يرجى المحاولة مرة أخرى.",
+              fieldErrors: [],
+            },
+          };
+        },
       ),
     ),
   };

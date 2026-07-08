@@ -4,21 +4,8 @@
  * The Rust Updater Engine calls into this service after each update
  * attempt to persist the result in the `update_history` table.
  */
+import type { UpdateRecord, RecordUpdateInput } from "@tuari/contracts";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
-
-export type UpdateRecord = {
-  id: number;
-  version: string;
-  appliedAt: string;
-  success: boolean;
-  errorMessage: string | null;
-};
-
-export type RecordUpdateInput = {
-  version: string;
-  success: boolean;
-  errorMessage?: string | null;
-};
 
 export class UpdateHistoryService {
   constructor(private readonly db: BetterSqliteDatabase) {}
