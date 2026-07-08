@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 // sign-update.mjs — CLI tool for signing update manifests with Ed25519
 // Usage: node scripts/sign-update.mjs --private-key <path> --manifest <path> --output <path>
 //

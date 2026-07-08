@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 // generate-dev-update-keys.mjs — Generate Ed25519 key pair for development CI
 // Usage: node scripts/generate-dev-update-keys.mjs [--output-dir <path>]
 //

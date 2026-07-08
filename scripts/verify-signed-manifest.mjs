@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 // verify-signed-manifest.mjs — Verify a signed update manifest
 // Usage: node scripts/verify-signed-manifest.mjs --public-key <path> --manifest <path>
 //

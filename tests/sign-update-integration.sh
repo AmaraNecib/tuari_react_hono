@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # sign-update-integration.sh — End-to-end integration test
 #
 # Tests that a manifest signed with the Node.js CLI can be verified
