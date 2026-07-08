@@ -157,7 +157,6 @@ describe("RPC Middleware — license gating", () => {
     id: "u1",
     name: "Test",
     phone: "0612345678",
-    version: "0.0.0",
     permissions: [],
     version: "0.0.0",
   };
