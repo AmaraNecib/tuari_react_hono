@@ -33,7 +33,7 @@ Use **GitHub Actions** as the CI/CD platform with **GitHub Environments** provid
 - The beta channel must have its own `beta` environment with a **dedicated beta signing key** (distinct from the production key), a `-preview.N` version suffix, and a pending approval gate. Using a separate beta key preserves the security boundary of the `stable` environment: a compromise of the beta workflow does not expose the production signing key.
 - All release workflows must produce, sign, and upload: installer, portable package, update package, update metadata (`updates.json`), and changelog.
 - The CI workflow must verify that release builds are triggered only from allowed branches (`develop`, `release/*`, `main`).
-- Promotion of an artifact between channels (e.g., beta → stable) does not require re-signing if the same key was used. If the key differs, re-signing is required.
+- Promotion of an artifact between channels (e.g., beta → stable) requires re-signing because each channel uses a dedicated signing key (see Key Design Decisions above). Beta artifacts signed with the beta key must be re-signed with the production key before promotion to stable.
 - A release checklist or release-notes step must be included in the workflow to ensure changelog completeness before publishing.
 
 ### References

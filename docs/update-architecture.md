@@ -185,7 +185,7 @@ The architecture defines only the trust and integrity properties of the build pi
 |----------|-------------|
 | **Artifact signing** | All production artifacts must be signed before publication. |
 | **Release channels** | At least three: nightly (internal), beta (testers), stable (customers). |
-| **Channel promotion** | A signed artifact may be promoted between channels without re-signing. |
+| **Channel promotion** | Each release channel uses a dedicated signing key. Promoting an artifact between channels requires re-signing with the target channel's key (see ADR-UPD-004). |
 | **Release artifacts** | Each release produces: installer, portable package, update package, update metadata, change log. |
 
 ---
