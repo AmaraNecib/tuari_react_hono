@@ -8,7 +8,7 @@
  *   - Happy path: running pending migrations in a transaction
  *   - Idempotency: already-executed migrations are skipped
  *   - Unknown keys in app_schema_state are silently logged and skipped
- *   - Failed migration rolls back the transaction
+ *   - Failed migration rolls back the transaction (result.failed)
  *   - Manifest validation (missing key, missing up, empty manifest)
  *   - Multiple migrations batch execution
  */
@@ -17,7 +17,6 @@ import Database from "better-sqlite3";
 import { describe, expect, it, vi } from "vitest";
 
 import { BetterSqlite3Executor } from "./sqlite-executor";
-import type { DbExecutor } from "./schema";
 import { runMigrations, type MigrationManifest } from "./migration-runner";
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -253,7 +252,7 @@ describe("runMigrations (Issue #124)", () => {
       // The new one should have been
       expect(hasTableRow(db, "new_table")).toBe(0);
 
-      // Only the new key should be recorded (the old one was already there)
+      // Both keys should be in app_schema_state
       expect(getExecutedKeys(db)).toContain("migration_already_done_v1");
       expect(getExecutedKeys(db)).toContain("migration_new_v1");
     });
@@ -344,9 +343,16 @@ describe("runMigrations (Issue #124)", () => {
         ],
       };
 
-      await expect(
-        runMigrations(new BetterSqlite3Executor(db), manifest),
-      ).rejects.toThrow();
+      const result = await runMigrations(
+        new BetterSqlite3Executor(db),
+        manifest,
+      );
+
+      // Should have returned a failure result (not thrown)
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0]!.key).toBe("bad_v1");
+      expect(result.failed[0]!.error).toContain("syntax error");
+      expect(result.executed).toBe(0);
 
       // good_table should NOT exist because the transaction was rolled back
       expect(hasTableRow(db, "good_table")).toBe(-1);
@@ -374,9 +380,16 @@ describe("runMigrations (Issue #124)", () => {
         ],
       };
 
-      await expect(
-        runMigrations(new BetterSqlite3Executor(db), manifest),
-      ).rejects.toThrow();
+      const result = await runMigrations(
+        new BetterSqlite3Executor(db),
+        manifest,
+      );
+
+      // Should have returned a failure result
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0]!.key).toBe("failing_v1");
+      expect(result.executed).toBe(0);
+      expect(result.skipped).toBe(1); // The already-done key was skipped
 
       // The already-done key should still be in app_schema_state
       expect(getExecutedKeys(db)).toContain("migration_already_done_v1");
@@ -395,14 +408,19 @@ describe("runMigrations (Issue #124)", () => {
         migrations: [{ key: "failing_v1", up: "INVALID SQL" }],
       };
 
-      await expect(
-        runMigrations(new BetterSqlite3Executor(db), manifest),
-      ).rejects.toThrow("failing_v1");
+      const result = await runMigrations(
+        new BetterSqlite3Executor(db),
+        manifest,
+      );
 
       // Should have logged the error with context
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining("failing_v1"),
       );
+
+      // Result should have the failure details
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0]!.key).toBe("failing_v1");
 
       errorSpy.mockRestore();
     });

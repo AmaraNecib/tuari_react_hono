@@ -11,7 +11,7 @@
  *   - MINOR/PATCH migrations are additive only (enforced by the caller)
  *   - Every migration has a unique key
  *   - Unknown migration keys in `app_schema_state` are logged and silently skipped
- *   - On failure: roll back transaction, log error, throw
+ *   - On failure: roll back transaction, log error, return failure (not throw)
  */
 
 import type { DbExecutor } from "./schema";
@@ -41,11 +41,15 @@ export interface MigrationManifest {
 
 /** Summary of a migration run. */
 export interface MigrationResult {
-  /** Number of migrations that were executed. */
+  /** Number of migrations that were executed successfully. */
   executed: number;
   /** Number of migrations skipped because they were already recorded. */
   skipped: number;
-  /** Migrations that failed (empty on success). */
+  /**
+   * Migrations that failed.
+   * On success this is an empty array. On failure the entire batch was rolled
+   * back (`executed` is 0) and this array contains the single failed migration.
+   */
   failed: Array<{ key: string; error: string }>;
   /** Total number of migrations in the manifest. */
   total: number;
@@ -85,7 +89,10 @@ function validateManifest(manifest: MigrationManifest): void {
     keys.add(m.key);
 
     const upStatements = Array.isArray(m.up) ? m.up : [m.up];
-    if (upStatements.length === 0 || upStatements.every((s) => s.trim().length === 0)) {
+    if (
+      upStatements.length === 0 ||
+      upStatements.every((s) => s.trim().length === 0)
+    ) {
       throw new ManifestValidationError(
         `migration "${m.key}" has no up statement(s)`,
       );
@@ -94,14 +101,6 @@ function validateManifest(manifest: MigrationManifest): void {
 }
 
 // ─── Internal helpers ────────────────────────────────────────────
-
-/** Load all already-executed migration keys from the database. */
-async function loadExecutedKeys(db: DbExecutor): Promise<Set<string>> {
-  const rows = await db.$queryRawUnsafe<Array<{ key: string }>>(
-    'SELECT "key" FROM "app_schema_state"',
-  );
-  return new Set(rows.map((row) => row.key));
-}
 
 /** Execute a single migration's up statement(s) within the transaction. */
 async function executeMigrationUp(
@@ -129,15 +128,46 @@ async function recordMigrationKey(
   );
 }
 
+/** Load already-executed migration keys from the database. */
+async function loadExecutedKeys(
+  tx: DbExecutor,
+): Promise<Set<string>> {
+  const rows = await tx.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state"',
+  );
+  return new Set(rows.map((row) => row.key));
+}
+
+/** Log unknown keys found in app_schema_state but not in the manifest. */
+function logUnknownKeys(
+  executedKeys: Set<string>,
+  manifestKeys: Set<string>,
+): void {
+  for (const key of executedKeys) {
+    if (!manifestKeys.has(key)) {
+      console.warn(
+        `[MigrationRunner] Unknown migration key "${key}" found in app_schema_state — ` +
+          "it was likely removed from the migrations manifest. Skipping silently.",
+      );
+    }
+  }
+}
+
 // ─── Public API ───────────────────────────────────────────────────
 
 /**
  * Run pending migrations from a manifest against the given database.
  *
+ * The entire migration batch (key loading, execution, recording) runs inside a
+ * single transaction.  If any migration fails the transaction is rolled back,
+ * the error is logged, and the failure is returned in {@link MigrationResult.failed}.
+ * The function does **not** throw on migration runtime errors — callers should
+ * check `result.failed.length > 0` to detect failure.
+ *
  * @param db - An active database executor.
  * @param manifest - The parsed migrations.json manifest.
  * @returns A summary of what was executed, skipped, and any failures.
- * @throws If the manifest is invalid or a migration fails (transaction rolled back).
+ * @throws {ManifestValidationError} If the manifest structure is invalid.
  */
 export async function runMigrations(
   db: DbExecutor,
@@ -145,56 +175,78 @@ export async function runMigrations(
 ): Promise<MigrationResult> {
   validateManifest(manifest);
 
-  const executedKeys = await loadExecutedKeys(db);
-
-  // Build the ordered list of pending migrations.
-  const pending = manifest.migrations.filter(
-    (m) => !executedKeys.has(m.key),
-  );
-  const skipped = manifest.migrations.length - pending.length;
-
-  // Log unknown keys (in app_schema_state but not in the manifest).
   const manifestKeys = new Set(manifest.migrations.map((m) => m.key));
-  for (const key of executedKeys) {
-    if (!manifestKeys.has(key)) {
-      console.warn(
-        `[MigrationRunner] Unknown migration key "${key}" found in app_schema_state — it was likely removed from the migrations manifest. Skipping silently.`,
-      );
-    }
-  }
+  const total = manifest.migrations.length;
 
-  if (pending.length === 0) {
+  // State captured from inside the transaction when a migration fails.
+  // The outer catch block uses these to build the failure result.
+  let capturedSkipped = 0;
+  let capturedFailure: { key: string; error: string } | undefined;
+
+  try {
+    const result = await db.$transaction(async (tx) => {
+      // Load already-executed keys inside the transaction so the key
+      // snapshot, execution, and recording are atomic — no stale-snapshot
+      // window where a concurrent call could see incomplete state.
+      const executedKeys = await loadExecutedKeys(tx);
+      logUnknownKeys(executedKeys, manifestKeys);
+
+      const pending = manifest.migrations.filter(
+        (m) => !executedKeys.has(m.key),
+      );
+      capturedSkipped = total - pending.length;
+
+      if (pending.length === 0) {
+        return {
+          executed: 0,
+          skipped: capturedSkipped,
+          failed: [],
+          total,
+        };
+      }
+
+      for (const migration of pending) {
+        try {
+          await executeMigrationUp(tx, migration);
+          await recordMigrationKey(tx, migration.key);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          console.error(
+            `[MigrationRunner] Migration "${migration.key}" failed: ${message}`,
+          );
+          capturedFailure = { key: migration.key, error: message };
+          // Throw to trigger savepoint rollback (catches in outer try/catch).
+          throw error;
+        }
+      }
+
+      return {
+        executed: pending.length,
+        skipped: capturedSkipped,
+        failed: [],
+        total,
+      };
+    });
+
+    // Transaction committed — every pending migration completed.
+    return result;
+  } catch {
+    // Transaction was rolled back — return failure result.  The entire
+    // batch is reverted so `executed` is 0, but `skipped` (migrations
+    // already in app_schema_state before this call) is preserved.
     return {
       executed: 0,
-      skipped,
-      failed: [],
-      total: manifest.migrations.length,
+      skipped: capturedSkipped,
+      failed: capturedFailure
+        ? [capturedFailure]
+        : [
+            {
+              key: "unknown",
+              error: "Transaction rolled back for an unknown reason",
+            },
+          ],
+      total,
     };
   }
-
-  // Run all pending migrations in a single transaction.
-  await db.$transaction(async (tx) => {
-    for (const migration of pending) {
-      try {
-        await executeMigrationUp(tx, migration);
-        await recordMigrationKey(tx, migration.key);
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : String(error);
-        console.error(
-          `[MigrationRunner] Migration "${migration.key}" failed: ${message}`,
-        );
-        throw new Error(
-          `Migration "${migration.key}" failed: ${message}`,
-        );
-      }
-    }
-  });
-
-  return {
-    executed: pending.length,
-    skipped,
-    failed: [],
-    total: manifest.migrations.length,
-  };
 }
