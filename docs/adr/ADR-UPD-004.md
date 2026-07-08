@@ -13,7 +13,7 @@ Use **GitHub Actions** as the CI/CD platform with **GitHub Environments** provid
 |--------|----------|-----------|
 | CI platform | GitHub Actions | Zero additional infrastructure; the project already uses GitHub for source control and issue tracking |
 | Approval gates | GitHub Environments (`beta`, `stable`) | Built-in manual approval workflow before production deployment |
-| Signing | Dev key in CI variables; production key in air-gapped environment | Dev key enables automated nightly builds; production key requires human authorization |
+| Signing | Dev key in CI variables; production key as a GitHub secret in the `stable` environment | Dev key enables automated nightly builds; production key requires manual approval gate in the `stable` environment. HSM-backed signing can be introduced later as an upgrade. |
 | Artifact storage | GitHub Release (stable) + workflow artifacts (nightly/beta) | Avoids external artifact storage costs |
 | Channel management | Tag-based triggers (`v*` = stable, `v*-beta*` = beta) plus schedule trigger (nightly) | Clear separation between channel promotions |
 
