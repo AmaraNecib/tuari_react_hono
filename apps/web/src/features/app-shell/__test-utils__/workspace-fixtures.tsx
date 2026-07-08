@@ -38,6 +38,25 @@ const { navigateMock, AppMutationError } = vi.hoisted(() => {
   return { navigateMock: vi.fn(), AppMutationError }
 })
 
+// ─── Default system log data ───────────────────────────────────────
+const defaultSystemLogData: { items: Array<Record<string, unknown>> } = {
+  items: [
+    {
+      id: "log-1",
+      transactionId: "550e8400-e29b-41d4-a716-446655440000",
+      actorUserId: "user-1",
+      actorLabel: "Taylor (0612345678)",
+      actionType: "WORKPLACE_ASSIGNED",
+      entityType: "PROJECT_ASSIGNMENT",
+      entityId: "project-assignment-1",
+      entityLabel: "مبنى الإدارة الجديد",
+      summary: "تم إسناد علي بن حميد إلى المشروع مبنى الإدارة الجديد",
+      detail: "تم ربط العامل علي بن حميد بالمدير أحمد بلخير",
+      createdAt: "2026-03-17T10:00:00.000Z",
+    },
+  ],
+}
+
 // ─── Mutable state ───────────────────────────────────────────────
 // Module-level mutable variables that vi.mock() factories close over.
 // Tests mutate these before calling renderWorkspace() to control
@@ -65,23 +84,7 @@ export const mockState: {
   workspaceData: undefined,
   workspacePending: false,
   workspaceError: null,
-  systemLogData: {
-    items: [
-      {
-        id: "log-1",
-        transactionId: "550e8400-e29b-41d4-a716-446655440000",
-        actorUserId: "user-1",
-        actorLabel: "Taylor (0612345678)",
-        actionType: "WORKPLACE_ASSIGNED",
-        entityType: "PROJECT_ASSIGNMENT",
-        entityId: "project-assignment-1",
-        entityLabel: "مبنى الإدارة الجديد",
-        summary: "تم إسناد علي بن حميد إلى المشروع مبنى الإدارة الجديد",
-        detail: "تم ربط العامل علي بن حميد بالمدير أحمد بلخير",
-        createdAt: "2026-03-17T10:00:00.000Z",
-      },
-    ],
-  },
+  systemLogData: defaultSystemLogData,
 }
 
 // ─── Mock functions ──────────────────────────────────────────────
@@ -481,23 +484,7 @@ export function resetAllMutations(mocks: WorkspaceMocks): void {
   mockState.workspaceData = makeWorkspaceData()
   mockState.workspacePending = false
   mockState.workspaceError = null
-  mockState.systemLogData = {
-    items: [
-      {
-        id: "log-1",
-        transactionId: "550e8400-e29b-41d4-a716-446655440000",
-        actorUserId: "user-1",
-        actorLabel: "Taylor (0612345678)",
-        actionType: "WORKPLACE_ASSIGNED",
-        entityType: "PROJECT_ASSIGNMENT",
-        entityId: "project-assignment-1",
-        entityLabel: "مبنى الإدارة الجديد",
-        summary: "تم إسناد علي بن حميد إلى المشروع مبنى الإدارة الجديد",
-        detail: "تم ربط العامل علي بن حميد بالمدير أحمد بلخير",
-        createdAt: "2026-03-17T10:00:00.000Z",
-      },
-    ],
-  }
+  mockState.systemLogData = { ...defaultSystemLogData, items: [...defaultSystemLogData.items] }
 
   for (const key of Object.keys(mocks) as Array<keyof WorkspaceMocks>) {
     mocks[key].mockReset()
