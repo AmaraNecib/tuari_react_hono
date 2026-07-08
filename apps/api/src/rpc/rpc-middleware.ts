@@ -1,10 +1,11 @@
 import { ORPCError } from "@orpc/server";
-import type { AppError } from "@tuari/contracts";
+import type { AppError, Edition, LicensedFeature } from "@tuari/contracts";
 
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import type { Permission } from "../modules/rbac/permissions";
 import { InputValidator } from "../infrastructure/validation/input-validator";
 import { SlidingWindowRateLimiter, resolveClientIp } from "../infrastructure/rate-limiter";
+import { getLicenseInfo, meetsMinEdition, editionToMinEdition } from "../infrastructure/license";
 import { requireCurrentUser, type RpcContext } from "./context";
 
 // Generic schema interface for validation
@@ -73,6 +74,22 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
   // require bootstrap-admin status. Used by RBAC-protected handlers.
   async function requireAuthenticatedUser(context: RpcContext) {
     return await requireCurrentUser(context);
+  }
+
+  /**
+   * Shared check: rejects expired licenses.
+   *
+   * The Rust shell is the primary gate for expiry (it controls whether the
+   * sidecar starts at all past the locked phase), but this sidecar guard
+   * ensures that even if `TUARI_LICENSE_STATUS` is set to `"expired"` the
+   * API does not serve gated operations.
+   */
+  function requireActiveLicense(license: ReturnType<typeof getLicenseInfo>): void {
+    if (license.status === "expired") {
+      throw new ORPCError("UPGRADE_REQUIRED", {
+        message: "انتهت صلاحية الترخيص. يرجى تجديد الترخيص للوصول إلى هذه الميزة.",
+      });
+    }
   }
 
   async function createAuditContextForUser(context: RpcContext): Promise<MutationAuditContext> {
@@ -231,6 +248,59 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
         if (!allowed) {
           throw new ORPCError("FORBIDDEN", {
             message: "ليس لديك صلاحية للقيام بهذا الإجراء.",
+          });
+        }
+
+        return handler({ context, input });
+      };
+    },
+
+    // ── License edition gate ──────────────────────────────────
+    //
+    // Rejects the request when the current license edition is below the
+    // required minimum.  This is API-enforced (see §5.3).
+
+    requireEdition<TInput, TOutput>(
+      minEdition: Edition,
+      handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput> | TOutput,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
+      return async ({ context, input }) => {
+        await requireAuthenticatedUser(context);
+
+        const license = getLicenseInfo();
+        requireActiveLicense(license);
+
+        if (!meetsMinEdition(license.edition, minEdition)) {
+          throw new ORPCError("UPGRADE_REQUIRED", {
+            message: `هذه الميزة تتطلب ${minEdition === "enterprise" ? "الإصدار المؤسسي" : minEdition === "professional" ? "الإصدار الاحترافي" : "الإصدار القياسي"}.`,
+            data: { requiredEdition: minEdition },
+          });
+        }
+
+        return handler({ context, input });
+      };
+    },
+
+    // ── License feature gate ──────────────────────────────────
+    //
+    // Rejects the request when the required feature is not present in the
+    // current license.  API-enforced (see §5.3).
+
+    requireFeature<TInput, TOutput>(
+      feature: LicensedFeature,
+      handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput> | TOutput,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
+      return async ({ context, input }) => {
+        await requireAuthenticatedUser(context);
+
+        const license = getLicenseInfo();
+        requireActiveLicense(license);
+
+        if (!license.features.includes(feature)) {
+          const minEdition = editionToMinEdition(feature);
+          throw new ORPCError("UPGRADE_REQUIRED", {
+            message: `هذه الميزة تتطلب ترقية الإصدار.`,
+            data: { requiredEdition: minEdition },
           });
         }
 
