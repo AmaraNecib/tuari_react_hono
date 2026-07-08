@@ -589,30 +589,35 @@ Same mechanism as licensing key rotation (Licensing Architecture §3.5). Rotatio
 | Recovery tests | Simulate failure → verify rollback | Shell + `--recover` |
 | Portable tests | Update portable folder → data/ untouched | Shell |
 
-### 26.4 ADRs to Create During Implementation
+### 26.4 ADRs Created
+
+The following ADRs have been created to capture implementation-specific decisions for the update and release system. Each ADR is located at `docs/adr/ADR-UPD-NNN.md`.
 
 | ADR | Topic |
 |-----|-------|
-| ADR-UPD-001 | Windows Update Strategy (stub updater, locked file handling) |
-| ADR-UPD-002 | Recovery Console (command-line flag, dedicated binary, or platform-specific) |
-| ADR-UPD-003 | Update Packaging (compression, format versioning, signing) |
-| ADR-UPD-004 | Release Pipeline (CI/CD config, channel management, signing ceremony) |
+| ADR-UPD-001 | [Windows Update Strategy](docs/adr/ADR-UPD-001.md) (stub updater, locked file handling) |
+| ADR-UPD-002 | [Recovery Console](docs/adr/ADR-UPD-002.md) (`--recover` command-line flag) |
+| ADR-UPD-003 | [Update Packaging](docs/adr/ADR-UPD-003.md) (ZIP, Ed25519 signatures, canonical JSON) |
+| ADR-UPD-004 | [Release Pipeline](docs/adr/ADR-UPD-004.md) (GitHub Actions with Environments) |
+| ADR-UPD-005 | [Backup Retention Policy](docs/adr/ADR-UPD-005.md) (keep 3 most recent backups) |
+| ADR-UPD-006 | [Smoke Test Definition](docs/adr/ADR-UPD-006.md) (binary start, health check, DB open) |
+| ADR-UPD-008 | [Enterprise Networking](docs/adr/ADR-UPD-008.md) (proxy environment variables) |
 
 ---
 
-## 27. Future ADRs
+## 27. ADR Index
 
-The following ADRs should be created during implementation to capture implementation-specific decisions that are out of scope for this architecture document:
+The following ADRs capture implementation-specific decisions for the update and release system. Each is located at `docs/adr/ADR-UPD-NNN.md`.
 
 | ADR | Purpose | When |
 |-----|---------|------|
-| ADR-UPD-001 | Cross-Platform Update Strategy (platform-specific file locking, alternative mechanisms) | During Phase 3 (Tauri Adapter) |
-| ADR-UPD-002 | Recovery Console (command-line flag, dedicated binary, or platform-specific) | During Phase 2 (Updater Engine) |
-| ADR-UPD-003 | Update Packaging (compression, format versioning, manifest signing algorithm, canonical serialization) | During Phase 2 (Release tooling) |
-| ADR-UPD-004 | Release Pipeline (CI/CD config, channel management, signing ceremony, signing key policy) | Before first customer release |
-| ADR-UPD-005 | Backup Retention Policy (retention duration, successful startup threshold, cleanup rules) | During Phase 2 (Updater Engine) |
-| ADR-UPD-006 | Smoke Test Definition (minimum required checks, pass/fail criteria, extension mechanism) | During Phase 3 (Tauri Adapter) |
-| ADR-UPD-008 | Enterprise Networking (proxy support, authentication, retry policy) | During Phase 1 (Update Provider) |
+| ADR-UPD-001 | [Windows Update Strategy](docs/adr/ADR-UPD-001.md) (stub updater for locked file handling) | During Phase 3 (Tauri Adapter) |
+| ADR-UPD-002 | [Recovery Console](docs/adr/ADR-UPD-002.md) (`--recover` command-line flag) | During Phase 2 (Updater Engine) |
+| ADR-UPD-003 | [Update Packaging](docs/adr/ADR-UPD-003.md) (ZIP, Ed25519, canonical JSON, pinned compression) | During Phase 2 (Release tooling) |
+| ADR-UPD-004 | [Release Pipeline](docs/adr/ADR-UPD-004.md) (GitHub Actions with Environments) | Before first customer release |
+| ADR-UPD-005 | [Backup Retention Policy](docs/adr/ADR-UPD-005.md) (keep 3 most recent backups) | During Phase 2 (Updater Engine) |
+| ADR-UPD-006 | [Smoke Test Definition](docs/adr/ADR-UPD-006.md) (binary start, health check, DB open) | During Phase 3 (Tauri Adapter) |
+| ADR-UPD-008 | [Enterprise Networking](docs/adr/ADR-UPD-008.md) (proxy env vars, credential sanitization) | During Phase 1 (Update Provider) |
 
 Each ADR must reference ADR-RCA-001 and this architecture document to maintain traceability.
 
