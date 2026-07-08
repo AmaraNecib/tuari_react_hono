@@ -26,7 +26,7 @@ echo ""
 echo "--- Step 2: Rust cross-language integration test (--include-ignored) ---"
 cd "$PROJECT_ROOT"
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml \
-  -- cli_signed_manifest_rust_verification -- --include-ignored 2>&1 | grep -E "(test |running|result|ok|FAILED|ignored)"
+  -- cli_signed_manifest_rust_verification --include-ignored 2>&1 | grep -E "(test |running|result|ok|FAILED)"
 echo ""
 
 echo "=== Integration Test Complete ==="
