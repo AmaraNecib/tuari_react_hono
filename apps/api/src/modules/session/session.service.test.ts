@@ -46,6 +46,16 @@ describe("SessionService", () => {
       expect(result).toBeNull();
     });
 
+    it("returns null without phone even when version env is set", async () => {
+      process.env.TUARI_APP_VERSION = "2.0.0";
+      const gateway = createMockAuthGateway({ id: "u1", name: "Test" });
+      const permResolver = createMockPermissionResolver([]);
+      const service = new SessionService(gateway, permResolver);
+
+      const result = await service.getCurrentUser(new Headers());
+      expect(result).toBeNull();
+    });
+
     it("returns user with version from env var", async () => {
       process.env.TUARI_APP_VERSION = "2.0.0";
 
