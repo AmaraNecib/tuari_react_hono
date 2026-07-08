@@ -196,7 +196,7 @@ test('generate-dev-update-keys produces valid key pair', async () => {
   // Derive public from the PEM and also match the generated pub key constant
   const publicKey = crypto.createPublicKey(privateKey);
   const pubBytes = publicKey.export({ type: 'spki', format: 'der' }).slice(-32);
-  const expectedPubKeyLine = `pub const UPDATE_PUBLIC_KEY: [u8; 32] = [${pubBytes.join(', ')}]\n`;
+  const expectedPubKeyLine = `pub const UPDATE_PUBLIC_KEY: [u8; 32] = [${pubBytes.join(', ')}];\n`;
 
   assert.equal(pubKeyContent, expectedPubKeyLine);
 });

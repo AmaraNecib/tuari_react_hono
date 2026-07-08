@@ -5,6 +5,7 @@
 //
 // Outputs:
 //   - dev-update-public-key.txt   Rust byte array constant
+//   - dev-update-public-key.pem   Ed25519 public key in PEM format
 //   - dev-update-private-key.pem  Ed25519 private key in PEM format
 
 import { generateKeyPairSync } from 'node:crypto';
@@ -25,6 +26,7 @@ Options:
 
 Output files:
   dev-update-public-key.txt   Rust byte array: pub const UPDATE_PUBLIC_KEY: [u8; 32] = [...]
+  dev-update-public-key.pem   PEM-encoded Ed25519 public key (for verify-signed-manifest.mjs)
   dev-update-private-key.pem  PEM-encoded Ed25519 private key
 `);
   process.exit(0);
@@ -49,6 +51,10 @@ async function main() {
   const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' });
   await writeFile(resolve(outputDir, 'dev-update-private-key.pem'), privateKeyPem, 'utf8');
 
+  // Export public key as PEM (SPKI) for verification tools
+  const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' });
+  await writeFile(resolve(outputDir, 'dev-update-public-key.pem'), publicKeyPem, 'utf8');
+
   // Export public key and extract raw 32-byte point
   // SPKI DER format: 44 bytes total for Ed25519
   //   - 24 bytes ASN.1 header
@@ -61,7 +67,7 @@ async function main() {
   const rawPublicKey = publicKeyDer.slice(-32);
 
   // Format as Rust byte array
-  const rustConst = `pub const UPDATE_PUBLIC_KEY: [u8; 32] = [${rawPublicKey.join(', ')}]`;
+  const rustConst = `pub const UPDATE_PUBLIC_KEY: [u8; 32] = [${rawPublicKey.join(', ')}];`;
   await writeFile(resolve(outputDir, 'dev-update-public-key.txt'), rustConst + '\n', 'utf8');
 
   console.log(`Generated Ed25519 development update keys:`);
