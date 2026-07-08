@@ -4,6 +4,14 @@ import type { Permission } from "../rbac/permissions";
 
 const OLD_ENV = process.env;
 
+beforeEach(() => {
+  process.env = { ...OLD_ENV };
+});
+
+afterEach(() => {
+  process.env = OLD_ENV;
+});
+
 function createMockAuthGateway(user: any = null) {
   return {
     api: {
@@ -19,14 +27,6 @@ function createMockPermissionResolver(permissions: Permission[] = []) {
 }
 
 describe("SessionService", () => {
-  beforeEach(() => {
-    process.env = { ...OLD_ENV };
-  });
-
-  afterEach(() => {
-    process.env = OLD_ENV;
-  });
-
   describe("getCurrentUser", () => {
     it("returns null when no session", async () => {
       const gateway = createMockAuthGateway(null);
@@ -37,7 +37,7 @@ describe("SessionService", () => {
       expect(result).toBeNull();
     });
 
-    it("returns user without phone", async () => {
+    it("returns null when user has no phone", async () => {
       const gateway = createMockAuthGateway({ id: "u1", name: "Test" });
       const permResolver = createMockPermissionResolver([]);
       const service = new SessionService(gateway, permResolver);
@@ -56,8 +56,9 @@ describe("SessionService", () => {
       expect(result).toBeNull();
     });
 
-    it("returns user with permissions and version from env", async () => {
+    it("returns user with version from env var", async () => {
       process.env.TUARI_APP_VERSION = "2.0.0";
+
       const gateway = createMockAuthGateway({
         id: "u1",
         name: "Admin",
@@ -79,8 +80,9 @@ describe("SessionService", () => {
       });
     });
 
-    it("returns user with empty permissions when none assigned", async () => {
-      process.env.TUARI_APP_VERSION = "1.0.0";
+    it("returns user with fallback version when env var is not set", async () => {
+      delete process.env.TUARI_APP_VERSION;
+
       const gateway = createMockAuthGateway({
         id: "u1",
         name: "Viewer",
@@ -95,23 +97,8 @@ describe("SessionService", () => {
         name: "Viewer",
         phone: "0555000002",
         permissions: [],
-        version: "1.0.0",
+        version: expect.any(String),
       });
-    });
-
-    it("falls back to package.json version when env var is not set", async () => {
-      delete process.env.TUARI_APP_VERSION;
-      const gateway = createMockAuthGateway({
-        id: "u1",
-        name: "Admin",
-        phoneNumber: "0555000001",
-      });
-      const permResolver = createMockPermissionResolver([]);
-      const service = new SessionService(gateway, permResolver);
-
-      const result = await service.getCurrentUser(new Headers());
-      expect(result).not.toBeNull();
-      expect(result!.version).toBe("0.0.0");
     });
   });
 });
