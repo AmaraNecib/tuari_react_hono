@@ -35,6 +35,7 @@ pub mod clock;
 pub mod license;
 pub mod recovery;
 pub mod update;
+pub mod trust;
 
 struct ApiProcess {
     child: Mutex<Option<Child>>,

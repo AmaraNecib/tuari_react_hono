@@ -23,6 +23,9 @@ pub struct UpdateManifest {
     pub min_supported_version: String,
     pub files: Vec<ManifestFileEntry>,
     pub checksum: String,
+    /// Key identifier used to select which trusted key signed this manifest.
+    /// Empty string means the key is unknown or single-key mode.
+    pub key_id: String,
 }
 
 /// Verify an Ed25519 signature over a manifest payload.
@@ -97,12 +100,19 @@ pub fn parse_update_manifest(manifest_bytes: &[u8]) -> Result<UpdateManifest, Ru
         })
         .unwrap_or_default();
 
+    let key_id = value
+        .get("keyId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
     Ok(UpdateManifest {
         version,
         platform,
         min_supported_version,
         files,
         checksum,
+        key_id,
     })
 }
 
@@ -560,6 +570,24 @@ mod tests {
         assert_eq!(result.files.len(), 1);
         assert_eq!(result.files[0].path, "app.exe");
         assert_eq!(result.files[0].size, 12345);
+        // key_id defaults to empty when not present
+        assert_eq!(result.key_id, "");
+    }
+
+    #[test]
+    fn parse_manifest_with_key_id() {
+        let manifest = r#"{
+            "version": "2.0.0",
+            "platform": "linux",
+            "minSupportedVersion": "1.0.0",
+            "checksum": "xyz",
+            "keyId": "update-key-v2",
+            "files": []
+        }"#;
+
+        let result = parse_update_manifest(manifest.as_bytes()).unwrap();
+        assert_eq!(result.version, "2.0.0");
+        assert_eq!(result.key_id, "update-key-v2", "key_id should be parsed from keyId field");
     }
 
     #[test]
