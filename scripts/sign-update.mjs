@@ -19,6 +19,7 @@ Options:
   --private-key <path>  Path to Ed25519 private key PEM file (required)
   --manifest <path>     Path to manifest.json to sign (required)
   --output <path>       Output file path for signed manifest (required)
+  --key-id <string>     Key identifier to include in manifest (enables key rotation)
   --help                Show this help
 
 Output format:
@@ -38,6 +39,7 @@ function getArg(name) {
 const privateKeyPath = getArg('--private-key');
 const manifestPath = getArg('--manifest');
 const outputPath = getArg('--output');
+const keyId = getArg('--key-id');
 
 if (!privateKeyPath) {
   console.error('Error: --private-key is required');
@@ -144,6 +146,11 @@ async function main() {
   } catch (err) {
     console.error('Error: Invalid manifest JSON: ' + err.message);
     process.exit(1);
+  }
+
+  // Inject keyId if specified (overrides any existing keyId in the manifest)
+  if (keyId) {
+    manifestObj.keyId = keyId;
   }
 
   // Produce canonical JSON bytes

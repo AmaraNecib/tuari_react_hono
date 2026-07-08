@@ -23,6 +23,9 @@ pub struct UpdateManifest {
     pub min_supported_version: String,
     pub files: Vec<ManifestFileEntry>,
     pub checksum: String,
+    /// Key identifier used to select which trusted key signed this manifest.
+    /// Empty string means the key is unknown or single-key mode.
+    pub key_id: String,
 }
 
 /// Verify an Ed25519 signature over a manifest payload.
@@ -97,12 +100,19 @@ pub fn parse_update_manifest(manifest_bytes: &[u8]) -> Result<UpdateManifest, Ru
         })
         .unwrap_or_default();
 
+    let key_id = value
+        .get("keyId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
     Ok(UpdateManifest {
         version,
         platform,
         min_supported_version,
         files,
         checksum,
+        key_id,
     })
 }
 
