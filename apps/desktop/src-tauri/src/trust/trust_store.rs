@@ -47,11 +47,9 @@ pub fn load_trusted_keys(data_dir: &Path, purpose: &KeyPurpose) -> Result<Vec<[u
             Err(_) => continue,
         };
 
-        // Verify the signature and check purpose
-        if let Ok(public_key) = cert.verify() {
-            if cert.purpose == *purpose {
-                trusted_keys.push(public_key);
-            }
+        // Verify the signature and check purpose in one call
+        if let Ok(public_key) = cert.verify_for_purpose(&super::root_ca::ROOT_CA_PUBLIC_KEY, purpose) {
+            trusted_keys.push(public_key);
         }
     }
 

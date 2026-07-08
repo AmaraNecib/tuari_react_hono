@@ -219,6 +219,26 @@ test('sign with --key-id injects keyId into canonical manifest', async () => {
   assert.equal(parsed.keyId, 'update-key-v2', 'canonical JSON should contain keyId');
 });
 
+test('sign with --key-id overrides existing keyId in manifest', async () => {
+  const tmp = await mkdtemp(join(tmpdir(), 'sign-test-'));
+  const manifestPath = join(tmp, 'manifest.json');
+  // Manifest already has a keyId — CLI --key-id should override it
+  const manifest = { version: '1.0.0', platform: 'windows', keyId: 'original-key-v1' };
+  await writeFile(manifestPath, JSON.stringify(manifest));
+
+  const { privateKeyPath } = await generateKeyPair(tmp);
+  const outputPath = join(tmp, 'signed.txt');
+  runScript('sign-update.mjs', `--manifest ${manifestPath} --private-key ${privateKeyPath} --output ${outputPath} --key-id override-key-v2`);
+
+  const signed = await readFile(outputPath, 'utf8');
+  const parts = signed.trim().split('.');
+  const decoded = Buffer.from(parts[0], 'base64url').toString('utf8');
+  const parsed = JSON.parse(decoded);
+
+  assert.equal(parsed.keyId, 'override-key-v2', '--key-id should override existing keyId in manifest');
+  assert.notEqual(parsed.keyId, 'original-key-v1', 'original keyId should be replaced');
+});
+
 test('sign and verify round-trip end-to-end', async () => {
   const tmp = await mkdtemp(join(tmpdir(), 'sign-test-'));
   const manifestPath = join(tmp, 'manifest.json');
