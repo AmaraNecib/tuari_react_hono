@@ -5,7 +5,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +14,11 @@ const scriptDir = fileURLToPath(new URL('../scripts', import.meta.url));
 
 function runScript(script, args) {
   const fullPath = join(scriptDir, script);
-  const result = spawnSync(process.execPath, [fullPath, ...args.split(/\s+/)], {
+  // Split args manually to avoid issues with paths containing spaces.
+  // Each argument is a separate token separated by whitespace, but paths
+  // are wrapped in quotes when they contain spaces.
+  const argList = parseArgsString(args);
+  const result = spawnSync(process.execPath, [fullPath, ...argList], {
     encoding: 'utf8',
     cwd: scriptDir,
   });
@@ -29,7 +32,8 @@ function runScript(script, args) {
 
 function runScriptWithFailure(script, args) {
   const fullPath = join(scriptDir, script);
-  const result = spawnSync(process.execPath, [fullPath, ...args.split(/\s+/)], {
+  const argList = parseArgsString(args);
+  const result = spawnSync(process.execPath, [fullPath, ...argList], {
     encoding: 'utf8',
     cwd: scriptDir,
   });
@@ -38,6 +42,33 @@ function runScriptWithFailure(script, args) {
     stdout: result.stdout || '',
     stderr: result.stderr || '',
   };
+}
+
+/**
+ * Parse a command-line argument string into an array, respecting quoted strings.
+ * This avoids the fragility of simple whitespace splitting.
+ */
+function parseArgsString(str) {
+  const args = [];
+  let current = '';
+  let inQuote = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === '"') {
+      inQuote = !inQuote;
+    } else if (ch === ' ' && !inQuote) {
+      if (current.length > 0) {
+        args.push(current);
+        current = '';
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current.length > 0) {
+    args.push(current);
+  }
+  return args;
 }
 
 /**

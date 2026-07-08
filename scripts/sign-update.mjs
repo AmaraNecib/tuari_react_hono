@@ -66,8 +66,13 @@ if (!outputPath) {
  * - Strings are UTF-8 encoded.
  */
 function canonicalStringify(value) {
-  if (value === null || value === undefined) {
+  if (value === null) {
     return 'null';
+  }
+
+  if (value === undefined) {
+    // Match JSON.stringify behavior: undefined is omitted in objects
+    return undefined;
   }
 
   if (typeof value === 'string') {
@@ -83,17 +88,23 @@ function canonicalStringify(value) {
   }
 
   if (Array.isArray(value)) {
-    const elements = value.map(canonicalStringify);
+    const elements = value.map((item) => {
+      const v = canonicalStringify(item);
+      // In arrays, undefined becomes null to produce valid JSON
+      return v === undefined ? 'null' : v;
+    });
     return '[' + elements.join(',') + ']';
   }
 
   if (typeof value === 'object') {
     const keys = Object.keys(value).sort();
-    const pairs = keys.map((key) => {
-      const k = JSON.stringify(key);
+    const pairs = [];
+    for (const key of keys) {
       const v = canonicalStringify(value[key]);
-      return k + ':' + v;
-    });
+      if (v !== undefined) {
+        pairs.push(JSON.stringify(key) + ':' + v);
+      }
+    }
     return '{' + pairs.join(',') + '}';
   }
 
