@@ -13,11 +13,13 @@ Architecture / ADR (if required)
     ↓
 Design (.scratch/implementation/)
     ↓
-Implementation (TDD: Red → Green → Refactor)
+Implementation (implement skill: TDD + code-review)
+    ↓
+Quality Check (skill-guided: codebase-design, diagnosing-bugs, domain-modeling, ...)
     ↓
 Local Verification
     ↓
-Pre-Push Self-Review (review skill)
+Pre-Push Self-Review (code-review skill)
     ↓
 Push Feature Branch
     ↓
@@ -27,7 +29,7 @@ GitHub Actions Verification
     ↓
 Fix CI (if necessary)
     ↓
-Request CodeRabbit Review
+Greptile Review (auto on PR create, manual @greptile-apps review on later commits)
     ↓
 Address Review Feedback
     ↓
@@ -76,14 +78,34 @@ The design document must specify:
 - Implementation risks
 - Any deviations from the architecture
 
-### 4. Implementation (TDD)
+### 4. Implementation (implement skill)
 
-Follow strict Test-Driven Development:
-1. **Red** — Write a failing test.
-2. **Green** — Write the minimum code to make it pass.
-3. **Refactor** — Clean up while keeping tests green.
+Load the `implement` skill. It reads the issue, implements using TDD at pre-agreed seams, runs typechecking and tests regularly, then runs `code-review` and commits to the current branch.
 
-Implement in small vertical slices. Each slice should be independently reviewable. Commit after each slice.
+See `.agents/skills/implement/SKILL.md` for details.
+
+### 4.5 — Quality Check (Skill-Guided Review)
+
+After implementation but before running tests, load relevant skills to catch issues early.
+
+The agent selects skills based on what the change touches:
+
+| If the change touches... | Load these skills |
+|---|---|
+| New module, interface, or architecture | `codebase-design` — check depth, seam placement, deletion test |
+| Complex logic, state, or edge cases | `diagnosing-bugs` — catch logic errors early |
+| Domain entities, terms, or data models | `domain-modeling` — check ubiquitous language alignment |
+| Any production code | `code-review` — review against coding standards |
+| Large feature from a spec | `implement` — already loaded in step 4 |
+| Unclear requirements or unknowns | `research` — investigate against primary sources |
+| Planning a large chunk of work | `wayfinder` — break into investigation tickets |
+
+These skills supplement the `code-review` already run by `implement`. The agent does **not** load all blindly — it picks the ones relevant to the issue.
+
+**Why this exists:**
+- Catches design and logic problems before tests are written
+- Catches things `code-review` might miss (domain alignment, architecture depth, bug patterns)
+- Uses the `.diwan/` model registry to route each skill to the best model
 
 ### 5. Local Verification
 
@@ -115,21 +137,21 @@ GitHub Actions **must not** be the first place failures are discovered. The obje
 
 > GitHub Actions should verify the work, not discover predictable failures.
 
-### 5.5 Pre-Push Self-Review (review skill)
+### 5.5 Pre-Push Self-Review (code-review skill)
 
 After local verification passes but **before pushing**, the agent runs the
-`review` skill against the current branch to catch issues locally.
+`code-review` skill against the current branch to catch issues locally.
 
 **How it works:**
 
 1. The parent agent reads `.diwan/models.yml` to select a review-capable model
    (e.g., `opencode-go/mimo-2.5` for review tasks).
-2. The parent invokes the builtin `review` skill with the fixed point being
+2. The parent invokes the builtin `code-review` skill with the fixed point being
    `develop` (or the merge-base of the feature branch):
    ```
    git diff develop...HEAD
    ```
-3. The review skill spawns **two parallel sub-agents**:
+3. The code-review skill spawns **two parallel sub-agents**:
    - **Standards** — checks code against documented coding standards +
      Fowler smell baseline
    - **Spec** — checks if the implementation matches the originating
@@ -146,11 +168,11 @@ After local verification passes but **before pushing**, the agent runs the
 
 **Why this exists:**
 
-- Catches issues before they reach CodeRabbit or CI, reducing feedback loops.
+- Catches issues before they reach Greptile or CI, reducing feedback loops.
 - Runs on Windows natively (no WSL required for the review itself).
 - Uses the `.diwan/` model registry to enable model diversity — the reviewer
   can use a different model than the parent.
-- The `review` skill's Standards + Spec axes catch problems CodeRabbit might
+- The `code-review` skill's Standards + Spec axes catch problems Greptile might
   miss (spec drift, smell violations, missing tests).
 
 ### 6. Push Feature Branch
@@ -182,11 +204,21 @@ Wait for all required CI checks to pass. If any check fails:
 - Push the fix
 - Wait for CI again
 
-### 9. Request CodeRabbit Review
+### 9. Greptile Review
+
+Greptile auto-reviews when the PR is first created. On subsequent commits, auto-review is disabled — trigger it manually.
 
 Only after CI is fully green:
-- Request a CodeRabbit review
-- Wait for CodeRabbit to complete
+- Comment `@greptile-apps review` in the PR
+- Wait for Greptile to complete (5-10 min depending on size)
+- Check the review score (aim for 5/5)
+- If Greptile finds problems:
+  1. Load the `implement` skill with Greptile's findings as the input spec — it will fix, test, code-review, and commit
+  2. Push the fixes
+  4. Wait for CI to complete
+  5. Trigger `@greptile-apps review` again
+  6. Wait for Greptile to re-review
+- Repeat until Greptile gives 5/5 or has no actionable findings
 
 ### 10. Address Review Feedback
 
@@ -246,7 +278,7 @@ The CI workflow (`.github/workflows/ci.yml`) executes the following. Each must p
 ```
 Local Verification (step 5)
     ↓
-Pre-Push Self-Review (step 5.5) — review skill, local agent review
+Pre-Push Self-Review (step 5.5) — code-review skill, local agent review
     ↓
 Push Feature Branch (step 6)
     ↓
@@ -254,7 +286,7 @@ Open Pull Request (step 7)
     ↓
 GitHub Actions (all required checks green)
     ↓
-Request CodeRabbit Review (step 9)
+Request Greptile Review (step 9)
     ↓
 Address comments (step 10)
     ↓
@@ -267,27 +299,27 @@ Ready for merge
 
 The project uses a **two-layer review system**:
 
-**Layer 1: Pre-Push Self-Review** (`review` skill, step 5.5)
+**Layer 1: Pre-Push Self-Review** (`code-review` skill, step 5.5)
 - Runs locally before pushing
-- Uses the `review` skill with parallel Standards + Spec sub-agents
+- Uses the `code-review` skill with parallel Standards + Spec sub-agents
 - Can use a different model (e.g., `opencode-go/mimo-2.5`) via `.diwan/models.yml`
 - Catches spec drift, smell violations, missing tests, standard breaches
 - Runs on Windows, no WSL required
 
-**Layer 2: CodeRabbit Review** (step 9)
+**Layer 2: Greptile Review** (step 9)
 - Runs in CI after all checks pass
 - Provides automated code review with pre-merge checks
 - Catches pattern-level issues the local review might miss
 
-CodeRabbit should review only after the Pull Request CI is passing. This avoids wasting reviewer time on failures that would have been caught by CI. The local self-review avoids wasting CI and CodeRabbit on issues that could have been caught locally.
+Greptile should review only after the Pull Request CI is passing. This avoids wasting reviewer time on failures that would have been caught by CI. The local self-review avoids wasting CI and Greptile on issues that could have been caught locally.
 
 ---
 
 ## Solo-Developer Agent Workflow
 
-This section defines the protocol for a **single human developer** working with an **AI agent** (e.g., a coding assistant) and **CodeRabbit** as the only reviewer.
+This section defines the protocol for a **single human developer** working with an **AI agent** (e.g., a coding assistant) and **Greptile** as the only reviewer.
 
-In this workflow, the **agent is the de facto reviewer**. The human sets policy, the agent executes, and CodeRabbit provides the automated code review. The agent MUST NOT merge a PR until all three gates below pass.
+In this workflow, the **agent is the de facto reviewer**. The human sets policy, the agent executes, and Greptile provides the automated code review. The agent MUST NOT merge a PR until all three gates below pass.
 
 ### Branch Protection Policy
 
@@ -316,15 +348,15 @@ If any job is `fail` or `pending` → **fix and re-run, do not merge**.
 
 If any job is `pending` for an extended period (e.g., >10 minutes), investigate via `gh run watch`.
 
-#### Step 2 — CodeRabbit Two-Condition Check
+#### Step 2 — Greptile Two-Condition Check
 
-A CodeRabbit review is considered **"done and clean"** when **BOTH** conditions are true:
+A Greptile review is considered **"done and clean"** when **BOTH** conditions are true:
 
-**Condition 1 — Verbal check**: CodeRabbit's most recent review comment (the one with the Pre-merge checks section) says **"No actionable comments were generated"** OR only contains `⚠️ Warning` checks (advisory only, not blockers).
+**Condition 1 — Verbal check**: Greptile's most recent review comment (the one with the Pre-merge checks section) says **"No actionable comments were generated"** OR only contains `⚠️ Warning` checks (advisory only, not blockers).
 
 **Condition 2 — Temporal check**: Does the latest commit change **reviewable code**?
 
-Reviewable code means: Rust, TypeScript, tests, CI config, or any file that *could* produce a new CodeRabbit finding.
+Reviewable code means: Rust, TypeScript, tests, CI config, or any file that *could* produce a new Greptile finding.
 
 Non-reviewable code means: docs (.md), .gitignore, .gitattributes, .coderabbit.yaml, README, scratch files (.scratch/), or any config that doesn't affect the code being reviewed.
 
@@ -357,15 +389,15 @@ For **inline review comments marked "Outdated"** (file-level, line-level Nitpick
 
 | Situation | Action |
 |---|---|
-| CodeRabbit check is `pending` / `in_progress` | ⏳ **Wait** — do not trigger anything |
-| CodeRabbit check is `fail` (actionable findings) | 🔧 **Fix findings locally, push, re-trigger CodeRabbit** |
-| CodeRabbit check is `pass` AND Condition 1 + 2 both pass | ✅ **Proceed to Step 3** |
-| CodeRabbit check is `pass` BUT Condition 2 fails (stale review) | 🔧 **Apply narrow workaround** (see below) |
-| CodeRabbit check is `pass` BUT inline concerns remain unresolved | 🔧 **Fix the concerns, push, re-trigger** |
+| Greptile check is `pending` / `in_progress` | ⏳ **Wait** — do not trigger anything |
+| Greptile check is `fail` (actionable findings) | 🔧 **Fix findings locally, push, re-trigger Greptile** |
+| Greptile check is `pass` AND Condition 1 + 2 both pass | ✅ **Proceed to Step 3** |
+| Greptile check is `pass` BUT Condition 2 fails (stale review) | 🔧 **Apply narrow workaround** (see below) |
+| Greptile check is `pass` BUT inline concerns remain unresolved | 🔧 **Fix the concerns, push, re-trigger** |
 
 #### Step 3 — Agent's Own Judgment (Soft Check)
 
-Even with green CI and clean CodeRabbit review, the agent MUST also consider:
+Even with green CI and clean Greptile review, the agent MUST also consider:
 
 - Is the architecture impact captured in the PR description?
 - Are there security implications not addressed?
@@ -379,24 +411,24 @@ If **any of the above raises a real concern** but Steps 1 + 2 pass → ⚠️ **
 
 ### Narrow Workaround (Stale Review Only)
 
-The workaround is a **narrow tool** for one specific situation: CodeRabbit is `pass` but its review doesn't reflect the latest commit.
+The workaround is a **narrow tool** for one specific situation: Greptile is `pass` but its review doesn't reflect the latest commit.
 
 **When to apply:**
 - We are confident the code is correct
-- CodeRabbit check is `pass` but no fresh review exists (Condition 2 fails)
+- Greptile check is `pass` but no fresh review exists (Condition 2 fails)
 - Goal: get a fresh review, NOT bypass a real concern
 
 **Steps:**
 
-1. Delete CodeRabbit's old review summary and acknowledgment comments
+1. Delete Greptile's old review summary and acknowledgment comments
 2. Make a small cosmetic commit (e.g., a comment, formatting, whitespace — no behavior change)
 3. Push and wait for CI to pass
-4. Re-trigger CodeRabbit with `gh pr comment <num> --body "@coderabbitai review"`
+4. Re-trigger Greptile with `gh pr comment <num> --body "@greptile-apps review"`
 5. Wait for the new review
 6. Re-apply the two-condition check
 
 **When NOT to apply:**
-- CodeRabbit has unresolved findings → fix them, don't workaround
+- Greptile has unresolved findings → fix them, don't workaround
 - The agent has its own concerns (Step 3) → surface to human
 - The PR is in any other uncertain state → don't bypass, leave for human
 
@@ -432,7 +464,7 @@ Example: `M1.1: implement Rust Core scaffolding and shared crypto module (closes
 A solo developer cannot approve their own PR. Traditional branch protection (require 1 approval) blocks all merges. This workflow replaces the human-approval gate with an **automated, deterministic agent gate** that:
 
 1. **CI** = "did the build pass?"
-2. **CodeRabbit two-condition check** = "is the review complete and clean?"
+2. **Greptile two-condition check** = "is the review complete and clean?"
 3. **Agent judgment** = "is anything obviously wrong that the tools missed?"
 
 The agent is accountable for following this gate. The human is accountable for the policy and for reviewing any `status:needs-investigation` PRs after the fact.
@@ -444,11 +476,11 @@ The agent is accountable for following this gate. The human is accountable for t
 A feature is complete when:
 
 - [ ] Local verification passes
-- [ ] Pre-Push Self-Review (review skill) passes with no actionable findings
+- [ ] Pre-Push Self-Review (code-review skill) passes with no actionable findings
 - [ ] Feature branch is pushed
 - [ ] Pull Request exists in GitHub
 - [ ] GitHub Actions are green
-- [ ] CodeRabbit has been requested (unless prevented by permissions)
-- [ ] CodeRabbit feedback has been addressed (if any)
+- [ ] Greptile has been requested (unless prevented by permissions)
+- [ ] Greptile feedback has been addressed (if any)
 - [ ] PR has been merged into `develop`
 - [ ] Issue has been closed
