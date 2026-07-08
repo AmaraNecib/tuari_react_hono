@@ -27,8 +27,6 @@ Thumbs.db
 # Temporary session logs (daily lessons that can be deleted)
 /.scratch/sessions/
 
-# Agent skills (not part of the app)
-.agents/
 .claude/
 .opencode/
 .codex/
