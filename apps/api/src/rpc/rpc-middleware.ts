@@ -1,10 +1,11 @@
 import { ORPCError } from "@orpc/server";
-import type { AppError } from "@tuari/contracts";
+import type { AppError, Edition, LicensedFeature } from "@tuari/contracts";
 
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import type { Permission } from "../modules/rbac/permissions";
 import { InputValidator } from "../infrastructure/validation/input-validator";
 import { SlidingWindowRateLimiter, resolveClientIp } from "../infrastructure/rate-limiter";
+import { getLicenseInfo, meetsMinEdition, editionToMinEdition } from "../infrastructure/license";
 import { requireCurrentUser, type RpcContext } from "./context";
 
 // Generic schema interface for validation
@@ -231,6 +232,53 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
         if (!allowed) {
           throw new ORPCError("FORBIDDEN", {
             message: "ليس لديك صلاحية للقيام بهذا الإجراء.",
+          });
+        }
+
+        return handler({ context, input });
+      };
+    },
+
+    // ── License edition gate ──────────────────────────────────
+    //
+    // Rejects the request when the current license edition is below the
+    // required minimum.  This is API-enforced (see §5.3).
+
+    requireEdition<TInput, TOutput>(
+      minEdition: Edition,
+      handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput> | TOutput,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
+      return async ({ context, input }) => {
+        const license = getLicenseInfo();
+
+        if (!meetsMinEdition(license.edition, minEdition)) {
+          throw new ORPCError("UPGRADE_REQUIRED", {
+            message: `هذه الميزة تتطلب ${minEdition === "enterprise" ? "الإصدار المؤسسي" : "الإصدار الاحترافي"}.`,
+            data: { requiredEdition: minEdition },
+          });
+        }
+
+        return handler({ context, input });
+      };
+    },
+
+    // ── License feature gate ──────────────────────────────────
+    //
+    // Rejects the request when the required feature is not present in the
+    // current license.  API-enforced (see §5.3).
+
+    requireFeature<TInput, TOutput>(
+      feature: LicensedFeature,
+      handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput> | TOutput,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
+      return async ({ context, input }) => {
+        const license = getLicenseInfo();
+
+        if (!license.features.includes(feature)) {
+          const minEdition = editionToMinEdition(feature);
+          throw new ORPCError("UPGRADE_REQUIRED", {
+            message: `هذه الميزة تتطلب ترقية الإصدار.`,
+            data: { requiredEdition: minEdition },
           });
         }
 
