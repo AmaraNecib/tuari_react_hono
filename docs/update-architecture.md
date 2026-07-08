@@ -591,33 +591,33 @@ Same mechanism as licensing key rotation (Licensing Architecture §3.5). Rotatio
 
 ### 26.4 ADRs Created
 
-The following ADRs have been created to capture implementation-specific decisions for the update and release system. Each ADR is located at `docs/adr/ADR-UPD-NNN.md`.
+The following ADRs have been created to capture implementation-specific decisions for the update and release system. Each ADR is located at `adr/ADR-UPD-NNN.md`.
 
 | ADR | Topic |
 |-----|-------|
-| ADR-UPD-001 | [Windows Update Strategy](docs/adr/ADR-UPD-001.md) (stub updater, locked file handling) |
-| ADR-UPD-002 | [Recovery Console](docs/adr/ADR-UPD-002.md) (`--recover` command-line flag) |
-| ADR-UPD-003 | [Update Packaging](docs/adr/ADR-UPD-003.md) (ZIP, Ed25519 signatures, canonical JSON) |
-| ADR-UPD-004 | [Release Pipeline](docs/adr/ADR-UPD-004.md) (GitHub Actions with Environments) |
-| ADR-UPD-005 | [Backup Retention Policy](docs/adr/ADR-UPD-005.md) (keep 3 most recent backups) |
-| ADR-UPD-006 | [Smoke Test Definition](docs/adr/ADR-UPD-006.md) (binary start, health check, DB open) |
-| ADR-UPD-008 | [Enterprise Networking](docs/adr/ADR-UPD-008.md) (proxy environment variables) |
+| ADR-UPD-001 | [Windows Update Strategy](adr/ADR-UPD-001.md) (stub updater, locked file handling) |
+| ADR-UPD-002 | [Recovery Console](adr/ADR-UPD-002.md) (`--recover` command-line flag) |
+| ADR-UPD-003 | [Update Packaging](adr/ADR-UPD-003.md) (ZIP, Ed25519 signatures, canonical JSON) |
+| ADR-UPD-004 | [Release Pipeline](adr/ADR-UPD-004.md) (GitHub Actions with Environments) |
+| ADR-UPD-005 | [Backup Retention Policy](adr/ADR-UPD-005.md) (keep 3 most recent backups) |
+| ADR-UPD-006 | [Smoke Test Definition](adr/ADR-UPD-006.md) (binary start, health check, DB open) |
+| ADR-UPD-008 | [Enterprise Networking](adr/ADR-UPD-008.md) (proxy environment variables) |
 
 ---
 
 ## 27. ADR Index
 
-The following ADRs capture implementation-specific decisions for the update and release system. Each is located at `docs/adr/ADR-UPD-NNN.md`.
+The following ADRs capture implementation-specific decisions for the update and release system. Each is located at `adr/ADR-UPD-NNN.md`.
 
 | ADR | Purpose | When |
 |-----|---------|------|
-| ADR-UPD-001 | [Windows Update Strategy](docs/adr/ADR-UPD-001.md) (stub updater for locked file handling) | During Phase 3 (Tauri Adapter) |
-| ADR-UPD-002 | [Recovery Console](docs/adr/ADR-UPD-002.md) (`--recover` command-line flag) | During Phase 2 (Updater Engine) |
-| ADR-UPD-003 | [Update Packaging](docs/adr/ADR-UPD-003.md) (ZIP, Ed25519, canonical JSON, pinned compression) | During Phase 2 (Release tooling) |
-| ADR-UPD-004 | [Release Pipeline](docs/adr/ADR-UPD-004.md) (GitHub Actions with Environments) | Before first customer release |
-| ADR-UPD-005 | [Backup Retention Policy](docs/adr/ADR-UPD-005.md) (keep 3 most recent backups) | During Phase 2 (Updater Engine) |
-| ADR-UPD-006 | [Smoke Test Definition](docs/adr/ADR-UPD-006.md) (binary start, health check, DB open) | During Phase 3 (Tauri Adapter) |
-| ADR-UPD-008 | [Enterprise Networking](docs/adr/ADR-UPD-008.md) (proxy env vars, credential sanitization) | During Phase 1 (Update Provider) |
+| ADR-UPD-001 | [Windows Update Strategy](adr/ADR-UPD-001.md) (stub updater for locked file handling) | During Phase 3 (Tauri Adapter) |
+| ADR-UPD-002 | [Recovery Console](adr/ADR-UPD-002.md) (`--recover` command-line flag) | During Phase 2 (Updater Engine) |
+| ADR-UPD-003 | [Update Packaging](adr/ADR-UPD-003.md) (ZIP, Ed25519, canonical JSON, pinned compression) | During Phase 2 (Release tooling) |
+| ADR-UPD-004 | [Release Pipeline](adr/ADR-UPD-004.md) (GitHub Actions with Environments) | Before first customer release |
+| ADR-UPD-005 | [Backup Retention Policy](adr/ADR-UPD-005.md) (keep 3 most recent backups) | During Phase 2 (Updater Engine) |
+| ADR-UPD-006 | [Smoke Test Definition](adr/ADR-UPD-006.md) (binary start, health check, DB open) | During Phase 3 (Tauri Adapter) |
+| ADR-UPD-008 | [Enterprise Networking](adr/ADR-UPD-008.md) (proxy env vars, credential sanitization) | During Phase 1 (Update Provider) |
 
 Each ADR must reference ADR-RCA-001 and this architecture document to maintain traceability.
 

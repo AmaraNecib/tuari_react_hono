@@ -28,5 +28,5 @@ Use a dedicated **stub updater** (`stub_updater.exe`) to handle locked-file repl
 
 ### References
 
-- **Architecture:** `docs/update-architecture.md` §26.1 (module allocation: `stub_updater.rs`), §26.4 (ADRs to Create)
+- **Architecture:** `docs/update-architecture.md` §26.1 (module allocation: `stub_updater.rs`), §26.4 (ADRs Created)
 - **ADR-RCA-001:** Rust Core Architecture

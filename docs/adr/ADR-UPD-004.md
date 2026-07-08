@@ -23,7 +23,7 @@ Use **GitHub Actions** as the CI/CD platform with **GitHub Environments** provid
 - Environment-specific secrets ensure the production signing key is only accessible during approved `stable` releases, never during development builds or PR workflows.
 - The alternative — a dedicated CI/CD service (Jenkins, Buildkite, GitLab CI) — introduces a second infrastructure surface to maintain, secure, and integrate with GitHub.
 - The alternative — self-hosted runners with hardware security modules (HSMs) — is premature for the current scale but can be introduced later when the production key is promoted to HSM-backed signing.
-- GitHub Actions minutes cost is acceptable at the current scale (~3-5 release builds per milestone milestone).
+- GitHub Actions minutes cost is acceptable at the current scale (~3-5 release builds per milestone).
 - Production signing key as a GitHub secret (in the `stable` environment) is adequate until HSM-backed signing is justified by release volume or compliance requirements.
 
 ### Consequences
