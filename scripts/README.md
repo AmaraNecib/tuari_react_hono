@@ -91,6 +91,7 @@ node scripts/generate-dev-update-keys.mjs [--output-dir <path>]
 | File                          | Contents                                                    |
 |-------------------------------|-------------------------------------------------------------|
 | `dev-update-public-key.txt`   | Rust byte array constant: `pub const UPDATE_PUBLIC_KEY: [u8; 32] = [...]` |
+| `dev-update-public-key.pem`   | SPKI PEM-encoded Ed25519 public key (for verification tools) |
 | `dev-update-private-key.pem`  | PKCS#8 PEM-encoded Ed25519 private key                      |
 
 **Example:**
@@ -148,6 +149,7 @@ which calls `crypto::ed25519_verify(public_key, manifest_bytes, signature_bytes)
 Development keys for CI are stored in `scripts/dev-update-keys/`:
 
 - `dev-update-public-key.txt` — Rust constant for use in `update.rs`
+- `dev-update-public-key.pem` — PEM public key for verification tools
 - `dev-update-private-key.pem` — Private key for local signing (never used in production)
 
 Production keys must be kept outside the repository and managed through
