@@ -79,7 +79,8 @@ mod integration_tests {
         let new_pk = new_sk.verifying_key().to_bytes();
 
         use base64::Engine;
-        let engine = base64::engine::general_purpose::URL_SAFE;
+        // URL_SAFE_NO_PAD matches the trust module's unpadded convention
+        let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
         let new_pk_b64 = engine.encode(new_pk);
 
         let cert_value = serde_json::json!({
