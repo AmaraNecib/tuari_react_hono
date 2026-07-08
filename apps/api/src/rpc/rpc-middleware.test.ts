@@ -158,6 +158,7 @@ describe("RPC Middleware — license gating", () => {
     name: "Test",
     phone: "0612345678",
     permissions: [],
+    version: "0.0.0",
   };
 
   beforeEach(() => {
