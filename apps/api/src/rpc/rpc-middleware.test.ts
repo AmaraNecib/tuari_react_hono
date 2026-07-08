@@ -31,7 +31,6 @@ describe("RPC Middleware — withPermission", () => {
         id: "u1",
         name: "Admin",
         phone: "0555000001",
-        version: "0.0.0",
         permissions: ["employees.create", "employees.read"],
         version: "0.0.0",
       }),
@@ -53,7 +52,6 @@ describe("RPC Middleware — withPermission", () => {
           id: "u1",
           name: "Viewer",
           phone: "0555000002",
-          version: "0.0.0",
           permissions: ["employees.read"],
           version: "0.0.0",
         }),
@@ -78,7 +76,6 @@ describe("RPC Middleware — withPermission", () => {
           id: "u1",
           name: "NoPerms",
           phone: "0555000003",
-          version: "0.0.0",
           permissions: [],
           version: "0.0.0",
         }),
@@ -120,7 +117,6 @@ describe("RPC Middleware — withPermission", () => {
         id: "u1",
         name: "PM",
         phone: "0555000004",
-        version: "0.0.0",
         permissions: ["employees.update"],
         version: "0.0.0",
       }),
@@ -142,7 +138,6 @@ describe("RPC Middleware — withPermission", () => {
           id: "u1",
           name: "Viewer",
           phone: "0555000005",
-          version: "0.0.0",
           permissions: ["employees.read"],
           version: "0.0.0",
         }),
@@ -163,6 +158,7 @@ describe("RPC Middleware — license gating", () => {
     name: "Test",
     phone: "0612345678",
     permissions: [],
+    version: "0.0.0",
   };
 
   beforeEach(() => {
