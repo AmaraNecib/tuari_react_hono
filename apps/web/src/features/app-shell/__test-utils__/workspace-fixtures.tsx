@@ -4,8 +4,9 @@
  * Shared test utility module for workspace tests.
  *
  * Hides all mock wiring, test data factories, and render helpers behind
- * a small interface (~5 functions). Imports from this file trigger the
- * hoisted vi.mock() calls that intercept workspace hooks.
+ * a small public API (5 helpers + `mockState`/`mockFns` mutable exports).
+ * Imports from this file trigger the hoisted vi.mock() calls that
+ * intercept workspace hooks.
  */
 
 import { type Mock, vi } from "vitest"
@@ -27,6 +28,7 @@ import type { ReactNode } from "react"
 
 import { AppPreferencesProvider } from "@/features/preferences/preferences"
 import { HomeView, type HomeViewPage } from "../home-view"
+import type { WorkspaceSnapshot } from "@tuari/contracts"
 
 // ─── Hoisted: navigateMock + AppMutationError must exist before vi.mock factories ───
 const { navigateMock, AppMutationError } = vi.hoisted(() => {
@@ -49,7 +51,7 @@ export const mockState: {
   setupStatus: { hasUsers: boolean; requiresSetupKey?: boolean } | undefined
   setupPending: boolean
   setupError: Error | null
-  workspaceData: Record<string, unknown> | undefined
+  workspaceData: WorkspaceSnapshot | undefined
   workspacePending: boolean
   workspaceError: Error | null
   systemLogData: { items: Array<Record<string, unknown>> }
@@ -262,8 +264,8 @@ vi.mock("../workspace-queries", () => ({
 // Matches the WorkspaceSnapshot shape used throughout the test suite.
 
 export function makeWorkspaceData(
-  overrides?: Partial<Record<string, unknown>>,
-): Record<string, unknown> {
+  overrides?: Partial<WorkspaceSnapshot>,
+): WorkspaceSnapshot {
   const data: Record<string, unknown> = {
     roles: [
       {
@@ -398,7 +400,7 @@ export function makeWorkspaceData(
     Object.assign(data, overrides)
   }
 
-  return data
+  return data as WorkspaceSnapshot
 }
 
 // Initialize default workspace data

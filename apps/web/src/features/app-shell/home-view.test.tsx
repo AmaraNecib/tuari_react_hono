@@ -325,8 +325,10 @@ describe("HomeView workspace shell", () => {
       paymentDate: "2026-03-19T08:00:00.000Z",
       expectedAmountDzd: 4500,
       actualAmountDzd: 4500,
-      periodType: "DAILY",
+      periodType: "DAILY" as const,
       note: null,
+      actorUserId: null,
+      transactionId: null,
       createdAt: "2026-03-19T08:00:00.000Z",
       updatedAt: "2026-03-19T08:00:00.000Z",
     }
