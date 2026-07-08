@@ -63,6 +63,12 @@ describe("getLicenseInfo", () => {
     expect(info.customer).toEqual(customer);
   });
 
+  it("returns null customer when TUARI_LICENSE_CUSTOMER contains malformed JSON", () => {
+    process.env.TUARI_LICENSE_CUSTOMER = "not-valid-json{{";
+    const info = getLicenseInfo();
+    expect(info.customer).toBeNull();
+  });
+
   it("returns null customer when TUARI_LICENSE_CUSTOMER is not set", () => {
     const info = getLicenseInfo();
     expect(info.customer).toBeNull();

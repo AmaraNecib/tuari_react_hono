@@ -76,6 +76,22 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
     return await requireCurrentUser(context);
   }
 
+  /**
+   * Shared check: rejects expired licenses.
+   *
+   * The Rust shell is the primary gate for expiry (it controls whether the
+   * sidecar starts at all past the locked phase), but this sidecar guard
+   * ensures that even if `TUARI_LICENSE_STATUS` is set to `"expired"` the
+   * API does not serve gated operations.
+   */
+  function requireActiveLicense(license: ReturnType<typeof getLicenseInfo>): void {
+    if (license.status === "expired") {
+      throw new ORPCError("UPGRADE_REQUIRED", {
+        message: "انتهت صلاحية الترخيص. يرجى تجديد الترخيص للوصول إلى هذه الميزة.",
+      });
+    }
+  }
+
   async function createAuditContextForUser(context: RpcContext): Promise<MutationAuditContext> {
     const currentUser = await requireAuthenticatedUser(context);
     return {
@@ -250,10 +266,11 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
     ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
       return async ({ context, input }) => {
         const license = getLicenseInfo();
+        requireActiveLicense(license);
 
         if (!meetsMinEdition(license.edition, minEdition)) {
           throw new ORPCError("UPGRADE_REQUIRED", {
-            message: `هذه الميزة تتطلب ${minEdition === "enterprise" ? "الإصدار المؤسسي" : "الإصدار الاحترافي"}.`,
+            message: `هذه الميزة تتطلب ${minEdition === "enterprise" ? "الإصدار المؤسسي" : minEdition === "professional" ? "الإصدار الاحترافي" : "الإصدار القياسي"}.`,
             data: { requiredEdition: minEdition },
           });
         }
@@ -273,6 +290,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
     ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
       return async ({ context, input }) => {
         const license = getLicenseInfo();
+        requireActiveLicense(license);
 
         if (!license.features.includes(feature)) {
           const minEdition = editionToMinEdition(feature);

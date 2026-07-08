@@ -39,7 +39,13 @@ export function getLicenseInfo(): LicenseInfo {
       .filter(Boolean) as LicensedFeature[],
     maxUsers: parseInt(process.env.TUARI_LICENSE_MAX_USERS ?? "1", 10),
     customer: process.env.TUARI_LICENSE_CUSTOMER
-      ? JSON.parse(process.env.TUARI_LICENSE_CUSTOMER)
+      ? (() => {
+          try {
+            return JSON.parse(process.env.TUARI_LICENSE_CUSTOMER);
+          } catch {
+            return null;
+          }
+        })()
       : null,
     expiresAt: process.env.TUARI_LICENSE_EXPIRES_AT || null,
     status: (process.env.TUARI_LICENSE_STATUS ?? "trial") as LicenseInfo["status"],

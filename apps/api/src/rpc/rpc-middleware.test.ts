@@ -229,6 +229,23 @@ describe("RPC Middleware — license gating", () => {
 
       expect(handler).not.toHaveBeenCalled();
     });
+
+    it("rejects expired license even when edition meets the minimum", async () => {
+      process.env.TUARI_LICENSE_EDITION = "enterprise";
+      process.env.TUARI_LICENSE_STATUS = "expired";
+      const handler = vi.fn();
+
+      const wrapped = rpcMiddleware.requireEdition("enterprise", handler);
+
+      await expect(
+        wrapped({
+          context: createMockContext(null),
+          input: {},
+        }),
+      ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });
+
+      expect(handler).not.toHaveBeenCalled();
+    });
   });
 
   describe("requireFeature", () => {
@@ -285,6 +302,23 @@ describe("RPC Middleware — license gating", () => {
       const handler = vi.fn();
 
       const wrapped = rpcMiddleware.requireFeature("lan_server", handler);
+
+      await expect(
+        wrapped({
+          context: createMockContext(null),
+          input: {},
+        }),
+      ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("rejects expired license even when the feature is present", async () => {
+      process.env.TUARI_LICENSE_FEATURES = "advanced_reports";
+      process.env.TUARI_LICENSE_STATUS = "expired";
+      const handler = vi.fn();
+
+      const wrapped = rpcMiddleware.requireFeature("advanced_reports", handler);
 
       await expect(
         wrapped({
