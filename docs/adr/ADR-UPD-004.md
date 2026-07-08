@@ -12,7 +12,7 @@ Use **GitHub Actions** as the CI/CD platform with **GitHub Environments** provid
 | Aspect | Decision | Rationale |
 |--------|----------|-----------|
 | CI platform | GitHub Actions | Zero additional infrastructure; the project already uses GitHub for source control and issue tracking |
-| Approval gates | GitHub Environments (`beta`, `stable`) | Built-in manual approval workflow before production deployment |
+| Approval gates | GitHub Environments (`beta`, `stable`) | Built-in manual approval workflow before production deployment. Each environment has its own dedicated signing key. |
 | Signing | Dev key in CI variables; production key as a GitHub secret in the `stable` environment | Dev key enables automated nightly builds; production key requires manual approval gate in the `stable` environment. HSM-backed signing can be introduced later as an upgrade. |
 | Artifact storage | GitHub Release (stable) + workflow artifacts (nightly/beta) | Avoids external artifact storage costs |
 | Channel management | Tag-based triggers (`v*` = stable, `v*-beta*` = beta) plus schedule trigger (nightly) | Clear separation between channel promotions |
@@ -30,7 +30,7 @@ Use **GitHub Actions** as the CI/CD platform with **GitHub Environments** provid
 
 - A GitHub Actions workflow must be created for each release channel (nightly, beta, stable), with appropriate trigger conditions and environment bindings.
 - The production signing key must be a manually provisioned GitHub secret in the `stable` environment, never exposed in logs or workflow artifacts.
-- The beta channel must have its own `beta` environment with a copy of the production signing key (or a dedicated beta signing key), a `-preview.N` version suffix, and a pending approval gate. The same secrets are used as stable, but the environment is separate to allow independent approval policies.
+- The beta channel must have its own `beta` environment with a **dedicated beta signing key** (distinct from the production key), a `-preview.N` version suffix, and a pending approval gate. Using a separate beta key preserves the security boundary of the `stable` environment: a compromise of the beta workflow does not expose the production signing key.
 - All release workflows must produce, sign, and upload: installer, portable package, update package, update metadata (`updates.json`), and changelog.
 - The CI workflow must verify that release builds are triggered only from allowed branches (`develop`, `release/*`, `main`).
 - Promotion of an artifact between channels (e.g., beta → stable) does not require re-signing if the same key was used. If the key differs, re-signing is required.
