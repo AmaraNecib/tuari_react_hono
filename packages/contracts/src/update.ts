@@ -5,6 +5,7 @@
  * Return latest version info when the user checks for updates.
  */
 import { z } from "zod";
+import { createEntityResultSchema } from "./core";
 
 /** Latest available update metadata returned by GET /api/updates/latest. */
 export const updateMetadataSchema = z.object({
@@ -39,10 +40,8 @@ export const recordUpdateInputSchema = z.object({
   errorMessage: z.string().nullable().optional(),
 });
 
-/** Result of a record-update operation. */
-export const recordUpdateResultSchema = z.object({
-  record: updateRecordSchema,
-});
+/** Result of a record-update operation (matches mutation pattern using createEntityResultSchema). */
+export const recordUpdateResultSchema = createEntityResultSchema(updateRecordSchema);
 
 /** Response shape for listing update history. */
 export const updateHistoryListSchema = z.object({

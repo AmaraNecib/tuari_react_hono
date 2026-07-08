@@ -42,7 +42,7 @@ export class UpdateHistoryService {
     const stmt = this.db.prepare(
       `SELECT "id", "version", "applied_at" AS "appliedAt", "success", "error_message" AS "errorMessage"
        FROM "update_history"
-       ORDER BY "id" DESC
+       ORDER BY "applied_at" DESC, "id" DESC
        LIMIT ?`,
     );
     return stmt.all(limit).map((row: any) => ({
@@ -58,7 +58,7 @@ export class UpdateHistoryService {
     const stmt = this.db.prepare(
       `SELECT "id", "version", "applied_at" AS "appliedAt", "success", "error_message" AS "errorMessage"
        FROM "update_history"
-       ORDER BY "id" DESC
+       ORDER BY "applied_at" DESC, "id" DESC
        LIMIT 1`,
     );
     const row = stmt.get() as any;

@@ -47,7 +47,7 @@ export function createUpdateHandlers(
       m.mutationAudit(
         ({ input }: { input: RecordUpdateInput }) => {
           const record = updateHistoryService.recordUpdate(input);
-          return { record };
+          return { success: true as const, message: "تم تسجيل التحديث بنجاح.", item: record };
         },
         (error: unknown) => {
           console.error("[recordUpdate] failed to record update:", error);
