@@ -3,21 +3,15 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Read the current app version.
+ * Resolve the fallback version from the API's `package.json`.
  *
- * Precedence:
- * 1. `process.env.TUARI_APP_VERSION` (set at deploy-time)
- * 2. `version` field in the API's `package.json` (dev / local)
- * 3. `"0.0.0"` fallback
+ * Called once at module load and cached.  In production the env-var
+ * branch of `readAppVersion()` is always taken, so this function
+ * only matters during development.
  */
-export function readAppVersion(): string {
-  if (process.env.TUARI_APP_VERSION) {
-    return process.env.TUARI_APP_VERSION;
-  }
-
+function resolvePackageJsonVersion(): string {
   try {
-    // Resolve the API package.json — this file lives at
-    // apps/api/src/modules/version.ts, so we go up 2 levels.
+    // This file lives at apps/api/src/modules/version.ts, so we go up 2 levels.
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const pkgPath = join(__dirname, "..", "..", "package.json");
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
@@ -29,4 +23,26 @@ export function readAppVersion(): string {
   }
 
   return "0.0.0";
+}
+
+/** Cached fallback version — resolved once via synchronous I/O. */
+const _cachedFallbackVersion = resolvePackageJsonVersion();
+
+/**
+ * Return the current app version.
+ *
+ * - If `TUARI_APP_VERSION` is set (deploy-time), returns it immediately
+ *   with no I/O.
+ * - Otherwise returns the fallback resolved once at module load from
+ *   `package.json` or `"0.0.0"`.
+ *
+ * The env-var check runs on every call (it is a cheap property lookup)
+ * so tests can set `process.env.TUARI_APP_VERSION` before each test.
+ */
+export function readAppVersion(): string {
+  if (process.env.TUARI_APP_VERSION) {
+    return process.env.TUARI_APP_VERSION;
+  }
+
+  return _cachedFallbackVersion;
 }
