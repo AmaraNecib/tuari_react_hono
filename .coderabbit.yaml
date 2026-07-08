@@ -3,6 +3,7 @@
 
 reviews:
   review_status: false
+  max_issues_severity: warning
   path_filters:
     - "!**/node_modules/**"
     - "!**/target/**"

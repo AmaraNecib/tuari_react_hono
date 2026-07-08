@@ -27,6 +27,7 @@ import { SqliteRoleRepository } from "../modules/workforce/adapters/role.reposit
 import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice-debt.port";
 import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import { UpdateService } from "../modules/update/update.service";
+import { UpdateHistoryService } from "../modules/update/update-history.service";
 
 /**
  * Create all application dependencies.
@@ -83,6 +84,7 @@ export async function createAppDependencies(
     sessionService: new SessionService(auth, permissionResolver),
     recoveryKeyService,
     updateService: new UpdateService(),
+    updateHistoryService: new UpdateHistoryService(sharedDatabase),
     rawDatabase: sharedDatabase,
     employeeModule,
     invoiceModule,
