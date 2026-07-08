@@ -30,7 +30,7 @@ Use **GitHub Actions** as the CI/CD platform with **GitHub Environments** provid
 
 - A GitHub Actions workflow must be created for each release channel (nightly, beta, stable), with appropriate trigger conditions and environment bindings.
 - The production signing key must be a manually provisioned GitHub secret in the `stable` environment, never exposed in logs or workflow artifacts.
-- The beta channel must use the same secrets as stable but with a `-preview.N` version suffix and a pending approval gate.
+- The beta channel must have its own `beta` environment with a copy of the production signing key (or a dedicated beta signing key), a `-preview.N` version suffix, and a pending approval gate. The same secrets are used as stable, but the environment is separate to allow independent approval policies.
 - All release workflows must produce, sign, and upload: installer, portable package, update package, update metadata (`updates.json`), and changelog.
 - The CI workflow must verify that release builds are triggered only from allowed branches (`develop`, `release/*`, `main`).
 - Promotion of an artifact between channels (e.g., beta → stable) does not require re-signing if the same key was used. If the key differs, re-signing is required.

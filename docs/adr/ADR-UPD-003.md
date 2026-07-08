@@ -12,7 +12,7 @@ Package updates as `.zip` archives containing:
 
 The manifest is serialized using **canonical JSON** (sorted keys, no whitespace) before signing. The signature is computed over the canonical manifest bytes with the `signature` field excluded.
 
-Compression level is pinned to a specific zlib level (level 6) for deterministic builds.
+Compression level is pinned to a specific zlib level (level 6) for deterministic builds. ZIP entry timestamps must also be normalized (set to a fixed epoch, e.g., the commit timestamp) to ensure byte-identical outputs across builds.
 
 ### Rationale
 
@@ -27,7 +27,7 @@ Compression level is pinned to a specific zlib level (level 6) for deterministic
 ### Consequences
 
 - The signing tool (`sign-update.mjs`) and the verification function (`update.rs`) must implement identical canonical JSON serialization. A shared test vector in the test suite must verify cross-implementation compatibility.
-- Compression level must be documented in the build configuration and enforced in CI.
+- Compression level must be documented in the build configuration and enforced in CI. ZIP entry timestamps must be normalized to a fixed value (e.g., the commit timestamp or Unix epoch) to eliminate non-determinism from file modification times.
 - The manifest format must include a `manifestVersion` field to allow future format evolution (V1 = full-package ZIP, V2 = differential, V3 = chunked).
 - ZIP's 4 GiB size limit per file is acceptable as update packages are expected to remain well under this limit.
 - ZIP does not natively support incremental or differential updates; those will require a new format version when implemented.
