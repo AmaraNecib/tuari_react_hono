@@ -185,4 +185,11 @@ For Rust-side verification testing:
 
 ```bash
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml -- update_integration
+
+To run the Node-to-Rust cross-language integration test (requires Node.js in PATH):
+
+```bash
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml \
+  -- cli_signed_manifest_rust_verification -- --include-ignored
 ```
+
