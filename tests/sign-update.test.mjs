@@ -201,6 +201,24 @@ test('generate-dev-update-keys produces valid key pair', async () => {
   assert.equal(pubKeyContent, expectedPubKeyLine);
 });
 
+test('sign with --key-id injects keyId into canonical manifest', async () => {
+  const tmp = await mkdtemp(join(tmpdir(), 'sign-test-'));
+  const manifestPath = join(tmp, 'manifest.json');
+  const manifest = { version: '1.0.0', platform: 'windows' };
+  await writeFile(manifestPath, JSON.stringify(manifest));
+
+  const { privateKeyPath } = await generateKeyPair(tmp);
+  const outputPath = join(tmp, 'signed.txt');
+  runScript('sign-update.mjs', `--manifest ${manifestPath} --private-key ${privateKeyPath} --output ${outputPath} --key-id update-key-v2`);
+
+  const signed = await readFile(outputPath, 'utf8');
+  const parts = signed.trim().split('.');
+  const decoded = Buffer.from(parts[0], 'base64url').toString('utf8');
+  const parsed = JSON.parse(decoded);
+
+  assert.equal(parsed.keyId, 'update-key-v2', 'canonical JSON should contain keyId');
+});
+
 test('sign and verify round-trip end-to-end', async () => {
   const tmp = await mkdtemp(join(tmpdir(), 'sign-test-'));
   const manifestPath = join(tmp, 'manifest.json');

@@ -65,6 +65,21 @@ impl RotationCertificate {
         self.verify_inner(root_ca_key)
     }
 
+    /// Verify the certificate's signature AND check that its purpose matches `expected`.
+    ///
+    /// Returns `Err(RustCoreError::InvalidPayload)` if the purpose doesn't match.
+    pub fn verify_for_purpose(
+        &self,
+        root_ca_key: &[u8; 32],
+        expected: &KeyPurpose,
+    ) -> Result<[u8; 32], RustCoreError> {
+        let key = self.verify_inner(root_ca_key)?;
+        if self.purpose != *expected {
+            return Err(RustCoreError::InvalidPayload);
+        }
+        Ok(key)
+    }
+
     /// Shared verification logic.
     fn verify_inner(&self, root_ca_key: &[u8; 32]) -> Result<[u8; 32], RustCoreError> {
         // URL_SAFE_NO_PAD because all real-world base64url tools (Node.js, JWT)
@@ -225,6 +240,65 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&KeyPurpose::Update).unwrap(),
             r#""update-signing""#
+        );
+    }
+
+    #[test]
+    fn verify_for_purpose_accepts_matching_purpose() {
+        let (root_ca_sk, root_ca_pk) = generate_keypair();
+        let (_new_sk, new_pk) = generate_keypair();
+
+        let cert = make_cert(
+            &root_ca_sk,
+            &new_pk,
+            &KeyPurpose::Update,
+            "2026-01-01T00:00:00Z",
+        );
+
+        let result = cert.verify_for_purpose(&root_ca_pk, &KeyPurpose::Update);
+        assert!(result.is_ok(), "update-purpose cert should verify for update");
+        assert_eq!(result.unwrap(), new_pk);
+    }
+
+    #[test]
+    fn verify_for_purpose_rejects_license_cert_for_update() {
+        let (root_ca_sk, root_ca_pk) = generate_keypair();
+        let (_new_sk, new_pk) = generate_keypair();
+
+        // Create a License-purpose cert
+        let cert = make_cert(
+            &root_ca_sk,
+            &new_pk,
+            &KeyPurpose::License,
+            "2026-01-01T00:00:00Z",
+        );
+
+        // Verify it for Update purpose — should fail
+        let result = cert.verify_for_purpose(&root_ca_pk, &KeyPurpose::Update);
+        assert!(
+            matches!(result, Err(RustCoreError::InvalidPayload)),
+            "license cert should be rejected for update purpose"
+        );
+    }
+
+    #[test]
+    fn verify_for_purpose_rejects_update_cert_for_license() {
+        let (root_ca_sk, root_ca_pk) = generate_keypair();
+        let (_new_sk, new_pk) = generate_keypair();
+
+        // Create an Update-purpose cert
+        let cert = make_cert(
+            &root_ca_sk,
+            &new_pk,
+            &KeyPurpose::Update,
+            "2026-01-01T00:00:00Z",
+        );
+
+        // Verify it for License purpose — should fail
+        let result = cert.verify_for_purpose(&root_ca_pk, &KeyPurpose::License);
+        assert!(
+            matches!(result, Err(RustCoreError::InvalidPayload)),
+            "update cert should be rejected for license purpose"
         );
     }
 

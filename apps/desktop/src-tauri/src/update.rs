@@ -570,6 +570,24 @@ mod tests {
         assert_eq!(result.files.len(), 1);
         assert_eq!(result.files[0].path, "app.exe");
         assert_eq!(result.files[0].size, 12345);
+        // key_id defaults to empty when not present
+        assert_eq!(result.key_id, "");
+    }
+
+    #[test]
+    fn parse_manifest_with_key_id() {
+        let manifest = r#"{
+            "version": "2.0.0",
+            "platform": "linux",
+            "minSupportedVersion": "1.0.0",
+            "checksum": "xyz",
+            "keyId": "update-key-v2",
+            "files": []
+        }"#;
+
+        let result = parse_update_manifest(manifest.as_bytes()).unwrap();
+        assert_eq!(result.version, "2.0.0");
+        assert_eq!(result.key_id, "update-key-v2", "key_id should be parsed from keyId field");
     }
 
     #[test]
