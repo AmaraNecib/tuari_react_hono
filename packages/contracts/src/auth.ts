@@ -19,6 +19,7 @@ export const sessionUserSchema = z.object({
   id: entityIdSchema,
   name: z.string().min(1).nullable(),
   phone: z.string().min(1),
+  version: z.string().min(1),
 });
 
 export const sessionSchema = z.object({

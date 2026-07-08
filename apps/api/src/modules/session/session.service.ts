@@ -1,5 +1,6 @@
 import type { Permission } from "../rbac/permissions";
 import type { SessionUser } from "./session.types";
+import { readAppVersion } from "../version";
 
 type AuthGateway = {
   api: {
@@ -37,6 +38,7 @@ export class SessionService {
       name: sessionData.user.name,
       phone: sessionData.user.phoneNumber,
       permissions,
+      version: readAppVersion(),
     };
   }
 }

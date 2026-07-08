@@ -6,6 +6,7 @@ import type { AuthBootstrapInput, SessionUser } from "@tuari/contracts";
 import type { AppDrizzle } from "../../infrastructure/database/drizzle";
 import { user, account, appBootstrapState } from "../../schema";
 import type { BetterAuthInstance } from "../../infrastructure/auth/auth";
+import { readAppVersion } from "../version";
 
 type AuthSetupStatus = {
   hasUsers: boolean;
@@ -120,6 +121,7 @@ export class AuthBootstrapService {
               id: userId,
               name: input.name.trim(),
               phone: input.phone,
+              version: readAppVersion(),
             },
           } satisfies BootstrapResult;
         }

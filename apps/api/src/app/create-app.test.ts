@@ -72,6 +72,7 @@ describe("createApp RPC wiring", () => {
       id: "user-1",
       name: "Taylor",
       phone: "0612345678",
+      version: "0.0.0",
     };
     const dependencies = createDependencies();
     dependencies.sessionService.getCurrentUser.mockResolvedValue(currentUser);

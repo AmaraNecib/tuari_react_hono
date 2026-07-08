@@ -83,6 +83,7 @@ describe("RPC router", () => {
       "employees.update",
       "employees.delete",
     ],
+    version: "0.0.0",
   };
 
   // The session contract schema strips internal fields like permissions
@@ -90,6 +91,7 @@ describe("RPC router", () => {
     id: currentUser.id,
     name: currentUser.name,
     phone: currentUser.phone,
+    version: currentUser.version,
   };
 
   const createContext = (user: typeof currentUser | null = currentUser): RpcContext => ({
