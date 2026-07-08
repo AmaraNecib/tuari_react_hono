@@ -13,8 +13,10 @@ import { type Mock, vi } from "vitest"
 // Flaky fix: suppress i18next's promotional console.log at module
 // evaluation time, which races with vitest RPC teardown on loaded CI
 // runners causing EnvironmentTeardownError.
-vi.hoisted(() => {
-  vi.spyOn(console, "log").mockImplementation(() => {})
+// The spy is restored after module evaluation via restoreConsoleLog().
+const { restoreConsoleLog } = vi.hoisted(() => {
+  const spy = vi.spyOn(console, "log").mockImplementation(() => {})
+  return { restoreConsoleLog: () => spy.mockRestore() }
 })
 
 import "@/i18n"
@@ -166,7 +168,11 @@ vi.mock("../mock-dashboard", () => ({
   useUpdateEmployeeWorkplaceMutation: () => ({ isPending: false, mutateAsync: mockFns.updateEmployeeWorkplaceMutate }),
   useSyncManagedProjectsMutation: () => ({ isPending: false, mutateAsync: mockFns.syncManagedProjectsMutate }),
   useSyncManagedWarehousesMutation: () => ({ isPending: false, mutateAsync: mockFns.syncManagedWarehousesMutate }),
-  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutate: mockFns.createSalaryPaymentMutate }),
+  useCreateSalaryPaymentMutation: () => ({
+    isPending: false,
+    mutate: mockFns.createSalaryPaymentMutate,
+    mutateAsync: mockFns.createSalaryPaymentMutate,
+  }),
   useAddWorkspaceRecordMutation: () => ({ isPending: false, mutate: mockFns.addMutate }),
   useRemoveWorkspaceRecordMutation: () => ({ isPending: false, mutateAsync: mockFns.removeMutate }),
   useResetWorkspaceMutation: () => ({ isPending: false, mutateAsync: mockFns.resetMutate }),
@@ -189,7 +195,11 @@ vi.mock("../workspace-mutations", () => ({
   useSyncManagedWarehousesMutation: () => ({ isPending: false, mutateAsync: mockFns.syncManagedWarehousesMutate }),
   useResetWorkspaceMutation: () => ({ isPending: false, mutateAsync: mockFns.resetMutate }),
   useUpdateAccountSettingsMutation: () => ({ isPending: false, mutateAsync: mockFns.updateAccountMutateAsync }),
-  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutateAsync: mockFns.createSalaryPaymentMutate }),
+  useCreateSalaryPaymentMutation: () => ({
+    isPending: false,
+    mutate: mockFns.createSalaryPaymentMutate,
+    mutateAsync: mockFns.createSalaryPaymentMutate,
+  }),
   useCreateDebtAccountMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useCreateDebtEntryMutation: () => ({ isPending: false, mutate: vi.fn() }),
   useSettleDebtAccountMutation: () => ({ isPending: false, mutate: vi.fn() }),
@@ -469,11 +479,31 @@ export function resetAllMutations(mocks: WorkspaceMocks): void {
   mockState.workspaceData = makeWorkspaceData()
   mockState.workspacePending = false
   mockState.workspaceError = null
+  mockState.systemLogData = {
+    items: [
+      {
+        id: "log-1",
+        transactionId: "550e8400-e29b-41d4-a716-446655440000",
+        actorUserId: "user-1",
+        actorLabel: "Taylor (0612345678)",
+        actionType: "WORKPLACE_ASSIGNED",
+        entityType: "PROJECT_ASSIGNMENT",
+        entityId: "project-assignment-1",
+        entityLabel: "مبنى الإدارة الجديد",
+        summary: "تم إسناد علي بن حميد إلى المشروع مبنى الإدارة الجديد",
+        detail: "تم ربط العامل علي بن حميد بالمدير أحمد بلخير",
+        createdAt: "2026-03-17T10:00:00.000Z",
+      },
+    ],
+  }
 
   for (const key of Object.keys(mocks) as Array<keyof WorkspaceMocks>) {
     mocks[key].mockReset()
   }
 }
+
+// Restore console.log after module load so legitimate test logging works.
+restoreConsoleLog()
 
 /**
  * Set the session state to a signed-in demo user.
