@@ -13,6 +13,7 @@ When the application starts a sidecar process, the proxy environment variables *
 - `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` are the only proxy variables forwarded.
 - Credentials embedded in the proxy URL (e.g., `http://user:pass@proxy:8080`) must be stripped before passing to the sidecar unless the sidecar explicitly requires proxy credentials.
 - Values containing sensitive information (e.g., API tokens, internal network paths) in any variable must not be logged.
+- `127.0.0.1` and `localhost` must be appended to `NO_PROXY` to ensure local API requests are never proxied.
 
 ### Rationale
 
@@ -29,6 +30,10 @@ When the application starts a sidecar process, the proxy environment variables *
 - A validation step must be added to startup: verify that both `HTTP_PROXY` and `HTTPS_PROXY` have a valid scheme (one of `http://` or `https://`). Reject values with no scheme or an unsupported scheme. Note that `HTTPS_PROXY` may use `http://` — the proxy itself is contacted via HTTP and HTTPS traffic is tunnelled through it via `CONNECT`.
 - Enterprise users who need proxy authentication must configure it at the system level (e.g., `HTTPS_PROXY=http://user:pass@proxy:8080`). Credential stripping applies only when forwarding to the sidecar, not to the main process.
 - The `NO_PROXY` variable must be respected: the application must not bypass `NO_PROXY` entries, even for internal services like the local API on `127.0.0.1`.
+- The application **must hardcode `127.0.0.1` and `localhost` in the proxy bypass list**, regardless of the `NO_PROXY` environment variable. This is critical because:
+  - The post-update smoke test contacts `http://127.0.0.1:4318/health` and would incorrectly route through the corporate proxy if bypass is missing.
+  - The local API sidecar is always on `127.0.0.1` and must never be proxied.
+  - Enterprise environments often set `HTTP_PROXY` globally without a corresponding `NO_PROXY`, causing local requests to fail.
 - Documentation must clearly state: "Tuari respects the standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables. Configure your proxy at the system or user environment level."
 
 ### References
