@@ -90,7 +90,7 @@ mod tests {
         purpose: &KeyPurpose,
         effective_from: &str,
     ) {
-        let engine = base64::engine::general_purpose::URL_SAFE;
+        let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
         let new_pk_b64 = engine.encode(new_pk);
 
         let cert_value = serde_json::json!({
@@ -175,8 +175,13 @@ mod tests {
         );
 
         // Load with License purpose — should find only new_pk_1
-        // We can't easily call load_trusted_keys with custom Root CA during tests,
-        // so we test the filtering logic via direct verification
+        // The embedded ROOT_CA_PUBLIC_KEY is zeros (dev placeholder), so these
+        // certs signed with our test Root CA won't verify against it.
+        // load_trusted_keys should skip them gracefully and return empty.
+        let trusted = load_trusted_keys(&dir, &KeyPurpose::License).unwrap();
+        assert!(trusted.is_empty(), "certs signed by test CA should not verify against dev placeholder root");
+
+        // Verify the files are parsed correctly by direct inspection
         let content = fs::read_to_string(dir.join("key-rotation-license.json")).unwrap();
         let cert: RotationCertificate = serde_json::from_str(&content).unwrap();
         assert_eq!(cert.purpose, KeyPurpose::License);
@@ -186,5 +191,28 @@ mod tests {
         assert_eq!(cert.purpose, KeyPurpose::Update);
 
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn load_trusted_keys_skips_non_matching_files() {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        // Write a file that doesn't match the key-rotation-*.json pattern
+        fs::write(dir.join("random-file.txt"), b"not a cert").unwrap();
+
+        // load_trusted_keys should ignore non-matching files
+        let trusted = load_trusted_keys(&dir, &KeyPurpose::Update).unwrap();
+        assert!(trusted.is_empty(), "should ignore non-matching files");
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn load_trusted_keys_handles_missing_dir() {
+        let dir = temp_dir();
+        // Directory doesn't exist
+        let trusted = load_trusted_keys(&dir, &KeyPurpose::License).unwrap();
+        assert!(trusted.is_empty(), "missing dir should return empty vec");
     }
 }

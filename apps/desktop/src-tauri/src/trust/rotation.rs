@@ -67,7 +67,9 @@ impl RotationCertificate {
 
     /// Shared verification logic.
     fn verify_inner(&self, root_ca_key: &[u8; 32]) -> Result<[u8; 32], RustCoreError> {
-        let engine = base64::engine::general_purpose::URL_SAFE;
+        // URL_SAFE_NO_PAD because all real-world base64url tools (Node.js, JWT)
+        // emit unpadded encoding
+        let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
         let new_key_bytes = engine
             .decode(&self.new_public_key)
@@ -134,7 +136,7 @@ mod tests {
         purpose: &KeyPurpose,
         effective_from: &str,
     ) -> RotationCertificate {
-        let engine = base64::engine::general_purpose::URL_SAFE;
+        let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
         let new_pk_b64 = engine.encode(new_pk);
 
         let cert_value = serde_json::json!({
@@ -230,7 +232,7 @@ mod tests {
     fn cert_to_canonical_json_includes_purpose() {
         let (_root_ca_sk, _root_ca_pk) = generate_keypair();
         let (_new_sk, new_pk) = generate_keypair();
-        let engine = base64::engine::general_purpose::URL_SAFE;
+        let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
         let new_pk_b64 = engine.encode(new_pk);
 
         let cert = RotationCertificate {
