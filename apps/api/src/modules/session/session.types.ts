@@ -5,4 +5,5 @@ export type SessionUser = {
   name: string | null;
   phone: string;
   permissions: Permission[];
+  version: string;
 };
