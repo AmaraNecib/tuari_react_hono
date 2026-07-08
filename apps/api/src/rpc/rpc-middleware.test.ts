@@ -148,6 +148,12 @@ describe("RPC Middleware — withPermission", () => {
 
 describe("RPC Middleware — license gating", () => {
   let rpcMiddleware: RpcMiddleware;
+  const authedUser = {
+    id: "u1",
+    name: "Test",
+    phone: "0612345678",
+    permissions: [],
+  };
 
   beforeEach(() => {
     for (const key of Object.keys(process.env)) {
@@ -167,12 +173,7 @@ describe("RPC Middleware — license gating", () => {
 
       const wrapped = rpcMiddleware.requireEdition("professional", handler);
       const result = await wrapped({
-        context: createMockContext({
-          id: "u1",
-          name: "Test",
-          phone: "0612345678",
-          permissions: [],
-        }),
+        context: createMockContext(authedUser),
         input: {},
       });
 
@@ -180,13 +181,13 @@ describe("RPC Middleware — license gating", () => {
       expect(handler).toHaveBeenCalledOnce();
     });
 
-    it("allows higher editions than the minimum", async () => {
+    it("allows higher editions than the minimum with an authenticated user", async () => {
       process.env.TUARI_LICENSE_EDITION = "enterprise";
       const handler = vi.fn().mockResolvedValue("ok");
 
       const wrapped = rpcMiddleware.requireEdition("professional", handler);
       const result = await wrapped({
-        context: createMockContext(null),
+        context: createMockContext(authedUser),
         input: {},
       });
 
@@ -201,13 +202,28 @@ describe("RPC Middleware — license gating", () => {
 
       await expect(
         wrapped({
-          context: createMockContext(null),
+          context: createMockContext(authedUser),
           input: {},
         }),
       ).rejects.toMatchObject({
         code: "UPGRADE_REQUIRED",
         data: { requiredEdition: "professional" },
       });
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("throws UNAUTHORIZED when user is not authenticated", async () => {
+      const handler = vi.fn();
+
+      const wrapped = rpcMiddleware.requireEdition("enterprise", handler);
+
+      await expect(
+        wrapped({
+          context: createMockContext(null),
+          input: {},
+        }),
+      ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
 
       expect(handler).not.toHaveBeenCalled();
     });
@@ -219,7 +235,7 @@ describe("RPC Middleware — license gating", () => {
 
       await expect(
         wrapped({
-          context: createMockContext(null),
+          context: createMockContext(authedUser),
           input: {},
         }),
       ).rejects.toMatchObject({
@@ -239,7 +255,7 @@ describe("RPC Middleware — license gating", () => {
 
       await expect(
         wrapped({
-          context: createMockContext(null),
+          context: createMockContext(authedUser),
           input: {},
         }),
       ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });
@@ -255,7 +271,7 @@ describe("RPC Middleware — license gating", () => {
 
       const wrapped = rpcMiddleware.requireFeature("lan_server", handler);
       const result = await wrapped({
-        context: createMockContext(null),
+        context: createMockContext(authedUser),
         input: {},
       });
 
@@ -271,13 +287,28 @@ describe("RPC Middleware — license gating", () => {
 
       await expect(
         wrapped({
-          context: createMockContext(null),
+          context: createMockContext(authedUser),
           input: {},
         }),
       ).rejects.toMatchObject({
         code: "UPGRADE_REQUIRED",
         data: { requiredEdition: "professional" },
       });
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("throws UNAUTHORIZED when user is not authenticated", async () => {
+      const handler = vi.fn();
+
+      const wrapped = rpcMiddleware.requireFeature("lan_server", handler);
+
+      await expect(
+        wrapped({
+          context: createMockContext(null),
+          input: {},
+        }),
+      ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
 
       expect(handler).not.toHaveBeenCalled();
     });
@@ -290,7 +321,7 @@ describe("RPC Middleware — license gating", () => {
 
       await expect(
         wrapped({
-          context: createMockContext(null),
+          context: createMockContext(authedUser),
           input: {},
         }),
       ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });
@@ -305,7 +336,7 @@ describe("RPC Middleware — license gating", () => {
 
       await expect(
         wrapped({
-          context: createMockContext(null),
+          context: createMockContext(authedUser),
           input: {},
         }),
       ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });
@@ -322,7 +353,7 @@ describe("RPC Middleware — license gating", () => {
 
       await expect(
         wrapped({
-          context: createMockContext(null),
+          context: createMockContext(authedUser),
           input: {},
         }),
       ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });

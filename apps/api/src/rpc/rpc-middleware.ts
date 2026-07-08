@@ -265,6 +265,8 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput> | TOutput,
     ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
       return async ({ context, input }) => {
+        await requireAuthenticatedUser(context);
+
         const license = getLicenseInfo();
         requireActiveLicense(license);
 
@@ -289,6 +291,8 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput> | TOutput,
     ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
       return async ({ context, input }) => {
+        await requireAuthenticatedUser(context);
+
         const license = getLicenseInfo();
         requireActiveLicense(license);
 
