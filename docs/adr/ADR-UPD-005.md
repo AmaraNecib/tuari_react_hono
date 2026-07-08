@@ -21,8 +21,7 @@ Retain the **3 most recent backups** of the application installation and databas
 
 ### Consequences
 
-- N/A — backup logic is already implemented in M2.4. The retention policy only needs to be enforced in the cleanup step after a successful update.
-- On each successful update (smoke test passed), the cleanup step must:
+- The retention policy is enforced in the cleanup step after a successful update. On each successful update (smoke test passed), the cleanup step must:
   1. Count existing backups
   2. Delete the oldest backup(s) until at most 3 remain
   3. Retain the most recent backup even if it was created by this update

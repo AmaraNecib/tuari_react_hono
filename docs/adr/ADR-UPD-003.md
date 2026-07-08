@@ -19,7 +19,7 @@ Compression level is pinned to a specific zlib level (level 6) for deterministic
 - ZIP is universally supported across Windows, macOS, and Linux with no additional dependencies.
 - Ed25519 is already in the crypto stack (shared between licensing and update systems via `crypto.rs`), avoiding new cryptographic dependencies.
 - Canonical JSON ensures deterministic signature verification regardless of the serialization library used (Rust `serde_json`, Node.js `JSON.stringify`, or any other conforming implementation).
-- Pinning the compression level eliminates non-determinism in build artifacts: the same source and toolchain always produce the same `.zip`, enabling reproducible builds and hash-based integrity verification.
+- Pinning the compression level and normalizing ZIP entry timestamps eliminate the two primary sources of non-determinism in ZIP archives: the same source and toolchain always produce a byte-identical `.zip`, enabling reproducible builds and hash-based integrity verification.
 - Storing the manifest separately from the binary contents allows signature verification without extracting the full archive.
 - The alternative — a custom binary container format — would add complex parsing code and maintenance burden with no security benefit over a signed manifest in a standard archive.
 - The alternative — using a TUF (The Update Framework) repository — is more infrastructure than the current use case requires. The architecture can adopt TUF in a future version without breaking the package format.
