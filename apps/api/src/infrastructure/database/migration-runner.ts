@@ -231,21 +231,23 @@ export async function runMigrations(
 
     // Transaction committed — every pending migration completed.
     return result;
-  } catch {
-    // Transaction was rolled back — return failure result.  The entire
-    // batch is reverted so `executed` is 0, but `skipped` (migrations
-    // already in app_schema_state before this call) is preserved.
+  } catch (err) {
+    // If capturedFailure was never set, this is an infrastructure failure
+    // (e.g. loadExecutedKeys threw), not a migration SQL error.
+    // Re-throw so callers can distinguish infrastructure errors from
+    // migration-level rollbacks.
+    if (!capturedFailure) {
+      throw err;
+    }
+
+    // Migration SQL error — transaction was rolled back.  Return a
+    // failure result.  The entire batch is reverted so `executed` is 0,
+    // but `skipped` (migrations already in app_schema_state before this
+    // call) is preserved.
     return {
       executed: 0,
       skipped: capturedSkipped,
-      failed: capturedFailure
-        ? [capturedFailure]
-        : [
-            {
-              key: "unknown",
-              error: "Transaction rolled back for an unknown reason",
-            },
-          ],
+      failed: [capturedFailure],
       total,
     };
   }

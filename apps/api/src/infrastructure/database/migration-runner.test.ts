@@ -426,6 +426,25 @@ describe("runMigrations (Issue #124)", () => {
     });
   });
 
+  describe("infrastructure error propagation", () => {
+    it("re-throws when app_schema_state is missing (non-migration error)", async () => {
+      const db = new Database(":memory:");
+      db.pragma("foreign_keys = ON");
+      // Note: no app_schema_state table created
+
+      const manifest: MigrationManifest = {
+        version: "1.0.0",
+        migrations: [{ key: "m1", up: "SELECT 1" }],
+      };
+
+      // loadExecutedKeys will fail because app_schema_state doesn't exist.
+      // The outer catch sees capturedFailure === undefined and re-throws.
+      await expect(
+        runMigrations(new BetterSqlite3Executor(db), manifest),
+      ).rejects.toThrow(/no such table/i);
+    });
+  });
+
   describe("result summary", () => {
     it("returns accurate counts for mixed executed/skipped scenarios", async () => {
       const db = createDbWithExistingKeys(); // has "migration_already_done_v1"
