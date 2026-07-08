@@ -213,9 +213,8 @@ Only after CI is fully green:
 - Wait for Greptile to complete (5-10 min depending on size)
 - Check the review score (aim for 5/5)
 - If Greptile finds problems:
-  1. Fix locally
-  2. Run the code-review skill again
-  3. Push the fixes
+  1. Load the `implement` skill with Greptile's findings as the input spec — it will fix, test, code-review, and commit
+  2. Push the fixes
   4. Wait for CI to complete
   5. Trigger `@greptile-apps review` again
   6. Wait for Greptile to re-review
