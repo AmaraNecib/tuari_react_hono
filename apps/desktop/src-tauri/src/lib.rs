@@ -567,6 +567,73 @@ fn apply_update(path: String) -> Result<UpdateApplyResult, String> {
     })
 }
 
+// ─── License Tauri Command ────────────────────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GetLicenseStatusResult {
+    edition: String,
+    issued_to: String,
+    email: String,
+    features: Vec<String>,
+    max_users: u32,
+    valid_from: String,
+    valid_until: Option<String>,
+    license_type: String,
+    status: String,
+    days_remaining: i64,
+}
+
+#[tauri::command]
+fn get_license_status(app: AppHandle) -> Result<GetLicenseStatusResult, String> {
+    let tuari_dir = resolve_tuari_dir(&app)?;
+    let manager = crate::license::LicenseManager::initialize(&tuari_dir)
+        .map_err(|e| format!("Failed to read license: {e}"))?;
+
+    let status = manager.status();
+    let snapshot = manager.license_info();
+    let status_str = match status {
+        crate::license::LicenseStatus::Valid => "valid",
+        crate::license::LicenseStatus::Warning => "warning",
+        crate::license::LicenseStatus::Expired => "expired",
+        crate::license::LicenseStatus::ExpiredGrace => "expired_grace",
+        crate::license::LicenseStatus::NotYetActive => "not_yet_active",
+        crate::license::LicenseStatus::Tampered => "tampered",
+        crate::license::LicenseStatus::Grace => "grace",
+        crate::license::LicenseStatus::Invalid => "invalid",
+        crate::license::LicenseStatus::Locked => "locked",
+    };
+
+    let days_remaining = manager.days_remaining();
+
+    match snapshot {
+        Some(info) => Ok(GetLicenseStatusResult {
+            edition: info.edition,
+            issued_to: info.issued_to,
+            email: info.email,
+            features: info.features,
+            max_users: info.max_users,
+            valid_from: info.valid_from.to_rfc3339(),
+            valid_until: info.valid_until.map(|dt| dt.to_rfc3339()),
+            license_type: info.license_type,
+            status: status_str.to_string(),
+            days_remaining,
+        }),
+        None => Ok(GetLicenseStatusResult {
+            edition: String::new(),
+            issued_to: String::new(),
+            email: String::new(),
+            features: Vec::new(),
+            max_users: 0,
+            valid_from: String::new(),
+            valid_until: None,
+            license_type: String::new(),
+            status: status_str.to_string(),
+            days_remaining,
+        }),
+    }
+}
+
 fn has_portable_runtime_layout(root: &Path) -> bool {
     let node_binary_name = if cfg!(target_os = "windows") {
         "node.exe"
@@ -1060,7 +1127,8 @@ pub fn run() {
             desktop_change_password,
             desktop_sign_out_session,
             check_for_updates,
-            apply_update
+            apply_update,
+            get_license_status
         ])
         .setup(|app| {
             let child = spawn_api_process(app.handle())?;

@@ -9,6 +9,7 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { LicenseSettings } from "@/features/license/license-settings"
 
 type SettingsSectionProps = {
   accountCurrentPasswordLabel: string
@@ -168,7 +169,7 @@ export function SettingsSection({
   }
 
   const [activeTab, setActiveTab] = useUrlTab(
-    ['account', 'appearance', 'system'] as const,
+    ['account', 'appearance', 'license', 'system'] as const,
     'account'
   )
 
@@ -189,6 +190,13 @@ export function SettingsSection({
           onClick={() => setActiveTab('appearance')}
         >
           {t('settings.tabs.appearance', 'المظهر')}
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'license' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveTab('license')}
+        >
+          {t('settings.tabs.license', 'الترخيص')}
         </button>
         <button
           type="button"
@@ -258,6 +266,11 @@ export function SettingsSection({
             </Button>
           </div>
         </div>
+      )}
+
+      {/* License Tab */}
+      {activeTab === 'license' && (
+        <LicenseSettings />
       )}
 
       {/* System Tab */}
