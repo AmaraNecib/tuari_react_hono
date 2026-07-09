@@ -28,16 +28,28 @@ function runScript(script, args) {
 }
 
 /**
- * Create a zip archive using system utility (PowerShell on Windows, zip/tar on Unix).
+ * Create a zip archive using system utility.
+ * Uses PowerShell on Windows, tar/zip on Unix.
  * This is only needed for tests that simulate release artifacts.
  */
 async function createZip(zipPath, sourceDir, filenames) {
-  // PowerShell Compress-Archive works reliably on Windows
-  const items = filenames.map(f => `'${join(sourceDir, f).replace(/'/g, "''")}'`).join(',');
-  execSync(
-    `powershell -NoProfile -Command "Compress-Archive -Path @(${items}) -DestinationPath '${zipPath}' -Force"`,
-    { stdio: 'pipe', shell: true, timeout: 30000 }
-  );
+  const isWin = process.platform === 'win32';
+
+  if (isWin) {
+    // PowerShell Compress-Archive works reliably on Windows
+    const items = filenames.map(f => `'${join(sourceDir, f).replace(/'/g, "''")}'`).join(',');
+    execSync(
+      `powershell -NoProfile -Command "Compress-Archive -Path @(${items}) -DestinationPath '${zipPath}' -Force"`,
+      { stdio: 'pipe', shell: true, timeout: 30000 }
+    );
+  } else {
+    // On Unix, use the zip command with a relative path
+    const relFiles = filenames.map(f => `"${f}"`).join(' ');
+    execSync(
+      `cd "${sourceDir}" && zip -q "${zipPath}" ${relFiles}`,
+      { stdio: 'pipe', shell: true, timeout: 30000 }
+    );
+  }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────

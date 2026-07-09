@@ -105,9 +105,11 @@ jobs:
         id: manifest
         shell: pwsh
         run: |
-          # Generate nightly version: 0.5.0-nightly.<build-number>
+          # Read project version from tauri.conf.json (single source of truth)
+          $tauriConfig = Get-Content "apps/desktop/src-tauri/tauri.conf.json" | ConvertFrom-Json
+          $baseVersion = $tauriConfig.version
           $buildNumber = $env:GITHUB_RUN_NUMBER
-          $version = "0.5.0-nightly.$buildNumber"
+          $version = "$baseVersion-nightly.$buildNumber"
           Write-Host "Nightly version: $version"
 
           # Paths to artifacts
@@ -120,6 +122,18 @@ jobs:
           # Compute SHA-256
           $hash = (Get-FileHash -Path $portableZipPath -Algorithm SHA256).Hash.ToLower()
           $size = (Get-Item $portableZipPath).Length
+
+          # Determine signing key: use GitHub Secret if set, otherwise fall back to dev key
+          $privateKey = $env:UPDATE_SIGNING_KEY
+          if (-not $privateKey) {
+            $privateKeyPath = Resolve-Path "scripts/dev-update-keys/dev-update-private-key.pem"
+            Write-Host "Using dev signing key from $privateKeyPath"
+            $privateKey = Get-Content $privateKeyPath -Raw
+          } else {
+            Write-Host "Using signing key from GitHub Secret"
+          }
+          $keyFile = Join-Path $env:RUNNER_TEMP "signing-key.pem"
+          $privateKey | Out-File -FilePath $keyFile -Encoding ascii -NoNewline
 
           # Create manifest.json
           $manifest = @{
@@ -139,20 +153,26 @@ jobs:
           $manifestPath = Join-Path $env:RUNNER_TEMP "manifest.json"
           $manifest | Out-File -FilePath $manifestPath -Encoding utf8
 
-          # Sign using dev key
+          # Sign
           $signedOutput = Join-Path $env:RUNNER_TEMP "tuari-$version-nightly.update"
-          node scripts/sign-update.mjs `
-            --private-key scripts/dev-update-keys/dev-update-private-key.pem `
-            --manifest $manifestPath `
-            --output $signedOutput `
+          & node scripts/sign-update.mjs `
+            --private-key "$keyFile" `
+            --manifest "$manifestPath" `
+            --output "$signedOutput" `
             --key-id "dev-key-v1"
+
+          # Read the signed content to extract the signature
+          $signedContent = Get-Content $signedOutput -Raw
+          # Extract signature (everything after the last dot)
+          $lastDot = $signedContent.LastIndexOf('.')
+          $signaturePart = $signedContent.Substring($lastDot + 1)
 
           # Prepare artifacts directory
           $artifactsDir = Join-Path $env:RUNNER_TEMP "artifacts"
           New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
           Copy-Item -Path $signedOutput -Destination $artifactsDir
 
-          # Create updates.json
+          # Create updates.json with the actual signature
           $updates = @{
             version = $version
             channel = "nightly"
@@ -160,7 +180,7 @@ jobs:
             platforms = @{
               "windows-x86_64" = @{
                 url = "https://github.com/${{ github.repository }}/releases/download/nightly/tuari-$version-nightly.update"
-                signature = ""
+                signature = $signaturePart
               }
             }
           } | ConvertTo-Json -Compress
@@ -170,6 +190,9 @@ jobs:
           # Set outputs
           echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           echo "artifacts_dir=$artifactsDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          echo "signature=$signaturePart" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
 
       # ── Smoke test ─────────────────────────────────────────
 
