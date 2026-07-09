@@ -122,17 +122,19 @@ describe("LicenseSettings", () => {
     expect(screen.queryByText("سيتم انتهاء صلاحية الترخيص خلال 15 يوم.")).toBeTruthy();
   });
 
-  it("shows grace period banner", () => {
+  it("shows grace period banner with correct remaining days", () => {
+    // daysRemaining is negative for expired licenses (days since expiry)
+    // Grace period is 30 days, so -5 means 25 grace days remaining
     mockUseLicenseStatus.mockReturnValue({
       isLoading: false,
       isError: false,
-      data: createLicenseData({ status: "expired_grace", daysRemaining: 10 }),
+      data: createLicenseData({ status: "expired_grace", daysRemaining: -5 }),
     });
 
     renderWithQuery(<LicenseSettings />);
 
     expect(screen.queryByText("فترة سماح بعد انتهاء الترخيص")).toBeTruthy();
-    expect(screen.queryByText("متبقي 10 يوم من فترة السماح. الرجاء تجديد الترخيص.")).toBeTruthy();
+    expect(screen.queryByText("متبقي 25 يوم من فترة السماح. الرجاء تجديد الترخيص.")).toBeTruthy();
   });
 
   it("shows lifetime for perpetual license", () => {

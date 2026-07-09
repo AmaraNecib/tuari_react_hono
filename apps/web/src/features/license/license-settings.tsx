@@ -151,7 +151,7 @@ export function LicenseSettings() {
             <p className="mt-1 text-warning-foreground/80">
               {data.status === "grace"
                 ? t("license.graceDescription", "متبقي {{days}} يوم من فترة التجربة.", { days: data.daysRemaining })
-                : t("license.expiredGraceDescription", "متبقي {{days}} يوم من فترة السماح. الرجاء تجديد الترخيص.", { days: data.daysRemaining })
+                : t("license.expiredGraceDescription", "متبقي {{days}} يوم من فترة السماح. الرجاء تجديد الترخيص.", { days: Math.max(0, 30 + data.daysRemaining) })
               }
             </p>
           </div>
@@ -259,7 +259,7 @@ export function LicenseSettings() {
       )}
 
       {/* ── Activation prompt ── */}
-      {showActivationPrompt && (
+      {(showActivationPrompt) && (
         <div className="p-4 rounded-lg border border-line space-y-3" dir="rtl">
           <p className="text-sm text-muted-foreground">
             {t("license.activationPrompt", "ليس لديك ترخيص نشط. يرجى تفعيل الترخيص للوصول إلى جميع الميزات.")}
@@ -274,7 +274,8 @@ export function LicenseSettings() {
         </div>
       )}
 
-      {/* ── Upgrade CTA ── */}
+      {/* ── Upgrade CTA (only for non-valid states) ── */}
+      {hasLicense && data.status !== "valid" && data.status !== "warning" && (
       <div className="p-4 rounded-lg border border-line space-y-2" dir="rtl">
         <p className="text-sm">
           {t("license.upgradePrompt", "لترقية الإصدار أو تجديد الترخيص، يرجى التواصل مع فريق الدعم.")}
@@ -283,6 +284,7 @@ export function LicenseSettings() {
           {t("license.contactInfo", "البريد الإلكتروني: support@tuari.app")}
         </p>
       </div>
+      )}
     </Surface>
   )
 }
