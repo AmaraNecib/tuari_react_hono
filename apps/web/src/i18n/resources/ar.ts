@@ -247,7 +247,6 @@ export const ar = {
       settingsAboutVersion: "الإصدار",
       settingsAboutInstallFromFile: "تثبيت من ملف",
       settingsAboutInstallFromFileDescription: "اختر ملف .update لتثبيت تحديث يدويًا",
-      settingsAboutFilePickerFilter: "ملفات التحديث",
       settingsUpdateVerifying: "جارٍ التحقق من حزمة التحديث...",
       settingsUpdateSuccess: "تم تطبيق التحديث بنجاح",
       settingsUpdateError: "فشل تطبيق التحديث",

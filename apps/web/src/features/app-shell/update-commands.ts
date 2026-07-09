@@ -62,8 +62,16 @@ export async function pickUpdateFile(): Promise<string | null> {
 
 /**
  * Apply an update from a `.update` file path.
+ * Returns a failure result when running in browser/preview mode.
  */
 export async function applyUpdate(path: string): Promise<UpdateApplyResult> {
+  if (!isDesktopRuntime()) {
+    return {
+      success: false,
+      message: "هذه الميزة متاحة فقط في تطبيق سطح المكتب.",
+    }
+  }
+
   const result = await invokeTauriCommand<UpdateApplyResult>("apply_update", {
     path,
   })

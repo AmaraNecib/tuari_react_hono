@@ -86,7 +86,6 @@ export type HomeViewCopy = {
     settingsAboutVersion: string
     settingsAboutInstallFromFile: string
     settingsAboutInstallFromFileDescription: string
-    settingsAboutFilePickerFilter: string
     settingsUpdateVerifying: string
     settingsUpdateSuccess: string
     settingsUpdateError: string
@@ -293,7 +292,6 @@ export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
       settingsAboutVersion: t("shell.settingsAboutVersion"),
       settingsAboutInstallFromFile: t("shell.settingsAboutInstallFromFile"),
       settingsAboutInstallFromFileDescription: t("shell.settingsAboutInstallFromFileDescription"),
-      settingsAboutFilePickerFilter: t("shell.settingsAboutFilePickerFilter"),
       settingsUpdateVerifying: t("shell.settingsUpdateVerifying"),
       settingsUpdateSuccess: t("shell.settingsUpdateSuccess"),
       settingsUpdateError: t("shell.settingsUpdateError"),
