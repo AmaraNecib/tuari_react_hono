@@ -246,6 +246,12 @@ export function HomeViewPageSectionContent({
           themeLabel={copy.shell.themeToggle}
           themeValueLabel={theme === "light" ? copy.shell.themeDark : copy.shell.themeLight}
           title={copy.sections.settings.label}
+          settingsCheckForUpdates={copy.shell.settingsCheckForUpdates}
+          settingsChecking={copy.shell.settingsChecking}
+          settingsUpToDate={copy.shell.settingsUpToDate}
+          settingsUpdateAvailable={copy.shell.settingsUpdateAvailable}
+          settingsUpdateError={copy.shell.settingsUpdateError}
+          settingsLastChecked={copy.shell.settingsLastChecked}
           onReset={onResetWorkspace}
           onSaveAccount={onSaveAccount}
           onToggleTheme={onThemeToggle}

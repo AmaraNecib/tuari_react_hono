@@ -9,6 +9,7 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { useUpdateCheck } from "./use-update-check"
 
 type SettingsSectionProps = {
   accountCurrentPasswordLabel: string
@@ -36,6 +37,12 @@ type SettingsSectionProps = {
   title: string
   passwordHideLabel: string
   passwordShowLabel: string
+  settingsCheckForUpdates: string
+  settingsChecking: string
+  settingsUpToDate: string
+  settingsUpdateAvailable: string
+  settingsUpdateError: string
+  settingsLastChecked: string
   onSaveAccount: (input: {
     currentPassword?: string
     name?: string
@@ -76,11 +83,18 @@ export function SettingsSection({
   title,
   passwordHideLabel,
   passwordShowLabel,
+  settingsCheckForUpdates,
+  settingsChecking,
+  settingsUpToDate,
+  settingsUpdateAvailable,
+  settingsUpdateError,
+  settingsLastChecked,
   onSaveAccount,
   onReset,
   onToggleTheme,
 }: SettingsSectionProps) {
   const { t } = useTranslation()
+  const { state: updateState, checkUpdate } = useUpdateCheck()
   const [name, setName] = useState(currentName)
   const [phone, setPhone] = useState(currentPhone)
   const [currentPassword, setCurrentPassword] = useState("")
@@ -263,6 +277,83 @@ export function SettingsSection({
       {/* System Tab */}
       {activeTab === 'system' && (
         <div className="space-y-4">
+          {/* Check for Updates */}
+          <div className="p-5 border border-line rounded-xl">
+            <div className="flex items-start justify-between gap-4" dir="rtl">
+              <div className="text-start">
+                <h3 className="text-lg font-semibold text-foreground">{settingsCheckForUpdates}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {updateState.status === 'checking' && settingsChecking}
+                  {updateState.status === 'up-to-date' && (
+                    <>
+                      {settingsUpToDate}
+                      {updateState.offline && (
+                        <span className="text-xs text-muted-foreground block mt-1">
+                          ({t('settings.updates.cached', 'نسخة مخزنة مؤقتاً')})
+                        </span>
+                      )}
+                      <br />
+                      <span className="text-xs text-muted-foreground">
+                        {settingsLastChecked}: {new Date(updateState.checkedAt).toLocaleString()}
+                      </span>
+                    </>
+                  )}
+                  {updateState.status === 'update-available' && (
+                    <>
+                      {settingsUpdateAvailable} {updateState.latestVersion}
+                      {updateState.offline && (
+                        <span className="text-xs text-muted-foreground block mt-1">
+                          ({t('settings.updates.cached', 'نسخة مخزنة مؤقتاً')})
+                        </span>
+                      )}
+                      <br />
+                      <span className="text-xs text-muted-foreground">
+                        {settingsLastChecked}: {new Date(updateState.checkedAt).toLocaleString()}
+                      </span>
+                    </>
+                  )}
+                  {updateState.status === 'error' && settingsUpdateError}
+                  {updateState.status === 'idle' && (
+                    <span className="text-muted-foreground">{settingsCheckForUpdates}</span>
+                  )}
+                </p>
+              </div>
+              <Button
+                disabled={updateState.status === 'checking'}
+                type="button"
+                variant="outline"
+                onClick={() => void checkUpdate()}
+              >
+                {updateState.status === 'checking' ? (
+                  <span className="flex items-center gap-2">
+                    <svg
+                      className="animate-spin h-4 w-4"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    {settingsChecking}
+                  </span>
+                ) : (
+                  settingsCheckForUpdates
+                )}
+              </Button>
+            </div>
+          </div>
           <div className="p-5 border border-line rounded-xl">
             <div className="flex items-start justify-between gap-4" dir="rtl">
               <div className="text-start">
