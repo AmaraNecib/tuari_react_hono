@@ -1,6 +1,6 @@
 /**
  * Tauri IPC wrappers for update operations.
- * These only work in desktop (Tauri) runtime.
+ * Only works in desktop (Tauri) runtime; gracefully degrades in browser mode.
  */
 
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
