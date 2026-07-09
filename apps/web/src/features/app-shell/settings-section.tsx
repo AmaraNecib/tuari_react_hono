@@ -9,6 +9,8 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { ActivationPage } from "@/features/license/activation-page"
+import { useLicenseActivation } from "@/features/license/use-license-activation"
 
 type SettingsSectionProps = {
   accountCurrentPasswordLabel: string
@@ -167,8 +169,10 @@ export function SettingsSection({
     }
   }
 
+  const licenseActivation = useLicenseActivation()
+
   const [activeTab, setActiveTab] = useUrlTab(
-    ['account', 'appearance', 'system'] as const,
+    ['account', 'appearance', 'licensing', 'system'] as const,
     'account'
   )
 
@@ -189,6 +193,16 @@ export function SettingsSection({
           onClick={() => setActiveTab('appearance')}
         >
           {t('settings.tabs.appearance', 'المظهر')}
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'licensing' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => {
+            setActiveTab('licensing')
+            licenseActivation.reset()
+          }}
+        >
+          {t('settings.tabs.licensing', 'الترخيص')}
         </button>
         <button
           type="button"
@@ -258,6 +272,23 @@ export function SettingsSection({
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Licensing Tab */}
+      {activeTab === 'licensing' && (
+        <ActivationPage
+          activateLabel={t('license.activate', 'تفعيل')}
+          activatingLabel={t('license.activating', 'جارٍ التفعيل...')}
+          description={t('license.description', 'أدخل مفتاح الترخيص لتفعيل النسخة الكاملة من توارتي.')}
+          errorMessage={licenseActivation.error}
+          keyLabel={t('license.keyLabel', 'مفتاح الترخيص')}
+          keyPlaceholder={t('license.keyPlaceholder', 'TUARI-PRO-A7X3-K9M2')}
+          successMessage={licenseActivation.result?.message ?? null}
+          title={t('license.title', 'تفعيل الترخيص')}
+          onActivate={async (key) => {
+            await licenseActivation.activateLicense(key)
+          }}
+        />
       )}
 
       {/* System Tab */}

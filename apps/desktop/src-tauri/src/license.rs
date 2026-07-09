@@ -178,6 +178,30 @@ impl LicenseManager {
         }
     }
 
+    /// Activate a license key and persist it to disk.
+    ///
+    /// Validates the signed wire-format content, writes it to
+    /// `<data_dir>/license.lic`, and updates the in-memory state.
+    /// This is the main entry point for the `activate_license` Tauri command.
+    pub fn activate_from_key(
+        &self,
+        license_content: &str,
+        data_dir: &Path,
+    ) -> Result<ActivationResult, RustCoreError> {
+        let result = self.activate(license_content)?;
+
+        // Persist the license content to disk
+        let license_path = data_dir.join("license.lic");
+        if let Some(parent) = license_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+        }
+        std::fs::write(&license_path, license_content)
+            .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+
+        Ok(result)
+    }
+
     /// Parse the signed wire format and verify the Ed25519 signature.
     ///
     /// Wire format: `<base64url(payload)>.<base64url(signature)>`
@@ -445,6 +469,7 @@ impl LicenseManager {
 
     /// Serialize license state to environment variables for the sidecar.
     ///
+    /// Follows the Rust ↔ Hono interface contract (Licensing Architecture §15.5).
     /// Reads the license under a single lock to avoid double-lock deadlocks.
     pub fn to_env_map(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
@@ -453,27 +478,57 @@ impl LicenseManager {
         let snapshot = self.license.lock().ok().and_then(|guard| guard.clone());
 
         if let Some(info) = &snapshot {
-            map.insert("APP_EDITION".to_string(), info.edition.clone());
             map.insert(
-                "APP_MAX_USERS".to_string(),
+                "TUARI_LICENSE_EDITION".to_string(),
+                info.edition.clone(),
+            );
+            map.insert(
+                "TUARI_LICENSE_FEATURES".to_string(),
+                info.features.join(","),
+            );
+            map.insert(
+                "TUARI_LICENSE_MAX_USERS".to_string(),
                 info.max_users.to_string(),
             );
             map.insert(
-                "APP_LICENSE_TYPE".to_string(),
-                info.license_type.clone(),
+                "TUARI_LICENSE_CUSTOMER".to_string(),
+                serde_json::json!({
+                    "name": info.issued_to,
+                    "email": info.email,
+                })
+                .to_string(),
             );
             map.insert(
-                "APP_CUSTOMER_NAME".to_string(),
-                info.issued_to.clone(),
+                "TUARI_LICENSE_EXPIRES_AT".to_string(),
+                info.valid_until
+                    .map(|dt| dt.to_rfc3339())
+                    .unwrap_or_default(),
             );
             map.insert(
-                "APP_CUSTOMER_EMAIL".to_string(),
-                info.email.clone(),
+                "TUARI_LICENSE_STATUS".to_string(),
+                match self.status() {
+                    LicenseStatus::Valid | LicenseStatus::Warning => "active",
+                    LicenseStatus::ExpiredGrace => "grace",
+                    LicenseStatus::Locked | LicenseStatus::Expired => "expired",
+                    LicenseStatus::Grace => "trial",
+                    _ => "unknown",
+                }
+                .to_string(),
             );
         } else {
-            map.insert("APP_EDITION".to_string(), String::new());
-            map.insert("APP_MAX_USERS".to_string(), "0".to_string());
-            map.insert("APP_LICENSE_TYPE".to_string(), "none".to_string());
+            map.insert("TUARI_LICENSE_EDITION".to_string(), "standard".to_string());
+            map.insert("TUARI_LICENSE_FEATURES".to_string(), String::new());
+            map.insert("TUARI_LICENSE_MAX_USERS".to_string(), "1".to_string());
+            map.insert("TUARI_LICENSE_CUSTOMER".to_string(), String::new());
+            map.insert("TUARI_LICENSE_EXPIRES_AT".to_string(), String::new());
+            map.insert(
+                "TUARI_LICENSE_STATUS".to_string(),
+                match self.status() {
+                    LicenseStatus::Grace => "trial",
+                    _ => "unknown",
+                }
+                .to_string(),
+            );
         }
 
         map
@@ -693,20 +748,27 @@ mod tests {
         manager.activate(&content).unwrap();
         let env = manager.to_env_map();
 
-        assert_eq!(env.get("APP_EDITION").unwrap(), "enterprise");
-        assert_eq!(env.get("APP_MAX_USERS").unwrap(), "0");
-        assert_eq!(env.get("APP_LICENSE_TYPE").unwrap(), "perpetual");
-        assert_eq!(env.get("APP_CUSTOMER_NAME").unwrap(), "Env Corp");
-        assert_eq!(env.get("APP_CUSTOMER_EMAIL").unwrap(), "env@test.com");
+        assert_eq!(env.get("TUARI_LICENSE_EDITION").unwrap(), "enterprise");
+        assert_eq!(
+            env.get("TUARI_LICENSE_FEATURES").unwrap(),
+            "encrypted_db"
+        );
+        assert_eq!(env.get("TUARI_LICENSE_MAX_USERS").unwrap(), "0");
+        assert_eq!(env.get("TUARI_LICENSE_STATUS").unwrap(), "active");
+        let customer_str = env.get("TUARI_LICENSE_CUSTOMER").unwrap();
+        let customer: serde_json::Value =
+            serde_json::from_str(customer_str).unwrap();
+        assert_eq!(customer["name"], "Env Corp");
+        assert_eq!(customer["email"], "env@test.com");
     }
 
     #[test]
     fn to_env_map_returns_defaults_for_empty_manager() {
         let manager = LicenseManager::empty();
         let env = manager.to_env_map();
-        assert_eq!(env.get("APP_EDITION").unwrap(), "");
-        assert_eq!(env.get("APP_MAX_USERS").unwrap(), "0");
-        assert_eq!(env.get("APP_LICENSE_TYPE").unwrap(), "none");
+        assert_eq!(env.get("TUARI_LICENSE_EDITION").unwrap(), "standard");
+        assert_eq!(env.get("TUARI_LICENSE_MAX_USERS").unwrap(), "1");
+        assert_eq!(env.get("TUARI_LICENSE_STATUS").unwrap(), "unknown");
     }
 
     #[test]
