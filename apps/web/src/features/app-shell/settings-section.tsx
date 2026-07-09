@@ -43,6 +43,7 @@ type SettingsSectionProps = {
   settingsUpdateAvailable: string
   settingsUpdateError: string
   settingsLastChecked: string
+  settingsUpdateCached: string
   onSaveAccount: (input: {
     currentPassword?: string
     name?: string
@@ -89,6 +90,7 @@ export function SettingsSection({
   settingsUpdateAvailable,
   settingsUpdateError,
   settingsLastChecked,
+  settingsUpdateCached,
   onSaveAccount,
   onReset,
   onToggleTheme,
@@ -284,26 +286,15 @@ export function SettingsSection({
                 <h3 className="text-lg font-semibold text-foreground">{settingsCheckForUpdates}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
                   {updateState.status === 'checking' && settingsChecking}
-                  {updateState.status === 'up-to-date' && (
+                  {(updateState.status === 'up-to-date' || updateState.status === 'update-available') && (
                     <>
-                      {settingsUpToDate}
-                      {updateState.offline && (
-                        <span className="text-xs text-muted-foreground block mt-1">
-                          ({t('settings.updates.cached', 'نسخة مخزنة مؤقتاً')})
-                        </span>
+                      {updateState.status === 'up-to-date' && settingsUpToDate}
+                      {updateState.status === 'update-available' && (
+                        <>{settingsUpdateAvailable} {updateState.latestVersion}</>
                       )}
-                      <br />
-                      <span className="text-xs text-muted-foreground">
-                        {settingsLastChecked}: {new Date(updateState.checkedAt).toLocaleString()}
-                      </span>
-                    </>
-                  )}
-                  {updateState.status === 'update-available' && (
-                    <>
-                      {settingsUpdateAvailable} {updateState.latestVersion}
                       {updateState.offline && (
                         <span className="text-xs text-muted-foreground block mt-1">
-                          ({t('settings.updates.cached', 'نسخة مخزنة مؤقتاً')})
+                          {settingsUpdateCached}
                         </span>
                       )}
                       <br />

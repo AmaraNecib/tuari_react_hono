@@ -223,6 +223,7 @@ export const ar = {
       settingsUpdateAvailable: "يتوفر تحديث جديد: الإصدار",
       settingsUpdateError: "تعذر التحقق من التحديثات. تحقق من اتصال الإنترنت وحاول مجدداً.",
       settingsLastChecked: "آخر فحص",
+      settingsUpdateCached: "(نسخة مخزنة مؤقتاً)",
       settingsAccountCurrentPasswordPlaceholder: "مطلوبة عند تغيير كلمة المرور",
       settingsAccountNewPasswordPlaceholder: "اتركها فارغة إذا لم ترغب في التغيير",
       settingsSecurityTitle: "الأمان",

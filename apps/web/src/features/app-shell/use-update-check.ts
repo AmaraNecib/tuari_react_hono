@@ -2,7 +2,7 @@
  * Hook for checking for updates via the Tauri IPC command.
  * Caches the last check result in localStorage for offline display.
  */
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 
 export type UpdateCheckState =
   | { status: "idle" }
@@ -55,14 +55,6 @@ export function useUpdateCheck() {
     const cached = getCachedResult()
     return cached ?? { status: "idle" }
   })
-
-  useEffect(() => {
-    // Hydrate from cache on mount
-    const cached = getCachedResult()
-    if (cached) {
-      setState(cached)
-    }
-  }, [])
 
   const checkUpdate = useCallback(async () => {
     setState({ status: "checking" })

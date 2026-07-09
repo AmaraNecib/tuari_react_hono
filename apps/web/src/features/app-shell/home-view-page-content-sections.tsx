@@ -252,6 +252,7 @@ export function HomeViewPageSectionContent({
           settingsUpdateAvailable={copy.shell.settingsUpdateAvailable}
           settingsUpdateError={copy.shell.settingsUpdateError}
           settingsLastChecked={copy.shell.settingsLastChecked}
+          settingsUpdateCached={copy.shell.settingsUpdateCached}
           onReset={onResetWorkspace}
           onSaveAccount={onSaveAccount}
           onToggleTheme={onThemeToggle}
