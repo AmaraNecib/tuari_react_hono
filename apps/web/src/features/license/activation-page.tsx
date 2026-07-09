@@ -54,14 +54,13 @@ export function ActivationPage({
     try {
       await onActivate(trimmedKey)
       setKey("")
-    } catch (error) {
-      // Error is handled by parent via errorMessage prop
+    } catch {
+      // Error is already stored in state by the parent hook
+      // and displayed via the errorMessage prop
     } finally {
       setIsActivating(false)
     }
   }
-
-  const displayError = fieldError || errorMessage
 
   return (
     <RecordPageFrame title={title}>
@@ -91,7 +90,7 @@ export function ActivationPage({
 
             <Field
               label={keyLabel}
-              error={displayError ?? undefined}
+              error={fieldError ?? undefined}
             >
               <Input
                 dir="ltr"
@@ -104,7 +103,7 @@ export function ActivationPage({
               />
             </Field>
 
-            {displayError && !fieldError && (
+            {errorMessage && (
               <div className="flex items-center gap-3 rounded-lg bg-destructive/10 p-4 text-destructive">
                 <svg
                   className="h-5 w-5 shrink-0"
@@ -119,7 +118,7 @@ export function ActivationPage({
                     strokeWidth={2}
                   />
                 </svg>
-                <p className="text-sm font-medium">{displayError}</p>
+                <p className="text-sm font-medium">{errorMessage}</p>
               </div>
             )}
 

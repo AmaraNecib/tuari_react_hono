@@ -562,7 +562,14 @@ fn get_license_status(app: AppHandle) -> Result<LicenseStatusResponse, String> {
         .map_err(|e| format!("فشل تحميل حالة الترخيص: {e}"))?;
 
     let status = manager.status();
-    let has_license = !matches!(status, crate::license::LicenseStatus::Invalid | crate::license::LicenseStatus::Grace | crate::license::LicenseStatus::Locked);
+    let has_license = !matches!(
+        status,
+        crate::license::LicenseStatus::Invalid
+            | crate::license::LicenseStatus::Grace
+            | crate::license::LicenseStatus::Locked
+            | crate::license::LicenseStatus::Tampered
+            | crate::license::LicenseStatus::NotYetActive
+    );
     let edition = manager.edition();
 
     Ok(LicenseStatusResponse {

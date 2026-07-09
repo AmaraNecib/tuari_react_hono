@@ -181,16 +181,19 @@ impl LicenseManager {
     /// Activate a license key and persist it to disk.
     ///
     /// Validates the signed wire-format content, writes it to
-    /// `<data_dir>/license.lic`, and updates the in-memory state.
+    /// `<data_dir>/license.lic` **before** updating in-memory state,
+    /// so a failed disk write does not leave the session inconsistently
+    /// activated.
     /// This is the main entry point for the `activate_license` Tauri command.
     pub fn activate_from_key(
         &self,
         license_content: &str,
         data_dir: &Path,
     ) -> Result<ActivationResult, RustCoreError> {
-        let result = self.activate(license_content)?;
+        // 1. Validate the key first — no side effects
+        let new_info = Self::parse_and_verify(license_content, &self.trusted_keys)?;
 
-        // Persist the license content to disk
+        // 2. Persist to disk before updating in-memory state
         let license_path = data_dir.join("license.lic");
         if let Some(parent) = license_path.parent() {
             std::fs::create_dir_all(parent)
@@ -199,7 +202,24 @@ impl LicenseManager {
         std::fs::write(&license_path, license_content)
             .map_err(|e| RustCoreError::IoError(Box::new(e)))?;
 
-        Ok(result)
+        // 3. Only now update in-memory state (disk write already succeeded)
+        let mut guard = self.license.lock().map_err(|_| {
+            RustCoreError::Internal("license mutex poisoned".to_string())
+        })?;
+
+        match guard.take() {
+            Some(old_info) => {
+                *guard = Some(new_info.clone());
+                Ok(ActivationResult::Replaced(
+                    Box::new(old_info),
+                    Box::new(new_info),
+                ))
+            }
+            None => {
+                *guard = Some(new_info.clone());
+                Ok(ActivationResult::Activated(new_info))
+            }
+        }
     }
 
     /// Parse the signed wire format and verify the Ed25519 signature.
