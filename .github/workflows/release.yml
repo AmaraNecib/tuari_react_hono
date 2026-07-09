@@ -35,11 +35,11 @@ jobs:
         shell: pwsh
         run: |
           $baseRef = "${{ github.event.base_ref }}"
-          if ($baseRef -and $baseRef -notlike '*/main') {
-            Write-Host "Tag ${{ github.ref_name }} pushed on branch $baseRef — skipping release."
+          if (-not $baseRef -or $baseRef -notlike '*/main') {
+            Write-Host "Tag ${{ github.ref_name }} is not on main — aborting release pipeline."
             exit 1
           }
-          Write-Host "Tag ${{ github.ref_name }} is valid for release."
+          Write-Host "Tag ${{ github.ref_name }} is valid for release (main)."
 
       # ── Setup ──────────────────────────────────────────────
 
@@ -215,9 +215,18 @@ jobs:
 
       - name: Smoke test release artifacts
         run: |
+          # Use the matching public key: production key if the signing secret was set, otherwise dev key
+          $pubKey = "${{ secrets.UPDATE_PUBLIC_KEY }}"
+          if (-not $pubKey) {
+            $pubKeyArg = "--public-key scripts/dev-update-keys/dev-update-public-key.pem"
+          } else {
+            $pubKeyFile = Join-Path $env:RUNNER_TEMP "update-public-key.pem"
+            $pubKey | Out-File -FilePath $pubKeyFile -Encoding ascii -NoNewline
+            $pubKeyArg = "--public-key `"$pubKeyFile`""
+          }
           node scripts/verify-release-assets.mjs `
             --artifacts "${{ steps.manifest.outputs.artifacts_dir }}" `
-            --public-key scripts/dev-update-keys/dev-update-public-key.pem `
+            $pubKeyArg `
             --version "${{ steps.manifest.outputs.version }}" `
             --channel stable
         shell: pwsh

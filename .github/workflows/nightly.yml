@@ -198,9 +198,17 @@ jobs:
 
       - name: Smoke test nightly artifacts
         run: |
+          $pubKey = "${{ secrets.UPDATE_PUBLIC_KEY }}"
+          if (-not $pubKey) {
+            $pubKeyArg = "--public-key scripts/dev-update-keys/dev-update-public-key.pem"
+          } else {
+            $pubKeyFile = Join-Path $env:RUNNER_TEMP "update-public-key.pem"
+            $pubKey | Out-File -FilePath $pubKeyFile -Encoding ascii -NoNewline
+            $pubKeyArg = "--public-key `"$pubKeyFile`""
+          }
           node scripts/verify-release-assets.mjs `
             --artifacts "${{ steps.manifest.outputs.artifacts_dir }}" `
-            --public-key scripts/dev-update-keys/dev-update-public-key.pem `
+            $pubKeyArg `
             --version "${{ steps.manifest.outputs.version }}" `
             --channel nightly
         shell: pwsh
