@@ -423,10 +423,11 @@ impl FullReplaceStrategy {
 
 impl UpdateStrategy for FullReplaceStrategy {
     fn apply_update(&self, _package_path: &Path) -> Result<UpdateResult, RustCoreError> {
-        // TODO: implement full replace
+        // TODO: implement full replace — stub returns failure
+        // to avoid misleading users until the real implementation exists.
         Ok(UpdateResult {
-            success: true,
-            message: "update applied successfully".to_string(),
+            success: false,
+            message: "تطبيق التحديث المباشر غير متاح بعد. سيتم تفعيله في تحديث لاحق.".to_string(),
         })
     }
 
@@ -670,10 +671,11 @@ mod tests {
     }
 
     #[test]
-    fn full_replace_strategy_apply_succeeds() {
+    fn full_replace_strategy_returns_failure_as_stub() {
         let strategy = FullReplaceStrategy::new(&std::path::Path::new("/tmp"));
         let result = strategy.apply_update(&std::path::Path::new("/tmp/package")).unwrap();
-        assert!(result.success);
+        // Stub returns failure to avoid misleading users
+        assert!(!result.success);
     }
 
     #[test]

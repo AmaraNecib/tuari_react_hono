@@ -366,8 +366,8 @@ export function SettingsSection({
           <div className="p-5 border border-line rounded-xl">
             <div className="text-start">
               <SurfaceHeader
-                description={settingsAboutTitle}
-                title={settingsAboutVersion}
+                description={settingsAboutVersion}
+                title={settingsAboutTitle}
               />
               <p className="text-sm font-mono text-foreground mt-2">
                 {appVersion ?? "-"}
