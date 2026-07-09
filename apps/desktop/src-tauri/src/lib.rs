@@ -604,7 +604,8 @@ fn get_license_status(app: AppHandle) -> Result<GetLicenseStatusResult, String> 
         crate::license::LicenseStatus::Locked => "locked",
     };
 
-    let days_remaining = manager.days_remaining();
+    // Cap at i32::MAX to stay within JavaScript Number.MAX_SAFE_INTEGER
+    let days_remaining = std::cmp::min(manager.days_remaining(), i32::MAX as i64);
 
     match snapshot {
         Some(info) => Ok(GetLicenseStatusResult {
