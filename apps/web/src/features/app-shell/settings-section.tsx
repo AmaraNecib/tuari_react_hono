@@ -335,8 +335,8 @@ export function SettingsSection({
             </div>
           ) : null}
 
-          {/* Activation Form — show when not loading and either no license or just activated */}
-          {!licenseStatus.loading && (!licenseStatus.status?.hasLicense || licenseActivation.result != null) && (
+          {/* Activation Form — show when not loading and either: no license, expired, or just activated */}
+          {!licenseStatus.loading && (!licenseStatus.status?.hasLicense || licenseStatus.status?.isExpired || licenseActivation.result != null) && (
             <ActivationPage
               activateLabel={t('license.activate', 'تفعيل')}
               activatingLabel={t('license.activating', 'جارٍ التفعيل...')}
