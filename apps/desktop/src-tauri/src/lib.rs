@@ -627,10 +627,17 @@ fn activate_license(
     };
 
     let label = edition_label(&info.edition);
+    let restart_hint = " يرجى إعادة تشغيل التطبيق لتطبيق التغييرات.";
     let message = if replaced {
-        format!("تم تحديث الترخيص إلى النسخة {} بنجاح.", label)
+        format!(
+            "تم تحديث الترخيص إلى النسخة {} بنجاح.{}",
+            label, restart_hint
+        )
     } else {
-        format!("تم تفعيل النسخة {} بنجاح.", label)
+        format!(
+            "تم تفعيل النسخة {} بنجاح.{}",
+            label, restart_hint
+        )
     };
 
     Ok(LicenseInfoResponse {

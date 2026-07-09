@@ -32,6 +32,16 @@ export function useLicenseStatus() {
   const refresh = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true, error: null }))
 
+    // Check if Tauri bridge is available before attempting IPC
+    const isTauri =
+      typeof window !== "undefined" &&
+      typeof (window as Record<string, unknown>).__TAURI_INTERNALS__ !== "undefined"
+
+    if (!isTauri) {
+      setState({ loading: false, status: null, error: null })
+      return null
+    }
+
     try {
       const { invoke } = await import("@tauri-apps/api/core")
       const result = await invoke<LicenseStatus>("get_license_status")
@@ -44,23 +54,8 @@ export function useLicenseStatus() {
 
       return result
     } catch (error) {
-      // In browser preview mode, assume no Tauri bridge
       const message =
         error instanceof Error ? error.message : String(error)
-
-      // Gracefully degrade in browser preview
-      if (
-        message.toLowerCase().includes("tauri") ||
-        message.toLowerCase().includes("invoke") ||
-        message.toLowerCase().includes("browser")
-      ) {
-        setState({
-          loading: false,
-          status: null,
-          error: null,
-        })
-        return null
-      }
 
       setState({
         loading: false,

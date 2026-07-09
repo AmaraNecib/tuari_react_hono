@@ -530,8 +530,10 @@ impl LicenseManager {
                     LicenseStatus::Valid | LicenseStatus::Warning => "active",
                     LicenseStatus::ExpiredGrace => "grace",
                     LicenseStatus::Locked | LicenseStatus::Expired => "expired",
+                    LicenseStatus::NotYetActive => "inactive",
+                    LicenseStatus::Tampered => "suspicious",
                     LicenseStatus::Grace => "trial",
-                    _ => "unknown",
+                    LicenseStatus::Invalid => "unknown",
                 }
                 .to_string(),
             );
@@ -539,12 +541,16 @@ impl LicenseManager {
             map.insert("TUARI_LICENSE_EDITION".to_string(), "standard".to_string());
             map.insert("TUARI_LICENSE_FEATURES".to_string(), String::new());
             map.insert("TUARI_LICENSE_MAX_USERS".to_string(), "1".to_string());
-            map.insert("TUARI_LICENSE_CUSTOMER".to_string(), String::new());
+            map.insert(
+                "TUARI_LICENSE_CUSTOMER".to_string(),
+                "null".to_string(),
+            );
             map.insert("TUARI_LICENSE_EXPIRES_AT".to_string(), String::new());
             map.insert(
                 "TUARI_LICENSE_STATUS".to_string(),
                 match self.status() {
                     LicenseStatus::Grace => "trial",
+                    LicenseStatus::Tampered => "suspicious",
                     _ => "unknown",
                 }
                 .to_string(),
