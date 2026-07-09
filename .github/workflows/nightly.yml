@@ -1,0 +1,204 @@
+# Nightly workflow
+# Runs automatically at midnight UTC, or manually via workflow_dispatch
+# Produces and uploads nightly build artifacts to a "nightly" GitHub Release
+
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # daily at midnight UTC
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  nightly:
+    name: Nightly Build
+    runs-on: windows-latest
+    environment: nightly
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: develop
+
+      # ── Setup ──────────────────────────────────────────────
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/desktop/src-tauri"
+
+      # ── Dependencies ───────────────────────────────────────
+
+      - name: Install pnpm dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared contracts
+        run: pnpm --filter @tuari/contracts build
+
+      # ── Build ──────────────────────────────────────────────
+
+      - name: Build desktop app (web + sidecar + Tauri)
+        run: pnpm --filter @tuari/desktop build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Create portable package
+        run: pnpm --filter @tuari/desktop portable:only
+
+      # ── Sign update package ──────────────────────────────
+
+      - name: Compute checksum and create update manifest
+        id: manifest
+        shell: pwsh
+        run: |
+          # Generate nightly version: 0.5.0-nightly.<build-number>
+          $buildNumber = $env:GITHUB_RUN_NUMBER
+          $version = "0.5.0-nightly.$buildNumber"
+          Write-Host "Nightly version: $version"
+
+          # Paths to artifacts
+          $portableZip = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "*.zip" | Select-Object -First 1
+          if (-not $portableZip) {
+            throw "No portable zip found!"
+          }
+          $portableZipPath = $portableZip.FullName
+
+          # Compute SHA-256
+          $hash = (Get-FileHash -Path $portableZipPath -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $portableZipPath).Length
+
+          # Create manifest.json
+          $manifest = @{
+            version = $version
+            platform = "windows-x86_64"
+            minSupportedVersion = "0.1.0"
+            checksum = $hash
+            files = @(
+              @{
+                path = "Tuari-portable.zip"
+                hash = $hash
+                size = $size
+              }
+            )
+          } | ConvertTo-Json -Compress
+
+          $manifestPath = Join-Path $env:RUNNER_TEMP "manifest.json"
+          $manifest | Out-File -FilePath $manifestPath -Encoding utf8
+
+          # Sign using dev key
+          $signedOutput = Join-Path $env:RUNNER_TEMP "tuari-$version-nightly.update"
+          node scripts/sign-update.mjs `
+            --private-key scripts/dev-update-keys/dev-update-private-key.pem `
+            --manifest $manifestPath `
+            --output $signedOutput `
+            --key-id "dev-key-v1"
+
+          # Prepare artifacts directory
+          $artifactsDir = Join-Path $env:RUNNER_TEMP "artifacts"
+          New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
+          Copy-Item -Path $signedOutput -Destination $artifactsDir
+
+          # Create updates.json
+          $updates = @{
+            version = $version
+            channel = "nightly"
+            pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+            platforms = @{
+              "windows-x86_64" = @{
+                url = "https://github.com/${{ github.repository }}/releases/download/nightly/tuari-$version-nightly.update"
+                signature = ""
+              }
+            }
+          } | ConvertTo-Json -Compress
+
+          $updates | Out-File -FilePath (Join-Path $artifactsDir "updates.json") -Encoding utf8
+
+          # Set outputs
+          echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          echo "artifacts_dir=$artifactsDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      # ── Smoke test ─────────────────────────────────────────
+
+      - name: Smoke test nightly artifacts
+        run: |
+          node scripts/verify-release-assets.mjs `
+            --artifacts "${{ steps.manifest.outputs.artifacts_dir }}" `
+            --public-key scripts/dev-update-keys/dev-update-public-key.pem `
+            --version "${{ steps.manifest.outputs.version }}" `
+            --channel nightly
+        shell: pwsh
+
+      # ── Collect all artifacts ────────────────────────────
+
+      - name: Stage nightly artifacts
+        shell: pwsh
+        run: |
+          $version = "${{ steps.manifest.outputs.version }}"
+          $artifactsDir = "${{ steps.manifest.outputs.artifacts_dir }}"
+
+          # Copy installer
+          $installer = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
+          if ($installer) {
+            $installerName = "tuari-$version-nightly-setup.exe"
+            Copy-Item -Path $installer.FullName -Destination (Join-Path $artifactsDir $installerName)
+          }
+
+          # Copy portable zip
+          $portableZip = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "*.zip" | Select-Object -First 1
+          if ($portableZip) {
+            $portableName = "tuari-$version-nightly-portable.zip"
+            Copy-Item -Path $portableZip.FullName -Destination (Join-Path $artifactsDir $portableName)
+          }
+
+          Write-Host "Artifacts ready in: $artifactsDir"
+          Get-ChildItem -Path $artifactsDir | ForEach-Object { Write-Host "  - $($_.Name)" }
+
+      # ── Upload to Nightly Release ────────────────────────
+
+      - name: Upload to nightly release
+        shell: pwsh
+        run: |
+          $version = "${{ steps.manifest.outputs.version }}"
+          $artifactsDir = "${{ steps.manifest.outputs.artifacts_dir }}"
+          $tag = "nightly"
+          $releaseName = "Tuari Nightly ($version)"
+
+          # Delete previous nightly release if it exists
+          gh release delete $tag --yes --repo "${{ github.repository }}" 2>$null
+
+          # Create a new nightly release
+          gh release create $tag `
+            --title "$releaseName" `
+            --notes "Nightly build from $version" `
+            --prerelease `
+            --latest=$false `
+            --repo "${{ github.repository }}" `
+            $(Get-ChildItem -Path $artifactsDir | ForEach-Object { "`"$($_.FullName)`"" })
+
+          Write-Host "Nightly release created: $releaseName"
+        env:
+          GH_TOKEN: ${{ github.token }}
