@@ -26,6 +26,9 @@ function getCachedResult(): UpdateCheckState | null {
     const parsed = JSON.parse(raw) as UpdateCheckResult & { checkedAt: string }
     if (!parsed.checkedAt) return null
     if (parsed.updateAvailable) {
+      // Validate cached fields are non-empty strings to prevent "undefined" in UI
+      if (typeof parsed.latestVersion !== 'string' || !parsed.latestVersion) return null
+      if (typeof parsed.downloadUrl !== 'string') return null
       return {
         status: "update-available",
         latestVersion: parsed.latestVersion,
@@ -78,7 +81,7 @@ export function useUpdateCheck() {
       const message =
         error instanceof Error
           ? error.message
-          : "تعذر التحقق من وجود تحديثات."
+          : ""
 
       // If we have a cached result, show it with offline flag
       const cached = getCachedResult()

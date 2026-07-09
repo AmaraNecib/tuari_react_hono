@@ -304,9 +304,7 @@ export function SettingsSection({
                     </>
                   )}
                   {updateState.status === 'error' && settingsUpdateError}
-                  {updateState.status === 'idle' && (
-                    <span className="text-muted-foreground">{settingsCheckForUpdates}</span>
-                  )}
+                  {updateState.status === 'idle' && null}
                 </p>
               </div>
               <Button
