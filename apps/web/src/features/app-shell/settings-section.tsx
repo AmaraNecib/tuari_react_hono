@@ -282,7 +282,7 @@ export function SettingsSection({
           description={t('license.description', 'أدخل مفتاح الترخيص لتفعيل النسخة الكاملة من توارتي.')}
           errorMessage={licenseActivation.error}
           keyLabel={t('license.keyLabel', 'مفتاح الترخيص')}
-          keyPlaceholder={t('license.keyPlaceholder', 'TUARI-PRO-A7X3-K9M2')}
+          keyPlaceholder={t('license.keyPlaceholder', 'أدخل مفتاح الترخيص')}
           successMessage={licenseActivation.result?.message ?? null}
           title={t('license.title', 'تفعيل الترخيص')}
           onActivate={async (key) => {

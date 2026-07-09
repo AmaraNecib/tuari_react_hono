@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
-import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 
 type ActivationPageProps = {
@@ -88,7 +87,7 @@ export function ActivationPage({
           </div>
         ) : (
           <form className="space-y-5" onSubmit={handleSubmit}>
-            <SurfaceHeader description={description} title={title} />
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
 
             <Field
               label={keyLabel}

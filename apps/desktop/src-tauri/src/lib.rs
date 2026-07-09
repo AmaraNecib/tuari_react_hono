@@ -520,6 +520,15 @@ async fn desktop_sign_out_session(
 
 // ─── License Tauri Commands ───────────────────────────────────────
 
+/// Map an edition string to its Arabic label.
+fn edition_label(edition: &str) -> &'static str {
+    match edition {
+        "enterprise" => "انتربرايز",
+        "professional" => "احترافي",
+        _ => "قياسي",
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LicenseInfoResponse {
@@ -555,17 +564,12 @@ fn get_license_status(app: AppHandle) -> Result<LicenseStatusResponse, String> {
     let status = manager.status();
     let has_license = !matches!(status, crate::license::LicenseStatus::Invalid | crate::license::LicenseStatus::Grace | crate::license::LicenseStatus::Locked);
     let edition = manager.edition();
-    let edition_label = match edition.as_str() {
-        "enterprise" => "انتربرايز",
-        "professional" => "احترافي",
-        _ => "قياسي",
-    };
 
     Ok(LicenseStatusResponse {
         has_license,
         status: format!("{:?}", status).to_lowercase(),
-        edition,
-        edition_label: edition_label.to_string(),
+        edition: edition.clone(),
+        edition_label: edition_label(&edition).to_string(),
         customer_name: manager.customer().map(|c| c.name),
         days_remaining: manager.days_remaining(),
         is_grace_period: matches!(status, crate::license::LicenseStatus::Grace),
@@ -615,28 +619,17 @@ fn activate_license(
         crate::license::ActivationResult::Replaced(_old, new) => (*new, true),
     };
 
-    let edition_label = match info.edition.as_str() {
-        "enterprise" => "انتربرايز",
-        "professional" => "احترافي",
-        _ => "قياسي",
-    };
-
+    let label = edition_label(&info.edition);
     let message = if replaced {
-        format!(
-            "تم تحديث الترخيص إلى النسخة {} بنجاح.",
-            edition_label
-        )
+        format!("تم تحديث الترخيص إلى النسخة {} بنجاح.", label)
     } else {
-        format!(
-            "تم تفعيل النسخة {} بنجاح.",
-            edition_label
-        )
+        format!("تم تفعيل النسخة {} بنجاح.", label)
     };
 
     Ok(LicenseInfoResponse {
         success: true,
         edition: info.edition,
-        edition_label: edition_label.to_string(),
+        edition_label: label.to_string(),
         customer_name: info.issued_to.clone(),
         customer_email: info.email.clone(),
         license_type: info.license_type,

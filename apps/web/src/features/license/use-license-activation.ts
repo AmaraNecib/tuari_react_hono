@@ -50,13 +50,15 @@ export function useLicenseActivation() {
             ? error
             : "فشل تفعيل الترخيص."
 
+      // Store error in state — parent reads from errorMessage prop
       setState({
         isActivating: false,
         result: null,
         error: message,
       })
 
-      throw new Error(message)
+      // Return a rejected promise so the caller can await the result
+      return Promise.reject(new Error(message))
     }
   }, [])
 
