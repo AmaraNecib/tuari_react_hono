@@ -111,10 +111,13 @@ export function LicenseSettings() {
   const StatusIcon = STATUS_CONFIG[data.status]?.icon ?? KeyRound
   const statusLabel = getStatusLabel(data.status, t)
   const EditionIcon = getEditionIcon(data.edition)
-  const hasLicense = data.status !== "unavailable"
+  // IPC never returns "unavailable" — that's a browser-only fallback.
+  // A real license has a non-empty edition string.
+  const isDesktopUnavailable = data.status === "unavailable"
+  const hasLicense = !isDesktopUnavailable && (data.edition?.length ?? 0) > 0
   const showWarning = data.status === "warning" && data.daysRemaining <= 30
   const showGraceBanner = data.status === "expired_grace" || data.status === "grace"
-  const showActivationPrompt = !hasLicense || data.status === "invalid" || data.status === "locked"
+  const showActivationPrompt = !hasLicense || data.status === "invalid" || data.status === "locked" || data.status === "tampered" || data.status === "not_yet_active"
 
   return (
     <Surface variant="panel" className="p-5 border border-line rounded-xl space-y-5">
@@ -278,7 +281,9 @@ export function LicenseSettings() {
       {hasLicense && data.status !== "valid" && data.status !== "warning" && (
       <div className="p-4 rounded-lg border border-line space-y-2" dir="rtl">
         <p className="text-sm">
-          {t("license.upgradePrompt", "لترقية الإصدار أو تجديد الترخيص، يرجى التواصل مع فريق الدعم.")}
+          {data.status === "tampered"
+            ? t("license.tamperedUpgrade", "تم الكشف عن عبث في الساعة. يرجى التواصل مع الدعم الفني.")
+            : t("license.upgradePrompt", "لترقية الإصدار أو تجديد الترخيص، يرجى التواصل مع فريق الدعم.")}
         </p>
         <p className="text-sm text-muted-foreground">
           {t("license.contactInfo", "البريد الإلكتروني: support@tuari.app")}

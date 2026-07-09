@@ -208,6 +208,33 @@ describe("LicenseSettings", () => {
     expect(screen.queryByText("lan_server")).toBeTruthy();
   });
 
+  it("shows tampered state with activation prompt and specialized upgrade text", () => {
+    mockUseLicenseStatus.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: createLicenseData({ status: "tampered" }),
+    });
+
+    renderWithQuery(<LicenseSettings />);
+
+    expect(screen.queryByText("تم العبث بالساعة")).toBeTruthy();
+    expect(screen.queryByText("تم الكشف عن عبث في الساعة. يرجى التواصل مع الدعم الفني.")).toBeTruthy();
+    expect(screen.queryByText("تفعيل الترخيص")).toBeTruthy();
+  });
+
+  it("shows not_yet_active state with activation prompt", () => {
+    mockUseLicenseStatus.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: createLicenseData({ status: "not_yet_active" }),
+    });
+
+    renderWithQuery(<LicenseSettings />);
+
+    expect(screen.queryByText("غير مفعل بعد")).toBeTruthy();
+    expect(screen.queryByText("تفعيل الترخيص")).toBeTruthy();
+  });
+
   it("shows empty features message when features list is empty", () => {
     mockUseLicenseStatus.mockReturnValue({
       isLoading: false,
