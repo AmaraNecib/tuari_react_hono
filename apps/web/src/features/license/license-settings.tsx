@@ -112,7 +112,6 @@ export function LicenseSettings() {
   const statusLabel = getStatusLabel(data.status, t)
   const EditionIcon = getEditionIcon(data.edition)
   const hasLicense = data.status !== "unavailable"
-  const isActive = data.status === "valid" || data.status === "warning"
   const showWarning = data.status === "warning" && data.daysRemaining <= 30
   const showGraceBanner = data.status === "expired_grace" || data.status === "grace"
   const showActivationPrompt = !hasLicense || data.status === "invalid" || data.status === "locked"
