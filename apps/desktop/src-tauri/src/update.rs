@@ -149,6 +149,7 @@ pub trait UpdateProvider: Send + Sync {
 }
 
 /// Provider that fetches updates from GitHub Releases.
+#[allow(dead_code)]
 pub struct GithubReleasesProvider {
     owner: String,
     repo: String,
@@ -409,6 +410,7 @@ pub trait UpdateStrategy: Send + Sync {
 }
 
 /// Strategy that replaces the application binary entirely.
+#[allow(dead_code)]
 pub struct FullReplaceStrategy {
     install_dir: std::path::PathBuf,
 }
@@ -438,6 +440,7 @@ impl UpdateStrategy for FullReplaceStrategy {
 }
 
 /// Strategy for differential (patch-based) updates.
+#[allow(dead_code)]
 pub struct DifferentialStrategy {
     install_dir: std::path::PathBuf,
 }
