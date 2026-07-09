@@ -69,11 +69,12 @@ export function useUpdateCheck() {
       const result = await invoke<UpdateCheckResult>("check_for_updates")
       cacheResult(result)
 
-      if (result.updateAvailable) {
+      // Validate IPC result fields the same way getCachedResult validates cache
+      if (result.updateAvailable && typeof result.latestVersion === 'string' && result.latestVersion) {
         setState({
           status: "update-available",
           latestVersion: result.latestVersion,
-          downloadUrl: result.downloadUrl,
+          downloadUrl: result.downloadUrl ?? '',
           checkedAt: new Date().toISOString(),
         })
       } else {
