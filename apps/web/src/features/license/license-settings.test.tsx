@@ -162,6 +162,7 @@ describe("LicenseSettings", () => {
 
     expect(screen.queryByText("ليس لديك ترخيص نشط. يرجى تفعيل الترخيص للوصول إلى جميع الميزات.")).toBeTruthy();
     expect(screen.queryByText("تفعيل الترخيص")).toBeTruthy();
+    expect(screen.queryByText("سيتم تفعيل خاصية التفعيل في التحديث القادم")).toBeTruthy();
   });
 
   it("shows upgrade CTA for locked state", () => {

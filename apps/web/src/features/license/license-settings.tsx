@@ -264,10 +264,13 @@ export function LicenseSettings() {
           <p className="text-sm text-muted-foreground">
             {t("license.activationPrompt", "ليس لديك ترخيص نشط. يرجى تفعيل الترخيص للوصول إلى جميع الميزات.")}
           </p>
-          <Button>
+          <Button disabled>
             <KeyRound className="h-4 w-4 ml-2" />
             {t("license.activateButton", "تفعيل الترخيص")}
           </Button>
+          <p className="text-xs text-muted-foreground">
+            {t("license.activateDisabled", "سيتم تفعيل خاصية التفعيل في التحديث القادم")}
+          </p>
         </div>
       )}
 

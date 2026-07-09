@@ -930,6 +930,7 @@ export const ar = {
       expiredGraceDescription: "متبقي {{days}} يوم من فترة السماح. الرجاء تجديد الترخيص.",
       activationPrompt: "ليس لديك ترخيص نشط. يرجى تفعيل الترخيص للوصول إلى جميع الميزات.",
       activateButton: "تفعيل الترخيص",
+      activateDisabled: "سيتم تفعيل خاصية التفعيل في التحديث القادم",
       upgradePrompt: "لترقية الإصدار أو تجديد الترخيص، يرجى التواصل مع فريق الدعم.",
       contactInfo: "البريد الإلكتروني: support@tuari.app",
       loadError: "تعذر تحميل معلومات الترخيص.",
