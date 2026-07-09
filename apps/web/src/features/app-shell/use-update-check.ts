@@ -53,6 +53,8 @@ function cacheResult(result: UpdateCheckResult) {
   }
 }
 
+// ─── Check for Updates Hook ────────────────────────────────────────
+
 export function useUpdateCheck() {
   const [state, setState] = useState<UpdateCheckState>(() => {
     const cached = getCachedResult()
