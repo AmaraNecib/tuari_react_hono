@@ -57,6 +57,36 @@ jobs:
       - name: Build shared contracts
         run: pnpm --filter @tuari/contracts build
 
+      # ── Architecture guardrails ──────────────────────────
+
+      - name: Verify Rust Core boundaries (no bare tauri imports)
+        shell: pwsh
+        run: |
+          Write-Host "Checking for forbidden 'tauri::' imports in Rust Core modules..."
+          $coreModules = @(
+            "apps/desktop/src-tauri/src/crypto.rs",
+            "apps/desktop/src-tauri/src/error.rs",
+            "apps/desktop/src-tauri/src/clock.rs",
+            "apps/desktop/src-tauri/src/license.rs",
+            "apps/desktop/src-tauri/src/recovery.rs"
+          )
+          $hasTauri = $false
+          foreach ($mod in $coreModules) {
+            if (Test-Path $mod) {
+              $lines = Select-String -Path $mod -Pattern 'use tauri|tauri::' | ForEach-Object { "$($_.LineNumber): $($_.Line.Trim())" }
+              if ($lines) {
+                Write-Host "ERROR: forbidden tauri import in $mod"
+                $lines | ForEach-Object { Write-Host $_ }
+                $hasTauri = $true
+              }
+            }
+          }
+          if ($hasTauri) {
+            Write-Host "FAILED: Rust Core modules must not import tauri::"
+            exit 1
+          }
+          Write-Host "PASSED: No forbidden imports found"
+
       # ── Build ──────────────────────────────────────────────
 
       - name: Build desktop app (web + sidecar + Tauri)

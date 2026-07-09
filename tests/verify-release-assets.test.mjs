@@ -49,7 +49,7 @@ test('verify-release-assets exits with non-zero when --artifacts is missing', ()
 });
 
 test('verify-release-assets exits with non-zero when artifacts directory does not exist', () => {
-  const result = runScript('verify-release-assets.mjs', ['--artifacts', 'C:\\__nonexistent__\\']);
+  const result = runScript('verify-release-assets.mjs', ['--artifacts', '/nonexistent-test-dir/']);
   assert.notEqual(result.exitCode, 0, 'should exit with non-zero when dir does not exist');
 });
 

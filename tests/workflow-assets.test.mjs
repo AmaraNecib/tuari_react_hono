@@ -68,6 +68,7 @@ test('CI/CD workflow files exist and have correct triggers', async () => {
   assert.match(release, /verify-release-assets\.mjs/);
   assert.match(release, /Swatinem\/rust-cache/);
   assert.match(release, /cache: pnpm/);
+  assert.match(release, /Rust Core boundaries/);
 
   // Nightly: schedule + workflow_dispatch
   assert.match(nightly, /schedule:/);
@@ -76,6 +77,7 @@ test('CI/CD workflow files exist and have correct triggers', async () => {
   assert.match(nightly, /environment: nightly/);
   assert.match(nightly, /sign-update\.mjs/);
   assert.match(nightly, /verify-release-assets\.mjs/);
+  assert.match(nightly, /Rust Core boundaries/);
 
   // Beta: manual dispatch with version input
   assert.match(beta, /workflow_dispatch/);
@@ -83,4 +85,5 @@ test('CI/CD workflow files exist and have correct triggers', async () => {
   assert.match(beta, /environment: beta/);
   assert.match(beta, /sign-update\.mjs/);
   assert.match(beta, /verify-release-assets\.mjs/);
+  assert.match(beta, /Rust Core boundaries/);
 });

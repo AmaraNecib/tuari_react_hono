@@ -11,8 +11,8 @@ Set up GitHub Actions workflows for building, signing, and releasing Tuari artif
 - Each workflow shares a common build + sign + publish structure via reusable composite actions where practical.
 
 ### Runner
-- All workflows run on `ubuntu-latest` (the CI baseline).
-- Tauri builds cross-compile for Windows via `cargo build --release`; the sign and package steps are platform-agnostic.
+- All release workflows run on `windows-latest` (to produce Windows-native NSIS installers).
+- The CI workflow continues to run on `ubuntu-latest` for fast validation.
 
 ### Signing Keys
 - **Release (stable):** Uses the dev key for now (`scripts/dev-update-keys/dev-update-private-key.pem`). Production key will be stored as a GitHub secret (`UPDATE_PRIVATE_KEY`).
