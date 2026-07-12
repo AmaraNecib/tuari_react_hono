@@ -35,7 +35,8 @@ export function useLicenseStatus() {
     // Check if Tauri bridge is available before attempting IPC
     const isTauri =
       typeof window !== "undefined" &&
-      typeof (window as Record<string, unknown>).__TAURI_INTERNALS__ !== "undefined"
+      "__TAURI_INTERNALS__" in window &&
+      typeof (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ !== "undefined"
 
     if (!isTauri) {
       setState({ loading: false, status: null, error: null })
