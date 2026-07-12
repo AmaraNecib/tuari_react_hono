@@ -11,84 +11,60 @@ permissions:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
+          clean: false
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo lint
 
   typecheck:
     name: Type Check
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
+          clean: false
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm turbo typecheck --filter="!@tuari/desktop"
 
   test-rust:
     name: "Test Rust Core (no tauri:: imports)"
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
+          clean: false
           persist-credentials: false
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "apps/desktop/src-tauri"
-
-      - name: Install system dependencies (Tauri)
+      - name: "Verify tool versions"
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libxdo-dev \
-            libglib2.0-dev \
-            libgtk-3-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev
+          echo "Node: $(node --version)"
+          echo "pnpm: $(pnpm --version)"
+          echo "Rust: $(rustc --version)"
 
       - name: "Verify Rust Core boundaries (no bare tauri imports)"
         run: |
           echo "Checking for forbidden 'tauri::' imports in Rust Core modules..."
-          CORE_MODULES="apps/desktop/src-tauri/src/crypto.rs apps/desktop/src-tauri/src/error.rs apps/desktop/src-tauri/src/clock.rs apps/desktop/src-tauri/src/license.rs apps/desktop/src-tauri/src/recovery.rs"
           HAS_TAURI=false
-          for mod in $CORE_MODULES; do
-            if [ -f "$mod" ]; then
-              LINES=$(grep -nE 'use tauri|tauri::' "$mod" || true)
-              if [ -n "$LINES" ]; then
-                echo "ERROR: forbidden tauri import in $mod"
-                echo "$LINES"
-                HAS_TAURI=true
-              fi
+          while IFS= read -r mod; do
+            LINES=$(grep -nE 'use tauri|tauri::' "$mod" || true)
+            if [ -n "$LINES" ]; then
+              echo "ERROR: forbidden tauri import in $mod"
+              echo "$LINES"
+              HAS_TAURI=true
             fi
-          done
+          done < <(find apps/desktop/src-tauri/src -name '*.rs' -not -path '*/commands/*' -not -name 'lib.rs' -not -name 'main.rs')
           if [ "$HAS_TAURI" = true ]; then
             echo "FAILED: Rust Core modules must not import tauri::"
             exit 1
@@ -100,49 +76,43 @@ jobs:
 
   test-api:
     name: Test API
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
+          clean: false
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm --filter @tuari/api test:coverage
 
   test-web:
     name: Test Web
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
+          clean: false
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm test:web
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
     needs: [lint, typecheck, test-api, test-web]
     steps:
       - uses: actions/checkout@v4
         with:
+          clean: false
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm turbo build --filter="!@tuari/desktop"
