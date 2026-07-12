@@ -932,6 +932,8 @@ export const ar = {
       activateButton: "تفعيل الترخيص",
       activateDisabled: "سيتم تفعيل خاصية التفعيل في التحديث القادم",
       upgradePrompt: "لترقية الإصدار أو تجديد الترخيص، يرجى التواصل مع فريق الدعم.",
+      upgradeToProfessional: "ترقية إلى Professional للاستفادة من الميزات المتقدمة.",
+      upgradeToEnterprise: "ترقية إلى Enterprise للحصول على جميع الميزات.",
       tamperedUpgrade: "تم الكشف عن عبث في الساعة. يرجى التواصل مع الدعم الفني.",
       contactInfo: "البريد الإلكتروني: support@tuari.app",
       loadError: "تعذر تحميل معلومات الترخيص.",

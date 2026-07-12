@@ -604,7 +604,8 @@ fn get_license_status(app: AppHandle) -> Result<GetLicenseStatusResult, String> 
         crate::license::LicenseStatus::Locked => "locked",
     };
 
-    // Cap at i32::MAX to stay within JavaScript Number.MAX_SAFE_INTEGER
+    // Cap at i32::MAX (well within JS Number.MAX_SAFE_INTEGER = 2^53-1)
+    // to avoid precision loss when i64::MAX (perpetual sentinel) crosses the IPC bridge.
     let days_remaining = std::cmp::min(manager.days_remaining(), i32::MAX as i64);
 
     match snapshot {

@@ -283,7 +283,11 @@ export function LicenseSettings() {
         <p className="text-sm">
           {data.status === "tampered"
             ? t("license.tamperedUpgrade", "تم الكشف عن عبث في الساعة. يرجى التواصل مع الدعم الفني.")
-            : t("license.upgradePrompt", "لترقية الإصدار أو تجديد الترخيص، يرجى التواصل مع فريق الدعم.")}
+            : data.edition === "standard"
+              ? t("license.upgradeToProfessional", "ترقية إلى Professional للاستفادة من الميزات المتقدمة.")
+              : data.edition === "professional"
+                ? t("license.upgradeToEnterprise", "ترقية إلى Enterprise للحصول على جميع الميزات.")
+                : t("license.upgradePrompt", "لترقية الإصدار أو تجديد الترخيص، يرجى التواصل مع فريق الدعم.")}
         </p>
         <p className="text-sm text-muted-foreground">
           {t("license.contactInfo", "البريد الإلكتروني: support@tuari.app")}
