@@ -11,51 +11,60 @@ permissions:
 jobs:
   lint:
     name: Lint
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
           clean: false
           persist-credentials: false
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo lint
 
   typecheck:
     name: Type Check
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
           clean: false
           persist-credentials: false
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm turbo typecheck --filter="!@tuari/desktop"
 
   test-rust:
     name: "Test Rust Core (no tauri:: imports)"
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
           clean: false
           persist-credentials: false
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
+
+      - name: "Verify tool versions"
+        run: |
+          echo "Node: $(node --version)"
+          echo "pnpm: $(pnpm --version)"
+          echo "Rust: $(rustc --version)"
 
       - name: "Verify Rust Core boundaries (no bare tauri imports)"
         run: |
           echo "Checking for forbidden 'tauri::' imports in Rust Core modules..."
-          CORE_MODULES="apps/desktop/src-tauri/src/crypto.rs apps/desktop/src-tauri/src/error.rs apps/desktop/src-tauri/src/clock.rs apps/desktop/src-tauri/src/license.rs apps/desktop/src-tauri/src/recovery.rs apps/desktop/src-tauri/src/update.rs apps/desktop/src-tauri/src/trust/rotation.rs apps/desktop/src-tauri/src/trust/trust_store.rs apps/desktop/src-tauri/src/trust/root_ca.rs"
           HAS_TAURI=false
-          for mod in $CORE_MODULES; do
-            if [ -f "$mod" ]; then
-              LINES=$(grep -nE 'use tauri|tauri::' "$mod" || true)
-              if [ -n "$LINES" ]; then
-                echo "ERROR: forbidden tauri import in $mod"
-                echo "$LINES"
-                HAS_TAURI=true
-              fi
+          while IFS= read -r mod; do
+            LINES=$(grep -nE 'use tauri|tauri::' "$mod" || true)
+            if [ -n "$LINES" ]; then
+              echo "ERROR: forbidden tauri import in $mod"
+              echo "$LINES"
+              HAS_TAURI=true
             fi
-          done
+          done < <(find apps/desktop/src-tauri/src -name '*.rs' -not -path '*/commands/*')
           if [ "$HAS_TAURI" = true ]; then
             echo "FAILED: Rust Core modules must not import tauri::"
             exit 1
@@ -67,30 +76,35 @@ jobs:
 
   test-api:
     name: Test API
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
           clean: false
           persist-credentials: false
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm --filter @tuari/api test:coverage
 
   test-web:
     name: Test Web
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
           clean: false
           persist-credentials: false
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm test:web
 
   build:
     name: Build
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     needs: [lint, typecheck, test-api, test-web]
     steps:
@@ -98,6 +112,7 @@ jobs:
         with:
           clean: false
           persist-credentials: false
+      - run: git clean -fd --exclude=node_modules/ --exclude=.cargo/ -e target/
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm turbo build --filter="!@tuari/desktop"
