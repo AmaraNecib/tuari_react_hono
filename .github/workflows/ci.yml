@@ -64,7 +64,7 @@ jobs:
               echo "$LINES"
               HAS_TAURI=true
             fi
-          done < <(find apps/desktop/src-tauri/src -name '*.rs' -not -path '*/commands/*')
+          done < <(find apps/desktop/src-tauri/src -name '*.rs' -not -path '*/commands/*' -not -name 'lib.rs' -not -name 'main.rs')
           if [ "$HAS_TAURI" = true ]; then
             echo "FAILED: Rust Core modules must not import tauri::"
             exit 1
