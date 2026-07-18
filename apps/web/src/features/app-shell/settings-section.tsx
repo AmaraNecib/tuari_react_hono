@@ -9,6 +9,9 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { ActivationPage } from "@/features/license/activation-page"
+import { useLicenseActivation } from "@/features/license/use-license-activation"
+import { useLicenseStatus } from "@/features/license/use-license-status"
 
 import {
   getCurrentVersion,
@@ -225,8 +228,11 @@ export function SettingsSection({
     }
   }
 
+  const licenseActivation = useLicenseActivation()
+  const licenseStatus = useLicenseStatus()
+
   const [activeTab, setActiveTab] = useUrlTab(
-    ['account', 'appearance', 'system', 'about'] as const,
+    ['account', 'appearance', 'licensing', 'system', 'about'] as const,
     'account'
   )
 
@@ -247,6 +253,16 @@ export function SettingsSection({
           onClick={() => setActiveTab('appearance')}
         >
           {t('settings.tabs.appearance', 'المظهر')}
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'licensing' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => {
+            setActiveTab('licensing')
+            licenseActivation.reset()
+          }}
+        >
+          {t('settings.tabs.licensing', 'الترخيص')}
         </button>
         <button
           type="button"
@@ -322,6 +338,85 @@ export function SettingsSection({
               {themeValueLabel}
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* Licensing Tab */}
+      {activeTab === 'licensing' && (
+        <div className="space-y-6">
+          {/* License Status Card */}
+          {licenseStatus.loading ? (
+            <div className="p-5 border border-line rounded-xl">
+              <p className="text-sm text-muted-foreground">
+                {t('license.loading', 'جارٍ التحقق من حالة الترخيص...')}
+              </p>
+            </div>
+          ) : licenseStatus.status ? (
+            <div className="p-5 border border-line rounded-xl">
+              <h3 className="text-lg font-semibold text-foreground">
+                {t('license.currentStatus', 'حالة الترخيص')}
+              </h3>
+              <div className="mt-3 space-y-2 text-sm">
+                {!licenseStatus.status.hasLicense && !licenseStatus.status.isGracePeriod ? (
+                  <div className="rounded-lg bg-destructive/10 p-4 text-destructive text-sm">
+                    {t('license.noLicense', 'لا يوجد ترخيص نشط. يرجى تفعيل الترخيص لاستخدام التطبيق.')}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t('license.edition', 'الإصدار')}</span>
+                      <span className="font-medium">{licenseStatus.status.editionLabel}</span>
+                    </div>
+                    {licenseStatus.status.customerName && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t('license.customer', 'العميل')}</span>
+                        <span className="font-medium">{licenseStatus.status.customerName}</span>
+                      </div>
+                    )}
+                    {licenseStatus.status.daysRemaining >= 0 && licenseStatus.status.daysRemaining < 999999 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t('license.daysRemaining', 'الأيام المتبقية')}</span>
+                        <span className="font-medium">{licenseStatus.status.daysRemaining}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                {licenseStatus.status.isExpired && (
+                  <div className="rounded-lg bg-destructive/10 p-3 text-destructive text-sm">
+                    {t('license.expired', 'انتهت صلاحية الترخيص. يرجى تجديد الترخيص لمواصلة استخدام جميع الميزات.')}
+                  </div>
+                )}
+                {licenseStatus.status.isGracePeriod && (
+                  <div className="rounded-lg bg-warning/10 p-3 text-warning text-sm">
+                    {t('license.gracePeriod', 'أنت الآن في الفترة التجريبية.')} {t('license.remainingDays', 'يتبقى')} {licenseStatus.status.daysRemaining} {t('license.days', 'يوم.')}
+                  </div>
+                )}
+                {licenseStatus.status.isLocked && (
+                  <div className="rounded-lg bg-destructive/10 p-3 text-destructive text-sm">
+                    {t('license.locked', 'تم قفل التطبيق. يرجى تفعيل الترخيص لاستئناف العمل.')}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Activation Form — show when not loading and either: no license, expired, or just activated */}
+          {!licenseStatus.loading && (!licenseStatus.status?.hasLicense || licenseStatus.status?.isExpired || licenseActivation.result != null) && (
+            <ActivationPage
+              activateLabel={t('license.activate', 'تفعيل')}
+              activatingLabel={t('license.activating', 'جارٍ التفعيل...')}
+              description={t('license.description', 'أدخل مفتاح الترخيص لتفعيل النسخة الكاملة من توارتي.')}
+              errorMessage={licenseActivation.error}
+              keyLabel={t('license.keyLabel', 'مفتاح الترخيص')}
+              keyPlaceholder={t('license.keyPlaceholder', 'أدخل مفتاح الترخيص')}
+              successMessage={licenseActivation.result?.message ?? null}
+              title={t('license.title', 'تفعيل الترخيص')}
+              onActivate={async (key) => {
+                await licenseActivation.activateLicense(key)
+                await licenseStatus.refresh()
+              }}
+            />
+          )}
         </div>
       )}
 
