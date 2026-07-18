@@ -518,6 +518,95 @@ async fn desktop_sign_out_session(
     Ok(())
 }
 
+// ─── License Tauri Commands ───────────────────────────────────────
+
+/// Map an edition string to its Arabic label.
+fn edition_label(edition: &str) -> &'static str {
+    match edition {
+        "enterprise" => "انتربرايز",
+        "professional" => "احترافي",
+        _ => "قياسي",
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LicenseInfoResponse {
+    success: bool,
+    edition: String,
+    edition_label: String,
+    customer_name: String,
+    customer_email: String,
+    license_type: String,
+    message: String,
+}
+
+#[tauri::command]
+fn activate_license(
+    app: AppHandle,
+    key: String,
+) -> Result<LicenseInfoResponse, String> {
+    let tuari_dir = resolve_tuari_dir(&app)?;
+    let manager = crate::license::LicenseManager::initialize(&tuari_dir)
+        .map_err(|e| format!("فشل تحميل مدير الترخيص: {e}"))?;
+
+    let result = manager
+        .activate_from_key(&key, &tuari_dir)
+        .map_err(|e| {
+            let msg = match e {
+                crate::error::RustCoreError::InvalidSignature => {
+                    "مفتاح الترخيص غير صالح أو تم العبث به.".to_string()
+                }
+                crate::error::RustCoreError::InvalidFormat => {
+                    "صيغة مفتاح الترخيص غير صحيحة.".to_string()
+                }
+                crate::error::RustCoreError::InvalidPayload => {
+                    "بيانات الترخيص غير صالحة.".to_string()
+                }
+                crate::error::RustCoreError::LicenseFileNotFound => {
+                    "ملف الترخيص غير موجود.".to_string()
+                }
+                crate::error::RustCoreError::Expired => {
+                    "انتهت صلاحية الترخيص.".to_string()
+                }
+                crate::error::RustCoreError::ClockTampered { .. } => {
+                    "تعذر التحقق من تاريخ النظام.".to_string()
+                }
+                _ => format!("فشل التفعيل: {e}"),
+            };
+            msg
+        })?;
+
+    let (info, replaced) = match result {
+        crate::license::ActivationResult::Activated(info) => (info, false),
+        crate::license::ActivationResult::Replaced(_old, new) => (*new, true),
+    };
+
+    let label = edition_label(&info.edition);
+    let restart_hint = " يرجى إعادة تشغيل التطبيق لتطبيق التغييرات.";
+    let message = if replaced {
+        format!(
+            "تم تحديث الترخيص إلى النسخة {} بنجاح.{}",
+            label, restart_hint
+        )
+    } else {
+        format!(
+            "تم تفعيل النسخة {} بنجاح.{}",
+            label, restart_hint
+        )
+    };
+
+    Ok(LicenseInfoResponse {
+        success: true,
+        edition: info.edition,
+        edition_label: label.to_string(),
+        customer_name: info.issued_to.clone(),
+        customer_email: info.email.clone(),
+        license_type: info.license_type,
+        message,
+    })
+}
+
 // ─── Update Tauri Commands ───────────────────────────────────────
 
 #[derive(Serialize)]
@@ -600,10 +689,16 @@ fn apply_update(path: String) -> Result<UpdateApplyResult, String> {
 #[serde(rename_all = "camelCase")]
 struct GetLicenseStatusResult {
     edition: String,
+    edition_label: String,
     issued_to: String,
     email: String,
+    customer_name: Option<String>,
     features: Vec<String>,
     max_users: u32,
+    has_license: bool,
+    is_grace_period: bool,
+    is_expired: bool,
+    is_locked: bool,
     valid_from: String,
     valid_until: Option<String>,
     license_type: String,
@@ -634,26 +729,49 @@ fn get_license_status(app: AppHandle) -> Result<GetLicenseStatusResult, String> 
     // Cap at i32::MAX (well within JS Number.MAX_SAFE_INTEGER = 2^53-1)
     // to avoid precision loss when i64::MAX (perpetual sentinel) crosses the IPC bridge.
     let days_remaining = std::cmp::min(manager.days_remaining(), i32::MAX as i64);
+    let has_license = !matches!(
+        status,
+        crate::license::LicenseStatus::Invalid
+            | crate::license::LicenseStatus::Grace
+            | crate::license::LicenseStatus::Locked
+            | crate::license::LicenseStatus::Tampered
+            | crate::license::LicenseStatus::NotYetActive
+    );
+    let is_grace_period = matches!(status, crate::license::LicenseStatus::Grace);
+    let is_expired = matches!(status, crate::license::LicenseStatus::Expired | crate::license::LicenseStatus::ExpiredGrace | crate::license::LicenseStatus::Locked);
+    let is_locked = matches!(status, crate::license::LicenseStatus::Locked);
 
     match snapshot {
         Some(info) => Ok(GetLicenseStatusResult {
-            edition: info.edition,
-            issued_to: info.issued_to,
-            email: info.email,
-            features: info.features,
+            edition: info.edition.clone(),
+            edition_label: edition_label(&info.edition).to_string(),
+            issued_to: info.issued_to.clone(),
+            email: info.email.clone(),
+            customer_name: Some(info.issued_to.clone()),
+            features: info.features.clone(),
             max_users: info.max_users,
+            has_license,
+            is_grace_period,
+            is_expired,
+            is_locked,
             valid_from: info.valid_from.to_rfc3339(),
             valid_until: info.valid_until.map(|dt| dt.to_rfc3339()),
-            license_type: info.license_type,
+            license_type: info.license_type.clone(),
             status: status_str.to_string(),
             days_remaining,
         }),
         None => Ok(GetLicenseStatusResult {
             edition: String::new(),
+            edition_label: edition_label("").to_string(),
             issued_to: String::new(),
             email: String::new(),
+            customer_name: None,
             features: Vec::new(),
             max_users: 0,
+            has_license,
+            is_grace_period,
+            is_expired,
+            is_locked,
             valid_from: String::new(),
             valid_until: None,
             license_type: String::new(),
@@ -1117,9 +1235,14 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(error_log_file));
 
-    // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
+    // Set structured license env vars for the API sidecar per Licensing Architecture §15.5
     if let Ok(tuari_dir) = resolve_tuari_dir(app) {
         if let Ok(manager) = crate::license::LicenseManager::initialize(&tuari_dir) {
+            let env_map = manager.to_env_map();
+            for (key, value) in &env_map {
+                command.env(key, value);
+            }
+            // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
             if manager.has_feature("encrypted_db") {
                 command.env("APP_DB_KEY", runtime_secrets.app_db_key);
             }
@@ -1154,6 +1277,8 @@ pub fn run() {
             desktop_sign_in_with_phone_number,
             desktop_change_password,
             desktop_sign_out_session,
+            activate_license,
+            get_license_status,
             check_for_updates,
             apply_update,
             get_license_status,

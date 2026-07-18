@@ -10,6 +10,9 @@ import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { LicenseSettings } from "@/features/license/license-settings"
+import { ActivationPage } from "@/features/license/activation-page"
+import { useLicenseActivation } from "@/features/license/use-license-activation"
+import { useLicenseStatus } from "@/features/license/use-license-status"
 
 import {
   getCurrentVersion,
@@ -226,8 +229,11 @@ export function SettingsSection({
     }
   }
 
+  const licenseActivation = useLicenseActivation()
+  const licenseStatus = useLicenseStatus()
+
   const [activeTab, setActiveTab] = useUrlTab(
-    ['account', 'appearance', 'license', 'system', 'about'] as const,
+    ['account', 'appearance', 'licensing', 'system', 'about'] as const,
     'account'
   )
 
@@ -251,10 +257,13 @@ export function SettingsSection({
         </button>
         <button
           type="button"
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'license' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          onClick={() => setActiveTab('license')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'licensing' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => {
+            setActiveTab('licensing')
+            licenseActivation.reset()
+          }}
         >
-          {t('settings.tabs.license', 'الترخيص')}
+          {t('settings.tabs.licensing', 'الترخيص')}
         </button>
         <button
           type="button"
@@ -333,9 +342,28 @@ export function SettingsSection({
         </div>
       )}
 
-      {/* License Tab */}
-      {activeTab === 'license' && (
-        <LicenseSettings />
+      {/* Licensing Tab — status display (M5.2) + activation form (M5.1) */}
+      {activeTab === 'licensing' && (
+        <div className="space-y-6">
+          <LicenseSettings />
+          {/* Activation Form — show when no active license, expired, or just activated */}
+          {!licenseStatus.loading && (!licenseStatus.status?.hasLicense || licenseStatus.status?.isExpired || licenseActivation.result != null) && (
+            <ActivationPage
+              activateLabel={t('license.activate', 'تفعيل')}
+              activatingLabel={t('license.activating', 'جارٍ التفعيل...')}
+              description={t('license.description', 'أدخل مفتاح الترخيص لتفعيل النسخة الكاملة من توارتي.')}
+              errorMessage={licenseActivation.error}
+              keyLabel={t('license.keyLabel', 'مفتاح الترخيص')}
+              keyPlaceholder={t('license.keyPlaceholder', 'أدخل مفتاح الترخيص')}
+              successMessage={licenseActivation.result?.message ?? null}
+              title={t('license.title', 'تفعيل الترخيص')}
+              onActivate={async (key) => {
+                await licenseActivation.activateLicense(key)
+                await licenseStatus.refresh()
+              }}
+            />
+          )}
+        </div>
       )}
 
       {/* System Tab */}

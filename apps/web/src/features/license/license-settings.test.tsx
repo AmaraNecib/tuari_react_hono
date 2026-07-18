@@ -45,10 +45,16 @@ function renderWithQuery(ui: React.ReactElement) {
 function createLicenseData(overrides: Partial<LicenseStatusData> = {}): LicenseStatusData {
   return {
     edition: "enterprise",
+    editionLabel: "انتربرايز",
     issuedTo: "Acme Corp",
     email: "admin@acme.dz",
+    customerName: "Acme Corp",
     features: ["multi_user", "lan_server", "encrypted_db"],
     maxUsers: 50,
+    hasLicense: true,
+    isGracePeriod: false,
+    isExpired: false,
+    isLocked: false,
     validFrom: "2026-01-01T00:00:00Z",
     validUntil: "2029-01-01T00:00:00Z",
     licenseType: "subscription",

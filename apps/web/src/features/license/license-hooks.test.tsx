@@ -37,10 +37,16 @@ function mockBrowserRuntime() {
 
 const mockLicenseStatus: LicenseStatusData = {
   edition: "enterprise",
+  editionLabel: "انتربرايز",
   issuedTo: "Acme Corp",
   email: "admin@acme.dz",
+  customerName: "Acme Corp",
   features: ["multi_user", "lan_server", "encrypted_db"],
   maxUsers: 50,
+  hasLicense: true,
+  isGracePeriod: false,
+  isExpired: false,
+  isLocked: false,
   validFrom: "2026-01-01T00:00:00Z",
   validUntil: "2029-01-01T00:00:00Z",
   licenseType: "subscription",
@@ -70,10 +76,16 @@ describe("useLicenseStatus", () => {
 
     expect(result.current.data).toEqual({
       edition: "",
+      editionLabel: "",
       issuedTo: "",
       email: "",
+      customerName: null,
       features: [],
       maxUsers: 0,
+      hasLicense: false,
+      isGracePeriod: false,
+      isExpired: false,
+      isLocked: false,
       validFrom: "",
       validUntil: null,
       licenseType: "",

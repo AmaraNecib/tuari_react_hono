@@ -9,13 +9,19 @@ import { useQuery } from "@tanstack/react-query";
 
 // ─── Public types ───────────────────────────────────────────────
 
-/** Raw license status data returned by the Tauri IPC command. */
+/** Raw license status data returned by the Tauri IPC command (M5.1 + M5.2 fields). */
 export interface LicenseStatusData {
   edition: string
+  editionLabel: string
   issuedTo: string
   email: string
+  customerName: string | null
   features: string[]
   maxUsers: number
+  hasLicense: boolean
+  isGracePeriod: boolean
+  isExpired: boolean
+  isLocked: boolean
   validFrom: string
   validUntil: string | null
   licenseType: string
@@ -31,10 +37,16 @@ export const licenseQueryKey = ["license", "status"] as const;
 
 const DEFAULT_LICENSE: LicenseStatusData = {
   edition: "",
+  editionLabel: "",
   issuedTo: "",
   email: "",
+  customerName: null,
   features: [],
   maxUsers: 0,
+  hasLicense: false,
+  isGracePeriod: false,
+  isExpired: false,
+  isLocked: false,
   validFrom: "",
   validUntil: null,
   licenseType: "",
