@@ -12,6 +12,10 @@ import { Button } from "@/components/ui/button"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { useLicenseStatus } from "./license-hooks"
 
+// ─── Constants ──────────────────────────────────────────────────
+
+const GRACE_PERIOD_DAYS = 30
+
 // ─── Edition display names ──────────────────────────────────────
 
 const EDITION_LABELS: Record<string, { label: string; icon: typeof Crown }> = {
@@ -153,8 +157,8 @@ export function LicenseSettings() {
             </p>
             <p className="mt-1 text-warning-foreground/80">
               {data.status === "grace"
-                ? t("license.graceDescription", "متبقي {{days}} يوم من فترة التجربة.", { days: data.daysRemaining })
-                : t("license.expiredGraceDescription", "متبقي {{days}} يوم من فترة السماح. الرجاء تجديد الترخيص.", { days: Math.max(0, 30 + data.daysRemaining) })
+                ? t("license.graceDescription", "متبقي {{days}} يوم من فترة التجربة.", { days: Math.max(0, data.daysRemaining) })
+                : t("license.expiredGraceDescription", "متبقي {{days}} يوم من فترة السماح. الرجاء تجديد الترخيص.", { days: Math.max(0, GRACE_PERIOD_DAYS + data.daysRemaining) })
               }
             </p>
           </div>
