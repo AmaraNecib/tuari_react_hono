@@ -89,6 +89,13 @@ export type HomeViewCopy = {
     leaveDescription: string
     deleteEmployeeTitle: string
     deleteEmployeeDescription: string
+    settingsAboutTitle: string
+    settingsAboutVersion: string
+    settingsAboutInstallFromFile: string
+    settingsAboutInstallFromFileDescription: string
+    settingsUpdateVerifying: string
+    settingsUpdateSuccess: string
+    settingsAboutTab: string
   }
   validation: {
     name: string
@@ -287,13 +294,20 @@ export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
       settingsChecking: t("shell.settingsChecking"),
       settingsUpToDate: t("shell.settingsUpToDate"),
       settingsUpdateAvailable: t("shell.settingsUpdateAvailable"),
-      settingsUpdateError: t("shell.settingsUpdateError"),
       settingsLastChecked: t("shell.settingsLastChecked"),
       settingsUpdateCached: t("shell.settingsUpdateCached"),
       leaveTitle: t("shell.leaveTitle"),
       leaveDescription: t("shell.leaveDescription"),
       deleteEmployeeTitle: t("shell.deleteEmployeeTitle"),
       deleteEmployeeDescription: t("shell.deleteEmployeeDescription"),
+      settingsAboutTitle: t("shell.settingsAboutTitle"),
+      settingsAboutVersion: t("shell.settingsAboutVersion"),
+      settingsAboutInstallFromFile: t("shell.settingsAboutInstallFromFile"),
+      settingsAboutInstallFromFileDescription: t("shell.settingsAboutInstallFromFileDescription"),
+      settingsUpdateVerifying: t("shell.settingsUpdateVerifying"),
+      settingsUpdateSuccess: t("shell.settingsUpdateSuccess"),
+      settingsUpdateError: t("shell.settingsUpdateError"),
+      settingsAboutTab: t("shell.settingsAboutTab"),
     },
     validation: {
       name: t("auth.validation.name"),

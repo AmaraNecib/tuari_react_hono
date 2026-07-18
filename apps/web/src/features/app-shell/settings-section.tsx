@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,16 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { ActivationPage } from "@/features/license/activation-page"
+import { useLicenseActivation } from "@/features/license/use-license-activation"
+import { useLicenseStatus } from "@/features/license/use-license-status"
+import {
+  getCurrentVersion,
+  pickUpdateFile,
+  applyUpdate,
+  type UpdateApplyResult,
+} from "./update-commands"
+import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { useUpdateCheck } from "./use-update-check"
 
 type SettingsSectionProps = {
@@ -44,6 +54,13 @@ type SettingsSectionProps = {
   settingsUpdateError: string
   settingsLastChecked: string
   settingsUpdateCached: string
+  settingsAboutTitle: string
+  settingsAboutVersion: string
+  settingsAboutInstallFromFile: string
+  settingsAboutInstallFromFileDescription: string
+  settingsUpdateVerifying: string
+  settingsUpdateSuccess: string
+  settingsAboutTab: string
   onSaveAccount: (input: {
     currentPassword?: string
     name?: string
@@ -91,12 +108,19 @@ export function SettingsSection({
   settingsUpdateError,
   settingsLastChecked,
   settingsUpdateCached,
+  settingsAboutTitle,
+  settingsAboutVersion,
+  settingsAboutInstallFromFile,
+  settingsAboutInstallFromFileDescription,
+  settingsUpdateVerifying,
+  settingsUpdateSuccess,
+  settingsAboutTab,
   onSaveAccount,
   onReset,
   onToggleTheme,
 }: SettingsSectionProps) {
   const { t } = useTranslation()
-  const { state: updateState, checkUpdate } = useUpdateCheck()
+  const { state: checkUpdateState, checkUpdate } = useUpdateCheck()
   const [name, setName] = useState(currentName)
   const [phone, setPhone] = useState(currentPhone)
   const [currentPassword, setCurrentPassword] = useState("")
@@ -108,10 +132,44 @@ export function SettingsSection({
     phone?: string
   }>({})
 
+  const [appVersion, setAppVersion] = useState<string | null>(null)
+  const [updateState, setUpdateState] = useState<{
+    status: "idle" | "verifying" | "success" | "error"
+    message: string
+  }>({ status: "idle", message: "" })
+
   useEffect(() => {
     setName(currentName)
     setPhone(currentPhone)
   }, [currentName, currentPhone])
+
+  useEffect(() => {
+    void getCurrentVersion().then(setAppVersion)
+  }, [])
+
+  const handleInstallFromFile = useCallback(async () => {
+    setUpdateState({ status: "idle", message: "" })
+
+    const filePath = await pickUpdateFile()
+    if (!filePath) {
+      return
+    }
+
+    setUpdateState({ status: "verifying", message: "" })
+
+    try {
+      const result: UpdateApplyResult = await applyUpdate(filePath)
+      setUpdateState({
+        status: result.success ? "success" : "error",
+        message: result.message,
+      })
+    } catch {
+      setUpdateState({
+        status: "error",
+        message: t("shell.settingsUpdateError"),
+      })
+    }
+  }, [t])
 
   async function handleSave(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault()
@@ -183,8 +241,11 @@ export function SettingsSection({
     }
   }
 
+  const licenseActivation = useLicenseActivation()
+  const licenseStatus = useLicenseStatus()
+
   const [activeTab, setActiveTab] = useUrlTab(
-    ['account', 'appearance', 'system'] as const,
+    ['account', 'appearance', 'licensing', 'system', 'about'] as const,
     'account'
   )
 
@@ -208,10 +269,27 @@ export function SettingsSection({
         </button>
         <button
           type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'licensing' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => {
+            setActiveTab('licensing')
+            licenseActivation.reset()
+          }}
+        >
+          {t('settings.tabs.licensing', 'الترخيص')}
+        </button>
+        <button
+          type="button"
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'system' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           onClick={() => setActiveTab('system')}
         >
           {t('settings.tabs.system', 'النظام')}
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'about' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveTab('about')}
+        >
+          {settingsAboutTab}
         </button>
       </div>
 
@@ -276,6 +354,85 @@ export function SettingsSection({
         </div>
       )}
 
+      {/* Licensing Tab */}
+      {activeTab === 'licensing' && (
+        <div className="space-y-6">
+          {/* License Status Card */}
+          {licenseStatus.loading ? (
+            <div className="p-5 border border-line rounded-xl">
+              <p className="text-sm text-muted-foreground">
+                {t('license.loading', 'جارٍ التحقق من حالة الترخيص...')}
+              </p>
+            </div>
+          ) : licenseStatus.status ? (
+            <div className="p-5 border border-line rounded-xl">
+              <h3 className="text-lg font-semibold text-foreground">
+                {t('license.currentStatus', 'حالة الترخيص')}
+              </h3>
+              <div className="mt-3 space-y-2 text-sm">
+                {!licenseStatus.status.hasLicense && !licenseStatus.status.isGracePeriod ? (
+                  <div className="rounded-lg bg-destructive/10 p-4 text-destructive text-sm">
+                    {t('license.noLicense', 'لا يوجد ترخيص نشط. يرجى تفعيل الترخيص لاستخدام التطبيق.')}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t('license.edition', 'الإصدار')}</span>
+                      <span className="font-medium">{licenseStatus.status.editionLabel}</span>
+                    </div>
+                    {licenseStatus.status.customerName && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t('license.customer', 'العميل')}</span>
+                        <span className="font-medium">{licenseStatus.status.customerName}</span>
+                      </div>
+                    )}
+                    {licenseStatus.status.daysRemaining >= 0 && licenseStatus.status.daysRemaining < 999999 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t('license.daysRemaining', 'الأيام المتبقية')}</span>
+                        <span className="font-medium">{licenseStatus.status.daysRemaining}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                {licenseStatus.status.isExpired && (
+                  <div className="rounded-lg bg-destructive/10 p-3 text-destructive text-sm">
+                    {t('license.expired', 'انتهت صلاحية الترخيص. يرجى تجديد الترخيص لمواصلة استخدام جميع الميزات.')}
+                  </div>
+                )}
+                {licenseStatus.status.isGracePeriod && (
+                  <div className="rounded-lg bg-warning/10 p-3 text-warning text-sm">
+                    {t('license.gracePeriod', 'أنت الآن في الفترة التجريبية.')} {t('license.remainingDays', 'يتبقى')} {licenseStatus.status.daysRemaining} {t('license.days', 'يوم.')}
+                  </div>
+                )}
+                {licenseStatus.status.isLocked && (
+                  <div className="rounded-lg bg-destructive/10 p-3 text-destructive text-sm">
+                    {t('license.locked', 'تم قفل التطبيق. يرجى تفعيل الترخيص لاستئناف العمل.')}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Activation Form — show when not loading and either: no license, expired, or just activated */}
+          {!licenseStatus.loading && (!licenseStatus.status?.hasLicense || licenseStatus.status?.isExpired || licenseActivation.result != null) && (
+            <ActivationPage
+              activateLabel={t('license.activate', 'تفعيل')}
+              activatingLabel={t('license.activating', 'جارٍ التفعيل...')}
+              description={t('license.description', 'أدخل مفتاح الترخيص لتفعيل النسخة الكاملة من توارتي.')}
+              errorMessage={licenseActivation.error}
+              keyLabel={t('license.keyLabel', 'مفتاح الترخيص')}
+              keyPlaceholder={t('license.keyPlaceholder', 'أدخل مفتاح الترخيص')}
+              successMessage={licenseActivation.result?.message ?? null}
+              title={t('license.title', 'تفعيل الترخيص')}
+              onActivate={async (key) => {
+                await licenseActivation.activateLicense(key)
+                await licenseStatus.refresh()
+              }}
+            />
+          )}
+        </div>
+      )}
+
       {/* System Tab */}
       {activeTab === 'system' && (
         <div className="space-y-4">
@@ -285,35 +442,35 @@ export function SettingsSection({
               <div className="text-start">
                 <h3 className="text-lg font-semibold text-foreground">{settingsCheckForUpdates}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {updateState.status === 'checking' && settingsChecking}
-                  {(updateState.status === 'up-to-date' || updateState.status === 'update-available') && (
+                  {checkUpdateState.status === 'checking' && settingsChecking}
+                  {(checkUpdateState.status === 'up-to-date' || checkUpdateState.status === 'update-available') && (
                     <>
-                      {updateState.status === 'up-to-date' && settingsUpToDate}
-                      {updateState.status === 'update-available' && (
-                        <>{settingsUpdateAvailable} {updateState.latestVersion}</>
+                      {checkUpdateState.status === 'up-to-date' && settingsUpToDate}
+                      {checkUpdateState.status === 'update-available' && (
+                        <>{settingsUpdateAvailable} {checkUpdateState.latestVersion}</>
                       )}
-                      {updateState.offline && (
+                      {checkUpdateState.offline && (
                         <span className="text-xs text-muted-foreground block mt-1">
                           {settingsUpdateCached}
                         </span>
                       )}
                       <br />
                       <span className="text-xs text-muted-foreground">
-                        {settingsLastChecked}: {new Date(updateState.checkedAt).toLocaleString()}
+                        {settingsLastChecked}: {new Date(checkUpdateState.checkedAt).toLocaleString()}
                       </span>
                     </>
                   )}
-                  {updateState.status === 'error' && settingsUpdateError}
-                  {updateState.status === 'idle' && null}
+                  {checkUpdateState.status === 'error' && settingsUpdateError}
+                  {checkUpdateState.status === 'idle' && null}
                 </p>
               </div>
               <Button
-                disabled={updateState.status === 'checking'}
+                disabled={checkUpdateState.status === 'checking'}
                 type="button"
                 variant="outline"
                 onClick={() => void checkUpdate()}
               >
-                {updateState.status === 'checking' ? (
+                {checkUpdateState.status === 'checking' ? (
                   <span className="flex items-center gap-2">
                     <svg
                       className="animate-spin h-4 w-4"
@@ -372,6 +529,92 @@ export function SettingsSection({
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* About Tab */}
+      {activeTab === 'about' && (
+        <div className="space-y-4">
+          <div className="p-5 border border-line rounded-xl">
+            <div className="text-start">
+              <SurfaceHeader
+                description={settingsAboutVersion}
+                title={settingsAboutTitle}
+              />
+              <p className="text-sm font-mono text-foreground mt-2">
+                {appVersion ?? "-"}
+              </p>
+            </div>
+          </div>
+
+          {isDesktopRuntime() ? (
+            <div className="p-5 border border-line rounded-xl">
+              <div className="text-start" dir="rtl">
+                <h3 className="text-lg font-semibold text-foreground">
+                  {settingsAboutInstallFromFile}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {settingsAboutInstallFromFileDescription}
+                </p>
+
+                {updateState.status === "verifying" && (
+                  <div className="mt-4 flex items-center gap-2 text-muted-foreground">
+                    <svg
+                      className="h-4 w-4 animate-spin"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    <span className="text-sm">{settingsUpdateVerifying}</span>
+                  </div>
+                )}
+
+                {updateState.status === "success" && (
+                  <div className="mt-4 rounded-md bg-green-50 dark:bg-green-950 p-3 text-sm text-green-800 dark:text-green-200">
+                    {updateState.message || settingsUpdateSuccess}
+                  </div>
+                )}
+
+                {updateState.status === "error" && (
+                  <div className="mt-4 rounded-md bg-red-50 dark:bg-red-950 p-3 text-sm text-red-800 dark:text-red-200">
+                    {updateState.message || settingsUpdateError}
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-4"
+                  disabled={updateState.status === "verifying"}
+                  onClick={() => void handleInstallFromFile()}
+                >
+                  {settingsAboutInstallFromFile}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-5 border border-line rounded-xl">
+              <div className="text-start" dir="rtl">
+                <p className="text-sm text-muted-foreground">
+                  {t('settings.about.onlyAvailableInDesktop', 'هذه الميزة متاحة فقط في تطبيق سطح المكتب.')}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </RecordPageFrame>

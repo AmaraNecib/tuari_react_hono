@@ -120,7 +120,7 @@ struct DesktopErrorResponse {
 #[tauri::command]
 fn get_runtime_config(_app: AppHandle) -> Result<RuntimeConfig, String> {
     Ok(RuntimeConfig {
-        api_base_url: format!("http://{}:{}", API_HOST, API_PORT),
+        api_base_url: format!("http://{API_HOST}:{API_PORT}"),
     })
 }
 
@@ -259,7 +259,7 @@ fn resolve_api_url(path: &str) -> Result<String, String> {
         return Err("Desktop API bridge path contains invalid newline characters.".to_string());
     }
 
-    Ok(format!("http://{}:{}{}", API_HOST, API_PORT, normalized_path))
+    Ok(format!("http://{API_HOST}:{API_PORT}{normalized_path}"))
 }
 
 fn matches_inventory_attachment_upload_path(path: &str) -> bool {
@@ -518,6 +518,139 @@ async fn desktop_sign_out_session(
     Ok(())
 }
 
+// ─── License Tauri Commands ───────────────────────────────────────
+
+/// Map an edition string to its Arabic label.
+fn edition_label(edition: &str) -> &'static str {
+    match edition {
+        "enterprise" => "انتربرايز",
+        "professional" => "احترافي",
+        _ => "قياسي",
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LicenseInfoResponse {
+    success: bool,
+    edition: String,
+    edition_label: String,
+    customer_name: String,
+    customer_email: String,
+    license_type: String,
+    message: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LicenseStatusResponse {
+    has_license: bool,
+    status: String,
+    edition: String,
+    edition_label: String,
+    customer_name: Option<String>,
+    days_remaining: i64,
+    is_grace_period: bool,
+    is_expired: bool,
+    is_locked: bool,
+}
+
+#[tauri::command]
+fn get_license_status(app: AppHandle) -> Result<LicenseStatusResponse, String> {
+    let tuari_dir = resolve_tuari_dir(&app)?;
+    let manager = crate::license::LicenseManager::initialize(&tuari_dir)
+        .map_err(|e| format!("فشل تحميل حالة الترخيص: {e}"))?;
+
+    let status = manager.status();
+    let has_license = !matches!(
+        status,
+        crate::license::LicenseStatus::Invalid
+            | crate::license::LicenseStatus::Grace
+            | crate::license::LicenseStatus::Locked
+            | crate::license::LicenseStatus::Tampered
+            | crate::license::LicenseStatus::NotYetActive
+    );
+    let edition = manager.edition();
+
+    Ok(LicenseStatusResponse {
+        has_license,
+        status: format!("{:?}", status).to_lowercase(),
+        edition: edition.clone(),
+        edition_label: edition_label(&edition).to_string(),
+        customer_name: manager.customer().map(|c| c.name),
+        days_remaining: manager.days_remaining(),
+        is_grace_period: matches!(status, crate::license::LicenseStatus::Grace),
+        is_expired: matches!(status, crate::license::LicenseStatus::Expired | crate::license::LicenseStatus::ExpiredGrace | crate::license::LicenseStatus::Locked),
+        is_locked: matches!(status, crate::license::LicenseStatus::Locked),
+    })
+}
+
+#[tauri::command]
+fn activate_license(
+    app: AppHandle,
+    key: String,
+) -> Result<LicenseInfoResponse, String> {
+    let tuari_dir = resolve_tuari_dir(&app)?;
+    let manager = crate::license::LicenseManager::initialize(&tuari_dir)
+        .map_err(|e| format!("فشل تحميل مدير الترخيص: {e}"))?;
+
+    let result = manager
+        .activate_from_key(&key, &tuari_dir)
+        .map_err(|e| {
+            let msg = match e {
+                crate::error::RustCoreError::InvalidSignature => {
+                    "مفتاح الترخيص غير صالح أو تم العبث به.".to_string()
+                }
+                crate::error::RustCoreError::InvalidFormat => {
+                    "صيغة مفتاح الترخيص غير صحيحة.".to_string()
+                }
+                crate::error::RustCoreError::InvalidPayload => {
+                    "بيانات الترخيص غير صالحة.".to_string()
+                }
+                crate::error::RustCoreError::LicenseFileNotFound => {
+                    "ملف الترخيص غير موجود.".to_string()
+                }
+                crate::error::RustCoreError::Expired => {
+                    "انتهت صلاحية الترخيص.".to_string()
+                }
+                crate::error::RustCoreError::ClockTampered { .. } => {
+                    "تعذر التحقق من تاريخ النظام.".to_string()
+                }
+                _ => format!("فشل التفعيل: {e}"),
+            };
+            msg
+        })?;
+
+    let (info, replaced) = match result {
+        crate::license::ActivationResult::Activated(info) => (info, false),
+        crate::license::ActivationResult::Replaced(_old, new) => (*new, true),
+    };
+
+    let label = edition_label(&info.edition);
+    let restart_hint = " يرجى إعادة تشغيل التطبيق لتطبيق التغييرات.";
+    let message = if replaced {
+        format!(
+            "تم تحديث الترخيص إلى النسخة {} بنجاح.{}",
+            label, restart_hint
+        )
+    } else {
+        format!(
+            "تم تفعيل النسخة {} بنجاح.{}",
+            label, restart_hint
+        )
+    };
+
+    Ok(LicenseInfoResponse {
+        success: true,
+        edition: info.edition,
+        edition_label: label.to_string(),
+        customer_name: info.issued_to.clone(),
+        customer_email: info.email.clone(),
+        license_type: info.license_type,
+        message,
+    })
+}
+
 // ─── Update Tauri Commands ───────────────────────────────────────
 
 #[derive(Serialize)]
@@ -533,6 +666,11 @@ struct UpdateCheckResult {
 struct UpdateApplyResult {
     success: bool,
     message: String,
+}
+
+#[tauri::command]
+fn get_current_version() -> Result<String, String> {
+    Ok(env!("CARGO_PKG_VERSION").to_string())
 }
 
 #[tauri::command]
@@ -557,9 +695,31 @@ fn check_for_updates() -> Result<UpdateCheckResult, String> {
 
 #[tauri::command]
 fn apply_update(path: String) -> Result<UpdateApplyResult, String> {
+    let file_path = std::path::PathBuf::from(&path);
+
+    // Validate file exists
+    if !file_path.exists() {
+        return Ok(UpdateApplyResult {
+            success: false,
+            message: "الملف غير موجود.".to_string(),
+        });
+    }
+
+    // Validate file extension
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    if ext != "update" {
+        return Ok(UpdateApplyResult {
+            success: false,
+            message: "يرجى اختيار ملف .update صالح.".to_string(),
+        });
+    }
+
     let strategy = crate::update::FullReplaceStrategy::new(&std::path::PathBuf::from("."));
     let result = strategy
-        .apply_update(&std::path::PathBuf::from(&path))
+        .apply_update(&file_path)
         .map_err(|e| e.to_string())?;
     Ok(UpdateApplyResult {
         success: result.success,
@@ -652,7 +812,7 @@ fn resolve_legacy_tuari_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> 
             .path()
             .document_dir()
             .map_err(|error| error.to_string())?;
-        return Ok(Some(document_dir.join("Tuari")));
+        Ok(Some(document_dir.join("Tuari")))
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -674,13 +834,13 @@ fn resolve_secrets_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(resolve_private_runtime_dir(app)?.join("secrets"))
 }
 
-fn to_sqlite_url(path: &PathBuf) -> String {
+fn to_sqlite_url(path: &Path) -> String {
     let normalized = path
         .display()
         .to_string()
         .trim_start_matches(r"\\?\")
         .replace('\\', "/");
-    format!("file:{}", normalized)
+    format!("file:{normalized}")
 }
 
 fn is_valid_secret(secret: &str, byte_len: usize) -> bool {
@@ -853,8 +1013,7 @@ fn cleanup_stale_api_processes() {
     #[cfg(target_os = "windows")]
     {
         let powershell_command = format!(
-      "Get-NetTCPConnection -LocalPort {} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object {{ Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }}",
-      API_PORT
+      "Get-NetTCPConnection -LocalPort {API_PORT} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object {{ Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }}"
     );
 
         let _ = Command::new("powershell")
@@ -892,8 +1051,7 @@ fn is_api_ready() -> bool {
     let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
 
     let request = format!(
-        "GET /health HTTP/1.1\r\nHost: {}:{}\r\nConnection: close\r\n\r\n",
-        API_HOST, API_PORT
+        "GET /health HTTP/1.1\r\nHost: {API_HOST}:{API_PORT}\r\nConnection: close\r\n\r\n"
     );
 
     if stream.write_all(request.as_bytes()).is_err() {
@@ -1014,7 +1172,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .env("BETTER_AUTH_SECRET", runtime_secrets.better_auth_secret)
         .env(
             "BETTER_AUTH_URL",
-            format!("http://{}:{}", API_HOST, API_PORT),
+            format!("http://{API_HOST}:{API_PORT}"),
         )
         .env("AUTH_DB_PATH", auth_db_path.as_os_str())
         .env("APP_DB_PATH", app_db_path.as_os_str())
@@ -1023,9 +1181,14 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(error_log_file));
 
-    // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
+    // Set structured license env vars for the API sidecar per Licensing Architecture §15.5
     if let Ok(tuari_dir) = resolve_tuari_dir(app) {
         if let Ok(manager) = crate::license::LicenseManager::initialize(&tuari_dir) {
+            let env_map = manager.to_env_map();
+            for (key, value) in &env_map {
+                command.env(key, value);
+            }
+            // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
             if manager.has_feature("encrypted_db") {
                 command.env("APP_DB_KEY", runtime_secrets.app_db_key);
             }
@@ -1053,14 +1216,18 @@ pub fn run() {
         .manage(DesktopAuthRuntimeState {
             session: Mutex::new(None),
         })
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_runtime_config,
             desktop_api_request,
             desktop_sign_in_with_phone_number,
             desktop_change_password,
             desktop_sign_out_session,
+            activate_license,
+            get_license_status,
             check_for_updates,
-            apply_update
+            apply_update,
+            get_current_version
         ])
         .setup(|app| {
             let child = spawn_api_process(app.handle())?;
