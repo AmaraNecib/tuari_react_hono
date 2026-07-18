@@ -120,7 +120,7 @@ struct DesktopErrorResponse {
 #[tauri::command]
 fn get_runtime_config(_app: AppHandle) -> Result<RuntimeConfig, String> {
     Ok(RuntimeConfig {
-        api_base_url: format!("http://{}:{}", API_HOST, API_PORT),
+        api_base_url: format!("http://{API_HOST}:{API_PORT}"),
     })
 }
 
@@ -259,7 +259,7 @@ fn resolve_api_url(path: &str) -> Result<String, String> {
         return Err("Desktop API bridge path contains invalid newline characters.".to_string());
     }
 
-    Ok(format!("http://{}:{}{}", API_HOST, API_PORT, normalized_path))
+    Ok(format!("http://{API_HOST}:{API_PORT}{normalized_path}"))
 }
 
 fn matches_inventory_attachment_upload_path(path: &str) -> bool {
@@ -669,6 +669,11 @@ struct UpdateApplyResult {
 }
 
 #[tauri::command]
+fn get_current_version() -> Result<String, String> {
+    Ok(env!("CARGO_PKG_VERSION").to_string())
+}
+
+#[tauri::command]
 fn check_for_updates() -> Result<UpdateCheckResult, String> {
     let provider = crate::update::GithubReleasesProvider::new("AmaraNecib", "tuari_react_hono");
     let info = provider
@@ -690,9 +695,31 @@ fn check_for_updates() -> Result<UpdateCheckResult, String> {
 
 #[tauri::command]
 fn apply_update(path: String) -> Result<UpdateApplyResult, String> {
+    let file_path = std::path::PathBuf::from(&path);
+
+    // Validate file exists
+    if !file_path.exists() {
+        return Ok(UpdateApplyResult {
+            success: false,
+            message: "الملف غير موجود.".to_string(),
+        });
+    }
+
+    // Validate file extension
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    if ext != "update" {
+        return Ok(UpdateApplyResult {
+            success: false,
+            message: "يرجى اختيار ملف .update صالح.".to_string(),
+        });
+    }
+
     let strategy = crate::update::FullReplaceStrategy::new(&std::path::PathBuf::from("."));
     let result = strategy
-        .apply_update(&std::path::PathBuf::from(&path))
+        .apply_update(&file_path)
         .map_err(|e| e.to_string())?;
     Ok(UpdateApplyResult {
         success: result.success,
@@ -785,7 +812,7 @@ fn resolve_legacy_tuari_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> 
             .path()
             .document_dir()
             .map_err(|error| error.to_string())?;
-        return Ok(Some(document_dir.join("Tuari")));
+        Ok(Some(document_dir.join("Tuari")))
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -807,13 +834,13 @@ fn resolve_secrets_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(resolve_private_runtime_dir(app)?.join("secrets"))
 }
 
-fn to_sqlite_url(path: &PathBuf) -> String {
+fn to_sqlite_url(path: &Path) -> String {
     let normalized = path
         .display()
         .to_string()
         .trim_start_matches(r"\\?\")
         .replace('\\', "/");
-    format!("file:{}", normalized)
+    format!("file:{normalized}")
 }
 
 fn is_valid_secret(secret: &str, byte_len: usize) -> bool {
@@ -986,8 +1013,7 @@ fn cleanup_stale_api_processes() {
     #[cfg(target_os = "windows")]
     {
         let powershell_command = format!(
-      "Get-NetTCPConnection -LocalPort {} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object {{ Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }}",
-      API_PORT
+      "Get-NetTCPConnection -LocalPort {API_PORT} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object {{ Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }}"
     );
 
         let _ = Command::new("powershell")
@@ -1025,8 +1051,7 @@ fn is_api_ready() -> bool {
     let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
 
     let request = format!(
-        "GET /health HTTP/1.1\r\nHost: {}:{}\r\nConnection: close\r\n\r\n",
-        API_HOST, API_PORT
+        "GET /health HTTP/1.1\r\nHost: {API_HOST}:{API_PORT}\r\nConnection: close\r\n\r\n"
     );
 
     if stream.write_all(request.as_bytes()).is_err() {
@@ -1147,7 +1172,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .env("BETTER_AUTH_SECRET", runtime_secrets.better_auth_secret)
         .env(
             "BETTER_AUTH_URL",
-            format!("http://{}:{}", API_HOST, API_PORT),
+            format!("http://{API_HOST}:{API_PORT}"),
         )
         .env("AUTH_DB_PATH", auth_db_path.as_os_str())
         .env("APP_DB_PATH", app_db_path.as_os_str())
@@ -1191,6 +1216,7 @@ pub fn run() {
         .manage(DesktopAuthRuntimeState {
             session: Mutex::new(None),
         })
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_runtime_config,
             desktop_api_request,
@@ -1200,7 +1226,8 @@ pub fn run() {
             activate_license,
             get_license_status,
             check_for_updates,
-            apply_update
+            apply_update,
+            get_current_version
         ])
         .setup(|app| {
             let child = spawn_api_process(app.handle())?;

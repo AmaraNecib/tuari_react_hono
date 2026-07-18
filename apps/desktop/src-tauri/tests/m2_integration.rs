@@ -90,9 +90,9 @@ mod update_integration_tests {
         let info = provider.check_for_updates("1.0.0").unwrap();
         assert!(info.is_none());
 
-        // Strategy applies and can roll back
+        // Strategy stub returns failure (not yet implemented)
         let result = strategy.apply_update(&PathBuf::from("/tmp/pkg")).unwrap();
-        assert!(result.success);
+        assert!(!result.success, "stub should return failure to avoid misleading users");
         let rollback = strategy.rollback().unwrap();
         assert!(rollback.success);
     }
