@@ -121,7 +121,7 @@ export function LicenseSettings() {
   const hasLicense = !isDesktopUnavailable && (data.edition?.length ?? 0) > 0
   const showWarning = data.status === "warning" && data.daysRemaining <= 30
   const showGraceBanner = data.status === "expired_grace" || data.status === "grace"
-  const showActivationPrompt = !hasLicense || data.status === "invalid" || data.status === "locked" || data.status === "tampered" || data.status === "not_yet_active"
+  // Activation is handled by M5.1's ActivationPage below LicenseSettings
 
   return (
     <Surface variant="panel" className="p-5 border border-line rounded-xl space-y-5">
@@ -263,22 +263,6 @@ export function LicenseSettings() {
         <p className="text-sm text-muted-foreground">
           {t("license.noFeatures", "لا توجد ميزات إضافية في هذا الإصدار.")}
         </p>
-      )}
-
-      {/* ── Activation prompt ── */}
-      {(showActivationPrompt) && (
-        <div className="p-4 rounded-lg border border-line space-y-3" dir="rtl">
-          <p className="text-sm text-muted-foreground">
-            {t("license.activationPrompt", "ليس لديك ترخيص نشط. يرجى تفعيل الترخيص للوصول إلى جميع الميزات.")}
-          </p>
-          <Button disabled>
-            <KeyRound className="h-4 w-4 ml-2" />
-            {t("license.activateButton", "تفعيل الترخيص")}
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            {t("license.activateDisabled", "سيتم تفعيل خاصية التفعيل في التحديث القادم")}
-          </p>
-        </div>
       )}
 
       {/* ── Upgrade CTA (only for non-valid states) ── */}

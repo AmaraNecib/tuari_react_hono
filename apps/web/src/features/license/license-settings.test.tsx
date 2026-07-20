@@ -159,18 +159,18 @@ describe("LicenseSettings", () => {
     expect(screen.queryByText("مدى الحياة")).toBeTruthy();
   });
 
-  it("shows activation prompt when no valid license", () => {
+  it("shows no license info for invalid state (activation handled by M5.1)", () => {
     mockUseLicenseStatus.mockReturnValue({
       isLoading: false,
       isError: false,
-      data: createLicenseData({ status: "invalid", issuedTo: "" }),
+      data: createLicenseData({ status: "invalid", issuedTo: "", edition: "" }),
     });
 
     renderWithQuery(<LicenseSettings />);
 
-    expect(screen.queryByText("ليس لديك ترخيص نشط. يرجى تفعيل الترخيص للوصول إلى جميع الميزات.")).toBeTruthy();
-    expect(screen.queryByText("تفعيل الترخيص")).toBeTruthy();
-    expect(screen.queryByText("سيتم تفعيل خاصية التفعيل في التحديث القادم")).toBeTruthy();
+    expect(screen.queryByText("غير صالح")).toBeTruthy();
+    // Info cards should not render for invalid state (no edition)
+    expect(screen.queryByText("الإصدار")).toBeNull();
   });
 
   it("shows upgrade CTA for locked state", () => {
@@ -214,7 +214,7 @@ describe("LicenseSettings", () => {
     expect(screen.queryByText("lan_server")).toBeTruthy();
   });
 
-  it("shows tampered state with activation prompt and specialized upgrade text", () => {
+  it("shows tampered state with specialized upgrade text", () => {
     mockUseLicenseStatus.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -225,10 +225,9 @@ describe("LicenseSettings", () => {
 
     expect(screen.queryByText("تم العبث بالساعة")).toBeTruthy();
     expect(screen.queryByText("تم الكشف عن عبث في الساعة. يرجى التواصل مع الدعم الفني.")).toBeTruthy();
-    expect(screen.queryByText("تفعيل الترخيص")).toBeTruthy();
   });
 
-  it("shows not_yet_active state with activation prompt", () => {
+  it("shows not_yet_active state with correct status label", () => {
     mockUseLicenseStatus.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -238,7 +237,6 @@ describe("LicenseSettings", () => {
     renderWithQuery(<LicenseSettings />);
 
     expect(screen.queryByText("غير مفعل بعد")).toBeTruthy();
-    expect(screen.queryByText("تفعيل الترخيص")).toBeTruthy();
   });
 
   it("shows empty features message when features list is empty", () => {
