@@ -251,6 +251,7 @@ export function HomeViewPageSectionContent({
           settingsUpToDate={copy.shell.settingsUpToDate}
           settingsUpdateAvailable={copy.shell.settingsUpdateAvailable}
           settingsUpdateError={copy.shell.settingsUpdateError}
+          settingsApplyError={copy.shell.settingsApplyError}
           settingsLastChecked={copy.shell.settingsLastChecked}
           settingsUpdateCached={copy.shell.settingsUpdateCached}
           settingsAboutTitle={copy.shell.settingsAboutTitle}

@@ -83,6 +83,7 @@ export type HomeViewCopy = {
     settingsUpToDate: string
     settingsUpdateAvailable: string
     settingsUpdateError: string
+    settingsApplyError: string
     settingsLastChecked: string
     settingsUpdateCached: string
     leaveTitle: string
@@ -296,6 +297,7 @@ export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
       settingsUpdateAvailable: t("shell.settingsUpdateAvailable"),
       settingsLastChecked: t("shell.settingsLastChecked"),
       settingsUpdateCached: t("shell.settingsUpdateCached"),
+      settingsApplyError: t("shell.settingsApplyError"),
       leaveTitle: t("shell.leaveTitle"),
       leaveDescription: t("shell.leaveDescription"),
       deleteEmployeeTitle: t("shell.deleteEmployeeTitle"),

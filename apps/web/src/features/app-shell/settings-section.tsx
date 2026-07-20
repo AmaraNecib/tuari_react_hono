@@ -52,6 +52,7 @@ type SettingsSectionProps = {
   settingsUpToDate: string
   settingsUpdateAvailable: string
   settingsUpdateError: string
+  settingsApplyError: string
   settingsLastChecked: string
   settingsUpdateCached: string
   settingsAboutTitle: string
@@ -106,6 +107,7 @@ export function SettingsSection({
   settingsUpToDate,
   settingsUpdateAvailable,
   settingsUpdateError,
+  settingsApplyError,
   settingsLastChecked,
   settingsUpdateCached,
   settingsAboutTitle,
@@ -166,7 +168,7 @@ export function SettingsSection({
     } catch {
       setUpdateState({
         status: "error",
-        message: t("shell.settingsUpdateError"),
+        message: settingsApplyError,
       })
     }
   }, [t])
