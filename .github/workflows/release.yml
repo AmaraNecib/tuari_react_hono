@@ -226,22 +226,24 @@ jobs:
       # ── Smoke test ─────────────────────────────────────────
 
       - name: Smoke test release artifacts
+        shell: pwsh
         run: |
-          # Use the matching public key: production key if the signing secret was set, otherwise dev key
-          $pubKey = "${{ secrets.UPDATE_PUBLIC_KEY }}"
-          if (-not $pubKey) {
-            $pubKeyArg = "--public-key scripts/dev-update-keys/dev-update-public-key.pem"
+          # Always write the public key to a temp file so we can pass it as a separate argument
+          $pubKeyContent = "${{ secrets.UPDATE_PUBLIC_KEY }}"
+          $pubKeyFile = Join-Path $env:RUNNER_TEMP "update-public-key.pem"
+          if (-not $pubKeyContent) {
+            # Fall back to dev public key
+            Get-Content "scripts/dev-update-keys/dev-update-public-key.pem" | Out-File -FilePath $pubKeyFile -Encoding ascii -NoNewline
+            Write-Host "Using dev public key for smoke test"
           } else {
-            $pubKeyFile = Join-Path $env:RUNNER_TEMP "update-public-key.pem"
-            $pubKey | Out-File -FilePath $pubKeyFile -Encoding ascii -NoNewline
-            $pubKeyArg = "--public-key `"$pubKeyFile`""
+            $pubKeyContent | Out-File -FilePath $pubKeyFile -Encoding ascii -NoNewline
+            Write-Host "Using production public key from GitHub Secret"
           }
           node scripts/verify-release-assets.mjs `
             --artifacts "${{ steps.manifest.outputs.artifacts_dir }}" `
-            $pubKeyArg `
+            --public-key "$pubKeyFile" `
             --version "${{ steps.manifest.outputs.version }}" `
             --channel stable
-        shell: pwsh
 
       # ── List staged artifacts ────────────────────────────
 
