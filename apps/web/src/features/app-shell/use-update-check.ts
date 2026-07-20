@@ -67,9 +67,15 @@ export function useUpdateCheck() {
     try {
       const { invoke } = await import("@tauri-apps/api/core")
       const result = await invoke<UpdateCheckResult>("check_for_updates")
+      const { invoke } = await import("@tauri-apps/api/core")
+      const result = await invoke<UpdateCheckResult>("check_for_updates")
 
-      // Validate before caching to prevent corrupting a valid cache entry
-      if (result.updateAvailable && typeof result.latestVersion === 'string' && result.latestVersion) {
+      // Validate IPC result fields before caching or updating state
+      if (result.updateAvailable) {
+        if (typeof result.latestVersion !== 'string' || !result.latestVersion) {
+          setState({ status: "error", message: "Invalid update response from server" })
+          return
+        }
         cacheResult(result)
         setState({
           status: "update-available",
@@ -78,8 +84,7 @@ export function useUpdateCheck() {
           checkedAt: new Date().toISOString(),
         })
       } else {
-        // Cache the 'up-to-date' result (only when IPC response is valid)
-        cacheResult({ updateAvailable: false, latestVersion: '', downloadUrl: '' })
+        cacheResult(result)
         setState({ status: "up-to-date", checkedAt: new Date().toISOString() })
       }
     } catch (error) {
