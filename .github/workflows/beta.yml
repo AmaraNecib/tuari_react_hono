@@ -178,6 +178,20 @@ jobs:
           New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
           Copy-Item -Path $signedOutput -Destination $artifactsDir
 
+          # Also stage the portable zip and installer for the smoke test
+          $portableZip = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "*.zip" | Select-Object -First 1
+          if ($portableZip) {
+            $portableName = "tuari-$version-beta-portable.zip"
+            Copy-Item -Path $portableZip.FullName -Destination (Join-Path $artifactsDir $portableName)
+            Write-Host "Staged portable zip: $portableName"
+          }
+          $installer = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
+          if ($installer) {
+            $installerName = "tuari-$version-beta-setup.exe"
+            Copy-Item -Path $installer.FullName -Destination (Join-Path $artifactsDir $installerName)
+            Write-Host "Staged installer: $installerName"
+          }
+
           # Create updates.json with the actual signature
           $updates = @{
             version = $version
@@ -220,30 +234,13 @@ jobs:
             --channel beta
         shell: pwsh
 
-      # ── Collect all artifacts ────────────────────────────
+      # ── List staged artifacts ────────────────────────────
 
-      - name: Stage beta artifacts
+      - name: List beta artifacts
         shell: pwsh
         run: |
-          $version = "${{ steps.manifest.outputs.version }}"
-          $artifactsDir = "${{ steps.manifest.outputs.artifacts_dir }}"
-
-          # Copy installer
-          $installer = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
-          if ($installer) {
-            $installerName = "tuari-$version-beta-setup.exe"
-            Copy-Item -Path $installer.FullName -Destination (Join-Path $artifactsDir $installerName)
-          }
-
-          # Copy portable zip
-          $portableZip = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "*.zip" | Select-Object -First 1
-          if ($portableZip) {
-            $portableName = "tuari-$version-beta-portable.zip"
-            Copy-Item -Path $portableZip.FullName -Destination (Join-Path $artifactsDir $portableName)
-          }
-
-          Write-Host "Artifacts ready in: $artifactsDir"
-          Get-ChildItem -Path $artifactsDir | ForEach-Object { Write-Host "  - $($_.Name)" }
+          Write-Host "Artifacts ready for upload from: ${{ steps.manifest.outputs.artifacts_dir }}"
+          Get-ChildItem -Path "${{ steps.manifest.outputs.artifacts_dir }}" | ForEach-Object { Write-Host "  - $($_.Name)" }
 
       # ── Upload to Beta Release ────────────────────────────
 
