@@ -196,7 +196,7 @@ jobs:
           $updates = @{
             version = $version
             channel = "beta"
-            pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+            pub_date = ((Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"))
             platforms = @{
               "windows-x86_64" = @{
                 url = "https://github.com/${{ github.repository }}/releases/download/beta/tuari-$version-beta.update"
@@ -262,7 +262,7 @@ jobs:
             --title "$releaseName" `
             --notes "Beta release $version" `
             --prerelease `
-            --latest=$false `
+            '--latest' 'false' `
             --repo "${{ github.repository }}" `
             $(Get-ChildItem -Path $artifactsDir | ForEach-Object { "`"$($_.FullName)`"" })
 
