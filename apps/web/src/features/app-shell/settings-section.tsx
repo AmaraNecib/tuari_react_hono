@@ -9,7 +9,9 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { useQueryClient } from "@tanstack/react-query"
 import { LicenseSettings } from "@/features/license/license-settings"
+import { licenseQueryKey } from "@/features/license/license-hooks"
 import { ActivationPage } from "@/features/license/activation-page"
 import { useLicenseActivation } from "@/features/license/use-license-activation"
 import { useLicenseStatus } from "@/features/license/use-license-status"
@@ -229,6 +231,7 @@ export function SettingsSection({
     }
   }
 
+  const queryClient = useQueryClient()
   const licenseActivation = useLicenseActivation()
   const licenseStatus = useLicenseStatus()
 
@@ -360,6 +363,7 @@ export function SettingsSection({
               onActivate={async (key) => {
                 await licenseActivation.activateLicense(key)
                 await licenseStatus.refresh()
+                await queryClient.invalidateQueries({ queryKey: licenseQueryKey })
               }}
             />
           )}

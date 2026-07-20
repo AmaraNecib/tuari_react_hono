@@ -182,7 +182,7 @@ describe("LicenseSettings", () => {
 
     renderWithQuery(<LicenseSettings />);
 
-    expect(screen.queryByText(/يرجى التواصل مع فريق الدعم/)).toBeTruthy();
+    expect(screen.queryByText("انتهت صلاحية الترخيص. يرجى تجديد الترخيص لاستئناف العمل.")).toBeTruthy();
   });
 
   it("shows license info for personal use", () => {

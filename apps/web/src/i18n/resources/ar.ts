@@ -939,6 +939,7 @@ export const ar = {
       activationPrompt: "ليس لديك ترخيص نشط. يرجى تفعيل الترخيص للوصول إلى جميع الميزات.",
       activateButton: "تفعيل الترخيص",
       activateDisabled: "سيتم تفعيل خاصية التفعيل في التحديث القادم",
+      renewalPrompt: "انتهت صلاحية الترخيص. يرجى تجديد الترخيص لاستئناف العمل.",
       upgradePrompt: "لترقية الإصدار أو تجديد الترخيص، يرجى التواصل مع فريق الدعم.",
       upgradeToProfessional: "ترقية إلى Professional للاستفادة من الميزات المتقدمة.",
       upgradeToEnterprise: "ترقية إلى Enterprise للحصول على جميع الميزات.",
