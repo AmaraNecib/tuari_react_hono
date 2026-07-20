@@ -71,7 +71,7 @@ export function useUpdateCheck() {
       // Validate IPC result fields before caching or updating state
       if (result.updateAvailable) {
         if (typeof result.latestVersion !== 'string' || !result.latestVersion) {
-          setState({ status: "error", message: "Invalid update response from server" })
+          setState({ status: "error", message: "" })
           return
         }
         cacheResult(result)

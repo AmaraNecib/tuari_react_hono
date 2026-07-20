@@ -171,7 +171,7 @@ export function SettingsSection({
         message: settingsApplyError,
       })
     }
-  }, [t])
+  }, [settingsApplyError])
 
   async function handleSave(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault()
