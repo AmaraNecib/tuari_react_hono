@@ -112,13 +112,13 @@ async function verifyPortableZip(artifactsDir) {
       throw new Error(`Cannot extract zip: PowerShell Expand-Archive exited with code ${extractResult.status}. ${extractResult.stderr}`);
     }
   } else {
-    // On Unix, use tar
-    const extractResult = spawnSync('tar', ['-xf', zipFile, '-C', tmpDir], {
+    // On Unix, use unzip (GNU tar does not understand ZIP format)
+    const extractResult = spawnSync('unzip', ['-o', zipFile, '-d', tmpDir], {
       encoding: 'utf8',
     });
     extractOk = extractResult.status === 0;
     if (!extractOk) {
-      throw new Error(`Cannot extract zip: tar exited with code ${extractResult.status}. ${extractResult.stderr}`);
+      throw new Error(`Cannot extract zip: unzip exited with code ${extractResult.status}. ${extractResult.stderr}`);
     }
   }
 

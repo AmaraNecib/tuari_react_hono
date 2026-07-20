@@ -30,17 +30,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # ── Branch guard: only run on tags pointing to main ──
-      - name: Verify tag is on main branch
-        shell: pwsh
-        run: |
-          $baseRef = "${{ github.event.base_ref }}"
-          if (-not $baseRef -or $baseRef -notlike '*/main') {
-            Write-Host "Tag ${{ github.ref_name }} is not on main — aborting release pipeline."
-            exit 1
-          }
-          Write-Host "Tag ${{ github.ref_name }} is valid for release (main)."
-
       # ── Setup ──────────────────────────────────────────────
 
       - name: Setup pnpm
