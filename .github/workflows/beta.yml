@@ -121,17 +121,8 @@ jobs:
           $hash = (Get-FileHash -Path $portableZipPath -Algorithm SHA256).Hash.ToLower()
           $size = (Get-Item $portableZipPath).Length
 
-          # Determine signing key: use GitHub Secret if set, otherwise fall back to dev key
-          $privateKey = $env:UPDATE_SIGNING_KEY
-          if (-not $privateKey) {
-            $privateKeyPath = Resolve-Path "scripts/dev-update-keys/dev-update-private-key.pem"
-            Write-Host "Using dev signing key from $privateKeyPath"
-            $privateKey = Get-Content $privateKeyPath -Raw
-          } else {
-            Write-Host "Using signing key from GitHub Secret"
-          }
+          # Read signing key from key-generation step
           $keyFile = Join-Path $env:RUNNER_TEMP "signing-key.pem"
-          $privateKey | Out-File -FilePath $keyFile -Encoding ascii -NoNewline
 
           # Create manifest.json
           $manifest = @{
@@ -220,16 +211,8 @@ jobs:
       - name: Smoke test beta artifacts
         shell: pwsh
         run: |
-          # Always write the public key to a temp file so we can pass it as a separate argument
-          $pubKeyContent = "${{ secrets.UPDATE_PUBLIC_KEY }}"
-          $pubKeyFile = Join-Path $env:RUNNER_TEMP "update-public-key.pem"
-          if (-not $pubKeyContent) {
-            Get-Content "scripts/dev-update-keys/dev-update-public-key.pem" | Out-File -FilePath $pubKeyFile -Encoding ascii -NoNewline
-            Write-Host "Using dev public key for smoke test"
-          } else {
-            $pubKeyContent | Out-File -FilePath $pubKeyFile -Encoding ascii -NoNewline
-            Write-Host "Using production public key from GitHub Secret"
-          }
+          # Use the matching verification key from the key-generation step
+          $pubKeyFile = Join-Path $env:RUNNER_TEMP "verification-key.pem"
           node scripts/verify-release-assets.mjs `
             --artifacts "${{ steps.manifest.outputs.artifacts_dir }}" `
             --public-key "$pubKeyFile" `
