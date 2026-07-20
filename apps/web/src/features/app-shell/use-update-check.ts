@@ -67,8 +67,6 @@ export function useUpdateCheck() {
     try {
       const { invoke } = await import("@tauri-apps/api/core")
       const result = await invoke<UpdateCheckResult>("check_for_updates")
-      const { invoke } = await import("@tauri-apps/api/core")
-      const result = await invoke<UpdateCheckResult>("check_for_updates")
 
       // Validate IPC result fields before caching or updating state
       if (result.updateAvailable) {
