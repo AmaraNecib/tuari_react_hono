@@ -302,7 +302,7 @@ The project uses a **two-layer review system**:
 **Layer 1: Pre-Push Self-Review** (`code-review` skill, step 5.5)
 - Runs locally before pushing
 - Uses the `code-review` skill with parallel Standards + Spec sub-agents
-- Can use a different model (e.g., `opencode-go/mimo-2.5`) via `.diwan/models.yml`
+- Can use a different model (e.g., `opencode-go/mimo-2.5`)
 - Catches spec drift, smell violations, missing tests, standard breaches
 - Runs on Windows, no WSL required
 
