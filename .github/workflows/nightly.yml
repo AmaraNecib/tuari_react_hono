@@ -88,6 +88,26 @@ jobs:
           }
           Write-Host "PASSED: No forbidden imports found"
 
+      # ── Compute pre-release version and patch config ────
+
+      - name: Compute nightly version and patch tauri.conf.json
+        id: version
+        shell: pwsh
+        run: |
+          $tauriConfig = Get-Content "apps/desktop/src-tauri/tauri.conf.json" | ConvertFrom-Json
+          $baseVersion = $tauriConfig.version
+          $buildNumber = $env:GITHUB_RUN_NUMBER
+          $nightlyVersion = "$baseVersion-nightly.$buildNumber"
+          Write-Host "Nightly version: $nightlyVersion"
+
+          # Patch tauri.conf.json
+          $tauriConfig.version = $nightlyVersion
+          $tauriConfig | ConvertTo-Json -Depth 10 | Out-File -FilePath "apps/desktop/src-tauri/tauri.conf.json" -Encoding utf8
+          Write-Host "Patched tauri.conf.json version to $nightlyVersion"
+
+          # Set output for later steps
+          echo "version=$nightlyVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       # ── Build ──────────────────────────────────────────────
 
       - name: Build desktop app (web + sidecar + Tauri)
@@ -139,12 +159,8 @@ jobs:
         id: manifest
         shell: pwsh
         run: |
-          # Read project version from tauri.conf.json (single source of truth)
-          $tauriConfig = Get-Content "apps/desktop/src-tauri/tauri.conf.json" | ConvertFrom-Json
-          $baseVersion = $tauriConfig.version
-          $buildNumber = $env:GITHUB_RUN_NUMBER
-          $version = "$baseVersion-nightly.$buildNumber"
-          Write-Host "Nightly version: $version"
+          $version = "${{ steps.version.outputs.version }}"
+          Write-Host "Nightly version from patched config: $version"
 
           # Paths to artifacts
           $portableZip = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "*.zip" | Select-Object -First 1

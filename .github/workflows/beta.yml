@@ -90,6 +90,26 @@ jobs:
           }
           Write-Host "PASSED: No forbidden imports found"
 
+      # ── Patch tauri.conf.json with beta version ────────
+
+      - name: Patch tauri.conf.json with beta version
+        id: version
+        shell: pwsh
+        env:
+          BETA_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          $betaVersion = $env:BETA_VERSION
+          Write-Host "Beta version: $betaVersion"
+
+          # Patch tauri.conf.json
+          $tauriConfig = Get-Content "apps/desktop/src-tauri/tauri.conf.json" | ConvertFrom-Json
+          $tauriConfig.version = $betaVersion
+          $tauriConfig | ConvertTo-Json -Depth 10 | Out-File -FilePath "apps/desktop/src-tauri/tauri.conf.json" -Encoding utf8
+          Write-Host "Patched tauri.conf.json version to $betaVersion"
+
+          # Set output for later steps
+          echo "version=$betaVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       # ── Build ──────────────────────────────────────────────
 
       - name: Build desktop app (web + sidecar + Tauri)
@@ -140,10 +160,8 @@ jobs:
       - name: Compute checksum and create update manifest
         id: manifest
         shell: pwsh
-        env:
-          BETA_VERSION: ${{ github.event.inputs.version }}
         run: |
-          $version = $env:BETA_VERSION
+          $version = "${{ steps.version.outputs.version }}"
           Write-Host "Beta version: $version"
 
           # Paths to artifacts
