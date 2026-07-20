@@ -140,8 +140,10 @@ jobs:
       - name: Compute checksum and create update manifest
         id: manifest
         shell: pwsh
+        env:
+          BETA_VERSION: ${{ github.event.inputs.version }}
         run: |
-          $version = "${{ github.event.inputs.version }}"
+          $version = $env:BETA_VERSION
           Write-Host "Beta version: $version"
 
           # Paths to artifacts

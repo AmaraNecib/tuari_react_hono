@@ -36,7 +36,8 @@ jobs:
         shell: pwsh
         run: |
           git fetch origin main
-          if (-not (git merge-base --is-ancestor HEAD origin/main 2>$null)) {
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) {
             Write-Host "Tag ${{ github.ref_name }} is not an ancestor of main — aborting release."
             exit 1
           }
