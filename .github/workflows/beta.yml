@@ -151,13 +151,22 @@ jobs:
           $manifestPath = Join-Path $env:RUNNER_TEMP "manifest.json"
           $manifest | Out-File -FilePath $manifestPath -Encoding utf8
 
+          # Determine key ID: use secret if set, otherwise dev key
+          $keyId = $env:UPDATE_KEY_ID
+          if (-not $keyId) {
+            $keyId = "dev-key-v1"
+            Write-Host "Using key ID: $keyId (dev)"
+          } else {
+            Write-Host "Using key ID: $keyId (from secret)"
+          }
+
           # Sign
           $signedOutput = Join-Path $env:RUNNER_TEMP "tuari-$version-beta.update"
           & node scripts/sign-update.mjs `
             --private-key "$keyFile" `
             --manifest "$manifestPath" `
             --output "$signedOutput" `
-            --key-id "dev-key-v1"
+            --key-id "$keyId"
 
           # Read the signed content to extract the signature
           $signedContent = Get-Content $signedOutput -Raw
@@ -190,6 +199,7 @@ jobs:
           echo "signature=$signaturePart" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_KEY_ID: ${{ secrets.UPDATE_KEY_ID }}
 
       # ── Smoke test ─────────────────────────────────────────
 

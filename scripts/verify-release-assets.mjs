@@ -181,6 +181,36 @@ async function verifyUpdatePackage(artifactsDir) {
     throw new Error(`Invalid signature length: ${signatureBytes.length} bytes (expected 64)`);
   }
 
+  // Parse the manifest to validate version and channel metadata
+  const manifestStr = canonicalBytes.toString('utf8');
+  let manifestObj;
+  try {
+    manifestObj = JSON.parse(manifestStr);
+  } catch {
+    throw new Error('Cannot parse manifest JSON');
+  }
+
+  // Validate version if provided
+  if (version) {
+    const manifestVersion = manifestObj.version;
+    if (!manifestVersion) {
+      throw new Error('Manifest has no version field');
+    }
+    if (manifestVersion !== version) {
+      throw new Error(`Version mismatch: expected "${version}", manifest has "${manifestVersion}"`);
+    }
+    console.log(`  Manifest version matches: ${manifestVersion}`);
+  }
+
+  // Validate channel if provided
+  if (channel) {
+    // Channel isn't embedded in the manifest, but we can verify the filename
+    if (!basename(updateFile).toLowerCase().includes(channel.toLowerCase())) {
+      throw new Error(`Channel mismatch: expected "${channel}" in filename, got "${basename(updateFile)}"`);
+    }
+    console.log(`  Channel confirmed: ${channel}`);
+  }
+
   // Find or use provided public key
   let pubKeyPath = publicKeyPath;
   if (!pubKeyPath) {
