@@ -271,13 +271,15 @@ export function LicenseSettings() {
         <p className="text-sm">
           {data.status === "tampered"
             ? t("license.tamperedUpgrade", "تم الكشف عن عبث في الساعة. يرجى التواصل مع الدعم الفني.")
-            : data.status === "expired" || data.status === "expired_grace" || data.status === "locked"
-              ? t("license.renewalPrompt", "انتهت صلاحية الترخيص. يرجى تجديد الترخيص لاستئناف العمل.")
-              : data.edition === "standard"
-                ? t("license.upgradeToProfessional", "ترقية إلى Professional للاستفادة من الميزات المتقدمة.")
-                : data.edition === "professional"
-                  ? t("license.upgradeToEnterprise", "ترقية إلى Enterprise للحصول على جميع الميزات.")
-                  : t("license.upgradePrompt", "لترقية الإصدار أو تجديد الترخيص، يرجى التواصل مع فريق الدعم.")}
+            : data.status === "not_yet_active"
+              ? t("license.notYetActiveUpgrade", "الترخيص غير مفعل بعد. تاريخ البدء: {{date}}.", { date: formatDate(data.validFrom) })
+              : data.status === "expired" || data.status === "expired_grace" || data.status === "locked"
+                ? t("license.renewalPrompt", "انتهت صلاحية الترخيص. يرجى تجديد الترخيص لاستئناف العمل.")
+                : data.edition === "standard"
+                  ? t("license.upgradeToProfessional", "ترقية إلى Professional للاستفادة من الميزات المتقدمة.")
+                  : data.edition === "professional"
+                    ? t("license.upgradeToEnterprise", "ترقية إلى Enterprise للحصول على جميع الميزات.")
+                    : t("license.upgradePrompt", "لترقية الإصدار أو تجديد الترخيص، يرجى التواصل مع فريق الدعم.")}
         </p>
         <p className="text-sm text-muted-foreground">
           {t("license.contactInfo", "البريد الإلكتروني: support@tuari.app")}
