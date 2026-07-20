@@ -380,6 +380,14 @@ impl LicenseManager {
             .unwrap_or(0)
     }
 
+    /// Full license information, if a license is active.
+    pub fn license_info(&self) -> Option<LicenseInfo> {
+        self.license
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+    }
+
     /// Customer information.
     pub fn customer(&self) -> Option<CustomerInfo> {
         self.license.lock().ok().and_then(|guard| {

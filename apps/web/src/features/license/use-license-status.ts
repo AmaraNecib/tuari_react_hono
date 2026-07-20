@@ -1,11 +1,19 @@
 import { useEffect, useState, useCallback } from "react"
 
+/** Combined response from the Rust get_license_status command (M5.1 + M5.2 fields). */
 export type LicenseStatus = {
   hasLicense: boolean
   status: string
   edition: string
   editionLabel: string
+  issuedTo: string
+  email: string
   customerName: string | null
+  features: string[]
+  maxUsers: number
+  validFrom: string
+  validUntil: string | null
+  licenseType: string
   daysRemaining: number
   isGracePeriod: boolean
   isExpired: boolean
