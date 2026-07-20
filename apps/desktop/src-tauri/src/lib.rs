@@ -1281,7 +1281,6 @@ pub fn run() {
             get_license_status,
             check_for_updates,
             apply_update,
-            get_license_status,
             get_current_version
         ])
         .setup(|app| {
