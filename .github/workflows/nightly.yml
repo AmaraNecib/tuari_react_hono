@@ -264,7 +264,7 @@ jobs:
             --title "$releaseName" `
             --notes "Nightly build from $version" `
             --prerelease `
-            '--latest' 'false' `
+            '--no-latest' `
             --repo "${{ github.repository }}" `
             $(Get-ChildItem -Path $artifactsDir | ForEach-Object { "`"$($_.FullName)`"" })
 

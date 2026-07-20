@@ -262,7 +262,7 @@ jobs:
             --title "$releaseName" `
             --notes "Beta release $version" `
             --prerelease `
-            '--latest' 'false' `
+            '--no-latest' `
             --repo "${{ github.repository }}" `
             $(Get-ChildItem -Path $artifactsDir | ForEach-Object { "`"$($_.FullName)`"" })
 
