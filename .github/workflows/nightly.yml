@@ -281,8 +281,8 @@ jobs:
           $tag = "nightly"
           $releaseName = "Tuari Nightly ($version)"
 
-          # Delete previous nightly release if it exists
-          gh release delete $tag --yes --repo "${{ github.repository }}" 2>$null
+          # Delete previous nightly release if it exists (ignore 'not found' errors)
+          gh release delete $tag --yes --repo "${{ github.repository }}" 2>&1 | Where-Object { $_ -notlike '*not found*' }
 
           # Create a new nightly release
           gh release create $tag `

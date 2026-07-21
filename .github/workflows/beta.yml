@@ -13,7 +13,7 @@ on:
         type: string
 
 concurrency:
-  group: beta-${{ github.event.inputs.version }}
+  group: beta-release
   cancel-in-progress: true
 
 env:
@@ -291,8 +291,8 @@ jobs:
           $tag = "beta"
           $releaseName = "Tuari Beta ($version)"
 
-          # Delete previous beta release if it exists
-          gh release delete $tag --yes --repo "${{ github.repository }}" 2>$null
+          # Delete previous beta release if it exists (ignore 'not found' errors)
+          gh release delete $tag --yes --repo "${{ github.repository }}" 2>&1 | Where-Object { $_ -notlike '*not found*' }
 
           # Create a new beta release
           gh release create $tag `
