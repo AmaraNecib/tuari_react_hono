@@ -196,14 +196,9 @@ jobs:
           $manifestPath = Join-Path $env:RUNNER_TEMP "manifest.json"
           $manifest | Out-File -FilePath $manifestPath -Encoding utf8
 
-          # Determine key ID: use secret if set, otherwise dev key
-          $keyId = $env:UPDATE_KEY_ID
-          if (-not $keyId) {
-            $keyId = "dev-key-v1"
-            Write-Host "Using key ID: $keyId (dev)"
-          } else {
-            Write-Host "Using key ID: $keyId (from secret)"
-          }
+          # Use key ID from the key-generation step (always matches the signing key)
+          $keyId = "${{ steps.keys.outputs.key_id }}"
+          Write-Host "Using key ID: $keyId"
 
           # Sign
           $signedOutput = Join-Path $env:RUNNER_TEMP "tuari-$version-beta.update"
