@@ -284,3 +284,75 @@ An issue is complete when:
 - [ ] Code has been reviewed and approved
 - [ ] Feature branch has been merged into `develop`
 - [ ] All acceptance criteria pass
+
+---
+
+## 12. CI/CD Pipeline
+
+### 12.1 Workflows
+
+| Workflow | Trigger | Environment | Artifacts |
+|----------|---------|-------------|-----------|
+| **Release** | Tag push `v*.*.*` on `main` | `stable` (2 approvals) | Installer, portable zip, update package, updates.json |
+| **Nightly** | Daily at midnight UTC + `workflow_dispatch` | `nightly` (no approval) | Same as release, published to nightly channel |
+| **Beta** | `workflow_dispatch` with `version` input | `beta` (1 approval) | Same as release, published to beta channel |
+
+### 12.2 Build Pipeline
+
+All three workflows share the same build steps:
+
+1. **Setup:** Checkout, pnpm + Node.js 22, Rust toolchain, caches
+2. **Dependencies:** `pnpm install --frozen-lockfile` + `pnpm --filter @tuari/contracts build`
+3. **Desktop build:** `pnpm --filter @tuari/desktop build` (builds web frontend, API sidecar, and Rust Tauri app)
+4. **Portable package:** `pnpm --filter @tuari/desktop portable:only`
+5. **Sign update:** Compute SHA-256 of portable zip, create manifest, sign with `scripts/sign-update.mjs`
+6. **Smoke test:** `scripts/verify-release-assets.mjs` validates the portable zip and signed update package
+7. **Stage and publish:** Collect all artifacts and upload to GitHub Releases
+
+### 12.3 Artifacts
+
+Each workflow produces:
+
+| Artifact | Naming Pattern | Source |
+|----------|---------------|--------|
+| NSIS installer | `tuari-<version>-<channel>-setup.exe` | Tauri build output |
+| Portable zip | `tuari-<version>-<channel>-portable.zip` | `build-portable.mjs` |
+| Signed update | `tuari-<version>-<channel>.update` | `sign-update.mjs` |
+| Update metadata | `updates.json` | Generated inline |
+
+### 12.4 GitHub Environments
+
+| Environment | Approval Required | Restricted To |
+|-------------|-------------------|---------------|
+| `nightly` | None | — |
+| `beta` | 1 approval | — |
+| `stable` | 2 approvals | Maintainers |
+
+Environments are configured via the GitHub UI under Settings > Environments.
+
+### 12.5 Signing Keys
+
+| Channel | Key | Storage |
+|---------|-----|---------|
+| Nightly | Dev key (`scripts/dev-update-keys/dev-update-private-key.pem`) | Repository (dev only) |
+| Beta | Dev key (will be replaced with beta key) | Repository (dev only) |
+| Stable | Dev key (will be replaced with production key) | GitHub secret `UPDATE_PRIVATE_KEY` (future) |
+
+### 12.6 Caching
+
+- **pnpm:** Built-in via `actions/setup-node` with `cache: pnpm`
+- **Rust:** `Swatinem/rust-cache@v2` with `workspaces: "apps/desktop/src-tauri"`
+
+### 12.7 Smoke Testing
+
+The `scripts/verify-release-assets.mjs` script runs after every build:
+
+```bash
+node scripts/verify-release-assets.mjs --artifacts <dir> --public-key <path> --version <ver> --channel <channel>
+```
+
+It verifies:
+1. A portable zip file exists and contains `Tuari.exe`
+2. A signed update manifest (`.update`) exists and the signature is valid against the public key
+
+Exit code 0 = all checks pass. Non-zero = at least one check failed.
