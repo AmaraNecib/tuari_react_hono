@@ -31,13 +31,13 @@ describe("UpdateRestartBadge", () => {
 
   it("renders nothing when no restart is pending", () => {
     renderBadge()
-    expect(screen.queryByText(/إعادة التشغيل مطلوبة/)).toBeNull()
+    expect(screen.queryByTestId("update-restart-badge")).toBeNull()
   })
 
   it("renders the badge when restart is pending", () => {
     mockPending.pending = true
     renderBadge()
-    expect(screen.getByText(/إعادة التشغيل مطلوبة/)).toBeTruthy()
+    expect(screen.getByTestId("update-restart-badge")).toBeTruthy()
   })
 
   it("shows a tooltip title", () => {

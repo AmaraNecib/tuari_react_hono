@@ -17,6 +17,7 @@ export function UpdateRestartBadge() {
 
   return (
     <div
+      data-testid="update-restart-badge"
       className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary/10 text-primary text-[12px] font-medium leading-none whitespace-nowrap"
       title={t("update.restartBadgeTooltip", "Restart required to apply update")}
     >

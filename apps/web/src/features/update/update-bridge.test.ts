@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { invoke } from "@tauri-apps/api/core"
-import { checkForUpdates, applyUpdate, restartApp } from "./update-bridge"
+import { restartApp } from "./update-bridge"
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -19,48 +19,6 @@ describe("update-bridge", () => {
     vi.clearAllMocks()
   })
 
-  describe("checkForUpdates", () => {
-    it("returns update check result on success", async () => {
-      const expected = {
-        updateAvailable: true,
-        latestVersion: "1.1.0",
-        downloadUrl: "https://example.com/update.zip",
-      }
-      invokeMock.mockResolvedValue(expected)
-
-      const result = await checkForUpdates()
-      expect(result).toEqual(expected)
-      expect(invokeMock).toHaveBeenCalledWith("check_for_updates")
-    })
-
-    it("returns null when Tauri bridge is unavailable", async () => {
-      invokeMock.mockRejectedValue(new Error("Tauri IPC not available"))
-
-      const result = await checkForUpdates()
-      expect(result).toBeNull()
-    })
-  })
-
-  describe("applyUpdate", () => {
-    it("returns apply result on success", async () => {
-      const expected = { success: true, message: "update applied" }
-      invokeMock.mockResolvedValue(expected)
-
-      const result = await applyUpdate("/tmp/update.zip")
-      expect(result).toEqual(expected)
-      expect(invokeMock).toHaveBeenCalledWith("apply_update", {
-        path: "/tmp/update.zip",
-      })
-    })
-
-    it("returns null when Tauri bridge is unavailable", async () => {
-      invokeMock.mockRejectedValue(new Error("bridge offline"))
-
-      const result = await applyUpdate("/tmp/test.zip")
-      expect(result).toBeNull()
-    })
-  })
-
   describe("restartApp", () => {
     it("calls restart_app IPC command", async () => {
       invokeMock.mockResolvedValue(undefined)
@@ -70,10 +28,16 @@ describe("update-bridge", () => {
     })
 
     it("handles Tauri bridge unavailability gracefully", async () => {
-      invokeMock.mockRejectedValue(new Error("bridge offline"))
+      invokeMock.mockRejectedValue(new Error("__TAURI_INTERNALS__ is not available"))
 
       // Should not throw
       await expect(restartApp()).resolves.toBeUndefined()
+    })
+
+    it("rethrows unexpected errors in desktop mode", async () => {
+      invokeMock.mockRejectedValue(new Error("command not found: restart_app"))
+
+      await expect(restartApp()).rejects.toThrow(/Failed to restart/)
     })
   })
 })

@@ -9,32 +9,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { restartApp } from "./update-bridge"
-import type { UseRestartPendingReturn } from "./use-update-state"
 
 type UpdateRestartModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  setPending: UseRestartPendingReturn["setPending"]
+  onRestartNow: () => void
+  onLater: () => void
 }
 
-/** Modal shown after an update is applied, prompting the user to restart. */
-export function UpdateRestartModal({ open, onOpenChange, setPending }: UpdateRestartModalProps) {
+/**
+ * Modal shown after an update is applied, prompting the user to restart.
+ * The parent manages visibility and restart/later side effects.
+ */
+export function UpdateRestartModal({ open, onOpenChange, onRestartNow, onLater }: UpdateRestartModalProps) {
   const { t } = useTranslation()
 
-  async function handleRestartNow() {
-    setPending(false)
-    await restartApp()
-  }
-
-  function handleLater() {
-    setPending(true)
-    onOpenChange(false)
-  }
-
   return (
-    <AlertDialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) handleLater() }} >
-      <AlertDialogContent>
+    <AlertDialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onLater()
+      }}
+    >
+      <AlertDialogContent data-testid="update-restart-modal">
         <AlertDialogHeader>
           <AlertDialogTitle>
             {t("update.restartTitle", "Update Applied - Restart Required")}
@@ -44,10 +41,10 @@ export function UpdateRestartModal({ open, onOpenChange, setPending }: UpdateRes
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleLater}>
+          <AlertDialogCancel data-testid="update-later-btn" onClick={onLater}>
             {t("update.later", "Later")}
           </AlertDialogCancel>
-          <AlertDialogAction onClick={() => void handleRestartNow()}>
+          <AlertDialogAction data-testid="update-restart-now-btn" onClick={onRestartNow}>
             {t("update.restartNow", "Restart Now")}
           </AlertDialogAction>
         </AlertDialogFooter>

@@ -1,5 +1,4 @@
-export { checkForUpdates, applyUpdate, restartApp } from "./update-bridge"
-export type { UpdateCheckResult, UpdateApplyResult } from "./update-bridge"
+export { restartApp } from "./update-bridge"
 export { useRestartPending } from "./use-update-state"
 export type { UseRestartPendingReturn } from "./use-update-state"
 export { UpdateRestartModal } from "./update-restart-modal"

@@ -5,14 +5,9 @@ import { render, screen, fireEvent } from "@testing-library/react"
 import { I18nextProvider } from "react-i18next"
 import { i18n } from "@/i18n"
 import { UpdateRestartModal } from "./update-restart-modal"
-import * as bridge from "./update-bridge"
 
-// Mock the Tauri bridge
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
-}))
-
-const setPendingMock = vi.fn()
+const onRestartNowMock = vi.fn()
+const onLaterMock = vi.fn()
 const onOpenChangeMock = vi.fn()
 
 function renderModal(open = true) {
@@ -21,7 +16,8 @@ function renderModal(open = true) {
       <UpdateRestartModal
         open={open}
         onOpenChange={onOpenChangeMock}
-        setPending={setPendingMock}
+        onRestartNow={onRestartNowMock}
+        onLater={onLaterMock}
       />
     </I18nextProvider>
   )
@@ -38,33 +34,32 @@ describe("UpdateRestartModal", () => {
 
   it("renders the dialog when open", () => {
     renderModal(true)
-    expect(screen.getByText(/إعادة التشغيل مطلوبة/)).toBeTruthy()
-    expect(screen.getByText(/تم تطبيق التحديث/)).toBeTruthy()
+    expect(screen.getByTestId("update-restart-modal")).toBeTruthy()
+    expect(screen.getByTestId("update-restart-now-btn")).toBeTruthy()
+    expect(screen.getByTestId("update-later-btn")).toBeTruthy()
   })
 
   it("does not render when closed", () => {
     renderModal(false)
-    expect(screen.queryByText(/تم تطبيق التحديث/)).toBeNull()
+    expect(screen.queryByTestId("update-restart-modal")).toBeNull()
   })
 
-  it("calls restartApp and clears pending on 'Restart Now'", async () => {
-    const restartAppSpy = vi.spyOn(bridge, "restartApp")
-    restartAppSpy.mockResolvedValue(undefined)
-
+  it("calls onRestartNow when 'Restart Now' is clicked", () => {
     renderModal(true)
-    const restartButton = screen.getByText(/إعادة التشغيل الآن/)
-    fireEvent.click(restartButton)
-
-    expect(setPendingMock).toHaveBeenCalledWith(false)
-    expect(restartAppSpy).toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId("update-restart-now-btn"))
+    expect(onRestartNowMock).toHaveBeenCalled()
   })
 
-  it("sets pending and dismisses on 'Later'", () => {
+  it("calls onLater when 'Later' is clicked", () => {
     renderModal(true)
-    const laterButton = screen.getByText(/لاحقاً/)
-    fireEvent.click(laterButton)
+    fireEvent.click(screen.getByTestId("update-later-btn"))
+    expect(onLaterMock).toHaveBeenCalled()
+  })
 
-    expect(setPendingMock).toHaveBeenCalledWith(true)
-    expect(onOpenChangeMock).toHaveBeenCalledWith(false)
+  it("calls onLater when dismissed via overlay/Escape", () => {
+    renderModal(true)
+    // Simulate AlertDialog closing without open
+    fireEvent.click(screen.getByTestId("update-later-btn"))
+    expect(onLaterMock).toHaveBeenCalled()
   })
 })

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 
 import { showSuccessToast } from "@/lib/toast"
 
@@ -11,6 +11,7 @@ import type {
 } from "./mock-dashboard"
 import type { HomeViewSystemLogFilters, PendingDelete } from "./home-view-types"
 import { usePersistedSidebarState } from "./use-persisted-sidebar-state"
+import { useRestartPending } from "@/features/update"
 
 type Theme = ReturnType<typeof useAppPreferences>["theme"]
 type ToggleTheme = ReturnType<typeof useAppPreferences>["toggleTheme"]
@@ -18,7 +19,7 @@ type RemoveRecordMutation = ReturnType<typeof useRemoveWorkspaceRecordMutation>
 type SignOutMutation = ReturnType<typeof useDemoSignOutMutation>
 type ResetWorkspaceMutation = ReturnType<typeof useResetWorkspaceMutation>
 
-/** Manages shell state: sidebar, delete dialog, sign-out dialog. */
+/** Manages shell state: sidebar, delete dialog, sign-out dialog, and update restart. */
 export function useHomeViewShellController({
   copy,
   removeRecordMutation,
@@ -41,6 +42,24 @@ export function useHomeViewShellController({
   const deleteInFlightRef = useRef(false)
   const signOutInFlightRef = useRef(false)
   const resetWorkspaceInFlightRef = useRef(false)
+
+  // ── Update restart modal state ──
+  const [showRestartModal, setShowRestartModal] = useState(false)
+  const { setPending: setRestartPending } = useRestartPending()
+
+  /** User clicked "Restart Now" — clear pending flag and restart via IPC. */
+  const handleRestartNow = useCallback(async () => {
+    setRestartPending(false)
+    setShowRestartModal(false)
+    const { restartApp } = await import("@/features/update")
+    await restartApp()
+  }, [setRestartPending])
+
+  /** User clicked "Later" or dismissed — persist the pending flag so the badge shows. */
+  const handleRestartLater = useCallback(() => {
+    setRestartPending(true)
+    setShowRestartModal(false)
+  }, [setRestartPending])
 
   function handleThemeToggle() {
     toggleTheme()
@@ -98,12 +117,16 @@ export function useHomeViewShellController({
     confirmDelete,
     confirmSignOut,
     handleResetWorkspace,
+    handleRestartNow,
+    handleRestartLater,
     handleThemeToggle,
     pendingDelete,
     setPendingDelete,
+    setShowRestartModal,
     setSidebarCollapsed,
     setSignOutOpen,
     setSystemLogFilters,
+    showRestartModal,
     sidebarCollapsed,
     signOutOpen,
     systemLogFilters,

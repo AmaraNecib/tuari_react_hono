@@ -27,7 +27,7 @@ import type { HomeViewBreadcrumbItem } from "./home-view-breadcrumbs"
 import type { DemoSession } from "./mock-dashboard"
 import type { HomeViewPage, PendingDelete } from "./home-view-types"
 import { WorkspaceBreadcrumbs } from "./workspace-breadcrumbs"
-import { UpdateRestartModal, UpdateRestartBadge, useRestartPending } from "@/features/update"
+import { UpdateRestartModal, UpdateRestartBadge } from "@/features/update"
 import { WorkspaceSidebar } from "./workspace-sidebar"
 import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
 
@@ -47,14 +47,15 @@ export function HomeViewSignedInShell({
   signOutPending,
   signOutOpen,
   theme,
+  showRestartModal,
   onConfirmDelete,
   onConfirmSignOut,
   onPendingDeleteChange,
+  onRestartLater,
+  onRestartNow,
   onSetSidebarCollapsed,
   onSignOutOpenChange,
   onThemeToggle,
-  updateApplied,
-  onUpdateModalOpenChange,
 }: {
   breadcrumbItems: HomeViewBreadcrumbItem[]
   children: ReactNode
@@ -67,18 +68,18 @@ export function HomeViewSignedInShell({
   signOutPending: boolean
   signOutOpen: boolean
   theme: "light" | "dark"
+  showRestartModal: boolean
   onConfirmDelete: () => void
   onConfirmSignOut: () => void
   onPendingDeleteChange: (value: PendingDelete | null) => void
+  onRestartLater: () => void
+  onRestartNow: () => void
   onSetSidebarCollapsed: (value: boolean) => void
   onSignOutOpenChange: (value: boolean) => void
   onThemeToggle: () => void
-  updateApplied: boolean
-  onUpdateModalOpenChange: (open: boolean) => void
 }) {
   const { t } = useTranslation()
   const { isMobile, sidebarOpen, toggleSidebar } = useMobileLayout()
-  const { pending, setPending } = useRestartPending()
 
   const [searchOpen, setSearchOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -467,9 +468,10 @@ export function HomeViewSignedInShell({
 
       {/* Update restart modal */}
       <UpdateRestartModal
-        open={updateApplied}
-        onOpenChange={onUpdateModalOpenChange}
-        setPending={setPending}
+        open={showRestartModal}
+        onOpenChange={() => {}}
+        onRestartNow={onRestartNow}
+        onLater={onRestartLater}
       />
 
       {/* Sign-out confirmation dialog */}
