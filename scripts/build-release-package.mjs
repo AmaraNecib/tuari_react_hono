@@ -91,7 +91,7 @@ const DOS_TIME = 0;
  * Uses deflate level 6 for reproducible builds (per ADR-UPD-003).
  * Uses fixed timestamps to eliminate non-determinism from file modification times.
  */
-function buildZip(entries) {
+export function buildZip(entries) {
   const LOCAL_HEADER_BASE = 30;
   const CENTRAL_BASE = 46;
 
@@ -341,8 +341,7 @@ async function main(cli) {
     }
 
     if (fileEntries.length === 0) {
-      console.error('Error: No files found to package');
-      process.exit(1);
+      throw new Error('No files found to package');
     }
 
     // Read all files and compute hashes
@@ -355,6 +354,10 @@ async function main(cli) {
 
     // Build manifest object (without signature)
     // Format aligned with update.rs::parse_update_manifest
+    // `checksum` is left as an empty string by design — the per-file `hash` fields are
+    // the integrity source verified by update.rs, and the SHA-256 of the entire
+    // .update package is published in updates.json (updatePackageSha256). Baking the
+    // .update's own hash into a field that lives inside the .update would be circular.
     const manifest = {
       manifestVersion: 1,
       version: cli.version,
@@ -499,7 +502,7 @@ async function generateChangelog(version) {
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
-async function validatePackage(updatePath, publicKeyPath) {
+export async function validatePackage(updatePath, publicKeyPath) {
   const zipData = await readFile(updatePath);
   const extracted = readZipBuffer(zipData);
 

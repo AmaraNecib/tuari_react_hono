@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs';
 import { createHash, generateKeyPairSync } from 'node:crypto';
 
 const scriptDir = fileURLToPath(new URL('../scripts', import.meta.url));
-const { readZipBuffer } = await import(new URL('./build-release-package.mjs', 
+const { readZipBuffer, validatePackage } = await import(new URL('./build-release-package.mjs', 
   new URL('../scripts/', import.meta.url)).href);
 
 /**
@@ -348,7 +348,7 @@ test('Package with a mismatched file hash is rejected by validation', async () =
   const outDir = join(tmp, 'release');
   await mkdir(outDir, { recursive: true });
 
-  // Build a valid package first
+  // Build a valid package first (with --skip-validation so we control the validator call)
   runBuild([
     '--version', '0.5.0',
     '--channel', 'stable',
@@ -359,59 +359,60 @@ test('Package with a mismatched file hash is rejected by validation', async () =
     '--private-key', keys.privateKeyPath,
     '--public-key', keys.publicKeyPath,
     '--min-supported-version', '0.4.0',
+    '--skip-validation',
+    '--skip-changelog',
   ]);
 
   const updatePath = join(outDir, 'tuari-0.5.0-stable.update');
   const zipData = await readFile(updatePath);
   const extracted = readZipBuffer(zipData);
 
-  // Tamper: modify a file's data and rebuild the ZIP with an incorrect hash in manifest
+  // Tamper: change the hash of the first file in the manifest to an incorrect value
   const manifest = JSON.parse(extracted.get('manifest.json').toString('utf8'));
-
-  // Tamper the manifest by changing the hash of the first file
+  const realHash = manifest.files[0].hash;
   manifest.files[0].hash = '0000000000000000000000000000000000000000000000000000000000000000';
-
-  // Rebuild the manifest without signature
-  const sig = manifest.signature;
   delete manifest.signature;
 
-  // We need to verify that a manifest with mismatched hash fails
-  // The sign-update.mjs signs the correct manifest, but we can simulate a tampered
-  // manifest by verifying that the validatePackage function would reject it.
-  // The validation in build-release-package.mjs checks each file's hash against the manifest.
-
-  // Re-sign the manifest with the tampered hash
+  // Re-sign the tampered manifest so the signature itself is valid;
+  // the validator should still reject because the file's actual content
+  // does not match the (now wrong) hash in the manifest.
   const tmpManifest = join(tmp, 'tampered-manifest.json');
   await writeFile(tmpManifest, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-
   const tamperedSignedPath = join(tmp, 'tampered.signed');
-  const signResult = spawnSync(process.execPath, [
+  spawnSync(process.execPath, [
     join(scriptDir, 'sign-update.mjs'),
     '--manifest', tmpManifest,
     '--private-key', keys.privateKeyPath,
     '--output', tamperedSignedPath,
   ], { encoding: 'utf8', cwd: scriptDir });
 
-  assert.equal(signResult.status, 0, 'sign-update should succeed');
-
-  // Read the signature from the tampered signed manifest
   const signedText = (await readFile(tamperedSignedPath, 'utf8')).trim();
-  const dot = signedText.lastIndexOf('.');
-  manifest.signature = signedText.slice(dot + 1);
+  manifest.signature = signedText.slice(signedText.lastIndexOf('.') + 1);
 
-  // Now verify the signature is actually valid (sign-update signs whatever JSON we give it)
-  // But we need to verify the file hash check: the manifest says hash=0x00 but the actual
-  // file has a different hash. This should be caught by validatePackage.
-  // Since validatePackage runs as part of the build process and checks files against
-  // the manifest's hashes, a mismatched hash IS detected.
+  // Rebuild the .update ZIP with the tampered manifest
+  const { buildZip } = await import(new URL('./build-release-package.mjs',
+    new URL('../scripts/', import.meta.url)).href);
+  // buildZip is not exported, so rebuild using our local knowledge.
+  // Use a fresh read of the original ZIP and swap the manifest entry.
+  const newEntries = [];
+  for (const [name, data] of extracted) {
+    if (name === 'manifest.json') {
+      newEntries.push({ name, data: Buffer.from(JSON.stringify(manifest, null, 2) + '\n', 'utf8') });
+    } else {
+      newEntries.push({ name, data });
+    }
+  }
+  // The .update was built with the now-outdated checksum baked in. Recompute.
+  const newZip = buildZip(newEntries);
+  await writeFile(updatePath, newZip);
 
-  // The test here confirms that validation catches mismatches by checking
-  // that the test setup creates a manifest where the file content hash differs
-  // from the manifest hash.
-  const manifestAfter = JSON.parse(await readFile(tmpManifest, 'utf8'));
-  assert.equal(manifestAfter.files[0].hash, '0000000000000000000000000000000000000000000000000000000000000000',
-    'Tampered hash should be set');
-  console.log('  ✓ Tampered hash test: setup confirmed');
+  // Now call the real validator and assert it rejects.
+  await assert.rejects(
+    validatePackage(updatePath, keys.publicKeyPath),
+    /hash mismatch|File integrity check failed/i,
+    'validatePackage should reject a package with a mismatched file hash'
+  );
+  assert.notEqual(realHash, manifest.files[0].hash, 'test should have actually changed the hash');
 });
 
 test('Package with missing file from manifest is rejected by validation', async () => {
@@ -432,41 +433,55 @@ test('Package with missing file from manifest is rejected by validation', async 
     '--private-key', keys.privateKeyPath,
     '--public-key', keys.publicKeyPath,
     '--min-supported-version', '0.4.0',
+    '--skip-validation',
+    '--skip-changelog',
   ]);
 
   const updatePath = join(outDir, 'tuari-0.5.0-stable.update');
   const zipData = await readFile(updatePath);
   const extracted = readZipBuffer(zipData);
 
-  // Tamper the manifest to include a file that doesn't exist in the ZIP
+  // Tamper: add a file to the manifest that does not exist in the ZIP
   const manifest = JSON.parse(extracted.get('manifest.json').toString('utf8'));
   manifest.files.push({
     path: 'nonexistent-file.bin',
     hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
     size: 0,
   });
+  delete manifest.signature;
 
   // Re-sign
   const tmpManifest = join(tmp, 'missing-file-manifest.json');
   await writeFile(tmpManifest, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-  const sig = manifest.signature;
-  delete manifest.signature;
-
   const tamperedSignedPath = join(tmp, 'missing-file.signed');
-  const signResult = spawnSync(process.execPath, [
+  spawnSync(process.execPath, [
     join(scriptDir, 'sign-update.mjs'),
     '--manifest', tmpManifest,
     '--private-key', keys.privateKeyPath,
     '--output', tamperedSignedPath,
   ], { encoding: 'utf8', cwd: scriptDir });
 
-  assert.equal(signResult.status, 0, 'sign-update should succeed');
+  const signedText = (await readFile(tamperedSignedPath, 'utf8')).trim();
+  manifest.signature = signedText.slice(signedText.lastIndexOf('.') + 1);
 
-  // The validatePackage function in build-release-package.mjs would check
-  // that every file in manifest exists in the ZIP. A file listed in the manifest
-  // that's not in the ZIP would be caught.
-  const manifestAfter = JSON.parse(await readFile(tmpManifest, 'utf8'));
-  const hasMissingFile = manifestAfter.files.some(f => f.path === 'nonexistent-file.bin');
-  assert.ok(hasMissingFile, 'Manifest should contain a file not in the ZIP');
-  console.log('  ✓ Missing file test: setup confirmed');
+  // Rebuild the .update ZIP with the tampered manifest (no actual file added to ZIP)
+  const newEntries = [];
+  for (const [name, data] of extracted) {
+    if (name === 'manifest.json') {
+      newEntries.push({ name, data: Buffer.from(JSON.stringify(manifest, null, 2) + '\n', 'utf8') });
+    } else {
+      newEntries.push({ name, data });
+    }
+  }
+  const { buildZip } = await import(new URL('./build-release-package.mjs',
+    new URL('../scripts/', import.meta.url)).href);
+  const newZip = buildZip(newEntries);
+  await writeFile(updatePath, newZip);
+
+  // Now call the real validator and assert it rejects.
+  await assert.rejects(
+    validatePackage(updatePath, keys.publicKeyPath),
+    /not found in ZIP|File integrity check failed/i,
+    'validatePackage should reject a package whose manifest lists a file that is not in the ZIP'
+  );
 });
