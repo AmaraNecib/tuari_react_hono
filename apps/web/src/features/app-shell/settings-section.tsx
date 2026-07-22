@@ -9,6 +9,7 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { UpdateSection } from "@/features/update/update-section"
 import { useQueryClient } from "@tanstack/react-query"
 import { LicenseSettings } from "@/features/license/license-settings"
 import { licenseQueryKey } from "@/features/license/license-hooks"
@@ -516,6 +517,13 @@ export function SettingsSection({
               <p className="text-sm font-mono text-foreground mt-2">
                 {appVersion ?? "-"}
               </p>
+            </div>
+          </div>
+
+          {/* Online update check and download */}
+          <div className="p-5 border border-line rounded-xl">
+            <div className="text-start">
+              <UpdateSection />
             </div>
           </div>
 
