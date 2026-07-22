@@ -55,6 +55,7 @@ Options:
   if (!version) { console.error('Error: --version is required'); process.exit(1); }
   if (!channel) { console.error('Error: --channel is required'); process.exit(1); }
   if (!buildNumber) { console.error('Error: --build-number is required'); process.exit(1); }
+  if (!/^\d+$/.test(buildNumber)) { console.error('Error: --build-number must be a non-negative integer'); process.exit(1); }
   if (!minSupportedVersion) { console.error('Error: --min-supported-version is required'); process.exit(1); }
   if (!updatePackagePath) { console.error('Error: --update-package is required'); process.exit(1); }
   if (!outputDir) { console.error('Error: --output-dir is required'); process.exit(1); }

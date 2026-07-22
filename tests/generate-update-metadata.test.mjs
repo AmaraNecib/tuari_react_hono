@@ -112,6 +112,24 @@ test('generate-update-metadata exits with error on missing --version', async () 
   assert.notEqual(result.exitCode, 0, 'should exit with non-zero code when --version is missing');
 });
 
+test('generate-update-metadata exits with error on non-numeric --build-number', async () => {
+  const tmp = await mkdtemp(join(tmpdir(), 'gen-upd-test-'));
+  const pkgPath = join(tmp, 'pkg.bin');
+  await writeFile(pkgPath, 'data');
+
+  const result = runScriptWithFailure([
+    '--version', '0.5.0',
+    '--channel', 'stable',
+    '--build-number', 'not-a-number',
+    '--min-supported-version', '0.4.0',
+    '--update-package', pkgPath,
+    '--output-dir', tmp,
+  ]);
+
+  assert.notEqual(result.exitCode, 0, 'should exit with non-zero on non-numeric build-number');
+  assert.match(result.stderr, /--build-number must be a non-negative integer/);
+});
+
 test('generate-update-metadata exits with error on missing --update-package file', async () => {
   const tmp = await mkdtemp(join(tmpdir(), 'gen-upd-test-'));
 
