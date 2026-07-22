@@ -289,14 +289,18 @@ jobs:
           # Delete previous beta release if it exists (ignore 'not found' errors)
           gh release delete $tag --yes --repo "${{ github.repository }}" 2>&1 | Where-Object { $_ -notlike '*not found*' }
 
-          # Create a new beta release
+          # Collect artifact paths as an array for safe quoting
+          $artifactFiles = @(Get-ChildItem -Path $artifactsDir | ForEach-Object { $_.FullName })
+
+          # Create a new beta release pinned to the current commit
           gh release create $tag `
             --title "$releaseName" `
             --notes "Beta release $version" `
+            --target "$env:GITHUB_SHA" `
             --prerelease `
             '--no-latest' `
             --repo "${{ github.repository }}" `
-            $(Get-ChildItem -Path $artifactsDir | ForEach-Object { "`"$($_.FullName)`"" })
+            $artifactFiles
 
           Write-Host "Beta release created: $releaseName"
         env:
