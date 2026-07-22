@@ -8,14 +8,12 @@ import { UpdateRestartModal } from "./update-restart-modal"
 
 const onRestartNowMock = vi.fn()
 const onLaterMock = vi.fn()
-const onOpenChangeMock = vi.fn()
 
 function renderModal(open = true) {
   return render(
     <I18nextProvider i18n={i18n}>
       <UpdateRestartModal
         open={open}
-        onOpenChange={onOpenChangeMock}
         onRestartNow={onRestartNowMock}
         onLater={onLaterMock}
       />
@@ -47,19 +45,22 @@ describe("UpdateRestartModal", () => {
   it("calls onRestartNow when 'Restart Now' is clicked", () => {
     renderModal(true)
     fireEvent.click(screen.getByTestId("update-restart-now-btn"))
-    expect(onRestartNowMock).toHaveBeenCalled()
+    expect(onRestartNowMock).toHaveBeenCalledTimes(1)
   })
 
   it("calls onLater when 'Later' is clicked", () => {
     renderModal(true)
     fireEvent.click(screen.getByTestId("update-later-btn"))
-    expect(onLaterMock).toHaveBeenCalled()
+    expect(onLaterMock).toHaveBeenCalledTimes(1)
   })
 
-  it("calls onLater when dismissed via overlay/Escape", () => {
+  it("does not call onLater when 'Restart Now' is clicked (regression for spurious onLater)", () => {
     renderModal(true)
-    // Simulate AlertDialog closing without open
-    fireEvent.click(screen.getByTestId("update-later-btn"))
-    expect(onLaterMock).toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId("update-restart-now-btn"))
+    expect(onRestartNowMock).toHaveBeenCalledTimes(1)
+    // Critical: clicking "Restart Now" must not also trigger onLater,
+    // otherwise the controller would re-set restartPending=true after
+    // the "Restart Now" path already cleared it.
+    expect(onLaterMock).not.toHaveBeenCalled()
   })
 })

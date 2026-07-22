@@ -11,7 +11,7 @@ import type {
 } from "./mock-dashboard"
 import type { HomeViewSystemLogFilters, PendingDelete } from "./home-view-types"
 import { usePersistedSidebarState } from "./use-persisted-sidebar-state"
-import { useRestartPending } from "@/features/update"
+import { restartApp, useRestartPending } from "@/features/update"
 
 type Theme = ReturnType<typeof useAppPreferences>["theme"]
 type ToggleTheme = ReturnType<typeof useAppPreferences>["toggleTheme"]
@@ -51,7 +51,6 @@ export function useHomeViewShellController({
   const handleRestartNow = useCallback(async () => {
     setRestartPending(false)
     setShowRestartModal(false)
-    const { restartApp } = await import("@/features/update")
     await restartApp()
   }, [setRestartPending])
 

@@ -12,7 +12,6 @@ import {
 
 type UpdateRestartModalProps = {
   open: boolean
-  onOpenChange: (open: boolean) => void
   onRestartNow: () => void
   onLater: () => void
 }
@@ -20,17 +19,18 @@ type UpdateRestartModalProps = {
 /**
  * Modal shown after an update is applied, prompting the user to restart.
  * The parent manages visibility and restart/later side effects.
+ *
+ * Note: Radix UI's `AlertDialog` does not close on overlay click or Escape
+ * (unlike `Dialog`). Dismissal happens only via `AlertDialogAction` (Restart
+ * Now) or `AlertDialogCancel` (Later), each with an explicit `onClick` — so
+ * we do not wire `onOpenChange` here. This guarantees the two paths are
+ * independent and "Restart Now" can never be followed by a spurious `onLater`.
  */
-export function UpdateRestartModal({ open, onOpenChange, onRestartNow, onLater }: UpdateRestartModalProps) {
+export function UpdateRestartModal({ open, onRestartNow, onLater }: UpdateRestartModalProps) {
   const { t } = useTranslation()
 
   return (
-    <AlertDialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) onLater()
-      }}
-    >
+    <AlertDialog open={open}>
       <AlertDialogContent data-testid="update-restart-modal">
         <AlertDialogHeader>
           <AlertDialogTitle>

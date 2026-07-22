@@ -469,7 +469,6 @@ export function HomeViewSignedInShell({
       {/* Update restart modal */}
       <UpdateRestartModal
         open={showRestartModal}
-        onOpenChange={() => {}}
         onRestartNow={onRestartNow}
         onLater={onRestartLater}
       />
