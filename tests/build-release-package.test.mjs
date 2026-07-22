@@ -392,8 +392,6 @@ test('Package with a mismatched file hash is rejected by validation', async () =
   // Rebuild the .update ZIP with the tampered manifest
   const { buildZip } = await import(new URL('./build-release-package.mjs',
     new URL('../scripts/', import.meta.url)).href);
-  // buildZip is not exported, so rebuild using our local knowledge.
-  // Use a fresh read of the original ZIP and swap the manifest entry.
   const newEntries = [];
   for (const [name, data] of extracted) {
     if (name === 'manifest.json') {

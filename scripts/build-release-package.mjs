@@ -469,15 +469,28 @@ async function main(cli) {
 // ─── Changelog ───────────────────────────────────────────────────────────────
 
 async function generateChangelog(version) {
+  // Use spawnSync with array args (no shell) to avoid shell-injection from a
+  // tag name like `v1.0.0; rm -rf /`. Git tag names are user-controlled.
   let lastTag = '';
   try {
-    lastTag = execSync('git describe --tags --abbrev=0', { encoding: 'utf8', cwd: scriptDir }).trim();
+    const describeProc = spawnSync('git', ['describe', '--tags', '--abbrev=0'], {
+      encoding: 'utf8', cwd: scriptDir, shell: false,
+    });
+    if (describeProc.status === 0) {
+      lastTag = describeProc.stdout.trim();
+    }
   } catch (_) { /* no tags */ }
 
   const range = lastTag ? `${lastTag}..HEAD` : '--all';
   let logText = '';
   try {
-    logText = execSync(`git log ${range} --oneline --no-decorate`, { encoding: 'utf8', cwd: scriptDir, maxBuffer: 10 * 1024 * 1024 }).trim();
+    const logProc = spawnSync('git', ['log', range, '--oneline', '--no-decorate'], {
+      encoding: 'utf8', cwd: scriptDir, shell: false, maxBuffer: 10 * 1024 * 1024,
+    });
+    if (logProc.status !== 0) {
+      throw new Error(logProc.stderr || `git log exited with ${logProc.status}`);
+    }
+    logText = logProc.stdout.trim();
   } catch (err) {
     console.warn(`  Warning: git log unavailable: ${err.message}`);
     return `# Changelog\n\n## ${version}\n\n- No changelog available\n\n*Release date: ${new Date().toISOString().split('T')[0]}*\n`;
