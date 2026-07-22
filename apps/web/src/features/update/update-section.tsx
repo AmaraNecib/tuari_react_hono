@@ -55,6 +55,11 @@ export function UpdateSection() {
   // Re-entrancy lock: prevents double-click from spawning two concurrent downloads
   // before React re-renders and the status guard kicks in.
   const downloadInFlightRef = useRef(false)
+  // Tracks whether the component is still mounted across the await listen() point.
+  // Closes the microtask-wide race where unmount happens between listen() resolving
+  // and the synchronous assignment to unlistenRef.current, which would otherwise
+  // leak the event subscription for the lifetime of the app.
+  const mountedRef = useRef(true)
 
   // Load current version on mount
   useEffect(() => {
@@ -71,7 +76,9 @@ export function UpdateSection() {
 
   // Cleanup event listener on unmount
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
       if (unlistenRef.current) {
         unlistenRef.current()
         unlistenRef.current = null
@@ -166,6 +173,14 @@ export function UpdateSection() {
           setStatus({ type: "downloading", progress: payload })
         }
       })
+
+      // If the component unmounted during the await above, immediately
+      // release the listener we just registered so the Tauri event channel
+      // doesn't keep firing setStatus into a dead component.
+      if (!mountedRef.current) {
+        unlisten()
+        return
+      }
       unlistenRef.current = unlisten
 
       // Start the download — this is the authoritative completion path

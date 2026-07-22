@@ -286,6 +286,49 @@ describe("UpdateSection", () => {
     expect(callsAfterDownload - callsBeforeDownload).toBe(1)
   })
 
+  it("releases listener if component unmounts while download is in flight", async () => {
+    mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
+    mockInvoke.mockResolvedValueOnce({
+      updateAvailable: true,
+      latestVersion: "2.0.0",
+      downloadUrl: "https://example.com/update",
+    })
+    mockListen.mockResolvedValue(mockUnlisten)
+    // start_update_download hangs so the listener is registered and never auto-cleaned
+    mockInvoke.mockImplementationOnce(
+      () => new Promise(() => {}),
+    )
+
+    const { unmount } = render(<UpdateSection />)
+
+    expect(await screen.findByText("0.1.0")).toBeTruthy()
+
+    // Navigate to available state
+    const checkButton = findButton("التحقق من وجود تحديثات")
+    expect(checkButton).toBeTruthy()
+    if (checkButton) fireEvent.click(checkButton)
+    expect(await screen.findByText("تنزيل التحديث")).toBeTruthy()
+
+    // Start download — this registers the listener via mockListen
+    const downloadButton = findButton("تنزيل التحديث")
+    expect(downloadButton).toBeTruthy()
+    if (downloadButton) fireEvent.click(downloadButton)
+
+    // Wait for the downloading state to render (listener is now registered)
+    expect(await screen.findByText("0.0%")).toBeTruthy()
+    // Allow the await listen() microtask to complete and the ref to be assigned
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    // Reset the mock to count fresh calls
+    mockUnlisten.mockClear()
+
+    // Unmount while download is in flight — the cleanup useEffect must call unlisten
+    unmount()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(mockUnlisten).toHaveBeenCalled()
+  })
+
   it("cleans up event listener on unmount", async () => {
     mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
     mockInvoke.mockResolvedValueOnce({

@@ -28,6 +28,7 @@ tauri-plugin-dialog = "2"
 
 # Rust Core dependencies
 futures-util = "0.3"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt-multi-thread", "sync"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand_core = "0.6"
 base64 = "0.22"

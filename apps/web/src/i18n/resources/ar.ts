@@ -257,7 +257,6 @@ export const ar = {
       settingsAboutUpdateAvailable: "تحديث متاح:",
       settingsAboutDownload: "تنزيل التحديث",
       settingsAboutDownloadComplete: "تم التنزيل بنجاح",
-      settingsAboutDownloading: "جارٍ التنزيل...",
       settingsAboutApplying: "جارٍ التطبيق...",
       settingsAboutCancel: "إلغاء",
       settingsAboutApply: "تطبيق التحديث",
