@@ -78,10 +78,25 @@ export type HomeViewCopy = {
     settingsAccountPhonePlaceholder: string
     settingsAccountCurrentPasswordPlaceholder: string
     settingsAccountNewPasswordPlaceholder: string
+    settingsCheckForUpdates: string
+    settingsChecking: string
+    settingsUpToDate: string
+    settingsUpdateAvailable: string
+    settingsUpdateError: string
+    settingsApplyError: string
+    settingsLastChecked: string
+    settingsUpdateCached: string
     leaveTitle: string
     leaveDescription: string
     deleteEmployeeTitle: string
     deleteEmployeeDescription: string
+    settingsAboutTitle: string
+    settingsAboutVersion: string
+    settingsAboutInstallFromFile: string
+    settingsAboutInstallFromFileDescription: string
+    settingsUpdateVerifying: string
+    settingsUpdateSuccess: string
+    settingsAboutTab: string
   }
   validation: {
     name: string
@@ -276,10 +291,25 @@ export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
       settingsAccountPhonePlaceholder: t("shell.settingsAccountPhonePlaceholder"),
       settingsAccountCurrentPasswordPlaceholder: t("shell.settingsAccountCurrentPasswordPlaceholder"),
       settingsAccountNewPasswordPlaceholder: t("shell.settingsAccountNewPasswordPlaceholder"),
+      settingsCheckForUpdates: t("shell.settingsCheckForUpdates"),
+      settingsChecking: t("shell.settingsChecking"),
+      settingsUpToDate: t("shell.settingsUpToDate"),
+      settingsUpdateAvailable: t("shell.settingsUpdateAvailable"),
+      settingsLastChecked: t("shell.settingsLastChecked"),
+      settingsUpdateCached: t("shell.settingsUpdateCached"),
+      settingsApplyError: t("shell.settingsApplyError"),
       leaveTitle: t("shell.leaveTitle"),
       leaveDescription: t("shell.leaveDescription"),
       deleteEmployeeTitle: t("shell.deleteEmployeeTitle"),
       deleteEmployeeDescription: t("shell.deleteEmployeeDescription"),
+      settingsAboutTitle: t("shell.settingsAboutTitle"),
+      settingsAboutVersion: t("shell.settingsAboutVersion"),
+      settingsAboutInstallFromFile: t("shell.settingsAboutInstallFromFile"),
+      settingsAboutInstallFromFileDescription: t("shell.settingsAboutInstallFromFileDescription"),
+      settingsUpdateVerifying: t("shell.settingsUpdateVerifying"),
+      settingsUpdateSuccess: t("shell.settingsUpdateSuccess"),
+      settingsUpdateError: t("shell.settingsUpdateError"),
+      settingsAboutTab: t("shell.settingsAboutTab"),
     },
     validation: {
       name: t("auth.validation.name"),
