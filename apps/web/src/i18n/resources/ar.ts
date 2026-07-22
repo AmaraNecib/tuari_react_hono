@@ -966,6 +966,14 @@ export const ar = {
       contactInfo: "البريد الإلكتروني: support@tuari.app",
       loadError: "تعذر تحميل معلومات الترخيص.",
     },
+    update: {
+      restartTitle: "تم تطبيق التحديث - إعادة التشغيل مطلوبة",
+      restartDescription: "تم تطبيق تحديث جديد. يرجى إعادة تشغيل التطبيق لإكمال التحديث.",
+      restartNow: "إعادة التشغيل الآن",
+      later: "لاحقاً",
+      restartBadge: "إعادة التشغيل مطلوبة",
+      restartBadgeTooltip: "إعادة التشغيل مطلوبة لتطبيق التحديث",
+    },
     tour: {
       sidebarTitle: "الشريط الجانبي",
       sidebarContent: "استخدم الشريط الجانبي للتنقل بين أقسام التطبيق",

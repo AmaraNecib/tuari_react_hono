@@ -1,6 +1,6 @@
 import "@/i18n"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { useAppPreferences } from "@/features/preferences/preferences"
@@ -89,6 +89,7 @@ export function HomeView({
 }) {
   const { t } = useTranslation()
   const navigation = useHomeViewNavigation()
+  const [updateApplied, setUpdateApplied] = useState(false)
   const { theme, toggleTheme } = useAppPreferences()
 
   const setupStatusQuery = useAuthSetupStatusQuery()
@@ -198,6 +199,8 @@ export function HomeView({
       signOutPending={signOutMutation.isPending}
       signOutOpen={shell.signOutOpen}
       theme={theme}
+      updateApplied={updateApplied}
+      onUpdateModalOpenChange={setUpdateApplied}
       onConfirmDelete={() => void shell.confirmDelete()}
       onConfirmSignOut={() => void shell.confirmSignOut()}
       onPendingDeleteChange={shell.setPendingDelete}

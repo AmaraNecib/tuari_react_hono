@@ -27,6 +27,7 @@ import type { HomeViewBreadcrumbItem } from "./home-view-breadcrumbs"
 import type { DemoSession } from "./mock-dashboard"
 import type { HomeViewPage, PendingDelete } from "./home-view-types"
 import { WorkspaceBreadcrumbs } from "./workspace-breadcrumbs"
+import { UpdateRestartModal, UpdateRestartBadge, useRestartPending } from "@/features/update"
 import { WorkspaceSidebar } from "./workspace-sidebar"
 import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
 
@@ -52,6 +53,8 @@ export function HomeViewSignedInShell({
   onSetSidebarCollapsed,
   onSignOutOpenChange,
   onThemeToggle,
+  updateApplied,
+  onUpdateModalOpenChange,
 }: {
   breadcrumbItems: HomeViewBreadcrumbItem[]
   children: ReactNode
@@ -70,9 +73,12 @@ export function HomeViewSignedInShell({
   onSetSidebarCollapsed: (value: boolean) => void
   onSignOutOpenChange: (value: boolean) => void
   onThemeToggle: () => void
+  updateApplied: boolean
+  onUpdateModalOpenChange: (open: boolean) => void
 }) {
   const { t } = useTranslation()
   const { isMobile, sidebarOpen, toggleSidebar } = useMobileLayout()
+  const { pending, setPending } = useRestartPending()
 
   const [searchOpen, setSearchOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -363,6 +369,9 @@ export function HomeViewSignedInShell({
             )}
           </div>
 
+          {/* Restart badge — shown when update is pending */}
+          <UpdateRestartBadge />
+
           {/* Right actions */}
           <div className="flex items-center gap-1 flex-shrink-0">
             {/* Search button — Ctrl+K */}
@@ -454,6 +463,13 @@ export function HomeViewSignedInShell({
       <KeyboardShortcutsHelp
         isOpen={helpOpen}
         onClose={() => setHelpOpen(false)}
+      />
+
+      {/* Update restart modal */}
+      <UpdateRestartModal
+        open={updateApplied}
+        onOpenChange={onUpdateModalOpenChange}
+        setPending={setPending}
       />
 
       {/* Sign-out confirmation dialog */}
