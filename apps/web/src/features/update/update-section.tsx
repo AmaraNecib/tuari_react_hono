@@ -52,6 +52,9 @@ export function UpdateSection() {
   const [applyResult, setApplyResult] = useState<string | null>(null)
   const [currentVersion, setCurrentVersion] = useState<string | null>(null)
   const unlistenRef = useRef<(() => void) | null>(null)
+  // Re-entrancy lock: prevents double-click from spawning two concurrent downloads
+  // before React re-renders and the status guard kicks in.
+  const downloadInFlightRef = useRef(false)
 
   // Load current version on mount
   useEffect(() => {
@@ -124,6 +127,10 @@ export function UpdateSection() {
 
   const handleDownload = useCallback(async () => {
     if (status.type !== "available") return
+    // Synchronous re-entrancy guard — set BEFORE any awaits so a second
+    // synchronous click sees `true` and bails out immediately.
+    if (downloadInFlightRef.current) return
+    downloadInFlightRef.current = true
 
     const downloadUrl = status.downloadUrl
 
@@ -178,6 +185,9 @@ export function UpdateSection() {
       }
       teardownListener()
       setStatus({ type: "error", message })
+    } finally {
+      // Always release the lock so retry / new download attempts can proceed.
+      downloadInFlightRef.current = false
     }
   }, [status, teardownListener])
 
@@ -260,7 +270,7 @@ export function UpdateSection() {
               <span className="font-semibold text-primary">{status.version}</span>
             </p>
           </div>
-          <Button type="button" onClick={handleDownload}>
+          <Button type="button" disabled={status.type !== "available"} onClick={handleDownload}>
             {t("shell.settingsAboutDownload", "تنزيل التحديث")}
           </Button>
         </div>

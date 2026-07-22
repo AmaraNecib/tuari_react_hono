@@ -242,6 +242,50 @@ describe("UpdateSection", () => {
     expect(screen.getByText("التحقق من وجود تحديثات")).toBeTruthy()
   })
 
+  it("ignores concurrent double-clicks on the Download button", async () => {
+    mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
+    mockInvoke.mockResolvedValueOnce({
+      updateAvailable: true,
+      latestVersion: "2.0.0",
+      downloadUrl: "https://example.com/update",
+    })
+    mockListen.mockResolvedValue(mockUnlisten)
+    // start_update_download hangs so we can observe the download state
+    mockInvoke.mockImplementationOnce(
+      () => new Promise(() => {}),
+    )
+
+    render(<UpdateSection />)
+
+    expect(await screen.findByText("0.1.0")).toBeTruthy()
+
+    // Get to available state
+    const checkButton = findButton("التحقق من وجود تحديثات")
+    expect(checkButton).toBeTruthy()
+    if (checkButton) fireEvent.click(checkButton)
+    expect(await screen.findByText("تنزيل التحديث")).toBeTruthy()
+
+    // Capture call count before clicking
+    const callsBeforeDownload = mockInvoke.mock.calls.length
+
+    // Two synchronous clicks on Download
+    const downloadButton = findButton("تنزيل التحديث")
+    expect(downloadButton).toBeTruthy()
+    if (downloadButton) {
+      fireEvent.click(downloadButton)
+      fireEvent.click(downloadButton)
+    }
+
+    // Wait for the downloading state to render
+    expect(await screen.findByText("0.0%")).toBeTruthy()
+
+    // Only ONE additional invoke call should have been made for start_update_download,
+    // not two. start_update_download is the third invoke call total
+    // (get_current_version, check_for_updates, start_update_download).
+    const callsAfterDownload = mockInvoke.mock.calls.length
+    expect(callsAfterDownload - callsBeforeDownload).toBe(1)
+  })
+
   it("cleans up event listener on unmount", async () => {
     mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
     mockInvoke.mockResolvedValueOnce({
