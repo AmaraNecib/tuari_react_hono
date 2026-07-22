@@ -34,35 +34,46 @@ function findButton(text: string): HTMLButtonElement | null {
 describe("UpdateSection", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default mock for get_current_version
+    mockInvoke.mockResolvedValue("0.1.0")
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it("renders check for updates button in idle state", () => {
+  it("renders check for updates button in idle state", async () => {
     render(<UpdateSection />)
 
+    // Wait for version to load
+    expect(await screen.findByText("0.1.0")).toBeTruthy()
     expect(screen.getByText("التحقق من وجود تحديثات")).toBeTruthy()
-    expect(screen.getByText("0.1.0")).toBeTruthy()
   })
 
   it("shows checking state when check button is clicked", async () => {
-    mockInvoke.mockImplementationOnce(
-      () => new Promise(() => {}), // never resolves
-    )
+    mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
 
     render(<UpdateSection />)
+
+    // Wait for version to resolve
+    await screen.findByText("0.1.0")
+
+    // Set up the check_for_updates mock to hang
+    mockInvoke.mockImplementationOnce(
+      () => new Promise(() => {}), // never resolves (for check_for_updates)
+    )
 
     const button = findButton("التحقق من وجود تحديثات")
     expect(button).toBeTruthy()
     if (button) fireEvent.click(button)
 
     expect(await screen.findByText("جارٍ التحقق...")).toBeTruthy()
+    // The invoke was called for get_current_version first, then check_for_updates
     expect(mockInvoke).toHaveBeenCalledWith("check_for_updates")
   })
 
   it("shows update available state when update is found", async () => {
+    mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
     mockInvoke.mockResolvedValueOnce({
       updateAvailable: true,
       latestVersion: "1.0.0",
@@ -70,6 +81,8 @@ describe("UpdateSection", () => {
     })
 
     render(<UpdateSection />)
+
+    expect(await screen.findByText("0.1.0")).toBeTruthy()
 
     const button = findButton("التحقق من وجود تحديثات")
     expect(button).toBeTruthy()
@@ -81,6 +94,7 @@ describe("UpdateSection", () => {
   })
 
   it("shows up-to-date state when no update is available", async () => {
+    mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
     mockInvoke.mockResolvedValueOnce({
       updateAvailable: false,
       latestVersion: "",
@@ -88,6 +102,8 @@ describe("UpdateSection", () => {
     })
 
     render(<UpdateSection />)
+
+    expect(await screen.findByText("0.1.0")).toBeTruthy()
 
     const button = findButton("التحقق من وجود تحديثات")
     expect(button).toBeTruthy()
@@ -97,25 +113,30 @@ describe("UpdateSection", () => {
   })
 
   it("shows error state when check fails", async () => {
+    mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
     mockInvoke.mockRejectedValueOnce(new Error("Network error"))
 
     render(<UpdateSection />)
+
+    expect(await screen.findByText("0.1.0")).toBeTruthy()
 
     const button = findButton("التحقق من وجود تحديثات")
     expect(button).toBeTruthy()
     if (button) fireEvent.click(button)
 
-    // The error text is "فشل التحديث: Network error"
     expect(await screen.findByText(/فشل التحديث/)).toBeTruthy()
     expect(screen.getByText("إعادة المحاولة")).toBeTruthy()
   })
 
   it("shows unavailable state in browser mode", async () => {
+    mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
     mockInvoke.mockRejectedValueOnce(
       new Error("__TAURI_INTERNALS__ is not available"),
     )
 
     render(<UpdateSection />)
+
+    expect(await screen.findByText("0.1.0")).toBeTruthy()
 
     const button = findButton("التحقق من وجود تحديثات")
     expect(button).toBeTruthy()
@@ -125,18 +146,21 @@ describe("UpdateSection", () => {
   })
 
   it("shows downloading progress when download starts", async () => {
+    mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
     mockInvoke.mockResolvedValueOnce({
       updateAvailable: true,
       latestVersion: "2.0.0",
       downloadUrl: "https://example.com/update",
     })
     mockListen.mockResolvedValue(mockUnlisten)
-    // stop download from completing
+    // start_update_download hangs
     mockInvoke.mockImplementationOnce(
       () => new Promise(() => {}),
     )
 
     render(<UpdateSection />)
+
+    expect(await screen.findByText("0.1.0")).toBeTruthy()
 
     // Check for updates
     const checkButton = findButton("التحقق من وجود تحديثات")
@@ -156,6 +180,7 @@ describe("UpdateSection", () => {
   })
 
   it("cancels download when cancel button is clicked", async () => {
+    mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
     mockInvoke.mockResolvedValueOnce({
       updateAvailable: true,
       latestVersion: "2.0.0",
@@ -168,6 +193,8 @@ describe("UpdateSection", () => {
     )
 
     render(<UpdateSection />)
+
+    expect(await screen.findByText("0.1.0")).toBeTruthy()
 
     // Check for updates
     const checkButton = findButton("التحقق من وجود تحديثات")
@@ -193,9 +220,12 @@ describe("UpdateSection", () => {
   })
 
   it("returns to idle from error state via retry", async () => {
+    mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
     mockInvoke.mockRejectedValueOnce(new Error("Network error"))
 
     render(<UpdateSection />)
+
+    expect(await screen.findByText("0.1.0")).toBeTruthy()
 
     // Check for updates -> error
     const checkButton = findButton("التحقق من وجود تحديثات")
@@ -210,5 +240,39 @@ describe("UpdateSection", () => {
 
     // Back to idle
     expect(screen.getByText("التحقق من وجود تحديثات")).toBeTruthy()
+  })
+
+  it("cleans up event listener on unmount", async () => {
+    mockInvoke.mockResolvedValueOnce("0.1.0") // get_current_version
+    mockInvoke.mockResolvedValueOnce({
+      updateAvailable: true,
+      latestVersion: "2.0.0",
+      downloadUrl: "https://example.com/update",
+    })
+    mockListen.mockResolvedValue(mockUnlisten)
+    mockInvoke.mockImplementationOnce(
+      () => new Promise(() => {}),
+    )
+
+    const { unmount } = render(<UpdateSection />)
+
+    expect(await screen.findByText("0.1.0")).toBeTruthy()
+
+    // Trigger download
+    const checkButton = findButton("التحقق من وجود تحديثات")
+    expect(checkButton).toBeTruthy()
+    if (checkButton) fireEvent.click(checkButton)
+    expect(await screen.findByText("تنزيل التحديث")).toBeTruthy()
+
+    const downloadButton = findButton("تنزيل التحديث")
+    expect(downloadButton).toBeTruthy()
+    if (downloadButton) fireEvent.click(downloadButton)
+
+    expect(await screen.findByText("0.0%")).toBeTruthy()
+
+    // Unmount should call unlisten
+    unmount()
+
+    expect(mockUnlisten).toHaveBeenCalled()
   })
 })

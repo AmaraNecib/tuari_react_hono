@@ -41,12 +41,30 @@ function formatSpeed(bytesPerSec: number): string {
   return `${formatBytes(bytesPerSec)}/s`
 }
 
+function getCurrentVersion(): string {
+  return "0.1.0"
+}
+
 export function UpdateSection() {
   const { t } = useTranslation()
   const [status, setStatus] = useState<UpdateStatus>({ type: "idle" })
   const [applying, setApplying] = useState(false)
   const [applyResult, setApplyResult] = useState<string | null>(null)
+  const [currentVersion, setCurrentVersion] = useState<string | null>(null)
   const unlistenRef = useRef<(() => void) | null>(null)
+
+  // Load current version on mount
+  useEffect(() => {
+    async function loadVersion() {
+      try {
+        const version = await invoke<string | null>("get_current_version").catch(() => null)
+        setCurrentVersion(version ?? getCurrentVersion())
+      } catch {
+        setCurrentVersion(getCurrentVersion())
+      }
+    }
+    void loadVersion()
+  }, [])
 
   // Cleanup event listener on unmount
   useEffect(() => {
@@ -55,6 +73,14 @@ export function UpdateSection() {
         unlistenRef.current()
         unlistenRef.current = null
       }
+    }
+  }, [])
+
+  /** Tear down any active event listener so a fresh one can be registered. */
+  const teardownListener = useCallback(() => {
+    if (unlistenRef.current) {
+      unlistenRef.current()
+      unlistenRef.current = null
     }
   }, [])
 
@@ -68,6 +94,7 @@ export function UpdateSection() {
 
   const handleCheckForUpdates = useCallback(async () => {
     setStatus({ type: "checking" })
+    setApplyResult(null)
 
     try {
       const result = await invoke<{
@@ -100,6 +127,9 @@ export function UpdateSection() {
 
     const downloadUrl = status.downloadUrl
 
+    // Tear down any stale listener from a previous download attempt
+    teardownListener()
+
     setStatus({
       type: "downloading",
       progress: {
@@ -112,15 +142,18 @@ export function UpdateSection() {
     })
 
     try {
-      // Listen for progress events
+      // Listen for progress events (only updates UI; completion is handled by invoke return)
       const unlisten = await listen<DownloadProgress>("download-progress", (event) => {
         const payload = event.payload
 
         if (payload.status === "completed") {
-          setStatus({ type: "completed", filePath: "" })
+          // filePath not available in event payload; rely on invoke return below
+          // Do not transition to completed here — the invoke return will do it with the real path
         } else if (payload.status === "error") {
+          teardownListener()
           setStatus({ type: "error", message: payload.error ?? "Download failed" })
         } else if (payload.status === "cancelled") {
+          teardownListener()
           setStatus({ type: "idle" })
         } else {
           setStatus({ type: "downloading", progress: payload })
@@ -128,22 +161,25 @@ export function UpdateSection() {
       })
       unlistenRef.current = unlisten
 
-      // Start the download
+      // Start the download — this is the authoritative completion path
       const filePath = await invoke<string>("start_update_download", {
         url: downloadUrl,
       })
 
-      // Download completed (event may have already been processed)
+      // Clean up the listener since download is done
+      teardownListener()
       setStatus({ type: "completed", filePath })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (message.includes("cancelled")) {
+        teardownListener()
         setStatus({ type: "idle" })
         return
       }
+      teardownListener()
       setStatus({ type: "error", message })
     }
-  }, [status])
+  }, [status, teardownListener])
 
   const handleApplyUpdate = useCallback(async () => {
     if (status.type !== "completed") return
@@ -179,7 +215,7 @@ export function UpdateSection() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h4 className="text-sm font-medium text-foreground">{t("shell.settingsAboutVersion", "الإصدار")}</h4>
-            <p className="text-sm text-muted-foreground">0.1.0</p>
+            <p className="text-sm text-muted-foreground">{currentVersion ?? "..."}</p>
           </div>
         </div>
       )}
@@ -279,7 +315,7 @@ export function UpdateSection() {
         <div className="space-y-3">
           <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-800 dark:bg-green-950">
             <p className="text-sm font-medium text-green-700 dark:text-green-300">
-              {t("shell.settingsAboutUpToDate", "تم التنزيل بنجاح")}
+              {t("shell.settingsAboutDownloadComplete", "تم التنزيل بنجاح")}
             </p>
           </div>
           <Button
@@ -288,7 +324,7 @@ export function UpdateSection() {
             onClick={handleApplyUpdate}
           >
             {applying
-              ? t("shell.settingsAboutDownloading", "جارٍ التطبيق...")
+              ? t("shell.settingsAboutApplying", "جارٍ التطبيق...")
               : t("shell.settingsAboutApply", "تطبيق التحديث")}
           </Button>
           {applyResult && (
