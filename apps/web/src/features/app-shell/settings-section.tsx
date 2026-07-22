@@ -15,7 +15,6 @@ import { licenseQueryKey } from "@/features/license/license-hooks"
 import { ActivationPage } from "@/features/license/activation-page"
 import { useLicenseActivation } from "@/features/license/use-license-activation"
 import { useLicenseStatus } from "@/features/license/use-license-status"
-
 import {
   getCurrentVersion,
   pickUpdateFile,
@@ -23,6 +22,7 @@ import {
   type UpdateApplyResult,
 } from "./update-commands"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
+import { useUpdateCheck } from "./use-update-check"
 
 type SettingsSectionProps = {
   accountCurrentPasswordLabel: string
@@ -50,13 +50,20 @@ type SettingsSectionProps = {
   title: string
   passwordHideLabel: string
   passwordShowLabel: string
+  settingsCheckForUpdates: string
+  settingsChecking: string
+  settingsUpToDate: string
+  settingsUpdateAvailable: string
+  settingsUpdateError: string
+  settingsApplyError: string
+  settingsLastChecked: string
+  settingsUpdateCached: string
   settingsAboutTitle: string
   settingsAboutVersion: string
   settingsAboutInstallFromFile: string
   settingsAboutInstallFromFileDescription: string
   settingsUpdateVerifying: string
   settingsUpdateSuccess: string
-  settingsUpdateError: string
   settingsAboutTab: string
   onSaveAccount: (input: {
     currentPassword?: string
@@ -98,19 +105,37 @@ export function SettingsSection({
   title,
   passwordHideLabel,
   passwordShowLabel,
+  settingsCheckForUpdates,
+  settingsChecking,
+  settingsUpToDate,
+  settingsUpdateAvailable,
+  settingsUpdateError,
+  settingsApplyError,
+  settingsLastChecked,
+  settingsUpdateCached,
   settingsAboutTitle,
   settingsAboutVersion,
   settingsAboutInstallFromFile,
   settingsAboutInstallFromFileDescription,
   settingsUpdateVerifying,
   settingsUpdateSuccess,
-  settingsUpdateError,
   settingsAboutTab,
   onSaveAccount,
   onReset,
   onToggleTheme,
 }: SettingsSectionProps) {
   const { t } = useTranslation()
+  const { state: checkUpdateState, checkUpdate } = useUpdateCheck()
+
+  function formatCheckedAt(checkedAt: string): string {
+    try {
+      const date = new Date(checkedAt)
+      if (isNaN(date.getTime())) return "-"
+      return date.toLocaleString()
+    } catch {
+      return "-"
+    }
+  }
   const [name, setName] = useState(currentName)
   const [phone, setPhone] = useState(currentPhone)
   const [currentPassword, setCurrentPassword] = useState("")
@@ -156,10 +181,10 @@ export function SettingsSection({
     } catch {
       setUpdateState({
         status: "error",
-        message: t("shell.settingsUpdateError"),
+        message: settingsApplyError,
       })
     }
-  }, [t])
+  }, [settingsApplyError])
 
   async function handleSave(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault()
@@ -373,6 +398,80 @@ export function SettingsSection({
       {/* System Tab */}
       {activeTab === 'system' && (
         <div className="space-y-4">
+          {/* Check for Updates — only in desktop runtime */}
+          {isDesktopRuntime() ? (
+            <div className="p-5 border border-line rounded-xl">
+              <div className="flex items-start justify-between gap-4" dir="rtl">
+                <div className="text-start">
+                  <h3 className="text-lg font-semibold text-foreground">{settingsCheckForUpdates}</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {checkUpdateState.status === 'checking' && settingsChecking}
+                    {(checkUpdateState.status === 'up-to-date' || checkUpdateState.status === 'update-available') && (
+                      <>
+                        {checkUpdateState.status === 'up-to-date' && settingsUpToDate}
+                        {checkUpdateState.status === 'update-available' && (
+                          <>{settingsUpdateAvailable} {checkUpdateState.latestVersion}</>
+                        )}
+                        {checkUpdateState.offline && (
+                          <span className="text-xs text-muted-foreground block mt-1">
+                            {settingsUpdateCached}
+                          </span>
+                        )}
+                        <br />
+                        <span className="text-xs text-muted-foreground">
+                          {settingsLastChecked}: {formatCheckedAt(checkUpdateState.checkedAt)}
+                        </span>
+                      </>
+                    )}
+                    {checkUpdateState.status === 'error' && settingsUpdateError}
+                    {checkUpdateState.status === 'idle' && null}
+                  </p>
+                </div>
+                <Button
+                  disabled={checkUpdateState.status === 'checking'}
+                  type="button"
+                  variant="outline"
+                  onClick={() => void checkUpdate()}
+                >
+                  {checkUpdateState.status === 'checking' ? (
+                    <span className="flex items-center gap-2">
+                      <svg
+                        className="animate-spin h-4 w-4"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                      {settingsChecking}
+                    </span>
+                  ) : (
+                    settingsCheckForUpdates
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-5 border border-line rounded-xl">
+              <div className="text-start" dir="rtl">
+                <p className="text-sm text-muted-foreground">
+                  {t('settings.about.onlyAvailableInDesktop', 'هذه الميزة متاحة فقط في تطبيق سطح المكتب.')}
+                </p>
+              </div>
+            </div>
+          )}
           <div className="p-5 border border-line rounded-xl">
             <div className="flex items-start justify-between gap-4" dir="rtl">
               <div className="text-start">
