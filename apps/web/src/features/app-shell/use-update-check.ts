@@ -74,11 +74,16 @@ export function useUpdateCheck() {
           setState({ status: "error", message: "" })
           return
         }
-        cacheResult(result)
+        // Validate downloadUrl before caching to prevent corrupting the cache
+        const safeResult = {
+          ...result,
+          downloadUrl: typeof result.downloadUrl === 'string' ? result.downloadUrl : '',
+        }
+        cacheResult(safeResult)
         setState({
           status: "update-available",
-          latestVersion: result.latestVersion,
-          downloadUrl: result.downloadUrl ?? '',
+          latestVersion: safeResult.latestVersion,
+          downloadUrl: safeResult.downloadUrl,
           checkedAt: new Date().toISOString(),
         })
       } else {
