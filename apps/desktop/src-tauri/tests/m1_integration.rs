@@ -4,11 +4,10 @@
 
 #[cfg(test)]
 mod integration_tests {
-    use app_lib::license::{self, LicenseManager, LicenseStatus};
+    use app_lib::license::{LicenseManager, LicenseStatus};
     use app_lib::clock;
     use app_lib::error::RustCoreError;
     use ed25519_dalek::Signer;
-    use rand_core::CryptoRngCore;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
