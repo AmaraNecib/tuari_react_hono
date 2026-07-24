@@ -4,7 +4,7 @@
 //        < /path/to/updates.json node _json-helper.mjs channels.nightly.latestVersion
 
 import { readFileSync } from 'node:fs';
-import { argv, stdin } from 'node:process';
+import { argv } from 'node:process';
 
 const file = argv[2];
 const field = argv[3];
