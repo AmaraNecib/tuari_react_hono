@@ -129,6 +129,7 @@ export function useSavedFilters(options: UseSavedFiltersOptions) {
     if (typeof window === "undefined") return EMPTY_STATE;
     return loadState(localStorage.getItem(storageKey));
   });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isLoaded, setIsLoaded] = useState(true);
   // Keep a ref to the latest state so callbacks fired in the same tick
   // don't read a stale snapshot from closure.
