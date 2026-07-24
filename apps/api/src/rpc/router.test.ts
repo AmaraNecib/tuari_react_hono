@@ -6,6 +6,7 @@ import { createInMemoryCompanyHarness } from "../modules/company/company.test-he
 import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
+import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
 import { createRouter } from "./router";
 import type { RpcContext } from "./context";
 import { EmployeeModule } from "../modules/workforce/employee.module";
@@ -60,12 +61,13 @@ describe("RPC router", () => {
       listPaged: async () => ({ items: [], nextCursor: null, totalCount: 0 }),
       delete: async () => undefined,
     } as never;
+    const mutation = new WorkspaceMutationContext(repository);
     return createRouter({
       authBootstrapService: { ...authBootstrapService, ...authOverrides },
       companyService: service,
-      workforceService: new WorkforceService(service),
-      operationsService: new OperationsService(service),
-      financeService: new FinanceService(service),
+      workforceService: new WorkforceService(repository, mutation),
+      operationsService: new OperationsService(repository, mutation),
+      financeService: new FinanceService(repository, mutation),
       inventoryService: {} as never,
       employeeModule,
       invoiceModule: {} as never,

@@ -12,6 +12,8 @@ import { CompanyService } from "../modules/company/company.service";
 import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
+import { AuditService } from "../modules/company/audit.service";
+import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
 import { createInventoryRepository } from "../modules/inventory/inventory.repository";
 import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
@@ -50,7 +52,21 @@ export async function createAppDependencies(
   const companyRepository = createCompanyRepository(sharedDatabase);
   const inventoryRepository = createInventoryRepository(sharedDatabase);
   const accountRepository = new DrizzleAccountRepository(db);
-  const companyService = new CompanyService(companyRepository, companyRepository);
+
+  // Construct each domain service off the same `WorkspaceMutationContext`
+  // so the per-domain service owns its transaction + audit context and
+  // the `CompanyService` only has to forward delegations.
+  const mutation = new WorkspaceMutationContext(companyRepository, companyRepository);
+  const workforceService = new WorkforceService(companyRepository, mutation);
+  const operationsService = new OperationsService(companyRepository, mutation);
+  const financeService = new FinanceService(companyRepository, mutation);
+  const auditService = new AuditService(companyRepository);
+  const companyService = new CompanyService(companyRepository, companyRepository, {
+    workforce: workforceService,
+    operations: operationsService,
+    finance: financeService,
+    audit: auditService,
+  });
 
   const employeeRepository = new SqliteEmployeeRepository(companyRepository);
   const roleRepository = new SqliteRoleRepository(companyRepository);
@@ -72,9 +88,9 @@ export async function createAppDependencies(
     accountService: new AccountService(accountRepository, auth),
     authBootstrapService,
     companyService,
-    workforceService: new WorkforceService(companyService),
-    operationsService: new OperationsService(companyService),
-    financeService: new FinanceService(companyService),
+    workforceService,
+    operationsService,
+    financeService,
     inventoryService: new InventoryService(
       inventoryRepository,
       new InventoryAttachmentStorage(env.attachmentsRootPath),
