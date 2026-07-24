@@ -123,13 +123,13 @@ export class CompanyService {
   //
   // These glue together workforce + finance: they need to look up
   // the employee (workforce) and the debt account (finance) in the
-  // same call. They stay here because they genuinely span domains.
+  // same call. The actual implementation lives in `FinanceService`
+  // (which has the repository + mutation context it needs); the
+  // delegation here is for callers that go through `CompanyService`.
   // ---------------------------------------------------------------------------
 
   getEmployeeDebtAccount(employeeId: string) {
-    requireEmployee(this.repository, employeeId);
-    const accounts = this.finance.listDebtAccounts({ workerId: employeeId }).items;
-    return accounts[0] ?? null;
+    return this.finance.getEmployeeDebtAccount(employeeId);
   }
 
   createEmployeeDebtEntry(
@@ -143,34 +143,7 @@ export class CompanyService {
     },
     auditContext?: MutationAuditContext,
   ) {
-    const employee = requireEmployee(this.repository, input.employeeId);
-
-    let account = this.getEmployeeDebtAccount(input.employeeId);
-    if (!account) {
-      const createResult = this.finance.createDebtAccount(
-        {
-          partyType: "INTERNAL_WORKER",
-          workerId: input.employeeId,
-          note: `حساب الدين للعامل: ${employee.firstName} ${employee.lastName}`,
-        },
-        auditContext,
-      );
-      account = createResult.item;
-    }
-
-    const result = this.finance.createDebtEntry(
-      {
-        debtAccountId: account.id,
-        entryType: input.entryType,
-        signedAmountDzd: input.amountDzd,
-        entryDate: input.entryDate,
-        note: input.note || `${input.entryType}: ${employee.firstName} ${employee.lastName}`,
-        reasonCategory: input.reasonCategory,
-      },
-      auditContext,
-    );
-
-    return result.item;
+    return this.finance.createEmployeeDebtEntry(input, auditContext);
   }
 
   // ---------------------------------------------------------------------------

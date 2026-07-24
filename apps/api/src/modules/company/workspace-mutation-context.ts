@@ -15,7 +15,7 @@
 import { TransactionManager } from "./transaction-manager";
 import type { CompanyRepository } from "./company.repository";
 import { CompanyError } from "./company.errors";
-import type { MutationAuditContext, MutationAuditContext as RawAuditContext } from "./company.types";
+import { type MutationAuditContext as RawAuditContext, type MutationAuditContext } from "./company.types";
 import { normalizeMutationAuditContext, type WorkspaceAdminAuthorizer } from "./company.helpers";
 
 export class WorkspaceMutationContext {
@@ -57,4 +57,4 @@ export class WorkspaceMutationContext {
   }
 }
 
-export type { MutationAuditContext };
+export type { MutationAuditContext, RawAuditContext };
