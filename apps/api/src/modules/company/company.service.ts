@@ -129,30 +129,11 @@ export class CompanyService {
   // ---------------------------------------------------------------------------
   // Cross-domain orchestrators
   //
-  // These glue together workforce + finance: they need to look up
-  // the employee (workforce) and the debt account (finance) in the
-  // same call. The actual implementation lives in `FinanceService`
-  // (which has the repository + mutation context it needs); the
-  // delegation here is for callers that go through `CompanyService`.
+  // The only genuinely cross-domain methods (glue workforce +
+  // finance) live on `FinanceService` and are called by the finance
+  // RPC handler directly. `CompanyService` does not expose them
+  // because no caller reaches `CompanyService` for those operations.
   // ---------------------------------------------------------------------------
-
-  getEmployeeDebtAccount(employeeId: string) {
-    return this.finance.getEmployeeDebtAccount(employeeId);
-  }
-
-  createEmployeeDebtEntry(
-    input: {
-      employeeId: string;
-      entryType: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE";
-      amountDzd: number;
-      entryDate?: string;
-      note?: string;
-      reasonCategory?: DebtEntry["reasonCategory"];
-    },
-    auditContext?: MutationAuditContext,
-  ) {
-    return this.finance.createEmployeeDebtEntry(input, auditContext);
-  }
 
   // ---------------------------------------------------------------------------
   // Delegations — workforce
