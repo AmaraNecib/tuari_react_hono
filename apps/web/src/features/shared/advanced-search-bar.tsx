@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
+  canonicalJson,
   type FilterPreset,
   useSavedFilters,
 } from "@/hooks/use-saved-filters";
@@ -29,10 +30,53 @@ function filtersMatch(
   a: Record<string, unknown>,
   b: Record<string, unknown>
 ): boolean {
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-  return aKeys.every((key) => a[key] === b[key]);
+  return canonicalJson(a) === canonicalJson(b);
+}
+
+/**
+ * useFocusTrap — confines Tab / Shift+Tab to the focusable elements inside
+ * the given container ref while it is active. Required for ARIA
+ * `role="dialog"` + `aria-modal="true"` patterns.
+ */
+function useFocusTrap(
+  containerRef: React.RefObject<HTMLElement | null>,
+  active: boolean
+) {
+  useEffect(() => {
+    if (!active) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const focusableSelector =
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    const getFocusable = () =>
+      Array.from(
+        container.querySelectorAll<HTMLElement>(focusableSelector)
+      ).filter((el) => !el.hasAttribute("aria-hidden"));
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const activeEl = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && activeEl === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && activeEl === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    container.addEventListener("keydown", onKeyDown);
+    return () => container.removeEventListener("keydown", onKeyDown);
+  }, [containerRef, active]);
 }
 
 function filterLabel(
@@ -282,8 +326,14 @@ export function AdvancedSearchBar({
     </div>
   ) : null;
 
+  const saveDialogRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(saveDialogRef, showSaveDialog);
+  useFocusTrap(drawerRef, drawerOpen);
+
   const saveDialog = showSaveDialog ? (
     <div
+      ref={saveDialogRef}
       role="dialog"
       aria-label={t("search.saveCurrent")}
       className="flex gap-2 rounded-lg border border-border/60 bg-surface p-3"
@@ -397,6 +447,7 @@ export function AdvancedSearchBar({
         </Button>
         {drawerOpen ? (
           <div
+            ref={drawerRef}
             role="dialog"
             aria-modal="true"
             aria-label={t("search.openFilters")}

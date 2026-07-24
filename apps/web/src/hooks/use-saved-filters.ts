@@ -4,7 +4,7 @@
  * Both live in the same `localStorage` slot under a `{presets, history}` envelope
  * so writes are atomic and a single hook owns the lifecycle.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export interface FilterPreset {
   id: string;
@@ -54,8 +54,11 @@ function isPresetArray(value: unknown): value is FilterPreset[] {
 }
 
 /** Deep-stable canonical JSON. Object keys are sorted at every level so two
- * structurally-equal filter maps always serialize the same way. */
-function canonicalJson(value: unknown): string {
+ * structurally-equal filter maps always serialize the same way.
+ *
+ * Exported so consumers (e.g. AdvancedSearchBar) can do structural filter
+ * comparison without re-implementing the algorithm. */
+export function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) {
     return "[" + value.map(canonicalJson).join(",") + "]";
@@ -129,10 +132,6 @@ export function useSavedFilters(options: UseSavedFiltersOptions) {
     if (typeof window === "undefined") return EMPTY_STATE;
     return loadState(localStorage.getItem(storageKey));
   });
-  // Keep a ref to the latest state so callbacks fired in the same tick
-  // don't read a stale snapshot from closure.
-  const stateRef = useRef(state);
-  stateRef.current = state;
 
   useEffect(() => {
     setState(loadState(localStorage.getItem(storageKey)));
@@ -151,12 +150,7 @@ export function useSavedFilters(options: UseSavedFiltersOptions) {
   }, [storageKey, state]);
 
   const savePreset = useCallback(
-    (name: string, filters: Record<string, unknown>): boolean => {
-      if (stateRef.current.presets.length >= maxPresets) {
-        console.warn(`Max ${maxPresets} filter presets allowed`);
-        return false;
-      }
-
+    (name: string, filters: Record<string, unknown>) => {
       const newPreset: FilterPreset = {
         id: `preset-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         name,
@@ -164,16 +158,16 @@ export function useSavedFilters(options: UseSavedFiltersOptions) {
         createdAt: Date.now(),
       };
 
-      let saved = false;
       setState((current) => {
-        if (current.presets.length >= maxPresets) return current;
-        saved = true;
+        if (current.presets.length >= maxPresets) {
+          console.warn(`Max ${maxPresets} filter presets allowed`);
+          return current;
+        }
         return {
           presets: [...current.presets, newPreset],
           history: current.history,
         };
       });
-      return saved;
     },
     [maxPresets]
   );
