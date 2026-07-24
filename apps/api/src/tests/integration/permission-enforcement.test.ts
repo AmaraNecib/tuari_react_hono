@@ -5,6 +5,7 @@ import { createRpcMiddleware } from "../../rpc/rpc-middleware";
 import type { RpcContext } from "../../rpc/context";
 import type { SessionUser } from "../../modules/session/session.types";
 import type { Permission } from "../../modules/rbac/permissions";
+import { ALL_PERMISSIONS } from "../../modules/rbac/permissions";
 import { DEFAULT_ROLE_PERMISSIONS } from "../../modules/rbac/role-seeds";
 
 // ---------------------------------------------------------------------------
@@ -45,15 +46,10 @@ const DOMAINS = [
   { resource: "payments", actions: ["create", "read", "update", "delete"] },
 ] as const;
 
-const ALL_PERMISSIONS: Permission[] = [
-  "employees:create", "employees:read", "employees:update", "employees:delete",
-  "projects:create", "projects:read", "projects:update", "projects:delete",
-  "warehouses:create", "warehouses:read", "warehouses:update", "warehouses:delete",
-  "inventory:create", "inventory:read", "inventory:update", "inventory:delete", "inventory:transfer",
-  "debts:create", "debts:read", "debts:update", "debts:settle",
-  "invoices:create", "invoices:read", "invoices:update", "invoices:delete",
-  "payments:create", "payments:read", "payments:update", "payments:delete",
-];
+// ALL_PERMISSIONS imported from the canonical source in permissions.ts
+// to prevent drift. The local type cast keeps the type checker happy
+// after the spread into the mutable array used by the tests.
+const allPermsSet: Permission[] = [...ALL_PERMISSIONS] as Permission[];
 
 // ---------------------------------------------------------------------------
 // Suite: Permission enforcement across domains

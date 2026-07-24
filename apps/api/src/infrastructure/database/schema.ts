@@ -1547,7 +1547,7 @@ async function runRbacThreeRoleMigration() {
       // `resource:action` for any rows that slipped through the colon-only
       // rewrite on a pre-#10 database. No-op if no rows match.
       const dotPerms: Array<{ id: string; permission: string }> = await tx.$queryRawUnsafe(
-        "SELECT id, permission FROM role_permission WHERE permission LIKE '%.%.%' AND permission NOT LIKE '%:%'",
+        "SELECT id, permission FROM role_permission WHERE permission LIKE '%.%' AND permission NOT LIKE '%:%'",
       );
       for (const row of dotPerms) {
         const lastDot = row.permission.lastIndexOf(".");
