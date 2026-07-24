@@ -83,7 +83,7 @@ import {
 } from "./company.types";
 
 export class CompanyService {
-  private readonly mutation: WorkspaceMutationContext;
+  private _mutation?: WorkspaceMutationContext;
   readonly workforce: WorkforceService;
   readonly operations: OperationsService;
   readonly finance: FinanceService;
@@ -91,7 +91,7 @@ export class CompanyService {
 
   constructor(
     private readonly repository: CompanyRepository,
-    workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
+    private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
     injected?: {
       workforce?: WorkforceService;
       operations?: OperationsService;
@@ -99,11 +99,19 @@ export class CompanyService {
       audit?: AuditService;
     },
   ) {
-    this.mutation = new WorkspaceMutationContext(repository, workspaceAdminAuthorizer);
+    // Lazy — only created when the fallback is reached (unit tests).
+    // In production all services are injected so this is never called.
     this.workforce = injected?.workforce ?? new WorkforceService(repository, this.mutation);
     this.operations = injected?.operations ?? new OperationsService(repository, this.mutation);
     this.finance = injected?.finance ?? new FinanceService(repository, this.mutation);
     this.audit = injected?.audit ?? new AuditService(repository);
+  }
+
+  private get mutation(): WorkspaceMutationContext {
+    return this._mutation ??= new WorkspaceMutationContext(
+      this.repository,
+      this.workspaceAdminAuthorizer,
+    );
   }
 
   // ---------------------------------------------------------------------------
