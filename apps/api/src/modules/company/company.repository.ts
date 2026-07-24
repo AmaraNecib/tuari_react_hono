@@ -1,13 +1,18 @@
 /**
  * Drizzle-based CompanyRepository implementation.
  *
- * This file replaces the raw-SQL SqliteCompanyRepository with Drizzle ORM
- * queries. It implements the same CompanyRepository interface so callers
- * don't need to change.
+ * `CompanyRepository` is a composition of four per-domain
+ * repository interfaces, each of which owns the data-access seam
+ * for one domain (workforce, operations, finance, audit). The
+ * Drizzle-based `SqliteCompanyRepository` still implements all of
+ * them in one class — the implementation split is tracked as
+ * follow-up work (see `.scratch/implementation/177-god-object-splits-design.md`).
  *
- * The migration is incremental: this file is being built alongside the
- * existing SqliteCompanyRepository. Once all tests pass, the factory
- * will be updated to use this implementation.
+ * The split is at the **interface** level: callers (services,
+ * tests) can depend on the focused `WorkforceRepository`,
+ * `OperationsRepository`, `FinanceRepository`, or
+ * `AuditRepository` interface and stop crossing the 70-method
+ * god-object boundary. A future PR can split the implementation.
  */
 
 import crypto from "node:crypto";
@@ -24,6 +29,10 @@ import {
 import * as schema from "../../schema";
 import { createDrizzleFromSqlite } from "../../infrastructure/database/drizzle";
 import { createAlgeriaTimestamp } from "./company-time";
+import type { WorkforceRepository } from "./workforce.repository";
+import type { OperationsRepository } from "./operations.repository";
+import type { FinanceRepository } from "./finance.repository";
+import type { AuditRepository } from "./audit.repository";
 import type {
   DebtAccountCreateData,
   DebtAccountListFilters,
@@ -197,101 +206,13 @@ function toUserProfileHistory(r: typeof schema.userProfileHistory.$inferSelect):
 type DrizzleDb = BetterSQLite3Database<typeof schema>;
 
 /** Repository interface for company domain data access (employees, projects, debts, etc.). */
-export interface CompanyRepository {
+export interface CompanyRepository extends WorkforceRepository, OperationsRepository, FinanceRepository, AuditRepository {
+  /**
+   * Run the callback inside a Drizzle transaction. Used by the
+   * domain services for cross-table mutations (e.g. create
+   * debt account + opening entry + audit log).
+   */
   withTransaction<T>(callback: () => T): T;
-  isBootstrapOwner(userId: string): boolean;
-  listRoles(): RoleRecord[];
-  getRoleById(id: string): RoleRecord | null;
-  getRoleByKey(key: string): RoleRecord | null;
-  createRole(data: RoleCreateData): RoleRecord;
-  updateRole(data: RoleUpdateData): RoleRecord | null;
-  deleteRole(id: string): boolean;
-  countEmployeesByRoleId(roleId: string): number;
-
-  listEmployees(filters?: EmployeeListFilters): EmployeeRecord[];
-  getEmployeeById(id: string): EmployeeRecord | null;
-  getEmployeeByPhone(phone: string): EmployeeRecord | null;
-  createEmployee(data: EmployeeCreateData, auditContext?: MutationAuditContext): EmployeeRecord;
-  createEmployeesBatch(data: EmployeeBatchCreateData[], auditContext?: MutationAuditContext): EmployeeBatchCreateResultRecord;
-  updateEmployee(data: EmployeeUpdateData, auditContext?: MutationAuditContext): EmployeeRecord | null;
-  deleteEmployee(id: string): boolean;
-  /**
-   * Cursor-paginated employee list. The cursor is opaque (produced by
-   * `encodeCursor` in `modules/shared/cursor.ts`). Returns the page of
-   * employees sorted by `(created_at DESC, id DESC)` plus the total
-   * count matching the filter.
-   */
-  listEmployeesPaged(query: {
-    filters?: EmployeeListFilters;
-    cursor?: string;
-    limit: number;
-  }): { items: EmployeeRecord[]; total: number; nextCursor: string | null };
-  /**
-   * Insert-or-replace employee record. Used by the deep EmployeeModule's
-   * save() method which generates the UUID itself.
-   */
-  upsertEmployee(data: EmployeeCreateData | EmployeeUpdateData & { id: string }): EmployeeRecord;
-  assignEmployeeWorkplace(data: EmployeeWorkplaceAssignmentData, auditContext?: MutationAuditContext): void;
-  syncManagedProjects(data: EmployeeManagedProjectsSyncData, auditContext?: MutationAuditContext): void;
-  syncManagedWarehouses(data: EmployeeManagedWarehousesSyncData, auditContext?: MutationAuditContext): void;
-
-  listExternalCounterparties(filters?: ExternalCounterpartyListFilters): ExternalCounterpartyRecord[];
-  getExternalCounterpartyById(id: string): ExternalCounterpartyRecord | null;
-  createExternalCounterparty(data: ExternalCounterpartyCreateData): ExternalCounterpartyRecord;
-
-  listDebtAccounts(filters?: DebtAccountListFilters): DebtAccountRecord[];
-  getDebtAccountById(id: string): DebtAccountRecord | null;
-  getDebtAccountByWorkerId(workerId: string): DebtAccountRecord | null;
-  getDebtAccountByExternalCounterpartyId(externalCounterpartyId: string): DebtAccountRecord | null;
-  getDebtAccountByExternalCounterpartyIdAndDirection(
-    externalCounterpartyId: string,
-    direction: DebtAccountRecord["direction"],
-  ): DebtAccountRecord | null;
-  createDebtAccount(data: DebtAccountCreateData, auditContext?: MutationAuditContext): DebtAccountRecord;
-  updateDebtAccount(data: DebtAccountUpdateData, auditContext?: MutationAuditContext): DebtAccountRecord | null;
-
-  listDebtEntries(filters: DebtEntryListFilters): DebtEntryRecord[];
-  getDebtEntryById(id: string): DebtEntryRecord | null;
-  getLatestDebtEntry(accountId: string): DebtEntryRecord | null;
-  listAllDebtEntries(): DebtEntryRecord[];
-  createDebtEntry(data: DebtEntryCreateData, auditContext?: MutationAuditContext): DebtEntryRecord;
-  voidDebtEntry(data: DebtEntryVoidData, auditContext?: MutationAuditContext): DebtEntryRecord | null;
-  updateDebtEntryBalanceAfter(id: string, balanceAfterDzd: number): void;
-
-  listProjects(filters?: ProjectListFilters): ProjectRecord[];
-  getProjectById(id: string): ProjectRecord | null;
-  createProject(data: ProjectCreateData, auditContext?: MutationAuditContext): ProjectRecord;
-  updateProject(data: ProjectUpdateData, auditContext?: MutationAuditContext): ProjectRecord | null;
-
-  listWarehouses(filters?: WarehouseListFilters): WarehouseRecord[];
-  getWarehouseById(id: string): WarehouseRecord | null;
-  createWarehouse(data: WarehouseCreateData, auditContext?: MutationAuditContext): WarehouseRecord;
-  updateWarehouse(data: WarehouseUpdateData, auditContext?: MutationAuditContext): WarehouseRecord | null;
-
-  listManagerAssignments(filters?: ManagerAssignmentListFilters): EmployeeManagerAssignmentRecord[];
-  getManagerAssignmentById(id: string): EmployeeManagerAssignmentRecord | null;
-  getActiveManagerAssignmentByWorkerId(workerId: string): EmployeeManagerAssignmentRecord | null;
-  createManagerAssignment(data: ManagerAssignmentCreateData, auditContext?: MutationAuditContext): EmployeeManagerAssignmentRecord;
-  endManagerAssignment(data: ManagerAssignmentEndData, auditContext?: MutationAuditContext): EmployeeManagerAssignmentRecord | null;
-
-  listProjectAssignments(filters?: ProjectAssignmentListFilters): EmployeeProjectAssignmentRecord[];
-  getProjectAssignmentById(id: string): EmployeeProjectAssignmentRecord | null;
-  getActiveProjectAssignmentByEmployeeId(employeeId: string): EmployeeProjectAssignmentRecord | null;
-  createProjectAssignment(data: ProjectAssignmentCreateData, auditContext?: MutationAuditContext): EmployeeProjectAssignmentRecord;
-  endProjectAssignment(data: ProjectAssignmentEndData, auditContext?: MutationAuditContext): EmployeeProjectAssignmentRecord | null;
-  listWarehouseAssignments(filters?: WarehouseAssignmentListFilters): EmployeeWarehouseAssignmentRecord[];
-  getWarehouseAssignmentById(id: string): EmployeeWarehouseAssignmentRecord | null;
-  getActiveWarehouseAssignmentByEmployeeId(employeeId: string): EmployeeWarehouseAssignmentRecord | null;
-  createWarehouseAssignment(data: WarehouseAssignmentCreateData, auditContext?: MutationAuditContext): EmployeeWarehouseAssignmentRecord;
-  endWarehouseAssignment(data: WarehouseAssignmentEndData, auditContext?: MutationAuditContext): EmployeeWarehouseAssignmentRecord | null;
-  listEmployeeStateHistory(filters?: EmployeeStateHistoryListFilters): EmployeeStateHistoryRecord[];
-  listProjectManagerOwnershipHistory(filters?: ProjectManagerOwnershipHistoryListFilters): ProjectManagerOwnershipHistoryRecord[];
-  listWarehouseManagerOwnershipHistory(filters?: WarehouseManagerOwnershipHistoryListFilters): WarehouseManagerOwnershipHistoryRecord[];
-  listSalaryPayments(filters?: EmployeeSalaryPaymentListFilters): EmployeeSalaryPaymentRecord[];
-  createSalaryPayment(data: EmployeeSalaryPaymentCreateData, auditContext?: MutationAuditContext): EmployeeSalaryPaymentRecord;
-  listUserProfileHistory(): UserProfileHistoryRecord[];
-  listInventoryItemDefinitionsForLog(): InventoryItemDefinitionAuditRecord[];
-  getAuthUserById(id: string): AuthUserDisplayRecord | null;
 }
 /** Drizzle-based implementation of CompanyRepository. */
 export class SqliteCompanyRepository implements CompanyRepository {
