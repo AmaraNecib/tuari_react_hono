@@ -20,6 +20,8 @@ export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () =
 
   const transferType = (filters.transferType as string | undefined) ?? null
   const isLoading = transfersQuery.isLoading
+  const normalizedQuery = query.trim().toLowerCase()
+  const hasActiveFilters = normalizedQuery.length > 0 || transferType !== null
 
   const quickFilters: QuickFilter[] = useMemo(
     () => [
@@ -41,8 +43,6 @@ export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () =
     ],
     [t]
   )
-
-  const normalizedQuery = query.trim().toLowerCase()
 
   const filteredTransfers = useMemo(() => {
     const source = transfersQuery.data?.items ?? []
@@ -83,8 +83,14 @@ export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () =
             <p className="mt-3 text-sm text-muted-foreground">{t("inventoryPage.transfers.loading")}</p>
           ) : filteredTransfers.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <p className="text-sm text-muted-foreground">{t("inventoryPage.transfers.empty")}</p>
-              <Button size="sm" onClick={onCreate}>{t("inventoryPage.transfers.createButton")}</Button>
+              <p className="text-sm text-muted-foreground">
+                {hasActiveFilters
+                  ? t("search.noResults")
+                  : t("inventoryPage.transfers.empty")}
+              </p>
+              {!hasActiveFilters ? (
+                <Button size="sm" onClick={onCreate}>{t("inventoryPage.transfers.createButton")}</Button>
+              ) : null}
             </div>
           ) : (
             <div className="mt-3 grid gap-3">

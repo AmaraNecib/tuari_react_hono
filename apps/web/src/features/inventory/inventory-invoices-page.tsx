@@ -26,7 +26,7 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
   const { t } = useTranslation()
   const invoicesQuery = useInventoryInvoiceGroupsQuery()
   const [query, setQuery] = useState("")
-  const [filters, setFilters] = useState<Record<string, unknown>>({})
+  const [filters, setFilters] = useState<Record<string, unknown>>({ status: "ALL" })
   const batchSelection = useBatchSelection(invoicesQuery.data?.items ?? [])
 
   const normalizedQuery = query.trim().toLowerCase()
