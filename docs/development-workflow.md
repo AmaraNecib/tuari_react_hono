@@ -148,12 +148,12 @@ Each GitHub Milestone contains the issues for that phase. Issues are labeled by 
 | Channel | Description | Source Branch | Version Suffix |
 |---------|-------------|---------------|----------------|
 | **Nightly** | Automatic development builds | `develop` | `-nightly.N` |
-| **Preview** | Feature-complete pre-releases | `release/*` | `-preview.N` |
+| **Beta** | Feature-complete pre-releases | `release/*` | `-beta.N` |
 | **Stable** | Production releases | `main` | None |
 
 These names communicate stability:
 - **Nightly** = may break, use at your own risk
-- **Preview** = feature-complete, collecting feedback
+- **Beta** = feature-complete, collecting feedback
 - **Stable** = production-ready
 
 ---
@@ -189,7 +189,7 @@ Semantic Versioning (`MAJOR.MINOR.PATCH`).
 
 ```
 0.3.0-nightly.15    — 15th nightly build toward 0.3.0
-1.1.0-preview.2     — 2nd preview of 1.1.0
+1.1.0-beta.2     — 2nd beta of 1.1.0
 ```
 
 ---

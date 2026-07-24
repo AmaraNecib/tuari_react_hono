@@ -1,0 +1,269 @@
+# Release Metadata Workflow
+#
+# Generates and uploads updates.json for each release channel.
+# Follows ADR-UPD-004 (Release Pipeline).
+#
+# Triggers:
+#   - Schedule: Daily at 03:00 UTC for nightly channel
+#   - Tag push: v* for stable, v*-beta* for beta
+#   - Manual: workflow_dispatch with channel selection
+#
+# Note: This workflow drives the M6.3 multi-channel release-metadata CLI
+# (scripts/update-channel-metadata.mjs). The M6.4 build pipeline uses a
+# separate single-channel generator at scripts/generate-update-metadata.mjs
+# (added in PR #171); the two scripts coexist because they serve different
+# stages of the release pipeline.
+#
+# Security: All workflow_dispatch inputs are bound to env vars and referenced
+# via $ENV_VAR in shell blocks to prevent script injection (GitHub Actions
+# expands ${{ inputs.* }} before the shell runs).
+
+name: Release Metadata
+
+on:
+  schedule:
+    # Daily at 03:00 UTC — nightly channel
+    - cron: '0 3 * * *'
+  push:
+    tags:
+      - 'v*'           # Stable releases (e.g., v0.5.0)
+      - 'v*-beta*'     # Beta releases (e.g., v0.5.0-beta.1)
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Release channel'
+        required: true
+        default: 'nightly'
+        type: choice
+        options:
+          - nightly
+          - beta
+          - stable
+      version:
+        description: 'Version string (e.g., 0.6.0-nightly.20260708)'
+        required: true
+      min_version:
+        description: 'Minimum supported version'
+        required: false
+        default: '0.1.0'
+      update_url:
+        description: 'Download URL for the update package'
+        required: true
+      release_date:
+        description: 'Release date (ISO 8601, leave blank for today UTC)'
+        required: false
+        default: ''
+      changelog_url:
+        description: 'URL to changelog'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  determine-channel:
+    name: Determine Channel
+    runs-on: self-hosted
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
+      version: ${{ steps.channel.outputs.version }}
+      min_version: ${{ steps.channel.outputs.min_version }}
+      update_url: ${{ steps.channel.outputs.update_url }}
+      release_date: ${{ steps.channel.outputs.release_date }}
+      changelog_url: ${{ steps.channel.outputs.changelog_url }}
+    steps:
+      - id: channel
+        env:
+          # Bind free-text inputs to env vars to avoid direct ${{ inputs.* }}
+          # interpolation into shell (script-injection safe).
+          INPUT_CHANNEL: ${{ inputs.channel }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_MIN_VERSION: ${{ inputs.min_version }}
+          INPUT_UPDATE_URL: ${{ inputs.update_url }}
+          INPUT_RELEASE_DATE: ${{ inputs.release_date }}
+          INPUT_CHANGELOG_URL: ${{ inputs.changelog_url }}
+          # Tag ref is also bound to env: tag names are user-controllable.
+          INPUT_TAG_REF: ${{ github.ref }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            {
+              echo "channel=${INPUT_CHANNEL}"
+              echo "version=${INPUT_VERSION}"
+              echo "min_version=${INPUT_MIN_VERSION}"
+              echo "update_url=${INPUT_UPDATE_URL}"
+              echo "release_date=${INPUT_RELEASE_DATE}"
+              echo "changelog_url=${INPUT_CHANGELOG_URL}"
+            } >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "channel=nightly" >> "$GITHUB_OUTPUT"
+            # 0.1.0 is the floor for the current release (Milestone 5, 0.5.0).
+            # Operators on workflow_dispatch can override.
+            echo "min_version=0.1.0" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            # Use INPUT_TAG_REF (env-bound) instead of ${{ github.ref }} to
+            # keep tag-derived values out of direct shell interpolation.
+            if [[ "${INPUT_TAG_REF}" == refs/tags/v*-beta* ]]; then
+              echo "channel=beta" >> "$GITHUB_OUTPUT"
+            else
+              echo "channel=stable" >> "$GITHUB_OUTPUT"
+            fi
+            # See schedule branch above for the rationale on 0.1.0.
+            echo "min_version=0.1.0" >> "$GITHUB_OUTPUT"
+          fi
+
+  generate-metadata:
+    name: Generate updates.json
+    runs-on: self-hosted
+    needs: [determine-channel]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+          persist-credentials: false
+
+      - name: Setup parameters
+        id: params
+        env:
+          # Pass job outputs through env to keep ${{ needs.* }} interpolation
+          # out of the shell body where user-derived values flow.
+          NEEDS_CHANNEL: ${{ needs.determine-channel.outputs.channel }}
+          NEEDS_VERSION: ${{ needs.determine-channel.outputs.version }}
+          NEEDS_MIN_VERSION: ${{ needs.determine-channel.outputs.min_version }}
+          NEEDS_UPDATE_URL: ${{ needs.determine-channel.outputs.update_url }}
+          NEEDS_RELEASE_DATE: ${{ needs.determine-channel.outputs.release_date }}
+          NEEDS_CHANGELOG_URL: ${{ needs.determine-channel.outputs.changelog_url }}
+          # Tag-derived values are also bound to env vars: although the
+          # `push` event itself is not user-controlled, the tag NAME is
+          # (any maintainer with push access can create a tag, and tag
+          # names allow quotes / semicolons). Double-quoted in shell below.
+          REPO: ${{ github.repository }}
+          TAG_REF: ${{ github.ref }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          echo "channel=${NEEDS_CHANNEL}" >> "$GITHUB_OUTPUT"
+          echo "min_version=${NEEDS_MIN_VERSION}" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            DATE=$(date -u +%Y%m%d)
+            # Read base version from root package.json to avoid hardcoding
+            # the milestone version. Falls back to "0.0.0" if missing.
+            BASE_VERSION=$(node -p "require('./package.json').version.split('-')[0] || '0.0.0'")
+            VERSION="${BASE_VERSION}-nightly.${DATE}"
+            URL="https://github.com/${REPO}/releases/nightly/download/update-${VERSION}.update"
+            RDATE=$(date -u +%Y-%m-%dT00:00:00Z)
+            CLOG="https://github.com/${REPO}/releases/nightly"
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "update_url=${URL}" >> "$GITHUB_OUTPUT"
+            echo "release_date=${RDATE}" >> "$GITHUB_OUTPUT"
+            echo "changelog_url=${CLOG}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            # TAG_NAME and TAG_REF are bound to env vars in this step's env:
+            # block. The tag name is user-controllable (any maintainer with
+            # push access) and may contain shell metacharacters, so it is
+            # always double-quoted in the shell body.
+            TAG="${TAG_NAME}"
+            VERSION="${TAG#v}"
+            if [ "${NEEDS_CHANNEL}" = "beta" ]; then
+              URL="https://github.com/${REPO}/releases/beta/download/update-${VERSION}.update"
+              CLOG="https://github.com/${REPO}/releases/beta"
+            else
+              # Stable uses the tag-specific path so the URL is correct
+              # on the first build of a new minor (when `releases/latest/`
+              # still points to the prior release).
+              URL="https://github.com/${REPO}/releases/download/${TAG}/update-${VERSION}.update"
+              CLOG="https://github.com/${REPO}/releases/tag/${TAG}"
+            fi
+            RDATE=$(date -u +%Y-%m-%dT00:00:00Z)
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "update_url=${URL}" >> "$GITHUB_OUTPUT"
+            echo "release_date=${RDATE}" >> "$GITHUB_OUTPUT"
+            echo "changelog_url=${CLOG}" >> "$GITHUB_OUTPUT"
+          else
+            # workflow_dispatch: all user-provided values come from env vars.
+            RDATE="${NEEDS_RELEASE_DATE}"
+            if [ -z "${RDATE}" ]; then
+              RDATE=$(date -u +%Y-%m-%dT00:00:00Z)
+            fi
+            {
+              echo "version=${NEEDS_VERSION}"
+              echo "update_url=${NEEDS_UPDATE_URL}"
+              echo "release_date=${RDATE}"
+              echo "changelog_url=${NEEDS_CHANGELOG_URL}"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate updates.json
+        env:
+          # Pass step output values through env to keep any user-derived
+          # data out of direct shell interpolation.
+          CHANNEL_OUT: ${{ steps.params.outputs.channel }}
+          VERSION_OUT: ${{ steps.params.outputs.version }}
+          MIN_VERSION_OUT: ${{ steps.params.outputs.min_version }}
+          URL_OUT: ${{ steps.params.outputs.update_url }}
+          RELEASE_DATE_OUT: ${{ steps.params.outputs.release_date }}
+          CHANGELOG_OUT: ${{ steps.params.outputs.changelog_url }}
+        run: |
+          # --merge updates.json preserves sibling channel entries so that
+          # promoting nightly -> beta -> stable (or back-filling) does not
+          # clobber the other channels. On a fresh checkout, the merge file
+          # does not exist and the script falls back to a single-channel
+          # write (see ENOENT branch in update-channel-metadata.mjs).
+          node scripts/update-channel-metadata.mjs \
+            --channel "${CHANNEL_OUT}" \
+            --version "${VERSION_OUT}" \
+            --min-version "${MIN_VERSION_OUT}" \
+            --url "${URL_OUT}" \
+            --release-date "${RELEASE_DATE_OUT}" \
+            --changelog "${CHANGELOG_OUT}" \
+            --merge "updates.json" \
+            --output "updates.json"
+
+      - name: Upload updates.json artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: updates-${{ steps.params.outputs.channel }}
+          path: updates.json
+          if-no-files-found: error
+
+      - name: Ensure release exists
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # github.ref_name comes from the tag event. Although it is
+          # user-controllable (any maintainer with push access can create
+          # a tag), the value is double-quoted in all shell expansions below
+          # to prevent injection. It is NOT a workflow_dispatch input.
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # Create the release as a draft if it doesn't already exist, so the
+          # upload step below always has a target. Idempotent: `gh release create`
+          # errors when the release already exists, which we swallow.
+          if ! gh release create "${RELEASE_TAG}" \
+              --draft \
+              --generate-notes \
+              --title "${RELEASE_TAG}" 2>&1; then
+            # Non-fatal: release may already exist. Surface for debug.
+            echo "::notice::gh release create returned non-zero (release may already exist); continuing."
+          fi
+
+      - name: Upload updates.json to release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # See note on RELEASE_TAG safety above.
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release upload "${RELEASE_TAG}" updates.json --clobber
+
+      - name: Publish release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # See note on RELEASE_TAG safety above.
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # If we created the release above as draft, publish it now that the
+          # metadata has been uploaded. Existing non-draft releases are no-op.
+          if ! gh release edit "${RELEASE_TAG}" --draft=false 2>&1; then
+            echo "::notice::gh release edit returned non-zero (release may already be published); continuing."
+          fi
