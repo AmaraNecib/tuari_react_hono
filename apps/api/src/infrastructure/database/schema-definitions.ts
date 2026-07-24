@@ -751,6 +751,11 @@ export const debtAccountDirectionMigrationKey = "add_debt_account_direction_v1"
 export const debtEntryReasonCategoryMigrationKey = "add_debt_entry_reason_category_v1"
 export const invoiceDirectionMigrationKey = "add_invoice_direction_v1"
 
+// Issue #10 — Slice 3 three-tier RBAC. Drops legacy roles (worker,
+// project_manager, warehouse_manager) and reassigns any employees that
+// were attached to them onto the new manager role. Idempotent.
+export const rbacThreeRoleMigrationKey = "rbac_three_role_v1"
+
 export const companyIndexStatements = [
   'CREATE INDEX IF NOT EXISTS "employee_role_id_idx" ON "employee" ("role_id")',
   'CREATE INDEX IF NOT EXISTS "project_manager_id_idx" ON "project" ("manager_id")',
@@ -802,22 +807,14 @@ export const companyStatusConstraintChecks = [
   },
 ] as const
 
+// Roles seeded on first run (Issue #10 — three-tier RBAC).
+// Keep this list in sync with `apps/api/src/modules/rbac/role-seeds.ts`.
+// Legacy roles (worker, project_manager, warehouse_manager) are intentionally
+// dropped per the Slice 3 acceptance criteria.
 export const roleSeeds = [
   { key: "admin", name: "مدير النظام", description: "الحساب الإداري الرئيسي — له جميع الصلاحيات", isSystem: true },
+  { key: "manager", name: "مدير عمليات", description: "يدير الموظفين والمشاريع والمستودعات والمخزون — صلاحيات تشغيلية كاملة", isSystem: true },
   { key: "viewer", name: "مشاهد", description: "حساب للقراءة فقط — لا يمكنه تعديل أي بيانات", isSystem: true },
-  { key: "worker", name: "عامل", description: "الدور التنفيذي الأساسي للعمال الميدانيين", isSystem: true },
-  {
-    key: "project_manager",
-    name: "مدير مشروع",
-    description: "مسؤول عن متابعة العمال والمشاريع الميدانية",
-    isSystem: true,
-  },
-  {
-    key: "warehouse_manager",
-    name: "مدير مخزن",
-    description: "مسؤول عن تشغيل وإدارة المستودعات",
-    isSystem: true,
-  },
 ] as const;
 
 // ---------- role_permission seeds ----------

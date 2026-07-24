@@ -12,7 +12,7 @@ import type {
   InventoryItemDefinition,
   Project,
   ProjectManagerOwnershipHistory,
-  Role,
+  RoleWithPermissions,
   SystemLogEntry,
   Warehouse,
   WarehouseManagerOwnershipHistory,
@@ -59,7 +59,25 @@ export function useRolesQuery({ enabled = true }: { enabled?: boolean } = {}) {
 
   return useQuery({
     queryKey: workspaceDomainQueryKeys.roles(userId),
-    queryFn: async (): Promise<{ items: Role[] }> => rpcClient.rolesList(),
+    // Use the rbacRolesList endpoint (Issue #10) which returns the full
+    // role + permissions shape the management UI needs. Falls back to
+    // the legacy `rolesList` (no permissions) if the new endpoint is
+    // unavailable on a stale client/server mismatch — the UI degrades
+    // gracefully to a permission-less view.
+    queryFn: async (): Promise<{ items: RoleWithPermissions[] }> => {
+      try {
+        const response = await rpcClient.rbacRolesList();
+        return { items: response.items as RoleWithPermissions[] };
+      } catch {
+        const fallback = await rpcClient.rolesList();
+        return {
+          items: fallback.items.map((role) => ({
+            ...role,
+            permissions: [] as RoleWithPermissions["permissions"],
+          })),
+        };
+      }
+    },
     enabled: Boolean(sessionQuery.data?.user) && enabled,
   })
 }

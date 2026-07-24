@@ -32,12 +32,12 @@ describe("SqlitePermissionResolver", () => {
 
   it("returns permissions for a user", async () => {
     db.all.mockReturnValue([
-      { permission: "employees.create" },
-      { permission: "employees.read" },
+      { permission: "employees:create" },
+      { permission: "employees:read" },
     ]);
 
     const perms = await resolver.getPermissionsForUserId("user-1");
-    expect(perms).toEqual(["employees.create", "employees.read"]);
+    expect(perms).toEqual(["employees:create", "employees:read"]);
   });
 
   it("returns empty array when user has no permissions", async () => {
@@ -58,12 +58,12 @@ describe("SqlitePermissionResolver", () => {
 
   it("deduplicates permissions from multiple roles", async () => {
     db.all.mockReturnValue([
-      { permission: "employees.create" },
-      { permission: "employees.create" },
-      { permission: "employees.read" },
+      { permission: "employees:create" },
+      { permission: "employees:create" },
+      { permission: "employees:read" },
     ]);
 
     const perms = await resolver.getPermissionsForUserId("user-1");
-    expect(perms).toEqual(["employees.create", "employees.read"]);
+    expect(perms).toEqual(["employees:create", "employees:read"]);
   });
 });

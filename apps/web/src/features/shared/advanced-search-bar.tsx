@@ -1,175 +1,407 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { type FilterPreset, useSavedFilters } from "@/hooks/use-saved-filters";
+import {
+  type FilterPreset,
+  useSavedFilters,
+} from "@/hooks/use-saved-filters";
 
-interface AdvancedSearchBarProps {
+export interface QuickFilter {
+  id: string;
+  label: string;
+  filters: Record<string, unknown>;
+}
+
+export interface AdvancedSearchBarProps {
   onSearch: (query: string, filters: Record<string, unknown>) => void;
   storageKey: string;
   debounceMs?: number;
+  /** Predefined one-click filter combinations shown as chips. */
+  quickFilters?: QuickFilter[];
+  /** Initial filter set (e.g. when restoring from a query string). */
+  initialFilters?: Record<string, unknown>;
+  /** Force the mobile drawer layout even on wide viewports (testing only). */
+  forceMobileLayout?: boolean;
 }
 
-/** Search bar with filters and preset management. */
+function filtersMatch(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>
+): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => a[key] === b[key]);
+}
+
+function filterLabel(
+  filters: Record<string, unknown>,
+  t: (key: string, fallback: string, options?: Record<string, unknown>) => string
+): string {
+  const keys = Object.keys(filters)
+    .map((key) => `${key}: ${String(filters[key])}`)
+    .join(", ");
+  return t("search.historyEntryLabel", "{{keys}}", { keys: keys || "—" });
+}
+
 /**
+ * Search bar with debounced multi-field search, quick filter chips, saved
+ * presets, recent filter history, and a mobile-friendly drawer.
+ *
  * @description Component
  */
 export function AdvancedSearchBar({
   onSearch,
   storageKey,
   debounceMs = 300,
+  quickFilters,
+  initialFilters,
+  forceMobileLayout = false,
 }: AdvancedSearchBarProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
-  const [activeFilters, setActiveFilters] = useState<Record<string, unknown>>({});
+  const [activeFilters, setActiveFilters] = useState<Record<string, unknown>>(
+    initialFilters ?? {}
+  );
   const [showPresets, setShowPresets] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [presetName, setPresetName] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const { presets, savePreset, deletePreset } = useSavedFilters({
-    storageKey,
-  });
+  const {
+    presets,
+    history,
+    savePreset,
+    deletePreset,
+    addToHistory,
+    clearHistory,
+  } = useSavedFilters({ storageKey });
 
-  const handleSearch = useCallback(
-    (searchQuery: string, filters: Record<string, unknown>) => {
-      onSearch(searchQuery, filters);
-    },
-    [onSearch]
-  );
+  const onSearchRef = useRef(onSearch);
+  onSearchRef.current = onSearch;
 
-  // Debounce search query
+  const lastHistorySignatureRef = useRef<string | null>(null);
+
+  const hasActiveFilters =
+    Object.keys(activeFilters).length > 0 || query.length > 0;
+
+  // Debounce the search emit and record stable filter sets in history.
+  // The history signature guard prevents flooding: a chip toggle that flips
+  // the filter set, then back, writes at most one entry per distinct set.
   useEffect(() => {
     const timer = setTimeout(() => {
-      handleSearch(query, activeFilters);
+      onSearchRef.current(query, activeFilters);
+      const filterKeys = Object.keys(activeFilters);
+      if (filterKeys.length === 0) {
+        lastHistorySignatureRef.current = null;
+        return;
+      }
+      const signature = filterKeys
+        .sort()
+        .map((key) => `${key}=${String(activeFilters[key])}`)
+        .join("&");
+      if (signature !== lastHistorySignatureRef.current) {
+        lastHistorySignatureRef.current = signature;
+        addToHistory(activeFilters);
+      }
     }, debounceMs);
-
     return () => clearTimeout(timer);
-  }, [query, activeFilters, debounceMs, handleSearch]);
+  }, [query, activeFilters, debounceMs, addToHistory]);
 
-  const handleQueryChange = useCallback(
-    (value: string) => {
-      setQuery(value);
+  // Drawer keyboard handling and scroll lock. Always called; only takes
+  // effect when the drawer is open in the mobile layout.
+  useEffect(() => {
+    if (!forceMobileLayout || !drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [forceMobileLayout, drawerOpen]);
+
+  const handleApplyFilters = useCallback(
+    (next: Record<string, unknown>) => {
+      setActiveFilters(next);
+      setShowHistory(false);
     },
     []
   );
 
+  const handleQuickFilter = useCallback(
+    (qf: QuickFilter) => {
+      const next = filtersMatch(activeFilters, qf.filters) ? {} : qf.filters;
+      handleApplyFilters(next);
+    },
+    [activeFilters, handleApplyFilters]
+  );
+
   const handleSavePreset = useCallback(() => {
-    if (!presetName.trim()) return;
-    savePreset(presetName, activeFilters);
+    const trimmed = presetName.trim();
+    if (!trimmed) return;
+    savePreset(trimmed, activeFilters);
     setPresetName("");
     setShowSaveDialog(false);
   }, [presetName, activeFilters, savePreset]);
 
   const handleLoadPreset = useCallback(
     (preset: FilterPreset) => {
-      setActiveFilters(preset.filters);
-      handleSearch(query, preset.filters);
-      setShowPresets(false);
+      handleApplyFilters(preset.filters);
     },
-    [query, handleSearch]
+    [handleApplyFilters]
   );
 
-  const hasActiveFilters = Object.keys(activeFilters).length > 0;
+  const handleClearAll = useCallback(() => {
+    setActiveFilters({});
+    setQuery("");
+    setShowPresets(false);
+    setShowHistory(false);
+  }, []);
 
-  return (
-    <div className="space-y-3">
-      {/* Search Input */}
-      <div className="flex flex-col gap-2 md:flex-row">
-        <Input
-          placeholder="بحث..."
-          value={query}
-          onChange={(e) => handleQueryChange(e.target.value)}
-          className="flex-1"
-        />
-        {presets.length > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowPresets(!showPresets)}
-          >
-            فلاتر محفوظة ({presets.length})
-          </Button>
-        )}
-        {hasActiveFilters && (
-          <>
+  const recentHistory = useMemo(() => history.slice(0, 5), [history]);
+
+  const chipsRow =
+    quickFilters && quickFilters.length > 0 ? (
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label={t("search.quickFilters", "فلاتر سريعة")}
+      >
+        {quickFilters.map((qf) => {
+          const isActive = filtersMatch(activeFilters, qf.filters);
+          return (
             <Button
-              variant="ghost"
+              key={qf.id}
+              type="button"
               size="sm"
-              onClick={() => {
-                setShowSaveDialog(true);
-              }}
+              variant={isActive ? "default" : "outline"}
+              aria-pressed={isActive}
+              onClick={() => handleQuickFilter(qf)}
             >
-              {t("search.saveCurrent", "حفظ البحث الحالي")}
+              {qf.label}
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setActiveFilters({});
-                setQuery("");
-                handleSearch("", {});
-              }}
-            >
-              مسح
-            </Button>
-          </>
-        )}
+          );
+        })}
       </div>
+    ) : null;
 
-      {/* Save Preset Dialog */}
-      {showSaveDialog && (
-        <div className="flex gap-2 rounded-lg border border-border/60 bg-surface p-3">
-          <Input
-            placeholder={t("search.presetNamePlaceholder", "اسم البحث المحفوظ...")}
-            value={presetName}
-            onChange={(e) => setPresetName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSavePreset();
-              if (e.key === "Escape") setShowSaveDialog(false);
-            }}
-            className="flex-1 text-sm"
-          />
-          <Button size="sm" onClick={handleSavePreset}>
-            {t("common.save", "حفظ")}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setShowSaveDialog(false);
-              setPresetName("");
-            }}
+  const presetPanel =
+    showPresets && presets.length > 0 ? (
+      <div className="flex flex-wrap gap-2 rounded-lg border border-border/60 bg-surface p-3">
+        {presets.map((preset) => (
+          <div
+            key={preset.id}
+            className="flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-sm"
           >
-            {t("common.cancel")}
-          </Button>
-        </div>
-      )}
-
-      {/* Saved Presets */}
-      {showPresets && presets.length > 0 && (
-        <div className="flex flex-wrap gap-2 rounded-lg border border-border/60 bg-surface p-3">
-          {presets.map((preset) => (
-            <div
-              key={preset.id}
-              className="flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-sm"
+            <button
+              type="button"
+              onClick={() => handleLoadPreset(preset)}
+              className="font-medium hover:underline"
             >
+              {preset.name}
+            </button>
+            <button
+              type="button"
+              onClick={() => deletePreset(preset.id)}
+              className="ml-1 hover:text-destructive"
+              aria-label={t("search.deletePreset", "حذف")}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+    ) : null;
+
+  const historyPanel = showHistory ? (
+    <div
+      className="rounded-lg border border-border/60 bg-surface p-3"
+      data-testid="history-panel"
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium">
+          {t("search.recentFilters", "الفلاتر الحديثة")}
+        </span>
+        {history.length > 0 ? (
+          <Button size="xs" variant="ghost" onClick={clearHistory}>
+            {t("search.clear", "مسح")}
+          </Button>
+        ) : null}
+      </div>
+      {recentHistory.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {t("search.noResults", "لا توجد نتائج")}
+        </p>
+      ) : (
+        <ul
+          aria-label={t("search.recentFilters", "الفلاتر الحديثة")}
+          className="grid gap-1"
+        >
+          {recentHistory.map((entry, index) => (
+            <li key={`${entry.usedAt}-${index}`}>
               <button
-                onClick={() => handleLoadPreset(preset)}
-                className="font-medium hover:underline"
+                type="button"
+                className="w-full rounded-md px-3 py-1.5 text-start text-sm hover:bg-muted"
+                onClick={() => handleApplyFilters(entry.filters)}
               >
-                {preset.name}
+                {filterLabel(entry.filters, t)}
               </button>
-              <button
-                onClick={() => deletePreset(preset.id)}
-                className="ml-1 hover:text-destructive"
-                title="حذف"
-              >
-                ✕
-              </button>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
+  ) : null;
+
+  const saveDialog = showSaveDialog ? (
+    <div
+      role="dialog"
+      aria-label={t("search.saveCurrent", "حفظ البحث الحالي")}
+      className="flex gap-2 rounded-lg border border-border/60 bg-surface p-3"
+    >
+      <Input
+        placeholder={t(
+          "search.presetNamePlaceholder",
+          "اسم البحث المحفوظ..."
+        )}
+        value={presetName}
+        onChange={(e) => setPresetName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleSavePreset();
+          if (e.key === "Escape") setShowSaveDialog(false);
+        }}
+        className="flex-1 text-sm"
+        autoFocus
+      />
+      <Button size="sm" type="button" onClick={handleSavePreset}>
+        {t("common.save", "حفظ")}
+      </Button>
+      <Button
+        size="sm"
+        type="button"
+        variant="ghost"
+        onClick={() => {
+          setShowSaveDialog(false);
+          setPresetName("");
+        }}
+      >
+        {t("common.cancel", "إلغاء")}
+      </Button>
+    </div>
+  ) : null;
+
+  const searchRow = (
+    <div className="flex flex-col gap-2 md:flex-row">
+      <Input
+        placeholder={t("search.placeholder", "بحث...")}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        className="flex-1"
+        aria-label={t("search.placeholder", "بحث...")}
+      />
+      {presets.length > 0 ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-expanded={showPresets}
+          onClick={() => {
+            setShowPresets((v) => !v);
+            setShowHistory(false);
+          }}
+        >
+          {showPresets || presets.length === 0
+            ? t("search.savedPresets", "الفلاتر المحفوظة")
+            : t("search.savedPresetsWithCount", "الفلاتر المحفوظة ({{count}})", {
+                count: presets.length,
+              })}
+        </Button>
+      ) : null}
+      {history.length > 0 ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-expanded={showHistory}
+          onClick={() => {
+            setShowHistory((v) => !v);
+            setShowPresets(false);
+          }}
+        >
+          {t("search.recent", "حديثاً")}
+        </Button>
+      ) : null}
+      {Object.keys(activeFilters).length > 0 ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowSaveDialog(true)}
+        >
+          {t("search.saveCurrent", "حفظ البحث الحالي")}
+        </Button>
+      ) : null}
+      {hasActiveFilters ? (
+        <Button type="button" variant="ghost" size="sm" onClick={handleClearAll}>
+          {t("search.clear", "مسح")}
+        </Button>
+      ) : null}
+    </div>
   );
+
+  const body = (
+    <div className="space-y-3">
+      {searchRow}
+      {chipsRow}
+      {saveDialog}
+      {presetPanel}
+      {historyPanel}
+    </div>
+  );
+
+  if (forceMobileLayout) {
+    return (
+      <div className="space-y-3">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setDrawerOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={drawerOpen}
+        >
+          {t("search.openFilters", "الفلاتر")}
+        </Button>
+        {drawerOpen ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("search.openFilters", "الفلاتر")}
+            className="fixed inset-0 z-50 flex flex-col bg-background/95 p-4"
+          >
+            <div className="ml-auto">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setDrawerOpen(false)}
+                aria-label={t("search.closeFilters", "إغلاق")}
+                autoFocus
+              >
+                {t("search.closeFilters", "إغلاق")} ✕
+              </Button>
+            </div>
+            <div className="mt-4 flex-1 overflow-auto">{body}</div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return body;
 }

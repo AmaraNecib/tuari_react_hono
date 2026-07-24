@@ -5,6 +5,7 @@ import { appContract } from "@tuari/contracts";
 import { toFailureResult } from "../../modules/company/company.errors";
 import type { CompanyService } from "../../modules/company/company.service";
 import type { RecoveryKeyService } from "../../modules/auth/recovery-key.service";
+import type { RoleModule } from "../../modules/rbac/role.module";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
 import type { RpcContext } from "../context";
 import type { RpcMiddleware } from "../rpc-middleware";
@@ -16,6 +17,7 @@ import type { RpcMiddleware } from "../rpc-middleware";
  * @param m - RPC middleware (auth, audit, etc.)
  * @param companyService - Company/workspace service
  * @param recoveryKeyService - Recovery key lifecycle service
+ * @param roleModule - Deep module for role queries with permissions
  * @param rawDatabase - Raw SQLite handle for PRAGMA rekey operations
  */
 export function createSystemHandlers(
@@ -23,12 +25,21 @@ export function createSystemHandlers(
   m: RpcMiddleware,
   companyService: CompanyService,
   recoveryKeyService: RecoveryKeyService,
+  roleModule: RoleModule,
   rawDatabase: BetterSqliteDatabase,
 ): Record<string, any> {
   return {
-    workspaceSnapshot: os.workspaceSnapshot.handler(m.queryAuth(async ({ context, input }: any) =>
-      companyService.getWorkspaceSnapshot()
-    )),
+    workspaceSnapshot: os.workspaceSnapshot.handler(m.queryAuth(async ({ context, input }: any) => {
+      const [snapshot, roles] = await Promise.all([
+        companyService.getWorkspaceSnapshot(),
+        roleModule.list(),
+      ]);
+      // Issue #10 — overlay the rbac role records (with permissions) on
+      // top of the legacy role list. The deep module is the source of
+      // truth for the role management surface; the rest of the workspace
+      // still uses the company service.
+      return { ...snapshot, roles };
+    })),
     systemLogList: os.systemLogList.handler(m.queryAuth(async ({ context, input }: any) =>
       companyService.listSystemLog(input ?? undefined)
     )),
