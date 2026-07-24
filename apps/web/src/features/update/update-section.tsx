@@ -29,6 +29,11 @@ type UpdateStatus =
   | { type: "completed"; filePath: string }
   | { type: "error"; message: string }
 
+type UpdateSectionProps = {
+  /** Called after an update is successfully applied. Used to trigger the restart prompt. */
+  onUpdateApplied?: () => void
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B"
   const units = ["B", "KB", "MB", "GB"]
@@ -45,7 +50,7 @@ function getCurrentVersion(): string {
   return "0.1.0"
 }
 
-export function UpdateSection() {
+export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<UpdateStatus>({ type: "idle" })
   const [applying, setApplying] = useState(false)
@@ -219,6 +224,7 @@ export function UpdateSection() {
       setApplyResult(result.message)
       if (result.success) {
         setStatus({ type: "idle" })
+        onUpdateApplied?.()
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

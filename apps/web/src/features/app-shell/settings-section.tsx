@@ -74,6 +74,7 @@ type SettingsSectionProps = {
   }) => Promise<void>
   onReset: () => void
   onToggleTheme: () => void
+  onUpdateApplied?: () => void
 }
 
 /** Settings section with account, theme, and security. */
@@ -124,6 +125,7 @@ export function SettingsSection({
   onSaveAccount,
   onReset,
   onToggleTheme,
+  onUpdateApplied,
 }: SettingsSectionProps) {
   const { t } = useTranslation()
   const { state: checkUpdateState, checkUpdate } = useUpdateCheck()
@@ -523,7 +525,7 @@ export function SettingsSection({
           {/* Online update check and download */}
           <div className="p-5 border border-line rounded-xl">
             <div className="text-start">
-              <UpdateSection />
+              <UpdateSection onUpdateApplied={onUpdateApplied} />
             </div>
           </div>
 

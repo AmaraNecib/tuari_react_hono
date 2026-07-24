@@ -238,6 +238,7 @@ export function HomeView({
           onAddWarehouse={() => void navigation.goToWarehouseCreate()}
           onResetWorkspace={() => shell.handleResetWorkspace()}
           onSaveAccount={(payload) => updateAccountSettingsMutation.mutateAsync(payload)}
+          onUpdateApplied={() => shell.setShowRestartModal(true)}
           onSetPendingDelete={shell.setPendingDelete}
           onSystemLogFiltersChange={shell.setSystemLogFilters}
           onThemeToggle={toggleTheme}
