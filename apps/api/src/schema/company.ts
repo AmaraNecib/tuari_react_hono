@@ -1,5 +1,6 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { role } from "./app";
+import { user } from "./auth";
 
 /**
  * Company domain tables (employee, project, warehouse, assignments, etc.).
@@ -15,6 +16,10 @@ export const employee = sqliteTable("employee", {
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   phone: text("phone").notNull().unique(),
+  userId: text("user_id").references(() => user.id, {
+    onDelete: "set null",
+    onUpdate: "cascade",
+  }),
   roleId: text("role_id")
     .notNull()
     .references(() => role.id, { onDelete: "restrict", onUpdate: "cascade" }),
@@ -24,7 +29,7 @@ export const employee = sqliteTable("employee", {
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-});
+}, (table) => [uniqueIndex("employee_user_id_key").on(table.userId)]);
 
 /** Construction projects. */
 export const project = sqliteTable("project", {

@@ -19,7 +19,7 @@ export function createInvoiceHandlers(
   return {
     invoicesList: os.invoicesList.handler(
       m.withPermission(
-        "invoices.read",
+        "invoices:read",
         m.withAuth(async ({ input }: { context: RpcContext; input: unknown }) => {
           const opts = (input ?? {}) as {
             filters?: unknown;
@@ -47,7 +47,7 @@ export function createInvoiceHandlers(
 
     invoicesGet: os.invoicesGet.handler(
       m.withPermission(
-        "invoices.read",
+        "invoices:read",
         m.withAuth(async ({ input }: { context: RpcContext; input: unknown }) => {
           const invoice = await invoiceModule.findById((input as { id: string }).id);
           if (!invoice) {
@@ -60,7 +60,7 @@ export function createInvoiceHandlers(
 
     invoicesCreate: os.invoicesCreate.handler(
       m.withPermission(
-        "invoices.create",
+        "invoices:create",
         m.withAudit(
           async ({ input }: { context: RpcContext; input: unknown; auditContext: unknown }) => {
             const raw = input as { direction?: string; lineItems: Array<{ id?: string }> };
@@ -88,7 +88,7 @@ export function createInvoiceHandlers(
 
     invoicesUpdate: os.invoicesUpdate.handler(
       m.withPermission(
-        "invoices.update",
+        "invoices:update",
         m.withAudit(
           async ({ input }: { context: RpcContext; input: unknown; auditContext: unknown }) => {
             const raw = input as { lineItems?: Array<{ id?: string }> };
@@ -119,7 +119,7 @@ export function createInvoiceHandlers(
 
     invoicesDelete: os.invoicesDelete.handler(
       m.withPermission(
-        "invoices.delete",
+        "invoices:delete",
         m.withAudit(
           async ({ input }: { context: RpcContext; input: unknown; auditContext: unknown }) => {
             await invoiceModule.delete((input as { id: string }).id);
@@ -140,7 +140,7 @@ export function createInvoiceHandlers(
 
     invoicesReceive: os.invoicesReceive.handler(
       m.withPermission(
-        "invoices.update",
+        "invoices:update",
         m.withAudit(
           async ({
             input,
@@ -175,7 +175,7 @@ export function createInvoiceHandlers(
 
     invoicesMarkPaid: os.invoicesMarkPaid.handler(
       m.withPermission(
-        "invoices.update",
+        "invoices:update",
         m.withAudit(
           async ({
             input,

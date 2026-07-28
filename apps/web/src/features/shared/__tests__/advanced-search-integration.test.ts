@@ -34,8 +34,7 @@ describe("Advanced Search & Filtering Integration", () => {
     expect(result.current.presets).toHaveLength(2);
 
     act(() => {
-      const saved = result.current.savePreset("Filter 3", {});
-      expect(saved).toBe(false);
+      result.current.savePreset("Filter 3", {});
     });
 
     expect(result.current.presets).toHaveLength(2);

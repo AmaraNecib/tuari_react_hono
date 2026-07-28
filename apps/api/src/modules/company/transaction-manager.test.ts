@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { TransactionManager } from "./transaction-manager";
-import type { CompanyRepository } from "./company.repository";
+import type { CompanyRepository } from "./company.repository.contracts";
 
 describe("TransactionManager", () => {
   let mockRepository: CompanyRepository;

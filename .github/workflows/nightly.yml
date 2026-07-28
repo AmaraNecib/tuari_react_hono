@@ -1,0 +1,302 @@
+# Nightly workflow
+# Runs automatically at midnight UTC, or manually via workflow_dispatch
+# Produces and uploads nightly build artifacts to a "nightly" GitHub Release
+
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # daily at midnight UTC
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  nightly:
+    name: Nightly Build
+    runs-on: windows-latest
+    environment: nightly
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: develop
+
+      # ── Setup ──────────────────────────────────────────────
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/desktop/src-tauri"
+
+      # ── Dependencies ───────────────────────────────────────
+
+      - name: Install pnpm dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared contracts
+        run: pnpm --filter @tuari/contracts build
+
+      # ── Architecture guardrails ──────────────────────────
+
+      - name: Verify Rust Core boundaries (no bare tauri imports)
+        shell: pwsh
+        run: |
+          Write-Host "Checking for forbidden 'tauri::' imports in Rust Core modules..."
+          $coreModules = @(
+            "apps/desktop/src-tauri/src/crypto.rs",
+            "apps/desktop/src-tauri/src/error.rs",
+            "apps/desktop/src-tauri/src/clock.rs",
+            "apps/desktop/src-tauri/src/license.rs",
+            "apps/desktop/src-tauri/src/recovery.rs"
+          )
+          $hasTauri = $false
+          foreach ($mod in $coreModules) {
+            if (Test-Path $mod) {
+              $lines = Select-String -Path $mod -Pattern 'use tauri|tauri::' | ForEach-Object { "$($_.LineNumber): $($_.Line.Trim())" }
+              if ($lines) {
+                Write-Host "ERROR: forbidden tauri import in $mod"
+                $lines | ForEach-Object { Write-Host $_ }
+                $hasTauri = $true
+              }
+            }
+          }
+          if ($hasTauri) {
+            Write-Host "FAILED: Rust Core modules must not import tauri::"
+            exit 1
+          }
+          Write-Host "PASSED: No forbidden imports found"
+
+      # ── Compute pre-release version and patch config ────
+
+      - name: Compute nightly version and patch tauri.conf.json
+        id: version
+        shell: pwsh
+        run: |
+          $tauriConfig = Get-Content "apps/desktop/src-tauri/tauri.conf.json" | ConvertFrom-Json
+          $baseVersion = $tauriConfig.version
+          $buildNumber = $env:GITHUB_RUN_NUMBER
+          $nightlyVersion = "$baseVersion-nightly.$buildNumber"
+          Write-Host "Nightly version: $nightlyVersion"
+
+          # Patch tauri.conf.json
+          $tauriConfig.version = $nightlyVersion
+          $tauriConfig | ConvertTo-Json -Depth 10 | Out-File -FilePath "apps/desktop/src-tauri/tauri.conf.json" -Encoding utf8
+          Write-Host "Patched tauri.conf.json version to $nightlyVersion"
+
+          # Set output for later steps
+          echo "version=$nightlyVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      # ── Build ──────────────────────────────────────────────
+
+      - name: Build desktop app (web + sidecar + Tauri)
+        run: pnpm --filter @tuari/desktop build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Create portable package
+        run: pnpm --filter @tuari/desktop portable:only
+
+      # ── Generate signing keys (if no secrets configured) ──
+
+      - name: Generate or resolve signing keys
+        id: keys
+        shell: pwsh
+        run: |
+          $signKey = "${{ secrets.UPDATE_SIGNING_KEY }}"
+          $pubKey = "${{ secrets.UPDATE_PUBLIC_KEY }}"
+          $keyId = "${{ secrets.UPDATE_KEY_ID }}"
+
+          if ($signKey -and $pubKey) {
+            Write-Host "Using production signing key from GitHub Secrets"
+            $signKey | Out-File -FilePath (Join-Path $env:RUNNER_TEMP "signing-key.pem") -Encoding ascii -NoNewline
+            $pubKey | Out-File -FilePath (Join-Path $env:RUNNER_TEMP "verification-key.pem") -Encoding ascii -NoNewline
+            if (-not $keyId) { $keyId = "production-key-v1" }
+            echo "key_id=$keyId" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            echo "has_production_keys=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } else {
+            Write-Host "No production secrets configured — generating temporary CI signing key pair"
+            $nodeScript = @'
+            const crypto = require("node:crypto");
+            const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+            process.stdout.write(privateKey.export({ type: "pkcs8", format: "pem" }));
+            process.stdout.write("---SEPARATOR---");
+            process.stdout.write(publicKey.export({ type: "spki", format: "pem" }));
+'@
+            $result = node -e $nodeScript
+            $parts = $result -split "---SEPARATOR---"
+            $parts[0] | Out-File -FilePath (Join-Path $env:RUNNER_TEMP "signing-key.pem") -Encoding ascii -NoNewline
+            $parts[1] | Out-File -FilePath (Join-Path $env:RUNNER_TEMP "verification-key.pem") -Encoding ascii -NoNewline
+            echo "key_id=ci-generated-key" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            echo "has_production_keys=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
+      # ── Sign update package ──────────────────────────────
+
+      - name: Compute checksum and create update manifest
+        id: manifest
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          Write-Host "Nightly version from patched config: $version"
+
+          # Paths to artifacts
+          $portableZip = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "*.zip" | Select-Object -First 1
+          if (-not $portableZip) {
+            throw "No portable zip found!"
+          }
+          $portableZipPath = $portableZip.FullName
+
+          # Compute SHA-256
+          $hash = (Get-FileHash -Path $portableZipPath -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $portableZipPath).Length
+
+          # Read signing key from key-generation step
+          $keyFile = Join-Path $env:RUNNER_TEMP "signing-key.pem"
+
+          # Create manifest.json
+          $manifest = @{
+            version = $version
+            platform = "windows-x86_64"
+            minSupportedVersion = "0.1.0"
+            checksum = $hash
+            files = @(
+              @{
+                path = "Tuari-portable.zip"
+                hash = $hash
+                size = $size
+              }
+            )
+          } | ConvertTo-Json -Compress
+
+          $manifestPath = Join-Path $env:RUNNER_TEMP "manifest.json"
+          $manifest | Out-File -FilePath $manifestPath -Encoding utf8
+
+          # Sign
+          # Use key ID from the key-generation step
+          $keyId = "${{ steps.keys.outputs.key_id }}"
+          Write-Host "Using key ID: $keyId"
+
+          $signedOutput = Join-Path $env:RUNNER_TEMP "tuari-$version-nightly.update"
+          & node scripts/sign-update.mjs `
+            --private-key "$keyFile" `
+            --manifest "$manifestPath" `
+            --output "$signedOutput" `
+            --key-id "$keyId"
+
+          # Read the signed content to extract the signature
+          $signedContent = Get-Content $signedOutput -Raw
+          $lastDot = $signedContent.LastIndexOf('.')
+          $signaturePart = $signedContent.Substring($lastDot + 1)
+
+          # Prepare artifacts directory
+          $artifactsDir = Join-Path $env:RUNNER_TEMP "artifacts"
+          New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
+          Copy-Item -Path $signedOutput -Destination $artifactsDir
+
+          # Also stage the portable zip and installer for the smoke test
+          $portableZip = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "*.zip" | Select-Object -First 1
+          if ($portableZip) {
+            $portableName = "tuari-$version-nightly-portable.zip"
+            Copy-Item -Path $portableZip.FullName -Destination (Join-Path $artifactsDir $portableName)
+            Write-Host "Staged portable zip: $portableName"
+          }
+          $installer = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
+          if ($installer) {
+            $installerName = "tuari-$version-nightly-setup.exe"
+            Copy-Item -Path $installer.FullName -Destination (Join-Path $artifactsDir $installerName)
+            Write-Host "Staged installer: $installerName"
+          }
+
+          # Create updates.json with the actual signature
+          $updates = @{
+            version = $version
+            channel = "nightly"
+            pub_date = ((Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"))
+            platforms = @{
+              "windows-x86_64" = @{
+                url = "https://github.com/${{ github.repository }}/releases/download/nightly/tuari-$version-nightly.update"
+                signature = $signaturePart
+              }
+            }
+          } | ConvertTo-Json -Compress
+
+          $updates | Out-File -FilePath (Join-Path $artifactsDir "updates.json") -Encoding utf8
+
+          # Set outputs
+          echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          echo "artifacts_dir=$artifactsDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          echo "signature=$signaturePart" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      # ── Smoke test ─────────────────────────────────────────
+
+      - name: Smoke test nightly artifacts
+        shell: pwsh
+        run: |
+          # Use the matching verification key from the key-generation step
+          $pubKeyFile = Join-Path $env:RUNNER_TEMP "verification-key.pem"
+          node scripts/verify-release-assets.mjs `
+            --artifacts "${{ steps.manifest.outputs.artifacts_dir }}" `
+            --public-key "$pubKeyFile" `
+            --version "${{ steps.manifest.outputs.version }}" `
+            --channel nightly
+
+      # ── List staged artifacts ────────────────────────────
+
+      - name: List nightly artifacts
+        shell: pwsh
+        run: |
+          Write-Host "Artifacts ready for upload from: ${{ steps.manifest.outputs.artifacts_dir }}"
+          Get-ChildItem -Path "${{ steps.manifest.outputs.artifacts_dir }}" | ForEach-Object { Write-Host "  - $($_.Name)" }
+
+      # ── Upload to Nightly Release ────────────────────────
+
+      - name: Upload to nightly release
+        shell: pwsh
+        run: |
+          $version = "${{ steps.manifest.outputs.version }}"
+          $artifactsDir = "${{ steps.manifest.outputs.artifacts_dir }}"
+          $tag = "nightly"
+          $releaseName = "Tuari Nightly ($version)"
+
+          # Delete previous nightly release if it exists (ignore 'not found' errors)
+          gh release delete $tag --yes --repo "${{ github.repository }}" 2>&1 | Where-Object { $_ -notlike '*not found*' }
+
+          # Collect artifact paths as an array for safe quoting
+          $artifactFiles = @(Get-ChildItem -Path $artifactsDir | ForEach-Object { $_.FullName })
+
+          # Create a new nightly release pinned to the current commit
+          gh release create $tag `
+            --title "$releaseName" `
+            --notes "Nightly build from $version" `
+            --target "$env:GITHUB_SHA" `
+            --prerelease `
+            '--no-latest' `
+            --repo "${{ github.repository }}" `
+            $artifactFiles
+
+          Write-Host "Nightly release created: $releaseName"
+        env:
+          GH_TOKEN: ${{ github.token }}

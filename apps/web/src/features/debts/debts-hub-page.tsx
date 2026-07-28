@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -8,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { Surface } from "@/features/shared/page-primitives"
 import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls"
@@ -61,24 +63,36 @@ export function DebtsHubPage({
   }>
   totals: { openCount: number; owedByUsDzd: number; owedToUsDzd: number }
 }) {
+  const { t } = useTranslation()
   const [filter, setFilter] = useState<FilterOption>("all")
+  const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+
+  const normalizedQuery = query.trim().toLowerCase()
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
       switch (filter) {
         case "owed-to-us":
-          return row.status === "OPEN" && row.balanceDzd > 0
+          if (!(row.status === "OPEN" && row.balanceDzd > 0)) return false
+          break
         case "owed-by-us":
-          return row.status === "OPEN" && row.balanceDzd < 0
+          if (!(row.status === "OPEN" && row.balanceDzd < 0)) return false
+          break
         case "settled":
-          return row.status === "SETTLED"
+          if (row.status !== "SETTLED") return false
+          break
         default:
-          return true
+          break
       }
+      if (normalizedQuery) {
+        const haystack = `${row.name} ${row.phone}`.toLowerCase()
+        if (!haystack.includes(normalizedQuery)) return false
+      }
+      return true
     })
-  }, [rows, filter])
+  }, [rows, filter, normalizedQuery])
 
   const filteredOpenCount = useMemo(
     () => filteredRows.filter((r) => r.status === "OPEN").length,
@@ -127,6 +141,14 @@ export function DebtsHubPage({
           </button>
         ))}
       </div>
+
+      <AdvancedSearchBar
+        onSearch={(searchQuery) => {
+          setQuery(searchQuery)
+          setPage(1)
+        }}
+        storageKey="debts-hub-search-filters"
+      />
 
       <Surface className="overflow-hidden" variant="table">
         <Table>
@@ -190,7 +212,9 @@ export function DebtsHubPage({
             ) : (
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
-                  {filter === "all" ? "لا توجد حسابات ديون بعد." : "لا توجد نتائج للفلتر المحدد."}
+                  {filter === "all" && !normalizedQuery
+                    ? t("debtsHub.emptyAll")
+                    : t("debtsHub.emptyFiltered")}
                 </TableCell>
               </TableRow>
             )}

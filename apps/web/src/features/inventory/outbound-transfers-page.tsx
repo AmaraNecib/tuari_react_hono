@@ -1,9 +1,11 @@
 /**
  * Outbound transfers listing page.
  */
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { AdvancedSearchBar, type QuickFilter } from "@/features/shared/advanced-search-bar"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { useOutboundTransfersQuery } from "./inventory-hooks"
 
@@ -13,9 +15,50 @@ import { useOutboundTransfersQuery } from "./inventory-hooks"
 export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () => void; onCreateV2?: () => void }) {
   const { t } = useTranslation()
   const transfersQuery = useOutboundTransfersQuery()
+  const [query, setQuery] = useState("")
+  const [filters, setFilters] = useState<Record<string, unknown>>({})
 
-  const transfers = transfersQuery.data?.items ?? []
+  const transferType = (filters.transferType as string | undefined) ?? null
   const isLoading = transfersQuery.isLoading
+  const normalizedQuery = query.trim().toLowerCase()
+  const hasActiveFilters = normalizedQuery.length > 0 || transferType !== null
+
+  const quickFilters: QuickFilter[] = useMemo(
+    () => [
+      {
+        id: "sale",
+        label: t("inventoryPage.transfers.typeSale", "بيع"),
+        filters: { transferType: "SALE" },
+      },
+      {
+        id: "gift",
+        label: t("inventoryPage.transfers.typeGift", "هدية"),
+        filters: { transferType: "GIFT" },
+      },
+      {
+        id: "return",
+        label: t("inventoryPage.transfers.typeReturn", "إرجاع"),
+        filters: { transferType: "RETURN" },
+      },
+    ],
+    [t]
+  )
+
+  const filteredTransfers = useMemo(() => {
+    const source = transfersQuery.data?.items ?? []
+    let result = source
+    if (normalizedQuery) {
+      result = result.filter((transfer) =>
+        [transfer.counterpartyId, transfer.fromId, transfer.notes ?? ""]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(normalizedQuery))
+      )
+    }
+    if (transferType) {
+      result = result.filter((transfer) => transfer.transferType === transferType)
+    }
+    return result
+  }, [transfersQuery.data?.items, normalizedQuery, transferType])
 
   return (
     <div className="space-y-6">
@@ -28,16 +71,30 @@ export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () =
       <Surface variant="panel">
         <PageSurfaceContent>
           <SurfaceHeader title={t("inventoryPage.transfers.listTitle")} description={t("inventoryPage.transfers.listDescription")} />
+          <AdvancedSearchBar
+            onSearch={(searchQuery, filtersObj) => {
+              setQuery(searchQuery)
+              setFilters(filtersObj)
+            }}
+            storageKey="outbound-transfers-search-filters"
+            quickFilters={quickFilters}
+          />
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">{t("inventoryPage.transfers.loading")}</p>
-          ) : transfers.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">{t("inventoryPage.transfers.loading")}</p>
+          ) : filteredTransfers.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <p className="text-sm text-muted-foreground">{t("inventoryPage.transfers.empty")}</p>
-              <Button size="sm" onClick={onCreate}>{t("inventoryPage.transfers.createButton")}</Button>
+              <p className="text-sm text-muted-foreground">
+                {hasActiveFilters
+                  ? t("search.noResults")
+                  : t("inventoryPage.transfers.empty")}
+              </p>
+              {!hasActiveFilters ? (
+                <Button size="sm" onClick={onCreate}>{t("inventoryPage.transfers.createButton")}</Button>
+              ) : null}
             </div>
           ) : (
-            <div className="grid gap-3">
-              {transfers.map((transfer) => (
+            <div className="mt-3 grid gap-3">
+              {filteredTransfers.map((transfer) => (
                 <div key={transfer.id} className="rounded-xl border border-border/70 p-4 text-sm">
                   <div className="flex items-center justify-between gap-4">
                     <div>

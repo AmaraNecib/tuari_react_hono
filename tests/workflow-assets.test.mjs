@@ -52,3 +52,38 @@ test('branch workflow doc and PR templates stay aligned', async () => {
     assert.match(template, /pnpm check:workflow-assets/);
   }
 });
+
+test('CI/CD workflow files exist and have correct triggers', async () => {
+  const release = await readRepoFile('.github/workflows/release.yml');
+  const nightly = await readRepoFile('.github/workflows/nightly.yml');
+  const beta = await readRepoFile('.github/workflows/beta.yml');
+
+  // Release: tag push trigger
+  assert.match(release, /on:/);
+  assert.match(release, /tags:[\s\S]*?'v\*\.\*\.\*'/);
+  assert.match(release, /windows-latest/);
+  assert.match(release, /environment: stable/);
+  assert.match(release, /softprops\/action-gh-release/);
+  assert.match(release, /sign-update\.mjs/);
+  assert.match(release, /verify-release-assets\.mjs/);
+  assert.match(release, /Swatinem\/rust-cache/);
+  assert.match(release, /cache: pnpm/);
+  assert.match(release, /Rust Core boundaries/);
+
+  // Nightly: schedule + workflow_dispatch
+  assert.match(nightly, /schedule:/);
+  assert.match(nightly, /cron:.*0 0/);
+  assert.match(nightly, /workflow_dispatch/);
+  assert.match(nightly, /environment: nightly/);
+  assert.match(nightly, /sign-update\.mjs/);
+  assert.match(nightly, /verify-release-assets\.mjs/);
+  assert.match(nightly, /Rust Core boundaries/);
+
+  // Beta: manual dispatch with version input
+  assert.match(beta, /workflow_dispatch/);
+  assert.match(beta, /version/);
+  assert.match(beta, /environment: beta/);
+  assert.match(beta, /sign-update\.mjs/);
+  assert.match(beta, /verify-release-assets\.mjs/);
+  assert.match(beta, /Rust Core boundaries/);
+});

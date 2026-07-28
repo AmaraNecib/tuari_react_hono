@@ -26,6 +26,7 @@ export function HomeViewPageSectionContent({
   onSetPendingDelete,
   onSystemLogFiltersChange,
   onThemeToggle,
+  onUpdateApplied,
   page,
   resetWorkspacePending,
   session,
@@ -48,6 +49,7 @@ export function HomeViewPageSectionContent({
   | "onSetPendingDelete"
   | "onSystemLogFiltersChange"
   | "onThemeToggle"
+  | "onUpdateApplied"
   | "paginationCursor"
   | "paginationLimit"
   | "paginationPrevCursors"
@@ -209,6 +211,7 @@ export function HomeViewPageSectionContent({
             key: copy.columns.key,
             system: copy.columns.system,
             description: copy.columns.description,
+            permissions: copy.shell.rolesPermissions,
           }}
           emptyLabel={copy.shell.empty}
           noLabel={copy.common.no}
@@ -246,9 +249,25 @@ export function HomeViewPageSectionContent({
           themeLabel={copy.shell.themeToggle}
           themeValueLabel={theme === "light" ? copy.shell.themeDark : copy.shell.themeLight}
           title={copy.sections.settings.label}
+          settingsCheckForUpdates={copy.shell.settingsCheckForUpdates}
+          settingsChecking={copy.shell.settingsChecking}
+          settingsUpToDate={copy.shell.settingsUpToDate}
+          settingsUpdateAvailable={copy.shell.settingsUpdateAvailable}
+          settingsUpdateError={copy.shell.settingsUpdateError}
+          settingsApplyError={copy.shell.settingsApplyError}
+          settingsLastChecked={copy.shell.settingsLastChecked}
+          settingsUpdateCached={copy.shell.settingsUpdateCached}
+          settingsAboutTitle={copy.shell.settingsAboutTitle}
+          settingsAboutVersion={copy.shell.settingsAboutVersion}
+          settingsAboutInstallFromFile={copy.shell.settingsAboutInstallFromFile}
+          settingsAboutInstallFromFileDescription={copy.shell.settingsAboutInstallFromFileDescription}
+          settingsUpdateVerifying={copy.shell.settingsUpdateVerifying}
+          settingsUpdateSuccess={copy.shell.settingsUpdateSuccess}
+          settingsAboutTab={copy.shell.settingsAboutTab}
           onReset={onResetWorkspace}
           onSaveAccount={onSaveAccount}
           onToggleTheme={onThemeToggle}
+          onUpdateApplied={onUpdateApplied}
         />
       )
 

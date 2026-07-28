@@ -5,12 +5,13 @@
   "scripts": {
     "check:web-hygiene": "node --test ./tests/web-hygiene.test.mjs",
     "check:workflow-assets": "node --test ./tests/workflow-assets.test.mjs",
+    "check:update-metadata": "node --test ./tests/update-channel-metadata.test.mjs",
     "check:web-tracking": "node ./scripts/check-web-tracking.mjs",
     "predev": "pnpm check:web-tracking && pnpm --filter @tuari/contracts build",
     "dev": "pnpm -r --parallel --filter @tuari/contracts --filter @tuari/api --filter @tuari/web dev",
     "build": "pnpm check:web-tracking && turbo build",
-    "lint": "pnpm check:web-tracking && pnpm check:web-hygiene && pnpm check:workflow-assets && turbo lint",
-    "test": "pnpm check:web-tracking && pnpm check:web-hygiene && pnpm check:workflow-assets && turbo test",
+    "lint": "pnpm check:web-tracking && pnpm check:web-hygiene && pnpm check:workflow-assets && pnpm check:update-metadata && turbo lint",
+    "test": "pnpm check:web-tracking && pnpm check:web-hygiene && pnpm check:workflow-assets && pnpm check:update-metadata && turbo test",
     "test:api": "pnpm --filter @tuari/contracts build && pnpm --filter @tuari/api test",
     "test:contracts": "pnpm --filter @tuari/contracts test",
     "test:web": "pnpm --filter @tuari/web test",
@@ -22,12 +23,6 @@
     "dev:desktop": "pnpm --filter @tuari/desktop dev",
     "build:desktop": "pnpm --filter @tuari/desktop build",
     "portable:desktop": "pnpm --filter @tuari/desktop portable"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "prisma"
-    ]
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

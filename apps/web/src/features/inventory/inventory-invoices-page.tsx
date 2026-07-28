@@ -1,12 +1,11 @@
-import { useMemo, useState, type ChangeEvent } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
-import { NativeSelect } from "@/components/ui/form-controls"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
 import { AppShellFilterShell, usePaginatedRows } from "@/features/app-shell/app-shell-table-primitives"
 import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls"
-import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
+import { AdvancedSearchBar, type QuickFilter } from "@/features/shared/advanced-search-bar"
 import { BatchOperationsToolbar } from "@/features/shared/batch-operations-toolbar"
 import { useBatchSelection } from "@/hooks/use-batch-selection"
 
@@ -27,11 +26,33 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
   const { t } = useTranslation()
   const invoicesQuery = useInventoryInvoiceGroupsQuery()
   const [query, setQuery] = useState("")
-  const [filters, setFilters] = useState<Record<string, unknown>>({})
+  const [filters, setFilters] = useState<Record<string, unknown>>({ status: "ALL" })
   const batchSelection = useBatchSelection(invoicesQuery.data?.items ?? [])
 
   const normalizedQuery = query.trim().toLowerCase()
   const status = (filters.status as InvoiceStatusFilter) ?? "ALL"
+  const hasActiveFilters = normalizedQuery.length > 0 || status !== "ALL"
+
+  const quickFilters: QuickFilter[] = useMemo(
+    () => [
+      {
+        id: "all",
+        label: t("inventoryPage.invoices.statusAll", "الكل"),
+        filters: { status: "ALL" },
+      },
+      {
+        id: "paid",
+        label: t("inventoryPage.invoices.statusPaid", "مدفوعة"),
+        filters: { status: "PAID" },
+      },
+      {
+        id: "unpaid",
+        label: t("inventoryPage.invoices.statusUnpaid", "متبقي دين"),
+        filters: { status: "UNPAID" },
+      },
+    ],
+    [t]
+  )
 
   const filteredInvoices = useMemo(() => {
     let result = invoicesQuery.data?.items ?? []
@@ -76,16 +97,10 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
                 setFilters(filtersObj)
               }}
               storageKey="invoices-search-filters"
+              initialFilters={{ status: "ALL" }}
+              quickFilters={quickFilters}
             />
           </div>
-          <label className="flex flex-col gap-2 min-w-[10rem]">
-            <span className="text-sm font-medium text-foreground">{t("inventoryPage.invoices.statusLabel")}</span>
-            <NativeSelect value={status} onChange={(e: ChangeEvent<HTMLSelectElement>) => setFilters(prev => ({ ...prev, status: e.target.value }))}>
-              <option value="ALL">{t("inventoryPage.invoices.statusAll")}</option>
-              <option value="PAID">{t("inventoryPage.invoices.statusPaid")}</option>
-              <option value="UNPAID">{t("inventoryPage.invoices.statusUnpaid")}</option>
-            </NativeSelect>
-          </label>
         </AppShellFilterShell>
 
         <div className="grid gap-3">
@@ -123,8 +138,12 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
           })}
           {filteredInvoices.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <p className="text-sm text-muted-foreground">{t("inventoryPage.invoices.empty")}</p>
-              <Button size="sm" onClick={onCreate}>{t("inventoryPage.invoices.createButton")}</Button>
+              <p className="text-sm text-muted-foreground">
+                {hasActiveFilters ? t("search.noResults") : t("inventoryPage.invoices.empty")}
+              </p>
+              {!hasActiveFilters ? (
+                <Button size="sm" onClick={onCreate}>{t("inventoryPage.invoices.createButton")}</Button>
+              ) : null}
             </div>
           ) : null}
         </div>

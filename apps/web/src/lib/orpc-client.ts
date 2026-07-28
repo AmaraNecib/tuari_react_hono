@@ -27,9 +27,10 @@ export const rpcLink = new RPCLink({
       : globalThis.fetch(request, {
         ...init,
         credentials: resolveRpcCredentials(),
-      }),
+    }),
   interceptors: [
     onError((error) => {
+      if (import.meta.env.MODE === "test") return
       console.error("[web oRPC]", error)
     }),
   ],

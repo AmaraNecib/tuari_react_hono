@@ -92,6 +92,7 @@ export const schemaStatements = [
     "first_name" TEXT NOT NULL,
     "last_name" TEXT NOT NULL,
     "phone" TEXT NOT NULL UNIQUE,
+    "user_id" TEXT,
     "role_id" TEXT NOT NULL,
     "status" TEXT NOT NULL CHECK ("status" IN ('ACTIVE', 'INACTIVE', 'LEFT')),
     "salary_amount_dzd" REAL,
@@ -99,8 +100,11 @@ export const schemaStatements = [
     "notes" TEXT,
     "created_at" DATETIME NOT NULL,
     "updated_at" DATETIME NOT NULL,
+    UNIQUE ("user_id"),
     CONSTRAINT "employee_role_id_fkey"
-      FOREIGN KEY ("role_id") REFERENCES "role" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+      FOREIGN KEY ("role_id") REFERENCES "role" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "employee_user_id_fkey"
+      FOREIGN KEY ("user_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE
   )`,
   `CREATE TABLE IF NOT EXISTS "project" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -751,6 +755,11 @@ export const debtAccountDirectionMigrationKey = "add_debt_account_direction_v1"
 export const debtEntryReasonCategoryMigrationKey = "add_debt_entry_reason_category_v1"
 export const invoiceDirectionMigrationKey = "add_invoice_direction_v1"
 
+// Issue #10 — Slice 3 three-tier RBAC. Drops legacy roles (worker,
+// project_manager, warehouse_manager) and reassigns any employees that
+// were attached to them onto the new manager role. Idempotent.
+export const rbacThreeRoleMigrationKey = "rbac_three_role_v1"
+
 export const companyIndexStatements = [
   'CREATE INDEX IF NOT EXISTS "employee_role_id_idx" ON "employee" ("role_id")',
   'CREATE INDEX IF NOT EXISTS "project_manager_id_idx" ON "project" ("manager_id")',
@@ -802,22 +811,14 @@ export const companyStatusConstraintChecks = [
   },
 ] as const
 
+// Roles seeded on first run (Issue #10 — three-tier RBAC).
+// Keep this list in sync with `apps/api/src/modules/rbac/role-seeds.ts`.
+// Legacy roles (worker, project_manager, warehouse_manager) are intentionally
+// dropped per the Slice 3 acceptance criteria.
 export const roleSeeds = [
   { key: "admin", name: "مدير النظام", description: "الحساب الإداري الرئيسي — له جميع الصلاحيات", isSystem: true },
+  { key: "manager", name: "مدير عمليات", description: "يدير الموظفين والمشاريع والمستودعات والمخزون — صلاحيات تشغيلية كاملة", isSystem: true },
   { key: "viewer", name: "مشاهد", description: "حساب للقراءة فقط — لا يمكنه تعديل أي بيانات", isSystem: true },
-  { key: "worker", name: "عامل", description: "الدور التنفيذي الأساسي للعمال الميدانيين", isSystem: true },
-  {
-    key: "project_manager",
-    name: "مدير مشروع",
-    description: "مسؤول عن متابعة العمال والمشاريع الميدانية",
-    isSystem: true,
-  },
-  {
-    key: "warehouse_manager",
-    name: "مدير مخزن",
-    description: "مسؤول عن تشغيل وإدارة المستودعات",
-    isSystem: true,
-  },
 ] as const;
 
 // ---------- role_permission seeds ----------

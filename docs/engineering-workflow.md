@@ -170,8 +170,7 @@ After local verification passes but **before pushing**, the agent runs the
 
 - Catches issues before they reach Greptile or CI, reducing feedback loops.
 - Runs on Windows natively (no WSL required for the review itself).
-- Uses the `.diwan/` model registry to enable model diversity — the reviewer
-  can use a different model than the parent.
+- Uses model diversity — the reviewer can use a different model than the parent.
 - The `code-review` skill's Standards + Spec axes catch problems Greptile might
   miss (spec drift, smell violations, missing tests).
 
@@ -185,14 +184,23 @@ git checkout -b feature/<issue-id>-<short-description>
 git push origin feature/<issue-id>-<short-description>
 ```
 
-Branch naming: `feature/<issue-id>-<short-description>` (e.g., `feature/m1.1-rust-core-scaffolding`).
+Branch naming conventions:
+
+| Prefix | Pattern | Example |
+|--------|---------|--------|
+| `feature/` | `feature/<issue-id>-<short-description>` | `feature/m1.1-rust-core-scaffolding` |
+| `fix/` | `fix/<issue-id>-<short-description>` | `fix/issue-160-rust-warnings` |
+| `refactor/` | `refactor/<issue-id>-<short-description>` | `refactor/plan-005-god-object-splits` |
+| `agent/` | `agent/<short-description>` | `agent/cleanup-dirty-wip` |
+
+The `agent/` prefix is reserved for admin/cleanup/housekeeping tasks performed by automation. It does not require a corresponding GitHub issue.
 
 ### 7. Open Pull Request
 
 Create a PR into `develop`. The PR must:
-- Reference the issue: `Closes #71`
+- Reference the issue: `Closes #71` (not required for `agent/` branches)
 - Populate the PR template completely
-- Apply the correct labels (`area:*`, `priority:*`, `type:*`, `release:*`)
+- Apply the correct labels (`area:*`, `priority:*`, `type:*`, `status:*`)
 - Be in draft state initially if CI has not yet passed
 
 ### 8. GitHub Actions Verification
@@ -302,7 +310,7 @@ The project uses a **two-layer review system**:
 **Layer 1: Pre-Push Self-Review** (`code-review` skill, step 5.5)
 - Runs locally before pushing
 - Uses the `code-review` skill with parallel Standards + Spec sub-agents
-- Can use a different model (e.g., `opencode-go/mimo-2.5`)
+- Can use a different model via the `.diwan/models.yml` registry (if available)
 - Catches spec drift, smell violations, missing tests, standard breaches
 - Runs on Windows, no WSL required
 

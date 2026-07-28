@@ -48,6 +48,12 @@ Implementation
 | `area:contracts` | `packages/contracts`: shared Zod schemas, TypeScript types |
 | `area:cli` | CLI tools: `generate-license.mjs`, `sign-update.mjs` |
 | `area:testing` | Integration tests, E2E tests, test infrastructure |
+| `area:debt` | Debt/payments module |
+| `area:inventory` | Inventory items and warehouses |
+| `area:projects` | Projects and worker assignment |
+| `area:employees` | Employee management and roles |
+| `area:auth` | Authentication and session management |
+| `area:permissions` | RBAC and permission system |
 
 ### 2.3 Labels — Type
 
@@ -58,16 +64,21 @@ Implementation
 | `type:architecture` | Architectural change (requires ADR) |
 | `type:refactor` | Code restructuring without behavior change |
 | `type:test` | Test addition or improvement |
+| `type:chore` | Maintenance task |
+| `type:security` | Security-related |
 | `type:documentation` | Documentation-only |
 
 ### 2.4 Labels — Status
 
 | Label | Meaning |
 |-------|---------|
-| `blocked` | Waiting on another issue, external dependency, or decision |
-| `ready` | Dependencies resolved, available for implementation |
-| `review` | Implementation complete, awaiting code review |
-| `needs-adr` | Requires an Architecture Decision Record before implementation can proceed |
+| `status:blocked` | Waiting on another issue, external dependency, or decision |
+| `status:ready` | Dependencies resolved, available for implementation |
+| `status:in-progress` | Actively being implemented |
+| `status:review` | Implementation complete, awaiting code review |
+| `status:testing` | In test or QA |
+| `status:done` | Completed and merged |
+| `ready-for-agent` | Issue is ready for an AFK agent to work on |
 
 ---
 
@@ -82,6 +93,9 @@ Implementation
 | `release/*` | Release stabilization. Branch from `develop`, merge to `main` and back to `develop`. | Yes |
 | `hotfix/*` | Emergency fixes for released versions. Branch from `main`, merge to `main` and `develop`. | Yes |
 | `feature/*` | One feature per branch, one GitHub Issue per branch. Branch from `develop`, merge to `develop`. | No |
+| `fix/*` | One bug fix per branch. Branch from `develop`, merge to `develop`. | No |
+| `refactor/*` | One refactor per branch. Branch from `develop`, merge to `develop`. | No |
+| `agent/*` | Admin/cleanup/housekeeping. Branch from `develop`, merge to `develop`. | No |
 
 ### 3.2 Typical Flow
 
@@ -114,6 +128,15 @@ feature/<issue-id>-<short-description>
 feature/m1.3-license-manager
 feature/m1.7-license-cli
 
+fix/<issue-id>-<short-description>
+fix/issue-160-rust-warnings
+
+refactor/<issue-id>-<short-description>
+refactor/plan-005-god-object-splits
+
+agent/<short-description>
+agent/cleanup-dirty-wip
+
 hotfix/<version>-<short-description>
 hotfix/0.1.1-crash-on-startup
 
@@ -121,6 +144,17 @@ release/<version>
 release/0.1.0
 release/0.2.0
 ```
+
+### 3.5 Branch Prefixes
+
+| Prefix | Purpose |
+|--------|---------|
+| `feature/` | New functionality. Tracks a GitHub issue. |
+| `fix/` | Bug fix or non-functional improvement. Tracks a GitHub issue. |
+| `refactor/` | Code restructuring without behavior change. Tracks a GitHub issue. |
+| `agent/` | Admin/cleanup/housekeeping tasks performed by automation. No issue required. |
+| `hotfix/` | Emergency fix for released version. Branches from `main`. |
+| `release/` | Release stabilization. Branches from `develop`. |
 
 ---
 
@@ -148,12 +182,12 @@ Each GitHub Milestone contains the issues for that phase. Issues are labeled by 
 | Channel | Description | Source Branch | Version Suffix |
 |---------|-------------|---------------|----------------|
 | **Nightly** | Automatic development builds | `develop` | `-nightly.N` |
-| **Preview** | Feature-complete pre-releases | `release/*` | `-preview.N` |
+| **Beta** | Feature-complete pre-releases | `release/*` | `-beta.N` |
 | **Stable** | Production releases | `main` | None |
 
 These names communicate stability:
 - **Nightly** = may break, use at your own risk
-- **Preview** = feature-complete, collecting feedback
+- **Beta** = feature-complete, collecting feedback
 - **Stable** = production-ready
 
 ---
@@ -189,7 +223,7 @@ Semantic Versioning (`MAJOR.MINOR.PATCH`).
 
 ```
 0.3.0-nightly.15    — 15th nightly build toward 0.3.0
-1.1.0-preview.2     — 2nd preview of 1.1.0
+1.1.0-beta.2     — 2nd beta of 1.1.0
 ```
 
 ---
@@ -284,3 +318,78 @@ An issue is complete when:
 - [ ] Code has been reviewed and approved
 - [ ] Feature branch has been merged into `develop`
 - [ ] All acceptance criteria pass
+
+---
+
+## 12. CI/CD Pipeline
+
+### 12.1 Workflows
+
+| Workflow | Trigger | Environment | Artifacts |
+|----------|---------|-------------|-----------|
+| **Release** | Tag push `v*.*.*` on `main` | `stable` (2 approvals) | Installer, portable zip, update package, updates.json |
+| **Nightly** | Daily at midnight UTC + `workflow_dispatch` | `nightly` (no approval) | Same as release, published to nightly channel |
+| **Beta** | `workflow_dispatch` with `version` input | `beta` (1 approval) | Same as release, published to beta channel |
+
+### 12.2 Build Pipeline
+
+All three workflows share the same build steps:
+
+1. **Setup:** Checkout, pnpm + Node.js 22, Rust toolchain, caches
+2. **Dependencies:** `pnpm install --frozen-lockfile` + `pnpm --filter @tuari/contracts build`
+3. **Desktop build:** `pnpm --filter @tuari/desktop build` (builds web frontend, API sidecar, and Rust Tauri app)
+4. **Portable package:** `pnpm --filter @tuari/desktop portable:only`
+5. **Sign update:** Compute SHA-256 of portable zip, create manifest, sign with `scripts/sign-update.mjs`
+6. **Smoke test:** `scripts/verify-release-assets.mjs` validates the portable zip and signed update package
+7. **Stage and publish:** Collect all artifacts and upload to GitHub Releases
+
+### 12.3 Artifacts
+
+Each workflow produces:
+
+| Artifact | Naming Pattern | Source |
+|----------|---------------|--------|
+| NSIS installer | `tuari-<version>-<channel>-setup.exe` | Tauri build output |
+| Portable zip | `tuari-<version>-<channel>-portable.zip` | `build-portable.mjs` |
+| Signed update | `tuari-<version>-<channel>.update` | `sign-update.mjs` |
+| Update metadata | `updates.json` | Generated inline |
+
+### 12.4 GitHub Environments
+
+| Environment | Approval Required | Restricted To |
+|-------------|-------------------|---------------|
+| `nightly` | None | — |
+| `beta` | 1 approval | — |
+| `stable` | 2 approvals | Maintainers |
+
+Environments are configured via the GitHub UI under Settings > Environments.
+
+### 12.5 Signing Keys
+
+| Channel | Key | Storage |
+|---------|-----|---------|
+| Nightly | Dev key (`scripts/dev-update-keys/dev-update-private-key.pem`) | Repository (dev only) |
+| Beta | Dev key (will be replaced with beta key) | Repository (dev only) |
+| Stable | Dev key (will be replaced with production key) | GitHub secret `UPDATE_PRIVATE_KEY` (future) |
+
+### 12.6 Caching
+
+On self-hosted runners, tools are pre-installed and the pnpm store persists on disk. No explicit caching is needed:
+
+- **pnpm store:** Persistent across runs on the self-hosted runner (`~/.local/share/pnpm/store`)
+- **Rust/Cargo:** Registry and build artifacts persist in `~/.cargo/` and `apps/desktop/src-tauri/target/`
+- **git clean:** The CI workflow runs a targeted `git clean` to remove stale workspace files while preserving cached directories (`node_modules`, `.cargo`, `target`)
+
+### 12.7 Smoke Testing
+
+The `scripts/verify-release-assets.mjs` script runs after every build:
+
+```bash
+node scripts/verify-release-assets.mjs --artifacts <dir> --public-key <path> --version <ver> --channel <channel>
+```
+
+It verifies:
+1. A portable zip file exists and contains `Tuari.exe`
+2. A signed update manifest (`.update`) exists and the signature is valid against the public key
+
+Exit code 0 = all checks pass. Non-zero = at least one check failed.

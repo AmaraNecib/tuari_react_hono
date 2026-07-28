@@ -11,7 +11,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager, RunEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent};
 use crate::update::{UpdateProvider, UpdateStrategy};
 
 const API_HOST: &str = "127.0.0.1";
@@ -120,7 +120,7 @@ struct DesktopErrorResponse {
 #[tauri::command]
 fn get_runtime_config(_app: AppHandle) -> Result<RuntimeConfig, String> {
     Ok(RuntimeConfig {
-        api_base_url: format!("http://{}:{}", API_HOST, API_PORT),
+        api_base_url: format!("http://{API_HOST}:{API_PORT}"),
     })
 }
 
@@ -259,7 +259,7 @@ fn resolve_api_url(path: &str) -> Result<String, String> {
         return Err("Desktop API bridge path contains invalid newline characters.".to_string());
     }
 
-    Ok(format!("http://{}:{}{}", API_HOST, API_PORT, normalized_path))
+    Ok(format!("http://{API_HOST}:{API_PORT}{normalized_path}"))
 }
 
 fn matches_inventory_attachment_upload_path(path: &str) -> bool {
@@ -518,7 +518,101 @@ async fn desktop_sign_out_session(
     Ok(())
 }
 
+// ─── License Tauri Commands ───────────────────────────────────────
+
+/// Map an edition string to its Arabic label.
+fn edition_label(edition: &str) -> &'static str {
+    match edition {
+        "enterprise" => "انتربرايز",
+        "professional" => "احترافي",
+        _ => "قياسي",
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LicenseInfoResponse {
+    success: bool,
+    edition: String,
+    edition_label: String,
+    customer_name: String,
+    customer_email: String,
+    license_type: String,
+    message: String,
+}
+
+#[tauri::command]
+fn activate_license(
+    app: AppHandle,
+    key: String,
+) -> Result<LicenseInfoResponse, String> {
+    let tuari_dir = resolve_tuari_dir(&app)?;
+    let manager = crate::license::LicenseManager::initialize(&tuari_dir)
+        .map_err(|e| format!("فشل تحميل مدير الترخيص: {e}"))?;
+
+    let result = manager
+        .activate_from_key(&key, &tuari_dir)
+        .map_err(|e| {
+            let msg = match e {
+                crate::error::RustCoreError::InvalidSignature => {
+                    "مفتاح الترخيص غير صالح أو تم العبث به.".to_string()
+                }
+                crate::error::RustCoreError::InvalidFormat => {
+                    "صيغة مفتاح الترخيص غير صحيحة.".to_string()
+                }
+                crate::error::RustCoreError::InvalidPayload => {
+                    "بيانات الترخيص غير صالحة.".to_string()
+                }
+                crate::error::RustCoreError::LicenseFileNotFound => {
+                    "ملف الترخيص غير موجود.".to_string()
+                }
+                crate::error::RustCoreError::Expired => {
+                    "انتهت صلاحية الترخيص.".to_string()
+                }
+                crate::error::RustCoreError::ClockTampered { .. } => {
+                    "تعذر التحقق من تاريخ النظام.".to_string()
+                }
+                _ => format!("فشل التفعيل: {e}"),
+            };
+            msg
+        })?;
+
+    let (info, replaced) = match result {
+        crate::license::ActivationResult::Activated(info) => (info, false),
+        crate::license::ActivationResult::Replaced(_old, new) => (*new, true),
+    };
+
+    let label = edition_label(&info.edition);
+    let restart_hint = " يرجى إعادة تشغيل التطبيق لتطبيق التغييرات.";
+    let message = if replaced {
+        format!(
+            "تم تحديث الترخيص إلى النسخة {} بنجاح.{}",
+            label, restart_hint
+        )
+    } else {
+        format!(
+            "تم تفعيل النسخة {} بنجاح.{}",
+            label, restart_hint
+        )
+    };
+
+    Ok(LicenseInfoResponse {
+        success: true,
+        edition: info.edition,
+        edition_label: label.to_string(),
+        customer_name: info.issued_to.clone(),
+        customer_email: info.email.clone(),
+        license_type: info.license_type,
+        message,
+    })
+}
+
 // ─── Update Tauri Commands ───────────────────────────────────────
+
+#[tauri::command]
+fn restart_app(app: AppHandle) {
+    app.restart();
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -533,6 +627,11 @@ struct UpdateCheckResult {
 struct UpdateApplyResult {
     success: bool,
     message: String,
+}
+
+#[tauri::command]
+fn get_current_version() -> Result<String, String> {
+    Ok(env!("CARGO_PKG_VERSION").to_string())
 }
 
 #[tauri::command]
@@ -557,14 +656,324 @@ fn check_for_updates() -> Result<UpdateCheckResult, String> {
 
 #[tauri::command]
 fn apply_update(path: String) -> Result<UpdateApplyResult, String> {
+    let file_path = std::path::PathBuf::from(&path);
+
+    // Validate file exists
+    if !file_path.exists() {
+        return Ok(UpdateApplyResult {
+            success: false,
+            message: "الملف غير موجود.".to_string(),
+        });
+    }
+
+    // Validate file extension
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    if ext != "update" {
+        return Ok(UpdateApplyResult {
+            success: false,
+            message: "يرجى اختيار ملف .update صالح.".to_string(),
+        });
+    }
+
     let strategy = crate::update::FullReplaceStrategy::new(&std::path::PathBuf::from("."));
     let result = strategy
-        .apply_update(&std::path::PathBuf::from(&path))
+        .apply_update(&file_path)
         .map_err(|e| e.to_string())?;
     Ok(UpdateApplyResult {
         success: result.success,
         message: result.message,
     })
+}
+
+// ─── License Tauri Command ────────────────────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GetLicenseStatusResult {
+    edition: String,
+    edition_label: String,
+    issued_to: String,
+    email: String,
+    customer_name: Option<String>,
+    features: Vec<String>,
+    max_users: u32,
+    has_license: bool,
+    is_grace_period: bool,
+    is_expired: bool,
+    is_locked: bool,
+    valid_from: String,
+    valid_until: Option<String>,
+    license_type: String,
+    status: String,
+    days_remaining: i64,
+}
+
+#[tauri::command]
+fn get_license_status(app: AppHandle) -> Result<GetLicenseStatusResult, String> {
+    let tuari_dir = resolve_tuari_dir(&app)?;
+    let manager = crate::license::LicenseManager::initialize(&tuari_dir)
+        .map_err(|e| format!("Failed to read license: {e}"))?;
+
+    let status = manager.status();
+    let snapshot = manager.license_info();
+    let status_str = match status {
+        crate::license::LicenseStatus::Valid => "valid",
+        crate::license::LicenseStatus::Warning => "warning",
+        crate::license::LicenseStatus::Expired => "expired",
+        crate::license::LicenseStatus::ExpiredGrace => "expired_grace",
+        crate::license::LicenseStatus::NotYetActive => "not_yet_active",
+        crate::license::LicenseStatus::Tampered => "tampered",
+        crate::license::LicenseStatus::Grace => "grace",
+        crate::license::LicenseStatus::Invalid => "invalid",
+        crate::license::LicenseStatus::Locked => "locked",
+    };
+
+    // Cap at i32::MAX (well within JS Number.MAX_SAFE_INTEGER = 2^53-1)
+    // to avoid precision loss when i64::MAX (perpetual sentinel) crosses the IPC bridge.
+    let days_remaining = std::cmp::min(manager.days_remaining(), i32::MAX as i64);
+    let has_license = !matches!(
+        status,
+        crate::license::LicenseStatus::Invalid
+            | crate::license::LicenseStatus::Grace
+            | crate::license::LicenseStatus::Locked
+            | crate::license::LicenseStatus::Tampered
+            | crate::license::LicenseStatus::NotYetActive
+    );
+    let is_grace_period = matches!(status, crate::license::LicenseStatus::Grace);
+    let is_expired = matches!(status, crate::license::LicenseStatus::Expired | crate::license::LicenseStatus::ExpiredGrace | crate::license::LicenseStatus::Locked);
+    let is_locked = matches!(status, crate::license::LicenseStatus::Locked);
+
+    match snapshot {
+        Some(info) => Ok(GetLicenseStatusResult {
+            edition: info.edition.clone(),
+            edition_label: edition_label(&info.edition).to_string(),
+            issued_to: info.issued_to.clone(),
+            email: info.email.clone(),
+            customer_name: Some(info.issued_to.clone()),
+            features: info.features.clone(),
+            max_users: info.max_users,
+            has_license,
+            is_grace_period,
+            is_expired,
+            is_locked,
+            valid_from: info.valid_from.to_rfc3339(),
+            valid_until: info.valid_until.map(|dt| dt.to_rfc3339()),
+            license_type: info.license_type.clone(),
+            status: status_str.to_string(),
+            days_remaining,
+        }),
+        None => Ok(GetLicenseStatusResult {
+            edition: String::new(),
+            edition_label: edition_label("").to_string(),
+            issued_to: String::new(),
+            email: String::new(),
+            customer_name: None,
+            features: Vec::new(),
+            max_users: 0,
+            has_license,
+            is_grace_period,
+            is_expired,
+            is_locked,
+            valid_from: String::new(),
+            valid_until: None,
+            license_type: String::new(),
+            status: status_str.to_string(),
+            days_remaining,
+        }),
+    }
+}
+
+// ─── Download Progress ────────────────────────────────────────────
+
+/// Shared state for tracking download cancellation requests and
+/// serializing in-flight downloads so concurrent invocations cannot
+/// interleave writes to the same output file.
+struct DownloadState {
+    cancellation_requested: Mutex<bool>,
+    download_in_progress: Mutex<bool>,
+}
+
+impl DownloadState {
+    fn new() -> Self {
+        Self {
+            cancellation_requested: Mutex::new(false),
+            download_in_progress: Mutex::new(false),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DownloadProgress {
+    downloaded_bytes: u64,
+    total_bytes: u64,
+    speed_bytes_per_sec: u64,
+    percentage: f64,
+    status: String,
+    error: Option<String>,
+}
+
+#[tauri::command]
+async fn start_update_download(
+    url: String,
+    app: AppHandle,
+    state: tauri::State<'_, DownloadState>,
+) -> Result<String, String> {
+    // Backend re-entrancy guard: reject concurrent invocations so two
+    // tasks never write to the same output file or stomp on each
+    // other's cancellation flag. Mirrors the frontend downloadInFlightRef
+    // but lives here so direct invoke calls (DevTools, other windows,
+    // tests) are also covered.
+    {
+        let mut in_progress = state
+            .download_in_progress
+            .lock()
+            .map_err(|e| e.to_string())?;
+        if *in_progress {
+            return Err("Another download is already in progress.".to_string());
+        }
+        *in_progress = true;
+    }
+
+    // RAII guard that releases the in-progress flag on every exit path
+    // (success, error, cancellation, panic) without needing manual
+    // `let _ = ...; return ...` in every branch.
+    struct InProgressGuard<'a> {
+        flag: &'a Mutex<bool>,
+    }
+    impl Drop for InProgressGuard<'_> {
+        fn drop(&mut self) {
+            if let Ok(mut g) = self.flag.lock() {
+                *g = false;
+            }
+        }
+    }
+    let _guard = InProgressGuard {
+        flag: &state.download_in_progress,
+    };
+
+    // Reset cancellation flag for this new download.
+    {
+        let mut cancel = state
+            .cancellation_requested
+            .lock()
+            .map_err(|e| e.to_string())?;
+        *cancel = false;
+    }
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to start download: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Download server returned {}",
+            response.status()
+        ));
+    }
+
+    let total_bytes = response.content_length().unwrap_or(0);
+    let dest_dir = std::env::temp_dir().join("tuari-update");
+    create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    let dest_path = dest_dir.join("update-package.update");
+
+    // Use async I/O so the Tokio worker is not blocked on disk writes
+    // for the duration of the download.
+    use tokio::io::AsyncWriteExt;
+    let mut file = tokio::fs::File::create(&dest_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let start_time = Instant::now();
+    let mut downloaded: u64 = 0;
+
+    use futures_util::StreamExt;
+    let mut stream = response.bytes_stream();
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| format!("Download error: {e}"))?;
+        file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+        downloaded += chunk.len() as u64;
+
+        let elapsed = start_time.elapsed().as_secs_f64();
+        let speed = if elapsed > 0.0 {
+            (downloaded as f64 / elapsed) as u64
+        } else {
+            0
+        };
+        let percentage = if total_bytes > 0 {
+            (downloaded as f64 / total_bytes as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        app.emit(
+            "download-progress",
+            DownloadProgress {
+                downloaded_bytes: downloaded,
+                total_bytes,
+                speed_bytes_per_sec: speed,
+                percentage,
+                status: "downloading".to_string(),
+                error: None,
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+        // Check cancellation
+        if state
+            .cancellation_requested
+            .lock()
+            .map_err(|e| e.to_string())?
+            .clone()
+        {
+            drop(file);
+            let _ = tokio::fs::remove_file(&dest_path).await;
+            let _ = app.emit(
+                "download-progress",
+                DownloadProgress {
+                    downloaded_bytes: downloaded,
+                    total_bytes,
+                    speed_bytes_per_sec: speed,
+                    percentage,
+                    status: "cancelled".to_string(),
+                    error: None,
+                },
+            );
+            return Err("Download cancelled by user.".to_string());
+        }
+    }
+
+    file.flush().await.map_err(|e| e.to_string())?;
+
+    // Note: we intentionally do NOT emit a "completed" download-progress event
+    // here. Completion is signalled by the invoke return value (the file path),
+    // which the frontend treats as the authoritative completion. Emitting both
+    // would either duplicate UI work or create a race where the event handler
+    // sets state before the invoke-return handler can attach the real filePath.
+
+    Ok(dest_path
+        .to_str()
+        .ok_or_else(|| "Invalid download path.".to_string())?
+        .to_string())
+}
+
+#[tauri::command]
+fn cancel_update_download(
+    state: tauri::State<'_, DownloadState>,
+) -> Result<(), String> {
+    let mut cancel = state
+        .cancellation_requested
+        .lock()
+        .map_err(|e| e.to_string())?;
+    *cancel = true;
+    Ok(())
 }
 
 fn has_portable_runtime_layout(root: &Path) -> bool {
@@ -652,7 +1061,7 @@ fn resolve_legacy_tuari_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> 
             .path()
             .document_dir()
             .map_err(|error| error.to_string())?;
-        return Ok(Some(document_dir.join("Tuari")));
+        Ok(Some(document_dir.join("Tuari")))
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -674,13 +1083,13 @@ fn resolve_secrets_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(resolve_private_runtime_dir(app)?.join("secrets"))
 }
 
-fn to_sqlite_url(path: &PathBuf) -> String {
+fn to_sqlite_url(path: &Path) -> String {
     let normalized = path
         .display()
         .to_string()
         .trim_start_matches(r"\\?\")
         .replace('\\', "/");
-    format!("file:{}", normalized)
+    format!("file:{normalized}")
 }
 
 fn is_valid_secret(secret: &str, byte_len: usize) -> bool {
@@ -853,8 +1262,7 @@ fn cleanup_stale_api_processes() {
     #[cfg(target_os = "windows")]
     {
         let powershell_command = format!(
-      "Get-NetTCPConnection -LocalPort {} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object {{ Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }}",
-      API_PORT
+      "Get-NetTCPConnection -LocalPort {API_PORT} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object {{ Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }}"
     );
 
         let _ = Command::new("powershell")
@@ -892,8 +1300,7 @@ fn is_api_ready() -> bool {
     let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
 
     let request = format!(
-        "GET /health HTTP/1.1\r\nHost: {}:{}\r\nConnection: close\r\n\r\n",
-        API_HOST, API_PORT
+        "GET /health HTTP/1.1\r\nHost: {API_HOST}:{API_PORT}\r\nConnection: close\r\n\r\n"
     );
 
     if stream.write_all(request.as_bytes()).is_err() {
@@ -1014,7 +1421,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .env("BETTER_AUTH_SECRET", runtime_secrets.better_auth_secret)
         .env(
             "BETTER_AUTH_URL",
-            format!("http://{}:{}", API_HOST, API_PORT),
+            format!("http://{API_HOST}:{API_PORT}"),
         )
         .env("AUTH_DB_PATH", auth_db_path.as_os_str())
         .env("APP_DB_PATH", app_db_path.as_os_str())
@@ -1023,9 +1430,14 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(error_log_file));
 
-    // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
+    // Set structured license env vars for the API sidecar per Licensing Architecture §15.5
     if let Ok(tuari_dir) = resolve_tuari_dir(app) {
         if let Ok(manager) = crate::license::LicenseManager::initialize(&tuari_dir) {
+            let env_map = manager.to_env_map();
+            for (key, value) in &env_map {
+                command.env(key, value);
+            }
+            // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
             if manager.has_feature("encrypted_db") {
                 command.env("APP_DB_KEY", runtime_secrets.app_db_key);
             }
@@ -1053,14 +1465,22 @@ pub fn run() {
         .manage(DesktopAuthRuntimeState {
             session: Mutex::new(None),
         })
+        .plugin(tauri_plugin_dialog::init())
+        .manage(DownloadState::new())
         .invoke_handler(tauri::generate_handler![
             get_runtime_config,
             desktop_api_request,
             desktop_sign_in_with_phone_number,
             desktop_change_password,
             desktop_sign_out_session,
+            activate_license,
+            get_license_status,
             check_for_updates,
-            apply_update
+            apply_update,
+            get_current_version,
+            start_update_download,
+            cancel_update_download,
+            restart_app
         ])
         .setup(|app| {
             let child = spawn_api_process(app.handle())?;

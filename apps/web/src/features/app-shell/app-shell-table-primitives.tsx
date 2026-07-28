@@ -61,9 +61,22 @@ export function AppShellTableHeaderCell({ children, className }: { children: Rea
 /**
  * @description Component
  */
-export function AppShellTableRow({ children, className }: { children: ReactNode; className?: string }) {
+export function AppShellTableRow({
+  children,
+  className,
+  onClick,
+  ...rest
+}: {
+  children: ReactNode
+  className?: string
+  onClick?: () => void
+} & Omit<React.HTMLAttributes<HTMLTableRowElement>, "onClick">) {
   return (
-    <tr className={cn("border-t border-line bg-surface hover:bg-surface-2 transition-colors", className)}>
+    <tr
+      className={cn("border-t border-line bg-surface hover:bg-surface-2 transition-colors", className)}
+      onClick={onClick}
+      {...rest}
+    >
       {children}
     </tr>
   )

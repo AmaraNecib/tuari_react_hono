@@ -21,7 +21,7 @@ export function createPaymentHandlers(
   return {
     paymentsList: os.paymentsList.handler(
       m.withPermission(
-        "payments.read",
+        "payments:read",
         m.withAuth(async ({ input }: { context: RpcContext; input: unknown }) => {
           const opts = (input ?? {}) as {
             filters?: unknown;
@@ -44,7 +44,7 @@ export function createPaymentHandlers(
 
     paymentsGet: os.paymentsGet.handler(
       m.withPermission(
-        "payments.read",
+        "payments:read",
         m.withAuth(async ({ input }: { context: RpcContext; input: unknown }) => {
           const id = (input as { id: string }).id;
           const payment = await paymentModule.findById(id);
@@ -58,7 +58,7 @@ export function createPaymentHandlers(
 
     paymentsCreate: os.paymentsCreate.handler(
       m.withPermission(
-        "payments.create",
+        "payments:create",
         m.withAudit(
           async ({ input }: { context: RpcContext; input: unknown; auditContext: unknown }) => {
             const raw = input as {
@@ -109,7 +109,7 @@ export function createPaymentHandlers(
 
     paymentsDelete: os.paymentsDelete.handler(
       m.withPermission(
-        "payments.delete",
+        "payments:delete",
         m.withAudit(
           async ({ input }: { context: RpcContext; input: unknown; auditContext: unknown }) => {
             await paymentModule.delete((input as { id: string }).id);

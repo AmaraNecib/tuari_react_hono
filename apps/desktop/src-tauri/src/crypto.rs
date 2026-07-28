@@ -77,7 +77,6 @@ pub fn generate_random_bytes(len: usize) -> Vec<u8> {
 mod tests {
     use super::*;
     use ed25519_dalek::{SigningKey, Signer};
-    use rand_core::CryptoRngCore;
 
     /// Generate an ed25519 keypair for testing.
     /// Uses `SigningKey::generate` with a `CryptoRngCore`-implementing RNG.

@@ -12,6 +12,8 @@ import { CompanyService } from "../modules/company/company.service";
 import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
+import { AuditService } from "../modules/company/audit.service";
+import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
 import { createInventoryRepository } from "../modules/inventory/inventory.repository";
 import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
@@ -20,6 +22,8 @@ import { InvoiceRepository } from "../modules/invoice/adapters/invoice.repositor
 import { createPaymentModule } from "../modules/payment/payment.module";
 import { PaymentRepositoryImpl } from "../modules/payment/adapters/payment.repository";
 import { SqlitePermissionResolver } from "../modules/rbac/permission-resolver";
+import { RoleModule } from "../modules/rbac/role.module";
+import { SqliteRoleRepository as SqliteRbacRoleRepository } from "../modules/rbac/sqlite-role.repository";
 import { SessionService } from "../modules/session/session.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
@@ -50,7 +54,21 @@ export async function createAppDependencies(
   const companyRepository = createCompanyRepository(sharedDatabase);
   const inventoryRepository = createInventoryRepository(sharedDatabase);
   const accountRepository = new DrizzleAccountRepository(db);
-  const companyService = new CompanyService(companyRepository, companyRepository);
+
+  // Construct each domain service off the same `WorkspaceMutationContext`
+  // so the per-domain service owns its transaction + audit context and
+  // the `CompanyService` only has to forward delegations.
+  const mutation = new WorkspaceMutationContext(companyRepository, companyRepository);
+  const workforceService = new WorkforceService(companyRepository, mutation);
+  const operationsService = new OperationsService(companyRepository, mutation);
+  const financeService = new FinanceService(companyRepository, mutation);
+  const auditService = new AuditService(companyRepository);
+  const companyService = new CompanyService(companyRepository, companyRepository, {
+    workforce: workforceService,
+    operations: operationsService,
+    finance: financeService,
+    audit: auditService,
+  });
 
   const employeeRepository = new SqliteEmployeeRepository(companyRepository);
   const roleRepository = new SqliteRoleRepository(companyRepository);
@@ -67,14 +85,24 @@ export async function createAppDependencies(
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
   const recoveryKeyService = new RecoveryKeyService(db, sharedDatabase);
 
+  // Issue #10 — Slice 3 RBAC. The role module is a small, deep module
+  // that wraps a Drizzle-backed RoleRepository. The repository is kept
+  // separate from the workforce role repository (which only knows about
+  // the role lookups employee creation needs) because the role module
+  // needs to return roles with their full permission set, not just an
+  // id/lookup. The two share the same underlying tables; they just
+  // expose different shapes.
+  const rbacRoleRepository = new SqliteRbacRoleRepository(db);
+  const roleModule = new RoleModule({ repository: rbacRoleRepository });
+
   return {
     auth,
     accountService: new AccountService(accountRepository, auth),
     authBootstrapService,
     companyService,
-    workforceService: new WorkforceService(companyService),
-    operationsService: new OperationsService(companyService),
-    financeService: new FinanceService(companyService),
+    workforceService,
+    operationsService,
+    financeService,
     inventoryService: new InventoryService(
       inventoryRepository,
       new InventoryAttachmentStorage(env.attachmentsRootPath),
@@ -89,6 +117,7 @@ export async function createAppDependencies(
     employeeModule,
     invoiceModule,
     paymentModule,
+    roleModule,
   } as const;
 }
 
