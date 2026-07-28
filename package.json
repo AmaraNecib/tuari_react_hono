@@ -16,7 +16,6 @@
     "test:contracts": "pnpm --filter @tuari/contracts test",
     "test:web": "pnpm --filter @tuari/web test",
     "test:e2e": "playwright test",
-    "workflow": "bun run .agents/tools/run-workflow.ts",
     "playwright:install": "playwright install chromium",
     "typecheck": "pnpm check:web-tracking && turbo typecheck",
     "dev:web": "pnpm check:web-tracking && pnpm --filter @tuari/web dev",
