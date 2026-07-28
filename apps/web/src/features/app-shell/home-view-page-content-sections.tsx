@@ -26,6 +26,7 @@ export function HomeViewPageSectionContent({
   onSetPendingDelete,
   onSystemLogFiltersChange,
   onThemeToggle,
+  onUpdateApplied,
   page,
   resetWorkspacePending,
   session,
@@ -48,6 +49,7 @@ export function HomeViewPageSectionContent({
   | "onSetPendingDelete"
   | "onSystemLogFiltersChange"
   | "onThemeToggle"
+  | "onUpdateApplied"
   | "paginationCursor"
   | "paginationLimit"
   | "paginationPrevCursors"
@@ -264,6 +266,7 @@ export function HomeViewPageSectionContent({
           onReset={onResetWorkspace}
           onSaveAccount={onSaveAccount}
           onToggleTheme={onThemeToggle}
+          onUpdateApplied={onUpdateApplied}
         />
       )
 

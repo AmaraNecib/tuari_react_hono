@@ -41,6 +41,7 @@ export type HomeViewPageContentProps = {
   onAddWarehouse: () => void
   onResetWorkspace: () => void
   onSaveAccount: Parameters<typeof SettingsSection>[0]["onSaveAccount"]
+  onUpdateApplied?: () => void
   onSetPendingDelete: (value: PendingDelete | null) => void
   onSystemLogFiltersChange: (filters: HomeViewSystemLogFilters) => void
   onThemeToggle: () => void

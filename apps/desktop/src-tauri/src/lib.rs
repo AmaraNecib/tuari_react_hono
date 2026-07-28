@@ -609,6 +609,11 @@ fn activate_license(
 
 // ─── Update Tauri Commands ───────────────────────────────────────
 
+#[tauri::command]
+fn restart_app(app: AppHandle) {
+    app.restart();
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdateCheckResult {
@@ -1474,7 +1479,8 @@ pub fn run() {
             apply_update,
             get_current_version,
             start_update_download,
-            cancel_update_download
+            cancel_update_download,
+            restart_app
         ])
         .setup(|app| {
             let child = spawn_api_process(app.handle())?;
