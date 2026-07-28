@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
+  canonicalJson,
   type FilterPreset,
   useSavedFilters,
 } from "@/hooks/use-saved-filters";
@@ -29,10 +30,53 @@ function filtersMatch(
   a: Record<string, unknown>,
   b: Record<string, unknown>
 ): boolean {
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-  return aKeys.every((key) => a[key] === b[key]);
+  return canonicalJson(a) === canonicalJson(b);
+}
+
+/**
+ * useFocusTrap — confines Tab / Shift+Tab to the focusable elements inside
+ * the given container ref while it is active. Required for ARIA
+ * `role="dialog"` + `aria-modal="true"` patterns.
+ */
+function useFocusTrap(
+  containerRef: React.RefObject<HTMLElement | null>,
+  active: boolean
+) {
+  useEffect(() => {
+    if (!active) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const focusableSelector =
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    const getFocusable = () =>
+      Array.from(
+        container.querySelectorAll<HTMLElement>(focusableSelector)
+      ).filter((el) => !el.hasAttribute("aria-hidden"));
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const activeEl = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && activeEl === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && activeEl === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    container.addEventListener("keydown", onKeyDown);
+    return () => container.removeEventListener("keydown", onKeyDown);
+  }, [containerRef, active]);
 }
 
 function filterLabel(
@@ -43,6 +87,27 @@ function filterLabel(
     .map((key) => `${key}: ${String(filters[key])}`)
     .join(", ");
   return t("search.historyEntryLabel", "{{keys}}", { keys: keys || "—" });
+}
+
+/**
+ * useMediaQuery — returns true when the viewport is at or below the md
+ * breakpoint (Tailwind's `md`, 768px). The initial client-side match avoids a
+ * desktop-layout flash on narrow devices; the effect keeps it in sync.
+ */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia(query).matches;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mql = window.matchMedia(query);
+    setMatches(mql.matches);
+    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
 }
 
 /**
@@ -59,6 +124,11 @@ export function AdvancedSearchBar({
   initialFilters,
   forceMobileLayout = false,
 }: AdvancedSearchBarProps) {
+  // Auto-detect the md breakpoint so the mobile drawer opens automatically
+  // on narrow viewports. `forceMobileLayout` overrides for tests.
+  const isNarrow = useMediaQuery("(max-width: 767px)");
+  const useMobileLayout = forceMobileLayout || isNarrow;
+
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<Record<string, unknown>>(
@@ -98,10 +168,7 @@ export function AdvancedSearchBar({
         lastHistorySignatureRef.current = null;
         return;
       }
-      const signature = filterKeys
-        .sort()
-        .map((key) => `${key}=${String(activeFilters[key])}`)
-        .join("&");
+      const signature = canonicalJson(activeFilters);
       if (signature !== lastHistorySignatureRef.current) {
         lastHistorySignatureRef.current = signature;
         addToHistory(activeFilters);
@@ -113,7 +180,7 @@ export function AdvancedSearchBar({
   // Drawer keyboard handling and scroll lock. Always called; only takes
   // effect when the drawer is open in the mobile layout.
   useEffect(() => {
-    if (!forceMobileLayout || !drawerOpen) return;
+    if (!useMobileLayout || !drawerOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setDrawerOpen(false);
     };
@@ -124,7 +191,7 @@ export function AdvancedSearchBar({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKey);
     };
-  }, [forceMobileLayout, drawerOpen]);
+  }, [useMobileLayout, drawerOpen]);
 
   const handleApplyFilters = useCallback(
     (next: Record<string, unknown>) => {
@@ -153,6 +220,7 @@ export function AdvancedSearchBar({
   const handleLoadPreset = useCallback(
     (preset: FilterPreset) => {
       handleApplyFilters(preset.filters);
+      setShowPresets(false);
     },
     [handleApplyFilters]
   );
@@ -162,16 +230,18 @@ export function AdvancedSearchBar({
     setQuery("");
     setShowPresets(false);
     setShowHistory(false);
+    setShowSaveDialog(false);
   }, []);
 
   const recentHistory = useMemo(() => history.slice(0, 5), [history]);
+  const activeFilterCount = Object.keys(activeFilters).length;
 
   const chipsRow =
     quickFilters && quickFilters.length > 0 ? (
       <div
         className="flex flex-wrap gap-2"
         role="group"
-        aria-label={t("search.quickFilters", "فلاتر سريعة")}
+        aria-label={t("search.quickFilters")}
       >
         {quickFilters.map((qf) => {
           const isActive = filtersMatch(activeFilters, qf.filters);
@@ -210,7 +280,7 @@ export function AdvancedSearchBar({
               type="button"
               onClick={() => deletePreset(preset.id)}
               className="ml-1 hover:text-destructive"
-              aria-label={t("search.deletePreset", "حذف")}
+              aria-label={t("search.deletePreset")}
             >
               ✕
             </button>
@@ -226,21 +296,21 @@ export function AdvancedSearchBar({
     >
       <div className="mb-2 flex items-center justify-between">
         <span className="text-sm font-medium">
-          {t("search.recentFilters", "الفلاتر الحديثة")}
+          {t("search.recentFilters")}
         </span>
         {history.length > 0 ? (
           <Button size="xs" variant="ghost" onClick={clearHistory}>
-            {t("search.clear", "مسح")}
+            {t("search.clear")}
           </Button>
         ) : null}
       </div>
       {recentHistory.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          {t("search.noResults", "لا توجد نتائج")}
+          {t("search.noResults")}
         </p>
       ) : (
         <ul
-          aria-label={t("search.recentFilters", "الفلاتر الحديثة")}
+          aria-label={t("search.recentFilters")}
           className="grid gap-1"
         >
           {recentHistory.map((entry, index) => (
@@ -259,17 +329,21 @@ export function AdvancedSearchBar({
     </div>
   ) : null;
 
+  const saveDialogRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(saveDialogRef, showSaveDialog);
+  useFocusTrap(drawerRef, drawerOpen);
+
   const saveDialog = showSaveDialog ? (
     <div
+      ref={saveDialogRef}
       role="dialog"
-      aria-label={t("search.saveCurrent", "حفظ البحث الحالي")}
+      aria-modal="true"
+      aria-label={t("search.saveCurrent")}
       className="flex gap-2 rounded-lg border border-border/60 bg-surface p-3"
     >
       <Input
-        placeholder={t(
-          "search.presetNamePlaceholder",
-          "اسم البحث المحفوظ..."
-        )}
+        placeholder={t("search.presetNamePlaceholder")}
         value={presetName}
         onChange={(e) => setPresetName(e.target.value)}
         onKeyDown={(e) => {
@@ -280,7 +354,7 @@ export function AdvancedSearchBar({
         autoFocus
       />
       <Button size="sm" type="button" onClick={handleSavePreset}>
-        {t("common.save", "حفظ")}
+        {t("common.save")}
       </Button>
       <Button
         size="sm"
@@ -291,7 +365,7 @@ export function AdvancedSearchBar({
           setPresetName("");
         }}
       >
-        {t("common.cancel", "إلغاء")}
+        {t("common.cancel")}
       </Button>
     </div>
   ) : null;
@@ -299,11 +373,11 @@ export function AdvancedSearchBar({
   const searchRow = (
     <div className="flex flex-col gap-2 md:flex-row">
       <Input
-        placeholder={t("search.placeholder", "بحث...")}
+        placeholder={t("search.placeholder")}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         className="flex-1"
-        aria-label={t("search.placeholder", "بحث...")}
+        aria-label={t("search.placeholder")}
       />
       {presets.length > 0 ? (
         <Button
@@ -316,11 +390,9 @@ export function AdvancedSearchBar({
             setShowHistory(false);
           }}
         >
-          {showPresets || presets.length === 0
-            ? t("search.savedPresets", "الفلاتر المحفوظة")
-            : t("search.savedPresetsWithCount", "الفلاتر المحفوظة ({{count}})", {
-                count: presets.length,
-              })}
+          {t("search.savedPresetsWithCount", "Saved filters ({{count}})", {
+            count: presets.length,
+          })}
         </Button>
       ) : null}
       {history.length > 0 ? (
@@ -334,7 +406,7 @@ export function AdvancedSearchBar({
             setShowPresets(false);
           }}
         >
-          {t("search.recent", "حديثاً")}
+          {t("search.recent")}
         </Button>
       ) : null}
       {Object.keys(activeFilters).length > 0 ? (
@@ -344,12 +416,12 @@ export function AdvancedSearchBar({
           size="sm"
           onClick={() => setShowSaveDialog(true)}
         >
-          {t("search.saveCurrent", "حفظ البحث الحالي")}
+          {t("search.saveCurrent")}
         </Button>
       ) : null}
       {hasActiveFilters ? (
         <Button type="button" variant="ghost" size="sm" onClick={handleClearAll}>
-          {t("search.clear", "مسح")}
+          {t("search.clear")}
         </Button>
       ) : null}
     </div>
@@ -365,7 +437,7 @@ export function AdvancedSearchBar({
     </div>
   );
 
-  if (forceMobileLayout) {
+  if (useMobileLayout) {
     return (
       <div className="space-y-3">
         <Button
@@ -375,13 +447,22 @@ export function AdvancedSearchBar({
           aria-haspopup="dialog"
           aria-expanded={drawerOpen}
         >
-          {t("search.openFilters", "الفلاتر")}
+          {t("search.openFilters")}
+          {activeFilterCount > 0 ? (
+            <span
+              className="ms-2 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground"
+              aria-label={`${activeFilterCount}`}
+            >
+              {activeFilterCount}
+            </span>
+          ) : null}
         </Button>
         {drawerOpen ? (
           <div
+            ref={drawerRef}
             role="dialog"
             aria-modal="true"
-            aria-label={t("search.openFilters", "الفلاتر")}
+            aria-label={t("search.openFilters")}
             className="fixed inset-0 z-50 flex flex-col bg-background/95 p-4"
           >
             <div className="ml-auto">
@@ -390,10 +471,10 @@ export function AdvancedSearchBar({
                 variant="ghost"
                 size="sm"
                 onClick={() => setDrawerOpen(false)}
-                aria-label={t("search.closeFilters", "إغلاق")}
+                aria-label={t("search.closeFilters")}
                 autoFocus
               >
-                {t("search.closeFilters", "إغلاق")} ✕
+                {t("search.closeFilters")} ✕
               </Button>
             </div>
             <div className="mt-4 flex-1 overflow-auto">{body}</div>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -62,6 +63,7 @@ export function DebtsHubPage({
   }>
   totals: { openCount: number; owedByUsDzd: number; owedToUsDzd: number }
 }) {
+  const { t } = useTranslation()
   const [filter, setFilter] = useState<FilterOption>("all")
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
@@ -211,8 +213,8 @@ export function DebtsHubPage({
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                   {filter === "all" && !normalizedQuery
-                    ? "لا توجد حسابات ديون بعد."
-                    : "لا توجد نتائج للفلتر المحدد."}
+                    ? t("debtsHub.emptyAll")
+                    : t("debtsHub.emptyFiltered")}
                 </TableCell>
               </TableRow>
             )}

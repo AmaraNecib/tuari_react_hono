@@ -4,7 +4,7 @@
  * Both live in the same `localStorage` slot under a `{presets, history}` envelope
  * so writes are atomic and a single hook owns the lifecycle.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export interface FilterPreset {
   id: string;
@@ -54,8 +54,11 @@ function isPresetArray(value: unknown): value is FilterPreset[] {
 }
 
 /** Deep-stable canonical JSON. Object keys are sorted at every level so two
- * structurally-equal filter maps always serialize the same way. */
-function canonicalJson(value: unknown): string {
+ * structurally-equal filter maps always serialize the same way.
+ *
+ * Exported so consumers (e.g. AdvancedSearchBar) can do structural filter
+ * comparison without re-implementing the algorithm. */
+export function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) {
     return "[" + value.map(canonicalJson).join(",") + "]";
@@ -129,35 +132,21 @@ export function useSavedFilters(options: UseSavedFiltersOptions) {
     if (typeof window === "undefined") return EMPTY_STATE;
     return loadState(localStorage.getItem(storageKey));
   });
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [isLoaded, setIsLoaded] = useState(true);
-  // Keep a ref to the latest state so callbacks fired in the same tick
-  // don't read a stale snapshot from closure.
-  const stateRef = useRef(state);
-  stateRef.current = state;
 
+  // Persistence is a side effect, so it runs OUTSIDE the setState updater.
+  // (React 18 StrictMode double-invokes updaters; we don't want localStorage
+  // writes to fire twice and we don't want to violate the "pure updater"
+  // contract.)
   useEffect(() => {
-    setState(loadState(localStorage.getItem(storageKey)));
-  }, [storageKey]);
-
-  const persist = useCallback(
-    (next: PersistedState) => {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {
-        console.warn(`Failed to persist filter state to ${storageKey}`);
-      }
-    },
-    [storageKey]
-  );
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch {
+      console.warn(`Failed to persist filter state to ${storageKey}`);
+    }
+  }, [storageKey, state]);
 
   const savePreset = useCallback(
-    (name: string, filters: Record<string, unknown>): boolean => {
-      if (stateRef.current.presets.length >= maxPresets) {
-        console.warn(`Max ${maxPresets} filter presets allowed`);
-        return false;
-      }
-
+    (name: string, filters: Record<string, unknown>) => {
       const newPreset: FilterPreset = {
         id: `preset-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         name,
@@ -165,59 +154,42 @@ export function useSavedFilters(options: UseSavedFiltersOptions) {
         createdAt: Date.now(),
       };
 
-      let saved = false;
       setState((current) => {
-        if (current.presets.length >= maxPresets) return current;
-        saved = true;
-        const next: PersistedState = {
+        if (current.presets.length >= maxPresets) {
+          console.warn(`Max ${maxPresets} filter presets allowed`);
+          return current;
+        }
+        return {
           presets: [...current.presets, newPreset],
           history: current.history,
         };
-        persist(next);
-        return next;
       });
-      return saved;
     },
-    [maxPresets, persist]
+    [maxPresets]
   );
 
-  const deletePreset = useCallback(
-    (id: string) => {
-      setState((current) => {
-        const next: PersistedState = {
-          presets: current.presets.filter((p) => p.id !== id),
-          history: current.history,
-        };
-        persist(next);
-        return next;
-      });
-    },
-    [persist]
-  );
+  const deletePreset = useCallback((id: string) => {
+    setState((current) => ({
+      presets: current.presets.filter((p) => p.id !== id),
+      history: current.history,
+    }));
+  }, []);
 
   const updatePreset = useCallback(
     (id: string, updates: Partial<Omit<FilterPreset, "id">>) => {
-      setState((current) => {
-        const next: PersistedState = {
-          presets: current.presets.map((p) =>
-            p.id === id ? { ...p, ...updates } : p
-          ),
-          history: current.history,
-        };
-        persist(next);
-        return next;
-      });
+      setState((current) => ({
+        presets: current.presets.map((p) =>
+          p.id === id ? { ...p, ...updates } : p
+        ),
+        history: current.history,
+      }));
     },
-    [persist]
+    []
   );
 
   const clearAllPresets = useCallback(() => {
-    setState((current) => {
-      const next: PersistedState = { presets: [], history: current.history };
-      persist(next);
-      return next;
-    });
-  }, [persist]);
+    setState((current) => ({ presets: [], history: current.history }));
+  }, []);
 
   const addToHistory = useCallback(
     (filters: Record<string, unknown>) => {
@@ -228,29 +200,22 @@ export function useSavedFilters(options: UseSavedFiltersOptions) {
           (entry) => canonicalJson(entry.filters) !== signature
         );
         const entry: FilterHistoryEntry = { filters, usedAt: Date.now() };
-        const next: PersistedState = {
+        return {
           presets: current.presets,
           history: [entry, ...filtered].slice(0, maxHistory),
         };
-        persist(next);
-        return next;
       });
     },
-    [maxHistory, persist]
+    [maxHistory]
   );
 
   const clearHistory = useCallback(() => {
-    setState((current) => {
-      const next: PersistedState = { presets: current.presets, history: [] };
-      persist(next);
-      return next;
-    });
-  }, [persist]);
+    setState((current) => ({ presets: current.presets, history: [] }));
+  }, []);
 
   return {
     presets: state.presets,
     history: state.history,
-    isLoaded,
     savePreset,
     deletePreset,
     updatePreset,

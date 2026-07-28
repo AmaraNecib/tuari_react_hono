@@ -26,11 +26,12 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
   const { t } = useTranslation()
   const invoicesQuery = useInventoryInvoiceGroupsQuery()
   const [query, setQuery] = useState("")
-  const [filters, setFilters] = useState<Record<string, unknown>>({})
+  const [filters, setFilters] = useState<Record<string, unknown>>({ status: "ALL" })
   const batchSelection = useBatchSelection(invoicesQuery.data?.items ?? [])
 
   const normalizedQuery = query.trim().toLowerCase()
   const status = (filters.status as InvoiceStatusFilter) ?? "ALL"
+  const hasActiveFilters = normalizedQuery.length > 0 || status !== "ALL"
 
   const quickFilters: QuickFilter[] = useMemo(
     () => [
@@ -96,6 +97,7 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
                 setFilters(filtersObj)
               }}
               storageKey="invoices-search-filters"
+              initialFilters={{ status: "ALL" }}
               quickFilters={quickFilters}
             />
           </div>
@@ -136,8 +138,12 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
           })}
           {filteredInvoices.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <p className="text-sm text-muted-foreground">{t("inventoryPage.invoices.empty")}</p>
-              <Button size="sm" onClick={onCreate}>{t("inventoryPage.invoices.createButton")}</Button>
+              <p className="text-sm text-muted-foreground">
+                {hasActiveFilters ? t("search.noResults") : t("inventoryPage.invoices.empty")}
+              </p>
+              {!hasActiveFilters ? (
+                <Button size="sm" onClick={onCreate}>{t("inventoryPage.invoices.createButton")}</Button>
+              ) : null}
             </div>
           ) : null}
         </div>
