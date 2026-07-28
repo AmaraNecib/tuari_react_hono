@@ -91,11 +91,14 @@ function filterLabel(
 
 /**
  * useMediaQuery — returns true when the viewport is at or below the md
- * breakpoint (Tailwind's `md`, 768px). SSR-safe: returns false until the
- * first effect runs. Used by the mobile-drawer trigger.
+ * breakpoint (Tailwind's `md`, 768px). The initial client-side match avoids a
+ * desktop-layout flash on narrow devices; the effect keeps it in sync.
  */
 function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(false);
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia(query).matches;
+  });
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mql = window.matchMedia(query);
@@ -165,10 +168,7 @@ export function AdvancedSearchBar({
         lastHistorySignatureRef.current = null;
         return;
       }
-      const signature = filterKeys
-        .sort()
-        .map((key) => `${key}=${String(activeFilters[key])}`)
-        .join("&");
+      const signature = canonicalJson(activeFilters);
       if (signature !== lastHistorySignatureRef.current) {
         lastHistorySignatureRef.current = signature;
         addToHistory(activeFilters);
