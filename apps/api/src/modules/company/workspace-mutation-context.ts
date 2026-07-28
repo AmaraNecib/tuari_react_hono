@@ -13,7 +13,7 @@
  */
 
 import { TransactionManager } from "./transaction-manager";
-import type { CompanyRepository } from "./company.repository";
+import type { CompanyRepository } from "./company.repository.contracts";
 import { CompanyError } from "./company.errors";
 import { type MutationAuditContext as RawAuditContext, type MutationAuditContext } from "./company.types";
 import { normalizeMutationAuditContext, type WorkspaceAdminAuthorizer } from "./company.helpers";

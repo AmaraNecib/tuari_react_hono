@@ -7,10 +7,9 @@
  * history.
  *
  * The interface is intentionally narrow. The Drizzle-based
- * implementation lives in `company.repository.ts` (alongside the
- * other domain repos) for now; a future PR can move it into a
- * dedicated adapter following the `employee.repository.ts` /
- * `adapters/employee.repository.ts` split.
+ * The current SQLite implementation is kept in the infrastructure
+ * adapter for this incremental refactor. A future provider can satisfy
+ * this same interface without changing workforce callers.
  */
 
 import type {

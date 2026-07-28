@@ -39,7 +39,7 @@ import {
   successResult,
 } from "./company.helpers";
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
-import type { CompanyRepository } from "./company.repository";
+import type { CompanyRepository } from "./company.repository.contracts";
 import {
   type DebtAccountListFilters,
   type DebtEntryListFilters,

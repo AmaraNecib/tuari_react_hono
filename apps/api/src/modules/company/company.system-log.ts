@@ -1,4 +1,4 @@
-import type { CompanyRepository } from "./company.repository"
+import type { CompanyRepository } from "./company.repository.contracts"
 import { compareTimestampsDesc } from "./company-time"
 import type { SystemLogEntryRecord, SystemLogListFilters } from "./company.types"
 

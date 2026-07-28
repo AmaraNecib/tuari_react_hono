@@ -11,7 +11,7 @@
  */
 
 import { buildCompanySystemLog } from "./company.system-log";
-import type { CompanyRepository } from "./company.repository";
+import type { CompanyRepository } from "./company.repository.contracts";
 import type { SystemLogListFilters } from "./company.types";
 
 export class AuditService {

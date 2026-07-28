@@ -2,7 +2,7 @@
 
 import type { DebtAccountCreateInput, DebtConsolidationInput, DebtEntryCreateInput, DebtEntryRecordPaymentInput, DebtEntryVoidInput, DebtPartyDetailInput, DebtSettlementInput, EmployeeAssignWorkplaceInput, EmployeeBatchCreateInput, EmployeeCreateInput, EmployeeSalaryPaymentCreateInput, EmployeeSyncManagedProjectsInput, EmployeeSyncManagedWarehousesInput, EmployeeUpdateInput, ExternalCounterpartyCreateInput, ManagerAssignmentCreateInput, ManagerAssignmentEndInput, ProjectAssignmentCreateInput, ProjectAssignmentEndInput, ProjectCreateInput, ProjectUpdateInput, RoleCreateInput, RoleUpdateInput, WarehouseAssignmentCreateInput, WarehouseAssignmentEndInput, WarehouseCreateInput, WarehouseUpdateInput } from "@tuari/contracts";
 
-import type { CompanyRepository } from "./company.repository";
+import type { CompanyRepository } from "./company.repository.contracts";
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
 import { WorkforceService } from "./workforce.service";
 import { OperationsService } from "./operations.service";

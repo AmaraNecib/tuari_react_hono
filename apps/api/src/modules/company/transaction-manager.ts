@@ -1,4 +1,4 @@
-import type { CompanyRepository } from "./company.repository";
+import type { CompanyRepository } from "./company.repository.contracts";
 
 /**
  * Utilities for managing transactions across repository operations.

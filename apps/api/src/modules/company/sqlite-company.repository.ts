@@ -32,6 +32,7 @@ import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
 import type { FinanceRepository } from "./finance.repository";
 import type { AuditRepository } from "./audit.repository";
+import type { CompanyRepository } from "./company.repository.contracts";
 import type {
   DebtAccountCreateData,
   DebtAccountListFilters,
@@ -204,15 +205,6 @@ function toUserProfileHistory(r: typeof schema.userProfileHistory.$inferSelect):
 
 type DrizzleDb = BetterSQLite3Database<typeof schema>;
 
-/** Repository interface for company domain data access (employees, projects, debts, etc.). */
-export interface CompanyRepository extends WorkforceRepository, OperationsRepository, FinanceRepository, AuditRepository {
-  /**
-   * Run the callback inside a Drizzle transaction. Used by the
-   * domain services for cross-table mutations (e.g. create
-   * debt account + opening entry + audit log).
-   */
-  withTransaction<T>(callback: () => T): T;
-}
 /** Drizzle-based implementation of CompanyRepository. */
 export class SqliteCompanyRepository implements CompanyRepository {
   private readonly db: DrizzleDb;

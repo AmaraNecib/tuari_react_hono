@@ -13,7 +13,7 @@
 
 import { CompanyError } from "./company.errors";
 import { SYSTEM_ROLE_KEYS } from "./company.types";
-import type { CompanyRepository } from "./company.repository";
+import type { CompanyRepository } from "./company.repository.contracts";
 
 export function requireRole(repository: CompanyRepository, roleId: string) {
   const role = repository.getRoleById(roleId);

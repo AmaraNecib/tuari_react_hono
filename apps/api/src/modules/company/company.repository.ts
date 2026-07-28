@@ -7,12 +7,10 @@
  */
 
 import { createDrizzleFromSqlite } from "../../infrastructure/database/drizzle";
-import {
-  SqliteCompanyRepository,
-  type CompanyRepository,
-} from "./sqlite-company.repository";
+import { SqliteCompanyRepository } from "./sqlite-company.repository";
+import type { CompanyRepository } from "./company.repository.contracts";
 
-export type { CompanyRepository } from "./sqlite-company.repository";
+export type { CompanyRepository } from "./company.repository.contracts";
 export type { WorkforceRepository } from "./workforce.repository";
 export type { OperationsRepository } from "./operations.repository";
 export type { FinanceRepository } from "./finance.repository";
