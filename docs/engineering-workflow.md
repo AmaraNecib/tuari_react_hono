@@ -105,7 +105,7 @@ These skills supplement the `code-review` already run by `implement`. The agent 
 **Why this exists:**
 - Catches design and logic problems before tests are written
 - Catches things `code-review` might miss (domain alignment, architecture depth, bug patterns)
-- Uses the `.diwan/` model registry to route each skill to the best model
+- Routes each skill to a model appropriate for its task, depending on available models and their capabilities
 
 ### 5. Local Verification
 
@@ -144,8 +144,8 @@ After local verification passes but **before pushing**, the agent runs the
 
 **How it works:**
 
-1. The parent agent reads `.diwan/models.yml` to select a review-capable model
-   (e.g., `opencode-go/mimo-2.5` for review tasks).
+1. The parent agent selects a review-capable model depending on available models
+   and their capabilities (e.g., a code-review-optimized model for the review task).
 2. The parent invokes the builtin `code-review` skill with the fixed point being
    `develop` (or the merge-base of the feature branch):
    ```
@@ -310,7 +310,7 @@ The project uses a **two-layer review system**:
 **Layer 1: Pre-Push Self-Review** (`code-review` skill, step 5.5)
 - Runs locally before pushing
 - Uses the `code-review` skill with parallel Standards + Spec sub-agents
-- Can use a different model via the `.diwan/models.yml` registry (if available)
+- Can use a different model (depending on available models and their capabilities) — enables model diversity where the reviewer uses a different model than the agent
 - Catches spec drift, smell violations, missing tests, standard breaches
 - Runs on Windows, no WSL required
 
