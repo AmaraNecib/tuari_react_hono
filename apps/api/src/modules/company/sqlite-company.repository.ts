@@ -10,8 +10,8 @@
  * The split is at the **interface** level: callers (services,
  * tests) can depend on the focused `WorkforceRepository`,
  * `OperationsRepository`, `FinanceRepository`, or
- * `AuditRepository` interface and stop crossing the 70-method
- * god-object boundary while preserving one transactional SQL adapter.
+ * `AuditRepository` interface and stop crossing the broad multi-domain
+ * repository boundary while preserving one transactional SQL adapter.
  */
 
 import crypto from "node:crypto";

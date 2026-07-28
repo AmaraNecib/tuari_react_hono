@@ -6,7 +6,7 @@
  * system log (which aggregates every domain's audit history).
  *
  * Extracted from `CompanyService` as part of Plan 005 Phase 3
- * (issue #177) so the god object stops owning read views that
+* (issue #177) so the former monolithic service stops owning read views that
  * span every domain.
  */
 

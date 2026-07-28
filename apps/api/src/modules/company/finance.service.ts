@@ -9,7 +9,7 @@
  * authorization.
  *
  * Extracted from `CompanyService` as part of Plan 005 Phase 3
- * (issue #177) so the 2k-line god object stops owning every
+* (issue #177) so the former 2k-line service stops owning every
  * domain.
  */
 
