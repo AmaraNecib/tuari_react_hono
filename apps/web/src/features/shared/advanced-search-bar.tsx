@@ -229,6 +229,7 @@ export function AdvancedSearchBar({
     setQuery("");
     setShowPresets(false);
     setShowHistory(false);
+    setShowSaveDialog(false);
   }, []);
 
   const recentHistory = useMemo(() => history.slice(0, 5), [history]);

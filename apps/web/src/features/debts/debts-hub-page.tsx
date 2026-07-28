@@ -213,8 +213,8 @@ export function DebtsHubPage({
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                   {filter === "all" && !normalizedQuery
-                    ? t("debtHub.emptyAll")
-                    : t("debtHub.emptyFiltered")}
+                    ? t("debtsHub.emptyAll")
+                    : t("debtsHub.emptyFiltered")}
                 </TableCell>
               </TableRow>
             )}
