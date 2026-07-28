@@ -132,10 +132,11 @@ export function useUserJourney(config: JourneyConfig): UserJourneyReturn {
 
   // Rehydrate state when config.key changes
   useEffect(() => {
+    const m = managerRef.current!
     setState({
-      status: manager.getStatus(),
-      currentStep: manager.getCurrentStep(),
-      level: manager.getLevel(),
+      status: m.getStatus(),
+      currentStep: m.getCurrentStep(),
+      level: m.getLevel(),
     })
   }, [config.key])
 
@@ -144,50 +145,56 @@ export function useUserJourney(config: JourneyConfig): UserJourneyReturn {
     if (config.autoStart && state.status === "not-started") {
       const timer = setTimeout(() => {
         setState(prev => ({ ...prev, status: "active" }))
-        manager.setStatus("active")
+        managerRef.current?.setStatus("active")
       }, 500)
       return () => clearTimeout(timer)
     }
   }, [config.autoStart, state.status, config.key])
 
   const start = useCallback(() => {
+    const m = managerRef.current!
     setState(prev => ({ ...prev, status: "active", currentStep: 0 }))
-    manager.setStatus("active")
-    manager.setCurrentStep(0)
-  }, [config.key])
+    m.setStatus("active")
+    m.setCurrentStep(0)
+  }, [])
 
   const complete = useCallback(() => {
+    const m = managerRef.current!
     setState(prev => ({ ...prev, status: "completed" }))
-    manager.setStatus("completed")
+    m.setStatus("completed")
     // Advance level on completion
-    const currentLevel = manager.getLevel()
+    const currentLevel = m.getLevel()
     if (currentLevel < 3) {
-      manager.setLevel((currentLevel + 1) as 1 | 2 | 3)
+      m.setLevel((currentLevel + 1) as 1 | 2 | 3)
       setState(prev => ({ ...prev, level: (currentLevel + 1) as 1 | 2 | 3 }))
     }
-  }, [config.key])
+  }, [])
 
   const skip = useCallback(() => {
+    const m = managerRef.current!
     setState(prev => ({ ...prev, status: "skipped" }))
-    manager.setStatus("skipped")
-  }, [config.key])
+    m.setStatus("skipped")
+  }, [])
 
   const reset = useCallback(() => {
-    manager.reset()
-    setState({ status: "not-started", currentStep: 0, level: manager.getLevel() })
-  }, [config.key])
+    const m = managerRef.current!
+    m.reset()
+    setState({ status: "not-started", currentStep: 0, level: m.getLevel() })
+  }, [])
 
   const advance = useCallback(() => {
+    const m = managerRef.current!
     const nextStep = state.currentStep + 1
     setState(prev => ({ ...prev, currentStep: nextStep }))
-    manager.setCurrentStep(nextStep)
-  }, [state.currentStep, config.key])
+    m.setCurrentStep(nextStep)
+  }, [state.currentStep])
 
   const back = useCallback(() => {
+    const m = managerRef.current!
     const prevStep = Math.max(0, state.currentStep - 1)
     setState(prev => ({ ...prev, currentStep: prevStep }))
-    manager.setCurrentStep(prevStep)
-  }, [state.currentStep, config.key])
+    m.setCurrentStep(prevStep)
+  }, [state.currentStep])
 
   return {
     state,

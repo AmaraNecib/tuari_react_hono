@@ -2,7 +2,7 @@
  * URL state management hooks for persisting UI state in URL search params.
  * Uses native URL API for compatibility with TanStack Router.
  */
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 /**
  * Get current URL search params as an object.
@@ -56,8 +56,14 @@ export function useUrlParam<T extends string>(
     deserializer?: (value: string) => T
   }
 ): [T, (value: T) => void] {
-  const serializer = options?.serializer ?? ((v: T) => v)
-  const deserializer = options?.deserializer ?? ((v: string) => v as T)
+  const serializer = useMemo(
+    () => options?.serializer ?? ((v: T) => v as string),
+    [options?.serializer]
+  )
+  const deserializer = useMemo(
+    () => options?.deserializer ?? ((v: string) => v as T),
+    [options?.deserializer]
+  )
 
   const [value, setValue] = useState<T>(() => {
     const params = getSearchParams()
