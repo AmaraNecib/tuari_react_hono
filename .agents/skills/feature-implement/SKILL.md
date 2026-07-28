@@ -91,6 +91,10 @@ Load relevant skills from the workflow's quality check table:
 | Adding/managing shadcn/ui components | `shadcn` |
 | Component API design, prop proliferation | `vercel-composition-patterns` |
 | React rendering performance | `vercel-react-best-practices` |
+| Tauri desktop features (IPC, window, system tray) | `tauri-v2` |
+| Hono API routes, middleware, validation | `hono` |
+| Playwright E2E test design | `playwright-best-practices` |
+| Accessibility, RTL, keyboard navigation | `accessibility` |
 
 ### 6. Debate — High-assurance only
 

@@ -123,6 +123,10 @@ The agent selects skills based on what the change touches:
 | Adding/managing shadcn/ui components | `shadcn` — component registry, styling |
 | Component API design, prop proliferation | `vercel-composition-patterns` — compound components, render props |
 | React rendering performance | `vercel-react-best-practices` — perf optimization patterns |
+| Tauri desktop features (IPC, window, system tray) | `tauri-v2` — Tauri v2 patterns and best practices |
+| Hono API routes, middleware, validation | `hono` — official Hono patterns from creator |
+| Playwright E2E test architecture, selectors | `playwright-best-practices` — test design patterns |
+| Accessibility, RTL, keyboard navigation | `accessibility` — Addy Osmani's a11y audit |
 | Unclear requirements or unknowns | `research` — investigate against primary sources |
 
 These skills supplement the `code-review` already run by `implement`. The agent does **not** load all blindly — it picks the ones relevant to the issue.
