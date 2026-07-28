@@ -2,10 +2,11 @@ name: CI
 
 on:
   push:
+    branches: [develop]
   pull_request:
   workflow_dispatch:
 
-# Auto-cancel older CI runs on the same branch — only the latest commit runs
+# Auto-cancel older CI runs on the same PR — only the latest commit runs
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
