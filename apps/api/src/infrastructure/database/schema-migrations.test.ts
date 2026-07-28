@@ -5,12 +5,15 @@ import { describe, expect, it } from "vitest";
 import {
   applyDebtAccountBalanceRename,
   applyDebtAccountDirectionMigration,
+  applyRbacThreeRoleMigration,
   type DbExecutor,
 } from "./schema";
 import {
   debtAccountBalanceRenameMigrationKey,
   debtAccountDirectionMigrationKey,
+  rbacThreeRoleMigrationKey,
 } from "./schema-definitions";
+import { BetterSqlite3Executor } from "./sqlite-executor";
 
 /**
  * Adapter that turns a `better-sqlite3` `Database` into a `DbExecutor`
@@ -346,5 +349,109 @@ describe("applyDebtAccountDirectionMigration (issue #22)", () => {
         )
         .run("acct-rec-2", "ext-1", "RECEIVABLE", "OPEN"),
     ).toThrow(/UNIQUE constraint failed/);
+  });
+});
+
+describe("applyRbacThreeRoleMigration (issue #10)", () => {
+  function createRbacMigrationDb(includeManager = true) {
+    const db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(`
+      CREATE TABLE "app_schema_state" (
+        "key" TEXT NOT NULL PRIMARY KEY,
+        "executed_at" DATETIME NOT NULL
+      );
+      CREATE TABLE "role" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "key" TEXT NOT NULL UNIQUE
+      );
+      CREATE TABLE "role_permission" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "role_id" TEXT NOT NULL,
+        "permission" TEXT NOT NULL,
+        UNIQUE ("role_id", "permission")
+      );
+      INSERT INTO "role" ("id", "key") VALUES
+        ('role-admin', 'admin'), ('role-viewer', 'viewer');
+      INSERT INTO "role_permission" ("id", "role_id", "permission") VALUES
+        ('permission-legacy', 'role-admin', 'employees.create');
+    `);
+    if (includeManager) {
+      db.prepare('INSERT INTO "role" ("id", "key") VALUES (?, ?)').run(
+        "role-manager",
+        "manager",
+      );
+    }
+    return db;
+  }
+
+  it("removes duplicate legacy permissions before normalizing", async () => {
+    const db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(`
+      CREATE TABLE "app_schema_state" (
+        "key" TEXT NOT NULL PRIMARY KEY,
+        "executed_at" DATETIME NOT NULL
+      );
+      CREATE TABLE "role" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "key" TEXT NOT NULL UNIQUE
+      );
+      CREATE TABLE "role_permission" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "role_id" TEXT NOT NULL,
+        "permission" TEXT NOT NULL,
+        UNIQUE ("role_id", "permission")
+      );
+      INSERT INTO "role" ("id", "key") VALUES
+        ('role-admin', 'admin'), ('role-manager', 'manager'), ('role-viewer', 'viewer');
+      INSERT INTO "role_permission" ("id", "role_id", "permission") VALUES
+        ('permission-legacy', 'role-manager', 'employees.create'),
+        ('permission-current', 'role-manager', 'employees:create');
+    `);
+
+    await applyRbacThreeRoleMigration(new BetterSqlite3Executor(db));
+
+    const permissions = db
+      .prepare('SELECT "permission" FROM "role_permission" WHERE "role_id" = ?')
+      .all("role-manager") as Array<{ permission: string }>;
+    expect(permissions).toEqual([{ permission: "employees:create" }]);
+
+    const [migration] = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(rbacThreeRoleMigrationKey) as Array<{ key: string }>;
+    expect(migration?.key).toBe(rbacThreeRoleMigrationKey);
+  });
+
+  it("skips all work when the migration key already exists", async () => {
+    const db = createRbacMigrationDb();
+    db
+      .prepare('INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)')
+      .run(rbacThreeRoleMigrationKey, new Date().toISOString());
+
+    await applyRbacThreeRoleMigration(new BetterSqlite3Executor(db));
+
+    const [permission] = db
+      .prepare('SELECT "permission" FROM "role_permission" WHERE "id" = ?')
+      .all("permission-legacy") as Array<{ permission: string }>;
+    expect(permission?.permission).toBe("employees.create");
+  });
+
+  it("leaves permission data unchanged when the manager role is missing", async () => {
+    const db = createRbacMigrationDb(false);
+
+    await expect(
+      applyRbacThreeRoleMigration(new BetterSqlite3Executor(db)),
+    ).rejects.toThrow("manager' role missing");
+
+    const [permission] = db
+      .prepare('SELECT "permission" FROM "role_permission" WHERE "id" = ?')
+      .all("permission-legacy") as Array<{ permission: string }>;
+    expect(permission?.permission).toBe("employees.create");
+
+    const stateRows = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(rbacThreeRoleMigrationKey);
+    expect(stateRows).toHaveLength(0);
   });
 });

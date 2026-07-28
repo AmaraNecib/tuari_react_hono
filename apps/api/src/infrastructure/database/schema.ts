@@ -1484,8 +1484,8 @@ async function ensureSeedRolePermissions() {
  * require PRAGMA foreign_keys = OFF during the swap so we can delete
  * the role rows in a controlled order.
  */
-async function runRbacThreeRoleMigration() {
-  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
+export async function applyRbacThreeRoleMigration(db: DbExecutor): Promise<void> {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     rbacThreeRoleMigrationKey,
   );
@@ -1496,10 +1496,10 @@ async function runRbacThreeRoleMigration() {
 
   const legacyKeys = ["worker", "project_manager", "warehouse_manager"];
 
-  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await db.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
-    await getExecutor().$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       // Resolve the manager role id (created by ensureSeedRoles above).
       const [managerRow] = await tx.$queryRawUnsafe<Array<{ id: string }>>(
         'SELECT id FROM "role" WHERE key = ? LIMIT 1',
@@ -1546,18 +1546,31 @@ async function runRbacThreeRoleMigration() {
       // Normalise the permission column format from `resource.action` to
       // `resource:action` for any rows that slipped through the colon-only
       // rewrite on a pre-#10 database. No-op if no rows match.
-      const dotPerms: Array<{ id: string; permission: string }> = await tx.$queryRawUnsafe(
-        "SELECT id, permission FROM role_permission WHERE permission LIKE '%.%' AND permission NOT LIKE '%:%'",
+      const dotPerms: Array<{ id: string; role_id: string; permission: string }> = await tx.$queryRawUnsafe(
+        'SELECT "id", "role_id", "permission" FROM "role_permission" WHERE "permission" LIKE \'%.%\' AND "permission" NOT LIKE \'%:%\'',
       );
       for (const row of dotPerms) {
         const lastDot = row.permission.lastIndexOf(".");
         if (lastDot > 0) {
           const normalized = `${row.permission.slice(0, lastDot)}:${row.permission.slice(lastDot + 1)}`;
-          await tx.$executeRawUnsafe(
-            "UPDATE role_permission SET permission = ? WHERE id = ?",
+          const [existingNormalized] = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+            'SELECT "id" FROM "role_permission" WHERE "role_id" = ? AND "permission" = ? LIMIT 1',
+            row.role_id,
             normalized,
-            row.id,
           );
+
+          if (existingNormalized && existingNormalized.id !== row.id) {
+            await tx.$executeRawUnsafe(
+              'DELETE FROM "role_permission" WHERE "id" = ?',
+              row.id,
+            );
+          } else {
+            await tx.$executeRawUnsafe(
+              'UPDATE "role_permission" SET "permission" = ? WHERE "id" = ?',
+              normalized,
+              row.id,
+            );
+          }
         }
       }
 
@@ -1568,8 +1581,12 @@ async function runRbacThreeRoleMigration() {
       );
     });
   } finally {
-    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
+}
+
+async function runRbacThreeRoleMigration() {
+  await applyRbacThreeRoleMigration(getExecutor());
 }
 
 export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
