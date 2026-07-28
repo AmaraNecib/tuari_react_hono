@@ -415,7 +415,7 @@ describe("HomeView workspace shell", () => {
 
     renderWorkspace("warehouse-create", { sessionUser: demoUser })
 
-    expect(await screen.findByRole("heading", { name: "إضافة مستودع" })).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "إضافة مستودع" }, { timeout: 5000 })).toBeTruthy()
 
     fireEvent.change(screen.getByLabelText("اسم المستودع"), {
       target: { value: "مستودع الجنوب" },

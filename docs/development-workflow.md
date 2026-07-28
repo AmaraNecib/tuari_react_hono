@@ -48,6 +48,12 @@ Implementation
 | `area:contracts` | `packages/contracts`: shared Zod schemas, TypeScript types |
 | `area:cli` | CLI tools: `generate-license.mjs`, `sign-update.mjs` |
 | `area:testing` | Integration tests, E2E tests, test infrastructure |
+| `area:debt` | Debt/payments module |
+| `area:inventory` | Inventory items and warehouses |
+| `area:projects` | Projects and worker assignment |
+| `area:employees` | Employee management and roles |
+| `area:auth` | Authentication and session management |
+| `area:permissions` | RBAC and permission system |
 
 ### 2.3 Labels — Type
 
@@ -58,16 +64,21 @@ Implementation
 | `type:architecture` | Architectural change (requires ADR) |
 | `type:refactor` | Code restructuring without behavior change |
 | `type:test` | Test addition or improvement |
+| `type:chore` | Maintenance task |
+| `type:security` | Security-related |
 | `type:documentation` | Documentation-only |
 
 ### 2.4 Labels — Status
 
 | Label | Meaning |
 |-------|---------|
-| `blocked` | Waiting on another issue, external dependency, or decision |
-| `ready` | Dependencies resolved, available for implementation |
-| `review` | Implementation complete, awaiting code review |
-| `needs-adr` | Requires an Architecture Decision Record before implementation can proceed |
+| `status:blocked` | Waiting on another issue, external dependency, or decision |
+| `status:ready` | Dependencies resolved, available for implementation |
+| `status:in-progress` | Actively being implemented |
+| `status:review` | Implementation complete, awaiting code review |
+| `status:testing` | In test or QA |
+| `status:done` | Completed and merged |
+| `ready-for-agent` | Issue is ready for an AFK agent to work on |
 
 ---
 
@@ -82,6 +93,9 @@ Implementation
 | `release/*` | Release stabilization. Branch from `develop`, merge to `main` and back to `develop`. | Yes |
 | `hotfix/*` | Emergency fixes for released versions. Branch from `main`, merge to `main` and `develop`. | Yes |
 | `feature/*` | One feature per branch, one GitHub Issue per branch. Branch from `develop`, merge to `develop`. | No |
+| `fix/*` | One bug fix per branch. Branch from `develop`, merge to `develop`. | No |
+| `refactor/*` | One refactor per branch. Branch from `develop`, merge to `develop`. | No |
+| `agent/*` | Admin/cleanup/housekeeping. Branch from `develop`, merge to `develop`. | No |
 
 ### 3.2 Typical Flow
 
@@ -114,6 +128,15 @@ feature/<issue-id>-<short-description>
 feature/m1.3-license-manager
 feature/m1.7-license-cli
 
+fix/<issue-id>-<short-description>
+fix/issue-160-rust-warnings
+
+refactor/<issue-id>-<short-description>
+refactor/plan-005-god-object-splits
+
+agent/<short-description>
+agent/cleanup-dirty-wip
+
 hotfix/<version>-<short-description>
 hotfix/0.1.1-crash-on-startup
 
@@ -121,6 +144,17 @@ release/<version>
 release/0.1.0
 release/0.2.0
 ```
+
+### 3.5 Branch Prefixes
+
+| Prefix | Purpose |
+|--------|---------|
+| `feature/` | New functionality. Tracks a GitHub issue. |
+| `fix/` | Bug fix or non-functional improvement. Tracks a GitHub issue. |
+| `refactor/` | Code restructuring without behavior change. Tracks a GitHub issue. |
+| `agent/` | Admin/cleanup/housekeeping tasks performed by automation. No issue required. |
+| `hotfix/` | Emergency fix for released version. Branches from `main`. |
+| `release/` | Release stabilization. Branches from `develop`. |
 
 ---
 
@@ -340,8 +374,11 @@ Environments are configured via the GitHub UI under Settings > Environments.
 
 ### 12.6 Caching
 
-- **pnpm:** Built-in via `actions/setup-node` with `cache: pnpm`
-- **Rust:** `Swatinem/rust-cache@v2` with `workspaces: "apps/desktop/src-tauri"`
+On self-hosted runners, tools are pre-installed and caches persist on disk. No explicit CI caching steps are needed:
+
+- **pnpm store:** Persistent across runs on the self-hosted runner (`~/.local/share/pnpm/store`)
+- **Rust/Cargo:** Registry and build artifacts persist in `~/.cargo/` and `apps/desktop/src-tauri/target/`
+- **Checkout:** Uses default `clean: true` (actions/checkout) — each run gets a fresh workspace, avoiding stale artifacts from previous runs
 
 ### 12.7 Smoke Testing
 

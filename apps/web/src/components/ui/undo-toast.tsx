@@ -82,7 +82,7 @@ export function useUndo<T = unknown>({
         },
       })
     },
-    [clearUndo, defaultDuration, onUndo, onExpire],
+    [clearUndo, defaultDuration, onUndo, onExpire, t],
   )
 
   const undoLast = useCallback(async () => {

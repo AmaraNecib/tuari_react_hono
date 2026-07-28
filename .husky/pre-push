@@ -1,0 +1,1 @@
+pnpm --filter @tuari/contracts build && pnpm typecheck && pnpm lint && pnpm test:api && pnpm test:web

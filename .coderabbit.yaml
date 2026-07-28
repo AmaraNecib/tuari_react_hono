@@ -22,9 +22,14 @@ reviews:
         - Must match the corresponding Rust structs field-by-field.
         - Must be exported from `packages/contracts/src/index.ts`.
   auto_review:
-    enabled: false
+    enabled: false          # No auto-reviews on PR creation or push
+  request_changes_workflow: false  # Disable request-changes workflow
   auto_merge:
     enabled: false
+  # Manual triggers only:
+  #   - Comment @coderabbitai review on a PR to trigger a full review
+  #   - Comment @coderabbitai review --summary-only for a summary
+  #   - Comment @coderabbitai full_review for a comprehensive review
 
 chat:
   auto_reply: true
