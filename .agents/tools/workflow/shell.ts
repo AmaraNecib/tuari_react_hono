@@ -15,10 +15,17 @@ export interface ExecResult {
  */
 export function exec(cmd: string, args: string[], opts?: { cwd?: string; quiet?: boolean }): ExecResult {
   if (!opts?.quiet) console.log(`  $ ${cmd} ${args.join(" ")}`)
-  const result = Bun.spawnSync([cmd, ...args], {
-    cwd: opts?.cwd ?? process.cwd(),
-    stdio: ["inherit", "pipe", "pipe"],
-  })
+  let result: { exitCode: number; stdout: Buffer | null; stderr: Buffer | null }
+  try {
+    result = Bun.spawnSync([cmd, ...args], {
+      cwd: opts?.cwd ?? process.cwd(),
+      stdio: ["inherit", "pipe", "pipe"],
+    })
+  } catch (e: any) {
+    const msg = `command not found or failed: ${cmd} — ${e?.message ?? e}`
+    if (!opts?.quiet) console.error(msg)
+    return { exitCode: 127, stdout: "", stderr: msg }
+  }
   const stdout = result.stdout?.toString()?.trim() ?? ""
   const stderr = result.stderr?.toString()?.trim() ?? ""
   if (!opts?.quiet && stdout) console.log(stdout)

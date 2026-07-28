@@ -15,6 +15,8 @@
  *   bun run .agents/tools/run-workflow.ts #175 --model anthropic/claude-sonnet-4-20250514
  *   bun run .agents/tools/run-workflow.ts #175 --model-implement opencode-go/mimo-2.5
  *   bun run .agents/tools/run-workflow.ts #175 --non-interactive   # skip prompts, use defaults
+ *   bun run .agents/tools/run-workflow.ts #175 --verbose           # show agent streaming
+ *   bun run .agents/tools/run-workflow.ts #175 --interactive       # enable steering
  *
  * Run multiple in parallel:
  *   bun run .agents/tools/run-workflow.ts #175 &
@@ -26,11 +28,10 @@
 import * as p from "@clack/prompts"
 import { pnpm, git, gh } from "./workflow/shell.ts"
 import { fetchIssue, branchPrefix, guessTier } from "./workflow/issues.ts"
+import { namedAgent, parallelNamedAgents, quickQuery } from "./workflow/agent.ts"
 import { createState, loadState, saveState, type WorkflowState } from "./workflow/state.ts"
-import { resolve } from "node:path"
 import { isCancel } from "@clack/prompts"
 
-const ROOT = resolve(import.meta.dir, "..")
 const isTTY = process.stdout.isTTY
 
 // ─── CLI parsing ────────────────────────────────────────────────
@@ -41,6 +42,9 @@ interface CliOptions {
   skipImpl: boolean
   resume: boolean
   nonInteractive: boolean
+  autoApprove: boolean
+  verbose: boolean
+  interactive: boolean
   model?: string
   modelImplement?: string
   modelDebate?: string
@@ -50,12 +54,17 @@ interface CliOptions {
 }
 
 function parseArgs(): CliOptions {
-  const opts: CliOptions = { issueId: "", message: "", skipImpl: false, resume: false, nonInteractive: false }
+  const opts: CliOptions = { issueId: "", message: "", skipImpl: false, resume: false, nonInteractive: false, autoApprove: false, verbose: false, interactive: false }
   const argv = process.argv.slice(2)
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg.startsWith("#") || /^\d+$/.test(arg)) {
-      opts.issueId = arg.replace("#", "")
+      const raw = arg.replace("#", "")
+      if (!/^\d+$/.test(raw)) {
+        console.error(`Invalid issue ID: "${arg}". Must be a numeric issue number.`)
+        process.exit(1)
+      }
+      opts.issueId = raw
     } else if (arg === "--message" || arg === "-m") {
       opts.message = argv[++i] ?? ""
     } else if (arg === "--skip-impl") {
@@ -64,6 +73,12 @@ function parseArgs(): CliOptions {
       opts.resume = true
     } else if (arg === "--non-interactive") {
       opts.nonInteractive = true
+    } else if (arg === "--verbose") {
+      opts.verbose = true
+    } else if (arg === "--interactive") {
+      opts.interactive = true
+    } else if (arg === "--yes" || arg === "-y") {
+      opts.autoApprove = true
     } else if (arg === "--model") {
       opts.model = argv[++i]
     } else if (arg === "--model-implement") {
@@ -97,6 +112,9 @@ Options:
   --skip-impl             Skip implementation (reviews only)
   --resume                Resume from last saved state
   --non-interactive       Skip interactive prompts, use defaults
+  --verbose               Show agent streaming output (default: quiet)
+  --interactive           Enable steering during agent execution
+  --yes, -y               Auto-approve destructive ops (push, PR, CI) in non-interactive mode
   --model <provider/id>   Default model for all agent steps
   --model-implement <id>  Model for implementation step
   --model-debate <id>     Model for debate step
@@ -121,20 +139,24 @@ Examples:
 // ─── TUI helpers ────────────────────────────────────────────────
 
 async function confirmStep(label: string, msg: string): Promise<boolean> {
-  if (!isTTY || opts.nonInteractive) return true
+  if (!isTTY || opts.nonInteractive) return opts.autoApprove
   const result = await p.confirm({ message: `${label}: ${msg}`, initialValue: true })
   if (isCancel(result)) process.exit(0)
   return result as boolean
 }
 
-function withSpinner<T>(label: string, fn: () => Promise<T>): Promise<T> {
+async function withSpinner<T>(label: string, fn: () => Promise<T>): Promise<T> {
   const s = p.spinner()
   s.start(label)
   const start = Date.now()
-  return fn().then((result) => {
+  try {
+    const result = await fn()
     s.stop(`${label} — ${((Date.now() - start) / 1000).toFixed(1)}s`)
     return result
-  })
+  } catch (e) {
+    s.stop(`${label} — FAILED (${((Date.now() - start) / 1000).toFixed(1)}s)`)
+    throw e
+  }
 }
 
 // ─── Model selection ────────────────────────────────────────────
@@ -180,18 +202,20 @@ async function runStep(state: WorkflowState, n: number, label: string, fn: () =>
     for (let s = state.step + 1; s < n; s++) {
       p.log.info(`⏩ Step ${s} (skipped)`)
     }
+    // Mark gap steps as completed so resume doesn't re-run them
     state.step = n - 1
   }
-  state.step = n
-  state.stepLabel = label
-  saveState(state)
   p.log.step(`[${n}] ${label}`)
   try {
     await fn()
+    // Save state AFTER successful execution — prevents silent skip on crash+resume
+    state.step = n
+    state.stepLabel = label
+    saveState(state)
   } catch (e) {
     state.status = "failed"
     state.error = String(e)
-    saveState(state)
+    try { saveState(state) } catch { /* best-effort: don't mask original error */ }
     p.log.error(`[${n}] ${label} FAILED: ${e}`)
     p.log.info(`Resume: bun run ${process.argv[1]} #${state.issueId} --resume`)
     process.exit(1)
@@ -244,7 +268,7 @@ async function main(): Promise<void> {
   if (isTTY && !opts.nonInteractive) {
     const defaultModel = opts.model
     opts.model = await selectModel("Default model for all steps?", defaultModel)
-    if (opts.skipImpl) {
+    if (!opts.skipImpl) {
       opts.modelImplement = await selectModel("Model for implementation?", opts.model)
     }
     if (!opts.modelDebate) {
@@ -284,11 +308,20 @@ async function main(): Promise<void> {
 
   // ── Step 1: Base SHA ─────────────────────────────────────────
   await runStep(state, 1, "Base SHA", async () => {
-    await withSpinner("Fetching origin/develop", () => {
-      git(["fetch", "origin", "develop"], { quiet: true })
-      return Promise.resolve()
+    // Detect default branch dynamically (supports main, master, develop, etc.)
+    let defaultBranch = "develop"
+    const brResult = gh(["repo", "view", "--json", "defaultBranch"], { quiet: true })
+    if (brResult.exitCode === 0 && brResult.stdout) {
+      try {
+        defaultBranch = JSON.parse(brResult.stdout).defaultBranch ?? "develop"
+      } catch { /* fall through */ }
+    }
+    await withSpinner(`Fetching origin/${defaultBranch}`, async () => {
+      const r = git(["fetch", "origin", defaultBranch], { quiet: true })
+      if (r.exitCode !== 0) throw new Error(`git fetch origin/${defaultBranch} failed:\n${r.stderr.slice(0, 300)}`)
     })
-    const r = git(["merge-base", "origin/develop", "HEAD"], { quiet: true })
+    const r = git(["merge-base", `origin/${defaultBranch}`, "HEAD"], { quiet: true })
+    if (r.exitCode !== 0 || !r.stdout) throw new Error(`Could not find merge-base with origin/${defaultBranch}:\n${r.stderr.slice(0, 300)}`)
     state.baseSha = r.stdout
     p.log.info(`Merge-base: ${state.baseSha.slice(0, 12)}`)
   })
@@ -323,8 +356,14 @@ Requirements:
 4. If touching Rust Core (apps/desktop/src-tauri/src/), run cargo test && cargo clippy
 
 ${state.message ? `Additional instructions: ${state.message}` : ""}`
-      const { agentSession } = await import("./workflow/agent.ts")
-      await agentSession(task, ["implement", "tdd"], opts.modelImplement ?? opts.model)
+      await namedAgent(task, {
+        name: "implement",
+        issueId: state.issueId,
+        stepName: "03-implement",
+        skillNames: ["implement", "tdd"],
+        modelStr: opts.modelImplement ?? opts.model,
+        quiet: !opts.verbose,
+      })
     })
   }
 
@@ -333,7 +372,6 @@ ${state.message ? `Additional instructions: ${state.message}` : ""}`
 
   // ── Step 5: Quality check (agent) ────────────────────────────
   await runStep(state, 5, "Quality Check", async () => {
-    const { quickQuery } = await import("./workflow/agent.ts")
     const analysis = await quickQuery(
       `Analyze git diff ${state.baseSha}..HEAD for issue #${state.issueId}.
 What skills should be loaded? (codebase-design, diagnosing-bugs, domain-modeling, frontend-design, vercel-composition-patterns, tauri-v2, hono, playwright-best-practices, accessibility)
@@ -349,15 +387,20 @@ Respond with a comma-separated list.`,
     await runStep(state, 6, "Debate", async () => {
       const ok = await confirmStep("Debate", "Run adversarial review (critic + defender)?")
       if (ok) {
-        const { agentSession } = await import("./workflow/agent.ts")
-        await agentSession(
+        await namedAgent(
           `Run adversarial review for issue #${state.issueId}.
 Base SHA: ${state.baseSha}
 1. Launch critic + defender sub-agents in parallel
 2. Fix blockers, defer expensive minors as issues
 3. Save to .scratch/reviews/${state.issueId}/${state.baseSha.slice(0, 12)}-debate.md`,
-          ["debate"],
-          opts.modelDebate ?? opts.model
+          {
+            name: "debate",
+            issueId: state.issueId,
+            stepName: "06-debate",
+            skillNames: ["debate"],
+            modelStr: opts.modelDebate ?? opts.model,
+            quiet: !opts.verbose,
+          }
         )
       }
     })
@@ -370,15 +413,20 @@ Base SHA: ${state.baseSha}
     await runStep(state, 7, "Test Audit", async () => {
       const ok = await confirmStep("Test Audit", "Run 3-agent test quality review?")
       if (ok) {
-        const { agentSession } = await import("./workflow/agent.ts")
-        await agentSession(
+        await namedAgent(
           `Run test audit for issue #${state.issueId}.
 Base SHA: ${state.baseSha}
 1. Edge case hunter, coverage analyst, quality reviewer
 2. Fix all findings
 3. Save to .scratch/reviews/${state.issueId}/${state.baseSha.slice(0, 12)}-test-audit.md`,
-          ["test-audit"],
-          opts.modelTestAudit ?? opts.model
+          {
+            name: "test-audit",
+            issueId: state.issueId,
+            stepName: "07-test-audit",
+            skillNames: ["test-audit"],
+            modelStr: opts.modelTestAudit ?? opts.model,
+            quiet: !opts.verbose,
+          }
         )
       }
     })
@@ -386,16 +434,21 @@ Base SHA: ${state.baseSha}
 
   // ── Step 8: Code review (agent) ──────────────────────────────
   await runStep(state, 8, "Code Review", async () => {
-    const { agentSession } = await import("./workflow/agent.ts")
-    await agentSession(
+    await namedAgent(
       `Run code review for issue #${state.issueId}.
 Base SHA: ${state.baseSha}
 Diff: git diff ${state.baseSha}...HEAD
 1. Standards + Spec sub-agents
 2. Fix findings
 3. Save to .scratch/reviews/${state.issueId}/${state.baseSha.slice(0, 12)}-code-review.md`,
-      ["code-review"],
-      opts.modelCodeReview ?? opts.model
+      {
+        name: "code-review",
+        issueId: state.issueId,
+        stepName: "08-code-review",
+        skillNames: ["code-review"],
+        modelStr: opts.modelCodeReview ?? opts.model,
+        quiet: !opts.verbose,
+      }
     )
   })
 
@@ -412,10 +465,11 @@ Diff: git diff ${state.baseSha}...HEAD
     const ok = await confirmStep("Push", `Push branch ${state.branch} and create PR?`)
     if (!ok) { p.log.warn("Skipping push"); return }
 
-    await withSpinner("Pushing branch", () => {
-      git(["checkout", "-B", state.branch], { quiet: true })
-      git(["push", "origin", state.branch], { quiet: true })
-      return Promise.resolve()
+    await withSpinner("Pushing branch", async () => {
+      const co = git(["checkout", "-B", state.branch], { quiet: true })
+      if (co.exitCode !== 0) throw new Error(`git checkout -B ${state.branch} failed:\n${co.stderr.slice(0, 300)}`)
+      const pu = git(["push", "origin", state.branch], { quiet: true })
+      if (pu.exitCode !== 0) throw new Error(`git push origin ${state.branch} failed:\n${pu.stderr.slice(0, 300)}`)
     })
 
     const title = `#${state.issueId}: ${state.title}`
@@ -434,8 +488,13 @@ See .scratch/reviews/${state.issueId}/
 - [ ] Code review completed`
 
     const pr = gh(["pr", "create", "--title", title, "--body", body, "--label", `tier:${state.tier}`], { quiet: true })
+    if (pr.exitCode !== 0 || !pr.stdout) {
+      throw new Error(`gh pr create failed:\n${pr.stderr.slice(0, 300)}`)
+    }
     state.prUrl = pr.stdout
-    state.prNumber = parseInt(pr.stdout.split("/").pop() ?? "0", 10)
+    const prNum = parseInt(pr.stdout.split("/").pop() ?? "", 10)
+    if (isNaN(prNum)) throw new Error(`Could not parse PR number from: "${pr.stdout}"`)
+    state.prNumber = prNum
     p.log.success(`PR: ${state.prUrl}`)
   })
 
@@ -444,16 +503,25 @@ See .scratch/reviews/${state.issueId}/
     const ok = await confirmStep("CI", "Wait for CI and trigger Greptile?")
     if (!ok) { p.log.warn("Skipping CI"); return }
 
-    await withSpinner("Waiting for CI to finish", () => {
-      gh(["run", "watch", "--exit-status"], { quiet: true })
-      return Promise.resolve()
+    await withSpinner("Waiting for CI to finish", async () => {
+      // Get the run ID for this branch instead of polling latest
+      let runId = ""
+      const listResult = gh(["run", "list", "--branch", state.branch, "--limit", "1", "--json", "databaseId"], { quiet: true })
+      if (listResult.exitCode === 0 && listResult.stdout) {
+        try {
+          const runs = JSON.parse(listResult.stdout)
+          if (runs.length > 0) runId = String(runs[0].databaseId)
+        } catch { /* fall through */ }
+      }
+      const args = runId ? ["run", "watch", runId, "--exit-status"] : ["run", "watch", "--exit-status"]
+      const r = gh(args, { quiet: true })
+      if (r.exitCode !== 0) throw new Error(`CI run failed (exit code ${r.exitCode}):\n${r.stderr.slice(0, 300)}`)
     })
     p.log.success("CI green")
 
     gh(["pr", "comment", String(state.prNumber), "--body", "@greptile-apps review"], { quiet: true })
     p.log.info("Greptile triggered")
 
-    const { quickQuery } = await import("./workflow/agent.ts")
     await quickQuery(
       `Check Greptile review on PR #${state.prNumber} for issue #${state.issueId}.
 Fetch PR comments, read Greptile findings.
@@ -468,15 +536,20 @@ Repeat until no actionable findings.`,
   await runStep(state, 12, "Capture Wisdom", async () => {
     const ok = await confirmStep("Wisdom", "Capture lessons from this session?")
     if (ok) {
-      const { agentSession } = await import("./workflow/agent.ts")
-      await agentSession(
+      await namedAgent(
         `Capture wisdom from issue #${state.issueId}.
 Write to .agents/wisdom/*.md:
 - Things that went wrong/surprised you
 - Patterns worth remembering
 - Cross-PR observations`,
-        ["capture-wisdom"],
-        opts.modelCapture ?? opts.model
+        {
+          name: "capture-wisdom",
+          issueId: state.issueId,
+          stepName: "12-capture-wisdom",
+          skillNames: ["capture-wisdom"],
+          modelStr: opts.modelCapture ?? opts.model,
+          quiet: !opts.verbose,
+        }
       )
     }
   })

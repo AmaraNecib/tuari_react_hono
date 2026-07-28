@@ -4,7 +4,7 @@
  * for resume and status tracking across runs.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from "node:fs"
 import { resolve } from "node:path"
 
 export interface WorkflowState {
@@ -32,7 +32,10 @@ export function stateFile(issueId: string): string {
 
 export function saveState(state: WorkflowState): void {
   mkdirSync(STATE_DIR, { recursive: true })
-  writeFileSync(stateFile(state.issueId), JSON.stringify(state, null, 2))
+  const file = stateFile(state.issueId)
+  const tmp = file + ".tmp." + process.pid
+  writeFileSync(tmp, JSON.stringify(state, null, 2))
+  renameSync(tmp, file)
 }
 
 export function loadState(issueId: string): WorkflowState | null {
