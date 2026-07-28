@@ -118,6 +118,11 @@ The agent selects skills based on what the change touches:
 | Complex logic, state, or edge cases | `diagnosing-bugs` — catch logic errors early |
 | Domain entities, terms, or data models | `domain-modeling` — check ubiquitous language alignment |
 | Any production code | `code-review` — review against coding standards |
+| UI components, pages, or visual design | `frontend-design` — distinctive visual identity; `web-design-guidelines` — a11y, UX audit |
+| Existing UI that needs polish | `redesign-existing-projects` — upgrade generic-looking designs |
+| Adding/managing shadcn/ui components | `shadcn` — component registry, styling |
+| Component API design, prop proliferation | `vercel-composition-patterns` — compound components, render props |
+| React rendering performance | `vercel-react-best-practices` — perf optimization patterns |
 | Unclear requirements or unknowns | `research` — investigate against primary sources |
 
 These skills supplement the `code-review` already run by `implement`. The agent does **not** load all blindly — it picks the ones relevant to the issue.
@@ -320,6 +325,8 @@ Then run `capture-wisdom` to save any lessons learned:
 Wisdom is stored in `.agents/wisdom/*.md`.
 
 ### 13. Merge
+
+**Only merge when the user explicitly says so.** Never auto-merge.
 
 Merge into `develop` using squash merge. The commit message should reference the issue:
 

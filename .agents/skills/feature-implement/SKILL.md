@@ -86,6 +86,11 @@ Load relevant skills from the workflow's quality check table:
 | Complex logic, state, or edge cases | `diagnosing-bugs` |
 | Domain entities, terms, or data models | `domain-modeling` |
 | Any production code | `code-review` |
+| UI components, pages, or visual design | `frontend-design`, `web-design-guidelines` |
+| Existing UI that needs polish | `redesign-existing-projects` |
+| Adding/managing shadcn/ui components | `shadcn` |
+| Component API design, prop proliferation | `vercel-composition-patterns` |
+| React rendering performance | `vercel-react-best-practices` |
 
 ### 6. Debate — High-assurance only
 
