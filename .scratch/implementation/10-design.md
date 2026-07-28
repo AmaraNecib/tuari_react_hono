@@ -127,3 +127,23 @@ roles-section UI → rbacRolesList RPC → RoleModule
 - We consolidate 5 default roles into 3 (ADMIN, MANAGER, VIEWER) per the issue's acceptance criteria. The 5-role system was an internal-only design that pre-dated the issue.
 - The role management UI is admin-only via `withPermission("employees.read", ...)` for now. A more granular `rbac.roles.read` permission could be added later.
 - `rbacRolesList` requires `employees.read` as a coarse-grained gate. This is intentional — anyone who can view employees can also see what role types exist.
+
+## Optional employee authentication identity
+
+Employee records remain workforce records and do not require login access. The
+employee table therefore carries a nullable, unique-in-practice link to the
+Better Auth `user` table through `user_id`. The initial schema only establishes
+the nullable foreign key; creating users, enabling login, and resolving login
+allow/deny policy are separate behavior changes.
+
+The link uses `ON DELETE SET NULL` so removing an authentication identity does
+not delete the employee's workforce history. The employee's current role
+remains unchanged until the separate multi-role assignment model is adopted.
+
+Focused tests for this foundation cover the fresh schema definition, upgrading
+a legacy employee table with no `user_id`, idempotent reruns, enforcing one
+employee per user, and enforcing the foreign-key delete behavior. The
+status-constraint rebuild carries the same nullable column, uniqueness, and
+foreign-key definition so existing links remain valid when that legacy rebuild
+runs; a full startup integration fixture for that unrelated migration remains
+future work.

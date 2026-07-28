@@ -333,6 +333,7 @@ async function runStatusConstraintMigrations() {
   }
 
   const hasWarehouseAssignmentTable = Boolean(await getTableSql("employee_warehouse_assignment"));
+  const hasEmployeeUserIdColumn = await hasColumn("employee", "user_id");
 
   await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
@@ -351,6 +352,7 @@ async function runStatusConstraintMigrations() {
           "first_name" TEXT NOT NULL,
           "last_name" TEXT NOT NULL,
           "phone" TEXT NOT NULL UNIQUE,
+          "user_id" TEXT,
           "role_id" TEXT NOT NULL,
           "status" TEXT NOT NULL CHECK ("status" IN ('ACTIVE', 'INACTIVE', 'LEFT')),
           "salary_amount_dzd" REAL,
@@ -358,8 +360,11 @@ async function runStatusConstraintMigrations() {
           "notes" TEXT,
           "created_at" DATETIME NOT NULL,
           "updated_at" DATETIME NOT NULL,
+          UNIQUE ("user_id"),
           CONSTRAINT "employee_role_id_fkey"
-            FOREIGN KEY ("role_id") REFERENCES "role" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+            FOREIGN KEY ("role_id") REFERENCES "role" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+          CONSTRAINT "employee_user_id_fkey"
+            FOREIGN KEY ("user_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE
         )`,
       );
       await tx.$executeRawUnsafe(
@@ -452,7 +457,7 @@ async function runStatusConstraintMigrations() {
       );
 
       await tx.$executeRawUnsafe(
-        'INSERT INTO "employee_checked" ("id", "first_name", "last_name", "phone", "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "created_at", "updated_at") SELECT "id", "first_name", "last_name", "phone", "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "created_at", "updated_at" FROM "employee"',
+        `INSERT INTO "employee_checked" ("id", "first_name", "last_name", "phone", "user_id", "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "created_at", "updated_at") SELECT "id", "first_name", "last_name", "phone", ${hasEmployeeUserIdColumn ? '"user_id"' : "NULL"}, "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "created_at", "updated_at" FROM "employee"`,
       );
       await tx.$executeRawUnsafe(
         'INSERT INTO "project_checked" ("id", "name", "location", "manager_id", "status", "notes", "created_at", "updated_at") SELECT "id", "name", "location", "manager_id", "status", "notes", "created_at", "updated_at" FROM "project"',
@@ -1589,6 +1594,25 @@ async function runRbacThreeRoleMigration() {
   await applyRbacThreeRoleMigration(getExecutor());
 }
 
+/** Ensure legacy employee tables can be linked to an optional auth identity. */
+export async function applyEmployeeUserLinkMigration(db: DbExecutor): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const columns = await tx.$queryRawUnsafe<Array<{ name: string }>>(
+      'PRAGMA table_info("employee")',
+    );
+
+    if (!columns.some((column) => column.name === "user_id")) {
+      await tx.$executeRawUnsafe(
+        'ALTER TABLE "employee" ADD COLUMN "user_id" TEXT REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE',
+      );
+    }
+
+    await tx.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "employee_user_id_key" ON "employee" ("user_id")',
+    );
+  });
+}
+
 export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   _executor = db;
   const executor = getExecutor();
@@ -1616,6 +1640,7 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   }
 
   await ensureInventoryProjectIndexes()
+  await applyEmployeeUserLinkMigration(executor)
 
   await runObsoleteMigrations();
   await runStatusConstraintMigrations();
