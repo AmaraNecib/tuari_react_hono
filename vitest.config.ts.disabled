@@ -1,0 +1,23 @@
+import { defineConfig } from "vitest/config"
+
+/**
+ * Root-level Vitest configuration.
+ *
+ * This config is the basis for the root (default) project in the workspace.
+ * It includes no test files on purpose — all vitest tests live under
+ * workspace projects (api, web, contracts). See vitest.workspace.ts.
+ *
+ * Non-vitest test files (node:test scripts in tests/, Playwright e2e specs,
+ * desktop script tests) are excluded so they don't get picked up by the
+ * default vitest runner.
+ */
+export default defineConfig({
+  test: {
+    include: [],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/playwright-report/**",
+    ],
+  },
+})

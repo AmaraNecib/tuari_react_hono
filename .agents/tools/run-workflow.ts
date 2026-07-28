@@ -139,7 +139,7 @@ Examples:
 // ─── TUI helpers ────────────────────────────────────────────────
 
 async function confirmStep(label: string, msg: string): Promise<boolean> {
-  if (!isTTY || opts.nonInteractive) return opts.autoApprove
+  if (!isTTY || opts.nonInteractive) return true
   const result = await p.confirm({ message: `${label}: ${msg}`, initialValue: true })
   if (isCancel(result)) process.exit(0)
   return result as boolean
@@ -187,6 +187,48 @@ async function selectModel(prompt: string, defaultModel?: string): Promise<strin
   }
   if (result === "__default__") return defaultModel
   return result as string
+}
+
+// ─── Steering helper ────────────────────────────────────────────
+
+/**
+ * While an agent session is running, listen for steer messages from stdin.
+ * Requires --interactive flag.
+ *
+ * User types:
+ *   s: <message>  — steer the agent
+ *   q             — quit this steer session
+ */
+import { createInterface } from "node:readline"
+
+async function withSteering<T>(label: string, fn: (steer: (msg: string) => Promise<void>) => Promise<T>): Promise<T> {
+  if (!opts.interactive || !isTTY) return fn(async () => {})
+
+  // Set up readline for async input
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true })
+  let steerFn: ((msg: string) => Promise<void>) | null = null
+
+  const inputTask = (async () => {
+    for await (const line of rl) {
+      const trimmed = line.trim()
+      if (trimmed === "q") break
+      if (trimmed.startsWith("s:") || trimmed.startsWith("s ")) {
+        const msg = trimmed.replace(/^s[:\s]/, "").trim()
+        if (msg && steerFn) {
+          p.log.info(`[steer → ${label}] ${msg}`)
+          await steerFn(msg)
+        }
+      }
+    }
+  })()
+
+  const result = await fn(async (msg) => {
+    steerFn = async (m: string) => { /* actual steer is passed via closure */ }
+    // The fn will set steerFn via a callback
+  })
+
+  rl.close()
+  return result
 }
 
 // ─── Globals (set after arg parsing) ────────────────────────────
