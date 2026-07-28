@@ -65,8 +65,8 @@ describe("SessionService", () => {
         phoneNumber: "0555000001",
       });
       const permResolver = createMockPermissionResolver([
-        "employees.create",
-        "employees.read",
+        "employees:create",
+        "employees:read",
       ]);
       const service = new SessionService(gateway, permResolver);
 
@@ -75,7 +75,7 @@ describe("SessionService", () => {
         id: "u1",
         name: "Admin",
         phone: "0555000001",
-        permissions: ["employees.create", "employees.read"],
+        permissions: ["employees:create", "employees:read"],
         version: "2.0.0",
       });
     });

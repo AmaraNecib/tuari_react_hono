@@ -263,6 +263,35 @@ vi.mock("../workspace-queries", () => ({
   },
 }))
 
+// Detail pages include inventory panels that own their own queries. Keep the
+// workspace fixture fully offline so lazy-loaded project/warehouse pages do
+// not race a real RPC request during CI.
+vi.mock("@/features/inventory/inventory-hooks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/inventory/inventory-hooks")>()),
+  useInventoryItemDefinitionsQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+  useInventoryInvoiceGroupsQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+  useInventoryInvoiceGroupQuery: () => ({ data: undefined, isPending: false, isError: false }),
+  useInventoryLocationContentsQuery: () => ({
+    data: { balances: [], assets: [] },
+    isPending: false,
+    isError: false,
+  }),
+  useInventoryAssetQuery: () => ({ data: undefined, isPending: false, isError: false }),
+  useInventoryWarehousesQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+  useInventoryProjectsQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+  useInventoryExternalCounterpartiesQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+  useOutboundTransfersQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+}))
+
+vi.mock("@/features/inventory/transfer-history-hooks", () => ({
+  useTransferHistoryQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+  useLocationTransferHistoryQuery: () => ({
+    data: { items: [] },
+    isPending: false,
+    isError: false,
+  }),
+}))
+
 // ─── Helper: default workspace data ──────────────────────────────
 // Matches the WorkspaceSnapshot shape used throughout the test suite.
 

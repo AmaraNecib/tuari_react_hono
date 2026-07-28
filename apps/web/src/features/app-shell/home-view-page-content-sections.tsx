@@ -211,6 +211,7 @@ export function HomeViewPageSectionContent({
             key: copy.columns.key,
             system: copy.columns.system,
             description: copy.columns.description,
+            permissions: copy.shell.rolesPermissions,
           }}
           emptyLabel={copy.shell.empty}
           noLabel={copy.common.no}

@@ -10,11 +10,11 @@ import {
   employeeSchema,
   employeeStateHistorySchema,
   employeeWarehouseAssignmentSchema,
-  roleSchema,
 } from "./workforce";
+import { roleWithPermissionsSchema } from "./rbac-contract";
 
 export const workspaceSnapshotSchema = z.object({
-  roles: z.array(roleSchema),
+  roles: z.array(roleWithPermissionsSchema),
   employees: z.array(employeeSchema),
   externalCounterparties: z.array(externalCounterpartySchema),
   debtAccounts: z.array(debtAccountSchema),

@@ -27,7 +27,7 @@ function buildFixture(): {
       },
     ],
     roles: [
-      { id: "role-worker", key: "worker", name: "عامل", description: null, isSystem: false, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" },
+      { id: "role-worker", key: "worker", name: "عامل", description: null, isSystem: false, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z", permissions: ["employees:read"] },
     ],
     externalCounterparties: [],
     debtAccounts: [],

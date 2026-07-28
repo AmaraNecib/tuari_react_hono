@@ -11,10 +11,10 @@ import {
 describe("permissions", () => {
   describe("ALL_PERMISSIONS", () => {
     it("contains employees permissions", () => {
-      expect(ALL_PERMISSIONS).toContain("employees.create");
-      expect(ALL_PERMISSIONS).toContain("employees.read");
-      expect(ALL_PERMISSIONS).toContain("employees.update");
-      expect(ALL_PERMISSIONS).toContain("employees.delete");
+      expect(ALL_PERMISSIONS).toContain("employees:create");
+      expect(ALL_PERMISSIONS).toContain("employees:read");
+      expect(ALL_PERMISSIONS).toContain("employees:update");
+      expect(ALL_PERMISSIONS).toContain("employees:delete");
     });
 
     it("is a readonly array", () => {
@@ -62,16 +62,23 @@ describe("permissions", () => {
 
   describe("isPermission", () => {
     it("returns true for valid permission strings", () => {
-      expect(isPermission("employees.create")).toBe(true);
-      expect(isPermission("employees.read")).toBe(true);
-      expect(isPermission("projects.delete")).toBe(true);
+      expect(isPermission("employees:create")).toBe(true);
+      expect(isPermission("employees:read")).toBe(true);
+      expect(isPermission("projects:delete")).toBe(true);
     });
 
     it("returns false for invalid permission strings", () => {
       expect(isPermission("invalid")).toBe(false);
-      expect(isPermission("employees.")).toBe(false);
-      expect(isPermission("employees.unknown")).toBe(false);
+      expect(isPermission("employees:")).toBe(false);
+      expect(isPermission("employees:unknown")).toBe(false);
       expect(isPermission("")).toBe(false);
+    });
+
+    it("returns false for the old dot-separated format (rejected on purpose)", () => {
+      // The migration is a hard cut from `employees.create` to `employees:create`.
+      // The colon form is the only one recognised.
+      expect(isPermission("employees.create")).toBe(false);
+      expect(isPermission("projects.create")).toBe(false);
     });
   });
 

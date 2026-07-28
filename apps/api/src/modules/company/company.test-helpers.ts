@@ -43,6 +43,7 @@ const schemaStatements = [
     "first_name" TEXT NOT NULL,
     "last_name" TEXT NOT NULL,
     "phone" TEXT NOT NULL UNIQUE,
+    "user_id" TEXT,
     "role_id" TEXT NOT NULL,
     "status" TEXT NOT NULL CHECK ("status" IN ('ACTIVE', 'INACTIVE', 'LEFT')),
     "salary_amount_dzd" REAL,
@@ -50,6 +51,8 @@ const schemaStatements = [
     "notes" TEXT,
     "created_at" DATETIME NOT NULL,
     "updated_at" DATETIME NOT NULL,
+    UNIQUE ("user_id"),
+    FOREIGN KEY ("user_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     FOREIGN KEY ("role_id") REFERENCES "role" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
   )`,
   `CREATE TABLE "project" (
