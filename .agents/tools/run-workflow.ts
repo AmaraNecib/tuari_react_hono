@@ -173,10 +173,14 @@ let opts: CliOptions
 // ─── Step runner ─────────────────────────────────────────────────
 
 async function runStep(state: WorkflowState, n: number, label: string, fn: () => Promise<void>): Promise<void> {
+  // Skip if already done
   if (state.step > n) { p.log.info(`⏩ Step ${n} (${label}) already done`); return }
+  // Advance through gaps (skipped steps)
   if (state.step < n - 1) {
-    p.log.error(`Step ${n} requires steps ${state.step + 1}–${n - 1} first`)
-    process.exit(1)
+    for (let s = state.step + 1; s < n; s++) {
+      p.log.info(`⏩ Step ${s} (skipped)`)
+    }
+    state.step = n - 1
   }
   state.step = n
   state.stepLabel = label
@@ -306,7 +310,9 @@ async function main(): Promise<void> {
   })
 
   // ── Step 3: Implement (agent) ─────────────────────────────────
-  if (!opts.skipImpl) {
+  if (opts.skipImpl) {
+    await runStep(state, 3, "Implementation (skipped)", async () => {})
+  } else {
     await runStep(state, 3, "Implementation", async () => {
       const task = `Implement issue #${state.issueId}: "${state.title}" using TDD.
 
@@ -358,7 +364,9 @@ Base SHA: ${state.baseSha}
   }
 
   // ── Step 7: Test audit (standard + high-assurance) ───────────
-  if (state.tier !== "lightweight") {
+  if (state.tier === "lightweight") {
+    await runStep(state, 7, "Test Audit (skipped — lightweight)", async () => {})
+  } else {
     await runStep(state, 7, "Test Audit", async () => {
       const ok = await confirmStep("Test Audit", "Run 3-agent test quality review?")
       if (ok) {
