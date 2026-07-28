@@ -494,7 +494,6 @@ mod tests {
             .as_nanos();
         std::env::temp_dir().join(format!("tuari-update-test-{nanos}"))
     }
-    use rand_core::CryptoRngCore;
 
     fn generate_keypair() -> (SigningKey, [u8; 32]) {
         let sk = SigningKey::generate(&mut rand::rngs::OsRng);

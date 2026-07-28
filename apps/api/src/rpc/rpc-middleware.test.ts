@@ -22,7 +22,7 @@ describe("RPC Middleware — withPermission", () => {
 
   it("allows access when user has the required permission", async () => {
     const handler = middleware.withPermission(
-      "employees.create",
+      "employees:create",
       async ({ context, input }) => ({ success: true }),
     );
 
@@ -31,7 +31,7 @@ describe("RPC Middleware — withPermission", () => {
         id: "u1",
         name: "Admin",
         phone: "0555000001",
-        permissions: ["employees.create", "employees.read"],
+        permissions: ["employees:create", "employees:read"],
         version: "0.0.0",
       }),
       input: {},
@@ -42,7 +42,7 @@ describe("RPC Middleware — withPermission", () => {
 
   it("denies access when user lacks the required permission", async () => {
     const handler = middleware.withPermission(
-      "employees.create",
+      "employees:create",
       async ({ context, input }) => ({ success: true }),
     );
 
@@ -52,7 +52,7 @@ describe("RPC Middleware — withPermission", () => {
           id: "u1",
           name: "Viewer",
           phone: "0555000002",
-          permissions: ["employees.read"],
+          permissions: ["employees:read"],
           version: "0.0.0",
         }),
         input: {},
@@ -66,7 +66,7 @@ describe("RPC Middleware — withPermission", () => {
 
   it("denies access when user has no permissions", async () => {
     const handler = middleware.withPermission(
-      "employees.create",
+      "employees:create",
       async ({ context, input }) => ({ success: true }),
     );
 
@@ -90,7 +90,7 @@ describe("RPC Middleware — withPermission", () => {
 
   it("denies access when user is not authenticated", async () => {
     const handler = middleware.withPermission(
-      "employees.create",
+      "employees:create",
       async ({ context, input }) => ({ success: true }),
     );
 
@@ -108,7 +108,7 @@ describe("RPC Middleware — withPermission", () => {
 
   it("allows when user has ANY of multiple required permissions", async () => {
     const handler = middleware.withPermission(
-      ["employees.create", "employees.update"],
+      ["employees:create", "employees:update"],
       async ({ context, input }) => ({ success: true }),
     );
 
@@ -117,7 +117,7 @@ describe("RPC Middleware — withPermission", () => {
         id: "u1",
         name: "PM",
         phone: "0555000004",
-        permissions: ["employees.update"],
+        permissions: ["employees:update"],
         version: "0.0.0",
       }),
       input: {},
@@ -128,7 +128,7 @@ describe("RPC Middleware — withPermission", () => {
 
   it("denies when user has NONE of multiple required permissions", async () => {
     const handler = middleware.withPermission(
-      ["employees.create", "employees.update"],
+      ["employees:create", "employees:update"],
       async ({ context, input }) => ({ success: true }),
     );
 
@@ -138,7 +138,7 @@ describe("RPC Middleware — withPermission", () => {
           id: "u1",
           name: "Viewer",
           phone: "0555000005",
-          permissions: ["employees.read"],
+          permissions: ["employees:read"],
           version: "0.0.0",
         }),
         input: {},

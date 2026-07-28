@@ -26,6 +26,7 @@ export function HomeViewPageSectionContent({
   onSetPendingDelete,
   onSystemLogFiltersChange,
   onThemeToggle,
+  onUpdateApplied,
   page,
   resetWorkspacePending,
   session,
@@ -48,6 +49,7 @@ export function HomeViewPageSectionContent({
   | "onSetPendingDelete"
   | "onSystemLogFiltersChange"
   | "onThemeToggle"
+  | "onUpdateApplied"
   | "paginationCursor"
   | "paginationLimit"
   | "paginationPrevCursors"
@@ -209,6 +211,7 @@ export function HomeViewPageSectionContent({
             key: copy.columns.key,
             system: copy.columns.system,
             description: copy.columns.description,
+            permissions: copy.shell.rolesPermissions,
           }}
           emptyLabel={copy.shell.empty}
           noLabel={copy.common.no}
@@ -264,6 +267,7 @@ export function HomeViewPageSectionContent({
           onReset={onResetWorkspace}
           onSaveAccount={onSaveAccount}
           onToggleTheme={onThemeToggle}
+          onUpdateApplied={onUpdateApplied}
         />
       )
 

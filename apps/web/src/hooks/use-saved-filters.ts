@@ -133,10 +133,6 @@ export function useSavedFilters(options: UseSavedFiltersOptions) {
     return loadState(localStorage.getItem(storageKey));
   });
 
-  useEffect(() => {
-    setState(loadState(localStorage.getItem(storageKey)));
-  }, [storageKey]);
-
   // Persistence is a side effect, so it runs OUTSIDE the setState updater.
   // (React 18 StrictMode double-invokes updaters; we don't want localStorage
   // writes to fire twice and we don't want to violate the "pure updater"

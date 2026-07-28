@@ -13,6 +13,21 @@ export type RolePermissionSeed = {
   permissions: Permission[];
 };
 
+/**
+ * Default roles seeded on first run (Issue #10 — three-tier RBAC):
+ *
+ *  - ADMIN   → all permissions (system owner, bootstrap user)
+ *  - MANAGER → day-to-day operations on employees, projects, warehouses,
+ *              inventory, plus read-only on debts
+ *  - VIEWER  → read-only across all entities
+ *
+ * Custom roles can be added at runtime; these three are the immutable
+ * starting set. Other internal roles that previously existed
+ * (worker, project_manager, warehouse_manager) are intentionally
+ * consolidated into MANAGER per the Slice 3 acceptance criteria.
+ *
+ * All permission strings use the `resource:action` form.
+ */
 export const DEFAULT_ROLE_PERMISSIONS: RolePermissionSeed[] = [
   {
     role: {
@@ -25,39 +40,48 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionSeed[] = [
   },
   {
     role: {
+      key: "manager",
+      name: "مدير عمليات",
+      description: "يدير الموظفين والمشاريع والمستودعات والمخزون — صلاحيات تشغيلية كاملة",
+      isSystem: true,
+    },
+    permissions: [
+      "employees:create",
+      "employees:read",
+      "employees:update",
+      "employees:delete",
+      "projects:create",
+      "projects:read",
+      "projects:update",
+      "projects:delete",
+      "warehouses:create",
+      "warehouses:read",
+      "warehouses:update",
+      "warehouses:delete",
+      "inventory:create",
+      "inventory:read",
+      "inventory:update",
+      "inventory:delete",
+      "inventory:transfer",
+      "debts:read",
+    ] as Permission[],
+  },
+  {
+    role: {
       key: "viewer",
       name: "مشاهد",
       description: "حساب للقراءة فقط — لا يمكنه تعديل أي بيانات",
       isSystem: true,
     },
-    permissions: ["employees.read"],
-  },
-  {
-    role: {
-      key: "worker",
-      name: "عامل",
-      description: "الدور التنفيذي الأساسي للعمال الميدانيين",
-      isSystem: true,
-    },
-    permissions: ["employees.read"],
-  },
-  {
-    role: {
-      key: "project_manager",
-      name: "مدير مشروع",
-      description: "مسؤول عن متابعة العمال والمشاريع الميدانية",
-      isSystem: true,
-    },
-    permissions: ["employees.read", "employees.update", "invoices.read", "invoices.create", "invoices.update", "payments.read"],
-  },
-  {
-    role: {
-      key: "warehouse_manager",
-      name: "مدير مخزن",
-      description: "مسؤول عن تشغيل وإدارة المستودعات",
-      isSystem: true,
-    },
-    permissions: ["employees.read", "invoices.read", "invoices.create", "invoices.update", "payments.read"],
+    permissions: [
+      "employees:read",
+      "projects:read",
+      "warehouses:read",
+      "inventory:read",
+      "debts:read",
+      "invoices:read",
+      "payments:read",
+    ] as Permission[],
   },
 ];
 

@@ -195,12 +195,15 @@ export function HomeView({
       pendingDelete={shell.pendingDelete}
       session={auth.session}
       sidebarCollapsed={shell.sidebarCollapsed}
+      showRestartModal={shell.showRestartModal}
       signOutPending={signOutMutation.isPending}
       signOutOpen={shell.signOutOpen}
       theme={theme}
       onConfirmDelete={() => void shell.confirmDelete()}
       onConfirmSignOut={() => void shell.confirmSignOut()}
       onPendingDeleteChange={shell.setPendingDelete}
+      onRestartLater={shell.handleRestartLater}
+      onRestartNow={shell.handleRestartNow}
       onSetSidebarCollapsed={shell.setSidebarCollapsed}
       onSignOutOpenChange={shell.setSignOutOpen}
       onThemeToggle={shell.handleThemeToggle}
@@ -235,6 +238,7 @@ export function HomeView({
           onAddWarehouse={() => void navigation.goToWarehouseCreate()}
           onResetWorkspace={() => shell.handleResetWorkspace()}
           onSaveAccount={(payload) => updateAccountSettingsMutation.mutateAsync(payload)}
+          onUpdateApplied={() => shell.setShowRestartModal(true)}
           onSetPendingDelete={shell.setPendingDelete}
           onSystemLogFiltersChange={shell.setSystemLogFilters}
           onThemeToggle={toggleTheme}

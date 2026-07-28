@@ -61,7 +61,6 @@ mod tests {
     use super::*;
     use base64::Engine;
     use ed25519_dalek::{Signer, SigningKey};
-    use rand_core::CryptoRngCore;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};

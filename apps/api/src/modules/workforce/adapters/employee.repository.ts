@@ -1,4 +1,4 @@
-import type { CompanyRepository } from "../../company/company.repository";
+import type { CompanyRepository } from "../../company/company.repository.contracts";
 import type { EmployeeRecord } from "../../company/company.types";
 import type {
   EmployeeFilters,

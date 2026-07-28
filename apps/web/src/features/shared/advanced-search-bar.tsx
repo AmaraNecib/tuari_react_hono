@@ -220,6 +220,7 @@ export function AdvancedSearchBar({
   const handleLoadPreset = useCallback(
     (preset: FilterPreset) => {
       handleApplyFilters(preset.filters);
+      setShowPresets(false);
     },
     [handleApplyFilters]
   );
@@ -233,6 +234,7 @@ export function AdvancedSearchBar({
   }, []);
 
   const recentHistory = useMemo(() => history.slice(0, 5), [history]);
+  const activeFilterCount = Object.keys(activeFilters).length;
 
   const chipsRow =
     quickFilters && quickFilters.length > 0 ? (
@@ -446,6 +448,14 @@ export function AdvancedSearchBar({
           aria-expanded={drawerOpen}
         >
           {t("search.openFilters")}
+          {activeFilterCount > 0 ? (
+            <span
+              className="ms-2 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground"
+              aria-label={`${activeFilterCount}`}
+            >
+              {activeFilterCount}
+            </span>
+          ) : null}
         </Button>
         {drawerOpen ? (
           <div

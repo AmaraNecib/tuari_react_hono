@@ -9,6 +9,7 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { UpdateSection } from "@/features/update/update-section"
 import { useQueryClient } from "@tanstack/react-query"
 import { LicenseSettings } from "@/features/license/license-settings"
 import { licenseQueryKey } from "@/features/license/license-hooks"
@@ -73,6 +74,7 @@ type SettingsSectionProps = {
   }) => Promise<void>
   onReset: () => void
   onToggleTheme: () => void
+  onUpdateApplied?: () => void
 }
 
 /** Settings section with account, theme, and security. */
@@ -123,6 +125,7 @@ export function SettingsSection({
   onSaveAccount,
   onReset,
   onToggleTheme,
+  onUpdateApplied,
 }: SettingsSectionProps) {
   const { t } = useTranslation()
   const { state: checkUpdateState, checkUpdate } = useUpdateCheck()
@@ -516,6 +519,13 @@ export function SettingsSection({
               <p className="text-sm font-mono text-foreground mt-2">
                 {appVersion ?? "-"}
               </p>
+            </div>
+          </div>
+
+          {/* Online update check and download */}
+          <div className="p-5 border border-line rounded-xl">
+            <div className="text-start">
+              <UpdateSection onUpdateApplied={onUpdateApplied} />
             </div>
           </div>
 

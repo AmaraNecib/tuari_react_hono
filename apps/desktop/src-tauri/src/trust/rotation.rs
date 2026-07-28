@@ -137,7 +137,6 @@ impl RotationCertificate {
 mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
-    use rand_core::CryptoRngCore;
 
     fn generate_keypair() -> (SigningKey, [u8; 32]) {
         let sk = SigningKey::generate(&mut rand::rngs::OsRng);

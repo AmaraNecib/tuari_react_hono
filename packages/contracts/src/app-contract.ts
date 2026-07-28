@@ -13,6 +13,7 @@ import { recurringPatternsContract } from "./recurring-contract"
 import { invoiceContract } from "./invoice-contract"
 import { paymentContract } from "./payment-contract"
 import { updateContract } from "./update-contract"
+import { rbacContract } from "./rbac-contract"
 
 export const appContract = {
   health: oc.output(healthCheckSchema),
@@ -28,6 +29,7 @@ export const appContract = {
   ...invoiceContract,
   ...paymentContract,
   ...updateContract,
+  ...rbacContract,
 } as const
 
 export type AppContract = typeof appContract
