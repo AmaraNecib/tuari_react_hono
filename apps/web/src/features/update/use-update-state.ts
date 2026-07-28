@@ -1,9 +1,18 @@
 import { useCallback, useSyncExternalStore } from "react"
 
 const STORAGE_KEY = "tuari:restart-pending"
+const SESSION_KEY = "tuari:restart-session-started"
 
 function getSnapshot(): boolean {
   try {
+    // sessionStorage is cleared when the desktop webview starts again, while
+    // localStorage survives. Use that boundary to discard a stale deferred
+    // restart flag left behind by a manual app restart.
+    if (sessionStorage.getItem(SESSION_KEY) !== "true") {
+      sessionStorage.setItem(SESSION_KEY, "true")
+      localStorage.removeItem(STORAGE_KEY)
+      return false
+    }
     return localStorage.getItem(STORAGE_KEY) === "true"
   } catch {
     return false

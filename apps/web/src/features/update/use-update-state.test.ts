@@ -7,10 +7,12 @@ import { useRestartPending } from "./use-update-state"
 describe("useRestartPending", () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
   })
 
   afterEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
   })
 
   it("starts with pending=false", () => {
@@ -35,9 +37,20 @@ describe("useRestartPending", () => {
   })
 
   it("reads persisted value from localStorage on mount", () => {
+    sessionStorage.setItem("tuari:restart-session-started", "true")
     localStorage.setItem("tuari:restart-pending", "true")
     const { result } = renderHook(() => useRestartPending())
     expect(result.current.pending).toBe(true)
+  })
+
+  it("clears a deferred flag when a new app session starts", () => {
+    localStorage.setItem("tuari:restart-pending", "true")
+
+    const { result } = renderHook(() => useRestartPending())
+
+    expect(result.current.pending).toBe(false)
+    expect(localStorage.getItem("tuari:restart-pending")).toBeNull()
+    expect(sessionStorage.getItem("tuari:restart-session-started")).toBe("true")
   })
 
   it("clears localStorage when setPending(false)", () => {
