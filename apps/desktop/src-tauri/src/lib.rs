@@ -11,7 +11,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager, RunEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent};
 use crate::update::{UpdateProvider, UpdateStrategy};
 
 const API_HOST: &str = "127.0.0.1";
@@ -609,6 +609,11 @@ fn activate_license(
 
 // ─── Update Tauri Commands ───────────────────────────────────────
 
+#[tauri::command]
+fn restart_app(app: AppHandle) {
+    app.restart();
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdateCheckResult {
@@ -779,6 +784,196 @@ fn get_license_status(app: AppHandle) -> Result<GetLicenseStatusResult, String> 
             days_remaining,
         }),
     }
+}
+
+// ─── Download Progress ────────────────────────────────────────────
+
+/// Shared state for tracking download cancellation requests and
+/// serializing in-flight downloads so concurrent invocations cannot
+/// interleave writes to the same output file.
+struct DownloadState {
+    cancellation_requested: Mutex<bool>,
+    download_in_progress: Mutex<bool>,
+}
+
+impl DownloadState {
+    fn new() -> Self {
+        Self {
+            cancellation_requested: Mutex::new(false),
+            download_in_progress: Mutex::new(false),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DownloadProgress {
+    downloaded_bytes: u64,
+    total_bytes: u64,
+    speed_bytes_per_sec: u64,
+    percentage: f64,
+    status: String,
+    error: Option<String>,
+}
+
+#[tauri::command]
+async fn start_update_download(
+    url: String,
+    app: AppHandle,
+    state: tauri::State<'_, DownloadState>,
+) -> Result<String, String> {
+    // Backend re-entrancy guard: reject concurrent invocations so two
+    // tasks never write to the same output file or stomp on each
+    // other's cancellation flag. Mirrors the frontend downloadInFlightRef
+    // but lives here so direct invoke calls (DevTools, other windows,
+    // tests) are also covered.
+    {
+        let mut in_progress = state
+            .download_in_progress
+            .lock()
+            .map_err(|e| e.to_string())?;
+        if *in_progress {
+            return Err("Another download is already in progress.".to_string());
+        }
+        *in_progress = true;
+    }
+
+    // RAII guard that releases the in-progress flag on every exit path
+    // (success, error, cancellation, panic) without needing manual
+    // `let _ = ...; return ...` in every branch.
+    struct InProgressGuard<'a> {
+        flag: &'a Mutex<bool>,
+    }
+    impl Drop for InProgressGuard<'_> {
+        fn drop(&mut self) {
+            if let Ok(mut g) = self.flag.lock() {
+                *g = false;
+            }
+        }
+    }
+    let _guard = InProgressGuard {
+        flag: &state.download_in_progress,
+    };
+
+    // Reset cancellation flag for this new download.
+    {
+        let mut cancel = state
+            .cancellation_requested
+            .lock()
+            .map_err(|e| e.to_string())?;
+        *cancel = false;
+    }
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to start download: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Download server returned {}",
+            response.status()
+        ));
+    }
+
+    let total_bytes = response.content_length().unwrap_or(0);
+    let dest_dir = std::env::temp_dir().join("tuari-update");
+    create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    let dest_path = dest_dir.join("update-package.update");
+
+    // Use async I/O so the Tokio worker is not blocked on disk writes
+    // for the duration of the download.
+    use tokio::io::AsyncWriteExt;
+    let mut file = tokio::fs::File::create(&dest_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let start_time = Instant::now();
+    let mut downloaded: u64 = 0;
+
+    use futures_util::StreamExt;
+    let mut stream = response.bytes_stream();
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| format!("Download error: {e}"))?;
+        file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+        downloaded += chunk.len() as u64;
+
+        let elapsed = start_time.elapsed().as_secs_f64();
+        let speed = if elapsed > 0.0 {
+            (downloaded as f64 / elapsed) as u64
+        } else {
+            0
+        };
+        let percentage = if total_bytes > 0 {
+            (downloaded as f64 / total_bytes as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        app.emit(
+            "download-progress",
+            DownloadProgress {
+                downloaded_bytes: downloaded,
+                total_bytes,
+                speed_bytes_per_sec: speed,
+                percentage,
+                status: "downloading".to_string(),
+                error: None,
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+        // Check cancellation
+        if state
+            .cancellation_requested
+            .lock()
+            .map_err(|e| e.to_string())?
+            .clone()
+        {
+            drop(file);
+            let _ = tokio::fs::remove_file(&dest_path).await;
+            let _ = app.emit(
+                "download-progress",
+                DownloadProgress {
+                    downloaded_bytes: downloaded,
+                    total_bytes,
+                    speed_bytes_per_sec: speed,
+                    percentage,
+                    status: "cancelled".to_string(),
+                    error: None,
+                },
+            );
+            return Err("Download cancelled by user.".to_string());
+        }
+    }
+
+    file.flush().await.map_err(|e| e.to_string())?;
+
+    // Note: we intentionally do NOT emit a "completed" download-progress event
+    // here. Completion is signalled by the invoke return value (the file path),
+    // which the frontend treats as the authoritative completion. Emitting both
+    // would either duplicate UI work or create a race where the event handler
+    // sets state before the invoke-return handler can attach the real filePath.
+
+    Ok(dest_path
+        .to_str()
+        .ok_or_else(|| "Invalid download path.".to_string())?
+        .to_string())
+}
+
+#[tauri::command]
+fn cancel_update_download(
+    state: tauri::State<'_, DownloadState>,
+) -> Result<(), String> {
+    let mut cancel = state
+        .cancellation_requested
+        .lock()
+        .map_err(|e| e.to_string())?;
+    *cancel = true;
+    Ok(())
 }
 
 fn has_portable_runtime_layout(root: &Path) -> bool {
@@ -1271,6 +1466,7 @@ pub fn run() {
             session: Mutex::new(None),
         })
         .plugin(tauri_plugin_dialog::init())
+        .manage(DownloadState::new())
         .invoke_handler(tauri::generate_handler![
             get_runtime_config,
             desktop_api_request,
@@ -1281,7 +1477,10 @@ pub fn run() {
             get_license_status,
             check_for_updates,
             apply_update,
-            get_current_version
+            get_current_version,
+            start_update_download,
+            cancel_update_download,
+            restart_app
         ])
         .setup(|app| {
             let child = spawn_api_process(app.handle())?;

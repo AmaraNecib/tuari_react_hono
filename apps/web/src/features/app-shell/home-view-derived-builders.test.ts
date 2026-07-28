@@ -66,6 +66,7 @@ const workspace: DemoWorkspace = {
       isSystem: true,
       createdAt: "2026-03-13T10:00:00.000Z",
       updatedAt: "2026-03-13T10:00:00.000Z",
+      permissions: ["employees:read"],
     },
     {
       id: "role-project-manager",
@@ -75,6 +76,7 @@ const workspace: DemoWorkspace = {
       isSystem: true,
       createdAt: "2026-03-13T10:00:00.000Z",
       updatedAt: "2026-03-13T10:00:00.000Z",
+      permissions: ["employees:read", "employees:update", "invoices:read", "invoices:create", "invoices:update", "payments:read"],
     },
     {
       id: "role-warehouse-manager",
@@ -84,6 +86,7 @@ const workspace: DemoWorkspace = {
       isSystem: true,
       createdAt: "2026-03-13T10:00:00.000Z",
       updatedAt: "2026-03-13T10:00:00.000Z",
+      permissions: ["employees:read", "invoices:read", "invoices:create", "invoices:update", "payments:read"],
     },
   ],
   employees: [

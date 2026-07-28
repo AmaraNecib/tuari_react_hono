@@ -17,3 +17,4 @@ export * from "./payment-contract";
 export * from "./update";
 export * from "./update-contract";
 export * from "./license";
+export * from "./rbac-contract";

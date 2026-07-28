@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { buttonVariants } from "@/components/ui/button"
+import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
 import { EmployeeBatchCreatePage } from "@/features/employees/employee-batch-create-page"
 import {
   EmployeeTable,
@@ -101,8 +102,9 @@ export function EmployeesSection({
     const leaveEmployeeMutation = useLeaveEmployeeMutation()
   const deleteEmployeeMutation = useDeleteEmployeeMutation()
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [query, setQuery] = useState("")
   const actionInFlightRef = useRef(false)
-  
+
   const resolvedLimit = limit ?? DEFAULT_LIMIT
   const pagedQuery = useEmployeesPagedQuery({
     cursor,
@@ -115,9 +117,11 @@ export function EmployeesSection({
     [workspace],
   )
 
+  const normalizedQuery = query.trim().toLowerCase()
+
   const rows = useMemo<EmployeeTableRow[]>(() => {
     const items = pagedQuery.data?.items ?? []
-    return items.map((employee) =>
+    const built = items.map((employee) =>
       buildEmployeeRow({
         copy: { shell: { noManager: noManagerLabel, noProject: noProjectLabel } },
         employee,
@@ -126,7 +130,12 @@ export function EmployeesSection({
         t,
       }),
     )
-  }, [pagedQuery.data?.items, lookups, relationshipFacts, noManagerLabel, noProjectLabel, t])
+    if (!normalizedQuery) return built
+    return built.filter((row) => {
+      const haystack = `${row.name} ${row.phone} ${row.role}`.toLowerCase()
+      return haystack.includes(normalizedQuery)
+    })
+  }, [pagedQuery.data?.items, lookups, relationshipFacts, noManagerLabel, noProjectLabel, t, normalizedQuery])
 
       
   
@@ -157,6 +166,19 @@ export function EmployeesSection({
         }
         title={title}
       >
+        <AdvancedSearchBar
+          onSearch={(searchQuery) => setQuery(searchQuery)}
+          storageKey="employees-search-filters"
+        />
+        {normalizedQuery ? (
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "search.localPageHint",
+              "يبحث في الصفحة الحالية فقط. اعمل مسح لرؤية جميع النتائج."
+            )}
+          </p>
+        ) : null}
+
         <EmployeeTable
             copy={{
               name: columns.name,

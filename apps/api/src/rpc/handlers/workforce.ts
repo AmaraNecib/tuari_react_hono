@@ -34,10 +34,10 @@ export function createWorkforceHandlers(
       ({ input, auditContext }: any) => workforceService.deleteRole((input as any).id),
       toFailureResult,
     )),
-    employeesList: os.employeesList.handler(m.withPermission("employees.read", m.withAuth(async ({ context, input }: any) => {
+    employeesList: os.employeesList.handler(m.withPermission("employees:read", m.withAuth(async ({ context, input }: any) => {
       return workforceService.listEmployees(input ?? undefined);
     }))),
-    employeesListPaged: os.employeesListPaged.handler(m.withPermission("employees.read", m.withAuth(async ({ context, input }: any) => {
+    employeesListPaged: os.employeesListPaged.handler(m.withPermission("employees:read", m.withAuth(async ({ context, input }: any) => {
       const opts = input ?? {};
       try {
         const result = await employeeModule.listPaged({
@@ -56,34 +56,34 @@ export function createWorkforceHandlers(
         throw error;
       }
     }))),
-    employeesGet: os.employeesGet.handler(m.withPermission("employees.read", m.withAuth(async ({ context, input }: any) => {
+    employeesGet: os.employeesGet.handler(m.withPermission("employees:read", m.withAuth(async ({ context, input }: any) => {
       return workforceService.getEmployee((input as any).id);
     }))),
-    employeesCreate: os.employeesCreate.handler(m.withPermission("employees.create", m.withAudit(
+    employeesCreate: os.employeesCreate.handler(m.withPermission("employees:create", m.withAudit(
       ({ input, auditContext }: any) => workforceService.createEmployee(input as any, auditContext),
       toFailureResult,
     ))),
-    employeesBatchCreate: os.employeesBatchCreate.handler(m.withPermission("employees.create", m.withAudit(
+    employeesBatchCreate: os.employeesBatchCreate.handler(m.withPermission("employees:create", m.withAudit(
       ({ input, auditContext }: any) => workforceService.createEmployeesBatch(input as any, auditContext),
       toFailureResult,
     ))),
-    employeesUpdate: os.employeesUpdate.handler(m.withPermission("employees.update", m.withAudit(
+    employeesUpdate: os.employeesUpdate.handler(m.withPermission("employees:update", m.withAudit(
       ({ input, auditContext }: any) => workforceService.updateEmployee(input as any, auditContext),
       toFailureResult,
     ))),
-    employeesDelete: os.employeesDelete.handler(m.withPermission("employees.delete", m.withAudit(
+    employeesDelete: os.employeesDelete.handler(m.withPermission("employees:delete", m.withAudit(
       ({ input, auditContext }: any) => workforceService.deleteEmployee((input as any).id, auditContext),
       toFailureResult,
     ))),
-    employeesAssignWorkplace: os.employeesAssignWorkplace.handler(m.withPermission("employees.update", m.withAudit(
+    employeesAssignWorkplace: os.employeesAssignWorkplace.handler(m.withPermission("employees:update", m.withAudit(
       ({ input, auditContext }: any) => workforceService.assignEmployeeWorkplace(input as any, auditContext),
       toFailureResult,
     ))),
-    employeesSyncManagedProjects: os.employeesSyncManagedProjects.handler(m.withPermission("employees.update", m.withAudit(
+    employeesSyncManagedProjects: os.employeesSyncManagedProjects.handler(m.withPermission("employees:update", m.withAudit(
       ({ input, auditContext }: any) => workforceService.syncManagedProjects(input as any, auditContext),
       toFailureResult,
     ))),
-    employeesSyncManagedWarehouses: os.employeesSyncManagedWarehouses.handler(m.withPermission("employees.update", m.withAudit(
+    employeesSyncManagedWarehouses: os.employeesSyncManagedWarehouses.handler(m.withPermission("employees:update", m.withAudit(
       ({ input, auditContext }: any) => workforceService.syncManagedWarehouses(input as any, auditContext),
       toFailureResult,
     ))),

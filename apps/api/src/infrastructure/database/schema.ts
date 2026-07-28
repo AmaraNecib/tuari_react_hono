@@ -12,6 +12,7 @@ import {
   invoiceDebtLinkageMigrationKey,
   invoiceDirectionMigrationKey,
   obsoleteMigrationKey,
+  rbacThreeRoleMigrationKey,
   rolePermissionSeeds,
   roleSeeds,
   schemaStatements,
@@ -332,6 +333,7 @@ async function runStatusConstraintMigrations() {
   }
 
   const hasWarehouseAssignmentTable = Boolean(await getTableSql("employee_warehouse_assignment"));
+  const hasEmployeeUserIdColumn = await hasColumn("employee", "user_id");
 
   await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
@@ -350,6 +352,7 @@ async function runStatusConstraintMigrations() {
           "first_name" TEXT NOT NULL,
           "last_name" TEXT NOT NULL,
           "phone" TEXT NOT NULL UNIQUE,
+          "user_id" TEXT,
           "role_id" TEXT NOT NULL,
           "status" TEXT NOT NULL CHECK ("status" IN ('ACTIVE', 'INACTIVE', 'LEFT')),
           "salary_amount_dzd" REAL,
@@ -357,8 +360,11 @@ async function runStatusConstraintMigrations() {
           "notes" TEXT,
           "created_at" DATETIME NOT NULL,
           "updated_at" DATETIME NOT NULL,
+          UNIQUE ("user_id"),
           CONSTRAINT "employee_role_id_fkey"
-            FOREIGN KEY ("role_id") REFERENCES "role" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+            FOREIGN KEY ("role_id") REFERENCES "role" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+          CONSTRAINT "employee_user_id_fkey"
+            FOREIGN KEY ("user_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE
         )`,
       );
       await tx.$executeRawUnsafe(
@@ -451,7 +457,7 @@ async function runStatusConstraintMigrations() {
       );
 
       await tx.$executeRawUnsafe(
-        'INSERT INTO "employee_checked" ("id", "first_name", "last_name", "phone", "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "created_at", "updated_at") SELECT "id", "first_name", "last_name", "phone", "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "created_at", "updated_at" FROM "employee"',
+        `INSERT INTO "employee_checked" ("id", "first_name", "last_name", "phone", "user_id", "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "created_at", "updated_at") SELECT "id", "first_name", "last_name", "phone", ${hasEmployeeUserIdColumn ? '"user_id"' : "NULL"}, "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "created_at", "updated_at" FROM "employee"`,
       );
       await tx.$executeRawUnsafe(
         'INSERT INTO "project_checked" ("id", "name", "location", "manager_id", "status", "notes", "created_at", "updated_at") SELECT "id", "name", "location", "manager_id", "status", "notes", "created_at", "updated_at" FROM "project"',
@@ -1465,6 +1471,148 @@ async function ensureSeedRolePermissions() {
   }
 }
 
+/**
+ * Issue #10 — Slice 3 three-tier RBAC.
+ *
+ * Drops the legacy `worker`, `project_manager`, and `warehouse_manager` roles
+ * (which were internal-only and never used by the public contract) and
+ * reassigns any employees that were attached to them onto the new
+ * `manager` role. After this migration, only `admin`, `manager`, and
+ * `viewer` exist as roles in the database.
+ *
+ * Also normalises any dot-separated permission strings (e.g. "employees.create")
+ * to the colon form ("employees:create") in case a pre-#10 database still
+ * has rows in the old format. No-op if no rows match.
+ *
+ * The migration is idempotent: re-running it is a no-op once the legacy
+ * rows are gone. Foreign-key constraints (employee.role_id → role.id)
+ * require PRAGMA foreign_keys = OFF during the swap so we can delete
+ * the role rows in a controlled order.
+ */
+export async function applyRbacThreeRoleMigration(db: DbExecutor): Promise<void> {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    rbacThreeRoleMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  const legacyKeys = ["worker", "project_manager", "warehouse_manager"];
+
+  await db.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+
+  try {
+    await db.$transaction(async (tx) => {
+      // Resolve the manager role id (created by ensureSeedRoles above).
+      const [managerRow] = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        'SELECT id FROM "role" WHERE key = ? LIMIT 1',
+        "manager",
+      );
+
+      if (!managerRow) {
+        // Defensive: ensureSeedRoles should have created the manager role
+        // before this migration runs. If it's missing for any reason, bail
+        // out and let a later startup retry.
+        throw new Error("rbac_three_role_v1: 'manager' role missing — ensureSeedRoles did not run");
+      }
+
+      const managerId = managerRow.id;
+
+      // Reassign any employees pointing at legacy roles onto the manager role.
+      for (const legacyKey of legacyKeys) {
+        const [legacyRow] = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+          'SELECT id FROM "role" WHERE key = ? LIMIT 1',
+          legacyKey,
+        );
+        if (!legacyRow) continue;
+
+        await tx.$executeRawUnsafe(
+          'UPDATE "employee" SET "role_id" = ?, "updated_at" = ? WHERE "role_id" = ?',
+          managerId,
+          new Date().toISOString(),
+          legacyRow.id,
+        );
+
+        // Drop any role_permission rows for the legacy role.
+        await tx.$executeRawUnsafe(
+          'DELETE FROM "role_permission" WHERE "role_id" = ?',
+          legacyRow.id,
+        );
+
+        // Drop the legacy role itself.
+        await tx.$executeRawUnsafe(
+          'DELETE FROM "role" WHERE "id" = ?',
+          legacyRow.id,
+        );
+      }
+
+      // Normalise the permission column format from `resource.action` to
+      // `resource:action` for any rows that slipped through the colon-only
+      // rewrite on a pre-#10 database. No-op if no rows match.
+      const dotPerms: Array<{ id: string; role_id: string; permission: string }> = await tx.$queryRawUnsafe(
+        'SELECT "id", "role_id", "permission" FROM "role_permission" WHERE "permission" LIKE \'%.%\' AND "permission" NOT LIKE \'%:%\'',
+      );
+      for (const row of dotPerms) {
+        const lastDot = row.permission.lastIndexOf(".");
+        if (lastDot > 0) {
+          const normalized = `${row.permission.slice(0, lastDot)}:${row.permission.slice(lastDot + 1)}`;
+          const [existingNormalized] = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+            'SELECT "id" FROM "role_permission" WHERE "role_id" = ? AND "permission" = ? LIMIT 1',
+            row.role_id,
+            normalized,
+          );
+
+          if (existingNormalized && existingNormalized.id !== row.id) {
+            await tx.$executeRawUnsafe(
+              'DELETE FROM "role_permission" WHERE "id" = ?',
+              row.id,
+            );
+          } else {
+            await tx.$executeRawUnsafe(
+              'UPDATE "role_permission" SET "permission" = ? WHERE "id" = ?',
+              normalized,
+              row.id,
+            );
+          }
+        }
+      }
+
+      await tx.$executeRawUnsafe(
+        'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+        rbacThreeRoleMigrationKey,
+        new Date().toISOString(),
+      );
+    });
+  } finally {
+    await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+  }
+}
+
+async function runRbacThreeRoleMigration() {
+  await applyRbacThreeRoleMigration(getExecutor());
+}
+
+/** Ensure legacy employee tables can be linked to an optional auth identity. */
+export async function applyEmployeeUserLinkMigration(db: DbExecutor): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const columns = await tx.$queryRawUnsafe<Array<{ name: string }>>(
+      'PRAGMA table_info("employee")',
+    );
+
+    if (!columns.some((column) => column.name === "user_id")) {
+      await tx.$executeRawUnsafe(
+        'ALTER TABLE "employee" ADD COLUMN "user_id" TEXT REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE',
+      );
+    }
+
+    await tx.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "employee_user_id_key" ON "employee" ("user_id")',
+    );
+  });
+}
+
 export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   _executor = db;
   const executor = getExecutor();
@@ -1492,6 +1640,7 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   }
 
   await ensureInventoryProjectIndexes()
+  await applyEmployeeUserLinkMigration(executor)
 
   await runObsoleteMigrations();
   await runStatusConstraintMigrations();
@@ -1509,4 +1658,8 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
 
   await ensureSeedRoles();
   await ensureSeedRolePermissions();
+
+  // Run AFTER seeding so the new `manager` role is guaranteed to exist
+  // before legacy roles are removed.
+  await runRbacThreeRoleMigration();
 }

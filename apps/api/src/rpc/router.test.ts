@@ -12,6 +12,8 @@ import type { RpcContext } from "./context";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
 import { SqliteRoleRepository } from "../modules/workforce/adapters/role.repository";
+import { InMemoryRoleRepository, RoleModule } from "../modules/rbac/role.module";
+import { DEFAULT_ROLE_PERMISSIONS } from "../modules/rbac/role-seeds";
 
 function expectSuccess<T extends { success: boolean }>(result: T): Extract<T, { success: true }> {
   expect(result.success).toBe(true);
@@ -62,6 +64,20 @@ describe("RPC router", () => {
       delete: async () => undefined,
     } as never;
     const mutation = new WorkspaceMutationContext(repository);
+    const rbacRoleRepository = new InMemoryRoleRepository();
+    for (const seed of DEFAULT_ROLE_PERMISSIONS) {
+      rbacRoleRepository.seed({
+        id: `id-${seed.role.key}`,
+        key: seed.role.key,
+        name: seed.role.name,
+        description: seed.role.description,
+        isSystem: seed.role.isSystem,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        permissions: [...seed.permissions],
+      });
+    }
+    const roleModule = new RoleModule({ repository: rbacRoleRepository });
     return createRouter({
       authBootstrapService: { ...authBootstrapService, ...authOverrides },
       companyService: service,
@@ -72,7 +88,12 @@ describe("RPC router", () => {
       employeeModule,
       invoiceModule: {} as never,
       paymentModule,
-    });
+      roleModule,
+      recoveryKeyService: {} as never,
+      updateService: {} as never,
+      updateHistoryService: {} as never,
+      rawDatabase: {} as never,
+    } as never);
   }
 
   const currentUser = {
@@ -80,10 +101,35 @@ describe("RPC router", () => {
     name: "Taylor",
     phone: "0612345678",
     permissions: [
-      "employees.create",
-      "employees.read",
-      "employees.update",
-      "employees.delete",
+      "employees:create",
+      "employees:read",
+      "employees:update",
+      "employees:delete",
+      "projects:create",
+      "projects:read",
+      "projects:update",
+      "projects:delete",
+      "warehouses:create",
+      "warehouses:read",
+      "warehouses:update",
+      "warehouses:delete",
+      "inventory:create",
+      "inventory:read",
+      "inventory:update",
+      "inventory:delete",
+      "inventory:transfer",
+      "debts:create",
+      "debts:read",
+      "debts:update",
+      "debts:settle",
+      "invoices:create",
+      "invoices:read",
+      "invoices:update",
+      "invoices:delete",
+      "payments:create",
+      "payments:read",
+      "payments:update",
+      "payments:delete",
     ],
     version: "0.0.0",
   };
@@ -162,7 +208,7 @@ describe("RPC router", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects employee creation when user lacks employees.create permission", async () => {
+  it("rejects employee creation when user lacks employees:create permission", async () => {
     const harness = createHarness();
     const { service, roleIds } = harness;
     const router = createTestRouter(harness, { isBootstrapOwner: async () => false })

@@ -35,6 +35,27 @@ describe("role_permission schema", () => {
   });
 });
 
+describe("employee authentication link", () => {
+  const definitions = createSchemaDefinitions();
+
+  it("allows an employee to exist without an authentication user", () => {
+    const employeeDef = definitions.find((d) => d.includes('CREATE TABLE IF NOT EXISTS "employee"'));
+
+    expect(employeeDef).toBeDefined();
+    expect(employeeDef).toContain('"user_id" TEXT');
+    expect(employeeDef).toContain('FOREIGN KEY ("user_id") REFERENCES "user" ("id")');
+  });
+
+  it("keeps the employee authentication link optional while enforcing one employee per user", () => {
+    const employeeDef = definitions.find((d) => d.includes('CREATE TABLE IF NOT EXISTS "employee"'))!;
+    const userIdLine = employeeDef.split("\n").find((line) => line.includes('"user_id" TEXT'))!;
+
+    expect(userIdLine).not.toContain("NOT NULL");
+    expect(employeeDef).toContain('UNIQUE ("user_id")');
+  });
+
+});
+
 describe("debt_account schema (#21 rename migration)", () => {
   const definitions = createSchemaDefinitions();
 
@@ -96,14 +117,12 @@ describe("debt_account schema (#22 direction column)", () => {
 });
 
 describe("rolePermissionSeeds", () => {
-  it("generates seed entries for all default roles", () => {
+  it("generates seed entries for all default roles (admin, manager, viewer)", () => {
     const seeds = rolePermissionSeeds();
     const roleKeys = [...new Set(seeds.map((s) => s.roleId))];
     expect(roleKeys).toContain("admin");
+    expect(roleKeys).toContain("manager");
     expect(roleKeys).toContain("viewer");
-    expect(roleKeys).toContain("worker");
-    expect(roleKeys).toContain("project_manager");
-    expect(roleKeys).toContain("warehouse_manager");
   });
 
   it("admin has all permissions", () => {
@@ -116,21 +135,42 @@ describe("rolePermissionSeeds", () => {
     expect(adminPerms).toEqual(expected);
   });
 
-  it("viewer has only employees.read", () => {
+  it("manager has employees/projects/warehouses/inventory CRUD + debts:read", () => {
+    const seeds = rolePermissionSeeds();
+    const managerPerms = seeds.filter((s) => s.roleId === "manager").map((s) => s.permission);
+    expect(managerPerms).toContain("employees:create");
+    expect(managerPerms).toContain("employees:delete");
+    expect(managerPerms).toContain("inventory:transfer");
+    expect(managerPerms).toContain("debts:read");
+    expect(managerPerms).not.toContain("debts:create");
+  });
+
+  it("viewer has read-only permissions on all entities", () => {
     const seeds = rolePermissionSeeds();
     const viewerPerms = seeds
       .filter((s) => s.roleId === "viewer")
-      .map((s) => s.permission);
-    expect(viewerPerms).toEqual(["employees.read"]);
+      .map((s) => s.permission)
+      .sort();
+    expect(viewerPerms).toEqual(
+      [
+        "debts:read",
+        "employees:read",
+        "inventory:read",
+        "invoices:read",
+        "payments:read",
+        "projects:read",
+        "warehouses:read",
+      ].sort(),
+    );
   });
 
-  it("each seed has roleId and permission", () => {
+  it("each seed has roleId and permission in the colon-separated form", () => {
     const seeds = rolePermissionSeeds();
     for (const seed of seeds) {
       expect(typeof seed.roleId).toBe("string");
       expect(seed.roleId.length).toBeGreaterThan(0);
       expect(typeof seed.permission).toBe("string");
-      expect(seed.permission).toMatch(/^\w+\.\w+$/);
+      expect(seed.permission).toMatch(/^\w+:\w+$/);
     }
   });
 });

@@ -23,10 +23,12 @@ import { createReportsHandlers } from "./handlers/reports";
 import { createInvoiceHandlers } from "./handlers/invoice";
 import { createPaymentHandlers } from "./handlers/payment";
 import { createUpdateHandlers } from "./handlers/update";
+import { createRbacHandlers } from "./handlers/rbac";
 
 import type { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import type { UpdateHistoryService } from "../modules/update/update-history.service";
 import type { UpdateService } from "../modules/update/update.service";
+import type { RoleModule } from "../modules/rbac/role.module";
 
 import type { BetterSqliteDatabase } from "../types/sqlite";
 
@@ -43,6 +45,7 @@ type RouterDependencies = {
   recoveryKeyService: RecoveryKeyService;
   updateService: UpdateService;
   updateHistoryService: UpdateHistoryService;
+  roleModule: RoleModule;
   rawDatabase: BetterSqliteDatabase;
 };
 
@@ -70,7 +73,7 @@ export function createRouter(dependencies: RouterDependencies) {
 
   const allHandlers = Object.assign(
     baseHandlers,
-    createSystemHandlers(os, m, dependencies.companyService, dependencies.recoveryKeyService, dependencies.rawDatabase),
+    createSystemHandlers(os, m, dependencies.companyService, dependencies.recoveryKeyService, dependencies.roleModule, dependencies.rawDatabase),
     createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
     createOperationsHandlers(os, m, dependencies.operationsService),
     createFinanceHandlers(os, m, dependencies.financeService),
@@ -79,6 +82,7 @@ export function createRouter(dependencies: RouterDependencies) {
     createInvoiceHandlers(os, m, dependencies.invoiceModule),
     createPaymentHandlers(os, m, dependencies.paymentModule),
     createUpdateHandlers(os, m, dependencies.updateService, dependencies.updateHistoryService),
+    createRbacHandlers(os, m, dependencies.roleModule),
   );
 
   return os.router(allHandlers as any);

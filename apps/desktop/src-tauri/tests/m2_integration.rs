@@ -4,9 +4,8 @@
 
 #[cfg(test)]
 mod update_integration_tests {
-    use app_lib::update::{self, UpdateStrategy, UpdateProvider, MigrationRunner};
+    use app_lib::update::{self, UpdateStrategy, UpdateProvider};
     use ed25519_dalek::{Signer, SigningKey};
-    use rand_core::CryptoRngCore;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
