@@ -7,11 +7,12 @@
  * - File logging for later inspection
  * - Steering (send messages to running agents)
  * - Event callback for custom TUI rendering
+ * - Parallel named agents with callbacks
  */
 
 import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager, ModelRuntime } from "@earendil-works/pi-coding-agent"
 import { resolve } from "node:path"
-import { mkdirSync, writeFileSync, appendFileSync, existsSync } from "node:fs"
+import { mkdirSync, writeFileSync, appendFileSync } from "node:fs"
 import * as p from "@clack/prompts"
 
 const ROOT = resolve(import.meta.dir, "../../..")
@@ -52,6 +53,20 @@ function writeSummary(dir: string, agentName: string, summary: string): void {
   writeFileSync(resolve(dir, `${agentName}-summary.md`), summary)
 }
 
+// ─── Shared agent options type ───────────────────────────────────
+
+export interface AgentCallbacks {
+  onDelta?: (text: string) => void
+  onThinking?: (text: string) => void
+  onToolExec?: (name: string, status: "start" | "end" | "update", detail?: string) => void
+  onStatus?: (status: string) => void
+}
+
+export interface SessionCallbacks {
+  interactive?: boolean
+  onSessionReady?: (session: any) => void
+}
+
 // ─── Agent session (quiet + file logging) ────────────────────────
 
 export interface AgentResult {
@@ -61,6 +76,15 @@ export interface AgentResult {
   session: any
   /** Disposes the session */
   dispose: () => void
+}
+
+export interface NamedAgentOptions extends AgentCallbacks, SessionCallbacks {
+  name: string
+  issueId: string
+  stepName: string
+  skillNames?: string[]
+  modelStr?: string
+  quiet?: boolean
 }
 
 /**
@@ -74,35 +98,10 @@ export interface AgentResult {
  *
  * @param task - The prompt/instructions for the agent
  * @param options - Configuration
- * @param options.name - Agent name (for labeling logs and spinner)
- * @param options.issueId - Issue number (for log directory)
- * @param options.stepName - Step name (for log directory)
- * @param options.skillNames - Skills to load
- * @param options.modelStr - Model to use (provider/model-id)
- * @param options.quiet - Suppress stdout streaming (default: true)
- * @param options.interactive - Enable steering (default: false)
- * @param options.onSessionReady - Called with session for steering setup
- * @param options.onDelta - Callback for each text delta
- * @param options.onThinking - Callback for thinking deltas
- * @param options.onToolExec - Callback for tool execution events
- * @param options.onStatus - Callback for status changes
  */
 export async function namedAgent(
   task: string,
-  options: {
-    name: string
-    issueId: string
-    stepName: string
-    skillNames?: string[]
-    modelStr?: string
-    quiet?: boolean
-    interactive?: boolean
-    onSessionReady?: (session: any) => void
-    onDelta?: (text: string) => void
-    onThinking?: (text: string) => void
-    onToolExec?: (name: string, status: "start" | "end" | "update", detail?: string) => void
-    onStatus?: (status: string) => void
-  },
+  options: NamedAgentOptions,
 ): Promise<AgentResult> {
   const {
     name,
@@ -162,7 +161,6 @@ export async function namedAgent(
         onDelta?.(msg.delta)
       }
       if (msg.type === "thinking_delta") {
-        // Show thinking when verbose, dimmed
         if (!quiet) {
           process.stdout.write(`\x1b[2m${msg.delta}\x1b[22m`)
         }
@@ -217,33 +215,48 @@ export async function namedAgent(
   }
 }
 
+// ─── Parallel named agents ───────────────────────────────────────
+
+export interface ParallelTask {
+  task: string
+  name: string
+  skillNames?: string[]
+  modelStr?: string
+}
+
+export interface ParallelOptions extends AgentCallbacks, SessionCallbacks {
+  issueId: string
+  stepName: string
+  quiet?: boolean
+}
+
 /**
  * Run multiple named agents in parallel.
- * Events are logged to separate files with agent prefixes.
+ * Each agent shares the same set of callbacks.
+ * Events are logged to separate files by agent name.
  *
  * @returns Map of agent name → AgentResult
  */
 export async function parallelNamedAgents(
-  tasks: Array<{
-    task: string
-    name: string
-    skillNames?: string[]
-    modelStr?: string
-  }>,
-  options: {
-    issueId: string
-    stepName: string
-    quiet?: boolean
-  },
+  tasks: ParallelTask[],
+  options: ParallelOptions,
 ): Promise<Map<string, AgentResult>> {
   const results = new Map<string, AgentResult>()
 
   const promises = tasks.map(async (t) => {
     const result = await namedAgent(t.task, {
-      ...options,
       name: t.name,
+      issueId: options.issueId,
+      stepName: options.stepName,
       skillNames: t.skillNames,
       modelStr: t.modelStr,
+      quiet: options.quiet,
+      interactive: options.interactive,
+      onSessionReady: options.onSessionReady,
+      onDelta: options.onDelta,
+      onThinking: options.onThinking,
+      onToolExec: options.onToolExec,
+      onStatus: options.onStatus,
     })
     results.set(t.name, result)
   })
@@ -251,6 +264,8 @@ export async function parallelNamedAgents(
   await Promise.all(promises)
   return results
 }
+
+// ─── Quick query ─────────────────────────────────────────────────
 
 /**
  * Simple agent session (no steering, no named logs).
