@@ -335,6 +335,7 @@ export function AdvancedSearchBar({
     <div
       ref={saveDialogRef}
       role="dialog"
+      aria-modal="true"
       aria-label={t("search.saveCurrent")}
       className="flex gap-2 rounded-lg border border-border/60 bg-surface p-3"
     >

@@ -96,6 +96,7 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
                 setFilters(filtersObj)
               }}
               storageKey="invoices-search-filters"
+              initialFilters={{ status: "ALL" }}
               quickFilters={quickFilters}
             />
           </div>
