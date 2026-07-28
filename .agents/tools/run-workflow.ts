@@ -200,7 +200,7 @@ async function runStep(state: WorkflowState, n: number, label: string, fn: () =>
 
 // ─── Guard helpers ───────────────────────────────────────────────
 
-function runGuardCheck(description: string, cmd: string, args: string[]): void {
+function runGuardCheck(description: string, args: string[]): void {
   const r = pnpm(args, { quiet: true })
   if (r.exitCode !== 0) {
     throw new Error(`${description} failed:\n${r.stderr.slice(0, 500)}`)
