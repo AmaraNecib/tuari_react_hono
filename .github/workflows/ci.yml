@@ -5,6 +5,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Auto-cancel older CI runs on the same branch — only the latest commit runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
