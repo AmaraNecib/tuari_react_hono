@@ -16,21 +16,32 @@ gh repo view --json nameWithOwner --jq .nameWithOwner
 
 ## Phase 1 — Pre-commit
 
-Run before every commit.
+Run before every commit. Uses the Husky pre-commit hook.
 
 ```
-[ ] bun run typecheck — passes?
-[ ] bun run test — all tests pass?
+[ ] pnpm --filter @tuari/contracts build — compiles?
+[ ] pnpm typecheck — passes?
+[ ] pnpm lint — 0 errors?
+[ ] pnpm test:api — all tests pass?
+[ ] pnpm test:web — all tests pass?
+```
+
+If the change touches Rust Core (`apps/desktop/src-tauri/src/`):
+```
+[ ] cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml — passes?
+[ ] cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings — clean?
 ```
 
 ## Phase 2 — Pre-push
 
-Run before pushing and opening a PR.
+Run before pushing and opening a PR. Uses the Husky pre-push hook.
 
 ```
-[ ] bun run typecheck — passes?
-[ ] bun run test — all tests pass?
-[ ] bun run build — compiles?
+[ ] pnpm --filter @tuari/contracts build — compiles?
+[ ] pnpm typecheck — passes?
+[ ] pnpm lint — 0 errors?
+[ ] pnpm test:api — all tests pass?
+[ ] pnpm test:web — all tests pass?
 [ ] git status — working tree clean?
 ```
 
@@ -41,10 +52,9 @@ For each evidence file `.scratch/reviews/<issue-id>/<sha>-*.md`:
 - Compare to current HEAD (`git rev-parse HEAD`)
 - If they match → evidence is valid for the current code
 - If they differ → inspect `git diff --name-only <evidence-sha> HEAD`:
-  - If any reviewable file changed (any file in packages/, .github/workflows/,
-    .agents/skills/, docs/engineering-workflow.md, etc.) → evidence is STALE,
-    must regenerate
-  - If only trivially non-reviewable files changed (.gitignore, .gitattributes,
+  - If any reviewable file changed (apps/, packages/, .github/workflows/,
+    .agents/skills/, docs/) → evidence is **STALE**, must regenerate
+  - If only non-reviewable files changed (.gitignore, .gitattributes,
     .scratch/, LICENSE) → evidence remains valid
 
 **All Markdown files under `docs/`, `.agents/`, and `.github/` are reviewable.**
@@ -54,14 +64,15 @@ get the docs-only exemption.
 ### Tier-specific requirements
 
 **Lightweight** (genuinely non-reviewable files only):
-→ Skip debate, test-audit, and code-review checks.
+→ Skip test-audit, debate, and code-review checks.
 
 **Standard** (code, CI, workflow, config):
 ```
+[ ] Test-audit evidence exists and is not stale
 [ ] Code-review evidence exists and is not stale
 ```
 
-**High-assurance** (authz core, security):
+**High-assurance** (authz, RBAC, licensing, crypto, debt financials):
 ```
 [ ] Debate evidence exists and is not stale
 [ ] Test-audit evidence exists and is not stale
@@ -73,15 +84,10 @@ get the docs-only exemption.
 Run before reporting "ready for merge".
 
 ```
-[ ] CI — all checks green on GitHub?
-[ ] Inline comments — fetched with --paginate, none truncated:
-    gh api --paginate repos/<owner>/<repo>/pulls/<num>/comments
-    — are there unresolved actionable findings?
-    — was the review rate-limited or unavailable?
-    If rate-limited/unavailable: report clearly, require human decision.
-    SUCCESS status alone is insufficient.
+[ ] CI — all checks green on GitHub? (lint, typecheck, test-api, test-web, test-rust, build)
+[ ] Greptile — no actionable findings? (check PR comments, not just score)
 [ ] PR description — accurate and complete?
-[ ] Any deferred items — documented in the PR with issues?
+[ ] Any deferred items — documented with follow-up issues?
 [ ] Wisdom — any lessons to capture?
 ```
 
@@ -93,5 +99,5 @@ Run before reporting "ready for merge".
    note the waiver and continue.
 4. If the user says "fix it", fix it and re-run the check.
 
-**Mandatory gates (never skip):** typecheck, test, build, CI green,
-CodeRabbit inline-comment inspection. These must pass.
+**Mandatory gates (never skip):** typecheck, lint, test, CI green,
+Greptile inline-comment inspection. These must pass.

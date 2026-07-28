@@ -2,6 +2,8 @@
 
 This document defines the permanent engineering workflow for the Tuari project. Every feature, from inception to merge, follows this lifecycle.
 
+The `feature-implement` skill orchestrates this entire lifecycle automatically. Use it as the entry point for all feature work.
+
 ---
 
 ## Feature Lifecycle
@@ -13,27 +15,31 @@ Architecture / ADR (if required)
     ↓
 Design (.scratch/implementation/)
     ↓
-Implementation (implement skill: TDD + code-review)
+Implementation (implement skill: TDD + Playwright E2E)
+    ↓
+Guard — Pre-commit (Phase 1)
     ↓
 Quality Check (skill-guided: codebase-design, diagnosing-bugs, domain-modeling, ...)
     ↓
-Local Verification
+Debate (High-assurance only)
+    ↓
+Test Audit (Standard + High-assurance)
     ↓
 Pre-Push Self-Review (code-review skill)
     ↓
+Guard — Pre-push (Phase 2)
+    ↓
 Push Feature Branch
     ↓
-Open Pull Request (draft until CI passes)
+Open Pull Request
     ↓
 GitHub Actions Verification
     ↓
-Fix CI (if necessary)
-    ↓
-Greptile Review (auto on PR create, manual @greptile-apps review on later commits)
+Greptile Review
     ↓
 Address Review Feedback
     ↓
-Final CI Verification (if new commits were pushed)
+Guard — Pre-report (Phase 3) + Capture Wisdom
     ↓
 Merge into develop
     ↓
@@ -74,19 +80,35 @@ Before writing production code, create a design document:
 The design document must specify:
 - Public API (structs, enums, traits, functions)
 - Internal dependencies
-- Planned tests
+- Planned tests (unit + Playwright E2E)
 - Implementation risks
 - Any deviations from the architecture
 
-### 4. Implementation (implement skill)
+### 4. Implementation (TDD + Playwright E2E)
 
 Load the `implement` skill. It reads the issue, implements using TDD at pre-agreed seams, runs typechecking and tests regularly, then runs `code-review` and commits to the current branch.
 
+**Every feature MUST include:**
+- **Unit tests** for business logic (via `pnpm test:api` / vitest)
+- **Playwright E2E tests** for the user-facing flow, added to `tests/e2e/`
+- Run `pnpm typecheck && pnpm test:web && pnpm test:api` during implementation
+
 See `.agents/skills/implement/SKILL.md` for details.
 
-### 4.5 — Quality Check (Skill-Guided Review)
+### 4.5 — Guard Pre-commit (Phase 1)
 
-After implementation but before running tests, load relevant skills to catch issues early.
+Before any review, run the `guard` skill Phase 1 (pre-commit) to confirm everything compiles:
+- `pnpm --filter @tuari/contracts build`
+- `pnpm typecheck`
+- `pnpm lint`
+- `pnpm test:api`
+- `pnpm test:web`
+
+Do NOT proceed to reviews until this passes.
+
+### 5 — Quality Check (Skill-Guided Review)
+
+After implementation but before deeper reviews, load relevant skills to catch issues early.
 
 The agent selects skills based on what the change touches:
 
@@ -96,18 +118,55 @@ The agent selects skills based on what the change touches:
 | Complex logic, state, or edge cases | `diagnosing-bugs` — catch logic errors early |
 | Domain entities, terms, or data models | `domain-modeling` — check ubiquitous language alignment |
 | Any production code | `code-review` — review against coding standards |
-| Large feature from a spec | `implement` — already loaded in step 4 |
 | Unclear requirements or unknowns | `research` — investigate against primary sources |
-| Planning a large chunk of work | `wayfinder` — break into investigation tickets |
 
 These skills supplement the `code-review` already run by `implement`. The agent does **not** load all blindly — it picks the ones relevant to the issue.
 
 **Why this exists:**
 - Catches design and logic problems before tests are written
 - Catches things `code-review` might miss (domain alignment, architecture depth, bug patterns)
-- Routes each skill to a model appropriate for its task, depending on available models and their capabilities
 
-### 5. Local Verification
+### 5.5 — Review Tiers
+
+Not every change needs the same review depth. Select the tier after implementation
+based on what the change touches:
+
+| Tier | Applies to | Required steps |
+|------|-----------|----------------|
+| **Lightweight** | Truly non-reviewable files only (.gitignore, .gitattributes, LICENSE, .scratch/) | Guard Phase 1 → Quality check → Push |
+| **Standard** | Code changes, CI, workflow, config, UI, API endpoints, skills | Guard Phase 1 → Quality check → Test audit → Code-review → Guard Phase 2 → Push |
+| **High-assurance** | Authz/permissions (RBAC), licensing/crypto, debt financial calculations, security | Guard Phase 1 → Quality check → Debate → Test audit → Code-review → Guard Phase 2 → Push |
+
+Record the selected tier at the start of implementation and pass it through all review steps.
+
+### 5.75 — Debate (High-assurance only)
+
+Load the `debate` skill. It runs **two parallel sub-agents**:
+- **Critic** — finds every flaw in the implementation
+- **Defender** — argues for the design decisions
+
+The parent agent synthesizes both and decides what to fix, defer, or dismiss.
+
+Evidence is saved to `.scratch/reviews/<issue-id>/<head-sha>-debate.md`.
+
+### 5.9 — Test Audit (Standard + High-assurance)
+
+Load the `test-audit` skill. It runs **three parallel sub-agents**:
+- **Edge case hunter** — finds untested edge cases
+- **Coverage analyst** — checks test coverage and depth
+- **Quality reviewer** — evaluates assertion quality and test design
+
+This catches shallow test coverage that "all tests pass" misses.
+
+Evidence is saved to `.scratch/reviews/<issue-id>/<head-sha>-test-audit.md`.
+
+**Checks performed:**
+- Edge case coverage (empty states, error states, boundary values)
+- Test quality (meaningful assertions, not just "doesn't crash")
+- E2E coverage (critical user path is tested via Playwright)
+- No shallow/missing tests
+
+### 6 — Pre-Push Self-Review (code-review skill)
 
 Before pushing any commit intended for review, run the complete local verification pipeline:
 
@@ -137,10 +196,8 @@ GitHub Actions **must not** be the first place failures are discovered. The obje
 
 > GitHub Actions should verify the work, not discover predictable failures.
 
-### 5.5 Pre-Push Self-Review (code-review skill)
-
-After local verification passes but **before pushing**, the agent runs the
-`code-review` skill against the current branch to catch issues locally.
+After the review tiers above, the agent runs the `code-review` skill
+against the current branch to catch issues locally **before pushing**.
 
 **How it works:**
 
@@ -160,21 +217,30 @@ After local verification passes but **before pushing**, the agent runs the
 
 **Pass/Fail:**
 
-- **No actionable findings** from either axis → ✅ safe to push. Proceed to step 6.
-- **Actionable findings** → 🔧 fix them locally, re-run local verification
-  (step 5), then re-run the self-review.
+- **No actionable findings** from either axis → ✅ safe to push.
+- **Actionable findings** → 🔧 fix them locally, re-run local verification,
+  then re-run the self-review.
 - **Only advisory warnings** (non-blocking) → agent uses judgment: push
   with `status:needs-investigation` label or fix before pushing.
 
-**Why this exists:**
+Evidence is saved to `.scratch/reviews/<issue-id>/<head-sha>-code-review.md`.
 
-- Catches issues before they reach Greptile or CI, reducing feedback loops.
-- Runs on Windows natively (no WSL required for the review itself).
-- Uses model diversity — the reviewer can use a different model than the parent.
-- The `code-review` skill's Standards + Spec axes catch problems Greptile might
-  miss (spec drift, smell violations, missing tests).
+### 6.5 — Guard Pre-push (Phase 2)
 
-### 6. Push Feature Branch
+Run `guard` Phase 2 before pushing. Verifies:
+- All checks pass (typecheck, lint, test:api, test:web)
+- Review evidence files exist and are not stale (SHA matches current HEAD)
+- Working tree is clean
+
+**Evidence staleness check:**
+- Extract SHA from evidence filenames in `.scratch/reviews/<issue-id>/`
+- Compare to `git rev-parse HEAD`
+- If different, inspect `git diff --name-only <evidence-sha> HEAD`:
+  - If any reviewable file changed (packages/, .github/workflows/,
+    .agents/skills/, docs/) → evidence is **STALE**, must regenerate
+  - If only non-reviewable files (.gitignore, LICENSE, .scratch/) → valid
+
+### 7 — Push Feature Branch
 
 ```bash
 git checkout develop
@@ -237,7 +303,23 @@ Only after CI is fully green:
 
 After all review feedback is addressed and CI is green again, the PR is ready to merge.
 
-### 12. Merge
+### 12. Guard Pre-report (Phase 3) + Capture Wisdom
+
+Run `guard` Phase 3 before merging. Verifies:
+- CI — all checks green on GitHub
+- PR description — accurate and complete
+- Any deferred items — documented with follow-up issues
+
+Then run `capture-wisdom` to save any lessons learned:
+- A Greptile finding that surprised you
+- A bug that took more than 15 minutes to diagnose
+- A debate/test-audit finding that revealed a real issue
+- The same issue across multiple PRs
+- End-of-session notes
+
+Wisdom is stored in `.agents/wisdom/*.md`.
+
+### 13. Merge
 
 Merge into `develop` using squash merge. The commit message should reference the issue:
 
@@ -245,7 +327,7 @@ Merge into `develop` using squash merge. The commit message should reference the
 m1.1: implement Rust Core scaffolding (closes #71)
 ```
 
-### 13. Close Issue
+### 14. Close Issue
 
 After the merge is complete, close the GitHub Issue.
 

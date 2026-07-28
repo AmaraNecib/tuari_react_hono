@@ -61,13 +61,18 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings
 ```
 
-### 4. Guard pre-review (pre-commit)
+### 4. Guard pre-review (Phase 1)
 
 Run `guard` Phase 1 (pre-commit) to confirm everything compiles:
+- `pnpm --filter @tuari/contracts build`
 - `pnpm typecheck`
 - `pnpm lint`
-- `pnpm test:web`
 - `pnpm test:api`
+- `pnpm test:web`
+
+If the feature touches Rust Core, also run:
+- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`
+- `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings`
 
 Do NOT proceed to reviews until this passes.
 
@@ -87,7 +92,7 @@ Load relevant skills from the workflow's quality check table:
 Load `debate` with resolved base SHA. Saves evidence to
 `.scratch/reviews/<issue-id>/<head-sha>-debate.md`.
 
-### 7. Test audit — High-assurance and Standard (for any feature with business logic)
+### 7. Test audit — Standard and High-assurance
 
 Load `test-audit` with resolved base SHA. Saves evidence to
 `.scratch/reviews/<issue-id>/<head-sha>-test-audit.md`.
@@ -103,18 +108,19 @@ Load `test-audit` with resolved base SHA. Saves evidence to
 Run `code-review` skill against `git diff <base-sha>...HEAD`. Save output to
 `.scratch/reviews/<issue-id>/<head-sha>-code-review.md`.
 
-### 9. Guard pre-push
+### 9. Guard pre-push (Phase 2)
 
-Run `guard` Phase 2 (pre-push). Must pass before pushing:
+Run `guard` Phase 2. Verifies:
+- All checks pass (typecheck, lint, test:api, test:web)
+- Review evidence files exist and are not stale
+- Working tree is clean
 
-```bash
-pnpm typecheck
-pnpm lint
-pnpm test:api
-pnpm test:web
-```
-
-Evidence must be for the current HEAD — otherwise stale.
+**Evidence staleness check:**
+- Extract SHA from evidence filenames in `.scratch/reviews/<issue-id>/`
+- Compare to `git rev-parse HEAD`
+- If different, inspect `git diff --name-only <evidence-sha> HEAD`:
+  - If any reviewable file changed → evidence is **STALE**, must regenerate
+  - If only non-reviewable files (.gitignore, LICENSE, .scratch/) → valid
 
 ### 10. Push + PR
 
@@ -140,13 +146,17 @@ Once CI is green:
 - Address any actionable findings (fix locally → push → wait for CI → re-trigger)
 - Repeat until Greptile passes with no actionable findings
 
-### 12. Guard pre-report
+### 12. Guard pre-report (Phase 3) + Capture wisdom
 
-Run `guard` Phase 3 (pre-report). Must pass before reporting done.
+Run `guard` Phase 3. Verifies:
+- CI — all checks green on GitHub
+- PR description — accurate and complete
+- Any deferred items — documented with follow-up issues
+
+Then run `capture-wisdom` to save any lessons learned.
 
 ### 13. Report
 
-Run `capture-wisdom` to save lessons.
 Report to the user: PR link, CI status, Greptile verdict, any deferred items.
 
 ## Merge rules
