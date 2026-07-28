@@ -1,60 +1,6 @@
-/**
- * Company service — cross-domain coordinator.
- *
- * Historically this class owned every business operation in the
- * workspace (employees, roles, projects, warehouses, debts, salary
- * payments, external counterparties, audit). It grew to ~2,100 LOC
- * and became the god object that Plan 005 Phase 3 (issue #177) set
- * out to split.
- *
- * After the split:
- * - `WorkforceService` owns employees, roles, salary payments, and
- *   the workplace / managed-assignment lifecycle.
- * - `OperationsService` owns projects, warehouses, and their
- *   assignments.
- * - `FinanceService` owns debt accounts, debt entries, and external
- *   counterparties.
- * - `AuditService` owns the workspace snapshot and system log.
- *
- * This class is now a thin facade that keeps the public surface
- * stable (so existing RPC handlers and tests don't change) while
- * delegating every per-domain operation to the right service. The
- * only methods that stay implemented in this file are the few
- * genuinely cross-domain orchestrators (`getEmployeeDebtAccount`,
- * `createEmployeeDebtEntry`) and the system log / workspace snapshot
- * delegations.
- */
+/** Compatibility facade for legacy RPC/test callers; domain services own behavior. */
 
-import {
-  type DebtAccountCreateInput,
-  type DebtConsolidationInput,
-  type DebtEntry,
-  type DebtEntryCreateInput,
-  type DebtEntryRecordPaymentInput,
-  type DebtEntryVoidInput,
-  type DebtPartyDetailInput,
-  type DebtSettlementInput,
-  type EmployeeAssignWorkplaceInput,
-  type EmployeeBatchCreateInput,
-  type EmployeeCreateInput,
-  type EmployeeSalaryPaymentCreateInput,
-  type EmployeeSyncManagedProjectsInput,
-  type EmployeeSyncManagedWarehousesInput,
-  type EmployeeUpdateInput,
-  type ExternalCounterpartyCreateInput,
-  type ManagerAssignmentCreateInput,
-  type ManagerAssignmentEndInput,
-  type ProjectAssignmentCreateInput,
-  type ProjectAssignmentEndInput,
-  type ProjectCreateInput,
-  type ProjectUpdateInput,
-  type RoleCreateInput,
-  type RoleUpdateInput,
-  type WarehouseAssignmentCreateInput,
-  type WarehouseAssignmentEndInput,
-  type WarehouseCreateInput,
-  type WarehouseUpdateInput,
-} from "@tuari/contracts";
+import type { DebtAccountCreateInput, DebtConsolidationInput, DebtEntryCreateInput, DebtEntryRecordPaymentInput, DebtEntryVoidInput, DebtPartyDetailInput, DebtSettlementInput, EmployeeAssignWorkplaceInput, EmployeeBatchCreateInput, EmployeeCreateInput, EmployeeSalaryPaymentCreateInput, EmployeeSyncManagedProjectsInput, EmployeeSyncManagedWarehousesInput, EmployeeUpdateInput, ExternalCounterpartyCreateInput, ManagerAssignmentCreateInput, ManagerAssignmentEndInput, ProjectAssignmentCreateInput, ProjectAssignmentEndInput, ProjectCreateInput, ProjectUpdateInput, RoleCreateInput, RoleUpdateInput, WarehouseAssignmentCreateInput, WarehouseAssignmentEndInput, WarehouseCreateInput, WarehouseUpdateInput } from "@tuari/contracts";
 
 import type { CompanyRepository } from "./company.repository";
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
@@ -62,25 +8,8 @@ import { WorkforceService } from "./workforce.service";
 import { OperationsService } from "./operations.service";
 import { FinanceService } from "./finance.service";
 import { AuditService } from "./audit.service";
-import { requireEmployee } from "./company.entity-resolvers";
 import { type WorkspaceAdminAuthorizer } from "./company.helpers";
-import {
-  type DebtAccountListFilters,
-  type DebtEntryListFilters,
-  type EmployeeListFilters,
-  type EmployeeSalaryPaymentListFilters,
-  type EmployeeStateHistoryListFilters,
-  type ExternalCounterpartyListFilters,
-  type ManagerAssignmentListFilters,
-  type MutationAuditContext,
-  type ProjectAssignmentListFilters,
-  type ProjectListFilters,
-  type ProjectManagerOwnershipHistoryListFilters,
-  type SystemLogListFilters,
-  type WarehouseAssignmentListFilters,
-  type WarehouseListFilters,
-  type WarehouseManagerOwnershipHistoryListFilters,
-} from "./company.types";
+import type { DebtAccountListFilters, DebtEntryListFilters, EmployeeListFilters, EmployeeSalaryPaymentListFilters, EmployeeStateHistoryListFilters, ExternalCounterpartyListFilters, ManagerAssignmentListFilters, MutationAuditContext, ProjectAssignmentListFilters, ProjectListFilters, ProjectManagerOwnershipHistoryListFilters, SystemLogListFilters, WarehouseAssignmentListFilters, WarehouseListFilters, WarehouseManagerOwnershipHistoryListFilters } from "./company.types";
 
 export class CompanyService {
   private _mutation?: WorkspaceMutationContext;
@@ -99,8 +28,6 @@ export class CompanyService {
       audit?: AuditService;
     },
   ) {
-    // Lazy — only created when the fallback is reached (unit tests).
-    // In production all services are injected so this is never called.
     this.workforce = injected?.workforce ?? new WorkforceService(repository, this.mutation);
     this.operations = injected?.operations ?? new OperationsService(repository, this.mutation);
     this.finance = injected?.finance ?? new FinanceService(repository, this.mutation);
@@ -114,10 +41,6 @@ export class CompanyService {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Cross-domain workspace reads
-  // ---------------------------------------------------------------------------
-
   getWorkspaceSnapshot() {
     return this.audit.getWorkspaceSnapshot();
   }
@@ -126,25 +49,8 @@ export class CompanyService {
     return this.audit.listSystemLog(filters);
   }
 
-  // ---------------------------------------------------------------------------
-  // Cross-domain orchestrators
-  //
-  // The only genuinely cross-domain methods (glue workforce +
-  // finance) live on `FinanceService` and are called by the finance
-  // RPC handler directly. `CompanyService` does not expose them
-  // because no caller reaches `CompanyService` for those operations.
-  // ---------------------------------------------------------------------------
-
-  // ---------------------------------------------------------------------------
-  // Delegations — workforce
-  // ---------------------------------------------------------------------------
-
-  listRoles() {
-    return this.workforce.listRoles();
-  }
-  getRole(id: string) {
-    return this.workforce.getRole(id);
-  }
+  listRoles() { return this.workforce.listRoles(); }
+  getRole(id: string) { return this.workforce.getRole(id); }
   createRole(input: RoleCreateInput): never {
     return this.workforce.createRole(input);
   }
@@ -154,24 +60,12 @@ export class CompanyService {
   deleteRole(id: string): never {
     return this.workforce.deleteRole(id);
   }
-  listEmployees(filters?: EmployeeListFilters) {
-    return this.workforce.listEmployees(filters);
-  }
-  listEmployeeStateHistory(filters?: EmployeeStateHistoryListFilters) {
-    return this.workforce.listEmployeeStateHistory(filters);
-  }
-  listProjectManagerOwnershipHistory(filters?: ProjectManagerOwnershipHistoryListFilters) {
-    return this.workforce.listProjectManagerOwnershipHistory(filters);
-  }
-  listWarehouseManagerOwnershipHistory(filters?: WarehouseManagerOwnershipHistoryListFilters) {
-    return this.workforce.listWarehouseManagerOwnershipHistory(filters);
-  }
-  listSalaryPayments(filters?: EmployeeSalaryPaymentListFilters) {
-    return this.workforce.listSalaryPayments(filters);
-  }
-  getEmployee(id: string) {
-    return this.workforce.getEmployee(id);
-  }
+  listEmployees(filters?: EmployeeListFilters) { return this.workforce.listEmployees(filters); }
+  listEmployeeStateHistory(filters?: EmployeeStateHistoryListFilters) { return this.workforce.listEmployeeStateHistory(filters); }
+  listProjectManagerOwnershipHistory(filters?: ProjectManagerOwnershipHistoryListFilters) { return this.workforce.listProjectManagerOwnershipHistory(filters); }
+  listWarehouseManagerOwnershipHistory(filters?: WarehouseManagerOwnershipHistoryListFilters) { return this.workforce.listWarehouseManagerOwnershipHistory(filters); }
+  listSalaryPayments(filters?: EmployeeSalaryPaymentListFilters) { return this.workforce.listSalaryPayments(filters); }
+  getEmployee(id: string) { return this.workforce.getEmployee(id); }
   createEmployee(input: EmployeeCreateInput, auditContext?: MutationAuditContext) {
     return this.workforce.createEmployee(input, auditContext);
   }
@@ -187,12 +81,8 @@ export class CompanyService {
   createSalaryPayment(input: EmployeeSalaryPaymentCreateInput, auditContext?: MutationAuditContext) {
     return this.workforce.createSalaryPayment(input, auditContext);
   }
-  listManagerAssignments(filters?: ManagerAssignmentListFilters) {
-    return this.workforce.listManagerAssignments(filters);
-  }
-  getManagerAssignment(id: string) {
-    return this.workforce.getManagerAssignment(id);
-  }
+  listManagerAssignments(filters?: ManagerAssignmentListFilters) { return this.workforce.listManagerAssignments(filters); }
+  getManagerAssignment(id: string) { return this.workforce.getManagerAssignment(id); }
   createManagerAssignment(input: ManagerAssignmentCreateInput, auditContext?: MutationAuditContext) {
     return this.workforce.createManagerAssignment(input, auditContext);
   }
@@ -209,16 +99,8 @@ export class CompanyService {
     return this.workforce.syncManagedWarehouses(input, auditContext);
   }
 
-  // ---------------------------------------------------------------------------
-  // Delegations — operations
-  // ---------------------------------------------------------------------------
-
-  listProjects(filters?: ProjectListFilters) {
-    return this.operations.listProjects(filters);
-  }
-  getProject(id: string) {
-    return this.operations.getProject(id);
-  }
+  listProjects(filters?: ProjectListFilters) { return this.operations.listProjects(filters); }
+  getProject(id: string) { return this.operations.getProject(id); }
   createProject(input: ProjectCreateInput, auditContext?: MutationAuditContext) {
     return this.operations.createProject(input, auditContext);
   }
@@ -261,10 +143,6 @@ export class CompanyService {
   endWarehouseAssignment(input: WarehouseAssignmentEndInput, auditContext?: MutationAuditContext) {
     return this.operations.endWarehouseAssignment(input, auditContext);
   }
-
-  // ---------------------------------------------------------------------------
-  // Delegations — finance
-  // ---------------------------------------------------------------------------
 
   listExternalCounterparties(filters?: ExternalCounterpartyListFilters) {
     return this.finance.listExternalCounterparties(filters);
