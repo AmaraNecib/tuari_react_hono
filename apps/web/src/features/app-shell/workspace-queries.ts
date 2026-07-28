@@ -53,6 +53,15 @@ export const workspaceDomainQueryKeys = {
   warehouseManagerOwnership: (userId: string | null = "anonymous") => ["phase1", "workspace-domain", "warehouse-manager-ownership", userId] as const,
 } as const
 
+export function isRolesEndpointUnavailable(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false
+  }
+
+  const code = (error as { code?: unknown }).code
+  return code === "NOT_FOUND" || code === "METHOD_NOT_SUPPORTED"
+}
+
 export function useRolesQuery({ enabled = true }: { enabled?: boolean } = {}) {
   const sessionQuery = useSessionQuery()
   const userId = sessionQuery.data?.user?.id ?? null
@@ -62,13 +71,17 @@ export function useRolesQuery({ enabled = true }: { enabled?: boolean } = {}) {
     // Use the rbacRolesList endpoint (Issue #10) which returns the full
     // role + permissions shape the management UI needs. Falls back to
     // the legacy `rolesList` (no permissions) if the new endpoint is
-    // unavailable on a stale client/server mismatch — the UI degrades
-    // gracefully to a permission-less view.
+    // unavailable on a stale client/server mismatch. Other errors must
+    // propagate so the UI does not silently render incomplete role data.
     queryFn: async (): Promise<{ items: RoleWithPermissions[] }> => {
       try {
         const response = await rpcClient.rbacRolesList();
         return { items: response.items as RoleWithPermissions[] };
-      } catch {
+      } catch (error) {
+        if (!isRolesEndpointUnavailable(error)) {
+          throw error
+        }
+
         const fallback = await rpcClient.rolesList();
         return {
           items: fallback.items.map((role) => ({
