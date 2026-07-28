@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react"
 
-import { showSuccessToast } from "@/lib/toast"
+import { showErrorToast, showSuccessToast } from "@/lib/toast"
 
 import type { HomeViewCopy } from "./home-view-copy"
 import type { useAppPreferences } from "@/features/preferences/preferences"
@@ -47,11 +47,18 @@ export function useHomeViewShellController({
   const [showRestartModal, setShowRestartModal] = useState(false)
   const { setPending: setRestartPending } = useRestartPending()
 
-  /** User clicked "Restart Now" — clear pending flag and restart via IPC. */
+  /** User clicked "Restart Now" — restart via IPC before clearing restart state. */
   const handleRestartNow = useCallback(async () => {
-    setRestartPending(false)
-    setShowRestartModal(false)
-    await restartApp()
+    try {
+      await restartApp()
+      setRestartPending(false)
+      setShowRestartModal(false)
+    } catch (error) {
+      // Keep the prompt and badge available so the user can retry after an IPC
+      // failure instead of losing the only recovery path.
+      setRestartPending(true)
+      showErrorToast(error instanceof Error ? error.message : String(error))
+    }
   }, [setRestartPending])
 
   /** User clicked "Later" or dismissed — persist the pending flag so the badge shows. */

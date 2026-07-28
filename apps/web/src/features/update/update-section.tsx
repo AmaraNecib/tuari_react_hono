@@ -232,7 +232,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
     } finally {
       setApplying(false)
     }
-  }, [status])
+  }, [onUpdateApplied, status])
 
   const handleRetry = useCallback(() => {
     setApplyResult(null)
