@@ -139,9 +139,8 @@ export class FinanceService {
     input: ExternalCounterpartyCreateInput,
     auditContext?: MutationAuditContext,
   ) {
+    this.mutation.createMutationAuditContext(auditContext);
     return this.mutation.withTransaction(() => {
-      this.mutation.createMutationAuditContext(auditContext);
-
       const counterparty = this.repository.createExternalCounterparty({
         fullName: input.fullName.trim(),
         phoneNumber: input.phoneNumber.trim(),
