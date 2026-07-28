@@ -3,6 +3,7 @@
  * Supports:
  * - Named agents with labeled output
  * - Quiet mode (spinner only, no streaming)
+ * - Verbose mode with thinking display
  * - File logging for later inspection
  * - Steering (send messages to running agents)
  * - Event callback for custom TUI rendering
@@ -12,7 +13,6 @@ import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager,
 import { resolve } from "node:path"
 import { mkdirSync, writeFileSync, appendFileSync, existsSync } from "node:fs"
 import * as p from "@clack/prompts"
-import { isCancel } from "@clack/prompts"
 
 const ROOT = resolve(import.meta.dir, "../../..")
 
@@ -66,12 +66,11 @@ export interface AgentResult {
 /**
  * Run a named agent session.
  *
- * Features:
  * - Quiet by default — no stdout streaming, just a spinner
+ * - Verbose mode (quiet=false) shows output + thinking in real time
  * - Logs full event stream to `.scratch/logs/<issue-id>/<step>/<name>.jsonl`
  * - Writes summary to `.scratch/logs/<issue-id>/<step>/<name>-summary.md`
- * - Returns the session so the caller can steer() during streaming
- * - Pass `onDelta` to receive text deltas for custom rendering
+ * - Interactive mode enables steering via onSessionReady callback
  *
  * @param task - The prompt/instructions for the agent
  * @param options - Configuration
@@ -81,9 +80,12 @@ export interface AgentResult {
  * @param options.skillNames - Skills to load
  * @param options.modelStr - Model to use (provider/model-id)
  * @param options.quiet - Suppress stdout streaming (default: true)
- * @param options.onDelta - Callback for each text delta (for custom TUI)
+ * @param options.interactive - Enable steering (default: false)
+ * @param options.onSessionReady - Called with session for steering setup
+ * @param options.onDelta - Callback for each text delta
  * @param options.onThinking - Callback for thinking deltas
  * @param options.onToolExec - Callback for tool execution events
+ * @param options.onStatus - Callback for status changes
  */
 export async function namedAgent(
   task: string,
@@ -94,6 +96,8 @@ export async function namedAgent(
     skillNames?: string[]
     modelStr?: string
     quiet?: boolean
+    interactive?: boolean
+    onSessionReady?: (session: any) => void
     onDelta?: (text: string) => void
     onThinking?: (text: string) => void
     onToolExec?: (name: string, status: "start" | "end" | "update", detail?: string) => void
@@ -107,6 +111,8 @@ export async function namedAgent(
     skillNames,
     modelStr,
     quiet = true,
+    interactive = false,
+    onSessionReady,
     onDelta,
     onThinking,
     onToolExec,
@@ -116,9 +122,9 @@ export async function namedAgent(
   const logDir = ensureLogDir(issueId, stepName)
   let responseText = ""
 
-  // Spinner if quiet
+  // Spinner if quiet (but not interactive — interactive uses its own UI)
   let spinner: ReturnType<typeof p.spinner> | null = null
-  if (quiet) {
+  if (quiet && !interactive) {
     spinner = p.spinner()
     spinner.start(name)
   }
@@ -156,6 +162,10 @@ export async function namedAgent(
         onDelta?.(msg.delta)
       }
       if (msg.type === "thinking_delta") {
+        // Show thinking when verbose, dimmed
+        if (!quiet) {
+          process.stdout.write(`\x1b[2m${msg.delta}\x1b[22m`)
+        }
         onThinking?.(msg.delta)
       }
     }
@@ -176,6 +186,12 @@ export async function namedAgent(
 
   try {
     onStatus?.("starting")
+
+    // Let caller attach steering before we block on prompt
+    if (interactive) {
+      onSessionReady?.(session)
+    }
+
     await session.prompt(task)
     onStatus?.("done")
 
@@ -203,7 +219,6 @@ export async function namedAgent(
 
 /**
  * Run multiple named agents in parallel.
- * Each agent runs in the same async context.
  * Events are logged to separate files with agent prefixes.
  *
  * @returns Map of agent name → AgentResult
@@ -223,7 +238,6 @@ export async function parallelNamedAgents(
 ): Promise<Map<string, AgentResult>> {
   const results = new Map<string, AgentResult>()
 
-  // Run all agents concurrently
   const promises = tasks.map(async (t) => {
     const result = await namedAgent(t.task, {
       ...options,

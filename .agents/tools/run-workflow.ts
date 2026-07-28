@@ -191,44 +191,36 @@ async function selectModel(prompt: string, defaultModel?: string): Promise<strin
 
 // ─── Steering helper ────────────────────────────────────────────
 
-/**
- * While an agent session is running, listen for steer messages from stdin.
- * Requires --interactive flag.
- *
- * User types:
- *   s: <message>  — steer the agent
- *   q             — quit this steer session
- */
 import { createInterface } from "node:readline"
 
-async function withSteering<T>(label: string, fn: (steer: (msg: string) => Promise<void>) => Promise<T>): Promise<T> {
-  if (!opts.interactive || !isTTY) return fn(async () => {})
+/**
+ * Listen for steer input from stdin during agent execution.
+ * User types:
+ *   s: <message>  — steer the agent
+ *
+ * Returns the steer reference and cleanup function.
+ */
+function setupSteering(label: string): {
+  steerRef: { current: ((msg: string) => Promise<void>) | null }
+  cleanup: () => void
+} {
+  const steerRef: { current: ((msg: string) => Promise<void>) | null } = { current: null }
 
-  // Set up readline for async input
-  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true })
-  let steerFn: ((msg: string) => Promise<void>) | null = null
+  if (!opts.interactive || !isTTY) return { steerRef, cleanup: () => {} }
 
-  const inputTask = (async () => {
-    for await (const line of rl) {
-      const trimmed = line.trim()
-      if (trimmed === "q") break
-      if (trimmed.startsWith("s:") || trimmed.startsWith("s ")) {
-        const msg = trimmed.replace(/^s[:\s]/, "").trim()
-        if (msg && steerFn) {
-          p.log.info(`[steer → ${label}] ${msg}`)
-          await steerFn(msg)
-        }
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  rl.on("line", (line: string) => {
+    const trimmed = line.trim()
+    if (trimmed.startsWith("s:") || trimmed.startsWith("s ")) {
+      const msg = trimmed.replace(/^s[:\s]/, "").trim()
+      if (msg && steerRef.current) {
+        p.log.step(`[steer → ${label}] ${msg}`)
+        steerRef.current(msg)
       }
     }
-  })()
-
-  const result = await fn(async (msg) => {
-    steerFn = async (m: string) => { /* actual steer is passed via closure */ }
-    // The fn will set steerFn via a callback
   })
 
-  rl.close()
-  return result
+  return { steerRef, cleanup: () => { rl.close() } }
 }
 
 // ─── Globals (set after arg parsing) ────────────────────────────
@@ -398,6 +390,7 @@ Requirements:
 4. If touching Rust Core (apps/desktop/src-tauri/src/), run cargo test && cargo clippy
 
 ${state.message ? `Additional instructions: ${state.message}` : ""}`
+      const { steerRef, cleanup } = setupSteering("implement")
       await namedAgent(task, {
         name: "implement",
         issueId: state.issueId,
@@ -405,7 +398,10 @@ ${state.message ? `Additional instructions: ${state.message}` : ""}`
         skillNames: ["implement", "tdd"],
         modelStr: opts.modelImplement ?? opts.model,
         quiet: !opts.verbose,
+        interactive: opts.interactive,
+        onSessionReady: (s) => { steerRef.current = (m: string) => s.steer(m) },
       })
+      cleanup()
     })
   }
 
@@ -429,6 +425,7 @@ Respond with a comma-separated list.`,
     await runStep(state, 6, "Debate", async () => {
       const ok = await confirmStep("Debate", "Run adversarial review (critic + defender)?")
       if (ok) {
+        const { steerRef, cleanup } = setupSteering("debate")
         await namedAgent(
           `Run adversarial review for issue #${state.issueId}.
 Base SHA: ${state.baseSha}
@@ -442,8 +439,11 @@ Base SHA: ${state.baseSha}
             skillNames: ["debate"],
             modelStr: opts.modelDebate ?? opts.model,
             quiet: !opts.verbose,
+            interactive: opts.interactive,
+            onSessionReady: (s) => { steerRef.current = (m: string) => s.steer(m) },
           }
         )
+        cleanup()
       }
     })
   }
@@ -455,6 +455,7 @@ Base SHA: ${state.baseSha}
     await runStep(state, 7, "Test Audit", async () => {
       const ok = await confirmStep("Test Audit", "Run 3-agent test quality review?")
       if (ok) {
+        const { steerRef, cleanup } = setupSteering("test-audit")
         await namedAgent(
           `Run test audit for issue #${state.issueId}.
 Base SHA: ${state.baseSha}
@@ -468,14 +469,18 @@ Base SHA: ${state.baseSha}
             skillNames: ["test-audit"],
             modelStr: opts.modelTestAudit ?? opts.model,
             quiet: !opts.verbose,
+            interactive: opts.interactive,
+            onSessionReady: (s) => { steerRef.current = (m: string) => s.steer(m) },
           }
         )
+        cleanup()
       }
     })
   }
 
   // ── Step 8: Code review (agent) ──────────────────────────────
   await runStep(state, 8, "Code Review", async () => {
+    const { steerRef, cleanup } = setupSteering("code-review")
     await namedAgent(
       `Run code review for issue #${state.issueId}.
 Base SHA: ${state.baseSha}
@@ -490,8 +495,11 @@ Diff: git diff ${state.baseSha}...HEAD
         skillNames: ["code-review"],
         modelStr: opts.modelCodeReview ?? opts.model,
         quiet: !opts.verbose,
+        interactive: opts.interactive,
+        onSessionReady: (s) => { steerRef.current = (m: string) => s.steer(m) },
       }
     )
+    cleanup()
   })
 
   // ── Step 9: Guard Phase 2 (pre-push) ─────────────────────────
@@ -578,6 +586,7 @@ Repeat until no actionable findings.`,
   await runStep(state, 12, "Capture Wisdom", async () => {
     const ok = await confirmStep("Wisdom", "Capture lessons from this session?")
     if (ok) {
+      const { steerRef, cleanup } = setupSteering("capture-wisdom")
       await namedAgent(
         `Capture wisdom from issue #${state.issueId}.
 Write to .agents/wisdom/*.md:
@@ -591,8 +600,11 @@ Write to .agents/wisdom/*.md:
           skillNames: ["capture-wisdom"],
           modelStr: opts.modelCapture ?? opts.model,
           quiet: !opts.verbose,
+          interactive: opts.interactive,
+          onSessionReady: (s) => { steerRef.current = (m: string) => s.steer(m) },
         }
       )
+      cleanup()
     }
   })
 
