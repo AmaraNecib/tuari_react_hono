@@ -13,7 +13,7 @@ node scripts/update-channel-metadata.mjs \
   --channel nightly \
   --version 0.6.0-nightly.20260708 \
   --min-version 0.1.0 \
-  --url https://github.com/AmaraNecib/tuari_react_hono/releases/nightly/download/update-0.6.0-nightly.update \
+  --url https://github.com/AmaraNecib/tuari_react_hono/releases/download/nightly/update-0.6.0-nightly.update \
   --release-date 2026-07-08T00:00:00Z \
   --changelog https://github.com/AmaraNecib/tuari_react_hono/releases/nightly \
   --output updates.json
@@ -38,7 +38,7 @@ Options:
     "nightly": {
       "latestVersion": "0.6.0-nightly.20260708",
       "minSupportedVersion": "0.1.0",
-      "updateUrl": "https://github.com/AmaraNecib/tuari_react_hono/releases/nightly/download/update-0.6.0-nightly.update",
+      "updateUrl": "https://github.com/AmaraNecib/tuari_react_hono/releases/download/nightly/update-0.6.0-nightly.update",
       "releaseDate": "2026-07-08T00:00:00Z",
       "changeLog": "https://github.com/AmaraNecib/tuari_react_hono/releases/nightly"
     }

@@ -120,7 +120,7 @@ test('generated updates.json for nightly has correct fields', async () => {
 
   runScript(
     'update-channel-metadata.mjs',
-    `--channel nightly --version 0.6.0-nightly.20260708 --min-version 0.1.0 --url https://github.com/AmaraNecib/tuari_react_hono/releases/nightly/download/update-0.6.0-nightly.update --release-date 2026-07-08T00:00:00Z --changelog https://github.com/AmaraNecib/tuari_react_hono/releases/nightly --output "${outputPath}"`
+    `--channel nightly --version 0.6.0-nightly.20260708 --min-version 0.1.0 --url https://github.com/AmaraNecib/tuari_react_hono/releases/download/nightly/update-0.6.0-nightly.update --release-date 2026-07-08T00:00:00Z --changelog https://github.com/AmaraNecib/tuari_react_hono/releases/nightly --output "${outputPath}"`
   );
 
   const content = await readFile(outputPath, 'utf8');
@@ -135,7 +135,7 @@ test('generated updates.json for nightly has correct fields', async () => {
   assert.equal(nightly.minSupportedVersion, '0.1.0');
   assert.equal(
     nightly.updateUrl,
-    'https://github.com/AmaraNecib/tuari_react_hono/releases/nightly/download/update-0.6.0-nightly.update'
+    'https://github.com/AmaraNecib/tuari_react_hono/releases/download/nightly/update-0.6.0-nightly.update'
   );
   assert.equal(nightly.releaseDate, '2026-07-08T00:00:00Z');
   assert.equal(nightly.changeLog, 'https://github.com/AmaraNecib/tuari_react_hono/releases/nightly');
@@ -176,13 +176,13 @@ test('--merge preserves existing channels and adds new one', async () => {
   const existingPath = join(tmp, 'existing.json');
   runScript(
     'update-channel-metadata.mjs',
-    `--channel nightly --version 0.6.0-nightly.20260708 --min-version 0.1.0 --url https://github.com/AmaraNecib/tuari_react_hono/releases/nightly/download/update-0.6.0-nightly.update --release-date 2026-07-08T00:00:00Z --changelog https://github.com/AmaraNecib/tuari_react_hono/releases/nightly --output "${existingPath}"`
+    `--channel nightly --version 0.6.0-nightly.20260708 --min-version 0.1.0 --url https://github.com/AmaraNecib/tuari_react_hono/releases/download/nightly/update-0.6.0-nightly.update --release-date 2026-07-08T00:00:00Z --changelog https://github.com/AmaraNecib/tuari_react_hono/releases/nightly --output "${existingPath}"`
   );
 
   // Now merge beta into the same file
   runScript(
     'update-channel-metadata.mjs',
-    `--channel beta --version 0.5.0-beta.1 --min-version 0.1.0 --url https://github.com/AmaraNecib/tuari_react_hono/releases/beta/download/update-0.5.0-beta.1.update --release-date 2026-07-05T00:00:00Z --changelog https://github.com/AmaraNecib/tuari_react_hono/releases/beta --merge "${existingPath}" --output "${existingPath}"`
+    `--channel beta --version 0.5.0-beta.1 --min-version 0.1.0 --url https://github.com/AmaraNecib/tuari_react_hono/releases/download/beta/update-0.5.0-beta.1.update --release-date 2026-07-05T00:00:00Z --changelog https://github.com/AmaraNecib/tuari_react_hono/releases/beta --merge "${existingPath}" --output "${existingPath}"`
   );
 
   const content = await readFile(existingPath, 'utf8');
@@ -206,13 +206,13 @@ test('--merge updates existing channel entry', async () => {
   const existingPath = join(tmp, 'existing.json');
   runScript(
     'update-channel-metadata.mjs',
-    `--channel nightly --version 0.5.0-nightly.20260701 --min-version 0.1.0 --url https://github.com/AmaraNecib/tuari_react_hono/releases/nightly/download/update-0.5.0-nightly.update --release-date 2026-07-01T00:00:00Z --changelog https://github.com/AmaraNecib/tuari_react_hono/releases/nightly --output "${existingPath}"`
+    `--channel nightly --version 0.5.0-nightly.20260701 --min-version 0.1.0 --url https://github.com/AmaraNecib/tuari_react_hono/releases/download/nightly/update-0.5.0-nightly.update --release-date 2026-07-01T00:00:00Z --changelog https://github.com/AmaraNecib/tuari_react_hono/releases/nightly --output "${existingPath}"`
   );
 
   // Now update nightly to a newer version
   runScript(
     'update-channel-metadata.mjs',
-    `--channel nightly --version 0.6.0-nightly.20260708 --min-version 0.1.0 --url https://github.com/AmaraNecib/tuari_react_hono/releases/nightly/download/update-0.6.0-nightly.update --release-date 2026-07-08T00:00:00Z --changelog https://github.com/AmaraNecib/tuari_react_hono/releases/nightly --merge "${existingPath}" --output "${existingPath}"`
+    `--channel nightly --version 0.6.0-nightly.20260708 --min-version 0.1.0 --url https://github.com/AmaraNecib/tuari_react_hono/releases/download/nightly/update-0.6.0-nightly.update --release-date 2026-07-08T00:00:00Z --changelog https://github.com/AmaraNecib/tuari_react_hono/releases/nightly --merge "${existingPath}" --output "${existingPath}"`
   );
 
   const content = await readFile(existingPath, 'utf8');

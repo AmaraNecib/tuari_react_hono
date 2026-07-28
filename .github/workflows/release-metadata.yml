@@ -149,7 +149,7 @@ jobs:
             # the milestone version. Falls back to "0.0.0" if missing.
             BASE_VERSION=$(node -p "require('./package.json').version.split('-')[0] || '0.0.0'")
             VERSION="${BASE_VERSION}-nightly.${DATE}"
-            URL="https://github.com/${REPO}/releases/nightly/download/update-${VERSION}.update"
+            URL="https://github.com/${REPO}/releases/download/nightly/update-${VERSION}.update"
             RDATE=$(date -u +%Y-%m-%dT00:00:00Z)
             CLOG="https://github.com/${REPO}/releases/nightly"
             echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -164,7 +164,7 @@ jobs:
             TAG="${TAG_NAME}"
             VERSION="${TAG#v}"
             if [ "${NEEDS_CHANNEL}" = "beta" ]; then
-              URL="https://github.com/${REPO}/releases/beta/download/update-${VERSION}.update"
+              URL="https://github.com/${REPO}/releases/download/${TAG}/update-${VERSION}.update"
               CLOG="https://github.com/${REPO}/releases/beta"
             else
               # Stable uses the tag-specific path so the URL is correct
