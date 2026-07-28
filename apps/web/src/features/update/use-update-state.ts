@@ -1,21 +1,30 @@
-import { useCallback, useSyncExternalStore } from "react"
+import { useCallback, useEffect, useSyncExternalStore } from "react"
 
 const STORAGE_KEY = "tuari:restart-pending"
 const SESSION_KEY = "tuari:restart-session-started"
 
 function getSnapshot(): boolean {
   try {
-    // sessionStorage is cleared when the desktop webview starts again, while
-    // localStorage survives. Use that boundary to discard a stale deferred
-    // restart flag left behind by a manual app restart.
-    if (sessionStorage.getItem(SESSION_KEY) !== "true") {
-      sessionStorage.setItem(SESSION_KEY, "true")
-      localStorage.removeItem(STORAGE_KEY)
-      return false
-    }
     return localStorage.getItem(STORAGE_KEY) === "true"
   } catch {
     return false
+  }
+}
+
+function initializeSession(): void {
+  try {
+    // sessionStorage is cleared when the desktop webview starts again, while
+    // localStorage survives. Use that boundary to discard a stale deferred
+    // restart flag left behind by a manual app restart.
+    if (sessionStorage.getItem(SESSION_KEY) === "true") {
+      return
+    }
+
+    sessionStorage.setItem(SESSION_KEY, "true")
+    localStorage.removeItem(STORAGE_KEY)
+    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }))
+  } catch {
+    // Browser storage unavailable — no session initialization or persistence.
   }
 }
 
@@ -36,6 +45,10 @@ export type UseRestartPendingReturn = Readonly<{
 
 export function useRestartPending(): UseRestartPendingReturn {
   const pending = useSyncExternalStore(subscribe, getSnapshot, () => false)
+
+  useEffect(() => {
+    initializeSession()
+  }, [])
 
   const setPending = useCallback((value: boolean) => {
     try {
