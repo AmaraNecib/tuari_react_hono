@@ -18,98 +18,149 @@ Do not skip or reorder these steps.
 
 | Tier | When |
 |------|------|
-| **Lightweight** | Truly non-reviewable files only (.gitignore, LICENSE, scratch) |
-| **Standard** | Code, CI, workflow, config, skills |
-| **High-assurance** | Authz core, permissions, denial, security |
+| **Lightweight** | Truly non-reviewable files only (.gitignore, LICENSE, .scratch/) |
+| **Standard** | Code, CI, workflow, config, skills, UI, API endpoints |
+| **High-assurance** | Authz/permissions (RBAC), licensing/crypto, debt financial calculations, security |
 
 Record the tier. Pass it to `guard`.
 
 **Resolve base commit once:**
 
-1. Determine target branch: default `develop`. If the PR specifies a different
-   base, use that.
-2. Fetch: `git fetch origin <target-remote-ref>` (e.g. `origin/develop`).
-   Never produce bare `git fetch origin origin/develop` — use
-   `git fetch origin develop` then reference `origin/develop`.
-3. Compute merge-base: `git merge-base FETCH_HEAD HEAD`
+1. Target branch is always `develop` (unless the PR specifies a different base).
+2. Fetch: `git fetch origin develop`
+3. Compute merge-base: `git merge-base origin/develop HEAD`
 4. Record target branch name and SHA for all subsequent steps.
 
-### 2. Implement (Step 4)
+### 2. Design (.scratch/implementation/)
 
-Load `implement` skill. It handles TDD, tests, commits.
+Before writing production code, create a design document:
 
-### 3. Guard pre-review (Step 4.5)
+```
+.scratch/implementation/<issue-id>-design.md
+```
 
-Run `guard` Phase 1 (pre-commit) to confirm everything compiles before
-proceeding to reviews.
+The design must specify:
+- Public API / component interfaces
+- Dependencies
+- Planned tests (unit + Playwright E2E)
+- Implementation risks
 
-### 4. Quality check (Step 4.5)
+### 3. Implement (TDD + Playwright)
 
-Load relevant skills from the workflow's quality check table (`codebase-design`,
-`diagnosing-bugs`, `domain-modeling`, `research`).
+Load `implement` skill. It handles TDD at pre-agreed seams.
 
-### 5. Debate — High-assurance only (Step 4.75)
+**Every feature MUST include:**
+
+- **Unit tests** for business logic (via `pnpm test` / vitest)
+- **Playwright E2E tests** for the user-facing flow, added to `tests/e2e/`
+- Run `pnpm typecheck && pnpm test:web && pnpm test:api` during implementation
+
+If the feature touches the Rust Core (`apps/desktop/src-tauri/src/`), also run:
+```bash
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings
+```
+
+### 4. Guard pre-review (pre-commit)
+
+Run `guard` Phase 1 (pre-commit) to confirm everything compiles:
+- `pnpm typecheck`
+- `pnpm lint`
+- `pnpm test:web`
+- `pnpm test:api`
+
+Do NOT proceed to reviews until this passes.
+
+### 5. Quality check
+
+Load relevant skills from the workflow's quality check table:
+
+| If the change touches... | Load these skills |
+|---|---|
+| New module, interface, or architecture | `codebase-design` |
+| Complex logic, state, or edge cases | `diagnosing-bugs` |
+| Domain entities, terms, or data models | `domain-modeling` |
+| Any production code | `code-review` |
+
+### 6. Debate — High-assurance only
 
 Load `debate` with resolved base SHA. Saves evidence to
 `.scratch/reviews/<issue-id>/<head-sha>-debate.md`.
 
-### 6. Test audit — High-assurance only (Step 4.9)
+### 7. Test audit — High-assurance and Standard (for any feature with business logic)
 
 Load `test-audit` with resolved base SHA. Saves evidence to
 `.scratch/reviews/<issue-id>/<head-sha>-test-audit.md`.
 
-### 7. Code-review (Step 5.5 — Standard and High-assurance)
+**Checks performed:**
+- Edge case coverage (empty states, error states, boundary values)
+- Test quality (meaningful assertions, not just "doesn't crash")
+- E2E coverage (critical user path is tested via Playwright)
+- No shallow/missing tests
+
+### 8. Pre-push self-review (code-review)
 
 Run `code-review` skill against `git diff <base-sha>...HEAD`. Save output to
 `.scratch/reviews/<issue-id>/<head-sha>-code-review.md`.
 
-### 8. Guard pre-push
+### 9. Guard pre-push
 
-Run `guard` Phase 2 (pre-push). Must pass before pushing.
-Evidence must be for the current HEAD — otherwise stale.
-
-### 9. Push + PR (Step 6)
+Run `guard` Phase 2 (pre-push). Must pass before pushing:
 
 ```bash
-git push origin feature/<issue-id>-<description>
-gh pr create ...
+pnpm typecheck
+pnpm lint
+pnpm test:api
+pnpm test:web
 ```
 
-After opening the PR, publish a concise review-evidence summary as a PR
-comment referencing the local evidence files.
+Evidence must be for the current HEAD — otherwise stale.
 
-### 10. CI + CodeRabbit (Step 8)
+### 10. Push + PR
 
-Wait for CI green. High-assurance only: trigger `@coderabbitai review`.
-Read inline comments with `--paginate` — do not truncate. Do not rely on
-status alone.
+Branch naming: `feature/<issue-id>-<short-description>`, `fix/<issue-id>-<description>`,
+`refactor/<issue-id>-<description>`, or `agent/<description>`.
 
-### 11. Guard pre-report
+```bash
+git push origin <branch-name>
+gh pr create \
+  --title "M<X.Y>: <description> (closes #<issue-id>)" \
+  --body "See .scratch/reviews/<issue-id>/ for review evidence"
+```
 
-Run `guard` Phase 3 (pre-report). Must pass before reporting.
+After opening the PR, publish a concise review-evidence summary as a PR comment.
 
-### 12. Report
+### 11. CI + Greptile
+
+Wait for CI green (all 6 jobs: lint, typecheck, test-api, test-web, test-rust, build).
+
+Once CI is green:
+- Trigger Greptile: comment `@greptile-apps review` in the PR
+- Wait for Greptile to complete
+- Address any actionable findings (fix locally → push → wait for CI → re-trigger)
+- Repeat until Greptile passes with no actionable findings
+
+### 12. Guard pre-report
+
+Run `guard` Phase 3 (pre-report). Must pass before reporting done.
+
+### 13. Report
 
 Run `capture-wisdom` to save lessons.
-Report to the user: PR link, CI status, CodeRabbit evidence summary,
-any deferred items.
+Report to the user: PR link, CI status, Greptile verdict, any deferred items.
 
 ## Merge rules
 
 - The agent may merge **only when ALL** of these are true:
   1. The user explicitly says to merge
-  2. CI is green
-  3. No unresolved actionable review comments exist (verified by inspecting
-     inline comments with `--paginate`, not status alone)
+  2. CI is green (all 6 jobs)
+  3. Greptile has no actionable findings
   4. The agent finds no blocker
+- Merge command:
+  ```bash
+  gh pr merge <num> --squash --subject "M<x.y>: <title> (closes #<issue>)"
+  ```
 - If any condition is not met, report to the user — do not merge.
-
-## Evidence staleness
-
-- Markdown files under `docs/`, `.agents/`, and `.github/` are reviewable.
-- Only `.gitignore`, `.gitattributes`, `LICENSE`, and `.scratch/` files
-  are non-reviewable.
-- If any reviewable file changed since evidence was saved, evidence is stale.
 
 ## Where to start
 
@@ -125,5 +176,5 @@ any deferred items.
 | No code-review | Step 7 — code-review |
 | Locally unverified | Step 8 — guard pre-push |
 | Not pushed | Step 9 — push + PR |
-| CI not green | Step 10 — CI + CodeRabbit |
+| CI not green | Step 10 — CI + Greptile |
 | All done | Step 11 — guard pre-report → Step 12 — report |
