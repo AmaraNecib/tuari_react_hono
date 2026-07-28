@@ -4,9 +4,9 @@ import path from "path"
 /**
  * Root-level Vitest configuration.
  *
- * Web tests need jsdom environment and @ alias for imports.
- * API/Contracts tests use node environment (which is vitest default,
- * so we only set jsdom when the test file is under apps/web).
+ * The global environment defaults to jsdom for web tests.
+ * API and Contracts tests that need node environment must
+ * use a per-file @vitest-environment directive or a separate config override.
  *
  * Tests from tests/ (node:test) and apps/desktop (node:test) are excluded.
  * Playwright e2e specs under tests/e2e/ are also excluded.

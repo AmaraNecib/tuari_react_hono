@@ -507,6 +507,31 @@ Respond with a comma-separated list.`,
     )
     if (tui) tui.setStatus(`Quality Check: ${analysis.slice(0, 60)}...`)
     p.log.info(`Agent selected: ${analysis.slice(0, 200)}`)
+
+    // Actually run the selected skills against the diff
+    const selectedSkills = analysis.split(",").map(s => s.trim()).filter(Boolean)
+    if (selectedSkills.length > 0) {
+      if (tui) tui.setStatus(`Quality Check: running ${selectedSkills.length} skill(s)...`)
+      const cb = tuiAgentCallbacks(tui, "quality", "Step 5: Quality Check")
+      await namedAgent(
+        `Run quality check using git diff ${state.baseSha}..HEAD for issue #${state.issueId}.
+Loaded skills: ${selectedSkills.join(", ")}
+Review the diff against each skill's guidance, report findings, and fix any issues found.`,
+        {
+          name: "quality-check",
+          issueId: state.issueId,
+          stepName: "05-quality-check",
+          skillNames: selectedSkills,
+          modelStr: opts.model ?? opts.model,
+          quiet: !opts.verbose,
+          interactive: opts.interactive,
+          onSessionReady: (s) => cb.onSessionReady?.(s),
+          onDelta: cb.onDelta,
+          onThinking: cb.onThinking,
+          onStatus: cb.onStatus,
+        }
+      )
+    }
   })
 
   // ── Step 6: Debate — parallel critic + defender ─────────────

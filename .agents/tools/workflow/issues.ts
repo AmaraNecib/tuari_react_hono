@@ -44,7 +44,6 @@ export function fetchIssue(issueId: string): IssueData {
 export function branchPrefix(labels: string[]): string {
   if (labels.some(l => l.includes("fix") || l.includes("bug"))) return "fix"
   if (labels.some(l => l.includes("refactor"))) return "refactor"
-  if (labels.some(l => l.includes("test"))) return "test"
   return "feature"
 }
 
@@ -53,10 +52,15 @@ export function branchPrefix(labels: string[]): string {
  */
 export function guessTier(labels: string[], body: string): "lightweight" | "standard" | "high-assurance" {
   const text = [labels.join(" "), body].join(" ").toLowerCase()
+  // High-assurance: security-critical areas that need adversarial review
   if (text.includes("rbac") || text.includes("permission") || text.includes("auth")
     || text.includes("license") || text.includes("crypto") || text.includes("security")
-    || text.includes("financial") || text.includes("debt")) {
+    || text.includes("financial")) {
     return "high-assurance"
+  }
+  // Lightweight: docs, config, or dependency-only changes
+  if (labels.some(l => /^(docs|config|chore|ci)(\s|$)/i.test(l))) {
+    return "lightweight"
   }
   return "standard"
 }

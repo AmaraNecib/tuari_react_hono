@@ -296,7 +296,13 @@ export async function quickQuery(task: string, skillNames?: string[], modelStr?:
   try {
     await session.prompt(task)
     const messages = session.state.messages
-    return messages[messages.length - 1]?.content ?? ""
+    const lastContent = messages[messages.length - 1]?.content
+    if (typeof lastContent === "string") return lastContent
+    if (Array.isArray(lastContent)) {
+      // New SDK format: array of content blocks
+      return lastContent.map((b: any) => b.text ?? b.content ?? "").join("\n")
+    }
+    return ""
   } finally {
     session.dispose()
   }
