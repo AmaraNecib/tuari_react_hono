@@ -374,11 +374,11 @@ Environments are configured via the GitHub UI under Settings > Environments.
 
 ### 12.6 Caching
 
-On self-hosted runners, tools are pre-installed and the pnpm store persists on disk. No explicit caching is needed:
+On self-hosted runners, tools are pre-installed and caches persist on disk. No explicit CI caching steps are needed:
 
 - **pnpm store:** Persistent across runs on the self-hosted runner (`~/.local/share/pnpm/store`)
 - **Rust/Cargo:** Registry and build artifacts persist in `~/.cargo/` and `apps/desktop/src-tauri/target/`
-- **git clean:** The CI workflow runs a targeted `git clean` to remove stale workspace files while preserving cached directories (`node_modules`, `.cargo`, `target`)
+- **Checkout:** Uses default `clean: true` (actions/checkout) — each run gets a fresh workspace, avoiding stale artifacts from previous runs
 
 ### 12.7 Smoke Testing
 
