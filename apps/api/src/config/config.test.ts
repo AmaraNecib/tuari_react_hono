@@ -9,11 +9,6 @@ describe("createAppConfig", () => {
   // Defaults
   // -----------------------------------------------------------------------
 
-  it("uses SQLite as the default db adapter", () => {
-    const config = createAppConfig(requiredAuth);
-    expect(config.dbAdapter).toBe("sqlite");
-  });
-
   it("defaults to 127.0.0.1:4318 when no server env vars are set", () => {
     const config = createAppConfig(requiredAuth);
     expect(config.host).toBe("127.0.0.1");
@@ -221,17 +216,29 @@ describe("createAppConfig", () => {
   });
 
   // -----------------------------------------------------------------------
-  // Zod schema validation
+  // Adapter selection
   // -----------------------------------------------------------------------
 
-  it("enforces dbAdapter is one of the allowed values", () => {
-    // The schema has a default so invalid values are replaced.
-    // If we passed "postgres" it would fail zod validation.
+  it("defaults dbAdapter to sqlite when DB_ADAPTER is not set", () => {
+    const config = createAppConfig(requiredAuth);
+    expect(config.dbAdapter).toBe("sqlite");
+  });
+
+  it("reads DB_ADAPTER env var and validates it", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      DB_ADAPTER: "sqlite",
+    });
+    expect(config.dbAdapter).toBe("sqlite");
+  });
+
+  it("rejects invalid DB_ADAPTER values", () => {
     expect(() =>
       createAppConfig({
         ...requiredAuth,
-      } as NodeJS.ProcessEnv),
-    ).not.toThrow();
+        DB_ADAPTER: "postgres",
+      }),
+    ).toThrow("DB_ADAPTER must be one of: sqlite");
   });
 
   it("returns a typed config object matching the AppConfig interface", () => {

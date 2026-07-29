@@ -160,6 +160,18 @@ export function createAppConfig(
   // --- Database resolution (reuses the existing, tested helper) ---
   const database = resolveDatabaseEnv(source);
 
+  // --- Adapter selection ---
+  const dbAdapter = (() => {
+    const raw = source.DB_ADAPTER?.trim().toLowerCase() || "sqlite";
+    const parsed = dbAdapterSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(
+        `DB_ADAPTER must be one of: sqlite, received "${raw}"`,
+      );
+    }
+    return parsed.data;
+  })();
+
   // --- Server ---
   const host = source.API_HOST?.trim() || defaultHost;
 
@@ -210,7 +222,7 @@ export function createAppConfig(
 
   // --- Assemble and validate with Zod ---
   const raw: AppConfig = {
-    dbAdapter: "sqlite",
+    dbAdapter,
     databasePath: database.databasePath,
     databaseUrl: database.databaseUrl,
     attachmentsRootPath: database.attachmentsRootPath,
