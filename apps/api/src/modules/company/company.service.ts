@@ -28,9 +28,9 @@ export class CompanyService {
       audit?: AuditService;
     },
   ) {
-    this.workforce = injected?.workforce ?? new WorkforceService(repository, this.mutation);
-    this.operations = injected?.operations ?? new OperationsService(repository, this.mutation);
-    this.finance = injected?.finance ?? new FinanceService(repository, this.mutation);
+    this.workforce = injected?.workforce ?? new WorkforceService(repository, repository, this.mutation);
+    this.operations = injected?.operations ?? new OperationsService(repository, repository, this.mutation);
+    this.finance = injected?.finance ?? new FinanceService(repository, repository, this.mutation);
     this.audit = injected?.audit ?? new AuditService(repository);
   }
 

@@ -14,8 +14,11 @@
 import { CompanyError } from "./company.errors";
 import { SYSTEM_ROLE_KEYS } from "./company.types";
 import type { CompanyRepository } from "./company.repository.contracts";
+import type { WorkforceRepository } from "./workforce.repository";
+import type { OperationsRepository } from "./operations.repository";
+import type { FinanceRepository } from "./finance.repository";
 
-export function requireRole(repository: CompanyRepository, roleId: string) {
+export function requireRole(repository: WorkforceRepository, roleId: string) {
   const role = repository.getRoleById(roleId);
   if (!role) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على الدور المطلوب.", [
@@ -27,7 +30,7 @@ export function requireRole(repository: CompanyRepository, roleId: string) {
 }
 
 export function requireAssignableEmployeeRole(
-  repository: CompanyRepository,
+  repository: WorkforceRepository,
   roleId: string,
   field: string,
 ) {
@@ -47,7 +50,7 @@ export function requireAssignableEmployeeRole(
   return role;
 }
 
-export function requireEmployee(repository: CompanyRepository, employeeId: string) {
+export function requireEmployee(repository: WorkforceRepository, employeeId: string) {
   const employee = repository.getEmployeeById(employeeId);
   if (!employee) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على العامل المطلوب.");
@@ -57,7 +60,7 @@ export function requireEmployee(repository: CompanyRepository, employeeId: strin
 }
 
 export function requireEmployeeWithRoleKey(
-  repository: CompanyRepository,
+  repository: WorkforceRepository,
   employeeId: string,
   roleKey: string,
   field: string,
@@ -84,11 +87,11 @@ export function requireActiveEmployee<T extends { status: string }>(employee: T,
   return employee;
 }
 
-export function requireEmployeeWorker(repository: CompanyRepository, id: string, field: string) {
+export function requireEmployeeWorker(repository: WorkforceRepository, id: string, field: string) {
   return requireEmployeeWithRoleKey(repository, id, SYSTEM_ROLE_KEYS.worker, field);
 }
 
-export function requireProject(repository: CompanyRepository, projectId: string) {
+export function requireProject(repository: OperationsRepository, projectId: string) {
   const project = repository.getProjectById(projectId);
   if (!project) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على المشروع المطلوب.");
@@ -97,7 +100,7 @@ export function requireProject(repository: CompanyRepository, projectId: string)
   return project;
 }
 
-export function requireWarehouse(repository: CompanyRepository, warehouseId: string) {
+export function requireWarehouse(repository: OperationsRepository, warehouseId: string) {
   const warehouse = repository.getWarehouseById(warehouseId);
   if (!warehouse) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على المستودع المطلوب.");
@@ -106,7 +109,7 @@ export function requireWarehouse(repository: CompanyRepository, warehouseId: str
   return warehouse;
 }
 
-export function requireDebtAccount(repository: CompanyRepository, id: string) {
+export function requireDebtAccount(repository: FinanceRepository, id: string) {
   const account = repository.getDebtAccountById(id);
   if (!account) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على حساب الدين المطلوب.");
@@ -116,7 +119,7 @@ export function requireDebtAccount(repository: CompanyRepository, id: string) {
 }
 
 export function requireExternalCounterparty(
-  repository: CompanyRepository,
+  repository: FinanceRepository,
   id: string,
   field = "id",
 ) {

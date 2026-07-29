@@ -59,9 +59,9 @@ export async function createAppDependencies(
   // so the per-domain service owns its transaction + audit context and
   // the `CompanyService` only has to forward delegations.
   const mutation = new WorkspaceMutationContext(companyRepository, companyRepository);
-  const workforceService = new WorkforceService(companyRepository, mutation);
-  const operationsService = new OperationsService(companyRepository, mutation);
-  const financeService = new FinanceService(companyRepository, mutation);
+  const workforceService = new WorkforceService(companyRepository, companyRepository, mutation);
+  const operationsService = new OperationsService(companyRepository, companyRepository, mutation);
+  const financeService = new FinanceService(companyRepository, companyRepository, mutation);
   const auditService = new AuditService(companyRepository);
   const companyService = new CompanyService(companyRepository, companyRepository, {
     workforce: workforceService,

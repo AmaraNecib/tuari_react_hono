@@ -81,9 +81,9 @@ describe("RPC router", () => {
     return createRouter({
       authBootstrapService: { ...authBootstrapService, ...authOverrides },
       companyService: service,
-      workforceService: new WorkforceService(repository, mutation),
-      operationsService: new OperationsService(repository, mutation),
-      financeService: new FinanceService(repository, mutation),
+      workforceService: new WorkforceService(repository, repository, mutation),
+      operationsService: new OperationsService(repository, repository, mutation),
+      financeService: new FinanceService(repository, repository, mutation),
       inventoryService: {} as never,
       employeeModule,
       invoiceModule: {} as never,

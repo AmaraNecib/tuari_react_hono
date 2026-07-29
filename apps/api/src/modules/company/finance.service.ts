@@ -39,7 +39,8 @@ import {
   successResult,
 } from "./company.helpers";
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
-import type { CompanyRepository } from "./company.repository.contracts";
+import type { FinanceRepository } from "./finance.repository";
+import type { WorkforceRepository } from "./workforce.repository";
 import {
   type DebtAccountListFilters,
   type DebtEntryListFilters,
@@ -56,7 +57,8 @@ import {
 
 export class FinanceService {
   constructor(
-    private readonly repository: CompanyRepository,
+    private readonly repository: FinanceRepository,
+    private readonly workforceRepo: WorkforceRepository,
     private readonly mutation: WorkspaceMutationContext,
   ) {}
 
@@ -72,7 +74,7 @@ export class FinanceService {
   // ---------------------------------------------------------------------------
 
   getEmployeeDebtAccount(employeeId: string) {
-    requireEmployee(this.repository, employeeId);
+    requireEmployee(this.workforceRepo, employeeId);
     const accounts = this.listDebtAccounts({ workerId: employeeId }).items;
     return accounts[0] ?? null;
   }
@@ -88,7 +90,7 @@ export class FinanceService {
     },
     auditContext?: MutationAuditContext,
   ) {
-    const employee = requireEmployee(this.repository, input.employeeId);
+    const employee = requireEmployee(this.workforceRepo, input.employeeId);
 
     let account = this.getEmployeeDebtAccount(input.employeeId);
     if (!account) {
@@ -192,7 +194,7 @@ export class FinanceService {
     }
 
     if (input.partyType === "INTERNAL_WORKER") {
-      requireEmployeeWorker(this.repository, workerId!, "workerId");
+      requireEmployeeWorker(this.workforceRepo, workerId!, "workerId");
     }
 
     if (input.partyType === "EXTERNAL_COUNTERPARTY") {
@@ -247,7 +249,7 @@ export class FinanceService {
     }
 
     const status = getDebtAccountStatus(openingBalance);
-    const account = this.repository.withTransaction(() => {
+    const account = this.mutation.withTransaction(() => {
       const createdAccount = this.repository.createDebtAccount(
         {
           partyType: input.partyType,
@@ -314,7 +316,7 @@ export class FinanceService {
     const nextBalance = account.currentBalance + signedAmountDzd;
     const nextStatus = getDebtAccountStatus(nextBalance);
 
-    const entry = this.repository.withTransaction(() => {
+    const entry = this.mutation.withTransaction(() => {
       const createdEntry = this.repository.createDebtEntry(
         {
           debtAccountId: account.id,
@@ -378,7 +380,7 @@ export class FinanceService {
     const nextBalance = account.currentBalance + signedAmountDzd;
     const nextStatus = getDebtAccountStatus(nextBalance);
 
-    const payment = this.repository.withTransaction(() => {
+    const payment = this.mutation.withTransaction(() => {
       const createdEntry = this.repository.createDebtEntry(
         {
           debtAccountId: account.id,
@@ -422,7 +424,7 @@ export class FinanceService {
     const account = requireDebtAccount(this.repository, entry.debtAccountId);
     const voidedAt = normalizeAlgeriaTimestamp(undefined);
 
-    this.repository.withTransaction(() => {
+    this.mutation.withTransaction(() => {
       this.repository.voidDebtEntry(
         {
           id: entry.id,
@@ -498,7 +500,7 @@ export class FinanceService {
     const latestEntry = this.repository.getLatestDebtEntry(account.id);
     assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate ?? null, "entryDate");
     const settlementAmount = -account.currentBalance;
-    const entry = this.repository.withTransaction(() => {
+    const entry = this.mutation.withTransaction(() => {
       const createdEntry = this.repository.createDebtEntry(
         {
           debtAccountId: account.id,
@@ -613,7 +615,7 @@ export class FinanceService {
 
     const entryDate = normalizeAlgeriaTimestamp(undefined);
 
-    this.repository.withTransaction(() => {
+    this.mutation.withTransaction(() => {
       this.repository.voidDebtEntry(
         {
           id: payableEntry.id,
@@ -722,7 +724,7 @@ export class FinanceService {
 
   getDebtPartyDetail(input: DebtPartyDetailInput) {
     if (input.partyType === "INTERNAL_WORKER") {
-      const employee = requireEmployeeWorker(this.repository, input.workerId!, "workerId");
+      const employee = requireEmployeeWorker(this.workforceRepo, input.workerId!, "workerId");
       const debtAccounts = this.repository.listDebtAccounts({ workerId: employee.id });
       const totalBalanceDzd = getNetDebtBalance(debtAccounts);
       return successResult("تم تحميل تفاصيل ديون العامل بنجاح.", {
@@ -763,7 +765,7 @@ export class FinanceService {
   listDebtsSummary() {
     const allDebtAccounts = this.repository.listDebtAccounts();
     const employeesById = new Map(
-      this.repository.listEmployees().map((employee) => [employee.id, employee]),
+      this.workforceRepo.listEmployees().map((employee) => [employee.id, employee]),
     );
     const counterpartiesById = new Map(
       this.repository

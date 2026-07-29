@@ -30,6 +30,8 @@ import {
   successResult,
 } from "./company.helpers";
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
+import type { OperationsRepository } from "./operations.repository";
+import type { WorkforceRepository } from "./workforce.repository";
 import type { CompanyRepository } from "./company.repository.contracts";
 import {
   SYSTEM_ROLE_KEYS,
@@ -52,7 +54,8 @@ import {
 
 export class OperationsService {
   constructor(
-    private readonly repository: CompanyRepository,
+    private readonly repository: OperationsRepository,
+    private readonly workforceRepo: WorkforceRepository,
     private readonly mutation: WorkspaceMutationContext,
   ) {}
 
@@ -75,7 +78,7 @@ export class OperationsService {
       if (input.managerId) {
         requireActiveEmployee(
           requireEmployeeWithRoleKey(
-            this.repository,
+            this.workforceRepo,
             input.managerId,
             SYSTEM_ROLE_KEYS.projectManager,
             "managerId",
@@ -108,7 +111,7 @@ export class OperationsService {
       const nextStatus = input.status ?? current.status;
 
       ensureProjectTransitionAllowed(
-        this.repository,
+        this.repository as CompanyRepository,
         current.id,
         current.managerId,
         input.managerId,
@@ -118,7 +121,7 @@ export class OperationsService {
       if (input.managerId && input.managerId !== current.managerId) {
         requireActiveEmployee(
           requireEmployeeWithRoleKey(
-            this.repository,
+            this.workforceRepo,
             input.managerId,
             SYSTEM_ROLE_KEYS.projectManager,
             "managerId",
@@ -129,7 +132,7 @@ export class OperationsService {
 
       const reassignWorkerIds =
         current.managerId !== nextManagerId && nextManagerId && nextStatus === "ACTIVE"
-          ? listActiveWorkerIdsForProject(this.repository, current.id, {
+          ? listActiveWorkerIdsForProject(this.repository as CompanyRepository, current.id, {
               requireManagerConsistencyWith: current.managerId,
             })
           : undefined;
@@ -170,7 +173,7 @@ export class OperationsService {
       if (input.managerId) {
         requireActiveEmployee(
           requireEmployeeWithRoleKey(
-            this.repository,
+            this.workforceRepo,
             input.managerId,
             SYSTEM_ROLE_KEYS.warehouseManager,
             "managerId",
@@ -201,7 +204,7 @@ export class OperationsService {
       const current = requireWarehouse(this.repository, input.id);
 
       ensureWarehouseTransitionAllowed(
-        this.repository,
+        this.repository as CompanyRepository,
         current.id,
         current.managerId,
         input.managerId,
@@ -211,7 +214,7 @@ export class OperationsService {
       if (input.managerId && input.managerId !== current.managerId) {
         requireActiveEmployee(
           requireEmployeeWithRoleKey(
-            this.repository,
+            this.workforceRepo,
             input.managerId,
             SYSTEM_ROLE_KEYS.warehouseManager,
             "managerId",
@@ -260,11 +263,11 @@ export class OperationsService {
     return this.mutation.withTransaction(() => {
       const audit = this.mutation.createMutationAuditContext(auditContext);
 
-      const employee = this.repository.getEmployeeById(input.employeeId);
+      const employee = this.workforceRepo.getEmployeeById(input.employeeId);
       if (!employee) {
         throw new CompanyError("NOT_FOUND", "تعذر العثور على العامل المطلوب.");
       }
-      const employeeRole = this.repository.getRoleById(employee.roleId);
+      const employeeRole = this.workforceRepo.getRoleById(employee.roleId);
       if (!employeeRole) {
         throw new CompanyError("NOT_FOUND", "تعذر العثور على دور العامل.");
       }
@@ -303,7 +306,7 @@ export class OperationsService {
           );
         }
 
-        const activeManagerAssignment = this.repository.getActiveManagerAssignmentByWorkerId(
+        const activeManagerAssignment = this.workforceRepo.getActiveManagerAssignmentByWorkerId(
           input.employeeId,
         );
         if (!activeManagerAssignment) {
@@ -388,11 +391,11 @@ export class OperationsService {
     return this.mutation.withTransaction(() => {
       const audit = this.mutation.createMutationAuditContext(auditContext);
 
-      const employee = this.repository.getEmployeeById(input.employeeId);
+      const employee = this.workforceRepo.getEmployeeById(input.employeeId);
       if (!employee) {
         throw new CompanyError("NOT_FOUND", "تعذر العثور على العامل المطلوب.");
       }
-      const employeeRole = this.repository.getRoleById(employee.roleId);
+      const employeeRole = this.workforceRepo.getRoleById(employee.roleId);
       if (!employeeRole) {
         throw new CompanyError("NOT_FOUND", "تعذر العثور على دور العامل.");
       }
@@ -430,7 +433,7 @@ export class OperationsService {
             [{ field: "employeeId", message: "هذا العامل مرتبط بالفعل بمستودع نشط." }],
           );
         }
-        if (this.repository.getActiveManagerAssignmentByWorkerId(input.employeeId)) {
+        if (this.workforceRepo.getActiveManagerAssignmentByWorkerId(input.employeeId)) {
           throw new CompanyError(
             "BUSINESS_RULE",
             "يجب إنهاء ربط المدير النشط للعامل قبل نقله إلى مستودع.",
