@@ -178,9 +178,9 @@ export function createAppConfig(
   const port = (() => {
     if (source.API_PORT === undefined) return defaultPort;
     const p = Number(source.API_PORT);
-    if (!Number.isInteger(p) || p <= 0) {
+    if (!Number.isInteger(p) || p <= 0 || p > 65535) {
       throw new Error(
-        `API_PORT must be a positive integer, received "${source.API_PORT}"`,
+        `API_PORT must be a positive integer between 1 and 65535, received "${source.API_PORT}"`,
       );
     }
     return p;
