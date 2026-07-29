@@ -32,7 +32,6 @@ import {
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
 import type { OperationsRepository } from "./operations.repository";
 import type { WorkforceRepository } from "./workforce.repository";
-import type { CompanyRepository } from "./company.repository.contracts";
 import {
   SYSTEM_ROLE_KEYS,
   type MutationAuditContext,
@@ -111,7 +110,8 @@ export class OperationsService {
       const nextStatus = input.status ?? current.status;
 
       ensureProjectTransitionAllowed(
-        this.repository as CompanyRepository,
+        this.repository,
+        this.workforceRepo,
         current.id,
         current.managerId,
         input.managerId,
@@ -132,7 +132,7 @@ export class OperationsService {
 
       const reassignWorkerIds =
         current.managerId !== nextManagerId && nextManagerId && nextStatus === "ACTIVE"
-          ? listActiveWorkerIdsForProject(this.repository as CompanyRepository, current.id, {
+          ? listActiveWorkerIdsForProject(this.repository, this.workforceRepo, current.id, {
               requireManagerConsistencyWith: current.managerId,
             })
           : undefined;
@@ -204,7 +204,7 @@ export class OperationsService {
       const current = requireWarehouse(this.repository, input.id);
 
       ensureWarehouseTransitionAllowed(
-        this.repository as CompanyRepository,
+        this.repository,
         current.id,
         current.managerId,
         input.managerId,

@@ -134,20 +134,21 @@ export function requireExternalCounterparty(
 }
 
 export function ensureEmployeeTransitionAllowed(
-  repository: CompanyRepository,
+  workforceRepo: WorkforceRepository,
+  operationsRepo: OperationsRepository,
   employee: { id: string },
   currentRoleKey: string,
   nextRoleKey: string,
   nextStatus: string,
 ) {
   const hasActiveManagerAssignment = Boolean(
-    repository.getActiveManagerAssignmentByWorkerId(employee.id),
+    workforceRepo.getActiveManagerAssignmentByWorkerId(employee.id),
   );
   const hasActiveProjectAssignment = Boolean(
-    repository.getActiveProjectAssignmentByEmployeeId(employee.id),
+    operationsRepo.getActiveProjectAssignmentByEmployeeId(employee.id),
   );
   const hasActiveWarehouseAssignment = Boolean(
-    repository.getActiveWarehouseAssignmentByEmployeeId(employee.id),
+    operationsRepo.getActiveWarehouseAssignmentByEmployeeId(employee.id),
   );
 
   if (
@@ -172,9 +173,9 @@ export function ensureEmployeeTransitionAllowed(
     (nextRoleKey !== SYSTEM_ROLE_KEYS.projectManager || nextStatus !== "ACTIVE")
   ) {
     const hasActiveManagedProjects =
-      repository.listProjects({ managerId: employee.id, status: "ACTIVE" }).length > 0;
+      operationsRepo.listProjects({ managerId: employee.id, status: "ACTIVE" }).length > 0;
     const hasActiveWorkers =
-      repository.listManagerAssignments({ managerId: employee.id, status: "ACTIVE" }).length > 0;
+      workforceRepo.listManagerAssignments({ managerId: employee.id, status: "ACTIVE" }).length > 0;
 
     if (
       hasActiveManagedProjects ||
@@ -201,7 +202,7 @@ export function ensureEmployeeTransitionAllowed(
     (nextRoleKey !== SYSTEM_ROLE_KEYS.warehouseManager || nextStatus !== "ACTIVE")
   ) {
     const hasActiveWarehouses =
-      repository.listWarehouses({ managerId: employee.id, status: "ACTIVE" }).length > 0;
+      operationsRepo.listWarehouses({ managerId: employee.id, status: "ACTIVE" }).length > 0;
 
     if (hasActiveWarehouses || hasActiveProjectAssignment || hasActiveWarehouseAssignment) {
       throw new CompanyError(
@@ -220,13 +221,14 @@ export function ensureEmployeeTransitionAllowed(
 }
 
 export function ensureProjectTransitionAllowed(
-  repository: CompanyRepository,
+  operationsRepo: OperationsRepository,
+  workforceRepo: WorkforceRepository,
   projectId: string,
   currentManagerId: string | null,
   nextManagerId: string | null | undefined,
   nextStatus: string | undefined,
 ) {
-  const activeAssignments = repository.listProjectAssignments({
+  const activeAssignments = operationsRepo.listProjectAssignments({
     projectId,
     status: "ACTIVE",
   });
@@ -236,12 +238,12 @@ export function ensureProjectTransitionAllowed(
   }
 
   const activeWorkerAssignments = activeAssignments.filter((assignment) => {
-    const employee = repository.getEmployeeById(assignment.employeeId);
+    const employee = workforceRepo.getEmployeeById(assignment.employeeId);
     if (!employee) {
       return false;
     }
 
-    return repository.getRoleById(employee.roleId)?.key === SYSTEM_ROLE_KEYS.worker;
+    return workforceRepo.getRoleById(employee.roleId)?.key === SYSTEM_ROLE_KEYS.worker;
   });
 
   const managerWillChange = nextManagerId !== undefined && nextManagerId !== currentManagerId;
@@ -275,13 +277,13 @@ export function ensureProjectTransitionAllowed(
 }
 
 export function ensureWarehouseTransitionAllowed(
-  repository: CompanyRepository,
+  operationsRepo: OperationsRepository,
   warehouseId: string,
   currentManagerId: string | null,
   nextManagerId: string | null | undefined,
   nextStatus: string | undefined,
 ) {
-  const activeAssignments = repository.listWarehouseAssignments({
+  const activeAssignments = operationsRepo.listWarehouseAssignments({
     warehouseId,
     status: "ACTIVE",
   });
@@ -322,19 +324,20 @@ export function ensureWarehouseTransitionAllowed(
 }
 
 export function listActiveWorkerIdsForProject(
-  repository: CompanyRepository,
+  operationsRepo: OperationsRepository,
+  workforceRepo: WorkforceRepository,
   projectId: string,
   options?: { requireManagerConsistencyWith?: string | null },
 ) {
-  return repository
+  return operationsRepo
     .listProjectAssignments({ projectId, status: "ACTIVE" })
     .filter((assignment) => {
-      const employee = repository.getEmployeeById(assignment.employeeId);
+      const employee = workforceRepo.getEmployeeById(assignment.employeeId);
       if (!employee) {
         return false;
       }
 
-      const employeeRole = repository.getRoleById(employee.roleId);
+      const employeeRole = workforceRepo.getRoleById(employee.roleId);
       if (employeeRole?.key !== SYSTEM_ROLE_KEYS.worker) {
         return false;
       }
@@ -343,7 +346,7 @@ export function listActiveWorkerIdsForProject(
         return true;
       }
 
-      const activeManagerAssignment = repository.getActiveManagerAssignmentByWorkerId(
+      const activeManagerAssignment = workforceRepo.getActiveManagerAssignmentByWorkerId(
         assignment.employeeId,
       );
       if (

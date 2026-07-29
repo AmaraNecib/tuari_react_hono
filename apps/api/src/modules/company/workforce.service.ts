@@ -38,7 +38,6 @@ import {
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
 import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
-import type { CompanyRepository } from "./company.repository.contracts";
 import {
   SYSTEM_ROLE_KEYS,
   type EmployeeListFilters,
@@ -384,7 +383,8 @@ export class WorkforceService {
       const nextStatus = input.status ?? current.status;
 
       ensureEmployeeTransitionAllowed(
-        this.repository as CompanyRepository,
+        this.repository,
+        this.operationsRepo,
         current,
         currentRole.key,
         nextRole.key,
@@ -788,7 +788,8 @@ export class WorkforceService {
     for (const currentProject of currentProjects) {
       if (!nextProjectIds.has(currentProject.id)) {
         ensureProjectTransitionAllowed(
-          this.repository as CompanyRepository,
+          this.operationsRepo,
+          this.repository,
           currentProject.id,
           input.employeeId,
           null,
@@ -848,7 +849,7 @@ export class WorkforceService {
     for (const currentWarehouse of currentWarehouses) {
       if (!nextWarehouseIds.has(currentWarehouse.id)) {
         ensureWarehouseTransitionAllowed(
-          this.repository as CompanyRepository,
+          this.operationsRepo,
           currentWarehouse.id,
           input.employeeId,
           null,
