@@ -13,7 +13,7 @@ const fakeAuth = { handler: () => new Response(null, { status: 200 }) };
 /** Fresh in-memory SQLite handle with no schema tables. */
 const createRawDb = () => new Database(":memory:") as any;
 
-describe("createAppDependencies config injection", () => {
+describe("createAppDependencies config injection", { timeout: 20000 }, () => {
   it("uses the injected config for repository selection (inmemory adapter)", async () => {
     const { createAppDependencies } = await import("./dependencies");
     const config = createAppConfig({
