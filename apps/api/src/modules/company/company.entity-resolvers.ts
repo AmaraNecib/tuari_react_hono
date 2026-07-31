@@ -14,8 +14,11 @@
 import { CompanyError } from "./company.errors";
 import { SYSTEM_ROLE_KEYS } from "./company.types";
 import type { CompanyRepository } from "./company.repository.contracts";
+import type { WorkforceRepository } from "./workforce.repository";
+import type { OperationsRepository } from "./operations.repository";
+import type { FinanceRepository } from "./finance.repository";
 
-export function requireRole(repository: CompanyRepository, roleId: string) {
+export function requireRole(repository: WorkforceRepository, roleId: string) {
   const role = repository.getRoleById(roleId);
   if (!role) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على الدور المطلوب.", [
@@ -27,7 +30,7 @@ export function requireRole(repository: CompanyRepository, roleId: string) {
 }
 
 export function requireAssignableEmployeeRole(
-  repository: CompanyRepository,
+  repository: WorkforceRepository,
   roleId: string,
   field: string,
 ) {
@@ -47,7 +50,7 @@ export function requireAssignableEmployeeRole(
   return role;
 }
 
-export function requireEmployee(repository: CompanyRepository, employeeId: string) {
+export function requireEmployee(repository: WorkforceRepository, employeeId: string) {
   const employee = repository.getEmployeeById(employeeId);
   if (!employee) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على العامل المطلوب.");
@@ -57,7 +60,7 @@ export function requireEmployee(repository: CompanyRepository, employeeId: strin
 }
 
 export function requireEmployeeWithRoleKey(
-  repository: CompanyRepository,
+  repository: WorkforceRepository,
   employeeId: string,
   roleKey: string,
   field: string,
@@ -84,11 +87,11 @@ export function requireActiveEmployee<T extends { status: string }>(employee: T,
   return employee;
 }
 
-export function requireEmployeeWorker(repository: CompanyRepository, id: string, field: string) {
+export function requireEmployeeWorker(repository: WorkforceRepository, id: string, field: string) {
   return requireEmployeeWithRoleKey(repository, id, SYSTEM_ROLE_KEYS.worker, field);
 }
 
-export function requireProject(repository: CompanyRepository, projectId: string) {
+export function requireProject(repository: OperationsRepository, projectId: string) {
   const project = repository.getProjectById(projectId);
   if (!project) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على المشروع المطلوب.");
@@ -97,7 +100,7 @@ export function requireProject(repository: CompanyRepository, projectId: string)
   return project;
 }
 
-export function requireWarehouse(repository: CompanyRepository, warehouseId: string) {
+export function requireWarehouse(repository: OperationsRepository, warehouseId: string) {
   const warehouse = repository.getWarehouseById(warehouseId);
   if (!warehouse) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على المستودع المطلوب.");
@@ -106,7 +109,7 @@ export function requireWarehouse(repository: CompanyRepository, warehouseId: str
   return warehouse;
 }
 
-export function requireDebtAccount(repository: CompanyRepository, id: string) {
+export function requireDebtAccount(repository: FinanceRepository, id: string) {
   const account = repository.getDebtAccountById(id);
   if (!account) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على حساب الدين المطلوب.");
@@ -116,7 +119,7 @@ export function requireDebtAccount(repository: CompanyRepository, id: string) {
 }
 
 export function requireExternalCounterparty(
-  repository: CompanyRepository,
+  repository: FinanceRepository,
   id: string,
   field = "id",
 ) {
@@ -131,20 +134,21 @@ export function requireExternalCounterparty(
 }
 
 export function ensureEmployeeTransitionAllowed(
-  repository: CompanyRepository,
+  workforceRepo: WorkforceRepository,
+  operationsRepo: OperationsRepository,
   employee: { id: string },
   currentRoleKey: string,
   nextRoleKey: string,
   nextStatus: string,
 ) {
   const hasActiveManagerAssignment = Boolean(
-    repository.getActiveManagerAssignmentByWorkerId(employee.id),
+    workforceRepo.getActiveManagerAssignmentByWorkerId(employee.id),
   );
   const hasActiveProjectAssignment = Boolean(
-    repository.getActiveProjectAssignmentByEmployeeId(employee.id),
+    operationsRepo.getActiveProjectAssignmentByEmployeeId(employee.id),
   );
   const hasActiveWarehouseAssignment = Boolean(
-    repository.getActiveWarehouseAssignmentByEmployeeId(employee.id),
+    operationsRepo.getActiveWarehouseAssignmentByEmployeeId(employee.id),
   );
 
   if (
@@ -169,9 +173,9 @@ export function ensureEmployeeTransitionAllowed(
     (nextRoleKey !== SYSTEM_ROLE_KEYS.projectManager || nextStatus !== "ACTIVE")
   ) {
     const hasActiveManagedProjects =
-      repository.listProjects({ managerId: employee.id, status: "ACTIVE" }).length > 0;
+      operationsRepo.listProjects({ managerId: employee.id, status: "ACTIVE" }).length > 0;
     const hasActiveWorkers =
-      repository.listManagerAssignments({ managerId: employee.id, status: "ACTIVE" }).length > 0;
+      workforceRepo.listManagerAssignments({ managerId: employee.id, status: "ACTIVE" }).length > 0;
 
     if (
       hasActiveManagedProjects ||
@@ -198,7 +202,7 @@ export function ensureEmployeeTransitionAllowed(
     (nextRoleKey !== SYSTEM_ROLE_KEYS.warehouseManager || nextStatus !== "ACTIVE")
   ) {
     const hasActiveWarehouses =
-      repository.listWarehouses({ managerId: employee.id, status: "ACTIVE" }).length > 0;
+      operationsRepo.listWarehouses({ managerId: employee.id, status: "ACTIVE" }).length > 0;
 
     if (hasActiveWarehouses || hasActiveProjectAssignment || hasActiveWarehouseAssignment) {
       throw new CompanyError(
@@ -217,13 +221,14 @@ export function ensureEmployeeTransitionAllowed(
 }
 
 export function ensureProjectTransitionAllowed(
-  repository: CompanyRepository,
+  operationsRepo: OperationsRepository,
+  workforceRepo: WorkforceRepository,
   projectId: string,
   currentManagerId: string | null,
   nextManagerId: string | null | undefined,
   nextStatus: string | undefined,
 ) {
-  const activeAssignments = repository.listProjectAssignments({
+  const activeAssignments = operationsRepo.listProjectAssignments({
     projectId,
     status: "ACTIVE",
   });
@@ -233,12 +238,12 @@ export function ensureProjectTransitionAllowed(
   }
 
   const activeWorkerAssignments = activeAssignments.filter((assignment) => {
-    const employee = repository.getEmployeeById(assignment.employeeId);
+    const employee = workforceRepo.getEmployeeById(assignment.employeeId);
     if (!employee) {
       return false;
     }
 
-    return repository.getRoleById(employee.roleId)?.key === SYSTEM_ROLE_KEYS.worker;
+    return workforceRepo.getRoleById(employee.roleId)?.key === SYSTEM_ROLE_KEYS.worker;
   });
 
   const managerWillChange = nextManagerId !== undefined && nextManagerId !== currentManagerId;
@@ -272,13 +277,13 @@ export function ensureProjectTransitionAllowed(
 }
 
 export function ensureWarehouseTransitionAllowed(
-  repository: CompanyRepository,
+  operationsRepo: OperationsRepository,
   warehouseId: string,
   currentManagerId: string | null,
   nextManagerId: string | null | undefined,
   nextStatus: string | undefined,
 ) {
-  const activeAssignments = repository.listWarehouseAssignments({
+  const activeAssignments = operationsRepo.listWarehouseAssignments({
     warehouseId,
     status: "ACTIVE",
   });
@@ -319,19 +324,20 @@ export function ensureWarehouseTransitionAllowed(
 }
 
 export function listActiveWorkerIdsForProject(
-  repository: CompanyRepository,
+  operationsRepo: OperationsRepository,
+  workforceRepo: WorkforceRepository,
   projectId: string,
   options?: { requireManagerConsistencyWith?: string | null },
 ) {
-  return repository
+  return operationsRepo
     .listProjectAssignments({ projectId, status: "ACTIVE" })
     .filter((assignment) => {
-      const employee = repository.getEmployeeById(assignment.employeeId);
+      const employee = workforceRepo.getEmployeeById(assignment.employeeId);
       if (!employee) {
         return false;
       }
 
-      const employeeRole = repository.getRoleById(employee.roleId);
+      const employeeRole = workforceRepo.getRoleById(employee.roleId);
       if (employeeRole?.key !== SYSTEM_ROLE_KEYS.worker) {
         return false;
       }
@@ -340,7 +346,7 @@ export function listActiveWorkerIdsForProject(
         return true;
       }
 
-      const activeManagerAssignment = repository.getActiveManagerAssignmentByWorkerId(
+      const activeManagerAssignment = workforceRepo.getActiveManagerAssignmentByWorkerId(
         assignment.employeeId,
       );
       if (

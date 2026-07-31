@@ -157,6 +157,28 @@ Portable app:
 
 This makes the portable build self-contained and easy to move to USB or another machine.
 
+## Data Layer: Ports & Adapters
+
+The company domain data layer follows a ports-and-adapters pattern so the
+backend store can be swapped without touching business logic.
+
+- **Ports** — narrow repository interfaces per domain:
+  `WorkforceRepository`, `OperationsRepository`, `FinanceRepository`,
+  `AuditRepository`. Domain services depend only on the port they need.
+- **SQLite adapters** — `Sqlite*Repository` classes (production, Drizzle over
+  better-sqlite3).
+- **InMemory adapters** — `InMemory*Repository` classes backed by a shared
+  `InMemoryStore` (Maps), selectable for tests/CI.
+
+### Config
+
+`apps/api/src/config/` validates all runtime configuration with Zod
+(`createAppConfig`) and exposes adapter factories (`config/database.ts`).
+The adapter is selected via `DB_ADAPTER` env var (`sqlite` default, `inmemory`),
+with optional `TUARI_CONFIG_FILE` pointing at a user-editable `config.json`
+(env vars always override the file). The desktop sidecar passes
+`TUARI_CONFIG_FILE` at `%APPDATA%/Tuari/config.json` (or the portable data dir).
+
 ## What Lives Only In Memory
 
 These values are intentionally not persisted in browser storage:

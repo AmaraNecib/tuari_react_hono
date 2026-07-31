@@ -1430,6 +1430,15 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(error_log_file));
 
+    // Point the API sidecar at the user-editable config.json (may not exist
+    // yet — the API treats a missing file as "use env/defaults").
+    if let Ok(tuari_dir) = resolve_tuari_dir(app) {
+        command.env(
+            "TUARI_CONFIG_FILE",
+            tuari_dir.join("config.json").as_os_str(),
+        );
+    }
+
     // Set structured license env vars for the API sidecar per Licensing Architecture §15.5
     if let Ok(tuari_dir) = resolve_tuari_dir(app) {
         if let Ok(manager) = crate::license::LicenseManager::initialize(&tuari_dir) {

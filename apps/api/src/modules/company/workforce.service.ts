@@ -36,7 +36,8 @@ import {
   successResult,
 } from "./company.helpers";
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
-import type { CompanyRepository } from "./company.repository.contracts";
+import type { WorkforceRepository } from "./workforce.repository";
+import type { OperationsRepository } from "./operations.repository";
 import {
   SYSTEM_ROLE_KEYS,
   type EmployeeListFilters,
@@ -63,7 +64,8 @@ import {
 
 export class WorkforceService {
   constructor(
-    private readonly repository: CompanyRepository,
+    private readonly repository: WorkforceRepository,
+    private readonly operationsRepo: OperationsRepository,
     private readonly mutation: WorkspaceMutationContext,
   ) {}
 
@@ -119,11 +121,11 @@ export class WorkforceService {
   }
 
   listProjectManagerOwnershipHistory(filters?: ProjectManagerOwnershipHistoryListFilters) {
-    return { items: this.repository.listProjectManagerOwnershipHistory(filters) };
+    return { items: this.operationsRepo.listProjectManagerOwnershipHistory(filters) };
   }
 
   listWarehouseManagerOwnershipHistory(filters?: WarehouseManagerOwnershipHistoryListFilters) {
-    return { items: this.repository.listWarehouseManagerOwnershipHistory(filters) };
+    return { items: this.operationsRepo.listWarehouseManagerOwnershipHistory(filters) };
   }
 
   listSalaryPayments(filters?: EmployeeSalaryPaymentListFilters) {
@@ -330,7 +332,7 @@ export class WorkforceService {
           return;
         }
 
-        const project = this.repository.getProjectById(employee.projectId);
+        const project = this.operationsRepo.getProjectById(employee.projectId);
 
         if (!project) {
           fieldErrors.push({
@@ -382,6 +384,7 @@ export class WorkforceService {
 
       ensureEmployeeTransitionAllowed(
         this.repository,
+        this.operationsRepo,
         current,
         currentRole.key,
         nextRole.key,
@@ -468,17 +471,17 @@ export class WorkforceService {
         this.repository.listManagerAssignments({ workerId: id }).length > 0 ||
         this.repository.listManagerAssignments({ managerId: id }).length > 0;
       const hasProjectHistory =
-        this.repository.listProjectAssignments({ employeeId: id }).length > 0;
+        this.operationsRepo.listProjectAssignments({ employeeId: id }).length > 0;
       const hasWarehouseHistory =
-        this.repository.listWarehouseAssignments({ employeeId: id }).length > 0;
+        this.operationsRepo.listWarehouseAssignments({ employeeId: id }).length > 0;
       const hasManagedProjectHistory =
-        this.repository.listProjectManagerOwnershipHistory({ managerId: id }).length > 0;
+        this.operationsRepo.listProjectManagerOwnershipHistory({ managerId: id }).length > 0;
       const hasManagedWarehouseHistory =
-        this.repository.listWarehouseManagerOwnershipHistory({ managerId: id }).length > 0;
+        this.operationsRepo.listWarehouseManagerOwnershipHistory({ managerId: id }).length > 0;
       const hasSalaryPayments =
         this.repository.listSalaryPayments({ employeeId: id }).length > 0;
-      const managesProjects = this.repository.listProjects({ managerId: id }).length > 0;
-      const managesWarehouses = this.repository.listWarehouses({ managerId: id }).length > 0;
+      const managesProjects = this.operationsRepo.listProjects({ managerId: id }).length > 0;
+      const managesWarehouses = this.operationsRepo.listWarehouses({ managerId: id }).length > 0;
 
       if (
         hasManagerHistory ||
@@ -630,7 +633,7 @@ export class WorkforceService {
         throw new CompanyError("BUSINESS_RULE", "يمكن إنهاء روابط المدير النشطة فقط.");
       }
 
-      const activeProject = this.repository.getActiveProjectAssignmentByEmployeeId(current.workerId);
+      const activeProject = this.operationsRepo.getActiveProjectAssignmentByEmployeeId(current.workerId);
       if (activeProject) {
         throw new CompanyError(
           "BUSINESS_RULE",
@@ -696,7 +699,7 @@ export class WorkforceService {
         ]);
       }
 
-      const project = requireProject(this.repository, input.projectId);
+      const project = requireProject(this.operationsRepo, input.projectId);
 
       if (project.status !== "ACTIVE") {
         throw new CompanyError("BUSINESS_RULE", "لا يمكن ربط العامل إلا بمشروع نشط.", [
@@ -756,9 +759,9 @@ export class WorkforceService {
     requireActiveEmployee(employee, "employeeId");
 
     const selectedProjects = input.projectIds.map((projectId) =>
-      requireProject(this.repository, projectId),
+      requireProject(this.operationsRepo, projectId),
     );
-    const currentProjects = this.repository.listProjects({ managerId: input.employeeId });
+    const currentProjects = this.operationsRepo.listProjects({ managerId: input.employeeId });
     const nextProjectIds = new Set(input.projectIds);
 
     for (const project of selectedProjects) {
@@ -785,6 +788,7 @@ export class WorkforceService {
     for (const currentProject of currentProjects) {
       if (!nextProjectIds.has(currentProject.id)) {
         ensureProjectTransitionAllowed(
+          this.operationsRepo,
           this.repository,
           currentProject.id,
           input.employeeId,
@@ -816,9 +820,9 @@ export class WorkforceService {
     requireActiveEmployee(employee, "employeeId");
 
     const selectedWarehouses = input.warehouseIds.map((warehouseId) =>
-      requireWarehouse(this.repository, warehouseId),
+      requireWarehouse(this.operationsRepo, warehouseId),
     );
-    const currentWarehouses = this.repository.listWarehouses({ managerId: input.employeeId });
+    const currentWarehouses = this.operationsRepo.listWarehouses({ managerId: input.employeeId });
     const nextWarehouseIds = new Set(input.warehouseIds);
 
     for (const warehouse of selectedWarehouses) {
@@ -845,7 +849,7 @@ export class WorkforceService {
     for (const currentWarehouse of currentWarehouses) {
       if (!nextWarehouseIds.has(currentWarehouse.id)) {
         ensureWarehouseTransitionAllowed(
-          this.repository,
+          this.operationsRepo,
           currentWarehouse.id,
           input.employeeId,
           null,

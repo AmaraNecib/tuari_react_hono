@@ -22,7 +22,8 @@
     "better-sqlite3-sqlcipher": "5.4.3-3",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.12"
+    "hono": "^4.12.12",
+    "zod": "^4.0.5"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
