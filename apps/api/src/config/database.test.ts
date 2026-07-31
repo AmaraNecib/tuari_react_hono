@@ -9,6 +9,7 @@ import {
   createAuditRepository,
 } from "./database";
 import { createAppConfig } from "./index";
+import { InMemoryStore } from "../modules/company/adapters";
 
 const config = createAppConfig({ BETTER_AUTH_SECRET: "test-secret" });
 const inMemoryConfig = createAppConfig({ BETTER_AUTH_SECRET: "test-secret", DB_ADAPTER: "inmemory" });
@@ -92,4 +93,47 @@ describe("database adapter factories", () => {
     expect(repo.listRoles()).toHaveLength(1);
     expect(repo.getRoleById(role.id)?.name).toBe("Worker");
   });
+
+  it("narrow inmemory factories share a store when one is provided", () => {
+    const store = new InMemoryStore();
+    const workforce = createWorkforceRepository(undefined as any, inMemoryConfig, store);
+    const operations = createOperationsRepository(undefined as any, inMemoryConfig, store);
+
+    // Create a project through the operations adapter, then verify the
+    // workforce adapter can see it via the shared store.
+    const project = operations.createProject({ name: "Site A", status: "ACTIVE" });
+    expect(project.id).toBeTruthy();
+    expect(store.projects.has(project.id)).toBe(true);
+    expect(workforce).toBeDefined();
+  });
+
+  it("inmemory listEmployeesPaged honors the cursor across pages", () => {
+    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+    const role = repo.createRole({ key: "worker", name: "Worker" });
+    for (let i = 0; i < 5; i++) {
+      repo.createEmployee({
+        firstName: `F${i}`,
+        lastName: `L${i}`,
+        phone: `0699${String(i).padStart(6, "0")}`,
+        roleId: role.id,
+        status: "ACTIVE",
+      });
+    }
+    const page1 = repo.listEmployeesPaged({ limit: 2 });
+    expect(page1.items).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const page2 = repo.listEmployeesPaged({ limit: 2, cursor: page1.nextCursor! });
+    expect(page2.items).toHaveLength(2);
+    // No overlap with page 1.
+    const page1Ids = new Set(page1.items.map((e) => e.id));
+    expect(page2.items.every((e) => !page1Ids.has(e.id))).toBe(true);
+
+    const page3 = repo.listEmployeesPaged({ limit: 2, cursor: page2.nextCursor! });
+    expect(page3.items).toHaveLength(1);
+    expect(page3.nextCursor).toBeNull();
+  });
+
+
+
 });

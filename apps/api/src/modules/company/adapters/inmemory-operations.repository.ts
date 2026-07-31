@@ -169,7 +169,8 @@ export class InMemoryOperationsRepository implements OperationsRepository {
   }
 
   private insertProjectManagerOwnershipHistory(data: any) {
-    this.store.projectManagerOwnershipHistory.set(newId(), { id: newId(), ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
+    const id = newId();
+    this.store.projectManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
   }
   private endActiveProjectManagerOwnershipHistory(projectId: string, endDate: string, a: any) {
     for (const [hid, h] of this.store.projectManagerOwnershipHistory) {
@@ -180,7 +181,8 @@ export class InMemoryOperationsRepository implements OperationsRepository {
     }
   }
   private insertWarehouseManagerOwnershipHistory(data: any) {
-    this.store.warehouseManagerOwnershipHistory.set(newId(), { id: newId(), ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
+    const id = newId();
+    this.store.warehouseManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
   }
   private endActiveWarehouseManagerOwnershipHistory(warehouseId: string, endDate: string, a: any) {
     for (const [hid, h] of this.store.warehouseManagerOwnershipHistory) {

@@ -71,14 +71,29 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
     });
   }
   listEmployeesPaged(query: { filters?: EmployeeListFilters; cursor?: string; limit: number }): { items: EmployeeRecord[]; total: number; nextCursor: string | null } {
+    // Sort matches the SQLite index: createdAt DESC, id DESC.
     const all = this.listEmployees(query.filters).sort((a, b) => {
       if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
       return a.id < b.id ? 1 : -1;
     });
-    const items = all.slice(0, query.limit);
-    const last = items[items.length - 1];
-    const nextCursor = all.length > query.limit && last ? `${last.createdAt}|${last.id}` : null;
-    return { items, total: all.length, nextCursor };
+    // Skip records strictly past the cursor in sort order (opaque token format: createdAt|id).
+    let startIndex = 0;
+    if (query.cursor) {
+      const parts = query.cursor.split("|");
+      const createdAt = parts[0];
+      const id = parts[1];
+      if (createdAt && id) {
+        startIndex = all.findIndex(
+          (r) => r.createdAt < createdAt || (r.createdAt === createdAt && r.id < id),
+        );
+      }
+      if (startIndex < 0) startIndex = all.length;
+    }
+    const slice = all.slice(startIndex, startIndex + query.limit);
+    const hasMore = startIndex + slice.length < all.length;
+    const last = slice[slice.length - 1];
+    const nextCursor = hasMore && last ? `${last.createdAt}|${last.id}` : null;
+    return { items: slice, total: all.length, nextCursor };
   }
   getEmployeeById(id: string): EmployeeRecord | null {
     return this.store.employees.get(id) ?? null;
@@ -298,7 +313,8 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
     return Array.from(this.store.warehouses.values()).filter((w) => w.managerId === managerId);
   }
   private insertStateHistory(data: any) {
-    this.store.employeeStateHistory.set(newId(), { id: newId(), ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
+    const id = newId();
+    this.store.employeeStateHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
   }
   private endActiveStateHistory(employeeId: string, endDate: string, a: any) {
     for (const [hid, h] of this.store.employeeStateHistory) {
@@ -309,7 +325,8 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
     }
   }
   private insertProjectManagerOwnershipHistory(data: any) {
-    this.store.projectManagerOwnershipHistory.set(newId(), { id: newId(), ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
+    const id = newId();
+    this.store.projectManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
   }
   private endActiveProjectManagerOwnershipHistory(projectId: string, endDate: string, a: any) {
     for (const [hid, h] of this.store.projectManagerOwnershipHistory) {
@@ -320,7 +337,8 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
     }
   }
   private insertWarehouseManagerOwnershipHistory(data: any) {
-    this.store.warehouseManagerOwnershipHistory.set(newId(), { id: newId(), ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
+    const id = newId();
+    this.store.warehouseManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
   }
   private endActiveWarehouseManagerOwnershipHistory(warehouseId: string, endDate: string, a: any) {
     for (const [hid, h] of this.store.warehouseManagerOwnershipHistory) {

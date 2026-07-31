@@ -68,16 +68,21 @@ export function createCompanyRepository(
 
 /**
  * Create a WorkforceRepository for the configured adapter.
+ *
+ * @param store - Optional shared in-memory store. Pass the same store
+ *                across narrow factories to keep cross-domain lookups
+ *                consistent when using per-domain injection.
  */
 export function createWorkforceRepository(
   rawDb: BetterSqliteDatabase,
   config: AppConfig,
+  store?: InMemoryStore,
 ): WorkforceRepository {
   switch (config.dbAdapter) {
     case "sqlite":
       return new SqliteWorkforceRepository(buildSqliteCompanyRepository(rawDb, config));
     case "inmemory":
-      return new InMemoryWorkforceRepository(new InMemoryStore());
+      return new InMemoryWorkforceRepository(store ?? new InMemoryStore());
     default: {
       const _exhaustive: never = config.dbAdapter;
       throw new Error(`Unsupported db adapter: ${_exhaustive}`);
@@ -87,16 +92,19 @@ export function createWorkforceRepository(
 
 /**
  * Create an OperationsRepository for the configured adapter.
+ *
+ * @param store - Optional shared in-memory store (see createWorkforceRepository).
  */
 export function createOperationsRepository(
   rawDb: BetterSqliteDatabase,
   config: AppConfig,
+  store?: InMemoryStore,
 ): OperationsRepository {
   switch (config.dbAdapter) {
     case "sqlite":
       return new SqliteOperationsRepository(buildSqliteCompanyRepository(rawDb, config));
     case "inmemory":
-      return new InMemoryOperationsRepository(new InMemoryStore());
+      return new InMemoryOperationsRepository(store ?? new InMemoryStore());
     default: {
       const _exhaustive: never = config.dbAdapter;
       throw new Error(`Unsupported db adapter: ${_exhaustive}`);
@@ -106,16 +114,19 @@ export function createOperationsRepository(
 
 /**
  * Create a FinanceRepository for the configured adapter.
+ *
+ * @param store - Optional shared in-memory store (see createWorkforceRepository).
  */
 export function createFinanceRepository(
   rawDb: BetterSqliteDatabase,
   config: AppConfig,
+  store?: InMemoryStore,
 ): FinanceRepository {
   switch (config.dbAdapter) {
     case "sqlite":
       return new SqliteFinanceRepository(buildSqliteCompanyRepository(rawDb, config));
     case "inmemory":
-      return new InMemoryFinanceRepository(new InMemoryStore());
+      return new InMemoryFinanceRepository(store ?? new InMemoryStore());
     default: {
       const _exhaustive: never = config.dbAdapter;
       throw new Error(`Unsupported db adapter: ${_exhaustive}`);
@@ -125,16 +136,19 @@ export function createFinanceRepository(
 
 /**
  * Create an AuditRepository for the configured adapter.
+ *
+ * @param store - Optional shared in-memory store (see createWorkforceRepository).
  */
 export function createAuditRepository(
   rawDb: BetterSqliteDatabase,
   config: AppConfig,
+  store?: InMemoryStore,
 ): AuditRepository {
   switch (config.dbAdapter) {
     case "sqlite":
       return new SqliteAuditRepository(buildSqliteCompanyRepository(rawDb, config));
     case "inmemory":
-      return new InMemoryAuditRepository(new InMemoryStore());
+      return new InMemoryAuditRepository(store ?? new InMemoryStore());
     default: {
       const _exhaustive: never = config.dbAdapter;
       throw new Error(`Unsupported db adapter: ${_exhaustive}`);
