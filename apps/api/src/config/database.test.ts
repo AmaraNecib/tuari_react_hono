@@ -11,6 +11,7 @@ import {
 import { createAppConfig } from "./index";
 
 const config = createAppConfig({ BETTER_AUTH_SECRET: "test-secret" });
+const inMemoryConfig = createAppConfig({ BETTER_AUTH_SECRET: "test-secret", DB_ADAPTER: "inmemory" });
 
 /** Create an in-memory SQLite handle for factory tests. */
 function createRawDb() {
@@ -57,5 +58,38 @@ describe("database adapter factories", () => {
     const repo = createAuditRepository(createRawDb(), config);
     expect(typeof repo.isBootstrapOwner).toBe("function");
     expect(typeof repo.listUserProfileHistory).toBe("function");
+  });
+
+  // InMemory adapter factories (rawDb is ignored)
+  it("createWorkforceRepository supports the inmemory adapter", () => {
+    const repo = createWorkforceRepository(undefined as any, inMemoryConfig);
+    expect(typeof repo.listRoles).toBe("function");
+    expect(typeof repo.createEmployee).toBe("function");
+  });
+
+  it("createOperationsRepository supports the inmemory adapter", () => {
+    const repo = createOperationsRepository(undefined as any, inMemoryConfig);
+    expect(typeof repo.listProjects).toBe("function");
+    expect(typeof repo.createProject).toBe("function");
+  });
+
+  it("createFinanceRepository supports the inmemory adapter", () => {
+    const repo = createFinanceRepository(undefined as any, inMemoryConfig);
+    expect(typeof repo.listDebtAccounts).toBe("function");
+    expect(typeof repo.createDebtAccount).toBe("function");
+  });
+
+  it("createAuditRepository supports the inmemory adapter", () => {
+    const repo = createAuditRepository(undefined as any, inMemoryConfig);
+    expect(typeof repo.isBootstrapOwner).toBe("function");
+  });
+
+  it("createCompanyRepository supports the inmemory adapter and is functional", () => {
+    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+    expect(typeof repo.withTransaction).toBe("function");
+    // End-to-end: create a role, list it, and query it back.
+    const role = repo.createRole({ key: "worker", name: "Worker" });
+    expect(repo.listRoles()).toHaveLength(1);
+    expect(repo.getRoleById(role.id)?.name).toBe("Worker");
   });
 });

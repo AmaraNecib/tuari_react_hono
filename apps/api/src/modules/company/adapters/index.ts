@@ -2,4 +2,9 @@ export { SqliteWorkforceRepository } from "./sqlite-workforce.repository";
 export { SqliteOperationsRepository } from "./sqlite-operations.repository";
 export { SqliteFinanceRepository } from "./sqlite-finance.repository";
 export { SqliteAuditRepository } from "./sqlite-audit.repository";
-
+export { InMemoryStore } from "./inmemory-store";
+export { InMemoryWorkforceRepository } from "./inmemory-workforce.repository";
+export { InMemoryOperationsRepository } from "./inmemory-operations.repository";
+export { InMemoryFinanceRepository } from "./inmemory-finance.repository";
+export { InMemoryAuditRepository } from "./inmemory-audit.repository";
+export { InMemoryCompanyRepository } from "./inmemory-company.repository";

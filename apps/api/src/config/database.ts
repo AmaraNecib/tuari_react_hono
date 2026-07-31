@@ -17,6 +17,7 @@ import { SqliteWorkforceRepository } from "../modules/company/adapters/sqlite-wo
 import { SqliteOperationsRepository } from "../modules/company/adapters/sqlite-operations.repository";
 import { SqliteFinanceRepository } from "../modules/company/adapters/sqlite-finance.repository";
 import { SqliteAuditRepository } from "../modules/company/adapters/sqlite-audit.repository";
+import { InMemoryStore, InMemoryWorkforceRepository, InMemoryOperationsRepository, InMemoryFinanceRepository, InMemoryAuditRepository, InMemoryCompanyRepository } from "../modules/company/adapters";
 import type { CompanyRepository } from "../modules/company/company.repository.contracts";
 import type { WorkforceRepository } from "../modules/company/workforce.repository";
 import type { OperationsRepository } from "../modules/company/operations.repository";
@@ -56,6 +57,8 @@ export function createCompanyRepository(
   switch (config.dbAdapter) {
     case "sqlite":
       return buildSqliteCompanyRepository(rawDb, config);
+    case "inmemory":
+      return new InMemoryCompanyRepository();
     default: {
       const _exhaustive: never = config.dbAdapter;
       throw new Error(`Unsupported db adapter: ${_exhaustive}`);
@@ -73,6 +76,8 @@ export function createWorkforceRepository(
   switch (config.dbAdapter) {
     case "sqlite":
       return new SqliteWorkforceRepository(buildSqliteCompanyRepository(rawDb, config));
+    case "inmemory":
+      return new InMemoryWorkforceRepository(new InMemoryStore());
     default: {
       const _exhaustive: never = config.dbAdapter;
       throw new Error(`Unsupported db adapter: ${_exhaustive}`);
@@ -90,6 +95,8 @@ export function createOperationsRepository(
   switch (config.dbAdapter) {
     case "sqlite":
       return new SqliteOperationsRepository(buildSqliteCompanyRepository(rawDb, config));
+    case "inmemory":
+      return new InMemoryOperationsRepository(new InMemoryStore());
     default: {
       const _exhaustive: never = config.dbAdapter;
       throw new Error(`Unsupported db adapter: ${_exhaustive}`);
@@ -107,6 +114,8 @@ export function createFinanceRepository(
   switch (config.dbAdapter) {
     case "sqlite":
       return new SqliteFinanceRepository(buildSqliteCompanyRepository(rawDb, config));
+    case "inmemory":
+      return new InMemoryFinanceRepository(new InMemoryStore());
     default: {
       const _exhaustive: never = config.dbAdapter;
       throw new Error(`Unsupported db adapter: ${_exhaustive}`);
@@ -124,6 +133,8 @@ export function createAuditRepository(
   switch (config.dbAdapter) {
     case "sqlite":
       return new SqliteAuditRepository(buildSqliteCompanyRepository(rawDb, config));
+    case "inmemory":
+      return new InMemoryAuditRepository(new InMemoryStore());
     default: {
       const _exhaustive: never = config.dbAdapter;
       throw new Error(`Unsupported db adapter: ${_exhaustive}`);

@@ -103,8 +103,8 @@ const normalizeBaseUrl = (value: string) => {
 // Zod schema for the full application config
 // ---------------------------------------------------------------------------
 
-/** Supported database adapters. Currently only SQLite; Postgres / InMemory are future. */
-export const dbAdapterSchema = z.enum(["sqlite"]);
+/** Supported database adapters: SQLite (production), InMemory (tests/CI). Postgres is future. */
+export const dbAdapterSchema = z.enum(["sqlite", "inmemory"]);
 
 export const appConfigSchema = z.object({
   // --- Database ---
@@ -166,7 +166,7 @@ export function createAppConfig(
     const parsed = dbAdapterSchema.safeParse(raw);
     if (!parsed.success) {
       throw new Error(
-        `DB_ADAPTER must be one of: sqlite, received "${raw}"`,
+        `DB_ADAPTER must be one of: ${dbAdapterSchema.options.join(", ")}, received "${raw}"`,
       );
     }
     return parsed.data;

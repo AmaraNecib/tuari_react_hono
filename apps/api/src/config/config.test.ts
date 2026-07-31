@@ -232,13 +232,21 @@ describe("createAppConfig", () => {
     expect(config.dbAdapter).toBe("sqlite");
   });
 
+  it("accepts the inmemory adapter", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      DB_ADAPTER: "inmemory",
+    });
+    expect(config.dbAdapter).toBe("inmemory");
+  });
+
   it("rejects invalid DB_ADAPTER values", () => {
     expect(() =>
       createAppConfig({
         ...requiredAuth,
         DB_ADAPTER: "postgres",
       }),
-    ).toThrow("DB_ADAPTER must be one of: sqlite");
+    ).toThrow("DB_ADAPTER must be one of: sqlite, inmemory");
   });
 
   it("returns a typed config object matching the AppConfig interface", () => {
