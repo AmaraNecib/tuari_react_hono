@@ -352,11 +352,28 @@ describe("appConfigSchema betterAuthUrl validation", () => {
     ).toThrow("Invalid BETTER_AUTH_URL");
   });
 
-  it("rejects credentials or query parts via the schema alone", () => {
+  it("rejects a non-http(s) protocol via the schema alone", () => {
+    expect(() =>
+      appConfigSchema.parse({ ...validRaw, betterAuthUrl: "ftp://example.com" }),
+    ).toThrow("BETTER_AUTH_URL must use http or https");
+  });
+
+  it("rejects credentials via the schema alone", () => {
     expect(() =>
       appConfigSchema.parse({
         ...validRaw,
-        betterAuthUrl: "https://user:pass@example.com?x=1",
+        betterAuthUrl: "https://user:pass@example.com",
+      }),
+    ).toThrow(
+      "BETTER_AUTH_URL must not include credentials, query parameters, or fragments",
+    );
+  });
+
+  it("rejects query parts via the schema alone", () => {
+    expect(() =>
+      appConfigSchema.parse({
+        ...validRaw,
+        betterAuthUrl: "https://example.com?x=1",
       }),
     ).toThrow(
       "BETTER_AUTH_URL must not include credentials, query parameters, or fragments",

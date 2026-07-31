@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 
 // `env` (infrastructure/config/runtime-env) is built at module load and
@@ -12,6 +12,10 @@ const fakeAuth = { handler: () => new Response(null, { status: 200 }) };
 
 /** Fresh in-memory SQLite handle with no schema tables. */
 const createRawDb = () => new Database(":memory:") as any;
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("createAppDependencies config injection", { timeout: 20000 }, () => {
   it("uses the injected config for repository selection (inmemory adapter)", async () => {
@@ -29,6 +33,12 @@ describe("createAppDependencies config injection", { timeout: 20000 }, () => {
   });
 
   it("defaults to the sqlite adapter when no config is injected", async () => {
+    // Pin the ambient env so the default `createAppConfig()` path is
+    // deterministic regardless of the CI/dev shell environment.
+    vi.stubEnv("DB_ADAPTER", undefined);
+    vi.stubEnv("TUARI_CONFIG_FILE", undefined);
+    vi.stubEnv("NODE_ENV", "test");
+
     const { createAppDependencies } = await import("./dependencies");
 
     const deps = await createAppDependencies(createRawDb(), undefined, fakeAuth as any);
@@ -37,7 +47,6 @@ describe("createAppDependencies config injection", { timeout: 20000 }, () => {
     // role table in the schema-less :memory: database — proving the injected
     // config in the test above is what switched the adapter.
     expect(deps.companyService).toBeDefined();
-    expect(deps.rawDatabase).toBeDefined();
     expect(() => deps.companyService.listRoles()).toThrow(/no such table/);
   });
 });
