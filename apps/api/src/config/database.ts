@@ -8,6 +8,13 @@
  *
  * The narrow factories (createWorkforceRepository, createOperationsRepository,
  * etc.) return the per-domain delegation adapters introduced in Phase 3.
+ *
+ * Note: each narrow SQLite factory builds its own SqliteCompanyRepository
+ * instance (and therefore its own Drizzle handle). They share the same
+ * underlying better-sqlite3 connection (rawDb), so data is consistent, but
+ * transactions are only atomic when a single repository instance is used —
+ * prefer `createCompanyRepository` (or `createAppDependencies`) for the
+ * composed wiring used in production.
  */
 
 import type { BetterSqliteDatabase } from "../types/sqlite";

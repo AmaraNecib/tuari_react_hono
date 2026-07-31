@@ -11,8 +11,6 @@
  */
 
 import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
 import { z } from "zod";
 import { dbAdapterSchema } from "./db-adapter";
 
@@ -32,21 +30,6 @@ export const configFileSchema = z.object({
 });
 
 export type ConfigFileShape = z.infer<typeof configFileSchema>;
-
-/**
- * Default config file path for the desktop app:
- * Windows: %APPDATA%\Tuari\config.json
- * Other:   ~/.config/tuari/config.json
- */
-export function defaultConfigFilePath(): string {
-  if (process.platform === "win32") {
-    const appData = process.env.APPDATA;
-    if (appData) return join(appData, "Tuari", "config.json");
-  }
-  const xdg = process.env.XDG_CONFIG_HOME;
-  const base = xdg || join(homedir(), ".config");
-  return join(base, "tuari", "config.json");
-}
 
 /**
  * Load and validate the config file for a given env source.
@@ -70,8 +53,17 @@ export function loadConfigFile(
   try {
     const raw = readFileSync(configPath, "utf8");
     const parsed = configFileSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
-  } catch {
+    if (!parsed.success) {
+      console.warn(
+        `[config] Ignoring invalid config file ${configPath}: ${parsed.error.issues
+          .map((i) => i.path.join("."))
+          .join(", ")}`,
+      );
+      return null;
+    }
+    return parsed.data;
+  } catch (error) {
+    console.warn(`[config] Ignoring unreadable config file ${configPath}`, error);
     return null;
   }
 }
