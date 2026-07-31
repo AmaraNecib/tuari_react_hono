@@ -4,10 +4,11 @@ import { createDatabaseConnection } from "../infrastructure/database/factory";
 import type { AppDrizzle } from "../infrastructure/database/drizzle";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
 import type { BetterSqliteDatabase } from "../types/sqlite";
+import { createAppConfig } from "../config";
+import { createCompanyRepository } from "../config/database";
 import { DrizzleAccountRepository } from "../modules/account/account.repository";
 import { AccountService } from "../modules/account/account.service";
 import { AuthBootstrapService } from "../modules/auth/bootstrap.service";
-import { createCompanyRepository } from "../modules/company/company.repository";
 import { CompanyService } from "../modules/company/company.service";
 import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
@@ -51,7 +52,12 @@ export async function createAppDependencies(
   const db = drizzleDb ?? createDrizzleFromSqlite(sharedDatabase);
   const auth = authInstance ?? (await import("../infrastructure/auth/auth")).createAuth(db);
 
-  const companyRepository = createCompanyRepository(sharedDatabase);
+  // Config-aware repository selection: honors DB_ADAPTER (sqlite | inmemory).
+  // Note: when dbAdapter=inmemory only the company domain is in-memory; the
+  // inventory/invoice/payment modules still use the SQLite handle until those
+  // adapters are introduced in a follow-up phase.
+  const config = createAppConfig();
+  const companyRepository = createCompanyRepository(sharedDatabase, config);
   const inventoryRepository = createInventoryRepository(sharedDatabase);
   const accountRepository = new DrizzleAccountRepository(db);
 
