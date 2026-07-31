@@ -4,7 +4,7 @@ import { createDatabaseConnection } from "../infrastructure/database/factory";
 import type { AppDrizzle } from "../infrastructure/database/drizzle";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
 import type { BetterSqliteDatabase } from "../types/sqlite";
-import { createAppConfig } from "../config";
+import { createAppConfig, type AppConfig } from "../config";
 import { createCompanyRepository } from "../config/database";
 import { DrizzleAccountRepository } from "../modules/account/account.repository";
 import { AccountService } from "../modules/account/account.service";
@@ -40,6 +40,10 @@ import { UpdateHistoryService } from "../modules/update/update-history.service";
  * @param sqlite - Shared SQLite handle (caller is responsible for lifecycle).
  *                 If omitted, a new connection is created (backwards compat).
  * @param drizzleDb - Pre-built Drizzle instance. If omitted, created from sqlite.
+ * @param authInstance - Pre-built Better Auth instance. If omitted, created from db.
+ * @param config - Validated application config. Defaults to `createAppConfig()`
+ *                 (env + optional config file). Injectable so tests can pass a
+ *                 controlled config (e.g. DB_ADAPTER=inmemory).
  */
 /** Wire all application dependencies from a shared SQLite connection. */
 export async function createAppDependencies(
@@ -47,6 +51,7 @@ export async function createAppDependencies(
   sqlite?: any,
   drizzleDb?: AppDrizzle,
   authInstance?: BetterAuthInstance,
+  config: AppConfig = createAppConfig(),
 ) {
   const sharedDatabase = sqlite ?? createDatabaseConnection();
   const db = drizzleDb ?? createDrizzleFromSqlite(sharedDatabase);
@@ -56,7 +61,6 @@ export async function createAppDependencies(
   // Note: when dbAdapter=inmemory only the company domain is in-memory; the
   // inventory/invoice/payment modules still use the SQLite handle until those
   // adapters are introduced in a follow-up phase.
-  const config = createAppConfig();
   const companyRepository = createCompanyRepository(sharedDatabase, config);
   const inventoryRepository = createInventoryRepository(sharedDatabase);
   const accountRepository = new DrizzleAccountRepository(db);

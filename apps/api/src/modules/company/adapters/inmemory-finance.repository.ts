@@ -102,7 +102,7 @@ export class InMemoryFinanceRepository implements FinanceRepository {
     const cur = this.store.debtEntries.get(data.id);
     if (!cur) return null;
     const a = normalizeAudit(audit); const ts = now();
-    const record = { ...cur, status: "VOIDED", voidedAt: data.voidedAt, voidedBy: data.voidedBy ?? a.actorLabel ?? a.actorUserId, voidReason: data.voidReason, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: ts };
+    const record = { ...cur, status: "VOIDED" as const, voidedAt: data.voidedAt, voidedBy: data.voidedBy ?? a.actorLabel ?? a.actorUserId, voidReason: data.voidReason, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: ts };
     this.store.debtEntries.set(data.id, record);
     return record;
   }

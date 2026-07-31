@@ -8,7 +8,26 @@
 
 import crypto from "node:crypto";
 import { createAlgeriaTimestamp } from "../company-time";
-import type { MutationAuditContext } from "../company.types";
+import type {
+  AuthUserRecord,
+  BootstrapStateRecord,
+  DebtAccountRecord,
+  DebtEntryRecord,
+  EmployeeManagerAssignmentRecord,
+  EmployeeProjectAssignmentRecord,
+  EmployeeRecord,
+  EmployeeSalaryPaymentRecord,
+  EmployeeStateHistoryRecord,
+  EmployeeWarehouseAssignmentRecord,
+  ExternalCounterpartyRecord,
+  ProjectManagerOwnershipHistoryRecord,
+  ProjectRecord,
+  RoleRecord,
+  UserProfileHistoryRecord,
+  WarehouseManagerOwnershipHistoryRecord,
+  WarehouseRecord,
+  MutationAuditContext,
+} from "../company.types";
 
 /** Normalized audit snapshot fields. */
 export type AuditSnapshot = {
@@ -35,23 +54,23 @@ export function newId(): string {
 
 /** In-memory table store. */
 export class InMemoryStore {
-  roles = new Map<string, any>();
-  employees = new Map<string, any>();
-  projects = new Map<string, any>();
-  warehouses = new Map<string, any>();
-  managerAssignments = new Map<string, any>();
-  projectAssignments = new Map<string, any>();
-  warehouseAssignments = new Map<string, any>();
-  employeeStateHistory = new Map<string, any>();
-  projectManagerOwnershipHistory = new Map<string, any>();
-  warehouseManagerOwnershipHistory = new Map<string, any>();
-  salaryPayments = new Map<string, any>();
-  externalCounterparties = new Map<string, any>();
-  debtAccounts = new Map<string, any>();
-  debtEntries = new Map<string, any>();
-  userProfileHistory = new Map<string, any>();
-  users = new Map<string, any>();
-  bootstrapState = new Map<string, any>();
+  roles = new Map<string, RoleRecord>();
+  employees = new Map<string, EmployeeRecord>();
+  projects = new Map<string, ProjectRecord>();
+  warehouses = new Map<string, WarehouseRecord>();
+  managerAssignments = new Map<string, EmployeeManagerAssignmentRecord>();
+  projectAssignments = new Map<string, EmployeeProjectAssignmentRecord>();
+  warehouseAssignments = new Map<string, EmployeeWarehouseAssignmentRecord>();
+  employeeStateHistory = new Map<string, EmployeeStateHistoryRecord>();
+  projectManagerOwnershipHistory = new Map<string, ProjectManagerOwnershipHistoryRecord>();
+  warehouseManagerOwnershipHistory = new Map<string, WarehouseManagerOwnershipHistoryRecord>();
+  salaryPayments = new Map<string, EmployeeSalaryPaymentRecord>();
+  externalCounterparties = new Map<string, ExternalCounterpartyRecord>();
+  debtAccounts = new Map<string, DebtAccountRecord>();
+  debtEntries = new Map<string, DebtEntryRecord>();
+  userProfileHistory = new Map<string, UserProfileHistoryRecord>();
+  users = new Map<string, AuthUserRecord>();
+  bootstrapState = new Map<string, BootstrapStateRecord>();
 
   /** Run a callback "in a transaction" (no-op in-memory, kept for API parity). */
   transaction<T>(callback: () => T): T {

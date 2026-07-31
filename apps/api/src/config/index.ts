@@ -132,8 +132,23 @@ export const appConfigSchema = z.object({
   // --- Auth ---
   /** Better Auth secret key (required). */
   betterAuthSecret: z.string().min(1, "BETTER_AUTH_SECRET is required"),
-  /** Public base URL for the auth server. */
-  betterAuthUrl: z.string(),
+  /**
+   * Public base URL for the auth server.
+   * Validated and normalized by the schema itself (no manual pre-validation):
+   * must be a valid http(s) URL without credentials, query, or fragments,
+   * and https for non-local hosts. Trailing slashes are trimmed.
+   */
+  betterAuthUrl: z.string().transform((value, ctx) => {
+    try {
+      return normalizeBaseUrl(value);
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return z.NEVER;
+    }
+  }),
   /** Bootstrap setup key for initial admin creation (required in production). */
   bootstrapSetupKey: z.string().nullable().default(null),
 });
@@ -210,9 +225,8 @@ export function createAppConfig(
     return value;
   })();
 
-  const betterAuthUrl = normalizeBaseUrl(
-    effectiveSource.BETTER_AUTH_URL ?? `http://${host}:${port}`,
-  );
+  const betterAuthUrl =
+    effectiveSource.BETTER_AUTH_URL ?? `http://${host}:${port}`;
 
   const bootstrapSetupKey = (() => {
     const value = effectiveSource.BOOTSTRAP_SETUP_KEY?.trim() || null;
