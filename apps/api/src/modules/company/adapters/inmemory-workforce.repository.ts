@@ -117,7 +117,6 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
       salaryPeriod: data.salaryPeriod ?? null,
       notes: data.notes ?? null, createdAt: ts, updatedAt: ts,
     };
-    void a;
     this.store.employees.set(id, employee);
     this.insertStateHistory({ employeeId: id, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd ?? null, salaryPeriod: data.salaryPeriod ?? null, eventType: "CREATED", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
     return employee;
@@ -150,7 +149,6 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
       notes: data.notes !== undefined ? data.notes : cur.notes,
       updatedAt: ts,
     };
-    void a;
     this.store.employees.set(data.id, employee);
     if (data.status !== undefined || data.roleId !== undefined || data.salaryAmountDzd !== undefined || data.salaryPeriod !== undefined) {
       this.endActiveStateHistory(data.id, ts, a);

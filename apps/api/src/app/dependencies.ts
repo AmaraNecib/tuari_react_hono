@@ -45,7 +45,6 @@ import { UpdateHistoryService } from "../modules/update/update-history.service";
  *                 (env + optional config file). Injectable so tests can pass a
  *                 controlled config (e.g. DB_ADAPTER=inmemory).
  */
-/** Wire all application dependencies from a shared SQLite connection. */
 export async function createAppDependencies(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sqlite?: any,
