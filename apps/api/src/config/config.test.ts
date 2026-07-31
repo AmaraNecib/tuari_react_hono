@@ -1,6 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createAppConfig, type AppConfig } from "./index";
+
+let configTempDir: string;
+beforeEach(() => {
+  configTempDir = mkdtempSync(join(tmpdir(), "tuari-appconfig-"));
+});
+afterEach(() => {
+  rmSync(configTempDir, { recursive: true, force: true });
+});
 
 const requiredAuth = { BETTER_AUTH_SECRET: "test-secret" } as const;
 
@@ -247,6 +258,53 @@ describe("createAppConfig", () => {
         DB_ADAPTER: "postgres",
       }),
     ).toThrow("DB_ADAPTER must be one of: sqlite, inmemory");
+  });
+
+  // -----------------------------------------------------------------------
+  // Config file support (Phase 5)
+  // -----------------------------------------------------------------------
+
+  it("merges config.json values when TUARI_CONFIG_FILE is set", () => {
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ db_adapter: "inmemory", db_path: "data/file-config.sqlite" }),
+      "utf8",
+    );
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      TUARI_CONFIG_FILE: configPath,
+    });
+
+    expect(config.dbAdapter).toBe("inmemory");
+    expect(config.databasePath).toBe("data/file-config.sqlite");
+  });
+
+  it("env vars override config.json values", () => {
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ db_adapter: "inmemory" }),
+      "utf8",
+    );
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      TUARI_CONFIG_FILE: configPath,
+      DB_ADAPTER: "sqlite",
+    });
+
+    expect(config.dbAdapter).toBe("sqlite");
+  });
+
+  it("ignores a missing config file gracefully", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      TUARI_CONFIG_FILE: join(configTempDir, "missing.json"),
+    });
+
+    expect(config.dbAdapter).toBe("sqlite");
   });
 
   it("returns a typed config object matching the AppConfig interface", () => {

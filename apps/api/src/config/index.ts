@@ -12,6 +12,9 @@
 import "dotenv/config";
 import { z } from "zod";
 import { resolveDatabaseEnv } from "../infrastructure/config/database-env";
+import { loadConfigFile, mergeConfigIntoEnv } from "./loader";
+import { dbAdapterSchema } from "./db-adapter";
+export { dbAdapterSchema } from "./db-adapter";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -103,9 +106,6 @@ const normalizeBaseUrl = (value: string) => {
 // Zod schema for the full application config
 // ---------------------------------------------------------------------------
 
-/** Supported database adapters: SQLite (production), InMemory (tests/CI). Postgres is future. */
-export const dbAdapterSchema = z.enum(["sqlite", "inmemory"]);
-
 export const appConfigSchema = z.object({
   // --- Database ---
   /** Database adapter type. "sqlite" is currently the only supported value. */
@@ -145,11 +145,12 @@ export type AppConfig = z.infer<typeof appConfigSchema>;
 // ---------------------------------------------------------------------------
 
 /**
- * Create a typed, validated AppConfig from environment variables.
+ * Create a typed, validated AppConfig from environment variables and
+ * (optionally) a config file.
  *
- * In Phase 1 this reads only from `process.env`. Future phases will
- * add a config file (e.g. `config.json` in the app data directory)
- * that is merged with (and overridden by) environment variables.
+ * When `TUARI_CONFIG_FILE` is set, its contents are merged into the
+ * env source first (env vars always win). Without it, this is pure
+ * env-based reading.
  *
  * @param source - Environment variable source (defaults to `process.env`).
  * @throws {z.ZodError} If validation fails.
@@ -157,12 +158,16 @@ export type AppConfig = z.infer<typeof appConfigSchema>;
 export function createAppConfig(
   source: NodeJS.ProcessEnv = process.env,
 ): AppConfig {
+  // Merge config.json (when TUARI_CONFIG_FILE is set) — env wins.
+  const configFile = loadConfigFile(source);
+  const effectiveSource = mergeConfigIntoEnv(configFile, source);
+
   // --- Database resolution (reuses the existing, tested helper) ---
-  const database = resolveDatabaseEnv(source);
+  const database = resolveDatabaseEnv(effectiveSource);
 
   // --- Adapter selection ---
   const dbAdapter = (() => {
-    const raw = source.DB_ADAPTER?.trim().toLowerCase() || "sqlite";
+    const raw = effectiveSource.DB_ADAPTER?.trim().toLowerCase() || "sqlite";
     const parsed = dbAdapterSchema.safeParse(raw);
     if (!parsed.success) {
       throw new Error(
@@ -173,46 +178,46 @@ export function createAppConfig(
   })();
 
   // --- Server ---
-  const host = source.API_HOST?.trim() || defaultHost;
+  const host = effectiveSource.API_HOST?.trim() || defaultHost;
 
   const port = (() => {
-    if (source.API_PORT === undefined) return defaultPort;
-    const p = Number(source.API_PORT);
+    if (effectiveSource.API_PORT === undefined) return defaultPort;
+    const p = Number(effectiveSource.API_PORT);
     if (!Number.isInteger(p) || p <= 0 || p > 65535) {
       throw new Error(
-        `API_PORT must be a positive integer between 1 and 65535, received "${source.API_PORT}"`,
+        `API_PORT must be a positive integer between 1 and 65535, received "${effectiveSource.API_PORT}"`,
       );
     }
     return p;
   })();
 
   const allowedOrigins =
-    source.ALLOWED_ORIGINS !== undefined
-      ? normalizeOriginList(splitCsv(source.ALLOWED_ORIGINS))
+    effectiveSource.ALLOWED_ORIGINS !== undefined
+      ? normalizeOriginList(splitCsv(effectiveSource.ALLOWED_ORIGINS))
       : normalizeOriginList(defaultAllowedOrigins);
 
   const trustProxyHeaders = (() => {
-    if (source.API_TRUST_PROXY_HEADERS === undefined) return false;
+    if (effectiveSource.API_TRUST_PROXY_HEADERS === undefined) return false;
     return ["1", "true", "yes", "on"].includes(
-      source.API_TRUST_PROXY_HEADERS.trim().toLowerCase(),
+      effectiveSource.API_TRUST_PROXY_HEADERS.trim().toLowerCase(),
     );
   })();
 
   // --- Auth ---
   const betterAuthSecret = (() => {
-    const value = source.BETTER_AUTH_SECRET?.trim();
+    const value = effectiveSource.BETTER_AUTH_SECRET?.trim();
     if (!value) throw new Error("BETTER_AUTH_SECRET is required");
     return value;
   })();
 
   const betterAuthUrl = normalizeBaseUrl(
-    source.BETTER_AUTH_URL ?? `http://${host}:${port}`,
+    effectiveSource.BETTER_AUTH_URL ?? `http://${host}:${port}`,
   );
 
   const bootstrapSetupKey = (() => {
-    const value = source.BOOTSTRAP_SETUP_KEY?.trim() || null;
+    const value = effectiveSource.BOOTSTRAP_SETUP_KEY?.trim() || null;
     if (
-      (source.NODE_ENV ?? "development") === "production" &&
+      (effectiveSource.NODE_ENV ?? "development") === "production" &&
       !value
     ) {
       throw new Error("BOOTSTRAP_SETUP_KEY is required in production");
