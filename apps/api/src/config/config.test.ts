@@ -216,6 +216,24 @@ describe("createAppConfig", () => {
     expect(config.betterAuthUrl).toBe("http://127.0.0.1:4318");
   });
 
+  it("treats a whitespace-only BETTER_AUTH_URL as unset and defaults it", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      BETTER_AUTH_URL: "   ",
+    });
+
+    expect(config.betterAuthUrl).toBe("http://127.0.0.1:4318");
+  });
+
+  it("derives an https default when API_HOST is non-local", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      API_HOST: "api.example.com",
+    });
+
+    expect(config.betterAuthUrl).toBe("https://api.example.com:4318");
+  });
+
   it("requires BOOTSTRAP_SETUP_KEY in production", () => {
     expect(() =>
       createAppConfig({

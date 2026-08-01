@@ -12,7 +12,7 @@
 import "dotenv/config";
 import { z } from "zod";
 import { resolveDatabaseEnv } from "../infrastructure/config/database-env";
-import { normalizeBaseUrl, normalizeOriginList } from "../infrastructure/config/url";
+import { normalizeBaseUrl, normalizeOriginList, isLocalHostname } from "../infrastructure/config/url";
 import { loadConfigFile, mergeConfigIntoEnv } from "./loader";
 import { dbAdapterSchema } from "./db-adapter";
 export { dbAdapterSchema } from "./db-adapter";
@@ -163,7 +163,8 @@ export function createAppConfig(
   })();
 
   const betterAuthUrl =
-    effectiveSource.BETTER_AUTH_URL?.trim() || `http://${host}:${port}`;
+    effectiveSource.BETTER_AUTH_URL?.trim() ||
+    `${isLocalHostname(host) ? "http" : "https"}://${host}:${port}`;
 
   const bootstrapSetupKey = (() => {
     const value = effectiveSource.BOOTSTRAP_SETUP_KEY?.trim() || null;

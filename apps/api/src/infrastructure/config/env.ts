@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import { resolveDatabaseEnv } from "./database-env";
-import { normalizeBaseUrl, normalizeOriginList } from "./url";
+import { isLocalHostname, normalizeBaseUrl, normalizeOriginList } from "./url";
 
 const splitCsv = (value: string) =>
   value
@@ -82,7 +82,7 @@ export const createEnv = (source: NodeJS.ProcessEnv = process.env) => {
     betterAuthSecret: requireEnv(source, "BETTER_AUTH_SECRET"),
     betterAuthUrl: normalizeBaseUrl(
       source.BETTER_AUTH_URL?.trim() ||
-      `http://${source.API_HOST ?? defaultHost}:${toPort(source.API_PORT)}`,
+      `${isLocalHostname(source.API_HOST ?? defaultHost) ? "http" : "https"}://${source.API_HOST ?? defaultHost}:${toPort(source.API_PORT)}`,
     ),
     bootstrapSetupKey: resolveBootstrapSetupKey(source),
   } as const;

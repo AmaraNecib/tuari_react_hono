@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 
 import { schemaStatements as fullSchema } from "../../infrastructure/database/schema-definitions";
@@ -25,10 +25,16 @@ function createTestDb(): Database.Database {
 }
 
 describe("SqliteCompanyRepository end/void idempotency", () => {
+  let db: Database.Database;
   let repo: SqliteCompanyRepository;
 
   beforeEach(() => {
-    repo = new SqliteCompanyRepository(createTestDb());
+    db = createTestDb();
+    repo = new SqliteCompanyRepository(db);
+  });
+
+  afterEach(() => {
+    db.close();
   });
 
   it("re-ending an already-ENDED manager assignment is a no-op", () => {
@@ -69,6 +75,89 @@ describe("SqliteCompanyRepository end/void idempotency", () => {
 
     expect(reEnded?.status).toBe("ENDED");
     expect(reEnded?.endDate).toBe("2026-03-01T00:00:00.000Z");
+  });
+
+  it("re-ending an already-ENDED project assignment is a no-op", () => {
+    const worker = repo.createEmployee({
+      firstName: "Yacine",
+      lastName: "Merbah",
+      phone: "0777123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    const project = repo.createProject({ name: "Site B", status: "ACTIVE" });
+
+    const assignment = repo.createProjectAssignment({
+      employeeId: worker.id,
+      projectId: project.id,
+      status: "ACTIVE",
+      startDate: "2026-02-01T00:00:00.000Z",
+      endDate: null,
+      notes: null,
+    });
+
+    repo.endProjectAssignment({
+      id: assignment.id,
+      endDate: "2026-03-01T00:00:00.000Z",
+      notes: null,
+    });
+    const reEnded = repo.endProjectAssignment({
+      id: assignment.id,
+      endDate: "2026-04-01T00:00:00.000Z",
+      notes: null,
+    });
+
+    expect(reEnded?.status).toBe("ENDED");
+    expect(reEnded?.endDate).toBe("2026-03-01T00:00:00.000Z");
+  });
+
+  it("re-ending an already-ENDED warehouse assignment is a no-op", () => {
+    const worker = repo.createEmployee({
+      firstName: "Lina",
+      lastName: "Hamdi",
+      phone: "0888123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    const warehouse = repo.createWarehouse({ name: "Depot B", status: "ACTIVE" });
+
+    const assignment = repo.createWarehouseAssignment({
+      employeeId: worker.id,
+      warehouseId: warehouse.id,
+      status: "ACTIVE",
+      startDate: "2026-02-01T00:00:00.000Z",
+      endDate: null,
+      notes: null,
+    });
+
+    repo.endWarehouseAssignment({
+      id: assignment.id,
+      endDate: "2026-03-01T00:00:00.000Z",
+      notes: null,
+    });
+    const reEnded = repo.endWarehouseAssignment({
+      id: assignment.id,
+      endDate: "2026-04-01T00:00:00.000Z",
+      notes: null,
+    });
+
+    expect(reEnded?.status).toBe("ENDED");
+    expect(reEnded?.endDate).toBe("2026-03-01T00:00:00.000Z");
+  });
+
+  it("end/void return null for unknown ids", () => {
+    expect(
+      repo.endManagerAssignment({ id: "nope", endDate: "2026-05-01T00:00:00.000Z", notes: null }),
+    ).toBeNull();
+    expect(
+      repo.endProjectAssignment({ id: "nope", endDate: "2026-05-01T00:00:00.000Z", notes: null }),
+    ).toBeNull();
+    expect(
+      repo.endWarehouseAssignment({ id: "nope", endDate: "2026-05-01T00:00:00.000Z", notes: null }),
+    ).toBeNull();
+    expect(
+      repo.voidDebtEntry({ id: "nope", voidedAt: "2026-05-01T00:00:00.000Z", voidedBy: "admin", voidReason: "x" }),
+    ).toBeNull();
   });
 
   it("re-voiding an already-VOIDED debt entry is a no-op", () => {

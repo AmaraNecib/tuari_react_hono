@@ -225,4 +225,70 @@ describe("database adapter factories", () => {
     expect(reVoided?.voidedAt).toBe("2025-01-16T00:00:00.000Z");
     expect(reVoided?.voidReason).toBe("first");
   });
+
+  it("inmemory re-ending project and warehouse assignments is idempotent", () => {
+    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+
+    const project = repo.createProject({ name: "Site B", status: "ACTIVE" });
+    const warehouse = repo.createWarehouse({ name: "Depot B", status: "ACTIVE" });
+
+    const projectAssignment = repo.createProjectAssignment({
+      employeeId: "w-3",
+      projectId: project.id,
+      status: "ACTIVE",
+      startDate: "2025-01-01T00:00:00.000Z",
+      endDate: null,
+      notes: null,
+    });
+    repo.endProjectAssignment({
+      id: projectAssignment.id,
+      endDate: "2025-02-01T00:00:00.000Z",
+      notes: null,
+    });
+    const reEndedProject = repo.endProjectAssignment({
+      id: projectAssignment.id,
+      endDate: "2025-03-01T00:00:00.000Z",
+      notes: null,
+    });
+    expect(reEndedProject?.status).toBe("ENDED");
+    expect(reEndedProject?.endDate).toBe("2025-02-01T00:00:00.000Z");
+
+    const warehouseAssignment = repo.createWarehouseAssignment({
+      employeeId: "w-4",
+      warehouseId: warehouse.id,
+      status: "ACTIVE",
+      startDate: "2025-01-01T00:00:00.000Z",
+      endDate: null,
+      notes: null,
+    });
+    repo.endWarehouseAssignment({
+      id: warehouseAssignment.id,
+      endDate: "2025-02-01T00:00:00.000Z",
+      notes: null,
+    });
+    const reEndedWarehouse = repo.endWarehouseAssignment({
+      id: warehouseAssignment.id,
+      endDate: "2025-03-01T00:00:00.000Z",
+      notes: null,
+    });
+    expect(reEndedWarehouse?.status).toBe("ENDED");
+    expect(reEndedWarehouse?.endDate).toBe("2025-02-01T00:00:00.000Z");
+  });
+
+  it("inmemory end/void return null for unknown ids", () => {
+    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+
+    expect(
+      repo.endManagerAssignment({ id: "nope", endDate: "2025-05-01T00:00:00.000Z", notes: null }),
+    ).toBeNull();
+    expect(
+      repo.endProjectAssignment({ id: "nope", endDate: "2025-05-01T00:00:00.000Z", notes: null }),
+    ).toBeNull();
+    expect(
+      repo.endWarehouseAssignment({ id: "nope", endDate: "2025-05-01T00:00:00.000Z", notes: null }),
+    ).toBeNull();
+    expect(
+      repo.voidDebtEntry({ id: "nope", voidedAt: "2025-05-01T00:00:00.000Z", voidedBy: "admin", voidReason: "x" }),
+    ).toBeNull();
+  });
 });
