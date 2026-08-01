@@ -35,6 +35,29 @@ style findings moved to 5/5 with none after one small fix round.
 **Always**: read the Greptile inline comment for actionable findings even when the
 check is green.
 
+## `[skip ci]` in any commit of a push suppresses ALL workflow events for that push (🟠 Major)
+
+Pushing the Greptile-fix commit together with an evidence commit whose message
+contained `[skip ci]` produced NO new CI run — GitHub skips the push's
+workflow triggers if any commit in the pushed range carries the marker. The
+PR then had checks attached only to an old head (empty-commit head), while
+CI/check-runs for the real head were empty.
+
+**Always**: never put `[skip ci]` on a commit that shares a push with code
+changes; after pushing a Greptile-fix round, verify a new CI run started on
+the new head (`gh run list --workflow=ci.yml --limit 2`) before re-triggering
+Greptile.
+
+## CI `pull_request` run can silently not fire; empty commit re-triggers it (🟡 Minor)
+
+On PR creation the first time, no CI run appeared at all (event never
+delivered). An empty commit WITHOUT `[skip ci]` fired the `synchronize` event
+and CI queued normally (the concurrency group auto-cancels the stale run).
+
+**Always**: after opening a PR, check `gh run list --workflow=ci.yml` actually
+shows a run; if missing, push an empty commit (message must NOT contain
+`[skip ci]`) to re-fire the event.
+
 ## Turbo cache logs may show other worktree paths (🟡 Minor)
 
 Turbo cache replays log lines from other worktrees (e.g. `cleanup-dirty-wip`) —
