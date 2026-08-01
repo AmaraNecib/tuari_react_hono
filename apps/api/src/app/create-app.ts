@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import type { AppDependencies } from "./dependencies";
-import { normalizeOrigin } from "../infrastructure/config/env";
+import { normalizeOrigin } from "../infrastructure/config/url";
 import { resolveClientIp, SlidingWindowRateLimiter } from "../infrastructure/rate-limiter";
 import { AccountServiceError } from "../modules/account/account.service";
 import { InventoryError } from "../modules/inventory/inventory.errors";

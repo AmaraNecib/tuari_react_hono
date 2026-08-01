@@ -12,6 +12,7 @@
 import "dotenv/config";
 import { z } from "zod";
 import { resolveDatabaseEnv } from "../infrastructure/config/database-env";
+import { normalizeBaseUrl, normalizeOriginList } from "../infrastructure/config/url";
 import { loadConfigFile, mergeConfigIntoEnv } from "./loader";
 import { dbAdapterSchema } from "./db-adapter";
 export { dbAdapterSchema } from "./db-adapter";
@@ -37,70 +38,6 @@ const defaultAllowedOrigins = [
   "https://tauri.localhost",
   "tauri://localhost",
 ];
-
-const normalizeOrigin = (value: string) => {
-  const normalized = value.trim();
-  if (!normalized) throw new Error("Origin value cannot be empty");
-
-  let parsed: URL;
-  try {
-    parsed = new URL(normalized);
-  } catch {
-    throw new Error(`Invalid origin URL: ${value}`);
-  }
-
-  if (!parsed.protocol || !parsed.host) {
-    throw new Error(`Invalid origin URL: ${value}`);
-  }
-
-  return `${parsed.protocol}//${parsed.host}`;
-};
-
-const normalizeOriginList = (values: readonly string[]) => [
-  ...new Set(values.map(normalizeOrigin)),
-];
-
-const isLocalHostname = (hostname: string) =>
-  hostname === "localhost" ||
-  hostname === "127.0.0.1" ||
-  hostname === "0.0.0.0" ||
-  hostname === "[::1]" ||
-  hostname === "::1" ||
-  hostname === "tauri.localhost";
-
-const normalizeBaseUrl = (value: string) => {
-  const trimmedValue = value.trim();
-
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmedValue);
-  } catch {
-    throw new Error(`Invalid BETTER_AUTH_URL: ${value}`);
-  }
-
-  if (!["http:", "https:"].includes(parsed.protocol)) {
-    throw new Error(
-      `BETTER_AUTH_URL must use http or https, received "${parsed.protocol}"`,
-    );
-  }
-
-  if (
-    parsed.username ||
-    parsed.password ||
-    parsed.search ||
-    parsed.hash
-  ) {
-    throw new Error(
-      "BETTER_AUTH_URL must not include credentials, query parameters, or fragments",
-    );
-  }
-
-  if (!isLocalHostname(parsed.hostname) && parsed.protocol !== "https:") {
-    throw new Error("BETTER_AUTH_URL must use https for non-local hosts");
-  }
-
-  return parsed.toString().replace(/\/+$/, "");
-};
 
 // ---------------------------------------------------------------------------
 // Zod schema for the full application config
@@ -226,7 +163,7 @@ export function createAppConfig(
   })();
 
   const betterAuthUrl =
-    effectiveSource.BETTER_AUTH_URL ?? `http://${host}:${port}`;
+    effectiveSource.BETTER_AUTH_URL?.trim() || `http://${host}:${port}`;
 
   const bootstrapSetupKey = (() => {
     const value = effectiveSource.BOOTSTRAP_SETUP_KEY?.trim() || null;

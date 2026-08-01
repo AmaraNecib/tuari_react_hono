@@ -19,9 +19,7 @@ import type {
   EmployeeManagerAssignmentRecord, EmployeeProjectAssignmentRecord,
   EmployeeWarehouseAssignmentRecord,
   ProjectAssignmentCreateData, ProjectAssignmentEndData,
-  ProjectManagerOwnershipHistoryRecord,
   WarehouseAssignmentCreateData, WarehouseAssignmentEndData,
-  WarehouseManagerOwnershipHistoryRecord,
 } from "../company.types";
 import { InMemoryStore, normalizeAudit, now, newId } from "./inmemory-store";
 import type { AuditSnapshot } from "./inmemory-store";
@@ -200,10 +198,10 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
     const ts = now();
     const current = this.listProjectsByManager(data.employeeId);
     const nextSet = new Set(data.projectIds);
-    for (const p of current) if (!nextSet.has(p.id)) this.endActiveProjectManagerOwnershipHistory(p.id, ts, a);
+    for (const p of current) if (!nextSet.has(p.id)) this.store.endActiveProjectManagerOwnershipHistory(p.id, ts, a);
     for (const pid of data.projectIds) {
       const p = this.store.projects.get(pid);
-      if (p) { if (!current.some((c) => c.id === pid)) this.insertProjectManagerOwnershipHistory({ projectId: pid, managerId: data.employeeId, status: "ACTIVE", startDate: ts, notes: null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId }); this.store.projects.set(pid, { ...p, managerId: data.employeeId, updatedAt: ts }); }
+      if (p) { if (!current.some((c) => c.id === pid)) this.store.insertProjectManagerOwnershipHistory({ projectId: pid, managerId: data.employeeId, status: "ACTIVE", startDate: ts, notes: null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId }); this.store.projects.set(pid, { ...p, managerId: data.employeeId, updatedAt: ts }); }
     }
     for (const p of current) if (!nextSet.has(p.id)) this.store.projects.set(p.id, { ...p, managerId: null, updatedAt: ts });
   }
@@ -212,10 +210,10 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
     const ts = now();
     const current = this.listWarehousesByManager(data.employeeId);
     const nextSet = new Set(data.warehouseIds);
-    for (const w of current) if (!nextSet.has(w.id)) this.endActiveWarehouseManagerOwnershipHistory(w.id, ts, a);
+    for (const w of current) if (!nextSet.has(w.id)) this.store.endActiveWarehouseManagerOwnershipHistory(w.id, ts, a);
     for (const wid of data.warehouseIds) {
       const w = this.store.warehouses.get(wid);
-      if (w) { if (!current.some((c) => c.id === wid)) this.insertWarehouseManagerOwnershipHistory({ warehouseId: wid, managerId: data.employeeId, status: "ACTIVE", startDate: ts, notes: null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId }); this.store.warehouses.set(wid, { ...w, managerId: data.employeeId, updatedAt: ts }); }
+      if (w) { if (!current.some((c) => c.id === wid)) this.store.insertWarehouseManagerOwnershipHistory({ warehouseId: wid, managerId: data.employeeId, status: "ACTIVE", startDate: ts, notes: null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId }); this.store.warehouses.set(wid, { ...w, managerId: data.employeeId, updatedAt: ts }); }
     }
     for (const w of current) if (!nextSet.has(w.id)) this.store.warehouses.set(w.id, { ...w, managerId: null, updatedAt: ts });
   }
@@ -245,6 +243,7 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
   endManagerAssignment(data: ManagerAssignmentEndData, audit?: MutationAuditContext): EmployeeManagerAssignmentRecord | null {
     const cur = this.store.managerAssignments.get(data.id);
     if (!cur) return null;
+    if (cur.status !== "ACTIVE") return cur;
     const a = normalizeAudit(audit);
     const record = { ...cur, status: "ENDED" as const, endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: now() };
     this.store.managerAssignments.set(data.id, record);
@@ -290,6 +289,7 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
   endProjectAssignment(data: ProjectAssignmentEndData, audit?: MutationAuditContext): EmployeeProjectAssignmentRecord | null {
     const cur = this.store.projectAssignments.get(data.id);
     if (!cur) return null;
+    if (cur.status !== "ACTIVE") return cur;
     const a = normalizeAudit(audit);
     const record = { ...cur, status: "ENDED" as const, endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: now() };
     this.store.projectAssignments.set(data.id, record);
@@ -304,6 +304,7 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
   endWarehouseAssignment(data: WarehouseAssignmentEndData, audit?: MutationAuditContext): EmployeeWarehouseAssignmentRecord | null {
     const cur = this.store.warehouseAssignments.get(data.id);
     if (!cur) return null;
+    if (cur.status !== "ACTIVE") return cur;
     const a = normalizeAudit(audit);
     const record = { ...cur, status: "ENDED" as const, endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: now() };
     this.store.warehouseAssignments.set(data.id, record);
@@ -324,30 +325,6 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
     for (const [hid, h] of this.store.employeeStateHistory) {
       if (h.employeeId === employeeId && !h.endDate) {
         this.store.employeeStateHistory.set(hid, { ...h, endDate, ...a, updatedAt: endDate });
-        break;
-      }
-    }
-  }
-  private insertProjectManagerOwnershipHistory(data: Omit<ProjectManagerOwnershipHistoryRecord, "id" | "endDate" | "createdAt" | "updatedAt">) {
-    const id = newId();
-    this.store.projectManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
-  }
-  private endActiveProjectManagerOwnershipHistory(projectId: string, endDate: string, a: AuditSnapshot) {
-    for (const [hid, h] of this.store.projectManagerOwnershipHistory) {
-      if (h.projectId === projectId && !h.endDate) {
-        this.store.projectManagerOwnershipHistory.set(hid, { ...h, endDate, status: "ENDED", ...a, updatedAt: endDate });
-        break;
-      }
-    }
-  }
-  private insertWarehouseManagerOwnershipHistory(data: Omit<WarehouseManagerOwnershipHistoryRecord, "id" | "endDate" | "createdAt" | "updatedAt">) {
-    const id = newId();
-    this.store.warehouseManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
-  }
-  private endActiveWarehouseManagerOwnershipHistory(warehouseId: string, endDate: string, a: AuditSnapshot) {
-    for (const [hid, h] of this.store.warehouseManagerOwnershipHistory) {
-      if (h.warehouseId === warehouseId && !h.endDate) {
-        this.store.warehouseManagerOwnershipHistory.set(hid, { ...h, endDate, status: "ENDED", ...a, updatedAt: endDate });
         break;
       }
     }
