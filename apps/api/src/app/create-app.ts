@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import type { AppDependencies } from "./dependencies";
-import { normalizeOrigin } from "../infrastructure/config/url";
+import { isLocalHostname, normalizeOrigin } from "../infrastructure/config/url";
 import { resolveClientIp, SlidingWindowRateLimiter } from "../infrastructure/rate-limiter";
 import { AccountServiceError } from "../modules/account/account.service";
 import { InventoryError } from "../modules/inventory/inventory.errors";
@@ -59,8 +59,7 @@ function isSecureRequest(url: string, forwardedProto: string | undefined) {
 
 function isLocalhostHostname(url: string) {
   try {
-    const hostname = new URL(url).hostname;
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "tauri.localhost";
+    return isLocalHostname(new URL(url).hostname);
   } catch {
     return false;
   }

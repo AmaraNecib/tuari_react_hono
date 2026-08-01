@@ -209,6 +209,27 @@ describe("createApp RPC wiring", () => {
     expect(response.headers.get("Strict-Transport-Security")).toBe("max-age=31536000; includeSubDomains");
   });
 
+  it("does not add HSTS for loopback /8 hosts other than 127.0.0.1", async () => {
+    const secureTransport = {
+      allowedOrigins: ["http://localhost:3000"],
+    } as const;
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, secureTransport);
+
+    const response = await app.request(
+      new Request("https://127.0.0.2:4318/rpc/health", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:3000",
+        },
+        body: JSON.stringify({ json: null, meta: [] }),
+      }),
+    );
+
+    expect(response.headers.get("Strict-Transport-Security")).toBeNull();
+  });
+
   it("accepts normalized allowed origins with trailing slashes", async () => {
     const dependencies = createDependencies();
     const app = createApp(dependencies as never, {
