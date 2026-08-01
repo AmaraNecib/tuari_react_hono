@@ -44,62 +44,62 @@ export class InMemoryCompanyRepository implements CompanyRepository {
   listEmployeesPaged(query: Parameters<CompanyRepository["listEmployeesPaged"]>[0]) { return this.workforce.listEmployeesPaged(query); }
   getEmployeeById(id: string) { return this.workforce.getEmployeeById(id); }
   getEmployeeByPhone(phone: string) { return this.workforce.getEmployeeByPhone(phone); }
-  createEmployee(data: Parameters<CompanyRepository["createEmployee"]>[0], audit?: any) { return this.workforce.createEmployee(data, audit); }
-  createEmployeesBatch(data: Parameters<CompanyRepository["createEmployeesBatch"]>[0], audit?: any) { return this.workforce.createEmployeesBatch(data, audit); }
-  updateEmployee(data: Parameters<CompanyRepository["updateEmployee"]>[0], audit?: any) { return this.workforce.updateEmployee(data, audit); }
+  createEmployee(data: Parameters<CompanyRepository["createEmployee"]>[0], audit?: Parameters<CompanyRepository["createEmployee"]>[1]) { return this.workforce.createEmployee(data, audit); }
+  createEmployeesBatch(data: Parameters<CompanyRepository["createEmployeesBatch"]>[0], audit?: Parameters<CompanyRepository["createEmployeesBatch"]>[1]) { return this.workforce.createEmployeesBatch(data, audit); }
+  updateEmployee(data: Parameters<CompanyRepository["updateEmployee"]>[0], audit?: Parameters<CompanyRepository["updateEmployee"]>[1]) { return this.workforce.updateEmployee(data, audit); }
   deleteEmployee(id: string) { return this.workforce.deleteEmployee(id); }
-  upsertEmployee(data: any) { return this.workforce.upsertEmployee(data); }
-  assignEmployeeWorkplace(data: any, audit?: any) { return this.workforce.assignEmployeeWorkplace(data, audit); }
-  syncManagedProjects(data: any, audit?: any) { return this.workforce.syncManagedProjects(data, audit); }
-  syncManagedWarehouses(data: any, audit?: any) { return this.workforce.syncManagedWarehouses(data, audit); }
-  listManagerAssignments(filters?: any) { return this.workforce.listManagerAssignments(filters); }
+  upsertEmployee(data: Parameters<CompanyRepository["upsertEmployee"]>[0]) { return this.workforce.upsertEmployee(data); }
+  assignEmployeeWorkplace(data: Parameters<CompanyRepository["assignEmployeeWorkplace"]>[0], audit?: Parameters<CompanyRepository["assignEmployeeWorkplace"]>[1]) { return this.workforce.assignEmployeeWorkplace(data, audit); }
+  syncManagedProjects(data: Parameters<CompanyRepository["syncManagedProjects"]>[0], audit?: Parameters<CompanyRepository["syncManagedProjects"]>[1]) { return this.workforce.syncManagedProjects(data, audit); }
+  syncManagedWarehouses(data: Parameters<CompanyRepository["syncManagedWarehouses"]>[0], audit?: Parameters<CompanyRepository["syncManagedWarehouses"]>[1]) { return this.workforce.syncManagedWarehouses(data, audit); }
+  listManagerAssignments(filters?: Parameters<CompanyRepository["listManagerAssignments"]>[0]) { return this.workforce.listManagerAssignments(filters); }
   getManagerAssignmentById(id: string) { return this.workforce.getManagerAssignmentById(id); }
   getActiveManagerAssignmentByWorkerId(workerId: string) { return this.workforce.getActiveManagerAssignmentByWorkerId(workerId); }
-  createManagerAssignment(data: any, audit?: any) { return this.workforce.createManagerAssignment(data, audit); }
-  endManagerAssignment(data: any, audit?: any) { return this.workforce.endManagerAssignment(data, audit); }
-  listEmployeeStateHistory(filters?: any) { return this.workforce.listEmployeeStateHistory(filters); }
-  listSalaryPayments(filters?: any) { return this.workforce.listSalaryPayments(filters); }
-  createSalaryPayment(data: any, audit?: any) { return this.workforce.createSalaryPayment(data, audit); }
+  createManagerAssignment(data: Parameters<CompanyRepository["createManagerAssignment"]>[0], audit?: Parameters<CompanyRepository["createManagerAssignment"]>[1]) { return this.workforce.createManagerAssignment(data, audit); }
+  endManagerAssignment(data: Parameters<CompanyRepository["endManagerAssignment"]>[0], audit?: Parameters<CompanyRepository["endManagerAssignment"]>[1]) { return this.workforce.endManagerAssignment(data, audit); }
+  listEmployeeStateHistory(filters?: Parameters<CompanyRepository["listEmployeeStateHistory"]>[0]) { return this.workforce.listEmployeeStateHistory(filters); }
+  listSalaryPayments(filters?: Parameters<CompanyRepository["listSalaryPayments"]>[0]) { return this.workforce.listSalaryPayments(filters); }
+  createSalaryPayment(data: Parameters<CompanyRepository["createSalaryPayment"]>[0], audit?: Parameters<CompanyRepository["createSalaryPayment"]>[1]) { return this.workforce.createSalaryPayment(data, audit); }
 
   // Operations delegation
-  listProjects(filters?: any) { return this.operations.listProjects(filters); }
+  listProjects(filters?: Parameters<CompanyRepository["listProjects"]>[0]) { return this.operations.listProjects(filters); }
   getProjectById(id: string) { return this.operations.getProjectById(id); }
-  createProject(data: any, audit?: any) { return this.operations.createProject(data, audit); }
-  updateProject(data: any, audit?: any) { return this.operations.updateProject(data, audit); }
-  listWarehouses(filters?: any) { return this.operations.listWarehouses(filters); }
+  createProject(data: Parameters<CompanyRepository["createProject"]>[0], audit?: Parameters<CompanyRepository["createProject"]>[1]) { return this.operations.createProject(data, audit); }
+  updateProject(data: Parameters<CompanyRepository["updateProject"]>[0], audit?: Parameters<CompanyRepository["updateProject"]>[1]) { return this.operations.updateProject(data, audit); }
+  listWarehouses(filters?: Parameters<CompanyRepository["listWarehouses"]>[0]) { return this.operations.listWarehouses(filters); }
   getWarehouseById(id: string) { return this.operations.getWarehouseById(id); }
-  createWarehouse(data: any, audit?: any) { return this.operations.createWarehouse(data, audit); }
-  updateWarehouse(data: any, audit?: any) { return this.operations.updateWarehouse(data, audit); }
-  listProjectAssignments(filters?: any) { return this.operations.listProjectAssignments(filters); }
+  createWarehouse(data: Parameters<CompanyRepository["createWarehouse"]>[0], audit?: Parameters<CompanyRepository["createWarehouse"]>[1]) { return this.operations.createWarehouse(data, audit); }
+  updateWarehouse(data: Parameters<CompanyRepository["updateWarehouse"]>[0], audit?: Parameters<CompanyRepository["updateWarehouse"]>[1]) { return this.operations.updateWarehouse(data, audit); }
+  listProjectAssignments(filters?: Parameters<CompanyRepository["listProjectAssignments"]>[0]) { return this.operations.listProjectAssignments(filters); }
   getProjectAssignmentById(id: string) { return this.operations.getProjectAssignmentById(id); }
   getActiveProjectAssignmentByEmployeeId(employeeId: string) { return this.operations.getActiveProjectAssignmentByEmployeeId(employeeId); }
-  createProjectAssignment(data: any, audit?: any) { return this.operations.createProjectAssignment(data, audit); }
-  endProjectAssignment(data: any, audit?: any) { return this.operations.endProjectAssignment(data, audit); }
-  listWarehouseAssignments(filters?: any) { return this.operations.listWarehouseAssignments(filters); }
+  createProjectAssignment(data: Parameters<CompanyRepository["createProjectAssignment"]>[0], audit?: Parameters<CompanyRepository["createProjectAssignment"]>[1]) { return this.operations.createProjectAssignment(data, audit); }
+  endProjectAssignment(data: Parameters<CompanyRepository["endProjectAssignment"]>[0], audit?: Parameters<CompanyRepository["endProjectAssignment"]>[1]) { return this.operations.endProjectAssignment(data, audit); }
+  listWarehouseAssignments(filters?: Parameters<CompanyRepository["listWarehouseAssignments"]>[0]) { return this.operations.listWarehouseAssignments(filters); }
   getWarehouseAssignmentById(id: string) { return this.operations.getWarehouseAssignmentById(id); }
   getActiveWarehouseAssignmentByEmployeeId(employeeId: string) { return this.operations.getActiveWarehouseAssignmentByEmployeeId(employeeId); }
-  createWarehouseAssignment(data: any, audit?: any) { return this.operations.createWarehouseAssignment(data, audit); }
-  endWarehouseAssignment(data: any, audit?: any) { return this.operations.endWarehouseAssignment(data, audit); }
-  listProjectManagerOwnershipHistory(filters?: any) { return this.operations.listProjectManagerOwnershipHistory(filters); }
-  listWarehouseManagerOwnershipHistory(filters?: any) { return this.operations.listWarehouseManagerOwnershipHistory(filters); }
+  createWarehouseAssignment(data: Parameters<CompanyRepository["createWarehouseAssignment"]>[0], audit?: Parameters<CompanyRepository["createWarehouseAssignment"]>[1]) { return this.operations.createWarehouseAssignment(data, audit); }
+  endWarehouseAssignment(data: Parameters<CompanyRepository["endWarehouseAssignment"]>[0], audit?: Parameters<CompanyRepository["endWarehouseAssignment"]>[1]) { return this.operations.endWarehouseAssignment(data, audit); }
+  listProjectManagerOwnershipHistory(filters?: Parameters<CompanyRepository["listProjectManagerOwnershipHistory"]>[0]) { return this.operations.listProjectManagerOwnershipHistory(filters); }
+  listWarehouseManagerOwnershipHistory(filters?: Parameters<CompanyRepository["listWarehouseManagerOwnershipHistory"]>[0]) { return this.operations.listWarehouseManagerOwnershipHistory(filters); }
 
   // Finance delegation
-  listExternalCounterparties(filters?: any) { return this.finance.listExternalCounterparties(filters); }
+  listExternalCounterparties(filters?: Parameters<CompanyRepository["listExternalCounterparties"]>[0]) { return this.finance.listExternalCounterparties(filters); }
   getExternalCounterpartyById(id: string) { return this.finance.getExternalCounterpartyById(id); }
-  createExternalCounterparty(data: any) { return this.finance.createExternalCounterparty(data); }
-  listDebtAccounts(filters?: any) { return this.finance.listDebtAccounts(filters); }
+  createExternalCounterparty(data: Parameters<CompanyRepository["createExternalCounterparty"]>[0]) { return this.finance.createExternalCounterparty(data); }
+  listDebtAccounts(filters?: Parameters<CompanyRepository["listDebtAccounts"]>[0]) { return this.finance.listDebtAccounts(filters); }
   getDebtAccountById(id: string) { return this.finance.getDebtAccountById(id); }
   getDebtAccountByWorkerId(workerId: string) { return this.finance.getDebtAccountByWorkerId(workerId); }
   getDebtAccountByExternalCounterpartyId(ecId: string) { return this.finance.getDebtAccountByExternalCounterpartyId(ecId); }
-  getDebtAccountByExternalCounterpartyIdAndDirection(ecId: string, direction: any) { return this.finance.getDebtAccountByExternalCounterpartyIdAndDirection(ecId, direction); }
-  createDebtAccount(data: any, audit?: any) { return this.finance.createDebtAccount(data, audit); }
-  updateDebtAccount(data: any, audit?: any) { return this.finance.updateDebtAccount(data, audit); }
-  listDebtEntries(filters: any) { return this.finance.listDebtEntries(filters); }
+  getDebtAccountByExternalCounterpartyIdAndDirection(ecId: string, direction: Parameters<CompanyRepository["getDebtAccountByExternalCounterpartyIdAndDirection"]>[1]) { return this.finance.getDebtAccountByExternalCounterpartyIdAndDirection(ecId, direction); }
+  createDebtAccount(data: Parameters<CompanyRepository["createDebtAccount"]>[0], audit?: Parameters<CompanyRepository["createDebtAccount"]>[1]) { return this.finance.createDebtAccount(data, audit); }
+  updateDebtAccount(data: Parameters<CompanyRepository["updateDebtAccount"]>[0], audit?: Parameters<CompanyRepository["updateDebtAccount"]>[1]) { return this.finance.updateDebtAccount(data, audit); }
+  listDebtEntries(filters: Parameters<CompanyRepository["listDebtEntries"]>[0]) { return this.finance.listDebtEntries(filters); }
   getDebtEntryById(id: string) { return this.finance.getDebtEntryById(id); }
   getLatestDebtEntry(accountId: string) { return this.finance.getLatestDebtEntry(accountId); }
   listAllDebtEntries() { return this.finance.listAllDebtEntries(); }
-  createDebtEntry(data: any, audit?: any) { return this.finance.createDebtEntry(data, audit); }
-  voidDebtEntry(data: any, audit?: any) { return this.finance.voidDebtEntry(data, audit); }
+  createDebtEntry(data: Parameters<CompanyRepository["createDebtEntry"]>[0], audit?: Parameters<CompanyRepository["createDebtEntry"]>[1]) { return this.finance.createDebtEntry(data, audit); }
+  voidDebtEntry(data: Parameters<CompanyRepository["voidDebtEntry"]>[0], audit?: Parameters<CompanyRepository["voidDebtEntry"]>[1]) { return this.finance.voidDebtEntry(data, audit); }
   updateDebtEntryBalanceAfter(id: string, balanceAfterDzd: number) { return this.finance.updateDebtEntryBalanceAfter(id, balanceAfterDzd); }
 
   // Audit delegation

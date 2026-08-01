@@ -53,6 +53,24 @@ export type AuthUserDisplayRecord = {
   phone: string | null;
 };
 
+/** Auth user row (mirrors the auth `user` table) for in-memory audit lookups. */
+export type AuthUserRecord = {
+  id: string;
+  name: string;
+  image: string | null;
+  phoneNumber: string;
+  phoneNumberVerified: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Singleton bootstrap state row (mirrors `app_bootstrap_state`). */
+export type BootstrapStateRecord = {
+  singleton: number;
+  createdAt: string;
+  userId: string | null;
+};
+
 export type UserProfileHistoryRecord = {
   id: string;
   userId: string;

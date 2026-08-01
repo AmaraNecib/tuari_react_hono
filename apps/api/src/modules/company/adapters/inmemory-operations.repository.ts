@@ -15,6 +15,7 @@ import type {
   EmployeeProjectAssignmentRecord, EmployeeWarehouseAssignmentRecord,
 } from "../company.types";
 import { InMemoryStore, normalizeAudit, now, newId } from "./inmemory-store";
+import type { AuditSnapshot } from "./inmemory-store";
 
 const sortByName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
 const sortByDate = (a: { createdAt: string; id: string }, b: { createdAt: string; id: string }) =>
@@ -115,7 +116,7 @@ export class InMemoryOperationsRepository implements OperationsRepository {
     const cur = this.store.projectAssignments.get(data.id);
     if (!cur) return null;
     const a = normalizeAudit(audit);
-    const record = { ...cur, status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: now() };
+    const record = { ...cur, status: "ENDED" as const, endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: now() };
     this.store.projectAssignments.set(data.id, record);
     return record;
   }
@@ -146,7 +147,7 @@ export class InMemoryOperationsRepository implements OperationsRepository {
     const cur = this.store.warehouseAssignments.get(data.id);
     if (!cur) return null;
     const a = normalizeAudit(audit);
-    const record = { ...cur, status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: now() };
+    const record = { ...cur, status: "ENDED" as const, endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: now() };
     this.store.warehouseAssignments.set(data.id, record);
     return record;
   }
@@ -168,11 +169,11 @@ export class InMemoryOperationsRepository implements OperationsRepository {
     return filtered.sort(sortByDate);
   }
 
-  private insertProjectManagerOwnershipHistory(data: any) {
+  private insertProjectManagerOwnershipHistory(data: Omit<ProjectManagerOwnershipHistoryRecord, "id" | "endDate" | "createdAt" | "updatedAt">) {
     const id = newId();
     this.store.projectManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
   }
-  private endActiveProjectManagerOwnershipHistory(projectId: string, endDate: string, a: any) {
+  private endActiveProjectManagerOwnershipHistory(projectId: string, endDate: string, a: AuditSnapshot) {
     for (const [hid, h] of this.store.projectManagerOwnershipHistory) {
       if (h.projectId === projectId && !h.endDate) {
         this.store.projectManagerOwnershipHistory.set(hid, { ...h, endDate, status: "ENDED", ...a, updatedAt: endDate });
@@ -180,11 +181,11 @@ export class InMemoryOperationsRepository implements OperationsRepository {
       }
     }
   }
-  private insertWarehouseManagerOwnershipHistory(data: any) {
+  private insertWarehouseManagerOwnershipHistory(data: Omit<WarehouseManagerOwnershipHistoryRecord, "id" | "endDate" | "createdAt" | "updatedAt">) {
     const id = newId();
     this.store.warehouseManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
   }
-  private endActiveWarehouseManagerOwnershipHistory(warehouseId: string, endDate: string, a: any) {
+  private endActiveWarehouseManagerOwnershipHistory(warehouseId: string, endDate: string, a: AuditSnapshot) {
     for (const [hid, h] of this.store.warehouseManagerOwnershipHistory) {
       if (h.warehouseId === warehouseId && !h.endDate) {
         this.store.warehouseManagerOwnershipHistory.set(hid, { ...h, endDate, status: "ENDED", ...a, updatedAt: endDate });

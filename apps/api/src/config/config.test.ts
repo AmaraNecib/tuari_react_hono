@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createAppConfig, type AppConfig } from "./index";
+import { appConfigSchema, createAppConfig, type AppConfig } from "./index";
 
 let configTempDir: string;
 beforeEach(() => {
@@ -320,5 +320,63 @@ describe("createAppConfig", () => {
     expect(config).toHaveProperty("betterAuthSecret");
     expect(config).toHaveProperty("betterAuthUrl");
     expect(config).toHaveProperty("bootstrapSetupKey");
+  });
+});
+
+describe("appConfigSchema betterAuthUrl validation", () => {
+  // All fields the schema requires (no defaults) — only betterAuthUrl varies.
+  const validRaw = {
+    databasePath: "/tmp/tuari.sqlite",
+    databaseUrl: "file:///tmp/tuari.sqlite",
+    attachmentsRootPath: "/tmp/attachments",
+    betterAuthSecret: "test-secret",
+  };
+
+  it("validates and normalizes betterAuthUrl via the schema alone", () => {
+    const config = appConfigSchema.parse({
+      ...validRaw,
+      betterAuthUrl: "https://api.example.com///",
+    });
+    expect(config.betterAuthUrl).toBe("https://api.example.com");
+  });
+
+  it("rejects an insecure non-local URL via the schema alone", () => {
+    expect(() =>
+      appConfigSchema.parse({ ...validRaw, betterAuthUrl: "http://api.example.com" }),
+    ).toThrow("BETTER_AUTH_URL must use https for non-local hosts");
+  });
+
+  it("rejects a malformed URL via the schema alone", () => {
+    expect(() =>
+      appConfigSchema.parse({ ...validRaw, betterAuthUrl: "not a url" }),
+    ).toThrow("Invalid BETTER_AUTH_URL");
+  });
+
+  it("rejects a non-http(s) protocol via the schema alone", () => {
+    expect(() =>
+      appConfigSchema.parse({ ...validRaw, betterAuthUrl: "ftp://example.com" }),
+    ).toThrow("BETTER_AUTH_URL must use http or https");
+  });
+
+  it("rejects credentials via the schema alone", () => {
+    expect(() =>
+      appConfigSchema.parse({
+        ...validRaw,
+        betterAuthUrl: "https://user:pass@example.com",
+      }),
+    ).toThrow(
+      "BETTER_AUTH_URL must not include credentials, query parameters, or fragments",
+    );
+  });
+
+  it("rejects query parts via the schema alone", () => {
+    expect(() =>
+      appConfigSchema.parse({
+        ...validRaw,
+        betterAuthUrl: "https://example.com?x=1",
+      }),
+    ).toThrow(
+      "BETTER_AUTH_URL must not include credentials, query parameters, or fragments",
+    );
   });
 });

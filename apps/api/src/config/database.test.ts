@@ -134,6 +134,44 @@ describe("database adapter factories", () => {
     expect(page3.nextCursor).toBeNull();
   });
 
+  it("inmemory end/void mutations persist typed status transitions", () => {
+    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
 
+    // End an assignment: the record must transition to "ENDED" with the
+    // provided endDate (pins the typed `status: "ENDED" as const` path).
+    const assignment = repo.createManagerAssignment({
+      workerId: "w-1",
+      managerId: "m-1",
+      status: "ACTIVE",
+      startDate: "2025-01-01T00:00:00.000Z",
+      endDate: null,
+      notes: null,
+    });
+    const ended = repo.endManagerAssignment({
+      id: assignment.id,
+      endDate: "2025-02-01T00:00:00.000Z",
+      notes: null,
+    });
+    expect(ended?.status).toBe("ENDED");
+    expect(ended?.endDate).toBe("2025-02-01T00:00:00.000Z");
 
+    // Void a debt entry: the record must transition to "VOIDED" (pins the
+    // typed `status: "VOIDED" as const` path).
+    const entry = repo.createDebtEntry({
+      debtAccountId: "acc-1",
+      entryType: "PAYMENT",
+      signedAmountDzd: 1000,
+      entryDate: "2025-01-15T00:00:00.000Z",
+      balanceAfterDzd: 1000,
+      note: null,
+    });
+    const voided = repo.voidDebtEntry({
+      id: entry.id,
+      voidedAt: "2025-01-16T00:00:00.000Z",
+      voidedBy: "admin",
+      voidReason: "entered by mistake",
+    });
+    expect(voided?.status).toBe("VOIDED");
+    expect(voided?.voidReason).toBe("entered by mistake");
+  });
 });
