@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SessionService } from "./session.service";
 import type { Permission } from "../rbac/permissions";
-import type { SessionUser } from "./session.types";
 
 const OLD_ENV = process.env;
 

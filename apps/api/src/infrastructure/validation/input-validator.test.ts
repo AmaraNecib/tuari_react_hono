@@ -54,7 +54,7 @@ describe("InputValidator", () => {
       } catch (error) {
         // Verify error has validation context
         expect(error).toBeDefined();
-        expect((error as { code: string }).code).toBe("VALIDATION");
+        expect((error as { code: string; message: string }).code).toBe("VALIDATION");
       }
     });
 
@@ -65,8 +65,8 @@ describe("InputValidator", () => {
         expect.fail("Should have thrown");
       } catch (error) {
         // Verify error is ORPCError with validation code
-        expect((error as { code: string }).code).toBe("VALIDATION");
-        expect((error as { message: string }).message).toContain("validation");
+        expect((error as { code: string; message: string }).code).toBe("VALIDATION");
+        expect((error as { code: string; message: string }).message).toContain("validation");
       }
     });
   });
@@ -138,8 +138,8 @@ describe("InputValidator", () => {
       } catch (error) {
         // Verify nested validation error
         expect(error).toBeDefined();
-        expect((error as { code: string }).code).toBe("VALIDATION");
-        expect((error as { message: string }).message).toContain("validation");
+        expect((error as { code: string; message: string }).code).toBe("VALIDATION");
+        expect((error as { code: string; message: string }).message).toContain("validation");
       }
     });
   });
