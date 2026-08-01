@@ -46,8 +46,7 @@ import { UpdateHistoryService } from "../modules/update/update-history.service";
  *                 controlled config (e.g. DB_ADAPTER=inmemory).
  */
 export async function createAppDependencies(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sqlite?: any,
+  sqlite?: BetterSqliteDatabase,
   drizzleDb?: AppDrizzle,
   authInstance?: BetterAuthInstance,
   config: AppConfig = createAppConfig(),

@@ -296,9 +296,8 @@ export interface InventoryRepository {
  * Drizzle-backed inventory repository implementation.
  */
 export class DrizzleInventoryRepository implements InventoryRepository {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(
-    private readonly db: BetterSQLite3Database<any>,
+    private readonly db: BetterSQLite3Database<typeof schema>,
     private readonly raw: BetterSqliteDatabase,
   ) {
     this.raw.pragma("foreign_keys = ON")
@@ -815,7 +814,6 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
 /** Create a Drizzle-backed InventoryRepository from a raw SQLite handle. */
 export function createInventoryRepository(rawDb: BetterSqliteDatabase): InventoryRepository {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const drizzleDb = createDrizzleFromSqlite(rawDb as any)
+  const drizzleDb = createDrizzleFromSqlite(rawDb)
   return new DrizzleInventoryRepository(drizzleDb, rawDb)
 }

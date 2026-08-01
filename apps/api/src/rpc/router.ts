@@ -71,19 +71,24 @@ export function createRouter(dependencies: RouterDependencies) {
     ),
   };
 
-  const allHandlers = Object.assign(
-    baseHandlers,
-    createSystemHandlers(os, m, dependencies.companyService, dependencies.recoveryKeyService, dependencies.roleModule, dependencies.rawDatabase),
-    createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
-    createOperationsHandlers(os, m, dependencies.operationsService),
-    createFinanceHandlers(os, m, dependencies.financeService),
-    createInventoryHandlers(os, m, dependencies.inventoryService),
-    createReportsHandlers(os, m, dependencies.companyService, dependencies.inventoryService),
-    createInvoiceHandlers(os, m, dependencies.invoiceModule),
-    createPaymentHandlers(os, m, dependencies.paymentModule),
-    createUpdateHandlers(os, m, dependencies.updateService, dependencies.updateHistoryService),
-    createRbacHandlers(os, m, dependencies.roleModule),
-  );
+  const allHandlers = {
+    ...baseHandlers,
+    ...createSystemHandlers(os, m, dependencies.companyService, dependencies.recoveryKeyService, dependencies.roleModule, dependencies.rawDatabase),
+    ...createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
+    ...createOperationsHandlers(os, m, dependencies.operationsService),
+    ...createFinanceHandlers(os, m, dependencies.financeService),
+    ...createInventoryHandlers(os, m, dependencies.inventoryService),
+    ...createReportsHandlers(os, m, dependencies.companyService, dependencies.inventoryService),
+    ...createInvoiceHandlers(os, m, dependencies.invoiceModule),
+    ...createPaymentHandlers(os, m, dependencies.paymentModule),
+    ...createUpdateHandlers(os, m, dependencies.updateService, dependencies.updateHistoryService),
+    ...createRbacHandlers(os, m, dependencies.roleModule),
+  };
 
+  // The `recurringPatternsContract` procedures (recurringPatternsList /
+  // recurringPatternsGet) have no API handlers yet, so the handler map
+  // cannot be checked against the full contract router. Cast at this
+  // boundary until the recurring feature lands.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return os.router(allHandlers as any);
 }

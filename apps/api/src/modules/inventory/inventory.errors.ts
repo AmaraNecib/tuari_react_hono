@@ -16,7 +16,7 @@ export class InventoryError extends Error {
 }
 
 /** toFailureResult. */
-export function toFailureResult<T>(error: unknown) {
+export function toFailureResult(error: unknown) {
   if (error instanceof InventoryError) {
     return {
       success: false as const,

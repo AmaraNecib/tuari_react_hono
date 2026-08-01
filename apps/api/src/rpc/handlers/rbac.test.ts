@@ -1,3 +1,7 @@
+/* This file is a black-box test of the implemented router through the
+   untyped client proxy and intentionally does not type-check (the client
+   type is not derived from the router), hence @ts-nocheck below. */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { describe, it, expect, vi } from "vitest";
 import { ORPCError } from "@orpc/server";

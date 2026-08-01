@@ -24,7 +24,6 @@ import type {
 import { InMemoryStore, normalizeAudit, now, newId } from "./inmemory-store";
 import type { AuditSnapshot } from "./inmemory-store";
 
-const sortByName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
 const sortByDate = (a: { createdAt: string; id: string }, b: { createdAt: string; id: string }) =>
   a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1;
 

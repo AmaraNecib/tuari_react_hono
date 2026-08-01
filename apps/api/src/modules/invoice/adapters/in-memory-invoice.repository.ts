@@ -1,8 +1,6 @@
 import type { InvoiceRepository } from "../invoice.repository";
 import type {
   Invoice,
-  InvoiceCurrency,
-  InvoiceDirection,
   InvoiceLineItem,
   InvoiceListFilters,
   InvoiceListSortField,

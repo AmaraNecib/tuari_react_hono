@@ -25,7 +25,6 @@ import {
 
 import { CompanyError } from "./company.errors";
 import {
-  deleteResult,
   normalizeText,
   successResult,
 } from "./company.helpers";

@@ -27,7 +27,7 @@ function createRawDb() {
       user_id TEXT
     );
   `);
-  return db as any;
+  return db;
 }
 
 describe("database adapter factories", () => {
@@ -63,30 +63,30 @@ describe("database adapter factories", () => {
 
   // InMemory adapter factories (rawDb is ignored)
   it("createWorkforceRepository supports the inmemory adapter", () => {
-    const repo = createWorkforceRepository(undefined as any, inMemoryConfig);
+    const repo = createWorkforceRepository(undefined as never, inMemoryConfig);
     expect(typeof repo.listRoles).toBe("function");
     expect(typeof repo.createEmployee).toBe("function");
   });
 
   it("createOperationsRepository supports the inmemory adapter", () => {
-    const repo = createOperationsRepository(undefined as any, inMemoryConfig);
+    const repo = createOperationsRepository(undefined as never, inMemoryConfig);
     expect(typeof repo.listProjects).toBe("function");
     expect(typeof repo.createProject).toBe("function");
   });
 
   it("createFinanceRepository supports the inmemory adapter", () => {
-    const repo = createFinanceRepository(undefined as any, inMemoryConfig);
+    const repo = createFinanceRepository(undefined as never, inMemoryConfig);
     expect(typeof repo.listDebtAccounts).toBe("function");
     expect(typeof repo.createDebtAccount).toBe("function");
   });
 
   it("createAuditRepository supports the inmemory adapter", () => {
-    const repo = createAuditRepository(undefined as any, inMemoryConfig);
+    const repo = createAuditRepository(undefined as never, inMemoryConfig);
     expect(typeof repo.isBootstrapOwner).toBe("function");
   });
 
   it("createCompanyRepository supports the inmemory adapter and is functional", () => {
-    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+    const repo = createCompanyRepository(undefined as never, inMemoryConfig);
     expect(typeof repo.withTransaction).toBe("function");
     // End-to-end: create a role, list it, and query it back.
     const role = repo.createRole({ key: "worker", name: "Worker" });
@@ -96,8 +96,8 @@ describe("database adapter factories", () => {
 
   it("narrow inmemory factories share a store when one is provided", () => {
     const store = new InMemoryStore();
-    const workforce = createWorkforceRepository(undefined as any, inMemoryConfig, store);
-    const operations = createOperationsRepository(undefined as any, inMemoryConfig, store);
+    const workforce = createWorkforceRepository(undefined as never, inMemoryConfig, store);
+    const operations = createOperationsRepository(undefined as never, inMemoryConfig, store);
 
     // Create a project through the operations adapter, then verify the
     // workforce adapter can see it via the shared store.
@@ -108,7 +108,7 @@ describe("database adapter factories", () => {
   });
 
   it("inmemory listEmployeesPaged honors the cursor across pages", () => {
-    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+    const repo = createCompanyRepository(undefined as never, inMemoryConfig);
     const role = repo.createRole({ key: "worker", name: "Worker" });
     for (let i = 0; i < 5; i++) {
       repo.createEmployee({
@@ -135,7 +135,7 @@ describe("database adapter factories", () => {
   });
 
   it("inmemory end/void mutations persist typed status transitions", () => {
-    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+    const repo = createCompanyRepository(undefined as never, inMemoryConfig);
 
     // End an assignment: the record must transition to "ENDED" with the
     // provided endDate (pins the typed `status: "ENDED" as const` path).
@@ -176,7 +176,7 @@ describe("database adapter factories", () => {
   });
 
   it("inmemory re-end and re-void are idempotent no-ops", () => {
-    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+    const repo = createCompanyRepository(undefined as never, inMemoryConfig);
 
     // Re-ending an already-ENDED assignment must not overwrite the endDate.
     const assignment = repo.createManagerAssignment({
@@ -227,7 +227,7 @@ describe("database adapter factories", () => {
   });
 
   it("inmemory re-ending project and warehouse assignments is idempotent", () => {
-    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+    const repo = createCompanyRepository(undefined as never, inMemoryConfig);
 
     const project = repo.createProject({ name: "Site B", status: "ACTIVE" });
     const warehouse = repo.createWarehouse({ name: "Depot B", status: "ACTIVE" });
@@ -276,7 +276,7 @@ describe("database adapter factories", () => {
   });
 
   it("inmemory end/void return null for unknown ids", () => {
-    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+    const repo = createCompanyRepository(undefined as never, inMemoryConfig);
 
     expect(
       repo.endManagerAssignment({ id: "nope", endDate: "2025-05-01T00:00:00.000Z", notes: null }),

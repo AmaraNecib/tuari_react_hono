@@ -7,6 +7,18 @@
 import type { UpdateRecord, RecordUpdateInput } from "@tuari/contracts";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
 
+/**
+ * Row shape of the `update_history` table as read back by this service.
+ * `success` is stored as 0/1 and normalized to a boolean on read.
+ */
+type UpdateHistoryRow = {
+  id: number;
+  version: string;
+  appliedAt: string;
+  success: number;
+  errorMessage: string | null;
+};
+
 export class UpdateHistoryService {
   constructor(private readonly db: BetterSqliteDatabase) {}
 
@@ -45,7 +57,8 @@ export class UpdateHistoryService {
        ORDER BY "applied_at" DESC, "id" DESC
        LIMIT ?`,
     );
-    return stmt.all(limit).map((row: any) => ({
+    const rows = stmt.all(limit) as unknown as UpdateHistoryRow[];
+    return rows.map((row) => ({
       ...row,
       success: row.success === 1,
     }));
@@ -61,7 +74,7 @@ export class UpdateHistoryService {
        ORDER BY "applied_at" DESC, "id" DESC
        LIMIT 1`,
     );
-    const row = stmt.get() as any;
+    const row = stmt.get() as unknown as UpdateHistoryRow | undefined;
     if (!row) return null;
     return {
       ...row,

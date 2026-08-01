@@ -10,7 +10,6 @@ import {
   debtEntryReasonCategoryMigrationKey,
   debtSingleAccountMigrationKey,
   invoiceDebtLinkageMigrationKey,
-  invoiceDirectionMigrationKey,
   obsoleteMigrationKey,
   rbacThreeRoleMigrationKey,
   rolePermissionSeeds,
@@ -42,7 +41,7 @@ function isMissingColumnError(error: unknown) {
 
 /** Get column metadata for a table via PRAGMA table_info. */
 async function getTableColumns(tableName: string) {
-  return getExecutor().$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info(\"${tableName}\")`);
+  return getExecutor().$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info("${tableName}")`);
 }
 
 /** Check if a table has a specific column. */
@@ -1306,34 +1305,6 @@ async function columnExists(
     `PRAGMA table_info("${tableName}")`,
   );
   return rows.some((column) => column.name === columnName);
-}
-
- /** Add direction column to invoice table (PURCHASE/SALE). */
-async function runInvoiceDirectionMigration() {
-  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
-    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
-    invoiceDirectionMigrationKey,
-  );
-
-  if (migrationRow) {
-    return;
-  }
-
-  // Only add the column if it does not already exist (e.g. from
-  // additive statements that run on every startup). If the column
-  // already exists we still write the migration key so future
-  // startups skip this check entirely.
-  if (!(await hasColumn("invoice", "direction"))) {
-    await getExecutor().$executeRawUnsafe(
-      `ALTER TABLE "invoice" ADD COLUMN "direction" TEXT NOT NULL DEFAULT 'PURCHASE' CHECK ("direction" IN ('PURCHASE', 'SALE'))`,
-    );
-  }
-
-  await getExecutor().$executeRawUnsafe(
-    'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
-    invoiceDirectionMigrationKey,
-    new Date().toISOString(),
-  );
 }
 
  /** Apply debt_account balance column rename migration. */

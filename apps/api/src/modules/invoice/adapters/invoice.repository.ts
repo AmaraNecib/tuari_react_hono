@@ -5,7 +5,7 @@
  * for type-safe reads/writes. Cursor-based pagination uses raw SQL
  * for dynamic query building (too complex for Drizzle's query builder).
  */
-import { eq, and, asc, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import * as schema from "../../../schema";
 import { createDrizzleFromSqlite, type AppDrizzle } from "../../../infrastructure/database/drizzle";
@@ -67,11 +67,9 @@ function mapLineItem(row: Record<string, unknown>): InvoiceLineItem {
 export class InvoiceRepository implements IInvoiceRepository {
   private transactionChain: Promise<unknown> = Promise.resolve();
   private readonly db: AppDrizzle;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private readonly raw: any;
+  private readonly raw: BetterSqliteDatabase;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(rawDb: any, drizzleDb?: AppDrizzle) {
+  constructor(rawDb: BetterSqliteDatabase, drizzleDb?: AppDrizzle) {
     // Support both (rawDb) and (rawDb, drizzleDb) signatures
     if (drizzleDb) {
       this.db = drizzleDb;

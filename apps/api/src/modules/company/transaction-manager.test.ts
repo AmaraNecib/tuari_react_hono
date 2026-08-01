@@ -21,7 +21,7 @@ describe("TransactionManager", () => {
           throw error;
         }
       },
-    } as any;
+    } as unknown as CompanyRepository;
 
     manager = new TransactionManager(mockRepository);
   });

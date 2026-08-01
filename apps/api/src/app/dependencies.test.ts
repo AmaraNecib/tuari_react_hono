@@ -6,12 +6,13 @@ import Database from "better-sqlite3";
 process.env.BETTER_AUTH_SECRET = "test-secret";
 
 import { createAppConfig } from "../config";
+import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 
 /** Minimal auth instance — only stored by dependency constructors, never used. */
-const fakeAuth = { handler: () => new Response(null, { status: 200 }) };
+const fakeAuth = { handler: () => new Response(null, { status: 200 }) } as unknown as BetterAuthInstance;
 
 /** Fresh in-memory SQLite handle with no schema tables. */
-const createRawDb = () => new Database(":memory:") as any;
+const createRawDb = () => new Database(":memory:");
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -25,7 +26,7 @@ describe("createAppDependencies config injection", { timeout: 20000 }, () => {
       DB_ADAPTER: "inmemory",
     });
 
-    const deps = await createAppDependencies(createRawDb(), undefined, fakeAuth as any, config);
+    const deps = await createAppDependencies(createRawDb(), undefined, fakeAuth, config);
 
     // The in-memory adapter never touches SQLite: an empty store lists roles
     // without querying the schema-less :memory: database.
@@ -41,7 +42,7 @@ describe("createAppDependencies config injection", { timeout: 20000 }, () => {
 
     const { createAppDependencies } = await import("./dependencies");
 
-    const deps = await createAppDependencies(createRawDb(), undefined, fakeAuth as any);
+    const deps = await createAppDependencies(createRawDb(), undefined, fakeAuth);
 
     // Default config selects the sqlite adapter, which queries the (missing)
     // role table in the schema-less :memory: database — proving the injected

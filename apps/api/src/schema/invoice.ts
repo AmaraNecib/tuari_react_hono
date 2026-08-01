@@ -2,7 +2,7 @@
  * Invoice domain tables.
  * Schema matches the existing SQL definitions in schema-definitions.ts.
  */
-import { sqliteTable, text, real, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, real } from "drizzle-orm/sqlite-core";
 import { warehouse, project, debtAccount } from "./company";
 
 /** Purchase/sale invoice headers. */

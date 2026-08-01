@@ -70,8 +70,7 @@ export function decodeCursor(token: string): Cursor {
     throw new Error("Invalid cursor: empty token")
   }
 
-  let json: string
-  json = Buffer.from(token, "base64url").toString("utf8")
+  const json: string = Buffer.from(token, "base64url").toString("utf8")
 
   let parsed: unknown
   try {

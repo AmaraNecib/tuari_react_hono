@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, real, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { role } from "./app";
 import { user } from "./auth";
 

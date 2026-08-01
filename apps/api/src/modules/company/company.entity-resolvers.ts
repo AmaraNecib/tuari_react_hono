@@ -13,7 +13,6 @@
 
 import { CompanyError } from "./company.errors";
 import { SYSTEM_ROLE_KEYS } from "./company.types";
-import type { CompanyRepository } from "./company.repository.contracts";
 import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
 import type { FinanceRepository } from "./finance.repository";

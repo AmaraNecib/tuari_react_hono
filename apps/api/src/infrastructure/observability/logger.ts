@@ -14,7 +14,7 @@ export interface LogEntry {
   level: "debug" | "info" | "warn" | "error";
   message: string;
   context: LogContext;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
   error?: {
     code: string;
     message: string;
@@ -61,7 +61,7 @@ export class StructuredLogger {
   /**
    * Log info level message.
    */
-  static info(message: string, data?: Record<string, any>): void {
+  static info(message: string, data?: Record<string, unknown>): void {
     this.log("info", message, data);
   }
 
@@ -71,7 +71,7 @@ export class StructuredLogger {
   static error(
     message: string,
     error?: Error,
-    data?: Record<string, any>,
+    data?: Record<string, unknown>,
   ): void {
     const entry: LogEntry = {
       level: "error",
@@ -92,14 +92,14 @@ export class StructuredLogger {
   /**
    * Log warning level message.
    */
-  static warn(message: string, data?: Record<string, any>): void {
+  static warn(message: string, data?: Record<string, unknown>): void {
     this.log("warn", message, data);
   }
 
   /**
    * Log debug level message.
    */
-  static debug(message: string, data?: Record<string, any>): void {
+  static debug(message: string, data?: Record<string, unknown>): void {
     this.log("debug", message, data);
   }
 
@@ -146,7 +146,7 @@ export class StructuredLogger {
   private static log(
     level: LogEntry["level"],
     message: string,
-    data?: Record<string, any>,
+    data?: Record<string, unknown>,
   ): void {
     const entry: LogEntry = {
       level,

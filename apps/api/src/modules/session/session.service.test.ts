@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SessionService } from "./session.service";
 import type { Permission } from "../rbac/permissions";
+import type { SessionUser } from "./session.types";
 
 const OLD_ENV = process.env;
 
@@ -12,7 +13,7 @@ afterEach(() => {
   process.env = OLD_ENV;
 });
 
-function createMockAuthGateway(user: any = null) {
+function createMockAuthGateway(user: { id: string; name: string | null; phoneNumber?: string | null } | null = null) {
   return {
     api: {
       getSession: vi.fn().mockResolvedValue(user ? { user } : null),

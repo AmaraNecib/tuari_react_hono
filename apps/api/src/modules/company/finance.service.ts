@@ -85,7 +85,7 @@ export class FinanceService {
       entryType: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE";
       amountDzd: number;
       entryDate?: string;
-      note?: string;
+      note?: string | null;
       reasonCategory?: DebtEntry["reasonCategory"];
     },
     auditContext?: MutationAuditContext,

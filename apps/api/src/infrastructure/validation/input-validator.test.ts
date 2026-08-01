@@ -15,7 +15,7 @@ describe("InputValidator", () => {
   // Mock schema that validates basic requirements
   const schema = {
     parse(input: unknown) {
-      const data = input as any;
+      const data = input as { name?: string; email?: string; age?: number };
       const errors: Array<{ path: string[]; message: string }> = [];
 
       if (!data.name || typeof data.name !== "string" || data.name.length === 0) {
@@ -51,10 +51,10 @@ describe("InputValidator", () => {
       try {
         InputValidator.validate(input, schema);
         expect.fail("Should have thrown");
-      } catch (error: any) {
+      } catch (error) {
         // Verify error has validation context
         expect(error).toBeDefined();
-        expect(error.code).toBe("VALIDATION");
+        expect((error as { code: string }).code).toBe("VALIDATION");
       }
     });
 
@@ -63,10 +63,10 @@ describe("InputValidator", () => {
       try {
         InputValidator.validate(input, schema);
         expect.fail("Should have thrown");
-      } catch (error: any) {
+      } catch (error) {
         // Verify error is ORPCError with validation code
-        expect(error.code).toBe("VALIDATION");
-        expect(error.message).toContain("validation");
+        expect((error as { code: string }).code).toBe("VALIDATION");
+        expect((error as { message: string }).message).toContain("validation");
       }
     });
   });
@@ -109,7 +109,7 @@ describe("InputValidator", () => {
   describe("nested path validation", () => {
     const nestedSchema = {
       parse(input: unknown) {
-        const data = input as any;
+        const data = input as { user?: { profile?: { email?: string } } };
         const email = data.user?.profile?.email;
         if (!email || !email.includes("@")) {
           throw new ZodError([
@@ -135,11 +135,11 @@ describe("InputValidator", () => {
       try {
         InputValidator.validate(input, nestedSchema);
         expect.fail("Should have thrown");
-      } catch (error: any) {
+      } catch (error) {
         // Verify nested validation error
         expect(error).toBeDefined();
-        expect(error.code).toBe("VALIDATION");
-        expect(error.message).toContain("validation");
+        expect((error as { code: string }).code).toBe("VALIDATION");
+        expect((error as { message: string }).message).toContain("validation");
       }
     });
   });
