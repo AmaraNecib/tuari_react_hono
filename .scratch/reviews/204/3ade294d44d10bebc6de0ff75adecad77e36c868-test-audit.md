@@ -1,0 +1,85 @@
+# Test Audit — issue #204 (ESLint for apps/api + explicit-`any` sweep)
+
+**Base:** `develop` @ `59ea5725c0ffe8c794dad4071adc029fe109bf66`
+**Head:** `3ade294d44d10bebc6de0ff75adecad77e36c868`
+**Tier:** Standard (config + type-level hygiene; no runtime logic changed)
+
+## Nature of the change
+
+This is a lint/type sweep, not a feature: no runtime business logic was
+added or changed. The acceptance gates are mechanical — `pnpm lint`
+(CI `turbo lint`), `pnpm typecheck`, full `pnpm test:api` (601 tests) and
+`pnpm test:web` (341 tests) all green — plus the explicit-`any` sweep
+itself. The audit therefore focuses on whether the existing suites guard
+the surfaces the sweep touched, and whether any assertion was weakened.
+
+## 3-agent audit
+
+### Edge Case Hunter — no blockers
+
+Verified against current file state:
+
+1. **`rpc-middleware.ts`** `Promise<any>` → `Promise<unknown>` /
+   `errorResolver: (error) => unknown` — compile-time only; handler casts
+   (`input as X`) are erased at runtime. `debtsSummary` dropped an unused
+   input arg — harmless. ✅
+2. **`sqlite-company.repository.ts` constructor** — `if (rawHandle)`
+   truthiness branch unchanged from the `any` version; both
+   `(drizzleDb, rawDb)` and `(rawDb)` call shapes still route correctly
+   (callers: `createCompanyRepository`, `company.test-helpers.ts`,
+   integration tests). 🟡 pre-existing: `(drizzleDb, undefined)` would
+   misroute — not introduced here.
+3. **`update-history.service.ts`** — `UpdateHistoryRow` matches the
+   SELECT aliases (`AS "appliedAt"`, `AS "errorMessage"` — lines 55/72);
+   better-sqlite3 returns INTEGER for `success`, `=== 1` correct. 🟡 the
+   `as unknown as` cast is unchecked, same exposure as the old `any`.
+4. **`input-validator.ts`** — dead `fieldErrors` computation removed from
+   `validate`/`validateAsync` (result was never used; throw used a static
+   message). `safeValidate` keeps `.errors?.map`. Behavior preserved. 🟡
+   pre-existing: `err.path.join` throws if a duck-typed error lacks `path`.
+5. **Widened service params** (`note?: string | null` in
+   `finance.service.ts` / `inventory.service.ts` ×2) — null could already
+   reach these services at runtime via the old `as any` casts (contracts
+   allow null); widening is compile-time only. Repos already handle null
+   (`data.note ?? null`). ✅
+6. **Dead-code removals** (`const a = normalizeAudit(audit)` in
+   `createEmployeesBatch`/`assignEmployeeWorkplace`) — `normalizeAudit`
+   (sqlite-company.repository.ts:101) is a pure local normalizer (verified:
+   returns a plain object, no side effects). ✅
+
+**Verdict:** no blockers, no subtle runtime bugs. 601 API tests green.
+
+### Coverage Analyst — acceptance criteria all gated
+
+1. Config mirrors web: `eslint.config.mjs` = `js.configs.recommended` +
+   `tseslint.configs.recommended`, no react-hooks, `globals.node`,
+   documented `_`-prefix + test-file `no-unused-vars` carve-outs.
+   `"lint": "eslint ."` + devDeps added; `pnpm-lock.yaml` updated.
+   Mechanical gate: `.github/workflows/ci.yml` runs `pnpm turbo lint`
+   (turbo.json has a `lint` task). `npx eslint .` in apps/api exits 0. ✅
+2. CI stays green — lint job green locally, web/contracts untouched. ✅
+3. All explicit `any` swept from non-test src; exactly two remain, both
+   justified + eslint-disabled (framework-boundary casts). ✅
+4. Behavior identical — `tsc --noEmit` exit 0; all 14 changed test files
+   preserve every `expect` (no assertion removed). ✅
+
+**Gap:** no repo-level `tests/*.mjs` hygiene script covers apps/api eslint
+(only CI enforces it). Optional future hardening; not a blocker.
+
+### Quality Reviewer — Grade B, two fixes applied
+
+- No assertion weakened anywhere: `error.code`/`message` checks still run;
+  `any` → `unknown` + narrow casts is strictly tighter. `@ts-nocheck`
+  files keep the directive with an honest comment. `undefined as never`
+  (in-memory factories ignore rawDb) is semantically honest.
+- **Fix 1 (applied):** dead `import type { SessionUser }` in
+  `session.service.test.ts` removed.
+- **Fix 2 (applied):** `input-validator.test.ts` error casts unified to a
+  single `{ code: string; message: string }` shape (3 sites).
+- (Not applied, optional) `undefined as never` comment in `database.test.ts`
+  — the intent is documented in the design doc.
+
+## Result
+
+All findings addressed; the two quality fixes are committed in `3ade294`.
+Evidence SHA tracks the final reviewed commit.
