@@ -101,6 +101,7 @@ export class InMemoryFinanceRepository implements FinanceRepository {
   voidDebtEntry(data: DebtEntryVoidData, audit?: MutationAuditContext): DebtEntryRecord | null {
     const cur = this.store.debtEntries.get(data.id);
     if (!cur) return null;
+    if (cur.status !== "LIVE") return cur;
     const a = normalizeAudit(audit); const ts = now();
     const record = { ...cur, status: "VOIDED" as const, voidedAt: data.voidedAt, voidedBy: data.voidedBy ?? a.actorLabel ?? a.actorUserId, voidReason: data.voidReason, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: ts };
     this.store.debtEntries.set(data.id, record);

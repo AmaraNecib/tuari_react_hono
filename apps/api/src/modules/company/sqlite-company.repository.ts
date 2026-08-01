@@ -539,6 +539,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
   }
 
   voidDebtEntry(data: DebtEntryVoidData, audit?: MutationAuditContext): DebtEntryRecord | null {
+    const cur = this.getDebtEntryById(data.id);
+    if (!cur) return null;
+    if (cur.status !== "LIVE") return cur;
     const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
     this.db.update(schema.debtEntry).set({ status: "VOIDED", voidedAt: data.voidedAt, voidedBy: data.voidedBy ?? a.actorLabel ?? a.actorUserId, voidReason: data.voidReason, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: ts }).where(eq(schema.debtEntry.id, data.id)).run();
     return this.getDebtEntryById(data.id);
@@ -658,6 +661,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
   endManagerAssignment(data: ManagerAssignmentEndData, audit?: MutationAuditContext): EmployeeManagerAssignmentRecord | null {
     const cur = this.getManagerAssignmentById(data.id);
     if (!cur) return null;
+    if (cur.status !== "ACTIVE") return cur;
     const a = normalizeAudit(audit);
     this.db.update(schema.employeeManagerAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeManagerAssignment.id, data.id)).run();
     return this.getManagerAssignmentById(data.id);
@@ -692,6 +696,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
   endProjectAssignment(data: ProjectAssignmentEndData, audit?: MutationAuditContext): EmployeeProjectAssignmentRecord | null {
     const cur = this.getProjectAssignmentById(data.id);
     if (!cur) return null;
+    if (cur.status !== "ACTIVE") return cur;
     const a = normalizeAudit(audit);
     this.db.update(schema.employeeProjectAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeProjectAssignment.id, data.id)).run();
     return this.getProjectAssignmentById(data.id);
@@ -726,6 +731,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
   endWarehouseAssignment(data: WarehouseAssignmentEndData, audit?: MutationAuditContext): EmployeeWarehouseAssignmentRecord | null {
     const cur = this.getWarehouseAssignmentById(data.id);
     if (!cur) return null;
+    if (cur.status !== "ACTIVE") return cur;
     const a = normalizeAudit(audit);
     this.db.update(schema.employeeWarehouseAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeWarehouseAssignment.id, data.id)).run();
     return this.getWarehouseAssignmentById(data.id);

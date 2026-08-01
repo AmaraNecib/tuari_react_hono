@@ -182,6 +182,15 @@ describe("createAppConfig", () => {
     ).toThrow("BETTER_AUTH_URL must use https for non-local hosts");
   });
 
+  it("accepts http for any loopback /8 address, not just 127.0.0.1", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      BETTER_AUTH_URL: "http://127.0.0.2:4318",
+    });
+
+    expect(config.betterAuthUrl).toBe("http://127.0.0.2:4318");
+  });
+
   it("rejects BETTER_AUTH_URL with credentials or query parts", () => {
     expect(() =>
       createAppConfig({
@@ -196,6 +205,33 @@ describe("createAppConfig", () => {
   it("defaults BETTER_AUTH_URL to http://host:port when not set", () => {
     const config = createAppConfig(requiredAuth);
     expect(config.betterAuthUrl).toBe("http://127.0.0.1:4318");
+  });
+
+  it("treats an empty-string BETTER_AUTH_URL as unset and defaults it", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      BETTER_AUTH_URL: "",
+    });
+
+    expect(config.betterAuthUrl).toBe("http://127.0.0.1:4318");
+  });
+
+  it("treats a whitespace-only BETTER_AUTH_URL as unset and defaults it", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      BETTER_AUTH_URL: "   ",
+    });
+
+    expect(config.betterAuthUrl).toBe("http://127.0.0.1:4318");
+  });
+
+  it("derives an https default when API_HOST is non-local", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      API_HOST: "api.example.com",
+    });
+
+    expect(config.betterAuthUrl).toBe("https://api.example.com:4318");
   });
 
   it("requires BOOTSTRAP_SETUP_KEY in production", () => {

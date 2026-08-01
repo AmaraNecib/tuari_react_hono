@@ -76,4 +76,29 @@ export class InMemoryStore {
   transaction<T>(callback: () => T): T {
     return callback();
   }
+
+  insertProjectManagerOwnershipHistory(data: Omit<ProjectManagerOwnershipHistoryRecord, "id" | "endDate" | "createdAt" | "updatedAt">): void {
+    const id = newId();
+    this.projectManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
+  }
+  endActiveProjectManagerOwnershipHistory(projectId: string, endDate: string, a: AuditSnapshot): void {
+    for (const [hid, h] of this.projectManagerOwnershipHistory) {
+      if (h.projectId === projectId && !h.endDate) {
+        this.projectManagerOwnershipHistory.set(hid, { ...h, endDate, status: "ENDED", ...a, updatedAt: endDate });
+        break;
+      }
+    }
+  }
+  insertWarehouseManagerOwnershipHistory(data: Omit<WarehouseManagerOwnershipHistoryRecord, "id" | "endDate" | "createdAt" | "updatedAt">): void {
+    const id = newId();
+    this.warehouseManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
+  }
+  endActiveWarehouseManagerOwnershipHistory(warehouseId: string, endDate: string, a: AuditSnapshot): void {
+    for (const [hid, h] of this.warehouseManagerOwnershipHistory) {
+      if (h.warehouseId === warehouseId && !h.endDate) {
+        this.warehouseManagerOwnershipHistory.set(hid, { ...h, endDate, status: "ENDED", ...a, updatedAt: endDate });
+        break;
+      }
+    }
+  }
 }

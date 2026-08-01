@@ -174,4 +174,121 @@ describe("database adapter factories", () => {
     expect(voided?.status).toBe("VOIDED");
     expect(voided?.voidReason).toBe("entered by mistake");
   });
+
+  it("inmemory re-end and re-void are idempotent no-ops", () => {
+    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+
+    // Re-ending an already-ENDED assignment must not overwrite the endDate.
+    const assignment = repo.createManagerAssignment({
+      workerId: "w-2",
+      managerId: "m-2",
+      status: "ACTIVE",
+      startDate: "2025-01-01T00:00:00.000Z",
+      endDate: null,
+      notes: null,
+    });
+    repo.endManagerAssignment({
+      id: assignment.id,
+      endDate: "2025-02-01T00:00:00.000Z",
+      notes: null,
+    });
+    const reEnded = repo.endManagerAssignment({
+      id: assignment.id,
+      endDate: "2025-03-01T00:00:00.000Z",
+      notes: null,
+    });
+    expect(reEnded?.status).toBe("ENDED");
+    expect(reEnded?.endDate).toBe("2025-02-01T00:00:00.000Z");
+
+    // Re-voiding an already-VOIDED entry must not overwrite void metadata.
+    const entry = repo.createDebtEntry({
+      debtAccountId: "acc-2",
+      entryType: "PAYMENT",
+      signedAmountDzd: 2000,
+      entryDate: "2025-01-15T00:00:00.000Z",
+      balanceAfterDzd: 2000,
+      note: null,
+    });
+    repo.voidDebtEntry({
+      id: entry.id,
+      voidedAt: "2025-01-16T00:00:00.000Z",
+      voidedBy: "admin",
+      voidReason: "first",
+    });
+    const reVoided = repo.voidDebtEntry({
+      id: entry.id,
+      voidedAt: "2025-01-17T00:00:00.000Z",
+      voidedBy: "admin",
+      voidReason: "second",
+    });
+    expect(reVoided?.status).toBe("VOIDED");
+    expect(reVoided?.voidedAt).toBe("2025-01-16T00:00:00.000Z");
+    expect(reVoided?.voidReason).toBe("first");
+  });
+
+  it("inmemory re-ending project and warehouse assignments is idempotent", () => {
+    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+
+    const project = repo.createProject({ name: "Site B", status: "ACTIVE" });
+    const warehouse = repo.createWarehouse({ name: "Depot B", status: "ACTIVE" });
+
+    const projectAssignment = repo.createProjectAssignment({
+      employeeId: "w-3",
+      projectId: project.id,
+      status: "ACTIVE",
+      startDate: "2025-01-01T00:00:00.000Z",
+      endDate: null,
+      notes: null,
+    });
+    repo.endProjectAssignment({
+      id: projectAssignment.id,
+      endDate: "2025-02-01T00:00:00.000Z",
+      notes: null,
+    });
+    const reEndedProject = repo.endProjectAssignment({
+      id: projectAssignment.id,
+      endDate: "2025-03-01T00:00:00.000Z",
+      notes: null,
+    });
+    expect(reEndedProject?.status).toBe("ENDED");
+    expect(reEndedProject?.endDate).toBe("2025-02-01T00:00:00.000Z");
+
+    const warehouseAssignment = repo.createWarehouseAssignment({
+      employeeId: "w-4",
+      warehouseId: warehouse.id,
+      status: "ACTIVE",
+      startDate: "2025-01-01T00:00:00.000Z",
+      endDate: null,
+      notes: null,
+    });
+    repo.endWarehouseAssignment({
+      id: warehouseAssignment.id,
+      endDate: "2025-02-01T00:00:00.000Z",
+      notes: null,
+    });
+    const reEndedWarehouse = repo.endWarehouseAssignment({
+      id: warehouseAssignment.id,
+      endDate: "2025-03-01T00:00:00.000Z",
+      notes: null,
+    });
+    expect(reEndedWarehouse?.status).toBe("ENDED");
+    expect(reEndedWarehouse?.endDate).toBe("2025-02-01T00:00:00.000Z");
+  });
+
+  it("inmemory end/void return null for unknown ids", () => {
+    const repo = createCompanyRepository(undefined as any, inMemoryConfig);
+
+    expect(
+      repo.endManagerAssignment({ id: "nope", endDate: "2025-05-01T00:00:00.000Z", notes: null }),
+    ).toBeNull();
+    expect(
+      repo.endProjectAssignment({ id: "nope", endDate: "2025-05-01T00:00:00.000Z", notes: null }),
+    ).toBeNull();
+    expect(
+      repo.endWarehouseAssignment({ id: "nope", endDate: "2025-05-01T00:00:00.000Z", notes: null }),
+    ).toBeNull();
+    expect(
+      repo.voidDebtEntry({ id: "nope", voidedAt: "2025-05-01T00:00:00.000Z", voidedBy: "admin", voidReason: "x" }),
+    ).toBeNull();
+  });
 });

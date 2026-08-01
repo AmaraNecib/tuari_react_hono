@@ -52,6 +52,42 @@ describe("createEnv", () => {
     ).toThrow("BETTER_AUTH_URL must use https for non-local hosts");
   });
 
+  it("accepts http for any loopback /8 address, not just 127.0.0.1", () => {
+    const env = createEnv({
+      BETTER_AUTH_SECRET: "better-auth-secret",
+      BETTER_AUTH_URL: "http://127.0.0.2:4318",
+    });
+
+    expect(env.betterAuthUrl).toBe("http://127.0.0.2:4318");
+  });
+
+  it("treats an empty-string BETTER_AUTH_URL as unset and defaults it", () => {
+    const env = createEnv({
+      BETTER_AUTH_SECRET: "better-auth-secret",
+      BETTER_AUTH_URL: "",
+    });
+
+    expect(env.betterAuthUrl).toBe("http://127.0.0.1:4318");
+  });
+
+  it("treats a whitespace-only BETTER_AUTH_URL as unset and defaults it", () => {
+    const env = createEnv({
+      BETTER_AUTH_SECRET: "better-auth-secret",
+      BETTER_AUTH_URL: "   ",
+    });
+
+    expect(env.betterAuthUrl).toBe("http://127.0.0.1:4318");
+  });
+
+  it("derives an https default when API_HOST is non-local", () => {
+    const env = createEnv({
+      BETTER_AUTH_SECRET: "better-auth-secret",
+      API_HOST: "api.example.com",
+    });
+
+    expect(env.betterAuthUrl).toBe("https://api.example.com:4318");
+  });
+
   it("rejects BETTER_AUTH_URL values with credentials or query parts", () => {
     expect(() =>
       createEnv({

@@ -15,7 +15,6 @@ import type {
   EmployeeProjectAssignmentRecord, EmployeeWarehouseAssignmentRecord,
 } from "../company.types";
 import { InMemoryStore, normalizeAudit, now, newId } from "./inmemory-store";
-import type { AuditSnapshot } from "./inmemory-store";
 
 const sortByName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
 const sortByDate = (a: { createdAt: string; id: string }, b: { createdAt: string; id: string }) =>
@@ -39,7 +38,7 @@ export class InMemoryOperationsRepository implements OperationsRepository {
     const id = newId(); const ts = now(); const a = normalizeAudit(audit);
     const project: ProjectRecord = { id, name: data.name, location: data.location ?? null, managerId: data.managerId ?? null, status: data.status, notes: data.notes ?? null, createdAt: ts, updatedAt: ts };
     this.store.projects.set(id, project);
-    if (data.managerId && data.status === "ACTIVE") this.insertProjectManagerOwnershipHistory({ projectId: id, managerId: data.managerId, status: "ACTIVE", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
+    if (data.managerId && data.status === "ACTIVE") this.store.insertProjectManagerOwnershipHistory({ projectId: id, managerId: data.managerId, status: "ACTIVE", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
     return project;
   }
   updateProject(data: ProjectUpdateData, audit?: MutationAuditContext): ProjectRecord | null {
@@ -51,8 +50,8 @@ export class InMemoryOperationsRepository implements OperationsRepository {
     const project = { ...cur, name: data.name ?? cur.name, location: data.location !== undefined ? data.location : cur.location, managerId: nm, status: ns, notes: data.notes !== undefined ? data.notes : cur.notes, updatedAt: ts };
     this.store.projects.set(data.id, project);
     if (cur.managerId !== nm || cur.status !== ns) {
-      if (cur.managerId && cur.status === "ACTIVE") this.endActiveProjectManagerOwnershipHistory(data.id, ts, a);
-      if (nm && ns === "ACTIVE") this.insertProjectManagerOwnershipHistory({ projectId: data.id, managerId: nm, status: "ACTIVE", startDate: ts, notes: (data.notes !== undefined ? data.notes : cur.notes) ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
+      if (cur.managerId && cur.status === "ACTIVE") this.store.endActiveProjectManagerOwnershipHistory(data.id, ts, a);
+      if (nm && ns === "ACTIVE") this.store.insertProjectManagerOwnershipHistory({ projectId: data.id, managerId: nm, status: "ACTIVE", startDate: ts, notes: (data.notes !== undefined ? data.notes : cur.notes) ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
     }
     return project;
   }
@@ -72,7 +71,7 @@ export class InMemoryOperationsRepository implements OperationsRepository {
     const id = newId(); const ts = now(); const a = normalizeAudit(audit);
     const warehouse: WarehouseRecord = { id, name: data.name, address: data.address ?? null, managerId: data.managerId ?? null, status: data.status, notes: data.notes ?? null, createdAt: ts, updatedAt: ts };
     this.store.warehouses.set(id, warehouse);
-    if (data.managerId && data.status === "ACTIVE") this.insertWarehouseManagerOwnershipHistory({ warehouseId: id, managerId: data.managerId, status: "ACTIVE", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
+    if (data.managerId && data.status === "ACTIVE") this.store.insertWarehouseManagerOwnershipHistory({ warehouseId: id, managerId: data.managerId, status: "ACTIVE", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
     return warehouse;
   }
   updateWarehouse(data: WarehouseUpdateData, audit?: MutationAuditContext): WarehouseRecord | null {
@@ -84,8 +83,8 @@ export class InMemoryOperationsRepository implements OperationsRepository {
     const warehouse = { ...cur, name: data.name ?? cur.name, address: data.address !== undefined ? data.address : cur.address, managerId: nm, status: ns, notes: data.notes !== undefined ? data.notes : cur.notes, updatedAt: ts };
     this.store.warehouses.set(data.id, warehouse);
     if (cur.managerId !== nm || cur.status !== ns) {
-      if (cur.managerId && cur.status === "ACTIVE") this.endActiveWarehouseManagerOwnershipHistory(data.id, ts, a);
-      if (nm && ns === "ACTIVE") this.insertWarehouseManagerOwnershipHistory({ warehouseId: data.id, managerId: nm, status: "ACTIVE", startDate: ts, notes: (data.notes !== undefined ? data.notes : cur.notes) ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
+      if (cur.managerId && cur.status === "ACTIVE") this.store.endActiveWarehouseManagerOwnershipHistory(data.id, ts, a);
+      if (nm && ns === "ACTIVE") this.store.insertWarehouseManagerOwnershipHistory({ warehouseId: data.id, managerId: nm, status: "ACTIVE", startDate: ts, notes: (data.notes !== undefined ? data.notes : cur.notes) ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
     }
     return warehouse;
   }
@@ -115,6 +114,7 @@ export class InMemoryOperationsRepository implements OperationsRepository {
   endProjectAssignment(data: ProjectAssignmentEndData, audit?: MutationAuditContext): EmployeeProjectAssignmentRecord | null {
     const cur = this.store.projectAssignments.get(data.id);
     if (!cur) return null;
+    if (cur.status !== "ACTIVE") return cur;
     const a = normalizeAudit(audit);
     const record = { ...cur, status: "ENDED" as const, endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: now() };
     this.store.projectAssignments.set(data.id, record);
@@ -146,6 +146,7 @@ export class InMemoryOperationsRepository implements OperationsRepository {
   endWarehouseAssignment(data: WarehouseAssignmentEndData, audit?: MutationAuditContext): EmployeeWarehouseAssignmentRecord | null {
     const cur = this.store.warehouseAssignments.get(data.id);
     if (!cur) return null;
+    if (cur.status !== "ACTIVE") return cur;
     const a = normalizeAudit(audit);
     const record = { ...cur, status: "ENDED" as const, endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: now() };
     this.store.warehouseAssignments.set(data.id, record);
@@ -167,30 +168,5 @@ export class InMemoryOperationsRepository implements OperationsRepository {
       (!filters.warehouseId || h.warehouseId === filters.warehouseId),
     ) : all;
     return filtered.sort(sortByDate);
-  }
-
-  private insertProjectManagerOwnershipHistory(data: Omit<ProjectManagerOwnershipHistoryRecord, "id" | "endDate" | "createdAt" | "updatedAt">) {
-    const id = newId();
-    this.store.projectManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
-  }
-  private endActiveProjectManagerOwnershipHistory(projectId: string, endDate: string, a: AuditSnapshot) {
-    for (const [hid, h] of this.store.projectManagerOwnershipHistory) {
-      if (h.projectId === projectId && !h.endDate) {
-        this.store.projectManagerOwnershipHistory.set(hid, { ...h, endDate, status: "ENDED", ...a, updatedAt: endDate });
-        break;
-      }
-    }
-  }
-  private insertWarehouseManagerOwnershipHistory(data: Omit<WarehouseManagerOwnershipHistoryRecord, "id" | "endDate" | "createdAt" | "updatedAt">) {
-    const id = newId();
-    this.store.warehouseManagerOwnershipHistory.set(id, { id, ...data, endDate: null, createdAt: data.startDate, updatedAt: data.startDate });
-  }
-  private endActiveWarehouseManagerOwnershipHistory(warehouseId: string, endDate: string, a: AuditSnapshot) {
-    for (const [hid, h] of this.store.warehouseManagerOwnershipHistory) {
-      if (h.warehouseId === warehouseId && !h.endDate) {
-        this.store.warehouseManagerOwnershipHistory.set(hid, { ...h, endDate, status: "ENDED", ...a, updatedAt: endDate });
-        break;
-      }
-    }
   }
 }
