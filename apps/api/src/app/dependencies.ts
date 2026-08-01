@@ -36,17 +36,6 @@ import { UpdateService } from "../modules/update/update.service";
 import { UpdateHistoryService } from "../modules/update/update-history.service";
 
 /**
- * Create all application dependencies.
- *
- * @param sqlite - Shared SQLite handle (caller is responsible for lifecycle).
- *                 If omitted, a new connection is created (backwards compat).
- * @param drizzleDb - Pre-built Drizzle instance. If omitted, created from sqlite.
- * @param authInstance - Pre-built Better Auth instance. If omitted, created from db.
- * @param config - Validated application config. Defaults to `createAppConfig()`
- *                 (env + optional config file). Injectable so tests can pass a
- *                 controlled config (e.g. DB_ADAPTER=inmemory).
- */
-/**
  * All resolved application dependencies, created once at startup.
  *
  * Explicitly declared (rather than `ReturnType<typeof createAppDependencies>`)
@@ -74,6 +63,17 @@ export type AppDependencies = {
   roleModule: RoleModule;
 };
 
+/**
+ * Create all application dependencies.
+ *
+ * @param sqlite - Shared SQLite handle (caller is responsible for lifecycle).
+ *                 If omitted, a new connection is created (backwards compat).
+ * @param drizzleDb - Pre-built Drizzle instance. If omitted, created from sqlite.
+ * @param authInstance - Pre-built Better Auth instance. If omitted, created from db.
+ * @param config - Validated application config. Defaults to `createAppConfig()`
+ *                 (env + optional config file). Injectable so tests can pass a
+ *                 controlled config (e.g. DB_ADAPTER=inmemory).
+ */
 export async function createAppDependencies(
   sqlite?: BetterSqliteDatabase,
   drizzleDb?: AppDrizzle,
