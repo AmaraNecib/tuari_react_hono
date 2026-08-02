@@ -42,6 +42,7 @@ const BOOTSTRAP_PASSWORD_SCHEMA = authBootstrapInputSchema.shape.password;
 
 const BOOTSTRAP_FIELD_REQUIRED_MESSAGE: Record<string, string> = {
   name: "الاسم مطلوب.",
+  phone: "رقم الهاتف مطلوب.",
   password: `كلمة المرور يجب أن تكون ${BOOTSTRAP_PASSWORD_SCHEMA.minLength} أحرف على الأقل.`,
   setupSecret: "رمز الإعداد الأول مطلوب.",
 };
@@ -58,13 +59,14 @@ const BOOTSTRAP_FIELD_INVALID_MESSAGE: Record<string, string> = {
 /**
  * Map a schema issue to a user-facing Arabic field error.
  *
- * The taxonomy (zod "too_small" vs everything else) mirrors the contract
- * schema's fields: name/password/setupSecret have length bounds (too_small /
- * too_big), phone is regex-only (always invalid_string).
+ * The taxonomy mirrors the contract schema's fields: name/password/setupSecret
+ * have length bounds (too_small / too_big), phone is regex-only (always
+ * invalid_string). A missing key or wrong-typed value (invalid_type) is a
+ * "required" failure, not a malformed-value failure.
  */
 function bootstrapFieldErrorMessage(issue: ZodIssue): string {
   const field = String(issue.path[0] ?? "input");
-  if (issue.code === "too_small") {
+  if (issue.code === "too_small" || issue.code === "invalid_type") {
     return BOOTSTRAP_FIELD_REQUIRED_MESSAGE[field] ?? BOOTSTRAP_VALIDATION_MESSAGE;
   }
   return BOOTSTRAP_FIELD_INVALID_MESSAGE[field] ?? BOOTSTRAP_VALIDATION_MESSAGE;

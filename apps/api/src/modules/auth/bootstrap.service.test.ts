@@ -131,54 +131,165 @@ describe("AuthBootstrapService", () => {
   })
 
   it.each([
-    { label: "empty name", name: "" },
-    { label: "whitespace-only name", name: "   " },
-    { label: "over-long name", name: "x".repeat(121) },
-  ])("rejects $label before hashing or touching the port", async ({ name }) => {
+    { label: "empty name", name: "", field: "name" },
+    { label: "whitespace-only name", name: "   ", field: "name" },
+    { label: "over-long name", name: "x".repeat(121), field: "name" },
+  ])("rejects $label before hashing or touching the port", async ({ name, field }) => {
     const service = createService()
 
     const result = await service.bootstrapFirstUser({ ...BOOTSTRAP_INPUT, name })
 
     expect(result).toMatchObject({
       success: false,
-      error: { code: "VALIDATION" },
+      error: { code: "VALIDATION", fieldErrors: [{ field }] },
     })
     expect(hash).not.toHaveBeenCalled()
     expect(port.createFirstUser).not.toHaveBeenCalled()
   })
 
   it.each([
-    { label: "empty phone", phone: "" },
-    { label: "whitespace-only phone", phone: "     " },
-    { label: "malformed phone", phone: "1234567890" },
-  ])("rejects $label before hashing or touching the port", async ({ phone }) => {
+    { label: "empty phone", phone: "", field: "phone" },
+    { label: "whitespace-only phone", phone: "     ", field: "phone" },
+    { label: "malformed phone", phone: "1234567890", field: "phone" },
+  ])("rejects $label before hashing or touching the port", async ({ phone, field }) => {
     const service = createService()
 
     const result = await service.bootstrapFirstUser({ ...BOOTSTRAP_INPUT, phone })
 
     expect(result).toMatchObject({
       success: false,
-      error: { code: "VALIDATION" },
+      error: { code: "VALIDATION", fieldErrors: [{ field }] },
     })
     expect(hash).not.toHaveBeenCalled()
     expect(port.createFirstUser).not.toHaveBeenCalled()
   })
 
   it.each([
-    { label: "empty password", password: "" },
-    { label: "short password", password: "1234567" },
-    { label: "over-long password", password: "x".repeat(129) },
-  ])("rejects $label before hashing or touching the port", async ({ password }) => {
+    { label: "empty password", password: "", field: "password" },
+    { label: "short password", password: "1234567", field: "password" },
+    { label: "over-long password", password: "x".repeat(129), field: "password" },
+  ])("rejects $label before hashing or touching the port", async ({ password, field }) => {
     const service = createService()
 
     const result = await service.bootstrapFirstUser({ ...BOOTSTRAP_INPUT, password })
 
     expect(result).toMatchObject({
       success: false,
-      error: { code: "VALIDATION" },
+      error: { code: "VALIDATION", fieldErrors: [{ field }] },
     })
     expect(hash).not.toHaveBeenCalled()
     expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    {
+      field: "name",
+      input: { name: "" },
+      message: "الاسم مطلوب.",
+    },
+    {
+      field: "name",
+      input: { name: "x".repeat(121) },
+      message: "الاسم يجب ألا يتجاوز 120 حرفًا.",
+    },
+    {
+      field: "phone",
+      input: { phone: "" },
+      message: "رقم الهاتف يجب أن يبدأ بـ 05 أو 06 أو 07 ويتكوّن من 10 أرقام.",
+    },
+    {
+      field: "password",
+      input: { password: "1234567" },
+      message: "كلمة المرور يجب أن تكون 8 أحرف على الأقل.",
+    },
+    {
+      field: "password",
+      input: { password: "x".repeat(129) },
+      message: "كلمة المرور يجب ألا تتجاوز 128 حرفًا.",
+    },
+    {
+      field: "setupSecret",
+      input: { setupSecret: "" },
+      message: "رمز الإعداد الأول مطلوب.",
+    },
+  ])("reports an Arabic message for a $field issue", async ({ input, field, message }) => {
+    const service = createService("setup-secret")
+
+    const result = await service.bootstrapFirstUser({ ...BOOTSTRAP_INPUT, ...input })
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "VALIDATION", fieldErrors: [{ field, message }] },
+    })
+  })
+
+  it("reports every invalid field in a single VALIDATION result", async () => {
+    const service = createService()
+
+    const result = await service.bootstrapFirstUser({
+      name: "",
+      phone: "   ",
+      password: "1234567",
+    })
+
+    expect(result).toMatchObject({
+      success: false,
+      error: {
+        code: "VALIDATION",
+        fieldErrors: [{ field: "name" }, { field: "phone" }, { field: "password" }],
+      },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
+  it("reports a required message for a missing name from a type-abused caller", async () => {
+    const service = createService()
+
+    const result = await service.bootstrapFirstUser({
+      phone: "0612345678",
+      password: "password123",
+    } as never)
+
+    expect(result).toMatchObject({
+      success: false,
+      error: {
+        code: "VALIDATION",
+        fieldErrors: [{ field: "name", message: "الاسم مطلوب." }],
+      },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
+  it("rejects non-object input with a root-level field error", async () => {
+    const service = createService()
+
+    const result = await service.bootstrapFirstUser(null as never)
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "VALIDATION", fieldErrors: [{ field: "input" }] },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
+  it("accepts boundary-length name and password as valid input", async () => {
+    const service = createService()
+    port.createFirstUser.mockResolvedValue({
+      status: "created",
+      user: { id: "user-1", name: "x".repeat(120), phone: BOOTSTRAP_INPUT.phone },
+    } satisfies CreateFirstUserResult)
+
+    const result = await service.bootstrapFirstUser({
+      ...BOOTSTRAP_INPUT,
+      name: "x".repeat(120),
+      password: "12345678",
+    })
+
+    expect(result.success).toBe(true)
+    expect(hash).toHaveBeenCalledWith("12345678")
   })
 
   it("reports the failing field and an Arabic message for a blank phone", async () => {
