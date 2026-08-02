@@ -759,8 +759,27 @@ describe("RPC router", () => {
     const router = createTestRouter(harness);
     const client = createRouterClient(router, { context: createContext() as never });
 
-    await expect(client.consumeRecoveryKey({ key: "" })).rejects.toBeInstanceOf(Error);
-    await expect(client.revokeRecoveryKey({ keyId: "" })).rejects.toBeInstanceOf(Error);
+    // ORPC input validation maps to an ORPCError with code BAD_REQUEST —
+    // distinct from any handler-side throw (which would surface differently).
+    await expect(client.consumeRecoveryKey({ key: "" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(client.revokeRecoveryKey({ keyId: "" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+  });
+
+  it("forwards a failed recovery key consumption through the wire contract", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {
+      consumeKey: vi.fn().mockReturnValue(false),
+      revokeKey: vi.fn().mockReturnValue(true),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(
+      client.consumeRecoveryKey({ key: "already-consumed" }),
+    ).resolves.toEqual({ success: false });
   });
 
   it("returns a graceful failure when the db key change cannot be verified (derived input)", async () => {
@@ -793,6 +812,26 @@ describe("RPC router", () => {
     const router = createTestRouter(harness);
     const client = createRouterClient(router, { context: createContext() as never });
 
-    await expect(client.reportsGenerate({ type: "BOGUS" })).rejects.toBeInstanceOf(Error);
+    // BAD_REQUEST proves the reportFilterInputSchema enum rejected it at the
+    // wire — the handler's own `default:` throw would surface differently.
+    await expect(client.reportsGenerate({ type: "BOGUS" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+  });
+
+  it("generates debt and movement reports through the RPC contract (derived filter input)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(client.reportsGenerate({ type: "DEBT" })).resolves.toMatchObject({
+      type: "DEBT",
+      summary: { totalOutstandingDzd: 0 },
+    });
+
+    await expect(client.reportsGenerate({ type: "MOVEMENT" })).resolves.toMatchObject({
+      type: "MOVEMENT",
+      summary: { totalMovements: 0 },
+    });
   });
 });

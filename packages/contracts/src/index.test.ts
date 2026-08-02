@@ -760,6 +760,12 @@ describe("contracts", () => {
 
       expect(() => consumeRecoveryKeyInputSchema.parse({ key: "" })).toThrow();
       expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "" })).toThrow();
+
+      // Missing required fields and non-string values are rejected.
+      expect(() => consumeRecoveryKeyInputSchema.parse({})).toThrow();
+      expect(() => revokeRecoveryKeyInputSchema.parse({})).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: 123 })).toThrow();
+      expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: null })).toThrow();
     });
 
     it("validates the database encryption key change input", () => {
@@ -772,6 +778,20 @@ describe("contracts", () => {
       ).toThrow();
       expect(() =>
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "short" }),
+      ).toThrow();
+
+      // Pin the newKey min(8) boundary: exactly 8 passes, 7 fails.
+      expect(
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "12345678" }),
+      ).toEqual({ currentKey: "old", newKey: "12345678" });
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "1234567" }),
+      ).toThrow();
+
+      // Missing required fields and non-string values are rejected.
+      expect(() => changeDbKeyInputSchema.parse({ currentKey: "old" })).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: 12345678 }),
       ).toThrow();
     });
 
@@ -796,6 +816,22 @@ describe("contracts", () => {
       expect(() =>
         reportFilterInputSchema.parse({ type: "INVENTORY", startDate: "not-a-date" }),
       ).toThrow();
+
+      // Pin the datetime({ offset: true }) semantics: naive datetimes are
+      // rejected, explicit non-UTC offsets are accepted.
+      expect(() =>
+        reportFilterInputSchema.parse({ type: "INVENTORY", startDate: "2026-01-01T00:00:00" }),
+      ).toThrow();
+      expect(
+        reportFilterInputSchema.parse({
+          type: "INVENTORY",
+          startDate: "2026-01-01T00:00:00+01:00",
+        }),
+      ).toEqual({ type: "INVENTORY", startDate: "2026-01-01T00:00:00+01:00" });
+
+      // Missing required fields and non-string enum values are rejected.
+      expect(() => reportFilterInputSchema.parse({})).toThrow();
+      expect(() => reportFilterInputSchema.parse({ type: null })).toThrow();
     });
   });
 });
