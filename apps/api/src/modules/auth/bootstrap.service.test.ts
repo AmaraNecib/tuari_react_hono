@@ -130,6 +130,89 @@ describe("AuthBootstrapService", () => {
     })
   })
 
+  it.each([
+    { label: "empty name", name: "" },
+    { label: "whitespace-only name", name: "   " },
+    { label: "over-long name", name: "x".repeat(121) },
+  ])("rejects $label before hashing or touching the port", async ({ name }) => {
+    const service = createService()
+
+    const result = await service.bootstrapFirstUser({ ...BOOTSTRAP_INPUT, name })
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "VALIDATION" },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { label: "empty phone", phone: "" },
+    { label: "whitespace-only phone", phone: "     " },
+    { label: "malformed phone", phone: "1234567890" },
+  ])("rejects $label before hashing or touching the port", async ({ phone }) => {
+    const service = createService()
+
+    const result = await service.bootstrapFirstUser({ ...BOOTSTRAP_INPUT, phone })
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "VALIDATION" },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { label: "empty password", password: "" },
+    { label: "short password", password: "1234567" },
+    { label: "over-long password", password: "x".repeat(129) },
+  ])("rejects $label before hashing or touching the port", async ({ password }) => {
+    const service = createService()
+
+    const result = await service.bootstrapFirstUser({ ...BOOTSTRAP_INPUT, password })
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "VALIDATION" },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
+  it("reports the failing field and an Arabic message for a blank phone", async () => {
+    const service = createService()
+
+    const result = await service.bootstrapFirstUser({ ...BOOTSTRAP_INPUT, phone: "" })
+
+    expect(result).toEqual({
+      success: false,
+      error: {
+        code: "VALIDATION",
+        message: expect.any(String),
+        fieldErrors: [
+          {
+            field: "phone",
+            message: "رقم الهاتف يجب أن يبدأ بـ 05 أو 06 أو 07 ويتكوّن من 10 أرقام.",
+          },
+        ],
+      },
+    })
+  })
+
+  it("rejects invalid input before the setup-key gate", async () => {
+    const service = createService("setup-secret")
+
+    const result = await service.bootstrapFirstUser({ ...BOOTSTRAP_INPUT, name: "" })
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "VALIDATION" },
+    })
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
   it("requires the optional bootstrap setup key when configured", async () => {
     const service = createService("setup-secret")
 
