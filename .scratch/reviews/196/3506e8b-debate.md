@@ -47,3 +47,9 @@ company/invoice adapter patterns).
 ## Verdict
 
 No blockers. 5 findings fixed, 6 dismissed (all pre-existing or deliberate), 0 deferred to issues.
+
+## Post-evidence delta (head )
+
+Rebased onto develop @ f362858 (CI hosted-runner migration — workflow file came from develop, not part of the PR diff).
+Commits after the review round: dcb8c77 (empty re-trigger commit, no files), 3506e8b (test-only: raise createAppDependencies cold-start describe timeout 20000 -> 60000ms per .agents/wisdom/testing.md — mitigates the documented wiring-test cold-start flake that surfaced under the pre-push hook).
+No production code changed since the reviews. Greptile: 5/5, no actionable findings.

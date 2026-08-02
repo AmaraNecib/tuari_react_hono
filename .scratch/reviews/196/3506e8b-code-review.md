@@ -76,3 +76,9 @@ tests green).
 Standards: 0 hard violations, 0 actionable smells (2 judgement calls dismissed
 with reasons). Spec: 8/8 criteria met; 1 documented, justified deviation; 1
 accepted hardening addition. No fixes required from this review.
+
+## Post-evidence delta (head )
+
+Rebased onto develop @ f362858 (CI hosted-runner migration — workflow file came from develop, not part of the PR diff).
+Commits after the review round: dcb8c77 (empty re-trigger commit, no files), 3506e8b (test-only: raise createAppDependencies cold-start describe timeout 20000 -> 60000ms per .agents/wisdom/testing.md — mitigates the documented wiring-test cold-start flake that surfaced under the pre-push hook).
+No production code changed since the reviews. Greptile: 5/5, no actionable findings.
