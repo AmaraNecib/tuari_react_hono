@@ -213,6 +213,42 @@ describe("AuthBootstrapService", () => {
     expect(port.createFirstUser).not.toHaveBeenCalled()
   })
 
+  it("normalizes padded-but-valid phone and name before handing them to the port", async () => {
+    const service = createService()
+    port.createFirstUser.mockResolvedValue({
+      status: "created",
+      user: { id: "user-1", name: BOOTSTRAP_INPUT.name, phone: BOOTSTRAP_INPUT.phone },
+    } satisfies CreateFirstUserResult)
+
+    await service.bootstrapFirstUser({
+      ...BOOTSTRAP_INPUT,
+      name: `  ${BOOTSTRAP_INPUT.name}  `,
+      phone: `  ${BOOTSTRAP_INPUT.phone}  `,
+    })
+
+    expect(port.createFirstUser).toHaveBeenCalledWith({
+      name: BOOTSTRAP_INPUT.name,
+      phone: BOOTSTRAP_INPUT.phone,
+      passwordHash: "hashed-password",
+    })
+  })
+
+  it("rejects an empty setup secret as invalid input when a key is configured", async () => {
+    const service = createService("setup-secret")
+
+    const result = await service.bootstrapFirstUser({
+      ...BOOTSTRAP_INPUT,
+      setupSecret: "",
+    })
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "VALIDATION" },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
   it("requires the optional bootstrap setup key when configured", async () => {
     const service = createService("setup-secret")
 

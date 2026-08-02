@@ -35,20 +35,33 @@ const BOOTSTRAP_SECRET_MESSAGE = "رمز الإعداد الأول غير صحي
 const BOOTSTRAP_VALIDATION_MESSAGE = "تحقق من صحة بيانات الإعداد.";
 
 /** Per-field Arabic messages for invalid bootstrap input (defense-in-depth). */
+// The numeric limits are derived from the shared contract schema so the copy
+// cannot drift from what the wire gate enforces.
+const BOOTSTRAP_NAME_SCHEMA = authBootstrapInputSchema.shape.name;
+const BOOTSTRAP_PASSWORD_SCHEMA = authBootstrapInputSchema.shape.password;
+
 const BOOTSTRAP_FIELD_REQUIRED_MESSAGE: Record<string, string> = {
   name: "الاسم مطلوب.",
-  password: "كلمة المرور يجب أن تكون 8 أحرف على الأقل.",
+  password: `كلمة المرور يجب أن تكون ${BOOTSTRAP_PASSWORD_SCHEMA.minLength} أحرف على الأقل.`,
   setupSecret: "رمز الإعداد الأول مطلوب.",
 };
 
 const BOOTSTRAP_FIELD_INVALID_MESSAGE: Record<string, string> = {
-  name: "الاسم يجب ألا يتجاوز 120 حرفًا.",
+  name: `الاسم يجب ألا يتجاوز ${BOOTSTRAP_NAME_SCHEMA.maxLength} حرفًا.`,
+  // Phone carries no .min() — its only failure mode is the 05/06/07 + 10-digit
+  // regex below, which also rejects blank/whitespace values.
   phone: "رقم الهاتف يجب أن يبدأ بـ 05 أو 06 أو 07 ويتكوّن من 10 أرقام.",
-  password: "كلمة المرور يجب ألا تتجاوز 128 حرفًا.",
+  password: `كلمة المرور يجب ألا تتجاوز ${BOOTSTRAP_PASSWORD_SCHEMA.maxLength} حرفًا.`,
   setupSecret: "رمز الإعداد الأول غير صالح.",
 };
 
-/** Map a schema issue to a user-facing Arabic field error. */
+/**
+ * Map a schema issue to a user-facing Arabic field error.
+ *
+ * The taxonomy (zod "too_small" vs everything else) mirrors the contract
+ * schema's fields: name/password/setupSecret have length bounds (too_small /
+ * too_big), phone is regex-only (always invalid_string).
+ */
 function bootstrapFieldErrorMessage(issue: ZodIssue): string {
   const field = String(issue.path[0] ?? "input");
   if (issue.code === "too_small") {
