@@ -55,7 +55,7 @@ export const changeDbKeyInputSchema = z.object({
  */
 export const changeDbKeyOutputSchema = z.discriminatedUnion("success", [
   z.object({ success: z.literal(true) }).strict(),
-  z.object({ success: z.literal(false), error: z.string().min(1) }).strict(),
+  z.object({ success: z.literal(false), error: z.string().trim().min(1) }).strict(),
 ])
 
 /** Input for changing the app password. */

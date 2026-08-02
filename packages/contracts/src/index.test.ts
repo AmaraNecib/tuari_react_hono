@@ -750,7 +750,7 @@ describe("contracts", () => {
   });
 
   describe("security and report filter inputs are exported for handler derivation (#206)", () => {
-    it("exports the recovery key input schemas from the package index", () => {
+    it("trims and validates recovery key inputs from the package index", () => {
       expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2-c3d4-e5f6" })).toEqual({
         key: "a1b2-c3d4-e5f6",
       });
@@ -772,6 +772,20 @@ describe("contracts", () => {
       });
       expect(() => consumeRecoveryKeyInputSchema.parse({ key: "   " })).toThrow();
       expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "   " })).toThrow();
+
+      // Trim covers every JS whitespace class (tabs, NBSP, line separators,
+      // BOM) — a key made only of those is empty after trimming and rejected.
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\t\n" })).toThrow();
+      expect(consumeRecoveryKeyInputSchema.parse({
+        key: "\u00A0a1b2-c3d4-e5f6\u2028",
+      })).toEqual({ key: "a1b2-c3d4-e5f6" });
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\uFEFF\u00A0" })).toThrow();
+
+      // Trim is leading/trailing only — internal whitespace (e.g. a key
+      // wrapped across an email line) is preserved, not normalized.
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2-c3d4\ne5f6" })).toEqual({
+        key: "a1b2-c3d4\ne5f6",
+      });
 
       // Missing required fields and non-string values are rejected.
       expect(() => consumeRecoveryKeyInputSchema.parse({})).toThrow();
@@ -806,6 +820,16 @@ describe("contracts", () => {
       ).toThrow();
       expect(() =>
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "        " }),
+      ).toThrow();
+      // Tab padding is trimmed too: 8 chars after trim pass, 7 fail.
+      expect(
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "\t12345678" }),
+      ).toEqual({ currentKey: "old", newKey: "12345678" });
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "\t", newKey: "12345678" }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "1234567\t" }),
       ).toThrow();
 
       // Pin the newKey min(8) boundary on the TRIMMED value: 8 after trim
@@ -842,8 +866,14 @@ describe("contracts", () => {
       expect(() => changeDbKeyOutputSchema.parse({ success: false })).toThrow();
       expect(() => changeDbKeyOutputSchema.parse({ success: true, error: "boom" })).toThrow();
       expect(() => changeDbKeyOutputSchema.parse({ success: "maybe" })).toThrow();
-      // A failure must carry a non-empty error message.
+      // A failure must carry a non-empty, non-blank error message.
       expect(() => changeDbKeyOutputSchema.parse({ success: false, error: "" })).toThrow();
+      expect(() => changeDbKeyOutputSchema.parse({ success: false, error: "   " })).toThrow();
+      // Strict members reject unknown keys on either branch.
+      expect(() => changeDbKeyOutputSchema.parse({ success: true, extra: "x" })).toThrow();
+      expect(() =>
+        changeDbKeyOutputSchema.parse({ success: false, error: "e", extra: 1 }),
+      ).toThrow();
     });
 
     it("validates the report filter input (type + ISO date range)", () => {

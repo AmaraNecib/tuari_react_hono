@@ -759,6 +759,11 @@ describe("RPC router", () => {
       client.consumeRecoveryKey({ key: "  a1b2-c3d4-e5f6  " }),
     ).resolves.toEqual({ success: true });
     expect(consumeKey).toHaveBeenLastCalledWith("a1b2-c3d4-e5f6");
+
+    await expect(
+      client.revokeRecoveryKey({ keyId: "  key-1  " }),
+    ).resolves.toEqual({ success: true });
+    expect(revokeKey).toHaveBeenLastCalledWith("key-1");
   });
 
   it("rejects invalid recovery key input at the wire contract", async () => {
@@ -782,6 +787,15 @@ describe("RPC router", () => {
     await expect(client.revokeRecoveryKey({ keyId: "   " })).rejects.toMatchObject({
       code: "BAD_REQUEST",
     });
+
+    // #221: the DB-key half of the same gate — whitespace-only currentKey and
+    // a newKey that is all spaces are rejected before any PRAGMA is built.
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "   ", newKey: "new-key-123" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "        " }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("forwards a failed recovery key consumption through the wire contract", async () => {
@@ -804,6 +818,8 @@ describe("RPC router", () => {
 
     // rawDatabase is a stub, so the PRAGMA verification throws and the
     // handler returns the failure output shape from changeDbKeyOutputSchema.
+    // The success leg ({ success: true }) is unreachable here (the stub always
+    // throws) and is pinned at the contract level in index.test.ts.
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
     ).resolves.toEqual({ success: false, error: "Current encryption key is invalid" });
