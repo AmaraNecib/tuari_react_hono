@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import Database from "better-sqlite3"
 
 import { schemaStatements } from "../../../infrastructure/database/schema-definitions"
@@ -178,6 +181,56 @@ describe("SqliteBootstrapPort", () => {
     expect(await env.port.isBootstrapOwner("second")).toBe(false)
   })
 
+  it("rejects Drizzle and raw handles that do not share one connection", () => {
+    const otherRaw = new Database(":memory:")
+    const db = createDrizzleFromSqlite(env.rawDb)
+
+    expect(() => new SqliteBootstrapPort(db, otherRaw)).toThrow(/share one connection/)
+
+    otherRaw.close()
+  })
+
+  it("rolls back and rethrows on non-unique errors, leaving the connection usable", async () => {
+    // A NOT NULL violation on the user insert is a non-unique failure: it must
+    // roll back the partial writes and propagate, not map to conflict.
+    await expect(
+      env.port.createFirstUser({ ...FIRST_USER_INPUT, name: undefined as never }),
+    ).rejects.toThrow()
+
+    // The bootstrap-state row inserted before the failure was rolled back.
+    const stateCount = env.rawDb.prepare(`SELECT count(*) AS n FROM "app_bootstrap_state"`).get() as CountRow
+    expect(stateCount.n).toBe(0)
+
+    // The rollback released the write lock: a fresh transaction can start.
+    expect(() => env.rawDb.exec("BEGIN IMMEDIATE")).not.toThrow()
+    env.rawDb.exec("ROLLBACK")
+  })
+
+  it("propagates a cross-connection write-lock contention instead of mapping it to conflict", async () => {
+    // Two connections to a file-backed DB: while connection A holds the write
+    // lock, connection B's BEGIN IMMEDIATE fails with SQLITE_BUSY, which the
+    // port lets propagate (a real concurrent bootstrap in another process).
+    const dbDir = mkdtempSync(join(tmpdir(), "bootstrap-port-busy-"))
+    const dbPath = join(dbDir, "test.sqlite")
+    const rawA = new Database(dbPath, { timeout: 0 })
+    const rawB = new Database(dbPath, { timeout: 0 })
+    try {
+      for (const stmt of schemaStatements) {
+        rawA.exec(stmt)
+      }
+      const portA = new SqliteBootstrapPort(createDrizzleFromSqlite(rawA), rawA)
+      const portB = new SqliteBootstrapPort(createDrizzleFromSqlite(rawB), rawB)
+
+      rawA.exec("BEGIN IMMEDIATE")
+      await expect(portB.createFirstUser(FIRST_USER_INPUT)).rejects.toThrow(/database is locked/i)
+      void portA
+    } finally {
+      rawA.close()
+      rawB.close()
+      rmSync(dbDir, { recursive: true, force: true })
+    }
+  })
+
   it("prefers the bootstrap-state owner over the earliest user", async () => {
     insertUser(env.rawDb, {
       id: "earliest",
@@ -194,5 +247,22 @@ describe("SqliteBootstrapPort", () => {
 
     expect(await env.port.isBootstrapOwner("state-owner")).toBe(true)
     expect(await env.port.isBootstrapOwner("earliest")).toBe(false)
+  })
+
+  it("falls back to the earliest user when the state row has a NULL user_id", async () => {
+    insertUser(env.rawDb, {
+      id: "earliest",
+      name: "الأقدم",
+      phoneNumber: "0611111111",
+      createdAt: "2024-01-01T00:00:00.000Z",
+    })
+    env.rawDb
+      .prepare(
+        `INSERT INTO "app_bootstrap_state" ("singleton", "created_at", "user_id") VALUES (1, ?, NULL)`,
+      )
+      .run("2024-01-02T00:00:00.000Z")
+
+    expect(await env.port.isBootstrapOwner("earliest")).toBe(true)
+    expect(await env.port.isBootstrapOwner("other")).toBe(false)
   })
 })
