@@ -842,6 +842,8 @@ describe("contracts", () => {
       expect(() => changeDbKeyOutputSchema.parse({ success: false })).toThrow();
       expect(() => changeDbKeyOutputSchema.parse({ success: true, error: "boom" })).toThrow();
       expect(() => changeDbKeyOutputSchema.parse({ success: "maybe" })).toThrow();
+      // A failure must carry a non-empty error message.
+      expect(() => changeDbKeyOutputSchema.parse({ success: false, error: "" })).toThrow();
     });
 
     it("validates the report filter input (type + ISO date range)", () => {

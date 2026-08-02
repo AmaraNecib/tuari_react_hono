@@ -51,9 +51,16 @@ export const changeDbKeyOutputSchema = z.object({
 // mode would otherwise strip the unknown key instead of rejecting it).
 export const changeDbKeyOutputSchema = z.discriminatedUnion("success", [
   z.object({ success: z.literal(true) }).strict(),
-  z.object({ success: z.literal(false), error: z.string() }).strict(),
+  z.object({ success: z.literal(false), error: z.string().min(1) }).strict(),
 ])
 ```
+
+The failure member also requires a **non-empty** error message (`min(1)`) —
+`{ success: false, error: "" }` is as logically invalid as a missing one.
+
+Known harmless edge (documented, not fixed): `{ success: true, error: undefined }`
+passes because zod treats an explicitly-`undefined` value as absent; `undefined` is
+not JSON-serializable so it cannot cross the wire, and the handler never emits it.
 
 Inferred type narrows from `{ success: boolean; error?: string }` to
 `{ success: true } | { success: false; error: string }` — the handler's two
@@ -64,6 +71,23 @@ both assignable.
 fields. Passwords may legitimately contain leading/trailing whitespace and trimming
 would silently alter the secret — the issue's title scopes this to "recovery/DB key
 inputs", and the two findings never mention the app-password surface.
+
+**Why DB keys are trimmed but app passwords are not (verified, not assumed):**
+
+- The DB encryption key is **machine-generated**, not user-chosen: the Rust shell
+  (`apps/desktop/src-tauri/src/lib.rs`) creates it via `generate_secret(32)` → a
+  64-char lowercase-hex token, and `load_or_create_secret` already `.trim()`s the
+  stored value when loading it (`existing_secret.trim()`). Hex tokens never contain
+  whitespace, so trim is a no-op for legitimate keys and only strips copy-paste
+  artifacts (e.g. a trailing newline from the key file).
+- Trimming the rekey input is actually **load-bearing for consistency**: without it,
+  an admin could rekey to `"  mykey  "`, and the shell would load `"mykey"` on next
+  start — the DB would then fail to decrypt. Input trim keeps the stored key equal
+  to what the load path will produce.
+- App passwords are user-chosen secrets (`auth.ts` keeps them deliberately
+  untrimmed), so the asymmetry is real, not implicit.
+- Recovery keys are also machine-generated (`randomBytes(9)` → lowercase hex +
+  dashes in `recovery-key.service.ts`); whitespace can never be legitimate.
 
 Verified empirically on zod ^4.0.5 (this repo's version):
 - `z.string().trim().min(8)` — trim runs before min: `" 12345678 "` → `"12345678"` ✓,
@@ -124,3 +148,30 @@ not this change. Runtime coverage is provided by the router-level ORPC tests.
 - Watch: strict members reject unknown keys — only the handler produces output and
   it emits exactly the two valid shapes; adding output fields later requires a
   deliberate schema edit (that is the point of the invariant).
+- Note: the inferred output type narrows from `{ success: boolean; error?: string }`
+  to the union — semver-visible for external consumers, but the package is private
+  and no in-repo consumer reads `.error` without a `success` guard (verified by
+  grep). Call this out in the PR description.
+
+## Debate outcome (#221 adversarial review)
+
+Critic + defender sub-agents ran against `git diff f93c37c...HEAD`. Verdicts:
+
+- **F1 (sev 8) "trim silently mutates user passphrase"** — DISMISSED. DB key is
+  machine-generated 64-char hex (never user-typed); Rust load path already trims;
+  trim is load-bearing for restart consistency (see evidence above).
+- **F2 (sev 5) "inconsistent with app-password decision"** — DISMISSED. DB key is a
+  machine token, not a user-chosen secret; asymmetry is real.
+- **F3 (sev 3) `{ success: false, error: "" }` passes** — FIXED: `error` is now
+  `z.string().min(1)`.
+- **F4 (sev 2) `{ success: true, error: undefined }` passes** — DISMISSED.
+  `undefined` is not JSON-serializable; cannot cross the wire; handler never emits.
+  Documented above.
+- **F5 (sev 2) type narrowing is a breaking change** — NOTED for the PR description;
+  private package, no in-repo consumers.
+- **F6 (sev 3) unverified generator assumptions** — VERIFIED now: both generators
+  are whitespace-free machine tokens (evidence above); recorded in this doc.
+- **F7 (sev 2) design doc committed** — DISMISSED. Repo convention tracks
+  `.scratch/implementation/*-design.md` (15+ committed for prior issues).
+- **F8 (sev 2) `toHaveBeenCalledTimes(2)` brittle** — FIXED: trimmed-forwarding
+  assertion now uses `toHaveBeenLastCalledWith`.

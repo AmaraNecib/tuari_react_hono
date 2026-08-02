@@ -758,8 +758,7 @@ describe("RPC router", () => {
     await expect(
       client.consumeRecoveryKey({ key: "  a1b2-c3d4-e5f6  " }),
     ).resolves.toEqual({ success: true });
-    expect(consumeKey).toHaveBeenCalledWith("a1b2-c3d4-e5f6");
-    expect(consumeKey).toHaveBeenCalledTimes(2);
+    expect(consumeKey).toHaveBeenLastCalledWith("a1b2-c3d4-e5f6");
   });
 
   it("rejects invalid recovery key input at the wire contract", async () => {
