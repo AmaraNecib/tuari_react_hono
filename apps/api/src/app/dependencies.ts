@@ -8,6 +8,7 @@ import { createAppConfig, type AppConfig } from "../config";
 import { createCompanyRepository } from "../config/database";
 import { DrizzleAccountRepository } from "../modules/account/account.repository";
 import { AccountService } from "../modules/account/account.service";
+import { SqliteBootstrapPort } from "../modules/auth/adapters/sqlite-bootstrap.port";
 import { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import { CompanyService } from "../modules/company/company.service";
 import { WorkforceService } from "../modules/company/workforce.service";
@@ -15,7 +16,7 @@ import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
 import { AuditService } from "../modules/company/audit.service";
 import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
-import { createInventoryRepository } from "../modules/inventory/inventory.repository";
+import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
 import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { InvoiceModule } from "../modules/invoice/invoice.module";
@@ -23,7 +24,7 @@ import { InvoiceRepository } from "../modules/invoice/adapters/invoice.repositor
 import { createPaymentModule } from "../modules/payment/payment.module";
 import type { PaymentModule } from "../modules/payment/payment-module.interface";
 import { PaymentRepositoryImpl } from "../modules/payment/adapters/payment.repository";
-import { SqlitePermissionResolver } from "../modules/rbac/permission-resolver";
+import { SqlitePermissionResolver } from "../modules/rbac/adapters/sqlite-permission-resolver";
 import { RoleModule } from "../modules/rbac/role.module";
 import { SqliteRoleRepository as SqliteRbacRoleRepository } from "../modules/rbac/sqlite-role.repository";
 import { SessionService } from "../modules/session/session.service";
@@ -35,6 +36,7 @@ import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import { SqliteRecoveryKeyPort } from "../modules/auth/adapters/sqlite-recovery-key.port";
 import { UpdateService } from "../modules/update/update.service";
 import { UpdateHistoryService } from "../modules/update/update-history.service";
+import { SqliteUpdateHistoryPort } from "../modules/update/adapters/sqlite-update-history.port";
 
 /**
  * All resolved application dependencies, created once at startup.
@@ -119,7 +121,11 @@ export async function createAppDependencies(
   const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
   const paymentRepository = new PaymentRepositoryImpl(sharedDatabase);
   const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
-  const authBootstrapService = new AuthBootstrapService(db, sharedDatabase, auth, env.bootstrapSetupKey);
+  const authBootstrapService = new AuthBootstrapService(
+    new SqliteBootstrapPort(db, sharedDatabase),
+    auth,
+    env.bootstrapSetupKey,
+  );
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
   const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase));
 
@@ -150,7 +156,7 @@ export async function createAppDependencies(
     sessionService: new SessionService(auth, permissionResolver),
     recoveryKeyService,
     updateService: new UpdateService(),
-    updateHistoryService: new UpdateHistoryService(sharedDatabase),
+    updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase)),
     rawDatabase: sharedDatabase,
     employeeModule,
     invoiceModule,

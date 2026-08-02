@@ -1,5 +1,5 @@
-import type { Permission } from "../rbac/permissions";
 import type { SessionUser } from "./session.types";
+import type { PermissionResolverPort } from "../rbac/permission-resolver.types";
 import { readAppVersion } from "../version";
 
 type AuthGateway = {
@@ -14,10 +14,6 @@ type AuthGateway = {
   };
 };
 
-type PermissionResolver = {
-  getPermissionsForUserId: (userId: string) => Promise<Permission[]>;
-};
-
 /**
  * SessionService — resolves the current authenticated user from the auth
  * gateway, enriches it with RBAC permissions, and attaches the app version.
@@ -25,7 +21,7 @@ type PermissionResolver = {
 export class SessionService {
   constructor(
     private readonly authGateway: AuthGateway,
-    private readonly permissionResolver: PermissionResolver,
+    private readonly permissionResolver: PermissionResolverPort,
   ) {}
 
   /**

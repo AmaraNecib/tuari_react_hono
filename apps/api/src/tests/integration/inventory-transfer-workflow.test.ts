@@ -6,7 +6,8 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 
 import { schemaStatements as fullSchema } from "../../infrastructure/database/schema-definitions";
-import { createInventoryRepository, type InventoryRepository } from "../../modules/inventory/inventory.repository";
+import { createInventoryRepository } from "../../modules/inventory/adapters/sqlite-inventory.repository";
+import type { InventoryRepository } from "../../modules/inventory/inventory.repository";
 import { InventoryService } from "../../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../../modules/inventory/inventory.storage";
 import { SqliteCompanyRepository } from "../../modules/company/company.repository";
