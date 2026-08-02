@@ -1,6 +1,8 @@
 # Issue 206 — Export security/reports contract schemas so handler inputs derive
 
-**Tier**: Standard (code / API types, no authz or security behavior changes)
+**Tier**: High-assurance (change touches the `security.ts` recovery-key / DB-key
+contract surface; upgraded from Standard for conservatism — validation semantics
+are unchanged, but the module's schemas become public package surface)
 
 **Base**: `origin/develop` @ `80d4926f029c3facee7dd17eb28da174c6e01f3b`
 
