@@ -52,3 +52,7 @@ four `z.infer` derivations (compile-time via typecheck).
 
 Test counts: contracts 94 passed; api router 22 passed (10 new `it` blocks total
 across the two files, 5 hardened by this audit).
+
+---
+
+**Post-evidence delta (a0cb624):** commits since e12194e are (1) the GitHub-hosted runner migration `42410f7` — byte-identical copy of the change merged in PR #224 (`f362858`), verified `git diff 42410f7 f362858` empty and `git diff HEAD origin/develop -- .github/workflows/ci.yml` empty; and (2) merge of origin/develop (`a0cb624`), which introduced zero feature-file changes (verified `git log 80d4926..HEAD -- apps/api packages/contracts` shows only b60b6c1 + e12194e). Final-diff code-review re-run (Standards + Spec) found no drift and no new issues. Evidence validity at a0cb624 confirmed.
