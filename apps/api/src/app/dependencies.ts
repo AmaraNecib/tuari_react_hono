@@ -15,7 +15,7 @@ import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
 import { AuditService } from "../modules/company/audit.service";
 import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
-import { createInventoryRepository } from "../modules/inventory/inventory.repository";
+import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
 import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { InvoiceModule } from "../modules/invoice/invoice.module";
