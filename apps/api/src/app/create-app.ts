@@ -100,6 +100,10 @@ export function createApp(
   const router = createRouter(dependencies);
   const transport = createTransportSecurity(transportSecurity);
   const authRateLimiter = new SlidingWindowRateLimiter(30, 15 * 60 * 1000).startCleanup()
+  // The implemented router's concrete type (with `Lazy`-wrapped and
+  // `MergedErrorMap` variants) is not directly assignable to the fetch
+  // adapter's `Router<any, RpcContext>` parameter; bridge at this boundary.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rpcHandler = new RPCHandler(router as any, {
     interceptors: [
       onError((error) => {

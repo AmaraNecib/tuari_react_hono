@@ -735,7 +735,7 @@ export class InventoryService {
   }
 
 /** Record a payment against an invoice group. */
-  recordInvoicePayment(input: { invoiceGroupId: string; amountDzd: number; note?: string }, auditContext?: MutationAuditContext) {
+  recordInvoicePayment(input: { invoiceGroupId: string; amountDzd: number; note?: string | null }, auditContext?: MutationAuditContext) {
     if (!this.debtService) {
       throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
     }
@@ -782,7 +782,7 @@ export class InventoryService {
   }
 
 /** Create an outbound transfer. */
-  createOutboundTransfer(input: { fromType: "WAREHOUSE" | "PROJECT"; fromId: string; counterpartyId: string; transferType: "SALE" | "GIFT" | "RETURN"; items: Array<{ itemId: string; quantity: number; unitPriceDzd?: number }>; debtAmountDzd?: number; notes?: string }, auditContext?: MutationAuditContext) {
+  createOutboundTransfer(input: { fromType: "WAREHOUSE" | "PROJECT"; fromId: string; counterpartyId: string; transferType: "SALE" | "GIFT" | "RETURN"; items: Array<{ itemId: string; quantity: number; unitPriceDzd?: number }>; debtAmountDzd?: number; notes?: string | null }, auditContext?: MutationAuditContext) {
     if (!this.debtService) {
       throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
     }

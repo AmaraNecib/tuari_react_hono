@@ -7,7 +7,7 @@
  * Storage: verification hashes (never plain-text keys).
  * Keys are shown once at generation, then masked permanently.
  */
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /**
  * Recovery key metadata stored in the database.

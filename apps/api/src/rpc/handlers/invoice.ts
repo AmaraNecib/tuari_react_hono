@@ -15,7 +15,7 @@ export function createInvoiceHandlers(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,
   invoiceModule: InvoiceModule,
-): Record<string, unknown> {
+) {
   return {
     invoicesList: os.invoicesList.handler(
       m.withPermission(

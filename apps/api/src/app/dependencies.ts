@@ -21,6 +21,7 @@ import { InventoryAttachmentStorage } from "../modules/inventory/inventory.stora
 import { InvoiceModule } from "../modules/invoice/invoice.module";
 import { InvoiceRepository } from "../modules/invoice/adapters/invoice.repository";
 import { createPaymentModule } from "../modules/payment/payment.module";
+import type { PaymentModule } from "../modules/payment/payment-module.interface";
 import { PaymentRepositoryImpl } from "../modules/payment/adapters/payment.repository";
 import { SqlitePermissionResolver } from "../modules/rbac/permission-resolver";
 import { RoleModule } from "../modules/rbac/role.module";
@@ -35,6 +36,34 @@ import { UpdateService } from "../modules/update/update.service";
 import { UpdateHistoryService } from "../modules/update/update-history.service";
 
 /**
+ * All resolved application dependencies, created once at startup.
+ *
+ * Explicitly declared (rather than `ReturnType<typeof createAppDependencies>`)
+ * so the tsup dts build can name every field — the inferred return would
+ * resolve `rawDatabase` to the unnameable `BetterSqlite3.Database` UMD-global
+ * and fail with TS4058.
+ */
+export type AppDependencies = {
+  auth: BetterAuthInstance;
+  accountService: AccountService;
+  authBootstrapService: AuthBootstrapService;
+  companyService: CompanyService;
+  workforceService: WorkforceService;
+  operationsService: OperationsService;
+  financeService: FinanceService;
+  inventoryService: InventoryService;
+  sessionService: SessionService;
+  recoveryKeyService: RecoveryKeyService;
+  updateService: UpdateService;
+  updateHistoryService: UpdateHistoryService;
+  rawDatabase: BetterSqliteDatabase;
+  employeeModule: EmployeeModule;
+  invoiceModule: InvoiceModule;
+  paymentModule: PaymentModule;
+  roleModule: RoleModule;
+};
+
+/**
  * Create all application dependencies.
  *
  * @param sqlite - Shared SQLite handle (caller is responsible for lifecycle).
@@ -46,13 +75,12 @@ import { UpdateHistoryService } from "../modules/update/update-history.service";
  *                 controlled config (e.g. DB_ADAPTER=inmemory).
  */
 export async function createAppDependencies(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sqlite?: any,
+  sqlite?: BetterSqliteDatabase,
   drizzleDb?: AppDrizzle,
   authInstance?: BetterAuthInstance,
   config: AppConfig = createAppConfig(),
-) {
-  const sharedDatabase = sqlite ?? createDatabaseConnection();
+): Promise<AppDependencies> {
+  const sharedDatabase: BetterSqliteDatabase = sqlite ?? createDatabaseConnection();
   const db = drizzleDb ?? createDrizzleFromSqlite(sharedDatabase);
   const auth = authInstance ?? (await import("../infrastructure/auth/auth")).createAuth(db);
 
@@ -129,6 +157,3 @@ export async function createAppDependencies(
     roleModule,
   } as const;
 }
-
-/** All resolved application dependencies, created once at startup. */
-export type AppDependencies = Awaited<ReturnType<typeof createAppDependencies>>;

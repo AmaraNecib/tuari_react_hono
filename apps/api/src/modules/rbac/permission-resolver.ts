@@ -4,7 +4,7 @@
  * Resolves user permissions by joining role_permission → employee → user.
  * Bootstrap owners get all permissions regardless of employee record.
  */
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
 import * as schema from "../../schema";
 import { createDrizzleFromSqlite, type AppDrizzle } from "../../infrastructure/database/drizzle";

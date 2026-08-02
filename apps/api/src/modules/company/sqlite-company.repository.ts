@@ -15,12 +15,9 @@
  */
 
 import crypto from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import { eq, and, desc, asc, sql, count, like, isNull } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
-import { resolveDatabaseEnv } from "../../infrastructure/config/database-env";
 import {
   encodeCursor as encodeCursorToken,
   decodeCursor as decodeCursorToken,
@@ -28,10 +25,7 @@ import {
 import * as schema from "../../schema";
 import { createDrizzleFromSqlite } from "../../infrastructure/database/drizzle";
 import { createAlgeriaTimestamp } from "./company-time";
-import type { WorkforceRepository } from "./workforce.repository";
-import type { OperationsRepository } from "./operations.repository";
-import type { FinanceRepository } from "./finance.repository";
-import type { AuditRepository } from "./audit.repository";
+import type { BetterSqliteDatabase } from "../../types/sqlite";
 import type { CompanyRepository } from "./company.repository.contracts";
 import type {
   DebtAccountCreateData,
@@ -208,18 +202,20 @@ type DrizzleDb = BetterSQLite3Database<typeof schema>;
 /** Drizzle-based implementation of CompanyRepository. */
 export class SqliteCompanyRepository implements CompanyRepository {
   private readonly db: DrizzleDb;
-  private readonly raw: any;
+  private readonly raw: BetterSqliteDatabase;
 
+  constructor(drizzleDb: DrizzleDb, rawHandle: BetterSqliteDatabase);
+  constructor(rawDb: BetterSqliteDatabase);
   constructor(
-    dbOrRaw: DrizzleDb | any,
-    rawHandle?: any,
+    dbOrRaw: DrizzleDb | BetterSqliteDatabase,
+    rawHandle?: BetterSqliteDatabase,
   ) {
     // Support both (drizzleDb, rawDb) and (rawDb) signatures
     if (rawHandle) {
-      this.db = dbOrRaw;
+      this.db = dbOrRaw as DrizzleDb;
       this.raw = rawHandle;
     } else {
-      this.raw = dbOrRaw;
+      this.raw = dbOrRaw as BetterSqliteDatabase;
       this.raw.pragma("foreign_keys = ON");
       this.db = createDrizzleFromSqlite(this.raw);
     }
@@ -312,7 +308,6 @@ export class SqliteCompanyRepository implements CompanyRepository {
   }
 
   createEmployeesBatch(data: EmployeeBatchCreateData[], audit?: MutationAuditContext): EmployeeBatchCreateResultRecord {
-    const a = normalizeAudit(audit);
     const employees: EmployeeRecord[] = [];
     const managerAssignments: EmployeeManagerAssignmentRecord[] = [];
     const projectAssignments: EmployeeProjectAssignmentRecord[] = [];
@@ -399,7 +394,6 @@ export class SqliteCompanyRepository implements CompanyRepository {
   }
 
   assignEmployeeWorkplace(data: EmployeeWorkplaceAssignmentData, audit?: MutationAuditContext): void {
-    const a = normalizeAudit(audit);
     this.raw.transaction(() => {
       const am = this.getActiveManagerAssignmentByWorkerId(data.employeeId);
       const ap = this.getActiveProjectAssignmentByEmployeeId(data.employeeId);
@@ -842,7 +836,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
  */
 /** Create a CompanyRepository from a raw SQLite handle. */
 export function createCompanyRepository(
-  rawDb: any,
+  rawDb: BetterSqliteDatabase,
 ): CompanyRepository {
   rawDb.pragma("foreign_keys = ON");
   const drizzleDb = createDrizzleFromSqlite(rawDb);

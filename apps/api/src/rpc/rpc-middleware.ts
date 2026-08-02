@@ -1,5 +1,5 @@
 import { ORPCError } from "@orpc/server";
-import type { AppError, Edition, LicensedFeature } from "@tuari/contracts";
+import type { Edition, LicensedFeature } from "@tuari/contracts";
 
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import type { Permission } from "../modules/rbac/permissions";
@@ -134,8 +134,8 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
 
     mutationAudit<TInput, TOutput>(
       handler: (params: { context: RpcContext; input: TInput; auditContext: MutationAuditContext }) => TOutput,
-      errorResolver: (error: unknown) => any,
-    ): (params: { context: RpcContext; input: TInput }) => Promise<any> {
+      errorResolver: (error: unknown) => unknown,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<unknown> {
       return async ({ context, input }) => {
         const auditContext = await createMutationAuditContext(context);
         try {
@@ -149,8 +149,8 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
     mutationAuditValidated<TInput, TOutput>(
       schema: ValidatorSchema,
       handler: (params: { context: RpcContext; input: TInput; auditContext: MutationAuditContext }) => TOutput,
-      errorResolver: (error: unknown) => any,
-    ): (params: { context: RpcContext; input: TInput }) => Promise<any> {
+      errorResolver: (error: unknown) => unknown,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<unknown> {
       return async ({ context, input }) => {
         const auditContext = await createMutationAuditContext(context);
         try {
@@ -174,8 +174,8 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
 
     mutationAuditRateLimited<TInput, TOutput>(
       handler: (params: { context: RpcContext; input: TInput; auditContext: MutationAuditContext }) => TOutput,
-      errorResolver: (error: unknown) => any,
-    ): (params: { context: RpcContext; input: TInput }) => Promise<any> {
+      errorResolver: (error: unknown) => unknown,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<unknown> {
       return async ({ context, input }) => {
         checkRateLimit(context);
         const auditContext = await createMutationAuditContext(context);
@@ -190,8 +190,8 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
     mutationAuditRateLimitedValidated<TInput, TOutput>(
       schema: ValidatorSchema,
       handler: (params: { context: RpcContext; input: TInput; auditContext: MutationAuditContext }) => TOutput,
-      errorResolver: (error: unknown) => any,
-    ): (params: { context: RpcContext; input: TInput }) => Promise<any> {
+      errorResolver: (error: unknown) => unknown,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<unknown> {
       return async ({ context, input }) => {
         checkRateLimit(context);
         const auditContext = await createMutationAuditContext(context);
@@ -219,8 +219,8 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
     // Used by RBAC-protected mutation handlers.
     withAudit<TInput, TOutput>(
       handler: (params: { context: RpcContext; input: TInput; auditContext: MutationAuditContext }) => TOutput,
-      errorResolver: (error: unknown) => any,
-    ): (params: { context: RpcContext; input: TInput }) => Promise<any> {
+      errorResolver: (error: unknown) => unknown,
+    ): (params: { context: RpcContext; input: TInput }) => Promise<unknown> {
       return async ({ context, input }) => {
         const auditContext = await createAuditContextForUser(context);
         try {

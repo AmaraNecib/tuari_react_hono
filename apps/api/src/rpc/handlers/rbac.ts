@@ -18,7 +18,7 @@ export function createRbacHandlers(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,
   roleModule: RoleModule,
-): Record<string, unknown> {
+) {
   return {
     rbacRolesList: os.rbacRolesList.handler(
       m.withPermission(

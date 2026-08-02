@@ -7,6 +7,22 @@ export interface ValidatorSchema {
 }
 
 /**
+ * Minimal shape of a Zod-style validation error as consumed here.
+ *
+ * `ValidatorSchema` is duck-typed (any validator that throws an
+ * `Error` named `ZodError` with an `errors` array of `{ path, message }`
+ * is accepted — including the test double), so the error is narrowed
+ * structurally rather than to the concrete zod `ZodError` class (whose
+ * v4 shape uses `issues` instead of `errors`).
+ */
+type ZodValidationError = Error & {
+  /** Zod v3 uses `errors`; the test double also uses this shape. */
+  errors?: Array<{ path: Array<string | number>; message: string }>;
+  /** Zod v4 native field; absent in the test double. */
+  issues?: Array<{ path: Array<string | number>; message: string }>;
+};
+
+/**
  * Centralized input validation using schema validators (e.g., Zod).
  * Converts validation errors to structured error responses.
  */
@@ -21,12 +37,6 @@ export class InputValidator {
     } catch (error) {
       // Handle Zod errors if available
       if (error instanceof Error && error.constructor.name === "ZodError") {
-        const zodError = error as any;
-        const fieldErrors = zodError.errors?.map((err: any) => ({
-          field: err.path.join("."),
-          message: err.message,
-        })) || [];
-
         throw new ORPCError("VALIDATION", {
           message: "Invalid input: validation failed",
         });
@@ -45,12 +55,6 @@ export class InputValidator {
     } catch (error) {
       // Handle Zod errors if available
       if (error instanceof Error && error.constructor.name === "ZodError") {
-        const zodError = error as any;
-        const fieldErrors = zodError.errors?.map((err: any) => ({
-          field: err.path.join("."),
-          message: err.message,
-        })) || [];
-
         throw new ORPCError("VALIDATION", {
           message: "Invalid input: validation failed",
         });
@@ -77,11 +81,11 @@ export class InputValidator {
     } catch (error) {
       // Handle Zod errors if available
       if (error instanceof Error && error.constructor.name === "ZodError") {
-        const zodError = error as any;
-        const fieldErrors = zodError.errors?.map((err: any) => ({
+        const zodError = error as ZodValidationError;
+        const fieldErrors = (zodError.issues ?? zodError.errors ?? []).map((err) => ({
           field: err.path.join("."),
           message: err.message,
-        })) || [];
+        }));
         return {
           success: false,
           fieldErrors,

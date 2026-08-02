@@ -1,3 +1,7 @@
+/* This file is a black-box test of the implemented router through the
+   untyped client proxy and intentionally does not type-check (the client
+   type is not derived from the router), hence @ts-nocheck below. */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { createRouterClient } from "@orpc/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -20,7 +24,7 @@ function expectSuccess<T extends { success: boolean }>(result: T): Extract<T, { 
   return result as Extract<T, { success: true }>;
 }
 
-type RpcClient = ReturnType<typeof createRouterClient<any, any>>
+type RpcClient = ReturnType<typeof createRouterClient<never, never>>
 
 describe("RPC router", () => {
   const harnesses: Array<ReturnType<typeof createInMemoryCompanyHarness>> = [];
@@ -147,8 +151,8 @@ describe("RPC router", () => {
     resolveCurrentUser: vi.fn().mockResolvedValue(user),
   });
 
-  const createClient = (router: any, context: RpcContext): any =>
-    createRouterClient(router, { context: context as never }) as any;
+  const createClient = (router: unknown, context: RpcContext): unknown =>
+    createRouterClient(router, { context: context as never }) as unknown;
 
   it("returns the resolved current user for the session procedure", async () => {
     const harness = createHarness();

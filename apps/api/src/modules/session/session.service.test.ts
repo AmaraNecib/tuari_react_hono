@@ -12,7 +12,7 @@ afterEach(() => {
   process.env = OLD_ENV;
 });
 
-function createMockAuthGateway(user: any = null) {
+function createMockAuthGateway(user: { id: string; name: string | null; phoneNumber?: string | null } | null = null) {
   return {
     api: {
       getSession: vi.fn().mockResolvedValue(user ? { user } : null),

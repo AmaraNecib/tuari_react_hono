@@ -12,7 +12,6 @@ import {
 } from "./employee.errors";
 import type {
   EmployeeFilters,
-  EmployeePagedResult,
   EmployeeRepository,
   RoleRepository,
 } from "./employee.repository";

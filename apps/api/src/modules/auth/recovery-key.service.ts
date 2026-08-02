@@ -104,7 +104,7 @@ export class RecoveryKeyService {
    * @param raw - Raw SQLite handle for transactions
    */
   constructor(
-    private readonly db: BetterSQLite3Database<any>,
+    private readonly db: BetterSQLite3Database<typeof schema>,
     private readonly raw: BetterSqliteDatabase,
   ) {}
 

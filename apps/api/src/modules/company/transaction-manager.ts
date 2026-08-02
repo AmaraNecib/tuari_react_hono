@@ -35,13 +35,13 @@ export class TransactionManager {
  * Usage: @transactional
  */
 export function transactional(
-  _target: any,
-  _propertyKey: string,
+  _target: object,
+  _propertyKey: string | symbol,
   descriptor: PropertyDescriptor,
 ) {
   const originalMethod = descriptor.value;
 
-  descriptor.value = function (this: any, ...args: any[]) {
+  descriptor.value = function (this: { repository?: CompanyRepository }, ...args: unknown[]) {
     if (!this.repository) {
       throw new Error("transactional decorator requires repository property");
     }

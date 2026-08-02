@@ -19,7 +19,7 @@ const toSqliteUrl = (filePath: string) => {
 const fromSqliteUrl = (value: string) => {
   if (!value.startsWith("file:")) {
     throw new Error(
-      `DATABASE_URL must use a SQLite file: URL, received \"${value}\"`,
+      `DATABASE_URL must use a SQLite file: URL, received "${value}"`,
     );
   }
 

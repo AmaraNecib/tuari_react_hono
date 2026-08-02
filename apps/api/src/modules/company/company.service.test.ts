@@ -899,8 +899,8 @@ describe("CompanyService", () => {
     expect(receivableEntries.filter((e) => e.status === "LIVE")).toHaveLength(0)
   })
 
-  function findEntryStatus(service: any, accountId: string, entryId: string): string {
-    return service.listDebtEntries({ debtAccountId: accountId }).items.find((e: any) => e.id === entryId)!.status
+  function findEntryStatus(service: CompanyService, accountId: string, entryId: string): string {
+    return service.listDebtEntries({ debtAccountId: accountId }).items.find((e) => e.id === entryId)!.status
   }
 
   it("consolidates same-party opposite-direction OPENINGs — remainder on payable", () => {

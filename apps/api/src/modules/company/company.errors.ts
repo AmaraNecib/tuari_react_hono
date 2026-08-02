@@ -14,7 +14,7 @@ export class CompanyError extends Error {
   }
 }
 
-export function toFailureResult<T>(error: unknown) {
+export function toFailureResult(error: unknown) {
   if (error instanceof CompanyError) {
     return {
       success: false as const,

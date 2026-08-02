@@ -11,7 +11,6 @@ import type { RecordUpdateInput } from "@tuari/contracts";
 import type { UpdateHistoryService } from "../../modules/update/update-history.service";
 import type { UpdateService } from "../../modules/update/update.service";
 
-import type { RpcContext } from "../context";
 import type { RpcMiddleware } from "../rpc-middleware";
 
 /**
@@ -27,7 +26,7 @@ export function createUpdateHandlers(
   m: RpcMiddleware,
   updateService: UpdateService,
   updateHistoryService: UpdateHistoryService,
-): Record<string, any> {
+) {
   return {
     // M4.1 — Update metadata
     updateMetadata: os.updateMetadata.handler(

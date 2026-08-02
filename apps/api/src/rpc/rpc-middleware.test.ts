@@ -60,7 +60,7 @@ describe("RPC Middleware — withPermission", () => {
       expect.fail("Should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ORPCError);
-      expect((error as any).code).toBe("FORBIDDEN");
+      expect((error as { code: string }).code).toBe("FORBIDDEN");
     }
   });
 
@@ -84,7 +84,7 @@ describe("RPC Middleware — withPermission", () => {
       expect.fail("Should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ORPCError);
-      expect((error as any).code).toBe("FORBIDDEN");
+      expect((error as { code: string }).code).toBe("FORBIDDEN");
     }
   });
 
@@ -102,7 +102,7 @@ describe("RPC Middleware — withPermission", () => {
       expect.fail("Should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ORPCError);
-      expect((error as any).code).toBe("UNAUTHORIZED");
+      expect((error as { code: string }).code).toBe("UNAUTHORIZED");
     }
   });
 
@@ -146,7 +146,7 @@ describe("RPC Middleware — withPermission", () => {
       expect.fail("Should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ORPCError);
-      expect((error as any).code).toBe("FORBIDDEN");
+      expect((error as { code: string }).code).toBe("FORBIDDEN");
     }
   });
 });

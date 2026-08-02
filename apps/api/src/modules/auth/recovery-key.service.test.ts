@@ -22,8 +22,8 @@ function createTestEnv() {
   for (const stmt of schemaStatements) {
     rawDb.exec(stmt)
   }
-  const db = drizzle(rawDb as any, { schema })
-  const service = new RecoveryKeyService(db, rawDb as any)
+  const db = drizzle(rawDb, { schema })
+  const service = new RecoveryKeyService(db, rawDb)
   return {
     service,
     teardown: () => {

@@ -1,14 +1,14 @@
 import { implement } from "@orpc/server";
 
-import { appContract } from "@tuari/contracts";
 
 import { toFailureResult } from "../../modules/company/company.errors";
+import type { SystemLogListFilters } from "../../modules/company/company.types";
 import type { CompanyService } from "../../modules/company/company.service";
 import type { RecoveryKeyService } from "../../modules/auth/recovery-key.service";
 import type { RoleModule } from "../../modules/rbac/role.module";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
-import type { RpcContext } from "../context";
 import type { RpcMiddleware } from "../rpc-middleware";
+import type { ChangeDbKeyInput, ConsumeRecoveryKeyInput, RevokeRecoveryKeyInput } from "./handler-inputs";
 
 /**
  * Create system handlers for workspace, logs, and security management.
@@ -27,9 +27,9 @@ export function createSystemHandlers(
   recoveryKeyService: RecoveryKeyService,
   roleModule: RoleModule,
   rawDatabase: BetterSqliteDatabase,
-): Record<string, any> {
+) {
   return {
-    workspaceSnapshot: os.workspaceSnapshot.handler(m.queryAuth(async ({ context, input }: any) => {
+    workspaceSnapshot: os.workspaceSnapshot.handler(m.queryAuth(async () => {
       const [snapshot, roles] = await Promise.all([
         companyService.getWorkspaceSnapshot(),
         roleModule.list(),
@@ -40,8 +40,8 @@ export function createSystemHandlers(
       // still uses the company service.
       return { ...snapshot, roles };
     })),
-    systemLogList: os.systemLogList.handler(m.queryAuth(async ({ context, input }: any) =>
-      companyService.listSystemLog(input ?? undefined)
+    systemLogList: os.systemLogList.handler(m.queryAuth(async ({ input }) =>
+      companyService.listSystemLog(input as SystemLogListFilters | undefined)
     )),
 
     // Recovery key management
@@ -50,7 +50,7 @@ export function createSystemHandlers(
     })),
 
     generateRecoveryKeys: os.generateRecoveryKeys.handler(m.mutationAudit(
-      ({ input, auditContext }: any) => {
+      () => {
         const keys = recoveryKeyService.generateKeys();
         return { keys };
       },
@@ -58,33 +58,34 @@ export function createSystemHandlers(
     )),
 
     consumeRecoveryKey: os.consumeRecoveryKey.handler(m.mutationAudit(
-      ({ input, auditContext }: any) => {
-        const success = recoveryKeyService.consumeKey(input.key);
+      ({ input }) => {
+        const success = recoveryKeyService.consumeKey((input as ConsumeRecoveryKeyInput).key);
         return { success };
       },
       toFailureResult,
     )),
 
     revokeRecoveryKey: os.revokeRecoveryKey.handler(m.mutationAudit(
-      ({ input, auditContext }: any) => {
-        const success = recoveryKeyService.revokeKey(input.keyId);
+      ({ input }) => {
+        const success = recoveryKeyService.revokeKey((input as RevokeRecoveryKeyInput).keyId);
         return { success };
       },
       toFailureResult,
     )),
 
     changeDbEncryptionKey: os.changeDbEncryptionKey.handler(m.mutationAudit(
-      ({ input, auditContext }: any) => {
+      ({ input }) => {
+        const { currentKey, newKey } = input as ChangeDbKeyInput;
         // Verify current key works by reading actual data (touches encrypted pages)
         try {
-          rawDatabase.pragma(`key = '${input.currentKey.replace(/'/g, "''")}'`);
+          rawDatabase.pragma(`key = '${currentKey.replace(/'/g, "''")}'`);
           rawDatabase.prepare("SELECT COUNT(*) FROM sqlite_master").get();
         } catch {
           return { success: false, error: "Current encryption key is invalid" };
         }
 
         // Re-encrypt with new key via PRAGMA rekey
-        rawDatabase.pragma(`rekey = '${input.newKey.replace(/'/g, "''")}'`);
+        rawDatabase.pragma(`rekey = '${newKey.replace(/'/g, "''")}'`);
         return { success: true };
       },
       toFailureResult,

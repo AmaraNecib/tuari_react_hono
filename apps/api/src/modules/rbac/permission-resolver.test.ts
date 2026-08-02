@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SqlitePermissionResolver } from "./permission-resolver";
 import type { Permission } from "../rbac/permissions";
 import { ALL_PERMISSIONS } from "./permissions";
+import type { AppDrizzle } from "../../infrastructure/database/drizzle";
 
 function createMockDb() {
   return {
@@ -27,7 +28,7 @@ describe("SqlitePermissionResolver", () => {
   beforeEach(() => {
     db = createMockDb();
     authBootstrap = createMockAuthBootstrap();
-    resolver = new SqlitePermissionResolver({} as any, authBootstrap as any, db as any);
+    resolver = new SqlitePermissionResolver({} as { exec: (sql: string) => void }, authBootstrap, db as unknown as AppDrizzle);
   });
 
   it("returns permissions for a user", async () => {

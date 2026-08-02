@@ -1,5 +1,4 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
 
 import * as schema from "../../schema";

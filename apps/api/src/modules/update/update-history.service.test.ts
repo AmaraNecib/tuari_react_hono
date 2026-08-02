@@ -17,7 +17,7 @@ function createTestEnv() {
   for (const stmt of schemaStatements) {
     rawDb.exec(stmt);
   }
-  const service = new UpdateHistoryService(rawDb as any);
+  const service = new UpdateHistoryService(rawDb);
   return {
     service,
     teardown: () => {

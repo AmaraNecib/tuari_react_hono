@@ -1,18 +1,19 @@
 import { implement } from "@orpc/server";
-import { appContract } from "@tuari/contracts";
+import type { InventoryInvoiceGroup } from "@tuari/contracts";
 import type { RpcMiddleware } from "../rpc-middleware";
 import type { CompanyService } from "../../modules/company/company.service";
 import type { InventoryService } from "../../modules/inventory/inventory.service";
+import type { ReportFilterInput } from "./handler-inputs";
 
 export function createReportsHandlers(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,
   companyService: CompanyService,
   inventoryService: InventoryService,
-): Record<string, any> {
+) {
   return {
-    reportsGenerate: os.reportsGenerate.handler(m.queryAuth(async ({ context, input }: any) => {
-      const { type, startDate, endDate } = input;
+    reportsGenerate: os.reportsGenerate.handler(m.queryAuth(async ({ input }) => {
+      const { type, startDate, endDate } = input as ReportFilterInput;
 
       switch (type) {
         case "INVENTORY":
@@ -47,7 +48,7 @@ async function generateInventoryReport(
     });
   }
 
-  const totalValueDzd = filtered.reduce((sum: number, group: any) => sum + (group.grossTotalDzd || 0), 0);
+  const totalValueDzd = filtered.reduce((sum: number, group: InventoryInvoiceGroup) => sum + (group.grossTotalDzd || 0), 0);
 
   return {
     type: "INVENTORY" as const,

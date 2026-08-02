@@ -17,7 +17,7 @@ export function createPaymentHandlers(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,
   paymentModule: PaymentModule,
-): Record<string, unknown> {
+) {
   return {
     paymentsList: os.paymentsList.handler(
       m.withPermission(
