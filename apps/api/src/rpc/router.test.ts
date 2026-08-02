@@ -54,6 +54,7 @@ describe("RPC router", () => {
   const createTestRouter = (
     harness: ReturnType<typeof createHarness>,
     authOverrides?: Partial<typeof authBootstrapService>,
+    recoveryKeyService: unknown = {},
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -93,7 +94,7 @@ describe("RPC router", () => {
       invoiceModule: {} as never,
       paymentModule,
       roleModule,
-      recoveryKeyService: {} as never,
+      recoveryKeyService: recoveryKeyService as never,
       updateService: {} as never,
       updateHistoryService: {} as never,
       rawDatabase: {} as never,
@@ -734,4 +735,103 @@ describe("RPC router", () => {
       ]),
     })
   })
+
+  it("consumes and revokes recovery keys through the RPC contract (derived inputs)", async () => {
+    const harness = createHarness();
+    const consumeKey = vi.fn().mockReturnValue(true);
+    const revokeKey = vi.fn().mockReturnValue(true);
+    const router = createTestRouter(harness, undefined, { consumeKey, revokeKey });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(
+      client.consumeRecoveryKey({ key: "a1b2-c3d4-e5f6" }),
+    ).resolves.toEqual({ success: true });
+    expect(consumeKey).toHaveBeenCalledWith("a1b2-c3d4-e5f6");
+
+    await expect(
+      client.revokeRecoveryKey({ keyId: "key-1" }),
+    ).resolves.toEqual({ success: true });
+    expect(revokeKey).toHaveBeenCalledWith("key-1");
+  });
+
+  it("rejects invalid recovery key input at the wire contract", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    // ORPC input validation maps to an ORPCError with code BAD_REQUEST —
+    // distinct from any handler-side throw (which would surface differently).
+    await expect(client.consumeRecoveryKey({ key: "" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(client.revokeRecoveryKey({ keyId: "" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+  });
+
+  it("forwards a failed recovery key consumption through the wire contract", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {
+      consumeKey: vi.fn().mockReturnValue(false),
+      revokeKey: vi.fn().mockReturnValue(true),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(
+      client.consumeRecoveryKey({ key: "already-consumed" }),
+    ).resolves.toEqual({ success: false });
+  });
+
+  it("returns a graceful failure when the db key change cannot be verified (derived input)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    // rawDatabase is a stub, so the PRAGMA verification throws and the
+    // handler returns the failure output shape from changeDbKeyOutputSchema.
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
+    ).resolves.toEqual({ success: false, error: "Current encryption key is invalid" });
+  });
+
+  it("generates an inventory report through the RPC contract (derived filter input)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(
+      client.reportsGenerate({ type: "INVENTORY" }),
+    ).resolves.toMatchObject({
+      type: "INVENTORY",
+      summary: { totalValueDzd: 0 },
+    });
+  });
+
+  it("rejects an unknown report type at the wire contract", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    // BAD_REQUEST proves the reportFilterInputSchema enum rejected it at the
+    // wire — the handler's own `default:` throw would surface differently.
+    await expect(client.reportsGenerate({ type: "BOGUS" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+  });
+
+  it("generates debt and movement reports through the RPC contract (derived filter input)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(client.reportsGenerate({ type: "DEBT" })).resolves.toMatchObject({
+      type: "DEBT",
+      summary: { totalOutstandingDzd: 0 },
+    });
+
+    await expect(client.reportsGenerate({ type: "MOVEMENT" })).resolves.toMatchObject({
+      type: "MOVEMENT",
+      summary: { totalMovements: 0 },
+    });
+  });
 });

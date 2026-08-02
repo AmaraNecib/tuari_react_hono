@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   appErrorSchema,
   authSetupStatusSchema,
+  changeDbKeyInputSchema,
+  consumeRecoveryKeyInputSchema,
   debtAccountCreateInputSchema,
   debtAccountSchema,
   debtPartyDetailSchema,
@@ -30,6 +32,8 @@ import {
   phonePasswordSignInSchema,
   projectAssignmentCreateInputSchema,
   projectSchema,
+  reportFilterInputSchema,
+  revokeRecoveryKeyInputSchema,
   roleCreateInputSchema,
   sessionUserSchema,
   systemLogEntrySchema,
@@ -741,6 +745,93 @@ describe("contracts", () => {
           }),
         ).toThrow();
       });
+    });
+  });
+
+  describe("security and report filter inputs are exported for handler derivation (#206)", () => {
+    it("exports the recovery key input schemas from the package index", () => {
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2-c3d4-e5f6" })).toEqual({
+        key: "a1b2-c3d4-e5f6",
+      });
+
+      expect(revokeRecoveryKeyInputSchema.parse({ keyId: "key-1" })).toEqual({
+        keyId: "key-1",
+      });
+
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "" })).toThrow();
+      expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "" })).toThrow();
+
+      // Missing required fields and non-string values are rejected.
+      expect(() => consumeRecoveryKeyInputSchema.parse({})).toThrow();
+      expect(() => revokeRecoveryKeyInputSchema.parse({})).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: 123 })).toThrow();
+      expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: null })).toThrow();
+    });
+
+    it("validates the database encryption key change input", () => {
+      expect(
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "new-key-123" }),
+      ).toEqual({ currentKey: "old-key", newKey: "new-key-123" });
+
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "", newKey: "new-key-123" }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "short" }),
+      ).toThrow();
+
+      // Pin the newKey min(8) boundary: exactly 8 passes, 7 fails.
+      expect(
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "12345678" }),
+      ).toEqual({ currentKey: "old", newKey: "12345678" });
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "1234567" }),
+      ).toThrow();
+
+      // Missing required fields and non-string values are rejected.
+      expect(() => changeDbKeyInputSchema.parse({ currentKey: "old" })).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: 12345678 }),
+      ).toThrow();
+    });
+
+    it("validates the report filter input (type + ISO date range)", () => {
+      expect(reportFilterInputSchema.parse({ type: "INVENTORY" })).toEqual({
+        type: "INVENTORY",
+      });
+
+      expect(
+        reportFilterInputSchema.parse({
+          type: "DEBT",
+          startDate: "2026-01-01T00:00:00.000Z",
+          endDate: "2026-01-31T23:59:59.000Z",
+        }),
+      ).toEqual({
+        type: "DEBT",
+        startDate: "2026-01-01T00:00:00.000Z",
+        endDate: "2026-01-31T23:59:59.000Z",
+      });
+
+      expect(() => reportFilterInputSchema.parse({ type: "BOGUS" })).toThrow();
+      expect(() =>
+        reportFilterInputSchema.parse({ type: "INVENTORY", startDate: "not-a-date" }),
+      ).toThrow();
+
+      // Pin the datetime({ offset: true }) semantics: naive datetimes are
+      // rejected, explicit non-UTC offsets are accepted.
+      expect(() =>
+        reportFilterInputSchema.parse({ type: "INVENTORY", startDate: "2026-01-01T00:00:00" }),
+      ).toThrow();
+      expect(
+        reportFilterInputSchema.parse({
+          type: "INVENTORY",
+          startDate: "2026-01-01T00:00:00+01:00",
+        }),
+      ).toEqual({ type: "INVENTORY", startDate: "2026-01-01T00:00:00+01:00" });
+
+      // Missing required fields and non-string enum values are rejected.
+      expect(() => reportFilterInputSchema.parse({})).toThrow();
+      expect(() => reportFilterInputSchema.parse({ type: null })).toThrow();
     });
   });
 });

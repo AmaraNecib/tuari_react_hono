@@ -2,7 +2,7 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { reportSchema, reportTypeSchema } from "./reports";
 
-const reportFilterInputSchema = z.object({
+export const reportFilterInputSchema = z.object({
   type: reportTypeSchema,
   startDate: z.string().datetime({ offset: true }).optional(),
   endDate: z.string().datetime({ offset: true }).optional(),
