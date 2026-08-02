@@ -69,3 +69,7 @@ carried over (pre-existing).
 
 **Standards: 0 actionable findings** (2 non-blocking judgement calls).
 **Spec: 0 actionable findings.** Safe to push.
+
+---
+
+**Post-evidence delta (post-Greptile):** evidence re-pinned from `fa9e7f0` to `6993ff6` after a wisdom-only commit (`.agents/wisdom/process.md` — 13-line doc addition, zero code impact). All findings, verdicts, and the reviewed diff are unchanged.

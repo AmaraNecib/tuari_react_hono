@@ -70,3 +70,7 @@ boundary test, and a dedicated adapter unit test — neither required.
 
 - Fixed c1 + c2: strengthened the port JSDoc (committed in `fa9e7f0`).
 - No test changes beyond the mandated 2-line wiring diff.
+
+---
+
+**Post-evidence delta (post-Greptile):** evidence re-pinned from `fa9e7f0` to `6993ff6` after a wisdom-only commit (`.agents/wisdom/process.md` — 13-line doc addition, zero code impact). All findings, verdicts, and the reviewed diff are unchanged.
