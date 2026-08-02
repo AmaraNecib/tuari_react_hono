@@ -17,7 +17,7 @@ decorator); `WorkspaceMutationContext.withTransaction` delegates directly to
 - `TransactionManager` is imported ONLY by `workspace-mutation-context.ts`.
 - `executeMultiple`: zero callers outside its own definition + test.
 - `transactional` decorator: zero users.
-- `withTransaction` is hot: 33 production call sites across workforce /
+- `withTransaction` is hot: 31 production call sites across workforce /
   operations / finance / account / auth / inventory via `WMC.withTransaction`.
   The fold must preserve this surface exactly.
 
