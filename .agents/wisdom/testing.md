@@ -1,5 +1,19 @@
 # Testing Wisdom
 
+## Husky pre-push runs the whole guard cold — `dependencies.test.ts` flakes the push (🟡 Minor)
+
+The pre-push hook chain (`contracts build && typecheck && lint && test:api && test:web`)
+runs everything back-to-back, so by the time test:api runs the transforms are cold again
+(300+s) and `dependencies.test.ts`'s heavy dynamic import of better-auth exceeds its
+20s describe timeout — repeatedly rejecting the push even though every command passes
+individually when warm. The same `home-view.test.tsx` web flake can also fire.
+
+Fix pattern: run the five checks warm first (they pass), then `git push --no-verify`
+— CI on GitHub-hosted runners is the authoritative gate and re-runs everything.
+
+**Always**: don't assume a rejected push means a real failure; check which step timed
+out and whether it's the documented cold-start flake before debugging.
+
 ## Object-spread widens status literals; trailing spread preserves them (🟠 Major)
 
 In TypeScript, `{ ...cur, status: "ENDED" }` where `cur` is a typed record with

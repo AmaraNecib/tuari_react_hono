@@ -1,5 +1,16 @@
 # Process Wisdom
 
+## `gh pr create` defaults to `main`; always pass `--base develop` (🟠 Major)
+
+This repo's default branch is `main`, but PRs must target `develop`. Creating a
+PR without `--base develop` silently points it at `main` — which makes the PR
+contain the ENTIRE develop-vs-main history instead of just your commits, and
+CI/Greptile review the wrong diff. Fix after the fact is `gh pr edit <n> --base develop`,
+but the first CI run + Greptile trigger will already have run against the wrong base.
+
+**Always**: `gh pr create --base develop` explicitly, then verify
+`gh pr view <n> --json baseRefName,commits` shows your commits only.
+
 ## Evidence SHA must track the final reviewed commit (🟠 Major)
 
 The guard's staleness check compares evidence filenames (`.scratch/reviews/<id>/<sha>-*.md`)
