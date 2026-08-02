@@ -58,3 +58,7 @@ actionable findings on either axis.
 ---
 
 **Post-evidence delta (a0cb624):** commits since e12194e are (1) the GitHub-hosted runner migration `42410f7` — byte-identical copy of the change merged in PR #224 (`f362858`), verified `git diff 42410f7 f362858` empty and `git diff HEAD origin/develop -- .github/workflows/ci.yml` empty; and (2) merge of origin/develop (`a0cb624`), which introduced zero feature-file changes (verified `git log 80d4926..HEAD -- apps/api packages/contracts` shows only b60b6c1 + e12194e). Final-diff code-review re-run (Standards + Spec) found no drift and no new issues. Evidence validity at a0cb624 confirmed.
+
+---
+
+**Post-evidence delta (29941ae):** commit since a0cb624: `29941ae` adds four process-documentation entries to `.agents/wisdom/` (pre-push flake bypass, worktree-root git discipline, CI host migration, ORPC BAD_REQUEST probe, barrel re-export completeness) — produced by this review cycle, zero feature-code impact (verified `git log a0cb624..HEAD -- apps packages` empty). Evidence validity at 29941ae confirmed; the delta is process documentation, not code.
