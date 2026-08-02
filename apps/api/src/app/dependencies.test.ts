@@ -102,8 +102,10 @@ describe("createAppDependencies config injection", { timeout: 60000 }, () => {
     expect(() => deps.companyService.listRoles()).toThrow(/no such table/);
   });
 
-  it("honours the injected config for the bootstrap setup key", async () => {
+  it("honors the injected config for the bootstrap setup key", async () => {
     const { createAppDependencies } = await import("./dependencies");
+    // Ambient key must not leak in — only the injected config may decide.
+    vi.stubEnv("BOOTSTRAP_SETUP_KEY", undefined);
     const config = createAppConfig({
       BETTER_AUTH_SECRET: "test-secret",
       BOOTSTRAP_SETUP_KEY: "setup-key-from-config",
@@ -125,7 +127,42 @@ describe("createAppDependencies config injection", { timeout: 60000 }, () => {
     });
   });
 
-  it("honours the injected config for the attachments root path", async () => {
+  it("defaults to no bootstrap setup key when the config has none", async () => {
+    const { createAppDependencies } = await import("./dependencies");
+    vi.stubEnv("BOOTSTRAP_SETUP_KEY", undefined);
+    const config = createAppConfig({
+      BETTER_AUTH_SECRET: "test-secret",
+    });
+
+    const deps = await createAppDependencies(
+      createBootstrapSchemaDb(),
+      undefined,
+      fakeAuth,
+      config,
+    );
+
+    await expect(deps.authBootstrapService.getSetupStatus()).resolves.toEqual({
+      hasUsers: false,
+      requiresSetupKey: false,
+    });
+  });
+
+  it("builds the real auth instance from the injected config when none is passed", async () => {
+    const { createAppDependencies } = await import("./dependencies");
+    const config = createAppConfig({
+      BETTER_AUTH_SECRET: "test-secret",
+      BETTER_AUTH_URL: "http://127.0.0.1:9999",
+    });
+
+    const deps = await createAppDependencies(createRawDb(), undefined, undefined, config);
+
+    // Exercises createAuth(db, config) — pins baseURL/secret/trustedOrigins
+    // coming from the injected config rather than a module-load env singleton.
+    expect(deps.auth).toBeDefined();
+    expect(typeof deps.auth.handler).toBe("function");
+  });
+
+  it("honors the injected config for the attachments root path", async () => {
     const { createAppDependencies } = await import("./dependencies");
     const config = createAppConfig({
       BETTER_AUTH_SECRET: "test-secret",

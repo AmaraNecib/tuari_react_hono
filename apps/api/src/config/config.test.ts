@@ -117,6 +117,31 @@ describe("createAppConfig", () => {
     ).toThrow("API_PORT must be a positive integer");
   });
 
+  it("rejects out-of-range API_PORT values (must be 1..65535)", () => {
+    expect(() =>
+      createAppConfig({
+        ...requiredAuth,
+        API_PORT: "0",
+      }),
+    ).toThrow("API_PORT must be a positive integer between 1 and 65535");
+
+    expect(() =>
+      createAppConfig({
+        ...requiredAuth,
+        API_PORT: "65536",
+      }),
+    ).toThrow("API_PORT must be a positive integer between 1 and 65535");
+  });
+
+  it("derives BETTER_AUTH_URL from an overridden API_PORT", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      API_PORT: "8080",
+    });
+
+    expect(config.betterAuthUrl).toBe("http://127.0.0.1:8080");
+  });
+
   it("parses ALLOWED_ORIGINS CSV into an array", () => {
     const config = createAppConfig({
       ...requiredAuth,
