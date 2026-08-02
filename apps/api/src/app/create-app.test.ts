@@ -32,10 +32,10 @@ const createDependencies = () => ({
     getCurrentUser: vi.fn(),
   },
   recoveryKeyService: {
-    getPoolStatus: vi.fn().mockReturnValue({ availableCount: 0, totalCount: 0, maxPoolSize: 5, maskedKeys: [] }),
-    generateKeys: vi.fn().mockReturnValue([]),
-    consumeKey: vi.fn().mockReturnValue(false),
-    revokeKey: vi.fn().mockReturnValue(false),
+    getPoolStatus: vi.fn().mockResolvedValue({ availableCount: 0, totalCount: 0, maxPoolSize: 5, maskedKeys: [] }),
+    generateKeys: vi.fn().mockResolvedValue([]),
+    consumeKey: vi.fn().mockResolvedValue(false),
+    revokeKey: vi.fn().mockResolvedValue(false),
   },
   rawDatabase: {
     pragma: vi.fn(),

@@ -33,6 +33,7 @@ import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee
 import { SqliteRoleRepository } from "../modules/workforce/adapters/role.repository";
 import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice-debt.port";
 import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
+import { SqliteRecoveryKeyPort } from "../modules/auth/adapters/sqlite-recovery-key.port";
 import { UpdateService } from "../modules/update/update.service";
 import { UpdateHistoryService } from "../modules/update/update-history.service";
 import { SqliteUpdateHistoryPort } from "../modules/update/adapters/sqlite-update-history.port";
@@ -126,7 +127,7 @@ export async function createAppDependencies(
     env.bootstrapSetupKey,
   );
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
-  const recoveryKeyService = new RecoveryKeyService(db, sharedDatabase);
+  const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase));
 
   // Issue #10 — Slice 3 RBAC. The role module is a small, deep module
   // that wraps a Drizzle-backed RoleRepository. The repository is kept
