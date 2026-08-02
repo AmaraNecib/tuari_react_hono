@@ -126,20 +126,32 @@ Promise would otherwise serialize as `{}`).
 
 ## Planned tests
 
-No new test files. Existing tests updated mechanically (assertions unchanged):
+Existing tests updated mechanically (assertions unchanged):
 
-- `recovery-key.service.test.ts` / `recovery-key.e2e.test.ts` — `createTestEnv`
-  builds `new SqliteRecoveryKeyPort(db)` and passes it to the service; every
-  service call gains `await`.
+- `recovery-key.service.test.ts` / `recovery-key.e2e.test.ts` — shared
+  `test-helpers/recovery-key-env.ts` builds a real `SqliteRecoveryKeyPort` +
+  service (file-based SQLite, full schema); every service call gains `await`.
 - `app/create-app.test.ts` — recovery-key mocks switch `mockReturnValue` →
   `mockResolvedValue`.
 - `rpc/router.test.ts` — `recoveryKeyService: {} as never` unchanged.
+
+New tests (added after the test audit — the acceptance criteria say existing
+assertions stay unchanged, which they do):
+
+- `recovery-key.service.test.ts`: concurrency regressions (same-key double
+  consume succeeds once; concurrent generate ≤ pool cap, exact 5), pool
+  boundaries (4→1, full→[]), revoked/empty/uppercase consume rejection,
+  consume-vs-revoke race, timestamp stamping (DB-level).
+- `adapters/sqlite-recovery-key.port.test.ts` (new): guarded check-and-set,
+  rollback on error with lock release, loud reentrancy rejection,
+  unknown-hash lookup.
 - Full suite: `pnpm --filter @tuari/contracts build`, `pnpm typecheck`,
   `pnpm lint`, `pnpm test:api`, `pnpm test:web`.
 
-The service tests exercise the adapter through the service (same assertions as
-today), so adapter behavior is covered end-to-end; a standalone adapter test
-would duplicate coverage (noted for test-audit).
+Note: adapter behavior is additionally exercised end-to-end through the
+service tests, so a standalone adapter test file was added only for the
+primitives the service never exercises directly (rollback, lock release,
+reentrancy).
 
 ## Implementation risks
 

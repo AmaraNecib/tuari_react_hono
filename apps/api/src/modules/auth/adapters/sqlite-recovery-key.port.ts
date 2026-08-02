@@ -1,9 +1,9 @@
 /**
  * SqliteRecoveryKeyPort — Drizzle/SQLite implementation of RecoveryKeyPort.
  *
- * This is the ONLY place in the auth module that touches Drizzle or the
- * recovery key table schema. The service talks to the port interface, never
- * to a database handle.
+ * This is the ONLY production code in the auth module that touches Drizzle or
+ * the recovery key table schema. The service talks to the port interface,
+ * never to a database handle.
  *
  * Concurrency model: the driver is a single synchronous connection and the
  * port methods are async, so concurrent flows would interleave at await
@@ -17,9 +17,11 @@
  *     COMMIT / ROLLBACK (better-sqlite3 transactions are synchronous, so an
  *     async flow must own the begin/commit itself — same pattern as
  *     bootstrap.service). The callback receives an unlocked view of the
- *     port bound to the same connection; holding the lock for the whole
- *     flow also guarantees no other write can join the open transaction
- *     and be silently rolled back by its failure.
+ *     port bound to the same connection. Holding the lock for the whole
+ *     flow also guarantees no other port call can join the transaction and
+ *     be silently rolled back by its failure (guarantee applies to
+ *     port-owned transactions; an externally-opened transaction on the
+ *     shared connection is joined instead of failed — see withTransaction).
  */
 import { and, eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
@@ -80,7 +82,7 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
     return this.serialized(() => this.findKeyByHashUnlocked(hash));
   }
 
-  updateKeyStatus(id: string, status: "CONSUMED" | "REVOKED"): Promise<boolean> {
+  updateKeyStatus(id: string, status: Exclude<RecoveryKeyStatus, "AVAILABLE">): Promise<boolean> {
     return this.serialized(() => this.updateKeyStatusUnlocked(id, status));
   }
 
@@ -94,9 +96,10 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
 
   withTransaction<T>(run: (tx: RecoveryKeyPort) => Promise<T>): Promise<T> {
     return this.serialized(async () => {
-      // Join an already-open transaction (opened outside the port, e.g. a
-      // bootstrap flow on the shared connection) instead of BEGINning a
-      // second one — better-sqlite3 would throw.
+      // If a transaction was already opened OUTSIDE the port (e.g. a
+      // bootstrap flow on the shared connection), join it instead of
+      // BEGINning a second one — better-sqlite3 would throw. The caller
+      // participates in that outer transaction (its COMMIT/ROLLBACK wins).
       const nested = this.raw.inTransaction;
       if (!nested) {
         this.raw.exec("BEGIN IMMEDIATE");
@@ -130,7 +133,7 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
 
   private updateKeyStatusUnlocked(
     id: string,
-    status: "CONSUMED" | "REVOKED",
+    status: Exclude<RecoveryKeyStatus, "AVAILABLE">,
   ): Promise<boolean> {
     const timestamp = createAlgeriaTimestamp();
     const set =
@@ -164,6 +167,9 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
    * Unlocked view handed to a withTransaction callback. Runs on the same
    * connection inside the open transaction (taking the lock again would
    * deadlock); withTransaction itself is deliberately not reentrant.
+   *
+   * Keep this view in sync with the locked public methods above: same
+   * operations, no lock (the caller already holds it).
    */
   private unlocked(): RecoveryKeyPort {
     return {

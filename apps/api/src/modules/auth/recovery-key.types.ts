@@ -40,7 +40,10 @@ export interface RecoveryKeyPort {
   insertKey(input: RecoveryKeyInsert): Promise<void>;
   findKeyByHash(hash: string): Promise<RecoveryKeyRecord | null>;
   /** Flip a key to CONSUMED/REVOKED. Returns false if it was no longer AVAILABLE. */
-  updateKeyStatus(id: string, status: "CONSUMED" | "REVOKED"): Promise<boolean>;
+  updateKeyStatus(
+    id: string,
+    status: Exclude<RecoveryKeyStatus, "AVAILABLE">,
+  ): Promise<boolean>;
   countAvailableKeys(): Promise<number>;
   listAllKeys(): Promise<RecoveryKeyRecord[]>;
   /** Run a flow atomically (all-or-nothing). The callback receives a tx-scoped

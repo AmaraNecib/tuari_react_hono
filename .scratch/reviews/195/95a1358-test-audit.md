@@ -1,0 +1,56 @@
+# Test Audit — Issue #195 RecoveryKeyPort (High-assurance)
+
+- **Base SHA:** 80d4926f029c3facee7dd17eb28da174c6e01f3b
+- **Head SHA:** 95a1358 (final for this step)
+- **Date:** 2026-08-08
+- **Run by:** feature-implement orchestrator (test-audit skill)
+
+## Process
+
+Three parallel sub-agents over the test files + source (edge case hunter,
+coverage analyst, quality reviewer). All three completed. The hunter
+**empirically validated** its top finding with a throwaway scratch test.
+
+## Findings and dispositions
+
+| # | Finding | Sev | Disposition | Resolution |
+|---|---------|-----|-------------|------------|
+| F-1 | `consumeKey`/`revokeKey` writes could join an open `generateKeys` transaction (FIFO lock only covered `withTransaction`) and be silently rolled back by its failure — a consumed key becomes AVAILABLE again (VALIDATED by the hunter). | 🔴 | **FIXED** | All public port methods now run through the FIFO lock; `withTransaction` hands its callback an unlocked tx-scoped view (AccountRepository pattern). A write can never execute while a transaction is open, so it can never be rolled back by another flow's failure. |
+| F-2 | Nested `withTransaction` hung silently (deadlock on the lock tail); the join branch was unreachable/untested. | 🟠 | **FIXED** | tx-scoped view's `withTransaction` throws "not reentrant" — misuse fails loudly. Test added. |
+| F-3 | Concurrent consume-vs-revoke of the same key untested (cross-status race the guarded CAS protects). | 🟠 | **FIXED** | Test added: exactly one wins, key leaves AVAILABLE. |
+| F-4 | Rollback path + lock release after failure untested. | 🟠 | **FIXED** | New adapter test file: `withTransaction` throws → partial writes rolled back, `listAllKeys` empty, next flow runs (lock released). |
+| F-5 | Pool boundary 4→1 untested. | 🟡 | **FIXED** | Test added (`generates exactly 1 key when the pool has 4 available`). |
+| F-6 | Full-pool `generateKeys` return value never asserted. | 🟡 | **FIXED** | Assert `returns [] at full pool`. |
+| F-7 | Revoked-key consume, empty input, case-sensitivity unpinned. | 🟡 | **FIXED** | Tests added: consume revoked key → false; empty key → false; uppercase variant → false (hash is exact). |
+| F-8 | `consumedAt`/`revokedAt` stamping never asserted at DB level. | 🟡 | **FIXED** | Test queries `recovery_key` rows directly: consume stamps only `consumed_at`; revoke stamps only `revoked_at`; never both. |
+| F-9 | e2e "password change" test is a no-op (comment only). | 🟡 | DEFERRED | Pre-existing test; renaming/rekey simulation is out of scope for this refactor. Noted in PR. |
+| F-10 | Concurrent generate test loose (`≤5`, 2 callers). | 🟡 | **FIXED** | 3 concurrent callers, exact `toBe(5)` (deterministic under FIFO lock: 3+2+0). |
+| F-11 | No fake-port tests; adapter failure modes not directly tested. | 🟡 | PARTIAL | Adapter now tested directly (new `sqlite-recovery-key.port.test.ts`: guarded CAS, rollback, lock release, reentrancy, unknown-hash lookup). Fake-port service tests deferred — service is fully covered via the real adapter. |
+| Q-1 | `createTestEnv` duplicated across two files with drift (stale "e2e-encryption-test-" tmpdir prefix, dead `rawDb`/`dbPath` returns). | note | **FIXED** | Extracted shared `test-helpers/recovery-key-env.ts`; both test files use it; `rawDb`/`dbPath` now used by the timestamp test. |
+| Q-2 | Masked-prefix e2e assertion weak. | note | **FIXED** | Assert the stored prefix set equals the generated keys' first-4-char set. |
+| Q-3 | e2e "survive simulated password change" misnomer (see F-9). | note | DEFERRED | Same as F-9. |
+| C-1 | `withTransaction` ROLLBACK branch zero coverage (coverage analyst). | medium | **FIXED** | Covered by the new adapter rollback test (F-4). |
+| C-2 | No direct adapter tests. | medium | **FIXED** | New adapter test file (F-4, F-11). |
+| C-3 | `system.ts` async mutation handlers not directly tested (mutationAudit sync try/catch). | info | DISMISSED | Matches the pre-existing pattern of every async service (finance/inventory); rejections propagate to ORPC. Verified in debate. |
+
+## Verdict
+
+- No blockers. The refactor's core invariants are now pinned by deterministic
+  tests that fail against the unguarded port (consume-concurrency,
+  generate-concurrency) and against a broken transaction/rollback
+  implementation (adapter tests).
+- The new concurrency tests are **deterministic** (single synchronous
+  connection + FIFO lock ⇒ outcome invariant under any scheduling; which
+  caller wins may vary, assertions only depend on the invariant). Verified
+  with 5× stress re-runs by the coverage analyst.
+- Grade (quality reviewer): **B** — held back by duplicated setup (now fixed)
+  and the mislabeled e2e test (deferred, pre-existing).
+
+## Verification (post-fix, run by orchestrator)
+
+- `pnpm --filter @tuari/contracts build` ✓
+- `pnpm typecheck` ✓ (fresh run in apps/api)
+- `pnpm lint` ✓
+- `pnpm --filter @tuari/api test` — 48 files, 613 tests passed
+- `pnpm --filter @tuari/api build` (dts, TS4058 check) ✓
+- `pnpm --filter @tuari/web test` — 341 tests passed
