@@ -24,7 +24,7 @@ function createTestEnv() {
     rawDb.exec(stmt)
   }
   const db = drizzle(rawDb, { schema })
-  const service = new RecoveryKeyService(new SqliteRecoveryKeyPort(db))
+  const service = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, rawDb))
   return {
     service,
     teardown: () => {
@@ -72,6 +72,20 @@ describe("RecoveryKeyService", () => {
       const keyStrings = keys.map((k) => k.key)
       expect(new Set(keyStrings).size).toBe(keyStrings.length)
     })
+
+    it("concurrent generate calls cannot overshoot the pool", async () => {
+      const results = await Promise.allSettled([
+        env.service.generateKeys(),
+        env.service.generateKeys(),
+      ])
+      // Both calls succeed (the second joins the first's transaction); the
+      // pool must never exceed MAX_KEY_POOL regardless of interleaving.
+      for (const r of results) {
+        expect(r.status).toBe("fulfilled")
+      }
+      const status = await env.service.getPoolStatus()
+      expect(status.availableCount).toBeLessThanOrEqual(5)
+    })
   })
 
   describe("consumeKey", () => {
@@ -95,6 +109,20 @@ describe("RecoveryKeyService", () => {
       const keys = await env.service.generateKeys()
       expect(await env.service.consumeKey(keys[0]!.key)).toBe(true)
       expect(await env.service.consumeKey(keys[0]!.key)).toBe(false)
+    })
+
+    it("consuming the same key concurrently succeeds only once", async () => {
+      const keys = await env.service.generateKeys()
+      const plainKey = keys[0]!.key
+      const results = await Promise.all([
+        env.service.consumeKey(plainKey),
+        env.service.consumeKey(plainKey),
+      ])
+      expect(results.filter(Boolean)).toHaveLength(1)
+      const status = await env.service.getPoolStatus()
+      const consumed = status.maskedKeys.find((k) => k.status === "CONSUMED")
+      expect(consumed).toBeTruthy()
+      expect(status.availableCount).toBe(2)
     })
   })
 

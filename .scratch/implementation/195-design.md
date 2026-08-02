@@ -46,11 +46,20 @@ export interface RecoveryKeyInsert {
 export interface RecoveryKeyPort {
   insertKey(input: RecoveryKeyInsert): Promise<void>;
   findKeyByHash(hash: string): Promise<RecoveryKeyRecord | null>;
-  updateKeyStatus(id: string, status: "CONSUMED" | "REVOKED"): Promise<void>;
+  /** Flip a key to CONSUMED/REVOKED. Returns false if it was no longer AVAILABLE. */
+  updateKeyStatus(id: string, status: "CONSUMED" | "REVOKED"): Promise<boolean>;
   countAvailableKeys(): Promise<number>;
   listAllKeys(): Promise<RecoveryKeyRecord[]>;
+  /** Run a flow atomically (all-or-nothing). Not reentrant. */
+  withTransaction<T>(run: () => Promise<T>): Promise<T>;
 }
 ```
+
+> **Deviations from the issue sketch (debate-driven, see below):**
+> `updateKeyStatus` returns `Promise<boolean>` instead of `Promise<void>`
+> (guarded check-and-set), and `withTransaction` was added. Both are required
+> to preserve the old synchronous code's security invariants once the port
+> introduces `await` yield points (see Risks #2).
 
 - Port methods are async (per issue spec; matches the codebase's other module
   boundaries: `InvoiceDebtPort`, `AccountRepository`, `PaymentRepository`).
@@ -138,12 +147,25 @@ would duplicate coverage (noted for test-audit).
    carries no timestamp, so the adapter stamps `consumedAt`/`revokedAt` itself
    with `createAlgeriaTimestamp()` — same value/format as today. No assertion
    depends on these values; low risk.
-2. **Lost transaction atomicity.** The port has no `withTransaction`; the old
-   `raw.transaction()` around multi-key generation is gone. Each insert commits
-   independently. Failure mid-loop leaves a partial pool (plaintext never leaks;
-   hashes are 128-bit random — collision ~0). `consumeKey`/`revokeKey` already
-   had a no-op second guarded update under concurrency, so the port version's
-   observable behavior is equivalent. Accepted per issue's small interface.
+2. **Async port reintroduces concurrency races — fixed with atomic primitives.
+   (Debate blocker #1/#3.)** The old service was fully synchronous: the
+   event loop could never interleave two calls, so `consumeKey`'s
+   read-then-guarded-update and `generateKeys`' count-then-inserts were
+   implicitly serialized. The async port splits these across `await` points:
+   - `consumeKey`/`revokeKey`: two concurrent consumers could both read
+     AVAILABLE and both update → key consumed twice (one-time-use broken).
+     **Fix:** `updateKeyStatus` is a guarded check-and-set (`WHERE id = ? AND
+     status = 'AVAILABLE'`) returning rows-affected; the loser's update is a
+     0-row no-op → exactly one caller wins, and a stale revoke/consume can
+     never produce a record with both `consumedAt` and `revokedAt` set.
+   - `generateKeys`: two concurrent calls could both count 0 and insert 3 →
+     6 keys (max-pool-5 violated), and a mid-loop failure left a partial pool.
+     **Fix:** `withTransaction` on the port wraps count+inserts
+     (BEGIN IMMEDIATE/COMMIT/ROLLBACK — the repo's established better-sqlite3
+     async pattern, see bootstrap.service.ts) with a FIFO mutex so flows run
+     strictly one-at-a-time, reproducing the old sequential semantics
+     (second caller sees the first's committed inserts → replenishes to cap).
+     Partial failures roll back; no orphaned rows.
 3. **`revokeKey` finds by id via `listAllKeys()`** (the port has no
    `findKeyById`). Pool is tiny (≤5 available + history); negligible cost.
 4. **dts build (TS4058):** `RecoveryKeyPort`/`RecoveryKeyRecord` are local
@@ -153,7 +175,20 @@ would duplicate coverage (noted for test-audit).
    alone does not catch TS4058).
 5. **Async conversion:** `create-app.test.ts` mocks and the three mutation
    handlers must await; if missed, tests fail loudly (serialized `{}`), not
-   silently.
+   silently. `mutationAudit`'s sync try/catch only guards sync throws — this
+   matches the pre-existing pattern for every async service (finance,
+   inventory); rejections propagate to ORPC as before.
+6. **Entropy comment corrected:** the key is 18 hex chars = 72 bits, not 128
+   (was mis-documented in the old code); `randomBytes(16)` sliced — extra
+   bytes discarded. Comment now accurate; generation logic unchanged.
+
+## New regression tests (debate-driven)
+
+- Concurrent `consumeKey` of the same key → exactly one success.
+- Concurrent `generateKeys` → pool never exceeds 5.
+
+Both fail against the un-guarded port and pass with the guarded update +
+serialized `withTransaction`.
 
 ## Acceptance mapping
 

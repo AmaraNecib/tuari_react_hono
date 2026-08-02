@@ -25,7 +25,7 @@ function createTestEnv() {
     rawDb.exec(stmt)
   }
   const db = drizzle(rawDb, { schema })
-  const service = new RecoveryKeyService(new SqliteRecoveryKeyPort(db))
+  const service = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, rawDb))
   return {
     service,
     rawDb,

@@ -121,7 +121,7 @@ export async function createAppDependencies(
   const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
   const authBootstrapService = new AuthBootstrapService(db, sharedDatabase, auth, env.bootstrapSetupKey);
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
-  const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db));
+  const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase));
 
   // Issue #10 — Slice 3 RBAC. The role module is a small, deep module
   // that wraps a Drizzle-backed RoleRepository. The repository is kept

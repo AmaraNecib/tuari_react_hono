@@ -54,9 +54,13 @@ export interface RecoveryKeyPoolStatus {
   maskedKeys: Array<{ id: string; prefix: string; status: RecoveryKeyStatus }>;
 }
 
-/** Generate a recovery key string in PREFIX-XXXX-XXXX-XXXX format with 128-bit entropy. */
+/**
+ * Generate a recovery key string in XXXXXX-XXXXXX-XXXXXX format.
+ * 3 segments of 6 hex chars = 18 hex chars = 72 bits of entropy
+ * (randomBytes(16) is sliced; the extra bytes are discarded).
+ */
 function generateRecoveryKeyString(): string {
-  // 16 bytes = 32 hex chars → 3 segments of 6 hex chars (128 bits of entropy)
+  // 18 hex chars = 72 bits of entropy
   const bytes = randomBytes(16);
   const hex = bytes.toString("hex");
   const segments: string[] = [];
@@ -85,35 +89,39 @@ export class RecoveryKeyService {
    * Can replenish up to MAX_KEY_POOL total available keys.
    *
    * Returns plain-text keys (shown once, then masked in the database).
+   * Count + inserts run inside a single transaction so concurrent calls
+   * cannot overshoot the pool and a mid-loop failure leaves no partial pool.
    */
   async generateKeys(): Promise<GeneratedRecoveryKey[]> {
-    const available = await this.port.countAvailableKeys();
-    const toGenerate = Math.min(INITIAL_KEY_COUNT, MAX_KEY_POOL - available);
-
-    if (toGenerate <= 0) {
-      return [];
-    }
-
     const keys: GeneratedRecoveryKey[] = [];
     const timestamp = createAlgeriaTimestamp();
 
-    for (let i = 0; i < toGenerate; i++) {
-      const plainKey = generateRecoveryKeyString();
-      const prefix = plainKey.slice(0, KEY_PREFIX_LENGTH);
-      const keyHash = hashRecoveryKey(plainKey);
+    await this.port.withTransaction(async () => {
+      const available = await this.port.countAvailableKeys();
+      const toGenerate = Math.min(INITIAL_KEY_COUNT, MAX_KEY_POOL - available);
 
-      await this.port.insertKey({
-        id: crypto.randomUUID(),
-        prefix,
-        keyHash,
-        status: "AVAILABLE",
-        consumedAt: null,
-        revokedAt: null,
-        createdAt: timestamp,
-      });
+      if (toGenerate <= 0) {
+        return;
+      }
 
-      keys.push({ key: plainKey, prefix, createdAt: timestamp });
-    }
+      for (let i = 0; i < toGenerate; i++) {
+        const plainKey = generateRecoveryKeyString();
+        const prefix = plainKey.slice(0, KEY_PREFIX_LENGTH);
+        const keyHash = hashRecoveryKey(plainKey);
+
+        await this.port.insertKey({
+          id: crypto.randomUUID(),
+          prefix,
+          keyHash,
+          status: "AVAILABLE",
+          consumedAt: null,
+          revokedAt: null,
+          createdAt: timestamp,
+        });
+
+        keys.push({ key: plainKey, prefix, createdAt: timestamp });
+      }
+    });
 
     return keys;
   }
@@ -130,8 +138,7 @@ export class RecoveryKeyService {
       return false;
     }
 
-    await this.port.updateKeyStatus(record.id, "CONSUMED");
-    return true;
+    return this.port.updateKeyStatus(record.id, "CONSUMED");
   }
 
   /**
@@ -145,8 +152,7 @@ export class RecoveryKeyService {
       return false;
     }
 
-    await this.port.updateKeyStatus(record.id, "REVOKED");
-    return true;
+    return this.port.updateKeyStatus(record.id, "REVOKED");
   }
 
   /**
