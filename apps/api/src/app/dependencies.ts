@@ -23,7 +23,7 @@ import { InvoiceRepository } from "../modules/invoice/adapters/invoice.repositor
 import { createPaymentModule } from "../modules/payment/payment.module";
 import type { PaymentModule } from "../modules/payment/payment-module.interface";
 import { PaymentRepositoryImpl } from "../modules/payment/adapters/payment.repository";
-import { SqlitePermissionResolver } from "../modules/rbac/permission-resolver";
+import { SqlitePermissionResolver } from "../modules/rbac/adapters/sqlite-permission-resolver";
 import { RoleModule } from "../modules/rbac/role.module";
 import { SqliteRoleRepository as SqliteRbacRoleRepository } from "../modules/rbac/sqlite-role.repository";
 import { SessionService } from "../modules/session/session.service";

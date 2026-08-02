@@ -1,15 +1,15 @@
 /**
- * SqlitePermissionResolver — Drizzle-backed implementation.
+ * SqlitePermissionResolver — Drizzle-backed PermissionResolverPort adapter.
  *
  * Resolves user permissions by joining role_permission → employee → user.
  * Bootstrap owners get all permissions regardless of employee record.
  */
 import { eq } from "drizzle-orm";
-import type { BetterSqliteDatabase } from "../../types/sqlite";
-import * as schema from "../../schema";
-import { createDrizzleFromSqlite, type AppDrizzle } from "../../infrastructure/database/drizzle";
-import type { Permission } from "./permissions";
-import { ALL_PERMISSIONS } from "./permissions";
+import type { BetterSqliteDatabase } from "../../../types/sqlite";
+import * as schema from "../../../schema";
+import { createDrizzleFromSqlite, type AppDrizzle } from "../../../infrastructure/database/drizzle";
+import type { Permission } from "../permissions";
+import { ALL_PERMISSIONS } from "../permissions";
 
 type AuthBootstrapGateway = {
   isBootstrapOwner: (userId: string) => Promise<boolean>;
