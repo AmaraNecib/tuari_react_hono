@@ -11,3 +11,8 @@ zod v4 exposes `issues`, not `errors`, so with a real Zod schema the
 `issues` (zod v4), and the reader is `(zodError.issues ?? zodError.errors ?? []).map(...)`.
 Test double still resolves via `errors`; validator tests (8) pass. Greptile
 re-review: 5/5, no files needing attention.
+
+
+## Post-evidence delta (667b2a4 - wisdom capture)
+
+Final commit captures the TS4058 lesson in .agents/wisdom/testing.md (docs-only; no code change).
