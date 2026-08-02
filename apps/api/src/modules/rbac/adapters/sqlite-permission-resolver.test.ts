@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { SqlitePermissionResolver } from "./permission-resolver";
-import type { Permission } from "../rbac/permissions";
-import { ALL_PERMISSIONS } from "./permissions";
-import type { AppDrizzle } from "../../infrastructure/database/drizzle";
+import { SqlitePermissionResolver } from "./sqlite-permission-resolver";
+import { ALL_PERMISSIONS } from "../permissions";
+import type { AppDrizzle } from "../../../infrastructure/database/drizzle";
 
 function createMockDb() {
   return {
