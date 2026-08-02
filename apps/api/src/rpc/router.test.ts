@@ -752,6 +752,14 @@ describe("RPC router", () => {
       client.revokeRecoveryKey({ keyId: "key-1" }),
     ).resolves.toEqual({ success: true });
     expect(revokeKey).toHaveBeenCalledWith("key-1");
+
+    // #221: the wire contract trims copied keys before the handler sees them,
+    // so a key pasted with accidental surrounding whitespace still matches.
+    await expect(
+      client.consumeRecoveryKey({ key: "  a1b2-c3d4-e5f6  " }),
+    ).resolves.toEqual({ success: true });
+    expect(consumeKey).toHaveBeenCalledWith("a1b2-c3d4-e5f6");
+    expect(consumeKey).toHaveBeenCalledTimes(2);
   });
 
   it("rejects invalid recovery key input at the wire contract", async () => {
@@ -765,6 +773,14 @@ describe("RPC router", () => {
       code: "BAD_REQUEST",
     });
     await expect(client.revokeRecoveryKey({ keyId: "" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+
+    // #221: whitespace-only keys are rejected at the wire gate after trimming.
+    await expect(client.consumeRecoveryKey({ key: "   " })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(client.revokeRecoveryKey({ keyId: "   " })).rejects.toMatchObject({
       code: "BAD_REQUEST",
     });
   });

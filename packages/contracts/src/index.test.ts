@@ -3,6 +3,7 @@ import {
   appErrorSchema,
   authSetupStatusSchema,
   changeDbKeyInputSchema,
+  changeDbKeyOutputSchema,
   consumeRecoveryKeyInputSchema,
   debtAccountCreateInputSchema,
   debtAccountSchema,
@@ -761,6 +762,17 @@ describe("contracts", () => {
       expect(() => consumeRecoveryKeyInputSchema.parse({ key: "" })).toThrow();
       expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "" })).toThrow();
 
+      // #221: copied keys with accidental leading/trailing whitespace are
+      // trimmed before validation, so whitespace-only inputs are rejected.
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "  a1b2-c3d4-e5f6  " })).toEqual({
+        key: "a1b2-c3d4-e5f6",
+      });
+      expect(revokeRecoveryKeyInputSchema.parse({ keyId: "  key-1  " })).toEqual({
+        keyId: "key-1",
+      });
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "   " })).toThrow();
+      expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "   " })).toThrow();
+
       // Missing required fields and non-string values are rejected.
       expect(() => consumeRecoveryKeyInputSchema.parse({})).toThrow();
       expect(() => revokeRecoveryKeyInputSchema.parse({})).toThrow();
@@ -780,10 +792,33 @@ describe("contracts", () => {
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "short" }),
       ).toThrow();
 
-      // Pin the newKey min(8) boundary: exactly 8 passes, 7 fails.
+      // #221: both key fields are trimmed — copied keys with trailing
+      // whitespace normalize, and whitespace-only values cannot become a
+      // PRAGMA key / rekey value.
+      expect(
+        changeDbKeyInputSchema.parse({
+          currentKey: "  old-key  ",
+          newKey: "  new-key-123  ",
+        }),
+      ).toEqual({ currentKey: "old-key", newKey: "new-key-123" });
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "   ", newKey: "new-key-123" }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "        " }),
+      ).toThrow();
+
+      // Pin the newKey min(8) boundary on the TRIMMED value: 8 after trim
+      // passes, 7 fails.
+      expect(
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: " 12345678 " }),
+      ).toEqual({ currentKey: "old", newKey: "12345678" });
       expect(
         changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "12345678" }),
       ).toEqual({ currentKey: "old", newKey: "12345678" });
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "  1234567  " }),
+      ).toThrow();
       expect(() =>
         changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "1234567" }),
       ).toThrow();
@@ -793,6 +828,20 @@ describe("contracts", () => {
       expect(() =>
         changeDbKeyInputSchema.parse({ currentKey: "old", newKey: 12345678 }),
       ).toThrow();
+    });
+
+    it("discriminates changeDbKey output: success carries no error, failure requires one", () => {
+      // The two valid pairs the handler can emit.
+      expect(changeDbKeyOutputSchema.parse({ success: true })).toEqual({ success: true });
+      expect(
+        changeDbKeyOutputSchema.parse({ success: false, error: "Current encryption key is invalid" }),
+      ).toEqual({ success: false, error: "Current encryption key is invalid" });
+
+      // #221: logically invalid combinations are rejected — a failure without
+      // an error message, and a success that carries an error.
+      expect(() => changeDbKeyOutputSchema.parse({ success: false })).toThrow();
+      expect(() => changeDbKeyOutputSchema.parse({ success: true, error: "boom" })).toThrow();
+      expect(() => changeDbKeyOutputSchema.parse({ success: "maybe" })).toThrow();
     });
 
     it("validates the report filter input (type + ISO date range)", () => {
