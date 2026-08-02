@@ -56,12 +56,11 @@ export interface RecoveryKeyPoolStatus {
 
 /**
  * Generate a recovery key string in XXXXXX-XXXXXX-XXXXXX format.
- * 3 segments of 6 hex chars = 18 hex chars = 72 bits of entropy
- * (randomBytes(16) is sliced; the extra bytes are discarded).
+ * 3 segments of 6 hex chars = 18 hex chars = 72 bits of entropy.
  */
 function generateRecoveryKeyString(): string {
-  // 18 hex chars = 72 bits of entropy
-  const bytes = randomBytes(16);
+  // 9 bytes = 18 hex chars = 72 bits of entropy (no unused bytes)
+  const bytes = randomBytes(9);
   const hex = bytes.toString("hex");
   const segments: string[] = [];
   for (let i = 0; i < KEY_SEGMENTS; i++) {

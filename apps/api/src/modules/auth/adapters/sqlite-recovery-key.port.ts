@@ -67,7 +67,10 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
     this.lockTail = new Promise<void>((resolve) => {
       release = resolve;
     });
-    return previous.then(operation, operation).finally(release);
+    // `previous` never rejects (only ever resolved by release), so a plain
+    // `.then(operation)` suffices: on a future unexpected rejection the op
+    // is skipped, the error propagates, and `finally` still releases the lock.
+    return previous.then(operation).finally(release);
   }
 
   // -- Locked public methods (used outside a transaction) --------------------
