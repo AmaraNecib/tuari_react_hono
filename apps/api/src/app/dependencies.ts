@@ -9,6 +9,7 @@ import { createCompanyRepository } from "../config/database";
 import { DrizzleAccountRepository } from "../modules/account/account.repository";
 import { AccountService } from "../modules/account/account.service";
 import { AuthBootstrapService } from "../modules/auth/bootstrap.service";
+import { SqliteBootstrapPort } from "../modules/auth/adapters/sqlite-bootstrap.port";
 import { CompanyService } from "../modules/company/company.service";
 import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
@@ -118,7 +119,11 @@ export async function createAppDependencies(
   const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
   const paymentRepository = new PaymentRepositoryImpl(sharedDatabase);
   const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
-  const authBootstrapService = new AuthBootstrapService(db, sharedDatabase, auth, env.bootstrapSetupKey);
+  const authBootstrapService = new AuthBootstrapService(
+    new SqliteBootstrapPort(db, sharedDatabase),
+    auth,
+    env.bootstrapSetupKey,
+  );
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
   const recoveryKeyService = new RecoveryKeyService(db, sharedDatabase);
 

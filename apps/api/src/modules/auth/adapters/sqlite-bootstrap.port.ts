@@ -1,0 +1,126 @@
+import { randomUUID } from "node:crypto";
+
+import { eq, count, sql } from "drizzle-orm";
+
+import type { AppDrizzle } from "../../../infrastructure/database/drizzle";
+import { user, account, appBootstrapState } from "../../../schema";
+import type { BetterSqliteDatabase } from "../../../types/sqlite";
+import type {
+  BootstrapPort,
+  CreateFirstUserInput,
+  CreateFirstUserResult,
+} from "../bootstrap.types";
+
+/** Check if an error is a SQLite UNIQUE constraint violation. */
+function isUniqueConstraintError(error: unknown) {
+  return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
+}
+
+/**
+ * SQLite implementation of {@link BootstrapPort}.
+ *
+ * Owns every Drizzle/SQLite detail of the bootstrap flow:
+ *   - the raw-SQLite write transaction (Drizzle's `db.transaction()` does not
+ *     support async callbacks with better-sqlite3, so we use `BEGIN IMMEDIATE`
+ *     to acquire the write lock before the conflict check),
+ *   - the conflict / uniqueness-race mapping to `{ status: "conflict" }`,
+ *   - the user / account / bootstrap-state inserts.
+ */
+export class SqliteBootstrapPort implements BootstrapPort {
+  constructor(
+    private readonly db: AppDrizzle,
+    private readonly raw: BetterSqliteDatabase,
+  ) {}
+
+  async createFirstUser(input: CreateFirstUserInput): Promise<CreateFirstUserResult> {
+    try {
+      this.raw.exec("BEGIN IMMEDIATE");
+      try {
+        if (await this.hasConfiguredUsers()) {
+          // Conflict is not an error: commit the (empty) transaction.
+          this.raw.exec("COMMIT");
+          return { status: "conflict" };
+        }
+
+        const timestamp = new Date().toISOString();
+        const userId = randomUUID();
+
+        this.db.insert(appBootstrapState).values({
+          singleton: 1,
+          createdAt: timestamp,
+          userId,
+        }).run();
+
+        this.db.insert(user).values({
+          id: userId,
+          name: input.name,
+          phoneNumber: input.phone,
+          phoneNumberVerified: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }).run();
+
+        this.db.insert(account).values({
+          id: randomUUID(),
+          accountId: userId,
+          providerId: "credential",
+          userId,
+          password: input.passwordHash,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }).run();
+
+        this.raw.exec("COMMIT");
+        return {
+          status: "created",
+          user: { id: userId, name: input.name, phone: input.phone },
+        };
+      } catch (err) {
+        this.raw.exec("ROLLBACK");
+        throw err;
+      }
+    } catch (error) {
+      // A concurrent bootstrap (or any pre-existing conflicting row) surfaces
+      // as a UNIQUE violation on the singleton/phone keys — map it to the same
+      // conflict outcome as the in-transaction check.
+      if (isUniqueConstraintError(error)) {
+        return { status: "conflict" };
+      }
+      throw error;
+    }
+  }
+
+  async hasConfiguredUsers(): Promise<boolean> {
+    const userCount = await this.db
+      .select({ count: count() })
+      .from(user)
+      .where(sql`${user.phoneNumber} IS NOT NULL AND TRIM(${user.phoneNumber}) != ''`);
+
+    const stateCount = await this.db
+      .select({ count: count() })
+      .from(appBootstrapState)
+      .where(eq(appBootstrapState.singleton, 1));
+
+    return (userCount[0]?.count ?? 0) > 0 || (stateCount[0]?.count ?? 0) > 0;
+  }
+
+  async isBootstrapOwner(userId: string): Promise<boolean> {
+    const stateRows = await this.db
+      .select({ userId: appBootstrapState.userId })
+      .from(appBootstrapState)
+      .where(eq(appBootstrapState.singleton, 1))
+      .limit(1);
+
+    if (stateRows[0]?.userId) {
+      return stateRows[0].userId === userId;
+    }
+
+    const firstUser = await this.db
+      .select({ id: user.id })
+      .from(user)
+      .orderBy(user.createdAt)
+      .limit(1);
+
+    return firstUser[0]?.id === userId;
+  }
+}

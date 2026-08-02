@@ -1,50 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { AuthBootstrapService } from "./bootstrap.service"
+import type { BootstrapPort, CreateFirstUserResult } from "./bootstrap.types"
 
-/** Create a chainable mock for Drizzle query builder methods. */
-function createChainable(result?: unknown) {
-  const data = result ?? []
-  const chain = {
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockReturnThis(),
-    orderBy: vi.fn().mockReturnThis(),
-    limit: vi.fn().mockResolvedValue(data),
-    then: vi.fn((resolve: (value: unknown) => void) => resolve(data)),
+/** Create a mock BootstrapPort — the persistence seam the service now depends on. */
+function createPortMock() {
+  return {
+    createFirstUser: vi.fn(),
+    hasConfiguredUsers: vi.fn(),
+    isBootstrapOwner: vi.fn(),
   }
-  return chain
-}
-
-/** Create a mock Drizzle database for testing. */
-function createDrizzleMock() {
-  const db = {
-    select: vi.fn(() => createChainable()),
-    insert: vi.fn(() => ({
-      values: vi.fn().mockReturnValue({ run: vi.fn().mockReturnValue(undefined) }),
-    })),
-    update: vi.fn(() => ({
-      set: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue(undefined),
-    })),
-    transaction: vi.fn(async (callback: (tx: typeof db) => Promise<unknown>) => {
-      const tx = createDrizzleMock()
-      return callback(tx)
-    }),
-    _setSelectResults: (...results: unknown[][]) => {
-      let callIdx = 0
-      db.select = vi.fn(() => {
-        const chain = createChainable(results[callIdx] ?? [])
-        callIdx++
-        return chain
-      }) as typeof db.select
-    },
-  }
-
-  return db
 }
 
 describe("AuthBootstrapService", () => {
-  let db: ReturnType<typeof createDrizzleMock>
+  let port: ReturnType<typeof createPortMock>
   const hash = vi.fn().mockResolvedValue("hashed-password")
   const authInstance = {
     $context: Promise.resolve({
@@ -53,30 +22,34 @@ describe("AuthBootstrapService", () => {
   }
 
   beforeEach(() => {
-    db = createDrizzleMock()
+    port = createPortMock()
     hash.mockClear()
   })
 
   it("reports whether configured phone users already exist", async () => {
-    const service = new AuthBootstrapService(db as never, { exec: vi.fn() } as never, authInstance as never, null)
+    const service = new AuthBootstrapService(port, authInstance as never, null)
 
     // No users initially
-    db._setSelectResults([{ count: 0 }], [{ count: 0 }])
+    port.hasConfiguredUsers.mockResolvedValue(false)
     const result1 = await service.getSetupStatus()
     expect(result1).toEqual({ hasUsers: false, requiresSetupKey: false })
 
     // After setup
-    db._setSelectResults([{ count: 1 }], [{ count: 0 }])
+    port.hasConfiguredUsers.mockResolvedValue(true)
     const result2 = await service.getSetupStatus()
     expect(result2).toEqual({ hasUsers: true, requiresSetupKey: false })
   })
 
   it("creates the first auth user with phone credentials inside a transaction", async () => {
-    const execMock = vi.fn()
-    const service = new AuthBootstrapService(db as never, { exec: execMock } as never, authInstance as never, null)
+    const service = new AuthBootstrapService(port, authInstance as never, null)
 
-    // hasConfiguredUsersTx returns 0 (no users)
-    db._setSelectResults([{ count: 0 }])
+    // The transaction itself lives in the adapter (covered against real
+    // SQLite in sqlite-bootstrap.port.test.ts); the service hands the port
+    // the hashed password and the normalized name.
+    port.createFirstUser.mockResolvedValue({
+      status: "created",
+      user: { id: "user-1", name: "المدير الأول", phone: "0612345678" },
+    } satisfies CreateFirstUserResult)
 
     const result = await service.bootstrapFirstUser({
       name: "المدير الأول",
@@ -89,18 +62,18 @@ describe("AuthBootstrapService", () => {
       item: { name: "المدير الأول", phone: "0612345678" },
     })
 
-    // Verify transaction was used
-    expect(execMock).toHaveBeenCalledWith("BEGIN IMMEDIATE")
-    expect(execMock).toHaveBeenCalledWith("COMMIT")
     expect(hash).toHaveBeenCalledWith("password123")
+    expect(port.createFirstUser).toHaveBeenCalledWith({
+      name: "المدير الأول",
+      phone: "0612345678",
+      passwordHash: "hashed-password",
+    })
   })
 
   it("refuses bootstrap after the system is already configured", async () => {
-    const execMock = vi.fn()
-    const service = new AuthBootstrapService(db as never, { exec: execMock } as never, authInstance as never, null)
+    const service = new AuthBootstrapService(port, authInstance as never, null)
 
-    // hasConfiguredUsersTx returns count > 0 (users exist)
-    db._setSelectResults([{ count: 1 }])
+    port.createFirstUser.mockResolvedValue({ status: "conflict" })
 
     const result = await service.bootstrapFirstUser({
       name: "المدير الأول",
@@ -109,27 +82,15 @@ describe("AuthBootstrapService", () => {
     })
 
     expect(result).toMatchObject({ success: false })
-
-    // Verify transaction was used and committed (conflict is not an error)
-    expect(execMock).toHaveBeenCalledWith("BEGIN IMMEDIATE")
-    expect(execMock).toHaveBeenCalledWith("COMMIT")
   })
 
   it("returns a conflict when the bootstrap lock is already taken concurrently", async () => {
-    const execMock = vi.fn()
-    const service = new AuthBootstrapService(db as never, { exec: execMock } as never, authInstance as never, null)
+    const service = new AuthBootstrapService(port, authInstance as never, null)
 
-    // hasConfiguredUsersTx returns 0 (no users) so we proceed to insert
-    db._setSelectResults([{ count: 0 }])
-
-    // Insert fails with UNIQUE constraint (race condition)
-    db.insert = vi.fn(() => ({
-      values: vi.fn().mockReturnValue({
-        run: vi.fn().mockImplementation(() => {
-          throw new Error("UNIQUE constraint failed")
-        }),
-      }),
-    })) as typeof db.insert
+    // A concurrent race surfaces as a UNIQUE violation inside the adapter,
+    // which normalizes it to the same conflict outcome (covered against real
+    // SQLite in sqlite-bootstrap.port.test.ts).
+    port.createFirstUser.mockResolvedValue({ status: "conflict" })
 
     const result = await service.bootstrapFirstUser({
       name: "المدير الأول",
@@ -138,14 +99,10 @@ describe("AuthBootstrapService", () => {
     })
 
     expect(result).toMatchObject({ success: false })
-
-    // Verify transaction was rolled back due to error
-    expect(execMock).toHaveBeenCalledWith("BEGIN IMMEDIATE")
-    expect(execMock).toHaveBeenCalledWith("ROLLBACK")
   })
 
   it("requires the optional bootstrap setup key when configured", async () => {
-    const service = new AuthBootstrapService(db as never, { exec: vi.fn() } as never, authInstance as never, "setup-secret")
+    const service = new AuthBootstrapService(port, authInstance as never, "setup-secret")
 
     const result = await service.bootstrapFirstUser({
       name: "المدير الأول",
@@ -160,5 +117,8 @@ describe("AuthBootstrapService", () => {
         fieldErrors: [{ field: "setupSecret" }],
       },
     })
+
+    // The port must not be reached when the setup key is missing.
+    expect(port.createFirstUser).not.toHaveBeenCalled()
   })
 })
