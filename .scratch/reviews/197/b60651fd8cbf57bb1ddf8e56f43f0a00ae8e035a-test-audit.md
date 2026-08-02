@@ -57,3 +57,12 @@ in the moved test → **fixed** (removed in cleanup commit, tests still 9/9).
 | Unused `Permission` import in moved test | **Fixed** (removed; 9/9 tests pass) |
 | Edge-case gaps 1–8 (pre-existing contract-pinning holes) | **Deferred** → follow-up issue **#210** (port contract semantics) |
 | No other actionable items | — |
+
+---
+
+## Post-evidence delta (dafc219 → b60651f)
+
+Re-SHA'd to final HEAD `b60651f`. Delta after this audit: commit `b60651f`
+applied the audit's one fix (drop unused `Permission` import from the moved
+adapter test; 9/9 tests still pass) and committed the evidence files. No
+behavior change since `dafc219`.

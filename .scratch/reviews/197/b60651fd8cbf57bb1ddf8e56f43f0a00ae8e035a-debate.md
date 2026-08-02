@@ -41,3 +41,12 @@ Critic (reviewer) + Defender (delegate) ran in parallel against
 - `tsc --noEmit` exit 0
 - rbac + session unit suites: 44/44 pass
 - Full `pnpm test:api` (601 tests) and `pnpm test:web` (341 tests) pass
+
+---
+
+## Post-evidence delta (dafc219 → b60651f)
+
+Re-SHA'd to final HEAD `b60651f`. Delta after this review: commit `b60651f`
+removed the unused `import type { Permission }` from the moved adapter test
+(test-audit finding; no behavior change) and committed the evidence files.
+No reviewable logic changed since `dafc219`.
