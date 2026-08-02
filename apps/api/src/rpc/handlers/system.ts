@@ -50,24 +50,24 @@ export function createSystemHandlers(
     })),
 
     generateRecoveryKeys: os.generateRecoveryKeys.handler(m.mutationAudit(
-      () => {
-        const keys = recoveryKeyService.generateKeys();
+      async () => {
+        const keys = await recoveryKeyService.generateKeys();
         return { keys };
       },
       toFailureResult,
     )),
 
     consumeRecoveryKey: os.consumeRecoveryKey.handler(m.mutationAudit(
-      ({ input }) => {
-        const success = recoveryKeyService.consumeKey((input as ConsumeRecoveryKeyInput).key);
+      async ({ input }) => {
+        const success = await recoveryKeyService.consumeKey((input as ConsumeRecoveryKeyInput).key);
         return { success };
       },
       toFailureResult,
     )),
 
     revokeRecoveryKey: os.revokeRecoveryKey.handler(m.mutationAudit(
-      ({ input }) => {
-        const success = recoveryKeyService.revokeKey((input as RevokeRecoveryKeyInput).keyId);
+      async ({ input }) => {
+        const success = await recoveryKeyService.revokeKey((input as RevokeRecoveryKeyInput).keyId);
         return { success };
       },
       toFailureResult,
