@@ -16,7 +16,10 @@ export interface ValidatorSchema {
  * v4 shape uses `issues` instead of `errors`).
  */
 type ZodValidationError = Error & {
+  /** Zod v3 uses `errors`; the test double also uses this shape. */
   errors?: Array<{ path: Array<string | number>; message: string }>;
+  /** Zod v4 native field; absent in the test double. */
+  issues?: Array<{ path: Array<string | number>; message: string }>;
 };
 
 /**
@@ -79,10 +82,10 @@ export class InputValidator {
       // Handle Zod errors if available
       if (error instanceof Error && error.constructor.name === "ZodError") {
         const zodError = error as ZodValidationError;
-        const fieldErrors = zodError.errors?.map((err) => ({
+        const fieldErrors = (zodError.issues ?? zodError.errors ?? []).map((err) => ({
           field: err.path.join("."),
           message: err.message,
-        })) || [];
+        }));
         return {
           success: false,
           fieldErrors,
