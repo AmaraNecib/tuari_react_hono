@@ -63,7 +63,7 @@ permissions:
 jobs:
   determine-channel:
     name: Determine Channel
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     outputs:
       channel: ${{ steps.channel.outputs.channel }}
       version: ${{ steps.channel.outputs.version }}
@@ -113,13 +113,18 @@ jobs:
 
   generate-metadata:
     name: Generate updates.json
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: [determine-channel]
     steps:
       - uses: actions/checkout@v4
         with:
           clean: false
           persist-credentials: false
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Setup parameters
         id: params

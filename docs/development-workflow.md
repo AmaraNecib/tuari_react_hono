@@ -372,12 +372,14 @@ Environments are configured via the GitHub UI under Settings > Environments.
 | Beta | Dev key (will be replaced with beta key) | Repository (dev only) |
 | Stable | Dev key (will be replaced with production key) | GitHub secret `UPDATE_PRIVATE_KEY` (future) |
 
-### 12.6 Caching
+### 12.6 CI Runners & Caching
 
-On self-hosted runners, tools are pre-installed and caches persist on disk. No explicit CI caching steps are needed:
+CI runs on **GitHub-hosted runners** — `ubuntu-latest` for the CI and release-metadata workflows, `windows-latest` for the release build workflows (`beta.yml`, `nightly.yml`, `release.yml`). No self-hosted runner is used. Tools are provisioned per-run and caches are keyed by `actions/cache`:
 
-- **pnpm store:** Persistent across runs on the self-hosted runner (`~/.local/share/pnpm/store`)
-- **Rust/Cargo:** Registry and build artifacts persist in `~/.cargo/` and `apps/desktop/src-tauri/target/`
+- **pnpm store:** `actions/setup-node` with `cache: pnpm` — keyed on `pnpm-lock.yaml`
+- **Rust/Cargo:** `Swatinem/rust-cache` scoped to `apps/desktop/src-tauri`
+- **Node/pnpm/Rust versions:** pinned per-run (`setup-node` 22, `pnpm/action-setup` from `packageManager`, `dtolnay/rust-toolchain@stable`)
+- **Linux system deps (Tauri):** installed in the `Test Rust Core` CI job via `apt-get` (`libwebkit2gtk-4.1-dev` etc.)
 - **Checkout:** Uses default `clean: true` (actions/checkout) — each run gets a fresh workspace, avoiding stale artifacts from previous runs
 
 ### 12.7 Smoke Testing
