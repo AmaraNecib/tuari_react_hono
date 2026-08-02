@@ -63,3 +63,16 @@ shows a run; if missing, push an empty commit (message must NOT contain
 Turbo cache replays log lines from other worktrees (e.g. `cleanup-dirty-wip`) —
 paths in cached output are not the current worktree. Re-run the affected package's
 command directly when you need certainty it actually ran on your files.
+
+## `gh pr create` defaults the base to `main`, which breaks Greptile (🟠 Major)
+
+On #194, `gh pr create` (no `--base`) targeted the repo's default branch
+(`main`), even though the workflow mandates `develop`. Greptile then compared
+against `main`, saw "539 files found, 500 file limit", and refused to review.
+CI checks were green all along — the diff vs `develop` was only 8 files.
+
+**Always**: pass `--base develop` explicitly to `gh pr create`; if the PR is
+already open with the wrong base, run `gh pr edit <num> --base develop` and
+verify with `gh pr view <num> --json baseRefName` + `gh pr diff <num> --name-only`
+before triggering `@greptile-apps review` — otherwise Greptile reviews the
+wrong diff and hits its file-count ceiling.

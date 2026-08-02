@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
+import { cleanup, configure, fireEvent, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import {
@@ -11,6 +11,11 @@ import {
   resetAllMutations,
 } from "./__test-utils__/workspace-fixtures"
 import type { WorkspaceMocks } from "./__test-utils__/workspace-fixtures"
+
+// Load-sensitive suite: page renders can exceed the default 1s async wait
+// under full-suite parallel load (see issue #219). Raise the default for all
+// findBy*/waitFor calls in this file.
+configure({ asyncUtilTimeout: 5000 })
 
 let mocks: WorkspaceMocks
 

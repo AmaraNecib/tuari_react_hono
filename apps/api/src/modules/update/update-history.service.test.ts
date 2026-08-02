@@ -8,6 +8,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { schemaStatements } from "../../infrastructure/database/schema-definitions";
 import { UpdateHistoryService } from "./update-history.service";
+import { SqliteUpdateHistoryPort } from "./adapters/sqlite-update-history.port";
 
 function createTestEnv() {
   const dbDir = mkdtempSync(join(tmpdir(), "update-history-test-"));
@@ -17,7 +18,7 @@ function createTestEnv() {
   for (const stmt of schemaStatements) {
     rawDb.exec(stmt);
   }
-  const service = new UpdateHistoryService(rawDb);
+  const service = new UpdateHistoryService(new SqliteUpdateHistoryPort(rawDb));
   return {
     service,
     teardown: () => {
