@@ -25,68 +25,84 @@ function isUniqueConstraintError(error: unknown) {
  *     to acquire the write lock before the conflict check),
  *   - the conflict / uniqueness-race mapping to `{ status: "conflict" }`,
  *   - the user / account / bootstrap-state inserts.
+ *
+ * Transaction notes:
+ *   - Atomicity relies on `db` and `raw` sharing ONE connection: the
+ *     `BEGIN IMMEDIATE`/`COMMIT`/`ROLLBACK` statements run on `raw` while the
+ *     inserts run on `db`. Drizzle's better-sqlite3 driver is synchronous
+ *     under the hood, so the `await`s below never yield to another writer;
+ *     a genuinely async operation inside the transaction would break that
+ *     guarantee. The constructor fails fast when the two handles are not the
+ *     same connection, because a mismatched pair would silently break
+ *     atomicity.
+ *   - A concurrent bootstrap in another process contends on the SQLite write
+ *     lock and surfaces as `SQLITE_BUSY` at `BEGIN IMMEDIATE`; that error
+ *     propagates (deliberately, matching prior behavior) rather than being
+ *     mapped to `conflict`, which only covers same-connection races.
  */
 export class SqliteBootstrapPort implements BootstrapPort {
   constructor(
     private readonly db: AppDrizzle,
     private readonly raw: BetterSqliteDatabase,
-  ) {}
+  ) {
+    if (db.$client !== raw) {
+      throw new Error(
+        "SqliteBootstrapPort requires the Drizzle handle and the raw SQLite handle to share one connection.",
+      );
+    }
+  }
 
   async createFirstUser(input: CreateFirstUserInput): Promise<CreateFirstUserResult> {
+    this.raw.exec("BEGIN IMMEDIATE");
     try {
-      this.raw.exec("BEGIN IMMEDIATE");
-      try {
-        if (await this.hasConfiguredUsers()) {
-          // Conflict is not an error: commit the (empty) transaction.
-          this.raw.exec("COMMIT");
-          return { status: "conflict" };
-        }
-
-        const timestamp = new Date().toISOString();
-        const userId = randomUUID();
-
-        this.db.insert(appBootstrapState).values({
-          singleton: 1,
-          createdAt: timestamp,
-          userId,
-        }).run();
-
-        this.db.insert(user).values({
-          id: userId,
-          name: input.name,
-          phoneNumber: input.phone,
-          phoneNumberVerified: 1,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        }).run();
-
-        this.db.insert(account).values({
-          id: randomUUID(),
-          accountId: userId,
-          providerId: "credential",
-          userId,
-          password: input.passwordHash,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        }).run();
-
+      if (await this.hasConfiguredUsers()) {
+        // Conflict is not an error: commit the (empty) transaction.
         this.raw.exec("COMMIT");
-        return {
-          status: "created",
-          user: { id: userId, name: input.name, phone: input.phone },
-        };
-      } catch (err) {
-        this.raw.exec("ROLLBACK");
-        throw err;
+        return { status: "conflict" };
       }
-    } catch (error) {
+
+      const timestamp = new Date().toISOString();
+      const userId = randomUUID();
+
+      this.db.insert(appBootstrapState).values({
+        singleton: 1,
+        createdAt: timestamp,
+        userId,
+      }).run();
+
+      this.db.insert(user).values({
+        id: userId,
+        name: input.name,
+        phoneNumber: input.phone,
+        phoneNumberVerified: 1,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }).run();
+
+      this.db.insert(account).values({
+        id: randomUUID(),
+        accountId: userId,
+        providerId: "credential",
+        userId,
+        password: input.passwordHash,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }).run();
+
+      this.raw.exec("COMMIT");
+      return {
+        status: "created",
+        user: { id: userId, name: input.name, phone: input.phone },
+      };
+    } catch (err) {
+      this.raw.exec("ROLLBACK");
       // A concurrent bootstrap (or any pre-existing conflicting row) surfaces
       // as a UNIQUE violation on the singleton/phone keys — map it to the same
       // conflict outcome as the in-transaction check.
-      if (isUniqueConstraintError(error)) {
+      if (isUniqueConstraintError(err)) {
         return { status: "conflict" };
       }
-      throw error;
+      throw err;
     }
   }
 

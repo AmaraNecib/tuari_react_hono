@@ -42,8 +42,8 @@ export type CreateFirstUserResult =
 /**
  * All database operations the bootstrap service needs.
  *
- * Deep module: the interface is three methods; the implementation hides the
- * transaction, the uniqueness race handling, and the schema.
+ * Three methods that hide the transaction, the uniqueness-race handling, and
+ * the schema behind a single persistence seam.
  */
 export interface BootstrapPort {
   /**
