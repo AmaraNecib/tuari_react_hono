@@ -18,7 +18,11 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("createAppDependencies config injection", { timeout: 20000 }, () => {
+// Cold-start guard (see .agents/wisdom/testing.md): this suite dynamically
+// imports better-auth + the whole dependency graph; under load (e.g. the
+// pre-push hook chain) the cold transform can exceed 20s, so keep the
+// describe-level timeout generous.
+describe("createAppDependencies config injection", { timeout: 60000 }, () => {
   it("uses the injected config for repository selection (inmemory adapter)", async () => {
     const { createAppDependencies } = await import("./dependencies");
     const config = createAppConfig({
