@@ -34,6 +34,7 @@ import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice
 import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import { UpdateService } from "../modules/update/update.service";
 import { UpdateHistoryService } from "../modules/update/update-history.service";
+import { SqliteUpdateHistoryPort } from "../modules/update/adapters/sqlite-update-history.port";
 
 /**
  * All resolved application dependencies, created once at startup.
@@ -149,7 +150,7 @@ export async function createAppDependencies(
     sessionService: new SessionService(auth, permissionResolver),
     recoveryKeyService,
     updateService: new UpdateService(),
-    updateHistoryService: new UpdateHistoryService(sharedDatabase),
+    updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase)),
     rawDatabase: sharedDatabase,
     employeeModule,
     invoiceModule,
