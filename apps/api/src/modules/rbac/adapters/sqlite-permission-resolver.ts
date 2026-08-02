@@ -10,6 +10,7 @@ import * as schema from "../../../schema";
 import { createDrizzleFromSqlite, type AppDrizzle } from "../../../infrastructure/database/drizzle";
 import type { Permission } from "../permissions";
 import { ALL_PERMISSIONS } from "../permissions";
+import type { PermissionResolverPort } from "../permission-resolver.types";
 
 type AuthBootstrapGateway = {
   isBootstrapOwner: (userId: string) => Promise<boolean>;
@@ -19,7 +20,7 @@ type AuthBootstrapGateway = {
  * Resolve user permissions from the database.
  * Uses Drizzle for the role_permission → employee → user join.
  */
-export class SqlitePermissionResolver {
+export class SqlitePermissionResolver implements PermissionResolverPort {
   private readonly db: AppDrizzle;
 
   constructor(
