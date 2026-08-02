@@ -1,9 +1,8 @@
 /**
  * Shared URL normalization/validation helpers for application config.
  *
- * Used by both the Zod-based config factory (`config/index.ts`) and the
- * legacy env module (`infrastructure/config/env.ts`) so host/URL checks
- * live in one place.
+ * Used by the Zod-based config factory (`config/index.ts`) and the
+ * transport layer (`app/create-app.ts`) so host/URL checks live in one place.
  */
 
 const isLoopbackAddress = (hostname: string) => {
