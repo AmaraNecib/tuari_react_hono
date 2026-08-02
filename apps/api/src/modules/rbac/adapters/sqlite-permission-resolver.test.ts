@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SqlitePermissionResolver } from "./sqlite-permission-resolver";
-import type { Permission } from "../permissions";
 import { ALL_PERMISSIONS } from "../permissions";
 import type { AppDrizzle } from "../../../infrastructure/database/drizzle";
 
