@@ -56,6 +56,11 @@ const BOOTSTRAP_FIELD_INVALID_MESSAGE: Record<string, string> = {
   setupSecret: "رمز الإعداد الأول غير صالح.",
 };
 
+/** Resolve the failing field name for a flat schema issue (root-level fallback). */
+function bootstrapIssueField(issue: ZodIssue): string {
+  return String(issue.path[0] ?? "input");
+}
+
 /**
  * Map a schema issue to a user-facing Arabic field error.
  *
@@ -65,7 +70,7 @@ const BOOTSTRAP_FIELD_INVALID_MESSAGE: Record<string, string> = {
  * "required" failure, not a malformed-value failure.
  */
 function bootstrapFieldErrorMessage(issue: ZodIssue): string {
-  const field = String(issue.path[0] ?? "input");
+  const field = bootstrapIssueField(issue);
   if (issue.code === "too_small" || issue.code === "invalid_type") {
     return BOOTSTRAP_FIELD_REQUIRED_MESSAGE[field] ?? BOOTSTRAP_VALIDATION_MESSAGE;
   }
@@ -109,7 +114,7 @@ export class AuthBootstrapService {
           code: "VALIDATION",
           message: BOOTSTRAP_VALIDATION_MESSAGE,
           fieldErrors: parsed.error.issues.map((issue) => ({
-            field: String(issue.path[0] ?? "input"),
+            field: bootstrapIssueField(issue),
             message: bootstrapFieldErrorMessage(issue),
           })),
         },

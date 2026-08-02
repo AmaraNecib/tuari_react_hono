@@ -262,6 +262,25 @@ describe("AuthBootstrapService", () => {
     expect(port.createFirstUser).not.toHaveBeenCalled()
   })
 
+  it("reports a required message for a missing phone from a type-abused caller", async () => {
+    const service = createService()
+
+    const result = await service.bootstrapFirstUser({
+      name: "المدير الأول",
+      password: "password123",
+    } as never)
+
+    expect(result).toMatchObject({
+      success: false,
+      error: {
+        code: "VALIDATION",
+        fieldErrors: [{ field: "phone", message: "رقم الهاتف مطلوب." }],
+      },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
   it("rejects non-object input with a root-level field error", async () => {
     const service = createService()
 
