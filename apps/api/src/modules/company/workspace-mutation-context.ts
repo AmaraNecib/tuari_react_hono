@@ -12,21 +12,16 @@
  * per-service transaction semantics stay isolated.
  */
 
-import { TransactionManager } from "./transaction-manager";
 import type { CompanyRepository } from "./company.repository.contracts";
 import { CompanyError } from "./company.errors";
 import { type MutationAuditContext as RawAuditContext, type MutationAuditContext } from "./company.types";
 import { normalizeMutationAuditContext, type WorkspaceAdminAuthorizer } from "./company.helpers";
 
 export class WorkspaceMutationContext {
-  private readonly transactionManager: TransactionManager;
-
   constructor(
     private readonly repository: CompanyRepository,
     private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
-  ) {
-    this.transactionManager = new TransactionManager(repository);
-  }
+  ) {}
 
   /** Validates and normalizes the audit context. Throws if a non-admin tries to mutate when the authorizer is configured. */
   createMutationAuditContext(
@@ -53,7 +48,7 @@ export class WorkspaceMutationContext {
 
   /** Runs `operation` inside a Drizzle transaction. */
   withTransaction<T>(operation: () => T): T {
-    return this.transactionManager.execute(operation);
+    return this.repository.withTransaction(operation);
   }
 }
 
