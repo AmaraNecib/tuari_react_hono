@@ -17,6 +17,8 @@
  */
 import type { z } from "zod";
 import {
+  changeDbKeyInputSchema,
+  consumeRecoveryKeyInputSchema,
   employeePagedListInputSchema,
   idInputSchema,
   inventoryAssetTransferInputSchema,
@@ -24,8 +26,9 @@ import {
   inventoryInvoiceGroupListInputSchema,
   inventoryItemDefinitionListInputSchema,
   inventoryLocationContentsInputSchema,
+  reportFilterInputSchema,
+  revokeRecoveryKeyInputSchema,
 } from "@tuari/contracts";
-import type { ReportType } from "@tuari/contracts";
 
 /** Input for procedures that take a single `{ id }` payload (get/delete/end). */
 export type IdInput = z.infer<typeof idInputSchema>;
@@ -51,36 +54,14 @@ export type InventoryConsumableTransferInput = z.infer<typeof inventoryConsumabl
 /** Input for `inventoryLocationContentsGet`. */
 export type InventoryLocationContentsInput = z.infer<typeof inventoryLocationContentsInputSchema>;
 
-/**
- * Input for `consumeRecoveryKey`.
- *
- * Mirrors `consumeRecoveryKeyInputSchema`, which lives in the contracts'
- * `security.ts` module — not re-exported from the package index.
- */
-export type ConsumeRecoveryKeyInput = { key: string };
+/** Input for `consumeRecoveryKey`. */
+export type ConsumeRecoveryKeyInput = z.infer<typeof consumeRecoveryKeyInputSchema>;
 
-/**
- * Input for `revokeRecoveryKey`.
- *
- * Mirrors `revokeRecoveryKeyInputSchema` (see `ConsumeRecoveryKeyInput`).
- */
-export type RevokeRecoveryKeyInput = { keyId: string };
+/** Input for `revokeRecoveryKey`. */
+export type RevokeRecoveryKeyInput = z.infer<typeof revokeRecoveryKeyInputSchema>;
 
-/**
- * Input for `changeDbEncryptionKey`.
- *
- * Mirrors `changeDbKeyInputSchema` (see `ConsumeRecoveryKeyInput`).
- */
-export type ChangeDbKeyInput = { currentKey: string; newKey: string };
+/** Input for `changeDbEncryptionKey`. */
+export type ChangeDbKeyInput = z.infer<typeof changeDbKeyInputSchema>;
 
-/**
- * Input for `reportsGenerate`.
- *
- * The `reportFilterInputSchema` lives locally in the contract file and is
- * not exported; this mirrors its shape via the exported `ReportType`.
- */
-export type ReportFilterInput = {
-  type: ReportType;
-  startDate?: string;
-  endDate?: string;
-};
+/** Input for `reportsGenerate`. */
+export type ReportFilterInput = z.infer<typeof reportFilterInputSchema>;
