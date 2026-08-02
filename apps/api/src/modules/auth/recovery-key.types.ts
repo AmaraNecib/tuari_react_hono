@@ -43,6 +43,7 @@ export interface RecoveryKeyPort {
   updateKeyStatus(id: string, status: "CONSUMED" | "REVOKED"): Promise<boolean>;
   countAvailableKeys(): Promise<number>;
   listAllKeys(): Promise<RecoveryKeyRecord[]>;
-  /** Run a flow atomically (all-or-nothing). Not reentrant. */
-  withTransaction<T>(run: () => Promise<T>): Promise<T>;
+  /** Run a flow atomically (all-or-nothing). The callback receives a tx-scoped
+   * port bound to the same connection; not reentrant. */
+  withTransaction<T>(run: (tx: RecoveryKeyPort) => Promise<T>): Promise<T>;
 }

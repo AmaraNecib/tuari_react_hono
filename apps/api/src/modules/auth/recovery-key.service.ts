@@ -96,8 +96,8 @@ export class RecoveryKeyService {
     const keys: GeneratedRecoveryKey[] = [];
     const timestamp = createAlgeriaTimestamp();
 
-    await this.port.withTransaction(async () => {
-      const available = await this.port.countAvailableKeys();
+    await this.port.withTransaction(async (tx) => {
+      const available = await tx.countAvailableKeys();
       const toGenerate = Math.min(INITIAL_KEY_COUNT, MAX_KEY_POOL - available);
 
       if (toGenerate <= 0) {
@@ -109,7 +109,7 @@ export class RecoveryKeyService {
         const prefix = plainKey.slice(0, KEY_PREFIX_LENGTH);
         const keyHash = hashRecoveryKey(plainKey);
 
-        await this.port.insertKey({
+        await tx.insertKey({
           id: crypto.randomUUID(),
           prefix,
           keyHash,

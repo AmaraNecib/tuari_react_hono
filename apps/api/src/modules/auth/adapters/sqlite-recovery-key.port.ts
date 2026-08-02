@@ -5,11 +5,21 @@
  * recovery key table schema. The service talks to the port interface, never
  * to a database handle.
  *
- * Concurrency: recovery keys are one-time-use credentials. `updateKeyStatus`
- * is a guarded check-and-set (`WHERE status = 'AVAILABLE'`) so a stale writer
- * can never overwrite an already-consumed/revoked key; `withTransaction` uses
- * BEGIN IMMEDIATE (better-sqlite3 transactions are synchronous, so an async
- * flow must own the begin/commit itself — same pattern as bootstrap.service).
+ * Concurrency model: the driver is a single synchronous connection and the
+ * port methods are async, so concurrent flows would interleave at await
+ * points (exactly what the old fully-synchronous service could not do).
+ * Every public method therefore runs through a FIFO lock that reproduces
+ * the old single-threaded semantics:
+ *   - `updateKeyStatus` is a guarded check-and-set (`WHERE status =
+ *     'AVAILABLE'`) returning whether it flipped the row, so a stale writer
+ *     can never overwrite an already-consumed/revoked key;
+ *   - `withTransaction` wraps a multi-statement flow in BEGIN IMMEDIATE /
+ *     COMMIT / ROLLBACK (better-sqlite3 transactions are synchronous, so an
+ *     async flow must own the begin/commit itself — same pattern as
+ *     bootstrap.service). The callback receives an unlocked view of the
+ *     port bound to the same connection; holding the lock for the whole
+ *     flow also guarantees no other write can join the open transaction
+ *     and be silently rolled back by its failure.
  */
 import { and, eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
@@ -42,26 +52,86 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
     private readonly raw: BetterSqliteDatabase,
   ) {}
 
-  // Serializes withTransaction flows. The port is async but the driver is a
-  // single synchronous connection, so concurrent flows would interleave at
-  // await points (e.g. two generateKeys calls both counting 0 and inserting
-  // 3 → 6 keys). A FIFO lock reproduces the old fully-synchronous behavior.
-  private transactionQueue: Promise<void> = Promise.resolve();
-  async insertKey(input: RecoveryKeyInsert): Promise<void> {
-    this.db.insert(schema.recoveryKey).values(input).run();
+  /** Tail of the FIFO lock. Each call chains onto it and releases in `finally`. */
+  private lockTail: Promise<void> = Promise.resolve();
+
+  /**
+   * Run an operation under the FIFO lock. All public methods go through this
+   * so no statement can execute while another flow holds an open transaction.
+   */
+  private serialized<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.lockTail;
+    let release!: () => void;
+    this.lockTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return previous.then(operation, operation).finally(release);
   }
 
-  async findKeyByHash(hash: string): Promise<RecoveryKeyRecord | null> {
+  // -- Locked public methods (used outside a transaction) --------------------
+
+  insertKey(input: RecoveryKeyInsert): Promise<void> {
+    return this.serialized(async () => {
+      this.db.insert(schema.recoveryKey).values(input).run();
+    });
+  }
+
+  findKeyByHash(hash: string): Promise<RecoveryKeyRecord | null> {
+    return this.serialized(() => this.findKeyByHashUnlocked(hash));
+  }
+
+  updateKeyStatus(id: string, status: "CONSUMED" | "REVOKED"): Promise<boolean> {
+    return this.serialized(() => this.updateKeyStatusUnlocked(id, status));
+  }
+
+  countAvailableKeys(): Promise<number> {
+    return this.serialized(() => this.countAvailableKeysUnlocked());
+  }
+
+  listAllKeys(): Promise<RecoveryKeyRecord[]> {
+    return this.serialized(() => this.listAllKeysUnlocked());
+  }
+
+  withTransaction<T>(run: (tx: RecoveryKeyPort) => Promise<T>): Promise<T> {
+    return this.serialized(async () => {
+      // Join an already-open transaction (opened outside the port, e.g. a
+      // bootstrap flow on the shared connection) instead of BEGINning a
+      // second one — better-sqlite3 would throw.
+      const nested = this.raw.inTransaction;
+      if (!nested) {
+        this.raw.exec("BEGIN IMMEDIATE");
+      }
+      try {
+        const result = await run(this.unlocked());
+        if (!nested) {
+          this.raw.exec("COMMIT");
+        }
+        return result;
+      } catch (error) {
+        if (!nested) {
+          this.raw.exec("ROLLBACK");
+        }
+        throw error;
+      }
+    });
+  }
+
+  // -- Unlocked internals (execute on the shared connection as-is) -----------
+
+  private findKeyByHashUnlocked(hash: string): Promise<RecoveryKeyRecord | null> {
     const row = this.db
       .select()
       .from(schema.recoveryKey)
       .where(eq(schema.recoveryKey.keyHash, hash))
       .limit(1)
       .all()[0];
-    return row ? toRecord(row) : null;
+    return Promise.resolve(row ? toRecord(row) : null);
   }
 
-  async updateKeyStatus(id: string, status: "CONSUMED" | "REVOKED"): Promise<boolean> {
+  private updateKeyStatusUnlocked(
+    id: string,
+    status: "CONSUMED" | "REVOKED",
+  ): Promise<boolean> {
     const timestamp = createAlgeriaTimestamp();
     const set =
       status === "CONSUMED"
@@ -74,48 +144,39 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
       .set(set)
       .where(and(eq(schema.recoveryKey.id, id), eq(schema.recoveryKey.status, "AVAILABLE")))
       .run();
-    return result.changes > 0;
+    return Promise.resolve(result.changes > 0);
   }
 
-  async countAvailableKeys(): Promise<number> {
+  private countAvailableKeysUnlocked(): Promise<number> {
     const result = this.db
       .select({ value: sql<number>`count(*)` })
       .from(schema.recoveryKey)
       .where(eq(schema.recoveryKey.status, "AVAILABLE"))
       .all();
-    return result[0]?.value ?? 0;
+    return Promise.resolve(result[0]?.value ?? 0);
   }
 
-  async listAllKeys(): Promise<RecoveryKeyRecord[]> {
-    return this.db.select().from(schema.recoveryKey).all().map(toRecord);
+  private listAllKeysUnlocked(): Promise<RecoveryKeyRecord[]> {
+    return Promise.resolve(this.db.select().from(schema.recoveryKey).all().map(toRecord));
   }
 
-  async withTransaction<T>(run: () => Promise<T>): Promise<T> {
-    // FIFO lock: wait for any in-flight flow to finish before starting ours.
-    const previous = this.transactionQueue;
-    let release!: () => void;
-    this.transactionQueue = new Promise<void>((resolve) => (release = resolve));
-    await previous;
-
-    // Join an already-open transaction instead of BEGINning a second one on
-    // the shared connection (better-sqlite3 would throw).
-    const nested = this.raw.inTransaction;
-    if (!nested) {
-      this.raw.exec("BEGIN IMMEDIATE");
-    }
-    try {
-      const result = await run();
-      if (!nested) {
-        this.raw.exec("COMMIT");
-      }
-      return result;
-    } catch (error) {
-      if (!nested) {
-        this.raw.exec("ROLLBACK");
-      }
-      throw error;
-    } finally {
-      release();
-    }
+  /**
+   * Unlocked view handed to a withTransaction callback. Runs on the same
+   * connection inside the open transaction (taking the lock again would
+   * deadlock); withTransaction itself is deliberately not reentrant.
+   */
+  private unlocked(): RecoveryKeyPort {
+    return {
+      insertKey: async (input) => {
+        this.db.insert(schema.recoveryKey).values(input).run();
+      },
+      findKeyByHash: (hash) => this.findKeyByHashUnlocked(hash),
+      updateKeyStatus: (id, status) => this.updateKeyStatusUnlocked(id, status),
+      countAvailableKeys: () => this.countAvailableKeysUnlocked(),
+      listAllKeys: () => this.listAllKeysUnlocked(),
+      withTransaction: () => {
+        throw new Error("RecoveryKeyPort.withTransaction is not reentrant");
+      },
+    };
   }
 }
