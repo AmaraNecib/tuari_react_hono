@@ -81,7 +81,17 @@ misdiagnoses it as a `gh pr merge` CLI quirk — it is not; it's the branch targ
 syncing/batching merges, sweep every merged PR's claimed issue and close any
 still OPEN. Do not trust the closing keyword — verify `gh issue view <num> --json state`.
 
-**Systemic fix (recommended)**: add a small GitHub Action on `pull_request`
-events that, when a PR targeting `develop` is merged and its body/title matches
-`(closes|fixes|resolves) #(\d+)`, runs `gh issue close` for those numbers. This
-removes the manual step entirely.
+**Multi-PR issues (🟠 Major)**: an issue can need SEVERAL PRs to be fully
+delivered (#177 needed #179 + #189 + #258; #177's first PR said "Closes #177"
+but only did Phase 3). Never close an issue on the FIRST PR that mentions it —
+check the issue body and the PR for deferred/follow-up/part-of references to
+still-open issues, and confirm the issue's acceptance criteria are actually
+met before closing. PR convention: a PR that delivers PART of an issue must
+say "Part of #N" — only the finishing PR says "Closes #N".
+
+**Systemic fix (implemented)**: a GitHub Action (`auto-close-issues.yml`) closes
+referenced issues on merge to `develop`, but is deliberately CONSERVATIVE — it
+honors "Closes #N" only in the PR body (not title), skips issues that defer to
+still-open issues, skips parents with open sub-issues, and logs every SKIP so
+humans verify. It is a convenience, not the authority — the manual sweep still
+applies.

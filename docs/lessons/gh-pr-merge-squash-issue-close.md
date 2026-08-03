@@ -25,6 +25,32 @@ Always close the linked issue after merging a PR:
 gh issue close <num> --comment "delivered by PR #<num> (commit <sha>)"
 ```
 
+## Multi-PR issues — never close on the first PR
+
+An issue can need **several PRs** to be fully delivered. Example: #177 needed
+#179 (Phase 3) + #189 (ports-and-adapters) + #258 (Phase 4 debts). PR #179's
+title said "closes #177" but the issue was NOT done yet — closing it then would
+have lost the remaining scope.
+
+Rules:
+
+1. **PR convention** — a PR that delivers only PART of an issue must say
+   `Part of #N`. Only the PR that finishes the issue says `Closes #N` / `Fixes #N`.
+2. **Before closing**, check the issue body + the PR for `defer`/`follow-up`/
+   `part of`/`remaining` references to **still-open** issues. If any exist,
+   the issue is not done — leave it open.
+3. **Check the acceptance criteria** are actually met in the code, not just
+   claimed in the PR.
+4. **Skip parents/trackers** with open sub-issues (maps, parent issues).
+
+## Systemic fix
+
+`auto-close-issues.yml` closes referenced issues on merge to `develop`, but is
+conservative by design: it honors "Closes #N" only in the PR **body** (not
+title), skips issues that defer to still-open issues, skips parents with open
+sub-issues, and logs every SKIP with a reason. It is a convenience, not the
+authority — the human/agent sweep still applies.
+
 ## Better — sweep after every batch merge
 
 When several PRs merged (e.g. an agent batch), sweep all of them:

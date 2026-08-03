@@ -41,3 +41,20 @@ git commit -m "..."
 
 Follow `docs/engineering-workflow.md` and the `feature-implement` skill for all code changes.
 Read `.agents/wisdom/*.md` before starting a session.
+
+## Issue-closing convention (multi-PR issues)
+
+An issue may need several PRs to be fully delivered. Never claim an issue is
+closed unless ALL of its scope is actually shipped:
+
+- A PR that delivers PART of an issue must say **`Part of #N`** in the body.
+- Only the PR that finishes the issue says **`Closes #N` / `Fixes #N`**.
+- Never put `(closes #N)` in a PR **title** — the body is the source of truth
+  (the auto-close action ignores titles by design).
+- Before closing an issue, check its body + the PR for `defer`/`follow-up`/
+  `part of`/`remaining` references to still-OPEN issues, and verify the
+  acceptance criteria in the code — not just the PR claim.
+- After any merge, verify: `gh issue view <num> --json state` and close manually
+  if still OPEN.
+
+See `docs/lessons/gh-pr-merge-squash-issue-close.md` for the full rationale.

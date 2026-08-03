@@ -3,9 +3,24 @@ name: Auto-close issues on merge to develop
 # GitHub only auto-closes issues when a PR merges into the DEFAULT branch
 # (main). This repo merges all work into `develop`, so "Closes #N" never
 # auto-closes anything. This workflow closes the linked issues manually on
-# merge, using the same keyword detection GitHub uses in the UI.
+# merge.
 #
-# See docs/lessons/gh-pr-merge-squash-issue-close.md for the full story.
+# IMPORTANT — multi-PR issues: an issue may need SEVERAL PRs to be fully
+# delivered (e.g. #177 needed #179 + #189 + #258). A keyword parser cannot
+# tell "fully delivered" from "partially delivered". So this workflow is
+# deliberately CONSERVATIVE:
+#
+#   1. It only honors "Closes #N" in the PR BODY, never the title.
+#   2. It skips issues that still reference OPEN deferred/follow-up/part-of
+#      issues anywhere (issue body, comments, or the PR body itself).
+#   3. It skips parent/tracker issues that have open sub-issues.
+#   4. It always logs what it closed and what it skipped, with reasons, so
+#      anything questionable is caught by the human on the next sync pass.
+#
+# Convention (enforced by review, not by this workflow):
+#   - A PR that delivers PART of an issue must say "Part of #N" — never "Closes #N".
+#   - Only the PR that finishes the issue says "Closes #N" / "Fixes #N".
+# See docs/lessons/gh-pr-merge-squash-issue-close.md and .agents/wisdom/process.md.
 
 on:
   pull_request:
@@ -17,7 +32,6 @@ permissions:
 
 jobs:
   close-linked-issues:
-    # Only run on merges into develop (or any non-default target branch).
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
@@ -25,16 +39,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_BODY: ${{ github.event.pull_request.body }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
 
-          # Collect issue numbers from "Closes #N / Fixes #N / Resolves #N" in
-          # body and title. Use the same keyword set GitHub's UI honors.
+          # 1. Collect "Closes/Fixes/Resolves #N" from the PR BODY only (not the
+          #    title — titles are where sloppy "(closes #N)" gets appended).
           numbers=$(
-            { printf '%s\n' "$PR_BODY"; printf '%s\n' "$PR_TITLE"; } \
+            printf '%s\n' "$PR_BODY" \
               | grep -oiE '(close[sd]?|fix(e[sd])?|resolv(e[sd])?)[^#]*#([0-9]+)' \
               | grep -oE '#[0-9]+' \
               | tr -d '#' \
@@ -43,17 +56,66 @@ jobs:
           )
 
           if [ -z "$numbers" ]; then
-            echo "No issue references found in PR #$PR_NUMBER — nothing to close."
+            echo "No 'Closes #N' reference in PR body #$PR_NUMBER — nothing to close."
             exit 0
           fi
 
           for num in $numbers; do
-            state=$(gh issue view "$num" --json state --jq '.state' 2>/dev/null || echo "UNKNOWN")
-            if [ "$state" = "OPEN" ]; then
-              gh issue close "$num" \
-                --comment "Auto-closed: delivered by PR #$PR_NUMBER."
-              echo "Closed #$num (was OPEN)"
-            else
-              echo "Skipped #$num (state=$state)"
+            echo "── Checking issue #$num ──"
+            issue=$(gh issue view "$num" --json state,body,title --jq '{state, body: (.body // "")}' 2>/dev/null || echo "{}")
+            state=$(printf '%s' "$issue" | gh api -X POST /markdown --input - >/dev/null 2>&1 && true; printf '%s' "$issue" | sed -n 's/.*"state": "\([^"]*\)".*/\1/p')
+
+            if [ "$state" != "OPEN" ]; then
+              echo "  SKIP: #$num state=$state (not open)"
+              continue
             fi
+
+            # 2. Skip if the issue is a parent/tracker with open sub-issues.
+            sub=$(gh api "repos/{owner}/{repo}/issues/$num" --jq '.sub_issues_summary' 2>/dev/null || echo '{"total":0,"completed":0}')
+            sub_total=$(printf '%s' "$sub" | sed -n 's/.*"total": \([0-9]*\).*/\1/p')
+            sub_done=$(printf '%s' "$sub" | sed -n 's/.*"completed": \([0-9]*\).*/\1/p')
+            if [ -n "$sub_total" ] && [ "$sub_total" -gt 0 ] && [ "$sub_total" -gt "${sub_done:-0}" ]; then
+              echo "  SKIP: #$num is a parent with $((sub_total - sub_done)) open sub-issues"
+              continue
+            fi
+
+            # 3. Skip if the issue body references OTHER open issues in a
+            #    deferred/follow-up/part-of/remaining context — work remains.
+            deferred=$(printf '%s' "$issue" \
+              | grep -oiE '(defer(red)?|follow[ -]?up|part of|remaining|todo)[^#]*#([0-9]+)' \
+              | grep -oE '#[0-9]+' | tr -d '#' | sort -un || true)
+            open_ref=""
+            for ref in $deferred; do
+              rstate=$(gh issue view "$ref" --json state --jq '.state' 2>/dev/null || echo "")
+              if [ "$rstate" = "OPEN" ]; then
+                open_ref="$open_ref $ref"
+              fi
+            done
+            if [ -n "$open_ref" ]; then
+              echo "  SKIP: #$num defers to still-OPEN issue(s):$open_ref"
+              continue
+            fi
+
+            # 4. Same check on the PR body itself (a merged PR deferring the rest).
+            pr_deferred=$(printf '%s\n' "$PR_BODY" \
+              | grep -oiE '(defer(red)?|follow[ -]?up|part of|remaining)[^#]*#([0-9]+)' \
+              | grep -oE '#[0-9]+' | tr -d '#' | sort -un || true)
+            pr_open_ref=""
+            for ref in $pr_deferred; do
+              if [ "$ref" = "$num" ]; then continue; fi
+              rstate=$(gh issue view "$ref" --json state --jq '.state' 2>/dev/null || echo "")
+              if [ "$rstate" = "OPEN" ]; then
+                pr_open_ref="$pr_open_ref $ref"
+              fi
+            done
+            if [ -n "$pr_open_ref" ]; then
+              echo "  SKIP: PR #$PR_NUMBER defers to still-OPEN issue(s):$pr_open_ref"
+              continue
+            fi
+
+            gh issue close "$num" \
+              --comment "Auto-closed: delivered by PR #$PR_NUMBER."
+            echo "  CLOSED #$num"
           done
+
+          echo "── Done. Manually verify any SKIP lines on the next sync pass."
