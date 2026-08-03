@@ -101,7 +101,13 @@ function makeSummary(parties: DebtPartySummaryItem[]): DebtsSummary {
 }
 
 /** Reads the useQuery options for the single hook call in the test. */
-function readQueryOptions<TOptions extends Record<string, unknown>>() {
+function readQueryOptions<
+  TOptions extends Record<string, unknown> = {
+    queryKey: readonly unknown[]
+    queryFn: () => Promise<unknown>
+    enabled: boolean
+  },
+>() {
   return mocks.useQuery.mock.calls[0]?.[0] as TOptions
 }
 
@@ -210,7 +216,12 @@ describe("buildDebtsHubRows", () => {
       externalCounterpartyId: "external-1",
       totalBalanceDzd: 100,
     }
-    const { rows } = buildDebtsHubRows(makeSummary([tieWorker, tieExternal]), counterparties)
+    // Feed the rows in deliberately non-sorted order so a no-op sort would
+    // fail the assertion.
+    const { rows } = buildDebtsHubRows(
+      makeSummary([tieExternal, tieWorker]),
+      counterparties,
+    )
 
     expect(rows.map((row) => row.name)).toEqual(["أحمد", "شركة المورد", "مورد بدون ديون"])
   })
@@ -228,6 +239,18 @@ describe("buildDebtsHubRows", () => {
 
     expect(rows[0]!.status).toBe("SETTLED")
     expect(totals.openCount).toBe(0)
+  })
+
+  it("splits negative worker balances into owedByUsDzd", () => {
+    const negativeWorker: DebtPartySummaryItem = {
+      ...workerParty,
+      workerId: "worker-2",
+      displayName: "عامل مدين لنا",
+      totalBalanceDzd: -250,
+    }
+    const { totals } = buildDebtsHubRows(makeSummary([negativeWorker]), [])
+
+    expect(totals).toEqual({ openCount: 1, owedByUsDzd: 250, owedToUsDzd: 0 })
   })
 
   it("handles an empty summary and empty counterparties", () => {
@@ -277,9 +300,19 @@ describe("buildExternalCounterpartyRows", () => {
     expect(rows.map((row) => row.id)).toEqual(["external-1", "external-2"])
   })
 
+  it("handles an empty counterparties list", () => {
+    const rows = buildExternalCounterpartyRows(makeSummary([externalParty]), [])
+    expect(rows).toEqual([])
+  })
+
   it("handles an empty summary", () => {
     const rows = buildExternalCounterpartyRows(makeSummary([]), counterparties)
-    expect(rows.every((row) => row.totalBalanceDzd === 0 && row.openCaseCount === 0)).toBe(true)
+    expect(
+      rows.every(
+        (row) =>
+          row.totalBalanceDzd === 0 && row.openCaseCount === 0 && row.totalCaseCount === 0,
+      ),
+    ).toBe(true)
   })
 })
 
@@ -447,11 +480,59 @@ describe("useDebtPartyDetailQuery", () => {
     })
   })
 
-  it("disables the query when partyId or session is missing", () => {
+  it("uses a stable placeholder key when partyId is missing", () => {
+    mocks.useSessionQuery.mockReturnValue({ data: { user: { id: "user-1" } } })
+    useDebtPartyDetailQuery("INTERNAL_WORKER", undefined)
+
+    expect(readQueryOptions().queryKey).toEqual([
+      "phase1",
+      "workspace-domain",
+      "debts-detail",
+      "user-1",
+      "INTERNAL_WORKER",
+      "missing",
+    ])
+  })
+
+  it("throws an AppMutationError when the party detail is missing its item", async () => {
+    mocks.debtPartyDetail.mockResolvedValue({ success: true, message: "ok" })
+    useDebtPartyDetailQuery("INTERNAL_WORKER", "worker-1")
+
+    await expect(readQueryOptions().queryFn()).rejects.toMatchObject({
+      name: "AppMutationError",
+      code: "BUSINESS_RULE",
+    })
+  })
+
+  it("propagates a debtEntriesList failure instead of discarding the party", async () => {
+    const item = {
+      partyType: "EXTERNAL_COUNTERPARTY",
+      workerId: null,
+      externalCounterpartyId: "external-1",
+      displayName: "شركة المورد",
+      phoneNumber: "0555000000",
+      note: null,
+      totalBalanceDzd: -700,
+      balanceLabel: "علينا له",
+      debtAccounts: [{ id: "debt-1", currentBalance: -700 }],
+    }
+    const error = new Error("entries boom")
+    mocks.debtPartyDetail.mockResolvedValue({ success: true, message: "ok", item })
+    mocks.debtEntriesList.mockRejectedValue(error)
+    useDebtPartyDetailQuery("EXTERNAL_COUNTERPARTY", "external-1")
+
+    await expect(readQueryOptions().queryFn()).rejects.toBe(error)
+    // The query errors as a whole (react-query surfaces isError) rather than
+    // silently rendering a partial party.
+    expect(mocks.debtEntriesList).toHaveBeenCalledWith({ debtAccountId: "debt-1" })
+  })
+
+  it("disables the query when partyId is missing", () => {
     useDebtPartyDetailQuery("INTERNAL_WORKER", undefined)
     expect(readQueryOptions().enabled).toBe(false)
+  })
 
-    vi.clearAllMocks()
+  it("disables the query when no session user is present", () => {
     mocks.useSessionQuery.mockReturnValue({ data: { user: null } })
     useDebtPartyDetailQuery("INTERNAL_WORKER", "worker-1")
     expect(readQueryOptions().enabled).toBe(false)

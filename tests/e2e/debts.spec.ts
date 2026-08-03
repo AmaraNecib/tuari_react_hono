@@ -11,7 +11,8 @@ test("admin creates an external counterparty and it shows in the debts hub", asy
   await expect(page.getByRole("heading", { name: "مركز الديون" })).toBeVisible()
 
   const counterpartyName = `طرف خارجي ${uniqueSuffix()}`
-  const phone = `07${Math.floor(10000000 + Math.random() * 89999999)}`
+  // Deterministic per-run phone (avoids collisions across reruns of the suite).
+  const phone = `07${String(Date.now()).slice(-8)}`
 
   // Create the counterparty from the externals page
   await page.getByRole("link", { name: "الجهات الخارجية" }).first().click()

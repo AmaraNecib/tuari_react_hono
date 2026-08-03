@@ -125,9 +125,14 @@ export function useDebtPartyDetailQuery(
       )
 
       const entriesByAccountId: Record<string, DebtEntry[]> = {}
-      for (const account of party.debtAccounts) {
-        const entries = await rpcClient.debtEntriesList({ debtAccountId: account.id })
-        entriesByAccountId[account.id] = entries.items
+      const entriesPerAccount = await Promise.all(
+        party.debtAccounts.map(async (account) => {
+          const entries = await rpcClient.debtEntriesList({ debtAccountId: account.id })
+          return [account.id, entries.items] as const
+        }),
+      )
+      for (const [accountId, entries] of entriesPerAccount) {
+        entriesByAccountId[accountId] = entries
       }
 
       return {
