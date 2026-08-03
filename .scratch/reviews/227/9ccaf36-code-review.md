@@ -1,4 +1,4 @@
-# Code Review — issue #227 (head 12ea157, base f93c37c)
+# Code Review — issue #227 (head 9ccaf36, base f93c37c)
 
 Two-axis review (Standards / Spec) via parallel reviewer sub-agents on
 `git diff f93c37c...9d3d1e7`.

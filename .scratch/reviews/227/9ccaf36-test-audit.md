@@ -1,4 +1,4 @@
-# Test Audit — issue #227 (head 12ea157, base f93c37c)
+# Test Audit — issue #227 (head 9ccaf36, base f93c37c)
 
 Three-agent audit (edge-case hunter / coverage analyst / quality reviewer)
 of `tests/e2e/recovery-keys.spec.ts` + `helpers/session.ts` against the
