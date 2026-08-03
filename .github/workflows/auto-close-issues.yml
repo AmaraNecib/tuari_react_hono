@@ -1,0 +1,59 @@
+name: Auto-close issues on merge to develop
+
+# GitHub only auto-closes issues when a PR merges into the DEFAULT branch
+# (main). This repo merges all work into `develop`, so "Closes #N" never
+# auto-closes anything. This workflow closes the linked issues manually on
+# merge, using the same keyword detection GitHub uses in the UI.
+#
+# See docs/lessons/gh-pr-merge-squash-issue-close.md for the full story.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  close-linked-issues:
+    # Only run on merges into develop (or any non-default target branch).
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close issues referenced by the merged PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Collect issue numbers from "Closes #N / Fixes #N / Resolves #N" in
+          # body and title. Use the same keyword set GitHub's UI honors.
+          numbers=$(
+            { printf '%s\n' "$PR_BODY"; printf '%s\n' "$PR_TITLE"; } \
+              | grep -oiE '(close[sd]?|fix(e[sd])?|resolv(e[sd])?)[^#]*#([0-9]+)' \
+              | grep -oE '#[0-9]+' \
+              | tr -d '#' \
+              | sort -un \
+              || true
+          )
+
+          if [ -z "$numbers" ]; then
+            echo "No issue references found in PR #$PR_NUMBER — nothing to close."
+            exit 0
+          fi
+
+          for num in $numbers; do
+            state=$(gh issue view "$num" --json state --jq '.state' 2>/dev/null || echo "UNKNOWN")
+            if [ "$state" = "OPEN" ]; then
+              gh issue close "$num" \
+                --comment "Auto-closed: delivered by PR #$PR_NUMBER."
+              echo "Closed #$num (was OPEN)"
+            else
+              echo "Skipped #$num (state=$state)"
+            fi
+          done
