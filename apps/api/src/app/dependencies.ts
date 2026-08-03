@@ -27,7 +27,7 @@ import type { PaymentModule } from "../modules/payment/payment-module.interface"
 import { PaymentRepositoryImpl } from "../modules/payment/adapters/payment.repository";
 import { SqlitePermissionResolver } from "../modules/rbac/adapters/sqlite-permission-resolver";
 import { RoleModule } from "../modules/rbac/role.module";
-import { SqliteRoleRepository as SqliteRbacRoleRepository } from "../modules/rbac/sqlite-role.repository";
+import { SqliteRoleRepository as SqliteRbacRoleRepository } from "../modules/rbac/adapters/sqlite-role.repository";
 import { SessionService } from "../modules/session/session.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
@@ -114,7 +114,6 @@ export async function createAppDependencies(
     config.databasePath?.trim() ? config.databasePath : appConfig.databasePath,
     config.databaseKey,
   );
-
   // Idempotent close: the root opens the connection, so the root closes it.
   // `close` is also invoked on construction failure so a partially-built root
   // never leaks the handle (Windows EBUSY on temp-file test cleanup).
@@ -172,7 +171,7 @@ export async function createAppDependencies(
       auth,
       appConfig.bootstrapSetupKey,
     );
-    const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
+    const permissionResolver = new SqlitePermissionResolver(db, authBootstrapService);
     const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase));
 
     // Issue #10 — Slice 3 RBAC. The role module is a small, deep module

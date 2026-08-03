@@ -36,7 +36,7 @@ export interface RoleRepository {
  * In-memory implementation of `RoleRepository` for unit tests.
  *
  * Test code seeds the store directly via `seed()`. Production code uses
- * `SqliteRoleRepository` (in `apps/api/src/modules/rbac/sqlite-role.repository.ts`).
+ * `SqliteRoleRepository` (in `apps/api/src/modules/rbac/adapters/sqlite-role.repository.ts`).
  */
 export class InMemoryRoleRepository implements RoleRepository {
   private readonly store = new Map<string, RoleWithPermissions>();

@@ -3,11 +3,14 @@
  *
  * Resolves user permissions by joining role_permission → employee → user.
  * Bootstrap owners get all permissions regardless of employee record.
+ *
+ * Takes a pre-built `AppDrizzle` instance (created once at the composition
+ * root) rather than a raw SQLite handle — the resolver never touches the
+ * underlying better-sqlite3 connection directly.
  */
 import { eq } from "drizzle-orm";
-import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import * as schema from "../../../schema";
-import { createDrizzleFromSqlite, type AppDrizzle } from "../../../infrastructure/database/drizzle";
+import type { AppDrizzle } from "../../../infrastructure/database/drizzle";
 import type { Permission } from "../permissions";
 import { ALL_PERMISSIONS } from "../permissions";
 import type { PermissionResolverPort } from "../permission-resolver.types";
@@ -21,15 +24,10 @@ type AuthBootstrapGateway = {
  * Uses Drizzle for the role_permission → employee → user join.
  */
 export class SqlitePermissionResolver implements PermissionResolverPort {
-  private readonly db: AppDrizzle;
-
   constructor(
-    rawDb: BetterSqliteDatabase | { exec: (sql: string) => void },
+    private readonly db: AppDrizzle,
     private readonly authBootstrap: AuthBootstrapGateway,
-    drizzleDb?: AppDrizzle,
-  ) {
-    this.db = drizzleDb ?? createDrizzleFromSqlite(rawDb as BetterSqliteDatabase);
-  }
+  ) {}
 
   /**
    * Get all permissions for a user.

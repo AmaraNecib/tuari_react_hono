@@ -7,11 +7,11 @@
  */
 import { eq, asc } from "drizzle-orm";
 
-import * as schema from "../../schema";
-import type { AppDrizzle } from "../../infrastructure/database/drizzle";
-import type { Permission } from "./permissions";
-import { isPermission } from "./permissions";
-import type { RoleRepository, RoleWithPermissions } from "./role.module";
+import * as schema from "../../../schema";
+import type { AppDrizzle } from "../../../infrastructure/database/drizzle";
+import type { Permission } from "../permissions";
+import { isPermission } from "../permissions";
+import type { RoleRepository, RoleWithPermissions } from "../role.module";
 
 type RoleRow = {
   id: string;
