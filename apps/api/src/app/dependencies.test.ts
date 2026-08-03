@@ -156,8 +156,9 @@ describe("createAppDependencies config injection", { timeout: 60000 }, () => {
 
     const deps = await createAppDependencies(createRawDb(), undefined, undefined, config);
 
-    // Exercises createAuth(db, config) — pins baseURL/secret/trustedOrigins
-    // coming from the injected config rather than a module-load env singleton.
+    // Exercises the real createAuth(db, config) path — proving the auth
+    // instance builds from the injected config rather than a module-load
+    // env singleton.
     expect(deps.auth).toBeDefined();
     expect(typeof deps.auth.handler).toBe("function");
   });

@@ -384,6 +384,34 @@ describe("createAppConfig", () => {
   });
 });
 
+describe("appConfigSchema port validation", () => {
+  // All fields the schema requires (no defaults) — only port varies.
+  const validRaw = {
+    databasePath: "/tmp/tuari.sqlite",
+    databaseUrl: "file:///tmp/tuari.sqlite",
+    attachmentsRootPath: "/tmp/attachments",
+    betterAuthSecret: "test-secret",
+    betterAuthUrl: "https://api.example.com",
+  };
+
+  it("accepts a port within 1..65535 via the schema alone", () => {
+    const config = appConfigSchema.parse({ ...validRaw, port: 8080 });
+    expect(config.port).toBe(8080);
+  });
+
+  it("rejects a zero port via the schema alone", () => {
+    expect(() => appConfigSchema.parse({ ...validRaw, port: 0 })).toThrow(
+      "Too small",
+    );
+  });
+
+  it("rejects a port above 65535 via the schema alone", () => {
+    expect(() => appConfigSchema.parse({ ...validRaw, port: 65536 })).toThrow(
+      "Too big",
+    );
+  });
+});
+
 describe("appConfigSchema betterAuthUrl validation", () => {
   // All fields the schema requires (no defaults) — only betterAuthUrl varies.
   const validRaw = {
