@@ -136,6 +136,14 @@ extend the existing `#206` security block, add `changeDbKeyOutputSchema` import)
   `consumeKey` called with `"a1b2-c3d4-e5f6"` (proves the handler sees the parsed/trimmed value).
 - existing `changeDbEncryptionKey` failure test keeps passing unchanged (its
   `{ success: false, error }` return is a valid union member).
+- NEW (user-requested coverage): `changeDbEncryptionKey` **success leg** through
+  the wire — the harness gained an injectable `rawDatabase` (4th param) so a
+  working pragma/prepare stub exercises `{ success: true }` through the
+  discriminated-union output, plus exact assertions on the PRAGMA `key`/`rekey`
+  statements and single-quote escaping (`''` doubling).
+- Deferred (out of #221 scope, issue #247): wire tests for the
+  `getRecoveryKeyPool` / `generateRecoveryKeys` passthroughs — service logic is
+  already unit-tested; only the thin ORPC passthrough lacks wire coverage.
 
 Type-level proof: `pnpm typecheck` — handler returns assignable to the union's
 inferred output; no consumer of the old loose output type exists outside these two

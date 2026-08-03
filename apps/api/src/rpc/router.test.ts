@@ -55,6 +55,7 @@ describe("RPC router", () => {
     harness: ReturnType<typeof createHarness>,
     authOverrides?: Partial<typeof authBootstrapService>,
     recoveryKeyService: unknown = {},
+    rawDatabase: unknown = {},
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -97,7 +98,7 @@ describe("RPC router", () => {
       recoveryKeyService: recoveryKeyService as never,
       updateService: {} as never,
       updateHistoryService: {} as never,
-      rawDatabase: {} as never,
+      rawDatabase: rawDatabase as never,
     } as never);
   }
 
@@ -816,13 +817,41 @@ describe("RPC router", () => {
     const router = createTestRouter(harness);
     const client = createRouterClient(router, { context: createContext() as never });
 
-    // rawDatabase is a stub, so the PRAGMA verification throws and the
-    // handler returns the failure output shape from changeDbKeyOutputSchema.
-    // The success leg ({ success: true }) is unreachable here (the stub always
-    // throws) and is pinned at the contract level in index.test.ts.
+    // rawDatabase defaults to a throwing stub, so the PRAGMA verification
+    // fails and the handler returns the failure output shape from
+    // changeDbKeyOutputSchema. The success leg is covered in the next test.
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
     ).resolves.toEqual({ success: false, error: "Current encryption key is invalid" });
+  });
+
+  it("rekeys the database and returns success through the wire contract", async () => {
+    const harness = createHarness();
+    const pragma = vi.fn();
+    const rawDatabase = {
+      pragma,
+      prepare: () => ({ get: () => ({ count: 0 }) }),
+    };
+    const router = createTestRouter(harness, undefined, {}, rawDatabase);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    // The success leg of changeDbKeyOutputSchema ({ success: true }) is
+    // validated through the wire: the verify PRAGMA passes, the rekey runs,
+    // and the discriminated-union output accepts the success member.
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
+    ).resolves.toEqual({ success: true });
+
+    // Keys are interpolated into the PRAGMA SQL with single quotes escaped —
+    // assert the exact statements the handler built.
+    expect(pragma).toHaveBeenNthCalledWith(1, "key = 'old-key'");
+    expect(pragma).toHaveBeenNthCalledWith(2, "rekey = 'new-key-123'");
+
+    // A key containing a single quote is escaped ('' doubling), not spliced.
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-'quoted'" }),
+    ).resolves.toEqual({ success: true });
+    expect(pragma).toHaveBeenLastCalledWith("rekey = 'new-key-''quoted'''");
   });
 
   it("generates an inventory report through the RPC contract (derived filter input)", async () => {
