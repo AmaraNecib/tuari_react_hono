@@ -17,9 +17,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { rpcClient } from "@/lib/orpc-client"
 
 import {
+  useChangeDbEncryptionKeyMutation,
   useGenerateRecoveryKeysMutation,
   useRecoveryKeyPoolQuery,
   useRevokeRecoveryKeyMutation,
@@ -38,6 +38,7 @@ export function RecoveryKeySettings() {
   const poolQuery = useRecoveryKeyPoolQuery()
   const generateMutation = useGenerateRecoveryKeysMutation()
   const revokeMutation = useRevokeRecoveryKeyMutation()
+  const changeDbKeyMutation = useChangeDbEncryptionKeyMutation()
   const [generatedKeys, setGeneratedKeys] = useState<GeneratedRecoveryKey[] | null>(null)
 
   async function handleGenerateKeys() {
@@ -54,10 +55,10 @@ export function RecoveryKeySettings() {
         onRevokeKey={async (keyId) => {
           await revokeMutation.mutateAsync(keyId)
         }}
-        onChangeDbKey={async (input) => rpcClient.changeDbEncryptionKey(input)}
+        onChangeDbKey={async (input) => changeDbKeyMutation.mutateAsync(input)}
         isGenerating={generateMutation.isPending}
         isRevoking={revokeMutation.isPending}
-        isChangingKey={false}
+        isChangingKey={changeDbKeyMutation.isPending}
       />
 
       {/* Plain-text keys are shown exactly once after generation. */}
