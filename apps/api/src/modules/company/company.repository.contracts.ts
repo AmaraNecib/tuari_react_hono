@@ -12,6 +12,19 @@ import type { OperationsRepository } from "./operations.repository";
 import type { WorkforceRepository } from "./workforce.repository";
 
 /**
+ * The minimal transactional capability a consumer needs to run a mutation
+ * inside a database transaction.
+ *
+ * Modules that only run transactions (e.g. `WorkspaceMutationContext`) depend
+ * on this narrow seam instead of the full `CompanyRepository`, so they can be
+ * built and tested with just a transaction runner. `CompanyRepository` composes
+ * it, keeping the `withTransaction` signature in a single place.
+ */
+export interface TransactionalRepository {
+  withTransaction<T>(callback: () => T): T;
+}
+
+/**
  * The repository capabilities currently composed by the application.
  *
  * The transaction method is part of the contract because some mutations
@@ -19,9 +32,8 @@ import type { WorkforceRepository } from "./workforce.repository";
  * by the selected persistence adapter.
  */
 export interface CompanyRepository
-  extends WorkforceRepository,
+  extends TransactionalRepository,
+    WorkforceRepository,
     OperationsRepository,
     FinanceRepository,
-    AuditRepository {
-  withTransaction<T>(callback: () => T): T;
-}
+    AuditRepository {}

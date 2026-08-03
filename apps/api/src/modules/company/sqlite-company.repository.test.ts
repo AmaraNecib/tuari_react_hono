@@ -202,3 +202,110 @@ describe("SqliteCompanyRepository end/void idempotency", () => {
     expect(reVoided?.voidReason).toBe("first");
   });
 });
+
+describe("SqliteCompanyRepository.withTransaction", () => {
+  let db: Database.Database;
+  let repo: SqliteCompanyRepository;
+
+  beforeEach(() => {
+    db = createTestDb();
+    repo = new SqliteCompanyRepository(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("commits multi-table writes when the callback succeeds", () => {
+    const { worker, manager, assignmentId } = repo.withTransaction(() => {
+      const worker = repo.createEmployee({
+        firstName: "Ahmed",
+        lastName: "Ben Ali",
+        phone: "0555123456",
+        roleId: "role-worker",
+        status: "ACTIVE",
+      });
+      const manager = repo.createEmployee({
+        firstName: "Sara",
+        lastName: "Bouzid",
+        phone: "0666123456",
+        roleId: "role-worker",
+        status: "ACTIVE",
+      });
+      const assignment = repo.createManagerAssignment({
+        workerId: worker.id,
+        managerId: manager.id,
+        status: "ACTIVE",
+        startDate: "2026-02-01T00:00:00.000Z",
+      });
+      return { worker, manager, assignmentId: assignment.id };
+    });
+
+    // Everything written inside the transaction is durable afterwards.
+    expect(repo.getEmployeeById(worker.id)?.firstName).toBe("Ahmed");
+    expect(repo.getEmployeeById(manager.id)?.firstName).toBe("Sara");
+    expect(repo.getManagerAssignmentById(assignmentId)?.status).toBe("ACTIVE");
+  });
+
+  it("rolls back all writes when the callback throws", () => {
+    expect(() => {
+      repo.withTransaction(() => {
+        const worker = repo.createEmployee({
+          firstName: "Rolled",
+          lastName: "Back",
+          phone: "0777123456",
+          roleId: "role-worker",
+          status: "ACTIVE",
+        });
+        const manager = repo.createEmployee({
+          firstName: "Never",
+          lastName: "Persisted",
+          phone: "0888123456",
+          roleId: "role-worker",
+          status: "ACTIVE",
+        });
+        repo.createManagerAssignment({
+          workerId: worker.id,
+          managerId: manager.id,
+          status: "ACTIVE",
+          startDate: "2026-02-01T00:00:00.000Z",
+        });
+        throw new Error("boom");
+      });
+    }).toThrow("boom");
+
+    // Nothing written inside the failed transaction may survive.
+    expect(repo.listEmployees()).toHaveLength(0);
+  });
+
+  it("rethrows the original error instance", () => {
+    const expected = new Error("boom");
+
+    let thrown: unknown;
+    try {
+      repo.withTransaction(() => {
+        throw expected;
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBe(expected);
+  });
+
+  it("rejects async callbacks loudly instead of committing early", () => {
+    expect(() => {
+      repo.withTransaction(async () => {
+        repo.createEmployee({
+          firstName: "Async",
+          lastName: "Leak",
+          phone: "0999123456",
+          roleId: "role-worker",
+          status: "ACTIVE",
+        });
+      });
+    }).toThrow(/cannot return a promise/);
+
+    expect(repo.listEmployees()).toHaveLength(0);
+  });
+});

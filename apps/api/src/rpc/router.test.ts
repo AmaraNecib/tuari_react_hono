@@ -767,6 +767,20 @@ describe("RPC router", () => {
     expect(revokeKey).toHaveBeenLastCalledWith("key-1");
   });
 
+  it("rejects invalid auth bootstrap input at the wire contract", async () => {
+    const harness = createHarness();
+    const bootstrapFirstUser = vi.fn();
+    const router = createTestRouter(harness, { bootstrapFirstUser: bootstrapFirstUser as never });
+    const client = createRouterClient(router, { context: createContext(null) as never });
+
+    // BAD_REQUEST proves the authBootstrapInputSchema gate fired before the
+    // handler — the service-level validation is defense-in-depth only.
+    await expect(
+      client.authBootstrap({ name: "", phone: "   ", password: "" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(bootstrapFirstUser).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid recovery/DB key input at the wire contract", async () => {
     const harness = createHarness();
     const router = createTestRouter(harness);

@@ -385,9 +385,9 @@ Fix database efficiency and error handling:
 **Goal:** Ensure data consistency for multi-step mutations (create → validate → log)
 
 **Work Items:**
-- [ ] Verify TransactionManager exists
-  - File: `apps/api/src/modules/company/company.service.ts`
-  - Understand: Transaction semantics, rollback behavior
+- [x] Verify transaction composition exists (folded in #215)
+  - File: `apps/api/src/modules/company/workspace-mutation-context.ts`
+  - Understand: Transaction semantics, rollback behavior (`WorkspaceMutationContext.withTransaction` → `repository.withTransaction`; `TransactionManager` was removed in #215)
 
 - [ ] Identify all multi-step operations
   - Create debt account → create opening entry → log to system
@@ -397,15 +397,16 @@ Fix database efficiency and error handling:
   - List: 5-10 operations that need transactions
 
 - [ ] Wrap all multi-step operations
-  - Use `transactionManager.execute(async () => {...})`
+  - Use `WorkspaceMutationContext.withTransaction` (sync callback — the
+    `withTransaction` contract is synchronous, like better-sqlite3's)
   - All steps succeed together or all rollback
   - Updates: finance.service.ts, workforce.service.ts, operations.service.ts
   - Example:
     ```typescript
-    return this.transactionManager.execute(async () => {
-      const account = await this.createDebtAccount(...);
-      await this.createOpeningEntry({ accountId: account.id, ... });
-      await this.logToSystem('DEBT_ACCOUNT_CREATED', { accountId: account.id });
+    return this.mutation.withTransaction(() => {
+      const account = this.createDebtAccount(...);
+      this.createOpeningEntry({ accountId: account.id, ... });
+      this.logToSystem('DEBT_ACCOUNT_CREATED', { accountId: account.id });
       return account; // All succeed together
     });
     ```
