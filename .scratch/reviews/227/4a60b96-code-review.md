@@ -46,3 +46,14 @@ reused; CI `test-e2e` job added (chromium via `--with-deps`, `pnpm test:e2e`).
 
 Follow-ups (deferred, documented in the design doc): employees spec skipped
 (pre-existing workforce role-validation mismatch), not part of this issue.
+
+## Post-evidence delta (Greptile round, head 4a60b96)
+
+Greptile (confidence 4/5) flagged two UX issues in recovery-key-settings.tsx:
+- generate/revoke mutateAsync rejections were silently dropped (no feedback) →
+  FIXED: onError toasts via `showErrorToast` on both mutations
+  (recovery-key-hooks.ts), matching the workspace-mutations pattern.
+- `isChangingKey` was hardcoded false (DB-key change button never disabled
+  in flight) → FIXED: real `useChangeDbEncryptionKeyMutation` wired to
+  `isChangingKey`. Re-verified: web tests 341/341, e2e suite 11 passed /
+  2 skipped.
