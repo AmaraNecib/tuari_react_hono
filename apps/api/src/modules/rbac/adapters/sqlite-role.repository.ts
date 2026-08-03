@@ -24,6 +24,21 @@ type RoleRow = {
   permission: string | null;
 };
 
+/**
+ * Shared projection for the role LEFT JOIN — one definition so a schema
+ * change cannot silently drift one reader out of sync with the others.
+ */
+const ROLE_FIELDS = {
+  id: schema.role.id,
+  key: schema.role.key,
+  name: schema.role.name,
+  description: schema.role.description,
+  isSystem: schema.role.isSystem,
+  createdAt: schema.role.createdAt,
+  updatedAt: schema.role.updatedAt,
+  permission: schema.rolePermission.permission,
+};
+
 export class SqliteRoleRepository implements RoleRepository {
   private readonly db: AppDrizzle;
 
@@ -33,16 +48,7 @@ export class SqliteRoleRepository implements RoleRepository {
 
   async findAll(): Promise<RoleWithPermissions[]> {
     const rows = this.db
-      .select({
-        id: schema.role.id,
-        key: schema.role.key,
-        name: schema.role.name,
-        description: schema.role.description,
-        isSystem: schema.role.isSystem,
-        createdAt: schema.role.createdAt,
-        updatedAt: schema.role.updatedAt,
-        permission: schema.rolePermission.permission,
-      })
+      .select(ROLE_FIELDS)
       .from(schema.role)
       .leftJoin(schema.rolePermission, eq(schema.rolePermission.roleId, schema.role.id))
       .orderBy(asc(schema.role.key), asc(schema.rolePermission.permission))
@@ -53,19 +59,11 @@ export class SqliteRoleRepository implements RoleRepository {
 
   async findById(id: string): Promise<RoleWithPermissions | null> {
     const rows = this.db
-      .select({
-        id: schema.role.id,
-        key: schema.role.key,
-        name: schema.role.name,
-        description: schema.role.description,
-        isSystem: schema.role.isSystem,
-        createdAt: schema.role.createdAt,
-        updatedAt: schema.role.updatedAt,
-        permission: schema.rolePermission.permission,
-      })
+      .select(ROLE_FIELDS)
       .from(schema.role)
       .leftJoin(schema.rolePermission, eq(schema.rolePermission.roleId, schema.role.id))
       .where(eq(schema.role.id, id))
+      .orderBy(asc(schema.rolePermission.permission))
       .all() as RoleRow[];
 
     return groupRoles(rows)[0] ?? null;
@@ -73,19 +71,11 @@ export class SqliteRoleRepository implements RoleRepository {
 
   async findByKey(key: string): Promise<RoleWithPermissions | null> {
     const rows = this.db
-      .select({
-        id: schema.role.id,
-        key: schema.role.key,
-        name: schema.role.name,
-        description: schema.role.description,
-        isSystem: schema.role.isSystem,
-        createdAt: schema.role.createdAt,
-        updatedAt: schema.role.updatedAt,
-        permission: schema.rolePermission.permission,
-      })
+      .select(ROLE_FIELDS)
       .from(schema.role)
       .leftJoin(schema.rolePermission, eq(schema.rolePermission.roleId, schema.role.id))
       .where(eq(schema.role.key, key))
+      .orderBy(asc(schema.rolePermission.permission))
       .all() as RoleRow[];
 
     return groupRoles(rows)[0] ?? null;

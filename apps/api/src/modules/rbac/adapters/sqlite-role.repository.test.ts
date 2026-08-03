@@ -183,9 +183,10 @@ describe("SqliteRoleRepository", () => {
 
   describe("findById()", () => {
     it("returns the matching role with its permissions", async () => {
+      // Rows are fed in the order the ORDER BY permission clause returns.
       db.all.mockReturnValue([
-        roleRow({ id: "role-1", permission: "inventory:transfer" }),
         roleRow({ id: "role-1", permission: "inventory:read" }),
+        roleRow({ id: "role-1", permission: "inventory:transfer" }),
       ]);
 
       const role = await repository.findById("role-1");
@@ -193,11 +194,13 @@ describe("SqliteRoleRepository", () => {
       expect(role).toEqual(
         expect.objectContaining({
           id: "role-1",
-          permissions: ["inventory:transfer", "inventory:read"],
+          permissions: ["inventory:read", "inventory:transfer"],
         }),
       );
       // The adapter filters by the role id column, not a raw value.
       expect(db.where).toHaveBeenCalledWith(eq(schema.role.id, "role-1"));
+      // Permissions are deterministic — same ORDER BY as findAll (single role).
+      expect(db.orderBy).toHaveBeenCalledWith(asc(schema.rolePermission.permission));
     });
 
     it("returns null when the id matches no role", async () => {
@@ -225,6 +228,8 @@ describe("SqliteRoleRepository", () => {
       expect(role).toEqual(expect.objectContaining({ key: "manager", permissions: ["debts:settle"] }));
       // The adapter filters by the stable key column, not the id.
       expect(db.where).toHaveBeenCalledWith(eq(schema.role.key, "manager"));
+      // Permissions are deterministic — same ORDER BY as findAll (single role).
+      expect(db.orderBy).toHaveBeenCalledWith(asc(schema.rolePermission.permission));
     });
 
     it("returns null when the key matches no role", async () => {
