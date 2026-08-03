@@ -27,6 +27,16 @@ Thumbs.db
 # Temporary session logs (daily lessons that can be deleted)
 /.scratch/sessions/
 
+# Milestone backlogs migrated to GitHub issues
+/.scratch/issues/
+
+# Root-level scratch strays (pr-body drafts, temp notes) — not implementation/reviews/planning
+/.scratch/*.md
+/.scratch/*/
+!/.scratch/implementation/
+!/.scratch/reviews/
+!/.scratch/planning/
+
 .claude/
 .opencode/
 .codex/
