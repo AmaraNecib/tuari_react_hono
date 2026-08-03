@@ -89,3 +89,26 @@ Hardening round after the initial audit (commits 984077e, 0bf8353, 3e94e1c):
 The 3-agent audit findings (async-contract pin, adapter rollback integration
 test, `createMutationAuditContext` unit coverage) remain deferred to #232 —
 none are introduced by this delta.
+
+---
+
+## Post-evidence delta (3e94e1c → d31b36d, test-only)
+
+Coverage round (per reviewer/user feedback that tests were happy-path-only):
+
+- **`sqlite-company.repository.test.ts` +4 tests** — the REAL production adapter's
+  `withTransaction` (previously zero direct coverage):
+  - commits multi-table writes on success (employee + manager assignment durable after)
+  - rolls back ALL writes when the callback throws (assert 0 employees remain)
+  - rethrows the original error instance (identity)
+  - rejects async callbacks loudly (`/cannot return a promise/`, nothing written) —
+    empirically verified better-sqlite3 behavior
+- **`workspace-mutation-context.test.ts` +5 tests** — `createMutationAuditContext`
+  (previously only exercised via router.test.ts integration):
+  - normalizes absent context (fills transactionId UUID)
+  - preserves provided fields + supplied transactionId
+  - rejects non-bootstrap-owner with `CompanyError` code UNAUTHORIZED
+  - allows the bootstrap owner
+  - rejects anonymous actor when authorizer configured
+- Full suite: `pnpm test:api` 645/645 (was 636), typecheck clean (incl. direct
+  `tsc --noEmit` on api), lint clean. Test-only round — zero production changes.

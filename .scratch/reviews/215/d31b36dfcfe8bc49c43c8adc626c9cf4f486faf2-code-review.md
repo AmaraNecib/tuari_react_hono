@@ -78,3 +78,13 @@ axis**. Summary:
   doc hygiene are behavior-neutral and justified; zero scope creep.
 - Verification: typecheck 4/4, lint clean, `pnpm test:api` 636/636, targeted
   WMC file 7/7.
+
+---
+
+## Post-evidence delta (3e94e1c → d31b36d, test-only)
+
+Coverage round added 9 tests (4 sqlite-adapter transaction semantics, 5 WMC
+authorizer path). No production code changed. The fresh two-axis review at
+3e94e1c remains valid for the production surface; the added tests are
+assertion-verified (645/645 suite green, typecheck clean) and were reviewed in
+the test-audit delta note above. No new findings.
