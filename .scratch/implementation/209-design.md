@@ -26,13 +26,19 @@ Both are **no-behavior-change** structural cleanups. Review tier: **High-assuran
   `modules/rbac/adapters/sqlite-role.repository.ts` (it is the SQL storage
   adapter; the `SqliteRoleRepository` class is analogous to
   `workforce/adapters/role.repository.ts`).
+- `InMemoryRoleRepository` (the in-memory test double, previously embedded in
+  `role.module.ts`) → **moves** to
+  `modules/rbac/adapters/in-memory-role.repository.ts`. Every other module
+  keeps its in-memory doubles under `adapters/`
+  (`workforce/adapters/in-memory-role.repository.ts`, `company/adapters/inmemory-*`);
+  rbac was the only module with its double embedded in the module file.
+  All rbac storage adapters (sqlite + in-memory) now share one search surface.
 - `modules/rbac/role.module.ts` → **stays** at the module root. It is the deep
-  module (`RoleModule` + the `RoleRepository` seam + the in-memory test double),
-  not a storage adapter. Every other module keeps its deep module at the root
-  (`employee.module.ts`, `invoice.module.ts`, `payment.module.ts`, ...) and its
-  storage adapters in `adapters/`. The issue's parenthetical mentions
-  `role.module.ts` only to describe the current root-level file set; "align the
-  remaining rbac **storage adapters**" scopes the move to the adapter file.
+  module (`RoleModule` + the `RoleRepository` seam), not a storage adapter.
+  Every other module keeps its deep module at the root
+  (`employee.module.ts`, `invoice.module.ts`, `payment.module.ts`, ...). The
+  seam (interface) stays with the deep module, mirroring `company.repository.ts`
+  at the company module root with its implementations in `adapters/`.
 
 ## Public API / component interfaces
 
@@ -67,10 +73,14 @@ No public surface changes. Internal signatures:
   - **New** `modules/rbac/adapters/sqlite-role.repository.test.ts` pinning the
     moved adapter's behavior (it is currently untested — only the in-memory
     double is exercised by `role.module.test.ts`): `findAll` grouping + ordering,
-    `findById` / `findByKey` hits and null misses, LEFT-JOIN null permission →
-    empty permission list, and the `isPermission` guard skipping legacy
-    dot-separated rows. Uses the same mock-drizzle-chain pattern as the resolver
-    test — no real DB needed.
+    `findById` / `findByKey` hits and null misses (including the `where`
+    predicate on the correct column), LEFT-JOIN null permission → empty
+    permission list (for all three readers), and the `isPermission` guard
+    skipping legacy dot-separated rows. Uses the same mock-drizzle-chain pattern
+    as the resolver test — no real DB needed.
+  - Existing `InMemoryRoleRepository` consumers (`role.module.test.ts`,
+    `rpc/handlers/rbac.test.ts`, `rpc/router.test.ts`) repointed at
+    `adapters/in-memory-role.repository` — no assertion changes.
 - **Playwright E2E**: none new — this is an API-only, no-behavior-change
   refactor with no user-facing surface. Existing `tests/e2e/` suites must remain
   unaffected (no web files change).
@@ -89,9 +99,14 @@ No public surface changes. Internal signatures:
 - **Drizzle double-instance concern (dismissed)**: previously the resolver
   created its own Drizzle from the raw handle; now it shares the composition
   root's single instance. better-sqlite3 is one synchronous connection, so a
-  second Drizzle instance was never a second connection — no behavior delta.
-- **Test-audit scope creep**: adding the adapter test is justified as the move's
-  behavior pin; it is small and follows the existing mock pattern.
+  second Drizzle instance was never a second connection — no behavior delta on
+  the default path. One intended nuance: when a caller injects `drizzleDb`
+  built over a different handle than `sqlite`, the resolver now routes through
+  the injected instance (previously it ignored the injected instance and built
+  its own from the handle). That is the point of the change — the composition
+  root owns one Drizzle instance and every consumer uses it.
+- **Test-audit scope creep**: adding the adapter tests is justified as the
+  move's behavior pin; they are small and follow the existing mock pattern.
 
 ## Deviations from architecture
 

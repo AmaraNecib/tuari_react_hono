@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 
-import { RoleModule, InMemoryRoleRepository } from "./role.module";
+import { RoleModule } from "./role.module";
+import { InMemoryRoleRepository } from "./adapters/in-memory-role.repository";
 import { DEFAULT_ROLE_PERMISSIONS } from "./role-seeds";
 import type { Permission } from "./permissions";
 

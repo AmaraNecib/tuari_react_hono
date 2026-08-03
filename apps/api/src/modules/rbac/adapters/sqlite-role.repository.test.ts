@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { eq } from "drizzle-orm";
 import { SqliteRoleRepository } from "./sqlite-role.repository";
+import * as schema from "../../../schema";
 import type { AppDrizzle } from "../../../infrastructure/database/drizzle";
 
 /**
@@ -127,12 +129,23 @@ describe("SqliteRoleRepository", () => {
           permissions: ["inventory:transfer", "inventory:read"],
         }),
       );
+      // The adapter filters by the role id column, not a raw value.
+      expect(db.where).toHaveBeenCalledWith(eq(schema.role.id, "role-1"));
     });
 
     it("returns null when the id matches no role", async () => {
       db.all.mockReturnValue([]);
 
       expect(await repository.findById("missing")).toBeNull();
+      expect(db.where).toHaveBeenCalledWith(eq(schema.role.id, "missing"));
+    });
+
+    it("returns a role with an empty permission list when the LEFT JOIN misses", async () => {
+      db.all.mockReturnValue([roleRow({ id: "role-1", permission: null })]);
+
+      const role = await repository.findById("role-1");
+
+      expect(role).toEqual(expect.objectContaining({ id: "role-1", permissions: [] }));
     });
   });
 
@@ -143,12 +156,23 @@ describe("SqliteRoleRepository", () => {
       const role = await repository.findByKey("manager");
 
       expect(role).toEqual(expect.objectContaining({ key: "manager", permissions: ["debts:settle"] }));
+      // The adapter filters by the stable key column, not the id.
+      expect(db.where).toHaveBeenCalledWith(eq(schema.role.key, "manager"));
     });
 
     it("returns null when the key matches no role", async () => {
       db.all.mockReturnValue([]);
 
       expect(await repository.findByKey("worker")).toBeNull();
+      expect(db.where).toHaveBeenCalledWith(eq(schema.role.key, "worker"));
+    });
+
+    it("returns a role with an empty permission list when the LEFT JOIN misses", async () => {
+      db.all.mockReturnValue([roleRow({ key: "viewer", permission: null })]);
+
+      const role = await repository.findByKey("viewer");
+
+      expect(role).toEqual(expect.objectContaining({ key: "viewer", permissions: [] }));
     });
   });
 });
