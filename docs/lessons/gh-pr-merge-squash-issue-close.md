@@ -36,9 +36,12 @@ Rules:
 
 1. **PR convention** — a PR that delivers only PART of an issue must say
    `Part of #N`. Only the PR that finishes the issue says `Closes #N` / `Fixes #N`.
-2. **Before closing**, check the issue body + the PR for `defer`/`follow-up`/
-   `part of`/`remaining` references to **still-open** issues. If any exist,
-   the issue is not done — leave it open.
+2. **Before closing**, check the issue body for genuine `remaining`/`todo`
+   markers pointing at still-open issues, and check the PR body for `Part of #N`
+   where **N is the number being closed**. Lineage markers — `Part of #M`
+   (M ≠ target), `follow-up from #N`, `deferred from #N` — say where an issue
+   came from and must NOT block closing it (e.g. `Closes #201 / Part of #200`
+   closes #201 fully).
 3. **Check the acceptance criteria** are actually met in the code, not just
    claimed in the PR.
 4. **Skip parents/trackers** with open sub-issues (maps, parent issues).

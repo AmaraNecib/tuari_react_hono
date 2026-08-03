@@ -241,7 +241,11 @@ say "Part of #N" — only the finishing PR says "Closes #N".
 
 **Systemic fix (implemented)**: the `auto-close-issues.yml` GitHub Action closes
 referenced issues on merge to `develop`, but is deliberately CONSERVATIVE — it
-honors "Closes #N" only in the PR body (not title), skips issues that defer to
-still-open issues, skips parents with open sub-issues, and logs every SKIP so
-humans verify. It is a convenience, not the authority — the manual sweep still
-applies.
+honors "Closes #N" only in the PR body (not title), skips parents with open
+sub-issues, skips an issue whose body marks remaining work in a still-open
+issue (`remaining`/`todo` ONLY), and skips when the PR body marks the number
+being closed itself as partial (`Part of #N` where N is the target). Lineage
+markers — "Part of #M" (M ≠ target), "follow-up from #N", "deferred from #N" —
+describe where an issue came from and NEVER block closing it. Every SKIP is
+logged for human verification. It is a convenience, not the authority — the
+manual sweep still applies.

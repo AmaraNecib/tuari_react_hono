@@ -11,10 +11,15 @@ name: Auto-close issues on merge to develop
 # deliberately CONSERVATIVE:
 #
 #   1. It only honors "Closes #N" in the PR BODY, never the title.
-#   2. It skips issues that still reference OPEN deferred/follow-up/part-of
-#      issues anywhere (issue body, comments, or the PR body itself).
-#   3. It skips parent/tracker issues that have open sub-issues.
-#   4. It always logs what it closed and what it skipped, with reasons, so
+#   2. It skips parent/tracker issues that have open sub-issues.
+#   3. It skips an issue whose body marks REMAINING work in a still-open issue
+#      ("remaining"/"todo" only — NOT lineage markers like "Part of #N" /
+#      "follow-up from #N" / "deferred from #N", which just say where the
+#      issue came from and never mean it has unfinished scope).
+#   4. It skips when the PR body marks THE NUMBER BEING CLOSED itself as
+#      partial/deferred (self-reference). "Closes #201 / Part of #200" closes
+#      #201 fully — #200's open status is irrelevant to #201.
+#   5. It always logs what it closed and what it skipped, with reasons, so
 #      anything questionable is caught by the human on the next sync pass.
 #
 # Convention (enforced by review, not by this workflow):
@@ -83,10 +88,13 @@ jobs:
               continue
             fi
 
-            # 3. Skip if the issue body references OTHER open issues in a
-            #    deferred/follow-up/part-of/remaining context — work remains.
+            # 3. ISSUE-BODY guard — only genuine INCOMPLETE markers block.
+            #    "Part of #N" / "follow-up from #N" / "deferred from #N" are
+            #    LINEAGE markers (where the issue came from) — they never mean
+            #    this issue has remaining work. Only "remaining"/"todo"
+            #    pointing at an OPEN issue indicate unfinished scope.
             deferred=$(printf '%s' "$issue_body" \
-              | grep -oiE '(defer(red)?|follow[ -]?up|part of|remaining|todo)[^#]*#([0-9]+)' \
+              | grep -oiE '(remaining|todo|not yet done|still open)[^#]*#([0-9]+)' \
               | grep -oE '#[0-9]+' | tr -d '#' | sort -un || true)
             open_ref=""
             for ref in $deferred; do
@@ -96,24 +104,19 @@ jobs:
               fi
             done
             if [ -n "$open_ref" ]; then
-              echo "  SKIP: #$num defers to still-OPEN issue(s):$open_ref"
+              echo "  SKIP: #$num marks remaining work in still-OPEN issue(s):$open_ref"
               continue
             fi
 
-            # 4. Same check on the PR body itself (a merged PR deferring the rest).
-            pr_deferred=$(printf '%s\n' "$PR_BODY" \
-              | grep -oiE '(defer(red)?|follow[ -]?up|part of|remaining|todo)[^#]*#([0-9]+)' \
-              | grep -oE '#[0-9]+' | tr -d '#' | sort -un || true)
-            pr_open_ref=""
-            for ref in $pr_deferred; do
-              if [ "$ref" = "$num" ]; then continue; fi
-              rstate=$(gh issue view "$ref" --json state --jq '.state' 2>/dev/null || echo "")
-              if [ "$rstate" = "OPEN" ]; then
-                pr_open_ref="$pr_open_ref $ref"
-              fi
-            done
-            if [ -n "$pr_open_ref" ]; then
-              echo "  SKIP: PR #$PR_NUMBER defers to still-OPEN issue(s):$pr_open_ref"
+            # 4. PR-BODY guard — skip ONLY when the PR itself marks the number
+            #    being closed as partial/deferred (self-reference). "Closes #201
+            #    / Part of #200" closes #201 fully; #200's open status is
+            #    irrelevant to #201. Lineage refs to OTHER issues never block.
+            pr_partial=$(printf '%s\n' "$PR_BODY" \
+              | grep -oiE '(part of|defer(red)?|remaining|todo)[^#]*#'"$num"'([^0-9]|$)' \
+              || true)
+            if [ -n "$pr_partial" ]; then
+              echo "  SKIP: PR #$PR_NUMBER marks #$num itself as partial/deferred"
               continue
             fi
 
