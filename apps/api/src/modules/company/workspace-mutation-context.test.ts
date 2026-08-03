@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
-import type { CompanyRepository } from "./company.repository.contracts";
+import type { TransactionalRepository } from "./company.repository.contracts";
 
 describe("WorkspaceMutationContext.withTransaction", () => {
   let calls: string[];
@@ -9,7 +9,7 @@ describe("WorkspaceMutationContext.withTransaction", () => {
   beforeEach(() => {
     calls = [];
 
-    const mockRepository = {
+    const repository: TransactionalRepository = {
       withTransaction<T>(callback: () => T): T {
         calls.push("BEGIN");
         try {
@@ -21,9 +21,9 @@ describe("WorkspaceMutationContext.withTransaction", () => {
           throw error;
         }
       },
-    } as unknown as CompanyRepository;
+    };
 
-    context = new WorkspaceMutationContext(mockRepository);
+    context = new WorkspaceMutationContext(repository);
   });
 
   it("runs the operation inside the repository transaction", () => {
@@ -33,10 +33,30 @@ describe("WorkspaceMutationContext.withTransaction", () => {
     expect(calls).toEqual(["BEGIN", "COMMIT"]);
   });
 
-  it("rolls back and rethrows when the operation fails", () => {
+  it.each([undefined, null, false, 0])(
+    "commits and propagates the falsy result %s",
+    (falsyResult) => {
+      expect(context.withTransaction(() => falsyResult)).toBe(falsyResult);
+      expect(calls).toEqual(["BEGIN", "COMMIT"]);
+    },
+  );
+
+  it("rolls back and rethrows the original error instance", () => {
+    const expected = new Error("Operation failed");
+
     expect(() => {
       context.withTransaction(() => {
-        throw new Error("Operation failed");
+        throw expected;
+      });
+    }).toThrowError(expected);
+
+    expect(calls).toEqual(["BEGIN", "ROLLBACK"]);
+  });
+
+  it("rolls back and rethrows when the operation throws a non-Error value", () => {
+    expect(() => {
+      context.withTransaction(() => {
+        throw "Operation failed";
       });
     }).toThrow("Operation failed");
 

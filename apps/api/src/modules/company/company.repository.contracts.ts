@@ -25,3 +25,13 @@ export interface CompanyRepository
     AuditRepository {
   withTransaction<T>(callback: () => T): T;
 }
+
+/**
+ * The minimal transactional capability a consumer needs to run a mutation
+ * inside a database transaction.
+ *
+ * Modules that only run transactions (e.g. `WorkspaceMutationContext`) depend
+ * on this narrow seam instead of the full `CompanyRepository`, so they can be
+ * built and tested with just a transaction runner.
+ */
+export type TransactionalRepository = Pick<CompanyRepository, "withTransaction">;

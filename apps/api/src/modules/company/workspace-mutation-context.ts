@@ -12,14 +12,14 @@
  * per-service transaction semantics stay isolated.
  */
 
-import type { CompanyRepository } from "./company.repository.contracts";
+import type { TransactionalRepository } from "./company.repository.contracts";
 import { CompanyError } from "./company.errors";
-import { type MutationAuditContext as RawAuditContext, type MutationAuditContext } from "./company.types";
+import { type MutationAuditContext as RawAuditContext } from "./company.types";
 import { normalizeMutationAuditContext, type WorkspaceAdminAuthorizer } from "./company.helpers";
 
 export class WorkspaceMutationContext {
   constructor(
-    private readonly repository: CompanyRepository,
+    private readonly repository: TransactionalRepository,
     private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
   ) {}
 
@@ -46,10 +46,8 @@ export class WorkspaceMutationContext {
     return audit;
   }
 
-  /** Runs `operation` inside a Drizzle transaction. */
+  /** Runs `operation` inside a repository transaction (commit on success, rollback on error). */
   withTransaction<T>(operation: () => T): T {
     return this.repository.withTransaction(operation);
   }
 }
-
-export type { MutationAuditContext, RawAuditContext };
