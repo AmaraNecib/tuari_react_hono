@@ -1,0 +1,134 @@
+name: Auto-close issues on merge to develop
+
+# GitHub only auto-closes issues when a PR merges into the DEFAULT branch
+# (main). This repo merges all work into `develop`, so "Closes #N" never
+# auto-closes anything. This workflow closes the linked issues manually on
+# merge.
+#
+# IMPORTANT — multi-PR issues: an issue may need SEVERAL PRs to be fully
+# delivered (e.g. #177 needed #179 + #189 + #258). A keyword parser cannot
+# tell "fully delivered" from "partially delivered". So this workflow is
+# deliberately CONSERVATIVE:
+#
+#   1. It only honors "Closes #N" in the PR BODY, never the title.
+#   2. It skips parent/tracker issues that have open sub-issues.
+#   3. It skips an issue whose body marks REMAINING work in a still-open issue
+#      ("remaining"/"todo" only — NOT lineage markers like "Part of #N" /
+#      "follow-up from #N" / "deferred from #N", which just say where the
+#      issue came from and never mean it has unfinished scope).
+#   4. It skips when the PR body marks THE NUMBER BEING CLOSED itself as
+#      partial/deferred (self-reference). "Closes #201 / Part of #200" closes
+#      #201 fully — #200's open status is irrelevant to #201.
+#   5. It always logs what it closed and what it skipped, with reasons, so
+#      anything questionable is caught by the human on the next sync pass.
+#
+# Convention (enforced by review, not by this workflow):
+#   - A PR that delivers PART of an issue must say "Part of #N" — never "Closes #N".
+#   - Only the PR that finishes the issue says "Closes #N" / "Fixes #N".
+# See docs/lessons/gh-pr-merge-squash-issue-close.md and .agents/wisdom/process.md.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  close-linked-issues:
+    # Only on merges INTO develop — the whole reason this workflow exists is
+    # that native auto-close only fires on the default branch (main). Merges to
+    # main are already auto-closed by GitHub, so running here would duplicate it.
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close issues referenced by the merged PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 1. Collect "Closes/Fixes/Resolves #N" from the PR BODY only (not the
+          #    title — titles are where sloppy "(closes #N)" gets appended).
+          #    Word-boundary anchors (\b) prevent mid-word matches like
+          #    "unresolved #5" or "foreclosed #3" from closing issues.
+          numbers=$(
+            printf '%s\n' "$PR_BODY" \
+              | grep -oiE '\b(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)\b[^#]*#([0-9]+)' \
+              | grep -oE '#[0-9]+' \
+              | tr -d '#' \
+              | sort -un \
+              || true
+          )
+
+          if [ -z "$numbers" ]; then
+            echo "No 'Closes #N' reference in PR body #$PR_NUMBER — nothing to close."
+            exit 0
+          fi
+
+          for num in $numbers; do
+            echo "── Checking issue #$num ──"
+            # 2. Fetch state with gh's own --jq (bundled engine — no external
+            #    jq/sed; robust against body content and compact JSON).
+            state=$(gh issue view "$num" --json state --jq '.state' 2>/dev/null || echo "")
+            issue_body=$(gh issue view "$num" --json body --jq '.body // ""' 2>/dev/null || echo "")
+
+            if [ "$state" != "OPEN" ]; then
+              echo "  SKIP: #$num state=$state (not open)"
+              continue
+            fi
+
+            # 2. Skip if the issue is a parent/tracker with open sub-issues
+            #    (sub_issues_summary comes from gh api's own --jq).
+            sub_total=$(gh api "repos/{owner}/{repo}/issues/$num" --jq '.sub_issues_summary.total // 0' 2>/dev/null || echo 0)
+            sub_done=$(gh api "repos/{owner}/{repo}/issues/$num" --jq '.sub_issues_summary.completed // 0' 2>/dev/null || echo 0)
+            if [ -n "$sub_total" ] && [ "$sub_total" -gt 0 ] && [ "$sub_total" -gt "${sub_done:-0}" ]; then
+              echo "  SKIP: #$num is a parent with $((sub_total - sub_done)) open sub-issues"
+              continue
+            fi
+
+            # 3. ISSUE-BODY guard — only genuine INCOMPLETE markers block.
+            #    "Part of #N" / "follow-up from #N" / "deferred from #N" are
+            #    LINEAGE markers (where the issue came from) — they never mean
+            #    this issue has remaining work. Only "remaining"/"todo"
+            #    pointing at an OPEN issue indicate unfinished scope.
+            deferred=$(printf '%s' "$issue_body" \
+              | grep -oiE '(remaining|todo|not yet done|still open)[^#]*#([0-9]+)' \
+              | grep -oE '#[0-9]+' | tr -d '#' | sort -un || true)
+            open_ref=""
+            for ref in $deferred; do
+              rstate=$(gh issue view "$ref" --json state --jq '.state' 2>/dev/null || echo "")
+              if [ "$rstate" = "OPEN" ]; then
+                open_ref="$open_ref $ref"
+              fi
+            done
+            if [ -n "$open_ref" ]; then
+              echo "  SKIP: #$num marks remaining work in still-OPEN issue(s):$open_ref"
+              continue
+            fi
+
+            # 4. PR-BODY guard — skip ONLY when the PR itself marks the number
+            #    being closed as partial/deferred (self-reference). "Closes #201
+            #    / Part of #200" closes #201 fully; #200's open status is
+            #    irrelevant to #201. Lineage refs to OTHER issues never block.
+            pr_partial=$(printf '%s\n' "$PR_BODY" \
+              | grep -oiE '(part of|defer(red)?|remaining|todo)[^#]*#'"$num"'([^0-9]|$)' \
+              || true)
+            if [ -n "$pr_partial" ]; then
+              echo "  SKIP: PR #$PR_NUMBER marks #$num itself as partial/deferred"
+              continue
+            fi
+
+            if ! gh issue close "$num" \
+              --comment "Auto-closed: delivered by PR #$PR_NUMBER." 2>/dev/null; then
+              echo "  WARN: failed to close #$num — close manually"
+              continue
+            fi
+            echo "  CLOSED #$num"
+          done
+
+          echo "── Done. Manually verify any SKIP lines on the next sync pass."

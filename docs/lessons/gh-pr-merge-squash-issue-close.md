@@ -1,40 +1,87 @@
-# `gh pr merge --squash` doesn't auto-close linked issues
+# Issues never auto-close on merge — PRs target `develop`, not the default branch
 
 ## The problem
 
-When merging a PR via `gh pr merge <num> --squash`, GitHub does **not**
-automatically close the linked issue even when `Closes #<num>` is in the
-PR body. The issue stays OPEN after the merge.
+Every PR here merges into `develop`, but this repo's **default branch is `main`**.
+GitHub only auto-closes issues when a PR is merged into the **default branch**.
+So `Closes #<num>` in a PR title, body, or squash-merge message **never**
+auto-closes the linked issue — regardless of where the keyword appears.
 
-This is inconsistent with the GitHub UI merge button, which does trigger
-auto-close for the same keyword.
+This has stranded many issues as OPEN after their work merged: #204, #195,
+#206, #212, #215, #226, #227, and more. Each one had to be closed manually.
 
-## The fix
+## Evidence
 
-Always manually close the linked issue after merging:
+- `gh repo view --json defaultBranchRef` → `main`
+- PRs target `develop` (see any `gh pr view <num> --json baseRefName`)
+- Closed-by-PR issues show `closedByPRs: []` in `gh issue view` — they were
+  closed manually, not by the merge
+
+## The fix — manual close, every time
+
+Always close the linked issue after merging a PR:
 
 ```bash
-gh issue close <num>
+gh issue close <num> --comment "delivered by PR #<num> (commit <sha>)"
 ```
 
-## Better — verify after every merge
+## Multi-PR issues — never close on the first PR
+
+An issue can need **several PRs** to be fully delivered. Example: #177 needed
+#179 (Phase 3) + #189 (ports-and-adapters) + #258 (Phase 4 debts). PR #179's
+title said "closes #177" but the issue was NOT done yet — closing it then would
+have lost the remaining scope.
+
+Rules:
+
+1. **PR convention** — a PR that delivers only PART of an issue must say
+   `Part of #N`. Only the PR that finishes the issue says `Closes #N` / `Fixes #N`.
+2. **Before closing**, check the issue body for genuine `remaining`/`todo`
+   markers pointing at still-open issues, and check the PR body for `Part of #N`
+   where **N is the number being closed**. Lineage markers — `Part of #M`
+   (M ≠ target), `follow-up from #N`, `deferred from #N` — say where an issue
+   came from and must NOT block closing it (e.g. `Closes #201 / Part of #200`
+   closes #201 fully).
+3. **Check the acceptance criteria** are actually met in the code, not just
+   claimed in the PR.
+4. **Skip parents/trackers** with open sub-issues (maps, parent issues).
+
+## Systemic fix (implemented)
+
+The `auto-close-issues.yml` GitHub Action closes referenced issues on merge to
+`develop`, so the manual step is no longer the only mechanism. It is
+conservative by design: it honors "Closes #N" only in the PR **body** (not
+title), skips parents with open sub-issues, skips issues whose body marks
+`remaining`/`todo` work in a still-open issue, and skips when the PR body marks
+the number being closed itself as partial (`Part of #N` where N is the target).
+Lineage markers (`Part of #M` with M ≠ target, `follow-up from #N`, `deferred
+from #N`) never block — they describe where an issue came from, not unfinished
+scope. Every SKIP is logged with a reason. It is a convenience, not the
+authority — the human/agent sweep still applies.
+
+## Better — sweep after every batch merge
+
+When several PRs merged (e.g. an agent batch), sweep all of them:
 
 ```bash
-# After merge
-gh issue view <num> --json state
-# If state: "OPEN", close it
+# 1. List merged PRs claiming to close issues
+gh pr list --state merged --limit 15 --json number,title --jq '.[] | .title'
+
+# 2. For each claimed issue, check state and close if OPEN
+gh issue view <num> --json state   # if "OPEN" → close it
 ```
 
-## Root cause
+## Root cause (corrected)
 
-The `gh pr merge` CLI tool creates a squash-merge commit via the API,
-and the auto-close keyword detection works differently for squash merges
-submitted programmatically compared to the web UI merge button.
+Earlier versions of this file blamed `gh pr merge --squash` or the CLI. That was
+**wrong**. The CLI behavior is identical to the web UI — the real cause is the
+**branch target**: auto-close only fires on the default branch, and this repo's
+default branch is `main` while all work merges to `develop`.
 
 ## What to do on future PRs
 
 1. Merge the PR
 2. Immediately verify: `gh issue view <num> --json state`
 3. If still OPEN: `gh issue close <num>`
-4. Add a checklist item to the PR template to remind:
+4. Consider adding a checklist item to the PR template:
    `[ ] Verify linked issue is closed after merge`
