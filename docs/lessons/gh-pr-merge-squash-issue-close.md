@@ -46,12 +46,17 @@ Rules:
    claimed in the PR.
 4. **Skip parents/trackers** with open sub-issues (maps, parent issues).
 
-## Systemic fix
+## Systemic fix (implemented)
 
-`auto-close-issues.yml` closes referenced issues on merge to `develop`, but is
+The `auto-close-issues.yml` GitHub Action closes referenced issues on merge to
+`develop`, so the manual step is no longer the only mechanism. It is
 conservative by design: it honors "Closes #N" only in the PR **body** (not
-title), skips issues that defer to still-open issues, skips parents with open
-sub-issues, and logs every SKIP with a reason. It is a convenience, not the
+title), skips parents with open sub-issues, skips issues whose body marks
+`remaining`/`todo` work in a still-open issue, and skips when the PR body marks
+the number being closed itself as partial (`Part of #N` where N is the target).
+Lineage markers (`Part of #M` with M ≠ target, `follow-up from #N`, `deferred
+from #N`) never block — they describe where an issue came from, not unfinished
+scope. Every SKIP is logged with a reason. It is a convenience, not the
 authority — the human/agent sweep still applies.
 
 ## Better — sweep after every batch merge
@@ -72,13 +77,6 @@ Earlier versions of this file blamed `gh pr merge --squash` or the CLI. That was
 **wrong**. The CLI behavior is identical to the web UI — the real cause is the
 **branch target**: auto-close only fires on the default branch, and this repo's
 default branch is `main` while all work merges to `develop`.
-
-## Systemic fix (recommended)
-
-Add a GitHub Action on `pull_request` events: when a PR targeting `develop` is
-merged and its **body** matches `(closes|fixes|resolves) #(\d+)` (titles are
-ignored by design), run
-`gh issue close` for those numbers. This removes the manual step entirely.
 
 ## What to do on future PRs
 
