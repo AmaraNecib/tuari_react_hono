@@ -27,6 +27,9 @@ Thumbs.db
 # Temporary session logs (daily lessons that can be deleted)
 /.scratch/sessions/
 
+# Milestone backlogs migrated to GitHub issues
+/.scratch/issues/
+
 .claude/
 .opencode/
 .codex/
