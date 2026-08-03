@@ -766,7 +766,7 @@ describe("RPC router", () => {
     expect(revokeKey).toHaveBeenLastCalledWith("key-1");
   });
 
-  it("rejects invalid recovery key input at the wire contract", async () => {
+  it("rejects invalid recovery/DB key input at the wire contract", async () => {
     const harness = createHarness();
     const router = createTestRouter(harness);
     const client = createRouterClient(router, { context: createContext() as never });
