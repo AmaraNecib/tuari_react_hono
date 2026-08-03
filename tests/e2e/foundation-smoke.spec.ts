@@ -1,7 +1,5 @@
 import { expect, test } from "@playwright/test"
 
-import { passwordField } from "./helpers/session"
-
 test.describe.configure({ mode: "serial" })
 
 async function bootstrapIfNeeded(page: import("@playwright/test").Page) {
@@ -12,13 +10,13 @@ async function bootstrapIfNeeded(page: import("@playwright/test").Page) {
   if (await createFirstUserButton.isVisible()) {
     await page.getByLabel("الاسم الكامل").fill("مدير التشغيل")
     await page.getByLabel("رقم الهاتف").fill("0612345678")
-    await passwordField(page).fill("password123")
+    await page.getByLabel("كلمة المرور", { exact: true }).fill("password123")
     await createFirstUserButton.click()
     return
   }
 
   await page.getByLabel("رقم الهاتف").fill("0612345678")
-  await passwordField(page).fill("password123")
+  await page.getByLabel("كلمة المرور", { exact: true }).fill("password123")
   await page.getByRole("button", { name: "دخول إلى مساحة العمل" }).click()
 }
 

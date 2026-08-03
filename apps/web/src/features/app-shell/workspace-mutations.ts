@@ -639,7 +639,7 @@ export function useCreateExternalCounterpartyMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"], ["counterparties"])
+      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees", "externalCounterparties"], ["counterparties"])
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -684,7 +684,7 @@ export function useCreateDebtAccountMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"], ["counterparties"])
+      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees", "externalCounterparties"], ["counterparties"])
       showSuccessToast(message)
     },
     onError: (error) => {

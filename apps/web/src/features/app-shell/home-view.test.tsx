@@ -603,3 +603,34 @@ describe("HomeView workspace shell", () => {
     expect(mocks.updateEmployeeWorkplaceMutate).not.toHaveBeenCalled()
   })
 })
+
+describe("debts pages surface feature-query errors", () => {
+  it("shows the debts load error instead of an empty hub when the summary query fails", async () => {
+    renderWorkspace("debts", { sessionUser: demoUser, debtsSummaryError: true })
+
+    expect(
+      await screen.findByText("تعذر تحميل بيانات الديون. حاول مرة أخرى."),
+    ).toBeTruthy()
+    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeTruthy()
+  })
+
+  it("shows the debts load error instead of the externals list when the summary query fails", async () => {
+    renderWorkspace("externals", { sessionUser: demoUser, debtsSummaryError: true })
+
+    expect(
+      await screen.findByText("تعذر تحميل بيانات الديون. حاول مرة أخرى."),
+    ).toBeTruthy()
+    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeTruthy()
+  })
+})
+
+describe("debts pages show a loading state while the summary query is pending", () => {
+  it("shows the detail-page skeleton instead of a zero-balance hub", async () => {
+    renderWorkspace("debts", { sessionUser: demoUser, debtsSummaryPending: true })
+
+    // The skeleton fallback (animate-pulse shimmer) replaces the hub until
+    // the feature-scoped summary query resolves — no zero-balance flash.
+    expect(document.querySelector(".animate-pulse")).toBeTruthy()
+    expect(screen.queryByText("مركز الديون")).toBeNull()
+  })
+})

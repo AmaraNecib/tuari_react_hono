@@ -2,26 +2,28 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { bearer, phoneNumber } from "better-auth/plugins";
 
-import { env } from "../config/runtime-env";
+import type { AppConfig } from "../../config";
 import type { AppDrizzle } from "../database/drizzle";
 
 const algerianPhonePattern = /^(05|06|07)\d{8}$/;
 
 /**
- * Create the better-auth instance from an existing Drizzle connection.
- * The caller provides the shared Drizzle handle so auth shares the
- * same database connection as the rest of the app.
+ * Create the better-auth instance from a shared Drizzle connection.
+ *
+ * @param drizzleDb - Shared Drizzle handle; auth shares the same database
+ *                    connection as the rest of the app.
+ * @param config - Validated app config; supplies the auth base URL, secret,
+ *                 and trusted origins.
  */
-/** Create the better-auth instance from a shared Drizzle connection. */
-export function createAuth(drizzleDb: AppDrizzle) {
+export function createAuth(drizzleDb: AppDrizzle, config: AppConfig) {
   return betterAuth({
     database: drizzleAdapter(drizzleDb, {
       provider: "sqlite",
       usePlural: false,
     }),
-    baseURL: env.betterAuthUrl,
-    secret: env.betterAuthSecret,
-    trustedOrigins: env.allowedOrigins,
+    baseURL: config.betterAuthUrl,
+    secret: config.betterAuthSecret,
+    trustedOrigins: config.allowedOrigins,
     plugins: [
       bearer(),
       phoneNumber({

@@ -64,3 +64,60 @@ read-modify-write and multi-statement flow for interleaving. "Same logic,
 await it" is not behavior-preserving — add the atomic primitive at the port
 level (guarded CAS / serialized transaction), and pin each invariant with a
 deterministic concurrency test.
+
+## Output schemas validate, they don't transform (🟡 Minor)
+
+On #221, `changeDbKeyOutputSchema`'s failure member used `error: z.string().trim().min(1)` to reject blank-looking errors. Greptile (4/5 → 5/5 after the fix) flagged `.trim()` as a *transform* on an output schema: it silently rewrites server-emitted values rather than rejecting them. The pure-validator form is `z.object({...}).refine(({ error }) => error.trim().length > 0, ...)` — same rejection behavior, zero mutation. On INPUT schemas transforms are fine (normalize what the client sent); on OUTPUT schemas prefer `refine`/`regex` so the server's emitted value crosses the wire byte-identical.
+
+**Always**: on output schemas, express blank/format rules as validators (`refine`, `regex`, `min`), never as transforms (`trim`, `toLowerCase`).
+
+## Service-boundary defense-in-depth: reuse the wire contract schema, don't hand-roll (💡 Design Principle)
+
+`AuthBootstrapService` (#226) relied entirely on the ORPC wire gate; nothing
+validated at the service boundary, so a mis-wired port or future caller could
+create a first user with a blank phone (never counted as "configured" by
+`hasConfiguredUsers`, enabling a second bootstrap), hash an empty/short
+password, or store an untrimmed/over-long name. Fix: run
+`authBootstrapInputSchema.safeParse(input)` as the service's first statement and
+return a `VALIDATION` failure result before hashing or touching the port. The
+wire gate and the service gate reference the SAME schema object imported from
+`@tuari/contracts`, so drift between the two enforcement points is impossible
+by construction — the strongest form of "validate at the boundary". This
+extends the `AccountService` precedent (reuses `algerianPhoneSchema.safeParse`)
+into the pattern for service-boundary input checks: never duplicate the
+validity definition in the service.
+
+**Always**: when an issue says "harden input at the service boundary", reuse
+the existing contract schema via `safeParse` rather than hand-rolling checks;
+consume `parsed.data` (already normalized by schema `.trim()`s) downstream.
+
+## Zod issue taxonomy: missing key is `invalid_type`, not `too_small` (🟠 Major)
+
+The test-audit edge-case hunter caught a real message bug: a mis-wired caller
+passing `{ phone, password }` (missing `name`) gets an `invalid_type` zod issue,
+NOT `too_small` — so a map branching only on `too_small` emitted
+"الاسم يجب ألا يتجاوز 120 حرفًا." (too-long) for an *absent* name. Fix: treat
+`too_small` OR `invalid_type` as the "required" branch. Also: a schema without
+`.min()` (e.g. `algerianPhoneSchema` = trim + regex only) never produces
+`too_small` — blank phone is `invalid_string`, so put the phone in the
+"invalid/format" map and the regex-prose message must cover blank too.
+
+**Always**: when mapping zod issues to user-facing messages, branch
+`too_small || invalid_type` → required; everything else → invalid/format; and
+check each field's schema for whether `.min()` even exists before relying on
+`too_small`.
+
+## Zod v4 exposes string schema bounds at runtime (🟡 Minor)
+
+`z.string().min(8).max(128)` → the schema instance has public `.minLength`
+(`number | null`) and `.maxLength` — accessible via `schema.shape.field` on
+objects. #226 derives the Arabic message copy from these
+(`كلمة المرور يجب أن تكون ${schema.shape.password.minLength} أحرف على الأقل.`)
+so message copy cannot drift from the contract. Caveats: `.optional()` wraps the
+field in `ZodOptional` (unwrap first), a schema without `.min()`/`.max()` yields
+`null` (renders "null" in a template — accepted residual), and Arabic plural
+grammar ("أحرف" vs "حرفًا") depends on the numeric value (8 vs 120), so a
+future limit change may need grammar review.
+
+**Always**: when validation copy must match schema limits, introspect
+`minLength`/`maxLength` instead of hardcoding the numbers.

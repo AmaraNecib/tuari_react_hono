@@ -242,9 +242,9 @@ await tx.$executeRawUnsafe('INSERT INTO "app_schema_state"...')
 SQLite uses file-level locking; PostgreSQL uses row-level locking.
 
 ```typescript
-// Current: simple transaction wrapper
-private withTransaction<T>(operation: () => T): T {
-  return this.transactionManager.execute(operation);
+// Current: delegation through the workspace mutation context
+withTransaction<T>(operation: () => T): T {
+  return this.repository.withTransaction(operation);
 }
 ```
 
@@ -698,7 +698,7 @@ const program = pipe(
 
 | Use Case | Current State | Effect Benefit | Recommendation |
 |----------|---------------|----------------|----------------|
-| Database transactions | Manual TransactionManager | Transaction composition | Keep current |
+| Database transactions | Direct `repository.withTransaction` via `WorkspaceMutationContext` | Transaction composition | Keep current |
 | Error accumulation | Throwing on first error | Validate all fields, return all errors | Consider for forms |
 | Real-time updates | None | Not needed | Add when needed |
 
@@ -739,8 +739,8 @@ async function withRetry<T>(
 
 3. **Transaction composition:**
 ```typescript
-// Already works well with current TransactionManager
-transactionManager.execute(() => {
+// Already works well with the folded delegation (WorkspaceMutationContext → repository.withTransaction)
+context.withTransaction(() => {
   const employee = repository.createEmployee(data);
   const history = repository.createStateHistory({...});
   return { employee, history };

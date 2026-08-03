@@ -42,8 +42,12 @@ export function RecoveryKeySettings() {
   const [generatedKeys, setGeneratedKeys] = useState<GeneratedRecoveryKey[] | null>(null)
 
   async function handleGenerateKeys() {
-    const generated = await generateMutation.mutateAsync()
-    setGeneratedKeys(generated)
+    try {
+      const generated = await generateMutation.mutateAsync()
+      setGeneratedKeys(generated)
+    } catch {
+      // Failure feedback is shown by the mutation's onError toast.
+    }
   }
 
   return (
@@ -53,7 +57,11 @@ export function RecoveryKeySettings() {
         isLoadingPool={poolQuery.isLoading}
         onGenerateKeys={handleGenerateKeys}
         onRevokeKey={async (keyId) => {
-          await revokeMutation.mutateAsync(keyId)
+          try {
+            await revokeMutation.mutateAsync(keyId)
+          } catch {
+            // Failure feedback is shown by the mutation's onError toast.
+          }
         }}
         onChangeDbKey={async (input) => changeDbKeyMutation.mutateAsync(input)}
         isGenerating={generateMutation.isPending}
@@ -65,7 +73,10 @@ export function RecoveryKeySettings() {
       <Dialog
         open={generatedKeys !== null}
         onOpenChange={(open) => {
-          if (!open) setGeneratedKeys(null)
+          // The only legitimate dismissal is the "لقد حفظت المفاتيح" button,
+          // which clears generatedKeys directly. Escape / backdrop clicks would
+          // silently discard the one-time keys, so those closes are ignored.
+          if (!open) return
         }}
       >
         <DialogContent showCloseButton={false}>

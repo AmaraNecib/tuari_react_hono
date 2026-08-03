@@ -1,4 +1,4 @@
-import { env } from "../infrastructure/config/runtime-env";
+import { createAuth } from "../infrastructure/auth/auth";
 import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
 import type { AppDrizzle } from "../infrastructure/database/drizzle";
@@ -85,7 +85,7 @@ export async function createAppDependencies(
 ): Promise<AppDependencies> {
   const sharedDatabase: BetterSqliteDatabase = sqlite ?? createDatabaseConnection();
   const db = drizzleDb ?? createDrizzleFromSqlite(sharedDatabase);
-  const auth = authInstance ?? (await import("../infrastructure/auth/auth")).createAuth(db);
+  const auth = authInstance ?? createAuth(db, config);
 
   // Config-aware repository selection: honors DB_ADAPTER (sqlite | inmemory).
   // Note: when dbAdapter=inmemory only the company domain is in-memory; the
@@ -124,7 +124,7 @@ export async function createAppDependencies(
   const authBootstrapService = new AuthBootstrapService(
     new SqliteBootstrapPort(db, sharedDatabase),
     auth,
-    env.bootstrapSetupKey,
+    config.bootstrapSetupKey,
   );
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
   const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase));
@@ -149,7 +149,7 @@ export async function createAppDependencies(
     financeService,
     inventoryService: new InventoryService(
       inventoryRepository,
-      new InventoryAttachmentStorage(env.attachmentsRootPath),
+      new InventoryAttachmentStorage(config.attachmentsRootPath),
       companyService,
       companyRepository,
     ),

@@ -57,8 +57,8 @@ export const appConfigSchema = z.object({
   // --- Server ---
   /** Bind host for the HTTP server. */
   host: z.string().default(defaultHost),
-  /** TCP port for the HTTP server. */
-  port: z.coerce.number().int().positive().default(defaultPort),
+  /** TCP port for the HTTP server (1..65535). */
+  port: z.coerce.number().int().positive().max(65535).default(defaultPort),
   /** Allowed CORS origins. */
   allowedOrigins: z
     .array(z.string())

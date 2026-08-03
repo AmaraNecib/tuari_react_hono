@@ -120,3 +120,56 @@ marginal timeouts tip over:
 attempt, it's the loaded-machine cold-start class, not a regression. Verify the
 failing file standalone, then retry the push. Do NOT "fix" web test files in an
 API-only PR.
+
+## Playwright E2E on Windows: orphaned `tsx watch`/vite servers poison runs (🟠 Major)
+
+`pnpm dev:api` runs `tsx watch` and `pnpm dev:web` runs vite; Playwright's webServer
+teardown on Windows often orphans them. The orphans keep their OLD DB (so bootstrap
+looks "already set up"), serve STALE vite modules (raw i18n keys, missing tabs), and
+rebind 4318/3000 after `tsx watch` restarts — producing EADDRINUSE and transient
+"already used" failures. Netstat right before a run can be clean and the orphan still
+appears mid-run (delayed tsx-watch restart).
+
+**Always**: before/after local e2e runs, kill ALL node processes whose cmdline contains
+the worktree path (`Get-CimInstance Win32_Process | Where-Object {$_.CommandLine -match
+"worktree-name"}`), verify ports are free, and prefer a no-watch server
+(`npx tsx src/index.ts`, not `pnpm dev:api`) for the manual API. Deleting the sqlite
+file while a server holds it fails with "Device or resource busy" — kill first, then rm.
+
+## The e2e suite was fully red on develop — don't assume "existing" specs pass (🟠 Major)
+
+Before #227, no Playwright spec could get past login: the helper's
+`getByLabel("كلمة المرور")` strict-violated (the PasswordInput show/hide button made
+the field's accessible name "كلمة المرور إظهار كلمة المرور", and the button's
+aria-label "إظهار كلمة المرور" also matched), and the post-login marker "مساحة العمل"
+is never rendered (shell.workspace exists in i18n but no component uses it). The
+onboarding tour (autoStart, storageKey home-tour) also blocks as a modal on first
+visit. Fix: `getByRole("textbox", { name: /^كلمة المرور/ })`, wait for the dashboard
+heading "لوحة التحكم", dismiss the tour via its "تخطي" button (try/catch — it may not
+show). There was no test-e2e CI job, so nothing caught this.
+
+**Always**: when adding or touching e2e specs, run the FULL suite locally (workers:1,
+fresh DB per run) — the target spec passing alone doesn't mean CI e2e is green.
+
+## Employee creation via UI is impossible on develop (🟠 Major)
+
+`employeesBatchCreate` validates roles with `requireAssignableEmployeeRole`, which only
+accepts role keys worker/project_manager/warehouse_manager — but the RBAC consolidation
+(Slice 3) removed those roles; only admin/manager/viewer are seeded and the create form
+offers only those. Every role is rejected with "يمكن اختيار الأدوار النظامية فقط في هذه
+المرحلة." The form also blocks submit on required salary-period + salary-amount fields
+(native validation, invisible to Playwright). employees.spec.ts is skipped (#227) until
+the workforce role rule is fixed.
+
+**Always**: before writing an employee-create e2e, probe the batch-create RPC with each
+seeded role; check for required fields that block the native form submit.
+
+## ORPC wire envelope is { json: input } / { json: output } (🟡 Minor)
+
+The ORPC "standard" protocol wraps procedure input/output: POST {api}/rpc/{procedure}
+with body `{"json": <input>}` (input null for no-input procedures); responses come back
+as `{"json": <output>}`. Raw input bodies fail with "Input validation failed". Verified
+empirically and against @orpc/standard-server-fetch's toFetchBody.
+
+**Always**: when driving ORPC procedures from tests/scripts, send the envelope and
+unwrap `.json`.

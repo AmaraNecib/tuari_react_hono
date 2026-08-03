@@ -32,25 +32,39 @@ export const generatedRecoveryKeysSchema = z.object({
 
 /** Input for consuming a recovery key. */
 export const consumeRecoveryKeyInputSchema = z.object({
-  key: z.string().min(1),
+  key: z.string().trim().min(1),
 })
 
 /** Input for revoking a recovery key. */
 export const revokeRecoveryKeyInputSchema = z.object({
-  keyId: z.string().min(1),
+  keyId: z.string().trim().min(1),
 })
 
 /** Input for changing the database encryption key. */
 export const changeDbKeyInputSchema = z.object({
-  currentKey: z.string().min(1),
-  newKey: z.string().min(8),
+  currentKey: z.string().trim().min(1),
+  newKey: z.string().trim().min(8),
 })
 
-/** Output for DB key change result. */
-export const changeDbKeyOutputSchema = z.object({
-  success: z.boolean(),
-  error: z.string().optional(),
-})
+/**
+ * Output for DB key change result.
+ *
+ * Discriminated on `success`: a failure always carries an `error` message,
+ * and a success never does. Strict members reject the invalid combos
+ * (`{ success: false }` without `error`, `{ success: true, error }`).
+ */
+export const changeDbKeyOutputSchema = z.discriminatedUnion("success", [
+  z.object({ success: z.literal(true) }).strict(),
+  z
+    .object({ success: z.literal(false), error: z.string().min(1) })
+    // Pure validator (no transform): output schemas reject, they don't
+    // silently rewrite server-emitted values. Rejects blank-looking errors.
+    .refine(({ error }) => error.trim().length > 0, {
+      message: "error must contain non-whitespace characters",
+      path: ["error"],
+    })
+    .strict(),
+])
 
 /** Input for changing the app password. */
 export const changeAppPasswordInputSchema = z.object({

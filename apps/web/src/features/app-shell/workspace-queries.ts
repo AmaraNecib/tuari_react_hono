@@ -186,17 +186,6 @@ export function useExternalCounterpartiesQuery({ enabled = true }: { enabled?: b
   })
 }
 
-export function useDebtsSummaryQuery({ enabled = true }: { enabled?: boolean } = {}) {
-  const sessionQuery = useSessionQuery()
-  const userId = sessionQuery.data?.user?.id ?? null
-
-  return useQuery({
-    queryKey: workspaceDomainQueryKeys.debtsSummary(userId),
-    queryFn: async () => rpcClient.debtsSummary(),
-    enabled: Boolean(sessionQuery.data?.user) && enabled,
-  })
-}
-
 export function useManagerAssignmentsQuery({ enabled = true }: { enabled?: boolean } = {}) {
   const sessionQuery = useSessionQuery()
   const userId = sessionQuery.data?.user?.id ?? null
@@ -337,7 +326,12 @@ export function useCompositeWorkspaceQuery({ enabled = true }: { enabled?: boole
   const employeesQuery = useEmployeesQuery({ enabled: Boolean(sessionQuery.data?.user) && enabled })
   const projectsQuery = useProjectsQuery({ enabled: Boolean(sessionQuery.data?.user) && enabled })
   const warehousesQuery = useWarehousesQuery({ enabled: Boolean(sessionQuery.data?.user) && enabled })
-  const debtAccountsQuery = useDebtAccountsQuery({ enabled: Boolean(sessionQuery.data?.user) && enabled })
+  // Debt accounts/entries are NOT fetched here anymore — the debts feature
+  // owns its data via @/features/debts/debts-queries (useDebtsSummaryQuery /
+  // useDebtPartyDetailQuery), which read the `debtsSummary`/`debtsDetail`
+  // keys the debts mutations invalidate. The composite keeps
+  // `externalCounterparties` because the shell still needs the raw list for
+  // selection/breadcrumbs and the externals pages.
   const externalCounterpartiesQuery = useExternalCounterpartiesQuery({ enabled: Boolean(sessionQuery.data?.user) && enabled })
   const managerAssignmentsQuery = useManagerAssignmentsQuery({ enabled: Boolean(sessionQuery.data?.user) && enabled })
   const projectAssignmentsQuery = useProjectAssignmentsQuery({ enabled: Boolean(sessionQuery.data?.user) && enabled })
@@ -352,7 +346,6 @@ export function useCompositeWorkspaceQuery({ enabled = true }: { enabled?: boole
     employeesQuery.isPending ||
     projectsQuery.isPending ||
     warehousesQuery.isPending ||
-    debtAccountsQuery.isPending ||
     externalCounterpartiesQuery.isPending ||
     managerAssignmentsQuery.isPending ||
     projectAssignmentsQuery.isPending ||
@@ -367,7 +360,6 @@ export function useCompositeWorkspaceQuery({ enabled = true }: { enabled?: boole
     employeesQuery.isError ||
     projectsQuery.isError ||
     warehousesQuery.isError ||
-    debtAccountsQuery.isError ||
     externalCounterpartiesQuery.isError ||
     managerAssignmentsQuery.isError ||
     projectAssignmentsQuery.isError ||
@@ -382,7 +374,6 @@ export function useCompositeWorkspaceQuery({ enabled = true }: { enabled?: boole
     void employeesQuery.refetch()
     void projectsQuery.refetch()
     void warehousesQuery.refetch()
-    void debtAccountsQuery.refetch()
     void externalCounterpartiesQuery.refetch()
     void managerAssignmentsQuery.refetch()
     void projectAssignmentsQuery.refetch()
@@ -398,7 +389,6 @@ export function useCompositeWorkspaceQuery({ enabled = true }: { enabled?: boole
     employeesQuery.data &&
     projectsQuery.data &&
     warehousesQuery.data &&
-    debtAccountsQuery.data &&
     externalCounterpartiesQuery.data &&
     managerAssignmentsQuery.data &&
     projectAssignmentsQuery.data &&
@@ -412,7 +402,9 @@ export function useCompositeWorkspaceQuery({ enabled = true }: { enabled?: boole
           employees: employeesQuery.data.items,
           projects: projectsQuery.data.items,
           warehouses: warehousesQuery.data.items,
-          debtAccounts: debtAccountsQuery.data.items,
+          // Debts data is feature-scoped (see @/features/debts/debts-queries);
+          // these stay empty for WorkspaceSnapshot type compatibility.
+          debtAccounts: [],
           externalCounterparties: externalCounterpartiesQuery.data.items,
           managerAssignments: managerAssignmentsQuery.data.items,
           projectAssignments: projectAssignmentsQuery.data.items,

@@ -1,0 +1,90 @@
+# Code Review — #215 (fold transaction wrapper chain)
+
+**Head SHA:** `70989ed144d0c260898c1f31f841916c65362796`
+**Base SHA (fixed point):** `f93c37c0dd91646bfdc106c0e0bcc05b149b9e0c`
+**Diff:** `git diff f93c37c...HEAD`
+**Spec:** GitHub issue #215
+
+## Standards axis
+
+Repo-convention compliance — no hard violations:
+- Design doc at `.scratch/implementation/215-design.md` per engineering-workflow step 3. ✓
+- "Replace, don't layer" testing: 2 `execute` tests retargeted to the real seam
+  (`WorkspaceMutationContext.withTransaction`); gated throwing-callback rollback
+  test matches testing.md guidance. ✓
+- Port/adapter principle (architecture.md): fold removes the intermediate class;
+  `WMC.withTransaction` delegates straight to the adapter seam. ✓
+- Old tests deleted only where the surface died. ✓
+
+Smell baseline:
+- **Middle Man — fixed.** `TransactionManager.execute` was a pure pass-through
+  (`return this.repository.withTransaction(operation)`); now deleted; WMC
+  delegates directly. Textbook fold.
+- **Speculative Generality — fixed.** `executeMultiple` (zero callers) and
+  `transactional` decorator (zero users) deleted; grep clean repo-wide.
+- **No new smells introduced.** New test asserts BEGIN/COMMIT/ROLLBACK call log —
+  stronger than deleted tests.
+
+Judgement calls (non-blocking):
+- `as unknown as CompanyRepository` mock cast — repo-consistent (identical to
+  deleted test pattern); a future `withTransaction` signature change wouldn't
+  fail the mock's typecheck. Low risk.
+- `executeMultiple`'s multi-op atomicity now exists nowhere — documented as dead
+  surface; zero callers existed.
+
+## Spec axis
+
+All #215 requirements met with evidence:
+- `TransactionManager` deleted incl. `executeMultiple` + `transactional`; zero
+  references remain (grep across apps/packages/scripts).
+- `WMC.withTransaction` delegates directly: `return this.repository.withTransaction(operation);`
+  — signature unchanged, matches `company.repository.contracts.ts:26`. Behaviorally
+  identical to the old pass-through.
+- Tests retargeted exactly per spec: 4 old tests (2 execute → retargeted to WMC,
+  2 executeMultiple → deleted).
+- (a) Missing/partial: none functional. Call-site count discrepancy (issue says 24,
+  design doc 33, measured 31 / reviewer-counted 22 via `mutation.withTransaction`)
+  is stale documentation, not a defect — signature unchanged + typecheck guards drift.
+- (b) Scope creep: none behavioral; `.scratch/implementation/215-design.md` follows
+  the established `NNN-design.md` convention.
+- (c) Implemented but wrong: none.
+
+## Verdict
+
+- Standards: **no actionable findings** (2 advisory judgement calls, non-blocking).
+- Spec: **no actionable findings**.
+- ✅ Safe to push after guard Phase 2.
+
+---
+
+## Post-evidence delta (70989ed → 3e94e1c)
+
+A **fresh two-axis code-review ran against the complete final diff**
+(`git diff f93c37c...HEAD`) at commit 3e94e1c, superseding this file's earlier
+findings for the post-fold delta. Verdict: **no actionable findings either
+axis**. Summary:
+
+- **Standards:** standalone `TransactionalRepository` interface composed by
+  `CompanyRepository` is the right seam (resolves the Pick weakness);
+  test mock typed at the seam with no cast; falsy/identity/non-Error tests pin
+  transaction semantics; doc updates accurate. No baseline smells introduced.
+  Two notes, both fixed in 3e94e1c: (1) `toThrowError(ErrorInstance)` is
+  structural — replaced with a true identity capture+`toBe` assertion;
+  (2) sibling work-item snippets in `docs/REFACTORING_TASKS.md` +
+  `docs/ARCHITECTURE_REVIEW.md:247` + `plans/t.md` still named the deleted
+  `transactionManager.execute` (with invalid async callbacks) — rewritten to
+  the folded sync `withTransaction` pattern.
+- **Spec:** all #215 requirements met; `TransactionalRepository` narrowing +
+  doc hygiene are behavior-neutral and justified; zero scope creep.
+- Verification: typecheck 4/4, lint clean, `pnpm test:api` 636/636, targeted
+  WMC file 7/7.
+
+---
+
+## Post-evidence delta (3e94e1c → d31b36d, test-only)
+
+Coverage round added 9 tests (4 sqlite-adapter transaction semantics, 5 WMC
+authorizer path). No production code changed. The fresh two-axis review at
+3e94e1c remains valid for the production surface; the added tests are
+assertion-verified (645/645 suite green, typecheck clean) and were reviewed in
+the test-audit delta note above. No new findings.

@@ -435,7 +435,7 @@ Multi-step operations (create employee → assign to project → log) have no tr
 If step 2 fails, step 1 is orphaned.
 
 **Current State:**
-- `TransactionManager` class exists in company.service.ts
+- ~~`TransactionManager` class exists in company.service.ts~~ — *superseded by #215: `TransactionManager` was folded away; transactions now run via `WorkspaceMutationContext.withTransaction` → `repository.withTransaction`.*
 - But used inconsistently
 
 **Recommendation**: Ensure all multi-step mutations use transactions
@@ -455,14 +455,14 @@ async createDebtAccount(
   input: DebtAccountCreateInput,
   auditContext: MutationAuditContext
 ) {
-  // Wrap entire operation in transaction
-  return this.transactionManager.execute(async () => {
+  // Wrap entire operation in transaction (sync callback — the contract is synchronous)
+  return this.mutation.withTransaction(() => {
     // Step 1: Create account
-    const account = await this.repository.createDebtAccount(input);
+    const account = this.repository.createDebtAccount(input);
     
     // Step 2: Create opening entry
     if (input.openingBalance !== 0) {
-      await this.repository.createDebtEntry({
+      this.repository.createDebtEntry({
         accountId: account.id,
         amount: input.openingBalance,
         type: 'OPENING',
@@ -470,7 +470,7 @@ async createDebtAccount(
     }
     
     // Step 3: Log to system
-    await this.systemLog.log('DEBT_ACCOUNT_CREATED', {
+    this.systemLog.log('DEBT_ACCOUNT_CREATED', {
       accountId: account.id,
       amount: input.openingBalance,
     });
