@@ -64,18 +64,20 @@ jobs:
 
           for num in $numbers; do
             echo "── Checking issue #$num ──"
-            issue=$(gh issue view "$num" --json state,body,title --jq '{state, body: (.body // "")}' 2>/dev/null || echo "{}")
-            state=$(printf '%s' "$issue" | sed -n 's/.*"state": "\([^"]*\)".*/\1/p')
+            # 2. Fetch state with gh's own --jq (bundled engine — no external
+            #    jq/sed; robust against body content and compact JSON).
+            state=$(gh issue view "$num" --json state --jq '.state' 2>/dev/null || echo "")
+            issue_body=$(gh issue view "$num" --json body --jq '.body // ""' 2>/dev/null || echo "")
 
             if [ "$state" != "OPEN" ]; then
               echo "  SKIP: #$num state=$state (not open)"
               continue
             fi
 
-            # 2. Skip if the issue is a parent/tracker with open sub-issues.
-            sub=$(gh api "repos/{owner}/{repo}/issues/$num" --jq '.sub_issues_summary' 2>/dev/null || echo '{"total":0,"completed":0}')
-            sub_total=$(printf '%s' "$sub" | sed -n 's/.*"total": \([0-9]*\).*/\1/p')
-            sub_done=$(printf '%s' "$sub" | sed -n 's/.*"completed": \([0-9]*\).*/\1/p')
+            # 2. Skip if the issue is a parent/tracker with open sub-issues
+            #    (sub_issues_summary comes from gh api's own --jq).
+            sub_total=$(gh api "repos/{owner}/{repo}/issues/$num" --jq '.sub_issues_summary.total // 0' 2>/dev/null || echo 0)
+            sub_done=$(gh api "repos/{owner}/{repo}/issues/$num" --jq '.sub_issues_summary.completed // 0' 2>/dev/null || echo 0)
             if [ -n "$sub_total" ] && [ "$sub_total" -gt 0 ] && [ "$sub_total" -gt "${sub_done:-0}" ]; then
               echo "  SKIP: #$num is a parent with $((sub_total - sub_done)) open sub-issues"
               continue
@@ -83,7 +85,7 @@ jobs:
 
             # 3. Skip if the issue body references OTHER open issues in a
             #    deferred/follow-up/part-of/remaining context — work remains.
-            deferred=$(printf '%s' "$issue" \
+            deferred=$(printf '%s' "$issue_body" \
               | grep -oiE '(defer(red)?|follow[ -]?up|part of|remaining|todo)[^#]*#([0-9]+)' \
               | grep -oE '#[0-9]+' | tr -d '#' | sort -un || true)
             open_ref=""
