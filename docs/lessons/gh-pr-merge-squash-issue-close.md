@@ -73,7 +73,8 @@ default branch is `main` while all work merges to `develop`.
 ## Systemic fix (recommended)
 
 Add a GitHub Action on `pull_request` events: when a PR targeting `develop` is
-merged and its body/title matches `(closes|fixes|resolves) #(\d+)`, run
+merged and its **body** matches `(closes|fixes|resolves) #(\d+)` (titles are
+ignored by design), run
 `gh issue close` for those numbers. This removes the manual step entirely.
 
 ## What to do on future PRs

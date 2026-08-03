@@ -117,8 +117,11 @@ jobs:
               continue
             fi
 
-            gh issue close "$num" \
-              --comment "Auto-closed: delivered by PR #$PR_NUMBER."
+            if ! gh issue close "$num" \
+              --comment "Auto-closed: delivered by PR #$PR_NUMBER." 2>/dev/null; then
+              echo "  WARN: failed to close #$num — close manually"
+              continue
+            fi
             echo "  CLOSED #$num"
           done
 
