@@ -448,22 +448,64 @@ describe("useDebtPartyDetailQuery", () => {
     }
     mocks.debtPartyDetail.mockResolvedValue({ success: true, message: "ok", item })
     mocks.debtEntriesList
-      .mockResolvedValueOnce({ items: [{ id: "entry-1" }, { id: "entry-2" }] })
+      .mockResolvedValueOnce({
+        items: [
+          { id: "entry-2", entryDate: "2026-03-28T10:00:00.000Z", createdAt: "2026-03-28T10:00:00.000Z" },
+          { id: "entry-1", entryDate: "2026-03-27T10:00:00.000Z", createdAt: "2026-03-27T10:00:00.000Z" },
+        ],
+      })
       .mockResolvedValueOnce({ items: [] })
     useDebtPartyDetailQuery("EXTERNAL_COUNTERPARTY", "external-1")
 
-    const result = await readQueryOptions().queryFn()
+    const result = await readQueryOptions<{
+      queryFn: () => Promise<{
+        accounts: Array<{ id: string }>
+        entriesByAccountId: Record<string, Array<{ id: string }>>
+      }>
+    }>().queryFn()
 
     expect(mocks.debtEntriesList).toHaveBeenNthCalledWith(1, { debtAccountId: "debt-1" })
     expect(mocks.debtEntriesList).toHaveBeenNthCalledWith(2, { debtAccountId: "debt-2" })
-    expect(result).toEqual({
-      party: item,
-      accounts: item.debtAccounts,
-      entriesByAccountId: {
-        "debt-1": [{ id: "entry-1" }, { id: "entry-2" }],
-        "debt-2": [],
-      },
+    expect(result.accounts).toEqual(item.debtAccounts)
+    expect(result.entriesByAccountId["debt-1"]!.map((entry) => entry.id)).toEqual([
+      "entry-2",
+      "entry-1",
+    ])
+    expect(result.entriesByAccountId["debt-2"]).toEqual([])
+  })
+
+  it("sorts each account's entries newest-first (entryDate desc, createdAt desc)", async () => {
+    const item = {
+      partyType: "EXTERNAL_COUNTERPARTY",
+      workerId: null,
+      externalCounterpartyId: "external-1",
+      displayName: "شركة المورد",
+      phoneNumber: "0555000000",
+      note: null,
+      totalBalanceDzd: -700,
+      balanceLabel: "علينا له",
+      debtAccounts: [{ id: "debt-1", currentBalance: -700 }],
+    }
+    mocks.debtPartyDetail.mockResolvedValue({ success: true, message: "ok", item })
+    mocks.debtEntriesList.mockResolvedValue({
+      items: [
+        { id: "oldest", entryDate: "2026-03-01T10:00:00.000Z", createdAt: "2026-03-01T10:00:00.000Z" },
+        { id: "same-day-later", entryDate: "2026-03-02T10:00:00.000Z", createdAt: "2026-03-02T12:00:00.000Z" },
+        { id: "same-day-earlier", entryDate: "2026-03-02T10:00:00.000Z", createdAt: "2026-03-02T09:00:00.000Z" },
+        { id: "newest", entryDate: "2026-03-03T10:00:00.000Z", createdAt: "2026-03-03T10:00:00.000Z" },
+      ],
     })
+    useDebtPartyDetailQuery("EXTERNAL_COUNTERPARTY", "external-1")
+
+    const result = await readQueryOptions<{
+      queryFn: () => Promise<{ entriesByAccountId: Record<string, Array<{ id: string }>> }>
+    }>().queryFn()
+    expect(result.entriesByAccountId["debt-1"]!.map((entry) => entry.id)).toEqual([
+      "newest",
+      "same-day-later",
+      "same-day-earlier",
+      "oldest",
+    ])
   })
 
   it("throws an AppMutationError when the party detail fails", async () => {

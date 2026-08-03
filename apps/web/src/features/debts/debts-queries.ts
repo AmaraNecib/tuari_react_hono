@@ -27,6 +27,8 @@ import { workspaceDomainQueryKeys } from "@/features/app-shell/workspace-queries
 import { useSessionQuery } from "@/features/session/use-session-query"
 import { rpcClient } from "@/lib/orpc-client"
 
+import { sortDebtEntries } from "./debt-utils"
+
 export type DebtPartyType = "INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY"
 
 export type DebtsHubRow = {
@@ -128,7 +130,11 @@ export function useDebtPartyDetailQuery(
       const entriesPerAccount = await Promise.all(
         party.debtAccounts.map(async (account) => {
           const entries = await rpcClient.debtEntriesList({ debtAccountId: account.id })
-          return [account.id, entries.items] as const
+          // Deterministic ledger order (entryDate desc, then createdAt desc) —
+          // matches the server's listDebtEntries order and the previous
+          // composite-derived builder, so the ledger renders the same way
+          // regardless of adapter.
+          return [account.id, sortDebtEntries(entries.items)] as const
         }),
       )
       for (const [accountId, entries] of entriesPerAccount) {
