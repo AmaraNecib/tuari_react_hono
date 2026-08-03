@@ -385,9 +385,9 @@ Fix database efficiency and error handling:
 **Goal:** Ensure data consistency for multi-step mutations (create → validate → log)
 
 **Work Items:**
-- [ ] Verify TransactionManager exists
-  - File: `apps/api/src/modules/company/company.service.ts`
-  - Understand: Transaction semantics, rollback behavior
+- [x] Verify transaction composition exists (folded in #215)
+  - File: `apps/api/src/modules/company/workspace-mutation-context.ts`
+  - Understand: Transaction semantics, rollback behavior (`WorkspaceMutationContext.withTransaction` → `repository.withTransaction`; `TransactionManager` was removed in #215)
 
 - [ ] Identify all multi-step operations
   - Create debt account → create opening entry → log to system

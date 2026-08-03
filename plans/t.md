@@ -435,7 +435,7 @@ Multi-step operations (create employee → assign to project → log) have no tr
 If step 2 fails, step 1 is orphaned.
 
 **Current State:**
-- `TransactionManager` class exists in company.service.ts
+- ~~`TransactionManager` class exists in company.service.ts~~ — *superseded by #215: `TransactionManager` was folded away; transactions now run via `WorkspaceMutationContext.withTransaction` → `repository.withTransaction`.*
 - But used inconsistently
 
 **Recommendation**: Ensure all multi-step mutations use transactions

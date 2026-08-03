@@ -50,9 +50,27 @@ None added. Removes the `TransactionManager` import from
 
 - New `workspace-mutation-context.test.ts`:
   1. runs operation within transaction (BEGIN/COMMIT recorded, result returned)
-  2. rolls back on error (ROLLBACK recorded, error rethrown)
+  2. commits and propagates falsy results (`undefined`/`null`/`false`/`0`)
+  3. rolls back and rethrows the original error instance (identity)
+  4. rolls back and rethrows non-Error throws
 - Delete `transaction-manager.test.ts` (4 tests: 2 retargeted above, 2 deleted).
 - Run `pnpm typecheck`, `pnpm --filter @tuari/api test` (test:api), `pnpm lint`.
+
+## Post-implementation hardening (debate round)
+
+- **Seam decision:** `TransactionalRepository` is a standalone interface
+  (`withTransaction` only) that `CompanyRepository` composes — consumers depend
+  on the capability, not the aggregate; the signature lives in one place.
+  Rejected the `Pick<CompanyRepository, "withTransaction">` alternative (critic:
+  weak seam defined in terms of the aggregate it escapes).
+- Removed dead re-export `export type { MutationAuditContext, RawAuditContext }`
+  from WMC (zero importers; canonical home is `company.types.ts`).
+- Updated stale docs that named `TransactionManager` as live architecture
+  (`docs/ARCHITECTURE_REVIEW.md`, `docs/REFACTORING_TASKS.md`, `plans/t.md`).
+- Dismissed (debate): "middle-man moved not eliminated" — WMC is a
+  multi-responsibility bundle (audit + transaction helpers); deleting its
+  `withTransaction` would scatter `repository` across ~31 call sites.
+  Async-callback rejection is an adapter property — tracked in #232.
 
 ## Implementation risks
 
