@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { SqliteRoleRepository } from "./sqlite-role.repository";
 import * as schema from "../../../schema";
 import type { AppDrizzle } from "../../../infrastructure/database/drizzle";
@@ -88,6 +88,74 @@ describe("SqliteRoleRepository", () => {
           permissions: ["employees:read", "employees:create"],
         },
       ]);
+      // The SQL shape: LEFT JOIN on role_permission and ORDER BY role key
+      // then permission — a regression in either clause would otherwise be
+      // invisible to the chain mock.
+      expect(db.leftJoin).toHaveBeenCalledWith(
+        schema.rolePermission,
+        eq(schema.rolePermission.roleId, schema.role.id),
+      );
+      expect(db.orderBy).toHaveBeenCalledWith(
+        asc(schema.role.key),
+        asc(schema.rolePermission.permission),
+      );
+    });
+
+    it("returns an empty array when there are no roles", async () => {
+      db.all.mockReturnValue([]);
+
+      expect(await repository.findAll()).toEqual([]);
+    });
+
+    it("preserves a non-null description", async () => {
+      db.all.mockReturnValue([roleRow({ description: "مشرف النظام" })]);
+
+      const [role] = await repository.findAll();
+
+      expect(role!.description).toBe("مشرف النظام");
+    });
+
+    it("maps only the integer 1 to isSystem true", async () => {
+      db.all.mockReturnValue([
+        roleRow({ id: "role-1", isSystem: 1 }),
+        roleRow({ id: "role-2", isSystem: 0 }),
+      ]);
+
+      const roles = await repository.findAll();
+
+      expect(roles.map((r) => r.isSystem)).toEqual([true, false]);
+    });
+
+    it("treats an empty permission string as no permission", async () => {
+      db.all.mockReturnValue([roleRow({ permission: "" })]);
+
+      const [role] = await repository.findAll();
+
+      expect(role!.permissions).toEqual([]);
+    });
+
+    it("skips colon-form permissions with unknown resource or action", async () => {
+      db.all.mockReturnValue([
+        roleRow({ permission: "billing:create" }),
+        roleRow({ permission: "employees:fly" }),
+        roleRow({ permission: "employees:read" }),
+      ]);
+
+      const [role] = await repository.findAll();
+
+      expect(role!.permissions).toEqual(["employees:read"]);
+    });
+
+    it("skips legacy dot-separated permission strings (isPermission guard)", async () => {
+      db.all.mockReturnValue([
+        roleRow({ permission: "employees.create" }), // legacy dot form — must be skipped
+        roleRow({ permission: "employees:create" }),
+      ]);
+
+      const roles = await repository.findAll();
+
+      expect(roles).toHaveLength(1);
+      expect(roles[0]!.permissions).toEqual(["employees:create"]);
     });
 
     it("returns a role with an empty permission list when the LEFT JOIN misses", async () => {
@@ -102,15 +170,14 @@ describe("SqliteRoleRepository", () => {
       ]);
     });
 
-    it("skips legacy dot-separated permission strings (isPermission guard)", async () => {
-      db.all.mockReturnValue([
-        roleRow({ permission: "employees.create" }), // legacy dot form — must be skipped
-        roleRow({ permission: "employees:create" }),
-      ]);
+    it("returns the role with empty permissions when every row is legacy", async () => {
+      db.all.mockReturnValue([roleRow({ permission: "employees.create" })]);
 
       const roles = await repository.findAll();
 
-      expect(roles[0]!.permissions).toEqual(["employees:create"]);
+      expect(roles).toHaveLength(1);
+      expect(roles[0]!.permissions).toEqual([]);
+      expect(roles[0]!.id).toBe("role-1");
     });
   });
 
