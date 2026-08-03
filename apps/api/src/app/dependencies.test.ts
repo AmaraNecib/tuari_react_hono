@@ -220,10 +220,11 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
       APP_ATTACHMENTS_ROOT: "./private/invoices",
     });
 
-    await createAppDependencies(
+    const deps = await createAppDependencies(
       { databasePath: inMemoryDb, authInstance: fakeAuth },
       config,
     );
+    lastDeps = deps;
 
     expect(storageCtorMock).toHaveBeenCalledWith(resolve("./private/invoices"));
   });

@@ -7,6 +7,13 @@ import { resolveDatabaseEnv } from "../config/database-env"
 import { createAlgeriaTimestamp } from "../../modules/company/company-time"
 
 /**
+ * Escape a string for interpolation inside single-quoted SQL (or PRAGMA)
+ * literals — `'` becomes `''` (SQL doubling). Shared by every site that
+ * builds `key = '...'` / `rekey = '...'` statements.
+ */
+export const escapeSqliteString = (value: string): string => value.replace(/'/g, "''")
+
+/**
  * Resolve the SQLite constructor to use.
  * When a database key is configured, use better-sqlite3-sqlcipher for encryption.
  * Falls back to plain better-sqlite3 when no key is needed.
@@ -46,7 +53,7 @@ export function createDatabaseConnection(
   const sqlite = new SqliteConstructor(resolvedPath)
 
   if (resolvedKey) {
-    sqlite.pragma(`key = '${resolvedKey.replace(/'/g, "''")}'`)
+    sqlite.pragma(`key = '${escapeSqliteString(resolvedKey)}'`)
     sqlite.pragma("cipher_compatibility = 4")
   }
 
@@ -132,5 +139,5 @@ export function createDatabaseConnection(
  * @throws Error if better-sqlite3-sqlcipher is unavailable.
  */
 export function changeDatabaseKey(sqlite: BetterSqliteDatabase, newKey: string): void {
-  sqlite.pragma(`rekey = '${newKey.replace(/'/g, "''")}'`)
+  sqlite.pragma(`rekey = '${escapeSqliteString(newKey)}'`)
 }

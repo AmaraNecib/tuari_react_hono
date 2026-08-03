@@ -79,13 +79,10 @@ export function createSystemHandlers(
       ({ input }) => {
         const { currentKey, newKey } = input as ChangeDbKeyInput;
         // The port verifies the current key (touching encrypted pages) and
-        // re-encrypts with the new key via PRAGMA rekey. A failed verification
-        // surfaces as `false` — map it to the wire failure output shape.
-        if (!databaseKeyManager.changeKey(currentKey, newKey)) {
-          return { success: false, error: "Current encryption key is invalid" };
-        }
-
-        return { success: true };
+        // re-encrypts with the new key via PRAGMA rekey. It never throws — a
+        // failed verification or rekey maps straight onto the wire failure
+        // output shape with an honest reason.
+        return databaseKeyManager.changeKey(currentKey, newKey);
       },
       toFailureResult,
     )),

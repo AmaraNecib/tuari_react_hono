@@ -130,60 +130,60 @@ export async function createAppDependencies(
     // caller no longer has (or needs) a handle to migrate beforehand.
     await ensureDatabaseSchema(new BetterSqlite3Executor(sharedDatabase));
 
-  const db = createDrizzleFromSqlite(sharedDatabase);
-  const auth = config.authInstance ?? createAuth(db, appConfig);
+    const db = createDrizzleFromSqlite(sharedDatabase);
+    const auth = config.authInstance ?? createAuth(db, appConfig);
 
-  // Config-aware repository selection: honors DB_ADAPTER (sqlite | inmemory).
-  // Note: when dbAdapter=inmemory only the company domain is in-memory; the
-  // inventory/invoice/payment modules still use the SQLite handle until those
-  // adapters are introduced in a follow-up phase.
-  const companyRepository = createCompanyRepository(sharedDatabase, appConfig);
-  const inventoryRepository = createInventoryRepository(sharedDatabase);
-  const accountRepository = new DrizzleAccountRepository(db);
+    // Config-aware repository selection: honors DB_ADAPTER (sqlite | inmemory).
+    // Note: when dbAdapter=inmemory only the company domain is in-memory; the
+    // inventory/invoice/payment modules still use the SQLite handle until those
+    // adapters are introduced in a follow-up phase.
+    const companyRepository = createCompanyRepository(sharedDatabase, appConfig);
+    const inventoryRepository = createInventoryRepository(sharedDatabase);
+    const accountRepository = new DrizzleAccountRepository(db);
 
-  // Construct each domain service off the same `WorkspaceMutationContext`
-  // so the per-domain service owns its transaction + audit context and
-  // the `CompanyService` only has to forward delegations.
-  const mutation = new WorkspaceMutationContext(companyRepository, companyRepository);
-  const workforceService = new WorkforceService(companyRepository, companyRepository, mutation);
-  const operationsService = new OperationsService(companyRepository, companyRepository, mutation);
-  const financeService = new FinanceService(companyRepository, companyRepository, mutation);
-  const auditService = new AuditService(companyRepository);
-  const companyService = new CompanyService(companyRepository, companyRepository, {
-    workforce: workforceService,
-    operations: operationsService,
-    finance: financeService,
-    audit: auditService,
-  });
+    // Construct each domain service off the same `WorkspaceMutationContext`
+    // so the per-domain service owns its transaction + audit context and
+    // the `CompanyService` only has to forward delegations.
+    const mutation = new WorkspaceMutationContext(companyRepository, companyRepository);
+    const workforceService = new WorkforceService(companyRepository, companyRepository, mutation);
+    const operationsService = new OperationsService(companyRepository, companyRepository, mutation);
+    const financeService = new FinanceService(companyRepository, companyRepository, mutation);
+    const auditService = new AuditService(companyRepository);
+    const companyService = new CompanyService(companyRepository, companyRepository, {
+      workforce: workforceService,
+      operations: operationsService,
+      finance: financeService,
+      audit: auditService,
+    });
 
-  const employeeRepository = new SqliteEmployeeRepository(companyRepository);
-  const roleRepository = new SqliteRoleRepository(companyRepository);
-  const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
-  const invoiceRepository = new InvoiceRepository(sharedDatabase, db);
-  const invoiceDebtPort = createSqliteInvoiceDebtPort({
-    db: sharedDatabase,
-    repository: companyRepository,
-  });
-  const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
-  const paymentRepository = new PaymentRepositoryImpl(sharedDatabase);
-  const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
-  const authBootstrapService = new AuthBootstrapService(
-    new SqliteBootstrapPort(db, sharedDatabase),
-    auth,
-    appConfig.bootstrapSetupKey,
-  );
-  const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
-  const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase));
+    const employeeRepository = new SqliteEmployeeRepository(companyRepository);
+    const roleRepository = new SqliteRoleRepository(companyRepository);
+    const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
+    const invoiceRepository = new InvoiceRepository(sharedDatabase, db);
+    const invoiceDebtPort = createSqliteInvoiceDebtPort({
+      db: sharedDatabase,
+      repository: companyRepository,
+    });
+    const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
+    const paymentRepository = new PaymentRepositoryImpl(sharedDatabase);
+    const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
+    const authBootstrapService = new AuthBootstrapService(
+      new SqliteBootstrapPort(db, sharedDatabase),
+      auth,
+      appConfig.bootstrapSetupKey,
+    );
+    const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
+    const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase));
 
-  // Issue #10 — Slice 3 RBAC. The role module is a small, deep module
-  // that wraps a Drizzle-backed RoleRepository. The repository is kept
-  // separate from the workforce role repository (which only knows about
-  // the role lookups employee creation needs) because the role module
-  // needs to return roles with their full permission set, not just an
-  // id/lookup. The two share the same underlying tables; they just
-  // expose different shapes.
-  const rbacRoleRepository = new SqliteRbacRoleRepository(db);
-  const roleModule = new RoleModule({ repository: rbacRoleRepository });
+    // Issue #10 — Slice 3 RBAC. The role module is a small, deep module
+    // that wraps a Drizzle-backed RoleRepository. The repository is kept
+    // separate from the workforce role repository (which only knows about
+    // the role lookups employee creation needs) because the role module
+    // needs to return roles with their full permission set, not just an
+    // id/lookup. The two share the same underlying tables; they just
+    // expose different shapes.
+    const rbacRoleRepository = new SqliteRbacRoleRepository(db);
+    const roleModule = new RoleModule({ repository: rbacRoleRepository });
 
     return {
       auth,

@@ -13,7 +13,7 @@ describe("createDatabaseKeyManager", () => {
       // On plain better-sqlite3 the SQLCipher PRAGMAs are no-ops, so the
       // verification read succeeds and the manager reports success — proving
       // the statements execute against a real connection.
-      expect(manager.changeKey("current-key", "new-key-123")).toBe(true);
+      expect(manager.changeKey("current-key", "new-key-123")).toEqual({ success: true });
     } finally {
       sqlite.close();
     }
@@ -27,7 +27,7 @@ describe("createDatabaseKeyManager", () => {
       prepare,
     } as unknown as BetterSqliteDatabase);
 
-    expect(manager.changeKey("old-key", "new-key-'quoted'")).toBe(true);
+    expect(manager.changeKey("old-key", "new-key-'quoted'")).toEqual({ success: true });
 
     // Exact statements the handler previously built — verification read first,
     // rekey second, single quotes doubled ('' — not spliced).
@@ -44,7 +44,7 @@ describe("createDatabaseKeyManager", () => {
       prepare,
     } as unknown as BetterSqliteDatabase);
 
-    expect(manager.changeKey("old-'quoted'", "new-key")).toBe(true);
+    expect(manager.changeKey("old-'quoted'", "new-key")).toEqual({ success: true });
 
     // The current key crosses the same ''-doubling path — a regression here
     // would silently mis-verify keys on the crypto path.
@@ -52,7 +52,7 @@ describe("createDatabaseKeyManager", () => {
     expect(pragma).toHaveBeenNthCalledWith(2, "rekey = 'new-key'");
   });
 
-  it("returns false when the current-key verification read fails and never rekeys", () => {
+  it("fails with the wire copy when the current-key verification read fails", () => {
     const pragma = vi.fn().mockImplementation(() => {
       throw new Error("file is not a database");
     });
@@ -61,13 +61,16 @@ describe("createDatabaseKeyManager", () => {
       prepare: vi.fn(),
     } as unknown as BetterSqliteDatabase);
 
-    expect(manager.changeKey("wrong-key", "new-key-123")).toBe(false);
+    expect(manager.changeKey("wrong-key", "new-key-123")).toEqual({
+      success: false,
+      error: "Current encryption key is invalid",
+    });
 
     // Only the verification PRAGMA ran — the rekey must not execute.
     expect(pragma).toHaveBeenCalledTimes(1);
   });
 
-  it("returns false when the rekey itself fails (no exception escapes the port)", () => {
+  it("fails with a re-encryption message when the rekey itself fails", () => {
     const pragma = vi.fn().mockImplementation((sql: string) => {
       if (sql.startsWith("rekey")) throw new Error("database is locked");
     });
@@ -77,9 +80,13 @@ describe("createDatabaseKeyManager", () => {
       prepare,
     } as unknown as BetterSqliteDatabase);
 
-    // The port's boolean contract must hold even when the rekey throws — the
-    // handler maps this to a graceful wire failure instead of a 500.
-    expect(manager.changeKey("old-key", "new-key-123")).toBe(false);
+    // The port's result contract must hold even when the rekey throws — the
+    // handler maps this to a graceful wire failure instead of a 500, and the
+    // message reflects the actual failing step.
+    expect(manager.changeKey("old-key", "new-key-123")).toEqual({
+      success: false,
+      error: "Database re-encryption failed",
+    });
     expect(pragma).toHaveBeenCalledTimes(2);
   });
 });

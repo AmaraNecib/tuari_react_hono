@@ -55,7 +55,9 @@ describe("RPC router", () => {
     harness: ReturnType<typeof createHarness>,
     authOverrides?: Partial<typeof authBootstrapService>,
     recoveryKeyService: unknown = {},
-    databaseKeyManager: unknown = { changeKey: () => false },
+    databaseKeyManager: unknown = {
+      changeKey: () => ({ success: false, error: "Current encryption key is invalid" }),
+    },
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -831,8 +833,8 @@ describe("RPC router", () => {
     const router = createTestRouter(harness);
     const client = createRouterClient(router, { context: createContext() as never });
 
-    // databaseKeyManager defaults to a rejecting stub (changeKey → false), so
-    // the handler returns the failure output shape from
+    // databaseKeyManager defaults to a rejecting stub (changeKey → the wire
+    // failure shape), so the handler returns the failure output from
     // changeDbKeyOutputSchema. The success leg is covered in the next test.
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
@@ -841,7 +843,7 @@ describe("RPC router", () => {
 
   it("rekeys the database and returns success through the wire contract", async () => {
     const harness = createHarness();
-    const changeKey = vi.fn((_currentKey: string, _newKey: string) => true);
+    const changeKey = vi.fn((_currentKey: string, _newKey: string) => ({ success: true } as const));
     const router = createTestRouter(harness, undefined, {}, { changeKey });
     const client = createRouterClient(router, { context: createContext() as never });
 
