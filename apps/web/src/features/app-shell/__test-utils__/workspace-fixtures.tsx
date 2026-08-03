@@ -72,6 +72,7 @@ const mockState: {
   workspaceData: WorkspaceSnapshot | undefined
   workspacePending: boolean
   workspaceError: Error | null
+  debtsSummaryError: boolean
   systemLogData: { items: Array<Record<string, unknown>> }
 } = {
   sessionUser: null,
@@ -83,6 +84,7 @@ const mockState: {
   workspaceData: undefined,
   workspacePending: false,
   workspaceError: null,
+  debtsSummaryError: false,
   systemLogData: defaultSystemLogData,
 }
 
@@ -298,12 +300,12 @@ vi.mock("@/features/debts/debts-queries", () => ({
   useDebtsSummaryQuery: () => ({
     data: { parties: [], debtAccounts: [] },
     isPending: false,
-    isError: false,
+    isError: mockState.debtsSummaryError,
   }),
   useDebtPartyDetailQuery: () => ({
     data: undefined,
     isPending: false,
-    isError: false,
+    isError: mockState.debtsSummaryError,
   }),
   buildDebtsHubRows: () => ({
     rows: [],
@@ -533,6 +535,7 @@ export function resetAllMutations(mocks: WorkspaceMocks): void {
   mockState.workspaceData = makeWorkspaceData()
   mockState.workspacePending = false
   mockState.workspaceError = null
+  mockState.debtsSummaryError = false
   mockState.systemLogData = { ...defaultSystemLogData, items: [...defaultSystemLogData.items] }
 
   for (const key of Object.keys(mocks) as Array<keyof WorkspaceMocks>) {
@@ -575,6 +578,8 @@ export function renderWorkspace(
     setupPending?: boolean
     /** Error to simulate a setup-status query failure. */
     setupError?: Error | null
+    /** True to simulate the feature-scoped debts summary query failing. */
+    debtsSummaryError?: boolean
     /** Full workspace data override. */
     workspaceData?: WorkspaceSnapshot | undefined
     /** Detail tab within a detail page (e.g. "finance"). */
@@ -596,6 +601,7 @@ export function renderWorkspace(
   mockState.setupPending = "setupPending" in opts ? opts.setupPending! : false
   mockState.setupError = "setupError" in opts ? opts.setupError ?? null : null
   mockState.workspaceData = "workspaceData" in opts ? opts.workspaceData : makeWorkspaceData()
+  mockState.debtsSummaryError = "debtsSummaryError" in opts ? opts.debtsSummaryError! : false
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },

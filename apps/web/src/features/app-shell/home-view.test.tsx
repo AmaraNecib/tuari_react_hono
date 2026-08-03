@@ -603,3 +603,23 @@ describe("HomeView workspace shell", () => {
     expect(mocks.updateEmployeeWorkplaceMutate).not.toHaveBeenCalled()
   })
 })
+
+describe("debts pages surface feature-query errors", () => {
+  it("shows the debts load error instead of an empty hub when the summary query fails", async () => {
+    renderWorkspace("debts", { sessionUser: demoUser, debtsSummaryError: true })
+
+    expect(
+      await screen.findByText("تعذر تحميل بيانات الديون. حاول مرة أخرى."),
+    ).toBeTruthy()
+    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeTruthy()
+  })
+
+  it("shows the debts load error instead of the externals list when the summary query fails", async () => {
+    renderWorkspace("externals", { sessionUser: demoUser, debtsSummaryError: true })
+
+    expect(
+      await screen.findByText("تعذر تحميل بيانات الديون. حاول مرة أخرى."),
+    ).toBeTruthy()
+    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeTruthy()
+  })
+})
