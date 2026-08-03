@@ -51,12 +51,22 @@ export const changeDbKeyOutputSchema = z.object({
 // mode would otherwise strip the unknown key instead of rejecting it).
 export const changeDbKeyOutputSchema = z.discriminatedUnion("success", [
   z.object({ success: z.literal(true) }).strict(),
-  z.object({ success: z.literal(false), error: z.string().min(1) }).strict(),
+  z
+    .object({ success: z.literal(false), error: z.string().min(1) })
+    .refine(({ error }) => error.trim().length > 0, {
+      message: "error must contain non-whitespace characters",
+      path: ["error"],
+    })
+    .strict(),
 ])
 ```
 
-The failure member also requires a **non-empty** error message (`min(1)`) —
-`{ success: false, error: "" }` is as logically invalid as a missing one.
+The failure member also requires a **non-empty, non-blank** error message —
+`{ success: false, error: "" }` and `{ success: false, error: "   " }` are as
+logically invalid as a missing one. The blank check is a **pure validator**
+(`refine`, no transform): output schemas reject rather than silently rewrite
+server-emitted values (Greptile finding on the earlier `.trim().min(1)` form,
+addressed).
 
 Known harmless edge (documented, not fixed): `{ success: true, error: undefined }`
 passes because zod treats an explicitly-`undefined` value as absent; `undefined` is

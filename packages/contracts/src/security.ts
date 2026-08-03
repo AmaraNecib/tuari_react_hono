@@ -55,7 +55,15 @@ export const changeDbKeyInputSchema = z.object({
  */
 export const changeDbKeyOutputSchema = z.discriminatedUnion("success", [
   z.object({ success: z.literal(true) }).strict(),
-  z.object({ success: z.literal(false), error: z.string().trim().min(1) }).strict(),
+  z
+    .object({ success: z.literal(false), error: z.string().min(1) })
+    // Pure validator (no transform): output schemas reject, they don't
+    // silently rewrite server-emitted values. Rejects blank-looking errors.
+    .refine(({ error }) => error.trim().length > 0, {
+      message: "error must contain non-whitespace characters",
+      path: ["error"],
+    })
+    .strict(),
 ])
 
 /** Input for changing the app password. */
