@@ -52,3 +52,15 @@ bounds with factory, document createAuth params"). Delta only:
 - New schema-level port tests added to `config.test.ts` (accept 8080, reject 0 / 65536).
 
 No test behavior removed or weakened; suite green at head (api 631, web 341).
+
+---
+
+## Post-evidence delta (7459eb4 — final head)
+
+Head moved b560faf → f2b4eeb (coverage round: test-only additions in config.test.ts,
+loader.test.ts, url.test.ts, dependencies.test.ts — no production code changed) →
+7459eb4 (wisdom docs). Production code under review is unchanged since b560faf;
+Greptile re-reviewed the final head (5/5, no actionable findings). Coverage round
+closed the remaining in-scope branches (API_HOST trim, truthy-variant case-insensitivity,
+CSV empty segments, pg_ssl false, normalizeOrigin empty/protocol-without-host, omitted
+sqlite fallback). Deferred branches tracked in #259.

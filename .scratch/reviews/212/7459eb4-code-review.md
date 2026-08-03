@@ -44,3 +44,15 @@ schema parse accepted 65536 while the factory rejected it → fixed in `b560faf`
   connection yet. Noted as follow-up for the config-file phase (see design doc).
 - `.scratch/implementation/212-design.md` and the `url.ts` doc-comment refresh are
   process artifacts beyond the issue's code asks — trivial and justified.
+
+---
+
+## Post-evidence delta (7459eb4 — final head)
+
+Head moved b560faf → f2b4eeb (coverage round: test-only additions in config.test.ts,
+loader.test.ts, url.test.ts, dependencies.test.ts — no production code changed) →
+7459eb4 (wisdom docs). Production code under review is unchanged since b560faf;
+Greptile re-reviewed the final head (5/5, no actionable findings). Coverage round
+closed the remaining in-scope branches (API_HOST trim, truthy-variant case-insensitivity,
+CSV empty segments, pg_ssl false, normalizeOrigin empty/protocol-without-host, omitted
+sqlite fallback). Deferred branches tracked in #259.
