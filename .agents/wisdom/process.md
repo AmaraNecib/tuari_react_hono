@@ -172,3 +172,45 @@ already open with the wrong base, run `gh pr edit <num> --base develop` and
 verify with `gh pr view <num> --json baseRefName` + `gh pr diff <num> --name-only`
 before triggering `@greptile-apps review` — otherwise Greptile reviews the
 wrong diff and hits its file-count ceiling.
+
+## `gh pr create` targets the repo DEFAULT branch, not develop (🟠 Major)
+
+On #177 the PR was created against `main` (the repo's default branch) even
+though the workflow requires `develop` as the base. Consequences: Greptile
+diffed the PR against `main` — an ancient ancestor (my branch = main +
+~200 commits) — and rejected with "Too many files changed for review
+(582 files)". The GitHub-reported diff (13 files) was correct; Greptile
+used the default branch, not the PR base.
+
+**Always**: after `gh pr create`, verify `gh pr view <n> --json baseRefName`
+is `develop`; if not, `gh pr edit <n> --base develop` BEFORE triggering
+Greptile. A Greptile run against the wrong base is a wasted ~8-minute
+review cycle.
+
+## Greptile re-review after a fix push may lag; poll the check, not the summary (🟡 Minor)
+
+After pushing a Greptile-fix round, the old summary comment stays on the PR
+until the new review lands. The reliable signal is `gh pr checks` →
+"Greptile Review" state (pending → pass), not the comments list.
+
+**Always**: trigger `@greptile-apps review`, then poll `gh pr checks 258 |
+grep -i greptile`; only after it flips to `pass` read the newest "Greptile
+Summary" comment.
+
+## E2E bootstrap helper was broken: substring label match + onboarding tour (🟠 Major)
+
+`bootstrapOrSignIn` used `getByLabel("كلمة المرور")` — Playwright substring
+matching hit both the password input AND the PasswordInput toggle button
+(aria-label "إظهار كلمة المرور"). Then the first-run UserJourneyTour
+(z-50 backdrop) intercepted clicks, and the post-login assertion
+`getByText("مساحة العمل")` matched nothing (dead translation key). All
+E2E specs failed at bootstrap until the helper was fixed: `exact: true`
+on the label, `addInitScript` pre-seeding
+`localStorage["journey-home-tour-status"] = "skipped"` (JourneyStateManager
+keys are `journey-<key>-<type>`, NOT `tour-<key>`), and asserting the
+sidebar "لوحة التحكم" link instead.
+
+**Always**: when writing E2E specs in this repo, `getByLabel` on fields
+whose label is a substring of a toggle's aria-label needs `{ exact: true }`;
+pre-seed journey/localStorage state via `page.addInitScript` rather than
+clicking through tours.

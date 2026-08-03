@@ -5,7 +5,6 @@ import {
   buildManagerOptions,
   buildWarehouseManagerOptions,
 } from "./home-view-derived-employees"
-import { buildDebtDerivedCollections } from "./home-view-derived-debts"
 import { buildHomeViewDerivedLookups } from "./home-view-derived-lookups"
 import {
   buildProjectDerivedCollections,
@@ -66,13 +65,13 @@ export function buildHomeViewDerived({
     projects,
     warehouses,
     roles: workspace.roles,
+    // Raw counterparty list for shell selection/breadcrumbs and the
+    // externals pages. Debts balances/entries are feature-scoped
+    // (@/features/debts/debts-queries), not derived here.
+    externalCounterparties: workspace.externalCounterparties,
     managerOptions,
     projectManagerOptions: managerOptions,
     warehouseManagerOptions,
-    ...buildDebtDerivedCollections({
-      employeeRows,
-      workspace,
-    }),
     ...buildEmployeeDerivedCollections({
       copy,
       detailCopy,

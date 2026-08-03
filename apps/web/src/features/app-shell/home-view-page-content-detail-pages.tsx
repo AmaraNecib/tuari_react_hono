@@ -3,12 +3,53 @@
  * Lazy-loads detail pages based on route.
  */
 import { lazy, Suspense, type ReactNode } from "react"
+import { TriangleAlert } from "lucide-react"
+import type { TFunction } from "i18next"
 
+import { Button } from "@/components/ui/button"
+import { Surface } from "@/features/shared/page-primitives"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { workspaceRoutes } from "@/router/navigation"
+import {
+  buildDebtsHubRows,
+  buildExternalCounterpartyRows,
+  useDebtPartyDetailQuery,
+  useDebtsSummaryQuery,
+} from "@/features/debts/debts-queries"
+import type { DebtsSummary } from "@tuari/contracts"
 
 import type { HomeViewPageContentProps } from "./home-view-page-content-shared"
 import { MissingRecordState } from "./home-view-page-content-shared"
+
+const EMPTY_DEBTS_SUMMARY: DebtsSummary = { parties: [], debtAccounts: [] }
+
+/**
+ * Error surface for the feature-scoped debts queries. Debts pages must not
+ * silently render an empty hub/ledger when the debts RPC fails — surface the
+ * failure with a retry, matching the shell's workspace error boundary and the
+ * license-settings load-error pattern (icon + message + retry).
+ */
+function DebtsLoadError({
+  onRetry,
+  t,
+}: {
+  onRetry: () => void
+  t: TFunction
+}) {
+  return (
+    <Surface className="border-destructive/25 p-6" role="alert" variant="panel">
+      <div className="flex flex-col items-center gap-4 py-10 text-center">
+        <TriangleAlert className="h-10 w-10 text-destructive" aria-hidden="true" />
+        <p className="max-w-md text-sm leading-6 text-foreground">
+          {t("debts.loadError", "تعذر تحميل بيانات الديون. حاول مرة أخرى.")}
+        </p>
+        <Button variant="outline" onClick={onRetry}>
+          {t("common.retry")}
+        </Button>
+      </div>
+    </Surface>
+  )
+}
 
 const DebtsHubPage = lazy(async () => import("@/features/debts/debts-hub-page").then((module) => ({ default: module.DebtsHubPage })))
 const DebtCreatePage = lazy(async () => import("@/features/debts/debt-create-page").then((module) => ({ default: module.DebtCreatePage })))
@@ -88,17 +129,44 @@ export function HomeViewPageDetailContent({
 }) {
   const detailCopy = copy.detailPages
 
+  // Debts-domain queries are feature-scoped (@/features/debts/debts-queries)
+  // so the hub/detail pages stay fresh under the debts mutations' key
+  // invalidation instead of the stale composite snapshot (issue #177 Phase 4).
+  const debtsSummaryQuery = useDebtsSummaryQuery({
+    enabled: page === "debts" || page === "externals",
+  })
+  const employeeDebtsDetailQuery = useDebtPartyDetailQuery(
+    "INTERNAL_WORKER",
+    selectedEmployee?.id,
+    { enabled: page === "employee-details" && (detailTab ?? "personal") === "debts" },
+  )
+  const externalDebtsDetailQuery = useDebtPartyDetailQuery(
+    "EXTERNAL_COUNTERPARTY",
+    selectedCounterparty?.id,
+    { enabled: page === "external-details" && Boolean(selectedCounterparty) },
+  )
+  const debtsSummary = debtsSummaryQuery.data ?? EMPTY_DEBTS_SUMMARY
+
   switch (page) {
     case "debts":
-      return renderLazy(
-        <DebtsHubPage
-          rows={derived.debtHubRows}
-          totals={derived.debtTotals}
-          onCreateDebt={() => void navigation.goToDebtCreate()}
-          onOpenExternalCounterparty={(counterpartyId) => void navigation.goToExternalDetails(counterpartyId)}
-          onOpenWorker={(employeeId) => void navigation.goToEmployeeDebts(employeeId)}
-        />,
-      )
+      if (debtsSummaryQuery.isPending) {
+        return renderLazy(detailPageFallback)
+      }
+      if (debtsSummaryQuery.isError) {
+        return renderLazy(<DebtsLoadError onRetry={() => void debtsSummaryQuery.refetch()} t={t} />)
+      }
+      {
+        const hub = buildDebtsHubRows(debtsSummary, derived.externalCounterparties)
+        return renderLazy(
+          <DebtsHubPage
+            rows={hub.rows}
+            totals={hub.totals}
+            onCreateDebt={() => void navigation.goToDebtCreate()}
+            onOpenExternalCounterparty={(counterpartyId) => void navigation.goToExternalDetails(counterpartyId)}
+            onOpenWorker={(employeeId) => void navigation.goToEmployeeDebts(employeeId)}
+          />,
+        )
+      }
 
     case "debt-create":
       return renderLazy(
@@ -110,29 +178,37 @@ export function HomeViewPageDetailContent({
       )
 
     case "externals":
+      if (debtsSummaryQuery.isPending) {
+        return renderLazy(detailPageFallback)
+      }
+      if (debtsSummaryQuery.isError) {
+        return renderLazy(<DebtsLoadError onRetry={() => void debtsSummaryQuery.refetch()} t={t} />)
+      }
       return renderLazy(
         <ExternalCounterpartiesPage
-          counterparties={derived.externalCounterparties.map((counterparty) => ({
-            id: counterparty.id,
-            fullName: counterparty.fullName,
-            note: counterparty.note,
-            openCaseCount: counterparty.openCaseCount,
-            phone: counterparty.phone,
-            totalBalanceDzd: counterparty.totalBalanceDzd,
-            totalCaseCount: counterparty.accounts.length,
-          }))}
+          counterparties={buildExternalCounterpartyRows(debtsSummary, derived.externalCounterparties)}
           onCreate={() => void navigation.goToExternalCreate()}
           onOpen={(counterpartyId) => void navigation.goToExternalDetails(counterpartyId)}
         />,
       )
 
     case "employee-details":
+      if (selectedEmployee && (detailTab ?? "personal") === "debts") {
+        if (employeeDebtsDetailQuery.isPending) {
+          return renderLazy(detailPageFallback)
+        }
+        if (employeeDebtsDetailQuery.isError) {
+          return renderLazy(
+            <DebtsLoadError onRetry={() => void employeeDebtsDetailQuery.refetch()} t={t} />,
+          )
+        }
+      }
       return selectedEmployee
         ? renderLazy(
             <EmployeeDetailsPage
               activeTab={detailTab ?? "personal"}
-              debtAccounts={derived.debtAccountsByWorkerId.get(selectedEmployee.id) ?? []}
-              debtEntriesByAccountId={derived.debtEntriesByAccountId}
+              debtAccounts={employeeDebtsDetailQuery.data?.accounts ?? []}
+              debtEntriesByAccountId={employeeDebtsDetailQuery.data?.entriesByAccountId ?? {}}
               employee={selectedEmployee}
               managedProjects={derived.managedProjectsByEmployeeId[selectedEmployee.id] ?? []}
               managedWarehouses={derived.managedWarehousesByEmployeeId[selectedEmployee.id] ?? []}
@@ -157,12 +233,22 @@ export function HomeViewPageDetailContent({
       )
 
     case "external-details":
+      if (selectedCounterparty) {
+        if (externalDebtsDetailQuery.isPending) {
+          return renderLazy(detailPageFallback)
+        }
+        if (externalDebtsDetailQuery.isError) {
+          return renderLazy(
+            <DebtsLoadError onRetry={() => void externalDebtsDetailQuery.refetch()} t={t} />,
+          )
+        }
+      }
       return selectedCounterparty
         ? renderLazy(
             <ExternalCounterpartyDetailsPage
               counterparty={selectedCounterparty}
-              debtAccounts={derived.debtAccountsByExternalCounterpartyId.get(selectedCounterparty.id) ?? []}
-              debtEntriesByAccountId={derived.debtEntriesByAccountId}
+              debtAccounts={externalDebtsDetailQuery.data?.accounts ?? []}
+              debtEntriesByAccountId={externalDebtsDetailQuery.data?.entriesByAccountId ?? {}}
             />,
           )
         : (
