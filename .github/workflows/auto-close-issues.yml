@@ -37,7 +37,10 @@ permissions:
 
 jobs:
   close-linked-issues:
-    if: github.event.pull_request.merged == true
+    # Only on merges INTO develop — the whole reason this workflow exists is
+    # that native auto-close only fires on the default branch (main). Merges to
+    # main are already auto-closed by GitHub, so running here would duplicate it.
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'develop'
     runs-on: ubuntu-latest
     steps:
       - name: Close issues referenced by the merged PR
