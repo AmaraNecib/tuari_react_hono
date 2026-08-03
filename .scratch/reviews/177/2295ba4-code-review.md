@@ -91,3 +91,14 @@ error surfaces. No spec/standards impact; prior findings stand.
 Final push adds `.agents/wisdom/process.md` entries (PR-base gotcha,
 Greptile re-review lag, E2E bootstrap fixes). No production code changed;
 all prior findings stand.
+
+---
+
+## Post-evidence delta (2295ba4 — Greptile round 3)
+
+Greptile 5/5 noted a minor first-load flash: debts pages rendered
+zero-balance/SETTLED data while the summary/detail queries were pending
+(old composite blocked until all queries resolved). Fixed: pending guards
+render the detail-page skeleton until first data arrives (hub, externals,
+employee debts tab, external details). Fixture exposes debtsSummaryPending;
+home-view test pins the hub loading state. No spec/standards impact.
