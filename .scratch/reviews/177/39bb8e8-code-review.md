@@ -83,3 +83,11 @@ surfaces a DebtsLoadError surface (TriangleAlert icon, message, retry
 button, role=alert) matching the license-settings error pattern. Fixture
 exposes `debtsSummaryError`; home-view tests pin the hub and externals
 error surfaces. No spec/standards impact; prior findings stand.
+
+---
+
+## Post-evidence delta (39bb8e8 — docs-only)
+
+Final push adds `.agents/wisdom/process.md` entries (PR-base gotcha,
+Greptile re-review lag, E2E bootstrap fixes). No production code changed;
+all prior findings stand.
