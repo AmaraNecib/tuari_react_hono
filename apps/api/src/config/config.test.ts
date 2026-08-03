@@ -108,6 +108,17 @@ describe("createAppConfig", () => {
     expect(config.port).toBe(8080);
   });
 
+  it("trims whitespace from API_HOST", () => {
+    // The legacy env module did NOT trim; createAppConfig must.
+    const config = createAppConfig({
+      ...requiredAuth,
+      API_HOST: "  0.0.0.0  ",
+    });
+
+    expect(config.host).toBe("0.0.0.0");
+    expect(config.betterAuthUrl).toBe("http://0.0.0.0:4318");
+  });
+
   it("rejects non-integer API_PORT", () => {
     expect(() =>
       createAppConfig({
@@ -155,6 +166,18 @@ describe("createAppConfig", () => {
     ]);
   });
 
+  it("skips empty ALLOWED_ORIGINS CSV segments", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      ALLOWED_ORIGINS: ",,https://example.com/,,http://localhost:3000,,",
+    });
+
+    expect(config.allowedOrigins).toEqual([
+      "https://example.com",
+      "http://localhost:3000",
+    ]);
+  });
+
   it("rejects invalid ALLOWED_ORIGINS values", () => {
     expect(() =>
       createAppConfig({
@@ -179,6 +202,16 @@ describe("createAppConfig", () => {
 
     const omitted = createAppConfig(requiredAuth);
     expect(omitted.trustProxyHeaders).toBe(false);
+  });
+
+  it("accepts truthy API_TRUST_PROXY_HEADERS variants case-insensitively", () => {
+    for (const value of ["1", "yes", "on", "TRUE"]) {
+      const config = createAppConfig({
+        ...requiredAuth,
+        API_TRUST_PROXY_HEADERS: value,
+      });
+      expect(config.trustProxyHeaders, value).toBe(true);
+    }
   });
 
   // -----------------------------------------------------------------------
@@ -250,6 +283,15 @@ describe("createAppConfig", () => {
     expect(config.betterAuthUrl).toBe("http://127.0.0.1:4318");
   });
 
+  it("trims surrounding whitespace from a valid BETTER_AUTH_URL", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      BETTER_AUTH_URL: "  https://api.example.com/  ",
+    });
+
+    expect(config.betterAuthUrl).toBe("https://api.example.com");
+  });
+
   it("derives an https default when API_HOST is non-local", () => {
     const config = createAppConfig({
       ...requiredAuth,
@@ -287,6 +329,15 @@ describe("createAppConfig", () => {
     expect(config.bootstrapSetupKey).toBeNull();
   });
 
+  it("trims whitespace from BOOTSTRAP_SETUP_KEY", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      BOOTSTRAP_SETUP_KEY: "  super-secret-key  ",
+    });
+
+    expect(config.bootstrapSetupKey).toBe("super-secret-key");
+  });
+
   // -----------------------------------------------------------------------
   // Adapter selection
   // -----------------------------------------------------------------------
@@ -310,6 +361,14 @@ describe("createAppConfig", () => {
       DB_ADAPTER: "inmemory",
     });
     expect(config.dbAdapter).toBe("inmemory");
+  });
+
+  it("trims and case-normalizes DB_ADAPTER", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      DB_ADAPTER: "  SQLITE  ",
+    });
+    expect(config.dbAdapter).toBe("sqlite");
   });
 
   it("rejects invalid DB_ADAPTER values", () => {

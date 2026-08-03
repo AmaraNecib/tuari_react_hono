@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
-import { resolve } from "node:path";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { createAppConfig } from "../config";
 import type { BetterAuthInstance } from "../infrastructure/auth/auth";
@@ -161,6 +163,27 @@ describe("createAppDependencies config injection", { timeout: 60000 }, () => {
     // env singleton.
     expect(deps.auth).toBeDefined();
     expect(typeof deps.auth.handler).toBe("function");
+  });
+
+  it("creates a real database connection when no sqlite handle is injected", async () => {
+    const dbDir = mkdtempSync(join(tmpdir(), "tuari-deps-"));
+    try {
+      vi.stubEnv("APP_DB_PATH", join(dbDir, "deps.sqlite"));
+      vi.stubEnv("APP_DB_KEY", undefined);
+
+      const { createAppDependencies } = await import("./dependencies");
+      const config = createAppConfig({ BETTER_AUTH_SECRET: "test-secret" });
+
+      const deps = await createAppDependencies(undefined, undefined, fakeAuth, config);
+
+      // The backwards-compat fallback opened a real file-backed connection.
+      expect(deps.rawDatabase.prepare("SELECT 1 AS n").get()).toEqual({ n: 1 });
+      expect(existsSync(join(dbDir, "deps.sqlite"))).toBe(true);
+
+      deps.rawDatabase.close();
+    } finally {
+      rmSync(dbDir, { recursive: true, force: true });
+    }
   });
 
   it("honors the injected config for the attachments root path", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isLocalHostname, normalizeBaseUrl } from "./url";
+import { isLocalHostname, normalizeBaseUrl, normalizeOrigin, normalizeOriginList } from "./url";
 
 describe("isLocalHostname", () => {
   it.each([
@@ -60,5 +60,32 @@ describe("normalizeBaseUrl", () => {
   it("rejects empty and whitespace-only values", () => {
     expect(() => normalizeBaseUrl("")).toThrow("Invalid BETTER_AUTH_URL");
     expect(() => normalizeBaseUrl("   ")).toThrow("Invalid BETTER_AUTH_URL");
+  });
+});
+
+describe("normalizeOrigin", () => {
+  it("normalizes an origin by stripping path, query, and trailing slash", () => {
+    expect(normalizeOrigin("https://example.com/app?x=1")).toBe("https://example.com");
+    expect(normalizeOrigin("http://localhost:3000/")).toBe("http://localhost:3000");
+  });
+
+  it("rejects empty and whitespace-only origin values", () => {
+    expect(() => normalizeOrigin("")).toThrow("Origin value cannot be empty");
+    expect(() => normalizeOrigin("   ")).toThrow("Origin value cannot be empty");
+  });
+
+  it("rejects values that are not URLs", () => {
+    expect(() => normalizeOrigin("not-a-url")).toThrow("Invalid origin URL");
+  });
+
+  it("rejects a URL with a protocol but no host", () => {
+    // `new URL` accepts mailto:, but it has no host — the guard must reject it.
+    expect(() => normalizeOrigin("mailto:test@example.com")).toThrow("Invalid origin URL");
+  });
+
+  it("deduplicates and normalizes an origin list", () => {
+    expect(
+      normalizeOriginList(["https://example.com/", "https://example.com", "http://localhost:3000"]),
+    ).toEqual(["https://example.com", "http://localhost:3000"]);
   });
 });
