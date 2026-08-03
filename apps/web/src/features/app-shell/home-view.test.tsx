@@ -623,3 +623,14 @@ describe("debts pages surface feature-query errors", () => {
     expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeTruthy()
   })
 })
+
+describe("debts pages show a loading state while the summary query is pending", () => {
+  it("shows the detail-page skeleton instead of a zero-balance hub", async () => {
+    renderWorkspace("debts", { sessionUser: demoUser, debtsSummaryPending: true })
+
+    // The skeleton fallback (animate-pulse shimmer) replaces the hub until
+    // the feature-scoped summary query resolves — no zero-balance flash.
+    expect(document.querySelector(".animate-pulse")).toBeTruthy()
+    expect(screen.queryByText("مركز الديون")).toBeNull()
+  })
+})

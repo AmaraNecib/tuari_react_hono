@@ -149,6 +149,9 @@ export function HomeViewPageDetailContent({
 
   switch (page) {
     case "debts":
+      if (debtsSummaryQuery.isPending) {
+        return renderLazy(detailPageFallback)
+      }
       if (debtsSummaryQuery.isError) {
         return renderLazy(<DebtsLoadError onRetry={() => void debtsSummaryQuery.refetch()} t={t} />)
       }
@@ -175,6 +178,9 @@ export function HomeViewPageDetailContent({
       )
 
     case "externals":
+      if (debtsSummaryQuery.isPending) {
+        return renderLazy(detailPageFallback)
+      }
       if (debtsSummaryQuery.isError) {
         return renderLazy(<DebtsLoadError onRetry={() => void debtsSummaryQuery.refetch()} t={t} />)
       }
@@ -187,10 +193,15 @@ export function HomeViewPageDetailContent({
       )
 
     case "employee-details":
-      if (selectedEmployee && (detailTab ?? "personal") === "debts" && employeeDebtsDetailQuery.isError) {
-        return renderLazy(
-          <DebtsLoadError onRetry={() => void employeeDebtsDetailQuery.refetch()} t={t} />,
-        )
+      if (selectedEmployee && (detailTab ?? "personal") === "debts") {
+        if (employeeDebtsDetailQuery.isPending) {
+          return renderLazy(detailPageFallback)
+        }
+        if (employeeDebtsDetailQuery.isError) {
+          return renderLazy(
+            <DebtsLoadError onRetry={() => void employeeDebtsDetailQuery.refetch()} t={t} />,
+          )
+        }
       }
       return selectedEmployee
         ? renderLazy(
@@ -222,10 +233,15 @@ export function HomeViewPageDetailContent({
       )
 
     case "external-details":
-      if (selectedCounterparty && externalDebtsDetailQuery.isError) {
-        return renderLazy(
-          <DebtsLoadError onRetry={() => void externalDebtsDetailQuery.refetch()} t={t} />,
-        )
+      if (selectedCounterparty) {
+        if (externalDebtsDetailQuery.isPending) {
+          return renderLazy(detailPageFallback)
+        }
+        if (externalDebtsDetailQuery.isError) {
+          return renderLazy(
+            <DebtsLoadError onRetry={() => void externalDebtsDetailQuery.refetch()} t={t} />,
+          )
+        }
       }
       return selectedCounterparty
         ? renderLazy(
