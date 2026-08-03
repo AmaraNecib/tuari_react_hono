@@ -46,9 +46,11 @@ jobs:
 
           # 1. Collect "Closes/Fixes/Resolves #N" from the PR BODY only (not the
           #    title — titles are where sloppy "(closes #N)" gets appended).
+          #    Word-boundary anchors (\b) prevent mid-word matches like
+          #    "unresolved #5" or "foreclosed #3" from closing issues.
           numbers=$(
             printf '%s\n' "$PR_BODY" \
-              | grep -oiE '(close[sd]?|fix(e[sd])?|resolv(e[sd])?)[^#]*#([0-9]+)' \
+              | grep -oiE '\b(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)\b[^#]*#([0-9]+)' \
               | grep -oE '#[0-9]+' \
               | tr -d '#' \
               | sort -un \
@@ -63,7 +65,7 @@ jobs:
           for num in $numbers; do
             echo "── Checking issue #$num ──"
             issue=$(gh issue view "$num" --json state,body,title --jq '{state, body: (.body // "")}' 2>/dev/null || echo "{}")
-            state=$(printf '%s' "$issue" | gh api -X POST /markdown --input - >/dev/null 2>&1 && true; printf '%s' "$issue" | sed -n 's/.*"state": "\([^"]*\)".*/\1/p')
+            state=$(printf '%s' "$issue" | sed -n 's/.*"state": "\([^"]*\)".*/\1/p')
 
             if [ "$state" != "OPEN" ]; then
               echo "  SKIP: #$num state=$state (not open)"
