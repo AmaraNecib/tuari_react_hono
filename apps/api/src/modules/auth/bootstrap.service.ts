@@ -36,18 +36,22 @@ const BOOTSTRAP_VALIDATION_MESSAGE = "تحقق من صحة بيانات الإع
 
 /** Per-field Arabic messages for invalid bootstrap input (defense-in-depth). */
 // The numeric limits are derived from the shared contract schema so the copy
-// cannot drift from what the wire gate enforces.
+// cannot drift from what the wire gate enforces. The maps are keyed by the
+// schema's own field union, so adding a field to the contract forces a
+// compile-time error here until a message is provided.
+type BootstrapInputField = keyof typeof authBootstrapInputSchema.shape;
+
 const BOOTSTRAP_NAME_SCHEMA = authBootstrapInputSchema.shape.name;
 const BOOTSTRAP_PASSWORD_SCHEMA = authBootstrapInputSchema.shape.password;
 
-const BOOTSTRAP_FIELD_REQUIRED_MESSAGE: Record<string, string> = {
+const BOOTSTRAP_FIELD_REQUIRED_MESSAGE: Record<BootstrapInputField, string> = {
   name: "الاسم مطلوب.",
   phone: "رقم الهاتف مطلوب.",
   password: `كلمة المرور يجب أن تكون ${BOOTSTRAP_PASSWORD_SCHEMA.minLength} أحرف على الأقل.`,
   setupSecret: "رمز الإعداد الأول مطلوب.",
 };
 
-const BOOTSTRAP_FIELD_INVALID_MESSAGE: Record<string, string> = {
+const BOOTSTRAP_FIELD_INVALID_MESSAGE: Record<BootstrapInputField, string> = {
   name: `الاسم يجب ألا يتجاوز ${BOOTSTRAP_NAME_SCHEMA.maxLength} حرفًا.`,
   // Phone carries no .min() — its only failure mode is the 05/06/07 + 10-digit
   // regex below, which also rejects blank/whitespace values.
@@ -67,14 +71,20 @@ function bootstrapIssueField(issue: ZodIssue): string {
  * The taxonomy mirrors the contract schema's fields: name/password/setupSecret
  * have length bounds (too_small / too_big), phone is regex-only (always
  * invalid_string). A missing key or wrong-typed value (invalid_type) is a
- * "required" failure, not a malformed-value failure.
+ * "required" failure, not a malformed-value failure. Non-object input (null,
+ * primitive, array) surfaces as a root issue with no field and gets the
+ * generic message.
  */
 function bootstrapFieldErrorMessage(issue: ZodIssue): string {
   const field = bootstrapIssueField(issue);
-  if (issue.code === "too_small" || issue.code === "invalid_type") {
-    return BOOTSTRAP_FIELD_REQUIRED_MESSAGE[field] ?? BOOTSTRAP_VALIDATION_MESSAGE;
+  if (field === "input") {
+    return BOOTSTRAP_VALIDATION_MESSAGE;
   }
-  return BOOTSTRAP_FIELD_INVALID_MESSAGE[field] ?? BOOTSTRAP_VALIDATION_MESSAGE;
+  const messages =
+    issue.code === "too_small" || issue.code === "invalid_type"
+      ? BOOTSTRAP_FIELD_REQUIRED_MESSAGE
+      : BOOTSTRAP_FIELD_INVALID_MESSAGE;
+  return messages[field as BootstrapInputField];
 }
 
 /**
