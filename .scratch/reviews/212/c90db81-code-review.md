@@ -56,3 +56,10 @@ Greptile re-reviewed the final head (5/5, no actionable findings). Coverage roun
 closed the remaining in-scope branches (API_HOST trim, truthy-variant case-insensitivity,
 CSV empty segments, pg_ssl false, normalizeOrigin empty/protocol-without-host, omitted
 sqlite fallback). Deferred branches tracked in #259.
+
+---
+
+## Post-evidence delta (c90db81 — final evidence commit)
+
+Evidence commit c90db81 (this rename + PR body) is scratch-only; Greptile re-review on
+the final head covers c90db81, matching the PR head exactly.
