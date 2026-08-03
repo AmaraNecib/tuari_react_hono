@@ -71,3 +71,15 @@ server's `listDebtEntries` order and the old composite-derived builder, so
 the ledger renders identically regardless of adapter. Covered by a new unit
 test with out-of-order fixtures. No spec/standards impact; all prior
 findings stand.
+
+---
+
+## Post-evidence delta (814e360 — Greptile round 2)
+
+Greptile (4/5) flagged that debts query errors silently rendered empty
+hubs/ledgers (regression vs the composite error boundary). Fixed: each debts
+render branch (hub, externals, employee debts tab, external details) now
+surfaces a DebtsLoadError surface (TriangleAlert icon, message, retry
+button, role=alert) matching the license-settings error pattern. Fixture
+exposes `debtsSummaryError`; home-view tests pin the hub and externals
+error surfaces. No spec/standards impact; prior findings stand.
