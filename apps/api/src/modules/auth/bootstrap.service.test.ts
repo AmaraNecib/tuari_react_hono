@@ -397,6 +397,75 @@ describe("AuthBootstrapService", () => {
     expect(port.createFirstUser).not.toHaveBeenCalled()
   })
 
+  it("rejects a present-but-wrong setup secret as unauthorized", async () => {
+    const service = createService("setup-secret")
+    port.createFirstUser.mockResolvedValue({
+      status: "created",
+      user: { id: "user-1", name: BOOTSTRAP_INPUT.name, phone: BOOTSTRAP_INPUT.phone },
+    } satisfies CreateFirstUserResult)
+
+    const result = await service.bootstrapFirstUser({
+      ...BOOTSTRAP_INPUT,
+      setupSecret: "wrong-secret",
+    })
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "UNAUTHORIZED" },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
+  it("accepts the correct setup secret and proceeds to hashing and the port", async () => {
+    const service = createService("setup-secret")
+    port.createFirstUser.mockResolvedValue({
+      status: "created",
+      user: { id: "user-1", name: BOOTSTRAP_INPUT.name, phone: BOOTSTRAP_INPUT.phone },
+    } satisfies CreateFirstUserResult)
+
+    const result = await service.bootstrapFirstUser({
+      ...BOOTSTRAP_INPUT,
+      setupSecret: "setup-secret",
+    })
+
+    expect(result).toMatchObject({ success: true })
+    expect(hash).toHaveBeenCalledWith(BOOTSTRAP_INPUT.password)
+    expect(port.createFirstUser).toHaveBeenCalled()
+  })
+
+  it("accepts a padded correct setup secret (schema trims before comparison)", async () => {
+    const service = createService("setup-secret")
+    port.createFirstUser.mockResolvedValue({
+      status: "created",
+      user: { id: "user-1", name: BOOTSTRAP_INPUT.name, phone: BOOTSTRAP_INPUT.phone },
+    } satisfies CreateFirstUserResult)
+
+    const result = await service.bootstrapFirstUser({
+      ...BOOTSTRAP_INPUT,
+      setupSecret: "  setup-secret  ",
+    })
+
+    expect(result).toMatchObject({ success: true })
+    expect(port.createFirstUser).toHaveBeenCalled()
+  })
+
+  it("rejects a whitespace-only setup secret as invalid input", async () => {
+    const service = createService("setup-secret")
+
+    const result = await service.bootstrapFirstUser({
+      ...BOOTSTRAP_INPUT,
+      setupSecret: "   ",
+    })
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "VALIDATION" },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
   it("delegates bootstrap-owner checks to the port", async () => {
     const service = createService()
     port.isBootstrapOwner.mockResolvedValue(true)
