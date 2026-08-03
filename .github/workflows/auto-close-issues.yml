@@ -102,7 +102,7 @@ jobs:
 
             # 4. Same check on the PR body itself (a merged PR deferring the rest).
             pr_deferred=$(printf '%s\n' "$PR_BODY" \
-              | grep -oiE '(defer(red)?|follow[ -]?up|part of|remaining)[^#]*#([0-9]+)' \
+              | grep -oiE '(defer(red)?|follow[ -]?up|part of|remaining|todo)[^#]*#([0-9]+)' \
               | grep -oE '#[0-9]+' | tr -d '#' | sort -un || true)
             pr_open_ref=""
             for ref in $pr_deferred; do
