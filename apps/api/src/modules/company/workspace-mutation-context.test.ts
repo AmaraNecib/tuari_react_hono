@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
+import { CompanyError } from "./company.errors";
 import type { TransactionalRepository } from "./company.repository.contracts";
 
 describe("WorkspaceMutationContext.withTransaction", () => {
@@ -67,5 +68,73 @@ describe("WorkspaceMutationContext.withTransaction", () => {
     }).toThrow("Operation failed");
 
     expect(calls).toEqual(["BEGIN", "ROLLBACK"]);
+  });
+});
+
+describe("WorkspaceMutationContext.createMutationAuditContext", () => {
+  const repository: TransactionalRepository = {
+    withTransaction<T>(callback: () => T): T {
+      return callback();
+    },
+  };
+
+  it("normalizes an absent audit context, filling a transaction id", () => {
+    const context = new WorkspaceMutationContext(repository);
+
+    const audit = context.createMutationAuditContext();
+
+    expect(audit.actorUserId).toBeNull();
+    expect(audit.actorLabel).toBeNull();
+    expect(audit.transactionId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("preserves provided fields and reuses the supplied transaction id", () => {
+    const context = new WorkspaceMutationContext(repository);
+
+    const audit = context.createMutationAuditContext({
+      actorUserId: "user-1",
+      actorLabel: "Admin",
+      transactionId: "tx-123",
+    });
+
+    expect(audit).toEqual({
+      actorUserId: "user-1",
+      actorLabel: "Admin",
+      transactionId: "tx-123",
+    });
+  });
+
+  it("rejects a non-bootstrap-owner when an authorizer is configured", () => {
+    const context = new WorkspaceMutationContext(repository, {
+      isBootstrapOwner: () => false,
+    });
+
+    let thrown: unknown;
+    try {
+      context.createMutationAuditContext({ actorUserId: "intruder" });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(CompanyError);
+    expect((thrown as CompanyError).appError.code).toBe("UNAUTHORIZED");
+  });
+
+  it("allows the bootstrap owner when an authorizer is configured", () => {
+    const context = new WorkspaceMutationContext(repository, {
+      isBootstrapOwner: (userId) => userId === "owner",
+    });
+
+    const audit = context.createMutationAuditContext({ actorUserId: "owner" });
+
+    expect(audit.actorUserId).toBe("owner");
+  });
+
+  it("rejects an anonymous actor when an authorizer is configured", () => {
+    const context = new WorkspaceMutationContext(repository, {
+      isBootstrapOwner: () => true,
+    });
+
+    expect(() => context.createMutationAuditContext()).toThrowError(CompanyError);
   });
 });
