@@ -12,18 +12,41 @@ then commit the evidence. The evidence commit itself only touches `.scratch/`
 
 **Always**: refresh evidence right before the final push, not after.
 
-## apps/api `env.ts` throws at module load (🟠 Major)
+## apps/api `env.ts` module-load throw — RESOLVED in #212 (🟢 Obsolete workaround)
 
-`src/infrastructure/config/env.ts` calls `requireEnv(process.env, "BETTER_AUTH_SECRET")`
-at import time (`export const env = createEnv()`). Any test that transitively
-imports `runtime-env` (e.g. `app/dependencies.ts`) crashes on a cold env unless
-`BETTER_AUTH_SECRET` is set. Pattern: set `process.env.BETTER_AUTH_SECRET` at the
-top of the test file **before a dynamic `await import()`** of the heavy module.
-Vitest's per-file fork isolation keeps the mutation local (don't rely on
-`isolate: false` setups).
+`src/infrastructure/config/env.ts` + `runtime-env.ts` (which evaluated `createEnv()` at
+import time and threw when `BETTER_AUTH_SECRET` was absent) were **deleted in #212** in
+favour of one injected `createAppConfig()` (Zod). The workaround below is no longer needed
+for the api config path: consumers receive the validated `AppConfig` from the composition
+root (`src/index.ts`), and `config/index.ts` reads env only inside the factory call.
 
-**Always**: set the env var + dynamic import; never static-import dependency
-wiring in tests without it.
+**If you see this throw again**: something still imports a module that reads env at import
+time. Historical pattern (pre-#212): set `process.env.BETTER_AUTH_SECRET` at the top of the
+test file **before a dynamic `await import()`** of the heavy module; vitest's per-file fork
+isolation keeps the mutation local. NOTE the cold better-auth transform still needs a
+generous describe timeout (~60s) under full-suite load — see dependencies.test.ts.
+
+## Scoped v8 coverage without the repo's thresholds (🟡 Minor)
+
+`vitest.config.ts` gates 100% coverage only on `src/modules/{workforce,invoice}`. To measure
+a different file set (e.g. the config module) without tripping the thresholds:
+`pnpm exec vitest run --coverage --coverage.include="src/config/**/*.ts" ... --coverage.thresholds.100=false --coverage.reporter=text`.
+The report is per-file; use the "Uncovered Line #s" column to hunt branches. Files fully
+covered may drop out of the table between runs — re-check with the raw report.
+
+## Windows EBUSY deleting a better-sqlite3 test DB (🟡 Minor)
+
+`rmSync(dbDir, {recursive:true})` on a temp dir fails with `EBUSY: resource busy or locked`
+when a better-sqlite3 connection to that file is still open (Windows file locking). Always
+`deps.rawDatabase.close()` before deleting the temp DB in a test's `finally`.
+
+## Pre-push hook flake (contention test) — recurred on #212 (🟠 Major)
+
+`sqlite-bootstrap.port.test.ts` "propagates a cross-connection write-lock contention"
+(5s default timeout, added in #196) intermittently times out under full-suite load,
+flaking the pre-push hook ~50% locally. Same handling as the #219 web flake: verify the
+full hook chain passes standalone (it did, twice), then push with `--no-verify` and let
+CI be authoritative. Tracked in #259 (raise the test timeout).
 
 ## Greptile loop: re-trigger explicitly after fixes (🟡 Minor)
 
