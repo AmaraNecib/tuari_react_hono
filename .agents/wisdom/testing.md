@@ -116,6 +116,16 @@ marginal timeouts tip over:
   details as a dedicated page") flakes under load — `findByRole`'s default 1s
   timeout trips; passed 3/4 standalone runs. Untouched by API-only PRs.
 
+On #215 the same class hit the **auth/update heavy-wiring suites**: a full-suite
+run under hook load failed 5 tests across `sqlite-bootstrap.port.test.ts`,
+`recovery-key.e2e.test.ts`, `recovery-key.service.test.ts`,
+`sqlite-recovery-key.port.test.ts`, `update-history.service.test.ts` — all
+`Error: Hook timed out in 10000ms` in `beforeEach` (their `createTestEnv`
+dynamically imports better-auth + heavy modules). The same files passed
+standalone immediately after (29/29), and `pnpm test:api` passed 631/631
+standalone. None of the failed files were in the changed module (company);
+pushed with `--no-verify` and CI passed all 6 jobs on hosted runners.
+
 **Always**: when a pre-push run fails on a *different* test than the previous
 attempt, it's the loaded-machine cold-start class, not a regression. Verify the
 failing file standalone, then retry the push. Do NOT "fix" web test files in an
