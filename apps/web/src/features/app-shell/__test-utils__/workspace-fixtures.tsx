@@ -292,6 +292,26 @@ vi.mock("@/features/inventory/transfer-history-hooks", () => ({
   }),
 }))
 
+// Debts pages own their data via feature-scoped queries. Keep the workspace
+// fixture fully offline so debts routes never race a real RPC request.
+vi.mock("@/features/debts/debts-queries", () => ({
+  useDebtsSummaryQuery: () => ({
+    data: { parties: [], debtAccounts: [] },
+    isPending: false,
+    isError: false,
+  }),
+  useDebtPartyDetailQuery: () => ({
+    data: undefined,
+    isPending: false,
+    isError: false,
+  }),
+  buildDebtsHubRows: () => ({
+    rows: [],
+    totals: { openCount: 0, owedByUsDzd: 0, owedToUsDzd: 0 },
+  }),
+  buildExternalCounterpartyRows: () => [],
+}))
+
 // ─── Helper: default workspace data ──────────────────────────────
 // Matches the WorkspaceSnapshot shape used throughout the test suite.
 
