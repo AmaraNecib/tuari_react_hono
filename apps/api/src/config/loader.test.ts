@@ -90,4 +90,9 @@ describe("mergeConfigIntoEnv", () => {
     expect(merged.PG_PASSWORD).toBe("p");
     expect(merged.PG_SSL).toBe("true");
   });
+
+  it("maps pg_ssl false to a false PG_SSL env var", () => {
+    const merged = mergeConfigIntoEnv({ pg_ssl: false }, {});
+    expect(merged.PG_SSL).toBe("false");
+  });
 });
