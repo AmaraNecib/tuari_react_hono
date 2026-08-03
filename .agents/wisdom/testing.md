@@ -130,3 +130,9 @@ pushed with `--no-verify` and CI passed all 6 jobs on hosted runners.
 attempt, it's the loaded-machine cold-start class, not a regression. Verify the
 failing file standalone, then retry the push. Do NOT "fix" web test files in an
 API-only PR.
+
+## Test harnesses that force the failure path make the success path untestable (🟡 Minor)
+
+The `changeDbEncryptionKey` success leg was unreachable in `router.test.ts` because `createTestRouter` hard-coded `rawDatabase: {} as never` — the stub throws on every `pragma()` call, so the handler could only ever return the failure shape. Fix: make the dependency injectable as an optional trailing param (`rawDatabase: unknown = {}`), keeping the throwing default for existing tests while letting a working stub (pragma no-op + `prepare().get()`) exercise `{ success: true }` through the wire. The new test also pinned the exact PRAGMA `key`/`rekey` statements and the `'` → `''` SQL escaping — behavior-level assertions that would catch a future handler regression.
+
+**Always**: when a harness hard-codes a throwing stub that pins every test to one branch, add an injectable param so the success path is reachable; assert the handler's actual side-effect statements, not just the output shape.

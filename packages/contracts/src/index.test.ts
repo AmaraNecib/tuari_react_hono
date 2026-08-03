@@ -3,6 +3,7 @@ import {
   appErrorSchema,
   authSetupStatusSchema,
   changeDbKeyInputSchema,
+  changeDbKeyOutputSchema,
   consumeRecoveryKeyInputSchema,
   debtAccountCreateInputSchema,
   debtAccountSchema,
@@ -749,7 +750,7 @@ describe("contracts", () => {
   });
 
   describe("security and report filter inputs are exported for handler derivation (#206)", () => {
-    it("exports the recovery key input schemas from the package index", () => {
+    it("trims and validates recovery key inputs from the package index", () => {
       expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2-c3d4-e5f6" })).toEqual({
         key: "a1b2-c3d4-e5f6",
       });
@@ -760,6 +761,31 @@ describe("contracts", () => {
 
       expect(() => consumeRecoveryKeyInputSchema.parse({ key: "" })).toThrow();
       expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "" })).toThrow();
+
+      // #221: copied keys with accidental leading/trailing whitespace are
+      // trimmed before validation, so whitespace-only inputs are rejected.
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "  a1b2-c3d4-e5f6  " })).toEqual({
+        key: "a1b2-c3d4-e5f6",
+      });
+      expect(revokeRecoveryKeyInputSchema.parse({ keyId: "  key-1  " })).toEqual({
+        keyId: "key-1",
+      });
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "   " })).toThrow();
+      expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "   " })).toThrow();
+
+      // Trim covers every JS whitespace class (tabs, NBSP, line separators,
+      // BOM) — a key made only of those is empty after trimming and rejected.
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\t\n" })).toThrow();
+      expect(consumeRecoveryKeyInputSchema.parse({
+        key: "\u00A0a1b2-c3d4-e5f6\u2028",
+      })).toEqual({ key: "a1b2-c3d4-e5f6" });
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\uFEFF\u00A0" })).toThrow();
+
+      // Trim is leading/trailing only — internal whitespace (e.g. a key
+      // wrapped across an email line) is preserved, not normalized.
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2-c3d4\ne5f6" })).toEqual({
+        key: "a1b2-c3d4\ne5f6",
+      });
 
       // Missing required fields and non-string values are rejected.
       expect(() => consumeRecoveryKeyInputSchema.parse({})).toThrow();
@@ -780,10 +806,43 @@ describe("contracts", () => {
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "short" }),
       ).toThrow();
 
-      // Pin the newKey min(8) boundary: exactly 8 passes, 7 fails.
+      // #221: both key fields are trimmed — copied keys with trailing
+      // whitespace normalize, and whitespace-only values cannot become a
+      // PRAGMA key / rekey value.
+      expect(
+        changeDbKeyInputSchema.parse({
+          currentKey: "  old-key  ",
+          newKey: "  new-key-123  ",
+        }),
+      ).toEqual({ currentKey: "old-key", newKey: "new-key-123" });
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "   ", newKey: "new-key-123" }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "        " }),
+      ).toThrow();
+      // Tab padding is trimmed too: 8 chars after trim pass, 7 fail.
+      expect(
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "\t12345678" }),
+      ).toEqual({ currentKey: "old", newKey: "12345678" });
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "\t", newKey: "12345678" }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "1234567\t" }),
+      ).toThrow();
+
+      // Pin the newKey min(8) boundary on the TRIMMED value: 8 after trim
+      // passes, 7 fails.
+      expect(
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: " 12345678 " }),
+      ).toEqual({ currentKey: "old", newKey: "12345678" });
       expect(
         changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "12345678" }),
       ).toEqual({ currentKey: "old", newKey: "12345678" });
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "  1234567  " }),
+      ).toThrow();
       expect(() =>
         changeDbKeyInputSchema.parse({ currentKey: "old", newKey: "1234567" }),
       ).toThrow();
@@ -792,6 +851,28 @@ describe("contracts", () => {
       expect(() => changeDbKeyInputSchema.parse({ currentKey: "old" })).toThrow();
       expect(() =>
         changeDbKeyInputSchema.parse({ currentKey: "old", newKey: 12345678 }),
+      ).toThrow();
+    });
+
+    it("discriminates changeDbKey output: success carries no error, failure requires one", () => {
+      // The two valid pairs the handler can emit.
+      expect(changeDbKeyOutputSchema.parse({ success: true })).toEqual({ success: true });
+      expect(
+        changeDbKeyOutputSchema.parse({ success: false, error: "Current encryption key is invalid" }),
+      ).toEqual({ success: false, error: "Current encryption key is invalid" });
+
+      // #221: logically invalid combinations are rejected — a failure without
+      // an error message, and a success that carries an error.
+      expect(() => changeDbKeyOutputSchema.parse({ success: false })).toThrow();
+      expect(() => changeDbKeyOutputSchema.parse({ success: true, error: "boom" })).toThrow();
+      expect(() => changeDbKeyOutputSchema.parse({ success: "maybe" })).toThrow();
+      // A failure must carry a non-empty, non-blank error message.
+      expect(() => changeDbKeyOutputSchema.parse({ success: false, error: "" })).toThrow();
+      expect(() => changeDbKeyOutputSchema.parse({ success: false, error: "   " })).toThrow();
+      // Strict members reject unknown keys on either branch.
+      expect(() => changeDbKeyOutputSchema.parse({ success: true, extra: "x" })).toThrow();
+      expect(() =>
+        changeDbKeyOutputSchema.parse({ success: false, error: "e", extra: 1 }),
       ).toThrow();
     });
 
