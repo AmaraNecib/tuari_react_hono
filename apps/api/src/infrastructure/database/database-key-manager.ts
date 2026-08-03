@@ -14,7 +14,8 @@ export interface DatabaseKeyManager {
    * @param currentKey - The key the database is currently encrypted with.
    * @param newKey - The key to re-encrypt the database with.
    * @returns `true` when the current key was verified and the rekey succeeded;
-   *          `false` when the current key is invalid (verification read failed).
+   *          `false` when verification or the rekey failed (the caller should
+   *          surface this as a graceful failure, never a crash).
    */
   changeKey(currentKey: string, newKey: string): boolean;
 }
@@ -24,7 +25,9 @@ export interface DatabaseKeyManager {
  *
  * The verification step reads actual data (`sqlite_master`) so a wrong current
  * key surfaces as a failed read on the encrypted pages; the rekey re-encrypts
- * the whole database in place via `PRAGMA rekey`. Keys are single-quote-escaped
+ * the whole database in place via `PRAGMA rekey`. Any failure — a wrong
+ * current key OR a failed rekey (I/O error, locked database) — is reported as
+ * `false`; the caller never sees an exception. Keys are single-quote-escaped
  * (`''` doubling) before interpolation into the PRAGMA SQL.
  */
 export function createDatabaseKeyManager(
@@ -35,12 +38,11 @@ export function createDatabaseKeyManager(
       try {
         sqlite.pragma(`key = '${currentKey.replace(/'/g, "''")}'`);
         sqlite.prepare("SELECT COUNT(*) FROM sqlite_master").get();
+        sqlite.pragma(`rekey = '${newKey.replace(/'/g, "''")}'`);
+        return true;
       } catch {
         return false;
       }
-
-      sqlite.pragma(`rekey = '${newKey.replace(/'/g, "''")}'`);
-      return true;
     },
   };
 }

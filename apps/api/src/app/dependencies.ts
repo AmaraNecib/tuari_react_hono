@@ -89,7 +89,7 @@ export type AppDependencies = {
   invoiceModule: InvoiceModule;
   paymentModule: PaymentModule;
   roleModule: RoleModule;
-  /** Close the shared database connection (composition-root lifecycle). */
+  /** Close the shared database connection (idempotent; composition-root lifecycle). */
   close: () => void;
 };
 
@@ -115,9 +115,20 @@ export async function createAppDependencies(
     config.databaseKey,
   );
 
-  // Schema migrations run on the connection the root just opened — the caller
-  // no longer has (or needs) a handle to migrate beforehand.
-  await ensureDatabaseSchema(new BetterSqlite3Executor(sharedDatabase));
+  // Idempotent close: the root opens the connection, so the root closes it.
+  // `close` is also invoked on construction failure so a partially-built root
+  // never leaks the handle (Windows EBUSY on temp-file test cleanup).
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    sharedDatabase.close();
+  };
+
+  try {
+    // Schema migrations run on the connection the root just opened — the
+    // caller no longer has (or needs) a handle to migrate beforehand.
+    await ensureDatabaseSchema(new BetterSqlite3Executor(sharedDatabase));
 
   const db = createDrizzleFromSqlite(sharedDatabase);
   const auth = config.authInstance ?? createAuth(db, appConfig);
@@ -174,31 +185,33 @@ export async function createAppDependencies(
   const rbacRoleRepository = new SqliteRbacRoleRepository(db);
   const roleModule = new RoleModule({ repository: rbacRoleRepository });
 
-  return {
-    auth,
-    accountService: new AccountService(accountRepository, auth),
-    authBootstrapService,
-    companyService,
-    workforceService,
-    operationsService,
-    financeService,
-    inventoryService: new InventoryService(
-      inventoryRepository,
-      new InventoryAttachmentStorage(appConfig.attachmentsRootPath),
+    return {
+      auth,
+      accountService: new AccountService(accountRepository, auth),
+      authBootstrapService,
       companyService,
-      companyRepository,
-    ),
-    sessionService: new SessionService(auth, permissionResolver),
-    recoveryKeyService,
-    updateService: new UpdateService(),
-    updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase)),
-    databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
-    employeeModule,
-    invoiceModule,
-    paymentModule,
-    roleModule,
-    close: () => {
-      sharedDatabase.close();
-    },
-  } as const;
+      workforceService,
+      operationsService,
+      financeService,
+      inventoryService: new InventoryService(
+        inventoryRepository,
+        new InventoryAttachmentStorage(appConfig.attachmentsRootPath),
+        companyService,
+        companyRepository,
+      ),
+      sessionService: new SessionService(auth, permissionResolver),
+      recoveryKeyService,
+      updateService: new UpdateService(),
+      updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase)),
+      databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
+      employeeModule,
+      invoiceModule,
+      paymentModule,
+      roleModule,
+      close,
+    } as const;
+  } catch (error) {
+    close();
+    throw error;
+  }
 }

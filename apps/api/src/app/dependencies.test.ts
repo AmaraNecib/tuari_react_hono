@@ -9,7 +9,7 @@ import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 // Captures the constructor argument of InventoryAttachmentStorage so tests
 // can prove `config.attachmentsRootPath` (not `env.*`) reaches the inventory
 // storage wiring inside createAppDependencies.
-const { storageCtorMock } = vi.hoisted(() => ({ storageCtorMock: vi.fn() }));
+const { storageCtorMock, dbKeyCapture } = vi.hoisted(() => ({ storageCtorMock: vi.fn(), dbKeyCapture: vi.fn() }));
 
 vi.mock("../modules/inventory/inventory.storage", async (importOriginal) => {
   const actual =
@@ -25,6 +25,22 @@ vi.mock("../modules/inventory/inventory.storage", async (importOriginal) => {
   };
 });
 
+// Captures the database key passed to the connection factory so the
+// `config.databaseKey` wiring can be pinned without depending on the SQLCipher
+// native binding being built (it is not in every environment). The key is
+// stripped here so the plain better-sqlite3 connection opens as usual.
+vi.mock("../infrastructure/database/factory", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../infrastructure/database/factory")>();
+  return {
+    ...actual,
+    createDatabaseConnection: (databasePath?: string, databaseKey?: string | null) => {
+      dbKeyCapture(databaseKey);
+      return actual.createDatabaseConnection(databasePath, undefined);
+    },
+  };
+});
+
 /** Minimal auth instance — only stored by dependency constructors, never used. */
 const fakeAuth = { handler: () => new Response(null, { status: 200 }) } as unknown as BetterAuthInstance;
 
@@ -34,12 +50,28 @@ const inMemoryDb = ":memory:";
 /** The roles seeded by `ensureSeedRoles` on a freshly migrated database. */
 const SEEDED_ROLE_KEYS = ["admin", "manager", "viewer"];
 
+/** Pin ambient env so the default `createAppConfig()` path is deterministic. */
+const stubCleanEnv = () => {
+  vi.stubEnv("BETTER_AUTH_SECRET", "test-secret");
+  vi.stubEnv("DB_ADAPTER", undefined);
+  vi.stubEnv("APP_DB_KEY", undefined);
+  vi.stubEnv("TUARI_CONFIG_FILE", undefined);
+  vi.stubEnv("NODE_ENV", "test");
+};
+
+/** Last created dependency graph, closed in afterEach (idempotent close). */
+let lastDeps: { close: () => void } | undefined;
+
 beforeEach(() => {
   storageCtorMock.mockClear();
+  dbKeyCapture.mockClear();
+  stubCleanEnv();
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  lastDeps?.close();
+  lastDeps = undefined;
 });
 
 // Cold-start guard (see .agents/wisdom/testing.md): this suite dynamically
@@ -59,6 +91,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
       { databasePath: inMemoryDb, authInstance: fakeAuth },
       config,
     );
+    lastDeps = deps;
 
     // The in-memory adapter never touches SQLite: an empty store lists roles
     // without querying the migrated :memory: database.
@@ -66,16 +99,10 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
   });
 
   it("defaults to the sqlite adapter when no config is injected", async () => {
-    // Pin the ambient env so the default `createAppConfig()` path is
-    // deterministic regardless of the CI/dev shell environment.
-    vi.stubEnv("BETTER_AUTH_SECRET", "test-secret");
-    vi.stubEnv("DB_ADAPTER", undefined);
-    vi.stubEnv("TUARI_CONFIG_FILE", undefined);
-    vi.stubEnv("NODE_ENV", "test");
-
     const { createAppDependencies } = await import("./dependencies");
 
     const deps = await createAppDependencies({ databasePath: inMemoryDb, authInstance: fakeAuth });
+    lastDeps = deps;
 
     // Default config selects the sqlite adapter, which reads the migrated role
     // table (migrations now run inside the composition root) — proving the
@@ -98,6 +125,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
       { databasePath: inMemoryDb, authInstance: fakeAuth },
       config,
     );
+    lastDeps = deps;
 
     // Requires a setup key only because the injected config carries one —
     // previously the code read `env.bootstrapSetupKey` instead and ignored
@@ -119,6 +147,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
       { databasePath: inMemoryDb, authInstance: fakeAuth },
       config,
     );
+    lastDeps = deps;
 
     await expect(deps.authBootstrapService.getSetupStatus()).resolves.toEqual({
       hasUsers: false,
@@ -134,6 +163,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
     });
 
     const deps = await createAppDependencies({ databasePath: inMemoryDb }, config);
+    lastDeps = deps;
 
     // Exercises the real createAuth(db, config) path — proving the auth
     // instance builds from the injected config rather than a module-load
@@ -145,12 +175,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
   it("creates a real database connection from the resolved config path", async () => {
     const dbDir = mkdtempSync(join(tmpdir(), "tuari-deps-"));
     try {
-      vi.stubEnv("BETTER_AUTH_SECRET", "test-secret");
-      vi.stubEnv("DB_ADAPTER", undefined);
       vi.stubEnv("APP_DB_PATH", join(dbDir, "deps.sqlite"));
-      vi.stubEnv("APP_DB_KEY", undefined);
-      vi.stubEnv("TUARI_CONFIG_FILE", undefined);
-      vi.stubEnv("NODE_ENV", "test");
 
       const { createAppDependencies } = await import("./dependencies");
 
@@ -158,6 +183,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
       // (stubbed) env and opens a real file-backed connection, migrating + 
       // seeding it.
       const deps = await createAppDependencies({ authInstance: fakeAuth });
+      lastDeps = deps;
 
       expect(existsSync(join(dbDir, "deps.sqlite"))).toBe(true);
       expect(deps.companyService.listRoles().items).toHaveLength(SEEDED_ROLE_KEYS.length);
@@ -168,6 +194,23 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
     } finally {
       rmSync(dbDir, { recursive: true, force: true });
     }
+  });
+
+  it("forwards an injected databaseKey to the connection factory", async () => {
+    const { createAppDependencies } = await import("./dependencies");
+    const config = createAppConfig({ BETTER_AUTH_SECRET: "test-secret" });
+
+    const deps = await createAppDependencies(
+      { databasePath: inMemoryDb, databaseKey: "test-db-key", authInstance: fakeAuth },
+      config,
+    );
+    lastDeps = deps;
+
+    // The key reaches the connection factory (the mocked seam strips it so the
+    // plain better-sqlite3 connection opens here; the SQLCipher path itself is
+    // the factory's concern and requires the native binding).
+    expect(dbKeyCapture).toHaveBeenCalledWith("test-db-key");
+    expect(deps.companyService.listRoles().items).toHaveLength(SEEDED_ROLE_KEYS.length);
   });
 
   it("honors the injected config for the attachments root path", async () => {
