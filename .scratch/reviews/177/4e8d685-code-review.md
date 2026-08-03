@@ -59,3 +59,15 @@ block); E2E serial reuse is safe under the Playwright config (`workers: 1`,
 **Summary:** Standards — 3 judgement calls, worst is duplicated
 `requireEntitySuccess` (pre-existing repo pattern). Spec — 0 findings, all
 requirements met.
+
+---
+
+## Post-evidence delta (4e8d685 — Greptile round)
+
+Greptile (4/5) flagged that `useDebtPartyDetailQuery` returned entries in
+server order. Fixed by sorting through the shared `sortDebtEntries`
+(entryDate desc, createdAt desc) in the hook's assembly — identical to the
+server's `listDebtEntries` order and the old composite-derived builder, so
+the ledger renders identically regardless of adapter. Covered by a new unit
+test with out-of-order fixtures. No spec/standards impact; all prior
+findings stand.
