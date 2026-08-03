@@ -17,7 +17,7 @@ test("admin creates an external counterparty and it shows in the debts hub", asy
 
   if (await addCounterpartyButton.isVisible()) {
     await addCounterpartyButton.click()
-    await page.getByLabel(/الاسم/).first().fill(counterpartyName)
+    await page.getByLabel(/اسم/).first().fill(counterpartyName)
     await page.getByLabel(/رقم الهاتف/).first().fill(phone)
     await page.getByRole("button", { name: /حفظ/ }).first().click()
     await expect(page.getByText(counterpartyName)).toBeVisible({ timeout: 10_000 })

@@ -15,7 +15,7 @@ test("admin creates a project and it appears in the projects list", async ({ pag
 
   const projectName = `موقع البناء ${uniqueSuffix()}`
 
-  await page.getByLabel(/الاسم/).first().fill(projectName)
+  await page.getByLabel(/اسم/).first().fill(projectName)
   await page.getByRole("button", { name: "حفظ المشروع" }).click()
 
   await expect(page.getByText(projectName)).toBeVisible({ timeout: 10_000 })
@@ -31,7 +31,7 @@ test("admin can create and configure a project with manager assignment", async (
   await page.getByRole("button", { name: "إضافة مشروع" }).first().click()
   const projectName = `مشروع متقدم ${uniqueSuffix()}`
 
-  await page.getByLabel(/الاسم/).first().fill(projectName)
+  await page.getByLabel(/اسم/).first().fill(projectName)
   const locationField = page.getByLabel(/الموقع/)
   if (await locationField.isVisible()) {
     await locationField.fill("الموقع التجريبي")
@@ -40,7 +40,6 @@ test("admin can create and configure a project with manager assignment", async (
   await page.getByRole("button", { name: "حفظ المشروع" }).click()
   await expect(page.getByText(projectName)).toBeVisible({ timeout: 10_000 })
 
-  // Click on the project to view its details
-  await page.getByText(projectName).first().click()
-  await expect(page.getByRole("heading", { name: /تفاصيل المشروع|تفاصيل/ })).toBeVisible({ timeout: 5_000 })
+  // The save flow navigates straight to the project details page.
+  await expect(page.getByRole("heading", { name: projectName })).toBeVisible({ timeout: 5_000 })
 })

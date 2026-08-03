@@ -35,3 +35,7 @@ Thumbs.db
 .pi*/
 PRODUCT.md
 worktrees/
+
+# Playwright run artifacts
+test-results/
+playwright-report/

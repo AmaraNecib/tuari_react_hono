@@ -15,7 +15,7 @@ test("admin creates a warehouse and it appears in the warehouses list", async ({
 
   const warehouseName = `مستودع رقم ${uniqueSuffix()}`
 
-  await page.getByLabel(/الاسم/).first().fill(warehouseName)
+  await page.getByLabel(/اسم/).first().fill(warehouseName)
   await page.getByRole("button", { name: "حفظ المستودع" }).click()
 
   await expect(page.getByText(warehouseName)).toBeVisible({ timeout: 10_000 })
