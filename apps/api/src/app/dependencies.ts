@@ -49,7 +49,10 @@ import { SqliteUpdateHistoryPort } from "../modules/update/adapters/sqlite-updat
 export type CreateAppDependenciesConfig = {
   /** SQLite file path (or `:memory:`). Defaults to `appConfig.databasePath`. */
   databasePath?: string;
-  /** SQLCipher encryption key. Defaults to `process.env.APP_DB_KEY`. */
+  /**
+   * SQLCipher encryption key. Defaults to `process.env.APP_DB_KEY`. The
+   * validated `AppConfig` carries no key field, so env is the only fallback.
+   */
   databaseKey?: string;
   /**
    * Pre-built Better Auth instance. Kept for test injection — tests pass a
@@ -108,7 +111,7 @@ export async function createAppDependencies(
   appConfig: AppConfig = createAppConfig(),
 ): Promise<AppDependencies> {
   const sharedDatabase = createDatabaseConnection(
-    config.databasePath ?? appConfig.databasePath,
+    config.databasePath?.trim() ? config.databasePath : appConfig.databasePath,
     config.databaseKey,
   );
 

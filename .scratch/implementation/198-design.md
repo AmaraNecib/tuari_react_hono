@@ -166,7 +166,12 @@ Full suite must stay green.
    migrations are existence-guarded → fast no-ops on fresh dbs. Verified cold-start
    risk is covered by the existing generous describe timeout (60s).
 2. **`_executor` module state** (`schema.ts`) — `ensureDatabaseSchema` re-sets it per
-   call; only migration internals read it. No cross-call leakage.
+   call; only migration internals read it. Within one process, concurrent
+   `createAppDependencies` calls could interleave (the global would point at the
+   last-opened connection) and a closed connection stays referenced until the next
+   call. In practice the root is called once at startup (index.ts) and tests run
+   sequentially under vitest per-file isolation, so this is latent — a dedicated
+   schema.ts refactor would be the right place to remove the global.
 3. **`databasePath: ":memory:"`** — `mkdirSync(dirname(":memory:"))` = `.` (exists);
    `PRAGMA journal_mode = WAL` on `:memory:` returns `"memory"` without throwing
    (confirmed by running the suite).
