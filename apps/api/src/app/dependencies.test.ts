@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import Database from "better-sqlite3";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -29,34 +28,11 @@ vi.mock("../modules/inventory/inventory.storage", async (importOriginal) => {
 /** Minimal auth instance — only stored by dependency constructors, never used. */
 const fakeAuth = { handler: () => new Response(null, { status: 200 }) } as unknown as BetterAuthInstance;
 
-/** Fresh in-memory SQLite handle with no schema tables. */
-const createRawDb = () => new Database(":memory:");
+/** Fresh in-memory SQLite database (connection opened by the composition root). */
+const inMemoryDb = ":memory:";
 
-/**
- * In-memory SQLite handle with the two tables AuthBootstrapService queries
- * via its port (`user`, `app_bootstrap_state`) so setup status is observable
- * without running the full schema migration.
- */
-const createBootstrapSchemaDb = () => {
-  const rawDb = createRawDb();
-  rawDb.exec(`
-    CREATE TABLE "user" (
-      "id" text PRIMARY KEY NOT NULL,
-      "name" text NOT NULL,
-      "image" text,
-      "phoneNumber" text NOT NULL UNIQUE,
-      "phoneNumberVerified" integer NOT NULL DEFAULT 0,
-      "created_at" text NOT NULL,
-      "updated_at" text NOT NULL
-    );
-    CREATE TABLE "app_bootstrap_state" (
-      "singleton" integer PRIMARY KEY NOT NULL,
-      "created_at" text NOT NULL,
-      "user_id" text
-    );
-  `);
-  return rawDb;
-};
+/** The roles seeded by `ensureSeedRoles` on a freshly migrated database. */
+const SEEDED_ROLE_KEYS = ["admin", "manager", "viewer"];
 
 beforeEach(() => {
   storageCtorMock.mockClear();
@@ -67,10 +43,11 @@ afterEach(() => {
 });
 
 // Cold-start guard (see .agents/wisdom/testing.md): this suite dynamically
-// imports better-auth + the whole dependency graph; under load (e.g. the
-// pre-push hook chain) the cold transform can exceed 20s, so keep the
+// imports better-auth + the whole dependency graph, and every test now runs
+// the full schema migration on its own :memory: connection; under load (e.g.
+// the pre-push hook chain) the cold transform can exceed 20s, so keep the
 // describe-level timeout generous.
-describe("createAppDependencies config injection", { timeout: 60000 }, () => {
+describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () => {
   it("uses the injected config for repository selection (inmemory adapter)", async () => {
     const { createAppDependencies } = await import("./dependencies");
     const config = createAppConfig({
@@ -78,10 +55,13 @@ describe("createAppDependencies config injection", { timeout: 60000 }, () => {
       DB_ADAPTER: "inmemory",
     });
 
-    const deps = await createAppDependencies(createRawDb(), undefined, fakeAuth, config);
+    const deps = await createAppDependencies(
+      { databasePath: inMemoryDb, authInstance: fakeAuth },
+      config,
+    );
 
     // The in-memory adapter never touches SQLite: an empty store lists roles
-    // without querying the schema-less :memory: database.
+    // without querying the migrated :memory: database.
     expect(deps.companyService.listRoles()).toEqual({ items: [] });
   });
 
@@ -95,13 +75,14 @@ describe("createAppDependencies config injection", { timeout: 60000 }, () => {
 
     const { createAppDependencies } = await import("./dependencies");
 
-    const deps = await createAppDependencies(createRawDb(), undefined, fakeAuth);
+    const deps = await createAppDependencies({ databasePath: inMemoryDb, authInstance: fakeAuth });
 
-    // Default config selects the sqlite adapter, which queries the (missing)
-    // role table in the schema-less :memory: database — proving the injected
-    // config in the test above is what switched the adapter.
+    // Default config selects the sqlite adapter, which reads the migrated role
+    // table (migrations now run inside the composition root) — proving the
+    // injected config in the test above is what switched the adapter.
     expect(deps.companyService).toBeDefined();
-    expect(() => deps.companyService.listRoles()).toThrow(/no such table/);
+    const roles = deps.companyService.listRoles();
+    expect(roles.items.map((role) => role.key).sort()).toEqual(SEEDED_ROLE_KEYS);
   });
 
   it("honors the injected config for the bootstrap setup key", async () => {
@@ -114,9 +95,7 @@ describe("createAppDependencies config injection", { timeout: 60000 }, () => {
     });
 
     const deps = await createAppDependencies(
-      createBootstrapSchemaDb(),
-      undefined,
-      fakeAuth,
+      { databasePath: inMemoryDb, authInstance: fakeAuth },
       config,
     );
 
@@ -137,9 +116,7 @@ describe("createAppDependencies config injection", { timeout: 60000 }, () => {
     });
 
     const deps = await createAppDependencies(
-      createBootstrapSchemaDb(),
-      undefined,
-      fakeAuth,
+      { databasePath: inMemoryDb, authInstance: fakeAuth },
       config,
     );
 
@@ -156,7 +133,7 @@ describe("createAppDependencies config injection", { timeout: 60000 }, () => {
       BETTER_AUTH_URL: "http://127.0.0.1:9999",
     });
 
-    const deps = await createAppDependencies(createRawDb(), undefined, undefined, config);
+    const deps = await createAppDependencies({ databasePath: inMemoryDb }, config);
 
     // Exercises the real createAuth(db, config) path — proving the auth
     // instance builds from the injected config rather than a module-load
@@ -165,22 +142,29 @@ describe("createAppDependencies config injection", { timeout: 60000 }, () => {
     expect(typeof deps.auth.handler).toBe("function");
   });
 
-  it("creates a real database connection when no sqlite handle is injected", async () => {
+  it("creates a real database connection from the resolved config path", async () => {
     const dbDir = mkdtempSync(join(tmpdir(), "tuari-deps-"));
     try {
+      vi.stubEnv("BETTER_AUTH_SECRET", "test-secret");
+      vi.stubEnv("DB_ADAPTER", undefined);
       vi.stubEnv("APP_DB_PATH", join(dbDir, "deps.sqlite"));
       vi.stubEnv("APP_DB_KEY", undefined);
+      vi.stubEnv("TUARI_CONFIG_FILE", undefined);
+      vi.stubEnv("NODE_ENV", "test");
 
       const { createAppDependencies } = await import("./dependencies");
-      const config = createAppConfig({ BETTER_AUTH_SECRET: "test-secret" });
 
-      const deps = await createAppDependencies(undefined, undefined, fakeAuth, config);
+      // No databasePath injected — the root resolves the default path from the
+      // (stubbed) env and opens a real file-backed connection, migrating + 
+      // seeding it.
+      const deps = await createAppDependencies({ authInstance: fakeAuth });
 
-      // The backwards-compat fallback opened a real file-backed connection.
-      expect(deps.rawDatabase.prepare("SELECT 1 AS n").get()).toEqual({ n: 1 });
       expect(existsSync(join(dbDir, "deps.sqlite"))).toBe(true);
+      expect(deps.companyService.listRoles().items).toHaveLength(SEEDED_ROLE_KEYS.length);
 
-      deps.rawDatabase.close();
+      // The raw handle never escapes the root — `close` is the lifecycle seam.
+      expect(deps).not.toHaveProperty("rawDatabase");
+      deps.close();
     } finally {
       rmSync(dbDir, { recursive: true, force: true });
     }
@@ -193,7 +177,10 @@ describe("createAppDependencies config injection", { timeout: 60000 }, () => {
       APP_ATTACHMENTS_ROOT: "./private/invoices",
     });
 
-    await createAppDependencies(createRawDb(), undefined, fakeAuth, config);
+    await createAppDependencies(
+      { databasePath: inMemoryDb, authInstance: fakeAuth },
+      config,
+    );
 
     expect(storageCtorMock).toHaveBeenCalledWith(resolve("./private/invoices"));
   });

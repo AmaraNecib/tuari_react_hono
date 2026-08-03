@@ -1,9 +1,10 @@
 import { createAuth } from "../infrastructure/auth/auth";
 import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
-import type { AppDrizzle } from "../infrastructure/database/drizzle";
+import { createDatabaseKeyManager, type DatabaseKeyManager } from "../infrastructure/database/database-key-manager";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
-import type { BetterSqliteDatabase } from "../types/sqlite";
+import { ensureDatabaseSchema } from "../infrastructure/database/schema";
+import { BetterSqlite3Executor } from "../infrastructure/database/sqlite-executor";
 import { createAppConfig, type AppConfig } from "../config";
 import { createCompanyRepository } from "../config/database";
 import { DrizzleAccountRepository } from "../modules/account/account.repository";
@@ -39,12 +40,33 @@ import { UpdateHistoryService } from "../modules/update/update-history.service";
 import { SqliteUpdateHistoryPort } from "../modules/update/adapters/sqlite-update-history.port";
 
 /**
+ * Optional configuration for {@link createAppDependencies}.
+ *
+ * Every field is a seam for tests (or the desktop host) to inject without
+ * constructing raw database handles themselves. When omitted, values resolve
+ * from the validated `AppConfig` (itself env + optional config file).
+ */
+export type CreateAppDependenciesConfig = {
+  /** SQLite file path (or `:memory:`). Defaults to `appConfig.databasePath`. */
+  databasePath?: string;
+  /** SQLCipher encryption key. Defaults to `process.env.APP_DB_KEY`. */
+  databaseKey?: string;
+  /**
+   * Pre-built Better Auth instance. Kept for test injection — tests pass a
+   * mock or pre-configured auth without constructing a real database
+   * connection.
+   */
+  authInstance?: BetterAuthInstance;
+};
+
+/**
  * All resolved application dependencies, created once at startup.
  *
  * Explicitly declared (rather than `ReturnType<typeof createAppDependencies>`)
- * so the tsup dts build can name every field — the inferred return would
- * resolve `rawDatabase` to the unnameable `BetterSqlite3.Database` UMD-global
- * and fail with TS4058.
+ * so the tsup dts build can name every field — the raw database handle is
+ * deliberately NOT exposed here; the composition root keeps it, and the
+ * router/system handlers receive the narrow {@link DatabaseKeyManager} port
+ * instead.
  */
 export type AppDependencies = {
   auth: BetterAuthInstance;
@@ -59,39 +81,49 @@ export type AppDependencies = {
   recoveryKeyService: RecoveryKeyService;
   updateService: UpdateService;
   updateHistoryService: UpdateHistoryService;
-  rawDatabase: BetterSqliteDatabase;
+  databaseKeyManager: DatabaseKeyManager;
   employeeModule: EmployeeModule;
   invoiceModule: InvoiceModule;
   paymentModule: PaymentModule;
   roleModule: RoleModule;
+  /** Close the shared database connection (composition-root lifecycle). */
+  close: () => void;
 };
 
 /**
- * Create all application dependencies.
+ * Create all application dependencies — fully self-contained.
  *
- * @param sqlite - Shared SQLite handle (caller is responsible for lifecycle).
- *                 If omitted, a new connection is created (backwards compat).
- * @param drizzleDb - Pre-built Drizzle instance. If omitted, created from sqlite.
- * @param authInstance - Pre-built Better Auth instance. If omitted, created from db.
- * @param config - Validated application config. Defaults to `createAppConfig()`
- *                 (env + optional config file). Injectable so tests can pass a
- *                 controlled config (e.g. DB_ADAPTER=inmemory).
+ * The function opens the database connection, runs the schema migrations,
+ * builds Drizzle + better-auth, and wires every domain service. No raw
+ * database handle is accepted as input or exposed on the result; callers
+ * (e.g. `index.ts`) call it with no arguments (or config only).
+ *
+ * @param config - Optional injection seams (database path/key, auth instance).
+ * @param appConfig - Validated application config. Defaults to `createAppConfig()`
+ *                    (env + optional config file). Injectable so tests can pass a
+ *                    controlled config (e.g. DB_ADAPTER=inmemory).
  */
 export async function createAppDependencies(
-  sqlite?: BetterSqliteDatabase,
-  drizzleDb?: AppDrizzle,
-  authInstance?: BetterAuthInstance,
-  config: AppConfig = createAppConfig(),
+  config: CreateAppDependenciesConfig = {},
+  appConfig: AppConfig = createAppConfig(),
 ): Promise<AppDependencies> {
-  const sharedDatabase: BetterSqliteDatabase = sqlite ?? createDatabaseConnection();
-  const db = drizzleDb ?? createDrizzleFromSqlite(sharedDatabase);
-  const auth = authInstance ?? createAuth(db, config);
+  const sharedDatabase = createDatabaseConnection(
+    config.databasePath ?? appConfig.databasePath,
+    config.databaseKey,
+  );
+
+  // Schema migrations run on the connection the root just opened — the caller
+  // no longer has (or needs) a handle to migrate beforehand.
+  await ensureDatabaseSchema(new BetterSqlite3Executor(sharedDatabase));
+
+  const db = createDrizzleFromSqlite(sharedDatabase);
+  const auth = config.authInstance ?? createAuth(db, appConfig);
 
   // Config-aware repository selection: honors DB_ADAPTER (sqlite | inmemory).
   // Note: when dbAdapter=inmemory only the company domain is in-memory; the
   // inventory/invoice/payment modules still use the SQLite handle until those
   // adapters are introduced in a follow-up phase.
-  const companyRepository = createCompanyRepository(sharedDatabase, config);
+  const companyRepository = createCompanyRepository(sharedDatabase, appConfig);
   const inventoryRepository = createInventoryRepository(sharedDatabase);
   const accountRepository = new DrizzleAccountRepository(db);
 
@@ -124,7 +156,7 @@ export async function createAppDependencies(
   const authBootstrapService = new AuthBootstrapService(
     new SqliteBootstrapPort(db, sharedDatabase),
     auth,
-    config.bootstrapSetupKey,
+    appConfig.bootstrapSetupKey,
   );
   const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
   const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase));
@@ -149,7 +181,7 @@ export async function createAppDependencies(
     financeService,
     inventoryService: new InventoryService(
       inventoryRepository,
-      new InventoryAttachmentStorage(config.attachmentsRootPath),
+      new InventoryAttachmentStorage(appConfig.attachmentsRootPath),
       companyService,
       companyRepository,
     ),
@@ -157,10 +189,13 @@ export async function createAppDependencies(
     recoveryKeyService,
     updateService: new UpdateService(),
     updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase)),
-    rawDatabase: sharedDatabase,
+    databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
     employeeModule,
     invoiceModule,
     paymentModule,
     roleModule,
+    close: () => {
+      sharedDatabase.close();
+    },
   } as const;
 }

@@ -26,14 +26,24 @@ function resolveDatabaseConstructor(key: string | null): typeof Database {
   }
 }
 
-/** Create a SQLite database connection. */
-export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDatabase {
-  const { databasePath } = resolveDatabaseEnv()
-  mkdirSync(dirname(databasePath), { recursive: true })
+/**
+ * Create a SQLite database connection.
+ *
+ * @param databasePath - Explicit file path (or `:memory:`). When omitted,
+ *                       the env-resolved path is used.
+ * @param dbKey - SQLCipher encryption key. When omitted, falls back to
+ *                `process.env.APP_DB_KEY` (then plain better-sqlite3).
+ */
+export function createDatabaseConnection(
+  databasePath?: string,
+  dbKey?: string | null,
+): BetterSqliteDatabase {
+  const resolvedPath = databasePath ?? resolveDatabaseEnv().databasePath
+  mkdirSync(dirname(resolvedPath), { recursive: true })
 
   const resolvedKey = dbKey ?? process.env.APP_DB_KEY ?? null
   const SqliteConstructor = resolveDatabaseConstructor(resolvedKey)
-  const sqlite = new SqliteConstructor(databasePath)
+  const sqlite = new SqliteConstructor(resolvedPath)
 
   if (resolvedKey) {
     sqlite.pragma(`key = '${resolvedKey.replace(/'/g, "''")}'`)
