@@ -134,11 +134,28 @@ jobs:
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm test:web
 
+  test-e2e:
+    name: Test E2E
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+
   build:
     name: Build
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test-api, test-web]
+    needs: [lint, typecheck, test-api, test-web, test-e2e]
     steps:
       - uses: actions/checkout@v4
         with:

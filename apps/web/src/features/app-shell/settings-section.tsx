@@ -9,6 +9,7 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { RecoveryKeySettings } from "./recovery-key-settings"
 import { UpdateSection } from "@/features/update/update-section"
 import { useQueryClient } from "@tanstack/react-query"
 import { LicenseSettings } from "@/features/license/license-settings"
@@ -264,7 +265,7 @@ export function SettingsSection({
   const licenseStatus = useLicenseStatus()
 
   const [activeTab, setActiveTab] = useUrlTab(
-    ['account', 'appearance', 'licensing', 'system', 'about'] as const,
+    ['account', 'appearance', 'licensing', 'system', 'security', 'about'] as const,
     'account'
   )
 
@@ -302,6 +303,13 @@ export function SettingsSection({
           onClick={() => setActiveTab('system')}
         >
           {t('settings.tabs.system', 'النظام')}
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'security' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveTab('security')}
+        >
+          {t('settings.tabs.security', 'الأمان')}
         </button>
         <button
           type="button"
@@ -506,6 +514,9 @@ export function SettingsSection({
           </div>
         </div>
       )}
+
+      {/* Security Tab — recovery keys + DB encryption key */}
+      {activeTab === 'security' && <RecoveryKeySettings />}
 
       {/* About Tab */}
       {activeTab === 'about' && (

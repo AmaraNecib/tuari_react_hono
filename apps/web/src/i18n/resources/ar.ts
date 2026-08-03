@@ -166,6 +166,15 @@ export const ar = {
         sessionExpired: "انتهت الجلسة الحالية. يرجى تسجيل الدخول مرة أخرى.",
       },
     },
+    settings: {
+      tabs: {
+        account: "معلومات الحساب",
+        appearance: "المظهر",
+        licensing: "الترخيص",
+        system: "النظام",
+        security: "الأمان",
+      },
+    },
     shell: {
       workspace: "مساحة العمل",
       mainNavigation: "القائمة الرئيسية",
@@ -260,6 +269,9 @@ export const ar = {
       settingsSecurityChangeKeyError: "فشل تغيير المفتاح",
       settingsSecurityPasswordHide: "إخفاء",
       settingsSecurityPasswordShow: "إظهار",
+      settingsSecurityGeneratedKeysTitle: "تم إنشاء مفاتيح الاسترداد",
+      settingsSecurityGeneratedKeysDescription: "انسخ هذه المفاتيح واحفظها في مكان آمن. لن تظهر مرة أخرى بعد إغلاق هذه النافذة.",
+      settingsSecurityGeneratedKeysSaved: "لقد حفظت المفاتيح",
       settingsAboutTitle: "حول التطبيق",
       settingsAboutVersion: "الإصدار",
       settingsAboutInstallFromFile: "تثبيت من ملف",

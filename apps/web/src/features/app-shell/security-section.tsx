@@ -81,11 +81,11 @@ export function SecuritySection({
     const trimmedNew = newKey.trim()
 
     if (!trimmedCurrent) {
-      setKeyError(t("settingsSecurityCurrentKeyPlaceholder"))
+      setKeyError(t("shell.settingsSecurityCurrentKeyPlaceholder"))
       return
     }
     if (trimmedNew.length < 8) {
-      setKeyError(t("settingsSecurityNewKeyPlaceholder"))
+      setKeyError(t("shell.settingsSecurityNewKeyPlaceholder"))
       return
     }
 
@@ -94,19 +94,19 @@ export function SecuritySection({
       if (result.success) {
         setKeySuccess(true)
       } else {
-        setKeyError(result.error ?? t("settingsSecurityChangeKeyError"))
+        setKeyError(result.error ?? t("shell.settingsSecurityChangeKeyError"))
       }
     } catch (err) {
-      setKeyError(err instanceof Error ? err.message : t("settingsSecurityChangeKeyError"))
+      setKeyError(err instanceof Error ? err.message : t("shell.settingsSecurityChangeKeyError"))
     }
   }
 
   /** Get localized status label for a recovery key. */
   function getStatusLabel(status: RecoveryKey["status"]): string {
     switch (status) {
-      case "AVAILABLE": return t("settingsSecurityStatusAvailable")
-      case "CONSUMED": return t("settingsSecurityStatusConsumed")
-      case "REVOKED": return t("settingsSecurityStatusRevoked")
+      case "AVAILABLE": return t("shell.settingsSecurityStatusAvailable")
+      case "CONSUMED": return t("shell.settingsSecurityStatusConsumed")
+      case "REVOKED": return t("shell.settingsSecurityStatusRevoked")
     }
   }
 
@@ -115,17 +115,17 @@ export function SecuritySection({
       {/* Recovery Keys */}
       <Surface as="article" className="p-5 xl:col-span-2">
         <SurfaceHeader
-          description={t("settingsSecurityRecoveryKeysDescription")}
-          title={t("settingsSecurityRecoveryKeysTitle")}
+          description={t("shell.settingsSecurityRecoveryKeysDescription")}
+          title={t("shell.settingsSecurityRecoveryKeysTitle")}
         />
 
         {isLoadingPool ? (
-          <p className="text-sm text-muted-foreground">{t("settingsSecurityLoading")}</p>
+          <p className="text-sm text-muted-foreground">{t("shell.settingsSecurityLoading")}</p>
         ) : poolStatus ? (
           <div className="space-y-4">
             <div className="flex gap-4 text-sm">
-              <span>{t("settingsSecurityAvailableCount")}: <strong>{poolStatus.availableCount}</strong></span>
-              <span>{t("settingsSecurityMaxPool")}: <strong>{poolStatus.maxPoolSize}</strong></span>
+              <span>{t("shell.settingsSecurityAvailableCount")}: <strong>{poolStatus.availableCount}</strong></span>
+              <span>{t("shell.settingsSecurityMaxPool")}: <strong>{poolStatus.maxPoolSize}</strong></span>
             </div>
 
             {poolStatus.maskedKeys.length > 0 && (
@@ -143,7 +143,7 @@ export function SecuritySection({
                         variant="outline"
                         onClick={() => void onRevokeKey(key.id)}
                       >
-                        {t("settingsSecurityRevokeKey")}
+                        {t("shell.settingsSecurityRevokeKey")}
                       </Button>
                     )}
                   </div>
@@ -155,7 +155,7 @@ export function SecuritySection({
               disabled={isGenerating || poolStatus.availableCount >= poolStatus.maxPoolSize}
               onClick={() => void onGenerateKeys()}
             >
-              {isGenerating ? t("settingsSecurityGeneratingKeys") : t("settingsSecurityGenerateKeys")}
+              {isGenerating ? t("shell.settingsSecurityGeneratingKeys") : t("shell.settingsSecurityGenerateKeys")}
             </Button>
           </div>
         ) : null}
@@ -164,40 +164,40 @@ export function SecuritySection({
       {/* DB Encryption Key */}
       <Surface as="article" className="p-5 xl:col-span-2">
         <SurfaceHeader
-          description={t("settingsSecurityDbKeyDescription")}
-          title={t("settingsSecurityDbKeyTitle")}
+          description={t("shell.settingsSecurityDbKeyDescription")}
+          title={t("shell.settingsSecurityDbKeyTitle")}
         />
 
         <div className="space-y-4">
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("settingsSecurityCurrentKey")}</span>
+            <span className="text-sm font-medium text-foreground">{t("shell.settingsSecurityCurrentKey")}</span>
             <PasswordInput
-              hideLabel={t("settingsSecurityPasswordHide")}
-              showLabel={t("settingsSecurityPasswordShow")}
-              placeholder={t("settingsSecurityCurrentKeyPlaceholder")}
+              hideLabel={t("shell.settingsSecurityPasswordHide")}
+              showLabel={t("shell.settingsSecurityPasswordShow")}
+              placeholder={t("shell.settingsSecurityCurrentKeyPlaceholder")}
               value={currentKey}
               onChange={(e) => setCurrentKey(e.target.value)}
             />
           </label>
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("settingsSecurityNewKey")}</span>
+            <span className="text-sm font-medium text-foreground">{t("shell.settingsSecurityNewKey")}</span>
             <PasswordInput
-              hideLabel={t("settingsSecurityPasswordHide")}
-              showLabel={t("settingsSecurityPasswordShow")}
-              placeholder={t("settingsSecurityNewKeyPlaceholder")}
+              hideLabel={t("shell.settingsSecurityPasswordHide")}
+              showLabel={t("shell.settingsSecurityPasswordShow")}
+              placeholder={t("shell.settingsSecurityNewKeyPlaceholder")}
               value={newKey}
               onChange={(e) => setNewKey(e.target.value)}
             />
           </label>
 
           {keyError && <p className="text-xs text-destructive">{keyError}</p>}
-          {keySuccess && <p className="text-xs text-green-600">{t("settingsSecurityChangeKeySuccess")}</p>}
+          {keySuccess && <p className="text-xs text-green-600">{t("shell.settingsSecurityChangeKeySuccess")}</p>}
 
           <Button
             disabled={isChangingKey || !currentKey.trim() || newKey.trim().length < 8}
             onClick={() => void handleChangeKey()}
           >
-            {isChangingKey ? t("settingsSecurityChangingKey") : t("settingsSecurityChangeKey")}
+            {isChangingKey ? t("shell.settingsSecurityChangingKey") : t("shell.settingsSecurityChangeKey")}
           </Button>
         </div>
       </Surface>

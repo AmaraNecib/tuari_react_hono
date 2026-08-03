@@ -10,13 +10,13 @@ async function bootstrapIfNeeded(page: import("@playwright/test").Page) {
   if (await createFirstUserButton.isVisible()) {
     await page.getByLabel("الاسم الكامل").fill("مدير التشغيل")
     await page.getByLabel("رقم الهاتف").fill("0612345678")
-    await page.getByLabel("كلمة المرور").fill("password123")
+    await page.getByLabel("كلمة المرور", { exact: true }).fill("password123")
     await createFirstUserButton.click()
     return
   }
 
   await page.getByLabel("رقم الهاتف").fill("0612345678")
-  await page.getByLabel("كلمة المرور").fill("password123")
+  await page.getByLabel("كلمة المرور", { exact: true }).fill("password123")
   await page.getByRole("button", { name: "دخول إلى مساحة العمل" }).click()
 }
 
@@ -37,16 +37,16 @@ test("phase 1 shell signs in and keeps a collapsible fixed sidebar", async ({ pa
 
   await bootstrapIfNeeded(page)
 
-  await expect(page.getByText("مساحة العمل")).toBeVisible()
-  await expect(page.getByRole("link", { name: "الهيكل المؤسسي" })).toBeVisible()
-  await expect(page.locator("aside[data-sidebar-collapsed='false']")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "لوحة التحكم" })).toBeVisible()
+  await expect(page.getByRole("navigation", { name: "القائمة الرئيسية" })).toBeVisible()
+  await expect(page.locator("[data-collapsed='false']")).toBeVisible()
   await expect(page.getByText("اللغة")).toHaveCount(0)
   await expect(page.getByRole("button", { name: "تبديل المظهر" })).toBeVisible()
 
   await page.getByRole("button", { name: "تصغير الشريط الجانبي" }).click()
-  await expect(page.locator("aside[data-sidebar-collapsed='true']")).toBeVisible()
+  await expect(page.locator("[data-collapsed='true']")).toBeVisible()
 
-  await page.getByRole("button", { name: "الإعدادات" }).click()
+  await page.getByRole("link", { name: "الإعدادات" }).first().click()
   await expect(page.getByRole("heading", { name: "الإعدادات" })).toBeVisible()
 })
 

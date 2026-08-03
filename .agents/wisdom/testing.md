@@ -116,23 +116,60 @@ marginal timeouts tip over:
   details as a dedicated page") flakes under load — `findByRole`'s default 1s
   timeout trips; passed 3/4 standalone runs. Untouched by API-only PRs.
 
-On #215 the same class hit the **auth/update heavy-wiring suites**: a full-suite
-run under hook load failed 5 tests across `sqlite-bootstrap.port.test.ts`,
-`recovery-key.e2e.test.ts`, `recovery-key.service.test.ts`,
-`sqlite-recovery-key.port.test.ts`, `update-history.service.test.ts` — all
-`Error: Hook timed out in 10000ms` in `beforeEach` (their `createTestEnv`
-dynamically imports better-auth + heavy modules). The same files passed
-standalone immediately after (29/29), and `pnpm test:api` passed 631/631
-standalone. None of the failed files were in the changed module (company);
-pushed with `--no-verify` and CI passed all 6 jobs on hosted runners.
-
 **Always**: when a pre-push run fails on a *different* test than the previous
 attempt, it's the loaded-machine cold-start class, not a regression. Verify the
 failing file standalone, then retry the push. Do NOT "fix" web test files in an
 API-only PR.
 
-## Test harnesses that force the failure path make the success path untestable (🟡 Minor)
+## Playwright E2E on Windows: orphaned `tsx watch`/vite servers poison runs (🟠 Major)
 
-The `changeDbEncryptionKey` success leg was unreachable in `router.test.ts` because `createTestRouter` hard-coded `rawDatabase: {} as never` — the stub throws on every `pragma()` call, so the handler could only ever return the failure shape. Fix: make the dependency injectable as an optional trailing param (`rawDatabase: unknown = {}`), keeping the throwing default for existing tests while letting a working stub (pragma no-op + `prepare().get()`) exercise `{ success: true }` through the wire. The new test also pinned the exact PRAGMA `key`/`rekey` statements and the `'` → `''` SQL escaping — behavior-level assertions that would catch a future handler regression.
+`pnpm dev:api` runs `tsx watch` and `pnpm dev:web` runs vite; Playwright's webServer
+teardown on Windows often orphans them. The orphans keep their OLD DB (so bootstrap
+looks "already set up"), serve STALE vite modules (raw i18n keys, missing tabs), and
+rebind 4318/3000 after `tsx watch` restarts — producing EADDRINUSE and transient
+"already used" failures. Netstat right before a run can be clean and the orphan still
+appears mid-run (delayed tsx-watch restart).
 
-**Always**: when a harness hard-codes a throwing stub that pins every test to one branch, add an injectable param so the success path is reachable; assert the handler's actual side-effect statements, not just the output shape.
+**Always**: before/after local e2e runs, kill ALL node processes whose cmdline contains
+the worktree path (`Get-CimInstance Win32_Process | Where-Object {$_.CommandLine -match
+"worktree-name"}`), verify ports are free, and prefer a no-watch server
+(`npx tsx src/index.ts`, not `pnpm dev:api`) for the manual API. Deleting the sqlite
+file while a server holds it fails with "Device or resource busy" — kill first, then rm.
+
+## The e2e suite was fully red on develop — don't assume "existing" specs pass (🟠 Major)
+
+Before #227, no Playwright spec could get past login: the helper's
+`getByLabel("كلمة المرور")` strict-violated (the PasswordInput show/hide button made
+the field's accessible name "كلمة المرور إظهار كلمة المرور", and the button's
+aria-label "إظهار كلمة المرور" also matched), and the post-login marker "مساحة العمل"
+is never rendered (shell.workspace exists in i18n but no component uses it). The
+onboarding tour (autoStart, storageKey home-tour) also blocks as a modal on first
+visit. Fix: `getByRole("textbox", { name: /^كلمة المرور/ })`, wait for the dashboard
+heading "لوحة التحكم", dismiss the tour via its "تخطي" button (try/catch — it may not
+show). There was no test-e2e CI job, so nothing caught this.
+
+**Always**: when adding or touching e2e specs, run the FULL suite locally (workers:1,
+fresh DB per run) — the target spec passing alone doesn't mean CI e2e is green.
+
+## Employee creation via UI is impossible on develop (🟠 Major)
+
+`employeesBatchCreate` validates roles with `requireAssignableEmployeeRole`, which only
+accepts role keys worker/project_manager/warehouse_manager — but the RBAC consolidation
+(Slice 3) removed those roles; only admin/manager/viewer are seeded and the create form
+offers only those. Every role is rejected with "يمكن اختيار الأدوار النظامية فقط في هذه
+المرحلة." The form also blocks submit on required salary-period + salary-amount fields
+(native validation, invisible to Playwright). employees.spec.ts is skipped (#227) until
+the workforce role rule is fixed.
+
+**Always**: before writing an employee-create e2e, probe the batch-create RPC with each
+seeded role; check for required fields that block the native form submit.
+
+## ORPC wire envelope is { json: input } / { json: output } (🟡 Minor)
+
+The ORPC "standard" protocol wraps procedure input/output: POST {api}/rpc/{procedure}
+with body `{"json": <input>}` (input null for no-input procedures); responses come back
+as `{"json": <output>}`. Raw input bodies fail with "Input validation failed". Verified
+empirically and against @orpc/standard-server-fetch's toFetchBody.
+
+**Always**: when driving ORPC procedures from tests/scripts, send the envelope and
+unwrap `.json`.
