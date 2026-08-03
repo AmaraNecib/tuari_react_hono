@@ -455,14 +455,14 @@ async createDebtAccount(
   input: DebtAccountCreateInput,
   auditContext: MutationAuditContext
 ) {
-  // Wrap entire operation in transaction
-  return this.transactionManager.execute(async () => {
+  // Wrap entire operation in transaction (sync callback — the contract is synchronous)
+  return this.mutation.withTransaction(() => {
     // Step 1: Create account
-    const account = await this.repository.createDebtAccount(input);
+    const account = this.repository.createDebtAccount(input);
     
     // Step 2: Create opening entry
     if (input.openingBalance !== 0) {
-      await this.repository.createDebtEntry({
+      this.repository.createDebtEntry({
         accountId: account.id,
         amount: input.openingBalance,
         type: 'OPENING',
@@ -470,7 +470,7 @@ async createDebtAccount(
     }
     
     // Step 3: Log to system
-    await this.systemLog.log('DEBT_ACCOUNT_CREATED', {
+    this.systemLog.log('DEBT_ACCOUNT_CREATED', {
       accountId: account.id,
       amount: input.openingBalance,
     });

@@ -397,15 +397,16 @@ Fix database efficiency and error handling:
   - List: 5-10 operations that need transactions
 
 - [ ] Wrap all multi-step operations
-  - Use `transactionManager.execute(async () => {...})`
+  - Use `WorkspaceMutationContext.withTransaction` (sync callback — the
+    `withTransaction` contract is synchronous, like better-sqlite3's)
   - All steps succeed together or all rollback
   - Updates: finance.service.ts, workforce.service.ts, operations.service.ts
   - Example:
     ```typescript
-    return this.transactionManager.execute(async () => {
-      const account = await this.createDebtAccount(...);
-      await this.createOpeningEntry({ accountId: account.id, ... });
-      await this.logToSystem('DEBT_ACCOUNT_CREATED', { accountId: account.id });
+    return this.mutation.withTransaction(() => {
+      const account = this.createDebtAccount(...);
+      this.createOpeningEntry({ accountId: account.id, ... });
+      this.logToSystem('DEBT_ACCOUNT_CREATED', { accountId: account.id });
       return account; // All succeed together
     });
     ```

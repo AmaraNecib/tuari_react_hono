@@ -44,12 +44,18 @@ describe("WorkspaceMutationContext.withTransaction", () => {
   it("rolls back and rethrows the original error instance", () => {
     const expected = new Error("Operation failed");
 
-    expect(() => {
+    let thrown: unknown;
+    try {
       context.withTransaction(() => {
         throw expected;
       });
-    }).toThrowError(expected);
+    } catch (error) {
+      thrown = error;
+    }
 
+    // Pin identity, not just message equality: a wrapper that wrapped the
+    // error in a new Error would also pass `toThrowError(expected)`.
+    expect(thrown).toBe(expected);
     expect(calls).toEqual(["BEGIN", "ROLLBACK"]);
   });
 

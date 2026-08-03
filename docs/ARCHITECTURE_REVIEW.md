@@ -242,9 +242,9 @@ await tx.$executeRawUnsafe('INSERT INTO "app_schema_state"...')
 SQLite uses file-level locking; PostgreSQL uses row-level locking.
 
 ```typescript
-// Current: simple transaction wrapper
-private withTransaction<T>(operation: () => T): T {
-  return this.transactionManager.execute(operation);
+// Current: delegation through the workspace mutation context
+withTransaction<T>(operation: () => T): T {
+  return this.repository.withTransaction(operation);
 }
 ```
 
