@@ -22,6 +22,13 @@ vi.mock("@/lib/orpc-client", () => ({
     rbacRolesList: mocks.rbacRolesList,
     rolesList: mocks.rolesList,
   },
+  // workspace-keys evaluates `sessionQueryKey` at module load from
+  // `orpc.session.queryOptions().queryKey` — mirror the mounted key shape.
+  orpc: {
+    session: {
+      queryOptions: () => ({ queryKey: [["session"], { type: "query" }] }),
+    },
+  },
 }))
 
 import { isRolesEndpointUnavailable, useRolesQuery, useWorkspaceScopedQuery } from "./workspace-queries"
@@ -102,6 +109,17 @@ describe("useWorkspaceScopedQuery session gate", () => {
     const options = mocks.useQuery.mock.calls[0]?.[0]
     expect(options.enabled).toBe(false)
     expect(options.queryKey).toEqual(["phase1", "workspace-domain", "warehouses", null])
+  })
+
+  it("keeps the query disabled for a resolved signed-out session", () => {
+    mocks.useSessionQuery.mockReturnValue({ data: { user: null } })
+
+    useWorkspaceScopedQuery({
+      key: workspaceQueryKeys.warehouses,
+      queryFn: async () => ({ items: [] }),
+    })
+
+    expect(mocks.useQuery.mock.calls[0]?.[0].enabled).toBe(false)
   })
 
   it("ANDs the caller's enabled flag with the session gate", () => {

@@ -9,9 +9,12 @@ import type {
 } from "@tuari/contracts"
 
 import { AppMutationError } from "@/features/app-shell/mock-dashboard"
-import { getCachedSessionUserId } from "@/features/app-shell/workspace-mutations"
 import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
-import { workspaceQueryKeys } from "@/features/app-shell/workspace-keys"
+import {
+  getCachedSessionUserId,
+  invalidateUserScopedQuery,
+  workspaceQueryKeys,
+} from "@/features/app-shell/workspace-keys"
 import { rpcClient } from "@/lib/orpc-client"
 import { buildErrorMessage } from "@/lib/rpc-error-handling"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
@@ -52,7 +55,7 @@ export function useCreateEmployeeDebtEntryMutation() {
     mutationKey: ["employee-debt", "entry", "create"],
     mutationFn: async (input: EmployeeDebtEntryCreateInput) => requireEntitySuccess(await rpcClient.employeeDebtEntryCreate(input)),
     onSuccess: async ({ item, message }, variables) => {
-      await queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.employeeDebtAccount(getCachedSessionUserId(queryClient), variables.employeeId) })
+      await invalidateUserScopedQuery(queryClient, getCachedSessionUserId(queryClient), (uid) => workspaceQueryKeys.employeeDebtAccount(uid, variables.employeeId))
       showSuccessToast(message)
       return item
     },

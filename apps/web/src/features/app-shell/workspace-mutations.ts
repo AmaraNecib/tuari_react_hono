@@ -19,12 +19,14 @@ import { i18n } from "@/i18n"
 import { changeCurrentPassword, signOutDesktopSession, updateCurrentProfile } from "@/lib/auth-api"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { getAuthClient } from "@/lib/auth-client"
-import { orpc, rpcClient } from "@/lib/orpc-client"
+import { rpcClient } from "@/lib/orpc-client"
 import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 import { workspaceQueryPrefix } from "./workspace-queries"
 import {
+  getCachedSessionUserId,
   invalidateWorkspaceDomains,
+  sessionQueryKey,
   workspaceDomainQueryPrefix,
   workspaceQueryKeys,
 } from "./workspace-keys"
@@ -111,23 +113,6 @@ async function ensureWorkspace(queryClient: ReturnType<typeof useQueryClient>, u
   }
 }
 
-/**
- * Resolve the signed-in user id from the query cache, or null when the
- * session has not resolved yet (mutations then fall back to prefix-wide
- * invalidation).
- *
- * Reads the key the session query actually mounts under —
- * `orpc.session.queryOptions().queryKey` — NOT `orpc.session.key()`: the
- * two differ (bare `key()` omits the `type: "query"` field), so `key()`
- * never matches the cached session data.
- */
-export function getCachedSessionUserId(queryClient: ReturnType<typeof useQueryClient>) {
-/**
- * useAuthSetupStatusQuery() component.
- */
-  return queryClient.getQueryData<{ user?: { id?: string } | null }>(orpc.session.queryOptions().queryKey)?.user?.id ?? null
-}
-
 export function useAuthSetupStatusQuery() {
   return useQuery({
     queryKey: authSetupStatusQueryKey,
@@ -198,7 +183,7 @@ export function useDemoSignOutMutation() {
       await getAuthClient().signOut()
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: orpc.session.key() })
+      await queryClient.invalidateQueries({ queryKey: sessionQueryKey })
       await queryClient.removeQueries({ queryKey: workspaceQueryPrefix })
       await queryClient.removeQueries({ queryKey: workspaceDomainQueryPrefix })
       showSuccessToast(i18n.t("toasts.signOutSuccess"))
@@ -264,7 +249,7 @@ export function useUpdateAccountSettingsMutation() {
     },
     onSuccess: async () => {
       const userId = getCachedSessionUserId(queryClient)
-      await queryClient.invalidateQueries({ queryKey: orpc.session.key() })
+      await queryClient.invalidateQueries({ queryKey: sessionQueryKey })
       await invalidateWorkspaceDomains(queryClient, userId, { employees: true, projects: true, warehouses: true, debtsSummary: true, debtsDetail: true, systemLog: true })
       showSuccessToast(i18n.t("toasts.accountUpdated"))
     },

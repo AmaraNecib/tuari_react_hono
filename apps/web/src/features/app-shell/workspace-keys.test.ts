@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
-import type { QueryClient } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
 
+import { orpc } from "@/lib/orpc-client"
 import {
+  getCachedSessionUserId,
+  invalidateUserScopedQuery,
   invalidateWorkspaceDomains,
   workspaceDomainQueryPrefix,
   workspaceQueryKeys,
@@ -116,5 +119,65 @@ describe("invalidateWorkspaceDomains", () => {
     await invalidateWorkspaceDomains(client, userId, {})
 
     expect(invalidateQueries).not.toHaveBeenCalled()
+  })
+
+  it("is a no-op for an empty record even when the userId is unknown", async () => {
+    const { invalidateQueries, client } = mockQueryClient()
+
+    await invalidateWorkspaceDomains(client, null, {})
+
+    expect(invalidateQueries).not.toHaveBeenCalled()
+  })
+})
+
+describe("invalidateUserScopedQuery", () => {
+  it("invalidates the exact parameterized key for a resolved user", async () => {
+    const { invalidateQueries, client } = mockQueryClient()
+
+    await invalidateUserScopedQuery(client, userId, (uid) => workspaceQueryKeys.inventoryAsset(uid, "asset-1"))
+
+    expect(invalidateQueries).toHaveBeenCalledTimes(1)
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryKeys.inventoryAsset(userId, "asset-1") })
+  })
+
+  it("falls back to the whole domain prefix when the userId is unknown", async () => {
+    const { invalidateQueries, client } = mockQueryClient()
+
+    await invalidateUserScopedQuery(client, null, (uid) => workspaceQueryKeys.inventoryAsset(uid, "asset-1"))
+
+    expect(invalidateQueries).toHaveBeenCalledTimes(1)
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceDomainQueryPrefix })
+  })
+})
+
+describe("getCachedSessionUserId", () => {
+  const SESSION_USER = { id: "user-1", name: "مدير التشغيل", phone: "0612345678", version: "0.0.0" }
+
+  function makeClient() {
+    return new QueryClient()
+  }
+
+  it("resolves the user id from the key the session query mounts under", () => {
+    const client = makeClient()
+    client.setQueryData(orpc.session.queryOptions().queryKey, { user: SESSION_USER })
+
+    expect(getCachedSessionUserId(client)).toBe("user-1")
+  })
+
+  it("does not resolve from the bare orpc.session.key() (the pre-fix bug)", () => {
+    const client = makeClient()
+    // `orpc.session.key()` omits `type: "query"` and never matches the cache.
+    client.setQueryData(orpc.session.key(), { user: SESSION_USER })
+
+    expect(getCachedSessionUserId(client)).toBeNull()
+  })
+
+  it("returns null when the session has not resolved or has no user", () => {
+    const empty = makeClient()
+    expect(getCachedSessionUserId(empty)).toBeNull()
+
+    const signedOut = makeClient()
+    signedOut.setQueryData(orpc.session.queryOptions().queryKey, { user: null })
+    expect(getCachedSessionUserId(signedOut)).toBeNull()
   })
 })

@@ -45,6 +45,13 @@ Pure module — no React, no hooks; `queryClient` is an accepted dependency.
   including the untyped inventory string mirror (`["inventory", domain]`) that
   produced the stale-inventory-dropdown bug.
 
+- `invalidateUserScopedQuery(queryClient, userId, key)` — null-safe
+  invalidation of ONE precise key (flat or parameterized) for mutations that
+  refresh a single cache entry (invoice detail, asset, location contents,
+  employee debt account); shares the `userId === null → prefix-wide`
+  fallback. Also: `sessionQueryKey` (the mounted session query key) and
+  `getCachedSessionUserId` moved here (pure, testable).
+
 - `workspaceDomainQueryPrefix` moves here (re-exported for compat).
 
 ### `workspace-queries.ts` (hooks)

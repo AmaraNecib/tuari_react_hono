@@ -12,10 +12,19 @@
  * ("accept dependencies, don't create them"), which keeps every function here
  * unit-testable without a component tree.
  */
-import type { QueryClient } from "@tanstack/react-query"
+import type { QueryClient, QueryKey } from "@tanstack/react-query"
+
+import { orpc } from "@/lib/orpc-client"
 
 /** Prefix of the workspace-domain query namespace. */
 export const workspaceDomainQueryPrefix = ["phase1", "workspace-domain"] as const
+
+/**
+ * The cache key the session query mounts under. NOT `orpc.session.key()`:
+ * the bare `key()` omits the `type: "query"` field, so it never matches the
+ * mounted query — every cache read/invalidation of the session must use this.
+ */
+export const sessionQueryKey = orpc.session.queryOptions().queryKey
 
 type UserId = string | null
 
@@ -71,6 +80,16 @@ export type WorkspaceDomain = {
 }[keyof typeof workspaceQueryKeys]
 
 /**
+ * Resolve the signed-in user id from the query cache, or null when the
+ * session has not resolved yet (callers then fall back to prefix-wide
+ * invalidation). Reads `sessionQueryKey` — the key the session query
+ * actually mounts under.
+ */
+export function getCachedSessionUserId(queryClient: Pick<QueryClient, "getQueryData">): string | null {
+  return queryClient.getQueryData<{ user?: { id?: string } | null }>(sessionQueryKey)?.user?.id ?? null
+}
+
+/**
  * Type-checked invalidation for flat workspace domains.
  *
  * Maps a domains record to `invalidateQueries` calls against the resolved
@@ -84,6 +103,10 @@ export async function invalidateWorkspaceDomains(
   userId: UserId,
   domains: Partial<Record<WorkspaceDomain, true>>,
 ): Promise<void> {
+  if (Object.keys(domains).length === 0) {
+    return
+  }
+
   if (userId === null) {
     await queryClient.invalidateQueries({ queryKey: workspaceDomainQueryPrefix })
     return
@@ -94,8 +117,29 @@ export async function invalidateWorkspaceDomains(
       queryClient.invalidateQueries({
         // `domain` is a flat key by construction (the record type only admits
         // `WorkspaceDomain` entries), so a single-arg call is sound here.
-        queryKey: (workspaceQueryKeys[domain] as (userId: UserId) => readonly unknown[])(userId),
+        queryKey: (workspaceQueryKeys[domain] as (userId: string) => readonly unknown[])(userId),
       }),
     ),
   )
+}
+
+/**
+ * Null-safe invalidation of a single user-scoped key, flat or parameterized.
+ *
+ * Used by mutations that refresh one precise cache entry (e.g. an invoice
+ * group detail, an asset, a location's contents, an employee debt account).
+ * When the userId is unknown it falls back to prefix-wide invalidation, so a
+ * pre-session mutation can never leave a stale entry behind.
+ */
+export async function invalidateUserScopedQuery(
+  queryClient: Pick<QueryClient, "invalidateQueries">,
+  userId: string | null,
+  key: (userId: string) => QueryKey,
+): Promise<void> {
+  if (userId === null) {
+    await queryClient.invalidateQueries({ queryKey: workspaceDomainQueryPrefix })
+    return
+  }
+
+  await queryClient.invalidateQueries({ queryKey: key(userId) })
 }

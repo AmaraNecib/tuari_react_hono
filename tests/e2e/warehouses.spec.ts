@@ -37,12 +37,14 @@ test("a warehouse created in the workspace appears in the inventory transfer sel
 
   await expect(page.getByText(warehouseName)).toBeVisible({ timeout: 10_000 })
 
-  // The inventory transfer page lists warehouses from the shared `warehouses`
-  // query key — the workspace create mutation invalidates it through the
-  // typed invalidation helper, so the new warehouse must appear in the
-  // transfer "from" selector without a manual refresh. Pins the workspace /
-  // inventory query-key seam (issue #236). Options inside a collapsed native
-  // <select> are never "visible", so assert presence (count) instead.
+  // The inventory transfer page lists warehouses from the SAME `warehouses`
+  // query key / endpoint the workspace page wrote to — one source of truth
+  // for warehouse data across both features (issue #236). The fresh boot
+  // proves the shared key/endpoint coupling; the create-mutation invalidation
+  // seam itself is pinned by the unit integration tests (inventory-hooks /
+  // employee-debt-hooks) and the typed invalidation helper tests. Options
+  // inside a collapsed native <select> are never "visible", so assert
+  // presence (count) instead.
   await page.goto("/outbound-transfers/create")
   await expect(page.getByRole("option", { name: warehouseName })).toHaveCount(1)
 })

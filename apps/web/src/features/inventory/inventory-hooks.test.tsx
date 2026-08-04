@@ -99,4 +99,33 @@ describe("inventory item definitions — list freshness after create", () => {
     await waitFor(() => expect(listResult.current.data?.items).toEqual([CREATED_ITEM]))
     expect(mocks.list).toHaveBeenCalledTimes(2)
   })
+
+  it("still refreshes the list when the mutation runs before the session cache resolves", async () => {
+    const queryClient = makeQueryClient()
+    // No session in the cache: `getCachedSessionUserId` resolves null and the
+    // null-safe invalidation falls back to prefix-wide, so the mounted list
+    // (scoped to "user-1" via the session hook) must still refetch.
+    mocks.session.mockReturnValue({ data: { user: { id: "user-1" } } })
+
+    const { result: listResult } = renderHook(() => useInventoryItemDefinitionsQuery(), {
+      wrapper: wrapper(queryClient),
+    })
+    const { result: mutationResult } = renderHook(() => useCreateInventoryItemDefinitionMutation(), {
+      wrapper: wrapper(queryClient),
+    })
+
+    await waitFor(() => expect(listResult.current.data?.items).toEqual([]))
+    mocks.list.mockResolvedValue({ items: [CREATED_ITEM] })
+
+    await act(async () => {
+      await mutationResult.current.mutateAsync({
+        name: "صنف-1",
+        itemType: "CONSUMABLE",
+        unit: "قطعة",
+        description: null,
+      })
+    })
+
+    await waitFor(() => expect(listResult.current.data?.items).toEqual([CREATED_ITEM]))
+  })
 })
