@@ -62,8 +62,9 @@ Pure module — no React, no hooks; `queryClient` is an accepted dependency.
   session-gated hook (30 gate copies today) collapses to a 3-line call.
   Param'd keys pass a closure: `key: (userId) => keys.inventoryAsset(userId, id)`.
 - All hooks consume `workspaceQueryKeys` via the wrapper. Not gated (stays):
-  `useAuthSetupStatusQuery` (pre-auth), `useDemoWorkspaceQuery` (mock seam,
-  #240 scope).
+  `useAuthSetupStatusQuery` (pre-auth). `useDemoWorkspaceQuery` is gated via
+  the wrapper (same `Boolean(user)` semantics as its old inline gate) and
+  stays with the mock seam (#240 scope).
 - Deleted dead exports: workspace-side `useInventoryItemDefinitionsQuery`,
   `useInventoryInvoiceGroupsQuery` (no consumers; inventory-hooks owns those
   names).
@@ -86,6 +87,12 @@ Pure module — no React, no hooks; `queryClient` is an accepted dependency.
   `orpc.session.queryOptions().queryKey` (drift-proof — same expression the
   session query mounts with). Regression-tested in
   `inventory-hooks.test.tsx`.
+- **Same-root-cause follow-ups**: sign-out, account-settings update and phone
+  sign-in all called `invalidateQueries({ queryKey: orpc.session.key() })` —
+  the same never-matching key, so their session invalidations silently
+  no-op'd. All three now use the shared `sessionQueryKey` export
+  (`use-phone-sign-in-mutation.ts` is the auth feature; flagged as a
+  documented 1-line scope addition).
 
 ### Consumers
 
