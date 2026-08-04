@@ -38,3 +38,9 @@ reviewer) audited the tests + source of the #236 diff
   (the `createEntityResultSchema` output rejects `item: null`) — pre-existing
   contract quirk, out of scope; the hook's `DebtAccount | null` typing is
   aspirational for that path.
+
+## Post-evidence delta (docs-only)
+
+Evidence re-based from `98c261d` to `4ebe36e` after a docs-only commit
+(.agents/wisdom capture — no source change). All findings/dispositions above
+remain valid for the final head.
