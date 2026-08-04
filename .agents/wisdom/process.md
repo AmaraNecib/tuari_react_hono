@@ -249,3 +249,20 @@ markers — "Part of #M" (M ≠ target), "follow-up from #N", "deferred from #N"
 describe where an issue came from and NEVER block closing it. Every SKIP is
 logged for human verification. It is a convenience, not the authority — the
 manual sweep still applies.
+
+## Greptile re-trigger can stall entirely: check disappears with no quota notice (🟠 Major)
+
+On #268 (issue #198), Greptile's auto-review at PR creation worked (4/5, "Safe to
+merge", 2 P2 findings). After the fix push, the "Greptile Review" check VANISHED
+from `gh pr checks` and two `@greptile-apps review` triggers + the retrigger link
+produced no new review or comment in ~40 minutes — not even the trial-quota
+upgrade notice. This differs from the known "re-review lags; poll the check"
+pattern (check stays pending) and from the quota notice pattern (comment with
+upgrade prompt).
+
+**Always**: when the Greptile check disappears entirely and no review lands after
+~30–40 min (with no quota notice), treat it as "Greptile unavailable (external
+constraint)": verify the LAST review's findings are provably addressed on the
+current head, document the constraint on the PR, and rely on the local review
+pipeline (debate/test-audit/code-review evidence) + CI for the quality gate
+instead of blocking. Do not burn more time re-triggering.

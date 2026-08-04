@@ -204,3 +204,35 @@ suite even when all unit tests pass — a self-consistent unit mock cannot detec
 a key that never matches the real mounted query. And when a helper has a
 fallback path, add a direct unit test for the primary path (the #236 fix has
 one: "does not resolve from bare orpc.session.key()").
+## sqlcipher native binding may be unbuilt in a worktree — pin the databaseKey WIRING, not real encryption (🟠 Major)
+
+`createDatabaseConnection(path, key)` requires the `better-sqlite3-sqlcipher`
+native binding (`require("better-sqlite3-sqlcipher")` → `build/better_sqlite3.node`).
+On a Windows worktree the package files exist but the `.node` binary is often NOT
+compiled → passing any `databaseKey` throws "Database encryption requires
+better-sqlite3-sqlcipher". So a test that passes `databaseKey` and expects a real
+encrypted connection fails in such environments. Fix pattern (issue #198): mock
+the factory module (`vi.mock("../infrastructure/database/factory", importOriginal)`)
+to capture the key argument and strip it (delegate with `undefined`), asserting
+`createDatabaseConnection` received the injected key — deterministic everywhere.
+Reserve real-encryption assertions for environments where the binding is built.
+
+## Migrations inside the composition root kill the schema-less-db trick (🟡 Minor)
+
+Once `createAppDependencies` runs `ensureDatabaseSchema` itself (issue #198), a
+`:memory:` db is ALWAYS fully migrated + role-seeded — the old adapter-discrimination
+test (`expect(() => deps.companyService.listRoles()).toThrow(/no such table/)`,
+which relied on a schema-less injected handle) can no longer work. Replace it with
+the seeded-role assertion: sqlite adapter returns `{ items: [admin, manager,
+viewer] }`, in-memory adapter returns `{ items: [] }`. Each test gets its own
+`:memory:` connection, so a fresh migration per call is fast and isolated.
+
+## Port result types should mirror the wire output shape (💡 Design Principle)
+
+When extracting a port that backs a wire handler (issue #198: `DatabaseKeyManager`
+for `changeDbEncryptionKey`), model the port's result on the wire output schema —
+`{ success: true } | { success: false; error: string }` — not a bare boolean. A
+boolean forces the handler to fabricate ONE failure message, which is wrong for at
+least one failure mode (rekey I/O failure vs wrong current key) and lets rekey
+exceptions escape as 500s. The discriminated result maps 1:1 onto the handler
+return, keeps messages honest, and never throws.
