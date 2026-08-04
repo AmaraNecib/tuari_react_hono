@@ -46,3 +46,12 @@ discriminated result), idempotent `close()`, root closes on construction
 failure, empty `databasePath` guard, `escapeSqliteString` dedupe, honest
 failure messages. The debate conclusions (rekey logic verbatim, port design,
 deferred items in #265) remain valid for the final head.
+
+---
+
+## Post-evidence delta (5465bbc → 98a16d4)
+
+Greptile round (2 P2 findings, both valid): removed dead `changeDatabaseKey`
+(port fully replaces it; e2e comment updated), aligned the create-app mock with
+`DatabaseKeyChangeResult` (`{ success: true }` instead of boolean). Test-only +
+dead-code removal; the review conclusions above remain valid.

@@ -32,3 +32,12 @@
 ## Net result
 
 692 tests pass (3 new: quoted currentKey, rekey-throws, databaseKey wiring; 2 suites hardened).
+
+---
+
+## Post-evidence delta (5465bbc → 98a16d4)
+
+Greptile round (2 P2 findings, both valid): removed dead `changeDatabaseKey`
+(port fully replaces it; e2e comment updated), aligned the create-app mock with
+`DatabaseKeyChangeResult` (`{ success: true }` instead of boolean). Test-only +
+dead-code removal; the review conclusions above remain valid.

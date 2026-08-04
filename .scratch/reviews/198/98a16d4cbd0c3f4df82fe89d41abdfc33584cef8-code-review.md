@@ -23,3 +23,12 @@ All 8 acceptance criteria met. One documented deviation: criterion 8 ("tests pas
 
 - Standards: 4 findings, all fixed (2 cosmetic, 1 duplication, 1 wire-copy correctness).
 - Spec: 0 missing requirements; 1 documented test-assertion deviation; 0 scope creep.
+
+---
+
+## Post-evidence delta (5465bbc → 98a16d4)
+
+Greptile round (2 P2 findings, both valid): removed dead `changeDatabaseKey`
+(port fully replaces it; e2e comment updated), aligned the create-app mock with
+`DatabaseKeyChangeResult` (`{ success: true }` instead of boolean). Test-only +
+dead-code removal; the review conclusions above remain valid.
