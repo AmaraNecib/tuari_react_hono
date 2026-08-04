@@ -131,13 +131,3 @@ export function createDatabaseConnection(
 
   return sqlite as unknown as BetterSqliteDatabase
 }
-
-/**
- * Change the SQLCipher encryption key on an open database connection.
- * This re-encrypts the database in place via PRAGMA rekey.
- *
- * @throws Error if better-sqlite3-sqlcipher is unavailable.
- */
-export function changeDatabaseKey(sqlite: BetterSqliteDatabase, newKey: string): void {
-  sqlite.pragma(`rekey = '${escapeSqliteString(newKey)}'`)
-}

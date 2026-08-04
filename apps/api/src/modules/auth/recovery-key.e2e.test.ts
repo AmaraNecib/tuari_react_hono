@@ -82,8 +82,9 @@ describe("End-to-end: recovery key lifecycle", () => {
     expect(keys).toHaveLength(3);
 
     // Simulate password change (just verify keys still work after operations)
-    // In production this would call changeDatabaseKey() which does PRAGMA rekey
-    // Recovery keys are app-layer tokens, not SQLCipher keys, so they survive
+    // In production the DB key change goes through DatabaseKeyManager.changeKey
+    // (PRAGMA verify + rekey); recovery keys are app-layer tokens, not SQLCipher
+    // keys, so they survive a rekey.
 
     // Verify all keys still work
     for (const k of keys) {

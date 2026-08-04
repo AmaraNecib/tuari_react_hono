@@ -37,7 +37,7 @@ const createDependencies = () => ({
     revokeKey: vi.fn().mockResolvedValue(false),
   },
   databaseKeyManager: {
-    changeKey: vi.fn().mockReturnValue(true),
+    changeKey: vi.fn().mockReturnValue({ success: true }),
   },
 });
 
