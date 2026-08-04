@@ -69,3 +69,10 @@ cleanup of the same class the review flagged). Neither changes the spec
 verdict — no behavior change beyond deterministic array order. Quick
 self-review of the delta: 27 insertions / 32 deletions, two files,
 assertions updated in lockstep; tsc + rbac suite green.
+
+## Post-evidence delta (wisdom-docs round, final SHA 9ca8a0e)
+
+Renamed from 6ee1f3d. Delta 6ee1f3d..9ca8a0e is **docs-only**
+(`.agents/wisdom/process.md` + `.agents/wisdom/architecture.md` captured
+#209 lessons). No code or test changes — review conclusions stand unchanged.
+

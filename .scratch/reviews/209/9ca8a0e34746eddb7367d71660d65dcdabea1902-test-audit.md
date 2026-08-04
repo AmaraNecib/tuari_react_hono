@@ -69,3 +69,10 @@ implements the audit's F2 recommendation for the two single-role readers
 (`findAll`'s orderBy was already pinned in `c5ff4f4`). The ROLE_FIELDS
 projection extraction is covered by the existing leftJoin/select behavior
 assertions; tests re-run green (54 rbac tests).
+
+## Post-evidence delta (wisdom-docs round, final SHA 9ca8a0e)
+
+Renamed from 6ee1f3d. Delta 6ee1f3d..9ca8a0e is **docs-only**
+(`.agents/wisdom/process.md` + `.agents/wisdom/architecture.md` captured
+#209 lessons). No code or test changes — review conclusions stand unchanged.
+
