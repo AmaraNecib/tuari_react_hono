@@ -33,6 +33,14 @@ test("browser shell boots with Arabic RTL defaults", async ({ page }) => {
 })
 
 test("phase 1 shell signs in and keeps a collapsible fixed sidebar", async ({ page }) => {
+  // Dismiss the first-run user-journey tour before the app boots: it overlays
+  // the sidebar with a z-50 backdrop and intercepts clicks until skipped.
+  // Registered BEFORE page.goto (the sign-in transition is client-side, so an
+  // init script added after the first load never runs). JourneyStateManager
+  // keys: `journey-<key>-<type>` (see helpers/session.ts).
+  await page.addInitScript(() => {
+    localStorage.setItem("journey-home-tour-status", "skipped")
+  })
   await page.goto("/")
 
   await bootstrapIfNeeded(page)

@@ -8,11 +8,10 @@
  * the debts mutations (which invalidate the `debtsSummary` / `debtsDetail`
  * workspace-domain keys) keep them fresh.
  *
- * Query keys are shared with `workspaceDomainQueryKeys` in
- * `@/features/app-shell/workspace-queries` — that map is the single source
+ * Query keys are shared with `workspaceQueryKeys` in
+ * `@/features/app-shell/workspace-keys` — that map is the single source
  * of truth for mutation invalidation.
  */
-import { useQuery } from "@tanstack/react-query"
 import type {
   AppError,
   DebtEntry,
@@ -23,8 +22,8 @@ import type {
 } from "@tuari/contracts"
 
 import { AppMutationError } from "@/features/app-shell/mock-dashboard"
-import { workspaceDomainQueryKeys } from "@/features/app-shell/workspace-queries"
-import { useSessionQuery } from "@/features/session/use-session-query"
+import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
+import { workspaceQueryKeys } from "@/features/app-shell/workspace-keys"
 import { rpcClient } from "@/lib/orpc-client"
 
 import { sortDebtEntries } from "./debt-utils"
@@ -83,13 +82,10 @@ function requireEntitySuccess<T>(result: {
  * settlements without a full workspace refetch.
  */
 export function useDebtsSummaryQuery({ enabled = true }: { enabled?: boolean } = {}) {
-  const sessionQuery = useSessionQuery()
-  const userId = sessionQuery.data?.user?.id ?? null
-
-  return useQuery({
-    queryKey: workspaceDomainQueryKeys.debtsSummary(userId),
+  return useWorkspaceScopedQuery({
+    key: workspaceQueryKeys.debtsSummary,
+    enabled,
     queryFn: async (): Promise<DebtsSummary> => rpcClient.debtsSummary(),
-    enabled: Boolean(sessionQuery.data?.user) && enabled,
   })
 }
 
@@ -98,7 +94,7 @@ export function useDebtsSummaryQuery({ enabled = true }: { enabled?: boolean } =
  *
  * Composes `debtPartyDetail` (the party's accounts and balance) with one
  * `debtEntriesList` call per account, so the ledger panels receive real
- * entries. The query key extends `workspaceDomainQueryKeys.debtsDetail` —
+ * entries. The query key extends `workspaceQueryKeys.debtsDetail` —
  * every debts mutation invalidates that prefix, so the ledger refreshes
  * after payments, voids, settlements and consolidations.
  */
@@ -107,12 +103,9 @@ export function useDebtPartyDetailQuery(
   partyId: string | undefined,
   { enabled = true }: { enabled?: boolean } = {},
 ) {
-  const sessionQuery = useSessionQuery()
-  const userId = sessionQuery.data?.user?.id ?? null
-
-  return useQuery({
-    queryKey: [...workspaceDomainQueryKeys.debtsDetail(userId), partyType, partyId ?? "missing"],
-    enabled: Boolean(partyId) && Boolean(sessionQuery.data?.user) && enabled,
+  return useWorkspaceScopedQuery({
+    key: (userId) => [...workspaceQueryKeys.debtsDetail(userId), partyType, partyId ?? "missing"],
+    enabled: Boolean(partyId) && enabled,
     queryFn: async (): Promise<{
       party: DebtPartyDetail
       accounts: DebtPartyDetail["debtAccounts"]

@@ -22,11 +22,12 @@ import { getAuthClient } from "@/lib/auth-client"
 import { orpc, rpcClient } from "@/lib/orpc-client"
 import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
+import { workspaceQueryPrefix } from "./workspace-queries"
 import {
-  workspaceDomainQueryKeys,
+  invalidateWorkspaceDomains,
   workspaceDomainQueryPrefix,
-  workspaceQueryPrefix,
-} from "./workspace-queries"
+  workspaceQueryKeys,
+} from "./workspace-keys"
 
 export type SectionKey = "employees" | "projects" | "warehouses" | "roles" | "settings"
 export type DemoSession = SessionUser | null
@@ -90,15 +91,15 @@ function nextSequence(values: string[], prefix: string) {
 async function ensureWorkspace(queryClient: ReturnType<typeof useQueryClient>, userId: string | null) {
   const [rolesQuery, projectsQuery, warehousesQuery] = await Promise.all([
     queryClient.ensureQueryData({
-      queryKey: workspaceDomainQueryKeys.roles(userId),
+      queryKey: workspaceQueryKeys.roles(userId),
       queryFn: () => rpcClient.rolesList(),
     }),
     queryClient.ensureQueryData({
-      queryKey: workspaceDomainQueryKeys.projects(userId),
+      queryKey: workspaceQueryKeys.projects(userId),
       queryFn: () => rpcClient.projectsList(),
     }),
     queryClient.ensureQueryData({
-      queryKey: workspaceDomainQueryKeys.warehouses(userId),
+      queryKey: workspaceQueryKeys.warehouses(userId),
       queryFn: () => rpcClient.warehousesList(),
     }),
   ])
@@ -110,41 +111,21 @@ async function ensureWorkspace(queryClient: ReturnType<typeof useQueryClient>, u
   }
 }
 
-/** Invalidate workspace query caches for the given domains. */
-async function invalidateWorkspaceDomains(
-  queryClient: ReturnType<typeof useQueryClient>,
-  userId: string | null,
-  domains: Array<keyof typeof workspaceDomainQueryKeys>,
-) {
-  if (userId === null) {
-    await queryClient.invalidateQueries({ queryKey: workspaceDomainQueryPrefix })
-    return
-  }
-  await Promise.all(
-    domains.map((domain) => queryClient.invalidateQueries({ queryKey: workspaceDomainQueryKeys[domain](userId) }))
-  )
-}
-
-/** Invalidate both workspace AND inventory query caches so dropdowns/lists refresh everywhere. Uses Promise.all for concurrent invalidation. */
-async function invalidateAll(
-  queryClient: ReturnType<typeof useQueryClient>,
-  userId: string | null,
-  domains: Array<keyof typeof workspaceDomainQueryKeys>,
-  inventoryDomains?: string[],
-) {
-  await Promise.all([
-    invalidateWorkspaceDomains(queryClient, userId, domains),
-    ...(inventoryDomains
-      ? inventoryDomains.map((domain) => queryClient.invalidateQueries({ queryKey: ["inventory", domain] }))
-      : []),
-  ])
-}
-
-function getCachedSessionUserId(queryClient: ReturnType<typeof useQueryClient>) {
+/**
+ * Resolve the signed-in user id from the query cache, or null when the
+ * session has not resolved yet (mutations then fall back to prefix-wide
+ * invalidation).
+ *
+ * Reads the key the session query actually mounts under —
+ * `orpc.session.queryOptions().queryKey` — NOT `orpc.session.key()`: the
+ * two differ (bare `key()` omits the `type: "query"` field), so `key()`
+ * never matches the cached session data.
+ */
+export function getCachedSessionUserId(queryClient: ReturnType<typeof useQueryClient>) {
 /**
  * useAuthSetupStatusQuery() component.
  */
-  return queryClient.getQueryData<{ user?: { id?: string } | null }>(orpc.session.key())?.user?.id ?? null
+  return queryClient.getQueryData<{ user?: { id?: string } | null }>(orpc.session.queryOptions().queryKey)?.user?.id ?? null
 }
 
 export function useAuthSetupStatusQuery() {
@@ -284,7 +265,7 @@ export function useUpdateAccountSettingsMutation() {
     onSuccess: async () => {
       const userId = getCachedSessionUserId(queryClient)
       await queryClient.invalidateQueries({ queryKey: orpc.session.key() })
-      await invalidateWorkspaceDomains(queryClient, userId, ["employees", "projects", "warehouses", "debtsSummary", "debtsDetail", "inventory", "systemLog"])
+      await invalidateWorkspaceDomains(queryClient, userId, { employees: true, projects: true, warehouses: true, debtsSummary: true, debtsDetail: true, systemLog: true })
       showSuccessToast(i18n.t("toasts.accountUpdated"))
     },
     onError: (error) => {
@@ -311,7 +292,7 @@ export function useCreateEmployeesBatchMutation() {
     },
     onSuccess: async ({ createdCount }) => {
       if (createdCount > 0) {
-        await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses"], ["warehouses", "projects"])
+        await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { employees: true, projects: true, warehouses: true })
       }
     },
   })
@@ -340,7 +321,7 @@ export function useUpdateEmployeeMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses", "debtsSummary", "debtsDetail"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { employees: true, projects: true, warehouses: true, debtsSummary: true, debtsDetail: true })
       showSuccessToast(message)
 /**
  * useDeleteEmployeeMutation() component.
@@ -369,7 +350,7 @@ export function useLeaveEmployeeMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses", "debtsSummary", "debtsDetail"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { employees: true, projects: true, warehouses: true, debtsSummary: true, debtsDetail: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -391,7 +372,7 @@ export function useDeleteEmployeeMutation() {
  * useCreateProjectMutation() component.
  */
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses", "debtsSummary", "debtsDetail"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { employees: true, projects: true, warehouses: true, debtsSummary: true, debtsDetail: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -420,7 +401,7 @@ export function useUpdateProjectMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["projects", "employees", "warehouses", "debtsSummary", "debtsDetail"], ["projects", "warehouses"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { projects: true, employees: true, warehouses: true, debtsSummary: true, debtsDetail: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -448,7 +429,7 @@ export function useCreateProjectMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["projects", "employees", "warehouses", "debtsSummary", "debtsDetail"], ["projects", "warehouses"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { projects: true, employees: true, warehouses: true, debtsSummary: true, debtsDetail: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -477,7 +458,7 @@ export function useUpdateWarehouseMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["warehouses", "employees", "projects", "inventory"], ["warehouses", "projects"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { warehouses: true, employees: true, projects: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -505,7 +486,7 @@ export function useCreateWarehouseMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["warehouses", "employees", "projects", "inventory"], ["warehouses"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { warehouses: true, employees: true, projects: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -540,7 +521,7 @@ export function useUpdateEmployeeWorkplaceMutation() {
       )
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["employees", "projects", "warehouses"], ["warehouses", "projects"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { employees: true, projects: true, warehouses: true })
 /**
  * useCreateSalaryPaymentMutation() component.
  */
@@ -569,7 +550,7 @@ export function useSyncManagedProjectsMutation() {
  * useCreateExternalCounterpartyMutation() component.
  */
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["projects", "employees", "warehouses"], ["warehouses", "projects"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { projects: true, employees: true, warehouses: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -592,7 +573,7 @@ export function useSyncManagedWarehousesMutation() {
       )
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["warehouses", "employees", "projects", "inventory"], ["warehouses", "projects", "counterparties"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { warehouses: true, employees: true, projects: true, externalCounterparties: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -616,7 +597,7 @@ export function useCreateSalaryPaymentMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), ["employees", "debtsSummary", "debtsDetail"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { employees: true, debtsSummary: true, debtsDetail: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -639,7 +620,7 @@ export function useCreateExternalCounterpartyMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees", "externalCounterparties"], ["counterparties"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true, externalCounterparties: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -684,7 +665,7 @@ export function useCreateDebtAccountMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees", "externalCounterparties"], ["counterparties"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true, externalCounterparties: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -715,7 +696,7 @@ export function useCreateDebtEntryMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -745,7 +726,7 @@ export function useRecordDebtPaymentMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -771,7 +752,7 @@ export function useVoidDebtEntryMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -797,7 +778,7 @@ export function useDebtEntriesConsolidateMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -821,7 +802,7 @@ export function useSettleDebtAccountMutation() {
       return requireEntitySuccess(result)
     },
     onSuccess: async ({ message }) => {
-      await invalidateAll(queryClient, getCachedSessionUserId(queryClient), ["debtsSummary", "debtsDetail", "employees"])
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true })
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -890,11 +871,11 @@ export function useAddWorkspaceRecordMutation() {
     onSuccess: async ({ message, section }) => {
       const userId = getCachedSessionUserId(queryClient)
       if (section === "roles") {
-        await invalidateWorkspaceDomains(queryClient, userId, ["roles", "employees"])
+        await invalidateWorkspaceDomains(queryClient, userId, { roles: true, employees: true })
       } else if (section === "projects") {
-        await invalidateWorkspaceDomains(queryClient, userId, ["projects", "employees", "warehouses"])
+        await invalidateWorkspaceDomains(queryClient, userId, { projects: true, employees: true, warehouses: true })
       } else if (section === "warehouses") {
-        await invalidateWorkspaceDomains(queryClient, userId, ["warehouses", "employees", "inventory"])
+        await invalidateWorkspaceDomains(queryClient, userId, { warehouses: true, employees: true })
       }
       showSuccessToast(message)
     },
@@ -940,13 +921,13 @@ export function useRemoveWorkspaceRecordMutation() {
     onSuccess: async ({ message }, variables) => {
       const userId = getCachedSessionUserId(queryClient)
       if (variables.section === "roles") {
-        await invalidateWorkspaceDomains(queryClient, userId, ["roles", "employees"])
+        await invalidateWorkspaceDomains(queryClient, userId, { roles: true, employees: true })
       } else if (variables.section === "employees") {
-        await invalidateWorkspaceDomains(queryClient, userId, ["employees", "projects", "warehouses", "debtsSummary", "debtsDetail"])
+        await invalidateWorkspaceDomains(queryClient, userId, { employees: true, projects: true, warehouses: true, debtsSummary: true, debtsDetail: true })
       } else if (variables.section === "projects") {
-        await invalidateWorkspaceDomains(queryClient, userId, ["projects", "employees", "warehouses"])
+        await invalidateWorkspaceDomains(queryClient, userId, { projects: true, employees: true, warehouses: true })
       } else {
-        await invalidateWorkspaceDomains(queryClient, userId, ["warehouses", "employees", "inventory"])
+        await invalidateWorkspaceDomains(queryClient, userId, { warehouses: true, employees: true })
       }
       showSuccessToast(message)
     },
