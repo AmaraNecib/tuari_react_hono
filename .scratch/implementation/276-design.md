@@ -157,5 +157,20 @@ fewer RPCs.
 - `apps/web/src/features/app-shell/workspace-queries.test.ts`
 - `apps/web/src/features/app-shell/workspace-keys.test.ts`
 - `tests/e2e/workspace-snapshot.spec.ts` (new)
+- `apps/web/src/features/app-shell/workspace-mutations.ts` +
+  `workspace-mutations.test.ts` — EXTENDED by supervisor approval (2026-08-07)
+  for the Greptile-mandated reset fix; verified no other worktree agent owns
+  this file (#280 owns only search/shell fixtures)
 - `.scratch/implementation/276-design.md`
 - `.scratch/reviews/276/`
+
+## Post-implementation rounds
+
+- **Greptile round 1 (4/5):** valid finding — `useResetWorkspaceMutation`
+  invalidated only `workspaceDomainQueryPrefix`, so the snapshot (the shell's
+  only data source after this change) stayed stale after reset. Fixed in
+  ce8feb4 (dual-prefix invalidation mirroring sign-out) + unit test.
+- **Greptile round 2 (5/5):** "The PR appears safe to merge." — the fresh
+  summary explicitly confirms the reset path is fixed.
+- **Deferred:** pre-existing `WorkspaceDomain` mapped-type collapse to `never`
+  → filed as follow-up issue #307.
