@@ -1,9 +1,9 @@
 # Test Audit — Issue #276 (workspace snapshot consolidation)
 
-- Head SHA: `e18bf85`
+- Head SHA: `ce8feb4`
 - Base SHA: `256f24a`
 - Changed test files: `workspace-keys.test.ts`, `workspace-queries.test.ts`,
-  `tests/e2e/workspace-snapshot.spec.ts` (new)
+  `workspace-mutations.test.ts`, `tests/e2e/workspace-snapshot.spec.ts` (new)
 
 ## Agent 1 — Edge Case Hunter
 
@@ -19,6 +19,7 @@
 | StrictMode double-mount double-fetch | ✅ verified empirically | React Query v5 dedupes in-flight queries per key; E2E passed twice with count === 1 |
 | Real `debtAccounts`/`debtEntries` in the snapshot (previously `[]`) | 🟡 residual | no consumer reads these fields off the workspace object (grep-verified); type-compatible; documented in design doc |
 | Error state of the snapshot query | 🟡 residual | home-view error/retry path covered by existing fixture-based `home-view.test.tsx` (mockState.workspaceError); the real RPC error path is exercised by the same `useWorkspaceScopedQuery` gate the suite already tests |
+| Reset workspace must clear the snapshot namespace (Greptile finding on PR #304) | ✅ covered | `useResetWorkspaceMutation` test mounts the hook over a real QueryClient, spies `invalidateQueries`, and asserts BOTH `workspaceDomainQueryPrefix` and `workspaceQueryPrefix` are invalidated — a regression of exactly this class (reset bypassing `invalidateWorkspaceDomains`) is pinned at the hook seam. Reset is session-independent (prefix invalidation), so the pre-session case needs no separate branch |
 
 ## Agent 2 — Coverage Analyst
 
@@ -52,8 +53,12 @@ Grade: **A**.
   stable by assertion time), request listener scoped per test.
 - Minor nit (accepted): composite tests read `mocks.useQuery.mock.calls[0]` —
   safe because only the composite hook calls `useQuery` in those tests.
+- Greptile-round test (workspace-mutations.test.ts): renderHook + real
+  QueryClient + `vi.spyOn(invalidateQueries)`; `createElement` keeps the
+  file `.ts` (no JSX transform). Assertions target the public behavior
+  (which cache namespaces the reset clears), not implementation internals.
 
 ## Verdict
 
 No actionable findings. Evidence of edge-case, acceptance, and quality coverage
-is present and current for HEAD `e18bf85`.
+is present and current for HEAD `ce8feb4`.

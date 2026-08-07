@@ -1,7 +1,8 @@
 # Code Review — Issue #276 (workspace snapshot consolidation)
 
-- Fixed point: `git diff 256f24a...e18bf85`
-- Commits: bfe2ed7 (impl), de0ac4f (e2e hardening), e18bf85 (demo alias dedup)
+- Fixed point: `git diff 256f24a...ce8feb4`
+- Commits: bfe2ed7 (impl), de0ac4f (e2e hardening), e18bf85 (demo alias dedup),
+  ce8feb4 (Greptile fix: reset clears the snapshot namespace)
 
 ## Standards axis
 
@@ -37,6 +38,12 @@ Findings:
 7. Repo standards: no `git add -A`, explicit staging; pure-module key factory
    untouched in spirit; comments follow the existing style (Arabic copy
    untouched). Tooling (eslint/prettier/tsc) all clean.
+8. **Greptile round (ce8feb4)** — reset-workspace fix: the added
+   `workspaceQueryPrefix` invalidation mirrors the sign-out cleanup pattern at
+   workspace-mutations.ts:187-188 (dual-prefix), so the two cache-clear sites
+   are consistent by construction. The regression test reuses the repo's
+   established renderHook-over-real-QueryClient pattern (inventory-hooks.test.tsx);
+   `createElement` instead of JSX keeps the test file `.ts`. No new smells.
 
 ## Spec axis
 
@@ -70,10 +77,16 @@ single workspaceSnapshot() RPC", ~14 parallel calls → 1).
    snapshot RPC is server-side authoritative (overlays `roleModule.list()`)
    and is the already-deployed path used by the demo query; client/server ship
    together. Documented residual, not a regression. ✅
+6. **Greptile finding (ce8feb4) — addressed:** the reset-workspace action
+   invalidated only `workspaceDomainQueryPrefix`, so after the consolidation it
+   no longer refreshed the shell's single data source (the snapshot). Fix:
+   `useResetWorkspaceMutation` now invalidates `workspaceQueryPrefix` in
+   parallel, matching sign-out. Pinned by a unit test. ✅
 
 ## Summary
 
 - Standards: 0 actionable findings after the in-review dedup fix (1
   judgement-call note on the pre-existing `WorkspaceDomain` type, deferred).
-- Spec: 0 actionable findings — the issue's acceptance criterion is met with
-  no scope creep.
+- Spec: 0 actionable findings — the issue's acceptance criterion is met, no
+  scope creep, and the single Greptile finding (reset invalidation gap) is
+  fixed and tested.
