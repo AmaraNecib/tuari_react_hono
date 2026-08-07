@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AccountServiceError } from "../modules/account/account.service";
 import { createApp, createTransportSecurity } from "./create-app";
-import type { BetterSqliteDatabase } from "../types/sqlite";
 
 const transportSecurity = {
   allowedOrigins: ["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -37,10 +36,9 @@ const createDependencies = () => ({
     consumeKey: vi.fn().mockResolvedValue(false),
     revokeKey: vi.fn().mockResolvedValue(false),
   },
-  rawDatabase: {
-    pragma: vi.fn(),
-    prepare: vi.fn().mockReturnValue({ get: vi.fn() }),
-  } as unknown as BetterSqliteDatabase,
+  databaseKeyManager: {
+    changeKey: vi.fn().mockReturnValue({ success: true }),
+  },
 });
 
 describe("createApp RPC wiring", () => {

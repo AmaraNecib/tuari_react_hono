@@ -55,7 +55,9 @@ describe("RPC router", () => {
     harness: ReturnType<typeof createHarness>,
     authOverrides?: Partial<typeof authBootstrapService>,
     recoveryKeyService: unknown = {},
-    rawDatabase: unknown = {},
+    databaseKeyManager: unknown = {
+      changeKey: () => ({ success: false, error: "Current encryption key is invalid" }),
+    },
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -98,7 +100,7 @@ describe("RPC router", () => {
       recoveryKeyService: recoveryKeyService as never,
       updateService: {} as never,
       updateHistoryService: {} as never,
-      rawDatabase: rawDatabase as never,
+      databaseKeyManager: databaseKeyManager as never,
     } as never);
   }
 
@@ -831,8 +833,8 @@ describe("RPC router", () => {
     const router = createTestRouter(harness);
     const client = createRouterClient(router, { context: createContext() as never });
 
-    // rawDatabase defaults to a throwing stub, so the PRAGMA verification
-    // fails and the handler returns the failure output shape from
+    // databaseKeyManager defaults to a rejecting stub (changeKey → the wire
+    // failure shape), so the handler returns the failure output from
     // changeDbKeyOutputSchema. The success leg is covered in the next test.
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
@@ -841,31 +843,25 @@ describe("RPC router", () => {
 
   it("rekeys the database and returns success through the wire contract", async () => {
     const harness = createHarness();
-    const pragma = vi.fn();
-    const rawDatabase = {
-      pragma,
-      prepare: () => ({ get: () => ({ count: 0 }) }),
-    };
-    const router = createTestRouter(harness, undefined, {}, rawDatabase);
+    const changeKey = vi.fn((_currentKey: string, _newKey: string) => ({ success: true } as const));
+    const router = createTestRouter(harness, undefined, {}, { changeKey });
     const client = createRouterClient(router, { context: createContext() as never });
 
     // The success leg of changeDbKeyOutputSchema ({ success: true }) is
-    // validated through the wire: the verify PRAGMA passes, the rekey runs,
-    // and the discriminated-union output accepts the success member.
+    // validated through the wire: the port verifies the current key, runs the
+    // rekey, and the discriminated-union output accepts the success member.
+    // (The exact PRAGMA statements are pinned in the port's own unit tests.)
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
     ).resolves.toEqual({ success: true });
+    expect(changeKey).toHaveBeenNthCalledWith(1, "old-key", "new-key-123");
 
-    // Keys are interpolated into the PRAGMA SQL with single quotes escaped —
-    // assert the exact statements the handler built.
-    expect(pragma).toHaveBeenNthCalledWith(1, "key = 'old-key'");
-    expect(pragma).toHaveBeenNthCalledWith(2, "rekey = 'new-key-123'");
-
-    // A key containing a single quote is escaped ('' doubling), not spliced.
+    // A key containing a single quote is passed through untouched — the port
+    // escapes it ('' doubling), not the handler.
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-'quoted'" }),
     ).resolves.toEqual({ success: true });
-    expect(pragma).toHaveBeenLastCalledWith("rekey = 'new-key-''quoted'''");
+    expect(changeKey).toHaveBeenLastCalledWith("old-key", "new-key-'quoted'");
   });
 
   it("generates an inventory report through the RPC contract (derived filter input)", async () => {

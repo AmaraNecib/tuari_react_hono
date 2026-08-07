@@ -3,33 +3,19 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app/create-app";
 import { createAppDependencies } from "./app/dependencies";
 import { createAppConfig } from "./config";
-import { createAuth } from "./infrastructure/auth/auth";
-import { createDatabaseConnection } from "./infrastructure/database/factory";
-import { createDrizzleFromSqlite } from "./infrastructure/database/drizzle";
-import { ensureDatabaseSchema } from "./infrastructure/database/schema";
-import { BetterSqlite3Executor } from "./infrastructure/database/sqlite-executor";
 
 async function main() {
   // Single validated config — env + optional TUARI_CONFIG_FILE merge. Every
-  // consumer (server bind, transport security, auth, dependencies) reads from
-  // this one injected AppConfig instead of separate env singletons.
+  // consumer (server bind, transport security, dependencies) reads from this
+  // one injected AppConfig instead of separate env singletons.
   const config = createAppConfig();
 
-  // Create a single shared SQLite connection for the entire app.
-  const sqlite = createDatabaseConnection();
-  const executor = new BetterSqlite3Executor(sqlite);
+  // Self-contained composition root: opens the database connection, runs the
+  // schema migrations, builds Drizzle + better-auth, and wires every domain
+  // service. No raw handles are created or passed here — the root keeps the
+  // connection and hands the rest of the app narrow ports.
+  const appDependencies = await createAppDependencies({}, config);
 
-  // Run schema migrations with raw executor
-  await ensureDatabaseSchema(executor);
-
-  // Create Drizzle connection from the same handle
-  const drizzleDb = createDrizzleFromSqlite(sqlite);
-
-  // Create better-auth from the shared Drizzle handle
-  const auth = createAuth(drizzleDb, config);
-
-  // Pass shared handle + auth — no duplicate connections
-  const appDependencies = await createAppDependencies(sqlite, drizzleDb, auth, config);
   const app = createApp(appDependencies, {
     allowedOrigins: config.allowedOrigins,
     trustProxyHeaders: config.trustProxyHeaders,

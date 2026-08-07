@@ -29,8 +29,7 @@ import type { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import type { UpdateHistoryService } from "../modules/update/update-history.service";
 import type { UpdateService } from "../modules/update/update.service";
 import type { RoleModule } from "../modules/rbac/role.module";
-
-import type { BetterSqliteDatabase } from "../types/sqlite";
+import type { DatabaseKeyManager } from "../infrastructure/database/database-key-manager";
 
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
@@ -46,7 +45,7 @@ type RouterDependencies = {
   updateService: UpdateService;
   updateHistoryService: UpdateHistoryService;
   roleModule: RoleModule;
-  rawDatabase: BetterSqliteDatabase;
+  databaseKeyManager: DatabaseKeyManager;
 };
 
 export function createRouter(dependencies: RouterDependencies) {
@@ -73,7 +72,7 @@ export function createRouter(dependencies: RouterDependencies) {
 
   const allHandlers = {
     ...baseHandlers,
-    ...createSystemHandlers(os, m, dependencies.companyService, dependencies.recoveryKeyService, dependencies.roleModule, dependencies.rawDatabase),
+    ...createSystemHandlers(os, m, dependencies.companyService, dependencies.recoveryKeyService, dependencies.roleModule, dependencies.databaseKeyManager),
     ...createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
     ...createOperationsHandlers(os, m, dependencies.operationsService),
     ...createFinanceHandlers(os, m, dependencies.financeService),

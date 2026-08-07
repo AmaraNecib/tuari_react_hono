@@ -1,9 +1,10 @@
 import { createAuth } from "../infrastructure/auth/auth";
 import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
-import type { AppDrizzle } from "../infrastructure/database/drizzle";
+import { createDatabaseKeyManager, type DatabaseKeyManager } from "../infrastructure/database/database-key-manager";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
-import type { BetterSqliteDatabase } from "../types/sqlite";
+import { ensureDatabaseSchema } from "../infrastructure/database/schema";
+import { BetterSqlite3Executor } from "../infrastructure/database/sqlite-executor";
 import { createAppConfig, type AppConfig } from "../config";
 import { createCompanyRepository } from "../config/database";
 import { DrizzleAccountRepository } from "../modules/account/account.repository";
@@ -39,12 +40,36 @@ import { UpdateHistoryService } from "../modules/update/update-history.service";
 import { SqliteUpdateHistoryPort } from "../modules/update/adapters/sqlite-update-history.port";
 
 /**
+ * Optional configuration for {@link createAppDependencies}.
+ *
+ * Every field is a seam for tests (or the desktop host) to inject without
+ * constructing raw database handles themselves. When omitted, values resolve
+ * from the validated `AppConfig` (itself env + optional config file).
+ */
+export type CreateAppDependenciesConfig = {
+  /** SQLite file path (or `:memory:`). Defaults to `appConfig.databasePath`. */
+  databasePath?: string;
+  /**
+   * SQLCipher encryption key. Defaults to `process.env.APP_DB_KEY`. The
+   * validated `AppConfig` carries no key field, so env is the only fallback.
+   */
+  databaseKey?: string;
+  /**
+   * Pre-built Better Auth instance. Kept for test injection — tests pass a
+   * mock or pre-configured auth without constructing a real database
+   * connection.
+   */
+  authInstance?: BetterAuthInstance;
+};
+
+/**
  * All resolved application dependencies, created once at startup.
  *
  * Explicitly declared (rather than `ReturnType<typeof createAppDependencies>`)
- * so the tsup dts build can name every field — the inferred return would
- * resolve `rawDatabase` to the unnameable `BetterSqlite3.Database` UMD-global
- * and fail with TS4058.
+ * so the tsup dts build can name every field — the raw database handle is
+ * deliberately NOT exposed here; the composition root keeps it, and the
+ * router/system handlers receive the narrow {@link DatabaseKeyManager} port
+ * instead.
  */
 export type AppDependencies = {
   auth: BetterAuthInstance;
@@ -59,108 +84,134 @@ export type AppDependencies = {
   recoveryKeyService: RecoveryKeyService;
   updateService: UpdateService;
   updateHistoryService: UpdateHistoryService;
-  rawDatabase: BetterSqliteDatabase;
+  databaseKeyManager: DatabaseKeyManager;
   employeeModule: EmployeeModule;
   invoiceModule: InvoiceModule;
   paymentModule: PaymentModule;
   roleModule: RoleModule;
+  /** Close the shared database connection (idempotent; composition-root lifecycle). */
+  close: () => void;
 };
 
 /**
- * Create all application dependencies.
+ * Create all application dependencies — fully self-contained.
  *
- * @param sqlite - Shared SQLite handle (caller is responsible for lifecycle).
- *                 If omitted, a new connection is created (backwards compat).
- * @param drizzleDb - Pre-built Drizzle instance. If omitted, created from sqlite.
- * @param authInstance - Pre-built Better Auth instance. If omitted, created from db.
- * @param config - Validated application config. Defaults to `createAppConfig()`
- *                 (env + optional config file). Injectable so tests can pass a
- *                 controlled config (e.g. DB_ADAPTER=inmemory).
+ * The function opens the database connection, runs the schema migrations,
+ * builds Drizzle + better-auth, and wires every domain service. No raw
+ * database handle is accepted as input or exposed on the result; callers
+ * (e.g. `index.ts`) call it with no arguments (or config only).
+ *
+ * @param config - Optional injection seams (database path/key, auth instance).
+ * @param appConfig - Validated application config. Defaults to `createAppConfig()`
+ *                    (env + optional config file). Injectable so tests can pass a
+ *                    controlled config (e.g. DB_ADAPTER=inmemory).
  */
 export async function createAppDependencies(
-  sqlite?: BetterSqliteDatabase,
-  drizzleDb?: AppDrizzle,
-  authInstance?: BetterAuthInstance,
-  config: AppConfig = createAppConfig(),
+  config: CreateAppDependenciesConfig = {},
+  appConfig: AppConfig = createAppConfig(),
 ): Promise<AppDependencies> {
-  const sharedDatabase: BetterSqliteDatabase = sqlite ?? createDatabaseConnection();
-  const db = drizzleDb ?? createDrizzleFromSqlite(sharedDatabase);
-  const auth = authInstance ?? createAuth(db, config);
-
-  // Config-aware repository selection: honors DB_ADAPTER (sqlite | inmemory).
-  // Note: when dbAdapter=inmemory only the company domain is in-memory; the
-  // inventory/invoice/payment modules still use the SQLite handle until those
-  // adapters are introduced in a follow-up phase.
-  const companyRepository = createCompanyRepository(sharedDatabase, config);
-  const inventoryRepository = createInventoryRepository(sharedDatabase);
-  const accountRepository = new DrizzleAccountRepository(db);
-
-  // Construct each domain service off the same `WorkspaceMutationContext`
-  // so the per-domain service owns its transaction + audit context and
-  // the `CompanyService` only has to forward delegations.
-  const mutation = new WorkspaceMutationContext(companyRepository, companyRepository);
-  const workforceService = new WorkforceService(companyRepository, companyRepository, mutation);
-  const operationsService = new OperationsService(companyRepository, companyRepository, mutation);
-  const financeService = new FinanceService(companyRepository, companyRepository, mutation);
-  const auditService = new AuditService(companyRepository);
-  const companyService = new CompanyService(companyRepository, companyRepository, {
-    workforce: workforceService,
-    operations: operationsService,
-    finance: financeService,
-    audit: auditService,
-  });
-
-  const employeeRepository = new SqliteEmployeeRepository(companyRepository);
-  const roleRepository = new SqliteRoleRepository(companyRepository);
-  const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
-  const invoiceRepository = new InvoiceRepository(sharedDatabase, db);
-  const invoiceDebtPort = createSqliteInvoiceDebtPort({
-    db: sharedDatabase,
-    repository: companyRepository,
-  });
-  const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
-  const paymentRepository = new PaymentRepositoryImpl(sharedDatabase);
-  const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
-  const authBootstrapService = new AuthBootstrapService(
-    new SqliteBootstrapPort(db, sharedDatabase),
-    auth,
-    config.bootstrapSetupKey,
+  const sharedDatabase = createDatabaseConnection(
+    config.databasePath?.trim() ? config.databasePath : appConfig.databasePath,
+    config.databaseKey,
   );
-  const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
-  const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase));
 
-  // Issue #10 — Slice 3 RBAC. The role module is a small, deep module
-  // that wraps a Drizzle-backed RoleRepository. The repository is kept
-  // separate from the workforce role repository (which only knows about
-  // the role lookups employee creation needs) because the role module
-  // needs to return roles with their full permission set, not just an
-  // id/lookup. The two share the same underlying tables; they just
-  // expose different shapes.
-  const rbacRoleRepository = new SqliteRbacRoleRepository(db);
-  const roleModule = new RoleModule({ repository: rbacRoleRepository });
+  // Idempotent close: the root opens the connection, so the root closes it.
+  // `close` is also invoked on construction failure so a partially-built root
+  // never leaks the handle (Windows EBUSY on temp-file test cleanup).
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    sharedDatabase.close();
+  };
 
-  return {
-    auth,
-    accountService: new AccountService(accountRepository, auth),
-    authBootstrapService,
-    companyService,
-    workforceService,
-    operationsService,
-    financeService,
-    inventoryService: new InventoryService(
-      inventoryRepository,
-      new InventoryAttachmentStorage(config.attachmentsRootPath),
+  try {
+    // Schema migrations run on the connection the root just opened — the
+    // caller no longer has (or needs) a handle to migrate beforehand.
+    await ensureDatabaseSchema(new BetterSqlite3Executor(sharedDatabase));
+
+    const db = createDrizzleFromSqlite(sharedDatabase);
+    const auth = config.authInstance ?? createAuth(db, appConfig);
+
+    // Config-aware repository selection: honors DB_ADAPTER (sqlite | inmemory).
+    // Note: when dbAdapter=inmemory only the company domain is in-memory; the
+    // inventory/invoice/payment modules still use the SQLite handle until those
+    // adapters are introduced in a follow-up phase.
+    const companyRepository = createCompanyRepository(sharedDatabase, appConfig);
+    const inventoryRepository = createInventoryRepository(sharedDatabase);
+    const accountRepository = new DrizzleAccountRepository(db);
+
+    // Construct each domain service off the same `WorkspaceMutationContext`
+    // so the per-domain service owns its transaction + audit context and
+    // the `CompanyService` only has to forward delegations.
+    const mutation = new WorkspaceMutationContext(companyRepository, companyRepository);
+    const workforceService = new WorkforceService(companyRepository, companyRepository, mutation);
+    const operationsService = new OperationsService(companyRepository, companyRepository, mutation);
+    const financeService = new FinanceService(companyRepository, companyRepository, mutation);
+    const auditService = new AuditService(companyRepository);
+    const companyService = new CompanyService(companyRepository, companyRepository, {
+      workforce: workforceService,
+      operations: operationsService,
+      finance: financeService,
+      audit: auditService,
+    });
+
+    const employeeRepository = new SqliteEmployeeRepository(companyRepository);
+    const roleRepository = new SqliteRoleRepository(companyRepository);
+    const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
+    const invoiceRepository = new InvoiceRepository(sharedDatabase, db);
+    const invoiceDebtPort = createSqliteInvoiceDebtPort({
+      db: sharedDatabase,
+      repository: companyRepository,
+    });
+    const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
+    const paymentRepository = new PaymentRepositoryImpl(sharedDatabase);
+    const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
+    const authBootstrapService = new AuthBootstrapService(
+      new SqliteBootstrapPort(db, sharedDatabase),
+      auth,
+      appConfig.bootstrapSetupKey,
+    );
+    const permissionResolver = new SqlitePermissionResolver(sharedDatabase, authBootstrapService);
+    const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase));
+
+    // Issue #10 — Slice 3 RBAC. The role module is a small, deep module
+    // that wraps a Drizzle-backed RoleRepository. The repository is kept
+    // separate from the workforce role repository (which only knows about
+    // the role lookups employee creation needs) because the role module
+    // needs to return roles with their full permission set, not just an
+    // id/lookup. The two share the same underlying tables; they just
+    // expose different shapes.
+    const rbacRoleRepository = new SqliteRbacRoleRepository(db);
+    const roleModule = new RoleModule({ repository: rbacRoleRepository });
+
+    return {
+      auth,
+      accountService: new AccountService(accountRepository, auth),
+      authBootstrapService,
       companyService,
-      companyRepository,
-    ),
-    sessionService: new SessionService(auth, permissionResolver),
-    recoveryKeyService,
-    updateService: new UpdateService(),
-    updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase)),
-    rawDatabase: sharedDatabase,
-    employeeModule,
-    invoiceModule,
-    paymentModule,
-    roleModule,
-  } as const;
+      workforceService,
+      operationsService,
+      financeService,
+      inventoryService: new InventoryService(
+        inventoryRepository,
+        new InventoryAttachmentStorage(appConfig.attachmentsRootPath),
+        companyService,
+        companyRepository,
+      ),
+      sessionService: new SessionService(auth, permissionResolver),
+      recoveryKeyService,
+      updateService: new UpdateService(),
+      updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase)),
+      databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
+      employeeModule,
+      invoiceModule,
+      paymentModule,
+      roleModule,
+      close,
+    } as const;
+  } catch (error) {
+    close();
+    throw error;
+  }
 }

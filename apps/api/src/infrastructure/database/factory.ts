@@ -7,6 +7,13 @@ import { resolveDatabaseEnv } from "../config/database-env"
 import { createAlgeriaTimestamp } from "../../modules/company/company-time"
 
 /**
+ * Escape a string for interpolation inside single-quoted SQL (or PRAGMA)
+ * literals — `'` becomes `''` (SQL doubling). Shared by every site that
+ * builds `key = '...'` / `rekey = '...'` statements.
+ */
+export const escapeSqliteString = (value: string): string => value.replace(/'/g, "''")
+
+/**
  * Resolve the SQLite constructor to use.
  * When a database key is configured, use better-sqlite3-sqlcipher for encryption.
  * Falls back to plain better-sqlite3 when no key is needed.
@@ -26,17 +33,27 @@ function resolveDatabaseConstructor(key: string | null): typeof Database {
   }
 }
 
-/** Create a SQLite database connection. */
-export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDatabase {
-  const { databasePath } = resolveDatabaseEnv()
-  mkdirSync(dirname(databasePath), { recursive: true })
+/**
+ * Create a SQLite database connection.
+ *
+ * @param databasePath - Explicit file path (or `:memory:`). When omitted,
+ *                       the env-resolved path is used.
+ * @param dbKey - SQLCipher encryption key. When omitted, falls back to
+ *                `process.env.APP_DB_KEY` (then plain better-sqlite3).
+ */
+export function createDatabaseConnection(
+  databasePath?: string,
+  dbKey?: string | null,
+): BetterSqliteDatabase {
+  const resolvedPath = databasePath ?? resolveDatabaseEnv().databasePath
+  mkdirSync(dirname(resolvedPath), { recursive: true })
 
   const resolvedKey = dbKey ?? process.env.APP_DB_KEY ?? null
   const SqliteConstructor = resolveDatabaseConstructor(resolvedKey)
-  const sqlite = new SqliteConstructor(databasePath)
+  const sqlite = new SqliteConstructor(resolvedPath)
 
   if (resolvedKey) {
-    sqlite.pragma(`key = '${resolvedKey.replace(/'/g, "''")}'`)
+    sqlite.pragma(`key = '${escapeSqliteString(resolvedKey)}'`)
     sqlite.pragma("cipher_compatibility = 4")
   }
 
@@ -113,14 +130,4 @@ export function createDatabaseConnection(dbKey?: string | null): BetterSqliteDat
   } as typeof sqlite.prepare
 
   return sqlite as unknown as BetterSqliteDatabase
-}
-
-/**
- * Change the SQLCipher encryption key on an open database connection.
- * This re-encrypts the database in place via PRAGMA rekey.
- *
- * @throws Error if better-sqlite3-sqlcipher is unavailable.
- */
-export function changeDatabaseKey(sqlite: BetterSqliteDatabase, newKey: string): void {
-  sqlite.pragma(`rekey = '${newKey.replace(/'/g, "''")}'`)
 }
