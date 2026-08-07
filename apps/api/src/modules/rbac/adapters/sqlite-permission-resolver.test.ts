@@ -69,18 +69,34 @@ describe("SqlitePermissionResolver", () => {
     expect(perms).toEqual(["employees:create", "employees:read"]);
   });
 
-  it("passes through stale/unknown permission strings unvalidated (#210 pass-through pinned)", async () => {
-    // #210 contract point: a stale `role_permission` row for a removed
-    // permission is currently passed through as-is (no isPermission()
-    // filter). Pin the pass-through semantics so a future filter change is
-    // deliberate — and so a removed permission cannot silently vanish from
-    // session payloads without a review.
-    // will-change: #210 (if the resolver gains an isPermission() filter,
-    // this expectation flips to []).
-    db.all.mockReturnValue([{ permission: "employees:removed" }]);
+  it("filters stale, legacy and malformed rows through the isPermission guard (#266)", async () => {
+    // #266 decision: the resolver now runs every row through isPermission(),
+    // matching the role repository's read path. A stale row for a removed
+    // permission (employees:removed), a legacy dot-form row
+    // (employees.create), or a multi-colon row (employees:create:extra)
+    // must not leak into the resolved Permission[]. This deliberately flips
+    // the #210 pass-through pin, which anticipated this exact change.
+    db.all.mockReturnValue([
+      { permission: "employees:removed" },
+      { permission: "employees.create" },
+      { permission: "employees:create:extra" },
+      { permission: "employees:create" },
+    ]);
 
     const perms = await resolver.getPermissionsForUserId("user-1");
-    expect(perms).toEqual(["employees:removed"]);
+    expect(perms).toEqual(["employees:create"]);
+  });
+
+  it("still deduplicates canonical permissions while filtering (#266)", async () => {
+    db.all.mockReturnValue([
+      { permission: "employees:create" },
+      { permission: "employees:create" },
+      { permission: "employees.read" }, // legacy dot form — dropped
+      { permission: "employees:read" },
+    ]);
+
+    const perms = await resolver.getPermissionsForUserId("user-1");
+    expect(perms).toEqual(["employees:create", "employees:read"]);
   });
 
   it("returns a fresh copy of ALL_PERMISSIONS — callers cannot corrupt the shared constant", async () => {

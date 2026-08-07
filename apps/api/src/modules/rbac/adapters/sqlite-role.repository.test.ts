@@ -146,6 +146,28 @@ describe("SqliteRoleRepository", () => {
       expect(role!.permissions).toEqual(["employees:read"]);
     });
 
+    it("deduplicates repeated (role, permission) rows, preserving first-seen order", async () => {
+      // role_permission has a surrogate id PK with no (role_id, permission)
+      // uniqueness constraint, so duplicate rows can exist at rest. The
+      // repository must collapse them while keeping the ORDER BY permission
+      // order deterministic.
+      db.all.mockReturnValue([
+        roleRow({ id: "role-1", key: "admin", permission: "employees:read" }),
+        roleRow({ id: "role-1", key: "admin", permission: "employees:read" }), // dirty duplicate
+        roleRow({ id: "role-1", key: "admin", permission: "employees:create" }),
+        roleRow({ id: "role-1", key: "admin", permission: "employees:create" }), // dirty duplicate
+        roleRow({ id: "role-2", key: "manager", permission: "employees:read" }),
+      ]);
+
+      const roles = await repository.findAll();
+
+      expect(roles).toHaveLength(2);
+      const admin = roles.find((r) => r.key === "admin")!;
+      const manager = roles.find((r) => r.key === "manager")!;
+      expect(admin.permissions).toEqual(["employees:read", "employees:create"]);
+      expect(manager.permissions).toEqual(["employees:read"]);
+    });
+
     it("skips legacy dot-separated permission strings (isPermission guard)", async () => {
       db.all.mockReturnValue([
         roleRow({ permission: "employees.create" }), // legacy dot form — must be skipped
