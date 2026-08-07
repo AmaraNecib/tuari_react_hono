@@ -87,8 +87,10 @@ export function HomeViewSignedInShell({
   const [searchQuery, setSearchQuery] = useState("")
 
   // Debounce the query so the fuzzy search (fuse.search) only runs after
-  // the user pauses typing (~175ms), not on every keystroke (issue #280).
-  const debouncedSearchQuery = useDebouncedValue(searchQuery, 175)
+  // the user pauses typing (~175ms). The searchOpen reset key drops any stale
+  // debounced value synchronously when the dialog (re)opens — a rapid
+  // close/reopen can never surface the previous query's results (issue #280).
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 175, searchOpen)
 
   const openSearch = () => {
     setSearchQuery("")
@@ -115,12 +117,12 @@ export function HomeViewSignedInShell({
   const inventoryQuery = useInventoryItemDefinitionsQuery({ enabled: searchOpen })
   const invoicesQuery = useInventoryInvoiceGroupsQuery({ enabled: searchOpen })
 
-  // Build the unified search index lazily — the corpus and the Fuse index
-  // only exist while the dialog is open. While closed, all seven queries are
-  // disabled and no Fuse instance is constructed (issue #280).
-  const { searchResults } = useMemo(() => {
+  // Build the unified search corpus + Fuse index lazily — they only exist
+  // while the dialog is open and rebuild only when the query DATA changes,
+  // never on keystrokes (the live query is kept out of these deps; issue #280).
+  const { allSearchItems, fuse } = useMemo(() => {
     if (!searchOpen) {
-      return { allSearchItems: [] as SearchItem[], fuse: null as Fuse<SearchItem> | null, searchResults: [] as SearchItem[] }
+      return { allSearchItems: [] as SearchItem[], fuse: null as Fuse<SearchItem> | null }
     }
 
     // ── Each page is a category with sub-actions ──
@@ -289,17 +291,22 @@ export function HomeViewSignedInShell({
       ignoreLocation: true,
     })
 
-    // Filter search results using fuzzy matching — only the debounced query
-    // reaches the expensive fuse.search (issue #280). Clearing the input
-    // restores the categories immediately (checked against the live query),
-    // while a fresh keystroke shows categories until the debounce settles.
-    const searchResults =
-      !searchQuery.trim() || !debouncedSearchQuery.trim()
-        ? allSearchItems.filter((item) => item.children && item.children.length > 0)
-        : fuse.search(debouncedSearchQuery).slice(0, 20).map((r) => r.item)
+    return { allSearchItems, fuse }
+  }, [searchOpen, t, employeesQuery.data, projectsQuery.data, warehousesQuery.data, debtAccountsQuery.data, externalsQuery.data, inventoryQuery.data, invoicesQuery.data])
 
-    return { allSearchItems, fuse, searchResults }
-  }, [searchOpen, t, searchQuery, debouncedSearchQuery, employeesQuery.data, projectsQuery.data, warehousesQuery.data, debtAccountsQuery.data, externalsQuery.data, inventoryQuery.data, invoicesQuery.data])
+  // Filter search results using fuzzy matching — only the debounced query
+  // reaches the expensive fuse.search. Clearing the input restores the
+  // categories immediately (checked against the live query), while a fresh
+  // keystroke shows categories until the debounce settles.
+  const searchResults = useMemo(() => {
+    if (!searchOpen || !fuse) {
+      return []
+    }
+    if (!searchQuery.trim() || !debouncedSearchQuery.trim()) {
+      return allSearchItems.filter((item) => item.children && item.children.length > 0)
+    }
+    return fuse.search(debouncedSearchQuery).slice(0, 20).map((r) => r.item)
+  }, [searchOpen, searchQuery, debouncedSearchQuery, fuse, allSearchItems])
 
   const tourSteps = [
     {

@@ -99,4 +99,28 @@ describe("useDebouncedValue", () => {
 
     expect(result.current).toBeNull()
   })
+
+  it("flushes the current value synchronously when the reset key changes", () => {
+    const { result, rerender } = renderHook(
+      ({ value, open }) => useDebouncedValue(value, 175, open),
+      { initialProps: { value: "مبنى", open: false } },
+    )
+
+    // Settle the old query.
+    act(() => {
+      vi.advanceTimersByTime(175)
+    })
+    expect(result.current).toBe("مبنى")
+
+    // Rapid reopen: the reset signal flips and the stale value is dropped
+    // immediately — no 175ms window where the old query can surface again.
+    rerender({ value: "", open: true })
+    expect(result.current).toBe("")
+
+    // No pending timer resurrects the old value.
+    act(() => {
+      vi.advanceTimersByTime(175)
+    })
+    expect(result.current).toBe("")
+  })
 })

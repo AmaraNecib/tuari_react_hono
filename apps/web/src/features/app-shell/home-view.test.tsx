@@ -799,4 +799,39 @@ describe("global search (Ctrl+K) — debounced and lazy (issue #280)", () => {
       vi.useRealTimers()
     }
   })
+
+  it("rapid close/reopen never leaks the previous query's results", () => {
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+    fireEvent.click(screen.getByRole("button", { name: "بحث" }))
+
+    vi.useFakeTimers()
+    try {
+      // Settle a search for the project.
+      const input = screen.getByPlaceholderText("بحث...")
+      fireEvent.change(input, { target: { value: "مبنى" } })
+      act(() => {
+        vi.advanceTimersByTime(175)
+      })
+      expect(screen.getByText("مبنى الإدارة الجديد")).toBeTruthy()
+
+      // Close and reopen WITHOUT letting the debounce timer run out — the
+      // reset key must drop the stale debounced value synchronously.
+      fireEvent.keyDown(input, { key: "Escape" })
+      fireEvent.click(screen.getByRole("button", { name: "بحث" }))
+
+      // Typing a NEW query immediately must not show the old query's results
+      // beneath the new input.
+      fireEvent.change(screen.getByPlaceholderText("بحث..."), {
+        target: { value: "مستودع" },
+      })
+      expect(screen.queryByText("مبنى الإدارة الجديد")).toBeNull()
+
+      act(() => {
+        vi.advanceTimersByTime(175)
+      })
+      expect(screen.getByText("المستودع الرئيسي")).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
