@@ -274,12 +274,9 @@ export function useCompositeWorkspaceQuery({ enabled = true }: { enabled?: boole
   })
 }
 
-export function useDemoWorkspaceQuery() {
-  return useWorkspaceScopedQuery({
-    key: workspaceQueryKeys.workspaceSnapshot,
-    queryFn: () => rpcClient.workspaceSnapshot(),
-  })
-}
+// Legacy demo alias — the demo snapshot query is the same single-RPC query
+// the shell composite mounts (issue #276), so it stays one implementation.
+export const useDemoWorkspaceQuery = useCompositeWorkspaceQuery
 
 // Re-exported for consumers of the legacy `workspaceDomainQueryPrefix` /
 // `workspaceQueryPrefix` import paths (mock-dashboard seam, mutation
