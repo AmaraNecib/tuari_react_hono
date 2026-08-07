@@ -1,5 +1,57 @@
 # Testing Wisdom
 
+## Playwright toast assertions must gate on the save response (🟠 Major)
+
+On #254, a `~50%` E2E flake: after a password change, the follow-up sign-out
+sometimes left the app signed in despite a 200 `/api/auth/sign-out`. Root
+cause: the success-toast assertion used `.first()` to tolerate stacked toasts,
+which could match an EARLIER save's still-visible toast — so the test moved on
+(sign-out) while the CURRENT save's change-password was still in flight. When
+that save completed, its session re-establishment (better-auth's
+`revokeOtherSessions` deletes ALL sessions including the current one and
+creates a new one) re-signed the app in *after* the sign-out. The tell in the
+network log: a change-password POST arrives AFTER the sign-out POST.
+
+Fix pattern (`saveAccountAndExpectSuccess`):
+`page.waitForResponse(r => r.url().includes('/api/auth/change-password'))`
+set up BEFORE the save click, assert the response is 200, then assert the
+toast. The save is provably settled before the next step runs.
+
+**Always**: when an E2E asserts a toast as proof a mutation succeeded, gate the
+assertion on the mutation's HTTP response first. A `.first()`/substring toast
+match can silently pass on stale toasts.
+
+## Windows orphaned dev servers contaminate Playwright runs (🟠 Major)
+
+On #254, manual debugging APIs (`tsx watch src/index.ts` + a separate web
+dev server) left process TREES alive on Windows that Playwright's webServer
+teardown never killed. On the next `playwright test` run, the leftover
+listener answered the `/health` URL while Playwright's own API failed to bind
+(`EADDRINUSE` in the run log) — tests silently ran against the STALE server
+with its STALE DB (e.g. a bootstrapped manual DB made the fresh-DB bootstrap
+test see the sign-in screen). `kill <pnpm-parent>` alone doesn't work: `tsx
+watch` respawns its child. Also `reuseExistingServer: false` does NOT
+pre-check the port — if anything answers the URL, Playwright proceeds.
+
+Fix pattern: before every local playwright run, `taskkill /F /T` every PID
+listening on the config ports AND every `tsx watch`/`vite` process for the
+worktree, then verify the ports stay free (no respawn) and delete
+`apps/api/data/*.sqlite*`.
+
+**Always**: after any manual dev-server debugging, kill the full process tree
+(`taskkill /F /T`, `pkill -f tsx`), not just the PIDs you started.
+
+## Read-only better-sqlite3 hides WAL-mode data (🟡 Minor)
+
+Opening a live better-sqlite3 DB file `readonly: true` while the writer holds
+it can report 0 rows because the data lives in the un-checkpointed `-wal`.
+On #254 a passing bootstrap test left a "0 users" DB that the API served
+with `hasUsers: true` — the row was in the WAL. Checkpoint (or read with the
+writer stopped) before trusting a read.
+
+**Always**: when inspecting a live sqlite DB for evidence, close the writer
+first or `PRAGMA wal_checkpoint` before the read.
+
 ## ORPC wire validation rejects with ORPCError code BAD_REQUEST (🟡 Minor)
 
 Probed on #206: calling an ORPC procedure (via `createRouterClient`) with input that fails the contract schema rejects with an `ORPCError` — `code: "BAD_REQUEST"`, message `"Input validation failed"` (the server maps the internal `ValidationError` to this). A handler-side `throw new Error(...)` surfaces differently (plain Error), so `rejects.toMatchObject({ code: "BAD_REQUEST" })` is the precise way to assert the *wire gate* fired, not a handler crash.
