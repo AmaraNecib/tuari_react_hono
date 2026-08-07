@@ -16,7 +16,8 @@ import type { RpcContext } from "./context";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
 import { SqliteRoleRepository } from "../modules/workforce/adapters/role.repository";
-import { InMemoryRoleRepository, RoleModule } from "../modules/rbac/role.module";
+import { RoleModule } from "../modules/rbac/role.module";
+import { InMemoryRoleRepository } from "../modules/rbac/adapters/in-memory-role.repository";
 import { DEFAULT_ROLE_PERMISSIONS } from "../modules/rbac/role-seeds";
 
 function expectSuccess<T extends { success: boolean }>(result: T): Extract<T, { success: true }> {

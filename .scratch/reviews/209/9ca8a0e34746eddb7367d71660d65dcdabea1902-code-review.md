@@ -1,0 +1,78 @@
+# Issue #209 — Code-review evidence (pre-push self-review)
+
+- **Issue**: #209 (RBAC persistence follow-ups: align module layout with adapters/, drop raw-handle constructor)
+- **Tier**: High-assurance (RBAC/authz files)
+- **Base SHA**: `bb49ec29335adb1564ba69bc7f1d91a2e9f43b33` (origin/develop)
+- **Head SHA**: `c5ff4f474bf929d733fbdb342cd8596186e58210`
+- **Date**: session running Aug 2026
+
+## Method
+
+Two parallel reviewer sub-agents: **Standards** (documented repo standards +
+Fowler smell baseline) and **Spec** (issue #209 requirements), both against
+`git diff bb49ec2...HEAD` (3 commits: `2ff95b2`, `336549d`, `c5ff4f4`).
+
+## Standards axis
+
+No hard violations. The diff conforms to:
+- Ports & adapters layout (storage adapters under `<module>/adapters/`, deep
+  modules at root) — matches ARCHITECTURE.md and sibling modules.
+- DI from the composition root ("accept dependencies, don't create them"):
+  `SqlitePermissionResolver` no longer builds its own Drizzle from a raw
+  handle; `createDrizzleFromSqlite` / `BetterSqliteDatabase` imports removed.
+- Committed design doc (`.scratch/implementation/209-design.md`); test
+  evidence pinning SQL shape + edge cases — no shallow tests.
+
+### Notes (judgement calls, not violations)
+- **Process**: `.scratch/reviews/209/` evidence must be committed before push —
+  resolved in the evidence commit accompanying this file.
+- **Duplicated Code (pre-existing, pure move)**: `in-memory-role.repository.ts`
+  repeats the defensive-copy shape `{...role, permissions: [...role.permissions]}`
+  in 3 methods (same shape exists in workforce/operations doubles; tracked
+  context in issue #202). Not introduced by this change; a `copy()` helper is a
+  candidate follow-up — out of scope for a no-behavior-change refactor.
+- `RoleRow` duplicated in adapter + test — acceptable fixture isolation.
+
+## Spec axis
+
+Both issue requirements implemented and correct:
+1. **Adapter layout alignment** — `sqlite-role.repository.ts` moved to
+   `modules/rbac/adapters/` (rename-only, 5 imports re-relative'd); the
+   embedded `InMemoryRoleRepository` double extracted to
+   `adapters/in-memory-role.repository.ts`; all consumers repointed; no stale
+   imports. `role.module.ts` stays at root as the deep module (justified in the
+   design doc — the issue's parenthetical is addressed by extracting the
+   in-memory adapter rather than moving the module itself).
+2. **Drop raw-handle constructor** — narrowed to `(db: AppDrizzle, authBootstrap)`;
+   both construction sites updated (`dependencies.ts` passes the pre-built
+   `db`; the unit test passes the mock first).
+
+### Notes
+- New `sqlite-role.repository.test.ts` (245 lines) goes beyond the issue text
+  but is an intentional behavior pin for the previously-untested moved adapter,
+  documented in the design doc's "Planned tests".
+- No blockers; no behavior changes in production code paths.
+
+## Verification
+
+- `pnpm typecheck` ✅ · `pnpm lint` ✅ · `pnpm test:api` 695/695 ✅ ·
+  `pnpm test:web` 375/375 ✅ · `pnpm --filter @tuari/contracts build` ✅ ·
+  `pnpm --filter @tuari/api build` (dts) ✅
+
+## Post-evidence delta (Greptile round, final SHA `6ee1f3d`)
+
+Renamed from `c5ff4f4`. Delta addresses both Greptile P2 findings on PR
+#267: (1) deterministic `ORDER BY permission` on `findById`/`findByKey`
+(closes the pre-existing determinism gap the Standards axis noted around
+unpinned ordering); (2) `ROLE_FIELDS` projection dedup (a Duplicated-Code
+cleanup of the same class the review flagged). Neither changes the spec
+verdict — no behavior change beyond deterministic array order. Quick
+self-review of the delta: 27 insertions / 32 deletions, two files,
+assertions updated in lockstep; tsc + rbac suite green.
+
+## Post-evidence delta (wisdom-docs round, final SHA 9ca8a0e)
+
+Renamed from 6ee1f3d. Delta 6ee1f3d..9ca8a0e is **docs-only**
+(`.agents/wisdom/process.md` + `.agents/wisdom/architecture.md` captured
+#209 lessons). No code or test changes — review conclusions stand unchanged.
+

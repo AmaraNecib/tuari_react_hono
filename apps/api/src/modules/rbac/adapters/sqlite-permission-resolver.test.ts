@@ -27,7 +27,7 @@ describe("SqlitePermissionResolver", () => {
   beforeEach(() => {
     db = createMockDb();
     authBootstrap = createMockAuthBootstrap();
-    resolver = new SqlitePermissionResolver({} as { exec: (sql: string) => void }, authBootstrap, db as unknown as AppDrizzle);
+    resolver = new SqlitePermissionResolver(db as unknown as AppDrizzle, authBootstrap);
   });
 
   it("returns permissions for a user", async () => {

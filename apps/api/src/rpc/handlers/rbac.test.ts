@@ -6,7 +6,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { ORPCError } from "@orpc/server";
 
-import { RoleModule, InMemoryRoleRepository } from "../../modules/rbac/role.module";
+import { RoleModule } from "../../modules/rbac/role.module";
+import { InMemoryRoleRepository } from "../../modules/rbac/adapters/in-memory-role.repository";
 import { DEFAULT_ROLE_PERMISSIONS } from "../../modules/rbac/role-seeds";
 import { createRpcMiddleware, type RpcMiddleware } from "../rpc-middleware";
 import type { RpcContext } from "../context";

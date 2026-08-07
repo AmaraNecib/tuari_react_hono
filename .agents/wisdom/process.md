@@ -266,3 +266,20 @@ constraint)": verify the LAST review's findings are provably addressed on the
 current head, document the constraint on the PR, and rely on the local review
 pipeline (debate/test-audit/code-review evidence) + CI for the quality gate
 instead of blocking. Do not burn more time re-triggering.
+## Greptile reviews the whole touched file, not just the diff — pre-fix warts on file moves (🟡 Minor)
+
+On #209 (a pure file move of `sqlite-role.repository.ts` + constructor narrowing),
+Greptile still flagged two P2 findings **inside the moved file's pre-existing body**:
+(1) `findById`/`findByKey` lacked the `ORDER BY permission` that `findAll` had
+(nondeterministic permission array order vs a real driver), and (2) the 7-field
+select projection was copy-pasted across all three readers. Both were pre-existing,
+nothing the diff introduced — but a "no-behavior-change" refactor that relocates a
+file invites a fresh read of that file's quality. The fix round (ROLE_FIELDS const
++ orderBy + matching test assertions) was cheap and turned Greptile 5/5.
+
+**Always**: on a file move/rename, skim the relocated file for small quality warts
+(duplicated blocks, nondeterministic order, dead params) and fix them *in the move*
+— you'd fix them anyway after the first Greptile round, but doing it up front
+saves a full CI + Greptile cycle (~15 min). Note the convergence: the test-audit's
+F2 ("orderBy never asserted") and Greptile found the same ordering gap
+independently — the layered review works.
