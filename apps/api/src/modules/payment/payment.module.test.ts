@@ -340,28 +340,31 @@ describe("PaymentModule", () => {
       expect(second.items.map((p) => p.id)).toEqual(["pmt-3"]);
     });
 
-    it("accepts a cursor with a string sortValue", async () => {
+    it("accepts a cursor with a string sortValue and skips the cursor row", async () => {
       await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
 
       const result = await paymentModule.listPaged({
         limit: 10,
         cursor: encodeCursor("2026-06-25T10:00:00.000Z", "pmt-1"),
       });
 
-      expect(result.items).toBeDefined();
-      expect(result.totalCount).toBe(1);
+      // Decode succeeded: the cursor row is skipped, so only pmt-2 remains.
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-2"]);
+      expect(result.totalCount).toBe(2);
     });
 
-    it("accepts a cursor with a null sortValue", async () => {
+    it("accepts a cursor with a null sortValue and skips the cursor row", async () => {
       await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
 
       const result = await paymentModule.listPaged({
         limit: 10,
         cursor: encodeCursor(null, "pmt-1"),
       });
 
-      expect(result.items).toBeDefined();
-      expect(result.totalCount).toBe(1);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-2"]);
+      expect(result.totalCount).toBe(2);
     });
 
     it("falls back to the full list when the cursor sortValue has a bad type", async () => {
