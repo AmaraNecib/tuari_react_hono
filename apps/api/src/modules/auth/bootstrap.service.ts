@@ -33,7 +33,6 @@ type BootstrapResult =
 const BOOTSTRAP_CONFLICT_MESSAGE = "تم إعداد الحساب الأول بالفعل.";
 const BOOTSTRAP_SECRET_MESSAGE = "رمز الإعداد الأول غير صحيح.";
 const BOOTSTRAP_VALIDATION_MESSAGE = "تحقق من صحة بيانات الإعداد.";
-const BOOTSTRAP_NAME_INVISIBLE_MESSAGE = "الاسم يجب ألا يحتوي على أحرف غير مرئية.";
 
 /** Per-field Arabic messages for invalid bootstrap input (defense-in-depth). */
 // The numeric limits are derived from the shared contract schema so the copy
@@ -61,6 +60,19 @@ const BOOTSTRAP_FIELD_INVALID_MESSAGE: Record<BootstrapInputField, string> = {
   setupSecret: "رمز الإعداد الأول غير صالح.",
 };
 
+/**
+ * Messages for refine() rejections (`custom` zod issues). Today only `name`
+ * carries a refine (visible-character rule). The full `Record` forces a
+ * decision here when a refine is added to another field — same pattern as
+ * the required/invalid maps above, so the copy cannot drift.
+ */
+const BOOTSTRAP_FIELD_CUSTOM_MESSAGE: Record<BootstrapInputField, string> = {
+  name: "الاسم يجب ألا يحتوي على أحرف غير مرئية.",
+  phone: BOOTSTRAP_FIELD_INVALID_MESSAGE.phone,
+  password: BOOTSTRAP_FIELD_INVALID_MESSAGE.password,
+  setupSecret: BOOTSTRAP_FIELD_INVALID_MESSAGE.setupSecret,
+};
+
 /** Resolve the failing field name for a flat schema issue (root-level fallback). */
 function bootstrapIssueField(issue: ZodIssue): string {
   return String(issue.path[0] ?? "input");
@@ -82,11 +94,11 @@ function bootstrapFieldErrorMessage(issue: ZodIssue): string {
     return BOOTSTRAP_VALIDATION_MESSAGE;
   }
   // A refine() rejection surfaces as `custom` — today only the name's
-  // visible-character requirement (Cf-only names survive trim()). The
-  // too-long copy would be misleading for an invisible-name failure, so it
-  // gets its own message.
+  // visible-character requirement (Cf-only names survive trim()). The map
+  // above is keyed by field, so a future refine on another field gets its
+  // own message instead of a misleading fallback.
   if (issue.code === "custom") {
-    return BOOTSTRAP_NAME_INVISIBLE_MESSAGE;
+    return BOOTSTRAP_FIELD_CUSTOM_MESSAGE[field as BootstrapInputField];
   }
   const messages =
     issue.code === "too_small" || issue.code === "invalid_type"
