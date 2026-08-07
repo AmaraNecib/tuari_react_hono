@@ -61,3 +61,27 @@ Spec source: issue body + `.scratch/implementation/280-design.md`.
   constant, non-blocking).
 - Spec: 0 missing requirements, 0 scope creep, 0 mis-implementations.
 - **No actionable findings.** Safe to push.
+
+---
+
+## Post-evidence delta (16bc3d7 — Greptile fix round)
+
+Greptile (4/5) raised two valid findings on `home-view-signed-in-shell.tsx`;
+both were fixed and re-verified:
+
+1. **Stale debounce survives rapid close/reopen** — `useDebouncedValue` gained
+   an optional `resetKey`; the shell passes `searchOpen`, so the debounced
+   value is flushed synchronously whenever the dialog (re)opens. A rapid
+   reopen can no longer show the previous query's results beneath a newly
+   typed query. Regression test added: "rapid close/reopen never leaks the
+   previous query's results" (fake timers, types immediately after reopen).
+2. **Raw query rebuilt the Fuse index per keystroke** — the combined memo
+   included `searchQuery` in its deps, reconstructing corpus + index on every
+   keystroke. Split into (a) a corpus+index memo keyed only on
+   `searchOpen, t, <7 query data>` and (b) a cheap results memo keyed on
+   `searchOpen, searchQuery, debouncedSearchQuery, fuse, allSearchItems` —
+   index construction now only happens when data changes while open.
+
+Hook unit test added: "flushes the current value synchronously when the reset
+key changes". Full pipeline re-run: typecheck ✓, lint ✓, test:web 389 ✓,
+E2E search spec ✓.

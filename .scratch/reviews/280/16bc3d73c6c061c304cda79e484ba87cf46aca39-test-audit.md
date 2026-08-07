@@ -70,3 +70,22 @@ No blockers, no actionable findings. Edge-case and assertion quality are
 commensurate with a Standard-tier perf change. The only residuals are
 advisory (changing-delayMs test, X-button a11y) and are either constant-param
 or pre-existing/out-of-scope.
+
+---
+
+## Post-evidence delta (16bc3d7 — Greptile fix round)
+
+Two regression tests added for the Greptile findings:
+
+1. `use-debounced-value.test.ts` — "flushes the current value synchronously
+   when the reset key changes": settles a value, flips the reset key, asserts
+   the debounced value drops immediately AND no pending timer resurrects it
+   after the full delay.
+2. `home-view.test.tsx` — "rapid close/reopen never leaks the previous
+   query's results": settles a "مبنى" search, closes and reopens within the
+   debounce window (no timer advance between), types "مستودع" immediately and
+   asserts the old project result is absent while the new query settles, then
+   asserts the new warehouse result after 175ms. This closes the exact gap
+   Greptile flagged ("does not type immediately after a rapid close/reopen").
+
+Full web suite now 389 passed (was 387); E2E search spec still green.
