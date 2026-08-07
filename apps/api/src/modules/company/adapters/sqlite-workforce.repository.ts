@@ -1,5 +1,5 @@
 import type { WorkforceRepository } from "../workforce.repository";
-import type { SqliteCompanyRepository } from "../sqlite-company.repository";
+import type { SqliteCompanyRepository } from "./sqlite-company.repository";
 import type {
   EmployeeBatchCreateData, EmployeeBatchCreateResultRecord,
   EmployeeCreateData, EmployeeListFilters, EmployeeRecord,

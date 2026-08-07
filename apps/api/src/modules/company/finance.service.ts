@@ -312,7 +312,7 @@ export class FinanceService {
 
     const signedAmountDzd = normalizeSignedMoneyAmount(input.signedAmountDzd);
     const entryDate = normalizeAlgeriaTimestamp(input.entryDate);
-    assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate ?? null, "entryDate");
+    assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate, "entryDate");
     const nextBalance = account.currentBalance + signedAmountDzd;
     const nextStatus = getDebtAccountStatus(nextBalance);
 
@@ -376,7 +376,7 @@ export class FinanceService {
     const signedAmountDzd = -Math.abs(input.amountDzd);
     const entryDate = normalizeAlgeriaTimestamp(undefined);
     const latestEntry = this.repository.getLatestDebtEntry(account.id);
-    assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate ?? null, "entryDate");
+    assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate, "entryDate");
     const nextBalance = account.currentBalance + signedAmountDzd;
     const nextStatus = getDebtAccountStatus(nextBalance);
 
@@ -390,7 +390,7 @@ export class FinanceService {
           note: normalizeText(input.note),
           balanceAfterDzd: nextBalance,
           reasonCategory: "INVOICE_DRIVEN",
-          paymentMethod: input.paymentMethod ?? "CASH",
+          paymentMethod: input.paymentMethod,
         },
         audit,
       );
@@ -498,7 +498,7 @@ export class FinanceService {
 
     const entryDate = normalizeAlgeriaTimestamp(input.entryDate);
     const latestEntry = this.repository.getLatestDebtEntry(account.id);
-    assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate ?? null, "entryDate");
+    assertDebtEntryDateNotBackdated(entryDate, latestEntry?.entryDate, "entryDate");
     const settlementAmount = -account.currentBalance;
     const entry = this.mutation.withTransaction(() => {
       const createdEntry = this.repository.createDebtEntry(
@@ -635,11 +635,9 @@ export class FinanceService {
       );
 
       if (netAmount > 0) {
-        const liveBalance = this.repository
-          .listDebtEntries({ debtAccountId: payableAccount.id })
-          .filter((e) => e.status === "LIVE")
-          .reduce((sum, e) => sum + e.signedAmountDzd, 0);
-
+        // The payableLiveCount guard above guarantees the payable account had
+        // no other live entries before voiding, so the remainder entry restarts
+        // the running balance from zero: balanceAfterDzd === netAmount.
         this.repository.createDebtEntry(
           {
             debtAccountId: payableAccount.id,
@@ -647,17 +645,14 @@ export class FinanceService {
             signedAmountDzd: netAmount,
             entryDate,
             note: `رصيد متبقي بعد تجميد ${receivableEntry.id.slice(0, 8)}`,
-            balanceAfterDzd: liveBalance + netAmount,
+            balanceAfterDzd: netAmount,
             reasonCategory: "INVOICE_DRIVEN",
           },
           audit,
         );
       } else if (netAmount < 0) {
-        const liveBalance = this.repository
-          .listDebtEntries({ debtAccountId: receivableAccount.id })
-          .filter((e) => e.status === "LIVE")
-          .reduce((sum, e) => sum + e.signedAmountDzd, 0);
-
+        // Mirror of the payable side: the receivableLiveCount guard guarantees
+        // the receivable account has no other live entries here.
         this.repository.createDebtEntry(
           {
             debtAccountId: receivableAccount.id,
@@ -665,7 +660,7 @@ export class FinanceService {
             signedAmountDzd: Math.abs(netAmount),
             entryDate,
             note: `رصيد متبقي بعد تجميد ${payableEntry.id.slice(0, 8)}`,
-            balanceAfterDzd: liveBalance + Math.abs(netAmount),
+            balanceAfterDzd: Math.abs(netAmount),
             reasonCategory: "INVOICE_DRIVEN",
           },
           audit,
@@ -702,18 +697,6 @@ export class FinanceService {
         },
         audit,
       );
-
-      for (const accountId of [payableAccount.id, receivableAccount.id]) {
-        const sortedLive = this.repository
-          .listDebtEntries({ debtAccountId: accountId })
-          .filter((e) => e.status === "LIVE")
-          .sort((a, b) => a.entryDate.localeCompare(b.entryDate) || a.id.localeCompare(b.id));
-        let running = 0;
-        for (const entry of sortedLive) {
-          running += entry.signedAmountDzd;
-          this.repository.updateDebtEntryBalanceAfter(entry.id, running);
-        }
-      }
     });
 
     return successResult(

@@ -19,7 +19,7 @@
 
 import type { BetterSqliteDatabase } from "../types/sqlite";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
-import { SqliteCompanyRepository } from "../modules/company/sqlite-company.repository";
+import { SqliteCompanyRepository } from "../modules/company/adapters/sqlite-company.repository";
 import { SqliteWorkforceRepository } from "../modules/company/adapters/sqlite-workforce.repository";
 import { SqliteOperationsRepository } from "../modules/company/adapters/sqlite-operations.repository";
 import { SqliteFinanceRepository } from "../modules/company/adapters/sqlite-finance.repository";

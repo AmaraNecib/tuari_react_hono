@@ -1,5 +1,5 @@
 import type { AuditRepository } from "../audit.repository";
-import type { SqliteCompanyRepository } from "../sqlite-company.repository";
+import type { SqliteCompanyRepository } from "./sqlite-company.repository";
 import type { AuthUserDisplayRecord, InventoryItemDefinitionAuditRecord, UserProfileHistoryRecord } from "../company.types";
 
 export class SqliteAuditRepository implements AuditRepository {

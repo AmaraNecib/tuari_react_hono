@@ -27,6 +27,7 @@ export default defineConfig({
         "src/modules/account/**/*.ts",
         "src/modules/payment/**/*.ts",
         "src/modules/rbac/**/*.ts",
+        "src/modules/company/**/*.ts",
       ],
       exclude: [
         "**/*.test.ts",
