@@ -190,7 +190,11 @@ export class DrizzleAccountRepository implements AccountRepository {
         return result;
       } catch (error) {
         if (!nested) {
-          raw.exec("ROLLBACK");
+          try {
+            raw.exec("ROLLBACK");
+          } catch {
+            // Ignore ROLLBACK failures so the original error surfaces.
+          }
         }
         throw error;
       }

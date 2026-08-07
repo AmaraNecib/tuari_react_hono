@@ -379,5 +379,49 @@ describe("DrizzleAccountRepository", () => {
         .get("user-1") as { name: string };
       expect(name.name).toBe("عمارة");
     });
+
+    it("serializes overlapping transactions through the FIFO lock", async () => {
+      insertUser(rawDb, { id: "user-1", name: "عمارة", phoneNumber: "0612345678" });
+
+      let releaseFirst!: () => void;
+      const firstGate = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+
+      // First call opens a transaction and holds it open at the gate.
+      const first = repository.withTransaction(async (tx) => {
+        await tx.updateUserProfile({
+          id: "user-1",
+          name: "بلال",
+          updatedAt: new Date("2026-06-11T00:00:00.000Z"),
+        });
+        await firstGate;
+      });
+
+      // Second call must queue behind the first (its BEGIN must not run yet).
+      let secondRan = false;
+      const second = repository.withTransaction(async (tx) => {
+        secondRan = true;
+        await tx.updateUserProfile({
+          id: "user-1",
+          name: "خالد",
+          updatedAt: new Date("2026-06-12T00:00:00.000Z"),
+        });
+      });
+
+      // Give the microtask queue time to process; the lock blocks the second.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(secondRan).toBe(false);
+
+      releaseFirst();
+      await Promise.all([first, second]);
+      expect(secondRan).toBe(true);
+
+      // The second write landed after the first committed — no interleaving.
+      const row = rawDb
+        .prepare(`SELECT "name" FROM "user" WHERE "id" = ?`)
+        .get("user-1") as { name: string };
+      expect(row.name).toBe("خالد");
+    });
   });
 });
