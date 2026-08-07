@@ -9,7 +9,6 @@ import { inventoryContract } from "./inventory-contract"
 import { debtsContract } from "./debts-contract"
 import { systemContract } from "./system-contract"
 import { reportsContract } from "./reports-contract"
-import { recurringPatternsContract } from "./recurring-contract"
 import { invoiceContract } from "./invoice-contract"
 import { paymentContract } from "./payment-contract"
 import { updateContract } from "./update-contract"
@@ -25,7 +24,6 @@ export const appContract = {
   ...debtsContract,
   ...systemContract,
   ...reportsContract,
-  ...recurringPatternsContract,
   ...invoiceContract,
   ...paymentContract,
   ...updateContract,

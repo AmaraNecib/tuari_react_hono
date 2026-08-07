@@ -84,10 +84,5 @@ export function createRouter(dependencies: RouterDependencies) {
     ...createRbacHandlers(os, m, dependencies.roleModule),
   };
 
-  // The `recurringPatternsContract` procedures (recurringPatternsList /
-  // recurringPatternsGet) have no API handlers yet, so the handler map
-  // cannot be checked against the full contract router. Cast at this
-  // boundary until the recurring feature lands.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return os.router(allHandlers as any);
+  return os.router(allHandlers);
 }
