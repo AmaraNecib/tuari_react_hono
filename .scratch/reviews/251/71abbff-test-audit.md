@@ -1,7 +1,7 @@
 # Test Audit — Issue #251 (Coverage 100%: company/debt/finance, high-assurance)
 
 - Base: `fd94c413846934e8722aa098f130e3a5bf9db1c6`
-- Head: `3eac0f8` (post-evidence delta: test-audit fixes committed as f4cf712)
+- Head: `71abbff` (post-evidence delta: rebased onto origin/develop)
 - Three agents: edge case hunter, coverage analyst, quality reviewer.
 - Verified ground truth: `pnpm --filter @tuari/api test:coverage` → 100/100/100/100 across workforce/invoice/auth/company (880+ tests).
 

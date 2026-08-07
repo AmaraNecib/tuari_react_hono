@@ -1,7 +1,7 @@
 # Code Review — Issue #251 (Coverage 100%: company/debt/finance)
 
 - Base: `fd94c413846934e8722aa098f130e3a5bf9db1c6`
-- Head: `3eac0f8` (post-evidence delta: only .scratch evidence commit after review)
+- Head: `71abbff` (post-evidence delta: rebase + contracts dist rebuild)
 - Two axes: Standards + Spec (parallel reviewer sub-agents).
 
 ## Standards
