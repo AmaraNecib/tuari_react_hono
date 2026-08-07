@@ -24,6 +24,8 @@ export default defineConfig({
         "src/modules/workforce/**/*.ts",
         "src/modules/invoice/**/*.ts",
         "src/modules/auth/**/*.ts",
+        "src/modules/account/**/*.ts",
+        "src/modules/payment/**/*.ts",
       ],
       exclude: [
         "**/*.test.ts",
