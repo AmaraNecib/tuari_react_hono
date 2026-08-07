@@ -20,6 +20,16 @@ import { orpc } from "@/lib/orpc-client"
 export const workspaceDomainQueryPrefix = ["phase1", "workspace-domain"] as const
 
 /**
+ * Prefix of the workspace snapshot query namespace (`["phase1","workspace",<userId>]`).
+ *
+ * The single `workspaceSnapshot()` RPC backing the shell composite (and the
+ * demo snapshot query) mounts here. Kept OUT of the workspace-domain
+ * namespace so sign-out/reset `removeQueries({ queryKey: workspaceQueryPrefix })`
+ * keeps clearing it.
+ */
+export const workspaceQueryPrefix = ["phase1", "workspace"] as const
+
+/**
  * The cache key the session query mounts under. NOT `orpc.session.key()`:
  * the bare `key()` omits the `type: "query"` field, so it never matches the
  * mounted query — every cache read/invalidation of the session must use this.
@@ -60,6 +70,9 @@ export const workspaceQueryKeys = {
   employeeStateHistory: (userId: UserId = ANONYMOUS) => ["phase1", "workspace-domain", "employee-state-history", userId] as const,
   projectManagerOwnership: (userId: UserId = ANONYMOUS) => ["phase1", "workspace-domain", "project-manager-ownership", userId] as const,
   warehouseManagerOwnership: (userId: UserId = ANONYMOUS) => ["phase1", "workspace-domain", "warehouse-manager-ownership", userId] as const,
+  // The single workspaceSnapshot() RPC the shell composite mounts (issue #276).
+  // Deliberately NOT in the workspace-domain namespace — see workspaceQueryPrefix.
+  workspaceSnapshot: (userId: UserId = ANONYMOUS) => ["phase1", "workspace", userId] as const,
 
   // ── parameterized detail keys (invalidated directly at mutation sites) ──
   inventoryInvoiceGroup: (userId: UserId, invoiceId: string) => ["phase1", "workspace-domain", "inventory-invoice-groups", userId, invoiceId] as const,
@@ -90,13 +103,45 @@ export function getCachedSessionUserId(queryClient: Pick<QueryClient, "getQueryD
 }
 
 /**
+ * Domains whose data the single `workspaceSnapshot()` RPC returns.
+ *
+ * `invalidateWorkspaceDomains` refreshes the snapshot whenever a mutation
+ * touches one of these: the shell composite no longer mounts the per-domain
+ * queries — the snapshot is its only workspace data source. Feature-scoped
+ * keys (debtsSummary/debtsDetail/employeeDebtAccount, inventory keys,
+ * systemLog) are deliberately excluded so a debts-only mutation does not
+ * drag the whole snapshot through the wire again.
+ *
+ * NOTE: typed as `string` because the repo's `WorkspaceDomain` mapped type
+ * collapses to `never` (a pre-existing bug: optional tuple elements make
+ * `Parameters<F>["length"]` `0 | 1`, so `extends 1` is always false). The
+ * membership is pinned by the invalidateWorkspaceDomains unit tests.
+ */
+const SNAPSHOT_BACKED_DOMAINS: ReadonlySet<string> = new Set([
+  "roles",
+  "employees",
+  "projects",
+  "warehouses",
+  "externalCounterparties",
+  "managerAssignments",
+  "projectAssignments",
+  "warehouseAssignments",
+  "salaryPayments",
+  "employeeStateHistory",
+  "projectManagerOwnership",
+  "warehouseManagerOwnership",
+])
+
+/**
  * Type-checked invalidation for flat workspace domains.
  *
  * Maps a domains record to `invalidateQueries` calls against the resolved
  * userId; when the userId is unknown (session not yet cached) it invalidates
  * the whole workspace-domain prefix — a safe over-invalidation that can never
- * miss. Callers never construct key arrays by hand, so no string literal can
- * drift from the factory.
+ * miss. When a requested domain is backed by the single workspace snapshot
+ * RPC (issue #276), the snapshot key is invalidated in parallel so the shell
+ * composite refetches in one call. Callers never construct key arrays by
+ * hand, so no string literal can drift from the factory.
  */
 export async function invalidateWorkspaceDomains(
   queryClient: Pick<QueryClient, "invalidateQueries">,
@@ -107,20 +152,32 @@ export async function invalidateWorkspaceDomains(
     return
   }
 
+  const requested = Object.keys(domains) as WorkspaceDomain[]
+  const snapshotInvalidation = requested.some((domain) => SNAPSHOT_BACKED_DOMAINS.has(domain))
+
   if (userId === null) {
     await queryClient.invalidateQueries({ queryKey: workspaceDomainQueryPrefix })
+    if (snapshotInvalidation) {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+    }
     return
   }
 
-  await Promise.all(
-    (Object.keys(domains) as WorkspaceDomain[]).map((domain) =>
-      queryClient.invalidateQueries({
-        // `domain` is a flat key by construction (the record type only admits
-        // `WorkspaceDomain` entries), so a single-arg call is sound here.
-        queryKey: (workspaceQueryKeys[domain] as (userId: string) => readonly unknown[])(userId),
-      }),
-    ),
+  const invalidations = requested.map((domain) =>
+    queryClient.invalidateQueries({
+      // `domain` is a flat key by construction (the record type only admits
+      // `WorkspaceDomain` entries), so a single-arg call is sound here.
+      queryKey: (workspaceQueryKeys[domain] as (userId: string) => readonly unknown[])(userId),
+    }),
   )
+  if (snapshotInvalidation) {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: (workspaceQueryKeys.workspaceSnapshot as (userId: string) => readonly unknown[])(userId),
+      }),
+    )
+  }
+  await Promise.all(invalidations)
 }
 
 /**
