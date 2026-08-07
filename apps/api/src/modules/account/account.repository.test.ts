@@ -271,6 +271,30 @@ describe("DrizzleAccountRepository", () => {
       });
     });
 
+    it("updates only the timestamp when neither name nor phone is provided", async () => {
+      insertUser(rawDb, { id: "user-1", name: "عمارة", phoneNumber: "0612345678" });
+
+      const updated = await repository.withTransaction((tx) =>
+        tx.updateUserProfile({
+          id: "user-1",
+          updatedAt: new Date("2026-06-06T12:00:00.000Z"),
+        }),
+      );
+
+      expect(updated).toEqual({
+        id: "user-1",
+        name: "عمارة",
+        phone: "0612345678",
+      });
+
+      const row = rawDb
+        .prepare(`SELECT "name", "phoneNumber", "updated_at" FROM "user" WHERE "id" = ?`)
+        .get("user-1") as Record<string, unknown>;
+      expect(row.name).toBe("عمارة");
+      expect(row.phoneNumber).toBe("0612345678");
+      expect(row.updated_at).toBe("2026-06-06T12:00:00.000Z");
+    });
+
     it("throws when the target user does not exist", async () => {
       await expect(
         repository.withTransaction((tx) =>
@@ -378,6 +402,32 @@ describe("DrizzleAccountRepository", () => {
         .prepare(`SELECT "name" FROM "user" WHERE "id" = ?`)
         .get("user-1") as { name: string };
       expect(name.name).toBe("عمارة");
+    });
+
+    it("releases the FIFO lock after a failing transaction", async () => {
+      insertUser(rawDb, { id: "user-1", name: "عمارة", phoneNumber: "0612345678" });
+
+      // First call fails mid-transaction...
+      await expect(
+        repository.withTransaction(async (tx) => {
+          await tx.updateUserProfile({
+            id: "user-1",
+            name: "بلال",
+            updatedAt: new Date("2026-06-13T00:00:00.000Z"),
+          });
+          throw new Error("boom");
+        }),
+      ).rejects.toThrow("boom");
+
+      // ...the lock must be released so a later call does not deadlock.
+      const updated = await repository.withTransaction((tx) =>
+        tx.updateUserProfile({
+          id: "user-1",
+          name: "خالد",
+          updatedAt: new Date("2026-06-14T00:00:00.000Z"),
+        }),
+      );
+      expect(updated.name).toBe("خالد");
     });
 
     it("serializes overlapping transactions through the FIFO lock", async () => {

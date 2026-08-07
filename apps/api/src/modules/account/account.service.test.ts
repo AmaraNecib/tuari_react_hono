@@ -243,6 +243,107 @@ describe("AccountService", () => {
     })
   })
 
+  it("accepts a name of exactly 120 characters", async () => {
+    const updateUserProfile = vi.fn().mockResolvedValue({
+      id: "user-1",
+      name: "أ".repeat(120),
+      phone: "0612345678",
+    })
+    const repository: AccountRepository = {
+      withTransaction: vi.fn(async (callback) =>
+        callback({
+          createProfileHistory: vi.fn(),
+          findCredentialPasswordByUserId: vi.fn(),
+          findUserIdByPhoneNumber: vi.fn(),
+          updateUserProfile,
+        }),
+      ),
+    }
+
+    const service = new AccountService(repository, {
+      $context: Promise.resolve({
+        password: { verify: vi.fn() },
+      }),
+      api: {
+        getSession: vi.fn().mockResolvedValue({
+          user: {
+            id: "user-1",
+            name: "عمارة",
+            phoneNumber: "0612345678",
+          },
+        }),
+      },
+    })
+
+    const result = await service.updateCurrentProfile(new Headers(), {
+      name: "أ".repeat(120),
+    })
+    expect(result.user.name).toHaveLength(120)
+    expect(updateUserProfile).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejects an empty name even when a phone is provided", async () => {
+    const service = new AccountService(
+      { withTransaction: vi.fn() },
+      {
+        $context: Promise.resolve({
+          password: { verify: vi.fn() },
+        }),
+        api: { getSession: vi.fn() },
+      },
+    )
+
+    // An empty-string name passes the "neither given" check (phone is set),
+    // then fails the name-length rule.
+    await expect(
+      service.updateCurrentProfile(new Headers(), {
+        name: "",
+        phone: "0612345678",
+      }),
+    ).rejects.toMatchObject({
+      message: "يجب أن يكون الاسم بين حرف واحد و120 حرفًا.",
+      status: 400,
+    })
+  })
+
+  it("rejects a whitespace-only current password when changing the phone", async () => {
+    const repository: AccountRepository = {
+      withTransaction: vi.fn(async (callback) =>
+        callback({
+          createProfileHistory: vi.fn(),
+          findCredentialPasswordByUserId: vi.fn(),
+          findUserIdByPhoneNumber: vi.fn(),
+          updateUserProfile: vi.fn(),
+        }),
+      ),
+    }
+
+    const service = new AccountService(repository, {
+      $context: Promise.resolve({
+        password: { verify: vi.fn() },
+      }),
+      api: {
+        getSession: vi.fn().mockResolvedValue({
+          user: {
+            id: "user-1",
+            name: "عمارة",
+            phoneNumber: "0612345678",
+          },
+        }),
+      },
+    })
+
+    await expect(
+      service.updateCurrentProfile(new Headers(), {
+        phone: "0612345670",
+        currentPassword: "   ",
+      }),
+    ).rejects.toMatchObject({
+      message: "أدخل كلمة المرور الحالية لتغيير رقم الهاتف.",
+      status: 400,
+    })
+  })
+
   it("rejects names that trim to empty", async () => {
     const service = new AccountService(
       { withTransaction: vi.fn() },
@@ -303,6 +404,29 @@ describe("AccountService", () => {
     })
   })
 
+  it("rejects the update when the session user has no id", async () => {
+    const service = new AccountService(
+      { withTransaction: vi.fn() },
+      {
+        $context: Promise.resolve({
+          password: { verify: vi.fn() },
+        }),
+        api: {
+          getSession: vi.fn().mockResolvedValue({
+            user: { name: "عمارة", phoneNumber: "0612345678" },
+          }),
+        },
+      },
+    )
+
+    await expect(
+      service.updateCurrentProfile(new Headers(), { name: "بلال" }),
+    ).rejects.toMatchObject({
+      message: "يجب تسجيل الدخول أولًا.",
+      status: 401,
+    })
+  })
+
   it("rejects the update when the session user has no phone number", async () => {
     const service = new AccountService(
       { withTransaction: vi.fn() },
@@ -328,6 +452,7 @@ describe("AccountService", () => {
 
   it("updates the phone number when the current password verifies", async () => {
     const headers = new Headers()
+    const verify = vi.fn().mockResolvedValue(true)
     const updateUserProfile = vi.fn().mockResolvedValue({
       id: "user-1",
       name: "عمارة",
@@ -348,7 +473,7 @@ describe("AccountService", () => {
     const service = new AccountService(repository, {
       $context: Promise.resolve({
         password: {
-          verify: vi.fn().mockResolvedValue(true),
+          verify,
         },
       }),
       api: {
@@ -373,6 +498,10 @@ describe("AccountService", () => {
         name: "عمارة",
         phone: "0612345670",
       },
+    })
+    expect(verify).toHaveBeenCalledWith({
+      hash: "hashed-password",
+      password: "correct-password",
     })
     expect(updateUserProfile).toHaveBeenCalledWith(
       expect.objectContaining({ phone: "0612345670" }),

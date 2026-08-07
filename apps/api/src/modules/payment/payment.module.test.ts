@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { createInMemoryInvoiceRepository } from "../invoice/adapters/in-memory-invoice.repository";
 import { createInMemoryInvoiceDebtPort } from "../invoice/adapters/invoice-debt.port";
@@ -14,22 +14,6 @@ import {
   PaymentNotFoundError,
   PaymentHasAllocationsError,
 } from "./payment.types";
-
-function makeInvoiceInput(overrides: Partial<{
-  id: string;
-  supplierName: string;
-  totalAmount: number;
-  direction: string;
-}> = {}) {
-  return {
-    id: overrides.id ?? "inv-1",
-    supplierName: overrides.supplierName ?? "Acme Corp",
-    lineItems: [
-      { id: "li-1", description: "Cement", quantity: 10, unitPrice: overrides.totalAmount ? overrides.totalAmount / 10 : 500 },
-    ],
-    direction: (overrides.direction ?? "PURCHASE") as "PURCHASE" | "SALE",
-  };
-}
 
 function makePaymentInput(overrides: Partial<CreatePaymentInput> = {}): CreatePaymentInput {
   return {
@@ -382,6 +366,7 @@ describe("PaymentModule", () => {
 
     it("falls back to the full list when the cursor sortValue has a bad type", async () => {
       await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
 
       const result = await paymentModule.listPaged({
         limit: 10,
@@ -389,62 +374,73 @@ describe("PaymentModule", () => {
       });
 
       // Invalid cursor is treated as "no cursor": every payment is returned.
-      expect(result.totalCount).toBe(1);
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
     });
 
     it("falls back to the full list when the cursor decodes to null", async () => {
       await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
 
       const result = await paymentModule.listPaged({
         limit: 10,
         cursor: Buffer.from("null").toString("base64url"),
       });
 
-      expect(result.totalCount).toBe(1);
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
     });
 
     it("falls back to the full list when the cursor decodes to a non-object", async () => {
       await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
 
       const result = await paymentModule.listPaged({
         limit: 10,
         cursor: Buffer.from(JSON.stringify("garbage")).toString("base64url"),
       });
 
-      expect(result.totalCount).toBe(1);
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
     });
 
     it("falls back to the full list when the cursor is a JSON array without an id", async () => {
       await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
 
       const result = await paymentModule.listPaged({
         limit: 10,
         cursor: Buffer.from(JSON.stringify([])).toString("base64url"),
       });
 
-      expect(result.totalCount).toBe(1);
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
     });
 
     it("falls back to the full list when the cursor id is not a string", async () => {
       await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
 
       const result = await paymentModule.listPaged({
         limit: 10,
         cursor: encodeCursor(5, 42),
       });
 
-      expect(result.totalCount).toBe(1);
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
     });
 
     it("falls back to the full list when the cursor is not valid base64 JSON", async () => {
       await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
 
       const result = await paymentModule.listPaged({
         limit: 10,
         cursor: "%%%not-base64%%%",
       });
 
-      expect(result.totalCount).toBe(1);
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
     });
 
     it("applies filters through to the repository", async () => {
