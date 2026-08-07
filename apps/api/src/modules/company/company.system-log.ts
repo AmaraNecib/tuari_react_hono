@@ -108,22 +108,53 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
   )
   const projectsById = new Map(repository.listProjects().map((project) => [project.id, project]))
   const warehousesById = new Map(repository.listWarehouses().map((warehouse) => [warehouse.id, warehouse]))
-  const actorLabelCache = new Map<string, string | null>()
+  const actorLabelCache = new Map<string, string>()
+
+  // Single filter predicate shared by the group gate and the within-group
+  // matching set. Dates are compared by actual timestamp value so that
+  // non-ISO filter strings (e.g. date-only "2026-01-01") behave consistently.
+  const matchesFilters = (event: SystemLogEntryRecord): boolean => {
+    if (filters?.actionType && event.actionType !== filters.actionType) {
+      return false
+    }
+
+    if (filters?.actorUserId && event.actorUserId !== filters.actorUserId) {
+      return false
+    }
+
+    if (filters?.entityId && event.entityId !== filters.entityId) {
+      return false
+    }
+
+    if (filters?.entityType && event.entityType !== filters.entityType) {
+      return false
+    }
+
+    if (filters?.fromDate && compareTimestampsDesc(event.createdAt, filters.fromDate) > 0) {
+      return false
+    }
+
+    if (filters?.toDate && compareTimestampsDesc(event.createdAt, filters.toDate) < 0) {
+      return false
+    }
+
+    return true
+  }
 
   const resolveActorLabel = (actorUserId: string | null) => {
     if (!actorUserId) {
       return null
     }
 
-    if (actorLabelCache.has(actorUserId)) {
-      return actorLabelCache.get(actorUserId) ?? null
+    const cachedLabel = actorLabelCache.get(actorUserId)
+    if (cachedLabel !== undefined) {
+      return cachedLabel
     }
-
     const authUser = repository.getAuthUserById(actorUserId)
     const actorLabel = authUser?.name ?? actorUserId
 
-    actorLabelCache.set(actorUserId, actorLabel ?? null)
-    return actorLabel ?? null
+    actorLabelCache.set(actorUserId, actorLabel)
+    return actorLabel
   }
 
   const logEvents: Array<SystemLogEntryRecord> = []
@@ -319,8 +350,8 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
       actionType: "ACCOUNT_UPDATED",
       entityType: "ACCOUNT",
       entityId: entry.userId,
-      entityLabel: entry.name ?? currentAccountLabel ?? entry.phone ?? entry.userId,
-      summary: `تم تحديث بيانات حساب ${entry.name ?? currentAccountLabel ?? entry.userId}`,
+      entityLabel: entry.name ?? currentAccountLabel,
+      summary: `تم تحديث بيانات حساب ${entry.name ?? currentAccountLabel}`,
       detail: accountDetailParts.join(" • ") || null,
       createdAt: entry.updatedAt,
     })
@@ -342,7 +373,9 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
         item.itemType === "CONSUMABLE" ? "نوع العنصر مادة استهلاكية" : "نوع العنصر أصل",
         item.unit ? `الوحدة ${item.unit}` : null,
         item.description,
-      ].filter((value): value is string => Boolean(value && value.trim().length > 0)).join(" • ") || null,
+      ]
+        .filter((value): value is string => Boolean(value && value.trim().length > 0))
+        .join(" • "),
       createdAt: item.createdAt,
     })
   }
@@ -363,79 +396,21 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
       return groups
     }, new Map<string, { events: SystemLogEntryRecord[]; key: string }>()).values(),
   )
-    .filter(({ events }) =>
-      events.some((event) => {
-        if (filters?.actionType && event.actionType !== filters.actionType) {
-          return false
-        }
-
-        if (filters?.actorUserId && event.actorUserId !== filters.actorUserId) {
-          return false
-        }
-
-        if (filters?.entityId && event.entityId !== filters.entityId) {
-          return false
-        }
-
-        if (filters?.entityType && event.entityType !== filters.entityType) {
-          return false
-        }
-
-        if (filters?.fromDate && event.createdAt < filters.fromDate) {
-          return false
-        }
-
-        if (filters?.toDate && event.createdAt > filters.toDate) {
-          return false
-        }
-
-        return true
-      }),
-    )
+    // One shared predicate drives both the group-level gate and the within-group
+    // matching set, so a group that survives the gate always has a non-empty
+    // matching set below. (Historically the two blocks compared dates with
+    // different operators, which could diverge for non-ISO date filters.)
+    .filter(({ events }) => events.some(matchesFilters))
     .map(({ events, key }) => {
       const sortedEvents = [...events].sort((left, right) => compareTimestampsDesc(left.createdAt, right.createdAt))
-      const matchingEvents = sortedEvents.filter((event) => {
-        if (filters?.actionType && event.actionType !== filters.actionType) {
-          return false
-        }
-
-        if (filters?.actorUserId && event.actorUserId !== filters.actorUserId) {
-          return false
-        }
-
-        if (filters?.entityId && event.entityId !== filters.entityId) {
-          return false
-        }
-
-        if (filters?.entityType && event.entityType !== filters.entityType) {
-          return false
-        }
-
-        if (filters?.fromDate && compareTimestampsDesc(event.createdAt, filters.fromDate) > 0) {
-          return false
-        }
-
-        if (filters?.toDate && compareTimestampsDesc(event.createdAt, filters.toDate) < 0) {
-          return false
-        }
-
-        return true
-      })
+      const matchingEvents = sortedEvents.filter(matchesFilters)
       const primaryEvent = (
         matchingEvents.find((event) => event.actionType === "SALARY_PAYMENT_RECORDED") ??
         matchingEvents.find((event) => event.actionType === "DEBT_SETTLED") ??
         matchingEvents.find((event) => event.actionType === "DEBT_ENTRY_RECORDED") ??
-        matchingEvents.find((event) => event.actionType === "DEBT_ACCOUNT_CREATED") ??
         matchingEvents.find((event) => event.actionType === "PROJECT_MANAGER_CHANGED") ??
         matchingEvents.find((event) => event.actionType === "WAREHOUSE_MANAGER_CHANGED") ??
-        matchingEvents[0] ??
-        sortedEvents.find((event) => event.actionType === "SALARY_PAYMENT_RECORDED") ??
-        sortedEvents.find((event) => event.actionType === "DEBT_SETTLED") ??
-        sortedEvents.find((event) => event.actionType === "DEBT_ENTRY_RECORDED") ??
-        sortedEvents.find((event) => event.actionType === "DEBT_ACCOUNT_CREATED") ??
-        sortedEvents.find((event) => event.actionType === "PROJECT_MANAGER_CHANGED") ??
-        sortedEvents.find((event) => event.actionType === "WAREHOUSE_MANAGER_CHANGED") ??
-        sortedEvents[0]
+        matchingEvents[0]
       )!
 
       const detailLines = sortedEvents

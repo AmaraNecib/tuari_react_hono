@@ -120,7 +120,7 @@ export function normalizeMutationAuditContext(auditContext?: MutationAuditContex
   }
 }
 
-export function assertDebtEntryDateNotBackdated(entryDate: string, latestEntryDate: string | null, field: string) {
+export function assertDebtEntryDateNotBackdated(entryDate: string, latestEntryDate: string | null | undefined, field: string) {
   if (latestEntryDate && Date.parse(entryDate) < Date.parse(latestEntryDate)) {
     throw new CompanyError("BUSINESS_RULE", "لا يمكن تسجيل قيد بتاريخ أقدم من آخر حركة موجودة على الحساب.", [
       { field, message: "لا يمكن تسجيل قيد بتاريخ أقدم من آخر حركة موجودة على الحساب." },

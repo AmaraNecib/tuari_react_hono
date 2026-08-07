@@ -1,5 +1,5 @@
 import type { FinanceRepository } from "../finance.repository";
-import type { SqliteCompanyRepository } from "../sqlite-company.repository";
+import type { SqliteCompanyRepository } from "./sqlite-company.repository";
 import type {
   DebtAccountCreateData, DebtAccountListFilters, DebtAccountRecord,
   DebtAccountUpdateData, DebtEntryCreateData, DebtEntryListFilters,

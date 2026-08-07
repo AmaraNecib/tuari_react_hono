@@ -1,5 +1,5 @@
 import type { OperationsRepository } from "../operations.repository";
-import type { SqliteCompanyRepository } from "../sqlite-company.repository";
+import type { SqliteCompanyRepository } from "./sqlite-company.repository";
 import type {
   MutationAuditContext,
   ProjectAssignmentCreateData, ProjectAssignmentEndData,

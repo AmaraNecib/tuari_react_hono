@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 
 import { schemaStatements as fullSchema } from "../../infrastructure/database/schema-definitions";
-import { SqliteCompanyRepository } from "./sqlite-company.repository";
+import { SqliteCompanyRepository } from "./adapters/sqlite-company.repository";
 
 function createTestDb(): Database.Database {
   const db = new Database(":memory:");

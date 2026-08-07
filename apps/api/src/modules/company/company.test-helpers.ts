@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 
 import { SqliteCompanyRepository } from "./company.repository";
 import { CompanyService } from "./company.service";
-import { SYSTEM_ROLE_KEYS } from "./company.types";
+import { SYSTEM_ROLE_KEYS, type MutationAuditContext } from "./company.types";
 
 const schemaStatements = [
   `CREATE TABLE "user" (
@@ -256,6 +256,38 @@ const schemaStatements = [
   `CREATE UNIQUE INDEX "debt_account_external_counterparty_direction_unique" ON "debt_account" ("external_counterparty_id", "direction") WHERE "external_counterparty_id" IS NOT NULL`,
   `CREATE INDEX "debt_entry_debt_account_id_idx" ON "debt_entry" ("debt_account_id", "entry_date")`,
 ];
+
+/**
+ * Harness lifecycle tracker shared by the company test suites: keeps every
+ * in-memory sqlite harness alive for the duration of a describe block and
+ * closes them all in afterEach so Windows never sees a busy DB file.
+ */
+export function createCompanyHarnessTracker() {
+  const harnesses: Array<ReturnType<typeof createInMemoryCompanyHarness>> = [];
+
+  const createHarness = () => {
+    const harness = createInMemoryCompanyHarness();
+    harnesses.push(harness);
+    return harness;
+  };
+
+  const closeAll = () => {
+    while (harnesses.length > 0) {
+      harnesses.pop()?.close();
+    }
+  };
+
+  return { createHarness, closeAll };
+}
+
+/** Default mutation audit context for tests. */
+export function createAuditContext(overrides?: Partial<MutationAuditContext>) {
+  return {
+    actorLabel: overrides?.actorLabel ?? "مدير التشغيل",
+    actorUserId: overrides?.actorUserId ?? "admin-user-1",
+    transactionId: overrides?.transactionId ?? crypto.randomUUID(),
+  };
+}
 
 export function createInMemoryCompanyHarness() {
   const database = new Database(":memory:");
