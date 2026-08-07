@@ -855,9 +855,6 @@ export const ar = {
       assets: "أصول",
       overdue: "متأخرة",
     },
-    recurringPatterns: {
-      empty: "لا توجد أنماط متكررة",
-    },
     debtsHub: {
       emptyAll: "لا توجد حسابات ديون بعد.",
       emptyFiltered: "لا توجد نتائج للفلتر المحدد.",
