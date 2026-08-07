@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type {
   AppError,
   InventoryAssetDetail,
@@ -17,24 +17,18 @@ import type {
 } from "@tuari/contracts"
 
 import { AppMutationError } from "@/features/app-shell/mock-dashboard"
+import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
+import {
+  getCachedSessionUserId,
+  invalidateUserScopedQuery,
+  workspaceQueryKeys,
+} from "@/features/app-shell/workspace-keys"
 import { desktopApiFetch } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { createRpcHeaders, resolveRpcCredentials, rpcClient } from "@/lib/orpc-client"
 import { buildErrorMessage } from "@/lib/rpc-error-handling"
 import { resolveApiUrl } from "@/lib/runtime-config"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
-
-const inventoryKeys = {
-  itemDefinitions: ["inventory", "item-definitions"] as const,
-  invoiceGroups: ["inventory", "invoice-groups"] as const,
-  invoiceGroup: (invoiceId: string) => ["inventory", "invoice-groups", invoiceId] as const,
-  warehouses: ["inventory", "warehouses"] as const,
-  projects: ["inventory", "projects"] as const,
-  counterparties: ["inventory", "counterparties"] as const,
-  asset: (assetId: string) => ["inventory", "asset", assetId] as const,
-  locationContents: (input: { warehouseId?: string; projectId?: string }) => ["inventory", "location-contents", input] as const,
-  outboundTransfers: ["inventory", "outbound-transfers"] as const,
-}
 
 function requireEntitySuccess<T>(result: { success: boolean; message?: string; item?: T; error?: { message: string; code?: AppError["code"]; fieldErrors?: Array<{ field: string; message: string }> } }) {
   if (!result.success || !result.item) {
@@ -50,8 +44,8 @@ function requireEntitySuccess<T>(result: { success: boolean; message?: string; i
 
 /** Fetches item definitions for the inventory. */
 export function useInventoryItemDefinitionsQuery() {
-  return useQuery({
-    queryKey: inventoryKeys.itemDefinitions,
+  return useWorkspaceScopedQuery({
+    key: workspaceQueryKeys.inventoryItems,
     queryFn: async (): Promise<{ items: InventoryItemDefinition[] }> => rpcClient.inventoryItemDefinitionsList(undefined),
   })
 }
@@ -60,8 +54,8 @@ export function useInventoryItemDefinitionsQuery() {
  * useInventoryInvoiceGroupsQuery() component.
  */
 export function useInventoryInvoiceGroupsQuery() {
-  return useQuery({
-    queryKey: inventoryKeys.invoiceGroups,
+  return useWorkspaceScopedQuery({
+    key: workspaceQueryKeys.inventoryInvoices,
     queryFn: async (): Promise<{ items: InventoryInvoiceGroup[] }> => rpcClient.inventoryInvoiceGroupsList(undefined),
 /**
  * useInventoryInvoiceGroupQuery(invoiceId component.
@@ -71,8 +65,8 @@ export function useInventoryInvoiceGroupsQuery() {
 
 /** useInventoryInvoiceGroupQuery. */
 export function useInventoryInvoiceGroupQuery(invoiceId: string | undefined) {
-  return useQuery({
-    queryKey: inventoryKeys.invoiceGroup(invoiceId ?? "missing"),
+  return useWorkspaceScopedQuery({
+    key: (userId) => workspaceQueryKeys.inventoryInvoiceGroup(userId, invoiceId ?? "missing"),
     enabled: Boolean(invoiceId),
     queryFn: async (): Promise<InventoryInvoiceGroupDetail> => {
 /**
@@ -86,8 +80,8 @@ export function useInventoryInvoiceGroupQuery(invoiceId: string | undefined) {
 
 /** useInventoryLocationContentsQuery. */
 export function useInventoryLocationContentsQuery(input: { warehouseId?: string; projectId?: string }) {
-  return useQuery({
-    queryKey: inventoryKeys.locationContents(input),
+  return useWorkspaceScopedQuery({
+    key: (userId) => workspaceQueryKeys.inventoryLocationContents(userId, input),
     enabled: Boolean(input.warehouseId || input.projectId),
     queryFn: async (): Promise<InventoryLocationContents> => {
 /**
@@ -106,8 +100,8 @@ export function useInventoryLocationContentsQuery(input: { warehouseId?: string;
  * useInventoryWarehousesQuery(enabled = true) component.
  */
 export function useInventoryAssetQuery(assetId: string | undefined) {
-  return useQuery({
-    queryKey: inventoryKeys.asset(assetId ?? "missing"),
+  return useWorkspaceScopedQuery({
+    key: (userId) => workspaceQueryKeys.inventoryAsset(userId, assetId ?? "missing"),
     enabled: Boolean(assetId),
     queryFn: async (): Promise<InventoryAssetDetail> => {
       const result = await rpcClient.inventoryAssetsGet({ id: assetId! })
@@ -121,8 +115,8 @@ export function useInventoryAssetQuery(assetId: string | undefined) {
 
 /** Fetches warehouses for the inventory. */
 export function useInventoryWarehousesQuery(enabled = true) {
-  return useQuery({
-    queryKey: inventoryKeys.warehouses,
+  return useWorkspaceScopedQuery({
+    key: workspaceQueryKeys.warehouses,
     enabled,
     queryFn: async (): Promise<{ items: Warehouse[] }> => rpcClient.warehousesList(undefined),
   })
@@ -133,8 +127,8 @@ export function useInventoryWarehousesQuery(enabled = true) {
 
 /** Fetches projects for the inventory. */
 export function useInventoryProjectsQuery(enabled = true) {
-  return useQuery({
-    queryKey: inventoryKeys.projects,
+  return useWorkspaceScopedQuery({
+    key: workspaceQueryKeys.projects,
     enabled,
     queryFn: async (): Promise<{ items: Project[] }> => rpcClient.projectsList(undefined),
   })
@@ -142,8 +136,8 @@ export function useInventoryProjectsQuery(enabled = true) {
 
 /** Fetches external counterparties. */
 export function useInventoryExternalCounterpartiesQuery() {
-  return useQuery({
-    queryKey: inventoryKeys.counterparties,
+  return useWorkspaceScopedQuery({
+    key: workspaceQueryKeys.externalCounterparties,
 /**
  * useCreateInventoryInvoiceGroupMutation() component.
  */
@@ -159,7 +153,7 @@ export function useCreateInventoryItemDefinitionMutation() {
     mutationKey: ["inventory", "item-definitions", "create"],
     mutationFn: async (input: InventoryItemDefinitionCreateInput) => requireEntitySuccess(await rpcClient.inventoryItemDefinitionsCreate(input)),
     onSuccess: async ({ message }) => {
-      await queryClient.invalidateQueries({ queryKey: inventoryKeys.itemDefinitions })
+      await invalidateUserScopedQuery(queryClient, getCachedSessionUserId(queryClient), workspaceQueryKeys.inventoryItems)
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -179,8 +173,9 @@ export function useCreateInventoryInvoiceGroupMutation() {
     mutationKey: ["inventory", "invoice-groups", "create"],
     mutationFn: async (input: InventoryInvoiceGroupCreateInput) => requireEntitySuccess(await rpcClient.inventoryInvoiceGroupsCreate(input)),
     onSuccess: async ({ item, message }) => {
-      await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroups })
-      await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroup(item.group.id) })
+      const userId = getCachedSessionUserId(queryClient)
+      await invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryInvoices)
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryInvoiceGroup(uid, item.group.id))
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -200,11 +195,12 @@ export function useTransferInventoryAssetMutation() {
     mutationKey: ["inventory", "assets", "transfer"],
     mutationFn: async (input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }) => requireEntitySuccess(await rpcClient.inventoryAssetsTransfer(input)),
     onSuccess: async ({ item, message }) => {
-      await queryClient.invalidateQueries({ queryKey: inventoryKeys.asset(item.asset.id) })
-      await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroup(item.invoiceGroup.id) })
+      const userId = getCachedSessionUserId(queryClient)
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAsset(uid, item.asset.id))
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryInvoiceGroup(uid, item.invoiceGroup.id))
       // Invalidate the current location where asset was transferred
       if (item.asset.currentWarehouseId || item.asset.currentProjectId) {
-        await queryClient.invalidateQueries({ queryKey: inventoryKeys.locationContents({ warehouseId: item.asset.currentWarehouseId ?? undefined, projectId: item.asset.currentProjectId ?? undefined }) })
+        await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryLocationContents(uid, { warehouseId: item.asset.currentWarehouseId ?? undefined, projectId: item.asset.currentProjectId ?? undefined }))
       }
       showSuccessToast(message)
       return item
@@ -223,6 +219,7 @@ export function useTransferInventoryConsumableMutation() {
     mutationKey: ["inventory", "consumables", "transfer"],
     mutationFn: async (input: { inventoryEntryId: string; quantity: number; fromWarehouseId?: string | null; fromProjectId?: string | null; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }) => requireEntitySuccess(await rpcClient.inventoryConsumablesTransfer(input)),
     onSuccess: async ({ message }, variables) => {
+      const userId = getCachedSessionUserId(queryClient)
       // Invalidate only the affected locations
       const affectedLocations = [
         { warehouseId: variables.fromWarehouseId ?? undefined, projectId: variables.fromProjectId ?? undefined },
@@ -230,9 +227,9 @@ export function useTransferInventoryConsumableMutation() {
       ].filter(loc => loc.warehouseId || loc.projectId)
 
       for (const location of affectedLocations) {
-        await queryClient.invalidateQueries({ queryKey: inventoryKeys.locationContents(location) })
+        await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryLocationContents(uid, location))
       }
-      await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroups })
+      await invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryInvoices)
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -293,8 +290,8 @@ export async function uploadInvoiceAttachments(invoiceGroupId: string, files: Fi
 
 /** useOutboundTransfersQuery. */
 export function useOutboundTransfersQuery() {
-  return useQuery({
-    queryKey: inventoryKeys.outboundTransfers,
+  return useWorkspaceScopedQuery({
+    key: workspaceQueryKeys.inventoryOutboundTransfers,
     queryFn: async (): Promise<{ items: InventoryOutboundTransfer[] }> => rpcClient.inventoryOutboundTransfersList(undefined),
   })
 }
@@ -307,8 +304,9 @@ export function useRecordInvoicePaymentMutation() {
     mutationKey: ["inventory", "invoice-groups", "record-payment"],
     mutationFn: async (input: InventoryInvoiceGroupRecordPaymentInput) => requireEntitySuccess(await rpcClient.inventoryInvoiceGroupsRecordPayment(input)),
     onSuccess: async ({ item, message }) => {
-      await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroups })
-      await queryClient.invalidateQueries({ queryKey: inventoryKeys.invoiceGroup(item.id) })
+      const userId = getCachedSessionUserId(queryClient)
+      await invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryInvoices)
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryInvoiceGroup(uid, item.id))
       showSuccessToast(message)
       return item
     },
@@ -326,7 +324,7 @@ export function useCreateOutboundTransferMutation() {
     mutationKey: ["inventory", "outbound-transfers", "create"],
     mutationFn: async (input: InventoryOutboundTransferCreateInput) => requireEntitySuccess(await rpcClient.inventoryOutboundTransfersCreate(input)),
     onSuccess: async ({ item, message }) => {
-      await queryClient.invalidateQueries({ queryKey: inventoryKeys.outboundTransfers })
+      await invalidateUserScopedQuery(queryClient, getCachedSessionUserId(queryClient), workspaceQueryKeys.inventoryOutboundTransfers)
       showSuccessToast(message)
       return item
     },

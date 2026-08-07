@@ -40,12 +40,15 @@ export {
 } from "./workspace-mutations"
 
 export {
+  workspaceDomainQueryPrefix,
+  workspaceQueryKeys,
+} from "./workspace-keys"
+
+export {
   demoWorkspaceQueryKey,
   useDemoWorkspaceQuery,
   useCompositeWorkspaceQuery,
   useSystemLogQuery,
-  workspaceDomainQueryKeys,
-  workspaceDomainQueryPrefix,
   workspaceQueryPrefix,
   type DemoWorkspace,
 } from "./workspace-queries"

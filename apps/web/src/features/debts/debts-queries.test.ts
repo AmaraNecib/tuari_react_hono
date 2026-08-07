@@ -28,6 +28,13 @@ vi.mock("@/lib/orpc-client", () => ({
     debtPartyDetail: mocks.debtPartyDetail,
     debtEntriesList: mocks.debtEntriesList,
   },
+  // workspace-keys evaluates `sessionQueryKey` at module load from
+  // `orpc.session.queryOptions().queryKey` — mirror the mounted key shape.
+  orpc: {
+    session: {
+      queryOptions: () => ({ queryKey: [["session"], { type: "query" }] }),
+    },
+  },
 }))
 
 vi.mock("@/features/app-shell/mock-dashboard", () => {

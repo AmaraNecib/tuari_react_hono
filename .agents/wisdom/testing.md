@@ -173,3 +173,34 @@ empirically and against @orpc/standard-server-fetch's toFetchBody.
 
 **Always**: when driving ORPC procedures from tests/scripts, send the envelope and
 unwrap `.json`.
+
+## E2E `page.goto` is a full reload — it wipes the React Query cache and cannot pin an invalidation seam (🟡 Minor)
+
+On #236, an E2E asserted a created warehouse appears in the inventory transfer
+selector after `page.goto("/outbound-transfers/create")` — but a full document
+reload discards the in-memory cache, so the page refetches from the server and
+the assertion passes even if the mutation's invalidation is completely broken.
+The test still proves shared key/endpoint coupling (one source of truth), but
+not the invalidation. The invalidation seam is only pinned by unit integration
+tests that mount hooks over a real QueryClient (seed session → mutate →
+assert the mounted query refetches).
+
+**Always**: to pin cache-invalidation behavior, use client-side navigation in
+E2E (SPA link click) or, better, a unit integration test with a real
+QueryClient. A `page.goto`-based assertion should be worded as a
+shared-key/single-source-of-truth check, not an invalidation check.
+
+## A too-broad invalidation fallback masks a broken key — the E2E suite caught it (🟠 Major)
+
+On #236 the null-userId prefix-wide fallback in the invalidation helper masked
+`getCachedSessionUserId` always returning null (see architecture.md). The
+workspace flows kept working (over-invalidation); the inventory item-definitions
+create flow went stale (narrow direct invalidation, no fallback) and only the
+Playwright E2E suite caught it — the unit tests were green because the mock
+harness set the session cache at the same (wrong) key the helper read.
+
+**Always**: after changing cache keys or invalidation wiring, run the full E2E
+suite even when all unit tests pass — a self-consistent unit mock cannot detect
+a key that never matches the real mounted query. And when a helper has a
+fallback path, add a direct unit test for the primary path (the #236 fix has
+one: "does not resolve from bare orpc.session.key()").

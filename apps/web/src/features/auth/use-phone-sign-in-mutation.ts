@@ -6,10 +6,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { phonePasswordSignInSchema, type PhonePasswordSignInInput } from "@tuari/contracts"
 
 import { i18n } from "@/i18n"
+import { sessionQueryKey } from "@/features/app-shell/workspace-keys"
 import { getAuthClient } from "@/lib/auth-client"
 import { extractAuthErrorMessage, signInDesktopWithPhoneNumber } from "@/lib/auth-api"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
-import { orpc } from "@/lib/orpc-client"
 import { showErrorToast } from "@/lib/toast"
 
 /**
@@ -45,7 +45,7 @@ export function usePhoneSignInMutation() {
     },
     onSuccess: async () => {
       await queryClient.removeQueries({ queryKey: ["phase1", "workspace"] })
-      await queryClient.invalidateQueries({ queryKey: orpc.session.key() })
+      await queryClient.invalidateQueries({ queryKey: sessionQueryKey })
     },
     onError: (error) => {
       showErrorToast(extractAuthErrorMessage(error, i18n.t("toasts.signInError")))

@@ -1,7 +1,7 @@
 /**
  * Employee debt hooks for querying and mutating employee debt data.
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type {
   AppError,
   DebtAccount,
@@ -9,13 +9,15 @@ import type {
 } from "@tuari/contracts"
 
 import { AppMutationError } from "@/features/app-shell/mock-dashboard"
+import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
+import {
+  getCachedSessionUserId,
+  invalidateUserScopedQuery,
+  workspaceQueryKeys,
+} from "@/features/app-shell/workspace-keys"
 import { rpcClient } from "@/lib/orpc-client"
 import { buildErrorMessage } from "@/lib/rpc-error-handling"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
-
-const employeeDebtKeys = {
-  account: (employeeId: string) => ["employee-debt", "account", employeeId] as const,
-}
 
 function requireEntitySuccess<T>(result: { success: boolean; message?: string; item?: T; error?: { message: string; code?: AppError["code"]; fieldErrors?: Array<{ field: string; message: string }> } }) {
   if (!result.success || !result.item) {
@@ -33,8 +35,8 @@ function requireEntitySuccess<T>(result: { success: boolean; message?: string; i
  * useEmployeeDebtAccountQuery(employeeId component.
  */
 export function useEmployeeDebtAccountQuery(employeeId: string | undefined) {
-  return useQuery({
-    queryKey: employeeDebtKeys.account(employeeId ?? "missing"),
+  return useWorkspaceScopedQuery({
+    key: (userId) => workspaceQueryKeys.employeeDebtAccount(userId, employeeId ?? "missing"),
     enabled: Boolean(employeeId),
     queryFn: async (): Promise<DebtAccount | null> => {
       const result = await rpcClient.employeeDebtAccountGet({ employeeId: employeeId! })
@@ -53,7 +55,7 @@ export function useCreateEmployeeDebtEntryMutation() {
     mutationKey: ["employee-debt", "entry", "create"],
     mutationFn: async (input: EmployeeDebtEntryCreateInput) => requireEntitySuccess(await rpcClient.employeeDebtEntryCreate(input)),
     onSuccess: async ({ item, message }, variables) => {
-      await queryClient.invalidateQueries({ queryKey: employeeDebtKeys.account(variables.employeeId) })
+      await invalidateUserScopedQuery(queryClient, getCachedSessionUserId(queryClient), (uid) => workspaceQueryKeys.employeeDebtAccount(uid, variables.employeeId))
       showSuccessToast(message)
       return item
     },
