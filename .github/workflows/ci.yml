@@ -94,6 +94,7 @@ jobs:
               - 'tests/e2e/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
+              - 'playwright.config.ts'
 
       # Manual dispatch (workflow_dispatch) has no PR diff to compare —
       # paths-filter would see "no changes" and skip every test, defeating
