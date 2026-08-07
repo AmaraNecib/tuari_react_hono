@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { createInMemoryInvoiceRepository } from "../invoice/adapters/in-memory-invoice.repository";
 import { createInMemoryInvoiceDebtPort } from "../invoice/adapters/invoice-debt.port";
@@ -14,22 +14,6 @@ import {
   PaymentNotFoundError,
   PaymentHasAllocationsError,
 } from "./payment.types";
-
-function makeInvoiceInput(overrides: Partial<{
-  id: string;
-  supplierName: string;
-  totalAmount: number;
-  direction: string;
-}> = {}) {
-  return {
-    id: overrides.id ?? "inv-1",
-    supplierName: overrides.supplierName ?? "Acme Corp",
-    lineItems: [
-      { id: "li-1", description: "Cement", quantity: 10, unitPrice: overrides.totalAmount ? overrides.totalAmount / 10 : 500 },
-    ],
-    direction: (overrides.direction ?? "PURCHASE") as "PURCHASE" | "SALE",
-  };
-}
 
 function makePaymentInput(overrides: Partial<CreatePaymentInput> = {}): CreatePaymentInput {
   return {
@@ -129,6 +113,71 @@ describe("PaymentModule", () => {
       const debtEntries = debtPort.state.entries.filter((e) => e.entryType === "PAYMENT");
       expect(debtEntries).toHaveLength(1);
       expect(debtEntries[0]!.signedAmount).toBe(-5000);
+    });
+
+    it("groups multiple allocations to the same invoice and pays it once", async () => {
+      // Create and receive an invoice for 5000
+      await invoiceRepo.create({
+        id: "inv-group",
+        invoiceNumber: null,
+        supplierName: "Acme Corp",
+        supplierPhone: null,
+        warehouseId: null,
+        projectId: null,
+        status: "DRAFT",
+        direction: "PURCHASE",
+        invoiceDate: null,
+        dueDate: null,
+        currency: "DZD",
+        totalAmount: 5000,
+        paidAmount: 0,
+        remainingAmount: 5000,
+        notes: null,
+        debtAccountId: null,
+        createdAt: "2026-06-01T00:00:00.000Z",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+        lineItems: [],
+      });
+
+      await debtPort.createInvoiceDebt({
+        invoiceId: "inv-group",
+        supplierName: "Acme Corp",
+        supplierPhone: null,
+        amount: 5000,
+        currency: "DZD",
+        direction: "PURCHASE",
+        actorUserId: "user-1",
+        actorLabel: "Test User",
+        transactionId: "tx-1",
+      });
+      const debtAccountId = debtPort.state.debtAccounts.values().next().value!.id;
+      await invoiceRepo.markReceivedWithDebtAccount("inv-group", debtAccountId);
+
+      // Act — two allocations targeting the same invoice
+      const result = await paymentModule.create(makePaymentInput({
+        id: "pmt-group",
+        totalAmount: 5000,
+        allocations: [
+          { invoiceId: "inv-group", amount: 3000 },
+          { invoiceId: "inv-group", amount: 2000 },
+        ],
+      }));
+
+      // Assert — both allocations were created against the same invoice
+      expect(result).not.toBeNull();
+      expect(result!.allocations).toHaveLength(2);
+      expect(result!.allocations.every((a) => a.invoiceId === "inv-group")).toBe(true);
+
+      // Assert — invoice is fully paid exactly once
+      const updatedInvoice = await invoiceRepo.findById("inv-group");
+      expect(updatedInvoice!.paidAmount).toBe(5000);
+      expect(updatedInvoice!.remainingAmount).toBe(0);
+      expect(updatedInvoice!.status).toBe("PAID");
+
+      // Assert — the debt port records one entry per allocation (split), totaling the payment
+      const debtEntries = debtPort.state.entries.filter((e) => e.entryType === "PAYMENT");
+      expect(debtEntries).toHaveLength(2);
+      expect(debtEntries.reduce((sum, e) => sum + e.signedAmount, 0)).toBe(-5000);
     });
 
     it("rejects allocation total that differs from payment amount", async () => {
@@ -231,7 +280,192 @@ describe("PaymentModule", () => {
     });
   });
 
+  describe("listPaged", () => {
+    function makePayment(id: string, overrides: Partial<{
+      counterpartyType: string;
+      counterpartyId: string;
+      paymentDate: string;
+      paymentMethod: string;
+      totalAmount: number;
+    }> = {}) {
+      return {
+        id,
+        counterpartyType: overrides.counterpartyType ?? "EXTERNAL_COUNTERPARTY",
+        counterpartyId: overrides.counterpartyId ?? "cp-1",
+        paymentDate: overrides.paymentDate ?? "2026-06-25T10:00:00.000Z",
+        paymentMethod: overrides.paymentMethod ?? "CASH",
+        totalAmount: overrides.totalAmount ?? 1000,
+        notes: null as string | null,
+        actorUserId: null as string | null,
+        actorLabel: null as string | null,
+        transactionId: null as string | null,
+        createdAt: "2026-06-20T00:00:00.000Z",
+        updatedAt: "2026-06-20T00:00:00.000Z",
+      };
+    }
+
+    function encodeCursor(sortValue: unknown, id: unknown): string {
+      return Buffer.from(JSON.stringify({ sortValue, id })).toString("base64url");
+    }
+
+    it("pages with a default sort and reports total count", async () => {
+      await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2", { totalAmount: 2000 }));
+      await paymentRepo.createPayment(makePayment("pmt-3", { totalAmount: 3000 }));
+
+      const result = await paymentModule.listPaged({ limit: 2 });
+
+      expect(result.totalCount).toBe(3);
+      expect(result.items).toHaveLength(2);
+      expect(result.nextCursor).not.toBeNull();
+    });
+
+    it("follows a valid numeric-sortValue cursor to the next page", async () => {
+      await paymentRepo.createPayment(makePayment("pmt-1", { totalAmount: 1000 }));
+      await paymentRepo.createPayment(makePayment("pmt-2", { totalAmount: 2000 }));
+      await paymentRepo.createPayment(makePayment("pmt-3", { totalAmount: 3000 }));
+
+      // Sort by totalAmount asc so the cursor page boundary is deterministic.
+      const first = await paymentModule.listPaged({
+        limit: 2,
+        sort: { field: "totalAmount", direction: "asc" },
+      });
+      expect(first.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
+
+      const second = await paymentModule.listPaged({
+        limit: 2,
+        sort: { field: "totalAmount", direction: "asc" },
+        cursor: first.nextCursor ?? undefined,
+      });
+      expect(second.items.map((p) => p.id)).toEqual(["pmt-3"]);
+    });
+
+    it("accepts a cursor with a string sortValue and skips the cursor row", async () => {
+      await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
+
+      const result = await paymentModule.listPaged({
+        limit: 10,
+        cursor: encodeCursor("2026-06-25T10:00:00.000Z", "pmt-1"),
+      });
+
+      // Decode succeeded: the cursor row is skipped, so only pmt-2 remains.
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-2"]);
+      expect(result.totalCount).toBe(2);
+    });
+
+    it("accepts a cursor with a null sortValue and skips the cursor row", async () => {
+      await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
+
+      const result = await paymentModule.listPaged({
+        limit: 10,
+        cursor: encodeCursor(null, "pmt-1"),
+      });
+
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-2"]);
+      expect(result.totalCount).toBe(2);
+    });
+
+    it("falls back to the full list when the cursor sortValue has a bad type", async () => {
+      await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
+
+      const result = await paymentModule.listPaged({
+        limit: 10,
+        cursor: encodeCursor(true, "pmt-1"),
+      });
+
+      // Invalid cursor is treated as "no cursor": every payment is returned.
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
+    });
+
+    it("falls back to the full list when the cursor decodes to null", async () => {
+      await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
+
+      const result = await paymentModule.listPaged({
+        limit: 10,
+        cursor: Buffer.from("null").toString("base64url"),
+      });
+
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
+    });
+
+    it("falls back to the full list when the cursor decodes to a non-object", async () => {
+      await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
+
+      const result = await paymentModule.listPaged({
+        limit: 10,
+        cursor: Buffer.from(JSON.stringify("garbage")).toString("base64url"),
+      });
+
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
+    });
+
+    it("falls back to the full list when the cursor is a JSON array without an id", async () => {
+      await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
+
+      const result = await paymentModule.listPaged({
+        limit: 10,
+        cursor: Buffer.from(JSON.stringify([])).toString("base64url"),
+      });
+
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
+    });
+
+    it("falls back to the full list when the cursor id is not a string", async () => {
+      await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
+
+      const result = await paymentModule.listPaged({
+        limit: 10,
+        cursor: encodeCursor(5, 42),
+      });
+
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
+    });
+
+    it("falls back to the full list when the cursor is not valid base64 JSON", async () => {
+      await paymentRepo.createPayment(makePayment("pmt-1"));
+      await paymentRepo.createPayment(makePayment("pmt-2"));
+
+      const result = await paymentModule.listPaged({
+        limit: 10,
+        cursor: "%%%not-base64%%%",
+      });
+
+      expect(result.totalCount).toBe(2);
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1", "pmt-2"]);
+    });
+
+    it("applies filters through to the repository", async () => {
+      await paymentRepo.createPayment(makePayment("pmt-1", { counterpartyType: "WORKER" }));
+      await paymentRepo.createPayment(makePayment("pmt-2", { counterpartyType: "EXTERNAL_COUNTERPARTY" }));
+
+      const result = await paymentModule.listPaged({
+        limit: 10,
+        filters: { counterpartyType: "WORKER" },
+      });
+
+      expect(result.items.map((p) => p.id)).toEqual(["pmt-1"]);
+    });
+  });
+
   describe("delete", () => {
+    it("rejects deletion of an unknown payment", async () => {
+      await expect(paymentModule.delete("pmt-ghost")).rejects.toBeInstanceOf(
+        PaymentNotFoundError,
+      );
+    });
+
     it("rejects deletion of payment with allocations", async () => {
       // Create a payment with allocation via the module
       const invoice = await invoiceRepo.create({

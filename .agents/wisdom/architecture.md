@@ -1,5 +1,13 @@
 # Architecture Wisdom
 
+## Drizzle better-sqlite3 `db.transaction(async …)` silently breaks every async call (🟠 Major)
+
+Issue #249's honest-coverage tests exposed a latent production bug: `DrizzleAccountRepository.withTransaction` called `this.db.transaction(async (tx) => …)`. Drizzle's better-sqlite3 driver wraps the **synchronous** better-sqlite3 transaction API, so an async callback makes it throw `Transaction function cannot return a promise` at runtime — every account profile update / password-change record was crashing in production, while all unit tests passed because they mocked the repository. The code *looked* correct and type-checked fine.
+
+Fix pattern (3rd instance of the #195 lesson — now in bootstrap, recovery-key, and account): own the transaction on the raw connection (`this.db.$client` for Drizzle repos): `if (!raw.inTransaction) raw.exec("BEGIN IMMEDIATE")`, run the async callback, `COMMIT`/`ROLLBACK` on success/failure, wrap ROLLBACK in try/catch so a failing COMMIT surfaces the original error, and serialize through a FIFO promise-chain lock so no other repo call joins the open transaction. `raw.inTransaction` join keeps an externally-opened transaction working (outer owns COMMIT/ROLLBACK).
+
+**Always**: when a Drizzle better-sqlite3 repository is first wired to a service with async transaction callbacks, exercise it against a real `:memory:` DB before shipping — the sync-only transaction contract is invisible to typecheck and mocked tests. Also: each new hand-rolled FIFO lock is drift risk (three copies now, with the guarded-ROLLBACK fix applied to only one) — tracked #288.
+
 ## Barrel re-exports: "export the const" is incomplete without the index re-export (🟠 Major)
 
 Issue #206 said "export `reportFilterInputSchema` from `reports-contract.ts`" — but that module was imported only by `app-contract.ts` and NEVER re-exported from the package index, so the exported const was still unreachable from `@tuari/contracts` (the only import path the API uses). The fix needed BOTH the `export const` AND `export * from "./reports-contract"` in the index (consistent with `invoice-contract`/`payment-contract`/`update-contract`/`rbac-contract`). The test failure (`reportFilterInputSchema` undefined) caught it immediately.
@@ -159,6 +167,28 @@ deep module + its `RoleRepository` seam at the root — the same shape as
 the module's ports (sqlite + in-memory + any others), not just the file the issue
 names. The interface/seam stays with the deep module at the root; implementations
 live in `adapters/`.
+
+## Advertised-but-unimplemented contract surface: drop the procedures, don't stub handlers (💡 Design Principle)
+
+On #239, the `recurringPatternsList/Get` procedures were spread into `appContract`
+(so `AppClient` exposed them) with no server handlers; an `as any` at the router
+boundary hid the gap. Resolution: **drop the procedures until the feature lands**,
+not a stub implementation — with no DB table/module behind them, the only possible
+handler returns a hard-coded empty list (fake behavior that renders an empty page
+and claims the feature works), and a read-only list/get contract without
+create/update is not a feature anyway. Deleting the procedures makes
+`os.router(allHandlers)` typecheck natively, so contract/server drift becomes a
+build error. Also delete the orphaned consumers (the hook/page that called the
+procedures were unrouted — deleting is behavior-preserving), and pin the deletion
+with a negative contract test (`"key" in appContract` is false) so a re-added
+spread without handlers fails at the contract level. Keep the domain *schemas*
+(`recurring.ts`) exported — they're vocabulary for the future feature, not RPC
+procedures.
+
+**Always**: when a contract advertises procedures with no handlers, prefer
+deletion over a stub; the compiler + a negative contract test are the drift
+sentinels, and the `as any` cast must never be the thing that makes the router
+typecheck.
 
 ## Zod refine() fires even on empty strings — guard with `value.length === 0 ||` (🟡 Minor)
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  appContract,
   appErrorSchema,
   authBootstrapInputSchema,
   authSetupStatusSchema,
@@ -34,6 +35,7 @@ import {
   phonePasswordSignInSchema,
   projectAssignmentCreateInputSchema,
   projectSchema,
+  recurringPatternSchema,
   reportFilterInputSchema,
   revokeRecoveryKeyInputSchema,
   roleCreateInputSchema,
@@ -933,6 +935,49 @@ describe("contracts", () => {
       // Missing required fields and non-string enum values are rejected.
       expect(() => reportFilterInputSchema.parse({})).toThrow();
       expect(() => reportFilterInputSchema.parse({ type: null })).toThrow();
+    });
+  });
+
+  describe("recurring patterns contract surface", () => {
+    // #239: the recurring-patterns procedures were advertised in the client
+    // contract with no server handlers; the router hid the gap with `as any`.
+    // Resolved by deleting the procedures until the feature lands. This test
+    // pins the contract truth: if the spread is re-added without handlers,
+    // this fails at the contract level instead of at runtime.
+    it("does not advertise recurring procedures until server handlers exist", () => {
+      expect("recurringPatternsList" in appContract).toBe(false);
+      expect("recurringPatternsGet" in appContract).toBe(false);
+    });
+
+    it("keeps the recurring pattern domain schema exported for the future feature", () => {
+      const input = {
+        id: "pat-1",
+        name: "Monthly rent",
+        description: null,
+        frequency: "MONTHLY",
+        amountType: "FIXED",
+        fixedAmountDzd: 50000,
+        partyId: "party-1",
+        isActive: true,
+        startDate: "2026-01-01T00:00:00.000Z",
+        endDate: null,
+        nextOccurrenceDate: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      } as const;
+
+      // Pins the schema's `requiresApproval: z.boolean().default(true)` — the
+      // input omits it, the parsed output carries it.
+      expect(recurringPatternSchema.parse(input)).toEqual({
+        ...input,
+        requiresApproval: true,
+      });
+
+      // The schema survives as a validator, not just a shape: invalid data
+      // is still rejected (would catch a future regression making it permissive).
+      expect(() =>
+        recurringPatternSchema.parse({ ...input, frequency: "YEARLY" }),
+      ).toThrow();
     });
   });
 });
