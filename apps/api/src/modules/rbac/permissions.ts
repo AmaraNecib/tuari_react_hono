@@ -35,9 +35,12 @@ export const ALL_PERMISSIONS: readonly Permission[] = Object.entries(RESOURCE_PE
 );
 
 export function isPermission(value: string): value is Permission {
-  if (!value.includes(":")) return false;
-  const [resource, action] = value.split(":", 2);
-  if (!resource || !action) return false;
+  // Exactly one colon (`resource:action`). Trailing segments from a
+  // corrupted/legacy row (e.g. `employees:create:extra`) must not validate:
+  // the type-level Permission union only ever has one colon, and this gate
+  // filters role_permission rows at read time (sqlite-role.repository).
+  const [resource, action, ...extra] = value.split(":");
+  if (extra.length > 0 || !resource || !action) return false;
   const actions = RESOURCE_PERMISSIONS[resource as keyof typeof RESOURCE_PERMISSIONS];
   if (!actions) return false;
   return (actions as readonly string[]).includes(action);

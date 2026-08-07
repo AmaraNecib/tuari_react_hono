@@ -75,6 +75,8 @@ describe("SqlitePermissionResolver", () => {
     // filter). Pin the pass-through semantics so a future filter change is
     // deliberate — and so a removed permission cannot silently vanish from
     // session payloads without a review.
+    // will-change: #210 (if the resolver gains an isPermission() filter,
+    // this expectation flips to []).
     db.all.mockReturnValue([{ permission: "employees:removed" }]);
 
     const perms = await resolver.getPermissionsForUserId("user-1");

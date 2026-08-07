@@ -92,6 +92,14 @@ describe("permissions", () => {
       expect(isPermission("\u200Bemployees:create")).toBe(false);
       expect(isPermission("employees:\u200Bcreate")).toBe(false);
     });
+
+    it("returns false for extra colon segments (the format is exactly resource:action)", () => {
+      // A corrupted/legacy row with trailing segments (e.g. a note appended
+      // after a second colon) must not validate as a known permission.
+      expect(isPermission("employees:create:extra")).toBe(false);
+      expect(isPermission("employees:create:")).toBe(false);
+      expect(isPermission(":employees:create")).toBe(false);
+    });
   });
 
   describe("isResourcePermission", () => {
