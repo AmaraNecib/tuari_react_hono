@@ -69,6 +69,36 @@ async function saveAccountAndExpectSuccess(page: Page) {
   await expect(page.getByText(ACCOUNT_UPDATED_TOAST).first()).toBeVisible()
 }
 
+/**
+ * Fills the account form's four fields and saves, waiting for the save to
+ * actually settle (response-gated; see saveAccountAndExpectSuccess).
+ */
+async function fillProfileFormAndSave(
+  page: Page,
+  input: { name: string; phone: string; currentPassword: string; newPassword: string },
+) {
+  await page.getByLabel("الاسم", { exact: true }).fill(input.name)
+  await page.getByLabel("رقم الهاتف").fill(input.phone)
+  await currentPasswordInput(page).fill(input.currentPassword)
+  await newPasswordInput(page).fill(input.newPassword)
+  await saveAccountAndExpectSuccess(page)
+}
+
+/** Asserts the sidebar footer and the form show the given name/phone. */
+async function expectAccountReflects(page: Page, name: string, phone: string) {
+  await expect(page.locator("aside").getByText(name, { exact: true })).toBeVisible()
+  await expect(page.locator("aside").getByText(phone, { exact: true })).toBeVisible()
+  await expect(page.getByLabel("الاسم", { exact: true })).toHaveValue(name)
+  await expect(page.getByLabel("رقم الهاتف")).toHaveValue(phone)
+}
+
+/** Changes the password via the account form (current -> next) and waits for the save. */
+async function changePassword(page: Page, current: string, next: string) {
+  await currentPasswordInput(page).fill(current)
+  await newPasswordInput(page).fill(next)
+  await saveAccountAndExpectSuccess(page)
+}
+
 test("first-run bootstrap creates the admin account", async ({ page }) => {
   // This spec sorts before every other spec file, so it sees a fresh DB and
   // the first-run bootstrap screen is guaranteed (see .scratch/implementation/254-design.md).
@@ -108,8 +138,8 @@ test("admin edits their profile (name/phone) and the changes stick", async ({ pa
   // step below rolls name/phone/password all back to canonical.
   await openAccountSettings(page)
 
-  // Negative path first: a wrong current password is rejected by the API and
-  // surfaces as an inline field error — the mutation never runs.
+  // Negative path first: a wrong current password is rejected by the API
+  // (401) and surfaces as an inline field error — no state change lands.
   await page.getByLabel("الاسم", { exact: true }).fill(EDIT_NAME)
   await page.getByLabel("رقم الهاتف").fill(EDIT_PHONE)
   await currentPasswordInput(page).fill("wrong-pass-99")
@@ -124,22 +154,17 @@ test("admin edits their profile (name/phone) and the changes stick", async ({ pa
   await currentPasswordInput(page).fill(TEST_PASSWORD)
   await saveAccountAndExpectSuccess(page)
 
-  await expect(page.locator("aside").getByText(EDIT_NAME, { exact: true })).toBeVisible()
-  await expect(page.locator("aside").getByText(EDIT_PHONE, { exact: true })).toBeVisible()
-  await expect(page.getByLabel("الاسم", { exact: true })).toHaveValue(EDIT_NAME)
-  await expect(page.getByLabel("رقم الهاتف")).toHaveValue(EDIT_PHONE)
+  await expectAccountReflects(page, EDIT_NAME, EDIT_PHONE)
 
   // Restore the canonical credentials so downstream specs can sign in.
-  await page.getByLabel("الاسم", { exact: true }).fill(TEST_NAME)
-  await page.getByLabel("رقم الهاتف").fill(TEST_PHONE)
-  await currentPasswordInput(page).fill(NEW_PASSWORD)
-  await newPasswordInput(page).fill(TEST_PASSWORD)
-  await saveAccountAndExpectSuccess(page)
+  await fillProfileFormAndSave(page, {
+    name: TEST_NAME,
+    phone: TEST_PHONE,
+    currentPassword: NEW_PASSWORD,
+    newPassword: TEST_PASSWORD,
+  })
 
-  await expect(page.locator("aside").getByText(TEST_NAME, { exact: true })).toBeVisible()
-  await expect(page.locator("aside").getByText(TEST_PHONE, { exact: true })).toBeVisible()
-  await expect(page.getByLabel("الاسم", { exact: true })).toHaveValue(TEST_NAME)
-  await expect(page.getByLabel("رقم الهاتف")).toHaveValue(TEST_PHONE)
+  await expectAccountReflects(page, TEST_NAME, TEST_PHONE)
 })
 
 test("admin changes password: old fails, new works, canonical password restored", async ({ page }) => {
@@ -147,9 +172,7 @@ test("admin changes password: old fails, new works, canonical password restored"
 
   // Change password: TEST_PASSWORD -> NEW_PASSWORD.
   await openAccountSettings(page)
-  await currentPasswordInput(page).fill(TEST_PASSWORD)
-  await newPasswordInput(page).fill(NEW_PASSWORD)
-  await saveAccountAndExpectSuccess(page)
+  await changePassword(page, TEST_PASSWORD, NEW_PASSWORD)
 
   // The old password must no longer sign in. The web sign-in path surfaces
   // the raw better-auth message (untranslated), so accept either form.
@@ -165,9 +188,7 @@ test("admin changes password: old fails, new works, canonical password restored"
 
   // Restore the canonical password via the same UI (suite integrity).
   await openAccountSettings(page)
-  await currentPasswordInput(page).fill(NEW_PASSWORD)
-  await newPasswordInput(page).fill(TEST_PASSWORD)
-  await saveAccountAndExpectSuccess(page)
+  await changePassword(page, NEW_PASSWORD, TEST_PASSWORD)
 
   // Final proof: the canonical password works again.
   await signOut(page)

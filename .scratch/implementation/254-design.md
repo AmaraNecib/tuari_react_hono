@@ -100,23 +100,25 @@ password 8–128 chars):
 No production behavior change beyond the transaction fix. No playwright.config change
 (ordering is default).
 
-## Bug found & fixed (why production code changed)
+## Bug found while validating this E2E (already fixed upstream in #291)
 
-The E2E spec exposed a real bug: `DrizzleAccountRepository.withTransaction` used
-Drizzle's `db.transaction(async ...)` against better-sqlite3, which is sync-only
-— every async profile update threw `Transaction function cannot return a promise`
-(500). Unit tests never caught it because `account.service.test.ts` mocks the
-repository and app tests run with `DB_ADAPTER=inmemory`. The fix ports the
-repo's established pattern (SqliteRecoveryKeyPort, wisdom #195): constructor
-takes the raw handle (asserts same connection), FIFO promise-chain lock, and
-`withTransaction` owns `BEGIN IMMEDIATE`/`COMMIT`/`ROLLBACK` with an
-`inTransaction` nesting check.
+While getting this spec green, the profile-update flow 500'd on the real sqlite
+path: `DrizzleAccountRepository.withTransaction` used Drizzle's `db.transaction(async ...)`
+against better-sqlite3 (sync-only), throwing `Transaction function cannot return a promise`.
+Unit tests never caught it (mocked repository; `DB_ADAPTER=inmemory` in app tests). The
+concurrent #291 coverage PR fixed the same bug in `account.repository.ts` (raw
+`BEGIN IMMEDIATE`/`COMMIT`/`ROLLBACK` + FIFO lock, same pattern as SqliteRecoveryKeyPort)
+and added repository regression tests — both already on `origin/develop`. This PR's diff
+contains no production code; the spec exercises the fixed flow end-to-end.
 
-Test-audit additions (from the 3-agent audit): wrong-current-password negative
-path in the E2E profile test; `.first()` on toast assertions to avoid the sonner
-dismiss-timer race; repo tests for concurrent FIFO-lock serialization, inner-
-throw inside an outer tx (outer must keep ownership), missing-user rollback,
-`passwordChanged` flag mapping; service tests for the 401 and 409 branches.
+## Dependencies / touched files (this PR)
+
+- `tests/e2e/admin-account.spec.ts` — **new**
+- `tests/e2e/helpers/session.ts` — extract + export `dismissUserJourneyTour` and `signIn`
+  (used by `bootstrapOrSignIn` and the new spec)
+- `.scratch/implementation/254-design.md` — this design doc
+
+No playwright.config change (ordering is default).
 
 ### E2E flake found & fixed during validation (toast race)
 
