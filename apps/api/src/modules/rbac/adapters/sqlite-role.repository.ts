@@ -92,30 +92,47 @@ export class SqliteRoleRepository implements RoleRepository {
  * silently skipped: a defensive normalisation layer rewrites them to
  * colon form during the migration, so a stray dot row is best treated
  * as already-superseded data.
+ *
+ * Repeated `(role, permission)` rows collapse to a single entry
+ * (first-seen order preserved, matching the query ORDER BY):
+ * `role_permission` has a surrogate id primary key and no
+ * (role_id, permission) uniqueness constraint, so duplicates can exist
+ * at rest and must not surface as duplicate permissions in the UI.
  */
 function groupRoles(rows: RoleRow[]): RoleWithPermissions[] {
-  const grouped = new Map<string, RoleWithPermissions>();
+  const grouped = new Map<
+    string,
+    { role: RoleWithPermissions; seenPermissions: Set<string> }
+  >();
 
   for (const row of rows) {
-    let entry = grouped.get(row.id);
-    if (!entry) {
-      entry = {
-        id: row.id,
-        key: row.key,
-        name: row.name,
-        description: row.description,
-        isSystem: row.isSystem === 1,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        permissions: [],
+    let bucket = grouped.get(row.id);
+    if (!bucket) {
+      bucket = {
+        role: {
+          id: row.id,
+          key: row.key,
+          name: row.name,
+          description: row.description,
+          isSystem: row.isSystem === 1,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          permissions: [],
+        },
+        seenPermissions: new Set<string>(),
       };
-      grouped.set(row.id, entry);
+      grouped.set(row.id, bucket);
     }
 
-    if (row.permission && isPermission(row.permission)) {
-      entry.permissions.push(row.permission as Permission);
+    if (
+      row.permission &&
+      isPermission(row.permission) &&
+      !bucket.seenPermissions.has(row.permission)
+    ) {
+      bucket.seenPermissions.add(row.permission);
+      bucket.role.permissions.push(row.permission as Permission);
     }
   }
 
-  return Array.from(grouped.values());
+  return Array.from(grouped.values()).map((bucket) => bucket.role);
 }

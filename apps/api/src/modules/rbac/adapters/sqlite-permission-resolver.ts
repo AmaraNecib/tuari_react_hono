@@ -12,7 +12,7 @@ import { eq } from "drizzle-orm";
 import * as schema from "../../../schema";
 import type { AppDrizzle } from "../../../infrastructure/database/drizzle";
 import type { Permission } from "../permissions";
-import { ALL_PERMISSIONS } from "../permissions";
+import { ALL_PERMISSIONS, isPermission } from "../permissions";
 import type { PermissionResolverPort } from "../permission-resolver.types";
 
 type AuthBootstrapGateway = {
@@ -49,8 +49,14 @@ export class SqlitePermissionResolver implements PermissionResolverPort {
       .where(eq(schema.user.id, userId))
       .all();
 
-    // Deduplicate permissions (multiple roles could grant same permission)
-    const uniquePermissions = new Set(rows.map((r) => r.permission as Permission));
-    return [...uniquePermissions];
+    // Deduplicate permissions (multiple roles could grant the same
+    // permission) and drop rows that fail the `isPermission` guard
+    // (legacy dot-form, stale removed permissions, multi-colon strings) —
+    // consistent with the role repository's read path (#266).
+    const uniquePermissions = new Set<string>();
+    for (const row of rows) {
+      if (isPermission(row.permission)) uniquePermissions.add(row.permission);
+    }
+    return [...uniquePermissions] as Permission[];
   }
 }
