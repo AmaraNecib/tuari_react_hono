@@ -418,6 +418,86 @@ describe("createApp RPC wiring", () => {
   });
 });
 
+describe("createApp body-limit guard", () => {
+  it("rejects an oversized JSON body to an app route with 413", async () => {
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/api/auth/profile", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(2 * 1024 * 1024),
+          origin: "http://localhost:3000",
+        },
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array(16));
+            controller.close();
+          },
+        }),
+        duplex: "half",
+      } as unknown as RequestInit),
+    );
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({ message: "الطلب كبير جدًا." });
+    expect(dependencies.accountService.updateCurrentProfile).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized multipart body to the attachment route before auth/parsing", async () => {
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/api/inventory/invoice-groups/group-1/attachments", {
+        method: "POST",
+        headers: {
+          "content-type": "multipart/form-data; boundary=----test",
+          "content-length": String(31 * 1024 * 1024),
+          origin: "http://localhost:3000",
+        },
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array(16));
+            controller.close();
+          },
+        }),
+        duplex: "half",
+      } as unknown as RequestInit),
+    );
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({ message: "الطلب كبير جدًا." });
+    // The size guard runs before session resolution and multipart parsing, so
+    // neither the auth check nor the inventory service is reached.
+    expect(dependencies.accountService.getCurrentSessionUser).not.toHaveBeenCalled();
+  });
+
+  it("lets an in-limit JSON body through to the handler", async () => {
+    const dependencies = createDependencies();
+    dependencies.accountService.updateCurrentProfile.mockResolvedValue({
+      user: { id: "user-1", name: "Taylor", phone: "0612345678" },
+    });
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/api/auth/profile", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:3000",
+        },
+        body: JSON.stringify({ name: "Taylor" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(dependencies.accountService.updateCurrentProfile).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("createTransportSecurity", () => {
   it("fails closed for requests without an origin", () => {
     const transport = createTransportSecurity(transportSecurity);

@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 
 import type { AppDependencies } from "./dependencies";
 import { isLocalHostname, normalizeOrigin } from "../infrastructure/config/url";
+import { bodyLimitMiddleware } from "../middleware/body-limit";
 import { resolveClientIp, SlidingWindowRateLimiter } from "../infrastructure/rate-limiter";
 import { AccountServiceError } from "../modules/account/account.service";
 import { InventoryError } from "../modules/inventory/inventory.errors";
@@ -152,6 +153,12 @@ export function createApp(
       maxAge: 600,
     }),
   );
+
+  // Global request-body size guard: 1 MB for JSON/urlencoded, 30 MB for multipart.
+  // When a Content-Length is present this rejects with 413 BEFORE the body is read,
+  // so multipart uploads are never fully buffered past the cap (defense in depth
+  // below the route-level per-file + total attachment caps).
+  app.use("*", bodyLimitMiddleware);
 
   app.use("/api/auth/*", async (c, next) => {
     const origin = c.req.header("origin")
