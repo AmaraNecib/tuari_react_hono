@@ -24,7 +24,7 @@ import {
 
 import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewBreadcrumbItem } from "./home-view-breadcrumbs"
-import type { DemoSession } from "./mock-dashboard"
+import type { DemoSession } from "./workspace-mutations"
 import type { HomeViewPage, PendingDelete } from "./home-view-types"
 import { WorkspaceBreadcrumbs } from "./workspace-breadcrumbs"
 import { UpdateRestartModal, UpdateRestartBadge } from "@/features/update"

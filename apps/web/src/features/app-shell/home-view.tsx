@@ -20,12 +20,11 @@ import {
   useDemoSessionQuery,
   useDemoSignInMutation,
   useDemoSignOutMutation,
-  useCompositeWorkspaceQuery,
   useRemoveWorkspaceRecordMutation,
   useResetWorkspaceMutation,
-  useSystemLogQuery,
   useUpdateAccountSettingsMutation,
-} from "./mock-dashboard"
+} from "./workspace-mutations"
+import { useCompositeWorkspaceQuery, useSystemLogQuery } from "./workspace-queries"
 import type { HomeViewPage } from "./home-view-types"
 import { ErrorBoundary } from "@/components/error-boundary"
 
