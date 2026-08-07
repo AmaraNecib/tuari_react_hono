@@ -61,10 +61,10 @@ jobs:
     name: Detect changed areas
     runs-on: ubuntu-latest
     outputs:
-      rust: ${{ steps.filter.outputs.rust }}
-      api: ${{ steps.filter.outputs.api }}
-      web: ${{ steps.filter.outputs.web }}
-      e2e: ${{ steps.filter.outputs.e2e }}
+      rust: ${{ steps.resolve.outputs.rust }}
+      api: ${{ steps.resolve.outputs.api }}
+      web: ${{ steps.resolve.outputs.web }}
+      e2e: ${{ steps.resolve.outputs.e2e }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -88,6 +88,24 @@ jobs:
               - 'apps/web/**'
               - 'packages/contracts/**'
               - 'tests/e2e/**'
+
+      # Manual dispatch (workflow_dispatch) has no PR diff to compare —
+      # paths-filter would see "no changes" and skip every test, defeating
+      # the escape hatch. Force all areas to run on manual dispatch.
+      - name: Resolve areas (manual dispatch = run everything)
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "api=true" >> "$GITHUB_OUTPUT"
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            echo "e2e=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=${{ steps.filter.outputs.rust }}" >> "$GITHUB_OUTPUT"
+            echo "api=${{ steps.filter.outputs.api }}" >> "$GITHUB_OUTPUT"
+            echo "web=${{ steps.filter.outputs.web }}" >> "$GITHUB_OUTPUT"
+            echo "e2e=${{ steps.filter.outputs.e2e }}" >> "$GITHUB_OUTPUT"
+          fi
 
   test-rust:
     name: "Test Rust Core (no tauri:: imports)"
