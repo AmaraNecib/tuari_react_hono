@@ -28,3 +28,12 @@
 ## Verdict
 
 No actionable findings. Safe to push.
+
+---
+
+## Post-evidence delta 2 (SHA refresh → c6dcf64, merge of origin/develop)
+
+Merge resolution was the only change since the code-review verdict; the reviewed
+code is unchanged (see debate delta). The include-array union and wisdom append
+were verified locally (100% coverage, typecheck/lint 0, 774 API tests). Greptile
+re-review on the merged head serves as the independent check of the merge.

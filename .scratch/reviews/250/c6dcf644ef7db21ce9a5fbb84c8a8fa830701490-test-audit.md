@@ -35,3 +35,12 @@ Original audit ran at `1c479b8`. Post-audit, code-review's advisory (field-agnos
 per-field `Record<BootstrapInputField, string>` map (project's compile-time map
 pattern; no `??`/`&&` branch, so 100% branch coverage is preserved — verified
 268/268, 153/153, 61/61, 239/239). No new test changes; audit conclusions stand.
+
+---
+
+## Post-evidence delta 2 (SHA refresh → c6dcf64, merge of origin/develop)
+
+Merge resolution (see debate delta) does not touch any audited test or source;
+the account/payment suites now measured come from #291 with its own evidence
+(.scratch/reviews/249/). Full coverage re-verified post-merge: 399/399 stmts,
+246/246 branches, 88/88 funcs, 369/369 lines. Audit conclusions stand.

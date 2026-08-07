@@ -38,3 +38,17 @@ debate's decisions: findings 1-4 stand as dismissed, finding 5 (isPermission
 colon) stands as fixed, and the audit-added name refine extends finding 1's
 scope in the same direction (dismissed: separate #230/#234 issues remain OPEN;
 the refine is a minimal bootstrap-only fix documented in the design doc).
+
+---
+
+## Post-evidence delta 2 (SHA refresh → c6dcf64, merge of origin/develop)
+
+Merged origin/develop (`c6dcf64`) to resolve the vitest include-array conflict with
+the sibling #291 (#249 payment+account coverage, merged to develop). Conflict
+resolution: include is now the union
+`workforce|invoice|auth|account|payment|rbac` (verified: 100% coverage across all,
+399 stmts); `.agents/wisdom/architecture.md` kept BOTH entries (theirs #239 first,
+mine #250 second). All other merge content (#285 recurring-drop, #291 account/
+payment, #239) was already reviewed/merged on develop in its own PRs. My reviewed
+files (auth.ts, bootstrap.service.*, permissions.ts, rbac tests, vitest rbac line)
+are byte-identical to the reviewed state; debate decisions unchanged.
