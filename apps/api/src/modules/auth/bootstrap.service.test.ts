@@ -134,6 +134,18 @@ describe("AuthBootstrapService", () => {
     { label: "empty name", name: "", field: "name" },
     { label: "whitespace-only name", name: "   ", field: "name" },
     { label: "over-long name", name: "x".repeat(121), field: "name" },
+    // #234 hygiene class: trim() keeps format chars (ZWSP), so an
+    // invisible-only name must be rejected by the visible-character rule.
+    {
+      label: "zero-width-only name",
+      name: "\u200B\u200B",
+      field: "name",
+    },
+    {
+      label: "whitespace + zero-width name",
+      name: " \u200B ",
+      field: "name",
+    },
   ])("rejects $label before hashing or touching the port", async ({ name, field }) => {
     const service = createService()
 
@@ -151,6 +163,20 @@ describe("AuthBootstrapService", () => {
     { label: "empty phone", phone: "", field: "phone" },
     { label: "whitespace-only phone", phone: "     ", field: "phone" },
     { label: "malformed phone", phone: "1234567890", field: "phone" },
+    { label: "9-digit phone", phone: "050000000", field: "phone" },
+    { label: "11-digit phone", phone: "05000000000", field: "phone" },
+    // #234 hygiene class: format chars (ZWSP) are not stripped by trim() and
+    // must not be able to hide inside the digits — the regex is a hard gate.
+    {
+      label: "phone with embedded zero-width character",
+      phone: "05\u200B12345678",
+      field: "phone",
+    },
+    {
+      label: "phone with trailing zero-width character",
+      phone: "0612345678\u200B",
+      field: "phone",
+    },
   ])("rejects $label before hashing or touching the port", async ({ phone, field }) => {
     const service = createService()
 
@@ -221,6 +247,31 @@ describe("AuthBootstrapService", () => {
       success: false,
       error: { code: "VALIDATION", fieldErrors: [{ field, message }] },
     })
+  })
+
+  it("reports the invisible-characters message for a Cf-only name", async () => {
+    const service = createService()
+
+    const result = await service.bootstrapFirstUser({
+      ...BOOTSTRAP_INPUT,
+      name: "\u200B\u200B",
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: {
+        code: "VALIDATION",
+        message: expect.any(String),
+        fieldErrors: [
+          {
+            field: "name",
+            message: "الاسم يجب ألا يحتوي على أحرف غير مرئية.",
+          },
+        ],
+      },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
   })
 
   it("reports every invalid field in a single VALIDATION result", async () => {

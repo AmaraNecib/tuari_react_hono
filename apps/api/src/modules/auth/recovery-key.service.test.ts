@@ -91,6 +91,35 @@ describe("RecoveryKeyService", () => {
       expect(result).toBe(false);
     });
 
+    it("rejects a whitespace-only key", async () => {
+      await env.service.generateKeys();
+      expect(await env.service.consumeKey("   ")).toBe(false);
+    });
+
+    it("rejects a key containing zero-width characters (can never match a stored hash)", async () => {
+      // #234 hygiene class: embed a ZWSP inside a REAL generated key — the
+      // service hashes exactly what it is given, so the invisible char
+      // changes the digest and the key can never be consumed. (If a future
+      // implementation stripped Cf chars before hashing, this pin fails.)
+      const keys = await env.service.generateKeys();
+      const real = keys[0]!.key;
+      const poisoned = `${real.slice(0, 4)}\u200B${real.slice(4)}`;
+      expect(await env.service.consumeKey(poisoned)).toBe(false);
+      expect(await env.service.consumeKey("\u200B")).toBe(false);
+      const status = await env.service.getPoolStatus();
+      expect(status.availableCount).toBe(3);
+    });
+
+    it("rejects a padded-but-valid key (the service hashes exactly what it is given)", async () => {
+      // Trimming copied keys is the wire gate's job (contracts schema); the
+      // service boundary is exact-hash. A padded real key must not consume.
+      const keys = await env.service.generateKeys();
+      const result = await env.service.consumeKey(`  ${keys[0]!.key}  `);
+      expect(result).toBe(false);
+      const status = await env.service.getPoolStatus();
+      expect(status.availableCount).toBe(3);
+    });
+
     it("is case-sensitive (hash is exact)", async () => {
       const keys = await env.service.generateKeys();
       const result = await env.service.consumeKey(keys[0]!.key.toUpperCase());
@@ -161,6 +190,11 @@ describe("RecoveryKeyService", () => {
     it("cannot revoke a non-existent key", async () => {
       const result = await env.service.revokeKey("non-existent-id");
       expect(result).toBe(false);
+    });
+
+    it("cannot revoke an empty or whitespace-only key id", async () => {
+      expect(await env.service.revokeKey("")).toBe(false);
+      expect(await env.service.revokeKey("   ")).toBe(false);
     });
   });
 
