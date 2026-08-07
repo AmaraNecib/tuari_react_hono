@@ -1,28 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CompanyError } from "./company.errors";
-import { createInMemoryCompanyHarness } from "./company.test-helpers";
+import { createAuditContext, createCompanyHarnessTracker } from "./company.test-helpers";
 
 describe("OperationsService coverage branches", () => {
-  const harnesses: Array<ReturnType<typeof createInMemoryCompanyHarness>> = [];
+  const { createHarness, closeAll } = createCompanyHarnessTracker();
 
-  afterEach(() => {
-    while (harnesses.length > 0) {
-      harnesses.pop()?.close();
-    }
-  });
+  afterEach(closeAll);
 
-  const createHarness = () => {
-    const harness = createInMemoryCompanyHarness();
-    harnesses.push(harness);
-    return harness;
-  };
-
-  const audit = () => ({
-    actorLabel: "مدير التشغيل",
-    actorUserId: "admin-user-1",
-    transactionId: crypto.randomUUID(),
-  });
+  const audit = () => createAuditContext();
 
   const seedManagerAndWorker = (
     service: ReturnType<typeof createHarness>["service"],
@@ -375,7 +361,6 @@ describe("OperationsService coverage branches", () => {
         status: "ACTIVE",
         startDate: "2026-01-01T00:00:00.000Z",
       }).item;
-      void warehouseManager;
       expect(service.getWarehouseAssignment(assignment.id).item.id).toBe(assignment.id);
       expect(() => service.getWarehouseAssignment("missing")).toThrowError(CompanyError);
     });

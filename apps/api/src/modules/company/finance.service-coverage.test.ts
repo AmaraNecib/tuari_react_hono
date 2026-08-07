@@ -1,28 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CompanyError } from "./company.errors";
-import { createInMemoryCompanyHarness } from "./company.test-helpers";
+import {
+  createAuditContext,
+  createCompanyHarnessTracker,
+} from "./company.test-helpers";
 
 describe("FinanceService coverage branches", () => {
-  const harnesses: Array<ReturnType<typeof createInMemoryCompanyHarness>> = [];
+  const { createHarness, closeAll } = createCompanyHarnessTracker();
 
-  afterEach(() => {
-    while (harnesses.length > 0) {
-      harnesses.pop()?.close();
-    }
-  });
+  afterEach(closeAll);
 
-  const createHarness = () => {
-    const harness = createInMemoryCompanyHarness();
-    harnesses.push(harness);
-    return harness;
-  };
-
-  const audit = () => ({
-    actorLabel: "مدير التشغيل",
-    actorUserId: "admin-user-1",
-    transactionId: crypto.randomUUID(),
-  });
+  const audit = () => createAuditContext();
 
   describe("getExternalCounterparty / getDebtAccount guards", () => {
     it("rejects missing counterparty and debt account ids", () => {
@@ -122,7 +111,7 @@ describe("FinanceService coverage branches", () => {
       }
     });
 
-    it("uses the entry id as the sort tiebreak for same-date live entries", () => {
+    it("orders same-date live entries by id when recomputing running balances", () => {
       const { service, roleIds } = createHarness();
       const worker = service.createEmployee({
         firstName: "عامل",
@@ -153,6 +142,14 @@ describe("FinanceService coverage branches", () => {
         .listDebtEntries({ debtAccountId: opening.debtAccountId })
         .items.filter((e) => e.status === "LIVE");
       expect(live.length).toBeGreaterThanOrEqual(2);
+      // Both live entries share entryDate; the recompute must order by id and
+      // re-derive balanceAfter as the cumulative signed amount in that order.
+      const sorted = [...live].sort((a, b) => a.id.localeCompare(b.id));
+      let running = 0;
+      for (const entry of sorted) {
+        running += entry.signedAmountDzd;
+        expect(entry.balanceAfterDzd).toBe(running);
+      }
     });
   });
 
@@ -210,10 +207,7 @@ describe("FinanceService coverage branches", () => {
         { debtEntryId: payableEntry.id, amountDzd: 100, paymentMethod: "CASH" },
         audit(),
       );
-      void receivable;
-
-      const summary = service.listDebtsSummary();
-      const party = summary.parties.find((p) => p.externalCounterpartyId === counterparty.id)!;
+      const summary = service.listDebtsSummary();      const party = summary.parties.find((p) => p.externalCounterpartyId === counterparty.id)!;
       const payableAfter = service.getDebtAccount(payable.id).item.updatedAt;
       expect(Date.parse(party.latestActivityAt)).toBeGreaterThanOrEqual(Date.parse(payableAfter));
     });
@@ -242,7 +236,7 @@ describe("FinanceService coverage branches", () => {
       expect(Date.parse(party.latestActivityAt)).toBeGreaterThanOrEqual(Date.parse(later.updatedAt));
     });
 
-    it("keeps the current latestActivityAt when two accounts share a timestamp", () => {
+    it("resolves latestActivityAt when two accounts share a timestamp", () => {
       vi.useFakeTimers();
       try {
         vi.setSystemTime(new Date("2026-03-01T10:00:00.000Z"));
@@ -251,21 +245,22 @@ describe("FinanceService coverage branches", () => {
           fullName: "طرف متزامن",
           phoneNumber: "0218888890",
         }).item;
-        const payable = service.createDebtAccount({
+        service.createDebtAccount({
           partyType: "EXTERNAL_COUNTERPARTY",
           externalCounterpartyId: counterparty.id,
           openingBalanceDzd: 400,
-        }).item;
-        const receivable = service.createDebtAccount({
+        });
+        service.createDebtAccount({
           partyType: "EXTERNAL_COUNTERPARTY",
           externalCounterpartyId: counterparty.id,
           direction: "RECEIVABLE",
           openingBalanceDzd: 700,
-        }).item;
+        });
         const summary = service.listDebtsSummary();
         const party = summary.parties.find((p) => p.externalCounterpartyId === counterparty.id)!;
-        expect(party.latestActivityAt).toBe(payable.updatedAt);
-        expect(party.latestActivityAt).toBe(receivable.updatedAt);
+        // Both accounts were created at the frozen instant, so the shared
+        // Algeria-offset timestamp wins regardless of iteration order.
+        expect(party.latestActivityAt).toBe("2026-03-01T11:00:00.000+01:00");
       } finally {
         vi.useRealTimers();
       }
@@ -380,7 +375,7 @@ describe("FinanceService coverage branches", () => {
       expect(account.currentBalance).toBe(800);
     });
 
-    it("rejects a RECEIVABLE counterparty account that already exists (reuse path)", () => {
+    it("reuses an existing RECEIVABLE account for the same counterparty", () => {
       const { service } = createHarness();
       const counterparty = service.createExternalCounterparty({
         fullName: "شركة مكررة",

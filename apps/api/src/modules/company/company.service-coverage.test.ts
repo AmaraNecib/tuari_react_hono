@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CompanyError } from "./company.errors";
-import { createInMemoryCompanyHarness } from "./company.test-helpers";
+import { createAuditContext, createCompanyHarnessTracker } from "./company.test-helpers";
 
 /**
  * CompanyService is a thin facade delegating to the domain services.
@@ -9,25 +9,11 @@ import { createInMemoryCompanyHarness } from "./company.test-helpers";
  * covered; behavior is asserted in the per-service suites.
  */
 describe("CompanyService facade delegations", () => {
-  const harnesses: Array<ReturnType<typeof createInMemoryCompanyHarness>> = [];
+  const { createHarness, closeAll } = createCompanyHarnessTracker();
 
-  afterEach(() => {
-    while (harnesses.length > 0) {
-      harnesses.pop()?.close();
-    }
-  });
+  afterEach(closeAll);
 
-  const createHarness = () => {
-    const harness = createInMemoryCompanyHarness();
-    harnesses.push(harness);
-    return harness;
-  };
-
-  const audit = () => ({
-    actorLabel: "مدير التشغيل",
-    actorUserId: "admin-user-1",
-    transactionId: crypto.randomUUID(),
-  });
+  const audit = () => createAuditContext();
 
   it("delegates audit views", () => {
     const { service } = createHarness();

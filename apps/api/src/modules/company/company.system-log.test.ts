@@ -228,8 +228,8 @@ describe("buildCompanySystemLog coverage", () => {
     expect(service.listSystemLog({ entityId: "nobody" }).items).toEqual([]);
     expect(service.listSystemLog({ entityType: "DEBT_ACCOUNT" }).items).toEqual([]);
     expect(service.listSystemLog({ toDate: "2020-01-01T00:00:00.000Z" }).items).toEqual([]);
-
-    void project;
+    // A combined range keeps only events inside both bounds.
+    expect(service.listSystemLog({ fromDate: "2020-01-01T00:00:00.000Z", toDate: "2099-01-01T00:00:00.000Z" }).items.length).toBe(all.length);
   });
 
   it("degrades gracefully when history rows reference missing entities", () => {

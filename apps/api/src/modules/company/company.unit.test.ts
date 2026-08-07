@@ -16,7 +16,7 @@ import {
   normalizeText,
   successResult,
 } from "./company.helpers";
-import { createInMemoryCompanyHarness } from "./company.test-helpers";
+import { createCompanyHarnessTracker, createInMemoryCompanyHarness } from "./company.test-helpers";
 import {
   ensureEmployeeTransitionAllowed,
   ensureProjectTransitionAllowed,
@@ -74,6 +74,7 @@ describe("company.helpers", () => {
     expect(() => normalizeSignedMoneyAmount(0)).toThrowError(CompanyError);
     expect(() => normalizeSignedMoneyAmount(Number.NaN)).toThrowError(CompanyError);
     expect(() => normalizeSignedMoneyAmount(Number.POSITIVE_INFINITY)).toThrowError(CompanyError);
+    expect(() => normalizeSignedMoneyAmount(Number.NEGATIVE_INFINITY)).toThrowError(CompanyError);
   });
 
   it("normalizeSalaryAmount maps non-number or NaN to null", () => {
@@ -108,11 +109,15 @@ describe("company.helpers", () => {
         { currentBalance: 40, direction: "PAYABLE" },
       ]),
     ).toBe(60);
+    expect(getNetDebtBalance([])).toBe(0);
   });
 
   it("getDebtAccountBalanceLabel delegates through the net-perspective label", () => {
     expect(getDebtAccountBalanceLabel({ currentBalance: 10, direction: "RECEIVABLE" })).toBe("لنا عنده");
     expect(getDebtAccountBalanceLabel({ currentBalance: 10, direction: "PAYABLE" })).toBe("علينا له");
+    // An overpaid PAYABLE account (negative balance) nets to a positive
+    // position, i.e. "they owe us".
+    expect(getDebtAccountBalanceLabel({ currentBalance: -5, direction: "PAYABLE" })).toBe("لنا عنده");
   });
 
   it("getDebtBalanceLabel covers positive, negative and zero", () => {
@@ -133,6 +138,9 @@ describe("company.helpers", () => {
   it("normalizeMutationAuditContext fills missing actor fields", () => {
     expect(normalizeMutationAuditContext()).toMatchObject({ actorUserId: null, actorLabel: null });
     expect(normalizeMutationAuditContext(undefined).transactionId).toBeTruthy();
+    const partial = normalizeMutationAuditContext({ actorUserId: "u1" });
+    expect(partial).toMatchObject({ actorUserId: "u1", actorLabel: null });
+    expect(partial.transactionId).toBeTruthy();
     const full = normalizeMutationAuditContext({
       actorUserId: "u1",
       actorLabel: "label",
@@ -158,19 +166,9 @@ describe("company.helpers", () => {
 });
 
 describe("company.entity-resolvers", () => {
-  const harnesses: Array<ReturnType<typeof createInMemoryCompanyHarness>> = [];
+  const { createHarness, closeAll } = createCompanyHarnessTracker();
 
-  afterEach(() => {
-    while (harnesses.length > 0) {
-      harnesses.pop()?.close();
-    }
-  });
-
-  const createHarness = () => {
-    const harness = createInMemoryCompanyHarness();
-    harnesses.push(harness);
-    return harness;
-  };
+  afterEach(closeAll);
 
   it("requireRole throws NOT_FOUND for a missing role", () => {
     const { repository } = createHarness();
@@ -238,13 +236,13 @@ describe("company.entity-resolvers", () => {
   it("requireExternalCounterparty throws on missing ids and honours a custom field", () => {
     const { repository } = createHarness();
     expect(() => requireExternalCounterparty(repository, "missing-cp")).toThrowError(CompanyError);
-    try {
-      requireExternalCounterparty(repository, "missing-cp", "customField");
-      expect.unreachable();
-    } catch (error) {
-      expect(error).toBeInstanceOf(CompanyError);
-      expect((error as CompanyError).appError.fieldErrors?.[0]?.field).toBe("customField");
-    }
+    expect(() => requireExternalCounterparty(repository, "missing-cp", "customField")).toThrowError(
+      expect.objectContaining({
+        appError: expect.objectContaining({
+          fieldErrors: [{ field: "customField", message: expect.any(String) }],
+        }),
+      }),
+    );
   });
 
   it("requireEmployee resolves an existing employee", () => {
@@ -539,10 +537,11 @@ describe("company.entity-resolvers", () => {
         { employeeId: nonWorker.id, projectId: project.id, status: "ACTIVE", startDate: "2026-01-01T00:00:00.000Z", endDate: null, notes: null },
         { actorUserId: "admin", actorLabel: "مدير", transactionId: crypto.randomUUID() },
       );
-      // Non-worker is filtered out (line 341)
+      // Non-worker members are filtered out of the returned worker ids.
       expect(listActiveWorkerIdsForProject(repository, repository, project.id)).toEqual([]);
 
-      // Ghost employee: workforce repo cannot resolve the employee (line 336)
+      // Ghost employee: a workforce repo that cannot resolve the employee
+      // must skip the assignment rather than crash.
       const ghostRepo = { getEmployeeById: () => null, getRoleById: () => null } as unknown as typeof repository;
       expect(listActiveWorkerIdsForProject(repository, ghostRepo, project.id)).toEqual([]);
     });
@@ -571,13 +570,13 @@ describe("company.entity-resolvers", () => {
         { actorUserId: "admin", actorLabel: "مدير", transactionId: crypto.randomUUID() },
       );
 
-      // Non-worker member means activeWorkerAssignments is empty, so removing
-      // the manager is allowed (line 311 false branch).
+      // Non-worker members mean activeWorkerAssignments is empty, so removing
+      // the manager is allowed.
       expect(() =>
         ensureProjectTransitionAllowed(repository, repository, project.id, manager.id, null, undefined),
       ).not.toThrow();
 
-      // Ghost member: the worker filter hits the missing-employee branch (line 242).
+      // Ghost member: an unresolvable employee is skipped by the worker filter.
       const ghostRepo = { getEmployeeById: () => null, getRoleById: () => null } as unknown as typeof repository;
       expect(() =>
         ensureProjectTransitionAllowed(repository, ghostRepo, project.id, manager.id, undefined, "STOPPED"),
@@ -670,7 +669,6 @@ describe("company.entity-resolvers", () => {
           "ACTIVE",
         ),
       ).not.toThrow();
-      void whManager;
     });
   });
 });

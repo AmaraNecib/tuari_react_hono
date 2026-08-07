@@ -1,28 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CompanyError } from "./company.errors";
-import { createInMemoryCompanyHarness } from "./company.test-helpers";
+import { createAuditContext, createCompanyHarnessTracker } from "./company.test-helpers";
 
 describe("WorkforceService coverage branches", () => {
-  const harnesses: Array<ReturnType<typeof createInMemoryCompanyHarness>> = [];
+  const { createHarness, closeAll } = createCompanyHarnessTracker();
 
-  afterEach(() => {
-    while (harnesses.length > 0) {
-      harnesses.pop()?.close();
-    }
-  });
+  afterEach(closeAll);
 
-  const createHarness = () => {
-    const harness = createInMemoryCompanyHarness();
-    harnesses.push(harness);
-    return harness;
-  };
-
-  const audit = () => ({
-    actorLabel: "مدير التشغيل",
-    actorUserId: "admin-user-1",
-    transactionId: crypto.randomUUID(),
-  });
+  const audit = () => createAuditContext();
 
   describe("roles", () => {
     it("getRole resolves an existing role and rejects a missing one", () => {
@@ -478,7 +464,7 @@ describe("WorkforceService coverage branches", () => {
       expect(endedWithNote.notes).toBe("نقل");
     });
 
-    it("endManagerAssignment rejects missing, non-active, and active-project cases", () => {
+    it("endManagerAssignment rejects missing and already-ended ids", () => {
       const { service, roleIds } = createHarness();
       const manager = service.createEmployee({
         firstName: "مدير",
