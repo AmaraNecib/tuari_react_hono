@@ -1,5 +1,43 @@
-import { describe, it, expect } from "vitest"
-import { AppMutationError } from "./workspace-mutations"
+// @vitest-environment jsdom
+
+import { describe, it, expect, vi } from "vitest"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { act, renderHook, waitFor } from "@testing-library/react"
+import { createElement, type ReactNode } from "react"
+
+import { AppMutationError, useResetWorkspaceMutation } from "./workspace-mutations"
+import { workspaceDomainQueryPrefix, workspaceQueryPrefix } from "./workspace-keys"
+
+describe("useResetWorkspaceMutation — snapshot-aware reset (issue #276)", () => {
+  function wrapper(queryClient: QueryClient) {
+    return function Wrapper({ children }: { children: ReactNode }) {
+      // createElement keeps this file .ts (no JSX transform needed).
+      return createElement(QueryClientProvider, { client: queryClient }, children)
+    }
+  }
+
+  it("invalidates BOTH the workspace-domain namespace and the snapshot namespace", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
+
+    const { result } = renderHook(() => useResetWorkspaceMutation(), {
+      wrapper: wrapper(queryClient),
+    })
+
+    act(() => {
+      result.current.mutate()
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    // The shell composite now reads the single workspaceSnapshot key, so a
+    // reset must clear the snapshot namespace too — otherwise the dashboard
+    // stays stale while the reset toast claims success (Greptile finding on
+    // PR #304).
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceDomainQueryPrefix })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryPrefix })
+  })
+})
 
 describe("AppMutationError", () => {
   it("creates an error with message and default code", () => {

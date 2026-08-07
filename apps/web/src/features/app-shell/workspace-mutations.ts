@@ -928,7 +928,11 @@ export function useResetWorkspaceMutation() {
   return useMutation({
     mutationKey: ["phase1", "workspace", "reset"],
     mutationFn: async () => {
+      // The shell composite reads the single workspaceSnapshot key, so a
+      // reset must clear the snapshot namespace too — otherwise the
+      // dashboard keeps showing stale data after the reset (issue #276).
       await queryClient.invalidateQueries({ queryKey: workspaceDomainQueryPrefix })
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
       return { success: true as const }
     },
     onSuccess: () => {
