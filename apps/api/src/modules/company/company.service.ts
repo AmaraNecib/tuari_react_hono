@@ -168,7 +168,12 @@ export class CompanyService {
   createDebtEntry(input: DebtEntryCreateInput, auditContext?: MutationAuditContext) {
     return this.finance.createDebtEntry(input, auditContext);
   }
-  recordDebtPayment(input: DebtEntryRecordPaymentInput, auditContext?: MutationAuditContext) {
+  recordDebtPayment(
+    input: Omit<DebtEntryRecordPaymentInput, "paymentMethod"> & {
+      paymentMethod?: DebtEntryRecordPaymentInput["paymentMethod"]
+    },
+    auditContext?: MutationAuditContext,
+  ) {
     return this.finance.recordDebtPayment(input, auditContext);
   }
   voidDebtEntry(input: DebtEntryVoidInput, auditContext?: MutationAuditContext) {

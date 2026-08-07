@@ -347,7 +347,12 @@ export class FinanceService {
     return successResult("تم تسجيل حركة الدين بنجاح.", entry);
   }
 
-  recordDebtPayment(input: DebtEntryRecordPaymentInput, auditContext?: MutationAuditContext) {
+  recordDebtPayment(
+    input: Omit<DebtEntryRecordPaymentInput, "paymentMethod"> & {
+      paymentMethod?: DebtEntryRecordPaymentInput["paymentMethod"]
+    },
+    auditContext?: MutationAuditContext,
+  ) {
     const audit = this.mutation.createMutationAuditContext(auditContext);
 
     if (!Number.isFinite(input.amountDzd) || input.amountDzd <= 0) {
@@ -390,7 +395,7 @@ export class FinanceService {
           note: normalizeText(input.note),
           balanceAfterDzd: nextBalance,
           reasonCategory: "INVOICE_DRIVEN",
-          paymentMethod: input.paymentMethod,
+          paymentMethod: input.paymentMethod ?? "CASH",
         },
         audit,
       );
@@ -564,26 +569,6 @@ export class FinanceService {
     const payableAccount = requireDebtAccount(this.repository, payableEntry.debtAccountId);
     const receivableAccount = requireDebtAccount(this.repository, receivableEntry.debtAccountId);
 
-    const payableLiveCount = this.repository
-      .listDebtEntries({ debtAccountId: payableAccount.id })
-      .filter((e) => e.status === "LIVE" && e.id !== payableEntry.id).length;
-    if (payableLiveCount > 0) {
-      throw new CompanyError(
-        "BUSINESS_RULE",
-        "لا يمكن تجميد رصيد افتتاحي لديه حركات دين نشطة أخرى على الحساب الدائن.",
-      );
-    }
-
-    const receivableLiveCount = this.repository
-      .listDebtEntries({ debtAccountId: receivableAccount.id })
-      .filter((e) => e.status === "LIVE" && e.id !== receivableEntry.id).length;
-    if (receivableLiveCount > 0) {
-      throw new CompanyError(
-        "BUSINESS_RULE",
-        "لا يمكن تجميد رصيد افتتاحي لديه حركات دين نشطة أخرى على الحساب المدين.",
-      );
-    }
-
     if (
       payableAccount.direction !== "PAYABLE" ||
       receivableAccount.direction !== "RECEIVABLE"
@@ -616,6 +601,30 @@ export class FinanceService {
     const entryDate = normalizeAlgeriaTimestamp(undefined);
 
     this.mutation.withTransaction(() => {
+      // The live-count guards run inside the transaction so the "no other live
+      // entries" invariant they establish is read-consistent with the voids
+      // below (single-connection better-sqlite3 is already serialized, but the
+      // in-transaction read keeps the remainder-entry math provably correct).
+      const payableLiveCount = this.repository
+        .listDebtEntries({ debtAccountId: payableAccount.id })
+        .filter((e) => e.status === "LIVE" && e.id !== payableEntry.id).length;
+      if (payableLiveCount > 0) {
+        throw new CompanyError(
+          "BUSINESS_RULE",
+          "لا يمكن تجميد رصيد افتتاحي لديه حركات دين نشطة أخرى على الحساب الدائن.",
+        );
+      }
+
+      const receivableLiveCount = this.repository
+        .listDebtEntries({ debtAccountId: receivableAccount.id })
+        .filter((e) => e.status === "LIVE" && e.id !== receivableEntry.id).length;
+      if (receivableLiveCount > 0) {
+        throw new CompanyError(
+          "BUSINESS_RULE",
+          "لا يمكن تجميد رصيد افتتاحي لديه حركات دين نشطة أخرى على الحساب المدين.",
+        );
+      }
+
       this.repository.voidDebtEntry(
         {
           id: payableEntry.id,

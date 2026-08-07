@@ -583,6 +583,27 @@ describe("FinanceService coverage branches", () => {
       expect(account.status).toBe("SETTLED");
       expect(account.settledAt).toBeTruthy();
     });
+
+    it("defaults the payment method to CASH when omitted", () => {
+      const { service, roleIds } = createHarness();
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "تسديد افتراضي",
+        phone: "0551000019",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+      const entry = service.finance.createEmployeeDebtEntry({
+        employeeId: worker.id,
+        entryType: "OPENING",
+        amountDzd: 500,
+      });
+      const payment = service.recordDebtPayment(
+        { debtEntryId: entry.id, amountDzd: 200 },
+        audit(),
+      ).item;
+      expect(payment.paymentMethod).toBe("CASH");
+    });
   });
 
   describe("voidDebtEntry guards + opening cascade", () => {

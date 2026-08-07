@@ -108,7 +108,7 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
   )
   const projectsById = new Map(repository.listProjects().map((project) => [project.id, project]))
   const warehousesById = new Map(repository.listWarehouses().map((warehouse) => [warehouse.id, warehouse]))
-  const actorLabelCache = new Map<string, string | null>()
+  const actorLabelCache = new Map<string, string>()
 
   // Single filter predicate shared by the group gate and the within-group
   // matching set. Dates are compared by actual timestamp value so that
@@ -146,10 +146,10 @@ export function buildCompanySystemLog(repository: CompanyRepository, filters?: S
       return null
     }
 
-    if (actorLabelCache.has(actorUserId)) {
-      return actorLabelCache.get(actorUserId)!
+    const cachedLabel = actorLabelCache.get(actorUserId)
+    if (cachedLabel !== undefined) {
+      return cachedLabel
     }
-
     const authUser = repository.getAuthUserById(actorUserId)
     const actorLabel = authUser?.name ?? actorUserId
 
