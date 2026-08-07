@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
-import { cleanup, configure, fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, configure, fireEvent, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   demoUser,
+  getSearchQueryState,
   makeWorkspaceData,
   mockAllMutations,
   renderWorkspace,
@@ -637,5 +638,165 @@ describe("debts pages show a loading state while the summary query is pending", 
     // the feature-scoped summary query resolves — no zero-balance flash.
     expect(document.querySelector(".animate-pulse")).toBeTruthy()
     expect(screen.queryByText("مركز الديون")).toBeNull()
+  })
+})
+
+describe("global search (Ctrl+K) — debounced and lazy (issue #280)", () => {
+  it("opens the dialog showing page categories while the query is empty", () => {
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+
+    fireEvent.click(screen.getByRole("button", { name: "بحث" }))
+
+    expect(screen.getByPlaceholderText("بحث...")).toBeTruthy()
+    // Every page category carries the "الصفحات" label; the sidebar never
+    // renders it, so its presence proves the category corpus is shown.
+    expect(screen.getAllByText("الصفحات").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("المستودعات").length).toBeGreaterThan(0)
+  })
+
+  it("fetches the seven search-corpus queries only while the dialog is open", () => {
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+
+    // Shell mounts with the dialog closed → every corpus query disabled.
+    expect(getSearchQueryState()).toEqual({
+      employees: false,
+      projects: false,
+      warehouses: false,
+      debts: false,
+      externals: false,
+      inventory: false,
+      invoices: false,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "بحث" }))
+
+    expect(getSearchQueryState()).toEqual({
+      employees: true,
+      projects: true,
+      warehouses: true,
+      debts: true,
+      externals: true,
+      inventory: true,
+      invoices: true,
+    })
+
+    // The dialog's own input handles Escape → close.
+    fireEvent.keyDown(screen.getByPlaceholderText("بحث..."), { key: "Escape" })
+
+    expect(getSearchQueryState()).toEqual({
+      employees: false,
+      projects: false,
+      warehouses: false,
+      debts: false,
+      externals: false,
+      inventory: false,
+      invoices: false,
+    })
+  })
+
+  it("defers fuzzy results until the 175ms debounce window elapses", () => {
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+    fireEvent.click(screen.getByRole("button", { name: "بحث" }))
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.change(screen.getByPlaceholderText("بحث..."), {
+        target: { value: "مبنى" },
+      })
+
+      // Inside the window: the project is not searched yet — categories stay.
+      expect(screen.queryByText("مبنى الإدارة الجديد")).toBeNull()
+      expect(screen.getAllByText("الصفحات").length).toBeGreaterThan(0)
+
+      act(() => {
+        vi.advanceTimersByTime(174)
+      })
+      expect(screen.queryByText("مبنى الإدارة الجديد")).toBeNull()
+
+      act(() => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(screen.getByText("مبنى الإدارة الجديد")).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("searches employees, warehouses, and projects from the corpus", () => {
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+    fireEvent.click(screen.getByRole("button", { name: "بحث" }))
+
+    vi.useFakeTimers()
+    try {
+      // Warehouse hit.
+      fireEvent.change(screen.getByPlaceholderText("بحث..."), {
+        target: { value: "المستودع الرئيسي" },
+      })
+      act(() => {
+        vi.advanceTimersByTime(175)
+      })
+      expect(screen.getByText("المستودع الرئيسي")).toBeTruthy()
+
+      // Employee hit (first + last name).
+      fireEvent.change(screen.getByPlaceholderText("بحث..."), {
+        target: { value: "أحمد بلخير" },
+      })
+      act(() => {
+        vi.advanceTimersByTime(175)
+      })
+      expect(screen.getByText("أحمد بلخير")).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("restores the categories immediately when the query is cleared", () => {
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+    fireEvent.click(screen.getByRole("button", { name: "بحث" }))
+
+    vi.useFakeTimers()
+    try {
+      const input = screen.getByPlaceholderText("بحث...")
+      fireEvent.change(input, { target: { value: "مبنى" } })
+      act(() => {
+        vi.advanceTimersByTime(175)
+      })
+      expect(screen.getByText("مبنى الإدارة الجديد")).toBeTruthy()
+
+      // Clearing the input shows the categories right away — no stale results
+      // linger while the debounced value catches up to "".
+      fireEvent.change(input, { target: { value: "" } })
+      expect(screen.getAllByText("الصفحات").length).toBeGreaterThan(0)
+      expect(screen.queryByText("مبنى الإدارة الجديد")).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("closing the dialog clears the query for the next open", () => {
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+    fireEvent.click(screen.getByRole("button", { name: "بحث" }))
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.change(screen.getByPlaceholderText("بحث..."), {
+        target: { value: "مبنى" },
+      })
+      act(() => {
+        vi.advanceTimersByTime(175)
+      })
+      expect(screen.getByText("مبنى الإدارة الجديد")).toBeTruthy()
+
+      fireEvent.keyDown(screen.getByPlaceholderText("بحث..."), { key: "Escape" })
+      fireEvent.click(screen.getByRole("button", { name: "بحث" }))
+
+      // Reopened fresh: input empty, categories shown, no stale result.
+      const input = screen.getByPlaceholderText("بحث...") as HTMLInputElement
+      expect(input.value).toBe("")
+      expect(screen.getAllByText("الصفحات").length).toBeGreaterThan(0)
+      expect(screen.queryByText("مبنى الإدارة الجديد")).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

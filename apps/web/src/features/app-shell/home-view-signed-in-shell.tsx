@@ -5,6 +5,7 @@ import { LogOut, MoonStar, PanelRightClose, PanelRightOpen, Settings, SunMedium,
 import { useTranslation } from "react-i18next"
 import { useMobileLayout } from "@/hooks/use-mobile-layout"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { useEmployeesQuery, useProjectsQuery, useWarehousesQuery, useDebtAccountsQuery, useExternalCounterpartiesQuery } from "./workspace-queries"
 import { useInventoryItemDefinitionsQuery, useInventoryInvoiceGroupsQuery } from "@/features/inventory/inventory-hooks"
 import { UserJourneyTour } from "@/hooks/use-user-journey"
@@ -85,9 +86,22 @@ export function HomeViewSignedInShell({
   const [helpOpen, setHelpOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
 
+  // Debounce the query so the fuzzy search (fuse.search) only runs after
+  // the user pauses typing (~175ms), not on every keystroke (issue #280).
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 175)
+
+  const openSearch = () => {
+    setSearchQuery("")
+    setSearchOpen(true)
+  }
+  const closeSearch = () => {
+    setSearchOpen(false)
+    setSearchQuery("")
+  }
+
   // Global keyboard shortcuts — registered here where the handlers live
   useKeyboardShortcuts({
-    onSearch: () => setSearchOpen(true),
+    onSearch: openSearch,
     onHelp: () => setHelpOpen(true),
     onToggleSidebar: () => isMobile ? toggleSidebar() : onSetSidebarCollapsed(!sidebarCollapsed),
   })
@@ -98,11 +112,17 @@ export function HomeViewSignedInShell({
   const warehousesQuery = useWarehousesQuery({ enabled: searchOpen })
   const debtAccountsQuery = useDebtAccountsQuery({ enabled: searchOpen })
   const externalsQuery = useExternalCounterpartiesQuery({ enabled: searchOpen })
-  const inventoryQuery = useInventoryItemDefinitionsQuery()
-  const invoicesQuery = useInventoryInvoiceGroupsQuery()
+  const inventoryQuery = useInventoryItemDefinitionsQuery({ enabled: searchOpen })
+  const invoicesQuery = useInventoryInvoiceGroupsQuery({ enabled: searchOpen })
 
-  // Build unified search index from all data
-  const allSearchItems: SearchItem[] = useMemo(() => {
+  // Build the unified search index lazily — the corpus and the Fuse index
+  // only exist while the dialog is open. While closed, all seven queries are
+  // disabled and no Fuse instance is constructed (issue #280).
+  const { searchResults } = useMemo(() => {
+    if (!searchOpen) {
+      return { allSearchItems: [] as SearchItem[], fuse: null as Fuse<SearchItem> | null, searchResults: [] as SearchItem[] }
+    }
+
     // ── Each page is a category with sub-actions ──
     const pages: SearchItem[] = [
       {
@@ -247,42 +267,39 @@ export function HomeViewSignedInShell({
       action: () => { window.location.href = `/invoices/${inv.id}` },
     }))
 
-    return [...pages, ...employees, ...projects, ...warehouses, ...debts, ...externals, ...inventory, ...invoices]
-  }, [t, employeesQuery.data, projectsQuery.data, warehousesQuery.data, debtAccountsQuery.data, externalsQuery.data, inventoryQuery.data, invoicesQuery.data])
+    const allSearchItems: SearchItem[] = [...pages, ...employees, ...projects, ...warehouses, ...debts, ...externals, ...inventory, ...invoices]
 
-  // Fuse.js instance — fuzzy search with typo tolerance
-  // Also index children so typing "مستودع" or "إنشاء" finds sub-actions
-  const fuse = useMemo(
-    () => {
-      // Flatten: parent items + their children as searchable items
-      const flat: SearchItem[] = []
-      for (const item of allSearchItems) {
-        flat.push(item)
-        if (item.children) {
-          for (const child of item.children) {
-            flat.push({ ...child, category: item.title })
-          }
+    // Fuse.js instance — fuzzy search with typo tolerance
+    // Also index children so typing "مستودع" or "إنشاء" finds sub-actions
+    // Flatten: parent items + their children as searchable items
+    const flat: SearchItem[] = []
+    for (const item of allSearchItems) {
+      flat.push(item)
+      if (item.children) {
+        for (const child of item.children) {
+          flat.push({ ...child, category: item.title })
         }
       }
-      return new Fuse(flat, {
-        keys: ["title", "description", "category"],
-        threshold: 0.4,
-        includeScore: true,
-        minMatchCharLength: 1,
-        ignoreLocation: true,
-      })
-    },
-    [allSearchItems],
-  )
-
-  // Filter search results using fuzzy matching
-  const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) {
-      // Show all page categories (expandable items)
-      return allSearchItems.filter((item) => item.children && item.children.length > 0)
     }
-    return fuse.search(searchQuery).slice(0, 20).map((r) => r.item)
-  }, [searchQuery, fuse, allSearchItems])
+    const fuse = new Fuse(flat, {
+      keys: ["title", "description", "category"],
+      threshold: 0.4,
+      includeScore: true,
+      minMatchCharLength: 1,
+      ignoreLocation: true,
+    })
+
+    // Filter search results using fuzzy matching — only the debounced query
+    // reaches the expensive fuse.search (issue #280). Clearing the input
+    // restores the categories immediately (checked against the live query),
+    // while a fresh keystroke shows categories until the debounce settles.
+    const searchResults =
+      !searchQuery.trim() || !debouncedSearchQuery.trim()
+        ? allSearchItems.filter((item) => item.children && item.children.length > 0)
+        : fuse.search(debouncedSearchQuery).slice(0, 20).map((r) => r.item)
+
+    return { allSearchItems, fuse, searchResults }
+  }, [searchOpen, t, searchQuery, debouncedSearchQuery, employeesQuery.data, projectsQuery.data, warehousesQuery.data, debtAccountsQuery.data, externalsQuery.data, inventoryQuery.data, invoicesQuery.data])
 
   const tourSteps = [
     {
@@ -381,7 +398,7 @@ export function HomeViewSignedInShell({
               data-tour="search"
               aria-label={t("shortcuts.search")}
               className="w-[44px] h-[44px] grid place-items-center rounded-[0.4375rem] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
-              onClick={() => setSearchOpen(true)}
+              onClick={openSearch}
               title={t("shortcuts.search")}
             >
               <Search size={18} />
@@ -455,7 +472,7 @@ export function HomeViewSignedInShell({
       {/* Search dialog */}
       <SearchDialog
         isOpen={searchOpen}
-        onClose={() => setSearchOpen(false)}
+        onClose={closeSearch}
         onQueryChange={setSearchQuery}
         results={searchResults}
       />
