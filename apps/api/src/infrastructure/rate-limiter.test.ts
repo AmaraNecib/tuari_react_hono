@@ -121,6 +121,21 @@ describe("resolveClientIp", () => {
     expect(ip).toBe("192.0.2.1");
   });
 
+  it("falls back to remoteAddress when trusted mode has no proxy header", () => {
+    const ip = resolveClientIp({
+      remoteAddress: "192.0.2.1",
+      trustProxyHeaders: true,
+    });
+
+    expect(ip).toBe("192.0.2.1");
+  });
+
+  it("ignores forwardedFor by default (trustProxyHeaders unset) without a socket", () => {
+    const ip = resolveClientIp({ forwardedFor: "192.168.1.1" });
+
+    expect(ip).toBe("unknown");
+  });
+
   it("defaults to 'unknown' when no IP available", () => {
     const ip = resolveClientIp({});
 

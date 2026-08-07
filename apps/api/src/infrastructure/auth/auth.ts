@@ -27,10 +27,17 @@ export function createAuth(drizzleDb: AppDrizzle, config: AppConfig) {
     plugins: [
       bearer(),
       phoneNumber({
-        phoneNumberValidator: async (phoneNumberValue) => algerianPhonePattern.test(phoneNumberValue),
-        sendOTP: ({ phoneNumber }) => {
-          const masked = phoneNumber.replace(/(\d{3})\d{4}(\d{3})/, "$1****$2");
-          console.info(`[better-auth] Phone verification requested for ${masked}`);
+        phoneNumberValidator: async (phoneNumberValue) =>
+          algerianPhonePattern.test(phoneNumberValue),
+        // Security (#283): OTP delivery is intentionally NOT implemented. The
+        // `sendOTP` callback is a hard failure instead of the old placeholder
+        // that logged to stdout — a real delivery provider must be added here
+        // before OTP sign-in is enabled. As wired, OTP values can never reach
+        // `%APPDATA%/Tuari/logs/api-server.log`.
+        sendOTP: () => {
+          throw new Error(
+            "OTP delivery is not configured — refusing to send or log OTP codes (see #283)",
+          );
         },
       }),
     ],
