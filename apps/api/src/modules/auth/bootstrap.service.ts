@@ -33,6 +33,7 @@ type BootstrapResult =
 const BOOTSTRAP_CONFLICT_MESSAGE = "تم إعداد الحساب الأول بالفعل.";
 const BOOTSTRAP_SECRET_MESSAGE = "رمز الإعداد الأول غير صحيح.";
 const BOOTSTRAP_VALIDATION_MESSAGE = "تحقق من صحة بيانات الإعداد.";
+const BOOTSTRAP_NAME_INVISIBLE_MESSAGE = "الاسم يجب ألا يحتوي على أحرف غير مرئية.";
 
 /** Per-field Arabic messages for invalid bootstrap input (defense-in-depth). */
 // The numeric limits are derived from the shared contract schema so the copy
@@ -79,6 +80,13 @@ function bootstrapFieldErrorMessage(issue: ZodIssue): string {
   const field = bootstrapIssueField(issue);
   if (field === "input") {
     return BOOTSTRAP_VALIDATION_MESSAGE;
+  }
+  // A refine() rejection surfaces as `custom` — today only the name's
+  // visible-character requirement (Cf-only names survive trim()). The
+  // too-long copy would be misleading for an invisible-name failure, so it
+  // gets its own message.
+  if (issue.code === "custom") {
+    return BOOTSTRAP_NAME_INVISIBLE_MESSAGE;
   }
   const messages =
     issue.code === "too_small" || issue.code === "invalid_type"

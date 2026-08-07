@@ -91,13 +91,23 @@ describe("RecoveryKeyService", () => {
       expect(result).toBe(false);
     });
 
-    it("rejects a key containing zero-width characters (can never match a stored hash)", async () => {
-      // #234 hygiene class: a key built from / containing invisible format
-      // chars (ZWSP, LRM, …) is hashed exactly as given, so it can never
-      // equal a stored SHA-256 digest of a hex key — consume must fail.
+    it("rejects a whitespace-only key", async () => {
       await env.service.generateKeys();
-      expect(await env.service.consumeKey("a1b2\u200Bc3d4-e5f6")).toBe(false);
+      expect(await env.service.consumeKey("   ")).toBe(false);
+    });
+
+    it("rejects a key containing zero-width characters (can never match a stored hash)", async () => {
+      // #234 hygiene class: embed a ZWSP inside a REAL generated key — the
+      // service hashes exactly what it is given, so the invisible char
+      // changes the digest and the key can never be consumed. (If a future
+      // implementation stripped Cf chars before hashing, this pin fails.)
+      const keys = await env.service.generateKeys();
+      const real = keys[0]!.key;
+      const poisoned = `${real.slice(0, 4)}\u200B${real.slice(4)}`;
+      expect(await env.service.consumeKey(poisoned)).toBe(false);
       expect(await env.service.consumeKey("\u200B")).toBe(false);
+      const status = await env.service.getPoolStatus();
+      expect(status.availableCount).toBe(3);
     });
 
     it("rejects a padded-but-valid key (the service hashes exactly what it is given)", async () => {
@@ -180,6 +190,11 @@ describe("RecoveryKeyService", () => {
     it("cannot revoke a non-existent key", async () => {
       const result = await env.service.revokeKey("non-existent-id");
       expect(result).toBe(false);
+    });
+
+    it("cannot revoke an empty or whitespace-only key id", async () => {
+      expect(await env.service.revokeKey("")).toBe(false);
+      expect(await env.service.revokeKey("   ")).toBe(false);
     });
   });
 

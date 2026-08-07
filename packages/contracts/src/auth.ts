@@ -9,7 +9,19 @@ export const phonePasswordSignInSchema = z.object({
 });
 
 export const authBootstrapInputSchema = z.object({
-  name: z.string().trim().min(1).max(120),
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(120)
+    // Reject invisible-only names: trim() keeps format characters (ZWSP,
+    // LRM, …) which are not WhiteSpace, so a blank-looking name must not
+    // become the stored display name (same hygiene class as #226/#234).
+    // The empty-string guard defers to .min(1) so an empty name yields a
+    // single "required" issue, not a doubled-up custom issue.
+    .refine((value) => value.length === 0 || /[^\p{Cf}]/u.test(value), {
+      message: "name must contain at least one visible character",
+    }),
   phone: algerianPhoneSchema,
   password: z.string().min(8).max(128),
   setupSecret: z.string().trim().min(1).max(256).optional(),

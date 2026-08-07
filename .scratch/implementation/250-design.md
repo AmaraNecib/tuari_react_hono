@@ -40,16 +40,32 @@ the "adapters are exercised through module tests" policy intact.
   port) is its own OPEN issue; #250 pins the resolver's pass-through semantics and
   `ALL_PERMISSIONS` copy isolation inside the rbac module only.
 
+## Deviation (audit-driven, still within #250's zero-width mandate)
+
+Test-audit found a real gap in the same hygiene class: the bootstrap **name** field
+accepted invisible-only names (`\u200B\u200B` passes trim + min(1)) which would be
+persisted as the display name. Fixed with a minimal schema refine on
+`authBootstrapInputSchema.name` (`.refine` — at least one visible `[^\p{Cf}]` char;
+empty-string guard defers to `.min(1)` so an empty name still yields a single
+required issue) plus a `custom`-code branch in the service's Arabic message map.
+Blast radius is bootstrap-only (name is not in sign-in); web `mapBootstrapErrors`
+falls through to the same generic copy, so no web change. #230/#234 remain OPEN
+for passwords and keys.
+
 ## Changes
 
 | File | Change |
 |---|---|
 | `apps/api/vitest.config.ts` | add `src/modules/rbac/**/*.ts` to coverage `include` |
-| `apps/api/src/modules/auth/bootstrap.service.test.ts` | phone with embedded zero-width char → VALIDATION |
-| `apps/api/src/modules/auth/recovery-key.service.test.ts` | ZWSP key / padded key never consume (exact-hash pin) |
-| `apps/api/src/modules/rbac/permissions.test.ts` | whitespace/format-char permission strings → invalid |
-| `apps/api/src/modules/rbac/adapters/sqlite-permission-resolver.test.ts` | stale-permission pass-through, ALL_PERMISSIONS copy isolation, empty userId |
-| `apps/api/src/modules/rbac/role-seeds.test.ts` | `getPermissionsForRole` returns a fresh copy |
+| `packages/contracts/src/auth.ts` | bootstrap name rejects invisible-only names (refine) |
+| `apps/api/src/modules/auth/bootstrap.service.ts` | `custom`-code issue → invisible-name Arabic message |
+| `apps/api/src/modules/auth/bootstrap.service.test.ts` | ZWSP/BOM-name rejection + message pin; 9/11-digit phone boundaries |
+| `apps/api/src/modules/auth/recovery-key.service.test.ts` | non-vacuous ZWSP-embedded-real-key consume pin; empty/whitespace key & keyId |
+| `apps/api/src/modules/rbac/permissions.ts` | `isPermission` requires exactly one colon (reject extra segments) |
+| `apps/api/src/modules/rbac/permissions.test.ts` | colon/whitespace/format-char variants |
+| `apps/api/src/modules/rbac/adapters/sqlite-permission-resolver.test.ts` | stale-permission pass-through (will-change #210), ALL_PERMISSIONS copy isolation, empty userId |
+| `apps/api/src/modules/rbac/role-seeds.test.ts` | fresh-copy + empty/case-sensitive key pins |
+| `packages/contracts/src/index.test.ts` | schema-level invisible-name rejection pin |
 
 ## Tests
 

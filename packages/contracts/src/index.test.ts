@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appErrorSchema,
+  authBootstrapInputSchema,
   authSetupStatusSchema,
   changeDbKeyInputSchema,
   changeDbKeyOutputSchema,
@@ -75,6 +76,25 @@ describe("contracts", () => {
       hasUsers: false,
       requiresSetupKey: true,
     })
+  })
+
+  it("rejects a bootstrap name made only of invisible format characters", () => {
+    // #250/#234 hygiene: trim() keeps format chars (ZWSP), so the name
+    // schema itself must reject an invisible-only display name.
+    expect(() =>
+      authBootstrapInputSchema.parse({
+        name: "\u200B\u200B",
+        phone: "0612345678",
+        password: "password123",
+      }),
+    ).toThrow()
+    expect(() =>
+      authBootstrapInputSchema.parse({
+        name: " \u200B ",
+        phone: "0612345678",
+        password: "password123",
+      }),
+    ).toThrow()
   })
 
   it("accepts a session user with phone identity and app version", () => {

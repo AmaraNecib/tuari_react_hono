@@ -99,6 +99,8 @@ describe("permissions", () => {
       expect(isPermission("employees:create:extra")).toBe(false);
       expect(isPermission("employees:create:")).toBe(false);
       expect(isPermission(":employees:create")).toBe(false);
+      expect(isPermission("employees::create")).toBe(false);
+      expect(isPermission(":")).toBe(false);
     });
   });
 
