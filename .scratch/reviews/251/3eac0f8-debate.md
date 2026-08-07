@@ -1,7 +1,7 @@
 # Debate — Issue #251 (Coverage 100%: company/debt/finance, high-assurance)
 
 - Base: `fd94c413846934e8722aa098f130e3a5bf9db1c6`
-- Head: `0461cec9586e702b589050accd7d6e8e2a4d04bc`
+- Head: `3eac0f8` (post-evidence delta: debate fixes were committed as 9970498; final evidence rename)
 - Tier: High-assurance (money-path modules per parent #248)
 
 ## Verdict
