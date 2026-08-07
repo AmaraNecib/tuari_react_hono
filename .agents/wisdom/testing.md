@@ -250,3 +250,49 @@ literal string, zero type escape.
 **Always**: for "this key must not exist on an object" assertions, prefer the
 `in` operator over a `Record<string, unknown>` cast; a broad cast turns the
 negative test into a false-positive machine on typos.
+
+## Coverage chase exposes latent divergence bugs; unify before covering (🟠 Major)
+
+Pushing `company/**` to 100% branches forced both halves of `buildCompanySystemLog`'s
+filtering into view: the group gate compared dates with raw string operators
+(`event.createdAt < filters.fromDate`) while the within-group matching set used
+`compareTimestampsDesc` (real `Date` math). For non-ISO filter strings
+(e.g. date-only `"2026-01-01"`) the two could DISAGREE, so a group could pass the
+gate while every event failed the timestamp filter — and the old
+`sortedEvents.find(...)` fallback chain then promoted an event that did NOT match
+the filters to `primaryEvent` (leaking wrong rows past date filters). Fix: one
+shared `matchesFilters` predicate drives both, making `matchingEvents` provably
+non-empty and the fallback chain provably dead. **Always**: when a branch looks
+unreachable in a filter/sort path, check whether two parallel implementations
+have divergent semantics before writing test hacks.
+
+## Adapt to the coverage include's adapter exclusion when the adapter sits at the module root (🟡 Minor)
+
+The `**/adapters/**` coverage exclusion only applies if the adapter FILE actually
+lives under `adapters/`. The company module's 844-line `sqlite-company.repository.ts`
+sat at the module root (every sibling was under `adapters/`), forcing 84 lines of
+sqlite-driver coverage work. `git mv` + relative-import rewrites (careful: `../../`
+depth changes) aligned it with the repo convention (#209) and the parent policy.
+**Always**: before adding a module to the coverage include, check every storage
+adapter's location — root-level adapters either need coverage or a layout move.
+
+## v8 one-sided branches: fake timers make equal-timestamp branches deterministic (🟡 Minor)
+
+`listDebtsSummary` orders accounts `updatedAt DESC`, so the
+`current.latestActivityAt > account.updatedAt ?` branch's false side only fires on
+EQUAL timestamps — a timing-dependent case. `vi.useFakeTimers()` +
+`vi.setSystemTime(...)` freezes `new Date()`, so two back-to-back account creates
+share an `updatedAt` and the branch fires deterministically. Restore in `finally`.
+**Always**: for time-comparison branches that depend on millisecond equality, use
+fake timers, not sleeps.
+
+## Rebase onto develop after sibling frontier PRs merge; rebuild contracts dist (🟠 Major)
+
+While #251 was in flight, sibling coverage PRs #249/#250 merged into develop
+(adding account/payment/rbac to the SAME vitest include). After rebasing, the
+worktree's `@tuari/contracts/dist` was built from the OLD source — auth bootstrap
+tests failed with `Cannot read properties of undefined (reading 'status')` until
+`pnpm --filter @tuari/contracts build` regenerated it (d.ts size told the story:
+337 KB stale vs 334 KB fresh). **Always**: after rebasing a worktree onto a newer
+develop, rebuild contracts before trusting test results; a failing test in a module
+you didn't touch is the first sign of a stale dist.
