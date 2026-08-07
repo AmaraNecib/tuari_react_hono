@@ -149,12 +149,51 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
  */
 /** Drizzle-based account repository — handles user profile and credential queries. */
 export class DrizzleAccountRepository implements AccountRepository {
+  /** Tail of the FIFO lock — no other account-repo call may join an open transaction. */
+  private lockTail: Promise<void> = Promise.resolve();
+
   constructor(private readonly db: AppDrizzle) {}
 
+  /** Run an operation under the FIFO lock (mirrors sqlite-recovery-key.port). */
+  private serialized<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.lockTail;
+    let release!: () => void;
+    this.lockTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // `previous` never rejects (only ever resolved by release), so a plain
+    // `.then(operation)` suffices; `finally` always releases the lock.
+    return previous.then(operation).finally(release);
+  }
+
   withTransaction<T>(run: (transaction: AccountRepositoryTransaction) => Promise<T>) {
-    return this.db.transaction(async (tx) => {
-      const repoTx = new DrizzleAccountRepositoryTransaction(tx as unknown as AppDrizzle);
-      return run(repoTx);
+    return this.serialized(async () => {
+      // Drizzle's better-sqlite3 `db.transaction()` requires a synchronous
+      // callback, but the account service flows are async — so we own the
+      // transaction on the raw connection (same pattern as bootstrap.service
+      // and sqlite-recovery-key.port).
+      const raw = this.db.$client;
+      // If a transaction was already opened outside the repository (e.g. a
+      // bootstrap flow on the shared connection), join it instead of
+      // BEGINning a second one — better-sqlite3 would throw. The caller
+      // participates in that outer transaction (its COMMIT/ROLLBACK wins).
+      const nested = raw.inTransaction;
+      if (!nested) {
+        raw.exec("BEGIN IMMEDIATE");
+      }
+      try {
+        const repoTx = new DrizzleAccountRepositoryTransaction(this.db);
+        const result = await run(repoTx);
+        if (!nested) {
+          raw.exec("COMMIT");
+        }
+        return result;
+      } catch (error) {
+        if (!nested) {
+          raw.exec("ROLLBACK");
+        }
+        throw error;
+      }
     });
   }
 }
