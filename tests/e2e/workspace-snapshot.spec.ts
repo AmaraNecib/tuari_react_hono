@@ -31,7 +31,12 @@ test("the workspace shell loads via a single workspaceSnapshot RPC (issue #276)"
   const individualListRequests: string[] = []
 
   // Register BEFORE navigation so the post-sign-in workspace fetch is counted.
+  // Only POSTs are counted — an OPTIONS CORS preflight to the same URL (if the
+  // browser ever issues one) must not inflate the snapshot count.
   page.on("request", (request) => {
+    if (request.method() !== "POST") {
+      return
+    }
     const url = request.url()
     if (url.includes("/rpc/workspaceSnapshot")) {
       snapshotRequests.push(url)
