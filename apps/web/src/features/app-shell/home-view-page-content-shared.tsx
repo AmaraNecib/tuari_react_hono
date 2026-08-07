@@ -12,7 +12,7 @@ import type { WorkspaceRouteTarget } from "@/router/navigation"
 import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewDerived } from "./home-view-derived"
 import type { useHomeViewNavigation } from "./home-view-navigation"
-import type { DemoSession } from "./mock-dashboard"
+import type { DemoSession } from "./workspace-mutations"
 import type { HomeViewPage, HomeViewSystemLogFilters, PendingDelete } from "./home-view-types"
 import type { SettingsSection } from "./settings-section"
 

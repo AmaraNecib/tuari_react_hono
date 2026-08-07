@@ -8,7 +8,7 @@ import type {
   useDemoSignOutMutation,
   useRemoveWorkspaceRecordMutation,
   useResetWorkspaceMutation,
-} from "./mock-dashboard"
+} from "./workspace-mutations"
 import type { HomeViewSystemLogFilters, PendingDelete } from "./home-view-types"
 import { usePersistedSidebarState } from "./use-persisted-sidebar-state"
 import { restartApp, useRestartPending } from "@/features/update"

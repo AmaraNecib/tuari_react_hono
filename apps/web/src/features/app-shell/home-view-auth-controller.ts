@@ -10,7 +10,7 @@ import type {
   useBootstrapFirstUserMutation,
   useDemoSessionQuery,
   useDemoSignInMutation,
-} from "./mock-dashboard"
+} from "./workspace-mutations"
 
 type SetupStatusQuery = ReturnType<typeof useAuthSetupStatusQuery>
 type SessionQuery = ReturnType<typeof useDemoSessionQuery>

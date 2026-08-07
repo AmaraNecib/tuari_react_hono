@@ -203,6 +203,7 @@ vi.mock("../workspace-mutations", () => ({
   useSyncManagedProjectsMutation: () => ({ isPending: false, mutateAsync: mockFns.syncManagedProjectsMutate }),
   useSyncManagedWarehousesMutation: () => ({ isPending: false, mutateAsync: mockFns.syncManagedWarehousesMutate }),
   useResetWorkspaceMutation: () => ({ isPending: false, mutateAsync: mockFns.resetMutate }),
+  useRemoveWorkspaceRecordMutation: () => ({ isPending: false, mutateAsync: mockFns.removeMutate }),
   useUpdateAccountSettingsMutation: () => ({ isPending: false, mutateAsync: mockFns.updateAccountMutateAsync }),
   useCreateSalaryPaymentMutation: () => ({
     isPending: false,
@@ -247,6 +248,13 @@ vi.mock("../workspace-queries", () => ({
   useWarehousesQuery: () => ({ data: { items: [] }, isPending: false, isError: false, refetch: vi.fn() }),
   useDebtAccountsQuery: () => ({ data: { items: [] }, isPending: false, isError: false, refetch: vi.fn() }),
   useExternalCounterpartiesQuery: () => ({ data: { items: [] }, isPending: false, isError: false, refetch: vi.fn() }),
+  useCompositeWorkspaceQuery: () => ({
+    data: mockState.workspaceData,
+    isError: Boolean(mockState.workspaceError),
+    isPending: mockState.workspacePending,
+    refetch: mockFns.workspaceRefetch,
+  }),
+  useSystemLogQuery: () => ({ data: mockState.systemLogData, error: null, isPending: false }),
   useEmployeesPagedQuery: () => {
     const employees =
       mockState.workspaceData && "employees" in mockState.workspaceData

@@ -1,15 +1,39 @@
+import { lazy, Suspense, type ReactNode } from "react"
 import { Surface } from "@/features/shared/page-primitives"
 import { workspaceRoutes } from "@/router/navigation"
 
-import { DashboardSection } from "./dashboard-section"
-import { EmployeesSection } from "./employees-section"
 import type { HomeViewPageContentProps } from "./home-view-page-content-shared"
-import { ProjectsSection } from "./projects-section"
-import { RolesSection } from "./roles-section"
-import { SalariesSection } from "./salaries-section"
-import { SettingsSection } from "./settings-section"
-import { SystemLogSection } from "./system-log-section"
-import { WarehousesSection } from "./warehouses-section"
+
+// Each workspace section is its own lazy chunk (mirrors the detail-page
+// pattern in home-view-page-content-detail-pages.tsx). The first workspace
+// page load fetches only its section chunk + shared vendor chunks instead of
+// the full ~620 kB home-view bundle (issue #286).
+const DashboardSection = lazy(async () => import("./dashboard-section").then((module) => ({ default: module.DashboardSection })))
+const EmployeesSection = lazy(async () => import("./employees-section").then((module) => ({ default: module.EmployeesSection })))
+const ProjectsSection = lazy(async () => import("./projects-section").then((module) => ({ default: module.ProjectsSection })))
+const RolesSection = lazy(async () => import("./roles-section").then((module) => ({ default: module.RolesSection })))
+const SalariesSection = lazy(async () => import("./salaries-section").then((module) => ({ default: module.SalariesSection })))
+const SettingsSection = lazy(async () => import("./settings-section").then((module) => ({ default: module.SettingsSection })))
+const SystemLogSection = lazy(async () => import("./system-log-section").then((module) => ({ default: module.SystemLogSection })))
+const WarehousesSection = lazy(async () => import("./warehouses-section").then((module) => ({ default: module.WarehousesSection })))
+
+const sectionFallback = (
+  <div
+    aria-live="polite"
+    className="min-h-[240px] space-y-4 p-6"
+    role="status"
+  >
+    {/* Skeleton shimmer instead of text */}
+    <div className="h-8 w-48 animate-pulse rounded-lg bg-ink/5" />
+    <div className="h-4 w-64 animate-pulse rounded-lg bg-ink/5" />
+    <div className="mt-6 h-32 w-full animate-pulse rounded-xl bg-ink/5" />
+    <div className="h-4 w-32 animate-pulse rounded-lg bg-ink/5" />
+  </div>
+)
+
+function renderSection(node: ReactNode) {
+  return <Suspense fallback={sectionFallback}>{node}</Suspense>
+}
 
 /** Renders the main content section for each workspace page. */
 /**
@@ -66,7 +90,7 @@ export function HomeViewPageSectionContent({
 
   switch (page) {
     case "dashboard":
-      return (
+      return renderSection(
         <Surface variant="panel" className="p-6 xl:p-7">
           <DashboardSection
             labels={{
@@ -79,12 +103,12 @@ export function HomeViewPageSectionContent({
             }}
             metrics={derived.metrics}
           />
-        </Surface>
+        </Surface>,
       )
 
     case "employees":
     case "employees-create":
-      return (
+      return renderSection(
         <EmployeesSection
           actionLabels={{
             view: copy.common.view,
@@ -118,11 +142,11 @@ export function HomeViewPageSectionContent({
           roles={derived.roles}
           title={copy.sections.employees.label}
           workspace={workspace!}
-        />
+        />,
       )
 
     case "projects":
-      return (
+      return renderSection(
         <ProjectsSection
           addLabel={copy.shell.addProject}
           archiveLabel={copy.common.archive}
@@ -149,20 +173,20 @@ export function HomeViewPageSectionContent({
             })}
           onEdit={(project) => void navigation.goToProjectEdit(project.id)}
           onView={(project) => void navigation.goToProjectDetails(project.id)}
-        />
+        />,
       )
 
     case "salaries":
-      return (
+      return renderSection(
         <SalariesSection
           recentPayments={derived.recentSalaryPayments}
           workers={derived.salariedEmployees}
           onEditSalary={(employeeId) => void navigation.goToEmployeeEdit(employeeId)}
-        />
+        />,
       )
 
     case "warehouses":
-      return (
+      return renderSection(
         <WarehousesSection
           addLabel={copy.shell.addWarehouse}
           archiveLabel={copy.common.archive}
@@ -188,11 +212,11 @@ export function HomeViewPageSectionContent({
             })}
           onEdit={(warehouse) => void navigation.goToWarehouseEdit(warehouse.id)}
           onView={(warehouse) => void navigation.goToWarehouseDetails(warehouse.id)}
-        />
+        />,
       )
 
     case "transactions":
-      return (
+      return renderSection(
         <SystemLogSection
           entries={systemLogState.entries}
           filters={systemLogFilters}
@@ -200,11 +224,11 @@ export function HomeViewPageSectionContent({
           isLoading={systemLogState.isLoading}
           title={copy.sections.transactions.label}
           onFiltersChange={onSystemLogFiltersChange}
-        />
+        />,
       )
 
     case "roles":
-      return (
+      return renderSection(
         <RolesSection
           columns={{
             name: copy.columns.name,
@@ -218,11 +242,11 @@ export function HomeViewPageSectionContent({
           roles={derived.roles}
           title={copy.sections.roles.label}
           yesLabel={copy.common.yes}
-        />
+        />,
       )
 
     case "settings":
-      return (
+      return renderSection(
         <SettingsSection
           accountCurrentPasswordLabel={copy.shell.settingsAccountCurrentPassword}
           accountCurrentPasswordPlaceholder={copy.shell.settingsAccountCurrentPasswordPlaceholder}
@@ -268,7 +292,7 @@ export function HomeViewPageSectionContent({
           onSaveAccount={onSaveAccount}
           onToggleTheme={onThemeToggle}
           onUpdateApplied={onUpdateApplied}
-        />
+        />,
       )
 
     default:

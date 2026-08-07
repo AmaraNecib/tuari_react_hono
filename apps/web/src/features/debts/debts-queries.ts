@@ -21,7 +21,7 @@ import type {
   ExternalCounterparty,
 } from "@tuari/contracts"
 
-import { AppMutationError } from "@/features/app-shell/mock-dashboard"
+import { AppMutationError } from "@/features/app-shell/workspace-mutations"
 import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
 import { workspaceQueryKeys } from "@/features/app-shell/workspace-keys"
 import { rpcClient } from "@/lib/orpc-client"

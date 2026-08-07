@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, configure, fireEvent, screen, waitFor } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   demoUser,
@@ -14,8 +14,13 @@ import type { WorkspaceMocks } from "./__test-utils__/workspace-fixtures"
 
 // Load-sensitive suite: page renders can exceed the default 1s async wait
 // under full-suite parallel load (see issue #219). Raise the default for all
-// findBy*/waitFor calls in this file.
-configure({ asyncUtilTimeout: 5000 })
+// findBy*/waitFor calls in this file. Sections are lazy-loaded (issue #286):
+// the heavy employees chunk needs extra headroom under parallel load.
+configure({ asyncUtilTimeout: 20000 })
+// Sections are lazy-loaded (issue #286): the employees chunk in particular is
+// heavy under full-suite parallel load, so give the suite a longer test
+// timeout than the 5s vitest default.
+vi.setConfig({ testTimeout: 30000 })
 
 let mocks: WorkspaceMocks
 
@@ -142,18 +147,18 @@ describe("HomeView workspace shell", () => {
     expect(mocks.workspaceRefetch).toHaveBeenCalledTimes(1)
   })
 
-  it("shows dashboard as a separate page", () => {
+  it("shows dashboard as a separate page", async () => {
     renderWorkspace("dashboard", { sessionUser: demoUser })
 
-    expect(screen.getByRole("heading", { name: "لوحة التحكم" })).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "لوحة التحكم" })).toBeTruthy()
     expect(screen.getByText("العمال النشطون")).toBeTruthy()
     expect(screen.queryByText("أنت هنا الآن")).toBeNull()
   })
 
-  it("shows employees on their own page with clear action buttons", () => {
+  it("shows employees on their own page with clear action buttons", async () => {
     renderWorkspace("employees", { sessionUser: demoUser })
 
-    expect(screen.getByRole("heading", { name: "العاملون" })).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "العاملون" })).toBeTruthy()
     expect(screen.getByText("علي بن حميد")).toBeTruthy()
     expect(screen.queryByText(/^المدير:/)).toBeNull()
     expect(screen.getAllByRole("button", { name: "عرض" }).length).toBeGreaterThan(0)
@@ -167,7 +172,7 @@ describe("HomeView workspace shell", () => {
 
     renderWorkspace("employees-create", { sessionUser: demoUser })
 
-    expect(screen.getByRole("heading", { name: "صفحة إضافة العاملين" })).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "صفحة إضافة العاملين" })).toBeTruthy()
 
     fireEvent.click(screen.getByRole("button", { name: "إضافة عامل آخر" }))
     fireEvent.change(screen.getAllByLabelText("الاسم الأول")[0]!, {
@@ -245,7 +250,7 @@ describe("HomeView workspace shell", () => {
   it("blocks employee batch submission when salary period is selected without an amount", async () => {
     renderWorkspace("employees-create", { sessionUser: demoUser })
 
-    fireEvent.change(screen.getByLabelText("الاسم الأول"), {
+    fireEvent.change(await screen.findByLabelText("الاسم الأول"), {
       target: { value: "سمير" },
     })
     fireEvent.change(screen.getByLabelText("اللقب"), {
@@ -407,10 +412,10 @@ describe("HomeView workspace shell", () => {
     })
   })
 
-  it("navigates project add actions to the dedicated create route", () => {
+  it("navigates project add actions to the dedicated create route", async () => {
     renderWorkspace("projects", { sessionUser: demoUser })
 
-    fireEvent.click(screen.getByRole("button", { name: "إضافة مشروع" }))
+    fireEvent.click(await screen.findByRole("button", { name: "إضافة مشروع" }))
 
     expect(mocks.navigateMock).toHaveBeenCalledWith({ to: "/projects/create" })
   })
@@ -449,37 +454,37 @@ describe("HomeView workspace shell", () => {
     })
   })
 
-  it("navigates warehouse add actions to the dedicated create route", () => {
+  it("navigates warehouse add actions to the dedicated create route", async () => {
     renderWorkspace("warehouses", { sessionUser: demoUser })
 
-    fireEvent.click(screen.getByRole("button", { name: "إضافة مستودع" }))
+    fireEvent.click(await screen.findByRole("button", { name: "إضافة مستودع" }))
 
     expect(mocks.navigateMock).toHaveBeenCalledWith({ to: "/warehouses/create" })
   })
 
-  it("renders the transactions page with grouped log rows", () => {
+  it("renders the transactions page with grouped log rows", async () => {
     renderWorkspace("transactions", { sessionUser: demoUser })
 
-    expect(screen.getByRole("heading", { name: "سجل المعاملات" })).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "سجل المعاملات" })).toBeTruthy()
     expect(
       screen.getByText("تم إسناد علي بن حميد إلى المشروع مبنى الإدارة الجديد"),
     ).toBeTruthy()
   })
 
-  it("renders the salaries page with recent payments and worker shortcuts", () => {
+  it("renders the salaries page with recent payments and worker shortcuts", async () => {
     renderWorkspace("salaries", { sessionUser: demoUser })
 
-    expect(screen.getByRole("heading", { name: "الرواتب" })).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "الرواتب" })).toBeTruthy()
     expect(screen.getAllByText("آخر دفعات الرواتب").length).toBeGreaterThan(0)
     expect(screen.getAllByText("علي بن حميد").length).toBeGreaterThan(0)
     expect(screen.getAllByRole("button", { name: "إضافة دفعة" }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole("button", { name: "تعديل الأجر" }).length).toBeGreaterThan(0)
   })
 
-  it("navigates from salaries page to the worker edit page", () => {
+  it("navigates from salaries page to the worker edit page", async () => {
     renderWorkspace("salaries", { sessionUser: demoUser })
 
-    fireEvent.click(screen.getAllByRole("button", { name: "تعديل الأجر" })[0]!)
+    fireEvent.click((await screen.findAllByRole("button", { name: "تعديل الأجر" }))[0]!)
 
     expect(mocks.navigateMock).toHaveBeenCalledWith({
       to: "/employees/$employeeId/edit",
@@ -487,10 +492,10 @@ describe("HomeView workspace shell", () => {
     })
   })
 
-  it("renders account controls on the settings page", () => {
+  it("renders account controls on the settings page", async () => {
     renderWorkspace("settings", { sessionUser: demoUser })
 
-    expect(screen.getAllByText("معلومات الحساب").length).toBeGreaterThanOrEqual(1)
+    expect((await screen.findAllByText("معلومات الحساب")).length).toBeGreaterThanOrEqual(1)
     expect(
       screen.getByText(
         "يلزم إدخال كلمة المرور الحالية عند تغيير رقم الهاتف لأنه يستخدم لتسجيل الدخول.",
@@ -504,7 +509,7 @@ describe("HomeView workspace shell", () => {
 
     renderWorkspace("settings", { sessionUser: demoUser })
 
-    fireEvent.change(screen.getByDisplayValue("مدير التشغيل"), {
+    fireEvent.change(await screen.findByDisplayValue("مدير التشغيل"), {
       target: { value: "مدير التشغيل الأول" },
     })
 

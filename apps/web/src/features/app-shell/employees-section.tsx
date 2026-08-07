@@ -25,7 +25,7 @@ import type { Role } from "@tuari/contracts"
 import {
   useDeleteEmployeeMutation,
   useLeaveEmployeeMutation,
-} from "./mock-dashboard"
+} from "./workspace-mutations"
 import { useHomeViewNavigation } from "./home-view-navigation"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { type WorkspaceRouteTarget, WorkspaceLink } from "@/router/navigation"
