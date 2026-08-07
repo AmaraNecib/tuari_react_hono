@@ -44,7 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository (so gh resolves owner/repo context)
-        uses: actions/checkout@v4
+        # Pinned to commit SHA — a mutable tag (v4) could be compromised upstream
+        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
       - name: Close issues referenced by the merged PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
