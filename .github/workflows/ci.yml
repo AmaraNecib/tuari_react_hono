@@ -1,8 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [develop]
   pull_request:
   workflow_dispatch:
 
@@ -13,6 +11,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read  # dorny/paths-filter queries the PR diff via the API
 
 env:
   CARGO_TERM_COLOR: always
@@ -51,35 +50,105 @@ jobs:
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm turbo typecheck --filter="!@tuari/desktop"
 
+  # ── Path-gated jobs ─────────────────────────────────────────────
+  # Each job ALWAYS runs (so its required status check always reports)
+  # but its expensive steps are skipped when no relevant file changed.
+  # Change detection uses dorny/paths-filter (compares base..head) —
+  # NOT hashFiles, which hashes files that EXIST (always non-empty).
+
+  # Shared change-detection job: computes which areas this PR touches.
+  detect:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.resolve.outputs.rust }}
+      api: ${{ steps.resolve.outputs.api }}
+      web: ${{ steps.resolve.outputs.web }}
+      e2e: ${{ steps.resolve.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'apps/desktop/src-tauri/**'
+            api:
+              - 'apps/api/**'
+              - 'packages/contracts/**'
+              - 'infrastructure/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+            web:
+              - 'apps/web/**'
+              - 'packages/contracts/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+            e2e:
+              - 'apps/api/**'
+              - 'apps/web/**'
+              - 'packages/contracts/**'
+              - 'tests/e2e/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'playwright.config.ts'
+
+      # Manual dispatch (workflow_dispatch) has no PR diff to compare —
+      # paths-filter would see "no changes" and skip every test, defeating
+      # the escape hatch. Force all areas to run on manual dispatch.
+      - name: Resolve areas (manual dispatch = run everything)
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "api=true" >> "$GITHUB_OUTPUT"
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            echo "e2e=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=${{ steps.filter.outputs.rust }}" >> "$GITHUB_OUTPUT"
+            echo "api=${{ steps.filter.outputs.api }}" >> "$GITHUB_OUTPUT"
+            echo "web=${{ steps.filter.outputs.web }}" >> "$GITHUB_OUTPUT"
+            echo "e2e=${{ steps.filter.outputs.e2e }}" >> "$GITHUB_OUTPUT"
+          fi
+
   test-rust:
     name: "Test Rust Core (no tauri:: imports)"
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    needs: detect
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Install Linux system dependencies (Tauri)
+        if: needs.detect.outputs.rust == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install Rust toolchain
+        if: needs.detect.outputs.rust == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust dependencies
+        if: needs.detect.outputs.rust == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "apps/desktop/src-tauri"
 
       - name: "Verify tool versions"
+        if: needs.detect.outputs.rust == 'true'
         run: |
           echo "Node: $(node --version)"
           echo "pnpm: $(pnpm --version)"
           echo "Rust: $(rustc --version)"
 
       - name: "Verify Rust Core boundaries (no bare tauri imports)"
+        if: needs.detect.outputs.rust == 'true'
         run: |
           echo "Checking for forbidden 'tauri::' imports in Rust Core modules..."
           HAS_TAURI=false
@@ -98,12 +167,18 @@ jobs:
           echo "PASSED: No forbidden imports found"
 
       - name: Test Rust Core
+        if: needs.detect.outputs.rust == 'true'
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      - name: Rust skipped (no src-tauri changes)
+        if: needs.detect.outputs.rust != 'true'
+        run: echo "No Rust changes — skipping cargo test (required check satisfied)"
 
   test-api:
     name: Test API
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    needs: detect
     steps:
       - uses: actions/checkout@v4
         with:
@@ -113,14 +188,23 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @tuari/contracts build
-      - run: pnpm --filter @tuari/api test:coverage
+      - name: Test API
+        if: needs.detect.outputs.api == 'true'
+        run: |
+          pnpm --filter @tuari/contracts build
+          pnpm --filter @tuari/api test:coverage
+
+      - name: API skipped (no api/contracts changes)
+        if: needs.detect.outputs.api != 'true'
+        run: echo "No API changes — skipping tests (required check satisfied)"
 
   test-web:
     name: Test Web
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    needs: detect
     steps:
       - uses: actions/checkout@v4
         with:
@@ -130,14 +214,23 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @tuari/contracts build
-      - run: pnpm test:web
+      - name: Test Web
+        if: needs.detect.outputs.web == 'true'
+        run: |
+          pnpm --filter @tuari/contracts build
+          pnpm test:web
+
+      - name: Web skipped (no web/contracts changes)
+        if: needs.detect.outputs.web != 'true'
+        run: echo "No Web changes — skipping tests (required check satisfied)"
 
   test-e2e:
     name: Test E2E
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    needs: detect
     steps:
       - uses: actions/checkout@v4
         with:
@@ -147,9 +240,17 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
+      - name: Test E2E
+        if: needs.detect.outputs.e2e == 'true'
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e
+
+      - name: E2E skipped (no api/web/contracts/e2e changes)
+        if: needs.detect.outputs.e2e != 'true'
+        run: echo "No E2E-relevant changes — skipping (required check satisfied)"
 
   build:
     name: Build
