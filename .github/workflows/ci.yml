@@ -1,8 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [develop]
   pull_request:
   workflow_dispatch:
 
@@ -51,6 +49,13 @@ jobs:
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm turbo typecheck --filter="!@tuari/desktop"
 
+  # ── Path-gated jobs ─────────────────────────────────────────────
+  # Each job ALWAYS runs (so its required status check always reports)
+  # but its expensive steps are skipped when no relevant file changed.
+  # A skipped job would produce NO check run → required status checks
+  # would never resolve → PRs could not merge. That is why the gate is
+  # on the STEP, not the job.
+
   test-rust:
     name: "Test Rust Core (no tauri:: imports)"
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -60,26 +65,35 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Detect Rust changes
+        id: rust-changed
+        run: echo "changed=${{ hashFiles('apps/desktop/src-tauri/**') != '' }}" >> "$GITHUB_OUTPUT"
+
       - name: Install Linux system dependencies (Tauri)
+        if: steps.rust-changed.outputs.changed == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install Rust toolchain
+        if: steps.rust-changed.outputs.changed == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust dependencies
+        if: steps.rust-changed.outputs.changed == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "apps/desktop/src-tauri"
 
       - name: "Verify tool versions"
+        if: steps.rust-changed.outputs.changed == 'true'
         run: |
           echo "Node: $(node --version)"
           echo "pnpm: $(pnpm --version)"
           echo "Rust: $(rustc --version)"
 
       - name: "Verify Rust Core boundaries (no bare tauri imports)"
+        if: steps.rust-changed.outputs.changed == 'true'
         run: |
           echo "Checking for forbidden 'tauri::' imports in Rust Core modules..."
           HAS_TAURI=false
@@ -98,7 +112,12 @@ jobs:
           echo "PASSED: No forbidden imports found"
 
       - name: Test Rust Core
+        if: steps.rust-changed.outputs.changed == 'true'
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      - name: Rust skipped (no src-tauri changes)
+        if: steps.rust-changed.outputs.changed != 'true'
+        run: echo "No Rust changes — skipping cargo test (required check satisfied)"
 
   test-api:
     name: Test API
@@ -113,9 +132,21 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      - name: Detect API changes
+        id: api-changed
+        run: echo "changed=${{ hashFiles('apps/api/**', 'packages/contracts/**', 'infrastructure/**') != '' }}" >> "$GITHUB_OUTPUT"
+
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @tuari/contracts build
-      - run: pnpm --filter @tuari/api test:coverage
+      - name: Test API
+        if: steps.api-changed.outputs.changed == 'true'
+        run: |
+          pnpm --filter @tuari/contracts build
+          pnpm --filter @tuari/api test:coverage
+
+      - name: API skipped (no api/contracts changes)
+        if: steps.api-changed.outputs.changed != 'true'
+        run: echo "No API changes — skipping tests (required check satisfied)"
 
   test-web:
     name: Test Web
@@ -130,9 +161,21 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      - name: Detect Web changes
+        id: web-changed
+        run: echo "changed=${{ hashFiles('apps/web/**', 'packages/contracts/**') != '' }}" >> "$GITHUB_OUTPUT"
+
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @tuari/contracts build
-      - run: pnpm test:web
+      - name: Test Web
+        if: steps.web-changed.outputs.changed == 'true'
+        run: |
+          pnpm --filter @tuari/contracts build
+          pnpm test:web
+
+      - name: Web skipped (no web/contracts changes)
+        if: steps.web-changed.outputs.changed != 'true'
+        run: echo "No Web changes — skipping tests (required check satisfied)"
 
   test-e2e:
     name: Test E2E
@@ -147,9 +190,21 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      - name: Detect E2E changes
+        id: e2e-changed
+        run: echo "changed=${{ hashFiles('apps/api/**', 'apps/web/**', 'packages/contracts/**', 'tests/e2e/**') != '' }}" >> "$GITHUB_OUTPUT"
+
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
+      - name: Test E2E
+        if: steps.e2e-changed.outputs.changed == 'true'
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e
+
+      - name: E2E skipped (no api/web/contracts/e2e changes)
+        if: steps.e2e-changed.outputs.changed != 'true'
+        run: echo "No E2E-relevant changes — skipping (required check satisfied)"
 
   build:
     name: Build
