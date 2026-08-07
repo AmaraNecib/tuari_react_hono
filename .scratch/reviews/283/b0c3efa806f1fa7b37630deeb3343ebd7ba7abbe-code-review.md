@@ -1,7 +1,7 @@
 # Code Review — Issue #283
 
 - Fixed point: `256f24a34cf77ed527177ee640e74c1039028dbb` (merge-base with `origin/develop`)
-- Diff: `git diff 256f24a...HEAD` (`27e45361bc778c1c6c5597637e60a108443d817c`)
+- Diff: `git diff 256f24a...HEAD` (`b0c3efa806f1fa7b37630deeb3343ebd7ba7abbe`)
 - Spec: GitHub issue #283 + `.scratch/implementation/283-design.md`
 - Method: single-agent two-axis review (Standards + Spec)
 

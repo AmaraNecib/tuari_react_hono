@@ -1,7 +1,7 @@
 # Debate — Issue #283 (High-assurance)
 
 - Base: `256f24a34cf77ed527177ee640e74c1039028dbb`
-- Head: `27e45361bc778c1c6c5597637e60a108443d817c`
+- Head: `b0c3efa806f1fa7b37630deeb3343ebd7ba7abbe` (last reviewable commit; evidence re-SHA commit touches only .scratch/)
 - Scope: `.scratch/implementation/283-design.md`, `git diff 256f24a...27e4536`
 - Method: single-agent adversarial review (critic + defender roles synthesized)
 
