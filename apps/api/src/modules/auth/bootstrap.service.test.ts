@@ -468,6 +468,26 @@ describe("AuthBootstrapService", () => {
     expect(port.createFirstUser).not.toHaveBeenCalled()
   })
 
+  it("rejects a near-miss setup secret (single trailing char) as unauthorized", async () => {
+    const service = createService("setup-key-with-entropy-9f2c1a7d")
+    port.createFirstUser.mockResolvedValue({
+      status: "created",
+      user: { id: "user-1", name: BOOTSTRAP_INPUT.name, phone: BOOTSTRAP_INPUT.phone },
+    } satisfies CreateFirstUserResult)
+
+    const result = await service.bootstrapFirstUser({
+      ...BOOTSTRAP_INPUT,
+      setupSecret: "setup-key-with-entropy-9f2c1a7e",
+    })
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "UNAUTHORIZED" },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
   it("accepts the correct setup secret and proceeds to hashing and the port", async () => {
     const service = createService("setup-secret")
     port.createFirstUser.mockResolvedValue({

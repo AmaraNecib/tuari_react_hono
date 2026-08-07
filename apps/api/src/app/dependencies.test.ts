@@ -41,6 +41,8 @@ vi.mock("../infrastructure/database/factory", async (importOriginal) => {
   };
 });
 
+const TEST_AUTH_SECRET = "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM";
+
 /** Minimal auth instance — only stored by dependency constructors, never used. */
 const fakeAuth = { handler: () => new Response(null, { status: 200 }) } as unknown as BetterAuthInstance;
 
@@ -52,7 +54,7 @@ const SEEDED_ROLE_KEYS = ["admin", "manager", "viewer"];
 
 /** Pin ambient env so the default `createAppConfig()` path is deterministic. */
 const stubCleanEnv = () => {
-  vi.stubEnv("BETTER_AUTH_SECRET", "test-secret");
+  vi.stubEnv("BETTER_AUTH_SECRET", TEST_AUTH_SECRET);
   vi.stubEnv("DB_ADAPTER", undefined);
   vi.stubEnv("APP_DB_KEY", undefined);
   vi.stubEnv("TUARI_CONFIG_FILE", undefined);
@@ -83,7 +85,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
   it("uses the injected config for repository selection (inmemory adapter)", async () => {
     const { createAppDependencies } = await import("./dependencies");
     const config = createAppConfig({
-      BETTER_AUTH_SECRET: "test-secret",
+      BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
       DB_ADAPTER: "inmemory",
     });
 
@@ -117,7 +119,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
     // Ambient key must not leak in — only the injected config may decide.
     vi.stubEnv("BOOTSTRAP_SETUP_KEY", undefined);
     const config = createAppConfig({
-      BETTER_AUTH_SECRET: "test-secret",
+      BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
       BOOTSTRAP_SETUP_KEY: "setup-key-from-config",
     });
 
@@ -140,7 +142,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
     const { createAppDependencies } = await import("./dependencies");
     vi.stubEnv("BOOTSTRAP_SETUP_KEY", undefined);
     const config = createAppConfig({
-      BETTER_AUTH_SECRET: "test-secret",
+      BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
     });
 
     const deps = await createAppDependencies(
@@ -158,7 +160,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
   it("builds the real auth instance from the injected config when none is passed", async () => {
     const { createAppDependencies } = await import("./dependencies");
     const config = createAppConfig({
-      BETTER_AUTH_SECRET: "test-secret",
+      BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
       BETTER_AUTH_URL: "http://127.0.0.1:9999",
     });
 
@@ -198,7 +200,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
 
   it("forwards an injected databaseKey to the connection factory", async () => {
     const { createAppDependencies } = await import("./dependencies");
-    const config = createAppConfig({ BETTER_AUTH_SECRET: "test-secret" });
+    const config = createAppConfig({ BETTER_AUTH_SECRET: TEST_AUTH_SECRET });
 
     const deps = await createAppDependencies(
       { databasePath: inMemoryDb, databaseKey: "test-db-key", authInstance: fakeAuth },
@@ -216,7 +218,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
   it("honors the injected config for the attachments root path", async () => {
     const { createAppDependencies } = await import("./dependencies");
     const config = createAppConfig({
-      BETTER_AUTH_SECRET: "test-secret",
+      BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
       APP_ATTACHMENTS_ROOT: "./private/invoices",
     });
 

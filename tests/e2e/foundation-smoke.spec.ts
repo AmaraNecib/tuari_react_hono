@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test"
 
+import { BOOTSTRAP_SETUP_KEY } from "./helpers/session"
+
 test.describe.configure({ mode: "serial" })
 
 async function bootstrapIfNeeded(page: import("@playwright/test").Page) {
@@ -11,6 +13,11 @@ async function bootstrapIfNeeded(page: import("@playwright/test").Page) {
     await page.getByLabel("الاسم الكامل").fill("مدير التشغيل")
     await page.getByLabel("رقم الهاتف").fill("0612345678")
     await page.getByLabel("كلمة المرور", { exact: true }).fill("password123")
+    // The API runs with a configured bootstrap setup key (see playwright.config.ts).
+    const setupSecretField = page.getByLabel("رمز الإعداد الأول")
+    if (await setupSecretField.isVisible()) {
+      await setupSecretField.fill(BOOTSTRAP_SETUP_KEY)
+    }
     await createFirstUserButton.click()
     return
   }
