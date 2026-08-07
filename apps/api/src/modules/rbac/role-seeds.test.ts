@@ -130,5 +130,14 @@ describe("role seeds", () => {
       const perms = getPermissionsForRole("nonexistent");
       expect(perms).toEqual([]);
     });
+
+    it("returns a fresh copy — mutating it cannot corrupt the seed", () => {
+      const perms = getPermissionsForRole("admin");
+      perms.length = 0;
+      // The seed list (and every later caller) is unaffected.
+      expect(getPermissionsForRole("admin")).toEqual(ALL_PERMISSIONS);
+      const seed = DEFAULT_ROLE_PERMISSIONS.find((r) => r.role.key === "admin")!;
+      expect(seed.permissions).toEqual(ALL_PERMISSIONS);
+    });
   });
 });

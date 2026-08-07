@@ -80,6 +80,18 @@ describe("permissions", () => {
       expect(isPermission("employees.create")).toBe(false);
       expect(isPermission("projects.create")).toBe(false);
     });
+
+    it("returns false when whitespace or format characters smuggle into either segment", () => {
+      // Permission strings are exact-match: neither segment may carry padding
+      // (spaces/tabs) or invisible format chars (#210 unknown-string + #234
+      // hygiene) — a stale or hand-edited string must not validate.
+      expect(isPermission(" employees:create")).toBe(false);
+      expect(isPermission("employees :create")).toBe(false);
+      expect(isPermission("employees: create")).toBe(false);
+      expect(isPermission("employees:\tcreate")).toBe(false);
+      expect(isPermission("\u200Bemployees:create")).toBe(false);
+      expect(isPermission("employees:\u200Bcreate")).toBe(false);
+    });
   });
 
   describe("isResourcePermission", () => {
@@ -94,6 +106,13 @@ describe("permissions", () => {
 
     it("returns false for invalid action", () => {
       expect(isResourcePermission("employees", "unknown")).toBe(false);
+    });
+
+    it("returns false when either segment carries whitespace or format characters", () => {
+      expect(isResourcePermission(" employees", "create")).toBe(false);
+      expect(isResourcePermission("employees", " create")).toBe(false);
+      expect(isResourcePermission("employees", "\u200Bcreate")).toBe(false);
+      expect(isResourcePermission("employees\u200B", "create")).toBe(false);
     });
   });
 });

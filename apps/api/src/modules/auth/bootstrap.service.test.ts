@@ -151,6 +151,18 @@ describe("AuthBootstrapService", () => {
     { label: "empty phone", phone: "", field: "phone" },
     { label: "whitespace-only phone", phone: "     ", field: "phone" },
     { label: "malformed phone", phone: "1234567890", field: "phone" },
+    // #234 hygiene class: format chars (ZWSP) are not stripped by trim() and
+    // must not be able to hide inside the digits — the regex is a hard gate.
+    {
+      label: "phone with embedded zero-width character",
+      phone: "05\u200B12345678",
+      field: "phone",
+    },
+    {
+      label: "phone with trailing zero-width character",
+      phone: "0612345678\u200B",
+      field: "phone",
+    },
   ])("rejects $label before hashing or touching the port", async ({ phone, field }) => {
     const service = createService()
 

@@ -91,6 +91,25 @@ describe("RecoveryKeyService", () => {
       expect(result).toBe(false);
     });
 
+    it("rejects a key containing zero-width characters (can never match a stored hash)", async () => {
+      // #234 hygiene class: a key built from / containing invisible format
+      // chars (ZWSP, LRM, …) is hashed exactly as given, so it can never
+      // equal a stored SHA-256 digest of a hex key — consume must fail.
+      await env.service.generateKeys();
+      expect(await env.service.consumeKey("a1b2\u200Bc3d4-e5f6")).toBe(false);
+      expect(await env.service.consumeKey("\u200B")).toBe(false);
+    });
+
+    it("rejects a padded-but-valid key (the service hashes exactly what it is given)", async () => {
+      // Trimming copied keys is the wire gate's job (contracts schema); the
+      // service boundary is exact-hash. A padded real key must not consume.
+      const keys = await env.service.generateKeys();
+      const result = await env.service.consumeKey(`  ${keys[0]!.key}  `);
+      expect(result).toBe(false);
+      const status = await env.service.getPoolStatus();
+      expect(status.availableCount).toBe(3);
+    });
+
     it("is case-sensitive (hash is exact)", async () => {
       const keys = await env.service.generateKeys();
       const result = await env.service.consumeKey(keys[0]!.key.toUpperCase());
