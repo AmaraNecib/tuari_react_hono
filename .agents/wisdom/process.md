@@ -301,3 +301,50 @@ file invites a fresh read of that file's quality. The fix round (ROLE_FIELDS con
 saves a full CI + Greptile cycle (~15 min). Note the convergence: the test-audit's
 F2 ("orderBy never asserted") and Greptile found the same ordering gap
 independently — the layered review works.
+
+
+## Verify assigned ownership paths against the repo before launching worktree agents (🟠 Major)
+
+Running four issues in parallel (one subagent per worktree) with an exclusive
+file-ownership map: the map assigned #286 → `apps/api/src/modules/chunk/` and
+#274 → `apps/api/src/auth/` — **neither directory exists**. #286's real scope was
+`apps/web` (home-view + sections + vite.config.ts manualChunks); #274's real fix
+was `apps/web/package.json` + `pnpm-lock.yaml`. I remapped both to the actual
+issue scope in each task text and documented the deviation to the user. Result:
+all three implemented PRs (#295 rbac, #296 body-limit, #300 web-perf) stayed
+strictly inside their owned paths, squash-merged onto develop with ZERO conflicts
+in sequence — disjoint ownership is what makes parallel worktrees conflict-free.
+
+**Always**: before spawning per-worktree agents, `ls`/`find` the assigned paths
+and verify they match the issue's real scope; when they don't, remap to the
+issue scope (documenting the change) instead of blindly passing the map through.
+Never let two agents share a path; merge in dependency order and re-check
+mergeability after each squash.
+
+
+## Whole-issue fix landing in forbidden files → the run is report-only by design (🟡 Minor)
+
+#274's entire fix (bump `apps/web/package.json` to `better-auth@^1.6.20`, dedupe
+`pnpm-lock.yaml`, root `pnpm.overrides` for tar) lived in parent-owned files that
+agents may never edit. The agent ran the diagnosis stage only (read-only
+`pnpm why`/`pnpm audit`, no install) and stopped with a per-file change list.
+That report-only run was still high-value: it surfaced a **NEW critical** the
+issue didn't know about (`seroval ≤1.5.2` via `@tanstack/router-core`,
+GHSA-mv8w-475r-vwqw) and a severity downgrade in the current advisory DB.
+
+**Always**: when an issue's fix is entirely forbidden-file territory, dispatch a
+diagnosis-only run (read-only commands, no installs — `pnpm install` rewrites
+the forbidden lockfile) and require it to return the exact per-file diff needed.
+Don't let it open a PR or make partial non-forbidden changes that don't advance
+the issue.
+
+
+## Greptile file counts depend on the PR base branch (🟡 Minor)
+
+#300 was briefly opened against `main` instead of `develop`; Greptile then
+mis-counted 682 touched files and the review was noise. After correcting the PR
+base to `develop`, the review was clean ("safe to merge", no inline findings).
+
+**Always**: verify `gh pr view <n> --json baseRefName` is `develop` before
+trusting Greptile's file counts or summary; a fresh `gh pr edit <n> --base
+develop` + re-triggered review beats a noisy one against the wrong base.

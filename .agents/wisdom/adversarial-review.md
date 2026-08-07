@@ -25,3 +25,16 @@ after fixing). The dedupe issue itself listed only `config/index.ts` and
 **Always**: when the meaning of "local host" changes, grep the whole repo for
 `127.0.0.1`, `isLocalhost`, and `tauri.localhost` and route every check
 through the shared helper.
+
+
+## Greptile "Summary" comment vs inline findings — score alone isn't proof (🟡 Minor)
+
+On all three merged PRs (#295/#296/#300) Greptile posted only a summary comment
+(5/5, "safe to merge") with **zero inline threads** — that is the clean state the
+guard's Phase 3 check wants. The score is not the evidence: Greptile can emit a
+high score while leaving inline findings, and a summary comment is not a
+finding.
+
+**Always**: check `gh api repos/<owner>/<repo>/pulls/<n>/comments` (the review
+threads endpoint) for actual inline findings, not just the score or summary
+comment, before calling a PR ready to merge.
