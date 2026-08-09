@@ -348,3 +348,68 @@ base to `develop`, the review was clean ("safe to merge", no inline findings).
 **Always**: verify `gh pr view <n> --json baseRefName` is `develop` before
 trusting Greptile's file counts or summary; a fresh `gh pr edit <n> --base
 develop` + re-triggered review beats a noisy one against the wrong base.
+
+
+## Orphaned pi agent processes from earlier sessions eat GBs of RAM and cause OOM mid-batch (🟠 Major)
+
+The 5-worktree parallel run (#273/#276/#279/#280/#283) hit `spawn ENOMEM`
+and killed runs because the machine had 0.5 GB free of 31.8 GB. Root cause:
+two `pi-coding-agent` node processes created ~4.5h EARLIER (the previous
+parallel run's session) were still alive holding ~7.9 GB and ~7.6 GB
+respectively — orphaned runners nobody reaped. Plus the live session (~4.3
+GB) and 5 subagents with 125–166k-token contexts running vitest/playwright/
+cargo simultaneously.
+
+**Always**: before launching a parallel worktree batch, list leftover
+`pi-coding-agent` node processes and kill any older than the current
+session. Expect long async runs to be killed (exit -1) or fail to spawn
+(ENOMEM) under memory pressure; runs are resumable from persisted sessions
+and worktree state survives, so resume rather than restart.
+
+
+## Async subagent runs killed mid-flight are resumable — verify worktree state, then resume (🟠 Major)
+
+All 5 async runs in the batch died once (or twice) with exit code
+4294967295 (signal kill) ~35 min in, all within ~100 ms of each other — a
+coordinated runner kill, NOT a natural failure. The run status says
+`failed` with `resumeDisposition: resumable`. Worktree changes were intact;
+resuming each run from its persisted session continued implementation,
+reviews, push, PR, CI and Greptile correctly. One resume then crashed with
+a Windows exception (0xC0000409) right after an edit — resume AGAIN from
+the same session; the uncommitted edit was still there.
+
+**Always**: when a subagent run reports `failed` but the session is
+resumable, inspect the worktree state first (uncommitted changes intact?)
+and branch/PR state, then resume with a precise "resume exactly where you
+left off" message listing the known commits/uncommitted files. Do not treat
+a killed run as a lost run.
+
+
+## Conflicted main-repo package.json breaks vitest in ALL worktrees (🟠 Major)
+
+The main checkout had a stash-merge conflict in `package.json` + `pnpm-lock.yaml`
+(UU, `<<<<<<< Updated upstream` markers). esbuild bundles vitest.config.ts by
+walking UP past the worktree root to the main repo's package.json, so EVERY
+`pnpm --filter @tuari/web test` in any worktree failed with "Expected string
+in JSON but found '<<'". The worktree agents correctly refused to touch the
+parent-owned file and escalated.
+
+**Always**: before parallel worktree runs, verify the main repo is clean
+(`git status --short` shows no UU/conflict markers) — a conflicted
+package.json/lockfile poisons esbuild resolution for every worktree. Fix on
+the parent side (resolve to HEAD/develop), then have agents retry.
+
+
+## Ownership extension mid-flight: agent asks supervisor, parent cross-checks (🟡 Minor)
+
+#276's Greptile round 2 surfaced a real regression (reset mutation not
+invalidating the snapshot) that required editing
+`apps/web/src/features/app-shell/workspace-mutations.ts` — OUTSIDE its
+announced owned paths. The agent stopped and asked via contact_supervisor
+instead of silently editing. The parent checked the other 4 agents'
+ownership lists (no one owned it), approved, and the fix landed cleanly.
+
+**Always**: when a fix needs a file outside announced ownership, STOP and
+ask the parent (contact_supervisor, reason need_decision) with the exact
+file + why. Parent: cross-check the OTHER agents' announced lists before
+approving; the owner is whoever needs it, not the first to claim.
