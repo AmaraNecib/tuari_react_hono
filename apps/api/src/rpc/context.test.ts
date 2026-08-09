@@ -38,6 +38,20 @@ describe("rpc context", () => {
     expect(sessionService.getCurrentUser).toHaveBeenCalledTimes(1);
   });
 
+  it("stores the remote socket address on the context", () => {
+    const sessionService = { getCurrentUser: vi.fn() };
+    const context = createRpcContext(new Headers(), sessionService, "192.0.2.1");
+
+    expect(context.remoteAddress).toBe("192.0.2.1");
+  });
+
+  it("keeps remoteAddress optional", () => {
+    const sessionService = { getCurrentUser: vi.fn() };
+    const context = createRpcContext(new Headers(), sessionService);
+
+    expect(context.remoteAddress).toBeUndefined();
+  });
+
   it("throws an unauthorized error when a protected handler has no current user", async () => {
     await expect(
       requireCurrentUser({

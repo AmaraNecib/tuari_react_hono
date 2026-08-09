@@ -48,10 +48,14 @@ type RouterDependencies = {
   databaseKeyManager: DatabaseKeyManager;
 };
 
-export function createRouter(dependencies: RouterDependencies) {
+export function createRouter(
+  dependencies: RouterDependencies,
+  options: { trustProxyHeaders?: boolean } = {},
+) {
   const os = implement(appContract).$context<RpcContext>();
   const m = createRpcMiddleware({
     authBootstrapService: dependencies.authBootstrapService,
+    trustProxyHeaders: options.trustProxyHeaders,
   });
 
   const baseHandlers = {
