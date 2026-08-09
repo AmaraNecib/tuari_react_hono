@@ -15,6 +15,11 @@ import { createRpcContext } from "../rpc/context";
 export type TransportSecurityConfig = {
   allowedOrigins: readonly string[];
   trustProxyHeaders?: boolean;
+  /**
+   * Max requests to /api/auth/* per client IP per 15-min window.
+   * Defaults to 30 when unset (production brute-force protection).
+   */
+  authRateLimitMaxRequests?: number;
 };
 
 export const createTransportSecurity = (config: TransportSecurityConfig) => {
@@ -102,7 +107,10 @@ export function createApp(
     trustProxyHeaders: transportSecurity.trustProxyHeaders ?? false,
   });
   const transport = createTransportSecurity(transportSecurity);
-  const authRateLimiter = new SlidingWindowRateLimiter(30, 15 * 60 * 1000).startCleanup()
+  const authRateLimiter = new SlidingWindowRateLimiter(
+    transportSecurity.authRateLimitMaxRequests ?? 30,
+    15 * 60 * 1000,
+  ).startCleanup()
   // The implemented router's concrete type (with `Lazy`-wrapped and
   // `MergedErrorMap` variants) is not directly assignable to the fetch
   // adapter's `Router<any, RpcContext>` parameter; bridge at this boundary.

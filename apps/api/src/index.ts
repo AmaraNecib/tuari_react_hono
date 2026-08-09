@@ -19,6 +19,7 @@ async function main() {
   const app = createApp(appDependencies, {
     allowedOrigins: config.allowedOrigins,
     trustProxyHeaders: config.trustProxyHeaders,
+    authRateLimitMaxRequests: config.authRateLimitMaxRequests,
   });
 
   serve(

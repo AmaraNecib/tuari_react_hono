@@ -90,6 +90,37 @@ const mockState: {
   systemLogData: defaultSystemLogData,
 }
 
+// ─── Search query gating state (issue #280) ────────────────────
+// Records the `enabled` flag the shell passes to each of the seven
+// search-corpus queries. Tests assert the corpus is only fetched while
+// the search dialog is open (lazy fetching + lazy Fuse index).
+
+const searchState: {
+  employees: boolean | undefined
+  projects: boolean | undefined
+  warehouses: boolean | undefined
+  debts: boolean | undefined
+  externals: boolean | undefined
+  inventory: boolean | undefined
+  invoices: boolean | undefined
+} = {
+  employees: undefined,
+  projects: undefined,
+  warehouses: undefined,
+  debts: undefined,
+  externals: undefined,
+  inventory: undefined,
+  invoices: undefined,
+}
+
+/**
+ * Latest `enabled` flags passed to the search-corpus query hooks.
+ * `undefined` means the hook has not been called yet.
+ */
+export function getSearchQueryState() {
+  return { ...searchState }
+}
+
 // ─── Mock functions ──────────────────────────────────────────────
 // Module-internal mock functions. Tests control them via the typed
 // mocks object returned by mockAllMutations().
@@ -243,11 +274,46 @@ vi.mock("../workspace-mutations", () => ({
 
 vi.mock("../workspace-queries", () => ({
   // Hooks used by home-view-signed-in-shell (enabled only when search is open)
-  useEmployeesQuery: () => ({ data: { items: [] }, isPending: false, isError: false, refetch: vi.fn() }),
-  useProjectsQuery: () => ({ data: { items: [] }, isPending: false, isError: false, refetch: vi.fn() }),
-  useWarehousesQuery: () => ({ data: { items: [] }, isPending: false, isError: false, refetch: vi.fn() }),
-  useDebtAccountsQuery: () => ({ data: { items: [] }, isPending: false, isError: false, refetch: vi.fn() }),
-  useExternalCounterpartiesQuery: () => ({ data: { items: [] }, isPending: false, isError: false, refetch: vi.fn() }),
+  useEmployeesQuery: ({ enabled = true }: { enabled?: boolean } = {}) => {
+    searchState.employees = enabled
+    const employees =
+      mockState.workspaceData && "employees" in mockState.workspaceData
+        ? (mockState.workspaceData.employees as Array<Record<string, unknown>>)
+        : []
+    return { data: { items: employees }, isPending: false, isError: false, refetch: vi.fn() }
+  },
+  useProjectsQuery: ({ enabled = true }: { enabled?: boolean } = {}) => {
+    searchState.projects = enabled
+    const projects =
+      mockState.workspaceData && "projects" in mockState.workspaceData
+        ? (mockState.workspaceData.projects as Array<Record<string, unknown>>)
+        : []
+    return { data: { items: projects }, isPending: false, isError: false, refetch: vi.fn() }
+  },
+  useWarehousesQuery: ({ enabled = true }: { enabled?: boolean } = {}) => {
+    searchState.warehouses = enabled
+    const warehouses =
+      mockState.workspaceData && "warehouses" in mockState.workspaceData
+        ? (mockState.workspaceData.warehouses as Array<Record<string, unknown>>)
+        : []
+    return { data: { items: warehouses }, isPending: false, isError: false, refetch: vi.fn() }
+  },
+  useDebtAccountsQuery: ({ enabled = true }: { enabled?: boolean } = {}) => {
+    searchState.debts = enabled
+    const debtAccounts =
+      mockState.workspaceData && "debtAccounts" in mockState.workspaceData
+        ? (mockState.workspaceData.debtAccounts as Array<Record<string, unknown>>)
+        : []
+    return { data: { items: debtAccounts }, isPending: false, isError: false, refetch: vi.fn() }
+  },
+  useExternalCounterpartiesQuery: ({ enabled = true }: { enabled?: boolean } = {}) => {
+    searchState.externals = enabled
+    const externals =
+      mockState.workspaceData && "externalCounterparties" in mockState.workspaceData
+        ? (mockState.workspaceData.externalCounterparties as Array<Record<string, unknown>>)
+        : []
+    return { data: { items: externals }, isPending: false, isError: false, refetch: vi.fn() }
+  },
   useCompositeWorkspaceQuery: () => ({
     data: mockState.workspaceData,
     isError: Boolean(mockState.workspaceError),
@@ -280,8 +346,14 @@ vi.mock("../workspace-queries", () => ({
 // not race a real RPC request during CI.
 vi.mock("@/features/inventory/inventory-hooks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/features/inventory/inventory-hooks")>()),
-  useInventoryItemDefinitionsQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
-  useInventoryInvoiceGroupsQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+  useInventoryItemDefinitionsQuery: ({ enabled = true }: { enabled?: boolean } = {}) => {
+    searchState.inventory = enabled
+    return { data: { items: [] }, isPending: false, isError: false }
+  },
+  useInventoryInvoiceGroupsQuery: ({ enabled = true }: { enabled?: boolean } = {}) => {
+    searchState.invoices = enabled
+    return { data: { items: [] }, isPending: false, isError: false }
+  },
   useInventoryInvoiceGroupQuery: () => ({ data: undefined, isPending: false, isError: false }),
   useInventoryLocationContentsQuery: () => ({
     data: { balances: [], assets: [] },
@@ -548,6 +620,14 @@ export function resetAllMutations(mocks: WorkspaceMocks): void {
   mockState.debtsSummaryError = false
   mockState.debtsSummaryPending = false
   mockState.systemLogData = { ...defaultSystemLogData, items: [...defaultSystemLogData.items] }
+
+  searchState.employees = undefined
+  searchState.projects = undefined
+  searchState.warehouses = undefined
+  searchState.debts = undefined
+  searchState.externals = undefined
+  searchState.inventory = undefined
+  searchState.invoices = undefined
 
   for (const key of Object.keys(mocks) as Array<keyof WorkspaceMocks>) {
     mocks[key].mockReset()

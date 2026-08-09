@@ -15,6 +15,9 @@ const sharedEnv = {
   BETTER_AUTH_URL: apiUrl,
   APP_DB_PATH: e2eDbPath,
   BOOTSTRAP_SETUP_KEY,
+  // The E2E suite signs in from one IP (127.0.0.1) many times per run; the
+  // prod default auth limiter (30 req/15 min/IP) would 429 the last tests.
+  API_AUTH_RATE_LIMIT_MAX_REQUESTS: "500",
   VITE_API_URL: apiUrl,
 }
 
