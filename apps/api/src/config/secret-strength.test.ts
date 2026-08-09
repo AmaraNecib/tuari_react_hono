@@ -51,16 +51,37 @@ describe("isStrongSecret", () => {
     expect(isStrongSecret("kV8xQ2mR9fT3zLpW6nY4aB7c", BETTER_AUTH_SECRET_MIN_LENGTH)).toBe(false);
   });
 
-  it("rejects a 32-character low-entropy secret", () => {
+  it("rejects a 32-character secret with too few distinct characters", () => {
+    // 4 distinct chars (a/b/c/d) — below the 8-character diversity floor.
     expect(isStrongSecret("aaaaaaaabbbbbbbbccccccccdddddddd", BETTER_AUTH_SECRET_MIN_LENGTH)).toBe(
       false,
     );
   });
 
-  it("rejects a digit-only 32-character secret", () => {
+  it("rejects a 32-character single-symbol secret", () => {
+    expect(isStrongSecret("a".repeat(32), BETTER_AUTH_SECRET_MIN_LENGTH)).toBe(false);
+  });
+
+  it("accepts a digit-only 32-character secret (≈106 real bits)", () => {
+    // The gate is a degeneracy filter, not a character-class filter: 10
+    // distinct uniform symbols clear the diversity + entropy floors.
     expect(
       isStrongSecret("01234567890123456789012345678901", BETTER_AUTH_SECRET_MIN_LENGTH),
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("accepts realistic random-hex output below the 4.0 bpc theoretical max", () => {
+    // Regression for the Greptile finding on the first revision: the empirical
+    // Shannon entropy of a FINITE random hex sample is < 4.0 bits/char, so a
+    // gate near the theoretical maximum rejects `openssl rand -hex 32` and the
+    // desktop's OsRng hex secrets at startup. This 66-char hex sample sits at
+    // 3.975 bpc — rejected by the old 4.0 gate, accepted by the new one.
+    expect(
+      isStrongSecret(
+        "3fa8c1e2b97d4a6c5e8f0b1d2a3c4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6",
+        BETTER_AUTH_SECRET_MIN_LENGTH,
+      ),
+    ).toBe(true);
   });
 
   it("rejects the shipped dev placeholders exactly", () => {
