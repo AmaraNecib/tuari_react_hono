@@ -197,12 +197,12 @@ The Rust Core is a **conceptual** subset of the Tauri shell's Rust code. It is n
 | Responsibility | Description | Module |
 |---------------|-------------|--------|
 | **License verification** | Ed25519 signature validation, payload parsing, date checks | `license.rs` (planned) |
-| **Secret generation** | 48-byte random hex for `better-auth.secret` | `lib.rs` (existing via `OsRng`) |
+| **Secret generation** | 48-byte random hex for the auth secret; 32-byte random hex for the SQLCipher DB key | `lib.rs` (existing via `OsRng`) |
 | **Sidecar environment provisioning** | Build a controlled, trusted environment for the sidecar — no inherited environment variables are trusted | `lib.rs` (existing, needs hardening) |
 | **Sidecar process lifecycle** | Spawn, health-check, kill on exit | `lib.rs` (existing) |
 | **File path resolution** | Resolve data dir, logs dir, portable mode detection | `lib.rs` (existing) |
-| **Legacy migration** | Copy files from old data directories | `lib.rs` (existing) |
-| **OS keyring access** | Store/retrieve/clear bearer tokens | `lib.rs` (existing via `keyring`) |
+| **Legacy migration** | Copy files from old data directories; adopt pre-#273 plaintext secret files into the OS store | `lib.rs` (existing) |
+| **OS keyring access** | Store/retrieve/clear bearer tokens and runtime secrets (DPAPI / Keychain / Secret Service) | `lib.rs` (existing via `keyring`) |
 
 ### 3.2 Adjacent Responsibilities (Tauri Shell, not Rust Core)
 
@@ -460,7 +460,8 @@ These service interfaces constitute the **stable contract** between the Trust Au
 |------|----------|---------|
 | `license.lic` | `<app_data>/Tuari/` | Signed license file |
 | `key-rotation-*.json` | `<app_data>/Tuari/` | Key rotation certificates |
-| `better-auth.secret` | `<app_data>/runtime/secrets/` | Auth signing secret |
+| `better-auth.secret` | OS credential store (`com.tuari.desktop.secrets`); owner-only `<app_data>/runtime/secrets/` fallback only when the OS store is unavailable | Auth signing secret (injected via `BETTER_AUTH_SECRET`) |
+| `app-db.key` | OS credential store (`com.tuari.desktop.secrets`); owner-only fallback file | SQLCipher database key (injected via `APP_DB_KEY`) |
 | `clock-tracker.json` | `<app_data>/runtime/state/` | Monotonic clock tracker |
 | `install-timestamp` | `<app_data>/runtime/state/` | First-install timestamp |
 

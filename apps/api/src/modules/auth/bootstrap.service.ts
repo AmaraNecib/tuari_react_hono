@@ -7,6 +7,7 @@ import {
 } from "@tuari/contracts";
 
 import type { BetterAuthInstance } from "../../infrastructure/auth/auth";
+import { safeSecretEquals } from "../../config/secret-strength";
 import { readAppVersion } from "../version";
 import type { BootstrapPort } from "./bootstrap.types";
 
@@ -153,7 +154,7 @@ export class AuthBootstrapService {
 
     const data = parsed.data;
 
-    if (this.bootstrapSetupKey && data.setupSecret !== this.bootstrapSetupKey) {
+    if (this.bootstrapSetupKey && !safeSecretEquals(data.setupSecret ?? "", this.bootstrapSetupKey)) {
       return {
         success: false,
         error: {

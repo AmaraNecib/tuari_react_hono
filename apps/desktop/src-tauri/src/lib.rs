@@ -1,7 +1,7 @@
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::{copy, create_dir_all, read_to_string, write, File, OpenOptions};
+use std::fs::{copy, create_dir_all, read_to_string, remove_file, write, File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 #[cfg(target_os = "windows")]
@@ -20,6 +20,9 @@ const ALLOWED_ORIGINS: &str =
   "http://localhost:1420,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost";
 const BETTER_AUTH_SECRET_BYTES: usize = 48;
 const APP_DB_KEY_BYTES: usize = 32;
+const SECRETS_KEYRING_SERVICE: &str = "com.tuari.desktop.secrets";
+const BETTER_AUTH_SECRET_ACCOUNT: &str = "better-auth.secret";
+const APP_DB_KEY_ACCOUNT: &str = "app-db.key";
 const API_STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const API_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_AUTH_SERVICE: &str = "com.tuari.desktop.auth";
@@ -27,6 +30,53 @@ const DESKTOP_AUTH_ACCOUNT: &str = "desktop-bearer-token";
 const DESKTOP_REQUEST_ORIGIN: &str = "https://tauri.localhost";
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+// ─── Sensitive-command window ACL ──────────────────────────────────
+//
+// Tauri v2 custom commands are NOT gated by capabilities/default.json
+// (that file covers plugin commands only), so every command below is
+// reachable by ANY webview content. Commands that can mutate machine state
+// (update download/apply, license activation, the desktop→API bridge) are
+// therefore gated on the *calling window's* label with a default-deny
+// allowlist: a window must be explicitly listed here before its webview can
+// invoke them. Today the app has a single window ("main"); any future window
+// (e.g. one rendering external content) is denied by default.
+const SENSITIVE_COMMAND_WINDOW_LABELS: &[&str] = &["main"];
+
+/// Returns `true` only for windows explicitly allowed to invoke sensitive
+/// commands. Matching is exact and case-sensitive, like Tauri window labels.
+fn is_sensitive_command_window_allowed(label: &str) -> bool {
+    SENSITIVE_COMMAND_WINDOW_LABELS.contains(&label)
+}
+
+/// Rejects sensitive-command invocations from windows not in the ACL. Must be
+/// the first statement of every gated command so no side effect or network I/O
+/// can happen before the check.
+fn assert_sensitive_command_window(window: &tauri::Window) -> Result<(), String> {
+    if is_sensitive_command_window_allowed(window.label()) {
+        Ok(())
+    } else {
+        Err("This command is not allowed from this window.".to_string())
+    }
+}
+
+// ─── API sidecar identity (stale-process cleanup) ──────────────────
+//
+// The API sidecar child is always spawned as
+// `node <install>/bin/api-runtime/dist/index.cjs`. These stable layout
+// markers (kept out of the absolute install path so they survive app updates
+// that relocate the install directory) identify OUR child and nothing else.
+const API_SIDECAR_CMD_MARKERS: [&str; 2] = ["api-runtime", "index.cjs"];
+
+/// Returns `true` when `command_line` belongs to this application's API
+/// sidecar child rather than an unrelated process. Used to narrow stale
+/// cleanup to our own child instead of "anything listening on the API port".
+fn is_api_sidecar_command_line(command_line: &str) -> bool {
+    let lower = command_line.to_ascii_lowercase();
+    API_SIDECAR_CMD_MARKERS
+        .iter()
+        .all(|marker| lower.contains(marker))
+}
 
 // Rust Core module declarations
 pub mod error;
@@ -391,9 +441,11 @@ async fn send_desktop_api_request(
 
 #[tauri::command]
 async fn desktop_api_request(
+    window: tauri::Window,
     request: DesktopApiRequest,
     state: tauri::State<'_, DesktopAuthRuntimeState>,
 ) -> Result<DesktopApiResponse, String> {
+    assert_sensitive_command_window(&window)?;
     if !is_allowed_desktop_bridge_path(&request.path) {
         return Err("Desktop API bridge path is not allowed.".to_string());
     }
@@ -543,9 +595,11 @@ struct LicenseInfoResponse {
 
 #[tauri::command]
 fn activate_license(
+    window: tauri::Window,
     app: AppHandle,
     key: String,
 ) -> Result<LicenseInfoResponse, String> {
+    assert_sensitive_command_window(&window)?;
     let tuari_dir = resolve_tuari_dir(&app)?;
     let manager = crate::license::LicenseManager::initialize(&tuari_dir)
         .map_err(|e| format!("فشل تحميل مدير الترخيص: {e}"))?;
@@ -585,15 +639,9 @@ fn activate_license(
     let label = edition_label(&info.edition);
     let restart_hint = " يرجى إعادة تشغيل التطبيق لتطبيق التغييرات.";
     let message = if replaced {
-        format!(
-            "تم تحديث الترخيص إلى النسخة {} بنجاح.{}",
-            label, restart_hint
-        )
+        format!("تم تحديث الترخيص إلى النسخة {label} بنجاح.{restart_hint}")
     } else {
-        format!(
-            "تم تفعيل النسخة {} بنجاح.{}",
-            label, restart_hint
-        )
+        format!("تم تفعيل النسخة {label} بنجاح.{restart_hint}")
     };
 
     Ok(LicenseInfoResponse {
@@ -655,7 +703,8 @@ fn check_for_updates() -> Result<UpdateCheckResult, String> {
 }
 
 #[tauri::command]
-fn apply_update(path: String) -> Result<UpdateApplyResult, String> {
+fn apply_update(window: tauri::Window, path: String) -> Result<UpdateApplyResult, String> {
+    assert_sensitive_command_window(&window)?;
     let file_path = std::path::PathBuf::from(&path);
 
     // Validate file exists
@@ -818,10 +867,12 @@ struct DownloadProgress {
 
 #[tauri::command]
 async fn start_update_download(
+    window: tauri::Window,
     url: String,
     app: AppHandle,
     state: tauri::State<'_, DownloadState>,
 ) -> Result<String, String> {
+    assert_sensitive_command_window(&window)?;
     // Backend re-entrancy guard: reject concurrent invocations so two
     // tasks never write to the same output file or stomp on each
     // other's cancellation flag. Mirrors the frontend downloadInFlightRef
@@ -927,11 +978,10 @@ async fn start_update_download(
         .map_err(|e| e.to_string())?;
 
         // Check cancellation
-        if state
+        if *state
             .cancellation_requested
             .lock()
             .map_err(|e| e.to_string())?
-            .clone()
         {
             drop(file);
             let _ = tokio::fs::remove_file(&dest_path).await;
@@ -1106,7 +1156,111 @@ fn generate_secret(byte_len: usize) -> String {
     encode_secret(&bytes)
 }
 
-fn load_or_create_secret(file_path: &PathBuf, byte_len: usize) -> Result<String, String> {
+/// Where a runtime secret lives at rest.
+///
+/// `Keyring` is the OS credential store — DPAPI on Windows, Keychain on
+/// macOS, Secret Service on Linux — and is the primary store. `File` is a
+/// plaintext fallback under the runtime `secrets/` directory, selected only
+/// when the OS store is unavailable (e.g. headless Linux without a keyring
+/// daemon); the directory and files are created owner-only so they are not
+/// readable by other OS users.
+enum SecretStore {
+    Keyring { service: String },
+    File { dir: PathBuf },
+}
+
+impl SecretStore {
+    fn keyring(service: &str) -> Self {
+        SecretStore::Keyring {
+            service: service.to_string(),
+        }
+    }
+
+    fn file(dir: PathBuf) -> Self {
+        SecretStore::File { dir }
+    }
+
+    /// Whether the OS credential store actually responds. Probed once at
+    /// startup to pick between the OS store and the plaintext fallback.
+    fn is_usable(&self) -> bool {
+        match self {
+            SecretStore::File { .. } => true,
+            SecretStore::Keyring { .. } => self.read("probe").is_ok(),
+        }
+    }
+
+    fn entry(&self, account: &str) -> Result<keyring::Entry, String> {
+        match self {
+            SecretStore::Keyring { service } => keyring::Entry::new(service, account).map_err(
+                |error| format!("Failed to open the desktop secrets store: {error}"),
+            ),
+            SecretStore::File { .. } => {
+                unreachable!("the plaintext fallback store has no keyring entry")
+            }
+        }
+    }
+
+    fn read(&self, account: &str) -> Result<Option<String>, String> {
+        match self {
+            SecretStore::Keyring { .. } => match self.entry(account)?.get_password() {
+                Ok(secret) => Ok(Some(secret)),
+                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(error) => Err(format!(
+                    "Failed to read secret '{account}' from the OS store: {error}"
+                )),
+            },
+            SecretStore::File { dir } => {
+                let path = dir.join(account);
+                match read_to_string(&path) {
+                    Ok(secret) => Ok(Some(secret)),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                    Err(error) => Err(format!(
+                        "Failed to read secret file '{}': {error}",
+                        path.display()
+                    )),
+                }
+            }
+        }
+    }
+
+    fn write(&self, account: &str, secret: &str) -> Result<(), String> {
+        match self {
+            SecretStore::Keyring { .. } => self.entry(account)?.set_password(secret).map_err(
+                |error| format!("Failed to store secret '{account}' in the OS store: {error}"),
+            ),
+            SecretStore::File { dir } => write_secret_file(&dir.join(account), secret),
+        }
+    }
+}
+
+fn write_secret_file(path: &Path, secret: &str) -> Result<(), String> {
+    write(path, format!("{secret}\n"))
+        .map_err(|error| format!("Failed to write secret file '{}': {error}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(
+            |error| {
+                format!(
+                    "Failed to restrict secret file permissions '{}': {error}",
+                    path.display()
+                )
+            },
+        )?;
+    }
+    Ok(())
+}
+
+/// Restrict a directory to the current user (0700) so a plaintext secret
+/// fallback is never readable by other OS users.
+#[cfg(unix)]
+fn restrict_dir_to_owner(dir: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+        .map_err(|error| format!("Failed to restrict secrets directory permissions: {error}"))
+}
+
+fn load_or_create_secret_file(file_path: &Path, byte_len: usize) -> Result<String, String> {
     if let Ok(existing_secret) = read_to_string(file_path) {
         let secret = existing_secret.trim();
         if is_valid_secret(secret, byte_len) {
@@ -1115,22 +1269,121 @@ fn load_or_create_secret(file_path: &PathBuf, byte_len: usize) -> Result<String,
     }
 
     let secret = generate_secret(byte_len);
-    write(file_path, format!("{secret}\n")).map_err(|error| error.to_string())?;
+    write_secret_file(file_path, &secret)?;
     Ok(secret)
+}
+
+/// Adopt a legacy plaintext secret file into the store, then delete the
+/// plaintext copy. Returns `Ok(None)` when no adoptable legacy file exists.
+/// Only meaningful for the OS store (the plaintext fallback file IS the
+/// store, so there is nothing to migrate).
+fn migrate_legacy_secret_file(
+    store: &SecretStore,
+    account: &str,
+    byte_len: usize,
+    fallback_dir: &Path,
+) -> Result<Option<String>, String> {
+    let file_path = fallback_dir.join(account);
+    if let Ok(existing) = read_to_string(&file_path) {
+        let secret = existing.trim();
+        if is_valid_secret(secret, byte_len) {
+            store.write(account, secret)?;
+            let _ = remove_file(&file_path);
+            return Ok(Some(secret.to_string()));
+        }
+    }
+    Ok(None)
+}
+
+/// Load (or create) a runtime secret, preferring the OS credential store.
+///
+/// Order of preference:
+/// 1. An existing entry in the OS store (validated; the legacy plaintext
+///    copy, if any, is best-effort removed).
+/// 2. A legacy plaintext file in `fallback_dir` — adopted into the OS store
+///    and then deleted (migration for pre-#273 installs).
+/// 3. A freshly generated secret persisted in the OS store.
+///
+/// When the store is the plaintext fallback itself, the file simply is the
+/// store (no migration, no deletion). If the OS store becomes unavailable
+/// mid-flight, the owner-only plaintext file is used so the app still starts.
+fn load_or_create_secret(
+    store: &SecretStore,
+    account: &str,
+    byte_len: usize,
+    fallback_dir: &Path,
+) -> Result<String, String> {
+    let file_path = fallback_dir.join(account);
+
+    if matches!(store, SecretStore::File { .. }) {
+        return load_or_create_secret_file(&file_path, byte_len);
+    }
+
+    match store.read(account) {
+        Ok(Some(existing)) => {
+            let secret = existing.trim();
+            if is_valid_secret(secret, byte_len) {
+                // Best-effort cleanup of the pre-#273 plaintext copy.
+                let _ = remove_file(&file_path);
+                return Ok(secret.to_string());
+            }
+            // Foreign/corrupt value in the store — regenerate below.
+        }
+        Ok(None) => {
+            // Migration: a legacy plaintext file may hold the current secret.
+            if let Some(secret) =
+                migrate_legacy_secret_file(store, account, byte_len, fallback_dir)?
+            {
+                return Ok(secret);
+            }
+        }
+        Err(_error) => {
+            // OS store unavailable — fall back to the owner-only file.
+            return load_or_create_secret_file(&file_path, byte_len);
+        }
+    }
+
+    let secret = generate_secret(byte_len);
+    match store.write(account, &secret) {
+        Ok(()) => Ok(secret),
+        Err(error) => {
+            eprintln!(
+                "[tuari] OS secret store unavailable; falling back to plaintext file storage: {error}"
+            );
+            write_secret_file(&file_path, &secret)?;
+            Ok(secret)
+        }
+    }
 }
 
 fn load_runtime_secrets(app: &AppHandle) -> Result<RuntimeSecrets, String> {
     let secrets_dir = resolve_secrets_dir(app)?;
     create_dir_all(&secrets_dir).map_err(|error| error.to_string())?;
+    // The plaintext fallback must never be world-readable.
+    #[cfg(unix)]
+    restrict_dir_to_owner(&secrets_dir)?;
+
+    // Prefer the OS credential store (DPAPI / Keychain / Secret Service);
+    // fall back to the owner-only plaintext directory when it is unavailable.
+    let keyring_store = SecretStore::keyring(SECRETS_KEYRING_SERVICE);
+    let store = if keyring_store.is_usable() {
+        keyring_store
+    } else {
+        SecretStore::file(secrets_dir.clone())
+    };
 
     let better_auth_secret = load_or_create_secret(
-        &secrets_dir.join("better-auth.secret"),
+        &store,
+        BETTER_AUTH_SECRET_ACCOUNT,
         BETTER_AUTH_SECRET_BYTES,
+        &secrets_dir,
     )?;
 
     let app_db_key = load_or_create_secret(
-        &secrets_dir.join("app-db.key"),
+        &store,
+        APP_DB_KEY_ACCOUNT,
         APP_DB_KEY_BYTES,
+        &secrets_dir,
     )?;
 
     Ok(RuntimeSecrets {
@@ -1254,6 +1507,13 @@ fn resolve_attachments_root(app_db_path: &Path) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("attachments").join("invoices"))
 }
 
+/// Stops stale API sidecar children left over from a previous run (e.g.
+/// after a crash) before a fresh child is spawned.
+///
+/// Matching is by process identity — command lines that look like OUR child
+/// (`node <install>/bin/api-runtime/dist/index.cjs`) — never by port. The
+/// previous port-based cleanup could terminate an unrelated process that
+/// happened to listen on `API_PORT`.
 fn cleanup_stale_api_processes() {
     if cfg!(debug_assertions) {
         return;
@@ -1261,25 +1521,64 @@ fn cleanup_stale_api_processes() {
 
     #[cfg(target_os = "windows")]
     {
-        let powershell_command = format!(
-      "Get-NetTCPConnection -LocalPort {API_PORT} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object {{ Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }}"
-    );
-
-        let _ = Command::new("powershell")
-            .args(["-NoProfile", "-Command", powershell_command.as_str()])
-            .stdout(Stdio::null())
+        // Enumerate candidate node.exe processes (read-only), then let the
+        // unit-tested identity predicate decide which PIDs are ours before
+        // killing. The kill list is never derived from the listening port.
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\" -ErrorAction SilentlyContinue | ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }",
+            ])
+            .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .creation_flags(CREATE_NO_WINDOW)
-            .status();
+            .output();
+
+        if let Ok(output) = output {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let Some((pid, command_line)) = line.split_once('|') else {
+                    continue;
+                };
+                if is_api_sidecar_command_line(command_line) {
+                    let _ = Command::new("taskkill")
+                        .args(["/PID", pid, "/T", "/F"])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .status();
+                }
+            }
+        }
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = Command::new("pkill")
-            .args(["-f", "api-server"])
-            .stdout(Stdio::null())
+        // pgrep -a prints "<pid> <full command line>" for node processes;
+        // only the ones the identity predicate recognizes as our sidecar
+        // child are stopped.
+        let output = Command::new("pgrep")
+            .args(["-a", "node"])
+            .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .status();
+            .output();
+
+        if let Ok(output) = output {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let Some((pid, command_line)) = line.split_once(' ') else {
+                    continue;
+                };
+                if is_api_sidecar_command_line(command_line) {
+                    let _ = Command::new("kill")
+                        .args(["-9", pid])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .status();
+                }
+            }
+        }
     }
 }
 
@@ -1522,9 +1821,11 @@ fn kill_api(app: &AppHandle) {
 mod tests {
     use super::{
         copy_allowlisted_legacy_runtime_files_if_missing, encode_secret,
-        has_portable_runtime_layout, is_allowed_desktop_bridge_path, is_valid_secret,
+        has_portable_runtime_layout, is_allowed_desktop_bridge_path,
+        is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
         load_or_create_secret, matches_inventory_attachment_download_path,
-        matches_inventory_attachment_upload_path, normalize_token, BETTER_AUTH_SECRET_BYTES,
+        matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
+        SecretStore, BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES,
     };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
@@ -1565,17 +1866,122 @@ mod tests {
     fn persists_secret_once_per_install_location() {
         let temp_dir = unique_temp_dir();
         create_dir_all(&temp_dir).expect("create temp dir");
-        let secret_path = temp_dir.join("better-auth.secret");
+        let store = SecretStore::file(temp_dir.clone());
 
-        let first_secret =
-            load_or_create_secret(&secret_path, BETTER_AUTH_SECRET_BYTES).expect("create secret");
-        let second_secret = load_or_create_secret(&secret_path, BETTER_AUTH_SECRET_BYTES)
-            .expect("reuse existing secret");
+        let first_secret = load_or_create_secret(
+            &store,
+            BETTER_AUTH_SECRET_ACCOUNT,
+            BETTER_AUTH_SECRET_BYTES,
+            &temp_dir,
+        )
+        .expect("create secret");
+        let second_secret = load_or_create_secret(
+            &store,
+            BETTER_AUTH_SECRET_ACCOUNT,
+            BETTER_AUTH_SECRET_BYTES,
+            &temp_dir,
+        )
+        .expect("reuse existing secret");
 
         assert_eq!(first_secret, second_secret);
         assert!(is_valid_secret(&first_secret, BETTER_AUTH_SECRET_BYTES));
 
         remove_dir_all(&temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn migrates_a_legacy_plaintext_secret_into_the_store_and_removes_the_file() {
+        let store_dir = unique_temp_dir();
+        let legacy_dir = unique_temp_dir();
+        create_dir_all(&store_dir).expect("create store dir");
+        create_dir_all(&legacy_dir).expect("create legacy dir");
+
+        // A pre-#273 install left a plaintext secret behind.
+        let legacy_secret = encode_secret(&[0xAB; BETTER_AUTH_SECRET_BYTES]);
+        std::fs::write(
+            legacy_dir.join(BETTER_AUTH_SECRET_ACCOUNT),
+            format!("{legacy_secret}\n"),
+        )
+        .expect("write legacy secret");
+
+        let store = SecretStore::file(store_dir.clone());
+        let migrated = migrate_legacy_secret_file(
+            &store,
+            BETTER_AUTH_SECRET_ACCOUNT,
+            BETTER_AUTH_SECRET_BYTES,
+            &legacy_dir,
+        )
+        .expect("migrate legacy secret")
+        .expect("legacy file exists");
+
+        assert_eq!(migrated, legacy_secret);
+        // The plaintext copy must not survive the migration.
+        assert!(!legacy_dir.join(BETTER_AUTH_SECRET_ACCOUNT).exists());
+        // The secret now lives in the store.
+        assert_eq!(
+            std::fs::read_to_string(store_dir.join(BETTER_AUTH_SECRET_ACCOUNT))
+                .expect("read stored secret")
+                .trim(),
+            legacy_secret
+        );
+
+        remove_dir_all(&store_dir).expect("remove store dir");
+        remove_dir_all(&legacy_dir).expect("remove legacy dir");
+    }
+
+    #[test]
+    fn regenerates_a_corrupt_stored_secret() {
+        let temp_dir = unique_temp_dir();
+        create_dir_all(&temp_dir).expect("create temp dir");
+        let store = SecretStore::file(temp_dir.clone());
+        std::fs::write(
+            temp_dir.join(BETTER_AUTH_SECRET_ACCOUNT),
+            "not-a-valid-hex-secret\n",
+        )
+        .expect("write corrupt secret");
+
+        let loaded = load_or_create_secret(
+            &store,
+            BETTER_AUTH_SECRET_ACCOUNT,
+            BETTER_AUTH_SECRET_BYTES,
+            &temp_dir,
+        )
+        .expect("regenerate corrupt secret");
+
+        assert!(is_valid_secret(&loaded, BETTER_AUTH_SECRET_BYTES));
+        assert_ne!(loaded, "not-a-valid-hex-secret");
+
+        remove_dir_all(&temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn falls_back_to_plaintext_when_the_secret_store_cannot_persist() {
+        let fallback_dir = unique_temp_dir();
+        create_dir_all(&fallback_dir).expect("create fallback dir");
+
+        // A "store" whose directory slot is occupied by a regular file — every
+        // read/write under it fails, mimicking an unusable OS store.
+        let broken_store_path = unique_temp_dir();
+        std::fs::write(&broken_store_path, "i am a file, not a directory")
+            .expect("write store blocker");
+        let broken_store = SecretStore::file(broken_store_path.clone());
+
+        let loaded = load_or_create_secret(
+            &broken_store,
+            BETTER_AUTH_SECRET_ACCOUNT,
+            BETTER_AUTH_SECRET_BYTES,
+            &fallback_dir,
+        )
+        .expect("fall back to plaintext");
+
+        assert!(is_valid_secret(&loaded, BETTER_AUTH_SECRET_BYTES));
+        assert!(
+            fallback_dir.join(BETTER_AUTH_SECRET_ACCOUNT).exists(),
+            "fallback file must be written"
+        );
+
+        remove_dir_all(&fallback_dir).expect("remove fallback dir");
+        std::fs::remove_file(broken_store_path).expect("remove store blocker");
     }
 
     #[test]
@@ -1669,5 +2075,49 @@ mod tests {
         assert!(!matches_inventory_attachment_download_path(
             "/api/inventory/attachments/attachment-1/extra"
         ));
+    }
+
+    #[test]
+    fn allows_only_expected_sensitive_command_windows() {
+        // The single app window (default label "main") is allowed.
+        assert!(is_sensitive_command_window_allowed("main"));
+        // Default-deny: any other label, empty, or case-mismatched label is
+        // rejected (window label matching is exact and case-sensitive).
+        assert!(!is_sensitive_command_window_allowed(""));
+        assert!(!is_sensitive_command_window_allowed("settings"));
+        assert!(!is_sensitive_command_window_allowed("about"));
+        assert!(!is_sensitive_command_window_allowed("MAIN"));
+        assert!(!is_sensitive_command_window_allowed("main "));
+    }
+
+    #[test]
+    fn identifies_only_api_sidecar_command_lines_for_stale_cleanup() {
+        // Our own child on Windows and POSIX install layouts.
+        assert!(is_api_sidecar_command_line(
+            r#""C:\Program Files\Tuari\bin\node.exe" "C:\Program Files\Tuari\bin\api-runtime\dist\index.cjs""#
+        ));
+        assert!(is_api_sidecar_command_line(
+            "/opt/tuari/bin/node /opt/tuari/bin/api-runtime/dist/index.cjs"
+        ));
+        // Windows command lines are case-insensitive.
+        assert!(is_api_sidecar_command_line(
+            r#""C:\PROGRAM FILES\TUARI\BIN\NODE.EXE" "C:\PROGRAM FILES\TUARI\BIN\API-RUNTIME\DIST\INDEX.CJS""#
+        ));
+        // An unrelated node process that merely listens on the API port.
+        assert!(!is_api_sidecar_command_line(
+            "C:\\tools\\node.exe C:\\unrelated\\server.js"
+        ));
+        // An unrelated process owning port 4318.
+        assert!(!is_api_sidecar_command_line(
+            "C:\\Windows\\System32\\svchost.exe -k tuari-port-4318"
+        ));
+        // Both markers are required; a partial match is not our child.
+        assert!(!is_api_sidecar_command_line(
+            "node C:\\x\\api-runtime\\server.js"
+        ));
+        assert!(!is_api_sidecar_command_line(
+            "node C:\\x\\dist\\index.cjs"
+        ));
+        assert!(!is_api_sidecar_command_line(""));
     }
 }

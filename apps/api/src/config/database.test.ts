@@ -11,8 +11,13 @@ import {
 import { createAppConfig } from "./index";
 import { InMemoryStore } from "../modules/company/adapters";
 
-const config = createAppConfig({ BETTER_AUTH_SECRET: "test-secret" });
-const inMemoryConfig = createAppConfig({ BETTER_AUTH_SECRET: "test-secret", DB_ADAPTER: "inmemory" });
+const config = createAppConfig({
+  BETTER_AUTH_SECRET: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM",
+});
+const inMemoryConfig = createAppConfig({
+  BETTER_AUTH_SECRET: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM",
+  DB_ADAPTER: "inmemory",
+});
 
 /** Create an in-memory SQLite handle for factory tests. */
 function createRawDb() {

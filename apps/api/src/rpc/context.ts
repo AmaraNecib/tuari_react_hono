@@ -9,16 +9,25 @@ type SessionResolver = {
 export type RpcContext = {
   headers: Headers;
   resolveCurrentUser: () => Promise<SessionUser | null>;
+  /**
+   * Socket-level remote address of the peer, taken from the transport layer
+   * (Hono `env.incoming.socket.remoteAddress`). Never derived from
+   * client-supplied headers — used for rate-limit keys when proxy headers
+   * are not trusted.
+   */
+  remoteAddress?: string;
 };
 
 export function createRpcContext(
   headers: Headers,
   sessionService: SessionResolver,
+  remoteAddress?: string,
 ): RpcContext {
   let currentUserPromise: Promise<SessionUser | null> | undefined;
 
   return {
     headers,
+    remoteAddress,
     resolveCurrentUser: () => {
       currentUserPromise ??= sessionService.getCurrentUser(headers);
 
