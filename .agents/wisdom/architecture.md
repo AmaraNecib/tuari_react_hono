@@ -211,3 +211,36 @@ branch coverage (an `??`/`&&` fallback branch would be uncoverable today).
 **Always**: when adding a `.refine()` to a schema field that also has
 `.min()`/`.max()`, guard the refine for the empty case, and add the `custom`
 issue code to any user-facing issue→message map.
+
+
+## Two parallel agents editing the same Rust file: disjoint regions + parent-owned conflict resolution (💡 Design Principle)
+
+#273 (desktop secrets at rest) and #279 (Tauri command gating) both edited
+`apps/desktop/src-tauri/src/lib.rs` in parallel worktrees. Both design docs
+explicitly declared DISJOINT line regions (#273: secrets section ~1082–1141
++ tests; #279: command handler area) and named the sibling in their design
+docs. Each agent pushed its branch without conflicts; the parent resolves
+any merge conflict sequentially at integration time, in favor of the owning
+issue's design.
+
+**Always**: when worktree designs unavoidably touch the same file, require
+BOTH design docs to declare exact disjoint regions AND acknowledge the
+sibling issue by number before implementation starts. Two agents editing
+disjoint hunks of one file are safe; two agents editing overlapping logic
+are not — the design doc is the contract that makes this safe.
+
+
+## Aggregate-RPC read paths: keep the individual hooks, route invalidation through one seam (💡 Design Principle)
+
+#276's snapshot consolidation kept `useRolesQuery`/`useEmployeesQuery`/etc.
+exported (global search, sections, debts/inventory features still use them)
+and made `invalidateWorkspaceDomains` the single seam that auto-invalidates
+the snapshot whenever a snapshot-backed domain changes. New domains are
+covered by updating one set + a unit test pinning membership, instead of
+hunting every call site.
+
+**Always**: when introducing an aggregate read, don't delete the granular
+hooks other features depend on — keep them as the query vocabulary and add
+the aggregate as a new key. Route snapshot invalidation through ONE
+documented seam with a pinned-domain set so future domains can't be
+forgotten.
