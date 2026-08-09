@@ -98,7 +98,9 @@ export function createApp(
   transportSecurity: TransportSecurityConfig,
 ) {
   const app = new Hono();
-  const router = createRouter(dependencies);
+  const router = createRouter(dependencies, {
+    trustProxyHeaders: transportSecurity.trustProxyHeaders ?? false,
+  });
   const transport = createTransportSecurity(transportSecurity);
   const authRateLimiter = new SlidingWindowRateLimiter(30, 15 * 60 * 1000).startCleanup()
   // The implemented router's concrete type (with `Lazy`-wrapped and
@@ -340,7 +342,11 @@ export function createApp(
   })
 
   app.use("/rpc/*", async (c, next) => {
-    const context = createRpcContext(c.req.raw.headers, dependencies.sessionService);
+    const context = createRpcContext(
+      c.req.raw.headers,
+      dependencies.sessionService,
+      getRemoteAddress(c.env),
+    );
     const { matched, response } = await rpcHandler.handle(c.req.raw, {
       prefix: "/rpc",
       context,

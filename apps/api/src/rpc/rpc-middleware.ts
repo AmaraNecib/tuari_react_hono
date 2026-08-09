@@ -22,12 +22,19 @@ export type MutationAuditContext = {
 
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "isBootstrapOwner">;
+  /**
+   * When true, `x-forwarded-for` / `x-real-ip` headers are trusted for
+   * client-IP resolution (e.g. behind a reverse proxy). Defaults to false:
+   * client-supplied headers are spoofable and must not key rate limiting.
+   * Mirrors `config.trustProxyHeaders` / `API_TRUST_PROXY_HEADERS`.
+   */
+  trustProxyHeaders?: boolean;
 };
 
 export type RpcMiddleware = ReturnType<typeof createRpcMiddleware>;
 
 export function createRpcMiddleware(dependencies: RouterDependencies) {
-  // Initialize rate limiter: 100 requests per 15 minutes per user
+  // Initialize rate limiter: 100 requests per 15 minutes per client
   const rateLimiter = new SlidingWindowRateLimiter(100, 15 * 60 * 1000);
   rateLimiter.startCleanup();
 
@@ -37,11 +44,15 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       const forwardedFor = context.headers.get("x-forwarded-for") as string | undefined;
       const realIp = context.headers.get("x-real-ip") as string | undefined;
 
+      // When proxy headers are NOT trusted, resolveClientIp ignores
+      // x-forwarded-for/x-real-ip entirely and falls back to the transport
+      // socket address (context.remoteAddress), so a client rotating the
+      // header cannot reset its rate budget. (#283)
       const ip = resolveClientIp({
         forwardedFor,
         realIp,
-        remoteAddress: undefined,
-        trustProxyHeaders: true,
+        remoteAddress: context.remoteAddress,
+        trustProxyHeaders: dependencies.trustProxyHeaders ?? false,
       });
       return `ip:${ip}`;
     } catch {
@@ -231,6 +242,15 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       };
     },
 
+    /**
+     * Permission gate.
+     *
+     * SEMANTICS: a single permission is required; an ARRAY is **OR** — the
+     * user needs ANY of the listed permissions (`some()`). This is NOT AND:
+     * to require ALL of several permissions, compose guards explicitly
+     * (e.g. chain `withPermission(a, ...)` inside `withPermission(b, ...)`
+     * or add an explicit every()-based check). (#283)
+     */
     withPermission<TInput, TOutput>(
       required: Permission | Permission[],
       handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput> | TOutput,
