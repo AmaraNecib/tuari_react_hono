@@ -8,6 +8,7 @@ import {
   invalidateWorkspaceDomains,
   workspaceDomainQueryPrefix,
   workspaceQueryKeys,
+  workspaceQueryPrefix,
 } from "./workspace-keys"
 
 const userId = "user-236"
@@ -21,10 +22,10 @@ function mockQueryClient() {
 }
 
 describe("workspaceQueryKeys", () => {
-  it("scopes every key with the workspace-domain namespace and the userId", () => {
-    const entries = Object.entries(workspaceQueryKeys) as Array<
-      [string, (...args: unknown[]) => readonly unknown[]]
-    >
+  it("scopes every workspace-domain key with the namespace and the userId", () => {
+    const entries = Object.entries(workspaceQueryKeys).filter(
+      ([name]) => name !== "workspaceSnapshot",
+    ) as Array<[string, (...args: unknown[]) => readonly unknown[]]>
 
     expect(entries.length).toBeGreaterThan(0)
     for (const [, factory] of entries) {
@@ -34,6 +35,16 @@ describe("workspaceQueryKeys", () => {
       expect(key[2]).toBeTypeOf("string")
       expect(key).toContain(userId)
     }
+  })
+
+  it("keeps the snapshot key in the legacy workspace namespace (sign-out reset removal still matches)", () => {
+    expect(workspaceQueryKeys.workspaceSnapshot(userId)).toEqual(["phase1", "workspace", userId])
+    expect(workspaceQueryKeys.workspaceSnapshot()).toEqual(["phase1", "workspace", "anonymous"])
+    expect(workspaceQueryKeys.workspaceSnapshot(userId)).toContain(userId)
+    // The snapshot is the single RPC backing the shell composite — its key is
+    // deliberately NOT inside the workspace-domain namespace so the
+    // `workspaceQueryPrefix` cleanup on sign-out/reset keeps removing it.
+    expect(workspaceQueryKeys.workspaceSnapshot(userId)[1]).toBe("workspace")
   })
 
   it("collapses the five duplicated endpoints to one key each", () => {
@@ -70,7 +81,7 @@ describe("workspaceQueryKeys", () => {
       "inventoryItems", "inventoryOutboundTransfers", "managerAssignments",
       "projectAssignments", "projectManagerOwnership", "projects", "roles",
       "salaryPayments", "systemLog", "warehouseAssignments",
-      "warehouseManagerOwnership", "warehouses",
+      "warehouseManagerOwnership", "warehouses", "workspaceSnapshot",
     ])
   })
 
@@ -99,9 +110,31 @@ describe("invalidateWorkspaceDomains", () => {
 
     await invalidateWorkspaceDomains(client, userId, { warehouses: true, projects: true })
 
-    expect(invalidateQueries).toHaveBeenCalledTimes(2)
+    expect(invalidateQueries).toHaveBeenCalledTimes(3)
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryKeys.warehouses(userId) })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryKeys.projects(userId) })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryKeys.workspaceSnapshot(userId) })
+  })
+
+  it("refreshes the workspace snapshot when a snapshot-backed domain changes", async () => {
+    const { invalidateQueries, client } = mockQueryClient()
+
+    await invalidateWorkspaceDomains(client, userId, { salaryPayments: true })
+
+    expect(invalidateQueries).toHaveBeenCalledTimes(2)
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryKeys.salaryPayments(userId) })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryKeys.workspaceSnapshot(userId) })
+  })
+
+  it("does not refresh the snapshot for feature-scoped (debts-only) invalidations", async () => {
+    const { invalidateQueries, client } = mockQueryClient()
+
+    await invalidateWorkspaceDomains(client, userId, { debtsSummary: true, debtsDetail: true })
+
+    expect(invalidateQueries).toHaveBeenCalledTimes(2)
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryKeys.debtsSummary(userId) })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryKeys.debtsDetail(userId) })
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: workspaceQueryKeys.workspaceSnapshot(userId) })
   })
 
   it("falls back to the whole domain prefix when the userId is unknown", async () => {
@@ -109,8 +142,26 @@ describe("invalidateWorkspaceDomains", () => {
 
     await invalidateWorkspaceDomains(client, null, { warehouses: true })
 
+    expect(invalidateQueries).toHaveBeenCalledTimes(2)
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceDomainQueryPrefix })
+  })
+
+  it("covers the snapshot prefix when a snapshot-backed domain changes with an unknown userId", async () => {
+    const { invalidateQueries, client } = mockQueryClient()
+
+    await invalidateWorkspaceDomains(client, null, { warehouses: true })
+
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryPrefix })
+  })
+
+  it("keeps the snapshot untouched for feature-scoped invalidations with an unknown userId", async () => {
+    const { invalidateQueries, client } = mockQueryClient()
+
+    await invalidateWorkspaceDomains(client, null, { debtsSummary: true })
+
     expect(invalidateQueries).toHaveBeenCalledTimes(1)
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceDomainQueryPrefix })
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: workspaceQueryPrefix })
   })
 
   it("is a no-op for an empty domain record", async () => {

@@ -24,10 +24,12 @@ import { workspaceQueryKeys } from "./workspace-keys"
 
 export type DemoWorkspace = WorkspaceSnapshot
 
-export const workspaceQueryPrefix = ["phase1", "workspace"] as const
-
-export const demoWorkspaceQueryKey = (userId: string | null = "anonymous") =>
-  ["phase1", "workspace", userId] as const
+/**
+ * The snapshot query key — the single RPC backing the shell composite.
+ * Alias of `workspaceQueryKeys.workspaceSnapshot` so the key cannot drift
+ * from the invalidation vocabulary (issue #276).
+ */
+export const demoWorkspaceQueryKey = workspaceQueryKeys.workspaceSnapshot
 
 /**
  * The one session gate for the workspace data layer.
@@ -261,116 +263,22 @@ export function useSystemLogQuery({
 }
 
 export function useCompositeWorkspaceQuery({ enabled = true }: { enabled?: boolean } = {}) {
-  const rolesQuery = useRolesQuery({ enabled })
-  const employeesQuery = useEmployeesQuery({ enabled })
-  const projectsQuery = useProjectsQuery({ enabled })
-  const warehousesQuery = useWarehousesQuery({ enabled })
-  // Debt accounts/entries are NOT fetched here anymore — the debts feature
-  // owns its data via @/features/debts/debts-queries (useDebtsSummaryQuery /
-  // useDebtPartyDetailQuery), which read the `debtsSummary`/`debtsDetail`
-  // keys the debts mutations invalidate. The composite keeps
-  // `externalCounterparties` because the shell still needs the raw list for
-  // selection/breadcrumbs and the externals pages.
-  const externalCounterpartiesQuery = useExternalCounterpartiesQuery({ enabled })
-  const managerAssignmentsQuery = useManagerAssignmentsQuery({ enabled })
-  const projectAssignmentsQuery = useProjectAssignmentsQuery({ enabled })
-  const warehouseAssignmentsQuery = useWarehouseAssignmentsQuery({ enabled })
-  const salaryPaymentsQuery = useSalaryPaymentsQuery({ enabled })
-  const employeeStateHistoryQuery = useEmployeeStateHistoryQuery({ enabled })
-  const projectManagerOwnershipQuery = useProjectManagerOwnershipHistoryQuery({ enabled })
-  const warehouseManagerOwnershipQuery = useWarehouseManagerOwnershipHistoryQuery({ enabled })
-
-  const isPending =
-    rolesQuery.isPending ||
-    employeesQuery.isPending ||
-    projectsQuery.isPending ||
-    warehousesQuery.isPending ||
-    externalCounterpartiesQuery.isPending ||
-    managerAssignmentsQuery.isPending ||
-    projectAssignmentsQuery.isPending ||
-    warehouseAssignmentsQuery.isPending ||
-    salaryPaymentsQuery.isPending ||
-    employeeStateHistoryQuery.isPending ||
-    projectManagerOwnershipQuery.isPending ||
-    warehouseManagerOwnershipQuery.isPending
-
-  const isError =
-    rolesQuery.isError ||
-    employeesQuery.isError ||
-    projectsQuery.isError ||
-    warehousesQuery.isError ||
-    externalCounterpartiesQuery.isError ||
-    managerAssignmentsQuery.isError ||
-    projectAssignmentsQuery.isError ||
-    warehouseAssignmentsQuery.isError ||
-    salaryPaymentsQuery.isError ||
-    employeeStateHistoryQuery.isError ||
-    projectManagerOwnershipQuery.isError ||
-    warehouseManagerOwnershipQuery.isError
-
-  const refetch = () => {
-    void rolesQuery.refetch()
-    void employeesQuery.refetch()
-    void projectsQuery.refetch()
-    void warehousesQuery.refetch()
-    void externalCounterpartiesQuery.refetch()
-    void managerAssignmentsQuery.refetch()
-    void projectAssignmentsQuery.refetch()
-    void warehouseAssignmentsQuery.refetch()
-    void salaryPaymentsQuery.refetch()
-    void employeeStateHistoryQuery.refetch()
-    void projectManagerOwnershipQuery.refetch()
-    void warehouseManagerOwnershipQuery.refetch()
-  }
-
-  const data: WorkspaceSnapshot | null =
-    rolesQuery.data &&
-    employeesQuery.data &&
-    projectsQuery.data &&
-    warehousesQuery.data &&
-    externalCounterpartiesQuery.data &&
-    managerAssignmentsQuery.data &&
-    projectAssignmentsQuery.data &&
-    warehouseAssignmentsQuery.data &&
-    salaryPaymentsQuery.data &&
-    employeeStateHistoryQuery.data &&
-    projectManagerOwnershipQuery.data &&
-    warehouseManagerOwnershipQuery.data
-      ? {
-          roles: rolesQuery.data.items,
-          employees: employeesQuery.data.items,
-          projects: projectsQuery.data.items,
-          warehouses: warehousesQuery.data.items,
-          // Debts data is feature-scoped (see @/features/debts/debts-queries);
-          // these stay empty for WorkspaceSnapshot type compatibility.
-          debtAccounts: [],
-          externalCounterparties: externalCounterpartiesQuery.data.items,
-          managerAssignments: managerAssignmentsQuery.data.items,
-          projectAssignments: projectAssignmentsQuery.data.items,
-          warehouseAssignments: warehouseAssignmentsQuery.data.items,
-          salaryPayments: salaryPaymentsQuery.data.items,
-          employeeStateHistory: employeeStateHistoryQuery.data.items,
-          projectManagerOwnershipHistory: projectManagerOwnershipQuery.data.items,
-          warehouseManagerOwnershipHistory: warehouseManagerOwnershipQuery.data.items,
-          debtEntries: [],
-        }
-      : null
-
-  return {
-    data,
-    isPending,
-    isError,
-    refetch,
-  }
-}
-
-export function useDemoWorkspaceQuery() {
+  // One RPC for the whole shell instead of the former ~12 parallel list
+  // queries (issue #276). The snapshot key lives in the workspace-keys
+  // vocabulary, so mutations refresh it through `invalidateWorkspaceDomains`
+  // whenever a snapshot-backed domain changes.
   return useWorkspaceScopedQuery({
-    key: demoWorkspaceQueryKey,
+    key: workspaceQueryKeys.workspaceSnapshot,
+    enabled,
     queryFn: () => rpcClient.workspaceSnapshot(),
   })
 }
 
-// Re-exported for consumers of the legacy `workspaceDomainQueryPrefix` import
-// path (mock-dashboard seam). The keys factory itself lives in workspace-keys.
-export { workspaceDomainQueryPrefix } from "./workspace-keys"
+// Legacy demo alias — the demo snapshot query is the same single-RPC query
+// the shell composite mounts (issue #276), so it stays one implementation.
+export const useDemoWorkspaceQuery = useCompositeWorkspaceQuery
+
+// Re-exported for consumers of the legacy `workspaceDomainQueryPrefix` /
+// `workspaceQueryPrefix` import paths (mock-dashboard seam, mutation
+// cleanup). The keys factories themselves live in workspace-keys.
+export { workspaceDomainQueryPrefix, workspaceQueryPrefix } from "./workspace-keys"

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   useSessionQuery: vi.fn(),
   rbacRolesList: vi.fn(),
   rolesList: vi.fn(),
+  workspaceSnapshot: vi.fn(),
 }))
 
 vi.mock("@tanstack/react-query", async () => ({
@@ -21,6 +22,7 @@ vi.mock("@/lib/orpc-client", () => ({
   rpcClient: {
     rbacRolesList: mocks.rbacRolesList,
     rolesList: mocks.rolesList,
+    workspaceSnapshot: mocks.workspaceSnapshot,
   },
   // workspace-keys evaluates `sessionQueryKey` at module load from
   // `orpc.session.queryOptions().queryKey` — mirror the mounted key shape.
@@ -31,7 +33,13 @@ vi.mock("@/lib/orpc-client", () => ({
   },
 }))
 
-import { isRolesEndpointUnavailable, useRolesQuery, useWorkspaceScopedQuery } from "./workspace-queries"
+import {
+  demoWorkspaceQueryKey,
+  isRolesEndpointUnavailable,
+  useCompositeWorkspaceQuery,
+  useRolesQuery,
+  useWorkspaceScopedQuery,
+} from "./workspace-queries"
 import { workspaceQueryKeys } from "./workspace-keys"
 
 const useRoleListQueryOptions = () => {
@@ -40,6 +48,64 @@ const useRoleListQueryOptions = () => {
     queryFn: () => Promise<{ items: unknown[] }>
   }
 }
+
+describe("useCompositeWorkspaceQuery — single workspaceSnapshot RPC (issue #276)", () => {
+  const snapshotData = {
+    roles: [],
+    employees: [],
+    externalCounterparties: [],
+    debtAccounts: [],
+    debtEntries: [],
+    projects: [],
+    warehouses: [],
+    managerAssignments: [],
+    projectAssignments: [],
+    warehouseAssignments: [],
+    employeeStateHistory: [],
+    projectManagerOwnershipHistory: [],
+    warehouseManagerOwnershipHistory: [],
+    salaryPayments: [],
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.useSessionQuery.mockReturnValue({ data: { user: { id: "user-1" } } })
+    mocks.useQuery.mockImplementation((options) => options)
+    mocks.workspaceSnapshot.mockResolvedValue(snapshotData)
+  })
+
+  it("mounts one query that resolves the whole workspace from the snapshot RPC", async () => {
+    useCompositeWorkspaceQuery()
+
+    const options = mocks.useQuery.mock.calls[0]?.[0] as {
+      queryKey: readonly unknown[]
+      enabled: boolean
+      queryFn: () => Promise<unknown>
+    }
+    expect(options.queryKey).toEqual(["phase1", "workspace", "user-1"])
+    expect(options.enabled).toBe(true)
+
+    await expect(options.queryFn()).resolves.toEqual(snapshotData)
+    expect(mocks.workspaceSnapshot).toHaveBeenCalledTimes(1)
+    // The composite must not fan out to the individual list endpoints anymore.
+    expect(mocks.rbacRolesList).not.toHaveBeenCalled()
+  })
+
+  it("stays disabled until the session resolves", () => {
+    mocks.useSessionQuery.mockReturnValue({ data: undefined })
+
+    useCompositeWorkspaceQuery()
+
+    const options = mocks.useQuery.mock.calls[0]?.[0] as { queryKey: readonly unknown[]; enabled: boolean }
+    expect(options.queryKey).toEqual(["phase1", "workspace", null])
+    expect(options.enabled).toBe(false)
+  })
+
+  it("aliases the demo workspace key to the vocabulary snapshot key", () => {
+    expect(demoWorkspaceQueryKey("user-1")).toEqual(["phase1", "workspace", "user-1"])
+    expect(demoWorkspaceQueryKey()).toEqual(["phase1", "workspace", "anonymous"])
+  })
+})
 
 describe("isRolesEndpointUnavailable", () => {
   it("allows fallback for a missing endpoint", () => {
