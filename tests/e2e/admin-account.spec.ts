@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
 import {
+  BOOTSTRAP_SETUP_KEY,
   TEST_NAME,
   TEST_PASSWORD,
   TEST_PHONE,
@@ -110,6 +111,11 @@ test("first-run bootstrap creates the admin account", async ({ page }) => {
   await page.getByLabel("الاسم الكامل").fill(TEST_NAME)
   await page.getByLabel("رقم الهاتف").fill(TEST_PHONE)
   await page.getByLabel("كلمة المرور", { exact: true }).fill(TEST_PASSWORD)
+  // The API runs with a configured bootstrap setup key (see playwright.config.ts).
+  const setupSecretField = page.getByLabel("رمز الإعداد الأول")
+  if (await setupSecretField.isVisible()) {
+    await setupSecretField.fill(BOOTSTRAP_SETUP_KEY)
+  }
   await page.getByRole("button", { name: "إنشاء الحساب الأول" }).click()
 
   // The signed-in shell reflects the bootstrapped account.

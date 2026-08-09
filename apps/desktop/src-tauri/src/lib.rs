@@ -1,7 +1,7 @@
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::{copy, create_dir_all, read_to_string, write, File, OpenOptions};
+use std::fs::{copy, create_dir_all, read_to_string, remove_file, write, File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 #[cfg(target_os = "windows")]
@@ -20,6 +20,9 @@ const ALLOWED_ORIGINS: &str =
   "http://localhost:1420,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost";
 const BETTER_AUTH_SECRET_BYTES: usize = 48;
 const APP_DB_KEY_BYTES: usize = 32;
+const SECRETS_KEYRING_SERVICE: &str = "com.tuari.desktop.secrets";
+const BETTER_AUTH_SECRET_ACCOUNT: &str = "better-auth.secret";
+const APP_DB_KEY_ACCOUNT: &str = "app-db.key";
 const API_STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const API_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_AUTH_SERVICE: &str = "com.tuari.desktop.auth";
@@ -1153,7 +1156,111 @@ fn generate_secret(byte_len: usize) -> String {
     encode_secret(&bytes)
 }
 
-fn load_or_create_secret(file_path: &PathBuf, byte_len: usize) -> Result<String, String> {
+/// Where a runtime secret lives at rest.
+///
+/// `Keyring` is the OS credential store — DPAPI on Windows, Keychain on
+/// macOS, Secret Service on Linux — and is the primary store. `File` is a
+/// plaintext fallback under the runtime `secrets/` directory, selected only
+/// when the OS store is unavailable (e.g. headless Linux without a keyring
+/// daemon); the directory and files are created owner-only so they are not
+/// readable by other OS users.
+enum SecretStore {
+    Keyring { service: String },
+    File { dir: PathBuf },
+}
+
+impl SecretStore {
+    fn keyring(service: &str) -> Self {
+        SecretStore::Keyring {
+            service: service.to_string(),
+        }
+    }
+
+    fn file(dir: PathBuf) -> Self {
+        SecretStore::File { dir }
+    }
+
+    /// Whether the OS credential store actually responds. Probed once at
+    /// startup to pick between the OS store and the plaintext fallback.
+    fn is_usable(&self) -> bool {
+        match self {
+            SecretStore::File { .. } => true,
+            SecretStore::Keyring { .. } => self.read("probe").is_ok(),
+        }
+    }
+
+    fn entry(&self, account: &str) -> Result<keyring::Entry, String> {
+        match self {
+            SecretStore::Keyring { service } => keyring::Entry::new(service, account).map_err(
+                |error| format!("Failed to open the desktop secrets store: {error}"),
+            ),
+            SecretStore::File { .. } => {
+                unreachable!("the plaintext fallback store has no keyring entry")
+            }
+        }
+    }
+
+    fn read(&self, account: &str) -> Result<Option<String>, String> {
+        match self {
+            SecretStore::Keyring { .. } => match self.entry(account)?.get_password() {
+                Ok(secret) => Ok(Some(secret)),
+                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(error) => Err(format!(
+                    "Failed to read secret '{account}' from the OS store: {error}"
+                )),
+            },
+            SecretStore::File { dir } => {
+                let path = dir.join(account);
+                match read_to_string(&path) {
+                    Ok(secret) => Ok(Some(secret)),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                    Err(error) => Err(format!(
+                        "Failed to read secret file '{}': {error}",
+                        path.display()
+                    )),
+                }
+            }
+        }
+    }
+
+    fn write(&self, account: &str, secret: &str) -> Result<(), String> {
+        match self {
+            SecretStore::Keyring { .. } => self.entry(account)?.set_password(secret).map_err(
+                |error| format!("Failed to store secret '{account}' in the OS store: {error}"),
+            ),
+            SecretStore::File { dir } => write_secret_file(&dir.join(account), secret),
+        }
+    }
+}
+
+fn write_secret_file(path: &Path, secret: &str) -> Result<(), String> {
+    write(path, format!("{secret}\n"))
+        .map_err(|error| format!("Failed to write secret file '{}': {error}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(
+            |error| {
+                format!(
+                    "Failed to restrict secret file permissions '{}': {error}",
+                    path.display()
+                )
+            },
+        )?;
+    }
+    Ok(())
+}
+
+/// Restrict a directory to the current user (0700) so a plaintext secret
+/// fallback is never readable by other OS users.
+#[cfg(unix)]
+fn restrict_dir_to_owner(dir: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+        .map_err(|error| format!("Failed to restrict secrets directory permissions: {error}"))
+}
+
+fn load_or_create_secret_file(file_path: &Path, byte_len: usize) -> Result<String, String> {
     if let Ok(existing_secret) = read_to_string(file_path) {
         let secret = existing_secret.trim();
         if is_valid_secret(secret, byte_len) {
@@ -1162,22 +1269,121 @@ fn load_or_create_secret(file_path: &PathBuf, byte_len: usize) -> Result<String,
     }
 
     let secret = generate_secret(byte_len);
-    write(file_path, format!("{secret}\n")).map_err(|error| error.to_string())?;
+    write_secret_file(file_path, &secret)?;
     Ok(secret)
+}
+
+/// Adopt a legacy plaintext secret file into the store, then delete the
+/// plaintext copy. Returns `Ok(None)` when no adoptable legacy file exists.
+/// Only meaningful for the OS store (the plaintext fallback file IS the
+/// store, so there is nothing to migrate).
+fn migrate_legacy_secret_file(
+    store: &SecretStore,
+    account: &str,
+    byte_len: usize,
+    fallback_dir: &Path,
+) -> Result<Option<String>, String> {
+    let file_path = fallback_dir.join(account);
+    if let Ok(existing) = read_to_string(&file_path) {
+        let secret = existing.trim();
+        if is_valid_secret(secret, byte_len) {
+            store.write(account, secret)?;
+            let _ = remove_file(&file_path);
+            return Ok(Some(secret.to_string()));
+        }
+    }
+    Ok(None)
+}
+
+/// Load (or create) a runtime secret, preferring the OS credential store.
+///
+/// Order of preference:
+/// 1. An existing entry in the OS store (validated; the legacy plaintext
+///    copy, if any, is best-effort removed).
+/// 2. A legacy plaintext file in `fallback_dir` — adopted into the OS store
+///    and then deleted (migration for pre-#273 installs).
+/// 3. A freshly generated secret persisted in the OS store.
+///
+/// When the store is the plaintext fallback itself, the file simply is the
+/// store (no migration, no deletion). If the OS store becomes unavailable
+/// mid-flight, the owner-only plaintext file is used so the app still starts.
+fn load_or_create_secret(
+    store: &SecretStore,
+    account: &str,
+    byte_len: usize,
+    fallback_dir: &Path,
+) -> Result<String, String> {
+    let file_path = fallback_dir.join(account);
+
+    if matches!(store, SecretStore::File { .. }) {
+        return load_or_create_secret_file(&file_path, byte_len);
+    }
+
+    match store.read(account) {
+        Ok(Some(existing)) => {
+            let secret = existing.trim();
+            if is_valid_secret(secret, byte_len) {
+                // Best-effort cleanup of the pre-#273 plaintext copy.
+                let _ = remove_file(&file_path);
+                return Ok(secret.to_string());
+            }
+            // Foreign/corrupt value in the store — regenerate below.
+        }
+        Ok(None) => {
+            // Migration: a legacy plaintext file may hold the current secret.
+            if let Some(secret) =
+                migrate_legacy_secret_file(store, account, byte_len, fallback_dir)?
+            {
+                return Ok(secret);
+            }
+        }
+        Err(_error) => {
+            // OS store unavailable — fall back to the owner-only file.
+            return load_or_create_secret_file(&file_path, byte_len);
+        }
+    }
+
+    let secret = generate_secret(byte_len);
+    match store.write(account, &secret) {
+        Ok(()) => Ok(secret),
+        Err(error) => {
+            eprintln!(
+                "[tuari] OS secret store unavailable; falling back to plaintext file storage: {error}"
+            );
+            write_secret_file(&file_path, &secret)?;
+            Ok(secret)
+        }
+    }
 }
 
 fn load_runtime_secrets(app: &AppHandle) -> Result<RuntimeSecrets, String> {
     let secrets_dir = resolve_secrets_dir(app)?;
     create_dir_all(&secrets_dir).map_err(|error| error.to_string())?;
+    // The plaintext fallback must never be world-readable.
+    #[cfg(unix)]
+    restrict_dir_to_owner(&secrets_dir)?;
+
+    // Prefer the OS credential store (DPAPI / Keychain / Secret Service);
+    // fall back to the owner-only plaintext directory when it is unavailable.
+    let keyring_store = SecretStore::keyring(SECRETS_KEYRING_SERVICE);
+    let store = if keyring_store.is_usable() {
+        keyring_store
+    } else {
+        SecretStore::file(secrets_dir.clone())
+    };
 
     let better_auth_secret = load_or_create_secret(
-        &secrets_dir.join("better-auth.secret"),
+        &store,
+        BETTER_AUTH_SECRET_ACCOUNT,
         BETTER_AUTH_SECRET_BYTES,
+        &secrets_dir,
     )?;
 
     let app_db_key = load_or_create_secret(
-        &secrets_dir.join("app-db.key"),
+        &store,
+        APP_DB_KEY_ACCOUNT,
         APP_DB_KEY_BYTES,
+        &secrets_dir,
     )?;
 
     Ok(RuntimeSecrets {
@@ -1618,7 +1824,8 @@ mod tests {
         has_portable_runtime_layout, is_allowed_desktop_bridge_path,
         is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
         load_or_create_secret, matches_inventory_attachment_download_path,
-        matches_inventory_attachment_upload_path, normalize_token, BETTER_AUTH_SECRET_BYTES,
+        matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
+        SecretStore, BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES,
     };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
@@ -1659,17 +1866,122 @@ mod tests {
     fn persists_secret_once_per_install_location() {
         let temp_dir = unique_temp_dir();
         create_dir_all(&temp_dir).expect("create temp dir");
-        let secret_path = temp_dir.join("better-auth.secret");
+        let store = SecretStore::file(temp_dir.clone());
 
-        let first_secret =
-            load_or_create_secret(&secret_path, BETTER_AUTH_SECRET_BYTES).expect("create secret");
-        let second_secret = load_or_create_secret(&secret_path, BETTER_AUTH_SECRET_BYTES)
-            .expect("reuse existing secret");
+        let first_secret = load_or_create_secret(
+            &store,
+            BETTER_AUTH_SECRET_ACCOUNT,
+            BETTER_AUTH_SECRET_BYTES,
+            &temp_dir,
+        )
+        .expect("create secret");
+        let second_secret = load_or_create_secret(
+            &store,
+            BETTER_AUTH_SECRET_ACCOUNT,
+            BETTER_AUTH_SECRET_BYTES,
+            &temp_dir,
+        )
+        .expect("reuse existing secret");
 
         assert_eq!(first_secret, second_secret);
         assert!(is_valid_secret(&first_secret, BETTER_AUTH_SECRET_BYTES));
 
         remove_dir_all(&temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn migrates_a_legacy_plaintext_secret_into_the_store_and_removes_the_file() {
+        let store_dir = unique_temp_dir();
+        let legacy_dir = unique_temp_dir();
+        create_dir_all(&store_dir).expect("create store dir");
+        create_dir_all(&legacy_dir).expect("create legacy dir");
+
+        // A pre-#273 install left a plaintext secret behind.
+        let legacy_secret = encode_secret(&[0xAB; BETTER_AUTH_SECRET_BYTES]);
+        std::fs::write(
+            legacy_dir.join(BETTER_AUTH_SECRET_ACCOUNT),
+            format!("{legacy_secret}\n"),
+        )
+        .expect("write legacy secret");
+
+        let store = SecretStore::file(store_dir.clone());
+        let migrated = migrate_legacy_secret_file(
+            &store,
+            BETTER_AUTH_SECRET_ACCOUNT,
+            BETTER_AUTH_SECRET_BYTES,
+            &legacy_dir,
+        )
+        .expect("migrate legacy secret")
+        .expect("legacy file exists");
+
+        assert_eq!(migrated, legacy_secret);
+        // The plaintext copy must not survive the migration.
+        assert!(!legacy_dir.join(BETTER_AUTH_SECRET_ACCOUNT).exists());
+        // The secret now lives in the store.
+        assert_eq!(
+            std::fs::read_to_string(store_dir.join(BETTER_AUTH_SECRET_ACCOUNT))
+                .expect("read stored secret")
+                .trim(),
+            legacy_secret
+        );
+
+        remove_dir_all(&store_dir).expect("remove store dir");
+        remove_dir_all(&legacy_dir).expect("remove legacy dir");
+    }
+
+    #[test]
+    fn regenerates_a_corrupt_stored_secret() {
+        let temp_dir = unique_temp_dir();
+        create_dir_all(&temp_dir).expect("create temp dir");
+        let store = SecretStore::file(temp_dir.clone());
+        std::fs::write(
+            temp_dir.join(BETTER_AUTH_SECRET_ACCOUNT),
+            "not-a-valid-hex-secret\n",
+        )
+        .expect("write corrupt secret");
+
+        let loaded = load_or_create_secret(
+            &store,
+            BETTER_AUTH_SECRET_ACCOUNT,
+            BETTER_AUTH_SECRET_BYTES,
+            &temp_dir,
+        )
+        .expect("regenerate corrupt secret");
+
+        assert!(is_valid_secret(&loaded, BETTER_AUTH_SECRET_BYTES));
+        assert_ne!(loaded, "not-a-valid-hex-secret");
+
+        remove_dir_all(&temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn falls_back_to_plaintext_when_the_secret_store_cannot_persist() {
+        let fallback_dir = unique_temp_dir();
+        create_dir_all(&fallback_dir).expect("create fallback dir");
+
+        // A "store" whose directory slot is occupied by a regular file — every
+        // read/write under it fails, mimicking an unusable OS store.
+        let broken_store_path = unique_temp_dir();
+        std::fs::write(&broken_store_path, "i am a file, not a directory")
+            .expect("write store blocker");
+        let broken_store = SecretStore::file(broken_store_path.clone());
+
+        let loaded = load_or_create_secret(
+            &broken_store,
+            BETTER_AUTH_SECRET_ACCOUNT,
+            BETTER_AUTH_SECRET_BYTES,
+            &fallback_dir,
+        )
+        .expect("fall back to plaintext");
+
+        assert!(is_valid_secret(&loaded, BETTER_AUTH_SECRET_BYTES));
+        assert!(
+            fallback_dir.join(BETTER_AUTH_SECRET_ACCOUNT).exists(),
+            "fallback file must be written"
+        );
+
+        remove_dir_all(&fallback_dir).expect("remove fallback dir");
+        std::fs::remove_file(broken_store_path).expect("remove store blocker");
     }
 
     #[test]
