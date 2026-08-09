@@ -205,6 +205,24 @@ describe("createAppConfig", () => {
     expect(omitted.trustProxyHeaders).toBe(false);
   });
 
+  it("honours API_AUTH_RATE_LIMIT_MAX_REQUESTS with a prod default of 30", () => {
+    const configured = createAppConfig({
+      ...requiredAuth,
+      API_AUTH_RATE_LIMIT_MAX_REQUESTS: "500",
+    });
+    expect(configured.authRateLimitMaxRequests).toBe(500);
+
+    const omitted = createAppConfig(requiredAuth);
+    expect(omitted.authRateLimitMaxRequests).toBe(30);
+
+    expect(() =>
+      createAppConfig({
+        ...requiredAuth,
+        API_AUTH_RATE_LIMIT_MAX_REQUESTS: "0",
+      }),
+    ).toThrow("positive integer");
+  });
+
   it("accepts truthy API_TRUST_PROXY_HEADERS variants case-insensitively", () => {
     for (const value of ["1", "yes", "on", "TRUE"]) {
       const config = createAppConfig({

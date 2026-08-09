@@ -77,6 +77,12 @@ export const appConfigSchema = z.object({
     .default(normalizeOriginList(defaultAllowedOrigins)),
   /** Trust X-Forwarded-* headers from proxies. */
   trustProxyHeaders: z.boolean().default(false),
+  /**
+   * Max requests to /api/auth/* per client IP per window. Default 30 —
+   * brute-force protection for the auth surface. Configurable so test
+   * harnesses (E2E sign-ins from one IP) don't trip it.
+   */
+  authRateLimitMaxRequests: z.number().int().positive().default(30),
 
   // --- Auth ---
   /**
@@ -179,6 +185,18 @@ export function createAppConfig(
     );
   })();
 
+  const authRateLimitMaxRequests = (() => {
+    const raw = effectiveSource.API_AUTH_RATE_LIMIT_MAX_REQUESTS;
+    if (raw === undefined) return 30;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) {
+      throw new Error(
+        `API_AUTH_RATE_LIMIT_MAX_REQUESTS must be a positive integer, received "${raw}"`,
+      );
+    }
+    return n;
+  })();
+
   // --- Auth ---
   const betterAuthSecret = (() => {
     const value = effectiveSource.BETTER_AUTH_SECRET?.trim();
@@ -215,6 +233,7 @@ export function createAppConfig(
     port,
     allowedOrigins,
     trustProxyHeaders,
+    authRateLimitMaxRequests,
     betterAuthSecret,
     betterAuthUrl,
     bootstrapSetupKey,
