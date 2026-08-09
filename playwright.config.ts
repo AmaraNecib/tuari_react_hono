@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test"
 
+import { BOOTSTRAP_SETUP_KEY } from "./tests/e2e/helpers/session"
+
 const apiUrl = "http://127.0.0.1:4318"
 const webUrl = "http://127.0.0.1:3000"
 const e2eDbPath = `./data/tuari.phase1.integration.${Date.now()}.sqlite`
@@ -12,6 +14,10 @@ const sharedEnv = {
   BETTER_AUTH_SECRET: "tuari-foundation-secret-1234567890",
   BETTER_AUTH_URL: apiUrl,
   APP_DB_PATH: e2eDbPath,
+  BOOTSTRAP_SETUP_KEY,
+  // The E2E suite signs in from one IP (127.0.0.1) many times per run; the
+  // prod default auth limiter (30 req/15 min/IP) would 429 the last tests.
+  API_AUTH_RATE_LIMIT_MAX_REQUESTS: "500",
   VITE_API_URL: apiUrl,
 }
 

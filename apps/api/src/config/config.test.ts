@@ -13,7 +13,8 @@ afterEach(() => {
   rmSync(configTempDir, { recursive: true, force: true });
 });
 
-const requiredAuth = { BETTER_AUTH_SECRET: "test-secret" } as const;
+const requiredAuth = { BETTER_AUTH_SECRET: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM" } as const;
+const productionSetupKey = "setup-key-with-entropy-9f2c1a7d";
 
 describe("createAppConfig", () => {
   // -----------------------------------------------------------------------
@@ -204,6 +205,24 @@ describe("createAppConfig", () => {
     expect(omitted.trustProxyHeaders).toBe(false);
   });
 
+  it("honours API_AUTH_RATE_LIMIT_MAX_REQUESTS with a prod default of 30", () => {
+    const configured = createAppConfig({
+      ...requiredAuth,
+      API_AUTH_RATE_LIMIT_MAX_REQUESTS: "500",
+    });
+    expect(configured.authRateLimitMaxRequests).toBe(500);
+
+    const omitted = createAppConfig(requiredAuth);
+    expect(omitted.authRateLimitMaxRequests).toBe(30);
+
+    expect(() =>
+      createAppConfig({
+        ...requiredAuth,
+        API_AUTH_RATE_LIMIT_MAX_REQUESTS: "0",
+      }),
+    ).toThrow("positive integer");
+  });
+
   it("accepts truthy API_TRUST_PROXY_HEADERS variants case-insensitively", () => {
     for (const value of ["1", "yes", "on", "TRUE"]) {
       const config = createAppConfig({
@@ -220,6 +239,40 @@ describe("createAppConfig", () => {
 
   it("requires BETTER_AUTH_SECRET", () => {
     expect(() => createAppConfig({})).toThrow("BETTER_AUTH_SECRET is required");
+  });
+
+  it("rejects a BETTER_AUTH_SECRET shorter than 32 characters", () => {
+    expect(() =>
+      createAppConfig({
+        BETTER_AUTH_SECRET: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH",
+      }),
+    ).toThrow("BETTER_AUTH_SECRET must be at least 32 characters");
+  });
+
+  it("rejects a 32+ character BETTER_AUTH_SECRET with insufficient entropy", () => {
+    expect(() =>
+      createAppConfig({
+        BETTER_AUTH_SECRET: "aaaaaaaabbbbbbbbccccccccdddddddd",
+      }),
+    ).toThrow("BETTER_AUTH_SECRET must have sufficient entropy");
+  });
+
+  it("rejects the shipped dev placeholder as BETTER_AUTH_SECRET", () => {
+    expect(() =>
+      createAppConfig({
+        BETTER_AUTH_SECRET: "tuari-dev-secret-at-least-32-characters",
+      }),
+    ).toThrow("BETTER_AUTH_SECRET must have sufficient entropy");
+    expect(() =>
+      createAppConfig({
+        BETTER_AUTH_SECRET: "replace-with-a-32-plus-char-secret",
+      }),
+    ).toThrow("BETTER_AUTH_SECRET must have sufficient entropy");
+  });
+
+  it("accepts a strong BETTER_AUTH_SECRET", () => {
+    const config = createAppConfig(requiredAuth);
+    expect(config.betterAuthSecret).toBe(requiredAuth.BETTER_AUTH_SECRET);
   });
 
   it("normalizes BETTER_AUTH_URL by trimming trailing slashes", () => {
@@ -310,14 +363,38 @@ describe("createAppConfig", () => {
     ).toThrow("BOOTSTRAP_SETUP_KEY is required in production");
   });
 
-  it("accepts BOOTSTRAP_SETUP_KEY in production", () => {
+  it("rejects a short BOOTSTRAP_SETUP_KEY in production", () => {
+    expect(() =>
+      createAppConfig({
+        ...requiredAuth,
+        NODE_ENV: "production",
+        BOOTSTRAP_SETUP_KEY: "short-key",
+      }),
+    ).toThrow(
+      "BOOTSTRAP_SETUP_KEY must be at least 20 characters with sufficient entropy in production",
+    );
+  });
+
+  it("rejects a low-entropy BOOTSTRAP_SETUP_KEY in production", () => {
+    expect(() =>
+      createAppConfig({
+        ...requiredAuth,
+        NODE_ENV: "production",
+        BOOTSTRAP_SETUP_KEY: "aaaaaaaaaaaaaaaaaaaa",
+      }),
+    ).toThrow(
+      "BOOTSTRAP_SETUP_KEY must be at least 20 characters with sufficient entropy in production",
+    );
+  });
+
+  it("accepts a strong BOOTSTRAP_SETUP_KEY in production", () => {
     const config = createAppConfig({
       ...requiredAuth,
       NODE_ENV: "production",
-      BOOTSTRAP_SETUP_KEY: "super-secret-key",
+      BOOTSTRAP_SETUP_KEY: productionSetupKey,
     });
 
-    expect(config.bootstrapSetupKey).toBe("super-secret-key");
+    expect(config.bootstrapSetupKey).toBe(productionSetupKey);
   });
 
   it("accepts BOOTSTRAP_SETUP_KEY in development", () => {
@@ -332,10 +409,10 @@ describe("createAppConfig", () => {
   it("trims whitespace from BOOTSTRAP_SETUP_KEY", () => {
     const config = createAppConfig({
       ...requiredAuth,
-      BOOTSTRAP_SETUP_KEY: "  super-secret-key  ",
+      BOOTSTRAP_SETUP_KEY: `  ${productionSetupKey}  `,
     });
 
-    expect(config.bootstrapSetupKey).toBe("super-secret-key");
+    expect(config.bootstrapSetupKey).toBe(productionSetupKey);
   });
 
   // -----------------------------------------------------------------------
@@ -449,7 +526,7 @@ describe("appConfigSchema port validation", () => {
     databasePath: "/tmp/tuari.sqlite",
     databaseUrl: "file:///tmp/tuari.sqlite",
     attachmentsRootPath: "/tmp/attachments",
-    betterAuthSecret: "test-secret",
+    betterAuthSecret: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM",
     betterAuthUrl: "https://api.example.com",
   };
 
@@ -477,7 +554,7 @@ describe("appConfigSchema betterAuthUrl validation", () => {
     databasePath: "/tmp/tuari.sqlite",
     databaseUrl: "file:///tmp/tuari.sqlite",
     attachmentsRootPath: "/tmp/attachments",
-    betterAuthSecret: "test-secret",
+    betterAuthSecret: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM",
   };
 
   it("validates and normalizes betterAuthUrl via the schema alone", () => {

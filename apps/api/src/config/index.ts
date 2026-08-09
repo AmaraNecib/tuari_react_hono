@@ -15,7 +15,19 @@ import { resolveDatabaseEnv } from "../infrastructure/config/database-env";
 import { normalizeBaseUrl, normalizeOriginList, isLocalHostname } from "../infrastructure/config/url";
 import { loadConfigFile, mergeConfigIntoEnv } from "./loader";
 import { dbAdapterSchema } from "./db-adapter";
+import {
+  BETTER_AUTH_SECRET_MIN_LENGTH,
+  BOOTSTRAP_SETUP_KEY_MIN_LENGTH,
+  isStrongSecret,
+} from "./secret-strength";
 export { dbAdapterSchema } from "./db-adapter";
+export {
+  BETTER_AUTH_SECRET_MIN_LENGTH,
+  BOOTSTRAP_SETUP_KEY_MIN_LENGTH,
+  estimateSecretEntropyBits,
+  isStrongSecret,
+  safeSecretEquals,
+} from "./secret-strength";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,10 +77,28 @@ export const appConfigSchema = z.object({
     .default(normalizeOriginList(defaultAllowedOrigins)),
   /** Trust X-Forwarded-* headers from proxies. */
   trustProxyHeaders: z.boolean().default(false),
+  /**
+   * Max requests to /api/auth/* per client IP per window. Default 30 —
+   * brute-force protection for the auth surface. Configurable so test
+   * harnesses (E2E sign-ins from one IP) don't trip it.
+   */
+  authRateLimitMaxRequests: z.number().int().positive().default(30),
 
   // --- Auth ---
-  /** Better Auth secret key (required). */
-  betterAuthSecret: z.string().min(1, "BETTER_AUTH_SECRET is required"),
+  /**
+   * Better Auth secret key (required). Must be ≥ 32 characters with
+   * sufficient estimated entropy — a guessable placeholder is rejected.
+   */
+  betterAuthSecret: z
+    .string()
+    .min(
+      BETTER_AUTH_SECRET_MIN_LENGTH,
+      `BETTER_AUTH_SECRET must be at least ${BETTER_AUTH_SECRET_MIN_LENGTH} characters`,
+    )
+    .refine(
+      (value) => isStrongSecret(value, BETTER_AUTH_SECRET_MIN_LENGTH),
+      "BETTER_AUTH_SECRET must have sufficient entropy (random-looking, not a placeholder)",
+    ),
   /**
    * Public base URL for the auth server.
    * Validated and normalized by the schema itself (no manual pre-validation):
@@ -155,6 +185,18 @@ export function createAppConfig(
     );
   })();
 
+  const authRateLimitMaxRequests = (() => {
+    const raw = effectiveSource.API_AUTH_RATE_LIMIT_MAX_REQUESTS;
+    if (raw === undefined) return 30;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) {
+      throw new Error(
+        `API_AUTH_RATE_LIMIT_MAX_REQUESTS must be a positive integer, received "${raw}"`,
+      );
+    }
+    return n;
+  })();
+
   // --- Auth ---
   const betterAuthSecret = (() => {
     const value = effectiveSource.BETTER_AUTH_SECRET?.trim();
@@ -168,11 +210,15 @@ export function createAppConfig(
 
   const bootstrapSetupKey = (() => {
     const value = effectiveSource.BOOTSTRAP_SETUP_KEY?.trim() || null;
-    if (
-      (effectiveSource.NODE_ENV ?? "development") === "production" &&
-      !value
-    ) {
-      throw new Error("BOOTSTRAP_SETUP_KEY is required in production");
+    if ((effectiveSource.NODE_ENV ?? "development") === "production") {
+      if (!value) {
+        throw new Error("BOOTSTRAP_SETUP_KEY is required in production");
+      }
+      if (!isStrongSecret(value, BOOTSTRAP_SETUP_KEY_MIN_LENGTH)) {
+        throw new Error(
+          `BOOTSTRAP_SETUP_KEY must be at least ${BOOTSTRAP_SETUP_KEY_MIN_LENGTH} characters with sufficient entropy in production`,
+        );
+      }
     }
     return value;
   })();
@@ -187,6 +233,7 @@ export function createAppConfig(
     port,
     allowedOrigins,
     trustProxyHeaders,
+    authRateLimitMaxRequests,
     betterAuthSecret,
     betterAuthUrl,
     bootstrapSetupKey,

@@ -43,9 +43,10 @@ function requireEntitySuccess<T>(result: { success: boolean; message?: string; i
 }
 
 /** Fetches item definitions for the inventory. */
-export function useInventoryItemDefinitionsQuery() {
+export function useInventoryItemDefinitionsQuery({ enabled = true }: { enabled?: boolean } = {}) {
   return useWorkspaceScopedQuery({
     key: workspaceQueryKeys.inventoryItems,
+    enabled,
     queryFn: async (): Promise<{ items: InventoryItemDefinition[] }> => rpcClient.inventoryItemDefinitionsList(undefined),
   })
 }
@@ -53,9 +54,10 @@ export function useInventoryItemDefinitionsQuery() {
 /**
  * useInventoryInvoiceGroupsQuery() component.
  */
-export function useInventoryInvoiceGroupsQuery() {
+export function useInventoryInvoiceGroupsQuery({ enabled = true }: { enabled?: boolean } = {}) {
   return useWorkspaceScopedQuery({
     key: workspaceQueryKeys.inventoryInvoices,
+    enabled,
     queryFn: async (): Promise<{ items: InventoryInvoiceGroup[] }> => rpcClient.inventoryInvoiceGroupsList(undefined),
 /**
  * useInventoryInvoiceGroupQuery(invoiceId component.

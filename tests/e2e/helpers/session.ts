@@ -5,6 +5,24 @@ export const TEST_PASSWORD = "password123"
 export const TEST_NAME = "مدير التشغيل"
 
 /**
+ * The bootstrap setup key the Playwright API web server runs with (see
+ * playwright.config.ts). Filled into the bootstrap form so the first-run
+ * flow passes the setup-key gate.
+ */
+export const BOOTSTRAP_SETUP_KEY = "e2e-bootstrap-setup-key-9f2c1a7d-4b6e"
+
+/**
+ * Fills the setup-secret field when the bootstrap form exposes it (the
+ * field is hidden when no setup key is configured).
+ */
+async function fillSetupSecretIfVisible(page: Page) {
+  const setupSecretField = page.getByLabel("رمز الإعداد الأول")
+  if (await setupSecretField.isVisible()) {
+    await setupSecretField.fill(BOOTSTRAP_SETUP_KEY)
+  }
+}
+
+/**
  * Dismiss the first-run user-journey tour before the app boots: it overlays
  * the sidebar with a z-50 backdrop and intercepts clicks until skipped.
  * JourneyStateManager keys: `journey-<key>-<type>`.
@@ -43,6 +61,7 @@ export async function bootstrapOrSignIn(page: Page) {
     // exact: true — the PasswordInput toggle's aria-label ("إظهار كلمة المرور")
     // is a substring superset, so substring matching is ambiguous.
     await page.getByLabel("كلمة المرور", { exact: true }).fill(TEST_PASSWORD)
+    await fillSetupSecretIfVisible(page)
     await createFirstUserButton.click()
   } else {
     await signIn(page, { phone: TEST_PHONE, password: TEST_PASSWORD })
