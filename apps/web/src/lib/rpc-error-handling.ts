@@ -15,13 +15,16 @@ export function extractRpcIssueMessage(error: unknown): string | null {
     if (typeof directData === "object" && directData !== null) {
       const data = directData as Record<string, unknown>
       const issues = data["issues"]
-      if (Array.isArray(issues) && issues.length > 0) {
-        const firstIssue = issues[0]
-        if (typeof firstIssue === "object" && firstIssue !== null) {
-          const issue = firstIssue as Record<string, unknown>
-          const message = issue["message"]
-          if (typeof message === "string" && message.trim().length > 0) {
-            return message
+      if (Array.isArray(issues)) {
+        // Return the first issue that carries a non-empty message, so an
+        // empty/whitespace first issue doesn't hide a valid later one.
+        for (const candidate of issues) {
+          if (typeof candidate === "object" && candidate !== null) {
+            const issue = candidate as Record<string, unknown>
+            const message = issue["message"]
+            if (typeof message === "string" && message.trim().length > 0) {
+              return message
+            }
           }
         }
       }

@@ -65,6 +65,23 @@ describe("rpc-error-handling", () => {
       expect(result).toBe("Field-level detail")
     })
 
+    it("should skip an empty first issue message and use a valid later one", () => {
+      const error = new WireGateError("Input validation failed", [
+        { message: "   ", path: ["name"] },
+        { message: "Field-level detail", path: ["phone"] },
+      ])
+      const result = extractRpcIssueMessage(error)
+      expect(result).toBe("Field-level detail")
+    })
+
+    it("should return null for a wire-gate error with an empty issues array", () => {
+      // The wire gate throws for `result.issues` being truthy — an empty array
+      // is truthy, so data.issues can arrive as []. Nothing to extract → the
+      // generic message is suppressed and the caller applies its fallback.
+      const error = new WireGateError("Input validation failed", [])
+      expect(extractRpcIssueMessage(error)).toBeNull()
+    })
+
     it("should extract message from ORPC error with data.issues array", () => {
       const error = {
         data: {
