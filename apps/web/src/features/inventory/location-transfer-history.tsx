@@ -100,8 +100,8 @@ export function LocationTransferHistory({ locationId, locationType }: LocationTr
   return (
     <div className="space-y-4">
       <SurfaceHeader
-        title={t("inventory.transferHistory.locationTitle", "سجل التحويلات")}
-        description={t("inventory.transferHistory.locationDescription", "آخر التحويلات لهذا الموقع")}
+        title={t("inventory.transferHistory.locationTitle")}
+        description={t("inventory.transferHistory.locationDescription")}
       />
 
       {isLoading ? (
@@ -110,7 +110,7 @@ export function LocationTransferHistory({ locationId, locationType }: LocationTr
         </div>
       ) : transfers.length === 0 ? (
         <div className="py-4 text-center text-sm text-muted-foreground">
-          {t("inventory.transferHistory.noTransfers", "لا توجد تحويلات لهذا الموقع")}
+          {t("inventory.transferHistory.noTransfers")}
         </div>
       ) : (
         <>
@@ -132,7 +132,7 @@ export function LocationTransferHistory({ locationId, locationType }: LocationTr
                 size="sm"
                 onClick={() => setLimit((prev) => prev + 10)}
               >
-                {t("inventory.transferHistory.showMore", "عرض المزيد")}
+                {t("inventory.transferHistory.showMore")}
               </Button>
             </div>
           )}

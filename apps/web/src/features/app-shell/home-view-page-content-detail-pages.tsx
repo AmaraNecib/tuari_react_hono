@@ -41,7 +41,7 @@ function DebtsLoadError({
       <div className="flex flex-col items-center gap-4 py-10 text-center">
         <TriangleAlert className="h-10 w-10 text-destructive" aria-hidden="true" />
         <p className="max-w-md text-sm leading-6 text-foreground">
-          {t("debts.loadError", "تعذر تحميل بيانات الديون. حاول مرة أخرى.")}
+          {t("debts.loadError")}
         </p>
         <Button variant="outline" onClick={onRetry}>
           {t("common.retry")}

@@ -45,7 +45,7 @@ export function ItemListEditor({
             onValueChange={(value) => { if (value) onUpdate(idx, "itemId", value) }}
           >
             <SelectTrigger className="flex-1">
-              <SelectValue placeholder={t("inventory.items.selectItem", "اختر العنصر")} />
+              <SelectValue placeholder={t("inventory.items.selectItem")} />
             </SelectTrigger>
             <SelectContent>
               {itemDefinitions.map((def) => (
@@ -59,7 +59,7 @@ export function ItemListEditor({
             type="number"
             min="0"
             step="0.01"
-            placeholder={t("inventory.items.quantity", "الكمية")}
+            placeholder={t("inventory.items.quantity")}
             value={item.quantity}
             onChange={(e) => onUpdate(idx, "quantity", e.target.value)}
             className="w-20"
@@ -68,18 +68,18 @@ export function ItemListEditor({
             type="number"
             min="0"
             step="0.01"
-            placeholder={t("inventory.items.price", "السعر")}
+            placeholder={t("inventory.items.price")}
             value={item.unitPrice}
             onChange={(e) => onUpdate(idx, "unitPrice", e.target.value)}
             className="w-24"
           />
           <Button variant="ghost" size="sm" onClick={() => onRemove(idx)} className="text-destructive hover:bg-destructive/10">
-            {t("common.delete", "حذف")}
+            {t("common.delete")}
           </Button>
         </div>
       ))}
       <Button variant="outline" size="sm" onClick={onAdd} className="w-full">
-        + {t("inventory.items.addItem", "إضافة عنصر")}
+        + {t("inventory.items.addItem")}
       </Button>
     </div>
   )

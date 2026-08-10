@@ -57,10 +57,10 @@ export function PaginationControls({
 }: PaginationControlsProps) {
   const { t } = useTranslation()
 
-  const resolvedPreviousLabel = previousLabel ?? t("common.previous", "السابق")
-  const resolvedNextLabel = nextLabel ?? t("common.next", "التالي")
-  const resolvedTotalLabel = totalLabel ?? t("common.total", "إجمالي")
-  const resolvedPageSizeLabel = pageSizeLabel ?? t("tables.rowsPerPage", "عدد الصفوف")
+  const resolvedPreviousLabel = previousLabel ?? t("common.previous")
+  const resolvedNextLabel = nextLabel ?? t("common.next")
+  const resolvedTotalLabel = totalLabel ?? t("common.total")
+  const resolvedPageSizeLabel = pageSizeLabel ?? t("tables.rowsPerPage")
 
   return (
     <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between" dir="rtl">

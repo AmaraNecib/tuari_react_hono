@@ -73,9 +73,9 @@ export function VoidEntryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{t("debts.voidEntry.title", "إلغاء حركة الدين")}</DialogTitle>
+          <DialogTitle>{t("debts.voidEntry.title")}</DialogTitle>
           <DialogDescription>
-            {t("debts.voidEntry.description", "سيتم إلغاء الحركة وتعيين حالتها إلى \"ملغية\".")}
+            {t("debts.voidEntry.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -84,7 +84,7 @@ export function VoidEntryDialog({
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
-                {entry.entryType === "OPENING" ? t("debts.voidEntry.openingBalance", "رصيد افتتاحي") : t("debts.voidEntry.payment", "دفعة")}
+                {entry.entryType === "OPENING" ? t("debts.voidEntry.openingBalance") : t("debts.voidEntry.payment")}
               </span>
               <span className={cn("font-mono text-lg font-semibold", amountMeta.textClassName)} dir="ltr">
                 دج {formatDebtMoney(entry.signedAmountDzd)}
@@ -100,7 +100,7 @@ export function VoidEntryDialog({
           {hasLivePayments && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/20">
               <p className="text-sm font-medium text-amber-900 dark:text-amber-300">
-                {t("debts.voidEntry.cascadeWarning", "تحذير: إلغاء الرصيد الافتتاحي")}
+                {t("debts.voidEntry.cascadeWarning")}
               </p>
               <p className="mt-2 text-sm text-amber-800 dark:text-amber-400">
                 {t("debts.voidEntry.cascadeDescription", "سيتم إلغاء {{count}} دفعة مرتبطة تلقائياً بقيمة إجمالية {{amount}} دج.", { count: livePaymentEntries.length, amount: formatDebtMoney(totalCascadeAmount) })}
@@ -113,7 +113,7 @@ export function VoidEntryDialog({
                   className="mt-1 h-4 w-4 rounded border-border/80"
                 />
                 <span className="text-sm text-amber-800 dark:text-amber-400">
-                  {t("debts.voidEntry.cascadeConfirm", "أفهم أنه سيتم إلغاء جميع الدفعات المرتبطة تلقائياً.")}
+                  {t("debts.voidEntry.cascadeConfirm")}
                 </span>
               </label>
             </div>
@@ -122,29 +122,29 @@ export function VoidEntryDialog({
           {/* Void reason */}
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">
-              {t("debts.voidEntry.reasonLabel", "سبب الإلغاء")} <span className="text-rose-500">*</span>
+              {t("debts.voidEntry.reasonLabel")} <span className="text-rose-500">*</span>
             </span>
             <Textarea
-              placeholder={t("debts.voidEntry.reasonPlaceholder", "اذكر سبب إلغاء هذه الحركة")}
+              placeholder={t("debts.voidEntry.reasonPlaceholder")}
               value={voidReason}
               onChange={(e) => setVoidReason(e.target.value)}
             />
             {!reasonIsValid && voidReason.trim().length === 0 && voidReason.length > 0 && (
-              <p className="text-xs text-rose-600">{t("debts.voidEntry.reasonRequired", "يرجى كتابة سبب الإلغاء.")}</p>
+              <p className="text-xs text-rose-600">{t("debts.voidEntry.reasonRequired")}</p>
             )}
           </label>
         </div>
 
         <DialogFooter className="flex gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t("common.back", "رجوع")}
+            {t("common.back")}
           </Button>
           <Button
             variant="destructive"
             disabled={!canSubmit || voidEntryMutation.isPending}
             onClick={handleSubmit}
           >
-            {voidEntryMutation.isPending ? t("debts.voidEntry.pending", "جاري الإلغاء...") : t("debts.voidEntry.confirm", "تأكيد الإلغاء")}
+            {voidEntryMutation.isPending ? t("debts.voidEntry.pending") : t("debts.voidEntry.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>

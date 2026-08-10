@@ -36,15 +36,15 @@ export function LoginPage({ onSignIn, isLoading, error }: LoginPageProps) {
 
     const errors: typeof fieldErrors = {}
     if (!trimmedPhone) {
-      errors.phone = t("auth.errors.phoneRequired", "رقم الهاتف مطلوب")
+      errors.phone = t("auth.errors.phoneRequired")
     } else if (!/^0(5|6|7)\d{8}$/.test(trimmedPhone)) {
-      errors.phone = t("auth.errors.phoneInvalid", "رقم الهاتف غير صحيح")
+      errors.phone = t("auth.errors.phoneInvalid")
     }
 
     if (!trimmedPassword) {
-      errors.password = t("auth.errors.passwordRequired", "كلمة المرور مطلوبة")
+      errors.password = t("auth.errors.passwordRequired")
     } else if (trimmedPassword.length < 8) {
-      errors.password = t("auth.errors.passwordTooShort", "كلمة المرور قصيرة جداً")
+      errors.password = t("auth.errors.passwordTooShort")
     }
 
     if (Object.keys(errors).length > 0) {
@@ -73,10 +73,10 @@ export function LoginPage({ onSignIn, isLoading, error }: LoginPageProps) {
             ط
           </div>
           <h1 className="text-3xl font-semibold text-foreground">
-            {t("auth.login.title", "تسجيل الدخول")}
+            {t("auth.loginTitle")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {t("auth.login.description", "لوحة عمل مركزة للأقسام الأساسية")}
+            {t("auth.description")}
           </p>
         </div>
 
@@ -89,7 +89,7 @@ export function LoginPage({ onSignIn, isLoading, error }: LoginPageProps) {
               </div>
             )}
 
-            <Field label={t("auth.login.phone", "رقم الهاتف")} error={fieldErrors.phone}>
+            <Field label={t("auth.phoneLabel")} error={fieldErrors.phone}>
               <Input
                 type="tel"
                 inputMode="tel"
@@ -100,11 +100,11 @@ export function LoginPage({ onSignIn, isLoading, error }: LoginPageProps) {
               />
             </Field>
 
-            <Field label={t("auth.login.password", "كلمة المرور")} error={fieldErrors.password}>
+            <Field label={t("auth.passwordLabel")} error={fieldErrors.password}>
               <PasswordInput
-                placeholder={t("auth.login.passwordPlaceholder", "ثمانية أحرف على الأقل")}
-                hideLabel={t("auth.login.hidePassword", "إخفاء كلمة المرور")}
-                showLabel={t("auth.login.showPassword", "إظهار كلمة المرور")}
+                placeholder={t("auth.passwordPlaceholder")}
+                hideLabel={t("auth.hidePassword")}
+                showLabel={t("auth.showPassword")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -116,15 +116,15 @@ export function LoginPage({ onSignIn, isLoading, error }: LoginPageProps) {
               disabled={isLoading}
             >
               {isLoading
-                ? t("auth.login.loading", "جارٍ الدخول...")
-                : t("auth.login.submit", "دخول")}
+                ? t("auth.loading")
+                : t("auth.signIn")}
             </Button>
           </form>
         </div>
 
         {/* Footer */}
         <p className="text-center text-xs text-muted-foreground">
-          {t("auth.login.footer", "نظام إدارة محلي - بياناتك آمنة على جهازك")}
+          {t("auth.footer")}
         </p>
       </div>
     </div>

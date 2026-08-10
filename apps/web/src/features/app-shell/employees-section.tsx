@@ -173,8 +173,7 @@ export function EmployeesSection({
         {normalizedQuery ? (
           <p className="text-xs text-muted-foreground">
             {t(
-              "search.localPageHint",
-              "يبحث في الصفحة الحالية فقط. اعمل مسح لرؤية جميع النتائج."
+              "search.localPageHint"
             )}
           </p>
         ) : null}

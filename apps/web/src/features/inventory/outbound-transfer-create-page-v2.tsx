@@ -152,12 +152,12 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
       <Surface variant="panel">
         <PageSurfaceContent>
           <PageHeader
-            title={t("inventory.transfer.createTitle", "إنشاء تحويل خارجي")}
-            description={t("inventory.transfer.createDescription", "تحويل العناصر إلى طرف خارجي مع خيارات الدفع")}
+            title={t("inventory.transfer.createTitle")}
+            description={t("inventory.transfer.createDescription")}
             action={
               <PageActionGroup>
                 <Button variant="outline" onClick={onBack}>
-                  {t("common.cancel", "إلغاء")}
+                  {t("common.cancel")}
                 </Button>
               </PageActionGroup>
             }
@@ -169,13 +169,13 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
       <Surface variant="panel">
         <PageSurfaceContent>
           <SurfaceHeader
-            title={t("inventory.transfer.details", "بيانات التحويل")}
-            description={t("inventory.transfer.detailsDescription", "اختر الطرف الخارجي ونوع التحويل")}
+            title={t("inventory.transfer.details")}
+            description={t("inventory.transfer.detailsDescription")}
           />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-1.5 text-sm">
-              <span className="font-medium">{t("inventory.transfer.counterparty", "الطرف الخارجي")} *</span>
+              <span className="font-medium">{t("inventory.transfer.counterparty")} *</span>
               <CreateableSelect
                 value={counterpartyId}
                 onChange={(val) => {
@@ -185,11 +185,11 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
                 }}
                 options={counterparties.map((c) => ({ id: c.id, name: c.fullName }))}
                 displayValue={counterpartyDisplayName}
-                emptyLabel={t("inventory.transfer.selectCounterparty", "اختر الطرف الخارجي")}
-                createLabel={t("inventory.transfer.createCounterparty", "إنشاء طرف خارجي")}
+                emptyLabel={t("inventory.transfer.selectCounterparty")}
+                createLabel={t("inventory.transfer.createCounterparty")}
                 createFields={[
-                  { key: "fullName", label: t("externals.create.fullName", "الاسم الكامل"), placeholder: t("externals.create.fullNamePlaceholder", "اسم الجهة..."), required: true },
-                  { key: "phoneNumber", label: t("externals.create.phoneNumber", "رقم الهاتف"), placeholder: "0612345678" },
+                  { key: "fullName", label: t("externals.create.fullName"), placeholder: t("externals.create.fullNamePlaceholder"), required: true },
+                  { key: "phoneNumber", label: t("externals.create.phoneNumber"), placeholder: "0612345678" },
                 ]}
                 onCreate={async (data) => {
                   const result = await createCounterpartyMutation.mutateAsync({
@@ -206,14 +206,14 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
             </label>
 
             <label className="space-y-1.5 text-sm">
-              <span className="font-medium">{t("inventory.transfer.type", "نوع التحويل")} *</span>
+              <span className="font-medium">{t("inventory.transfer.type")} *</span>
               <NativeSelect
                 value={transferType}
                 onChange={(e) => setTransferType(e.target.value as "SALE" | "GIFT" | "RETURN")}
               >
-                <option value="SALE">{t("inventory.transfer.typeSale", "بيع")}</option>
-                <option value="GIFT">{t("inventory.transfer.typeGift", "هدية")}</option>
-                <option value="RETURN">{t("inventory.transfer.typeReturn", "مرتجع")}</option>
+                <option value="SALE">{t("inventory.transfer.typeSale")}</option>
+                <option value="GIFT">{t("inventory.transfer.typeGift")}</option>
+                <option value="RETURN">{t("inventory.transfer.typeReturn")}</option>
               </NativeSelect>
             </label>
           </div>
@@ -231,14 +231,14 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
       <Surface variant="panel">
         <PageSurfaceContent>
           <SurfaceHeader
-            title={t("inventory.transfer.payment", "الدفع")}
-            description={t("inventory.transfer.paymentDescription", "اختر طريقة الدفع والمبلغ")}
+            title={t("inventory.transfer.payment")}
+            description={t("inventory.transfer.paymentDescription")}
           />
 
           <div className="space-y-4">
             {/* Payment Type */}
             <div className="space-y-2">
-              <p className="text-sm font-medium">{t("inventory.transfer.paymentType", "طريقة الدفع")}</p>
+              <p className="text-sm font-medium">{t("inventory.transfer.paymentType")}</p>
               <div className="flex gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -249,8 +249,8 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
                     onChange={() => setPaymentType("CASH")}
                     className="accent-primary"
                   />
-                  <span className="text-sm">{t("inventory.transfer.cash", "نقدي")}</span>
-                  <span className="text-xs text-ink-4">({t("inventory.transfer.cashDescription", "تم استلام المبلغ")})</span>
+                  <span className="text-sm">{t("inventory.transfer.cash")}</span>
+                  <span className="text-xs text-ink-4">({t("inventory.transfer.cashDescription")})</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -261,8 +261,8 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
                     onChange={() => setPaymentType("DEBT")}
                     className="accent-primary"
                   />
-                  <span className="text-sm">{t("inventory.transfer.debt", "دين")}</span>
-                  <span className="text-xs text-ink-4">({t("inventory.transfer.debtDescription", "سيتم الدفع لاحقاً")})</span>
+                  <span className="text-sm">{t("inventory.transfer.debt")}</span>
+                  <span className="text-xs text-ink-4">({t("inventory.transfer.debtDescription")})</span>
                 </label>
               </div>
             </div>
@@ -270,25 +270,25 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
             {/* First Payment (if Debt) */}
             {paymentType === "DEBT" && (
               <div className="space-y-3 rounded-lg border border-line/50 bg-surface-2/50 p-4">
-                <p className="text-sm font-medium">{t("inventory.transfer.firstPayment", "الدفعة الأولى")} ({t("common.optional", "اختياري")})</p>
+                <p className="text-sm font-medium">{t("inventory.transfer.firstPayment")} ({t("common.optional")})</p>
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1.5 text-sm">
-                    <span className="font-medium">{t("inventory.transfer.inputType", "نوع الإدخال")}</span>
+                    <span className="font-medium">{t("inventory.transfer.inputType")}</span>
                     <NativeSelect
                       value={firstPaymentInputType}
                       onChange={(e) => setFirstPaymentInputType(e.target.value as FirstPaymentInputType)}
                     >
-                      <option value="AMOUNT">{t("inventory.transfer.fixedAmount", "مبلغ ثابت")}</option>
-                      <option value="PERCENT">{t("inventory.transfer.percent", "نسبة مئوية")}</option>
+                      <option value="AMOUNT">{t("inventory.transfer.fixedAmount")}</option>
+                      <option value="PERCENT">{t("inventory.transfer.percent")}</option>
                     </NativeSelect>
                   </label>
 
                   <label className="space-y-1.5 text-sm">
                     <span className="font-medium">
                       {firstPaymentInputType === "AMOUNT"
-                        ? t("inventory.transfer.amount", "المبلغ")
-                        : t("inventory.transfer.percentValue", "النسبة")}
+                        ? t("inventory.transfer.amount")
+                        : t("inventory.transfer.percentValue")}
                     </span>
                     <div className="relative">
                       <Input
@@ -301,7 +301,7 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
                         placeholder={firstPaymentInputType === "AMOUNT" ? "0" : "0"}
                       />
                       <span className="absolute inset-y-0 end-3 flex items-center text-sm text-ink-4">
-                        {firstPaymentInputType === "AMOUNT" ? t("common.currency", "دج") : "%"}
+                        {firstPaymentInputType === "AMOUNT" ? t("common.currency") : "%"}
                       </span>
                     </div>
                   </label>
@@ -312,18 +312,18 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
             {/* Summary */}
             <div className="rounded-lg border border-line/50 bg-surface-2/30 p-4 space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-ink-4">{t("inventory.transfer.totalAmount", "المبلغ الإجمالي")}</span>
-                <span className="font-medium tabular-nums">{totalAmount.toLocaleString("ar-DZ")} {t("common.currency", "دج")}</span>
+                <span className="text-ink-4">{t("inventory.transfer.totalAmount")}</span>
+                <span className="font-medium tabular-nums">{totalAmount.toLocaleString("ar-DZ")} {t("common.currency")}</span>
               </div>
               {paymentType === "DEBT" && (
                 <>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-ink-4">{t("inventory.transfer.firstPaymentAmount", "الدفعة الأولى")}</span>
-                    <span className="font-medium tabular-nums text-good">{firstPaymentAmount.toLocaleString("ar-DZ")} {t("common.currency", "دج")}</span>
+                    <span className="text-ink-4">{t("inventory.transfer.firstPaymentAmount")}</span>
+                    <span className="font-medium tabular-nums text-good">{firstPaymentAmount.toLocaleString("ar-DZ")} {t("common.currency")}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-ink-4">{t("inventory.transfer.remainingDebt", "المتبقي (دين)")}</span>
-                    <span className="font-medium tabular-nums text-warn">{remainingDebt.toLocaleString("ar-DZ")} {t("common.currency", "دج")}</span>
+                    <span className="text-ink-4">{t("inventory.transfer.remainingDebt")}</span>
+                    <span className="font-medium tabular-nums text-warn">{remainingDebt.toLocaleString("ar-DZ")} {t("common.currency")}</span>
                   </div>
                 </>
               )}
@@ -336,12 +336,12 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
       <Surface variant="panel">
         <PageSurfaceContent>
           <SurfaceHeader
-            title={t("inventory.transfer.additional", "معلومات إضافية")}
+            title={t("inventory.transfer.additional")}
           />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-1.5 text-sm">
-              <span className="font-medium">{t("common.notes", "ملاحظات")}</span>
+              <span className="font-medium">{t("common.notes")}</span>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -351,14 +351,14 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
             </label>
 
             <label className="space-y-1.5 text-sm">
-              <span className="font-medium">{t("inventory.transfer.attachments", "المرفقات")}</span>
+              <span className="font-medium">{t("inventory.transfer.attachments")}</span>
               <FileInput
                 multiple
                 accept="image/*,.pdf,.doc,.docx"
                 onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
               />
               <p className="text-xs text-ink-4">
-                {t("inventory.transfer.attachmentsHint", "صور، PDF، مستندات (اختياري)")}
+                {t("inventory.transfer.attachmentsHint")}
               </p>
             </label>
           </div>
@@ -368,15 +368,15 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
       {/* Actions */}
       <div className="flex items-center justify-end gap-3">
         <Button variant="outline" onClick={onBack}>
-          {t("common.cancel", "إلغاء")}
+          {t("common.cancel")}
         </Button>
         <Button
           disabled={!counterpartyId || items.length === 0 || createTransferMutation.isPending}
           onClick={handleSubmit}
         >
           {createTransferMutation.isPending
-            ? t("common.saving", "جارٍ الحفظ...")
-            : t("inventory.transfer.create", "إنشاء التحويل")}
+            ? t("common.saving")
+            : t("inventory.transfer.create")}
         </Button>
       </div>
     </div>

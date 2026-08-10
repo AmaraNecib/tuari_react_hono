@@ -96,8 +96,8 @@ export function TransferHistoryPage() {
       <Surface variant="panel">
         <PageSurfaceContent>
           <PageHeader
-            title={t("inventory.transferHistory.title", "سجل التحويلات")}
-            description={t("inventory.transferHistory.description", "عرض جميع تحويلات المخزون والمعاملات")}
+            title={t("inventory.transferHistory.title")}
+            description={t("inventory.transferHistory.description")}
           />
         </PageSurfaceContent>
       </Surface>
@@ -107,19 +107,19 @@ export function TransferHistoryPage() {
         <StatBand
           stats={[
             {
-              label: t("inventory.transferHistory.totalTransfers", "إجمالي التحويلات"),
+              label: t("inventory.transferHistory.totalTransfers"),
               value: totalTransfers,
             },
             {
-              label: t("inventory.transferHistory.totalSales", "المبيعات"),
+              label: t("inventory.transferHistory.totalSales"),
               value: totalSales,
             },
             {
-              label: t("inventory.transferHistory.totalInternal", "التحويلات الداخلية"),
+              label: t("inventory.transferHistory.totalInternal"),
               value: totalInternal,
             },
             {
-              label: t("inventory.transferHistory.totalValue", "القيمة الإجمالية"),
+              label: t("inventory.transferHistory.totalValue"),
               value: `${formatCurrency(totalValue)} دج`,
             },
           ]}
@@ -130,12 +130,12 @@ export function TransferHistoryPage() {
       <Surface variant="panel">
         <PageSurfaceContent>
           <SurfaceHeader
-            title={t("inventory.transferHistory.filters", "التصفية")}
+            title={t("inventory.transferHistory.filters")}
           />
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="space-y-1.5 text-sm">
-              <span className="font-medium">{t("inventory.transferHistory.dateFrom", "من تاريخ")}</span>
+              <span className="font-medium">{t("inventory.transferHistory.dateFrom")}</span>
               <Input
                 type="date"
                 value={filters.dateFrom ?? ""}
@@ -144,7 +144,7 @@ export function TransferHistoryPage() {
             </label>
 
             <label className="space-y-1.5 text-sm">
-              <span className="font-medium">{t("inventory.transferHistory.dateTo", "إلى تاريخ")}</span>
+              <span className="font-medium">{t("inventory.transferHistory.dateTo")}</span>
               <Input
                 type="date"
                 value={filters.dateTo ?? ""}
@@ -153,38 +153,38 @@ export function TransferHistoryPage() {
             </label>
 
             <label className="space-y-1.5 text-sm">
-              <span className="font-medium">{t("inventory.transferHistory.locationType", "نوع الموقع")}</span>
+              <span className="font-medium">{t("inventory.transferHistory.locationType")}</span>
               <NativeSelect
                 value={filters.locationType ?? "ALL"}
                 onChange={(e) => updateFilter("locationType", e.target.value === "ALL" ? undefined : e.target.value)}
               >
-                <option value="ALL">{t("inventory.transferHistory.allLocations", "جميع المواقع")}</option>
-                <option value="WAREHOUSE">{t("inventory.transfer.warehouse", "مستودع")}</option>
-                <option value="PROJECT">{t("inventory.transfer.project", "مشروع")}</option>
+                <option value="ALL">{t("inventory.transferHistory.allLocations")}</option>
+                <option value="WAREHOUSE">{t("inventory.transfer.warehouse")}</option>
+                <option value="PROJECT">{t("inventory.transfer.project")}</option>
               </NativeSelect>
             </label>
 
             <label className="space-y-1.5 text-sm">
-              <span className="font-medium">{t("inventory.transferHistory.transferType", "نوع التحويل")}</span>
+              <span className="font-medium">{t("inventory.transferHistory.transferType")}</span>
               <NativeSelect
                 value={filters.transferType ?? "ALL"}
                 onChange={(e) => updateFilter("transferType", e.target.value === "ALL" ? undefined : e.target.value)}
               >
-                <option value="ALL">{t("inventory.transferHistory.allTypes", "جميع الأنواع")}</option>
-                <option value="INTERNAL">{t("inventory.transferHistory.internal", "تحويل داخلي")}</option>
-                <option value="SALE">{t("inventory.transfer.typeSale", "بيع")}</option>
-                <option value="GIFT">{t("inventory.transfer.typeGift", "هدية")}</option>
-                <option value="RETURN">{t("inventory.transfer.typeReturn", "مرتجع")}</option>
+                <option value="ALL">{t("inventory.transferHistory.allTypes")}</option>
+                <option value="INTERNAL">{t("inventory.transferHistory.internal")}</option>
+                <option value="SALE">{t("inventory.transfer.typeSale")}</option>
+                <option value="GIFT">{t("inventory.transfer.typeGift")}</option>
+                <option value="RETURN">{t("inventory.transfer.typeReturn")}</option>
               </NativeSelect>
             </label>
           </div>
 
           <div className="mt-3 flex items-center gap-3">
             <label className="flex-1 space-y-1.5 text-sm">
-              <span className="font-medium">{t("inventory.transferHistory.search", "بحث")}</span>
+              <span className="font-medium">{t("inventory.transferHistory.search")}</span>
               <Input
                 type="text"
-                placeholder={t("inventory.transferHistory.searchPlaceholder", "بحث بالاسم أو المعرف...")}
+                placeholder={t("inventory.transferHistory.searchPlaceholder")}
                 value={filters.search ?? ""}
                 onChange={(e) => updateFilter("search", e.target.value)}
               />
@@ -195,7 +195,7 @@ export function TransferHistoryPage() {
                 size="sm"
                 onClick={() => setFilters({})}
               >
-                {t("inventory.transferHistory.clearFilters", "مسح التصفية")}
+                {t("inventory.transferHistory.clearFilters")}
               </Button>
               <span className="text-sm text-ink-4">
                 {totalTransfers} نتيجة
@@ -209,8 +209,8 @@ export function TransferHistoryPage() {
       <Surface variant="panel">
         <PageSurfaceContent>
           <SurfaceHeader
-            title={t("inventory.transferHistory.list", "التحويلات")}
-            description={t("inventory.transferHistory.listDescription", "جميع التحويلات والمعاملات")}
+            title={t("inventory.transferHistory.list")}
+            description={t("inventory.transferHistory.listDescription")}
           />
 
           {isLoading ? (
@@ -219,7 +219,7 @@ export function TransferHistoryPage() {
             </div>
           ) : transfers.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
-              {t("inventory.transferHistory.empty", "لا توجد تحويلات")}
+              {t("inventory.transferHistory.empty")}
             </div>
           ) : (
             <div className="space-y-3">
@@ -298,18 +298,18 @@ function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
         <div className="flex items-center justify-between border-t border-line/50 pt-3">
           <div className="flex items-center gap-4">
             <div>
-              <span className="text-xs text-ink-4">{t("inventory.transferHistory.total", "الإجمالي")}</span>
+              <span className="text-xs text-ink-4">{t("inventory.transferHistory.total")}</span>
               <span className="ms-2 font-medium tabular-nums">{formatCurrency(transfer.totalAmount)} دج</span>
             </div>
             {transfer.paidAmount !== undefined && transfer.paidAmount > 0 && (
               <div>
-                <span className="text-xs text-ink-4">{t("inventory.transferHistory.paid", "المدفوع")}</span>
+                <span className="text-xs text-ink-4">{t("inventory.transferHistory.paid")}</span>
                 <span className="ms-2 font-medium tabular-nums text-good">{formatCurrency(transfer.paidAmount)} دج</span>
               </div>
             )}
             {transfer.remainingDebt !== undefined && transfer.remainingDebt > 0 && (
               <div>
-                <span className="text-xs text-ink-4">{t("inventory.transferHistory.debt", "الدين")}</span>
+                <span className="text-xs text-ink-4">{t("inventory.transferHistory.debt")}</span>
                 <span className="ms-2 font-medium tabular-nums text-warn">{formatCurrency(transfer.remainingDebt)} دج</span>
               </div>
             )}

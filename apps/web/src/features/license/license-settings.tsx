@@ -55,16 +55,16 @@ function formatDate(isoString: string | null): string {
 
 function getStatusLabel(status: string, t: ReturnType<typeof useTranslation>["t"]): string {
   const labels: Record<string, string> = {
-    valid: t("license.statusValid", "مفعل"),
-    warning: t("license.statusWarning", "ينتهي قريباً"),
-    expired: t("license.statusExpired", "منتهي الصلاحية"),
-    expired_grace: t("license.statusExpiredGrace", "فترة سماح"),
-    not_yet_active: t("license.statusNotYetActive", "غير مفعل بعد"),
-    tampered: t("license.statusTampered", "تم العبث بالساعة"),
-    grace: t("license.statusGrace", "فترة تجربة"),
-    invalid: t("license.statusInvalid", "غير صالح"),
-    locked: t("license.statusLocked", "مقفل"),
-    unavailable: t("license.statusUnavailable", "غير متاح"),
+    valid: t("license.statusValid"),
+    warning: t("license.statusWarning"),
+    expired: t("license.statusExpired"),
+    expired_grace: t("license.statusExpiredGrace"),
+    not_yet_active: t("license.statusNotYetActive"),
+    tampered: t("license.statusTampered"),
+    grace: t("license.statusGrace"),
+    invalid: t("license.statusInvalid"),
+    locked: t("license.statusLocked"),
+    unavailable: t("license.statusUnavailable"),
   }
   return labels[status] ?? status
 }
@@ -103,9 +103,9 @@ export function LicenseSettings() {
       <Surface variant="panel" className="p-5 border border-line rounded-xl">
         <div className="flex flex-col items-center gap-4 py-12">
           <ShieldAlert className="h-12 w-12 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">{t("license.loadError", "تعذر تحميل معلومات الترخيص.")}</p>
+          <p className="text-sm text-muted-foreground">{t("license.loadError")}</p>
           <Button variant="outline" onClick={() => refetch()}>
-            {t("common.retry", "إعادة المحاولة")}
+            {t("common.retry")}
           </Button>
         </div>
       </Surface>
@@ -126,8 +126,8 @@ export function LicenseSettings() {
   return (
     <Surface variant="panel" className="p-5 border border-line rounded-xl space-y-5">
       <SurfaceHeader
-        title={t("license.title", "الترخيص")}
-        description={t("license.description", "معلومات الترخيص والإصدار الحالية")}
+        title={t("license.title")}
+        description={t("license.description")}
       />
 
       {/* ── Warning banner (30 days or less) ── */}
@@ -136,7 +136,7 @@ export function LicenseSettings() {
           <AlertCircle className="h-5 w-5 mt-0.5 text-warning shrink-0" />
           <div className="text-sm">
             <p className="font-medium text-warning-foreground">
-              {t("license.warningTitle", "الترخيص على وشك الانتهاء")}
+              {t("license.warningTitle")}
             </p>
             <p className="mt-1 text-warning-foreground/80">
               {t("license.warningDescription", "سيتم انتهاء صلاحية الترخيص خلال {{days}} يوم.", { days: data.daysRemaining })}
@@ -152,8 +152,8 @@ export function LicenseSettings() {
           <div className="text-sm">
             <p className="font-medium text-warning-foreground">
               {data.status === "grace"
-                ? t("license.graceTitle", "فترة تجربة ما بعد التثبيت")
-                : t("license.expiredGraceTitle", "فترة سماح بعد انتهاء الترخيص")}
+                ? t("license.graceTitle")
+                : t("license.expiredGraceTitle")}
             </p>
             <p className="mt-1 text-warning-foreground/80">
               {data.status === "grace"
@@ -178,10 +178,10 @@ export function LicenseSettings() {
           <div className="p-4 rounded-lg border border-line space-y-2">
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
               <EditionIcon className="h-4 w-4" />
-              <span>{t("license.edition", "الإصدار")}</span>
+              <span>{t("license.edition")}</span>
             </div>
             <p className="text-lg font-semibold capitalize">
-              {getEditionLabel(data.edition) || t("license.noEdition", "غير محدد")}
+              {getEditionLabel(data.edition) || t("license.noEdition")}
             </p>
           </div>
 
@@ -189,10 +189,10 @@ export function LicenseSettings() {
           <div className="p-4 rounded-lg border border-line space-y-2">
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
               <Users className="h-4 w-4" />
-              <span>{t("license.customer", "العميل")}</span>
+              <span>{t("license.customer")}</span>
             </div>
             <p className="text-lg font-semibold">
-              {data.issuedTo || t("license.noCustomer", "غير معروف")}
+              {data.issuedTo || t("license.noCustomer")}
             </p>
             {data.email && (
               <p className="text-sm text-muted-foreground">{data.email}</p>
@@ -203,18 +203,18 @@ export function LicenseSettings() {
           <div className="p-4 rounded-lg border border-line space-y-2">
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
               <Clock className="h-4 w-4" />
-              <span>{t("license.expiry", "تاريخ الانتهاء")}</span>
+              <span>{t("license.expiry")}</span>
             </div>
             <p className="text-lg font-semibold">
               {data.validUntil
                 ? formatDate(data.validUntil)
-                : t("license.lifetime", "مدى الحياة")}
+                : t("license.lifetime")}
             </p>
             {data.validUntil && (
               <p className="text-sm text-muted-foreground">
                 {data.daysRemaining > 0
                   ? t("license.daysRemaining", "متبقي {{days}} يوم", { days: data.daysRemaining })
-                  : t("license.expired", "منتهي الصلاحية")}
+                  : t("license.expired")}
               </p>
             )}
           </div>
@@ -223,14 +223,14 @@ export function LicenseSettings() {
           <div className="p-4 rounded-lg border border-line space-y-2">
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
               <KeyRound className="h-4 w-4" />
-              <span>{t("license.type", "النوع")}</span>
+              <span>{t("license.type")}</span>
             </div>
             <p className="text-lg font-semibold capitalize">
               {data.licenseType === "perpetual"
-                ? t("license.perpetual", "دائم")
+                ? t("license.perpetual")
                 : data.licenseType === "subscription"
-                  ? t("license.subscription", "اشتراك")
-                  : data.licenseType || t("license.noType", "غير محدد")}
+                  ? t("license.subscription")
+                  : data.licenseType || t("license.noType")}
             </p>
             {data.maxUsers > 0 && (
               <p className="text-sm text-muted-foreground">
@@ -245,7 +245,7 @@ export function LicenseSettings() {
       {hasLicense && data.features.length > 0 && (
         <div className="space-y-3">
           <h4 className="text-sm font-medium text-muted-foreground">
-            {t("license.features", "الميزات المتاحة")}
+            {t("license.features")}
           </h4>
           <div className="grid gap-2 sm:grid-cols-2">
             {data.features.map((feature) => (
@@ -261,7 +261,7 @@ export function LicenseSettings() {
       {/* ── Empty features state ── */}
       {hasLicense && data.features.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          {t("license.noFeatures", "لا توجد ميزات إضافية في هذا الإصدار.")}
+          {t("license.noFeatures")}
         </p>
       )}
 
@@ -270,19 +270,19 @@ export function LicenseSettings() {
       <div className="p-4 rounded-lg border border-line space-y-2" dir="rtl">
         <p className="text-sm">
           {data.status === "tampered"
-            ? t("license.tamperedUpgrade", "تم الكشف عن عبث في الساعة. يرجى التواصل مع الدعم الفني.")
+            ? t("license.tamperedUpgrade")
             : data.status === "not_yet_active"
               ? t("license.notYetActiveUpgrade", "الترخيص غير مفعل بعد. تاريخ البدء: {{date}}.", { date: formatDate(data.validFrom) })
               : data.status === "expired" || data.status === "expired_grace" || data.status === "locked"
-                ? t("license.renewalPrompt", "انتهت صلاحية الترخيص. يرجى تجديد الترخيص لاستئناف العمل.")
+                ? t("license.renewalPrompt")
                 : data.edition === "standard"
-                  ? t("license.upgradeToProfessional", "ترقية إلى Professional للاستفادة من الميزات المتقدمة.")
+                  ? t("license.upgradeToProfessional")
                   : data.edition === "professional"
-                    ? t("license.upgradeToEnterprise", "ترقية إلى Enterprise للحصول على جميع الميزات.")
-                    : t("license.upgradePrompt", "لترقية الإصدار أو تجديد الترخيص، يرجى التواصل مع فريق الدعم.")}
+                    ? t("license.upgradeToEnterprise")
+                    : t("license.upgradePrompt")}
         </p>
         <p className="text-sm text-muted-foreground">
-          {t("license.contactInfo", "البريد الإلكتروني: support@tuari.app")}
+          {t("license.contactInfo")}
         </p>
       </div>
       )}

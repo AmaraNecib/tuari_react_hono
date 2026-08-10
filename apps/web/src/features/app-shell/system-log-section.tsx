@@ -133,7 +133,7 @@ function SystemLogDetailsCell({ detail }: { detail: string | null | undefined })
               <span
                 key={`${token}-${tokenIndex}`}
                 className={cn(
-                  "inline-flex min-h-8 items-center rounded-xl border px-3 py-1.5 text-[12px] leading-5 shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] dark:shadow-none",
+                  "inline-flex min-h-8 items-center rounded-xl border px-3 py-1.5 text-[0.75rem] leading-5 shadow-[0_0.0625rem_0_rgba(255,255,255,0.55)_inset] dark:shadow-none",
                   getDetailTokenClassName(token),
                 )}
               >

@@ -278,14 +278,14 @@ export function SettingsSection({
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'account' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           onClick={() => setActiveTab('account')}
         >
-          {t('settings.tabs.account', 'معلومات الحساب')}
+          {t('settings.tabs.account')}
         </button>
         <button
           type="button"
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'appearance' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           onClick={() => setActiveTab('appearance')}
         >
-          {t('settings.tabs.appearance', 'المظهر')}
+          {t('settings.tabs.appearance')}
         </button>
         <button
           type="button"
@@ -295,21 +295,21 @@ export function SettingsSection({
             licenseActivation.reset()
           }}
         >
-          {t('settings.tabs.licensing', 'الترخيص')}
+          {t('settings.tabs.licensing')}
         </button>
         <button
           type="button"
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'system' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           onClick={() => setActiveTab('system')}
         >
-          {t('settings.tabs.system', 'النظام')}
+          {t('settings.tabs.system')}
         </button>
         <button
           type="button"
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'security' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           onClick={() => setActiveTab('security')}
         >
-          {t('settings.tabs.security', 'الأمان')}
+          {t('settings.tabs.security')}
         </button>
         <button
           type="button"
@@ -388,12 +388,12 @@ export function SettingsSection({
           {/* Activation Form — show when no active license, expired, or just activated */}
           {!licenseStatus.loading && (!licenseStatus.status?.hasLicense || licenseStatus.status?.isExpired || licenseActivation.result != null) && (
             <ActivationPage
-              activateLabel={t('license.activate', 'تفعيل')}
-              activatingLabel={t('license.activating', 'جارٍ التفعيل...')}
+              activateLabel={t('license.activate')}
+              activatingLabel={t('license.activating')}
               description={t('license.description', 'أدخل مفتاح الترخيص لتفعيل النسخة الكاملة من توارتي.')}
               errorMessage={licenseActivation.error}
-              keyLabel={t('license.keyLabel', 'مفتاح الترخيص')}
-              keyPlaceholder={t('license.keyPlaceholder', 'أدخل مفتاح الترخيص')}
+              keyLabel={t('license.keyLabel')}
+              keyPlaceholder={t('license.keyPlaceholder')}
               successMessage={licenseActivation.result?.message ?? null}
               title={t('license.title', 'تفعيل الترخيص')}
               onActivate={async (key) => {
@@ -478,7 +478,7 @@ export function SettingsSection({
             <div className="p-5 border border-line rounded-xl">
               <div className="text-start" dir="rtl">
                 <p className="text-sm text-muted-foreground">
-                  {t('settings.about.onlyAvailableInDesktop', 'هذه الميزة متاحة فقط في تطبيق سطح المكتب.')}
+                  {t('settings.about.onlyAvailableInDesktop')}
                 </p>
               </div>
             </div>
@@ -496,19 +496,19 @@ export function SettingsSection({
           </div>
           <div className="p-5 border border-line rounded-xl">
             <div className="text-start">
-              <h3 className="text-lg font-semibold text-foreground">{t('settings.database.export', 'تصدير قاعدة البيانات')}</h3>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('settings.database.exportDescription', 'تصدير جميع البيانات إلى ملف')}</p>
+              <h3 className="text-lg font-semibold text-foreground">{t('settings.database.export')}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('settings.database.exportDescription')}</p>
               <Button type="button" variant="outline" className="mt-4">
-                {t('settings.database.exportButton', 'تصدير')}
+                {t('settings.database.exportButton')}
               </Button>
             </div>
           </div>
           <div className="p-5 border border-line rounded-xl">
             <div className="text-start">
-              <h3 className="text-lg font-semibold text-foreground">{t('settings.database.import', 'استيراد قاعدة البيانات')}</h3>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('settings.database.importDescription', 'استيراد البيانات من ملف محفوظ')}</p>
+              <h3 className="text-lg font-semibold text-foreground">{t('settings.database.import')}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('settings.database.importDescription')}</p>
               <Button type="button" variant="outline" className="mt-4">
-                {t('settings.database.importButton', 'استيراد')}
+                {t('settings.database.importButton')}
               </Button>
             </div>
           </div>
@@ -603,7 +603,7 @@ export function SettingsSection({
             <div className="p-5 border border-line rounded-xl">
               <div className="text-start" dir="rtl">
                 <p className="text-sm text-muted-foreground">
-                  {t('settings.about.onlyAvailableInDesktop', 'هذه الميزة متاحة فقط في تطبيق سطح المكتب.')}
+                  {t('settings.about.onlyAvailableInDesktop')}
                 </p>
               </div>
             </div>

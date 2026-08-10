@@ -20,10 +20,22 @@ vi.mock("@tauri-apps/api/event", () => ({
 }))
 const mockListen = vi.mocked(listen)
 
-// Mock i18n
+// Mock i18n — resolve keys against the real ar resource (resource wins,
+// fallback only when the key is missing), mirroring production i18next.
+import { ar } from "@/i18n/resources/ar"
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string) => {
+      let node: unknown = ar.translation
+      for (const part of key.split(".")) {
+        if (node === null || typeof node !== "object" || !(part in node)) {
+          node = undefined
+          break
+        }
+        node = (node as Record<string, unknown>)[part]
+      }
+      return typeof node === "string" ? node : (fallback ?? key)
+    },
   }),
 }))
 

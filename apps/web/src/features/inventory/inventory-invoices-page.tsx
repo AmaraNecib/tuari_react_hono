@@ -37,17 +37,17 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
     () => [
       {
         id: "all",
-        label: t("inventoryPage.invoices.statusAll", "الكل"),
+        label: t("inventoryPage.invoices.statusAll"),
         filters: { status: "ALL" },
       },
       {
         id: "paid",
-        label: t("inventoryPage.invoices.statusPaid", "مدفوعة"),
+        label: t("inventoryPage.invoices.statusPaid"),
         filters: { status: "PAID" },
       },
       {
         id: "unpaid",
-        label: t("inventoryPage.invoices.statusUnpaid", "متبقي دين"),
+        label: t("inventoryPage.invoices.statusUnpaid"),
         filters: { status: "UNPAID" },
       },
     ],

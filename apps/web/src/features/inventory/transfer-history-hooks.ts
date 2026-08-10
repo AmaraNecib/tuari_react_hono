@@ -75,7 +75,7 @@ export function useTransferHistoryQuery(filters: TransferHistoryFilters = {}) {
         counterparty: null,
         items: [{
           id: movement.inventoryEntryId ?? movement.assetUnitId ?? movement.id,
-          name: movement.itemType === "CONSUMABLE" ? t("inventory.type.consumable", "مادة استهلاكية") : t("inventory.type.asset", "أصل"),
+          name: movement.itemType === "CONSUMABLE" ? t("inventory.type.consumable") : t("inventory.type.asset"),
           quantity: movement.quantity,
           type: movement.itemType,
         }],
@@ -120,7 +120,7 @@ export function useLocationTransferHistoryQuery(
         counterparty: null,
         items: [{
           id: movement.inventoryEntryId ?? movement.assetUnitId ?? movement.id,
-          name: movement.itemType === "CONSUMABLE" ? t("inventory.type.consumable", "مادة استهلاكية") : t("inventory.type.asset", "أصل"),
+          name: movement.itemType === "CONSUMABLE" ? t("inventory.type.consumable") : t("inventory.type.asset"),
           quantity: movement.quantity,
           type: movement.itemType,
         }],
