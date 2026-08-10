@@ -10,7 +10,7 @@ test.describe.configure({ mode: "serial" })
  * Issue #271: ~69 call sites rendered raw keys in reachable routes.
  */
 const RAW_KEY_PATTERN =
-  /(?:^|\s)(?:common|shell|debts|detailPages|systemLog|inventory|inventoryPage|auth|workspace|appShell|sections|search|license|dashboardPage|dashboard|validation|reports|externals|externalsPage|auditLog|toasts|shortcuts|columns|status|tables|historyEvent|systemRoles|employeeForm|salaries|metrics|mockData|batchOperations|exportImport|debtsHub|debtLedger|debtCases|tour|update)\.[a-zA-Z]+/
+  /(?:^|[\s(“„])(?:common|shell|debts|detailPages|systemLog|inventory|inventoryPage|auth|workspace|appShell|sections|search|license|dashboardPage|dashboard|validation|reports|externals|externalsPage|auditLog|toasts|shortcuts|columns|status|tables|historyEvent|systemRoles|employeeForm|salaries|metrics|mockData|batchOperations|exportImport|debtsHub|debtLedger|debtCases|tour|update)\.[a-zA-Z]+(?:\.[a-zA-Z]+)*(?![\w.])/
 
 async function expectNoRawKeys(page: Page) {
   const bodyText = await page.locator("body").innerText()
@@ -85,4 +85,9 @@ test("reachable workspace pages render no raw i18n keys", async ({ page }) => {
     await expect(page.getByRole("heading", { name: heading }).first()).toBeVisible({ timeout: 10_000 })
     await expectNoRawKeys(page)
   }
+
+  // Unknown route → translated 404 (detailPages.notFound.* rename, issue #271).
+  await page.goto("/definitely-not-a-route")
+  await expect(page.getByRole("heading", { name: "الصفحة غير موجودة" })).toBeVisible()
+  await expectNoRawKeys(page)
 })

@@ -108,4 +108,18 @@ describe("SystemLogSection detail tokenizer", () => {
     expect(actionOption).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/systemLog\.|appShell\.|workspace\./);
   });
+
+  it("renders the translated empty state when there are no entries", () => {
+    render(
+      <SystemLogSection
+        entries={[]}
+        filters={{}}
+        title="السجل"
+        onFiltersChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("لا توجد عمليات مسجلة بعد.")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/systemLog\.|appShell\.|workspace\./);
+  });
 });
