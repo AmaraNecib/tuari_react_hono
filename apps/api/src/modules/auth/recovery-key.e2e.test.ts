@@ -2,7 +2,13 @@
  * End-to-end test: Recovery key lifecycle.
  *
  * Covers: generate → revoke → use → verify masked keys never leak plain text.
- * Password change is simulated (recovery keys are app-layer, independent of DB key).
+ *
+ * Recovery keys are app-layer credentials independent of the DB encryption
+ * key, so a real DB rekey is not exercised here: SQLCipher's `PRAGMA rekey`
+ * is a no-op on the plain better-sqlite3 used by this workspace's tests
+ * (the sqlcipher binding is not built — see database-key-manager.test.ts,
+ * which covers the changeKey statements at the unit level). This suite
+ * asserts what the app-layer lifecycle actually guarantees.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createRecoveryKeyTestEnv } from "./test-helpers/recovery-key-env";
@@ -18,7 +24,7 @@ describe("End-to-end: recovery key lifecycle", () => {
     env.teardown();
   });
 
-  it("full lifecycle: generate → revoke → use → change password", async () => {
+  it("full lifecycle: generate → revoke → use → replenish", async () => {
     // 1. Generate initial recovery keys
     const keys = await env.service.generateKeys();
     expect(keys).toHaveLength(3);
@@ -76,17 +82,13 @@ describe("End-to-end: recovery key lifecycle", () => {
     expect(consumeNew).toBe(true);
   });
 
-  it("recovery keys survive simulated password change", async () => {
+  it("every generated key is sequentially consumable (pool drains to zero)", async () => {
     // Generate keys
     const keys = await env.service.generateKeys();
     expect(keys).toHaveLength(3);
 
-    // Simulate password change (just verify keys still work after operations)
-    // In production the DB key change goes through DatabaseKeyManager.changeKey
-    // (PRAGMA verify + rekey); recovery keys are app-layer tokens, not SQLCipher
-    // keys, so they survive a rekey.
-
-    // Verify all keys still work
+    // Consume every generated key, one at a time — each must be accepted
+    // exactly once (sequential consumption of the full pool).
     for (const k of keys) {
       const result = await env.service.consumeKey(k.key);
       expect(result).toBe(true);
