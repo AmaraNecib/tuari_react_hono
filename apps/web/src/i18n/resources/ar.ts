@@ -32,6 +32,7 @@ export const ar = {
       showPassword: "إظهار كلمة المرور",
       hidePassword: "إخفاء كلمة المرور",
       close: "إغلاق",
+      back: "رجوع",
       undo: "تراجع",
       showOnce: "لا تظهر مرة أخرى",
       gotIt: "حسناً",
@@ -39,6 +40,8 @@ export const ar = {
       skipToContent: "تخطي إلى المحتوى",
       skip: "تخطي",
       done: "تم",
+      next: "التالي",
+      previous: "السابق",
       stepOf: "{{current}} من {{total}}",
       help: "مساعدة",
       learnMore: "اعرف المزيد",
@@ -172,6 +175,7 @@ export const ar = {
         phoneFormat: "رقم الهاتف يجب أن يبدأ بـ 05 أو 06 أو 07 ويتكوّن من 10 أرقام.",
         password: "كلمة المرور مطلوبة.",
         passwordShort: "كلمة المرور يجب أن تكون 8 أحرف على الأقل.",
+        passwordWhitespace: "كلمة المرور يجب ألا تتكون من أحرف غير مرئية فقط.",
         setupSecret: "رمز الإعداد الأول مطلوب.",
       },
       errors: {
@@ -1055,6 +1059,8 @@ export const ar = {
       categoryEditing: "التحرير",
     },
     search: {
+      title: "البحث",
+      results: "نتائج البحث",
       placeholder: "بحث...",
       noResults: "لا توجد نتائج",
       hint: "ابدأ بالكتابة للبحث في الصفحات والبيانات...",
@@ -1075,7 +1081,6 @@ export const ar = {
       openFilters: "الفلاتر",
       closeFilters: "إغلاق",
       historyEntryLabel: "{{keys}}",
-      localPageHint: "يبحث في الصفحة الحالية فقط. اعمل مسح لرؤية جميع النتائج.",
       categories: {
         pages: "الصفحات",
         actions: "إجراءات سريعة",

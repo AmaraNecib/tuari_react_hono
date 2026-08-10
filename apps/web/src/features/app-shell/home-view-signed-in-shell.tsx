@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Fuse from "fuse.js"
 import { LogOut, MoonStar, PanelRightClose, PanelRightOpen, Settings, SunMedium, Menu, Search, HelpCircle } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -11,6 +11,7 @@ import { useInventoryItemDefinitionsQuery, useInventoryInvoiceGroupsQuery } from
 import { UserJourneyTour } from "@/hooks/use-user-journey"
 import { SearchDialog, type SearchItem } from "@/components/ui/search-dialog"
 import { KeyboardShortcutsHelp } from "@/components/ui/keyboard-shortcuts-provider"
+import { SkipNavigation, MainContent } from "@/components/ui/skip-navigation"
 
 import {
   AlertDialog,
@@ -80,7 +81,15 @@ export function HomeViewSignedInShell({
   onThemeToggle: () => void
 }) {
   const { t } = useTranslation()
-  const { isMobile, sidebarOpen, toggleSidebar } = useMobileLayout()
+  const { isMobile, sidebarOpen, toggleSidebar, closeSidebar } = useMobileLayout()
+
+  // Close the mobile drawer after any navigation — sidebar links, breadcrumbs,
+  // header links — so the drawer never lingers over the newly loaded page
+  // (issue #284). closeSidebar is a stable useCallback, so this only fires
+  // when the route's page changes.
+  useEffect(() => {
+    closeSidebar()
+  }, [closeSidebar, page])
 
   const [searchOpen, setSearchOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -334,14 +343,17 @@ export function HomeViewSignedInShell({
 
   return (
     <UserJourneyTour steps={tourSteps} storageKey="home-tour" autoStart>
+    {/* Skip link must precede the shell grid so it stays the first focusable
+        element and never becomes a grid item (issue #284). */}
+    <SkipNavigation />
     <div
       className="tauri-shell"
       data-collapsed={sidebarCollapsed ? "true" : "false"}
       data-sidebar-open={sidebarOpen ? "true" : "false"}
     >
       {/* Sidebar — first in DOM = right side in RTL CSS grid */}
-      <div data-tour="sidebar">
       <WorkspaceSidebar
+        dataTour="sidebar"
         collapseLabel={copy.shell.collapse}
         collapsed={sidebarCollapsed}
         currentPage={page}
@@ -362,7 +374,6 @@ export function HomeViewSignedInShell({
         width=""
         onSetCollapsed={onSetSidebarCollapsed}
       />
-      </div>
 
       {/* Main area */}
       <div className="flex flex-col min-w-0 bg-bg overflow-hidden">
@@ -451,10 +462,24 @@ export function HomeViewSignedInShell({
         </header>
 
         {/* Scrollable page content */}
-        <div className="flex-1 overflow-auto overscroll-contain px-10 py-8">
+        <MainContent className="flex-1 overflow-auto overscroll-contain px-10 py-8">
           {children}
-        </div>
+        </MainContent>
       </div>
+
+      {/* Mobile drawer backdrop — a real element so tapping it closes the
+          drawer. Rendered AFTER the main area so the `.tauri-shell > aside + div`
+          selectors still match the main area (aside must be followed by the
+          content div). Replaces the old .tauri-shell::after pseudo-element,
+          which could never receive clicks and trapped the user (issue #284). */}
+      {isMobile && (
+        <div
+          className="sb-mobile-backdrop"
+          data-open={sidebarOpen ? "true" : "false"}
+          onClick={closeSidebar}
+          aria-hidden="true"
+        />
+      )}
 
       {/* Delete confirmation dialog */}
       <AlertDialog

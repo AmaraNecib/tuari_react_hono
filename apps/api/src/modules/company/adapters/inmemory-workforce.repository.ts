@@ -64,14 +64,22 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
 
   listEmployees(filters?: EmployeeListFilters): EmployeeRecord[] {
     const all = Array.from(this.store.employees.values());
+    const needle = filters?.search?.trim().toLowerCase();
     const filtered = filters ? all.filter((e) =>
       (!filters.roleId || e.roleId === filters.roleId) &&
-      (!filters.status || e.status === filters.status),
+      (!filters.status || e.status === filters.status) &&
+      (!needle || this.matchesSearch(e, needle)),
     ) : all;
     return filtered.sort((a, b) => {
       const byName = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
       return byName !== 0 ? byName : sortByDate(a, b);
     });
+  }
+
+  /** Case-insensitive haystack incl. the role's display name (issue #183). */
+  private matchesSearch(e: EmployeeRecord, needle: string): boolean {
+    const roleName = e.roleId ? (this.store.roles.get(e.roleId)?.name ?? "") : "";
+    return `${e.firstName} ${e.lastName} ${e.phone} ${roleName}`.toLowerCase().includes(needle);
   }
   listEmployeesPaged(query: { filters?: EmployeeListFilters; cursor?: string; limit: number }): { items: EmployeeRecord[]; total: number; nextCursor: string | null } {
     // Sort matches the SQLite index: createdAt DESC, id DESC.

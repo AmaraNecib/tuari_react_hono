@@ -279,10 +279,11 @@ Fix the most critical architectural issues that block scalability:
     ```
 
 - [ ] Verify input validation middleware
-  - File: `apps/api/src/rpc/rpc-middleware.ts`
-  - Confirm: InputValidator applied to all handlers
-  - Confirm: Validation errors return error code + message
-  - Confirm: No missing validations on mutations
+  - File: `apps/api/src/rpc/rpc-middleware.ts` + contracts schemas
+  - Confirm: the ORPC contract wire gate is the single validation authority
+    (`implement(appContract)` input schemas → `BAD_REQUEST` + `data.issues`)
+  - Confirm: validation errors carry zod field paths + messages (`data.issues`)
+  - Confirm: no manual double validation remains (removed in #278)
 
 - [ ] Create validation documentation
   - File: `apps/api/src/infrastructure/validation/README.md` (NEW)

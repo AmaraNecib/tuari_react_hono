@@ -64,6 +64,7 @@ export function createWorkforceHandlers(
           filters: {
             roleId: opts.roleId,
             status: opts.status,
+            search: opts.search,
           },
           cursor: opts.cursor,
           limit: opts.limit,

@@ -59,6 +59,13 @@ export function createDatabaseConnection(
 
   sqlite.pragma("journal_mode = WAL")
   sqlite.pragma("foreign_keys = ON")
+  // Wait (rather than fail immediately) when ANOTHER process holds the
+  // SQLite write lock. Single-process today, but the transaction model
+  // uses BEGIN IMMEDIATE (write reservation up front), so a second process
+  // (dev tool, future host) touching the same file would otherwise surface
+  // an instant SQLITE_BUSY as a spurious 500. 5s matches SQLite's typical
+  // interactive wait; the error still propagates if the lock is held longer.
+  sqlite.pragma("busy_timeout = 5000")
 
   // Wrap prepare() to normalise values before they reach better-sqlite3.
   // - Boolean → 1/0 (better-sqlite3 rejects true/false)

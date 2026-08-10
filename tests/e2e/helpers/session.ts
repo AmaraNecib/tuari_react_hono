@@ -46,9 +46,14 @@ export async function signIn(page: Page, input: { phone: string; password: strin
   await page.getByRole("button", { name: "دخول إلى مساحة العمل" }).click()
 }
 
-export async function bootstrapOrSignIn(page: Page) {
-  await dismissUserJourneyTour(page)
-
+/**
+ * Bootstraps (first run) or signs in, WITHOUT waiting for the workspace
+ * shell to render. The tour test needs this variant: once the shell mounts
+ * the first-run tour is a real modal (issue #275) that marks the rest of
+ * the page aria-hidden, so the dashboard link is not queryable until the
+ * tour is skipped.
+ */
+async function signInCore(page: Page) {
   await page.goto("/")
 
   await expect(page.getByLabel("رقم الهاتف")).toBeVisible()
@@ -66,11 +71,23 @@ export async function bootstrapOrSignIn(page: Page) {
   } else {
     await signIn(page, { phone: TEST_PHONE, password: TEST_PASSWORD })
   }
+}
 
-  // The signed-in shell renders the sidebar with the dashboard entry.
-  await expect(page.getByRole("link", { name: "لوحة التحكم" }).first()).toBeVisible({
-    timeout: 15_000,
-  })
+export async function bootstrapOrSignIn(page: Page, options?: { dismissTour?: boolean }) {
+  const dismissTour = options?.dismissTour ?? true
+  if (dismissTour) await dismissUserJourneyTour(page)
+
+  await signInCore(page)
+
+  // The signed-in shell renders the sidebar with the dashboard entry. When
+  // the tour is intentionally left active (dismissTour: false) it is a real
+  // modal that marks the rest of the page aria-hidden, so the link is NOT
+  // queryable — the caller waits for the tour dialog itself instead.
+  if (dismissTour) {
+    await expect(page.getByRole("link", { name: "لوحة التحكم" }).first()).toBeVisible({
+      timeout: 15_000,
+    })
+  }
 }
 
 export function uniqueSuffix() {
