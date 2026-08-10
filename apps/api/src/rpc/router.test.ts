@@ -11,6 +11,7 @@ import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
 import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
+import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import { createRouter } from "./router";
 import type { RpcContext } from "./context";
 import { EmployeeModule } from "../modules/workforce/employee.module";
@@ -768,6 +769,69 @@ describe("RPC router", () => {
       client.revokeRecoveryKey({ keyId: "  key-1  " }),
     ).resolves.toEqual({ success: true });
     expect(revokeKey).toHaveBeenLastCalledWith("key-1");
+  });
+
+  it("returns the recovery key pool status through the wire contract (getRecoveryKeyPool passthrough)", async () => {
+    const harness = createHarness();
+    // Real service on a stubbed RecoveryKeyPort: the pool-status shape that
+    // flows out is produced by service logic (counts derived from the records),
+    // so the assertion pins both the passthrough and the ORPC output schema.
+    const records = [
+      { id: "key-1", prefix: "a1b2", keyHash: "h1", status: "AVAILABLE", consumedAt: null, revokedAt: null, createdAt: "2026-01-01T00:00:00.000Z" },
+      { id: "key-2", prefix: "c3d4", keyHash: "h2", status: "CONSUMED", consumedAt: "2026-01-02T00:00:00.000Z", revokedAt: null, createdAt: "2026-01-01T00:00:00.000Z" },
+      { id: "key-3", prefix: "e5f6", keyHash: "h3", status: "REVOKED", consumedAt: null, revokedAt: "2026-01-03T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" },
+    ];
+    const listAllKeys = vi.fn().mockResolvedValue(records);
+    const recoveryKeyService = new RecoveryKeyService({
+      insertKey: vi.fn(),
+      findKeyByHash: vi.fn(),
+      updateKeyStatus: vi.fn(),
+      countAvailableKeys: vi.fn(),
+      listAllKeys,
+      withTransaction: vi.fn(),
+    });
+    const router = createTestRouter(harness, undefined, recoveryKeyService);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(client.getRecoveryKeyPool()).resolves.toEqual({
+      availableCount: 1,
+      totalCount: 3,
+      maxPoolSize: 5,
+      maskedKeys: [
+        { id: "key-1", prefix: "a1b2", status: "AVAILABLE" },
+        { id: "key-2", prefix: "c3d4", status: "CONSUMED" },
+        { id: "key-3", prefix: "e5f6", status: "REVOKED" },
+      ],
+    });
+    expect(listAllKeys).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns generated recovery keys through the wire contract (generateRecoveryKeys passthrough)", async () => {
+    const harness = createHarness();
+    // Stubbed port reports an empty pool; the real service generates
+    // INITIAL_KEY_COUNT (3) keys inside withTransaction and the handler wraps
+    // them as { keys }, which must satisfy generatedRecoveryKeysSchema.
+    const insertKey = vi.fn();
+    const stubPort = {
+      insertKey,
+      findKeyByHash: vi.fn(),
+      updateKeyStatus: vi.fn(),
+      countAvailableKeys: vi.fn().mockResolvedValue(0),
+      listAllKeys: vi.fn().mockResolvedValue([]),
+      withTransaction: vi.fn(async (run) => run(stubPort)),
+    };
+    const recoveryKeyService = new RecoveryKeyService(stubPort);
+    const router = createTestRouter(harness, undefined, recoveryKeyService);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    const result = await client.generateRecoveryKeys();
+    expect(result.keys).toHaveLength(3);
+    for (const k of result.keys) {
+      expect(k.key).toMatch(/^[0-9a-f]{6}-[0-9a-f]{6}-[0-9a-f]{6}$/);
+      expect(k.prefix).toMatch(/^[0-9a-f]{4}$/);
+      expect(k.createdAt).toBeTruthy();
+    }
+    expect(insertKey).toHaveBeenCalledTimes(3);
   });
 
   it("rejects invalid auth bootstrap input at the wire contract", async () => {
