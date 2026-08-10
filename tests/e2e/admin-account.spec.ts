@@ -180,12 +180,12 @@ test("admin changes password: old fails, new works, canonical password restored"
   await openAccountSettings(page)
   await changePassword(page, TEST_PASSWORD, NEW_PASSWORD)
 
-  // The old password must no longer sign in. The web sign-in path surfaces
-  // the raw better-auth message (untranslated), so accept either form.
+  // The old password must no longer sign in. The web sign-in path now surfaces
+  // the translated Arabic error (issue #294), consistent with the desktop path.
   await signOut(page)
   await signIn(page, { phone: TEST_PHONE, password: TEST_PASSWORD })
   await expect(
-    page.getByText(/Invalid phone number or password|رقم الهاتف أو كلمة المرور غير صحيحة/).first(),
+    page.getByText(/رقم الهاتف أو كلمة المرور غير صحيحة/).first(),
   ).toBeVisible()
 
   // The new password signs in.
