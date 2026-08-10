@@ -78,6 +78,8 @@ describe("contracts", () => {
     { label: "NBSP", password: "\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0" },
     { label: "zero-width format chars", password: "\u200B\u200B\u200B\u200B\u200B\u200B\u200B\u200B" },
     { label: "control chars", password: "\u0001\u0001\u0001\u0001\u0001\u0001\u0001\u0001" },
+    { label: "variation selectors", password: "\uFE0F\uFE0F\uFE0F\uFE0F\uFE0F\uFE0F\uFE0F\uFE0F" },
+    { label: "combining marks", password: "\u0308\u0308\u0308\u0308\u0308\u0308\u0308\u0308" },
     { label: "mixed invisible chars", password: " \t\u00A0\u200B\n\r\uFEFF\u0002" },
   ])("rejects a $label sign-in password", ({ password }) => {
     expect(() =>
@@ -99,12 +101,13 @@ describe("contracts", () => {
     ).toBe("pass word 123");
   });
 
-  // The empty-string guard must defer to .min(8): an empty password yields a
-  // single "short" issue, not a doubled custom (refine) issue.
-  it("reports only the too-short issue for an empty sign-in password", () => {
+  // The visible-character rule must defer to .min(8) for ALL too-short
+  // values (not just empty): a short+blank password (e.g. 6 spaces) yields a
+  // single "too short" issue instead of doubled too_small + custom issues.
+  it("reports only the too-short issue for a short blank sign-in password", () => {
     const result = phonePasswordSignInSchema.safeParse({
       phone: "0612345678",
-      password: "",
+      password: "      ",
     });
     expect(result.success).toBe(false);
     if (result.success) throw new Error("unreachable");

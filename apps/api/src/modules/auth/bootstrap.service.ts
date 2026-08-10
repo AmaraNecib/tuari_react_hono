@@ -71,7 +71,7 @@ const BOOTSTRAP_FIELD_INVALID_MESSAGE: Record<BootstrapInputField, string> = {
 const BOOTSTRAP_FIELD_CUSTOM_MESSAGE: Record<BootstrapInputField, string> = {
   name: "الاسم يجب ألا يحتوي على أحرف غير مرئية.",
   phone: BOOTSTRAP_FIELD_INVALID_MESSAGE.phone,
-  password: "كلمة المرور يجب ألا تتكون من مسافات فقط.",
+  password: "كلمة المرور يجب ألا تتكون من أحرف غير مرئية فقط.",
   setupSecret: BOOTSTRAP_FIELD_INVALID_MESSAGE.setupSecret,
 };
 

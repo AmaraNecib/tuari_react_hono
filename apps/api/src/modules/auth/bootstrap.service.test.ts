@@ -296,7 +296,7 @@ describe("AuthBootstrapService", () => {
         fieldErrors: [
           {
             field: "password",
-            message: "كلمة المرور يجب ألا تتكون من مسافات فقط.",
+            message: "كلمة المرور يجب ألا تتكون من أحرف غير مرئية فقط.",
           },
         ],
       },

@@ -8,7 +8,7 @@ const API_URL = "http://127.0.0.1:4318"
  * Drives the authBootstrap ORPC procedure over the wire — the same endpoint
  * the web bootstrap form calls. ORPC envelopes input/output as `{ json }`.
  */
-async function callBootstrap(request: APIRequestContext, setupSecret: string, password = "password123") {
+async function callBootstrap(request: APIRequestContext, setupSecret: string) {
   const response = await request.post(`${API_URL}/rpc/authBootstrap`, {
     // The /rpc/* middleware rejects requests without an allowed Origin —
     // mirror the web app's origin exactly as a browser would.

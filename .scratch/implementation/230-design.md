@@ -26,13 +26,18 @@ const passwordSchema = z
   // are opaque secrets; the hash must be computed over exactly what the user
   // typed, and trimming would break existing hashes. Instead require at least
   // one visible character: anything that is not a control (Cc), format (Cf,
-  // ZWSP/LRM/BOM), or separator (Z) codepoint. Internal spaces remain allowed
-  // (NIST 800-63B). Empty-string guard defers to .min(8) so an empty password
-  // yields a single "required/short" issue, not a doubled custom issue (same
-  // pattern as the name's refine).
-  .refine((value) => value.length === 0 || /[^\p{Cc}\p{Cf}\p{Z}]/u.test(value), {
-    message: "password must contain at least one visible character",
-  });
+  // ZWSP/LRM/BOM), nonspacing mark (Mn: combining accents, variation
+  // selectors), or separator (Z) codepoint. Internal spaces remain allowed
+  // (NIST 800-63B). The length guard defers to .min(8) for EVERY too-short
+  // value so a short+blank password (e.g. 6 spaces) yields a single "too
+  // short" issue, not doubled too_small + custom issues (same pattern as the
+  // name's refine).
+  .refine(
+    (value) => value.length < 8 || /[^\p{Cc}\p{Cf}\p{Mn}\p{Z}]/u.test(value),
+    {
+      message: "password must contain at least one visible character",
+    },
+  );
 ```
 
 - `.refine()` (not `.regex()`) is deliberate: it emits a `custom` issue, which the
@@ -41,7 +46,8 @@ const passwordSchema = z
   anticipated ("forces a decision here when a refine is added to another field").
   A `.regex()` would emit `invalid_string` → wrong Arabic copy ("must not exceed 128 chars").
 - Rejection classes covered: spaces/tabs/NBSP/BOM (via \s members that are Z/Cf),
-  ZWSP + LRM/RLM (Cf), control chars (Cc). Internal spaces in a real password pass.
+  ZWSP + LRM/RLM (Cf), control chars (Cc), combining marks + variation
+  selectors (Mn). Internal spaces in a real password pass.
 
 ### 2. Bootstrap service copy (`apps/api/src/modules/auth/bootstrap.service.ts`)
 
@@ -78,15 +84,17 @@ Empty password keeps the existing `password` (required) branch.
 | Unit (contracts) | `packages/contracts/src/index.test.ts` | whitespace-only (spaces/tabs/NBSP/ZWSP/Cc) rejected by both schemas; internal spaces accepted; empty → still "short" issue only |
 | Unit (api) | `apps/api/src/modules/auth/bootstrap.service.test.ts` | whitespace-only rejected before hash/port; Arabic custom message for the new refine |
 | Unit (web) | new `apps/web/src/features/app-shell/home-view-auth-utils.test.ts` | `mapCredentialErrors` shows the whitespace message, `passwordShort` for short, `password` for empty |
-| E2E | `tests/e2e/bootstrap-setup-key.spec.ts` | wire-level: `authBootstrap` with a whitespace-only password → `VALIDATION` (deterministic in fresh AND bootstrapped DB states — the schema gate fires before the conflict/unauthorized gates) |
+| E2E | `tests/e2e/bootstrap-setup-key.spec.ts` | wire-level: `authBootstrap` with a whitespace-only password → HTTP 400 `BAD_REQUEST` whose single issue is the `custom` refine on `password` (deterministic in fresh AND bootstrapped DB states — the schema gate fires before the conflict/unauthorized gates). Empirically the ORPC wire gate returns 400, not an envelope `VALIDATION` (that path is only reachable if the wire gate is bypassed — the service defense-in-depth returns it). |
 
 ## Risks
 
 - **Existing whitespace-password users** would be unable to sign in via the app.
   Accepted per issue ("only new inputs are rejected"); hashes are unaffected and
   the app is greenfield (bootstrap creates the only first user).
-- **Doubled zod issues on empty password** — mitigated by the empty-string guard
-  (same pattern as the name refine).
+- **Doubled zod issues on short+blank passwords** (e.g. 6 spaces would emit
+  both `too_small` and `custom`) — mitigated by the length guard in the
+  refine (defers to `.min(8)` for every too-short value, same pattern as the
+  name refine).
 - **`\p{...}` regex requires `u` flag** — verified syntax; vitest/node support it.
 
 ## Verification

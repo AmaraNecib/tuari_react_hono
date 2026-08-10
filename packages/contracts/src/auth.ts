@@ -10,19 +10,24 @@ import { algerianPhoneSchema, entityIdSchema } from "./core";
  * NOT trim/normalize — passwords are opaque secrets and the stored hash must
  * be computed over exactly what the user typed — so the check is a refine
  * that requires at least one visible character: anything that is not a
- * control (Cc), format (Cf: ZWSP/LRM/BOM), or separator (Z) codepoint.
- * Internal spaces remain allowed (NIST 800-63B); only all-invisible values
- * are rejected. The empty-string guard defers to `.min(8)` so an empty
- * password yields a single "short" issue, not a doubled custom issue (same
- * pattern as the bootstrap name refine).
+ * control (Cc), format (Cf: ZWSP/LRM/BOM), nonspacing mark (Mn: combining
+ * accents, variation selectors), or separator (Z) codepoint. Internal spaces
+ * remain allowed (NIST 800-63B); only all-invisible values are rejected.
+ * The length guard defers to `.min(8)` for every too-short value so a
+ * short+blank password (e.g. 6 spaces) yields a single "too short" issue,
+ * not doubled too_small + custom issues (same pattern as the bootstrap name
+ * refine).
  */
 const passwordSchema = z
   .string()
   .min(8)
   .max(128)
-  .refine((value) => value.length === 0 || /[^\p{Cc}\p{Cf}\p{Z}]/u.test(value), {
-    message: "password must contain at least one visible character",
-  });
+  .refine(
+    (value) => value.length < 8 || /[^\p{Cc}\p{Cf}\p{Mn}\p{Z}]/u.test(value),
+    {
+      message: "password must contain at least one visible character",
+    },
+  );
 
 export const phonePasswordSignInSchema = z.object({
   phone: algerianPhoneSchema,
