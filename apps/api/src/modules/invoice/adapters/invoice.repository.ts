@@ -80,12 +80,13 @@ export class InvoiceRepository implements IInvoiceRepository {
     private readonly connectionLock: FifoLock,
     drizzleDb?: AppDrizzle,
   ) {
-    // Support both (rawDb, lock) and (rawDb, lock, drizzleDb) callers
+    // Support both (rawDb, lock) and (rawDb, lock, drizzleDb) callers.
+    // The drizzle handle is optional: when omitted, it is created from the
+    // raw connection internally.
     if (drizzleDb) {
       this.db = drizzleDb;
       this.raw = rawDb;
     } else {
-      // Single raw arg: create Drizzle internally
       this.raw = rawDb;
       this.db = createDrizzleFromSqlite(rawDb);
     }
