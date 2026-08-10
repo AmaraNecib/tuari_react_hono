@@ -321,17 +321,38 @@ vi.mock("../workspace-queries", () => ({
     refetch: mockFns.workspaceRefetch,
   }),
   useSystemLogQuery: () => ({ data: mockState.systemLogData, error: null, isPending: false }),
-  useEmployeesPagedQuery: () => {
+  useEmployeesPagedQuery: ({ search }: { search?: string } = {}) => {
     const employees =
       mockState.workspaceData && "employees" in mockState.workspaceData
         ? (mockState.workspaceData.employees as Array<Record<string, unknown>>)
         : []
+    const roles =
+      mockState.workspaceData && "roles" in mockState.workspaceData
+        ? (mockState.workspaceData.roles as Array<Record<string, unknown>>)
+        : []
+    const roleNameById = new Map(
+      roles.map((role) => [String(role.id), String(role.name ?? "")]),
+    )
+    // Mirror the server-side search (issue #183): case-insensitive substring
+    // on first name / last name / phone / role label, over the whole dataset.
+    const needle = search?.trim().toLowerCase()
+    const items = needle
+      ? employees.filter((e) => {
+          const firstName = String(e.firstName ?? "")
+          const lastName = String(e.lastName ?? "")
+          const phone = String(e.phone ?? "")
+          const roleName = roleNameById.get(String(e.roleId ?? "")) ?? ""
+          return `${firstName} ${lastName} ${phone} ${roleName}`
+            .toLowerCase()
+            .includes(needle)
+        })
+      : employees
     return {
       data: {
-        items: employees,
+        items,
         nextCursor: null,
         hasMore: false,
-        total: employees.length,
+        total: items.length,
       },
       isPending: false,
       isFetching: false,

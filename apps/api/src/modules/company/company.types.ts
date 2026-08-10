@@ -323,6 +323,12 @@ export type DebtEntryVoidData = {
 export type EmployeeListFilters = {
   roleId?: string;
   status?: EmployeeStatus;
+  /**
+   * Case-insensitive substring match on first name, last name, or phone.
+   * Applied BEFORE pagination so `total` reflects the whole filtered set.
+   * Empty/whitespace-only terms match everything.
+   */
+  search?: string;
 };
 
 export type ProjectListFilters = {

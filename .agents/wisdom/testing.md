@@ -1,5 +1,29 @@
 # Testing Wisdom
 
+## Windows orphaned dev servers: kill the tsx-watch PARENT tree, and check the cmdline's worktree (🟠 Major)
+
+On #183, port 4318 kept being "already used" even after `taskkill /F /T` on the listener: a stale `node tsx watch src/index.ts` from ANOTHER worktree (issue-230) respawned its API child seconds after each kill. Playwright's `reuseExistingServer:false` does NOT pre-check the port — it proceeds if `/health` answers, so the suite ran against the wrong worktree's server and stale DB ("Invalid phone number or password" on a supposedly-fresh DB). Tell: the listener's cmdline referenced `worktrees/issue-230-whitespace-pw/...tsx...` — NOT this worktree.
+
+Fix pattern: before local playwright runs, list listeners on the config ports AND their process cmdlines (`Get-CimInstance Win32_Process | ? {$_.CommandLine -match 'tsx|vite'}`); if the cmdline names a DIFFERENT worktree, walk the parent chain (listener → `tsx watch` node → `cmd /c tsx watch`) and `taskkill /F /T` the TOP of that tree (the cmd launcher), not the listener — the watcher respawns children. Also verify `apps/api/data/` (the E2E DB dir — APP_DB_PATH resolves against the API package cwd, NOT the repo root) is empty before a run.
+
+**Always**: match port listeners to their owning worktree via cmdline before trusting a "free" port; kill the whole watcher tree.
+
+## In-memory test doubles must mirror sqlite's per-column semantics (🟠 Major)
+
+The in-memory employee repo concatenated `firstName lastName phone` into one haystack; sqlite matched each column with `OR`. A full-name term like `أحمد بلخير` matched in-memory (module tests green) but returned NOTHING on production sqlite — the test-audit edge-case hunter caught it. Fix: sqlite added `(first_name || ' ' || last_name) LIKE …` to mirror the concatenated haystack. **Always**: when a filter/query behaves differently in the in-memory double vs the sqlite adapter, add a discriminating test that would fail on the divergent side; assert the same term in BOTH adapters.
+
+## `ESCAPE '\'` inside a JS template literal collapses to `ESCAPE ''` (🟠 Major)
+
+In a `sql`\`…` template, the source text `'\'` is processed by JS as an escape sequence → the SQL sees `''` (empty escape char) and SQLite throws `ESCAPE expression must be a single character`. The source must contain TWO backslashes (`'\\'` in the file) so the template emits one. **Always**: after adding an `ESCAPE` clause via a tagged template, run the query — an empty escape throws immediately.
+
+## Playwright: `getAllByRole` throws on zero matches — use `queryAllByRole` for zero-count assertions (🟡 Minor)
+
+A `waitFor(() => expect(getAllByRole(...).length).toBe(0))` fails with "Unable to find" instead of "expected 0" — `getAllBy*` throws when nothing matches. For asserting an EMPTY result, use `queryAllByRole(...).length === 0`. **Always**: count assertions that may legitimately reach zero use the `queryAll*` variants.
+
+## Playwright retries share the API DB — seed data must be unique per ATTEMPT (🟠 Major)
+
+CI sets `retries: 2`; a retried test re-runs against the SAME API server and DB (webServer runs once per process). Seeding fixed phone numbers (sqlite UNIQUE constraint) throws on the second attempt. Fix: derive seed values (phones, names) from the per-call `uniqueSuffix()`, not constants. **Always**: any E2E row inserted directly into the shared DB must be unique per test ATTEMPT, not just per run.
+
 ## Playwright toast assertions must gate on the save response (🟠 Major)
 
 On #254, a `~50%` E2E flake: after a password change, the follow-up sign-out

@@ -23,6 +23,11 @@ export interface EmployeeRepository {
 export interface EmployeeFilters {
   status?: EmployeeRecord["status"];
   roleId?: string;
+  /**
+   * Case-insensitive substring match on first name, last name, or phone.
+   * Applied BEFORE pagination so `total` reflects the whole filtered set.
+   */
+  search?: string;
 }
 
 /**

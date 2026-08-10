@@ -442,3 +442,164 @@ describe("SqliteCompanyRepository.withTransaction", () => {
     expect(repo.getEmployeeById(employee.id)).toBeNull();
   });
 });
+
+describe("SqliteCompanyRepository employee search (issue #183)", () => {
+  let db: Database.Database;
+  let repo: SqliteCompanyRepository;
+
+  const seedEmployees = () => {
+    repo.createEmployee({
+      firstName: "Ahmed",
+      lastName: "Ben Ali",
+      phone: "0555123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    repo.createEmployee({
+      firstName: "Sara",
+      lastName: "Bouzid",
+      phone: "0666123456",
+      roleId: "role-worker",
+      status: "INACTIVE",
+    });
+    repo.createEmployee({
+      firstName: "Yacine",
+      lastName: "Merbah",
+      phone: "0777123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+  };
+
+  beforeEach(() => {
+    db = createTestDb();
+    repo = new SqliteCompanyRepository(db);
+    seedEmployees();
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("filters the paged list by name/phone across all records (before pagination)", () => {
+    const result = repo.listEmployeesPaged({
+      filters: { search: "ben" },
+      limit: 1,
+    });
+
+    // Only Ahmed Ben Ali matches "ben"; total is the WHOLE filtered set, not the page.
+    expect(result.items.map((e) => e.firstName)).toEqual(["Ahmed"]);
+    expect(result.total).toBe(1);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it("matches phone numbers and is case-insensitive on ASCII names", () => {
+    const byPhone = repo.listEmployees({ search: "0777123456" });
+    expect(byPhone.map((e) => e.firstName)).toEqual(["Yacine"]);
+
+    const byCase = repo.listEmployees({ search: "BEN ALI" });
+    expect(byCase.map((e) => e.firstName)).toEqual(["Ahmed"]);
+  });
+
+  it("matches on both first and last name fields", () => {
+    const byLastName = repo.listEmployees({ search: "Bouzid" });
+    expect(byLastName.map((e) => e.firstName)).toEqual(["Sara"]);
+
+    const byFirstName = repo.listEmployees({ search: "yac" });
+    expect(byFirstName.map((e) => e.firstName)).toEqual(["Yacine"]);
+  });
+
+  it("matches a term spanning the first and last name (full-name search)", () => {
+    const result = repo.listEmployees({ search: "Ahmed ben" });
+    expect(result.map((e) => e.firstName)).toEqual(["Ahmed"]);
+
+    const paged = repo.listEmployeesPaged({
+      filters: { search: "sara bouzid" },
+      limit: 50,
+    });
+    expect(paged.items.map((e) => e.firstName)).toEqual(["Sara"]);
+    expect(paged.total).toBe(1);
+  });
+
+  it("treats LIKE wildcard characters in the term literally", () => {
+    // No seeded name or phone contains a literal "%" or "_", so a search
+    // for those characters must return nothing instead of matching every row
+    // (i.e. they are escaped, not interpreted as LIKE wildcards).
+    expect(repo.listEmployees({ search: "%" })).toEqual([]);
+    expect(repo.listEmployees({ search: "_" })).toEqual([]);
+    // The escape char itself is also matched literally.
+    expect(repo.listEmployees({ search: "\\" })).toEqual([]);
+  });
+
+  it("combines search with the status filter", () => {
+    const result = repo.listEmployeesPaged({
+      filters: { search: "a", status: "ACTIVE" },
+      limit: 50,
+    });
+
+    // "a" matches Ahmed (Ben Ali) and Yacine (Merbah) — not Sara (INACTIVE).
+    expect(result.items.map((e) => e.firstName).sort()).toEqual(["Ahmed", "Yacine"]);
+    expect(result.total).toBe(2);
+  });
+
+  it("combines search with the roleId filter", () => {
+    const now = "2026-01-01T00:00:00.000Z";
+    db.prepare(
+      `INSERT INTO "role" (id, key, name, description, is_system, created_at, updated_at)
+       VALUES (?, ?, ?, NULL, 0, ?, ?)`,
+    ).run("role-other", "other", "Other", now, now);
+    repo.createEmployee({
+      firstName: "Other",
+      lastName: "Person",
+      phone: "0888000001",
+      roleId: "role-other",
+      status: "ACTIVE",
+    });
+
+    const result = repo.listEmployeesPaged({
+      filters: { search: "a", roleId: "role-worker" },
+      limit: 50,
+    });
+
+    // "a" matches Ahmed, Sara, Yacine — all role-worker; the role-other row
+    // (also matches "a") must be excluded by the roleId filter.
+    expect(result.items.map((e) => e.firstName).sort()).toEqual(["Ahmed", "Sara", "Yacine"]);
+    expect(result.total).toBe(3);
+  });
+
+  it("matches the displayed role label (regression: old local search matched row.role)", () => {
+    const now = "2026-01-01T00:00:00.000Z";
+    db.prepare(
+      `INSERT INTO "role" (id, key, name, description, is_system, created_at, updated_at)
+       VALUES (?, ?, ?, NULL, 0, ?, ?)`,
+    ).run("role-manager", "manager", "Manager", now, now);
+    repo.createEmployee({
+      firstName: "Boss",
+      lastName: "Person",
+      phone: "0777000001",
+      roleId: "role-manager",
+      status: "ACTIVE",
+    });
+
+    const byRoleLabel = repo.listEmployees({ search: "Manager" });
+    expect(byRoleLabel.map((e) => e.firstName)).toEqual(["Boss"]);
+
+    const paged = repo.listEmployeesPaged({
+      filters: { search: "manager" },
+      limit: 50,
+    });
+    // Case-insensitive role label: only the Manager-role employee matches
+    // ("Boss"/"Person" do NOT contain "Manager", so the role-name EXISTS
+    // clause is what discriminates here).
+    expect(paged.items.map((e) => e.firstName)).toEqual(["Boss"]);
+    expect(paged.total).toBe(1);
+  });
+
+  it("returns the unfiltered list for an empty search", () => {
+    expect(repo.listEmployees({ search: "" })).toHaveLength(3);
+    expect(repo.listEmployees({ search: "   " })).toHaveLength(3);
+    expect(
+      repo.listEmployeesPaged({ filters: { search: "" }, limit: 50 }).total,
+    ).toBe(3);
+  });
+});

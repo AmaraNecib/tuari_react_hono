@@ -178,6 +178,56 @@ describe("HomeView workspace shell", () => {
     expect(screen.getAllByRole("button", { name: "حذف" }).length).toBeGreaterThan(0)
   })
 
+  it("searches employees server-side across all records (issue #183)", async () => {
+    renderWorkspace("employees", { sessionUser: demoUser })
+
+    expect(await screen.findByRole("heading", { name: "العاملون" })).toBeTruthy()
+    // أحمد بلخير appears in both the name cell and the manager column.
+    expect(screen.getAllByText("أحمد بلخير").length).toBeGreaterThan(0)
+    expect(screen.getByText("علي بن حميد")).toBeTruthy()
+
+    // The old local-page hint must be gone: search is no longer page-local.
+    expect(
+      screen.queryByText("يبحث في الصفحة الحالية فقط. اعمل مسح لرؤية جميع النتائج."),
+    ).toBeNull()
+
+    const searchInput = screen.getByPlaceholderText("بحث...")
+    // Each employee row renders one "عرض" action button, so the count is the
+    // number of rows the server-side search returned. queryAllBy* so the
+    // zero-row case is assertable.
+    const rowCount = () => screen.queryAllByRole("button", { name: "عرض" }).length
+
+    // Search by last name — only أحمد بلخير matches.
+    fireEvent.change(searchInput, { target: { value: "بلخير" } })
+    await waitFor(() => expect(rowCount()).toBe(1))
+    expect(screen.queryByText("علي بن حميد")).toBeNull()
+
+    // Search that matches nobody — empty state, no stale rows.
+    fireEvent.change(searchInput, { target: { value: "0555000000" } })
+    await waitFor(() => expect(rowCount()).toBe(0))
+    expect(screen.getByText("لا توجد بيانات في هذا القسم حاليًا.")).toBeTruthy()
+
+    // Search by phone digits — only علي بن حميد matches; أحمد remains only
+    // as علي's manager-cell label, not as a row.
+    fireEvent.change(searchInput, { target: { value: "0555200120" } })
+    await waitFor(() => expect(rowCount()).toBe(1))
+    expect(screen.getByText("علي بن حميد")).toBeTruthy()
+    expect(screen.getAllByText("أحمد بلخير")).toHaveLength(1)
+
+    // Search by role label — only أحمد بلخير (مدير مشروع) matches; علي (عامل)
+    // does not. This pins the server-side role-label regression fix (PR #329).
+    // (Sync point is content, not count: the previous step also left 1 row.)
+    fireEvent.change(searchInput, { target: { value: "مدير" } })
+    await waitFor(() => expect(screen.queryByText("علي بن حميد")).toBeNull())
+    expect(screen.getByText("أحمد بلخير")).toBeTruthy()
+    expect(rowCount()).toBe(1)
+
+    // Clearing the search restores every record.
+    fireEvent.change(searchInput, { target: { value: "" } })
+    await waitFor(() => expect(rowCount()).toBe(2))
+    expect(screen.getByText("علي بن حميد")).toBeTruthy()
+  })
+
   it("opens a dedicated employee create page with batch submission", async () => {
     mocks.createEmployeesBatchMutate.mockResolvedValue({ createdCount: 2 })
 
