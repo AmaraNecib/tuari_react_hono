@@ -16,6 +16,8 @@ describe("EmployeeModule.listPaged", () => {
   let employeeRepository: InMemoryEmployeeRepository;
   let roleRepository: InMemoryRoleRepository;
   let employeeModule: EmployeeModule;
+  // Role names mirrored into the employee search double (issue #183).
+  const roleNames = new Map<string, { name: string }>();
 
   const seedWorkerRole = () => {
     roleRepository.seed({
@@ -27,6 +29,7 @@ describe("EmployeeModule.listPaged", () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
+    roleNames.set("role-worker", { name: "Worker" });
   };
 
   // Fixed timestamp base so createdAt ordering is deterministic across runs.
@@ -34,7 +37,8 @@ describe("EmployeeModule.listPaged", () => {
   let nowCounter = 0;
 
   beforeEach(() => {
-    employeeRepository = new InMemoryEmployeeRepository();
+    roleNames.clear();
+    employeeRepository = new InMemoryEmployeeRepository(roleNames);
     roleRepository = new InMemoryRoleRepository();
     nowCounter = 0;
     employeeModule = new EmployeeModule({
@@ -229,6 +233,33 @@ describe("EmployeeModule.listPaged", () => {
 
     expect(result.items.map((e) => e.firstName)).toEqual(["First0"]);
     expect(result.total).toBe(1);
+  });
+
+  it("matches the displayed role label (issue #183 / PR #329 regression)", async () => {
+    await seedEmployees(2);
+    roleRepository.seed({
+      id: "role-manager",
+      key: "manager",
+      name: "Manager",
+      description: null,
+      isSystem: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    roleNames.set("role-manager", { name: "Manager" });
+    await employeeModule.create({
+      firstName: "Boss",
+      lastName: "Person",
+      phone: "0666000001",
+      roleId: "role-manager",
+    });
+
+    const byRoleLabel = await employeeModule.listPaged({
+      limit: 10,
+      filters: { search: "Manager" },
+    });
+    expect(byRoleLabel.items.map((e) => e.firstName)).toEqual(["Boss"]);
+    expect(byRoleLabel.total).toBe(1);
   });
 
   it("returns the unfiltered list for an empty or whitespace-only search", async () => {

@@ -118,7 +118,9 @@ export function useEmployeesQuery({ enabled = true }: { enabled?: boolean } = {}
  *
  * `search` (issue #183) matches employees server-side across ALL records,
  * applied before pagination. It participates in the query key so a changed
- * term refetches automatically.
+ * term refetches automatically. While a search term is active the previous
+ * page is NOT kept as placeholder data, so stale rows (with live actions)
+ * never linger during a search transition (Greptile P2, PR #329).
  */
 export function useEmployeesPagedQuery({
   cursor,
@@ -138,7 +140,7 @@ export function useEmployeesPagedQuery({
   return useWorkspaceScopedQuery({
     key: (userId) => [...workspaceQueryKeys.employees(userId), "paged", { cursor, limit, status, roleId, search }],
     enabled,
-    placeholderData: keepPreviousData,
+    placeholderData: search ? undefined : keepPreviousData,
     queryFn: async () => rpcClient.employeesListPaged({
       cursor,
       limit,

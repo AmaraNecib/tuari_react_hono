@@ -114,16 +114,23 @@ function escapeLikePattern(value: string): string {
 
 /**
  * Build the employee search WHERE clause: case-insensitive (ASCII) substring
- * match against first name, last name, phone, or the concatenated
- * first+last name (so a full-name term like "أحمد بلخير" matches, mirroring
- * the in-memory adapter's `firstName lastName phone` haystack). Uses
+ * match against first name, last name, phone, the concatenated first+last
+ * name, or the name of the employee's role (the displayed role label). Uses
  * `LIKE ... ESCAPE` so wildcard characters in the term are matched literally.
+ * The role match uses an EXISTS subquery so the outer row shape is unchanged
+ * (no JOIN → `toEmployee` still sees the flat employee row).
  */
 function buildEmployeeSearchWhere(search: string): SQL {
   const pattern = `%${escapeLikePattern(search)}%`;
   // Source note: `\\` inside the template literal emits a single `\` in the
   // SQL text, i.e. `ESCAPE '\'` — SQLite's LIKE escape character.
-  return sql`(${schema.employee.firstName} LIKE ${pattern} ESCAPE '\\' OR ${schema.employee.lastName} LIKE ${pattern} ESCAPE '\\' OR ${schema.employee.phone} LIKE ${pattern} ESCAPE '\\' OR (${schema.employee.firstName} || ' ' || ${schema.employee.lastName}) LIKE ${pattern} ESCAPE '\\')`;
+  return sql`(${schema.employee.firstName} LIKE ${pattern} ESCAPE '\\'
+    OR ${schema.employee.lastName} LIKE ${pattern} ESCAPE '\\'
+    OR ${schema.employee.phone} LIKE ${pattern} ESCAPE '\\'
+    OR (${schema.employee.firstName} || ' ' || ${schema.employee.lastName}) LIKE ${pattern} ESCAPE '\\'
+    OR EXISTS (SELECT 1 FROM ${schema.role}
+      WHERE ${schema.role.id} = ${schema.employee.roleId}
+        AND ${schema.role.name} LIKE ${pattern} ESCAPE '\\'))`;
 }
 
 /** Build a Drizzle WHERE clause from an array of conditions. */

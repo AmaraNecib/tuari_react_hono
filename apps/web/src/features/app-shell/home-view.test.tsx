@@ -204,6 +204,14 @@ describe("HomeView workspace shell", () => {
     expect(screen.getByText("علي بن حميد")).toBeTruthy()
     expect(screen.getAllByText("أحمد بلخير")).toHaveLength(1)
 
+    // Search by role label — only أحمد بلخير (مدير مشروع) matches; علي (عامل)
+    // does not. This pins the server-side role-label regression fix (PR #329).
+    // (Sync point is content, not count: the previous step also left 1 row.)
+    fireEvent.change(searchInput, { target: { value: "مدير" } })
+    await waitFor(() => expect(screen.queryByText("علي بن حميد")).toBeNull())
+    expect(screen.getByText("أحمد بلخير")).toBeTruthy()
+    expect(rowCount()).toBe(1)
+
     // Clearing the search restores every record.
     fireEvent.change(searchInput, { target: { value: "" } })
     await waitFor(() => expect(rowCount()).toBe(2))

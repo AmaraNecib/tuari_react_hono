@@ -8,9 +8,17 @@ import type { EmployeeFilters, EmployeePagedQuery, EmployeePagedResult, Employee
  * Stores employees in a Map. Does not enforce uniqueness beyond what
  * the module's business logic requires - the module is responsible for
  * validation.
+ *
+ * An optional role-name map lets the search haystack include the displayed
+ * role label, mirroring the production sqlite adapter's role-name match.
  */
 export class InMemoryEmployeeRepository implements EmployeeRepository {
   private readonly store = new Map<string, EmployeeRecord>();
+  private readonly roles: ReadonlyMap<string, { name: string }>;
+
+  constructor(roles: ReadonlyMap<string, { name: string }> = new Map()) {
+    this.roles = roles;
+  }
 
   async findById(id: string): Promise<EmployeeRecord | null> {
     return this.store.get(id) ?? null;
@@ -26,7 +34,8 @@ export class InMemoryEmployeeRepository implements EmployeeRepository {
       if (filters.status && employee.status !== filters.status) return false;
       if (filters.roleId && employee.roleId !== filters.roleId) return false;
       if (needle) {
-        const haystack = `${employee.firstName} ${employee.lastName} ${employee.phone}`.toLowerCase();
+        const roleName = employee.roleId ? (this.roles.get(employee.roleId)?.name ?? "") : "";
+        const haystack = `${employee.firstName} ${employee.lastName} ${employee.phone} ${roleName}`.toLowerCase();
         if (!haystack.includes(needle)) return false;
       }
       return true;

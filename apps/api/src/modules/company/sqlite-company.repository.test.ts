@@ -434,6 +434,32 @@ describe("SqliteCompanyRepository employee search (issue #183)", () => {
     expect(result.total).toBe(3);
   });
 
+  it("matches the displayed role label (regression: old local search matched row.role)", () => {
+    const now = "2026-01-01T00:00:00.000Z";
+    db.prepare(
+      `INSERT INTO "role" (id, key, name, description, is_system, created_at, updated_at)
+       VALUES (?, ?, ?, NULL, 0, ?, ?)`,
+    ).run("role-manager", "manager", "Manager", now, now);
+    repo.createEmployee({
+      firstName: "Manager",
+      lastName: "Person",
+      phone: "0777000001",
+      roleId: "role-manager",
+      status: "ACTIVE",
+    });
+
+    const byRoleLabel = repo.listEmployees({ search: "Manager" });
+    expect(byRoleLabel.map((e) => e.firstName)).toEqual(["Manager"]);
+
+    const paged = repo.listEmployeesPaged({
+      filters: { search: "manager" },
+      limit: 50,
+    });
+    // Case-insensitive role label: only the Manager-role employee matches.
+    expect(paged.items.map((e) => e.firstName)).toEqual(["Manager"]);
+    expect(paged.total).toBe(1);
+  });
+
   it("returns the unfiltered list for an empty search", () => {
     expect(repo.listEmployees({ search: "" })).toHaveLength(3);
     expect(repo.listEmployees({ search: "   " })).toHaveLength(3);
