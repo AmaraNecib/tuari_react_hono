@@ -58,3 +58,19 @@ one-off migration tools, not CI-wired (only `check-i18n-keys.mjs` is the gate).
 
 - Standards: 0 blockers, 3 advisory notes (all dismissed/fixed).
 - Spec: 0 blockers — every requirement verified in code.
+
+## Post-evidence delta (Greptile finding, commit 7ef64ba)
+
+Greptile auto-review (on PR creation, Confidence 4/5, "safe to merge") flagged ONE
+valid finding: the CI gate's `dynamic` (computed-key) collection was non-failing,
+so removing a resource key referenced only through a lookup map (e.g.
+`statusLabelKeys[status]` → `"status.stopped"`) would not fail CI.
+
+**Fix (7ef64ba):** `scripts/check-i18n-keys.mjs` now ALSO scans every key-shaped
+string literal in apps/web/src (dotted key under a known top-level namespace)
+and hard-fails on missing ones (`missing map-key literals`). This immediately
+caught a real shipping bug: `shell.navGroupFinance` (workspace-sidebar.tsx:178)
+was missing from ar.ts — the nav group heading only rendered Arabic via its
+`fallback` arg. Renamed the unused resource key `shell.navGroupMoney` →
+`shell.navGroupFinance` (canonical = code). Gate test now pins both lines;
+drift-probe verified (removing the key → exit 1).
