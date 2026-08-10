@@ -25,6 +25,7 @@
  */
 import { and, eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import * as schema from "../../../schema";
 import { createAlgeriaTimestamp } from "../../company/company-time";
@@ -52,25 +53,23 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
   constructor(
     private readonly db: BetterSQLite3Database<typeof schema>,
     private readonly raw: BetterSqliteDatabase,
+    /**
+     * Connection-wide FIFO lock (shared with every module that opens
+     * transactions on the same connection, wired in the composition root).
+     * Every public method routes through it, so no port call can run while
+     * ANY module holds an open transaction on the shared connection — and
+     * no other module can BEGIN while this port's transaction is open.
+     */
+    private readonly connectionLock: FifoLock,
   ) {}
 
-  /** Tail of the FIFO lock. Each call chains onto it and releases in `finally`. */
-  private lockTail: Promise<void> = Promise.resolve();
-
   /**
-   * Run an operation under the FIFO lock. All public methods go through this
-   * so no statement can execute while another flow holds an open transaction.
+   * Run an operation under the connection-wide lock. All public methods go
+   * through this so no statement can execute while another flow holds an
+   * open transaction on the shared connection.
    */
   private serialized<T>(operation: () => Promise<T>): Promise<T> {
-    const previous = this.lockTail;
-    let release!: () => void;
-    this.lockTail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    // `previous` never rejects (only ever resolved by release), so a plain
-    // `.then(operation)` suffices: on a future unexpected rejection the op
-    // is skipped, the error propagates, and `finally` still releases the lock.
-    return previous.then(operation).finally(release);
+    return this.connectionLock.run(operation);
   }
 
   // -- Locked public methods (used outside a transaction) --------------------

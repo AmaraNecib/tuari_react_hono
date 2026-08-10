@@ -1,4 +1,5 @@
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
+import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { PaymentRepository } from "../payment.repository";
 import type {
   Payment,
@@ -16,9 +17,16 @@ const SORT_COLUMN_MAP: Record<PaymentListSortField, string> = {
 };
 
 export class PaymentRepositoryImpl implements PaymentRepository {
-  private transactionChain: Promise<unknown> = Promise.resolve();
-
-  constructor(private readonly db: BetterSqliteDatabase) {}
+  constructor(
+    private readonly db: BetterSqliteDatabase,
+    /**
+     * Connection-wide FIFO lock (shared with every module that opens
+     * transactions on the same connection, wired in the composition root).
+     * Serializes every transaction on the shared connection so no other
+     * module can BEGIN while this transaction is open.
+     */
+    private readonly connectionLock: FifoLock,
+  ) {}
 
   async findById(id: string): Promise<PaymentWithAllocations | null> {
     const row = this.db
@@ -172,11 +180,16 @@ export class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   async deletePayment(id: string): Promise<void> {
-    const transaction = this.db.transaction(() => {
-      this.db.prepare(`DELETE FROM "payment_allocation" WHERE payment_id = ?`).run(id);
-      this.db.prepare(`DELETE FROM "payment" WHERE id = ?`).run(id);
+    // Sync transaction (better-sqlite3) — must not BEGIN while another
+    // module holds an open transaction on the shared connection, so it
+    // runs under the connection-wide lock too.
+    return this.connectionLock.run(async () => {
+      const transaction = this.db.transaction(() => {
+        this.db.prepare(`DELETE FROM "payment_allocation" WHERE payment_id = ?`).run(id);
+        this.db.prepare(`DELETE FROM "payment" WHERE id = ?`).run(id);
+      });
+      transaction();
     });
-    transaction();
   }
 
   async findAllocationsByPaymentId(paymentId: string): Promise<PaymentAllocation[]> {
@@ -215,22 +228,34 @@ export class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   async runInTransaction<T>(fn: () => Promise<T>): Promise<T> {
-    const next = this.transactionChain.then(async () => {
-      this.db.exec("BEGIN");
+    return this.connectionLock.run(async () => {
+      // If a transaction was already opened OUTSIDE the repository (e.g. a
+      // bootstrap flow on the shared connection), join it instead of
+      // BEGINning a second one — better-sqlite3 would throw. The caller
+      // participates in that outer transaction (its COMMIT/ROLLBACK wins).
+      const nested = this.db.inTransaction;
+      if (!nested) {
+        // BEGIN IMMEDIATE: acquire the SQLite write reservation up front so
+        // the capacity-validation reads inside the callback cannot be based
+        // on a stale remaining_amount (deferred BEGIN upgraded only at write).
+        this.db.exec("BEGIN IMMEDIATE");
+      }
       try {
         const result = await fn();
-        this.db.exec("COMMIT");
+        if (!nested) {
+          this.db.exec("COMMIT");
+        }
         return result;
       } catch (err) {
-        try {
-          this.db.exec("ROLLBACK");
-        } catch {
-          // Ignore ROLLBACK failures (e.g. connection already closed).
+        if (!nested) {
+          try {
+            this.db.exec("ROLLBACK");
+          } catch {
+            // Ignore ROLLBACK failures (e.g. connection already closed).
+          }
         }
         throw err;
       }
     });
-    this.transactionChain = next.catch(() => undefined);
-    return next;
   }
 }

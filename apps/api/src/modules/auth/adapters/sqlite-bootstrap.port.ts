@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { eq, count, sql } from "drizzle-orm";
 
 import type { AppDrizzle } from "../../../infrastructure/database/drizzle";
+import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import { user, account, appBootstrapState } from "../../../schema";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import type {
@@ -44,6 +45,13 @@ export class SqliteBootstrapPort implements BootstrapPort {
   constructor(
     private readonly db: AppDrizzle,
     private readonly raw: BetterSqliteDatabase,
+    /**
+     * Connection-wide FIFO lock (shared with every module that opens
+     * transactions on the same connection, wired in the composition root).
+     * createFirstUser holds it for the whole transaction so no other module
+     * can BEGIN on the shared connection while the bootstrap write is open.
+     */
+    private readonly connectionLock: FifoLock,
   ) {
     if (db.$client !== raw) {
       throw new Error(
@@ -53,57 +61,59 @@ export class SqliteBootstrapPort implements BootstrapPort {
   }
 
   async createFirstUser(input: CreateFirstUserInput): Promise<CreateFirstUserResult> {
-    this.raw.exec("BEGIN IMMEDIATE");
-    try {
-      if (await this.hasConfiguredUsers()) {
-        // Conflict is not an error: commit the (empty) transaction.
+    return this.connectionLock.run(async () => {
+      this.raw.exec("BEGIN IMMEDIATE");
+      try {
+        if (await this.hasConfiguredUsers()) {
+          // Conflict is not an error: commit the (empty) transaction.
+          this.raw.exec("COMMIT");
+          return { status: "conflict" };
+        }
+
+        const timestamp = new Date().toISOString();
+        const userId = randomUUID();
+
+        this.db.insert(appBootstrapState).values({
+          singleton: 1,
+          createdAt: timestamp,
+          userId,
+        }).run();
+
+        this.db.insert(user).values({
+          id: userId,
+          name: input.name,
+          phoneNumber: input.phone,
+          phoneNumberVerified: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }).run();
+
+        this.db.insert(account).values({
+          id: randomUUID(),
+          accountId: userId,
+          providerId: "credential",
+          userId,
+          password: input.passwordHash,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }).run();
+
         this.raw.exec("COMMIT");
-        return { status: "conflict" };
+        return {
+          status: "created",
+          user: { id: userId, name: input.name, phone: input.phone },
+        };
+      } catch (err) {
+        this.raw.exec("ROLLBACK");
+        // A concurrent bootstrap (or any pre-existing conflicting row) surfaces
+        // as a UNIQUE violation on the singleton/phone keys — map it to the same
+        // conflict outcome as the in-transaction check.
+        if (isUniqueConstraintError(err)) {
+          return { status: "conflict" };
+        }
+        throw err;
       }
-
-      const timestamp = new Date().toISOString();
-      const userId = randomUUID();
-
-      this.db.insert(appBootstrapState).values({
-        singleton: 1,
-        createdAt: timestamp,
-        userId,
-      }).run();
-
-      this.db.insert(user).values({
-        id: userId,
-        name: input.name,
-        phoneNumber: input.phone,
-        phoneNumberVerified: 1,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      }).run();
-
-      this.db.insert(account).values({
-        id: randomUUID(),
-        accountId: userId,
-        providerId: "credential",
-        userId,
-        password: input.passwordHash,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      }).run();
-
-      this.raw.exec("COMMIT");
-      return {
-        status: "created",
-        user: { id: userId, name: input.name, phone: input.phone },
-      };
-    } catch (err) {
-      this.raw.exec("ROLLBACK");
-      // A concurrent bootstrap (or any pre-existing conflicting row) surfaces
-      // as a UNIQUE violation on the singleton/phone keys — map it to the same
-      // conflict outcome as the in-transaction check.
-      if (isUniqueConstraintError(err)) {
-        return { status: "conflict" };
-      }
-      throw err;
-    }
+    });
   }
 
   async hasConfiguredUsers(): Promise<boolean> {
