@@ -7,6 +7,7 @@
  */
 import { eq, and, sql } from "drizzle-orm";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
+import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import * as schema from "../../../schema";
 import { createDrizzleFromSqlite, type AppDrizzle } from "../../../infrastructure/database/drizzle";
 import type { InvoiceRepository as IInvoiceRepository } from "../invoice.repository";
@@ -65,17 +66,27 @@ function mapLineItem(row: Record<string, unknown>): InvoiceLineItem {
 
 /** Drizzle-backed InvoiceRepository. */
 export class InvoiceRepository implements IInvoiceRepository {
-  private transactionChain: Promise<unknown> = Promise.resolve();
   private readonly db: AppDrizzle;
   private readonly raw: BetterSqliteDatabase;
 
-  constructor(rawDb: BetterSqliteDatabase, drizzleDb?: AppDrizzle) {
-    // Support both (rawDb) and (rawDb, drizzleDb) signatures
+  constructor(
+    rawDb: BetterSqliteDatabase,
+    /**
+     * Connection-wide FIFO lock (shared with every module that opens
+     * transactions on the same connection, wired in the composition root).
+     * Serializes every transaction on the shared connection so no other
+     * module can BEGIN while this transaction is open.
+     */
+    private readonly connectionLock: FifoLock,
+    drizzleDb?: AppDrizzle,
+  ) {
+    // Support both (rawDb, lock) and (rawDb, lock, drizzleDb) callers.
+    // The drizzle handle is optional: when omitted, it is created from the
+    // raw connection internally.
     if (drizzleDb) {
       this.db = drizzleDb;
       this.raw = rawDb;
     } else {
-      // Backwards compat: single arg is rawDb, create Drizzle internally
       this.raw = rawDb;
       this.db = createDrizzleFromSqlite(rawDb);
     }
@@ -304,21 +315,32 @@ export class InvoiceRepository implements IInvoiceRepository {
 
   /** Execute a function within a serialized transaction. */
   async runInTransaction<T>(fn: () => Promise<T>): Promise<T> {
-    // Serial mutex: better-sqlite3 has a single connection and BEGIN
-    // cannot be issued while another transaction is open. Queue every
-    // transaction through a single promise chain so they execute one at a time.
-    const next = this.transactionChain.then(async () => {
-      this.raw.exec("BEGIN");
+    // Serialize through the connection-wide lock: better-sqlite3 has a
+    // single connection and BEGIN cannot be issued while another
+    // transaction is open, so every transaction on the shared connection
+    // queues behind the same FIFO lock (wired in the composition root).
+    return this.connectionLock.run(async () => {
+      // Join an externally-opened transaction instead of BEGINning a
+      // second one — better-sqlite3 would throw; the outer flow owns
+      // COMMIT/ROLLBACK.
+      const nested = this.raw.inTransaction;
+      if (!nested) {
+        // BEGIN IMMEDIATE: acquire the write reservation up front so
+        // validation reads inside the callback are protected.
+        this.raw.exec("BEGIN IMMEDIATE");
+      }
       try {
         const result = await fn();
-        this.raw.exec("COMMIT");
+        if (!nested) {
+          this.raw.exec("COMMIT");
+        }
         return result;
       } catch (err) {
-        try { this.raw.exec("ROLLBACK"); } catch { /* ignore */ }
+        if (!nested) {
+          try { this.raw.exec("ROLLBACK"); } catch { /* ignore */ }
+        }
         throw err;
       }
     });
-    this.transactionChain = next.catch(() => undefined as unknown as T);
-    return next;
   }
 }

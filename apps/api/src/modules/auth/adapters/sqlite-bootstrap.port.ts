@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { eq, count, sql } from "drizzle-orm";
 
 import type { AppDrizzle } from "../../../infrastructure/database/drizzle";
+import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import { user, account, appBootstrapState } from "../../../schema";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import type {
@@ -30,11 +31,12 @@ function isUniqueConstraintError(error: unknown) {
  *   - Atomicity relies on `db` and `raw` sharing ONE connection: the
  *     `BEGIN IMMEDIATE`/`COMMIT`/`ROLLBACK` statements run on `raw` while the
  *     inserts run on `db`. Drizzle's better-sqlite3 driver is synchronous
- *     under the hood, so the `await`s below never yield to another writer;
- *     a genuinely async operation inside the transaction would break that
- *     guarantee. The constructor fails fast when the two handles are not the
- *     same connection, because a mismatched pair would silently break
- *     atomicity.
+ *     under the hood, and the whole flow runs under the injected
+ *     connection-wide FIFO lock, so the `await`s below never yield to
+ *     another writer on the shared connection; a genuinely async operation
+ *     inside the transaction would break that guarantee. The constructor
+ *     fails fast when the two handles are not the same connection, because
+ *     a mismatched pair would silently break atomicity.
  *   - A concurrent bootstrap in another process contends on the SQLite write
  *     lock and surfaces as `SQLITE_BUSY` at `BEGIN IMMEDIATE`; that error
  *     propagates (deliberately, matching prior behavior) rather than being
@@ -44,6 +46,13 @@ export class SqliteBootstrapPort implements BootstrapPort {
   constructor(
     private readonly db: AppDrizzle,
     private readonly raw: BetterSqliteDatabase,
+    /**
+     * Connection-wide FIFO lock (shared with every module that opens
+     * transactions on the same connection, wired in the composition root).
+     * createFirstUser holds it for the whole transaction so no other module
+     * can BEGIN on the shared connection while the bootstrap write is open.
+     */
+    private readonly connectionLock: FifoLock,
   ) {
     if (db.$client !== raw) {
       throw new Error(
@@ -53,57 +62,76 @@ export class SqliteBootstrapPort implements BootstrapPort {
   }
 
   async createFirstUser(input: CreateFirstUserInput): Promise<CreateFirstUserResult> {
-    this.raw.exec("BEGIN IMMEDIATE");
-    try {
-      if (await this.hasConfiguredUsers()) {
-        // Conflict is not an error: commit the (empty) transaction.
-        this.raw.exec("COMMIT");
-        return { status: "conflict" };
+    return this.connectionLock.run(async () => {
+      // Join an already-open outer transaction (same pattern as the other
+      // ports) instead of BEGINning a second one — better-sqlite3 would
+      // throw. The caller participates in that outer transaction (its
+      // COMMIT/ROLLBACK wins), so the conflict path must not COMMIT either.
+      const nested = this.raw.inTransaction;
+      if (!nested) {
+        this.raw.exec("BEGIN IMMEDIATE");
       }
+      try {
+        if (await this.hasConfiguredUsers()) {
+          // Conflict is not an error: commit the (empty) transaction.
+          if (!nested) {
+            this.raw.exec("COMMIT");
+          }
+          return { status: "conflict" };
+        }
 
-      const timestamp = new Date().toISOString();
-      const userId = randomUUID();
+        const timestamp = new Date().toISOString();
+        const userId = randomUUID();
 
-      this.db.insert(appBootstrapState).values({
-        singleton: 1,
-        createdAt: timestamp,
-        userId,
-      }).run();
+        this.db.insert(appBootstrapState).values({
+          singleton: 1,
+          createdAt: timestamp,
+          userId,
+        }).run();
 
-      this.db.insert(user).values({
-        id: userId,
-        name: input.name,
-        phoneNumber: input.phone,
-        phoneNumberVerified: 1,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      }).run();
+        this.db.insert(user).values({
+          id: userId,
+          name: input.name,
+          phoneNumber: input.phone,
+          phoneNumberVerified: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }).run();
 
-      this.db.insert(account).values({
-        id: randomUUID(),
-        accountId: userId,
-        providerId: "credential",
-        userId,
-        password: input.passwordHash,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      }).run();
+        this.db.insert(account).values({
+          id: randomUUID(),
+          accountId: userId,
+          providerId: "credential",
+          userId,
+          password: input.passwordHash,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }).run();
 
-      this.raw.exec("COMMIT");
-      return {
-        status: "created",
-        user: { id: userId, name: input.name, phone: input.phone },
-      };
-    } catch (err) {
-      this.raw.exec("ROLLBACK");
-      // A concurrent bootstrap (or any pre-existing conflicting row) surfaces
-      // as a UNIQUE violation on the singleton/phone keys — map it to the same
-      // conflict outcome as the in-transaction check.
-      if (isUniqueConstraintError(err)) {
-        return { status: "conflict" };
+        if (!nested) {
+          this.raw.exec("COMMIT");
+        }
+        return {
+          status: "created",
+          user: { id: userId, name: input.name, phone: input.phone },
+        };
+      } catch (err) {
+        if (!nested) {
+          try {
+            this.raw.exec("ROLLBACK");
+          } catch {
+            // Ignore ROLLBACK failures so the original error surfaces.
+          }
+        }
+        // A concurrent bootstrap (or any pre-existing conflicting row) surfaces
+        // as a UNIQUE violation on the singleton/phone keys — map it to the same
+        // conflict outcome as the in-transaction check.
+        if (isUniqueConstraintError(err)) {
+          return { status: "conflict" };
+        }
+        throw err;
       }
-      throw err;
-    }
+    });
   }
 
   async hasConfiguredUsers(): Promise<boolean> {

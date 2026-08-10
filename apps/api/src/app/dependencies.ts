@@ -1,6 +1,7 @@
 import { createAuth } from "../infrastructure/auth/auth";
 import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
+import { createFifoLock } from "../infrastructure/database/fifo-lock";
 import { createDatabaseKeyManager, type DatabaseKeyManager } from "../infrastructure/database/database-key-manager";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
 import { ensureDatabaseSchema } from "../infrastructure/database/schema";
@@ -132,13 +133,19 @@ export async function createAppDependencies(
     const db = createDrizzleFromSqlite(sharedDatabase);
     const auth = config.authInstance ?? createAuth(db, appConfig);
 
+    // Connection-wide transaction lock: the API runs every module on ONE
+    // better-sqlite3 connection, and better-sqlite3 throws if a raw BEGIN is
+    // issued while another transaction is open. Every module that opens a
+    // transaction on the shared connection receives THIS lock (issue #288).
+    const connectionLock = createFifoLock();
+
     // Config-aware repository selection: honors DB_ADAPTER (sqlite | inmemory).
     // Note: when dbAdapter=inmemory only the company domain is in-memory; the
     // inventory/invoice/payment modules still use the SQLite handle until those
     // adapters are introduced in a follow-up phase.
     const companyRepository = createCompanyRepository(sharedDatabase, appConfig);
     const inventoryRepository = createInventoryRepository(sharedDatabase);
-    const accountRepository = new DrizzleAccountRepository(db);
+    const accountRepository = new DrizzleAccountRepository(db, connectionLock);
 
     // Construct each domain service off the same `WorkspaceMutationContext`
     // so the per-domain service owns its transaction + audit context and
@@ -158,21 +165,23 @@ export async function createAppDependencies(
     const employeeRepository = new SqliteEmployeeRepository(companyRepository);
     const roleRepository = new SqliteRoleRepository(companyRepository);
     const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
-    const invoiceRepository = new InvoiceRepository(sharedDatabase, db);
+    const invoiceRepository = new InvoiceRepository(sharedDatabase, connectionLock, db);
     const invoiceDebtPort = createSqliteInvoiceDebtPort({
       db: sharedDatabase,
       repository: companyRepository,
     });
     const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
-    const paymentRepository = new PaymentRepositoryImpl(sharedDatabase);
+    const paymentRepository = new PaymentRepositoryImpl(sharedDatabase, connectionLock);
     const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
     const authBootstrapService = new AuthBootstrapService(
-      new SqliteBootstrapPort(db, sharedDatabase),
+      new SqliteBootstrapPort(db, sharedDatabase, connectionLock),
       auth,
       appConfig.bootstrapSetupKey,
     );
     const permissionResolver = new SqlitePermissionResolver(db, authBootstrapService);
-    const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase));
+    const recoveryKeyService = new RecoveryKeyService(
+      new SqliteRecoveryKeyPort(db, sharedDatabase, connectionLock),
+    );
 
     // Issue #10 — Slice 3 RBAC. The role module is a small, deep module
     // that wraps a Drizzle-backed RoleRepository. The repository is kept
