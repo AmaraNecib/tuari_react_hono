@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "@/lib/utils"
 
 // ============ Types ============
@@ -222,6 +223,11 @@ interface UserJourneyTourProps {
 /**
  * Tour wrapper component using UserJourney.
  * Drop-in replacement for GuidedTourManager.
+ *
+ * The tour dialog is built on the Base UI Dialog primitive (issue #275):
+ * it gets modal semantics (role="dialog", aria-modal, focus trap, scroll
+ * lock) and ESC-to-skip for free. ESC behaves exactly like the Skip button
+ * (the first-run tour is permanently marked skipped).
  */
 export function UserJourneyTour({
   steps,
@@ -237,12 +243,14 @@ export function UserJourneyTour({
   // Clamp currentStep to valid range to prevent bad persisted state
   const clampedStep = Math.max(0, Math.min(journey.state.currentStep, steps.length - 1))
 
-  // Focus the dialog on open
+  // If auto-start persisted an "active" status but no steps were provided,
+  // there is no dialog to dismiss it — don't strand the journey (it would
+  // rehydrate active on every reload). Skip it so the status stays sane.
   useEffect(() => {
-    if (journey.isActive && dialogRef.current) {
-      dialogRef.current.focus()
+    if (journey.isActive && steps.length === 0) {
+      journey.skip()
     }
-  }, [journey.isActive, journey.state.currentStep])
+  }, [journey.isActive, steps.length, journey])
 
   if (journey.isActive && steps.length > 0) {
     const currentStep = steps[clampedStep]
@@ -256,77 +264,84 @@ export function UserJourneyTour({
     return (
       <div className={cn("relative", className)}>
         {children}
-        {/* Backdrop */}
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] transition-opacity" />
-        {/* Dialog */}
-        <div
-          ref={dialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={titleId}
-          tabIndex={-1}
-          className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(24rem,90vw)] bg-surface border border-line rounded-2xl shadow-lg overflow-hidden outline-none"
+        <DialogPrimitive.Root
+          open={journey.isActive}
+          onOpenChange={(open) => !open && journey.skip()}
+          disablePointerDismissal
         >
-          {/* Progress bar */}
-          <div className="flex gap-1 px-5 pt-5">
-            {steps.map((_, i) => (
-              <div
-                key={i}
-                className={cn(
-                  "h-1 flex-1 rounded-full transition-colors",
-                  i < stepNumber ? "bg-accent-brand" : "bg-line"
-                )}
-              />
-            ))}
-          </div>
-          {/* Content */}
-          <div className="px-5 pt-4 pb-2">
-            <h3 id={titleId} className="text-base font-semibold text-ink mb-1">
-              {currentStep.title}
-            </h3>
-            <p className="text-sm text-ink-2 leading-relaxed">
-              {currentStep.content}
-            </p>
-          </div>
-          {/* Footer */}
-          <div className="flex items-center justify-between px-5 py-4">
-            <button
-              onClick={journey.skip}
-              className="text-sm text-ink-3 hover:text-ink transition-colors"
+          <DialogPrimitive.Portal>
+            {/* Backdrop */}
+            <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] transition-opacity" />
+            {/* Dialog */}
+            <DialogPrimitive.Popup
+              ref={dialogRef}
+              initialFocus={dialogRef}
+              aria-modal="true"
+              aria-labelledby={titleId}
+              className="fixed z-50 top-1/2 start-1/2 -translate-x-1/2 rtl:translate-x-1/2 -translate-y-1/2 w-[min(24rem,90vw)] bg-surface border border-line rounded-2xl shadow-lg overflow-hidden outline-none"
             >
-              {t("common.skip")}
-            </button>
-            <div className="flex gap-2">
-              {!isFirst && (
+              {/* Progress bar */}
+              <div className="flex gap-1 px-5 pt-5">
+                {steps.map((_, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "h-1 flex-1 rounded-full transition-colors",
+                      i < stepNumber ? "bg-accent-brand" : "bg-line"
+                    )}
+                  />
+                ))}
+              </div>
+              {/* Content */}
+              <div className="px-5 pt-4 pb-2">
+                <h3 id={titleId} className="text-base font-semibold text-ink mb-1">
+                  {currentStep.title}
+                </h3>
+                <p className="text-sm text-ink-2 leading-relaxed">
+                  {currentStep.content}
+                </p>
+              </div>
+              {/* Footer */}
+              <div className="flex items-center justify-between px-5 py-4">
                 <button
-                  onClick={journey.back}
-                  className="px-3 py-1.5 text-sm font-medium rounded-lg border border-line text-ink hover:bg-surface-2 transition-colors"
+                  onClick={journey.skip}
+                  className="text-sm text-ink-3 hover:text-ink transition-colors"
                 >
-                  {t("common.previous")}
+                  {t("common.skip")}
                 </button>
-              )}
-              {!isLast ? (
-                <button
-                  onClick={journey.advance}
-                  className="px-4 py-1.5 text-sm font-medium rounded-lg bg-accent-brand text-white hover:opacity-90 transition-opacity"
-                >
-                  {t("common.next")}
-                </button>
-              ) : (
-                <button
-                  onClick={journey.complete}
-                  className="px-4 py-1.5 text-sm font-medium rounded-lg bg-accent-brand text-white hover:opacity-90 transition-opacity"
-                >
-                  {t("common.done")}
-                </button>
-              )}
-            </div>
-          </div>
-          {/* Step counter */}
-          <div className="px-5 pb-4 text-xs text-ink-3">
-            {t("common.stepOf", { current: stepNumber, total: steps.length })}
-          </div>
-        </div>
+                <div className="flex gap-2">
+                  {!isFirst && (
+                    <button
+                      onClick={journey.back}
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg border border-line text-ink hover:bg-surface-2 transition-colors"
+                    >
+                      {t("common.previous")}
+                    </button>
+                  )}
+                  {!isLast ? (
+                    <button
+                      onClick={journey.advance}
+                      className="px-4 py-1.5 text-sm font-medium rounded-lg bg-accent-brand text-white hover:opacity-90 transition-opacity"
+                    >
+                      {t("common.next")}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={journey.complete}
+                      className="px-4 py-1.5 text-sm font-medium rounded-lg bg-accent-brand text-white hover:opacity-90 transition-opacity"
+                    >
+                      {t("common.done")}
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* Step counter */}
+              <div className="px-5 pb-4 text-xs text-ink-3">
+                {t("common.stepOf", { current: stepNumber, total: steps.length })}
+              </div>
+            </DialogPrimitive.Popup>
+          </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
       </div>
     )
   }

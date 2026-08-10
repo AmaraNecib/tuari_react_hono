@@ -11,6 +11,7 @@ import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
 import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
+import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import { createRouter } from "./router";
 import type { RpcContext } from "./context";
 import { EmployeeModule } from "../modules/workforce/employee.module";
@@ -348,6 +349,33 @@ describe("RPC router", () => {
       ]),
       hasMore: false,
     });
+    // Server-side search (issue #183): matches by name or phone across all
+    // records, and `total` reflects the whole filtered set.
+    await expect(
+      client.employeesListPaged({ limit: 10, search: "kaci" }),
+    ).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: worker.item.id, phone: "0612345602" })],
+      total: 1,
+      hasMore: false,
+    });
+    await expect(
+      client.employeesListPaged({ limit: 10, search: "0612345603" }),
+    ).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: warehouseManager.item.id })],
+      total: 1,
+      hasMore: false,
+    });
+    await expect(
+      client.employeesListPaged({ limit: 10, search: "no-such-person" }),
+    ).resolves.toMatchObject({ items: [], total: 0, hasMore: false });
+    // The search term is bounded by the contract (max 120 chars): a 120-char
+    // term is accepted (and matches nothing), a 121-char term is rejected.
+    await expect(
+      client.employeesListPaged({ limit: 10, search: "x".repeat(120) }),
+    ).resolves.toMatchObject({ items: [], total: 0, hasMore: false });
+    await expect(
+      client.employeesListPaged({ limit: 10, search: "x".repeat(121) }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(client.projectsList()).resolves.toMatchObject({
       items: expect.arrayContaining([
         expect.objectContaining({ id: project.item.id, managerId: manager.item.id }),
@@ -770,6 +798,92 @@ describe("RPC router", () => {
     expect(revokeKey).toHaveBeenLastCalledWith("key-1");
   });
 
+  it("returns the recovery key pool status through the wire contract (getRecoveryKeyPool passthrough)", async () => {
+    const harness = createHarness();
+    // Real service on a stubbed RecoveryKeyPort: the pool-status shape that
+    // flows out is produced by service logic (counts derived from the records),
+    // so the assertion pins both the passthrough and the ORPC output schema.
+    const records = [
+      { id: "key-1", prefix: "a1b2", keyHash: "h1", status: "AVAILABLE", consumedAt: null, revokedAt: null, createdAt: "2026-01-01T00:00:00.000Z" },
+      { id: "key-2", prefix: "c3d4", keyHash: "h2", status: "CONSUMED", consumedAt: "2026-01-02T00:00:00.000Z", revokedAt: null, createdAt: "2026-01-01T00:00:00.000Z" },
+      { id: "key-3", prefix: "e5f6", keyHash: "h3", status: "REVOKED", consumedAt: null, revokedAt: "2026-01-03T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" },
+    ];
+    const listAllKeys = vi.fn()
+      .mockResolvedValueOnce(records)
+      // Zero-available boundary: all keys consumed/revoked.
+      .mockResolvedValueOnce([
+        { id: "key-1", prefix: "a1b2", keyHash: "h1", status: "CONSUMED", consumedAt: "2026-01-02T00:00:00.000Z", revokedAt: null, createdAt: "2026-01-01T00:00:00.000Z" },
+        { id: "key-2", prefix: "c3d4", keyHash: "h2", status: "REVOKED", consumedAt: null, revokedAt: "2026-01-03T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" },
+      ]);
+    const recoveryKeyService = new RecoveryKeyService({
+      insertKey: vi.fn(),
+      findKeyByHash: vi.fn(),
+      updateKeyStatus: vi.fn(),
+      countAvailableKeys: vi.fn(),
+      listAllKeys,
+      withTransaction: vi.fn(),
+    });
+    const router = createTestRouter(harness, undefined, recoveryKeyService);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(client.getRecoveryKeyPool()).resolves.toEqual({
+      availableCount: 1,
+      totalCount: 3,
+      maxPoolSize: 5,
+      maskedKeys: [
+        { id: "key-1", prefix: "a1b2", status: "AVAILABLE" },
+        { id: "key-2", prefix: "c3d4", status: "CONSUMED" },
+        { id: "key-3", prefix: "e5f6", status: "REVOKED" },
+      ],
+    });
+
+    // Zero-available boundary resolves through recoveryKeyPoolStatusSchema
+    // (nonnegative counts, empty-ish maskedKeys).
+    await expect(client.getRecoveryKeyPool()).resolves.toEqual({
+      availableCount: 0,
+      totalCount: 2,
+      maxPoolSize: 5,
+      maskedKeys: [
+        { id: "key-1", prefix: "a1b2", status: "CONSUMED" },
+        { id: "key-2", prefix: "c3d4", status: "REVOKED" },
+      ],
+    });
+    expect(listAllKeys).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns generated recovery keys through the wire contract (generateRecoveryKeys passthrough)", async () => {
+    const harness = createHarness();
+    // Stubbed port reports an empty pool; the real service generates
+    // INITIAL_KEY_COUNT (3) keys inside withTransaction and the handler wraps
+    // them as { keys }, which must satisfy generatedRecoveryKeysSchema.
+    const insertKey = vi.fn();
+    const stubPort = {
+      insertKey,
+      findKeyByHash: vi.fn(),
+      updateKeyStatus: vi.fn(),
+      // First call: empty pool → 3 generated. Second: full pool → none.
+      countAvailableKeys: vi.fn().mockResolvedValueOnce(0).mockResolvedValueOnce(5),
+      listAllKeys: vi.fn().mockResolvedValue([]),
+      withTransaction: vi.fn(async (run) => run(stubPort)),
+    };
+    const recoveryKeyService = new RecoveryKeyService(stubPort);
+    const router = createTestRouter(harness, undefined, recoveryKeyService);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    const result = await client.generateRecoveryKeys();
+    expect(result.keys).toHaveLength(3);
+    for (const k of result.keys) {
+      expect(k.key).toMatch(/^[0-9a-f]{6}-[0-9a-f]{6}-[0-9a-f]{6}$/);
+      expect(k.prefix).toMatch(/^[0-9a-f]{4}$/);
+      expect(k.createdAt).toBeTruthy();
+    }
+    expect(insertKey).toHaveBeenCalledTimes(3);
+
+    // Full-pool boundary: { keys: [] } resolves through generatedRecoveryKeysSchema.
+    await expect(client.generateRecoveryKeys()).resolves.toEqual({ keys: [] });
+    expect(insertKey).toHaveBeenCalledTimes(3);
+  });
+
   it("rejects invalid auth bootstrap input at the wire contract", async () => {
     const harness = createHarness();
     const bootstrapFirstUser = vi.fn();
@@ -781,6 +895,33 @@ describe("RPC router", () => {
     await expect(
       client.authBootstrap({ name: "", phone: "   ", password: "" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(bootstrapFirstUser).not.toHaveBeenCalled();
+  });
+
+  it("attaches zod field issues to the wire-gate validation error", async () => {
+    const harness = createHarness();
+    const bootstrapFirstUser = vi.fn();
+    const router = createTestRouter(harness, { bootstrapFirstUser: bootstrapFirstUser as never });
+    const client = createRouterClient(router, { context: createContext(null) as never });
+
+    // #278: the wire gate must keep the zod field paths + messages so the web
+    // can surface the real field error instead of a generic fallback toast.
+    // Pins code, message, and data.issues shape end-to-end (arrayContaining so
+    // additional issues and zod-internal fields don't break the match).
+    await expect(
+      client.authBootstrap({ name: "", phone: "   ", password: "" }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Input validation failed",
+      data: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            path: ["name"],
+            message: expect.any(String),
+          }),
+        ]),
+      },
+    });
     expect(bootstrapFirstUser).not.toHaveBeenCalled();
   });
 

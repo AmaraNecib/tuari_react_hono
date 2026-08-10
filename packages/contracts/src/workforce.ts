@@ -164,10 +164,15 @@ export const employeeListInputSchema = z
  * Paginated input for the employee list. Composes the existing filters
  * with cursor pagination fields. The `cursor` and `limit` come from the
  * shared cursor pagination schema.
+ *
+ * `search` matches employees across ALL records (before pagination) by
+ * first name, last name, or phone — case-insensitive substring. An empty
+ * or whitespace-only term is treated as "no search" (unfiltered).
  */
 export const employeePagedListInputSchema = cursorPaginationInputSchema.extend({
   roleId: entityIdSchema.optional(),
   status: employeeStatusSchema.optional(),
+  search: z.string().trim().max(120).optional(),
 }).optional();
 
 export const employeeBatchCreateInputSchema = z

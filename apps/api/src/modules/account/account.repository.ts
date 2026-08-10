@@ -1,5 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import type { AppDrizzle } from "../../infrastructure/database/drizzle";
+import type { FifoLock } from "../../infrastructure/database/fifo-lock";
 import { account, user, userProfileHistory } from "../../schema";
 
 /** Represents a user's profile record (id, name, phone). */
@@ -149,25 +150,19 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
  */
 /** Drizzle-based account repository — handles user profile and credential queries. */
 export class DrizzleAccountRepository implements AccountRepository {
-  /** Tail of the FIFO lock — no other account-repo call may join an open transaction. */
-  private lockTail: Promise<void> = Promise.resolve();
-
-  constructor(private readonly db: AppDrizzle) {}
-
-  /** Run an operation under the FIFO lock (mirrors sqlite-recovery-key.port). */
-  private serialized<T>(operation: () => Promise<T>): Promise<T> {
-    const previous = this.lockTail;
-    let release!: () => void;
-    this.lockTail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    // `previous` never rejects (only ever resolved by release), so a plain
-    // `.then(operation)` suffices; `finally` always releases the lock.
-    return previous.then(operation).finally(release);
-  }
+  constructor(
+    private readonly db: AppDrizzle,
+    /**
+     * Connection-wide FIFO lock (shared with every module that opens
+     * transactions on the same connection, wired in the composition root).
+     * Holds the lock for the whole transaction so no other module can BEGIN
+     * on the shared connection while this transaction is open.
+     */
+    private readonly connectionLock: FifoLock,
+  ) {}
 
   withTransaction<T>(run: (transaction: AccountRepositoryTransaction) => Promise<T>) {
-    return this.serialized(async () => {
+    return this.connectionLock.run(async () => {
       // Drizzle's better-sqlite3 `db.transaction()` requires a synchronous
       // callback, but the account service flows are async — so we own the
       // transaction on the raw connection (same pattern as bootstrap.service

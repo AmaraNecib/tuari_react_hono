@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   rbacRolesList: vi.fn(),
   rolesList: vi.fn(),
   workspaceSnapshot: vi.fn(),
+  employeesListPaged: vi.fn(),
 }))
 
 vi.mock("@tanstack/react-query", async () => ({
@@ -23,6 +24,7 @@ vi.mock("@/lib/orpc-client", () => ({
     rbacRolesList: mocks.rbacRolesList,
     rolesList: mocks.rolesList,
     workspaceSnapshot: mocks.workspaceSnapshot,
+    employeesListPaged: mocks.employeesListPaged,
   },
   // workspace-keys evaluates `sessionQueryKey` at module load from
   // `orpc.session.queryOptions().queryKey` — mirror the mounted key shape.
@@ -37,6 +39,7 @@ import {
   demoWorkspaceQueryKey,
   isRolesEndpointUnavailable,
   useCompositeWorkspaceQuery,
+  useEmployeesPagedQuery,
   useRolesQuery,
   useWorkspaceScopedQuery,
 } from "./workspace-queries"
@@ -48,6 +51,54 @@ const useRoleListQueryOptions = () => {
     queryFn: () => Promise<{ items: unknown[] }>
   }
 }
+
+describe("useEmployeesPagedQuery server-side search (issue #183)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.useSessionQuery.mockReturnValue({ data: { user: { id: "user-1" } } })
+    mocks.useQuery.mockImplementation((options) => options)
+  })
+
+  it("includes the search term in the query key and forwards it to the RPC", () => {
+    useEmployeesPagedQuery({ search: "بن صالح", limit: 10 })
+
+    const options = mocks.useQuery.mock.calls[0]?.[0] as {
+      queryKey: readonly unknown[]
+      queryFn: () => Promise<unknown>
+    }
+    expect(options.queryKey).toEqual([
+      "phase1",
+      "workspace-domain",
+      "employees",
+      "user-1",
+      "paged",
+      { cursor: undefined, limit: 10, status: undefined, roleId: undefined, search: "بن صالح" },
+    ])
+
+    void options.queryFn()
+    expect(mocks.employeesListPaged).toHaveBeenCalledWith({
+      cursor: undefined,
+      limit: 10,
+      status: undefined,
+      roleId: undefined,
+      search: "بن صالح",
+    })
+  })
+
+  it("treats an absent search as undefined so the key stays stable", () => {
+    useEmployeesPagedQuery({ limit: 10 })
+
+    const options = mocks.useQuery.mock.calls[0]?.[0] as { queryKey: readonly unknown[] }
+    expect(options.queryKey).toEqual([
+      "phase1",
+      "workspace-domain",
+      "employees",
+      "user-1",
+      "paged",
+      { cursor: undefined, limit: 10, status: undefined, roleId: undefined, search: undefined },
+    ])
+  })
+})
 
 describe("useCompositeWorkspaceQuery — single workspaceSnapshot RPC (issue #276)", () => {
   const snapshotData = {

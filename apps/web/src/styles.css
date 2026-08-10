@@ -295,7 +295,7 @@
 /* ─── Base ─── */
 
 @layer base {
-  * { @apply border-border outline-ring/50; box-sizing: border-box; }
+  * { @apply border-border outline-ring; box-sizing: border-box; }
 
   html {
     min-height: 100%;
@@ -423,7 +423,8 @@
 /* ─── Mobile adaptation (sidebar as overlay) ─── */
 
 @media (max-width: 767px) {
-  .tauri-shell {
+  .tauri-shell,
+  .tauri-shell[data-collapsed="true"] {
     grid-template-columns: 1fr;
   }
 
@@ -435,8 +436,8 @@
     z-index: 40;
     transform: translateX(100%);
     transition: transform 200ms ease-out;
-    width: min(85vw, 320px);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+    width: min(85vw, 20rem);
+    box-shadow: -0.25rem 0 1.5rem rgba(0, 0, 0, 0.15);
   }
 
   .tauri-shell[data-sidebar-open="true"] > aside {
@@ -447,9 +448,10 @@
     grid-column: 1 / -1;
   }
 
-  /* Mobile overlay backdrop */
-  .tauri-shell::after {
-    content: "";
+  /* Mobile overlay backdrop — real element (rendered by the shell) so tapping
+     it can close the drawer. Replaces the old .tauri-shell::after pseudo-element,
+     which could never receive click events (issue #284). */
+  .sb-mobile-backdrop {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.4);
@@ -459,7 +461,7 @@
     transition: opacity 200ms;
   }
 
-  .tauri-shell[data-sidebar-open="true"]::after {
+  .sb-mobile-backdrop[data-open="true"] {
     opacity: 1;
     pointer-events: auto;
   }
@@ -756,7 +758,7 @@
 
   .tauri-shell > aside,
   .tauri-shell > aside + div > header,
-  .tauri-shell::after,
+  .sb-mobile-backdrop,
   .bottom-nav {
     display: none !important;
   }

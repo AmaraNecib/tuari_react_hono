@@ -105,10 +105,7 @@ export default defineConfig({
             || packageRoot.startsWith("@floating-ui")
             || packageRoot.startsWith("@radix-ui")
             || packageRoot === "lucide-react"
-            || packageRoot === "cmdk"
             || packageRoot === "sonner"
-            || packageRoot === "vaul"
-            || packageRoot === "next-themes"
             || packageRoot === "react-day-picker"
             || packageRoot === "date-fns"
             || packageRoot === "input-otp"

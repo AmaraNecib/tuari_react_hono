@@ -105,6 +105,7 @@ export type HomeViewCopy = {
     phoneFormat: string
     password: string
     passwordShort: string
+    passwordWhitespace: string
     setupSecret: string
   }
   dashboard: {
@@ -319,6 +320,7 @@ export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
       phoneFormat: t("auth.validation.phoneFormat"),
       password: t("auth.validation.password"),
       passwordShort: t("auth.validation.passwordShort"),
+      passwordWhitespace: t("auth.validation.passwordWhitespace"),
       setupSecret: t("auth.validation.setupSecret"),
     },
     dashboard: {

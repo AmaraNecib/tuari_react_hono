@@ -421,3 +421,77 @@ ownership lists (no one owned it), approved, and the fix landed cleanly.
 ask the parent (contact_supervisor, reason need_decision) with the exact
 file + why. Parent: cross-check the OTHER agents' announced lists before
 approving; the owner is whoever needs it, not the first to claim.
+
+## Sibling-worktree dev servers squat the fixed Playwright ports and fake a green e2e run (🟠 Major)
+
+On #278 the local full Playwright suite failed 9 specs at `bootstrapOrSignIn` —
+every one a `page.goto` timeout — minutes after the SAME new spec passed
+standalone. Root cause: another worktree (`issue-287-splashscreen`) was running
+its own Playwright suite CONCURRENTLY, and its API/web dev servers held the
+hardcoded ports 4318/3000. `reuseExistingServer: false` does NOT pre-check the
+port — the stale server answered `/health` ok, so our run connected to
+issue-287's DB/modules instead of spawning its own. Diagnosis path:
+`Get-NetTCPConnection -LocalPort 4318,3000 -State Listen` showed a foreign
+worktree's PIDs; `Get-CimInstance Win32_Process` showed an ACTIVE
+`npx playwright test` from that worktree — so the servers were NOT orphans to
+kill (another agent's live run), just squatters. Re-ran the full suite when the
+ports freed → 24 passed / 2 skipped.
+
+**Always**: before a local e2e run, check WHO owns ports 4318/3000 (not just
+that they're free) — if another worktree's process holds them, wait for that
+run or coordinate; never kill a process belonging to an active sibling session.
+And when a batch of specs fails identically at `page.goto`, suspect infra
+(port squatters / stale servers), not the diff — re-run with clean ports before
+trusting the failures.
+
+
+## A CSS/DOM selector mismatch can make an a11y fix a user trap (🟠 Major)
+
+Issue #284's "mobile sidebar can't be dismissed" turned out to be worse than
+described: the `<div data-tour="sidebar">` wrapper around `<WorkspaceSidebar/>`
+broke EVERY `.tauri-shell > aside` selector (mobile drawer overlay, `aside + div`
+main-area grid, print/4K rules). The drawer never overlaid (aside stayed a static
+52.5px sliver), but `.tauri-shell::after` (on the shell itself) DID match — so
+opening the drawer on mobile showed a z-39 backdrop with `pointer-events: auto`
+and NO click handler, covering the header toggle. The user was trapped on mobile.
+Also `data-collapsed="true"` (specificity 0,2,0) beat the mobile `.tauri-shell`
+`grid-template-columns: 1fr` (0,1,0), keeping the mobile grid at 52.5px + 1fr.
+
+**Always**: when the issue says "X can't be dismissed/closed", verify the DOM
+matches the CSS selectors before trusting that the control renders at all — a
+wrapper div inserted for a tour target or analytics hook can silently sever the
+selector chain, and the "can't dismiss" symptom is often a full trap. Test at the
+actual mobile viewport (Playwright + computed styles), not just the unit level.
+Check attribute-selector specificity fights between persisted state
+(`data-collapsed`) and media-query overrides.
+
+## Parallel worktree PRs collide on `.agents/wisdom/*.md` — resolve by keeping BOTH sides (🟠 Major)
+
+On the 2026-08-10 batch (9 parallel worktrees merged sequentially), the
+second and third merges each hit a CONTENT conflict in a wisdom file —
+`testing.md` (between #278's toMatchObject-array lesson and #320's
+no-op-rekey lesson) then `process.md` (between #278's sibling-worktree
+port-squatter lesson and #284's CSS-selector lesson). Every agent in a batch
+appends lessons to the same files, so the Nth squash merge into develop is
+expected to conflict on `.agents/wisdom/*`.
+
+**Always**: when a wisdom file conflicts on merge, treat the two sides as
+independent durable lessons and keep BOTH — splice them side by side, never
+delete either section. Expect this on any batch with ≥2 worktrees and resolve
+it like a normal code conflict (fix → push → wait for CI → merge). Also: the
+pre-push hook runs the full web suite, which can flake on `navigateMock`
+timing under load right after a multi-PR merge — re-run before blaming the diff.
+
+## Auto-close action ignores PR titles — "closes #N" must be in the PR BODY (🟠 Major)
+
+On the same batch, TWO issues stayed OPEN after their PRs merged because the
+closing reference lived only in the PR TITLE: #282 (PR #311 titled
+"...(closes #282)") and #278 (PR #318 titled "...(#278)"). The auto-close
+action parses the BODY by design (docs/lessons/gh-pr-merge-squash-issue-close.md).
+The squash commit subject can carry "(closes #N)" for history, but the BODY
+needs the keyword too.
+
+**Always**: when creating a PR, put "closes #N" (or "Part of #N") in the
+BODY, not just the title. After ANY merge batch, verify every referenced
+issue: `gh issue view <n> --json state` and close manually with a comment if
+still OPEN — do not trust the title.

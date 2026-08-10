@@ -44,7 +44,7 @@ const API_ERROR_TO_I18N_KEY: Record<string, string> = {
 }
 
 function translateAuthApiErrorMessage(message: string): string {
-  const normalized = message.trim().toLowerCase()
+  const normalized = message.trim().toLowerCase().replace(/\s+/g, " ")
   const i18nKey = API_ERROR_TO_I18N_KEY[normalized]
   
   if (i18nKey) {
@@ -102,14 +102,14 @@ async function postAuthenticatedJson<TResponse>(path: string, body: Record<strin
   return responseBody as TResponse
 }
 
-/** Extracts a user-friendly error message from auth errors. */
+/** Extracts a user-friendly, translated error message from auth errors. */
 export function extractAuthErrorMessage(error: unknown, fallbackMessage: string) {
   if (typeof error === "string" && error.trim().length > 0) {
-    return error
+    return translateAuthApiErrorMessage(error)
   }
 
   if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message
+    return translateAuthApiErrorMessage(error.message)
   }
 
   if (typeof error === "object" && error !== null) {
@@ -117,20 +117,20 @@ export function extractAuthErrorMessage(error: unknown, fallbackMessage: string)
 
     const message = obj["message"]
     if (typeof message === "string" && message.trim().length > 0) {
-      return message
+      return translateAuthApiErrorMessage(message)
     }
 
     const nestedError = obj["error"]
     if (typeof nestedError === "object" && nestedError !== null) {
       const nestedMessage = (nestedError as Record<string, unknown>)["message"]
       if (typeof nestedMessage === "string" && nestedMessage.trim().length > 0) {
-        return nestedMessage
+        return translateAuthApiErrorMessage(nestedMessage)
       }
     }
 
     const statusText = obj["statusText"]
     if (typeof statusText === "string" && statusText.trim().length > 0) {
-      return statusText
+      return translateAuthApiErrorMessage(statusText)
     }
   }
 
