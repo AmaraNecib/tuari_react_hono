@@ -1,5 +1,12 @@
 import { useEffect, useCallback, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
+import { cn } from "@/lib/utils"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 // ============ Types ============
 
@@ -131,12 +138,14 @@ function useShortcuts() {
 /**
  * Keyboard shortcuts help dialog.
  * Shows all available keyboard shortcuts.
+ *
+ * Built on the shared Base UI Dialog wrapper so it gets modal semantics
+ * (role="dialog", aria-modal, focus trap, ESC-to-close, scroll lock) for
+ * free (issue #275).
  */
 export function KeyboardShortcutsHelp({ isOpen, onClose, className }: KeyboardShortcutsHelpProps) {
   const { t } = useTranslation()
   const shortcuts = useShortcuts()
-
-  if (!isOpen) return null
 
   const categories = [
     { key: "general", label: t("shortcuts.categoryGeneral") },
@@ -145,19 +154,11 @@ export function KeyboardShortcutsHelp({ isOpen, onClose, className }: KeyboardSh
   ]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-      <div className={`w-full max-w-md rounded-xl border border-line bg-card p-6 shadow-lg ${className ?? ""}`}>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">{t("shortcuts.title")}</h2>
-          <button
-            type="button"
-            aria-label={t("common.close")}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-surface-2"
-            onClick={onClose}
-          >
-            ✕
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className={cn("max-w-md", className)}>
+        <DialogHeader>
+          <DialogTitle>{t("shortcuts.title")}</DialogTitle>
+        </DialogHeader>
 
         <div className="space-y-4">
           {categories.map((category) => {
@@ -180,7 +181,7 @@ export function KeyboardShortcutsHelp({ isOpen, onClose, className }: KeyboardSh
                         {shortcut.keys.map((key) => (
                           <kbd
                             key={key}
-                            className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                            className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[0.625rem] text-muted-foreground"
                           >
                             {key}
                           </kbd>
@@ -193,17 +194,7 @@ export function KeyboardShortcutsHelp({ isOpen, onClose, className }: KeyboardSh
             )
           })}
         </div>
-
-        <div className="mt-4 text-center">
-          <button
-            type="button"
-            className="text-sm text-primary hover:text-primary/80 transition-colors"
-            onClick={onClose}
-          >
-            {t("common.close")}
-          </button>
-        </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

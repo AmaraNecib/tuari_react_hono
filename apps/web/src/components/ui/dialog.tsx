@@ -76,6 +76,7 @@ function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
+        aria-modal="true"
         className={cn(
           "fixed top-1/2 start-1/2 z-50 grid w-full max-w-[min(92vw,28rem)] -translate-x-1/2 rtl:translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-line bg-card p-6 shadow-lg duration-200 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
