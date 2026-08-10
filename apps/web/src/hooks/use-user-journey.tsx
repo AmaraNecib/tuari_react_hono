@@ -243,6 +243,15 @@ export function UserJourneyTour({
   // Clamp currentStep to valid range to prevent bad persisted state
   const clampedStep = Math.max(0, Math.min(journey.state.currentStep, steps.length - 1))
 
+  // If auto-start persisted an "active" status but no steps were provided,
+  // there is no dialog to dismiss it — don't strand the journey (it would
+  // rehydrate active on every reload). Skip it so the status stays sane.
+  useEffect(() => {
+    if (journey.isActive && steps.length === 0) {
+      journey.skip()
+    }
+  }, [journey.isActive, steps.length, journey])
+
   if (journey.isActive && steps.length > 0) {
     const currentStep = steps[clampedStep]
     if (!currentStep) return <>{children}</>

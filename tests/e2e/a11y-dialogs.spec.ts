@@ -48,6 +48,8 @@ test("keyboard shortcuts help is a labelled modal dialog and closes on Escape", 
   await expect(
     dialog.getByRole("heading", { name: "اختصارات لوحة المفاتيح" })
   ).toBeVisible()
+  // Focus moves inside the dialog (first tabbable = the labelled close button).
+  await expect(dialog.getByRole("button", { name: "إغلاق" })).toBeFocused()
 
   await page.keyboard.press("Escape")
   await expect(dialog).toBeHidden()

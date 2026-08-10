@@ -82,6 +82,19 @@ describe("UserJourneyTour", () => {
     expect(localStorage.getItem("journey-home-tour-status")).toBe("skipped")
   })
 
+  it("does not strand the journey when active with no steps", () => {
+    localStorage.setItem("journey-home-tour-status", "active")
+    render(
+      <UserJourneyTour steps={[]} storageKey="home-tour">
+        <div>shell content</div>
+      </UserJourneyTour>
+    )
+
+    // No dialog to dismiss, and the persisted status is not left active.
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(localStorage.getItem("journey-home-tour-status")).toBe("skipped")
+  })
+
   it("completes the tour on the last step", () => {
     localStorage.setItem("journey-home-tour-status", "active")
     const single = [STEPS[0]!]

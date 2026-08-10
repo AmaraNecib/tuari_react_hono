@@ -24,37 +24,43 @@ describe("AdvancedSearchBar", () => {
   it("renders a search input with a debounced onSearch callback", async () => {
     vi.useFakeTimers()
     const onSearch = vi.fn()
-    render(
-      <AdvancedSearchBar
-        onSearch={onSearch}
-        storageKey={STORAGE_KEY}
-      />
-    )
+    try {
+      render(
+        <AdvancedSearchBar
+          onSearch={onSearch}
+          storageKey={STORAGE_KEY}
+        />
+      )
 
-    const input = screen.getByRole("textbox")
-    fireEvent.change(input, { target: { value: "alpha" } })
+      const input = screen.getByRole("textbox")
+      fireEvent.change(input, { target: { value: "alpha" } })
 
-    expect(onSearch).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(350)
-    expect(onSearch).toHaveBeenCalledWith("alpha", {})
-    vi.useRealTimers()
+      expect(onSearch).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(350)
+      expect(onSearch).toHaveBeenCalledWith("alpha", {})
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("renders quick filter chips and applies the matching filters on click", async () => {
     vi.useFakeTimers()
     const onSearch = vi.fn()
-    render(
-      <AdvancedSearchBar
-        onSearch={onSearch}
-        storageKey={STORAGE_KEY}
-        quickFilters={QUICK_FILTERS}
-      />
-    )
+    try {
+      render(
+        <AdvancedSearchBar
+          onSearch={onSearch}
+          storageKey={STORAGE_KEY}
+          quickFilters={QUICK_FILTERS}
+        />
+      )
 
-    fireEvent.click(screen.getByRole("button", { name: "Paid" }))
-    await vi.advanceTimersByTimeAsync(350)
-    expect(onSearch).toHaveBeenLastCalledWith("", { status: "PAID" })
-    vi.useRealTimers()
+      fireEvent.click(screen.getByRole("button", { name: "Paid" }))
+      await vi.advanceTimersByTimeAsync(350)
+      expect(onSearch).toHaveBeenLastCalledWith("", { status: "PAID" })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("marks the active quick filter chip with aria-pressed=true", () => {
@@ -74,46 +80,52 @@ describe("AdvancedSearchBar", () => {
   it("clears active filters and the search query when Clear is pressed", async () => {
     vi.useFakeTimers()
     const onSearch = vi.fn()
-    render(
-      <AdvancedSearchBar
-        onSearch={onSearch}
-        storageKey={STORAGE_KEY}
-        quickFilters={QUICK_FILTERS}
-        initialFilters={{ status: "PAID" }}
-      />
-    )
+    try {
+      render(
+        <AdvancedSearchBar
+          onSearch={onSearch}
+          storageKey={STORAGE_KEY}
+          quickFilters={QUICK_FILTERS}
+          initialFilters={{ status: "PAID" }}
+        />
+      )
 
-    fireEvent.click(screen.getByRole("button", { name: /مسح/ }))
-    await vi.advanceTimersByTimeAsync(350)
-    expect(onSearch).toHaveBeenLastCalledWith("", {})
-    vi.useRealTimers()
+      fireEvent.click(screen.getByRole("button", { name: /مسح/ }))
+      await vi.advanceTimersByTimeAsync(350)
+      expect(onSearch).toHaveBeenLastCalledWith("", {})
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("does not flood history when filters are toggled back and forth", async () => {
     vi.useFakeTimers()
-    render(
-      <AdvancedSearchBar
-        onSearch={vi.fn()}
-        storageKey={STORAGE_KEY}
-        quickFilters={QUICK_FILTERS}
-      />
-    )
+    try {
+      render(
+        <AdvancedSearchBar
+          onSearch={vi.fn()}
+          storageKey={STORAGE_KEY}
+          quickFilters={QUICK_FILTERS}
+        />
+      )
 
-    const paid = screen.getByRole("button", { name: "Paid" })
-    const unpaid = screen.getByRole("button", { name: "Unpaid" })
+      const paid = screen.getByRole("button", { name: "Paid" })
+      const unpaid = screen.getByRole("button", { name: "Unpaid" })
 
-    // Click Paid, wait for debounce, click Unpaid, wait, click Paid again.
-    fireEvent.click(paid)
-    await vi.advanceTimersByTimeAsync(350)
-    fireEvent.click(unpaid)
-    await vi.advanceTimersByTimeAsync(350)
-    fireEvent.click(paid)
-    await vi.advanceTimersByTimeAsync(350)
+      // Click Paid, wait for debounce, click Unpaid, wait, click Paid again.
+      fireEvent.click(paid)
+      await vi.advanceTimersByTimeAsync(350)
+      fireEvent.click(unpaid)
+      await vi.advanceTimersByTimeAsync(350)
+      fireEvent.click(paid)
+      await vi.advanceTimersByTimeAsync(350)
 
-    // Two distinct filter sets were applied; the bar should record each once.
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")
-    expect(stored.history).toHaveLength(2)
-    vi.useRealTimers()
+      // Two distinct filter sets were applied; the bar should record each once.
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")
+      expect(stored.history).toHaveLength(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("saves the current filter set as a named preset and shows it in the list", () => {

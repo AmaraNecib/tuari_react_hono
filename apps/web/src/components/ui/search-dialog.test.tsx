@@ -131,6 +131,28 @@ describe("SearchDialog", () => {
     expect(screen.getByRole("dialog")).toBeTruthy()
     // Back to the parent list.
     expect(screen.getByRole("option", { name: /المستودعات/ })).toBeTruthy()
+
+    // A second Escape (now not expanded) closes the dialog.
+    fireEvent.keyDown(combobox, { key: "Escape" })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("Shift+Tab never expands or activates an item (no keyboard trap)", () => {
+    const items = makeItems()
+    const employeesAction = items[1]!.action as ReturnType<typeof vi.fn>
+    const onClose = vi.fn()
+    render(<SearchDialog isOpen onClose={onClose} onQueryChange={vi.fn()} results={items} />)
+
+    const combobox = screen.getByRole("combobox")
+    // Shift+Tab with the first (parent) item active: must not expand.
+    fireEvent.keyDown(combobox, { key: "Tab", shiftKey: true })
+    expect(screen.queryByRole("option", { name: /مستودع جديد/ })).toBeNull()
+    // Shift+Tab with an action item active: must not run the action or close.
+    fireEvent.keyDown(combobox, { key: "ArrowDown" })
+    fireEvent.keyDown(combobox, { key: "Tab", shiftKey: true })
+    expect(employeesAction).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByRole("dialog")).toBeTruthy()
   })
 
   it("Escape closes the dialog when not expanded", () => {
