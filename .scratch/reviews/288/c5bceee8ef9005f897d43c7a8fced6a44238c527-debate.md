@@ -36,3 +36,12 @@ and the design doc `.scratch/implementation/288-design.md`.
 
 - **Issue created:** residual absorb of unlocked sync writers into open async
   transactions + hung-op blast radius (no lock timeout).
+
+---
+## Post-evidence delta (renamed to final HEAD c5bceee)
+
+The debate reviewed 05cd9ac. Delta since: test-audit fix round (per-instance
+reentrancy guard, capacity-boundary tests, BEGIN IMMEDIATE reservation test),
+code-review comment fix (invoice constructor). No debate-class findings were
+introduced by those commits; they were caught and fixed by the subsequent
+test-audit and code-review passes (evidence files below).

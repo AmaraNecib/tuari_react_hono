@@ -50,3 +50,9 @@ tests. No blockers. 16 → 23 tests after fixes.
 
 Float dust in remaining_amount (other decimal values), negative-allocation
 service-boundary validation, hung-op watchdog, swallowed-ROLLBACK semantics.
+
+---
+## Post-evidence delta (renamed to final HEAD c5bceee)
+
+The test-audit reviewed 4f48282 + fixes. Delta since: code-review comment fix
+(invoice constructor, cosmetic). Test-audit findings unaffected.
