@@ -62,15 +62,16 @@ const BOOTSTRAP_FIELD_INVALID_MESSAGE: Record<BootstrapInputField, string> = {
 };
 
 /**
- * Messages for refine() rejections (`custom` zod issues). Today only `name`
- * carries a refine (visible-character rule). The full `Record` forces a
- * decision here when a refine is added to another field — same pattern as
- * the required/invalid maps above, so the copy cannot drift.
+ * Messages for refine() rejections (`custom` zod issues). Today `name`
+ * (visible-character rule) and `password` (#230 blank-password rule) carry
+ * refines. The full `Record` forces a decision here when a refine is added
+ * to another field — same pattern as the required/invalid maps above, so the
+ * copy cannot drift.
  */
 const BOOTSTRAP_FIELD_CUSTOM_MESSAGE: Record<BootstrapInputField, string> = {
   name: "الاسم يجب ألا يحتوي على أحرف غير مرئية.",
   phone: BOOTSTRAP_FIELD_INVALID_MESSAGE.phone,
-  password: BOOTSTRAP_FIELD_INVALID_MESSAGE.password,
+  password: "كلمة المرور يجب ألا تتكون من مسافات فقط.",
   setupSecret: BOOTSTRAP_FIELD_INVALID_MESSAGE.setupSecret,
 };
 
@@ -94,10 +95,10 @@ function bootstrapFieldErrorMessage(issue: ZodIssue): string {
   if (field === "input") {
     return BOOTSTRAP_VALIDATION_MESSAGE;
   }
-  // A refine() rejection surfaces as `custom` — today only the name's
-  // visible-character requirement (Cf-only names survive trim()). The map
-  // above is keyed by field, so a future refine on another field gets its
-  // own message instead of a misleading fallback.
+  // A refine() rejection surfaces as `custom` — today the name's
+  // visible-character requirement (#234) and the password's blank-password
+  // rule (#230). The map above is keyed by field, so a future refine on
+  // another field gets its own message instead of a misleading fallback.
   if (issue.code === "custom") {
     return BOOTSTRAP_FIELD_CUSTOM_MESSAGE[field as BootstrapInputField];
   }
