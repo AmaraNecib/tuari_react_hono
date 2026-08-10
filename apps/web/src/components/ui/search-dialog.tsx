@@ -109,14 +109,7 @@ export function SearchDialog({ isOpen, onClose, onQueryChange, results = [], cla
       }
     } else if (e.key === "Enter") {
       e.preventDefault()
-      if (activeItem?.children && activeItem.children.length > 0 && !isExpanded) {
-        setExpandedItem(activeItem)
-        setQuery("")
-        setActiveIndex(0)
-      } else if (activeItem?.action) {
-        activeItem.action()
-        onClose()
-      }
+      if (activeItem) handleActivate(activeItem)
     }
   }
 
@@ -173,7 +166,7 @@ export function SearchDialog({ isOpen, onClose, onQueryChange, results = [], cla
               aria-expanded={displayItems.length > 0}
               aria-controls={LISTBOX_ID}
               aria-autocomplete="list"
-              aria-activedescendant={displayItems.length > 0 ? `search-option-${activeItem?.id}` : undefined}
+              aria-activedescendant={activeItem ? `search-option-${activeItem.id}` : undefined}
               value={query}
               onChange={(e) => handleChange(e.target.value)}
               onKeyDown={handleKeyDown}

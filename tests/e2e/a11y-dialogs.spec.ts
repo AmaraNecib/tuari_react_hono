@@ -91,13 +91,21 @@ test("mobile filters drawer traps focus and closes on Escape", async ({ page }) 
   await expect(drawer.getByRole("button", { name: "إغلاق" })).toBeFocused()
 
   // Tab repeatedly — focus must never leave the drawer (focus trap).
+  // expect.poll retries because Base UI's focus manager settles focus
+  // asynchronously.
   for (let i = 0; i < 8; i++) {
     await page.keyboard.press("Tab")
-    const inside = await drawer.evaluate((el) => el.contains(document.activeElement))
-    expect(inside).toBe(true)
+    await expect
+      .poll(() =>
+        page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))
+      )
+      .toBe(true)
   }
 
   // Escape closes the drawer.
   await page.keyboard.press("Escape")
   await expect(drawer).toBeHidden()
+
+  // Focus returns to the trigger button (Base UI finalFocus).
+  await expect(openButton).toBeFocused()
 })

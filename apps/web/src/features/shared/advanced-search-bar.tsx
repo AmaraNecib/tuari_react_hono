@@ -318,6 +318,7 @@ export function AdvancedSearchBar({
   ) : null;
 
   const saveDialogRef = useRef<HTMLDivElement>(null);
+  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
   useFocusTrap(saveDialogRef, showSaveDialog);
 
   const saveDialog = showSaveDialog ? (
@@ -426,6 +427,7 @@ export function AdvancedSearchBar({
     return (
       <div className="space-y-3">
         <Button
+          ref={drawerTriggerRef}
           type="button"
           variant="outline"
           onClick={() => setDrawerOpen(true)}
@@ -448,6 +450,7 @@ export function AdvancedSearchBar({
         >
           <DialogPrimitive.Portal>
             <DialogPrimitive.Popup
+              finalFocus={drawerTriggerRef}
               aria-modal="true"
               aria-label={t("search.openFilters")}
               className="fixed inset-0 z-50 flex flex-col bg-background/95 p-4 outline-none"
