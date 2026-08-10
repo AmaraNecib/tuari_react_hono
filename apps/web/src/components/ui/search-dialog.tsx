@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useTranslation } from "react-i18next"
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { Search, X, ChevronLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -26,12 +27,16 @@ interface SearchDialogProps {
   className?: string
 }
 
+const LISTBOX_ID = "search-results-listbox"
+
 /**
  * Hierarchical search dialog triggered by Ctrl+K / Alt+K.
  * Supports Tab-to-expand sub-actions within entities.
- */
-/**
- * @description Component
+ *
+ * Built on the Base UI Dialog primitive so it gets modal semantics
+ * (role="dialog", aria-modal, focus trap, ESC-to-close, scroll lock) and
+ * uses the combobox/listbox pattern for keyboard + screen-reader results
+ * navigation (issue #275).
  */
 export function SearchDialog({ isOpen, onClose, onQueryChange, results = [], className }: SearchDialogProps) {
   const { t } = useTranslation()
@@ -40,14 +45,13 @@ export function SearchDialog({ isOpen, onClose, onQueryChange, results = [], cla
   const [expandedItem, setExpandedItem] = useState<SearchItem | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
-  const itemRefs = useRef<Map<number, HTMLButtonElement>>(new Map())
+  const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
   useEffect(() => {
     if (isOpen) {
       setQuery("")
       setActiveIndex(0)
       setExpandedItem(null)
-      setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [isOpen])
 
@@ -60,7 +64,7 @@ export function SearchDialog({ isOpen, onClose, onQueryChange, results = [], cla
   useEffect(() => {
     const el = itemRefs.current.get(activeIndex)
     if (el) {
-      el.scrollIntoView({ block: "nearest" })
+      el.scrollIntoView?.({ block: "nearest" })
     }
   }, [activeIndex])
 
@@ -75,43 +79,55 @@ export function SearchDialog({ isOpen, onClose, onQueryChange, results = [], cla
   // If we're in expanded view, show children instead of normal results
   const displayItems = expandedItem?.children ?? results
   const isExpanded = expandedItem !== null
+  const activeItem = displayItems[activeIndex]
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
       if (isExpanded) {
+        // Collapse the expanded sub-list without closing the dialog — stop
+        // propagation so Base UI's dismiss handler doesn't also close it.
+        e.stopPropagation()
         setExpandedItem(null)
         setActiveIndex(0)
-      } else {
-        onClose()
       }
+      // Otherwise let Base UI's ESC handling close via onOpenChange.
     } else if (e.key === "ArrowDown") {
       e.preventDefault()
       setActiveIndex((i) => (i + 1) % Math.max(displayItems.length, 1))
     } else if (e.key === "ArrowUp") {
       e.preventDefault()
       setActiveIndex((i) => (i - 1 + displayItems.length) % Math.max(displayItems.length, 1))
-    } else if (e.key === "Tab") {
-      e.preventDefault()
-      const item = displayItems[activeIndex]
-      if (item?.children && item.children.length > 0) {
-        setExpandedItem(item)
+    } else if (e.key === "Tab" && !e.shiftKey) {
+      // Tab only expands an item that has children (the documented gesture).
+      // Plain action items let native Tab move focus — Shift+Tab always
+      // moves focus so the dialog is never a keyboard trap.
+      if (activeItem?.children && activeItem.children.length > 0) {
+        e.preventDefault()
+        setExpandedItem(activeItem)
         setQuery("")
         setActiveIndex(0)
-      } else if (item?.action) {
-        item.action()
-        onClose()
       }
     } else if (e.key === "Enter") {
       e.preventDefault()
-      const item = displayItems[activeIndex]
-      if (item?.children && item.children.length > 0 && !isExpanded) {
-        setExpandedItem(item)
+      if (activeItem?.children && activeItem.children.length > 0 && !isExpanded) {
+        setExpandedItem(activeItem)
         setQuery("")
         setActiveIndex(0)
-      } else if (item?.action) {
-        item.action()
+      } else if (activeItem?.action) {
+        activeItem.action()
         onClose()
       }
+    }
+  }
+
+  const handleActivate = (item: SearchItem) => {
+    if (item.children && item.children.length > 0 && !isExpanded) {
+      setExpandedItem(item)
+      setQuery("")
+      setActiveIndex(0)
+    } else if (item.action) {
+      item.action()
+      onClose()
     }
   }
 
@@ -122,110 +138,126 @@ export function SearchDialog({ isOpen, onClose, onQueryChange, results = [], cla
     inputRef.current?.focus()
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/40 backdrop-blur-[2px]">
-      <div className={cn("w-full max-w-lg rounded-xl border border-line bg-card shadow-lg", className)}>
-        {/* Search input */}
-        <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-          {isExpanded ? (
+    <DialogPrimitive.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Backdrop className="fixed inset-0 isolate z-50 bg-black/40 backdrop-blur-[2px] duration-200 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
+        <DialogPrimitive.Popup
+          initialFocus={inputRef}
+          aria-modal="true"
+          aria-label={t("search.title")}
+          className={cn(
+            "fixed top-[20vh] start-1/2 z-50 w-full max-w-lg -translate-x-1/2 rtl:translate-x-1/2 rounded-xl border border-line bg-card shadow-lg outline-none duration-200 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            className
+          )}
+        >
+          {/* Search input */}
+          <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+            {isExpanded ? (
+              <button
+                type="button"
+                aria-label={t("common.back")}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                onClick={handleBack}
+              >
+                <ChevronLeft size={18} />
+              </button>
+            ) : (
+              <Search size={18} className="text-muted-foreground" />
+            )}
+            <input
+              ref={inputRef}
+              type="text"
+              role="combobox"
+              aria-label={t("search.placeholder")}
+              aria-expanded={displayItems.length > 0}
+              aria-controls={LISTBOX_ID}
+              aria-autocomplete="list"
+              aria-activedescendant={displayItems.length > 0 ? `search-option-${activeItem?.id}` : undefined}
+              value={query}
+              onChange={(e) => handleChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={isExpanded ? `${expandedItem?.title} — ${t("search.placeholder")}` : t("search.placeholder")}
+              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-primary/15"
+            />
             <button
               type="button"
+              aria-label={t("common.close")}
               className="text-muted-foreground hover:text-foreground transition-colors"
-              onClick={handleBack}
+              onClick={onClose}
             >
-              <ChevronLeft size={18} />
+              <X size={16} />
             </button>
-          ) : (
-            <Search size={18} className="text-muted-foreground" />
-          )}
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => handleChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isExpanded ? `${expandedItem?.title} — ${t("search.placeholder")}` : t("search.placeholder")}
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
-          />
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground transition-colors"
-            onClick={onClose}
-          >
-            <X size={16} />
-          </button>
-        </div>
+          </div>
 
-        {/* Results */}
-        {displayItems.length > 0 ? (
-          <div ref={resultsRef} className="max-h-80 overflow-y-auto p-2">
-            {displayItems.map((item, i) => (
-              <button
-                key={item.id}
-                ref={(el) => { if (el) itemRefs.current.set(i, el); else itemRefs.current.delete(i) }}
-                type="button"
-                className={cn(
-                  "w-full rounded-lg px-3 py-2 text-start transition-colors",
-                  i === activeIndex ? "bg-surface-2 text-foreground" : "hover:bg-surface-2",
-                )}
-                onClick={() => {
-                  if (item.children && item.children.length > 0 && !isExpanded) {
-                    setExpandedItem(item)
-                    setQuery("")
-                    setActiveIndex(0)
-                  } else if (item.action) {
-                    item.action()
-                    onClose()
-                  }
-                }}
-                onMouseEnter={() => setActiveIndex(i)}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{item.title}</div>
-                    {item.description ? (
-                      <div className="text-xs text-muted-foreground">{item.description}</div>
+          {/* Results */}
+          {displayItems.length > 0 ? (
+            <div
+              ref={resultsRef}
+              id={LISTBOX_ID}
+              role="listbox"
+              aria-label={t("search.results")}
+              className="max-h-80 overflow-y-auto p-2"
+            >
+              {displayItems.map((item, i) => (
+                <div
+                  key={item.id}
+                  id={`search-option-${item.id}`}
+                  ref={(el) => { if (el) itemRefs.current.set(i, el); else itemRefs.current.delete(i) }}
+                  role="option"
+                  aria-selected={i === activeIndex}
+                  className={cn(
+                    "w-full rounded-lg px-3 py-2 text-start cursor-pointer transition-colors",
+                    i === activeIndex ? "bg-surface-2 text-foreground" : "hover:bg-surface-2",
+                  )}
+                  onClick={() => handleActivate(item)}
+                  onMouseEnter={() => setActiveIndex(i)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-foreground">{item.title}</div>
+                      {item.description ? (
+                        <div className="text-xs text-muted-foreground">{item.description}</div>
+                      ) : null}
+                    </div>
+                    {item.children && item.children.length > 0 && !isExpanded ? (
+                      <kbd className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[0.625rem] text-muted-foreground">
+                        Tab
+                      </kbd>
                     ) : null}
                   </div>
-                  {item.children && item.children.length > 0 && !isExpanded ? (
-                    <kbd className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                      Tab
-                    </kbd>
+                  {item.category && !isExpanded ? (
+                    <div className="mt-1 text-xs text-muted-foreground">{item.category}</div>
                   ) : null}
                 </div>
-                {item.category && !isExpanded ? (
-                  <div className="mt-1 text-xs text-muted-foreground">{item.category}</div>
-                ) : null}
-              </button>
-            ))}
-          </div>
-        ) : query.trim() ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            {t("search.noResults")}
-          </div>
-        ) : (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            {t("search.hint")}
-          </div>
-        )}
+              ))}
+            </div>
+          ) : query.trim() ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              {t("search.noResults")}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              {t("search.hint")}
+            </div>
+          )}
 
-        {/* Footer hints */}
-        <div className="border-t border-line px-4 py-2 flex items-center justify-between text-xs text-muted-foreground">
-          <span>{t("search.keyboardHint")}</span>
-          <div className="flex gap-2">
-            <kbd className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[10px]">↑↓</kbd>
-            <span>{t("search.navigate")}</span>
-            <kbd className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[10px]">Tab</kbd>
-            <span>{t("search.expand")}</span>
-            <kbd className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[10px]">↵</kbd>
-            <span>{t("search.open")}</span>
-            <kbd className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[10px]">esc</kbd>
-            <span>{t("search.close")}</span>
+          {/* Footer hints */}
+          <div className="border-t border-line px-4 py-2 flex items-center justify-between text-xs text-muted-foreground">
+            <span>{t("search.keyboardHint")}</span>
+            <div className="flex gap-2">
+              <kbd className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[0.625rem]">↑↓</kbd>
+              <span>{t("search.navigate")}</span>
+              <kbd className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[0.625rem]">Tab</kbd>
+              <span>{t("search.expand")}</span>
+              <kbd className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[0.625rem]">↵</kbd>
+              <span>{t("search.open")}</span>
+              <kbd className="rounded border border-line bg-bg-2 px-1.5 py-0.5 font-mono text-[0.625rem]">esc</kbd>
+              <span>{t("search.close")}</span>
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </DialogPrimitive.Popup>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }

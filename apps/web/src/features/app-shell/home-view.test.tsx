@@ -29,6 +29,11 @@ beforeEach(() => {
   mocks = mockAllMutations()
   resetAllMutations(mocks)
   window.localStorage.clear()
+  // The first-run tour auto-starts 500ms after the shell mounts (autoStart).
+  // Now that the tour is a real modal (Base UI — issue #275) it marks the
+  // rest of the page aria-hidden, which hides the form controls these tests
+  // drive. Dismiss it like the E2E helper does (tests/e2e/helpers/session.ts).
+  window.localStorage.setItem("journey-home-tour-status", "skipped")
   document.documentElement.className = ""
   document.documentElement.lang = "ar"
   document.documentElement.dir = "rtl"

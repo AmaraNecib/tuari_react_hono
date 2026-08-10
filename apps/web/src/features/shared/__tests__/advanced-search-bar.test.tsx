@@ -180,9 +180,27 @@ describe("AdvancedSearchBar", () => {
     fireEvent.click(openButton)
 
     const dialog = screen.getByRole("dialog")
+    expect(dialog.getAttribute("aria-modal")).toBe("true")
     expect(within(dialog).getByRole("button", { name: "Paid" })).toBeDefined()
 
     fireEvent.click(within(dialog).getByRole("button", { name: /إغلاق/ }))
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("closes the mobile drawer on Escape", () => {
+    render(
+      <AdvancedSearchBar
+        onSearch={vi.fn()}
+        storageKey={STORAGE_KEY}
+        quickFilters={QUICK_FILTERS}
+        forceMobileLayout
+      />
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "الفلاتر" }))
+    expect(screen.getByRole("dialog")).toBeTruthy()
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" })
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 })

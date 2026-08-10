@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -177,21 +178,8 @@ export function AdvancedSearchBar({
     return () => clearTimeout(timer);
   }, [query, activeFilters, debounceMs, addToHistory]);
 
-  // Drawer keyboard handling and scroll lock. Always called; only takes
-  // effect when the drawer is open in the mobile layout.
-  useEffect(() => {
-    if (!useMobileLayout || !drawerOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDrawerOpen(false);
-    };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [useMobileLayout, drawerOpen]);
+  // Drawer keyboard handling is delegated to the Base UI Dialog primitive
+  // (ESC-to-close, focus trap, scroll lock — issue #275).
 
   const handleApplyFilters = useCallback(
     (next: Record<string, unknown>) => {
@@ -330,15 +318,12 @@ export function AdvancedSearchBar({
   ) : null;
 
   const saveDialogRef = useRef<HTMLDivElement>(null);
-  const drawerRef = useRef<HTMLDivElement>(null);
   useFocusTrap(saveDialogRef, showSaveDialog);
-  useFocusTrap(drawerRef, drawerOpen);
 
   const saveDialog = showSaveDialog ? (
     <div
       ref={saveDialogRef}
       role="dialog"
-      aria-modal="true"
       aria-label={t("search.saveCurrent")}
       className="flex gap-2 rounded-lg border border-border/60 bg-surface p-3"
     >
@@ -457,29 +442,32 @@ export function AdvancedSearchBar({
             </span>
           ) : null}
         </Button>
-        {drawerOpen ? (
-          <div
-            ref={drawerRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("search.openFilters")}
-            className="fixed inset-0 z-50 flex flex-col bg-background/95 p-4"
-          >
-            <div className="ml-auto">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setDrawerOpen(false)}
-                aria-label={t("search.closeFilters")}
-                autoFocus
-              >
-                {t("search.closeFilters")} ✕
-              </Button>
-            </div>
-            <div className="mt-4 flex-1 overflow-auto">{body}</div>
-          </div>
-        ) : null}
+        <DialogPrimitive.Root
+          open={drawerOpen}
+          onOpenChange={(open) => !open && setDrawerOpen(false)}
+        >
+          <DialogPrimitive.Portal>
+            <DialogPrimitive.Popup
+              aria-modal="true"
+              aria-label={t("search.openFilters")}
+              className="fixed inset-0 z-50 flex flex-col bg-background/95 p-4 outline-none"
+            >
+              <div className="ms-auto">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDrawerOpen(false)}
+                  aria-label={t("search.closeFilters")}
+                  autoFocus
+                >
+                  {t("search.closeFilters")} ✕
+                </Button>
+              </div>
+              <div className="mt-4 flex-1 overflow-auto">{body}</div>
+            </DialogPrimitive.Popup>
+          </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
       </div>
     );
   }

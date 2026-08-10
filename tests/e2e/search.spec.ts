@@ -27,9 +27,10 @@ test("Ctrl+K search finds a created warehouse after the debounce and opens it", 
   // fetch must settle before the result row appears.
   await page.getByPlaceholder("بحث...").fill(warehouseName)
 
-  // Scope to the dialog overlay so the underlying list row can't satisfy the
-  // assertion — the fuzzy result itself must render.
-  const dialog = page.locator(".fixed.inset-0")
+  // Scope to the dialog (Base UI role="dialog" — issue #275) so the
+  // underlying list row can't satisfy the assertion — the fuzzy result
+  // itself must render.
+  const dialog = page.getByRole("dialog")
   await expect(dialog.getByText(warehouseName).first()).toBeVisible({ timeout: 10_000 })
 
   // Enter activates the highlighted result and navigates to the warehouse
@@ -48,12 +49,12 @@ test("clearing the search query restores the page categories immediately", async
 
   // Page categories are shown for an empty query — the "الصفحات" label only
   // exists inside the search dialog.
-  await expect(page.locator(".fixed.inset-0").getByText("الصفحات").first()).toBeVisible()
+  await expect(page.getByRole("dialog").getByText("الصفحات").first()).toBeVisible()
 
   // Typing and clearing must not leave stale results: categories come back.
   await page.getByPlaceholder("بحث...").fill("مستودع")
   await page.getByPlaceholder("بحث...").fill("")
-  await expect(page.locator(".fixed.inset-0").getByText("الصفحات").first()).toBeVisible()
+  await expect(page.getByRole("dialog").getByText("الصفحات").first()).toBeVisible()
 
   // Escape closes the dialog.
   await page.keyboard.press("Escape")
