@@ -38,3 +38,14 @@ claim in the new doc comment verifies against the repo:
 - Test isolation solid (fresh mkdtemp DB per test; teardown closes +
   removes).
 - All 3 e2e tests pass (vitest run → 3/3).
+
+---
+
+## Post-evidence delta (evidence renamed a11974a → 7157053)
+
+The evidence file was renamed from `a11974a...` to the final head SHA
+`7157053...` because commit 7157053 (qualify the
+`database-key-manager.test.ts` path in the module doc comment — finding #4
+above) touched the reviewable test file after the audit ran. The audit
+already records finding #4 as fixed; no re-audit was needed (test-only
+comment change, re-verified by code-review's Standards axis).
