@@ -441,7 +441,7 @@ describe("SqliteCompanyRepository employee search (issue #183)", () => {
        VALUES (?, ?, ?, NULL, 0, ?, ?)`,
     ).run("role-manager", "manager", "Manager", now, now);
     repo.createEmployee({
-      firstName: "Manager",
+      firstName: "Boss",
       lastName: "Person",
       phone: "0777000001",
       roleId: "role-manager",
@@ -449,14 +449,16 @@ describe("SqliteCompanyRepository employee search (issue #183)", () => {
     });
 
     const byRoleLabel = repo.listEmployees({ search: "Manager" });
-    expect(byRoleLabel.map((e) => e.firstName)).toEqual(["Manager"]);
+    expect(byRoleLabel.map((e) => e.firstName)).toEqual(["Boss"]);
 
     const paged = repo.listEmployeesPaged({
       filters: { search: "manager" },
       limit: 50,
     });
-    // Case-insensitive role label: only the Manager-role employee matches.
-    expect(paged.items.map((e) => e.firstName)).toEqual(["Manager"]);
+    // Case-insensitive role label: only the Manager-role employee matches
+    // ("Boss"/"Person" do NOT contain "Manager", so the role-name EXISTS
+    // clause is what discriminates here).
+    expect(paged.items.map((e) => e.firstName)).toEqual(["Boss"]);
     expect(paged.total).toBe(1);
   });
 
