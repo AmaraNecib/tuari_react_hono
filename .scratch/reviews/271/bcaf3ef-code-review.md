@@ -1,6 +1,6 @@
 # Code Review — issue #271 (i18n raw keys + ar.ts drift + CI gate)
 
-- Head SHA: `37304f8`
+- Head SHA: `bcaf3ef` (final; test-only delta after `37304f8`)
 - Base: `origin/develop` (merge-base `03ec349`)
 - Diff: 48 files, +1676 / -425
 - Two-axis review (Standards + Spec), run as parallel `reviewer` sub-agents
