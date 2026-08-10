@@ -165,6 +165,12 @@ describe("rpc-error-handling", () => {
       expect(buildErrorMessage(undefined, "Fallback")).toBe("Fallback")
     })
 
+    it("should use the fallback for a generic validation error with no issues", () => {
+      // #278: the generic "Input validation failed" string must never reach the
+      // user — when no per-field issue is attached, the fallback wins.
+      expect(buildErrorMessage(new Error("Input validation failed"), "Fallback")).toBe("Fallback")
+    })
+
     it("should prioritize RPC message over error.message", () => {
       const error = {
         message: "Error message",

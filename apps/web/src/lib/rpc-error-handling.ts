@@ -39,8 +39,17 @@ export function extractRpcIssueMessage(error: unknown): string | null {
 }
 
 /**
- * buildErrorMessage(error component.
+ * Builds a user-facing error message, preferring an extracted RPC issue and
+ * suppressing the generic "Input validation failed" string so the fallback
+ * wins when no per-field detail is available (#278).
  */
 export function buildErrorMessage(error: unknown, fallbackMessage: string): string {
-  return extractRpcIssueMessage(error) ?? (error instanceof Error && error.message.trim().length > 0 ? error.message : fallbackMessage)
+  const extracted = extractRpcIssueMessage(error)
+  if (extracted !== null) {
+    return extracted
+  }
+  if (error instanceof Error && error.message.trim().length > 0 && error.message !== "Input validation failed") {
+    return error.message
+  }
+  return fallbackMessage
 }
