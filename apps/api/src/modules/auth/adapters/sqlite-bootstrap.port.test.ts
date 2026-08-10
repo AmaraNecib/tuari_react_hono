@@ -6,6 +6,7 @@ import Database from "better-sqlite3"
 
 import { schemaStatements } from "../../../infrastructure/database/schema-definitions"
 import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzle"
+import { createFifoLock } from "../../../infrastructure/database/fifo-lock"
 import { SqliteBootstrapPort } from "./sqlite-bootstrap.port"
 
 type UserRow = {
@@ -34,7 +35,7 @@ function createTestEnv() {
     rawDb.exec(stmt)
   }
   const db = createDrizzleFromSqlite(rawDb)
-  const port = new SqliteBootstrapPort(db, rawDb)
+  const port = new SqliteBootstrapPort(db, rawDb, createFifoLock())
   return { rawDb, port }
 }
 
@@ -185,7 +186,7 @@ describe("SqliteBootstrapPort", () => {
     const otherRaw = new Database(":memory:")
     const db = createDrizzleFromSqlite(env.rawDb)
 
-    expect(() => new SqliteBootstrapPort(db, otherRaw)).toThrow(/share one connection/)
+    expect(() => new SqliteBootstrapPort(db, otherRaw, createFifoLock())).toThrow(/share one connection/)
 
     otherRaw.close()
   })
@@ -218,8 +219,8 @@ describe("SqliteBootstrapPort", () => {
       for (const stmt of schemaStatements) {
         rawA.exec(stmt)
       }
-      const portA = new SqliteBootstrapPort(createDrizzleFromSqlite(rawA), rawA)
-      const portB = new SqliteBootstrapPort(createDrizzleFromSqlite(rawB), rawB)
+      const portA = new SqliteBootstrapPort(createDrizzleFromSqlite(rawA), rawA, createFifoLock())
+      const portB = new SqliteBootstrapPort(createDrizzleFromSqlite(rawB), rawB, createFifoLock())
 
       rawA.exec("BEGIN IMMEDIATE")
       await expect(portB.createFirstUser(FIRST_USER_INPUT)).rejects.toThrow(/database is locked/i)

@@ -308,4 +308,137 @@ describe("SqliteCompanyRepository.withTransaction", () => {
 
     expect(repo.listEmployees()).toHaveLength(0);
   });
+
+  it("leaves the connection usable after a rollback", () => {
+    // A failed transaction must not leave the connection mid-transaction.
+    expect(() => {
+      repo.withTransaction(() => {
+        repo.createEmployee({
+          firstName: "Doomed",
+          lastName: "Rollback",
+          phone: "0555987654",
+          roleId: "role-worker",
+          status: "ACTIVE",
+        });
+        throw new Error("boom");
+      });
+    }).toThrow("boom");
+
+    expect(repo.listEmployees()).toHaveLength(0);
+
+    // The next transaction runs and commits durably — the rollback released
+    // the connection instead of leaving it stuck inside the failed flow.
+    const employee = repo.withTransaction(() =>
+      repo.createEmployee({
+        firstName: "After",
+        lastName: "Rollback",
+        phone: "0666987654",
+        roleId: "role-worker",
+        status: "ACTIVE",
+      }),
+    );
+    expect(repo.getEmployeeById(employee.id)?.firstName).toBe("After");
+  });
+
+  it("rolls back and propagates non-Error throws unchanged", () => {
+    let thrown: unknown;
+    try {
+      repo.withTransaction(() => {
+        repo.createEmployee({
+          firstName: "String",
+          lastName: "Throw",
+          phone: "0777987654",
+          roleId: "role-worker",
+          status: "ACTIVE",
+        });
+        throw "boom";
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    // Pin identity: better-sqlite3 rethrows the thrown value as-is.
+    expect(thrown).toBe("boom");
+    expect(repo.listEmployees()).toHaveLength(0);
+  });
+
+  it("propagates the callback's return value", () => {
+    expect(repo.withTransaction(() => 42)).toBe(42);
+  });
+
+  it("commits a no-op transaction and leaves the connection usable", () => {
+    expect(() => repo.withTransaction(() => {})).not.toThrow();
+    expect(repo.withTransaction(() => 1)).toBe(1);
+  });
+
+  it("nested withTransaction: an inner commit is undone by the outer rollback", () => {
+    expect(() => {
+      repo.withTransaction(() => {
+        // createEmployee wraps its own raw.transaction — inside the outer
+        // transaction it becomes a savepoint. Its commit must not survive the
+        // outer rollback.
+        repo.withTransaction(() =>
+          repo.createEmployee({
+            firstName: "Inner",
+            lastName: "Savepoint",
+            phone: "0555123477",
+            roleId: "role-worker",
+            status: "ACTIVE",
+          }),
+        );
+        throw new Error("outer boom");
+      });
+    }).toThrow("outer boom");
+
+    expect(repo.listEmployees()).toHaveLength(0);
+  });
+
+  it("rolls back on a DB-originated error and leaves the connection usable", () => {
+    repo.createEmployee({
+      firstName: "Taken",
+      lastName: "Phone",
+      phone: "0555123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+
+    // The UNIQUE violation surfaces from inside the nested savepoint stack.
+    expect(() => {
+      repo.withTransaction(() =>
+        repo.createEmployee({
+          firstName: "Clash",
+          lastName: "Phone",
+          phone: "0555123456",
+          roleId: "role-worker",
+          status: "ACTIVE",
+        }),
+      );
+    }).toThrow(/UNIQUE/);
+
+    expect(repo.listEmployees()).toHaveLength(1);
+    // The connection is usable after the constraint-driven rollback.
+    expect(repo.withTransaction(() => 1)).toBe(1);
+  });
+
+  it("joins an externally-opened raw transaction via savepoint", () => {
+    db.prepare("BEGIN").run();
+
+    // better-sqlite3's transaction wrapper joins an open transaction with a
+    // savepoint instead of failing — writes land inside the open transaction.
+    const employee = repo.withTransaction(() =>
+      repo.createEmployee({
+        firstName: "Joiner",
+        lastName: "OpenTx",
+        phone: "0555123466",
+        roleId: "role-worker",
+        status: "ACTIVE",
+      }),
+    );
+    expect(repo.getEmployeeById(employee.id)?.firstName).toBe("Joiner");
+
+    // The outer raw transaction owns COMMIT/ROLLBACK: rolling it back undoes
+    // the join's writes too.
+    db.prepare("ROLLBACK").run();
+    expect(repo.getEmployeeById(employee.id)).toBeNull();
+  });
 });

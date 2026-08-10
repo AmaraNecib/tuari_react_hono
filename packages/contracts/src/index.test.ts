@@ -68,6 +68,118 @@ describe("contracts", () => {
     ).toThrowError();
   });
 
+  // #230: blank-looking passwords shared by the sign-in and bootstrap matrices
+  // below (both schemas reuse the same passwordSchema, so the classes are
+  // identical by construction — a shared list keeps them that way).
+  const blankPasswords = [
+    { label: "spaces", password: "        " },
+    { label: "tabs", password: "\t\t\t\t\t\t\t\t" },
+    { label: "newlines", password: "\n\n\n\n\n\n\n\n" },
+    { label: "NBSP", password: "\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0" },
+    { label: "zero-width format chars", password: "\u200B\u200B\u200B\u200B\u200B\u200B\u200B\u200B" },
+    { label: "control chars", password: "\u0001\u0001\u0001\u0001\u0001\u0001\u0001\u0001" },
+    { label: "variation selectors", password: "\uFE0F\uFE0F\uFE0F\uFE0F\uFE0F\uFE0F\uFE0F\uFE0F" },
+    { label: "combining marks", password: "\u0308\u0308\u0308\u0308\u0308\u0308\u0308\u0308" },
+    { label: "mixed invisible chars", password: " \t\u00A0\u200B\n\r\uFEFF\u0002" },
+  ] as const;
+
+  it.each(blankPasswords)("rejects a $label sign-in password", ({ password }) => {
+    expect(() =>
+      phonePasswordSignInSchema.parse({
+        phone: "0612345678",
+        password,
+      }),
+    ).toThrow();
+  });
+
+  // Internal spaces are legitimate password characters (NIST 800-63B) — only
+  // all-invisible values are rejected, never a space inside a real password.
+  it("accepts a password with internal spaces", () => {
+    expect(
+      phonePasswordSignInSchema.parse({
+        phone: "0612345678",
+        password: "pass word 123",
+      }).password,
+    ).toBe("pass word 123");
+  });
+
+  // #230 must NOT normalize: a padded-but-visible password is accepted and
+  // round-trips untrimmed in both schemas — the stored hash must be computed
+  // over exactly what the user typed, or existing hashes would break.
+  it("accepts a padded password untrimmed in both schemas", () => {
+    const padded = " password123 ";
+    expect(
+      phonePasswordSignInSchema.parse({ phone: "0612345678", password: padded }).password,
+    ).toBe(padded);
+    expect(
+      authBootstrapInputSchema.parse({
+        name: "المدير الأول",
+        phone: "0612345678",
+        password: padded,
+      }).password,
+    ).toBe(padded);
+  });
+
+  // The visible-character rule must defer to .min(8) for ALL too-short values
+  // (not just empty): a short+blank password (e.g. 6 spaces) yields a single
+  // "too short" issue instead of doubled too_small + custom issues.
+  it("reports only the too-short issue for a short blank sign-in password", () => {
+    const result = phonePasswordSignInSchema.safeParse({
+      phone: "0612345678",
+      password: "      ",
+    });
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error("unreachable");
+    const passwordIssues = result.error.issues.filter((issue) => issue.path[0] === "password");
+    expect(passwordIssues).toHaveLength(1);
+    expect(passwordIssues[0]?.code).toBe("too_small");
+  });
+
+  // Long-side analog of the length guard: an over-long blank password yields
+  // a single too_big issue, not doubled too_big + custom issues.
+  it("reports only the too-long issue for an over-long blank sign-in password", () => {
+    const result = phonePasswordSignInSchema.safeParse({
+      phone: "0612345678",
+      password: " ".repeat(129),
+    });
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error("unreachable");
+    const passwordIssues = result.error.issues.filter((issue) => issue.path[0] === "password");
+    expect(passwordIssues).toHaveLength(1);
+    expect(passwordIssues[0]?.code).toBe("too_big");
+  });
+
+  // The Mn exclusion must only reject ALL-invisible strings — combining marks
+  // alongside visible base characters are legitimate password characters, and
+  // the app is Arabic-first so a tightening to ASCII-only must not pass CI.
+  it("accepts passwords with combining marks or Arabic alongside visible bases", () => {
+    const diacritics = "a\u0301b\u0301c\u0301d\u0301";
+    expect(
+      phonePasswordSignInSchema.parse({ phone: "0612345678", password: diacritics }).password,
+    ).toBe(diacritics);
+    expect(
+      phonePasswordSignInSchema.parse({
+        phone: "0612345678",
+        password: "كلمةالمرور123",
+      }).password,
+    ).toBe("كلمةالمرور123");
+  });
+
+  // Pin the max-length acceptance boundary of the shared schema (128).
+  it("accepts the max-length password in both schemas", () => {
+    const long = "x".repeat(128);
+    expect(
+      phonePasswordSignInSchema.parse({ phone: "0612345678", password: long }).password,
+    ).toBe(long);
+    expect(
+      authBootstrapInputSchema.parse({
+        name: "المدير الأول",
+        phone: "0612345678",
+        password: long,
+      }).password,
+    ).toBe(long);
+  });
+
   it("exposes auth setup status with optional bootstrap secret gating", () => {
     expect(
       authSetupStatusSchema.parse({
@@ -97,6 +209,29 @@ describe("contracts", () => {
         password: "password123",
       }),
     ).toThrow()
+  })
+
+  // #230: same blank-password rule as sign-in — bootstrap must not create the
+  // first admin with a whitespace-only credential. Full shared class list (the
+  // schema is the same passwordSchema, so the matrices must not drift).
+  it.each(blankPasswords)("rejects a $label bootstrap password", ({ password }) => {
+    expect(() =>
+      authBootstrapInputSchema.parse({
+        name: "المدير الأول",
+        phone: "0612345678",
+        password,
+      }),
+    ).toThrow()
+  })
+
+  it("accepts a bootstrap password with internal spaces", () => {
+    expect(
+      authBootstrapInputSchema.parse({
+        name: "المدير الأول",
+        phone: "0612345678",
+        password: "pass word 123",
+      }).password,
+    ).toBe("pass word 123")
   })
 
   it("accepts a session user with phone identity and app version", () => {
