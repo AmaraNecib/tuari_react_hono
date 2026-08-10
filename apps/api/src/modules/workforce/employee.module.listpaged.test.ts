@@ -125,7 +125,8 @@ describe("EmployeeModule.listPaged", () => {
     // Employees First0/Last0 … First4/Last4, phones 0555000000 … 0555000004.
     await seedEmployees(5);
 
-    // Search on last name: matches every record, but only First2/First1 on the page.
+    // Search on last name: matches every record, but the page shows the two
+    // newest (First4/First3) with the whole filtered set in `total`.
     const byLastName = await employeeModule.listPaged({
       limit: 2,
       filters: { search: "Last" },
@@ -148,20 +149,86 @@ describe("EmployeeModule.listPaged", () => {
     });
     expect(byPhone.items.map((e) => e.firstName)).toEqual(["First3"]);
     expect(byPhone.total).toBe(1);
+
+    // Search on the full first+last name (spans both columns).
+    const byFullName = await employeeModule.listPaged({
+      limit: 10,
+      filters: { search: "First2 Last2" },
+    });
+    expect(byFullName.items.map((e) => e.firstName)).toEqual(["First2"]);
+    expect(byFullName.total).toBe(1);
   });
 
-  it("combines search with the status filter", async () => {
+  it("walks multiple pages under a fixed search term", async () => {
+    await seedEmployees(5);
+
+    const first = await employeeModule.listPaged({
+      limit: 2,
+      filters: { search: "Last" },
+    });
+    expect(first.items.map((e) => e.firstName)).toEqual(["First4", "First3"]);
+    expect(first.total).toBe(5);
+
+    const second = await employeeModule.listPaged({
+      limit: 2,
+      filters: { search: "Last" },
+      cursor: first.nextCursor!,
+    });
+    expect(second.items.map((e) => e.firstName)).toEqual(["First2", "First1"]);
+    // `total` stays the whole filtered set across pages.
+    expect(second.total).toBe(5);
+
+    const third = await employeeModule.listPaged({
+      limit: 2,
+      filters: { search: "Last" },
+      cursor: second.nextCursor!,
+    });
+    expect(third.items.map((e) => e.firstName)).toEqual(["First0"]);
+    expect(third.total).toBe(5);
+    expect(third.nextCursor).toBeNull();
+  });
+
+  it("combines search with the status filter (search is not ignored)", async () => {
     await seedEmployees(3);
+    // First0 is INACTIVE; First1 and First2 stay ACTIVE.
     const active = (await employeeModule.list({ status: "ACTIVE" }))[0]!;
     await employeeModule.update(active.id, { id: active.id, status: "INACTIVE" });
 
+    // "First2" matches only First2 — if the search were ignored, the status
+    // filter alone would return both ACTIVE rows and this would fail.
     const result = await employeeModule.listPaged({
       limit: 10,
-      filters: { search: "First", status: "ACTIVE" },
+      filters: { search: "First2", status: "ACTIVE" },
     });
 
-    expect(result.items.every((e) => e.status === "ACTIVE")).toBe(true);
-    expect(result.total).toBe(2);
+    expect(result.items.map((e) => e.firstName)).toEqual(["First2"]);
+    expect(result.total).toBe(1);
+  });
+
+  it("combines search with the roleId filter", async () => {
+    await seedEmployees(3);
+    // Seed the second role first (update validates the role exists), then
+    // re-point First0 at it — only First0 has that role.
+    roleRepository.seed({
+      id: "role-other",
+      key: "other",
+      name: "Other",
+      description: null,
+      isSystem: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    const first = (await employeeModule.list())[0]!;
+    await employeeModule.update(first.id, { id: first.id, roleId: "role-other" });
+
+    // "First" matches all three, but the roleId filter keeps only First0.
+    const result = await employeeModule.listPaged({
+      limit: 10,
+      filters: { search: "First", roleId: "role-other" },
+    });
+
+    expect(result.items.map((e) => e.firstName)).toEqual(["First0"]);
+    expect(result.total).toBe(1);
   });
 
   it("returns the unfiltered list for an empty or whitespace-only search", async () => {

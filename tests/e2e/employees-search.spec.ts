@@ -27,13 +27,16 @@ test("employees search filters server-side across all records", async ({ page })
   // Distinct, strictly-decreasing createdAt so the paged sort (createdAt DESC,
   // id DESC) is deterministic: filler 0 is newest, the target is oldest.
   const baseTs = Date.now()
+  // Phones must be unique per TEST ATTEMPT (Playwright retries share the same
+  // API DB), so the 5-digit salt derives from the per-call suffix. Ranges:
+  // fillers salt..salt+53, target salt+400000 — all valid `05` + 8 digits.
+  const phoneSalt = (Number.parseInt(suffix.replace(/[^0-9]/g, ""), 10) || 12345) % 400000
   const fillers = Array.from({ length: 54 }, (_, i) => {
     const name = `موظف-${i}-${suffix}`
     return {
       firstName: name,
       lastName: "تجريبي",
-      // 05 + 8 digits — must satisfy the employee phone schema.
-      phone: `0555${String(100000 + i)}`,
+      phone: `0555${String(phoneSalt + i).padStart(6, "0")}`,
       createdAt: new Date(baseTs - i * 1000).toISOString(),
     }
   })
@@ -44,7 +47,7 @@ test("employees search filters server-side across all records", async ({ page })
     {
       firstName: targetName,
       lastName: "بن عيسى",
-      phone: "0555999900",
+      phone: `0555${String(phoneSalt + 400000).padStart(6, "0")}`,
       createdAt: new Date(baseTs - 60 * 60 * 1000).toISOString(),
     },
   ])
@@ -76,7 +79,7 @@ test("employees search filters server-side across all records", async ({ page })
   ).toHaveCount(0)
 
   // Search by phone digits also matches.
-  await searchInput.fill("0555999900")
+  await searchInput.fill(`0555${String(phoneSalt + 400000).padStart(6, "0")}`)
   await expect(page.getByText(targetName).first()).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText(farFiller)).toHaveCount(0)
 

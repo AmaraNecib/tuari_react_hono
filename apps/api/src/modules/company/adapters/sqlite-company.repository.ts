@@ -114,14 +114,16 @@ function escapeLikePattern(value: string): string {
 
 /**
  * Build the employee search WHERE clause: case-insensitive (ASCII) substring
- * match against first name, last name, or phone. Uses `LIKE ... ESCAPE` so
- * wildcard characters in the term are matched literally.
+ * match against first name, last name, phone, or the concatenated
+ * first+last name (so a full-name term like "أحمد بلخير" matches, mirroring
+ * the in-memory adapter's `firstName lastName phone` haystack). Uses
+ * `LIKE ... ESCAPE` so wildcard characters in the term are matched literally.
  */
 function buildEmployeeSearchWhere(search: string): SQL {
   const pattern = `%${escapeLikePattern(search)}%`;
   // Source note: `\\` inside the template literal emits a single `\` in the
   // SQL text, i.e. `ESCAPE '\'` — SQLite's LIKE escape character.
-  return sql`(${schema.employee.firstName} LIKE ${pattern} ESCAPE '\\' OR ${schema.employee.lastName} LIKE ${pattern} ESCAPE '\\' OR ${schema.employee.phone} LIKE ${pattern} ESCAPE '\\')`;
+  return sql`(${schema.employee.firstName} LIKE ${pattern} ESCAPE '\\' OR ${schema.employee.lastName} LIKE ${pattern} ESCAPE '\\' OR ${schema.employee.phone} LIKE ${pattern} ESCAPE '\\' OR (${schema.employee.firstName} || ' ' || ${schema.employee.lastName}) LIKE ${pattern} ESCAPE '\\')`;
 }
 
 /** Build a Drizzle WHERE clause from an array of conditions. */

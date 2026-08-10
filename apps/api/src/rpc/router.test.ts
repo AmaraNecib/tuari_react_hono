@@ -367,6 +367,14 @@ describe("RPC router", () => {
     await expect(
       client.employeesListPaged({ limit: 10, search: "no-such-person" }),
     ).resolves.toMatchObject({ items: [], total: 0, hasMore: false });
+    // The search term is bounded by the contract (max 120 chars): a 120-char
+    // term is accepted (and matches nothing), a 121-char term is rejected.
+    await expect(
+      client.employeesListPaged({ limit: 10, search: "x".repeat(120) }),
+    ).resolves.toMatchObject({ items: [], total: 0, hasMore: false });
+    await expect(
+      client.employeesListPaged({ limit: 10, search: "x".repeat(121) }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(client.projectsList()).resolves.toMatchObject({
       items: expect.arrayContaining([
         expect.objectContaining({ id: project.item.id, managerId: manager.item.id }),

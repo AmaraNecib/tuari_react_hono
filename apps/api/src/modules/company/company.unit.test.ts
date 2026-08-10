@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  InMemoryStore,
+  InMemoryWorkforceRepository,
+} from "./adapters";
 import { CompanyError, toFailureResult } from "./company.errors";
 import {
   assertDebtEntryDateNotBackdated,
@@ -683,5 +687,65 @@ describe("createCompanyRepository (composition root)", () => {
     } finally {
       harness.close();
     }
+  });
+});
+
+describe("InMemoryWorkforceRepository employee search (issue #183)", () => {
+  const seed = (repo: InMemoryWorkforceRepository) => {
+    repo.createEmployee({
+      firstName: "Ahmed",
+      lastName: "Ben Ali",
+      phone: "0555123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    repo.createEmployee({
+      firstName: "Sara",
+      lastName: "Bouzid",
+      phone: "0666123456",
+      roleId: "role-worker",
+      status: "INACTIVE",
+    });
+    repo.createEmployee({
+      firstName: "Yacine",
+      lastName: "Merbah",
+      phone: "0777123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+  };
+
+  it("filters listEmployees by name/phone case-insensitively", () => {
+    const repo = new InMemoryWorkforceRepository(new InMemoryStore());
+    seed(repo);
+
+    expect(repo.listEmployees({ search: "ben" }).map((e) => e.firstName)).toEqual(["Ahmed"]);
+    expect(repo.listEmployees({ search: "BEN ALI" }).map((e) => e.firstName)).toEqual(["Ahmed"]);
+    expect(repo.listEmployees({ search: "0777123456" }).map((e) => e.firstName)).toEqual(["Yacine"]);
+    // Full first+last name (spans the concatenated haystack).
+    expect(repo.listEmployees({ search: "sara bouzid" }).map((e) => e.firstName)).toEqual(["Sara"]);
+  });
+
+  it("applies search before pagination in listEmployeesPaged", () => {
+    const repo = new InMemoryWorkforceRepository(new InMemoryStore());
+    seed(repo);
+
+    const result = repo.listEmployeesPaged({
+      filters: { search: "a" },
+      limit: 1,
+    });
+
+    // "a" matches Ahmed and Sara and Yacine — total is the whole filtered set.
+    expect(result.items).toHaveLength(1);
+    expect(result.total).toBe(3);
+  });
+
+  it("returns everything for an empty or whitespace-only search", () => {
+    const repo = new InMemoryWorkforceRepository(new InMemoryStore());
+    seed(repo);
+
+    expect(repo.listEmployees({ search: "" })).toHaveLength(3);
+    expect(repo.listEmployees({ search: "   " })).toHaveLength(3);
+    expect(repo.listEmployees()).toHaveLength(3);
   });
 });

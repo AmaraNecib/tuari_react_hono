@@ -376,14 +376,26 @@ describe("SqliteCompanyRepository employee search (issue #183)", () => {
     expect(byFirstName.map((e) => e.firstName)).toEqual(["Yacine"]);
   });
 
-  it("treats LIKE wildcard characters in the term literally", () => {
-    // "%" is not a wildcard here: only "Merbah" contains a literal "%"… none do,
-    // so the search must return nothing instead of matching every row.
-    const wildcard = repo.listEmployees({ search: "%" });
-    expect(wildcard).toEqual([]);
+  it("matches a term spanning the first and last name (full-name search)", () => {
+    const result = repo.listEmployees({ search: "Ahmed ben" });
+    expect(result.map((e) => e.firstName)).toEqual(["Ahmed"]);
 
-    const underscore = repo.listEmployees({ search: "_" });
-    expect(underscore).toEqual([]);
+    const paged = repo.listEmployeesPaged({
+      filters: { search: "sara bouzid" },
+      limit: 50,
+    });
+    expect(paged.items.map((e) => e.firstName)).toEqual(["Sara"]);
+    expect(paged.total).toBe(1);
+  });
+
+  it("treats LIKE wildcard characters in the term literally", () => {
+    // No seeded name or phone contains a literal "%" or "_", so a search
+    // for those characters must return nothing instead of matching every row
+    // (i.e. they are escaped, not interpreted as LIKE wildcards).
+    expect(repo.listEmployees({ search: "%" })).toEqual([]);
+    expect(repo.listEmployees({ search: "_" })).toEqual([]);
+    // The escape char itself is also matched literally.
+    expect(repo.listEmployees({ search: "\\" })).toEqual([]);
   });
 
   it("combines search with the status filter", () => {
@@ -395,6 +407,31 @@ describe("SqliteCompanyRepository employee search (issue #183)", () => {
     // "a" matches Ahmed (Ben Ali) and Yacine (Merbah) — not Sara (INACTIVE).
     expect(result.items.map((e) => e.firstName).sort()).toEqual(["Ahmed", "Yacine"]);
     expect(result.total).toBe(2);
+  });
+
+  it("combines search with the roleId filter", () => {
+    const now = "2026-01-01T00:00:00.000Z";
+    db.prepare(
+      `INSERT INTO "role" (id, key, name, description, is_system, created_at, updated_at)
+       VALUES (?, ?, ?, NULL, 0, ?, ?)`,
+    ).run("role-other", "other", "Other", now, now);
+    repo.createEmployee({
+      firstName: "Other",
+      lastName: "Person",
+      phone: "0888000001",
+      roleId: "role-other",
+      status: "ACTIVE",
+    });
+
+    const result = repo.listEmployeesPaged({
+      filters: { search: "a", roleId: "role-worker" },
+      limit: 50,
+    });
+
+    // "a" matches Ahmed, Sara, Yacine — all role-worker; the role-other row
+    // (also matches "a") must be excluded by the roleId filter.
+    expect(result.items.map((e) => e.firstName).sort()).toEqual(["Ahmed", "Sara", "Yacine"]);
+    expect(result.total).toBe(3);
   });
 
   it("returns the unfiltered list for an empty search", () => {
