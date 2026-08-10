@@ -34,11 +34,6 @@ Two behaviors of `SqliteCompanyRepository.withTransaction`
    transaction and propagates the thrown value unchanged (better-sqlite3
    rethrows whatever the callback threw).
 
-## Public API
-
-None — **test-only** change to `apps/api/src/modules/company/sqlite-company.repository.test.ts`.
-Zero production-code changes, zero dependency changes.
-
 ## Planned tests (added to `SqliteCompanyRepository.withTransaction` describe)
 
 1. `leaves the connection usable after a rollback` — run a failing
@@ -49,6 +44,34 @@ Zero production-code changes, zero dependency changes.
 2. `rolls back and propagates non-Error throws unchanged` — callback throws a
    string; capture-and-`toBe` identity pin (same style as the existing
    "rethrows the original error instance" test) + assert zero employees remain.
+
+### Added from the test-audit (review round)
+
+The 3-agent test-audit flagged additional seam-level contracts (all rated
+🟠/🟡, none would break today) that were added to round out the adapter seam:
+
+3. `propagates the callback's return value` — `withTransaction(() => 42)`
+   returns `42` (commit path passes values through).
+4. `commits a no-op transaction and leaves the connection usable` — empty
+   callback commits cleanly; a follow-up transaction still works.
+5. `nested withTransaction: an inner commit is undone by the outer rollback` —
+   pins better-sqlite3 savepoint composition: `createEmployee` wraps its own
+   `raw.transaction`, so inside an outer `withTransaction` it is a savepoint;
+   the outer ROLLBACK must undo the inner commit.
+6. `rolls back on a DB-originated error and leaves the connection usable` —
+   an UNIQUE violation (duplicate `employee.phone`) surfaces from inside the
+   nested savepoint stack; partial write rolled back, connection usable.
+7. `joins an externally-opened raw transaction via savepoint` — pins the
+   actual better-sqlite3 contract (empirically verified, correcting the edge
+   hunter's "fails loudly" hypothesis): a raw `BEGIN` is joined with a
+   savepoint, writes land inside the open transaction, and the caller's
+   `ROLLBACK` undoes them. Consistent with the `raw.inTransaction` join
+   pattern documented in `.agents/wisdom/architecture.md` for other adapters.
+
+## Public API
+
+None — **test-only** change to `apps/api/src/modules/company/sqlite-company.repository.test.ts`.
+Zero production-code changes, zero dependency changes.
 
 ## Implementation risks
 
