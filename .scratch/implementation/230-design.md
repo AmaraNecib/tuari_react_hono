@@ -28,12 +28,13 @@ const passwordSchema = z
   // one visible character: anything that is not a control (Cc), format (Cf,
   // ZWSP/LRM/BOM), nonspacing mark (Mn: combining accents, variation
   // selectors), or separator (Z) codepoint. Internal spaces remain allowed
-  // (NIST 800-63B). The length guard defers to .min(8) for EVERY too-short
-  // value so a short+blank password (e.g. 6 spaces) yields a single "too
-  // short" issue, not doubled too_small + custom issues (same pattern as the
-  // name's refine).
+  // (NIST 800-63B). The length guard defers to .min(8)/.max(128) for EVERY
+  // out-of-bounds value so a short+blank (6 spaces) or over-long+blank (129
+  // spaces) password yields a single length issue, not doubled
+  // too_small/too_big + custom issues (same pattern as the name's refine).
   .refine(
-    (value) => value.length < 8 || /[^\p{Cc}\p{Cf}\p{Mn}\p{Z}]/u.test(value),
+    (value) =>
+      value.length < 8 || value.length > 128 || /[^\p{Cc}\p{Cf}\p{Mn}\p{Z}]/u.test(value),
     {
       message: "password must contain at least one visible character",
     },

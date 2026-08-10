@@ -37,6 +37,14 @@ describe("mapCredentialErrors", () => {
     )
   })
 
+  // The schema's length guard defers to .min(8) for short+blank values, so a
+  // 6-space password shows the length message, not the whitespace message.
+  it("shows the short message for a short blank password", () => {
+    expect(mapCredentialErrors(copy, VALID_PHONE, "      ").password).toBe(
+      "auth.validation.passwordShort",
+    )
+  })
+
   it("still shows the required message for an empty password", () => {
     expect(mapCredentialErrors(copy, VALID_PHONE, "").password).toBe("auth.validation.password")
   })

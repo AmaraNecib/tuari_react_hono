@@ -13,9 +13,10 @@ import { algerianPhoneSchema, entityIdSchema } from "./core";
  * control (Cc), format (Cf: ZWSP/LRM/BOM), nonspacing mark (Mn: combining
  * accents, variation selectors), or separator (Z) codepoint. Internal spaces
  * remain allowed (NIST 800-63B); only all-invisible values are rejected.
- * The length guard defers to `.min(8)` for every too-short value so a
- * short+blank password (e.g. 6 spaces) yields a single "too short" issue,
- * not doubled too_small + custom issues (same pattern as the bootstrap name
+ * The length guard defers to `.min(8)`/`.max(128)` for every out-of-bounds
+ * value so a short+blank (e.g. 6 spaces) or over-long+blank (e.g. 129
+ * spaces) password yields a single length issue, not doubled
+ * too_small/too_big + custom issues (same pattern as the bootstrap name
  * refine).
  */
 const passwordSchema = z
@@ -23,7 +24,8 @@ const passwordSchema = z
   .min(8)
   .max(128)
   .refine(
-    (value) => value.length < 8 || /[^\p{Cc}\p{Cf}\p{Mn}\p{Z}]/u.test(value),
+    (value) =>
+      value.length < 8 || value.length > 128 || /[^\p{Cc}\p{Cf}\p{Mn}\p{Z}]/u.test(value),
     {
       message: "password must contain at least one visible character",
     },

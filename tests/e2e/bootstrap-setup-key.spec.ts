@@ -17,7 +17,7 @@ async function callBootstrap(request: APIRequestContext, setupSecret: string) {
       json: {
         name: "مدير الاختبار",
         phone: "0699999999",
-        password,
+        password: "password123",
         setupSecret,
       },
     },
