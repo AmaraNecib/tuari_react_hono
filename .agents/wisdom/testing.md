@@ -382,3 +382,42 @@ RPC, audit EVERY site that invalidates any of the N keys (reset, sign-out,
 sign-in, mutations) — not just the obvious refetch path. The E2E "zero
 individual RPCs" assertion catches over-fetching but NOT stale-cache
 under-invalidation; add a reset/sign-out flow test that asserts fresh data.
+
+## i18n drift: `t(key, {options})` is NOT a fallback — classify before scanning (🟠 Major)
+
+On #271, the first version of `scripts/check-i18n-keys.mjs` classified any 2-arg
+`t()` call as "has fallback", so `t("key", { count })` (i18next options object —
+interpolation vars, NO text default) was counted as safe. But i18next returns
+the raw key when the key is missing and the 2nd arg is an options object without
+`defaultValue` — those sites rendered raw keys (e.g. `appShell.rolesPermissionCount`,
+`common.fieldRequired`). Fix: a text fallback is ONLY a string/template literal
+2nd arg (`ts.isStringLiteral` / `ts.isTemplateLiteral`); an object 2nd arg is
+options → still a hard missing. The corrected count was 69 (matching the issue).
+
+**Always**: in i18n key scanners, treat `t(key, {…})` as missing-without-fallback.
+Also: template-literal fallbacks with `${}` interpolation are text fallbacks
+(safe), so classify `isTemplateLiteral` (any) as having a fallback.
+
+## Test mocks that return the fallback mask missing keys (🟠 Major)
+
+`vi.mock("react-i18next")` mocks like `t: (key, fallback) => fallback ?? key`
+(in update-section.test.tsx) or `if (!fallback) return key` (license-settings)
+let tests pass while production rendered raw keys — the mock "translated" via
+the inline fallback. After promoting fallbacks into the real resource and
+stripping redundant ones, these tests broke (mock now returned the key). Fix:
+mock `t` to resolve against the real resource object (`ar.translation`), so
+resource wins and fallback only applies when missing — mirroring production
+i18next. That also makes the tests validate the RESOURCE, catching drift.
+
+**Always**: when a test mocks `t`, resolve against the real resource instead of
+echoing the fallback; otherwise the test suite is blind to missing keys.
+
+## E2E port contention across parallel worktrees (🟡 Minor)
+
+`playwright.config.ts` uses fixed ports 3000/4318 with `reuseExistingServer: false`;
+parallel worktrees run `pnpm dev` servers that grab the ports (seen from
+issue-275/issue-284 worktrees), so `npx playwright test` dies with EADDRINUSE
+before starting. `netstat -ano | grep "127.0.0.1:3000 "` → `taskkill //PID <pid> //F`
+clears it, but another worktree can re-grab the port between kill and run — kill
+and run in ONE command. Also `playwright-report/index.html` is tracked: E2E runs
+modify it — `git checkout -- playwright-report/index.html` before committing.
