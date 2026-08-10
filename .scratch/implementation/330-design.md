@@ -10,7 +10,7 @@ The maintainer receives support bundles (or picks up a USB stick) and currently 
 
 ### D1 — Audience & shell: local dev tool, UI-agnostic core
 
-Only the maintainer reads bundles today. The tool runs locally — zero hosting, zero auth, no privacy surface (data never leaves the machine). The parse→render core is UI-agnostic so it can later back the #327 ingest review surface without rework.
+Only the maintainer reads bundles today. The tool runs locally — zero hosting, zero auth; the data never leaves the machine **until the report is shared**, which is why the pipeline carries an explicit redaction seam (D7) before emission. The parse→render core is UI-agnostic so it can later back the #327 ingest review surface without rework.
 
 ### D2 — Input: folder tree + zip, folder-first
 
@@ -40,9 +40,13 @@ Cut: slow-ops + lifecycle markers (may fall out as timeline filters), trend char
 - Output artifact: **diagnostics report** (report.html)
 - Error code: `PREFIX-XXXXXXXX`; numeric ID is the stable identifier
 
+### D7 — Redaction before emission (shareable report = data leaves the machine)
+
+Local processing is not a privacy surface by itself, but the report is explicitly **shareable** (attach to an issue, send to a colleague) — so the pipeline runs a **redactor between the parser and the emitter**, with the same semantics as the #326 sanitizer: drop user IDs, file paths, SQL bindings, tokens, headers, and non-essential event attributes before writing `report-data.json`/`report.html`. The input bundle is already redacted at #325 (never DB, never secrets), but error-message payloads and log attributes can still embed customer data (names, paths, machine details). `report-data.json` must never contain data that #326 promised would never leave the device.
+
 ## Seam / testing strategy
 
-Two seams, both in #330's pipeline: the **parser** (folder tree / zip → normalized event model; fixtures + tests: day-folder layout, chunk files `app.1.log`, truncated trailing line, manifest read) and the **emitter** (normalized model → report.html + sidecar; assert one-entry output, sidecar split behavior). #331's seam is the **data-shaping** layer the views consume (signature grouping, timeline filters, code lookup) — tested without a browser.
+Three seams in #330's pipeline: the **parser** (folder tree / zip → normalized event model; fixtures + tests: day-folder layout, chunk files `app.1.log`, truncated trailing line, manifest read), the **redactor** (normalized model → redacted model; fixtures with embedded paths/user IDs/SQL/headers assert they are stripped from the output model), and the **emitter** (redacted model → report.html + sidecar; assert one-entry output, sidecar split behavior, and that the emitted data contains no redaction-list tokens). #331's seam is the **data-shaping** layer the views consume (signature grouping, timeline filters, code lookup) — tested without a browser.
 
 ## Prior art / existing infrastructure
 

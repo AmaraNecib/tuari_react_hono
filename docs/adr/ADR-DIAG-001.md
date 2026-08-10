@@ -9,10 +9,11 @@ Support bundles are read with a **local CLI tool** (`tuari-viewer <zip-or-folder
 
 ### Rationale
 
-- The product is portable and local-first; the data lives on a USB stick, and no data may leave the host machine. A local tool has zero hosting, zero auth, and no privacy surface.
+- The product is portable and local-first; the data lives on a USB stick, and no data may leave the host machine. A local tool has zero hosting and zero auth.
+- **Local processing is not the same as no privacy surface**: the report is explicitly shareable (attach to an issue, send to a colleague), and sharing moves data off the machine. A **redaction boundary is therefore required before report emission** (see Consequences) — the sanitizer semantics of #326 (user IDs, SQL bindings, tokens, headers never leave) are the floor for what the report may contain.
 - At this stage the only reader of bundles is the maintainer — a hosted dashboard or a live app adds machinery nobody needs yet.
 - A zip support bundle is the logs folder tree, compressed — parsing a folder tree makes zip support nearly free.
-- A static report is **shareable and archival**: attach it to an issue, send it to a colleague, keep it as a record. A live server app cannot travel.
+- A static report is **shareable and archival** *after redaction*: attach it to an issue, send it to a colleague, keep it as a record. A live server app cannot travel.
 - React via the vite build gives the maintainer's preferred stack without a server at runtime.
 - A single product-prefix constant keeps a future product rename to one line; error codes resolve by their numeric ID regardless of prefix.
 
@@ -25,6 +26,7 @@ Support bundles are read with a **local CLI tool** (`tuari-viewer <zip-or-folder
 
 ### Consequences
 
+- **Redaction boundary (mandatory):** the viewer pipeline runs a sanitization step between the parser and the emitter — same semantics as the #326 sanitizer: drop user IDs, file paths, SQL bindings, tokens, headers, and any non-essential event attributes before writing `report-data.json`/`report.html`. The input bundle is already redacted at #325 (never DB, never secrets), but error-message payloads and log attributes can still embed customer data; the report is shareable only after this step. `report-data.json` must never contain data that #326 promised would never leave the device.
 - The viewer depends on the **#324 event schema** and the **#325 bundle shape (incl. `manifest.json`)** — those become stable, versioned contracts; the report-data sidecar must stay parseable (schema-versioned).
 - The product prefix must be centralized and treated as data, not prose.
 - The dashboard views (#331) are client-side only — no server-side aggregation; trend/cross-bundle analysis is out of scope until the ingest server (#327) exists.
