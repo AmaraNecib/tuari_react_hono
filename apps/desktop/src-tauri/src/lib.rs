@@ -1912,27 +1912,18 @@ pub fn run() {
                     .get_webview_window(SPLASHSCREEN_WINDOW_LABEL)
                     .is_some();
 
-                // Splashscreen already gone: either `app_ready` revealed
-                // the main window, or the user closed it manually — in the
-                // latter case reveal the main window now instead of leaving
-                // it hidden until the fallback delay.
-                if !splashscreen_open {
-                    if !ready {
-                        let _ = reveal_main_window(&app_handle);
-                    }
-                    return;
-                }
-
-                // `app_ready` signalled ready but the splashscreen is still
-                // open (e.g. its close failed) — force the reveal now so
-                // the watcher always terminates.
-                if ready {
-                    let _ = reveal_main_window(&app_handle);
-                    return;
-                }
-
-                if should_force_reveal_main_window(false, app_started_at.elapsed()) {
-                    let _ = reveal_main_window(&app_handle);
+                // Reveal when the frontend signalled ready, when the
+                // splashscreen was closed manually while not ready, or when
+                // the fallback delay elapsed with no signal. The ready flag
+                // is only PROVISIONAL — `app_ready` rolls it back if its own
+                // reveal fails — so it is never treated as proof of success.
+                // Only a successful reveal terminates the watcher; a failed
+                // one (e.g. main_window.show() error) keeps the recovery
+                // responsibility and retries after the poll interval.
+                let reveal_now = ready
+                    || !splashscreen_open
+                    || should_force_reveal_main_window(ready, app_started_at.elapsed());
+                if reveal_now && reveal_main_window(&app_handle).is_ok() {
                     return;
                 }
 

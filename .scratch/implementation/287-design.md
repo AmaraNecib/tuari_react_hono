@@ -75,9 +75,12 @@ Static, dependency-free, CSP-safe:
   (same default-deny ACL as the other commands — only the `main` window
   may reveal). Calls `reveal_main_window`.
 - `setup`: after spawning the API sidecar, spawn a watcher thread that
-  polls the ready flag; when ready → return; when the fallback delay
-  elapses → `reveal_main_window` unconditionally. Uses `Instant` captured
-  at setup.
+  reveals the main window when the frontend signals ready, when the
+  splashscreen was closed manually, or when the fallback delay elapses —
+  and **retains recovery until a reveal actually succeeds** (a failed
+  `main_window.show()` retries every second instead of terminating, so a
+  provisional `ready` flag can never strand a windowless app). Uses
+  `Instant` captured at setup.
 
 ### 4. Frontend readiness signal
 
