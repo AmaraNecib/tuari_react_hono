@@ -91,10 +91,10 @@ one fetched.
   into root `lint` + `test`). Static regression pins so Google fonts can't silently
   return.
 - **E2E (Playwright):** `tests/e2e/fonts.spec.ts` — boots the shell (login page,
-  no auth needed), asserts no request hits `fonts.googleapis.com` / `fonts.gstatic.com`,
-  preload link exists (`as="font"`, href ends `.woff2`), and
-  `document.fonts.check()` resolves true for `"IBM Plex Sans Arabic"` and
-  `"Inter Tight Variable"` (fonts actually registered + loaded self-hosted).
+  no auth needed), asserts no request hits `fonts.googleapis.com` / `fonts.gstatic.com`
+  and no cross-origin font fetch, preload link exists (`as="font"`, href ends `.woff2`),
+  all 7 families are registered in `document.fonts`, and the genuinely-rendered Arabic
+  body font (`IBM Plex Sans Arabic`) reaches status `loaded` from self-hosted files.
 - Run `pnpm typecheck && pnpm test:web && pnpm test:api` + `pnpm lint` +
   `pnpm --filter @tuari/web build` (vite build asserts asset emission).
 
