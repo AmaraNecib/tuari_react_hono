@@ -79,10 +79,15 @@ export async function bootstrapOrSignIn(page: Page, options?: { dismissTour?: bo
 
   await signInCore(page)
 
-  // The signed-in shell renders the sidebar with the dashboard entry.
-  await expect(page.getByRole("link", { name: "لوحة التحكم" }).first()).toBeVisible({
-    timeout: 15_000,
-  })
+  // The signed-in shell renders the sidebar with the dashboard entry. When
+  // the tour is intentionally left active (dismissTour: false) it is a real
+  // modal that marks the rest of the page aria-hidden, so the link is NOT
+  // queryable — the caller waits for the tour dialog itself instead.
+  if (dismissTour) {
+    await expect(page.getByRole("link", { name: "لوحة التحكم" }).first()).toBeVisible({
+      timeout: 15_000,
+    })
+  }
 }
 
 export function uniqueSuffix() {
