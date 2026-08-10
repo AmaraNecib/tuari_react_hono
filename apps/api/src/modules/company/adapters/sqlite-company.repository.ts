@@ -15,7 +15,7 @@
  */
 
 import crypto from "node:crypto";
-import { eq, and, desc, asc, sql, count, like, isNull } from "drizzle-orm";
+import { eq, and, desc, asc, sql, count, like, isNull, type SQL } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import {
@@ -100,7 +100,29 @@ function normalizeAudit(ctx?: MutationAuditContext) {
   };
 }
 
-type WhereCond = ReturnType<typeof eq> | ReturnType<typeof and> | ReturnType<typeof isNull>;
+type WhereCond = SQL;
+
+/**
+ * Escape SQL LIKE wildcards (`%`, `_`, and the `\` escape char itself) so a
+ * search term matches literally, mirroring the frontend's old `includes()`
+ * semantics instead of interpreting wildcards. SQLite LIKE has no default
+ * escape char — the caller must pair this with `ESCAPE '\'`.
+ */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/**
+ * Build the employee search WHERE clause: case-insensitive (ASCII) substring
+ * match against first name, last name, or phone. Uses `LIKE ... ESCAPE` so
+ * wildcard characters in the term are matched literally.
+ */
+function buildEmployeeSearchWhere(search: string): SQL {
+  const pattern = `%${escapeLikePattern(search)}%`;
+  // Source note: `\\` inside the template literal emits a single `\` in the
+  // SQL text, i.e. `ESCAPE '\'` — SQLite's LIKE escape character.
+  return sql`(${schema.employee.firstName} LIKE ${pattern} ESCAPE '\\' OR ${schema.employee.lastName} LIKE ${pattern} ESCAPE '\\' OR ${schema.employee.phone} LIKE ${pattern} ESCAPE '\\')`;
+}
 
 /** Build a Drizzle WHERE clause from an array of conditions. */
 /** Build a Drizzle WHERE clause from an array of conditions. */
@@ -278,6 +300,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const conds: WhereCond[] = [];
     if (filters?.roleId) conds.push(eq(schema.employee.roleId, filters.roleId));
     if (filters?.status) conds.push(eq(schema.employee.status, filters.status));
+    if (filters?.search?.trim()) conds.push(buildEmployeeSearchWhere(filters.search.trim()));
     const w = buildWhere(conds);
     const q = this.db.select().from(schema.employee);
     return (w ? q.where(w) : q).orderBy(asc(sql`first_name COLLATE NOCASE`), asc(sql`last_name COLLATE NOCASE`), asc(schema.employee.createdAt)).all().map(toEmployee);
@@ -359,6 +382,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const fc: WhereCond[] = [];
     if (query.filters?.roleId) fc.push(eq(schema.employee.roleId, query.filters.roleId));
     if (query.filters?.status) fc.push(eq(schema.employee.status, query.filters.status));
+    if (query.filters?.search?.trim()) fc.push(buildEmployeeSearchWhere(query.filters.search.trim()));
     const fw = buildWhere(fc);
     const total = Number((fw ? this.db.select({ count: count() }).from(schema.employee).where(fw) : this.db.select({ count: count() }).from(schema.employee)).all()[0]?.count ?? 0);
 

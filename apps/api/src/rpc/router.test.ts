@@ -348,6 +348,25 @@ describe("RPC router", () => {
       ]),
       hasMore: false,
     });
+    // Server-side search (issue #183): matches by name or phone across all
+    // records, and `total` reflects the whole filtered set.
+    await expect(
+      client.employeesListPaged({ limit: 10, search: "kaci" }),
+    ).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: worker.item.id, phone: "0612345602" })],
+      total: 1,
+      hasMore: false,
+    });
+    await expect(
+      client.employeesListPaged({ limit: 10, search: "0612345603" }),
+    ).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: warehouseManager.item.id })],
+      total: 1,
+      hasMore: false,
+    });
+    await expect(
+      client.employeesListPaged({ limit: 10, search: "no-such-person" }),
+    ).resolves.toMatchObject({ items: [], total: 0, hasMore: false });
     await expect(client.projectsList()).resolves.toMatchObject({
       items: expect.arrayContaining([
         expect.objectContaining({ id: project.item.id, managerId: manager.item.id }),

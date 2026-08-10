@@ -309,3 +309,99 @@ describe("SqliteCompanyRepository.withTransaction", () => {
     expect(repo.listEmployees()).toHaveLength(0);
   });
 });
+
+describe("SqliteCompanyRepository employee search (issue #183)", () => {
+  let db: Database.Database;
+  let repo: SqliteCompanyRepository;
+
+  const seedEmployees = () => {
+    repo.createEmployee({
+      firstName: "Ahmed",
+      lastName: "Ben Ali",
+      phone: "0555123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    repo.createEmployee({
+      firstName: "Sara",
+      lastName: "Bouzid",
+      phone: "0666123456",
+      roleId: "role-worker",
+      status: "INACTIVE",
+    });
+    repo.createEmployee({
+      firstName: "Yacine",
+      lastName: "Merbah",
+      phone: "0777123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+  };
+
+  beforeEach(() => {
+    db = createTestDb();
+    repo = new SqliteCompanyRepository(db);
+    seedEmployees();
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("filters the paged list by name/phone across all records (before pagination)", () => {
+    const result = repo.listEmployeesPaged({
+      filters: { search: "ben" },
+      limit: 1,
+    });
+
+    // Only Ahmed Ben Ali matches "ben"; total is the WHOLE filtered set, not the page.
+    expect(result.items.map((e) => e.firstName)).toEqual(["Ahmed"]);
+    expect(result.total).toBe(1);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it("matches phone numbers and is case-insensitive on ASCII names", () => {
+    const byPhone = repo.listEmployees({ search: "0777123456" });
+    expect(byPhone.map((e) => e.firstName)).toEqual(["Yacine"]);
+
+    const byCase = repo.listEmployees({ search: "BEN ALI" });
+    expect(byCase.map((e) => e.firstName)).toEqual(["Ahmed"]);
+  });
+
+  it("matches on both first and last name fields", () => {
+    const byLastName = repo.listEmployees({ search: "Bouzid" });
+    expect(byLastName.map((e) => e.firstName)).toEqual(["Sara"]);
+
+    const byFirstName = repo.listEmployees({ search: "yac" });
+    expect(byFirstName.map((e) => e.firstName)).toEqual(["Yacine"]);
+  });
+
+  it("treats LIKE wildcard characters in the term literally", () => {
+    // "%" is not a wildcard here: only "Merbah" contains a literal "%"… none do,
+    // so the search must return nothing instead of matching every row.
+    const wildcard = repo.listEmployees({ search: "%" });
+    expect(wildcard).toEqual([]);
+
+    const underscore = repo.listEmployees({ search: "_" });
+    expect(underscore).toEqual([]);
+  });
+
+  it("combines search with the status filter", () => {
+    const result = repo.listEmployeesPaged({
+      filters: { search: "a", status: "ACTIVE" },
+      limit: 50,
+    });
+
+    // "a" matches Ahmed (Ben Ali) and Yacine (Merbah) — not Sara (INACTIVE).
+    expect(result.items.map((e) => e.firstName).sort()).toEqual(["Ahmed", "Yacine"]);
+    expect(result.total).toBe(2);
+  });
+
+  it("returns the unfiltered list for an empty search", () => {
+    expect(repo.listEmployees({ search: "" })).toHaveLength(3);
+    expect(repo.listEmployees({ search: "   " })).toHaveLength(3);
+    expect(
+      repo.listEmployeesPaged({ filters: { search: "" }, limit: 50 }).total,
+    ).toBe(3);
+  });
+});

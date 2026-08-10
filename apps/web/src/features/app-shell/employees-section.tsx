@@ -106,9 +106,14 @@ export function EmployeesSection({
   const actionInFlightRef = useRef(false)
 
   const resolvedLimit = limit ?? DEFAULT_LIMIT
+  const normalizedQuery = query.trim()
   const pagedQuery = useEmployeesPagedQuery({
-    cursor,
+    // While searching, ignore the URL cursor: a stale cursor from a previous
+    // page (or a previous search) would otherwise jump into the middle of the
+    // filtered set. Search always starts at the first page of matches.
+    cursor: normalizedQuery ? undefined : cursor,
     limit: resolvedLimit,
+    search: normalizedQuery || undefined,
   })
 
   const lookups = useMemo(() => buildHomeViewDerivedLookups(workspace), [workspace])
@@ -117,11 +122,12 @@ export function EmployeesSection({
     [workspace],
   )
 
-  const normalizedQuery = query.trim().toLowerCase()
-
+  // Rows come pre-filtered from the server (issue #183): the paged RPC
+  // applies `search` across all records before pagination, so no local
+  // page-level filtering is needed here.
   const rows = useMemo<EmployeeTableRow[]>(() => {
     const items = pagedQuery.data?.items ?? []
-    const built = items.map((employee) =>
+    return items.map((employee) =>
       buildEmployeeRow({
         copy: { shell: { noManager: noManagerLabel, noProject: noProjectLabel } },
         employee,
@@ -130,12 +136,7 @@ export function EmployeesSection({
         t,
       }),
     )
-    if (!normalizedQuery) return built
-    return built.filter((row) => {
-      const haystack = `${row.name} ${row.phone} ${row.role}`.toLowerCase()
-      return haystack.includes(normalizedQuery)
-    })
-  }, [pagedQuery.data?.items, lookups, relationshipFacts, noManagerLabel, noProjectLabel, t, normalizedQuery])
+  }, [pagedQuery.data?.items, lookups, relationshipFacts, noManagerLabel, noProjectLabel, t])
 
       
   
@@ -170,14 +171,6 @@ export function EmployeesSection({
           onSearch={(searchQuery) => setQuery(searchQuery)}
           storageKey="employees-search-filters"
         />
-        {normalizedQuery ? (
-          <p className="text-xs text-muted-foreground">
-            {t(
-              "search.localPageHint",
-              "يبحث في الصفحة الحالية فقط. اعمل مسح لرؤية جميع النتائج."
-            )}
-          </p>
-        ) : null}
 
         <EmployeeTable
             copy={{

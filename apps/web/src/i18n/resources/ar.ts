@@ -932,7 +932,6 @@ export const ar = {
       openFilters: "الفلاتر",
       closeFilters: "إغلاق",
       historyEntryLabel: "{{keys}}",
-      localPageHint: "يبحث في الصفحة الحالية فقط. اعمل مسح لرؤية جميع النتائج.",
       categories: {
         pages: "الصفحات",
         actions: "إجراءات سريعة",

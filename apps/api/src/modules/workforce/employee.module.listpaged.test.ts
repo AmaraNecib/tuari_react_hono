@@ -121,6 +121,62 @@ describe("EmployeeModule.listPaged", () => {
     expect(result.total).toBe(2);
   });
 
+  it("searches by name/phone across ALL records before pagination", async () => {
+    // Employees First0/Last0 … First4/Last4, phones 0555000000 … 0555000004.
+    await seedEmployees(5);
+
+    // Search on last name: matches every record, but only First2/First1 on the page.
+    const byLastName = await employeeModule.listPaged({
+      limit: 2,
+      filters: { search: "Last" },
+    });
+    expect(byLastName.items.map((e) => e.firstName)).toEqual(["First4", "First3"]);
+    expect(byLastName.total).toBe(5);
+
+    // Search on first name substring narrows to one record.
+    const byFirstName = await employeeModule.listPaged({
+      limit: 10,
+      filters: { search: "First2" },
+    });
+    expect(byFirstName.items.map((e) => e.firstName)).toEqual(["First2"]);
+    expect(byFirstName.total).toBe(1);
+
+    // Search on phone digits.
+    const byPhone = await employeeModule.listPaged({
+      limit: 10,
+      filters: { search: "000003" },
+    });
+    expect(byPhone.items.map((e) => e.firstName)).toEqual(["First3"]);
+    expect(byPhone.total).toBe(1);
+  });
+
+  it("combines search with the status filter", async () => {
+    await seedEmployees(3);
+    const active = (await employeeModule.list({ status: "ACTIVE" }))[0]!;
+    await employeeModule.update(active.id, { id: active.id, status: "INACTIVE" });
+
+    const result = await employeeModule.listPaged({
+      limit: 10,
+      filters: { search: "First", status: "ACTIVE" },
+    });
+
+    expect(result.items.every((e) => e.status === "ACTIVE")).toBe(true);
+    expect(result.total).toBe(2);
+  });
+
+  it("returns the unfiltered list for an empty or whitespace-only search", async () => {
+    await seedEmployees(3);
+
+    const empty = await employeeModule.listPaged({ limit: 10, filters: { search: "" } });
+    expect(empty.total).toBe(3);
+
+    const whitespace = await employeeModule.listPaged({
+      limit: 10,
+      filters: { search: "   " },
+    });
+    expect(whitespace.total).toBe(3);
+  });
+
   it("uses default page size of 50 when limit is undefined", async () => {
     await seedEmployees(60);
 

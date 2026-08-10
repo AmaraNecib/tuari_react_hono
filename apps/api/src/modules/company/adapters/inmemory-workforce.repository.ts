@@ -64,9 +64,11 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
 
   listEmployees(filters?: EmployeeListFilters): EmployeeRecord[] {
     const all = Array.from(this.store.employees.values());
+    const needle = filters?.search?.trim().toLowerCase();
     const filtered = filters ? all.filter((e) =>
       (!filters.roleId || e.roleId === filters.roleId) &&
-      (!filters.status || e.status === filters.status),
+      (!filters.status || e.status === filters.status) &&
+      (!needle || `${e.firstName} ${e.lastName} ${e.phone}`.toLowerCase().includes(needle)),
     ) : all;
     return filtered.sort((a, b) => {
       const byName = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);

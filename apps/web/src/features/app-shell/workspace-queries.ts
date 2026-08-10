@@ -115,22 +115,28 @@ export function useEmployeesQuery({ enabled = true }: { enabled?: boolean } = {}
  * Returns the first page when no cursor is given, then walks forward by
  * passing the previous response's `nextCursor` back as the `cursor` arg.
  * The `hasMore` flag is a convenience — equivalent to `nextCursor !== null`.
+ *
+ * `search` (issue #183) matches employees server-side across ALL records,
+ * applied before pagination. It participates in the query key so a changed
+ * term refetches automatically.
  */
 export function useEmployeesPagedQuery({
   cursor,
   limit = 50,
   status,
   roleId,
+  search,
   enabled = true,
 }: {
   cursor?: string
   limit?: number
   status?: Employee["status"]
   roleId?: string
+  search?: string
   enabled?: boolean
 } = {}) {
   return useWorkspaceScopedQuery({
-    key: (userId) => [...workspaceQueryKeys.employees(userId), "paged", { cursor, limit, status, roleId }],
+    key: (userId) => [...workspaceQueryKeys.employees(userId), "paged", { cursor, limit, status, roleId, search }],
     enabled,
     placeholderData: keepPreviousData,
     queryFn: async () => rpcClient.employeesListPaged({
@@ -138,6 +144,7 @@ export function useEmployeesPagedQuery({
       limit,
       status,
       roleId,
+      search,
     }),
   })
 }

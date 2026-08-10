@@ -20,9 +20,15 @@ export class InMemoryEmployeeRepository implements EmployeeRepository {
     const all = Array.from(this.store.values());
     if (!filters) return all;
 
+    const needle = filters.search?.trim().toLowerCase();
+
     return all.filter((employee) => {
       if (filters.status && employee.status !== filters.status) return false;
       if (filters.roleId && employee.roleId !== filters.roleId) return false;
+      if (needle) {
+        const haystack = `${employee.firstName} ${employee.lastName} ${employee.phone}`.toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
       return true;
     });
   }
