@@ -11,6 +11,37 @@ function buildCopy() {
 }
 
 describe("useHomeViewAuthController", () => {
+  it("surfaces the translated Arabic message for a failed web sign-in", async () => {
+    const copy = buildCopy()
+    const { result } = renderHook(() =>
+      useHomeViewAuthController({
+        bootstrapMutation: { isPending: false, mutateAsync: vi.fn() } as never,
+        copy,
+        sessionQuery: { data: null, error: null, isPending: false, refetch: vi.fn() } as never,
+        setupStatusQuery: { data: { hasUsers: true }, error: null, isPending: false, refetch: vi.fn() } as never,
+        signInMutation: {
+          isPending: false,
+          mutateAsync: vi.fn().mockRejectedValue({
+            message: "Invalid phone number or password",
+            status: 400,
+            statusText: "Bad Request",
+          }),
+        } as never,
+      }),
+    )
+
+    await act(async () => {
+      result.current.setPhone("0612345678")
+      result.current.setPassword("password123")
+    })
+
+    await act(async () => {
+      await result.current.handleSignIn({ preventDefault() {} } as never)
+    })
+
+    expect(result.current.authError).toBe("رقم الهاتف أو كلمة المرور غير صحيحة.")
+  })
+
   it("uses the bootstrap-specific fallback error copy when setup fails without a message", async () => {
     const copy = buildCopy()
     const { result } = renderHook(() =>

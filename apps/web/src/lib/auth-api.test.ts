@@ -149,6 +149,42 @@ describe("extractAuthErrorMessage", () => {
     )
   })
 
+  it("normalizes whitespace and case before matching the map", async () => {
+    const { extractAuthErrorMessage } = await import("./auth-api")
+
+    expect(extractAuthErrorMessage("Invalid  phone\nnumber or password", "fallback")).toBe(
+      "رقم الهاتف أو كلمة المرور غير صحيحة.",
+    )
+    expect(extractAuthErrorMessage("INVALID PHONE NUMBER OR PASSWORD", "fallback")).toBe(
+      "رقم الهاتف أو كلمة المرور غير صحيحة.",
+    )
+  })
+
+  it("translates the nested { error: { message } } shape", async () => {
+    const { extractAuthErrorMessage } = await import("./auth-api")
+
+    expect(extractAuthErrorMessage({ error: { message: "Invalid password" } }, "fallback")).toBe(
+      "كلمة المرور الحالية غير صحيحة.",
+    )
+  })
+
+  it("leaves untranslatable statusText unchanged", async () => {
+    const { extractAuthErrorMessage } = await import("./auth-api")
+
+    expect(extractAuthErrorMessage({ status: 401, statusText: "Unauthorized" }, "fallback")).toBe(
+      "Unauthorized",
+    )
+  })
+
+  it("falls back for blank or non-extractable messages", async () => {
+    const { extractAuthErrorMessage } = await import("./auth-api")
+
+    expect(extractAuthErrorMessage("", "fallback")).toBe("fallback")
+    expect(extractAuthErrorMessage("   ", "fallback")).toBe("fallback")
+    expect(extractAuthErrorMessage(new Error("   "), "fallback")).toBe("fallback")
+    expect(extractAuthErrorMessage({ message: "" }, "fallback")).toBe("fallback")
+  })
+
   it("leaves unknown English messages unchanged", async () => {
     const { extractAuthErrorMessage } = await import("./auth-api")
 

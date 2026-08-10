@@ -44,7 +44,7 @@ const API_ERROR_TO_I18N_KEY: Record<string, string> = {
 }
 
 function translateAuthApiErrorMessage(message: string): string {
-  const normalized = message.trim().toLowerCase()
+  const normalized = message.trim().toLowerCase().replace(/\s+/g, " ")
   const i18nKey = API_ERROR_TO_I18N_KEY[normalized]
   
   if (i18nKey) {
