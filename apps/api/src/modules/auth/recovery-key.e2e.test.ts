@@ -6,9 +6,10 @@
  * Recovery keys are app-layer credentials independent of the DB encryption
  * key, so a real DB rekey is not exercised here: SQLCipher's `PRAGMA rekey`
  * is a no-op on the plain better-sqlite3 used by this workspace's tests
- * (the sqlcipher binding is not built — see database-key-manager.test.ts,
- * which covers the changeKey statements at the unit level). This suite
- * asserts what the app-layer lifecycle actually guarantees.
+ * (the sqlcipher binding is not built — see
+ * `infrastructure/database/database-key-manager.test.ts`, which covers the
+ * changeKey statements at the unit level). This suite asserts what the
+ * app-layer lifecycle actually guarantees.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createRecoveryKeyTestEnv } from "./test-helpers/recovery-key-env";
