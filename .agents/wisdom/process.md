@@ -464,3 +464,34 @@ selector chain, and the "can't dismiss" symptom is often a full trap. Test at th
 actual mobile viewport (Playwright + computed styles), not just the unit level.
 Check attribute-selector specificity fights between persisted state
 (`data-collapsed`) and media-query overrides.
+
+## Parallel worktree PRs collide on `.agents/wisdom/*.md` — resolve by keeping BOTH sides (🟠 Major)
+
+On the 2026-08-10 batch (9 parallel worktrees merged sequentially), the
+second and third merges each hit a CONTENT conflict in a wisdom file —
+`testing.md` (between #278's toMatchObject-array lesson and #320's
+no-op-rekey lesson) then `process.md` (between #278's sibling-worktree
+port-squatter lesson and #284's CSS-selector lesson). Every agent in a batch
+appends lessons to the same files, so the Nth squash merge into develop is
+expected to conflict on `.agents/wisdom/*`.
+
+**Always**: when a wisdom file conflicts on merge, treat the two sides as
+independent durable lessons and keep BOTH — splice them side by side, never
+delete either section. Expect this on any batch with ≥2 worktrees and resolve
+it like a normal code conflict (fix → push → wait for CI → merge). Also: the
+pre-push hook runs the full web suite, which can flake on `navigateMock`
+timing under load right after a multi-PR merge — re-run before blaming the diff.
+
+## Auto-close action ignores PR titles — "closes #N" must be in the PR BODY (🟠 Major)
+
+On the same batch, TWO issues stayed OPEN after their PRs merged because the
+closing reference lived only in the PR TITLE: #282 (PR #311 titled
+"...(closes #282)") and #278 (PR #318 titled "...(#278)"). The auto-close
+action parses the BODY by design (docs/lessons/gh-pr-merge-squash-issue-close.md).
+The squash commit subject can carry "(closes #N)" for history, but the BODY
+needs the keyword too.
+
+**Always**: when creating a PR, put "closes #N" (or "Part of #N") in the
+BODY, not just the title. After ANY merge batch, verify every referenced
+issue: `gh issue view <n> --json state` and close manually with a comment if
+still OPEN — do not trust the title.
