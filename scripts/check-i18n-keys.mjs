@@ -28,6 +28,22 @@ const resourcesPath = join(rootDir, "apps/web/src/i18n/resources/ar.ts")
 const scanDir = join(rootDir, "apps/web/src")
 const ignoreDirs = new Set(["i18n"])
 
+// Known top-level translation namespaces (must stay in sync with ar.ts).
+const KNOWN_NAMESPACES = [
+  "common", "shell", "debts", "detailPages", "systemLog", "inventory", "inventoryPage",
+  "auth", "workspace", "appShell", "sections", "search", "license", "dashboardPage",
+  "dashboard", "validation", "reports", "externals", "externalsPage", "auditLog",
+  "toasts", "shortcuts", "columns", "status", "tables", "historyEvent", "systemRoles",
+  "employeeForm", "salaries", "metrics", "mockData", "batchOperations", "exportImport",
+  "debtsHub", "debtLedger", "debtCases", "tour", "update",
+]
+const NAMESPACE_ALT = KNOWN_NAMESPACES.join("|")
+
+// A string literal that looks like a dotted i18n key under a known namespace.
+// Used to catch keys referenced through lookup maps (e.g. statusLabelKeys[status]
+// -> "status.stopped") — computed t() calls the call-site scan can't resolve.
+const KEY_SHAPED_LITERAL = new RegExp(`^(?:${NAMESPACE_ALT})\\.[a-zA-Z][a-zA-Z0-9]*(?:\\.[a-zA-Z][a-zA-Z0-9]*)*$`)
+
 // ── 1. Parse resources ──────────────────────────────────────────────────────
 function parseResources(filePath) {
   const source = readFileSync(filePath, "utf8")
@@ -116,6 +132,22 @@ function extractKey(arg) {
     }
   }
   return null
+}
+
+function walkKeyShapedLiterals(sourceFile, results) {
+  const visit = (node) => {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      if (KEY_SHAPED_LITERAL.test(node.text)) {
+        const sourcePos = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
+        results.push({
+          key: node.text,
+          location: `${relative(rootDir, sourceFile.fileName)}:${sourcePos.line + 1}`,
+        })
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
 }
 
 function walkSourceFile(sourceFile, results) {
@@ -226,13 +258,18 @@ function main() {
   }
 
   const calls = []
+  const mapKeys = []
   for (const file of collectTsFiles(scanDir)) {
     const sourceText = readFileSync(file, "utf8")
     const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
     walkSourceFile(sourceFile, calls)
+    walkKeyShapedLiterals(sourceFile, mapKeys)
   }
 
   const { missing, fallbackGaps, redundantFallbacks, dynamic, present } = summarize(calls, resource)
+  // Greptile finding (#271): computed t() calls (lookup-map values) are not
+  // statically resolvable, so their keys must be verified via the literal scan.
+  const missingMapKeys = mapKeys.filter((entry) => !hasKey(resource, entry.key))
 
   if (wantJson) {
     console.log(
@@ -240,7 +277,9 @@ function main() {
         {
           totalCalls: calls.length,
           presentKeys: present.size,
+          keyShapedLiterals: mapKeys.length,
           missing: missing.map((c) => ({ key: c.key, location: c.location })),
+          missingMapKeys: missingMapKeys.map((c) => ({ key: c.key, location: c.location })),
           fallbackGaps: fallbackGaps.map((c) => ({ key: c.key, fallback: c.fallback, location: c.location })),
           redundantFallbacks: redundantFallbacks.map((c) => ({ key: c.key, location: c.location })),
           dynamic: dynamic.map((c) => ({ key: c.source, location: c.location })),
@@ -250,8 +289,9 @@ function main() {
       ),
     )
   } else {
-    console.log(`i18n key check — ${calls.length} t() calls, ${present.size} distinct present keys`)
+    console.log(`i18n key check — ${calls.length} t() calls, ${mapKeys.length} key-shaped literals, ${present.size} distinct present keys`)
     console.log(`  missing (no fallback → renders raw key): ${missing.length}`)
+    console.log(`  missing map-key literals (computed t() sources): ${missingMapKeys.length}`)
     console.log(`  fallback-only gaps (warn): ${fallbackGaps.length}`)
     console.log(`  redundant fallbacks (key exists, warn): ${redundantFallbacks.length}`)
     console.log(`  dynamic keys (manual review): ${dynamic.length}`)
@@ -272,6 +312,12 @@ function main() {
           console.log(`  ${c.key}  ← ${c.location}`)
         }
       }
+      if (missingMapKeys.length > 0) {
+        console.log("\n[missing map-key literals]")
+        for (const c of missingMapKeys) {
+          console.log(`  ${c.key}  ← ${c.location}`)
+        }
+      }
       if (fallbackGaps.length > 0) {
         console.log("\n[fallback-only gaps]")
         for (const c of fallbackGaps) {
@@ -287,7 +333,7 @@ function main() {
     }
   }
 
-  process.exit(missing.length > 0 ? 1 : 0)
+  process.exit(missing.length > 0 || missingMapKeys.length > 0 ? 1 : 0)
 }
 
 main()

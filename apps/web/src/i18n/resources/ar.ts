@@ -252,7 +252,7 @@ export const ar = {
       sidebarHint: "تنقل سريع بين أقسام الشركة",
       navGroupOverview: "نظرة عامة",
       navGroupOps: "العمليات",
-      navGroupMoney: "المالية",
+      navGroupFinance: "المالية",
       navGroupPeople: "الموظفون",
       navGroupSystem: "النظام",
       settingsThemeDescription: "التبديل بين الوضعين الفاتح والداكن مع تطبيق مباشر على الشريط والمحتوى.",

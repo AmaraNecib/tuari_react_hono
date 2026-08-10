@@ -26,6 +26,9 @@ test('no t() call references a missing i18n key without a fallback', async () =>
   );
 
   assert.match(stdout, /missing \(no fallback → renders raw key\): 0/, `raw-key drift found:\n${stdout}\n${stderr}`);
+  // Greptile #271 finding: keys referenced through lookup maps (computed t()
+  // sources) must also resolve — the key-shaped-literal scan hard-fails on them.
+  assert.match(stdout, /missing map-key literals \(computed t\(\) sources\): 0/, `map-key drift found:\n${stdout}\n${stderr}`);
 });
 
 test('root package scripts keep the i18n key gate in normal checks', async () => {
