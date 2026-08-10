@@ -31,11 +31,12 @@ function isUniqueConstraintError(error: unknown) {
  *   - Atomicity relies on `db` and `raw` sharing ONE connection: the
  *     `BEGIN IMMEDIATE`/`COMMIT`/`ROLLBACK` statements run on `raw` while the
  *     inserts run on `db`. Drizzle's better-sqlite3 driver is synchronous
- *     under the hood, so the `await`s below never yield to another writer;
- *     a genuinely async operation inside the transaction would break that
- *     guarantee. The constructor fails fast when the two handles are not the
- *     same connection, because a mismatched pair would silently break
- *     atomicity.
+ *     under the hood, and the whole flow runs under the injected
+ *     connection-wide FIFO lock, so the `await`s below never yield to
+ *     another writer on the shared connection; a genuinely async operation
+ *     inside the transaction would break that guarantee. The constructor
+ *     fails fast when the two handles are not the same connection, because
+ *     a mismatched pair would silently break atomicity.
  *   - A concurrent bootstrap in another process contends on the SQLite write
  *     lock and surfaces as `SQLITE_BUSY` at `BEGIN IMMEDIATE`; that error
  *     propagates (deliberately, matching prior behavior) rather than being
@@ -62,11 +63,20 @@ export class SqliteBootstrapPort implements BootstrapPort {
 
   async createFirstUser(input: CreateFirstUserInput): Promise<CreateFirstUserResult> {
     return this.connectionLock.run(async () => {
-      this.raw.exec("BEGIN IMMEDIATE");
+      // Join an already-open outer transaction (same pattern as the other
+      // ports) instead of BEGINning a second one — better-sqlite3 would
+      // throw. The caller participates in that outer transaction (its
+      // COMMIT/ROLLBACK wins), so the conflict path must not COMMIT either.
+      const nested = this.raw.inTransaction;
+      if (!nested) {
+        this.raw.exec("BEGIN IMMEDIATE");
+      }
       try {
         if (await this.hasConfiguredUsers()) {
           // Conflict is not an error: commit the (empty) transaction.
-          this.raw.exec("COMMIT");
+          if (!nested) {
+            this.raw.exec("COMMIT");
+          }
           return { status: "conflict" };
         }
 
@@ -98,13 +108,21 @@ export class SqliteBootstrapPort implements BootstrapPort {
           updatedAt: timestamp,
         }).run();
 
-        this.raw.exec("COMMIT");
+        if (!nested) {
+          this.raw.exec("COMMIT");
+        }
         return {
           status: "created",
           user: { id: userId, name: input.name, phone: input.phone },
         };
       } catch (err) {
-        this.raw.exec("ROLLBACK");
+        if (!nested) {
+          try {
+            this.raw.exec("ROLLBACK");
+          } catch {
+            // Ignore ROLLBACK failures so the original error surfaces.
+          }
+        }
         // A concurrent bootstrap (or any pre-existing conflicting row) surfaces
         // as a UNIQUE violation on the singleton/phone keys — map it to the same
         // conflict outcome as the in-transaction check.

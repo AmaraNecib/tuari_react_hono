@@ -114,7 +114,11 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
         return result;
       } catch (error) {
         if (!nested) {
-          this.raw.exec("ROLLBACK");
+          try {
+            this.raw.exec("ROLLBACK");
+          } catch {
+            // Ignore ROLLBACK failures so the original error surfaces.
+          }
         }
         throw error;
       }

@@ -16,6 +16,18 @@ const SORT_COLUMN_MAP: Record<PaymentListSortField, string> = {
   createdAt: "created_at",
 };
 
+/**
+ * SQLite payment repository.
+ *
+ * Transaction discipline: every WRITE path is serialized through the
+ * connection-wide lock — `runInTransaction` (the whole validate → create →
+ * allocate flow) and `deletePayment` (its sync transaction). The unlocked
+ * read methods (`findById`, `findPaged`, `findAllocationsByPaymentId`) and
+ * `createPayment`/`createAllocation` are join surface: they execute on the
+ * connection as-is, so they must only be called (a) outside any transaction,
+ * or (b) from inside a `runInTransaction` callback where they join the open
+ * transaction. Never call them from an unrelated module's open transaction.
+ */
 export class PaymentRepositoryImpl implements PaymentRepository {
   constructor(
     private readonly db: BetterSqliteDatabase,
@@ -235,9 +247,11 @@ export class PaymentRepositoryImpl implements PaymentRepository {
       // participates in that outer transaction (its COMMIT/ROLLBACK wins).
       const nested = this.db.inTransaction;
       if (!nested) {
-        // BEGIN IMMEDIATE: acquire the SQLite write reservation up front so
-        // the capacity-validation reads inside the callback cannot be based
-        // on a stale remaining_amount (deferred BEGIN upgraded only at write).
+        // BEGIN IMMEDIATE: acquire the SQLite write reservation up front. On
+        // the single in-process connection the FIFO lock already serializes
+        // transactions; this protects the capacity-validation reads when a
+        // SECOND process touches the same database file (write lock held from
+        // BEGIN, so no stale remaining_amount can be read before the write).
         this.db.exec("BEGIN IMMEDIATE");
       }
       try {

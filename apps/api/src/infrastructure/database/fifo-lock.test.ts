@@ -80,4 +80,18 @@ describe("createFifoLock", () => {
     // body takes longer than the second's.
     expect(results).toEqual(["a", "b"]);
   });
+
+  it("throws loudly on reentrant run instead of deadlocking", async () => {
+    const lock = createFifoLock();
+
+    // A nested run called while an operation is executing would await a
+    // tail that can only resolve after the outer operation finishes — a
+    // permanent hang. The lock must throw immediately instead.
+    await lock.run(async () => {
+      expect(() => lock.run(async () => "nested")).toThrow(/not reentrant/);
+    });
+
+    // The queue is still usable after the guarded call.
+    await expect(lock.run(async () => "after")).resolves.toBe("after");
+  });
 });

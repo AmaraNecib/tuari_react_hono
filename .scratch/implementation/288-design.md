@@ -52,6 +52,13 @@ onto the previous tail, releases in `finally` (so a rejecting operation never
 poisons the chain). This is the canonical pattern already proven in
 `sqlite-recovery-key.port.ts` / `account.repository.ts`.
 
+**Loudly non-reentrant** (debate finding 8): a nested `run` called while an
+operation is executing throws immediately instead of deadlocking — a nested
+`run` that is awaited would wait on a tail that can only resolve after the
+outer operation finishes, i.e. a permanent hang blocking every transaction
+app-wide. Components that need transaction-scoped callbacks hand out an
+unlocked view (recovery-key `unlocked()`) rather than nesting `run`.
+
 ### 2. One connection-wide lock in the composition root
 
 `dependencies.ts` creates **one** `connectionLock = createFifoLock()` and
@@ -88,19 +95,35 @@ transactions opened behind the lock's back; tests pin both behaviors.
 
 Payment and invoice `runInTransaction` switch from deferred `BEGIN` to
 `BEGIN IMMEDIATE`: the write reservation is acquired at `BEGIN`, so the
-capacity-validation reads are protected from the start (multi-process safe).
-Also `deletePayment`'s sync `db.transaction()` runs under the connection lock.
+capacity-validation reads are protected from the start. On the single
+in-process connection the FIFO lock already serializes; `BEGIN IMMEDIATE` is
+defense-in-depth for a second process touching the same file (write lock held
+from BEGIN). `deletePayment`'s sync `db.transaction()` runs under the
+connection lock too.
 
-### 4. Known residual (documented, out of scope)
+Also (debate findings 4/6/3): `SqliteBootstrapPort.createFirstUser` gains the
+family join check (join an externally-opened transaction instead of
+BEGINning a second one) and guards its `ROLLBACK`; the recovery-key port's
+`ROLLBACK` is guarded too. `createDatabaseConnection` sets
+`busy_timeout = 5000` so a genuinely-contended write lock (second process)
+waits rather than surfacing an instant `SQLITE_BUSY` as a spurious 500.
 
-`company` / `inventory` / `invoice` adapters use sync `db.transaction()` in
-many places (better-sqlite3 nests these as **savepoints** inside an open
-transaction — no crash). Inside another module's open async transaction those
-writes would join it (silent absorb on rollback). Routing all of them through
-the connection lock would change every sync `withTransaction<T>(): T` to
-`Promise<T>` and ripple through all company services — a separate refactor.
-The five async transaction openers (this issue's scope) are the ones that hold
-transactions open across `await`s; the residual is documented on the PR.
+### 4. Known residuals (documented, out of scope)
+
+- **Unlocked sync writers can be absorbed into an open async transaction.**
+  `company` / `inventory` / `invoice` adapters use sync `db.transaction()` in
+  many places (better-sqlite3 nests these as **savepoints** inside an open
+  transaction — no crash, but the writes JOIN the open transaction and are
+  silently rolled back if it fails). Routing all of them through the
+  connection lock would change every sync `withTransaction<T>(): T` to
+  `Promise<T>` and ripple through all company services — a separate refactor.
+  The five async transaction openers (this issue's scope) are the ones that
+  hold transactions open across `await`s. Tracked as a follow-up issue.
+- **A never-settling transaction op blocks all transactions app-wide** (no
+  timeout on the primitive). Inherent to the single-connection design; the
+  reentrancy guard catches programming errors; timeouts on transactions are
+  deliberately avoided (the account bcrypt window legitimately takes ~100 ms).
+  Tracked with the absorb residual.
 
 ## Tests
 
@@ -139,7 +162,11 @@ real sqlite `PaymentRepositoryImpl` + in-memory invoice repo/debt port):
 
 **Existing suites kept green**: account repo join/rollback/lock-release tests,
 recovery-key port tests, bootstrap port tests (incl. the 2-connection
-`SQLITE_BUSY` test), invoice `runInTransaction` serialization test.
+`SQLITE_BUSY` test — its own connections use `timeout: 0`, unaffected by the
+factory `busy_timeout`), invoice `runInTransaction` serialization test.
+
+**Primitive tests**: FIFO ordering, release-after-rejection, error isolation,
+reentrancy guard (debate finding 8).
 
 ## Risks
 
