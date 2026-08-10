@@ -75,6 +75,8 @@ type WorkspaceSidebarProps = {
   session: { name: string | null; phone: string }
   warehousesLabel: string
   width: string
+  /** Optional tour-target attribute forwarded to the <aside> (issue #284). */
+  dataTour?: string
   onSetCollapsed: (nextValue: boolean) => void
 }
 
@@ -138,6 +140,7 @@ export function WorkspaceSidebar({
   warehousesLabel,
   expandLabel,
   session,
+  dataTour,
   onSetCollapsed,
 }: WorkspaceSidebarProps) {
   const { t } = useTranslation()
@@ -200,7 +203,7 @@ export function WorkspaceSidebar({
   ]
 
   return (
-    <aside className="flex flex-col h-full bg-bg-2 border-e border-line overflow-hidden min-w-0">
+    <aside data-tour={dataTour} className="flex flex-col h-full bg-bg-2 border-e border-line overflow-hidden min-w-0">
       {/* Brand */}
       <div className="flex items-center gap-3 px-5 border-b border-line flex-shrink-0" style={{ height: "var(--header-h)" }}>
         <div className="w-[1.375rem] h-[1.375rem] rounded-[0.3125rem] bg-ink text-bg grid place-items-center text-sm font-display italic font-medium flex-shrink-0">

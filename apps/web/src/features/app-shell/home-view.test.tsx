@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, configure, fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, configure, fireEvent, screen, waitFor, within } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -12,6 +13,8 @@ import {
   resetAllMutations,
 } from "./__test-utils__/workspace-fixtures"
 import type { WorkspaceMocks } from "./__test-utils__/workspace-fixtures"
+import { HomeView } from "./home-view"
+import { AppPreferencesProvider } from "@/features/preferences/preferences"
 
 // Load-sensitive suite: page renders can exceed the default 1s async wait
 // under full-suite parallel load (see issue #219). Raise the default for all
@@ -36,6 +39,13 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  // Restore the viewport width overridden by mobile-drawer tests so it cannot
+  // leak into later tests in this file (issue #284 test hygiene).
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: 1024,
+    writable: true,
+  })
 })
 
 describe("HomeView workspace shell", () => {
@@ -607,6 +617,123 @@ describe("HomeView workspace shell", () => {
     })
 
     expect(mocks.updateEmployeeWorkplaceMutate).not.toHaveBeenCalled()
+  })
+
+  it("mounts the skip-to-content link and a focusable main-content target", () => {
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+
+    const skipLink = screen.getByRole("link", { name: "تخطي إلى المحتوى" }) as HTMLAnchorElement
+    expect(skipLink.getAttribute("href")).toBe("#main-content")
+    // Skip link must precede the shell grid so it is the first focusable node
+    // and never becomes a grid item (issue #284).
+    expect(document.body.innerHTML.indexOf("تخطي إلى المحتوى")).toBeLessThan(
+      document.body.innerHTML.indexOf('class="tauri-shell"'),
+    )
+
+    const mainContent = document.getElementById("main-content")
+    expect(mainContent).toBeTruthy()
+    expect(mainContent?.tagName).toBe("MAIN")
+    expect(mainContent?.getAttribute("tabindex")).toBe("-1")
+    expect(document.body.innerHTML.indexOf('id="main-content"')).toBeGreaterThan(
+      document.body.innerHTML.indexOf('class="tauri-shell"'),
+    )
+
+    // The tour's declared [data-tour="sidebar"] target must survive on the
+    // aside after the wrapper div was removed (issue #284).
+    expect(document.querySelector('aside[data-tour="sidebar"]')).toBeTruthy()
+  })
+
+  it("opens the mobile drawer from the header toggle and closes it on backdrop tap", () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 375,
+      writable: true,
+    })
+
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+
+    const shell = document.querySelector(".tauri-shell") as HTMLElement
+    expect(shell.getAttribute("data-sidebar-open")).toBe("false")
+
+    // Mobile header toggle (menu button) opens the drawer. Scope to the
+    // header so the sidebar footer's expand button is not matched.
+    const header = document.querySelector(".tauri-shell header") as HTMLElement
+    const toggle = within(header).getByRole("button", { name: "توسيع الشريط الجانبي" })
+    fireEvent.click(toggle)
+
+    expect(shell.getAttribute("data-sidebar-open")).toBe("true")
+
+    const backdrop = document.querySelector(".sb-mobile-backdrop") as HTMLElement
+    expect(backdrop).toBeTruthy()
+    expect(backdrop.getAttribute("data-open")).toBe("true")
+
+    // Tapping the backdrop closes the drawer (issue #284).
+    fireEvent.click(backdrop)
+
+    expect(shell.getAttribute("data-sidebar-open")).toBe("false")
+    expect(backdrop.getAttribute("data-open")).toBe("false")
+  })
+
+  it("keeps the drawer closed across a mobile→tablet→mobile resize round trip", () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 375,
+      writable: true,
+    })
+
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+
+    const shell = document.querySelector(".tauri-shell") as HTMLElement
+    const header = document.querySelector(".tauri-shell header") as HTMLElement
+    const toggle = within(header).getByRole("button", { name: "توسيع الشريط الجانبي" })
+    fireEvent.click(toggle)
+    expect(shell.getAttribute("data-sidebar-open")).toBe("true")
+
+    // Grow into the tablet band (768–1023px): the drawer backdrop unmounts,
+    // and leaving the mobile band must close the drawer so it never pops back
+    // open on a later shrink to mobile (issue #284).
+    act(() => {
+      window.innerWidth = 800
+      fireEvent(window, new Event("resize"))
+    })
+    expect(shell.getAttribute("data-sidebar-open")).toBe("false")
+
+    act(() => {
+      window.innerWidth = 375
+      fireEvent(window, new Event("resize"))
+    })
+    expect(shell.getAttribute("data-sidebar-open")).toBe("false")
+  })
+
+  it("closes the mobile drawer when navigating to another page", () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 375,
+      writable: true,
+    })
+
+    // Render in place and re-render with a different page prop — a remount
+    // would reset useMobileLayout's local sidebarOpen state and pass even if
+    // the close-on-navigation effect were deleted.
+    const view = renderWorkspace("dashboard", { sessionUser: demoUser })
+
+    const shell = document.querySelector(".tauri-shell") as HTMLElement
+    const header = document.querySelector(".tauri-shell header") as HTMLElement
+    const toggle = within(header).getByRole("button", { name: "توسيع الشريط الجانبي" })
+    fireEvent.click(toggle)
+    expect(shell.getAttribute("data-sidebar-open")).toBe("true")
+
+    act(() => {
+      view.rerender(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <AppPreferencesProvider>
+            <HomeView page="employees" />
+          </AppPreferencesProvider>
+        </QueryClientProvider>,
+      )
+    })
+
+    expect(shell.getAttribute("data-sidebar-open")).toBe("false")
   })
 })
 

@@ -20,6 +20,8 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+# Windows `dir > nul` redirect artifact at repo root (issue #284)
+/nul
 
 /apps/api/data
 /tmp/*

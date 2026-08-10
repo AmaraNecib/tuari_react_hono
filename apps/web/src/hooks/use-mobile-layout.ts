@@ -37,8 +37,12 @@ export function useMobileLayout() {
       setIsMobile(width < TABLET_BREAKPOINT);
       setIsTablet(width >= TABLET_BREAKPOINT && width < DESKTOP_BREAKPOINT);
       setIsDesktop(width >= DESKTOP_BREAKPOINT);
-      // Close mobile sidebar on resize to desktop
-      if (width >= DESKTOP_BREAKPOINT) {
+      // Close the mobile drawer as soon as the viewport leaves the mobile
+      // band (the drawer and its backdrop only render below TABLET_BREAKPOINT).
+      // Closing only at desktop width would leave sidebarOpen=true across the
+      // 768–1023px band, so a later resize back to mobile would pop the drawer
+      // open without user action (issue #284).
+      if (width >= TABLET_BREAKPOINT) {
         setSidebarOpen(false);
       }
     };
