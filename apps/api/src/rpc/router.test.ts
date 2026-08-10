@@ -784,6 +784,33 @@ describe("RPC router", () => {
     expect(bootstrapFirstUser).not.toHaveBeenCalled();
   });
 
+  it("attaches zod field issues to the wire-gate validation error", async () => {
+    const harness = createHarness();
+    const bootstrapFirstUser = vi.fn();
+    const router = createTestRouter(harness, { bootstrapFirstUser: bootstrapFirstUser as never });
+    const client = createRouterClient(router, { context: createContext(null) as never });
+
+    // #278: the wire gate must keep the zod field paths + messages so the web
+    // can surface the real field error instead of a generic fallback toast.
+    // Pins code, message, and data.issues shape end-to-end (arrayContaining so
+    // additional issues and zod-internal fields don't break the match).
+    await expect(
+      client.authBootstrap({ name: "", phone: "   ", password: "" }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Input validation failed",
+      data: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            path: ["name"],
+            message: expect.any(String),
+          }),
+        ]),
+      },
+    });
+    expect(bootstrapFirstUser).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid recovery/DB key input at the wire contract", async () => {
     const harness = createHarness();
     const router = createTestRouter(harness);
