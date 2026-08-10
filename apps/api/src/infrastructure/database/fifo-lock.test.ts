@@ -94,4 +94,29 @@ describe("createFifoLock", () => {
     // The queue is still usable after the guarded call.
     await expect(lock.run(async () => "after")).resolves.toBe("after");
   });
+
+  it("keeps the queue alive when an operation throws synchronously", async () => {
+    const lock = createFifoLock();
+
+    // A synchronous throw (how raw better-sqlite3 failures surface) is
+    // converted to a rejection and must not poison the queue.
+    const failing = lock.run(() => {
+      throw new Error("sync boom");
+    });
+    const following = lock.run(async () => "after");
+
+    await expect(failing).rejects.toThrow("sync boom");
+    await expect(following).resolves.toBe("after");
+  });
+
+  it("does not flag independent lock instances as reentrant", async () => {
+    const a = createFifoLock();
+    const b = createFifoLock();
+
+    // The reentrancy guard is per-lock: a nested run on a DIFFERENT lock
+    // can never deadlock this one (it chains its own tail), so it must be
+    // allowed.
+    const result = await a.run(async () => b.run(async () => "nested-other"));
+    expect(result).toBe("nested-other");
+  });
 });

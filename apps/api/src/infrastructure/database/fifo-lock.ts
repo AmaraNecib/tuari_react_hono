@@ -16,15 +16,18 @@
  *   - A rejecting operation never poisons the chain: `tail` only ever
  *     resolves (via `release`), so `previous.then(operation)` skips a
  *     dead tail and `finally` always releases the lock.
- *   - Loudly non-reentrant: calling `run` while already inside a `run`
- *     execution context (an AsyncLocalStorage check) throws immediately
- *     instead of deadlocking. A nested `run` that is awaited would wait
- *     on a tail that can only resolve after the outer operation finishes
- *     — a permanent hang blocking every transaction app-wide. Components
- *     that need transaction-scoped callbacks hand out an unlocked view
- *     instead (see SqliteRecoveryKeyPort.unlocked()). Independent
- *     callers interleaving on the queue are NOT reentrancy: only code
- *     executing within a `run`'s own async context trips the guard.
+ *   - Loudly non-reentrant: calling `run` on the SAME lock while already
+ *     inside a `run` execution context (an AsyncLocalStorage check) throws
+ *     immediately instead of deadlocking. A nested `run` that is awaited
+ *     would wait on a tail that can only resolve after the outer operation
+ *     finishes — a permanent hang blocking every transaction app-wide.
+ *     Components that need transaction-scoped callbacks hand out an
+ *     unlocked view instead (see SqliteRecoveryKeyPort.unlocked()). The
+ *     guard is per-lock (the lock instance is stored, not a global flag), so
+ *     independent locks never false-positive; it is best-effort — a nested
+ *     `run` attached to a promise created OUTSIDE the run's async context
+ *     bypasses it (no realistic caller does this; the escape hatch is the
+ *     unlocked-view pattern).
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 
@@ -33,16 +36,15 @@ export interface FifoLock {
   run<T>(operation: () => Promise<T>): Promise<T>;
 }
 
-/** True while (and only while) the current async context is inside a `run`. */
-const runContext = new AsyncLocalStorage<boolean>();
+/** The lock instance whose `run` is currently executing, if any. */
+const runContext = new AsyncLocalStorage<FifoLock>();
 
 export function createFifoLock(): FifoLock {
   /** Tail of the queue — only ever resolved by `release`, never rejected. */
   let tail: Promise<void> = Promise.resolve();
-
-  return {
+  const lock: FifoLock = {
     run<T>(operation: () => Promise<T>): Promise<T> {
-      if (runContext.getStore()) {
+      if (runContext.getStore() === lock) {
         throw new Error(
           "FifoLock.run is not reentrant: a nested run would deadlock the shared-connection queue.",
         );
@@ -52,11 +54,12 @@ export function createFifoLock(): FifoLock {
       tail = new Promise<void>((resolve) => {
         release = resolve;
       });
-      return runContext.run(true, () =>
+      return runContext.run(lock, () =>
         previous
           .then(() => operation())
           .finally(release),
       );
     },
   };
+  return lock;
 }

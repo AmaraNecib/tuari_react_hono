@@ -12,6 +12,9 @@
  *   - deletePayment atomicity.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import Database from "better-sqlite3";
 
 import { schemaStatements } from "../../../infrastructure/database/schema-definitions";
@@ -61,22 +64,26 @@ function allocationRows(rawDb: Database.Database) {
   return rawDb.prepare(`SELECT * FROM "payment_allocation" ORDER BY "id"`).all() as Array<Record<string, unknown>>;
 }
 
+function paymentInput(id: string, amount = 1000) {
+  return {
+    id,
+    counterpartyType: "EXTERNAL_COUNTERPARTY",
+    counterpartyId: "cp-1",
+    paymentDate: "2026-06-25T10:00:00.000Z",
+    paymentMethod: "CASH",
+    totalAmount: amount,
+    notes: null,
+    actorUserId: null,
+    actorLabel: null,
+    transactionId: null,
+    createdAt: "2026-06-25T10:00:00.000Z",
+    updatedAt: "2026-06-25T10:00:00.000Z",
+  };
+}
+
 function insertPayment(repo: PaymentRepository, id: string): Promise<void> {
   return repo.runInTransaction(async () => {
-    await repo.createPayment({
-      id,
-      counterpartyType: "EXTERNAL_COUNTERPARTY",
-      counterpartyId: "cp-1",
-      paymentDate: "2026-06-25T10:00:00.000Z",
-      paymentMethod: "CASH",
-      totalAmount: 1000,
-      notes: null,
-      actorUserId: null,
-      actorLabel: null,
-      transactionId: null,
-      createdAt: "2026-06-25T10:00:00.000Z",
-      updatedAt: "2026-06-25T10:00:00.000Z",
-    });
+    await repo.createPayment(paymentInput(id));
     await repo.createAllocation({
       id: `${id}-alloc-1`,
       paymentId: id,
@@ -118,20 +125,7 @@ describe("PaymentRepositoryImpl (sqlite)", () => {
   it("rolls back all writes when the transaction callback throws", async () => {
     await expect(
       repo.runInTransaction(async () => {
-        await repo.createPayment({
-          id: "pmt-bad",
-          counterpartyType: "EXTERNAL_COUNTERPARTY",
-          counterpartyId: "cp-1",
-          paymentDate: "2026-06-25T10:00:00.000Z",
-          paymentMethod: "CASH",
-          totalAmount: 1000,
-          notes: null,
-          actorUserId: null,
-          actorLabel: null,
-          transactionId: null,
-          createdAt: "2026-06-25T10:00:00.000Z",
-          updatedAt: "2026-06-25T10:00:00.000Z",
-        });
+        await repo.createPayment(paymentInput("pmt-bad"));
         await repo.createAllocation({
           id: "pmt-bad-alloc-1",
           paymentId: "pmt-bad",
@@ -164,20 +158,7 @@ describe("PaymentRepositoryImpl (sqlite)", () => {
     rawDb.exec("BEGIN IMMEDIATE");
     await expect(
       repo.runInTransaction(async () => {
-        await repo.createPayment({
-          id: "pmt-join-bad",
-          counterpartyType: "EXTERNAL_COUNTERPARTY",
-          counterpartyId: "cp-1",
-          paymentDate: "2026-06-25T10:00:00.000Z",
-          paymentMethod: "CASH",
-          totalAmount: 1000,
-          notes: null,
-          actorUserId: null,
-          actorLabel: null,
-          transactionId: null,
-          createdAt: "2026-06-25T10:00:00.000Z",
-          updatedAt: "2026-06-25T10:00:00.000Z",
-        });
+        await repo.createPayment(paymentInput("pmt-join-bad"));
         throw new Error("outer flow aborts");
       }),
     ).rejects.toThrow("outer flow aborts");
@@ -241,20 +222,7 @@ describe("PaymentRepositoryImpl (sqlite)", () => {
     });
 
     const paymentTx = repo.runInTransaction(async () => {
-      await repo.createPayment({
-        id: "pmt-xmodule",
-        counterpartyType: "EXTERNAL_COUNTERPARTY",
-        counterpartyId: "cp-1",
-        paymentDate: "2026-06-25T10:00:00.000Z",
-        paymentMethod: "CASH",
-        totalAmount: 1000,
-        notes: null,
-        actorUserId: null,
-        actorLabel: null,
-        transactionId: null,
-        createdAt: "2026-06-25T10:00:00.000Z",
-        updatedAt: "2026-06-25T10:00:00.000Z",
-      });
+      await repo.createPayment(paymentInput("pmt-xmodule"));
       return "pmt-done";
     });
 
@@ -273,6 +241,42 @@ describe("PaymentRepositoryImpl (sqlite)", () => {
     expect(await repo.findById("pmt-xmodule")).not.toBeNull();
   });
 
+  it("queues a payment transaction behind a COMMITTING account transaction (#288)", async () => {
+    const db = createDrizzleFromSqlite(rawDb);
+    const accountRepo = new DrizzleAccountRepository(db, env.lock);
+    insertUser(rawDb, "user-1");
+
+    // The account transaction stays open across an await, then COMMITS.
+    const accountTx = accountRepo.withTransaction(async (tx) => {
+      await tx.updateUserProfile({
+        id: "user-1",
+        name: "بلال",
+        updatedAt: new Date("2026-06-25T10:00:00.000Z"),
+      });
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    // The payment must queue, then run cleanly after the account COMMIT —
+    // both writes persist, in their own transactions.
+    const paymentTx = repo.runInTransaction(async () => {
+      await repo.createPayment(paymentInput("pmt-xmodule-commit"));
+    });
+
+    await expect(accountTx).resolves.toBeUndefined();
+    await expect(paymentTx).resolves.toBeUndefined();
+
+    const name = rawDb
+      .prepare(`SELECT "name" FROM "user" WHERE "id" = ?`)
+      .get("user-1") as { name: string };
+    expect(name.name).toBe("بلال"); // account write committed
+    expect(paymentRows(rawDb)).toHaveLength(1); // payment write committed
+  });
+
+  it("deletePayment is a no-op for a missing id (module guards existence)", async () => {
+    await expect(repo.deletePayment("nope")).resolves.toBeUndefined();
+    expect(paymentRows(rawDb)).toHaveLength(0);
+  });
+
   it("deletePayment removes the payment and its allocations atomically", async () => {
     await insertPayment(repo, "pmt-del");
     expect(paymentRows(rawDb)).toHaveLength(1);
@@ -281,6 +285,29 @@ describe("PaymentRepositoryImpl (sqlite)", () => {
 
     expect(paymentRows(rawDb)).toHaveLength(0);
     expect(allocationRows(rawDb)).toHaveLength(0);
+  });
+
+  it("BEGIN IMMEDIATE holds the SQLite write reservation against a second connection", async () => {
+    // Two connections to the same file: the write reservation is acquired
+    // at BEGIN, so a second connection cannot BEGIN IMMEDIATE until the
+    // first releases — the cross-process double-allocation protection.
+    const dbDir = mkdtempSync(join(tmpdir(), "payment-busy-"));
+    const dbPath = join(dbDir, "test.sqlite");
+    const connA = new Database(dbPath, { timeout: 0 });
+    const connB = new Database(dbPath, { timeout: 0 });
+    try {
+      connA.exec("BEGIN IMMEDIATE");
+      // No busy_timeout on these test connections: fails immediately.
+      expect(() => connB.exec("BEGIN IMMEDIATE")).toThrow(/locked|busy/i);
+
+      connA.exec("ROLLBACK");
+      connB.exec("BEGIN IMMEDIATE"); // unblocked once the reservation releases
+      connB.exec("ROLLBACK");
+    } finally {
+      connA.close();
+      connB.close();
+      rmSync(dbDir, { recursive: true, force: true });
+    }
   });
 
   it("round-trips CRUD reads (findById / findPaged / findAllocationsByPaymentId)", async () => {
