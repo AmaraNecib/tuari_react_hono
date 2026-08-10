@@ -108,6 +108,25 @@ fn reveal_main_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Marks the app as ready on the first call, returning `true` only for the
+/// caller that should perform the reveal. Idempotent: subsequent calls
+/// return `false` (React StrictMode double effects, repeated renders).
+fn mark_app_ready_if_first(state: &AppReadyState) -> Result<bool, String> {
+    let mut notified = state.notified.lock().map_err(|error| error.to_string())?;
+    if *notified {
+        return Ok(false);
+    }
+    *notified = true;
+    Ok(true)
+}
+
+/// Rolls the ready flag back so a failed reveal can be retried.
+fn clear_app_ready(state: &AppReadyState) -> Result<(), String> {
+    let mut notified = state.notified.lock().map_err(|error| error.to_string())?;
+    *notified = false;
+    Ok(())
+}
+
 /// Frontend signals that the first data load settled and the app shell is
 /// ready to be shown: close the splashscreen, reveal the main window.
 /// Idempotent and gated to the `main` window (default-deny ACL).
@@ -119,15 +138,20 @@ fn app_ready(
 ) -> Result<(), String> {
     assert_sensitive_command_window(&window)?;
 
-    {
-        let mut notified = state.notified.lock().map_err(|error| error.to_string())?;
-        if *notified {
-            return Ok(());
-        }
-        *notified = true;
+    // First caller wins; later calls are no-ops.
+    if !mark_app_ready_if_first(&state)? {
+        return Ok(());
     }
 
-    reveal_main_window(&app)
+    // Reveal BEFORE committing the flag so a failed reveal (e.g. the main
+    // window could not be shown) leaves the flag clear and a retry can
+    // still reveal the window.
+    if let Err(error) = reveal_main_window(&app) {
+        clear_app_ready(&state)?;
+        return Err(error);
+    }
+
+    Ok(())
 }
 
 // ─── API sidecar identity (stale-process cleanup) ──────────────────
@@ -1932,7 +1956,8 @@ mod tests {
         load_or_create_secret, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
         should_force_reveal_main_window, AppReadyState, BETTER_AUTH_SECRET_ACCOUNT,
-        BETTER_AUTH_SECRET_BYTES, SecretStore,
+        BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY, SecretStore,
+        clear_app_ready, mark_app_ready_if_first,
     };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
@@ -2191,12 +2216,39 @@ mod tests {
     }
 
     #[test]
+    fn marks_notified_only_on_the_first_call() {
+        let state = AppReadyState::new();
+
+        assert!(mark_app_ready_if_first(&state).expect("first call proceeds"));
+        assert!(!mark_app_ready_if_first(&state).expect("second call is deduped"));
+        assert!(!mark_app_ready_if_first(&state).expect("third call is deduped"));
+    }
+
+    #[test]
+    fn clears_the_ready_flag_so_a_failed_reveal_can_be_retried() {
+        let state = AppReadyState::new();
+
+        assert!(mark_app_ready_if_first(&state).expect("mark ready"));
+        clear_app_ready(&state).expect("clear ready");
+        assert!(mark_app_ready_if_first(&state).expect("retry after clear proceeds"));
+    }
+
+    #[test]
     fn force_reveals_main_window_only_after_the_fallback_delay_when_not_ready() {
         assert!(!should_force_reveal_main_window(true, Duration::ZERO));
         assert!(!should_force_reveal_main_window(true, Duration::from_secs(60)));
-        assert!(!should_force_reveal_main_window(false, Duration::from_secs(44)));
-        assert!(should_force_reveal_main_window(false, Duration::from_secs(45)));
-        assert!(should_force_reveal_main_window(false, Duration::from_secs(120)));
+        assert!(!should_force_reveal_main_window(
+            false,
+            SPLASHSCREEN_FALLBACK_REVEAL_DELAY - Duration::from_secs(1)
+        ));
+        assert!(should_force_reveal_main_window(
+            false,
+            SPLASHSCREEN_FALLBACK_REVEAL_DELAY
+        ));
+        assert!(should_force_reveal_main_window(
+            false,
+            SPLASHSCREEN_FALLBACK_REVEAL_DELAY + Duration::from_secs(75)
+        ));
     }
 
     #[test]
@@ -2208,6 +2260,8 @@ mod tests {
         assert!(!is_sensitive_command_window_allowed(""));
         assert!(!is_sensitive_command_window_allowed("settings"));
         assert!(!is_sensitive_command_window_allowed("about"));
+        // The splashscreen window must never invoke sensitive commands.
+        assert!(!is_sensitive_command_window_allowed("splashscreen"));
         assert!(!is_sensitive_command_window_allowed("MAIN"));
         assert!(!is_sensitive_command_window_allowed("main "));
     }

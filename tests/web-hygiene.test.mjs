@@ -47,6 +47,21 @@ test('splashscreen is a dependency-free, CSP-safe static page', async () => {
   assert.doesNotMatch(splashscreen, /https?:\/\//i);
 });
 
+test('tauri config keeps the main window hidden behind a splashscreen window', async () => {
+  const config = JSON.parse(await readRepoFile('apps/desktop/src-tauri/tauri.conf.json'));
+  const windows = config.app.windows;
+
+  const mainWindow = windows.find((window) => window.label === 'main');
+  assert.ok(mainWindow, 'main window must have an explicit label');
+  assert.equal(mainWindow.visible, false, 'main window must start hidden');
+
+  const splashscreenWindow = windows.find((window) => window.label === 'splashscreen');
+  assert.ok(splashscreenWindow, 'splashscreen window must exist');
+  assert.equal(splashscreenWindow.url, 'splashscreen.html');
+  assert.equal(splashscreenWindow.resizable, false);
+  assert.equal(splashscreenWindow.center, true);
+});
+
 test('agent branch PR template has no trailing whitespace noise', async () => {
   const template = await readRepoFile('.github/PULL_REQUEST_TEMPLATE/agent-branch.md');
   const noisyLine = template.split(/\r?\n/).find((line) => line !== line.trimEnd());

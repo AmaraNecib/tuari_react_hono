@@ -36,6 +36,14 @@ describe("notifyAppReady", () => {
     expect(invokeMock).not.toHaveBeenCalled()
   })
 
+  it("is a no-op when window is undefined (SSR)", async () => {
+    vi.stubGlobal("window", undefined)
+
+    await notifyAppReady()
+
+    expect(invokeMock).not.toHaveBeenCalled()
+  })
+
   it("swallows IPC failures so the shell never breaks", async () => {
     vi.stubGlobal("__TAURI_INTERNALS__", {})
     invokeMock.mockRejectedValue(new Error("ipc disconnected"))

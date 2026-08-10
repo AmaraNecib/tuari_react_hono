@@ -1,3 +1,4 @@
+import { StrictMode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { renderHook } from "@testing-library/react"
 
@@ -45,6 +46,14 @@ describe("useNotifyAppReady", () => {
     rerender({ ready: true })
     rerender({ ready: false })
     rerender({ ready: true })
+
+    expect(notifyAppReadyMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("fires exactly once under StrictMode double effects", () => {
+    // React 18+ StrictMode double-invokes mount effects in development;
+    // the ref guard must absorb the duplicate call.
+    renderHook(() => useNotifyAppReady(true), { wrapper: StrictMode })
 
     expect(notifyAppReadyMock).toHaveBeenCalledTimes(1)
   })
