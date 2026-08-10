@@ -194,6 +194,12 @@ describe("AuthBootstrapService", () => {
     { label: "empty password", password: "", field: "password" },
     { label: "short password", password: "1234567", field: "password" },
     { label: "over-long password", password: "x".repeat(129), field: "password" },
+    // #230: blank-looking passwords (8+ invisible chars) must be rejected
+    // before hashing — they would otherwise become a usable credential.
+    { label: "whitespace-only password", password: "        ", field: "password" },
+    { label: "tab-only password", password: "\t\t\t\t\t\t\t\t", field: "password" },
+    { label: "NBSP-only password", password: "\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0", field: "password" },
+    { label: "zero-width-only password", password: "\u200B\u200B\u200B\u200B\u200B\u200B\u200B\u200B", field: "password" },
   ])("rejects $label before hashing or touching the port", async ({ password, field }) => {
     const service = createService()
 
@@ -272,6 +278,47 @@ describe("AuthBootstrapService", () => {
     })
     expect(hash).not.toHaveBeenCalled()
     expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
+  it("reports the blank-password message for a whitespace-only password", async () => {
+    const service = createService()
+
+    const result = await service.bootstrapFirstUser({
+      ...BOOTSTRAP_INPUT,
+      password: "        ",
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: {
+        code: "VALIDATION",
+        message: expect.any(String),
+        fieldErrors: [
+          {
+            field: "password",
+            message: "كلمة المرور يجب ألا تتكون من أحرف غير مرئية فقط.",
+          },
+        ],
+      },
+    })
+    expect(hash).not.toHaveBeenCalled()
+    expect(port.createFirstUser).not.toHaveBeenCalled()
+  })
+
+  it("accepts a password with internal spaces as valid input", async () => {
+    const service = createService()
+    port.createFirstUser.mockResolvedValue({
+      status: "created",
+      user: { id: "user-1", name: BOOTSTRAP_INPUT.name, phone: BOOTSTRAP_INPUT.phone },
+    } satisfies CreateFirstUserResult)
+
+    const result = await service.bootstrapFirstUser({
+      ...BOOTSTRAP_INPUT,
+      password: "pass word 123",
+    })
+
+    expect(result.success).toBe(true)
+    expect(hash).toHaveBeenCalledWith("pass word 123")
   })
 
   it("reports every invalid field in a single VALIDATION result", async () => {

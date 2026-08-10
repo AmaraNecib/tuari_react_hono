@@ -2,9 +2,38 @@ import { z } from "zod";
 
 import { algerianPhoneSchema, entityIdSchema } from "./core";
 
+/**
+ * Shared credential password policy (sign-in + bootstrap stay consistent).
+ *
+ * #230: length bounds alone admit a blank-looking password (8 spaces pass
+ * `.min(8)`), which would hash into a usable credential. We deliberately do
+ * NOT trim/normalize — passwords are opaque secrets and the stored hash must
+ * be computed over exactly what the user typed — so the check is a refine
+ * that requires at least one visible character: anything that is not a
+ * control (Cc), format (Cf: ZWSP/LRM/BOM), nonspacing mark (Mn: combining
+ * accents, variation selectors), or separator (Z) codepoint. Internal spaces
+ * remain allowed (NIST 800-63B); only all-invisible values are rejected.
+ * The length guard defers to `.min(8)`/`.max(128)` for every out-of-bounds
+ * value so a short+blank (e.g. 6 spaces) or over-long+blank (e.g. 129
+ * spaces) password yields a single length issue, not doubled
+ * too_small/too_big + custom issues (same pattern as the bootstrap name
+ * refine).
+ */
+const passwordSchema = z
+  .string()
+  .min(8)
+  .max(128)
+  .refine(
+    (value) =>
+      value.length < 8 || value.length > 128 || /[^\p{Cc}\p{Cf}\p{Mn}\p{Z}]/u.test(value),
+    {
+      message: "password must contain at least one visible character",
+    },
+  );
+
 export const phonePasswordSignInSchema = z.object({
   phone: algerianPhoneSchema,
-  password: z.string().min(8).max(128),
+  password: passwordSchema,
   rememberMe: z.boolean().optional(),
 });
 
@@ -23,7 +52,7 @@ export const authBootstrapInputSchema = z.object({
       message: "name must contain at least one visible character",
     }),
   phone: algerianPhoneSchema,
-  password: z.string().min(8).max(128),
+  password: passwordSchema,
   setupSecret: z.string().trim().min(1).max(256).optional(),
 });
 

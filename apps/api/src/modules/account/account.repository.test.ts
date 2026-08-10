@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 
 import { schemaStatements } from "../../infrastructure/database/schema-definitions";
 import { createDrizzleFromSqlite } from "../../infrastructure/database/drizzle";
+import { createFifoLock } from "../../infrastructure/database/fifo-lock";
 import { DrizzleAccountRepository } from "./account.repository";
 
 /**
@@ -16,7 +17,7 @@ function createTestEnv() {
     rawDb.exec(stmt);
   }
   const db = createDrizzleFromSqlite(rawDb);
-  const repository = new DrizzleAccountRepository(db);
+  const repository = new DrizzleAccountRepository(db, createFifoLock());
   return { rawDb, repository };
 }
 

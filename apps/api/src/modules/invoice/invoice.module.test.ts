@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { createInMemoryInvoiceDebtPort } from "./adapters/invoice-debt.port";
 import { createInMemoryInvoiceRepository } from "./adapters/in-memory-invoice.repository";
 import { InvoiceRepository } from "./adapters/invoice.repository";
+import { createFifoLock } from "../../infrastructure/database/fifo-lock";
 import { InvoiceModule } from "./invoice.module";
 import type {
   CreateInvoiceInput,
@@ -815,7 +816,7 @@ describe("InvoiceRepository findPaged", () => {
         FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE CASCADE
       );
     `);
-    repo = new InvoiceRepository(db);
+    repo = new InvoiceRepository(db, createFifoLock());
     debtPort = createInMemoryInvoiceDebtPort();
     module = new InvoiceModule(repo, debtPort);
   });
