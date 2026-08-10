@@ -53,16 +53,17 @@ Wiring (mirrors `check:web-hygiene`):
   - promote inline Arabic fallbacks where present (call site becomes `t("key")`),
   - write fresh Arabic for keys without fallbacks,
   - `systemLog.*` values must equal the server's emitted Arabic so the tokenizer matches.
-- Collapse duplicates: delete shadowed `auth.auditLog` block; remove duplicate
-  `detailPages.debt.*` vs `debt.*` (keep `debt.*` used by record-payment dialog, alias
-  `detailPages.debt.*` where referenced).
+- Collapse duplicates: delete shadowed `auth.auditLog` block (keys moved to top-level
+  `auditLog`, which audit-log-page.tsx already uses); delete the dead top-level `debt.*`
+  block (unused keys — record-payment dialog uses `detailPages.debt.payment.*`); collapse
+  `sections.debts.*` into ONE canonical top-level `debts.*` (label/description/consolidate
+  copy + `cases/employee/payment/voidEntry/consolidation`), call sites renamed.
 - Canonical rename map (call-site edits):
   - `appShell.*` → `shell.*`
   - `workspace.notFound.*` → `detailPages.notFound.*`
-  - `debts.*` (code) → `sections.debts.*` (resource) — except `debts.cases.*` which stays
-    under a `debts.cases` canonical block
-  - `auth.login.*` → `auth.*` flat keys
-  - `inventory.transfer.create/creating` → `inventory.transfer.button`
+  - `sections.debts.*` → `debts.*`
+  - `auth.login.*` → flat `auth.*` (login-page.tsx renamed to `auth.loginTitle`/`auth.signIn`/…; added flat `auth.description`/`auth.hidePassword`/`auth.showPassword`/`auth.loading`/`auth.footer` + `auth.errors.phoneRequired|phoneInvalid|passwordRequired|passwordTooShort`)
+  - `inventory.transfer.create/creating` → keys added to `inventory.transfer` (create = "إنشاء التحويل", creating = "جارٍ التحويل..."); call sites resolve via the resource
 
 ### 3. Tokenizer fix
 
