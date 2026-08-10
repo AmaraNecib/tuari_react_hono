@@ -308,4 +308,57 @@ describe("SqliteCompanyRepository.withTransaction", () => {
 
     expect(repo.listEmployees()).toHaveLength(0);
   });
+
+  it("leaves the connection usable after a rollback", () => {
+    // A failed transaction must not leave the connection mid-transaction.
+    expect(() => {
+      repo.withTransaction(() => {
+        repo.createEmployee({
+          firstName: "Doomed",
+          lastName: "Rollback",
+          phone: "0555987654",
+          roleId: "role-worker",
+          status: "ACTIVE",
+        });
+        throw new Error("boom");
+      });
+    }).toThrow("boom");
+
+    expect(repo.listEmployees()).toHaveLength(0);
+
+    // The next transaction runs and commits durably — the rollback released
+    // the connection instead of leaving it stuck inside the failed flow.
+    const employee = repo.withTransaction(() =>
+      repo.createEmployee({
+        firstName: "After",
+        lastName: "Rollback",
+        phone: "0666987654",
+        roleId: "role-worker",
+        status: "ACTIVE",
+      }),
+    );
+    expect(repo.getEmployeeById(employee.id)?.firstName).toBe("After");
+  });
+
+  it("rolls back and propagates non-Error throws unchanged", () => {
+    let thrown: unknown;
+    try {
+      repo.withTransaction(() => {
+        repo.createEmployee({
+          firstName: "String",
+          lastName: "Throw",
+          phone: "0777987654",
+          roleId: "role-worker",
+          status: "ACTIVE",
+        });
+        throw "boom";
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    // Pin identity: better-sqlite3 rethrows the thrown value as-is.
+    expect(thrown).toBe("boom");
+    expect(repo.listEmployees()).toHaveLength(0);
+  });
 });
