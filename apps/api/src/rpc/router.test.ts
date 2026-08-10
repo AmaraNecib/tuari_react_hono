@@ -781,7 +781,13 @@ describe("RPC router", () => {
       { id: "key-2", prefix: "c3d4", keyHash: "h2", status: "CONSUMED", consumedAt: "2026-01-02T00:00:00.000Z", revokedAt: null, createdAt: "2026-01-01T00:00:00.000Z" },
       { id: "key-3", prefix: "e5f6", keyHash: "h3", status: "REVOKED", consumedAt: null, revokedAt: "2026-01-03T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" },
     ];
-    const listAllKeys = vi.fn().mockResolvedValue(records);
+    const listAllKeys = vi.fn()
+      .mockResolvedValueOnce(records)
+      // Zero-available boundary: all keys consumed/revoked.
+      .mockResolvedValueOnce([
+        { id: "key-1", prefix: "a1b2", keyHash: "h1", status: "CONSUMED", consumedAt: "2026-01-02T00:00:00.000Z", revokedAt: null, createdAt: "2026-01-01T00:00:00.000Z" },
+        { id: "key-2", prefix: "c3d4", keyHash: "h2", status: "REVOKED", consumedAt: null, revokedAt: "2026-01-03T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" },
+      ]);
     const recoveryKeyService = new RecoveryKeyService({
       insertKey: vi.fn(),
       findKeyByHash: vi.fn(),
@@ -803,7 +809,19 @@ describe("RPC router", () => {
         { id: "key-3", prefix: "e5f6", status: "REVOKED" },
       ],
     });
-    expect(listAllKeys).toHaveBeenCalledTimes(1);
+
+    // Zero-available boundary resolves through recoveryKeyPoolStatusSchema
+    // (nonnegative counts, empty-ish maskedKeys).
+    await expect(client.getRecoveryKeyPool()).resolves.toEqual({
+      availableCount: 0,
+      totalCount: 2,
+      maxPoolSize: 5,
+      maskedKeys: [
+        { id: "key-1", prefix: "a1b2", status: "CONSUMED" },
+        { id: "key-2", prefix: "c3d4", status: "REVOKED" },
+      ],
+    });
+    expect(listAllKeys).toHaveBeenCalledTimes(2);
   });
 
   it("returns generated recovery keys through the wire contract (generateRecoveryKeys passthrough)", async () => {
@@ -816,7 +834,8 @@ describe("RPC router", () => {
       insertKey,
       findKeyByHash: vi.fn(),
       updateKeyStatus: vi.fn(),
-      countAvailableKeys: vi.fn().mockResolvedValue(0),
+      // First call: empty pool → 3 generated. Second: full pool → none.
+      countAvailableKeys: vi.fn().mockResolvedValueOnce(0).mockResolvedValueOnce(5),
       listAllKeys: vi.fn().mockResolvedValue([]),
       withTransaction: vi.fn(async (run) => run(stubPort)),
     };
@@ -831,6 +850,10 @@ describe("RPC router", () => {
       expect(k.prefix).toMatch(/^[0-9a-f]{4}$/);
       expect(k.createdAt).toBeTruthy();
     }
+    expect(insertKey).toHaveBeenCalledTimes(3);
+
+    // Full-pool boundary: { keys: [] } resolves through generatedRecoveryKeysSchema.
+    await expect(client.generateRecoveryKeys()).resolves.toEqual({ keys: [] });
     expect(insertKey).toHaveBeenCalledTimes(3);
   });
 
