@@ -41,7 +41,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 // allowlist: a window must be explicitly listed here before its webview can
 // invoke them. Today the app has a single window ("main"); any future window
 // (e.g. one rendering external content) is denied by default.
-const SENSITIVE_COMMAND_WINDOW_LABELS: &[&str] = &["main"];
+const SENSITIVE_COMMAND_WINDOW_LABELS: &[&str] = &[MAIN_WINDOW_LABEL];
 
 /// Returns `true` only for windows explicitly allowed to invoke sensitive
 /// commands. Matching is exact and case-sensitive, like Tauri window labels.
@@ -82,6 +82,11 @@ impl AppReadyState {
         Self {
             notified: Mutex::new(false),
         }
+    }
+
+    /// Whether the frontend has signalled "app ready".
+    fn is_ready(&self) -> Result<bool, String> {
+        self.notified.lock().map(|guard| *guard).map_err(|error| error.to_string())
     }
 }
 
@@ -143,9 +148,9 @@ fn app_ready(
         return Ok(());
     }
 
-    // Reveal BEFORE committing the flag so a failed reveal (e.g. the main
-    // window could not be shown) leaves the flag clear and a retry can
-    // still reveal the window.
+    // The ready flag is only committed once the reveal succeeds: a failed
+    // reveal (e.g. the main window could not be shown) rolls the flag back
+    // so a retry can still reveal the window.
     if let Err(error) = reveal_main_window(&app) {
         clear_app_ready(&state)?;
         return Err(error);
@@ -1901,23 +1906,32 @@ pub fn run() {
             std::thread::spawn(move || loop {
                 let ready = app_handle
                     .state::<AppReadyState>()
-                    .notified
-                    .lock()
-                    .map(|guard| *guard)
+                    .is_ready()
                     .unwrap_or(false);
+                let splashscreen_open = app_handle
+                    .get_webview_window(SPLASHSCREEN_WINDOW_LABEL)
+                    .is_some();
 
                 // Splashscreen already gone: either `app_ready` revealed
                 // the main window, or the user closed it manually — in the
                 // latter case reveal the main window now instead of leaving
                 // it hidden until the fallback delay.
-                if app_handle.get_webview_window(SPLASHSCREEN_WINDOW_LABEL).is_none() {
+                if !splashscreen_open {
                     if !ready {
                         let _ = reveal_main_window(&app_handle);
                     }
                     return;
                 }
 
-                if should_force_reveal_main_window(ready, app_started_at.elapsed()) {
+                // `app_ready` signalled ready but the splashscreen is still
+                // open (e.g. its close failed) — force the reveal now so
+                // the watcher always terminates.
+                if ready {
+                    let _ = reveal_main_window(&app_handle);
+                    return;
+                }
+
+                if should_force_reveal_main_window(false, app_started_at.elapsed()) {
                     let _ = reveal_main_window(&app_handle);
                     return;
                 }
