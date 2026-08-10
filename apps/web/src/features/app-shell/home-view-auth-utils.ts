@@ -20,7 +20,15 @@ export function mapCredentialErrors(copy: HomeViewCopy, phone: string, password:
   if (password.length === 0) {
     errors.password = copy.validation.password
   } else if (!result.success && result.error.issues.some((issue) => issue.path[0] === "password")) {
-    errors.password = copy.validation.passwordShort
+    // #230: a `custom` issue on the password path is the shared schema's
+    // blank-password refine (whitespace/format/control-only), which deserves
+    // its own message rather than the misleading "at least 8 characters".
+    const isBlankPassword = result.error.issues.some(
+      (issue) => issue.path[0] === "password" && issue.code === "custom",
+    )
+    errors.password = isBlankPassword
+      ? copy.validation.passwordWhitespace
+      : copy.validation.passwordShort
   }
 
   return errors
