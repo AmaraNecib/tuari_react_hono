@@ -8,6 +8,7 @@ import { getAuthClient } from "@/lib/auth-client"
 import { signInDesktopWithPhoneNumber } from "@/lib/auth-api"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { createAppQueryClient } from "@/lib/query-client"
+import { showErrorToast } from "@/lib/toast"
 import { usePhoneSignInMutation } from "./use-phone-sign-in-mutation"
 
 const phoneNumberSignInMock = vi.fn()
@@ -20,9 +21,16 @@ vi.mock("@/lib/auth-client", () => ({
   })),
 }))
 
-vi.mock("@/lib/auth-api", () => ({
-  signInDesktopWithPhoneNumber: vi.fn(),
-  extractAuthErrorMessage: vi.fn((error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback)),
+vi.mock("@/lib/auth-api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth-api")>()
+  return {
+    ...actual,
+    signInDesktopWithPhoneNumber: vi.fn(),
+  }
+})
+
+vi.mock("@/lib/toast", () => ({
+  showErrorToast: vi.fn(),
 }))
 
 vi.mock("@/lib/desktop-auth-session", () => ({
@@ -35,6 +43,7 @@ describe("usePhoneSignInMutation", () => {
     vi.mocked(getAuthClient).mockClear()
     vi.mocked(signInDesktopWithPhoneNumber).mockReset()
     vi.mocked(isDesktopRuntime).mockReturnValue(false)
+    vi.mocked(showErrorToast).mockReset()
   })
 
   it("uses the phone-first auth client flow and invalidates the session query", async () => {
@@ -117,5 +126,32 @@ describe("usePhoneSignInMutation", () => {
     })
     expect(phoneNumberSignInMock).not.toHaveBeenCalled()
     expect(invalidateQueries).toHaveBeenCalledTimes(1)
+  })
+
+  it("surfaces the translated Arabic message when the better-auth client fails", async () => {
+    const queryClient = createAppQueryClient()
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+
+    phoneNumberSignInMock.mockResolvedValue({
+      data: null,
+      error: { message: "Invalid phone number or password", status: 400, statusText: "Bad Request" },
+    } as never)
+
+    const { result } = renderHook(() => usePhoneSignInMutation(), { wrapper })
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          phone: "0612345678",
+          password: "wrong-password",
+          rememberMe: true,
+        }),
+      ).rejects.toBeTruthy()
+    })
+
+    expect(showErrorToast).toHaveBeenCalledWith("رقم الهاتف أو كلمة المرور غير صحيحة.")
+    expect(showErrorToast).not.toHaveBeenCalledWith(expect.stringContaining("Invalid phone number"))
   })
 })

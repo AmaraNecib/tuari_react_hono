@@ -121,6 +121,57 @@ describe("signInDesktopWithPhoneNumber", () => {
   })
 })
 
+describe("extractAuthErrorMessage", () => {
+  it("translates known better-auth messages to Arabic", async () => {
+    const { extractAuthErrorMessage } = await import("./auth-api")
+
+    expect(extractAuthErrorMessage(new Error("Invalid phone number or password"), "fallback")).toBe(
+      "رقم الهاتف أو كلمة المرور غير صحيحة.",
+    )
+  })
+
+  it("translates the better-auth client error-object shape used by the web path", async () => {
+    const { extractAuthErrorMessage } = await import("./auth-api")
+
+    expect(
+      extractAuthErrorMessage(
+        { message: "Invalid phone number or password", status: 400, statusText: "Bad Request" },
+        "fallback",
+      ),
+    ).toBe("رقم الهاتف أو كلمة المرور غير صحيحة.")
+  })
+
+  it("translates plain string errors", async () => {
+    const { extractAuthErrorMessage } = await import("./auth-api")
+
+    expect(extractAuthErrorMessage("invalid credentials", "fallback")).toBe(
+      "رقم الهاتف أو كلمة المرور غير صحيحة.",
+    )
+  })
+
+  it("leaves unknown English messages unchanged", async () => {
+    const { extractAuthErrorMessage } = await import("./auth-api")
+
+    expect(extractAuthErrorMessage(new Error("Something went wrong"), "fallback")).toBe("Something went wrong")
+  })
+
+  it("is idempotent for already-translated Arabic messages", async () => {
+    const { extractAuthErrorMessage } = await import("./auth-api")
+
+    expect(extractAuthErrorMessage("رقم الهاتف أو كلمة المرور غير صحيحة.", "fallback")).toBe(
+      "رقم الهاتف أو كلمة المرور غير صحيحة.",
+    )
+  })
+
+  it("returns the untranslated fallback when nothing is extractable", async () => {
+    const { extractAuthErrorMessage } = await import("./auth-api")
+
+    expect(extractAuthErrorMessage(null, "رسالة احتياطية")).toBe("رسالة احتياطية")
+    expect(extractAuthErrorMessage(undefined, "رسالة احتياطية")).toBe("رسالة احتياطية")
+    expect(extractAuthErrorMessage({ status: 500 }, "رسالة احتياطية")).toBe("رسالة احتياطية")
+  })
+})
+
 describe("signOutDesktopSession", () => {
   beforeEach(() => {
     desktopBridgeSignOutSessionMock.mockReset()
