@@ -12,11 +12,22 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Tuari Desktop",
         "width": 1280,
         "height": 820,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "visible": false
+      },
+      {
+        "label": "splashscreen",
+        "url": "splashscreen.html",
+        "title": "Tuari",
+        "width": 400,
+        "height": 300,
+        "resizable": false,
+        "center": true
       }
     ],
     "security": {

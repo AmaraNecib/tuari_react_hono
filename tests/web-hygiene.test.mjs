@@ -35,6 +35,18 @@ test('web workspace does not keep the backup components manifest', async () => {
   );
 });
 
+test('splashscreen is a dependency-free, CSP-safe static page', async () => {
+  const splashscreen = await readRepoFile('apps/web/public/splashscreen.html');
+
+  assert.match(splashscreen, /Tuari/);
+  assert.match(splashscreen, /نظام إدارة/);
+  // The app CSP forbids inline scripts (script-src 'self') — the
+  // splashscreen must never introduce one, or the window shows nothing.
+  assert.doesNotMatch(splashscreen, /<script/i);
+  // Dependency-free: no external resources may be fetched.
+  assert.doesNotMatch(splashscreen, /https?:\/\//i);
+});
+
 test('agent branch PR template has no trailing whitespace noise', async () => {
   const template = await readRepoFile('.github/PULL_REQUEST_TEMPLATE/agent-branch.md');
   const noisyLine = template.split(/\r?\n/).find((line) => line !== line.trimEnd());

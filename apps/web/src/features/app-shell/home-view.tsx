@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next"
 
 import { useAppPreferences } from "@/features/preferences/preferences"
 
+import { useNotifyAppReady } from "@/hooks/use-notify-app-ready"
+
 import { useHomeViewAuthController } from "./home-view-auth-controller"
 import { HomeViewAuthScreen } from "./home-view-auth-screen"
 import { buildHomeViewCopy } from "./home-view-copy"
@@ -108,6 +110,9 @@ export function HomeView({
     setupStatusQuery,
     signInMutation,
   })
+  // Close the Tauri splashscreen as soon as the first data load settles
+  // (success or error) — the earliest point the shell has real UI to show.
+  useNotifyAppReady(!auth.isAuthStateLoading)
   const shell = useHomeViewShellController({
     copy,
     removeRecordMutation,

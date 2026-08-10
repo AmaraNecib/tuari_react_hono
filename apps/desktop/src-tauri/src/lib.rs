@@ -60,6 +60,76 @@ fn assert_sensitive_command_window(window: &tauri::Window) -> Result<(), String>
     }
 }
 
+// ─── Splashscreen / window reveal ──────────────────────────────────
+//
+// Cold start shows a lightweight splashscreen window while the API
+// sidecar boots and React mounts behind a hidden main window. The
+// frontend calls `app_ready` once its first data load settles; the
+// backend then closes the splashscreen and reveals the main window.
+const MAIN_WINDOW_LABEL: &str = "main";
+const SPLASHSCREEN_WINDOW_LABEL: &str = "splashscreen";
+const SPLASHSCREEN_FALLBACK_REVEAL_DELAY: Duration = Duration::from_secs(45);
+
+/// Tracks whether the frontend has signalled "app ready" so the reveal
+/// happens exactly once (the frontend may invoke `app_ready` more than
+/// once — e.g. React StrictMode double effects).
+struct AppReadyState {
+    notified: Mutex<bool>,
+}
+
+impl AppReadyState {
+    fn new() -> Self {
+        Self {
+            notified: Mutex::new(false),
+        }
+    }
+}
+
+/// Returns `true` when the splashscreen should be force-closed and the
+/// main window revealed even though the frontend never signalled
+/// readiness — the safety net for a JS crash in the hidden webview or a
+/// hung first load.
+fn should_force_reveal_main_window(ready: bool, elapsed: Duration) -> bool {
+    !ready && elapsed >= SPLASHSCREEN_FALLBACK_REVEAL_DELAY
+}
+
+/// Closes the splashscreen (if it still exists) and reveals + focuses the
+/// main window. Idempotent: safe to call repeatedly.
+fn reveal_main_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(splashscreen) = app.get_webview_window(SPLASHSCREEN_WINDOW_LABEL) {
+        let _ = splashscreen.close();
+    }
+
+    if let Some(main_window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        main_window.show().map_err(|error| error.to_string())?;
+        let _ = main_window.set_focus();
+    }
+
+    Ok(())
+}
+
+/// Frontend signals that the first data load settled and the app shell is
+/// ready to be shown: close the splashscreen, reveal the main window.
+/// Idempotent and gated to the `main` window (default-deny ACL).
+#[tauri::command]
+fn app_ready(
+    window: tauri::Window,
+    app: AppHandle,
+    state: tauri::State<'_, AppReadyState>,
+) -> Result<(), String> {
+    assert_sensitive_command_window(&window)?;
+
+    {
+        let mut notified = state.notified.lock().map_err(|error| error.to_string())?;
+        if *notified {
+            return Ok(());
+        }
+        *notified = true;
+    }
+
+    reveal_main_window(&app)
+}
+
 // ─── API sidecar identity (stale-process cleanup) ──────────────────
 //
 // The API sidecar child is always spawned as
@@ -1775,6 +1845,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .manage(DownloadState::new())
+        .manage(AppReadyState::new())
         .invoke_handler(tauri::generate_handler![
             get_runtime_config,
             desktop_api_request,
@@ -1788,13 +1859,48 @@ pub fn run() {
             get_current_version,
             start_update_download,
             cancel_update_download,
-            restart_app
+            restart_app,
+            app_ready
         ])
         .setup(|app| {
             let child = spawn_api_process(app.handle())?;
             let state = app.state::<ApiProcess>();
             let mut guard = state.child.lock().map_err(|error| error.to_string())?;
             *guard = Some(child);
+
+            // Splashscreen fallback watcher: if the frontend never signals
+            // `app_ready` (webview JS crash, hung first load), force-reveal
+            // the main window after a grace period so the user is never
+            // stuck on the splashscreen.
+            let app_handle = app.handle().clone();
+            let app_started_at = Instant::now();
+            std::thread::spawn(move || loop {
+                let ready = app_handle
+                    .state::<AppReadyState>()
+                    .notified
+                    .lock()
+                    .map(|guard| *guard)
+                    .unwrap_or(false);
+
+                // Splashscreen already gone: either `app_ready` revealed
+                // the main window, or the user closed it manually — in the
+                // latter case reveal the main window now instead of leaving
+                // it hidden until the fallback delay.
+                if app_handle.get_webview_window(SPLASHSCREEN_WINDOW_LABEL).is_none() {
+                    if !ready {
+                        let _ = reveal_main_window(&app_handle);
+                    }
+                    return;
+                }
+
+                if should_force_reveal_main_window(ready, app_started_at.elapsed()) {
+                    let _ = reveal_main_window(&app_handle);
+                    return;
+                }
+
+                std::thread::sleep(Duration::from_secs(1));
+            });
+
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -1825,11 +1931,12 @@ mod tests {
         is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
         load_or_create_secret, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
-        SecretStore, BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES,
+        should_force_reveal_main_window, AppReadyState, BETTER_AUTH_SECRET_ACCOUNT,
+        BETTER_AUTH_SECRET_BYTES, SecretStore,
     };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir() -> PathBuf {
         let unique_suffix = SystemTime::now()
@@ -2075,6 +2182,21 @@ mod tests {
         assert!(!matches_inventory_attachment_download_path(
             "/api/inventory/attachments/attachment-1/extra"
         ));
+    }
+
+    #[test]
+    fn app_ready_state_starts_unnotified() {
+        let state = AppReadyState::new();
+        assert!(!*state.notified.lock().expect("lock app ready state"));
+    }
+
+    #[test]
+    fn force_reveals_main_window_only_after_the_fallback_delay_when_not_ready() {
+        assert!(!should_force_reveal_main_window(true, Duration::ZERO));
+        assert!(!should_force_reveal_main_window(true, Duration::from_secs(60)));
+        assert!(!should_force_reveal_main_window(false, Duration::from_secs(44)));
+        assert!(should_force_reveal_main_window(false, Duration::from_secs(45)));
+        assert!(should_force_reveal_main_window(false, Duration::from_secs(120)));
     }
 
     #[test]
