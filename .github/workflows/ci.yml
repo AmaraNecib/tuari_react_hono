@@ -253,7 +253,11 @@ jobs:
         run: echo "version=$(pnpm exec playwright --version)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        # Pinned to a full commit SHA (v4 tag = 0057852bfaa89a56745cba8c7296529d2fc39830)
+        # — mutable tags can be retargeted upstream and poison the browser
+        # cache consumed by later test steps (repo security precedent: checkout
+        # is SHA-pinned in auto-close-issues.yml).
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ steps.pw-version.outputs.version }}
