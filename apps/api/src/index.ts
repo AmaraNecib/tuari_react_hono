@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 
 import { createApp } from "./app/create-app";
 import { createAppDependencies } from "./app/dependencies";
+import { installShutdownHook } from "./app/shutdown";
 import { createAppConfig } from "./config";
 
 async function main() {
@@ -22,7 +23,7 @@ async function main() {
     authRateLimitMaxRequests: config.authRateLimitMaxRequests,
   });
 
-  serve(
+  const server = serve(
     {
       fetch: app.fetch,
       port: config.port,
@@ -32,6 +33,14 @@ async function main() {
       console.log(`API listening on http://${info.address}:${info.port}`);
     },
   );
+
+  // Graceful shutdown (issue #265): stop accepting requests, then close the
+  // shared database connection (better-sqlite3 checkpoints the WAL on
+  // last-connection close) before exiting.
+  installShutdownHook({
+    stopServer: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: appDependencies.close,
+  });
 }
 
 main().catch((error) => {
