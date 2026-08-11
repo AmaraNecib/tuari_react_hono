@@ -41,7 +41,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 // allowlist: a window must be explicitly listed here before its webview can
 // invoke them. Today the app has a single window ("main"); any future window
 // (e.g. one rendering external content) is denied by default.
-const SENSITIVE_COMMAND_WINDOW_LABELS: &[&str] = &["main"];
+const SENSITIVE_COMMAND_WINDOW_LABELS: &[&str] = &[MAIN_WINDOW_LABEL];
 
 /// Returns `true` only for windows explicitly allowed to invoke sensitive
 /// commands. Matching is exact and case-sensitive, like Tauri window labels.
@@ -58,6 +58,105 @@ fn assert_sensitive_command_window(window: &tauri::Window) -> Result<(), String>
     } else {
         Err("This command is not allowed from this window.".to_string())
     }
+}
+
+// ─── Splashscreen / window reveal ──────────────────────────────────
+//
+// Cold start shows a lightweight splashscreen window while the API
+// sidecar boots and React mounts behind a hidden main window. The
+// frontend calls `app_ready` once its first data load settles; the
+// backend then closes the splashscreen and reveals the main window.
+const MAIN_WINDOW_LABEL: &str = "main";
+const SPLASHSCREEN_WINDOW_LABEL: &str = "splashscreen";
+const SPLASHSCREEN_FALLBACK_REVEAL_DELAY: Duration = Duration::from_secs(45);
+
+/// Tracks whether the frontend has signalled "app ready" so the reveal
+/// happens exactly once (the frontend may invoke `app_ready` more than
+/// once — e.g. React StrictMode double effects).
+struct AppReadyState {
+    notified: Mutex<bool>,
+}
+
+impl AppReadyState {
+    fn new() -> Self {
+        Self {
+            notified: Mutex::new(false),
+        }
+    }
+
+    /// Whether the frontend has signalled "app ready".
+    fn is_ready(&self) -> Result<bool, String> {
+        self.notified.lock().map(|guard| *guard).map_err(|error| error.to_string())
+    }
+}
+
+/// Returns `true` when the splashscreen should be force-closed and the
+/// main window revealed even though the frontend never signalled
+/// readiness — the safety net for a JS crash in the hidden webview or a
+/// hung first load.
+fn should_force_reveal_main_window(ready: bool, elapsed: Duration) -> bool {
+    !ready && elapsed >= SPLASHSCREEN_FALLBACK_REVEAL_DELAY
+}
+
+/// Closes the splashscreen (if it still exists) and reveals + focuses the
+/// main window. Idempotent: safe to call repeatedly.
+fn reveal_main_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(splashscreen) = app.get_webview_window(SPLASHSCREEN_WINDOW_LABEL) {
+        let _ = splashscreen.close();
+    }
+
+    if let Some(main_window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        main_window.show().map_err(|error| error.to_string())?;
+        let _ = main_window.set_focus();
+    }
+
+    Ok(())
+}
+
+/// Marks the app as ready on the first call, returning `true` only for the
+/// caller that should perform the reveal. Idempotent: subsequent calls
+/// return `false` (React StrictMode double effects, repeated renders).
+fn mark_app_ready_if_first(state: &AppReadyState) -> Result<bool, String> {
+    let mut notified = state.notified.lock().map_err(|error| error.to_string())?;
+    if *notified {
+        return Ok(false);
+    }
+    *notified = true;
+    Ok(true)
+}
+
+/// Rolls the ready flag back so a failed reveal can be retried.
+fn clear_app_ready(state: &AppReadyState) -> Result<(), String> {
+    let mut notified = state.notified.lock().map_err(|error| error.to_string())?;
+    *notified = false;
+    Ok(())
+}
+
+/// Frontend signals that the first data load settled and the app shell is
+/// ready to be shown: close the splashscreen, reveal the main window.
+/// Idempotent and gated to the `main` window (default-deny ACL).
+#[tauri::command]
+fn app_ready(
+    window: tauri::Window,
+    app: AppHandle,
+    state: tauri::State<'_, AppReadyState>,
+) -> Result<(), String> {
+    assert_sensitive_command_window(&window)?;
+
+    // First caller wins; later calls are no-ops.
+    if !mark_app_ready_if_first(&state)? {
+        return Ok(());
+    }
+
+    // The ready flag is only committed once the reveal succeeds: a failed
+    // reveal (e.g. the main window could not be shown) rolls the flag back
+    // so a retry can still reveal the window.
+    if let Err(error) = reveal_main_window(&app) {
+        clear_app_ready(&state)?;
+        return Err(error);
+    }
+
+    Ok(())
 }
 
 // ─── API sidecar identity (stale-process cleanup) ──────────────────
@@ -1775,6 +1874,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .manage(DownloadState::new())
+        .manage(AppReadyState::new())
         .invoke_handler(tauri::generate_handler![
             get_runtime_config,
             desktop_api_request,
@@ -1788,13 +1888,48 @@ pub fn run() {
             get_current_version,
             start_update_download,
             cancel_update_download,
-            restart_app
+            restart_app,
+            app_ready
         ])
         .setup(|app| {
             let child = spawn_api_process(app.handle())?;
             let state = app.state::<ApiProcess>();
             let mut guard = state.child.lock().map_err(|error| error.to_string())?;
             *guard = Some(child);
+
+            // Splashscreen fallback watcher: if the frontend never signals
+            // `app_ready` (webview JS crash, hung first load), force-reveal
+            // the main window after a grace period so the user is never
+            // stuck on the splashscreen.
+            let app_handle = app.handle().clone();
+            let app_started_at = Instant::now();
+            std::thread::spawn(move || loop {
+                let ready = app_handle
+                    .state::<AppReadyState>()
+                    .is_ready()
+                    .unwrap_or(false);
+                let splashscreen_open = app_handle
+                    .get_webview_window(SPLASHSCREEN_WINDOW_LABEL)
+                    .is_some();
+
+                // Reveal when the frontend signalled ready, when the
+                // splashscreen was closed manually while not ready, or when
+                // the fallback delay elapsed with no signal. The ready flag
+                // is only PROVISIONAL — `app_ready` rolls it back if its own
+                // reveal fails — so it is never treated as proof of success.
+                // Only a successful reveal terminates the watcher; a failed
+                // one (e.g. main_window.show() error) keeps the recovery
+                // responsibility and retries after the poll interval.
+                let reveal_now = ready
+                    || !splashscreen_open
+                    || should_force_reveal_main_window(ready, app_started_at.elapsed());
+                if reveal_now && reveal_main_window(&app_handle).is_ok() {
+                    return;
+                }
+
+                std::thread::sleep(Duration::from_secs(1));
+            });
+
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -1825,11 +1960,13 @@ mod tests {
         is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
         load_or_create_secret, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
-        SecretStore, BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES,
+        should_force_reveal_main_window, AppReadyState, BETTER_AUTH_SECRET_ACCOUNT,
+        BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY, SecretStore,
+        clear_app_ready, mark_app_ready_if_first,
     };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir() -> PathBuf {
         let unique_suffix = SystemTime::now()
@@ -2078,6 +2215,48 @@ mod tests {
     }
 
     #[test]
+    fn app_ready_state_starts_unnotified() {
+        let state = AppReadyState::new();
+        assert!(!*state.notified.lock().expect("lock app ready state"));
+    }
+
+    #[test]
+    fn marks_notified_only_on_the_first_call() {
+        let state = AppReadyState::new();
+
+        assert!(mark_app_ready_if_first(&state).expect("first call proceeds"));
+        assert!(!mark_app_ready_if_first(&state).expect("second call is deduped"));
+        assert!(!mark_app_ready_if_first(&state).expect("third call is deduped"));
+    }
+
+    #[test]
+    fn clears_the_ready_flag_so_a_failed_reveal_can_be_retried() {
+        let state = AppReadyState::new();
+
+        assert!(mark_app_ready_if_first(&state).expect("mark ready"));
+        clear_app_ready(&state).expect("clear ready");
+        assert!(mark_app_ready_if_first(&state).expect("retry after clear proceeds"));
+    }
+
+    #[test]
+    fn force_reveals_main_window_only_after_the_fallback_delay_when_not_ready() {
+        assert!(!should_force_reveal_main_window(true, Duration::ZERO));
+        assert!(!should_force_reveal_main_window(true, Duration::from_secs(60)));
+        assert!(!should_force_reveal_main_window(
+            false,
+            SPLASHSCREEN_FALLBACK_REVEAL_DELAY - Duration::from_secs(1)
+        ));
+        assert!(should_force_reveal_main_window(
+            false,
+            SPLASHSCREEN_FALLBACK_REVEAL_DELAY
+        ));
+        assert!(should_force_reveal_main_window(
+            false,
+            SPLASHSCREEN_FALLBACK_REVEAL_DELAY + Duration::from_secs(75)
+        ));
+    }
+
+    #[test]
     fn allows_only_expected_sensitive_command_windows() {
         // The single app window (default label "main") is allowed.
         assert!(is_sensitive_command_window_allowed("main"));
@@ -2086,6 +2265,8 @@ mod tests {
         assert!(!is_sensitive_command_window_allowed(""));
         assert!(!is_sensitive_command_window_allowed("settings"));
         assert!(!is_sensitive_command_window_allowed("about"));
+        // The splashscreen window must never invoke sensitive commands.
+        assert!(!is_sensitive_command_window_allowed("splashscreen"));
         assert!(!is_sensitive_command_window_allowed("MAIN"));
         assert!(!is_sensitive_command_window_allowed("main "));
     }

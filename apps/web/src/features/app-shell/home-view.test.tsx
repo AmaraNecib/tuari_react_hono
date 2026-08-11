@@ -16,6 +16,16 @@ import type { WorkspaceMocks } from "./__test-utils__/workspace-fixtures"
 import { HomeView } from "./home-view"
 import { AppPreferencesProvider } from "@/features/preferences/preferences"
 
+// Spy on the splashscreen-readiness hook so the wiring seam between the
+// shell and the Tauri reveal can be asserted without invoking IPC.
+vi.mock("@/hooks/use-notify-app-ready", () => ({
+  useNotifyAppReady: vi.fn(),
+}))
+
+import { useNotifyAppReady } from "@/hooks/use-notify-app-ready"
+
+const useNotifyAppReadyMock = vi.mocked(useNotifyAppReady)
+
 // Load-sensitive suite: page renders can exceed the default 1s async wait
 // under full-suite parallel load (see issue #219). Raise the default for all
 // findBy*/waitFor calls in this file. Sections are lazy-loaded (issue #286):
@@ -31,6 +41,7 @@ let mocks: WorkspaceMocks
 beforeEach(() => {
   mocks = mockAllMutations()
   resetAllMutations(mocks)
+  useNotifyAppReadyMock.mockClear()
   window.localStorage.clear()
   // The first-run tour auto-starts 500ms after the shell mounts (autoStart).
   // Now that the tour is a real modal (Base UI — issue #275) it marks the
@@ -61,6 +72,20 @@ describe("HomeView workspace shell", () => {
     expect(document.documentElement.dir).toBe("rtl")
     expect(screen.getByLabelText("رقم الهاتف")).toBeTruthy()
     expect(screen.getByRole("button", { name: "دخول إلى مساحة العمل" })).toBeTruthy()
+  })
+
+  it("signals app readiness once the initial auth state has settled", () => {
+    // Fixture mocks resolve synchronously, so the auth state is ready on
+    // the first render and the splashscreen reveal fires immediately.
+    renderWorkspace()
+
+    expect(useNotifyAppReadyMock).toHaveBeenCalledWith(true)
+  })
+
+  it("stays unready while the initial auth state is still loading", () => {
+    renderWorkspace("dashboard", { setupStatus: undefined, setupPending: true })
+
+    expect(useNotifyAppReadyMock).toHaveBeenCalledWith(false)
   })
 
   it("shows first-user bootstrap when there are no auth users yet", async () => {

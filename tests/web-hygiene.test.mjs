@@ -35,6 +35,33 @@ test('web workspace does not keep the backup components manifest', async () => {
   );
 });
 
+test('splashscreen is a dependency-free, CSP-safe static page', async () => {
+  const splashscreen = await readRepoFile('apps/web/public/splashscreen.html');
+
+  assert.match(splashscreen, /Tuari/);
+  assert.match(splashscreen, /نظام إدارة/);
+  // The app CSP forbids inline scripts (script-src 'self') — the
+  // splashscreen must never introduce one, or the window shows nothing.
+  assert.doesNotMatch(splashscreen, /<script/i);
+  // Dependency-free: no external resources may be fetched.
+  assert.doesNotMatch(splashscreen, /https?:\/\//i);
+});
+
+test('tauri config keeps the main window hidden behind a splashscreen window', async () => {
+  const config = JSON.parse(await readRepoFile('apps/desktop/src-tauri/tauri.conf.json'));
+  const windows = config.app.windows;
+
+  const mainWindow = windows.find((window) => window.label === 'main');
+  assert.ok(mainWindow, 'main window must have an explicit label');
+  assert.equal(mainWindow.visible, false, 'main window must start hidden');
+
+  const splashscreenWindow = windows.find((window) => window.label === 'splashscreen');
+  assert.ok(splashscreenWindow, 'splashscreen window must exist');
+  assert.equal(splashscreenWindow.url, 'splashscreen.html');
+  assert.equal(splashscreenWindow.resizable, false);
+  assert.equal(splashscreenWindow.center, true);
+});
+
 test('agent branch PR template has no trailing whitespace noise', async () => {
   const template = await readRepoFile('.github/PULL_REQUEST_TEMPLATE/agent-branch.md');
   const noisyLine = template.split(/\r?\n/).find((line) => line !== line.trimEnd());
