@@ -147,9 +147,12 @@ export function createInMemoryPaymentRepository(): PaymentRepository {
     },
 
     async deleteIfUnallocated(id: string): Promise<PaymentDeleteResult> {
-      // Mirrors the sqlite adapter's guarded semantics: no awaits inside, so
-      // the check + delete complete in one microtask and cannot interleave
-      // with a concurrent create on the single-threaded event loop.
+      // Same guarded semantics as the sqlite adapter, with one honest
+      // divergence: this double's `runInTransaction` is a pass-through, so a
+      // module-level `create` (which yields at its own await points) can still
+      // interleave with a `delete` — an outcome impossible on the sqlite path.
+      // Within THIS method there are no awaits, so the check + delete complete
+      // in one microtask and the guard itself can never observe a stale state.
       if (!payments.has(id)) {
         return { status: "NOT_FOUND" };
       }

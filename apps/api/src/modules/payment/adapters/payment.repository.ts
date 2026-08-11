@@ -202,6 +202,13 @@ export class PaymentRepositoryImpl implements PaymentRepository {
     // (→ HAS_ALLOCATIONS, nothing deleted) or entirely after (→ DELETED,
     // then the create re-inserts a fresh payment). The issue-#289 TOCTOU
     // window is closed by construction.
+    //
+    // `.immediate()` acquires the SQLite write reservation at BEGIN, so the
+    // guard's reads cannot run against a pre-write snapshot while a SECOND
+    // process commits concurrently (mirrors `runInTransaction`'s
+    // `BEGIN IMMEDIATE`). A deferred BEGIN would let the COUNT read a stale
+    // state and the upgraded DELETE then cascade-remove the concurrent
+    // create's fresh allocations.
     return this.connectionLock.run(async () => {
       const transaction = this.db.transaction((): PaymentDeleteResult => {
         const exists = this.db.prepare(`SELECT 1 FROM "payment" WHERE id = ?`).get(id);
@@ -217,7 +224,7 @@ export class PaymentRepositoryImpl implements PaymentRepository {
         this.db.prepare(`DELETE FROM "payment" WHERE id = ?`).run(id);
         return { status: "DELETED" };
       });
-      return transaction();
+      return transaction.immediate();
     });
   }
 

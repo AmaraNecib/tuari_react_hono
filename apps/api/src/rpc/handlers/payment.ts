@@ -44,6 +44,10 @@ export function createPaymentHandlers(
           } catch (error) {
             // Defense-in-depth: the wire gate already enforces 1..100, but a
             // module validation error must never escape as a 500.
+            // NOTE: paymentsList is the only handler here without a withAudit
+            // wrapper, so it maps errors with this inline try/catch instead of
+            // the audit error mapper — a deliberate one-off; if withAudit is
+            // ever added to list, move this mapping into its error mapper.
             if (error instanceof PaymentInvalidLimitError) {
               throw new ORPCError("BAD_REQUEST", { message: error.message });
             }
