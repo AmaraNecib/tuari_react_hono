@@ -148,29 +148,32 @@ test("recovery key lifecycle: generate, mask, revoke, consume, replenish, max po
   })
   expect(uppercasedResult).toEqual({ success: false })
 
-  // ── Malformed input is rejected by the wire gate (zod 400). ─────────────
-  const malformedStatus = await page.evaluate(async (url) => {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ json: { key: "" } }),
-    })
-    return response.status
-  }, `${API_URL}/rpc/consumeRecoveryKey`)
+/**
+ * Posts a raw RPC payload and returns the HTTP status — used to prove the
+ * wire gate (zod 400) rejects malformed / invisible-char key input.
+ */
+async function fetchRpcStatus(page: Page, procedure: string, input: unknown): Promise<number> {
+  return page.evaluate(
+    async ({ url, body }) => {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ json: body }),
+      })
+      return response.status
+    },
+    { url: `${API_URL}/rpc/${procedure}`, body: input },
+  )
+}
+
+// ── Malformed input is rejected by the wire gate (zod 400). ─────────────
+  const malformedStatus = await fetchRpcStatus(page, "consumeRecoveryKey", { key: "" })
   expect(malformedStatus).toBe(400)
 
   // ── #234: a zero-width-space key survives trim() (not WhiteSpace) but the
   // wire gate must reject invisible format chars, not hash-compare them. ────
-  const zwspStatus = await page.evaluate(async (url) => {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ json: { key: "\u200B\u200B" } }),
-    })
-    return response.status
-  }, `${API_URL}/rpc/consumeRecoveryKey`)
+  const zwspStatus = await fetchRpcStatus(page, "consumeRecoveryKey", { key: "\u200B\u200B" })
   expect(zwspStatus).toBe(400)
 
   // Pool reflects all transitions after a reload (fresh fetch).

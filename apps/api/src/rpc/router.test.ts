@@ -968,6 +968,11 @@ describe("RPC router", () => {
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "\u200B".repeat(8) }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // currentKey half of the same gate: a ZWSP-only current key is rejected
+    // before any PRAGMA is built.
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "\u200B", newKey: "new-key-123" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("forwards a failed recovery key consumption through the wire contract", async () => {

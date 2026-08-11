@@ -34,13 +34,20 @@ export const generatedRecoveryKeysSchema = z.object({
  * Shared key-field schema for exact-match secrets (#234).
  *
  * `trim()` removes only ECMAScript WhiteSpace/LineTerminator — format (Cf)
- * characters such as U+200B ZWSP, U+200E/200F LRM/RLM, U+200C/200D ZWNJ/ZWJ
- * and U+FEFF are NOT WhiteSpace, so they survive trim and `.min()`. These
+ * characters such as U+200B ZWSP, U+200E/200F LRM/RLM and U+200C/200D
+ * ZWNJ/ZWJ are not WhiteSpace, so they survive trim and `.min()`. (U+FEFF
+ * BOM IS WhiteSpace and is trimmed at the edges; a mid-string U+FEFF is
+ * still caught by the Cf check below.) These
  * fields are exact-match secrets (recovery keys are SHA-256-hashed, the DB
  * key becomes the PRAGMA rekey value), so a string that CONTAINS a Cf
  * codepoint anywhere is rejected — stricter than the auth.ts name/password
  * checks, which only reject all-invisible strings: a key is either exactly
  * right or wrong, there is no "visible enough".
+ *
+ * Residual class (documented, tracked as #334): invisible codepoints
+ * OUTSIDE Cf — e.g. U+2800 braille blank (So), combining marks (Mn), Cc
+ * controls, mid-string NBSP (Zs) — still pass. The issue scoped the fix to
+ * `\p{Cf}`; widening the class is a separate decision (#334).
  *
  * The length guard defers to `.min(min)` for every too-short value so a
  * short+invisible key (e.g. 3 ZWSP against min(8)) yields a single

@@ -11,8 +11,9 @@ same surface as #221, which was also High-assurance).
 Follow-up from #221 (test-audit edge-case finding, deferred out of the trim
 scope). `String.prototype.trim()` removes only ECMAScript WhiteSpace /
 LineTerminator characters. Unicode **format (Cf)** characters — U+200B ZWSP,
-U+200E/200F LRM/RLM, U+200C/200D ZWNJ/ZWJ, U+FEFF BOM, … — are NOT WhiteSpace,
-so they survive `z.string().trim()`:
+U+200E/200F LRM/RLM, U+200C/200D ZWNJ/ZWJ, soft hyphen (U+00AD) … — are NOT
+WhiteSpace (U+FEFF BOM *is* WhiteSpace and is trimmed at the edges, but a
+mid-string U+FEFF survives), so they survive `z.string().trim()`:
 
 - `consumeRecoveryKeyInputSchema.key` — a ZWSP-only key passes `min(1)`.
 - `revokeRecoveryKeyInputSchema.keyId` — same `min(1)` gap (hygiene: keyId is
@@ -77,8 +78,8 @@ the user via the toast path already used for schema errors
 ## Dependencies
 
 None new. `security.ts` depends only on `zod` (already externalized in the
-contracts tsup build). `/\p{Cf}/u` requires ES2015+ regex (fine for the tsup
-target and Node ≥ 12).
+contracts tsup build). Unicode property escapes (`\p{Cf}` with the `/u`
+flag) are ES2018 regex — fine for the tsup target and modern Node.
 
 ## Planned tests (TDD, three seams)
 
@@ -129,3 +130,27 @@ user-facing gate.
   each field (the schema errors surface verbatim in the UI toast).
 - Note: the inferred types of the four input schemas are unchanged (refine is
   a pure validator), so no downstream type impact.
+
+## Debate outcome (#234 adversarial review)
+
+Critic + defender sub-agents ran against `git diff bb144f3...HEAD`. Verdicts:
+
+- **F1 (sev 6) "invisible chars outside Cf (Mn/Cc/So/U+2800, mid-string Zs)
+  still pass"** — DEFERRED. The issue's proposed fix scopes the rejection to
+  `\p{Cf}`; widening the class is a deliberate follow-up decision. Tracked as
+  issue #334, referenced from the keyFieldSchema comment. Note the tension:
+  #221's pinned behavior deliberately preserves internal Zs whitespace in
+  recovery keys (email-line-wrap case), so widening needs its own decision.
+- **F2 (sev 4) "Cf rejection on keyId/currentKey is scope creep"** — DISMISSED.
+  Defender: keyId is public wire surface (defense in depth, same class as
+  #221); currentKey is the exact-match current PRAGMA secret (a Cf there
+  silently breaks rekey verification); the issue's fix wording covers "the
+  recovery-key and DB-key input schemas" (all fields). Symmetric coverage is
+  simpler to reason about than partial.
+- **F3 (sev 2) "comment claims U+FEFF is NOT WhiteSpace"** — FIXED. U+FEFF is
+  ECMAScript WhiteSpace and is trimmed at the edges; the comment now states
+  this and notes a mid-string U+FEFF is still caught by the Cf check.
+- **F4 (sev 2) "design doc says ES2015+ regex"** — FIXED. Unicode property
+  escapes are ES2018; doc corrected.
+- **F5 (sev 1) "comment guard omits max-side asymmetry"** — DISMISSED. No
+  `.max()` on these fields; harmless.
