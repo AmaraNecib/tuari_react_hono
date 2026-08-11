@@ -6,6 +6,7 @@ import type {
   PaymentListFilters,
   PaymentListSortField,
   SortDirection,
+  PaymentDeleteResult,
 } from "../payment.types";
 
 export function createInMemoryPaymentRepository(): PaymentRepository {
@@ -145,15 +146,24 @@ export function createInMemoryPaymentRepository(): PaymentRepository {
       return { ...allocation };
     },
 
-    async deletePayment(id: string): Promise<void> {
-      // Delete allocations first
-      const allocIds = Array.from(allocations.values())
-        .filter((a) => a.paymentId === id)
-        .map((a) => a.id);
-      for (const allocId of allocIds) {
-        allocations.delete(allocId);
+    async deleteIfUnallocated(id: string): Promise<PaymentDeleteResult> {
+      // Same guarded semantics as the sqlite adapter, with one honest
+      // divergence: this double's `runInTransaction` is a pass-through, so a
+      // module-level `create` (which yields at its own await points) can still
+      // interleave with a `delete` — an outcome impossible on the sqlite path.
+      // Within THIS method there are no awaits, so the check + delete complete
+      // in one microtask and the guard itself can never observe a stale state.
+      if (!payments.has(id)) {
+        return { status: "NOT_FOUND" };
+      }
+      const count = Array.from(allocations.values()).filter(
+        (a) => a.paymentId === id,
+      ).length;
+      if (count > 0) {
+        return { status: "HAS_ALLOCATIONS", count };
       }
       payments.delete(id);
+      return { status: "DELETED" };
     },
 
     async findAllocationsByPaymentId(

@@ -1,3 +1,5 @@
+import { paymentAmountSchema, paymentListLimitSchema } from "@tuari/contracts";
+
 import type { PaymentModule } from "./payment-module.interface";
 import type { PaymentRepository } from "./payment.repository";
 import type { InvoiceRepository } from "../invoice/invoice.repository";
@@ -9,6 +11,9 @@ import {
   PaymentInvoiceOverAllocationError,
   PaymentNotFoundError,
   PaymentHasAllocationsError,
+  PaymentEmptyAllocationsError,
+  PaymentInvalidAmountError,
+  PaymentInvalidLimitError,
 } from "./payment.types";
 import type {
   CreatePaymentInput,
@@ -31,13 +36,42 @@ import type {
  *
  * The entire create+allocate operation is ACID within a single
  * SQLite transaction.
+ *
+ * Service-boundary defense-in-depth (issue #289): the ORPC wire gate already
+ * rejects non-positive amounts, empty allocations, and invalid page limits;
+ * the module seam re-validates the SAME shared contract primitives
+ * (`paymentAmountSchema` / `paymentListLimitSchema` from @tuari/contracts) so
+ * a direct caller can never record a zero/negative payment or a phantom
+ * zero-allocation payment.
  */
 export function createPaymentModule(
   paymentRepo: PaymentRepository,
   invoiceRepo: InvoiceRepository,
   debtPort: InvoiceDebtPort,
 ): PaymentModule {
+  /**
+   * Pure-input financial validation — safe outside the transaction (no DB
+   * state). Reuses the wire-gate schemas so the module cannot drift from the
+   * contract. Runs BEFORE the sum check so the specific invalid input is
+   * reported instead of a confusing mismatch.
+   */
+  function assertValidCreateInput(input: CreatePaymentInput): void {
+    if (!paymentAmountSchema.safeParse(input.totalAmount).success) {
+      throw new PaymentInvalidAmountError(input.totalAmount);
+    }
+    if (input.allocations.length === 0) {
+      throw new PaymentEmptyAllocationsError();
+    }
+    for (const alloc of input.allocations) {
+      if (!paymentAmountSchema.safeParse(alloc.amount).success) {
+        throw new PaymentInvalidAmountError(alloc.amount);
+      }
+    }
+  }
+
   async function create(input: CreatePaymentInput): Promise<PaymentWithAllocations> {
+    assertValidCreateInput(input);
+
     // Allocation-sum mismatch is a structural validation — safe
     // to check outside the transaction (pure input, no DB state).
     const totalAllocated = input.allocations.reduce((sum, a) => sum + a.amount, 0);
@@ -147,6 +181,10 @@ export function createPaymentModule(
       cursor?: string;
       limit: number;
     }): Promise<{ items: Payment[]; nextCursor: string | null; totalCount: number }> {
+      if (!paymentListLimitSchema.safeParse(query.limit).success) {
+        throw new PaymentInvalidLimitError(query.limit);
+      }
+
       const after = query.cursor
         ? (() => {
             try {
@@ -182,17 +220,17 @@ export function createPaymentModule(
     },
 
     async delete(id: string): Promise<void> {
-      const existing = await paymentRepo.findById(id);
-      if (!existing) {
+      // Guarded atomic delete: existence + allocation check + delete run in
+      // ONE lock-held repository transaction, so an allocation created between
+      // the old check and the delete can no longer be silently cascade-deleted
+      // (issue #289 gap 4).
+      const result = await paymentRepo.deleteIfUnallocated(id);
+      if (result.status === "NOT_FOUND") {
         throw new PaymentNotFoundError(id);
       }
-      // Check that no allocations exist — if they do, the payment
-      // has already been applied and cannot be deleted.
-      const allocs = await paymentRepo.findAllocationsByPaymentId(id);
-      if (allocs.length > 0) {
-        throw new PaymentHasAllocationsError(id, allocs.length);
+      if (result.status === "HAS_ALLOCATIONS") {
+        throw new PaymentHasAllocationsError(id, result.count);
       }
-      await paymentRepo.deletePayment(id);
     },
   };
 }

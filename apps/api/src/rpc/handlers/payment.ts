@@ -9,6 +9,9 @@ import {
   PaymentInvoiceOverAllocationError,
   PaymentNotFoundError,
   PaymentHasAllocationsError,
+  PaymentEmptyAllocationsError,
+  PaymentInvalidAmountError,
+  PaymentInvalidLimitError,
 } from "../../modules/payment/payment.types";
 import type { RpcContext } from "../context";
 import type { RpcMiddleware } from "../rpc-middleware";
@@ -30,12 +33,26 @@ export function createPaymentHandlers(
             sort?: { field: string; direction: "asc" | "desc" };
           };
 
-          const result = await paymentModule.listPaged({
-            filters: opts.filters as never,
-            cursor: opts.cursor,
-            limit: opts.limit ?? 50,
-            sort: opts.sort as never,
-          });
+          let result;
+          try {
+            result = await paymentModule.listPaged({
+              filters: opts.filters as never,
+              cursor: opts.cursor,
+              limit: opts.limit ?? 50,
+              sort: opts.sort as never,
+            });
+          } catch (error) {
+            // Defense-in-depth: the wire gate already enforces 1..100, but a
+            // module validation error must never escape as a 500.
+            // NOTE: paymentsList is the only handler here without a withAudit
+            // wrapper, so it maps errors with this inline try/catch instead of
+            // the audit error mapper — a deliberate one-off; if withAudit is
+            // ever added to list, move this mapping into its error mapper.
+            if (error instanceof PaymentInvalidLimitError) {
+              throw new ORPCError("BAD_REQUEST", { message: error.message });
+            }
+            throw error;
+          }
 
           return { ...result, hasMore: result.nextCursor !== null };
         }),
@@ -90,6 +107,12 @@ export function createPaymentHandlers(
           },
           (error: unknown) => {
             if (error instanceof PaymentAllocationSumMismatchError) {
+              return new ORPCError("BAD_REQUEST", { message: error.message });
+            }
+            if (error instanceof PaymentEmptyAllocationsError) {
+              return new ORPCError("BAD_REQUEST", { message: error.message });
+            }
+            if (error instanceof PaymentInvalidAmountError) {
               return new ORPCError("BAD_REQUEST", { message: error.message });
             }
             if (error instanceof PaymentInvoiceNotFoundError) {

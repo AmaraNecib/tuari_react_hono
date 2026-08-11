@@ -24,6 +24,7 @@ import type { PaymentModule } from "./payment-module.interface";
 import {
   PaymentInvoiceNotReceivedError,
   PaymentInvoiceOverAllocationError,
+  PaymentHasAllocationsError,
 } from "./payment.types";
 
 function createTestEnv() {
@@ -204,6 +205,32 @@ describe("PaymentModule with sqlite payment adapter", () => {
     );
 
     const invoice = await env.invoiceRepo.findById("inv-1");
+    expect(invoice!.remainingAmount).toBe(0);
+    expect(invoice!.status).toBe("PAID");
+  });
+
+  it("delete refuses a payment with allocations and leaves invoice/debt state intact", async () => {
+    await seedReceivedInvoice(env, "inv-1", 5000);
+    await paymentModule.create(
+      paymentInput({ id: "pmt-guard", totalAmount: 5000, allocations: [{ invoiceId: "inv-1", amount: 5000 }] }),
+    );
+
+    // The guarded delete runs inside the same lock-held transaction as the
+    // allocation check — an allocated payment can never be cascade-deleted.
+    await expect(paymentModule.delete("pmt-guard")).rejects.toBeInstanceOf(
+      PaymentHasAllocationsError,
+    );
+
+    // Nothing was deleted: payment + allocation rows survive…
+    const paymentCount = env.rawDb.prepare(`SELECT COUNT(*) AS c FROM "payment"`).get() as { c: number };
+    const allocCount = env.rawDb.prepare(`SELECT COUNT(*) AS c FROM "payment_allocation"`).get() as { c: number };
+    expect(paymentCount.c).toBe(1);
+    expect(allocCount.c).toBe(1);
+
+    // …and the invoice settlement state is untouched.
+    const invoice = await env.invoiceRepo.findById("inv-1");
+    expect(invoice).not.toBeNull();
+    expect(invoice!.paidAmount).toBe(5000);
     expect(invoice!.remainingAmount).toBe(0);
     expect(invoice!.status).toBe("PAID");
   });

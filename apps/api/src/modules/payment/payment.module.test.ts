@@ -13,6 +13,9 @@ import {
   PaymentInvoiceOverAllocationError,
   PaymentNotFoundError,
   PaymentHasAllocationsError,
+  PaymentEmptyAllocationsError,
+  PaymentInvalidAmountError,
+  PaymentInvalidLimitError,
 } from "./payment.types";
 
 function makePaymentInput(overrides: Partial<CreatePaymentInput> = {}): CreatePaymentInput {
@@ -180,6 +183,60 @@ describe("PaymentModule", () => {
       expect(debtEntries.reduce((sum, e) => sum + e.signedAmount, 0)).toBe(-5000);
     });
 
+    it("rejects empty allocations (no phantom payments)", async () => {
+      await expect(
+        paymentModule.create(makePaymentInput({ allocations: [] })),
+      ).rejects.toBeInstanceOf(PaymentEmptyAllocationsError);
+    });
+
+    it("rejects a zero total amount", async () => {
+      await expect(
+        paymentModule.create(makePaymentInput({
+          totalAmount: 0,
+          allocations: [{ invoiceId: "inv-1", amount: 5000 }],
+        })),
+      ).rejects.toBeInstanceOf(PaymentInvalidAmountError);
+    });
+
+    it("rejects amounts beyond the safe integer range", async () => {
+      await expect(
+        paymentModule.create(makePaymentInput({
+          totalAmount: 2 ** 53,
+          allocations: [{ invoiceId: "inv-1", amount: 2 ** 53 }],
+        })),
+      ).rejects.toBeInstanceOf(PaymentInvalidAmountError);
+    });
+
+    it("rejects a negative total amount", async () => {
+      await expect(
+        paymentModule.create(makePaymentInput({
+          totalAmount: -10000,
+          allocations: [
+            { invoiceId: "inv-1", amount: -5000 },
+            { invoiceId: "inv-2", amount: -5000 },
+          ],
+        })),
+      ).rejects.toBeInstanceOf(PaymentInvalidAmountError);
+    });
+
+    it("rejects a zero allocation amount", async () => {
+      await expect(
+        paymentModule.create(makePaymentInput({
+          totalAmount: 5000,
+          allocations: [{ invoiceId: "inv-1", amount: 0 }],
+        })),
+      ).rejects.toBeInstanceOf(PaymentInvalidAmountError);
+    });
+
+    it("rejects a negative allocation amount", async () => {
+      await expect(
+        paymentModule.create(makePaymentInput({
+          totalAmount: 5000,
+          allocations: [{ invoiceId: "inv-1", amount: -5000 }],
+        })),
+      ).rejects.toBeInstanceOf(PaymentInvalidAmountError);
+    });
+
     it("rejects allocation total that differs from payment amount", async () => {
       const input = makePaymentInput({
         totalAmount: 5000,
@@ -307,6 +364,32 @@ describe("PaymentModule", () => {
     function encodeCursor(sortValue: unknown, id: unknown): string {
       return Buffer.from(JSON.stringify({ sortValue, id })).toString("base64url");
     }
+
+    it("rejects a fractional page limit", async () => {
+      // sqlite LIMIT ? throws a datatype mismatch on fractional bounds — the
+      // shared schema's .int() rejects it at the seam before the adapter.
+      await expect(paymentModule.listPaged({ limit: 2.5 })).rejects.toBeInstanceOf(
+        PaymentInvalidLimitError,
+      );
+    });
+
+    it("rejects a zero limit", async () => {
+      await expect(paymentModule.listPaged({ limit: 0 })).rejects.toBeInstanceOf(
+        PaymentInvalidLimitError,
+      );
+    });
+
+    it("rejects a negative limit", async () => {
+      await expect(paymentModule.listPaged({ limit: -1 })).rejects.toBeInstanceOf(
+        PaymentInvalidLimitError,
+      );
+    });
+
+    it("rejects a limit above the maximum", async () => {
+      await expect(paymentModule.listPaged({ limit: 101 })).rejects.toBeInstanceOf(
+        PaymentInvalidLimitError,
+      );
+    });
 
     it("pages with a default sort and reports total count", async () => {
       await paymentRepo.createPayment(makePayment("pmt-1"));

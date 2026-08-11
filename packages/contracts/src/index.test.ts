@@ -37,6 +37,9 @@ import {
   projectSchema,
   recurringPatternSchema,
   reportFilterInputSchema,
+  paymentAmountSchema,
+  paymentListLimitSchema,
+  paymentListInputSchema,
   revokeRecoveryKeyInputSchema,
   roleCreateInputSchema,
   sessionUserSchema,
@@ -1070,6 +1073,33 @@ describe("contracts", () => {
       // Missing required fields and non-string enum values are rejected.
       expect(() => reportFilterInputSchema.parse({})).toThrow();
       expect(() => reportFilterInputSchema.parse({ type: null })).toThrow();
+    });
+  });
+
+  describe("payment amount + limit schemas (#289 shared primitives)", () => {
+    it("paymentAmountSchema rejects non-positive, non-finite, and unsafe-integer amounts", () => {
+      for (const bad of [0, -1, -0, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, 2 ** 53]) {
+        expect(paymentAmountSchema.safeParse(bad).success).toBe(false);
+      }
+      for (const good of [1, 0.5, Number.MAX_SAFE_INTEGER]) {
+        expect(paymentAmountSchema.safeParse(good).success).toBe(true);
+      }
+    });
+
+    it("paymentListLimitSchema requires an integer between 1 and 100", () => {
+      // Fractional limits (2.5) are rejected: sqlite LIMIT ? throws a datatype
+      // mismatch on fractional bounds — a wire-reachable 500 without .int().
+      for (const bad of [0, -1, 101, 2.5, 99.9, NaN, Infinity]) {
+        expect(paymentListLimitSchema.safeParse(bad).success).toBe(false);
+      }
+      for (const good of [1, 50, 100]) {
+        expect(paymentListLimitSchema.safeParse(good).success).toBe(true);
+      }
+    });
+
+    it("paymentListInputSchema defaults the limit to 50 and still enforces the shared limit schema", () => {
+      expect(paymentListInputSchema.parse({}).limit).toBe(50);
+      expect(paymentListInputSchema.safeParse({ limit: 2.5 }).success).toBe(false);
     });
   });
 
