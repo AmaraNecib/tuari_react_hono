@@ -199,6 +199,16 @@ struct DesktopAuthRuntimeState {
     session: Mutex<Option<DesktopAuthSession>>,
 }
 
+/// Tracks the DB encryption key rotation so a failed rekey can roll the
+/// keyring back (issue #265). The Rust shell owns key rotation: the web flow
+/// rotates `app-db.key` BEFORE calling the API rekey RPC, and restores it on
+/// any rekey failure. `previous` holds the value that was current before the
+/// last rotation (or `None` when no key existed).
+struct DatabaseKeyRotationState {
+    store: SecretStore,
+    previous: Mutex<Option<String>>,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DesktopAuthSession {
@@ -549,6 +559,67 @@ async fn desktop_api_request(
         return Err("Desktop API bridge path is not allowed.".to_string());
     }
     send_desktop_api_request(request, &state).await
+}
+
+/// Core rotation logic (testable without a Tauri window/state): read the
+/// current key, write `new_key`, remember the previous value for rollback.
+fn rotate_db_key_in_store(
+    store: &SecretStore,
+    previous: &mut Option<String>,
+    new_key: &str,
+) -> Result<(), String> {
+    if new_key.trim().is_empty() {
+        return Err("New DB key must not be empty.".to_string());
+    }
+
+    let current = store.read(APP_DB_KEY_ACCOUNT)?;
+    store.write(APP_DB_KEY_ACCOUNT, new_key)?;
+    *previous = current;
+    Ok(())
+}
+
+/// Core rollback logic: restore the previous key, or delete the entry when
+/// there was none before the rotation.
+fn restore_db_key_in_store(
+    store: &SecretStore,
+    previous: &mut Option<String>,
+) -> Result<(), String> {
+    match previous.take() {
+        Some(key) => store.write(APP_DB_KEY_ACCOUNT, &key),
+        None => store.delete(APP_DB_KEY_ACCOUNT),
+    }
+}
+
+/// Rotate the persisted DB encryption key (`app-db.key`) to `new_key`.
+///
+/// The web flow calls this BEFORE the API `changeDbEncryptionKey` RPC so the
+/// keyring holds the new key by the time the database is re-encrypted — a
+/// restart then opens the database with the key it was actually rekeyed to.
+/// The previous value is remembered so `restore_db_key` can roll the rotation
+/// back when the rekey fails (issue #265).
+#[tauri::command]
+fn rotate_db_key(
+    window: tauri::Window,
+    new_key: String,
+    state: tauri::State<'_, DatabaseKeyRotationState>,
+) -> Result<(), String> {
+    assert_sensitive_command_window(&window)?;
+    let mut previous = state.previous.lock().map_err(|error| error.to_string())?;
+    rotate_db_key_in_store(&state.store, &mut previous, &new_key)
+}
+
+/// Roll back a DB key rotation to the value that was current before
+/// `rotate_db_key` (or delete the key when there was none). Called by the web
+/// flow when the API rekey RPC fails, so the keyring never diverges from the
+/// database's actual key (issue #265).
+#[tauri::command]
+fn restore_db_key(
+    window: tauri::Window,
+    state: tauri::State<'_, DatabaseKeyRotationState>,
+) -> Result<(), String> {
+    assert_sensitive_command_window(&window)?;
+    let mut previous = state.previous.lock().map_err(|error| error.to_string())?;
+    restore_db_key_in_store(&state.store, &mut previous)
 }
 
 #[tauri::command]
@@ -1330,6 +1401,30 @@ impl SecretStore {
             SecretStore::File { dir } => write_secret_file(&dir.join(account), secret),
         }
     }
+
+    /// Delete a secret (no-op when the entry does not exist).
+    fn delete(&self, account: &str) -> Result<(), String> {
+        match self {
+            SecretStore::Keyring { .. } => match self.entry(account)?.delete_credential() {
+                Ok(()) => Ok(()),
+                Err(keyring::Error::NoEntry) => Ok(()),
+                Err(error) => Err(format!(
+                    "Failed to delete secret '{account}' from the OS store: {error}"
+                )),
+            },
+            SecretStore::File { dir } => {
+                let path = dir.join(account);
+                match remove_file(&path) {
+                    Ok(()) => Ok(()),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                    Err(error) => Err(format!(
+                        "Failed to delete secret file '{}': {error}",
+                        path.display()
+                    )),
+                }
+            }
+        }
+    }
 }
 
 fn write_secret_file(path: &Path, secret: &str) -> Result<(), String> {
@@ -1455,21 +1550,29 @@ fn load_or_create_secret(
     }
 }
 
-fn load_runtime_secrets(app: &AppHandle) -> Result<RuntimeSecrets, String> {
+/// Resolve the runtime secret store: the OS credential store (DPAPI /
+/// Keychain / Secret Service) when usable, otherwise the owner-only
+/// plaintext directory under the runtime secrets dir. Shared by
+/// `load_runtime_secrets` and the DB-key rotation commands so they operate
+/// on the SAME store instance.
+fn resolve_secret_store(app: &AppHandle) -> Result<SecretStore, String> {
     let secrets_dir = resolve_secrets_dir(app)?;
     create_dir_all(&secrets_dir).map_err(|error| error.to_string())?;
     // The plaintext fallback must never be world-readable.
     #[cfg(unix)]
     restrict_dir_to_owner(&secrets_dir)?;
 
-    // Prefer the OS credential store (DPAPI / Keychain / Secret Service);
-    // fall back to the owner-only plaintext directory when it is unavailable.
     let keyring_store = SecretStore::keyring(SECRETS_KEYRING_SERVICE);
-    let store = if keyring_store.is_usable() {
+    Ok(if keyring_store.is_usable() {
         keyring_store
     } else {
         SecretStore::file(secrets_dir.clone())
-    };
+    })
+}
+
+fn load_runtime_secrets(app: &AppHandle) -> Result<RuntimeSecrets, String> {
+    let store = resolve_secret_store(app)?;
+    let secrets_dir = resolve_secrets_dir(app)?;
 
     let better_auth_secret = load_or_create_secret(
         &store,
@@ -1878,6 +1981,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_runtime_config,
             desktop_api_request,
+            rotate_db_key,
+            restore_db_key,
             desktop_sign_in_with_phone_number,
             desktop_change_password,
             desktop_sign_out_session,
@@ -1892,6 +1997,15 @@ pub fn run() {
             app_ready
         ])
         .setup(|app| {
+            // The DB-key rotation commands operate on the same secret store the
+            // API sidecar's APP_DB_KEY comes from, so a rotation stays in sync
+            // with what the next spawned process will read.
+            let rotation_store = resolve_secret_store(app.handle())?;
+            app.manage(DatabaseKeyRotationState {
+                store: rotation_store,
+                previous: Mutex::new(None),
+            });
+
             let child = spawn_api_process(app.handle())?;
             let state = app.state::<ApiProcess>();
             let mut guard = state.child.lock().map_err(|error| error.to_string())?;
@@ -1960,9 +2074,10 @@ mod tests {
         is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
         load_or_create_secret, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
-        should_force_reveal_main_window, AppReadyState, BETTER_AUTH_SECRET_ACCOUNT,
-        BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY, SecretStore,
-        clear_app_ready, mark_app_ready_if_first,
+        restore_db_key_in_store, rotate_db_key_in_store,
+        should_force_reveal_main_window, AppReadyState, APP_DB_KEY_ACCOUNT,
+        BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
+        SecretStore, clear_app_ready, mark_app_ready_if_first,
     };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
@@ -2300,5 +2415,85 @@ mod tests {
             "node C:\\x\\dist\\index.cjs"
         ));
         assert!(!is_api_sidecar_command_line(""));
+    }
+
+    #[test]
+    fn rotates_and_restores_the_db_key_round_trip() {
+        let temp_dir = unique_temp_dir();
+        create_dir_all(&temp_dir).expect("create temp dir");
+        let store = SecretStore::file(temp_dir.clone());
+
+        // Seed the current key as the API sidecar would have.
+        store
+            .write(APP_DB_KEY_ACCOUNT, "original-key-123")
+            .expect("seed current key");
+        let mut previous = None;
+
+        // Rotate BEFORE the rekey: the store now holds the new key.
+        rotate_db_key_in_store(&store, &mut previous, "new-key-456")
+            .expect("rotate");
+        assert_eq!(
+            store
+                .read(APP_DB_KEY_ACCOUNT)
+                .expect("read")
+                .map(|key| key.trim().to_string())
+                .as_deref(),
+            Some("new-key-456")
+        );
+
+        // A failed rekey rolls the rotation back to the original key.
+        restore_db_key_in_store(&store, &mut previous).expect("restore");
+        assert_eq!(
+            store
+                .read(APP_DB_KEY_ACCOUNT)
+                .expect("read")
+                .map(|key| key.trim().to_string())
+                .as_deref(),
+            Some("original-key-123")
+        );
+    }
+
+    #[test]
+    fn restore_deletes_the_key_when_none_existed_before_rotation() {
+        let temp_dir = unique_temp_dir();
+        create_dir_all(&temp_dir).expect("create temp dir");
+        let store = SecretStore::file(temp_dir.clone());
+        let mut previous = None;
+
+        // No key existed before the rotation (fresh install without the
+        // encrypted-db feature).
+        rotate_db_key_in_store(&store, &mut previous, "brand-new-key")
+            .expect("rotate");
+        assert!(previous.is_none());
+
+        restore_db_key_in_store(&store, &mut previous).expect("restore");
+        assert_eq!(
+            store.read(APP_DB_KEY_ACCOUNT).expect("read"),
+            None,
+            "rollback must delete a key that did not exist before"
+        );
+    }
+
+    #[test]
+    fn rejects_blank_rotation_keys_without_touching_the_store() {
+        let temp_dir = unique_temp_dir();
+        create_dir_all(&temp_dir).expect("create temp dir");
+        let store = SecretStore::file(temp_dir.clone());
+        store
+            .write(APP_DB_KEY_ACCOUNT, "current-key-123")
+            .expect("seed");
+        let mut previous = None;
+
+        assert!(rotate_db_key_in_store(&store, &mut previous, "   ").is_err());
+        assert!(previous.is_none());
+        assert_eq!(
+            store
+                .read(APP_DB_KEY_ACCOUNT)
+                .expect("read")
+                .map(|key| key.trim().to_string())
+                .as_deref(),
+            Some("current-key-123"),
+            "a rejected rotation must leave the stored key untouched"
+        );
     }
 }

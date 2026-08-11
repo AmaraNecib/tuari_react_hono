@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { i18n } from "@/i18n"
+import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { rpcClient } from "@/lib/orpc-client"
 import { showErrorToast } from "@/lib/toast"
 
@@ -58,11 +59,49 @@ export function useRevokeRecoveryKeyMutation() {
   })
 }
 
-/** Change the DB encryption key (no-op on the unencrypted web dev DB). */
+/**
+ * Ask the desktop host to rotate the persisted DB key (`app-db.key`) to the
+ * new key BEFORE the API rekeys (issue #265). The Rust shell owns the key
+ * store, so a successful rekey is durable across restarts.
+ */
+async function invokeRotateDbKey(newKey: string): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core")
+  await invoke("rotate_db_key", { newKey })
+}
+
+/** Ask the desktop host to roll a DB key rotation back (rekey failed). */
+async function invokeRestoreDbKey(): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core")
+  await invoke("restore_db_key")
+}
+
+/**
+ * Change the DB encryption key (no-op on the unencrypted web dev DB).
+ *
+ * On the desktop runtime the key lives in the host's secret store, so the
+ * flow rotates the persisted key FIRST (atomic), then calls the API rekey
+ * RPC, and rolls the rotation back on any failure — the keyring must never
+ * diverge from the key the database was actually re-encrypted with.
+ */
 export function useChangeDbEncryptionKeyMutation() {
   return useMutation({
     mutationKey: ["recovery-key", "change-db-key"],
-    mutationFn: (input: { currentKey: string; newKey: string }) =>
-      rpcClient.changeDbEncryptionKey(input),
+    mutationFn: async (input: { currentKey: string; newKey: string }) => {
+      if (isDesktopRuntime()) {
+        await invokeRotateDbKey(input.newKey)
+        try {
+          const result = await rpcClient.changeDbEncryptionKey(input)
+          if (!result.success) {
+            // The DB was NOT re-encrypted — put the original key back.
+            await invokeRestoreDbKey().catch(() => {})
+          }
+          return result
+        } catch (error) {
+          await invokeRestoreDbKey().catch(() => {})
+          throw error
+        }
+      }
+      return rpcClient.changeDbEncryptionKey(input)
+    },
   })
 }
