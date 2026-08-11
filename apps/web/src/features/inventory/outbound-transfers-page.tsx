@@ -27,17 +27,17 @@ export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () =
     () => [
       {
         id: "sale",
-        label: t("inventoryPage.transfers.typeSale", "بيع"),
+        label: t("inventoryPage.transfers.typeSale"),
         filters: { transferType: "SALE" },
       },
       {
         id: "gift",
-        label: t("inventoryPage.transfers.typeGift", "هدية"),
+        label: t("inventoryPage.transfers.typeGift"),
         filters: { transferType: "GIFT" },
       },
       {
         id: "return",
-        label: t("inventoryPage.transfers.typeReturn", "إرجاع"),
+        label: t("inventoryPage.transfers.typeReturn"),
         filters: { transferType: "RETURN" },
       },
     ],
@@ -102,7 +102,7 @@ export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () =
                         {transfer.counterpartyId}
                       </div>
                       <div className="text-muted-foreground">
-                        {t("inventoryPage.transfers.fromLabel", "من")} {transfer.fromType === "WAREHOUSE" ? t("inventoryPage.transfers.fromWarehouse") : t("inventoryPage.transfers.fromProject")}: {transfer.fromId}
+                        {t("inventoryPage.transfers.fromLabel")} {transfer.fromType === "WAREHOUSE" ? t("inventoryPage.transfers.fromWarehouse") : t("inventoryPage.transfers.fromProject")}: {transfer.fromId}
                       </div>
                     </div>
                     <div className="text-end">

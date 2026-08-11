@@ -20,7 +20,7 @@ export function InventoryLocationContentsSection({ warehouseId, projectId }: { w
 
   return (
     <div className="space-y-6">
-      <SurfaceHeader title={t("inventory.location.currentItems", "العناصر الحالية")} description={t("inventory.location.currentItemsDescription", "كل ما يوجد الآن داخل هذا الموقع مع الكميات والأصول الحالية.")} />
+      <SurfaceHeader title={t("inventory.location.currentItems")} description={t("inventory.location.currentItemsDescription")} />
 
       <TransferItemDialog
         open={transferTarget !== null}
@@ -30,13 +30,13 @@ export function InventoryLocationContentsSection({ warehouseId, projectId }: { w
 
       {/* Assets Section */}
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-foreground">{t("inventory.location.assets", "الأصول")}</h3>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">{t("inventory.location.assets")}</h3>
         <div className="space-y-2">
           {query.data?.assets.map((asset) => (
             <div key={asset.id} className="flex items-center justify-between gap-3 rounded-lg border border-line px-4 py-3 text-sm">
               <div className="min-w-0">
                 <div className="font-medium text-foreground">{asset.assetName}</div>
-                <div className="text-muted-foreground">{asset.currentLocationLabel ?? t("common.none", "غير محدد")}</div>
+                <div className="text-muted-foreground">{asset.currentLocationLabel ?? t("common.none")}</div>
               </div>
               <Button
                 size="xs"
@@ -54,20 +54,20 @@ export function InventoryLocationContentsSection({ warehouseId, projectId }: { w
               </Button>
             </div>
           ))}
-          {query.data && query.data.assets.length === 0 ? <p className="text-sm text-muted-foreground">{t("inventory.location.noAssets", "لا توجد أصول في هذا الموقع.")}</p> : null}
+          {query.data && query.data.assets.length === 0 ? <p className="text-sm text-muted-foreground">{t("inventory.location.noAssets")}</p> : null}
         </div>
       </div>
 
       {/* Consumables Section */}
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-foreground">{t("inventory.location.consumables", "المواد الاستهلاكية")}</h3>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">{t("inventory.location.consumables")}</h3>
         <div className="space-y-2">
           {query.data?.consumables.map((balance) => (
             <div key={balance.id} className="flex items-center justify-between gap-3 rounded-lg border border-line px-4 py-3 text-sm">
               <div className="min-w-0">
                 <div className="font-medium text-foreground">{balance.itemName}</div>
                 <div className="text-muted-foreground">{balance.locationLabel}</div>
-                <div className="text-muted-foreground">{t("inventory.location.currentQuantity", "الكمية الحالية:")} {balance.quantity}</div>
+                <div className="text-muted-foreground">{t("inventory.location.currentQuantity")} {balance.quantity}</div>
               </div>
               <Button
                 size="xs"
@@ -86,7 +86,7 @@ export function InventoryLocationContentsSection({ warehouseId, projectId }: { w
               </Button>
             </div>
           ))}
-          {query.data && query.data.consumables.length === 0 ? <p className="text-sm text-muted-foreground">{t("inventory.location.noConsumables", "لا توجد مواد استهلاكية في هذا الموقع.")}</p> : null}
+          {query.data && query.data.consumables.length === 0 ? <p className="text-sm text-muted-foreground">{t("inventory.location.noConsumables")}</p> : null}
         </div>
       </div>
     </div>

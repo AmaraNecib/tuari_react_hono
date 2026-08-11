@@ -79,9 +79,9 @@ export function CreateableSelect({
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
 
-  const resolvedEmptyLabel = emptyLabel ?? t("common.selectPlaceholder", "اختر...")
-  const resolvedPlaceholder = placeholder ?? t("common.noOptions", "لا توجد خيارات")
-  const resolvedCreateLabel = createLabel ?? t("common.createNew", "إنشاء جديد")
+  const resolvedEmptyLabel = emptyLabel ?? t("common.selectPlaceholder")
+  const resolvedPlaceholder = placeholder ?? t("common.noOptions")
+  const resolvedCreateLabel = createLabel ?? t("common.createNew")
 
   function handleValueChange(selectedValue: string | null) {
     if (!selectedValue) return

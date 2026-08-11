@@ -35,10 +35,10 @@ function NotFoundPage() {
   return (
     <div className="flex h-screen flex-col items-center justify-center p-6 text-center" dir="rtl">
       <h1 className="text-6xl font-bold text-primary">404</h1>
-      <h2 className="mt-4 text-2xl font-semibold text-foreground">{t("workspace.notFound.title")}</h2>
-      <p className="mt-2 text-muted-foreground">{t("workspace.notFound.description")}</p>
+      <h2 className="mt-4 text-2xl font-semibold text-foreground">{t("detailPages.notFound.title")}</h2>
+      <p className="mt-2 text-muted-foreground">{t("detailPages.notFound.description")}</p>
       <a href="/" className="mt-8 rounded-full bg-primary px-6 py-2.5 font-medium text-primary-foreground hover:bg-primary/90">
-        {t("workspace.notFound.backHome")}
+        {t("detailPages.notFound.backHome")}
       </a>
     </div>
   )

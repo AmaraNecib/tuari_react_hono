@@ -5,6 +5,7 @@ import { render, screen } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createAppQueryClient } from "@/lib/query-client";
 import { LicenseSettings } from "./license-settings";
+import { ar } from "@/i18n/resources/ar";
 import type { LicenseStatusData } from "./license-hooks";
 
 // ─── Mock useLicenseStatus ─────────────────────────────────────
@@ -20,9 +21,16 @@ vi.mock("./license-hooks", () => ({
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: string, options?: Record<string, unknown>) => {
-      if (!fallback) return key;
+      let node: unknown = ar.translation;
+      for (const part of key.split(".")) {
+        if (node === null || typeof node !== "object" || !(part in node)) {
+          node = undefined;
+          break;
+        }
+        node = (node as Record<string, unknown>)[part];
+      }
+      let result = typeof node === "string" ? node : (fallback ?? key);
       // Simple interpolation for {{var}} patterns
-      let result = fallback;
       if (options) {
         for (const [k, v] of Object.entries(options)) {
           result = result.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), String(v));
@@ -79,7 +87,7 @@ describe("LicenseSettings", () => {
     mockUseLicenseStatus.mockReturnValue({ isLoading: true });
 
     renderWithQuery(<LicenseSettings />);
-    expect(screen.queryByText("جارٍ التحميل...")).toBeTruthy();
+    expect(screen.queryByText("جارٍ التنفيذ...")).toBeTruthy();
   });
 
   it("shows error state with retry button", () => {

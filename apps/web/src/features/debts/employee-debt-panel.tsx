@@ -56,7 +56,7 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
       <div className="grid gap-4">
         <Surface className="rounded-xl px-5 py-4" variant="card">
           <p className="text-sm text-muted-foreground">
-            {debtAccount ? `${t("debts.cases.currentBalance", "الرصيد الحالي")} — ${getDebtDirectionLabel(debtAccount.direction)}` : t("debts.cases.currentBalance", "الرصيد الحالي")}
+            {debtAccount ? `${t("debts.cases.currentBalance")} — ${getDebtDirectionLabel(debtAccount.direction)}` : t("debts.cases.currentBalance")}
           </p>
           <p className={cn("mt-2 font-mono text-2xl font-semibold", balanceMeta.textClassName)} dir="ltr">
             دج {formatDebtMoney(debtAccount?.currentBalance ?? 0)}
@@ -66,21 +66,21 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
       </div>
 
       <Surface className="p-5" variant="card">
-        <SurfaceHeader title={t("debts.employee.addEntry", "إضافة حركة دين")} description={t("debts.employee.addEntryDescription", "سجل دفعات أو مستحقات أو تسويات للعامل")} />
+        <SurfaceHeader title={t("debts.employee.addEntry")} description={t("debts.employee.addEntryDescription")} />
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("debts.employee.entryType", "نوع الحركة")}</span>
+            <span className="text-sm font-medium text-foreground">{t("debts.employee.entryType")}</span>
             <select
               value={entryType}
               onChange={(e) => setEntryType(e.target.value as "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE")}
               className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
               disabled={createEntryMutation.isPending}
             >
-              <option value="OPENING">{t("debts.employee.opening", "فتح الحساب")}</option>
-              <option value="PAYMENT">{t("debts.employee.payment", "دفعة")}</option>
-              <option value="ADJUSTMENT">{t("debts.employee.adjustment", "تسوية")}</option>
-              <option value="ADVANCE">{t("debts.employee.advance", "سلفة")}</option>
+              <option value="OPENING">{t("debts.employee.opening")}</option>
+              <option value="PAYMENT">{t("debts.employee.payment")}</option>
+              <option value="ADJUSTMENT">{t("debts.employee.adjustment")}</option>
+              <option value="ADVANCE">{t("debts.employee.advance")}</option>
             </select>
           </label>
 
@@ -94,7 +94,7 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
           </label>
 
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("debts.employee.amount", "المبلغ (دج)")}</span>
+            <span className="text-sm font-medium text-foreground">{t("debts.employee.amount")}</span>
             <CurrencyInput
               placeholder="0.00"
               value={amount}
@@ -104,10 +104,10 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
           </label>
 
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">{t("common.note", "ملاحظة")}</span>
+            <span className="text-sm font-medium text-foreground">{t("common.note")}</span>
             <input
               type="text"
-              placeholder={t("debts.employee.notePlaceholder", "إضافة تفصيل")}
+              placeholder={t("debts.employee.notePlaceholder")}
               value={note}
               onChange={(e) => setNote(e.target.value)}
               className="h-10 rounded-xl border border-border/80 bg-background px-3.5 text-sm text-foreground outline-none"
@@ -118,10 +118,10 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
 
         <PageFooterActions>
           <Button variant="outline" onClick={resetForm} disabled={createEntryMutation.isPending}>
-            {t("common.reset", "إعادة تعيين")}
+            {t("common.reset")}
           </Button>
           <Button disabled={!hasValidAmount || createEntryMutation.isPending} onClick={handleSubmit}>
-            {createEntryMutation.isPending ? t("debts.employee.saving", "جاري الحفظ...") : t("debts.employee.saveEntry", "حفظ الحركة")}
+            {createEntryMutation.isPending ? t("debts.employee.saving") : t("debts.employee.saveEntry")}
           </Button>
         </PageFooterActions>
       </Surface>

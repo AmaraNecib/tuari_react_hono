@@ -129,14 +129,14 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
   return (
     <div className="space-y-4">
       <SurfaceHeader
-        title={t("inventory.transfer.selectItems", "اختيار العناصر")}
-        description={t("inventory.transfer.selectItemsDescription", "اختر الموقع ثم أضف العناصر المتاحة")}
+        title={t("inventory.transfer.selectItems")}
+        description={t("inventory.transfer.selectItemsDescription")}
       />
 
       {/* Source selection */}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="space-y-1.5 text-sm">
-          <span className="font-medium">{t("inventory.transfer.sourceType", "نوع المصدر")}</span>
+          <span className="font-medium">{t("inventory.transfer.sourceType")}</span>
           <NativeSelect
             value={sourceType}
             onChange={(e) => {
@@ -144,18 +144,18 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
               setSourceId("")
             }}
           >
-            <option value="WAREHOUSE">{t("inventory.transfer.warehouse", "مستودع")}</option>
-            <option value="PROJECT">{t("inventory.transfer.project", "مشروع")}</option>
+            <option value="WAREHOUSE">{t("inventory.transfer.warehouse")}</option>
+            <option value="PROJECT">{t("inventory.transfer.project")}</option>
           </NativeSelect>
         </label>
 
         <label className="space-y-1.5 text-sm">
-          <span className="font-medium">{t("inventory.transfer.source", "المصدر")}</span>
+          <span className="font-medium">{t("inventory.transfer.source")}</span>
           <NativeSelect
             value={sourceId}
             onChange={(e) => setSourceId(e.target.value)}
           >
-            <option value="">{t("inventory.transfer.selectSource", "اختر المصدر...")}</option>
+            <option value="">{t("inventory.transfer.selectSource")}</option>
             {sourceOptions.map((option) => (
               <option key={option.id} value={option.id}>{option.name}</option>
             ))}
@@ -167,11 +167,11 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
       {sourceId && (
         <div className="space-y-2">
           <p className="text-sm font-medium text-ink-3">
-            {t("inventory.transfer.availableItems", "العناصر المتاحة")}
+            {t("inventory.transfer.availableItems")}
           </p>
           {availableItems.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              {t("inventory.transfer.noItems", "لا توجد عناصر في هذا الموقع")}
+              {t("inventory.transfer.noItems")}
             </p>
           ) : (
             <div className="space-y-1">
@@ -187,8 +187,8 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
                     <div className="min-w-0">
                       <span className="font-medium">{item.name}</span>
                       <span className="ms-2 text-ink-4">
-                        ({item.type === "ASSET" ? t("inventory.type.asset", "أصل") : t("inventory.type.consumable", "استهلاكي")})
-                        — {item.quantity} {item.type === "CONSUMABLE" ? t("inventory.unit.pieces", "قطعة") : ""}
+                        ({item.type === "ASSET" ? t("inventory.type.asset") : t("inventory.type.consumable", "استهلاكي")})
+                        — {item.quantity} {item.type === "CONSUMABLE" ? t("inventory.unit.pieces") : ""}
                       </span>
                     </div>
                     <Button
@@ -198,7 +198,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
                       disabled={isAlreadyAdded}
                       onClick={() => addItem(item.id)}
                     >
-                      {isAlreadyAdded ? t("common.added", "تمت الإضافة") : t("common.add", "إضافة")}
+                      {isAlreadyAdded ? t("common.added") : t("common.add")}
                     </Button>
                   </div>
                 )
@@ -212,7 +212,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
       {items.length > 0 && (
         <div className="space-y-2">
           <p className="text-sm font-medium text-ink-3">
-            {t("inventory.transfer.selectedItems", "العناصر المحددة")}
+            {t("inventory.transfer.selectedItems")}
           </p>
           <div className="space-y-1">
             {items.map((item, index) => (
@@ -223,13 +223,13 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
                 <div className="min-w-0 flex-1">
                   <div className="font-medium">{item.itemName}</div>
                   <div className="text-ink-4 text-xs">
-                    {item.sourceType === "WAREHOUSE" ? t("inventory.transfer.warehouse", "مستودع") : t("inventory.transfer.project", "مشروع")}: {item.sourceName}
+                    {item.sourceType === "WAREHOUSE" ? t("inventory.transfer.warehouse") : t("inventory.transfer.project")}: {item.sourceName}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <label className="flex items-center gap-1 text-xs text-ink-4">
-                    {t("inventory.transfer.quantity", "الكمية")}
+                    {t("inventory.transfer.quantity")}
                     <Input
                       type="number"
                       min="1"
@@ -241,7 +241,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
                   </label>
 
                   <label className="flex items-center gap-1 text-xs text-ink-4">
-                    {t("inventory.transfer.unitPrice", "سعر الوحدة")}
+                    {t("inventory.transfer.unitPrice")}
                     <Input
                       type="number"
                       min="0"
@@ -253,7 +253,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
                   </label>
 
                   <label className="flex items-center gap-1 text-xs text-ink-4">
-                    {t("inventory.transfer.total", "المجموع")}
+                    {t("inventory.transfer.total")}
                     <Input
                       type="number"
                       min="0"
@@ -282,7 +282,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
           <div className="flex items-center justify-end gap-2 border-t border-line/50 pt-2">
             <span className="text-sm font-medium text-ink-4">{t("inventory.transfer.total", "الإجمالي")}:</span>
             <span className="text-lg font-display font-semibold tabular-nums">
-              {totalAmount.toLocaleString("ar-DZ")} {t("common.currency", "دج")}
+              {totalAmount.toLocaleString("ar-DZ")} {t("common.currency")}
             </span>
           </div>
         </div>

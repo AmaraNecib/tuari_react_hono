@@ -59,9 +59,9 @@ export function ExternalCounterpartiesPage({
             <TableRow>
               <TableHead>{t("columns.name")}</TableHead>
               <TableHead>{t("columns.phone")}</TableHead>
-              <TableHead>{t("columns.totalBalance", "إجمالي الرصيد")}</TableHead>
-              <TableHead>{t("columns.cases", "الحالات")}</TableHead>
-              <TableHead>{t("columns.notes", "ملاحظات")}</TableHead>
+              <TableHead>{t("columns.totalBalance")}</TableHead>
+              <TableHead>{t("columns.cases")}</TableHead>
+              <TableHead>{t("columns.notes")}</TableHead>
               <TableHead>{t("common.actions")}</TableHead>
             </TableRow>
           </TableHeader>
@@ -80,7 +80,7 @@ export function ExternalCounterpartiesPage({
                       دج {formatDebtMoney(counterparty.totalBalanceDzd)}
                     </TableCell>
                     <TableCell>
-                      {counterparty.totalCaseCount} {t("externalsPage.caseUnit", "حالة")}{counterparty.openCaseCount ? `، ${counterparty.openCaseCount} ${t("externalsPage.openCases", "مفتوحة")}` : ""}
+                      {counterparty.totalCaseCount} {t("externalsPage.caseUnit")}{counterparty.openCaseCount ? `، ${counterparty.openCaseCount} ${t("externalsPage.openCases")}` : ""}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{counterparty.note?.trim() || "—"}</TableCell>
                     <TableCell>

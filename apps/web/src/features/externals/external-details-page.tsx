@@ -24,21 +24,21 @@ export function ExternalCounterpartyDetailsPage({
   return (
     <RecordPageFrame
       backHref="/externals"
-      backLabel={t("externals.details.back", "العودة إلى الأطراف الخارجية")}
+      backLabel={t("externals.details.back")}
       title={counterparty.fullName}
-      description={t("externals.details.description", "يعرض الملف رصيد الدين الحالي لهذا الطرف مع سجل كامل للحركات على الحساب الموحد.")}
+      description={t("externals.details.description")}
     >
       <RecordInfoGrid>
-        <RecordInfoCard label={t("externals.details.name", "الاسم")} value={counterparty.fullName} />
-        <RecordInfoCard label={t("externals.details.phoneNumber", "رقم الهاتف")} value={counterparty.phone ?? counterparty.phoneNumber} valueClassName="font-mono" />
-        <RecordInfoCard label={t("externals.details.notes", "ملاحظات")} value={counterparty.note?.trim() || t("common.noNotes", "لا توجد ملاحظات.")} />
+        <RecordInfoCard label={t("externals.details.name")} value={counterparty.fullName} />
+        <RecordInfoCard label={t("externals.details.phoneNumber")} value={counterparty.phone ?? counterparty.phoneNumber} valueClassName="font-mono" />
+        <RecordInfoCard label={t("externals.details.notes")} value={counterparty.note?.trim() || t("common.noNotes")} />
       </RecordInfoGrid>
 
       <DebtCasesPanel
         accounts={debtAccounts}
         debtEntriesByAccountId={debtEntriesByAccountId}
         externalCounterpartyId={counterparty.id}
-        title={t("externals.details.ledger", "دفتر الدين")}
+        title={t("externals.details.ledger")}
       />
     </RecordPageFrame>
   )

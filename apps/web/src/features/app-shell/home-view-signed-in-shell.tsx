@@ -160,7 +160,7 @@ export function HomeViewSignedInShell({
         ],
       },
       {
-        id: "debt", title: t("sections.debts.label"), category: t("search.categories.pages"),
+        id: "debt", title: t("debts.label"), category: t("search.categories.pages"),
         children: [
           { id: "debt-list", title: t("search.actions.viewAll"), action: () => { window.location.href = "/debts" } },
           { id: "debt-create", title: t("search.actions.createDebt"), action: () => { window.location.href = "/debts/create" } },
@@ -249,7 +249,7 @@ export function HomeViewSignedInShell({
         id: `debt-${d.id}`,
         title: name,
         description: `${d.direction === "PAYABLE" ? t("search.payable") : t("search.receivable")} · ${d.currentBalance.toLocaleString("ar-DZ")} ${t("search.currency")}`,
-        category: t("sections.debts.label"),
+        category: t("debts.label"),
         action: () => { window.location.href = "/debts" },
       }
     })
@@ -369,7 +369,7 @@ export function HomeViewSignedInShell({
         salariesLabel={copy.sections.salaries.label}
         session={session}
         transactionsLabel={copy.sections.transactions.label}
-        transferHistoryLabel={t("shell.transferHistory", "سجل التحويلات")}
+        transferHistoryLabel={t("shell.transferHistory")}
         warehousesLabel={copy.sections.warehouses.label}
         width=""
         onSetCollapsed={onSetSidebarCollapsed}

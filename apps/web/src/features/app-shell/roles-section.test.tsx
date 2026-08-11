@@ -14,19 +14,19 @@ vi.mock("react-i18next", () => ({
       // i18next v22+ form: t(key, options) — second arg is options
       if (typeof second === "object" && second !== null) {
         const options = second as Record<string, unknown>;
-        if (key === "appShell.rolesPermissionCount") {
+        if (key === "shell.rolesPermissionCount") {
           return `${options.count} صلاحية`;
         }
-        if (key === "appShell.rolesPermissionsTitle") {
+        if (key === "shell.rolesPermissionsTitle") {
           return `صلاحيات دور ${options.name ?? ""}`.trim();
         }
         return key;
       }
       // i18next v21 form: t(key, defaultValue, options)
       const map: Record<string, string> = {
-        "appShell.rolesSystemBadge": "نظامي",
-        "appShell.rolesCustomBadge": "مخصص",
-        "appShell.rolesPermissionsEmpty": "لا توجد صلاحيات مسندة لهذا الدور بعد.",
+        "shell.rolesSystemBadge": "نظامي",
+        "shell.rolesCustomBadge": "مخصص",
+        "shell.rolesPermissionsEmpty": "لا توجد صلاحيات مسندة لهذا الدور بعد.",
       };
       const lookup = map[key];
       if (lookup) return lookup;

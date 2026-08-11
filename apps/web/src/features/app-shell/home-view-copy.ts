@@ -357,8 +357,8 @@ export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
         description: t("sections.employees.description"),
       },
       debts: {
-        label: t("sections.debts.label"),
-        description: t("sections.debts.description"),
+        label: t("debts.label"),
+        description: t("debts.description"),
       },
       externals: {
         label: "الجهات الخارجية",

@@ -245,7 +245,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
       {status.type !== "unavailable" && (
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h4 className="text-sm font-medium text-foreground">{t("shell.settingsAboutVersion", "الإصدار")}</h4>
+            <h4 className="text-sm font-medium text-foreground">{t("shell.settingsAboutVersion")}</h4>
             <p className="text-sm text-muted-foreground">{currentVersion ?? "..."}</p>
           </div>
         </div>
@@ -254,7 +254,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
       {/* Check for Updates Button (idle) */}
       {status.type === "idle" && (
         <Button type="button" variant="outline" onClick={handleCheckForUpdates}>
-          {t("shell.settingsAboutCheckForUpdates", "التحقق من وجود تحديثات")}
+          {t("shell.settingsAboutCheckForUpdates")}
         </Button>
       )}
 
@@ -263,7 +263,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
         <div className="flex items-center gap-3">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <span className="text-sm text-muted-foreground">
-            {t("shell.settingsAboutChecking", "جارٍ التحقق...")}
+            {t("shell.settingsAboutChecking")}
           </span>
         </div>
       )}
@@ -271,14 +271,14 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
       {/* Up-to-date */}
       {status.type === "uptodate" && (
         <p className="text-sm text-green-600 dark:text-green-400">
-          {t("shell.settingsAboutUpToDate", "أنت تستخدم أحدث إصدار")}
+          {t("shell.settingsAboutUpToDate")}
         </p>
       )}
 
       {/* Unavailable (browser mode) */}
       {status.type === "unavailable" && (
         <p className="text-sm text-muted-foreground">
-          {t("shell.settingsAboutNoUpdates", "لا توجد تحديثات متاحة")}
+          {t("shell.settingsAboutNoUpdates")}
         </p>
       )}
 
@@ -287,12 +287,12 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
         <div className="space-y-3">
           <div className="rounded-lg border border-line bg-surface px-4 py-3">
             <p className="text-sm font-medium text-foreground">
-              {t("shell.settingsAboutUpdateAvailable", "تحديث متاح:")}{" "}
+              {t("shell.settingsAboutUpdateAvailable")}{" "}
               <span className="font-semibold text-primary">{status.version}</span>
             </p>
           </div>
           <Button type="button" disabled={status.type !== "available"} onClick={handleDownload}>
-            {t("shell.settingsAboutDownload", "تنزيل التحديث")}
+            {t("shell.settingsAboutDownload")}
           </Button>
         </div>
       )}
@@ -304,7 +304,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">
-                {t("shell.settingsAboutProgress", "التقدم")}
+                {t("shell.settingsAboutProgress")}
               </span>
               <span className="font-medium tabular-nums text-foreground">
                 {status.progress.percentage.toFixed(1)}%
@@ -328,7 +328,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
             </span>
             {status.progress.speedBytesPerSec > 0 && (
               <span>
-                {t("shell.settingsAboutSpeed", "السرعة")}:{" "}
+                {t("shell.settingsAboutSpeed")}:{" "}
                 {formatSpeed(status.progress.speedBytesPerSec)}
               </span>
             )}
@@ -336,7 +336,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
 
           {/* Cancel Button */}
           <Button type="button" variant="outline" onClick={cancelDownload}>
-            {t("shell.settingsAboutCancel", "إلغاء")}
+            {t("shell.settingsAboutCancel")}
           </Button>
         </div>
       )}
@@ -346,7 +346,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
         <div className="space-y-3">
           <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-800 dark:bg-green-950">
             <p className="text-sm font-medium text-green-700 dark:text-green-300">
-              {t("shell.settingsAboutDownloadComplete", "تم التنزيل بنجاح")}
+              {t("shell.settingsAboutDownloadComplete")}
             </p>
           </div>
           <Button
@@ -355,8 +355,8 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
             onClick={handleApplyUpdate}
           >
             {applying
-              ? t("shell.settingsAboutApplying", "جارٍ التطبيق...")
-              : t("shell.settingsAboutApply", "تطبيق التحديث")}
+              ? t("shell.settingsAboutApplying")
+              : t("shell.settingsAboutApply")}
           </Button>
           {applyResult && (
             <p className="text-sm text-muted-foreground">{applyResult}</p>
@@ -369,11 +369,11 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
         <div className="space-y-3">
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-800 dark:bg-red-950">
             <p className="text-sm text-red-600 dark:text-red-400">
-              {t("shell.settingsAboutError", "فشل التحديث")}: {status.message}
+              {t("shell.settingsAboutError")}: {status.message}
             </p>
           </div>
           <Button type="button" variant="outline" onClick={handleRetry}>
-            {t("shell.settingsAboutRetry", "إعادة المحاولة")}
+            {t("shell.settingsAboutRetry")}
           </Button>
         </div>
       )}

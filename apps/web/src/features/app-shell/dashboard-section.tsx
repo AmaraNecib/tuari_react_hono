@@ -49,28 +49,28 @@ export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
           className="flex flex-col items-center gap-2 p-4 rounded-xl border border-line hover:bg-surface-2 transition-colors"
         >
           <span className="text-2xl">📋</span>
-          <span className="text-sm font-medium">{t("dashboard.quickActions.addProject", "إضافة مشروع")}</span>
+          <span className="text-sm font-medium">{t("dashboard.quickActions.addProject")}</span>
         </a>
         <a
           href="/warehouses/create"
           className="flex flex-col items-center gap-2 p-4 rounded-xl border border-line hover:bg-surface-2 transition-colors"
         >
           <span className="text-2xl">🏭</span>
-          <span className="text-sm font-medium">{t("dashboard.quickActions.addWarehouse", "إضافة مستودع")}</span>
+          <span className="text-sm font-medium">{t("dashboard.quickActions.addWarehouse")}</span>
         </a>
         <a
           href="/invoices/create"
           className="flex flex-col items-center gap-2 p-4 rounded-xl border border-line hover:bg-surface-2 transition-colors"
         >
           <span className="text-2xl">📄</span>
-          <span className="text-sm font-medium">{t("dashboard.quickActions.addInvoice", "إضافة فاتورة")}</span>
+          <span className="text-sm font-medium">{t("dashboard.quickActions.addInvoice")}</span>
         </a>
         <a
           href="/outbound-transfers/create-v2"
           className="flex flex-col items-center gap-2 p-4 rounded-xl border border-line hover:bg-surface-2 transition-colors"
         >
           <span className="text-2xl">🔄</span>
-          <span className="text-sm font-medium">{t("dashboard.quickActions.newTransfer", "تحويل جديد")}</span>
+          <span className="text-sm font-medium">{t("dashboard.quickActions.newTransfer")}</span>
         </a>
       </div>
     </div>

@@ -44,7 +44,7 @@ export function ActivationPage({
 
     const trimmedKey = key.trim()
     if (!trimmedKey) {
-      setFieldError(t("license.keyRequired", "يرجى إدخال مفتاح الترخيص."))
+      setFieldError(t("license.keyRequired"))
       return
     }
 

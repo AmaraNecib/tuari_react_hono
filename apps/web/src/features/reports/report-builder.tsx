@@ -83,7 +83,7 @@ export function ReportBuilder() {
 
           <div className="flex items-end">
             <Button onClick={handleGenerateReport} disabled={isLoading}>
-              {isLoading ? t("common.loading", "جاري التحميل...") : t("reports.generate", "إنشاء التقرير")}
+              {isLoading ? t("common.loading", "جاري التحميل...") : t("reports.generate")}
             </Button>
           </div>
         </div>
@@ -103,7 +103,7 @@ export function ReportBuilder() {
                   {reportType === "INVENTORY" ? "تقرير المخزون" : reportType === "DEBT" ? "تقرير الديون" : "تقرير الحركات"}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {t("reports.generatedAt", "تم الإنشاء:")} {new Date(data.generatedAt).toLocaleString("ar-DZ")}
+                  {t("reports.generatedAt")} {new Date(data.generatedAt).toLocaleString("ar-DZ")}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={handleDownloadCSV}>
@@ -157,11 +157,11 @@ export function ReportBuilder() {
                   <p className="text-2xl font-bold">{data.summary.totalMovements}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">{t("reports.assetTransfers", "تحويلات الأصول")}</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.assetTransfers")}</p>
                   <p className="text-2xl font-bold">{data.summary.assetTransfers}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">{t("reports.consumableTransfers", "تحويلات المستهلكات")}</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.consumableTransfers")}</p>
                   <p className="text-2xl font-bold">{data.summary.consumableTransfers}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">

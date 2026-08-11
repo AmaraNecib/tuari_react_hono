@@ -107,19 +107,19 @@ export function DebtCasesPanel({
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <CasesStatCard
-          label={isBidirectional ? t("debts.cases.netBalance", "صافي الرصيد") : debtAccount ? `${t("debts.cases.currentBalance", "الرصيد الحالي")} — ${getDebtDirectionLabel(debtAccount.direction)}` : t("debts.cases.currentBalance", "الرصيد الحالي")}
+          label={isBidirectional ? t("debts.cases.netBalance") : debtAccount ? `${t("debts.cases.currentBalance")} — ${getDebtDirectionLabel(debtAccount.direction)}` : t("debts.cases.currentBalance")}
           value={`دج ${formatDebtMoney(isBidirectional ? totalBalanceDzd : (debtAccount?.currentBalance ?? 0))}`}
           valueClassName={balanceMeta.textClassName}
         />
-        <CasesStatCard label={t("debts.cases.accountCount", "عدد الحسابات")} value={String(sortedAccounts.length)} />
-        <CasesStatCard label={t("debts.cases.entryCount", "عدد الحركات")} value={String(totalEntryCount)} />
+        <CasesStatCard label={t("debts.cases.accountCount")} value={String(sortedAccounts.length)} />
+        <CasesStatCard label={t("debts.cases.entryCount")} value={String(totalEntryCount)} />
       </div>
 
       {hasBothDirections ? (
         <Surface className="p-5" variant="card">
           <SurfaceHeader
             description={t("debts.consolidateDescription")}
-            title={t("debts.cases.consolidateTitle", "تجميد الديون")}
+            title={t("debts.cases.consolidateTitle")}
           />
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -134,7 +134,7 @@ export function DebtCasesPanel({
               <p className="text-xs text-muted-foreground">
                 {hasConsolidatableOpenings
                   ? t("debts.selectOneFromEachSide")
-                  : t("debts.cases.noConsolidatable", "لا توجد حركات افتتاحية نشطة قابلة للتجميد.")}
+                  : t("debts.cases.noConsolidatable")}
               </p>
             </div>
             <Button
@@ -142,7 +142,7 @@ export function DebtCasesPanel({
               variant="outline"
               onClick={() => setConsolidationDialogOpen(true)}
             >
-              {t("debts.cases.openConsolidation", "فتح التجميد")}
+              {t("debts.cases.openConsolidation")}
             </Button>
           </div>
         </Surface>
@@ -150,18 +150,18 @@ export function DebtCasesPanel({
 
       <Surface className="p-5" variant="card">
         <SurfaceHeader
-          description={t("debts.cases.accountDescription", "لكل طرف حساب دين واحد فقط. إذا كان الحساب موجودًا فسيُسجَّل المبلغ كدفعة جديدة على نفس الحساب الموحد.")}
-          title={debtAccount ? t("debts.cases.recordPayment", "تسجيل دفعة على الحساب") : t("debts.cases.createAccount", "إنشاء الحساب")}
+          description={t("debts.cases.accountDescription")}
+          title={debtAccount ? t("debts.cases.recordPayment") : t("debts.cases.createAccount")}
         />
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label={t("common.createDate", "التاريخ")}>
             <DatePicker value={createDate} onChange={setCreateDate} />
           </Field>
-          <Field label={t("debts.cases.amount", "المبلغ الموقّع")}>
+          <Field label={t("debts.cases.amount")}>
             <CurrencyInput placeholder="0 أو 2500 أو -2500" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} />
           </Field>
-          <Field label={t("debts.cases.note", "ملاحظة الدفعة")} className="md:col-span-2">
+          <Field label={t("debts.cases.note")} className="md:col-span-2">
             <Textarea placeholder="مثال: دين جديد، دفعة وصلت، دفعة خرجت" value={note} onChange={(event) => setNote(event.target.value)} />
           </Field>
         </div>
@@ -185,7 +185,7 @@ export function DebtCasesPanel({
               setNote("")
             }}
           >
-            {debtAccount ? t("debts.cases.recordPaymentButton", "تسجيل الدفعة") : t("debts.cases.createAccountButton", "إنشاء الحساب")}
+            {debtAccount ? t("debts.cases.recordPaymentButton") : t("debts.cases.createAccountButton")}
           </Button>
         </PageFooterActions>
       </Surface>

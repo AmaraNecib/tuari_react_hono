@@ -81,35 +81,35 @@ export function RecordInvoicePaymentDialog({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{t("inventory.payment.title", "تسجيل دفعة")}</DialogTitle>
+          <DialogTitle>{t("inventory.payment.title")}</DialogTitle>
           <DialogDescription>{invoiceDetail.group.supplierName || `الفاتورة ${invoiceDetail.group.invoiceNumber}`}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="rounded-xl border border-border/60 bg-surface p-4">
-            <p className="text-sm text-muted-foreground">{t("inventory.payment.remainingDebt", "الدين المتبقي")}</p>
+            <p className="text-sm text-muted-foreground">{t("inventory.payment.remainingDebt")}</p>
             <p className={cn("mt-2 font-mono text-2xl font-semibold", remainingDebt > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400")} dir="ltr">
               {remainingDebt.toFixed(2)} دج
             </p>
-            {remainingDebt <= 0 && <p className="mt-1 text-xs text-green-600 dark:text-green-400">{t("inventory.payment.fullyPaid", "تم سداد هذه الفاتورة بالكامل")}</p>}
+            {remainingDebt <= 0 && <p className="mt-1 text-xs text-green-600 dark:text-green-400">{t("inventory.payment.fullyPaid")}</p>}
           </div>
 
           {remainingDebt > 0 && (
             <>
               <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-foreground">{t("inventory.payment.amount", "مبلغ الدفعة")}</span>
+                <span className="text-sm font-medium text-foreground">{t("inventory.payment.amount")}</span>
                 <CurrencyInput placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={recordPaymentMutation.isPending} />
               </label>
 
-              {!isAmountValid && amountValue !== null && <p className="text-xs text-red-600">{t("inventory.payment.exceedsDebt", "لا يمكن دفع أكثر من الدين المتبقي")}</p>}
+              {!isAmountValid && amountValue !== null && <p className="text-xs text-red-600">{t("inventory.payment.exceedsDebt")}</p>}
 
               <Button size="sm" variant="outline" className="w-full" onClick={handlePayFull} disabled={recordPaymentMutation.isPending}>
-                {t("inventory.payment.payFull", "دفع المبلغ الكامل")}
+                {t("inventory.payment.payFull")}
               </Button>
 
               <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-foreground">{t("common.note", "ملاحظة")}</span>
-                <Textarea placeholder={t("inventory.payment.notePlaceholder", "إضافة ملاحظة عن الدفعة")} value={note} onChange={(e) => setNote(e.target.value)} disabled={recordPaymentMutation.isPending} />
+                <span className="text-sm font-medium text-foreground">{t("common.note")}</span>
+                <Textarea placeholder={t("inventory.payment.notePlaceholder")} value={note} onChange={(e) => setNote(e.target.value)} disabled={recordPaymentMutation.isPending} />
               </label>
             </>
           )}
@@ -123,11 +123,11 @@ export function RecordInvoicePaymentDialog({
               onOpenChange(false)
             }}
           >
-            {t("common.cancel", "إلغاء")}
+            {t("common.cancel")}
           </Button>
           {remainingDebt > 0 && (
             <Button disabled={!isAmountValid || recordPaymentMutation.isPending} onClick={handleSubmit}>
-              {recordPaymentMutation.isPending ? t("inventory.payment.pending", "جاري التسجيل...") : t("inventory.payment.confirm", "تأكيد الدفعة")}
+              {recordPaymentMutation.isPending ? t("inventory.payment.pending") : t("inventory.payment.confirm")}
             </Button>
           )}
         </DialogFooter>

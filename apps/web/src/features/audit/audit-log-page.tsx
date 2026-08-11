@@ -118,11 +118,11 @@ export function AuditLogPage() {
       <PageSurfaceContent>
         <PageHeader
           title="سجل التدقيق"
-          description={t("auditLog.description", "عرض ومراجعة جميع التغييرات والعمليات المنفذة في النظام")}
+          description={t("auditLog.description")}
           action={
             filteredLogs.length > 0 && (
               <Button variant="outline" size="sm" onClick={handleExportCSV}>
-                {t("auditLog.exportCsv", "تصدير CSV")}
+                {t("auditLog.exportCsv")}
               </Button>
             )
           }
@@ -130,32 +130,32 @@ export function AuditLogPage() {
 
         <AppShellFilterShell>
           <label className="flex flex-col gap-2 min-w-[14rem]">
-            <span className="text-sm font-medium text-foreground">{t("auditLog.search", "البحث")}</span>
+            <span className="text-sm font-medium text-foreground">{t("auditLog.search")}</span>
             <Input
-              placeholder={t("auditLog.searchPlaceholder", "ابحث عن مستخدم أو مورد...")}
+              placeholder={t("auditLog.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </label>
 
           <label className="flex flex-col gap-2 min-w-[10rem]">
-            <span className="text-sm font-medium text-foreground">{t("auditLog.domain", "النطاق")}</span>
+            <span className="text-sm font-medium text-foreground">{t("auditLog.domain")}</span>
             <NativeSelect value={domain} onChange={(e) => setDomain(e.target.value)}>
-              <option value="ALL">{t("common.all", "الكل")}</option>
-              <option value="المخزون">{t("auditLog.domainInventory", "المخزون")}</option>
-              <option value="الديون">{t("auditLog.domainDebts", "الديون")}</option>
-              <option value="الموظفون">{t("auditLog.domainEmployees", "الموظفون")}</option>
-              <option value="المشاريع">{t("auditLog.domainProjects", "المشاريع")}</option>
+              <option value="ALL">{t("common.all")}</option>
+              <option value="المخزون">{t("auditLog.domainInventory")}</option>
+              <option value="الديون">{t("auditLog.domainDebts")}</option>
+              <option value="الموظفون">{t("auditLog.domainEmployees")}</option>
+              <option value="المشاريع">{t("auditLog.domainProjects")}</option>
             </NativeSelect>
           </label>
 
           <label className="flex flex-col gap-2 min-w-[10rem]">
-            <span className="text-sm font-medium text-foreground">{t("auditLog.action", "الإجراء")}</span>
+            <span className="text-sm font-medium text-foreground">{t("auditLog.action")}</span>
             <NativeSelect value={action} onChange={(e) => setAction(e.target.value)}>
-              <option value="ALL">{t("common.all", "الكل")}</option>
-              <option value="create">{t("historyEvent.created", "إنشاء")}</option>
-              <option value="update">{t("historyEvent.updated", "تحديث")}</option>
-              <option value="delete">{t("common.delete", "حذف")}</option>
+              <option value="ALL">{t("common.all")}</option>
+              <option value="create">{t("historyEvent.created")}</option>
+              <option value="update">{t("historyEvent.updated")}</option>
+              <option value="delete">{t("common.delete")}</option>
             </NativeSelect>
           </label>
 
@@ -177,13 +177,13 @@ export function AuditLogPage() {
 
         {error && (
           <div className="rounded-lg border border-destructive/60 bg-destructive/10 p-4 text-sm text-destructive">
-            {t("auditLog.loadError", "خطأ في تحميل السجل:")} {error instanceof Error ? error.message : t("common.error", "حدث خطأ")}
+            {t("auditLog.loadError")} {error instanceof Error ? error.message : t("common.error")}
           </div>
         )}
 
         {!isLoading && !error && filteredLogs.length === 0 ? (
           <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
-            <p className="text-muted-foreground">{t("auditLog.noResults", "لا توجد عمليات مطابقة للفلاتر")}</p>
+            <p className="text-muted-foreground">{t("auditLog.noResults")}</p>
           </div>
         ) : (!isLoading && !error) && (
           <div className="space-y-3">
@@ -198,9 +198,9 @@ export function AuditLogPage() {
                           {auditLog.domain}
                         </span>
                         <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
-                          {auditLog.action === "create" && t("historyEvent.created", "إنشاء")}
-                          {auditLog.action === "update" && t("historyEvent.updated", "تحديث")}
-                          {auditLog.action === "delete" && t("common.delete", "حذف")}
+                          {auditLog.action === "create" && t("historyEvent.created")}
+                          {auditLog.action === "update" && t("historyEvent.updated")}
+                          {auditLog.action === "delete" && t("common.delete")}
                         </span>
                       </div>
                       <div className="text-sm font-medium">{auditLog.changes}</div>

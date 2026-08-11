@@ -100,8 +100,8 @@ export function RolesSection({
                             }
                           >
                             {role.isSystem
-                              ? t("appShell.rolesSystemBadge")
-                              : t("appShell.rolesCustomBadge")}
+                              ? t("shell.rolesSystemBadge")
+                              : t("shell.rolesCustomBadge")}
                           </span>
                         </span>
                       </td>
@@ -112,7 +112,7 @@ export function RolesSection({
                       <td className="px-4 py-4 text-start text-muted-foreground">
                         <span className="flex flex-wrap items-center gap-2">
                           <span>
-                            {t("appShell.rolesPermissionCount", { count: permissionCount })}
+                            {t("shell.rolesPermissionCount", { count: permissionCount })}
                           </span>
                           <span
                             aria-hidden="true"
@@ -135,15 +135,15 @@ export function RolesSection({
                         >
                           <div className="space-y-2">
                             <p className="text-xs font-medium text-foreground">
-                              {t("appShell.rolesPermissionsTitle", { name: role.name })}
+                              {t("shell.rolesPermissionsTitle", { name: role.name })}
                             </p>
                             {hasNoPermissions ? (
                               <p className="text-xs text-muted-foreground">
-                                {t("appShell.rolesPermissionsEmpty")}
+                                {t("shell.rolesPermissionsEmpty")}
                               </p>
                             ) : (
                               <ul
-                                aria-label={t("appShell.rolesPermissionsTitle", { name: role.name })}
+                                aria-label={t("shell.rolesPermissionsTitle", { name: role.name })}
                                 className="flex flex-wrap gap-1.5"
                               >
                                 {role.permissions.map((permission) => (
