@@ -5,8 +5,12 @@ import { expect, test } from "@playwright/test"
  *
  * The web shell must never touch Google Fonts: no render-blocking stylesheet
  * request, no preconnects, no font fetches from third-party origins. Every
- * family the design tokens reference is served from this origin, and the
- * primary Arabic body font is preloaded.
+ * family the design tokens reference is served from this origin.
+ *
+ * The Arabic woff2 preload is asserted at BUILD level (prod-html.test.ts — a
+ * static <link rel="preload"> in the served HTML, scanner-discoverable before
+ * any JS runs), not here: the dev server does not run the build-time HTML
+ * transform, so no preload link exists in dev.
  */
 test.describe("self-hosted fonts (issue #281)", () => {
   test("boots without Google Fonts and serves every family from this origin", async ({ page, baseURL }) => {
@@ -32,10 +36,8 @@ test.describe("self-hosted fonts (issue #281)", () => {
     // Every font fetch comes from this origin (self-hosted @fontsource files).
     expect(crossOriginFontRequests).toEqual([])
 
-    // The primary Arabic body font is preloaded.
-    const preload = page.locator('link[rel="preload"][as="font"]').first()
-    await expect(preload).toHaveAttribute("href", /\.woff2$/)
-    await expect(preload).toHaveAttribute("crossorigin", "anonymous")
+    // The primary Arabic body font preload is build-time (prod-html.test.ts) —
+    // the dev server serves index.html without the build transform.
 
     // All families the design tokens reference are registered via @font-face.
     const expectedFamilies = [

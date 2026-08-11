@@ -65,10 +65,58 @@ dedupes identical files against the JS preload import).
 
 Preload **IBM Plex Sans Arabic arabic-400-normal.woff2** — the font that actually
 renders first-paint Arabic body text (the issue's "Arabic woff2"). Implemented as a
-JS module (`src/fonts.ts`) that imports the woff2 URL and injects
-`<link rel="preload" as="font" crossorigin>`; vite returns the same hashed URL the
-CSS `@font-face` uses (same content → same asset), so the preloaded resource is the
+**build-time HTML injection** (`preloadArabicFont` plugin in `vite.config.ts`):
+`transformIndexHtml` resolves the emitted hashed woff2 from the build bundle and
+injects `<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous">`
+into the served `index.html` **before any JS executes** — discoverable by the
+browser's HTML preload scanner, so the font fetch starts in parallel with the
+bundle/CSS download. The injected URL is the same hashed asset the CSS
+`@font-face` uses (same content → same asset), so the preloaded resource is the
 one fetched.
+
+> **Why not runtime injection (initial approach, rejected by Greptile):**
+> `preloadFonts()` in `main.tsx` (a JS module importing the woff2 URL) appended
+> the link only AFTER the entry bundle downloaded and evaluated — the HTML
+> scanner never sees it, so on cold loads the font fetch starts late and the
+> intended first-paint benefit is largely lost. Dev servers do not run the
+> build transform (no preload link in dev — acceptable; dev is not the
+> perf-critical path).
+
+## Public surface / files touched
+
+- `apps/web/package.json` — add 6 `@fontsource*` deps (inter-tight, jetbrains-mono
+  variable; instrument-serif, ibm-plex-sans-arabic, amiri, noto-naskh-arabic static)
+- `apps/web/index.html` — remove 2 preconnects + Google Fonts stylesheet link
+- `apps/web/src/styles.css` — replace noto-sans-arabic `@import` with subset-limited
+  imports + hand `@font-face`; update Inter Tight/JetBrains Mono family names
+- `apps/web/vite.config.ts` — inline `preloadArabicFont` plugin (build-only HTML
+  preload injection)
+- `apps/web/src/fonts.ts` — deleted (runtime injection replaced by build-time link)
+- `apps/web/src/main.tsx` — no font import needed
+- `apps/web/src/web-hygiene/prod-html.test.ts` — pin: dist/index.html carries the
+  static preload link whose URL matches a woff2 in the built CSS
+- `tests/web-hygiene.test.mjs` — pin: no googleapis/gstatic/preconnect in index.html,
+  no google `@import` in styles.css, all 7 families declared
+- `tests/e2e/fonts.spec.ts` (new) — E2E: zero googleapis/gstatic network requests,
+  `document.fonts.check()` true for IBM Plex Sans Arabic + Inter Tight Variable
+
+## Tests
+
+- **Unit (node hygiene seam):** extend `tests/web-hygiene.test.mjs` (already wired
+  into root `lint` + `test`). Static regression pins so Google fonts can't silently
+  return.
+- **Build-output (vitest, node env):** `apps/web/src/web-hygiene/prod-html.test.ts`
+  runs a real `vite build` and asserts `dist/index.html` contains the static
+  preload link (`as="font"`, crossorigin anonymous, href ends `.woff2`) whose URL
+  matches a woff2 referenced by the built CSS `@font-face` (same hashed file).
+- **E2E (Playwright):** `tests/e2e/fonts.spec.ts` — boots the shell (login page,
+  no auth needed), asserts no request hits `fonts.googleapis.com` / `fonts.gstatic.com`
+  and no cross-origin font fetch, all 7 families are registered in `document.fonts`,
+  and the genuinely-rendered Arabic body font (`IBM Plex Sans Arabic`) reaches
+  status `loaded` from self-hosted files. The preload link itself is NOT asserted
+  here (dev server has no build transform) — it is covered by the build-output test.
+- Run `pnpm typecheck && pnpm test:web && pnpm test:api` + `pnpm lint` +
+  `pnpm --filter @tuari/web build` (vite build asserts asset emission).
 
 ## Public surface / files touched
 
@@ -92,9 +140,10 @@ one fetched.
   return.
 - **E2E (Playwright):** `tests/e2e/fonts.spec.ts` — boots the shell (login page,
   no auth needed), asserts no request hits `fonts.googleapis.com` / `fonts.gstatic.com`
-  and no cross-origin font fetch, preload link exists (`as="font"`, href ends `.woff2`),
-  all 7 families are registered in `document.fonts`, and the genuinely-rendered Arabic
+  and no cross-origin font fetch, all 7 families are registered in `document.fonts`, and the genuinely-rendered Arabic
   body font (`IBM Plex Sans Arabic`) reaches status `loaded` from self-hosted files.
+  The preload link itself is NOT asserted here (dev server has no build transform) —
+  covered by the build-output test above.
 - Run `pnpm typecheck && pnpm test:web && pnpm test:api` + `pnpm lint` +
   `pnpm --filter @tuari/web build` (vite build asserts asset emission).
 
