@@ -19,6 +19,7 @@
 
 import type { BetterSqliteDatabase } from "../types/sqlite";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
+import type { FifoLock } from "../infrastructure/database/fifo-lock";
 import { SqliteCompanyRepository } from "../modules/company/adapters/sqlite-company.repository";
 import { SqliteWorkforceRepository } from "../modules/company/adapters/sqlite-workforce.repository";
 import { SqliteOperationsRepository } from "../modules/company/adapters/sqlite-operations.repository";
@@ -38,13 +39,20 @@ import type { AppConfig } from "./index";
 
 /**
  * Create a SqliteCompanyRepository from a raw better-sqlite3 handle.
+ *
+ * @param connectionLock - Optional shared connection-wide FIFO lock (issue
+ *   #322). When omitted the repository builds its own per-instance lock —
+ *   fine for isolated tests, but production must pass the composition
+ *   root's shared instance so sync writers across modules serialize on the
+ *   same connection.
  */
 function buildSqliteCompanyRepository(
   rawDb: BetterSqliteDatabase,
   _config: AppConfig,
+  connectionLock?: FifoLock,
 ): SqliteCompanyRepository {
   rawDb.pragma("foreign_keys = ON");
-  return new SqliteCompanyRepository(createDrizzleFromSqlite(rawDb), rawDb);
+  return new SqliteCompanyRepository(createDrizzleFromSqlite(rawDb), rawDb, connectionLock);
 }
 
 // ---------------------------------------------------------------------------
@@ -56,14 +64,17 @@ function buildSqliteCompanyRepository(
  *
  * @param rawDb - A better-sqlite3 database handle (or compatible).
  * @param config - Validated application config (controls adapter selection).
+ * @param connectionLock - Optional shared connection-wide FIFO lock (issue
+ *   #322); passed through to the SQLite adapter.
  */
 export function createCompanyRepository(
   rawDb: BetterSqliteDatabase,
   config: AppConfig,
+  connectionLock?: FifoLock,
 ): CompanyRepository {
   switch (config.dbAdapter) {
     case "sqlite":
-      return buildSqliteCompanyRepository(rawDb, config);
+      return buildSqliteCompanyRepository(rawDb, config, connectionLock);
     case "inmemory":
       return new InMemoryCompanyRepository();
     default: {

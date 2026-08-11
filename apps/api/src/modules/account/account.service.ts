@@ -106,25 +106,23 @@ export class AccountService {
     const timestamp = new Date()
     const transactionId = crypto.randomUUID()
 
+    // Issue #322: verify the current password BEFORE opening the transaction.
+    // bcrypt (~100ms) must not hold the shared-connection lock — while it ran
+    // inside the transaction, a sync writer from another module (company,
+    // inventory, invoice, ...) would be absorbed into the open transaction
+    // and silently rolled back with it. The hash is read unlocked; the phone
+    // uniqueness check still runs inside the transaction where it is atomic.
+    const passwordVerified = await this.verifyPasswordForPhoneChange(
+      session,
+      phone,
+      currentPassword,
+    )
+
     return this.repository.withTransaction(async (tx) => {
       if (phone && phone !== session.phoneNumber) {
-        if (!currentPassword || currentPassword.trim().length === 0) {
-          throw new AccountServiceError("أدخل كلمة المرور الحالية لتغيير رقم الهاتف.", 400)
-        }
-
-        const credentialPassword = await tx.findCredentialPasswordByUserId(session.id)
-
-        if (!credentialPassword) {
-          throw new AccountServiceError("تعذر التحقق من كلمة المرور الحالية.", 400)
-        }
-
-        const authContext = await this.authGateway.$context
-        const passwordValid = await authContext.password.verify({
-          hash: credentialPassword,
-          password: currentPassword,
-        })
-
-        if (!passwordValid) {
+        if (!passwordVerified) {
+          // Unreachable: verifyPasswordForPhoneChange throws on failure. Kept
+          // as a guard so a future refactor cannot silently skip verification.
           throw new AccountServiceError("كلمة المرور الحالية غير صحيحة.", 401)
         }
 
@@ -164,6 +162,47 @@ export class AccountService {
         },
       }
     })
+  }
+
+  /**
+   * Verify the current password when the phone number is being changed.
+   * Runs OUTSIDE the transaction (issue #322) so the expensive bcrypt verify
+   * never holds the shared-connection lock. Throws the same errors the
+   * old in-transaction flow threw; returns true when no verification is
+   * needed (no phone change) or the password is valid.
+   */
+  private async verifyPasswordForPhoneChange(
+    session: CurrentSessionUser,
+    phone: string | undefined,
+    currentPassword: string | undefined,
+  ): Promise<boolean> {
+    if (!phone || phone === session.phoneNumber) {
+      return true
+    }
+
+    if (!currentPassword || currentPassword.trim().length === 0) {
+      throw new AccountServiceError("أدخل كلمة المرور الحالية لتغيير رقم الهاتف.", 400)
+    }
+
+    const credentialPassword = await this.repository.findCredentialPasswordByUserId(
+      session.id,
+    )
+
+    if (!credentialPassword) {
+      throw new AccountServiceError("تعذر التحقق من كلمة المرور الحالية.", 400)
+    }
+
+    const authContext = await this.authGateway.$context
+    const passwordValid = await authContext.password.verify({
+      hash: credentialPassword,
+      password: currentPassword,
+    })
+
+    if (!passwordValid) {
+      throw new AccountServiceError("كلمة المرور الحالية غير صحيحة.", 401)
+    }
+
+    return true
   }
 
   async recordPasswordChange(headers: Headers) {

@@ -7,6 +7,7 @@
  */
 
 import { createDrizzleFromSqlite } from "../../infrastructure/database/drizzle";
+import type { FifoLock } from "../../infrastructure/database/fifo-lock";
 import { SqliteCompanyRepository } from "./adapters/sqlite-company.repository";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
 import type { CompanyRepository } from "./company.repository.contracts";
@@ -19,7 +20,7 @@ export type { AuditRepository } from "./audit.repository";
 export { SqliteCompanyRepository } from "./adapters/sqlite-company.repository";
 
 /** Create the Drizzle-backed repository from a shared SQLite handle. */
-export function createCompanyRepository(rawDb: BetterSqliteDatabase): CompanyRepository {
+export function createCompanyRepository(rawDb: BetterSqliteDatabase, connectionLock?: FifoLock): CompanyRepository {
   rawDb.pragma("foreign_keys = ON");
-  return new SqliteCompanyRepository(createDrizzleFromSqlite(rawDb), rawDb);
+  return new SqliteCompanyRepository(createDrizzleFromSqlite(rawDb), rawDb, connectionLock);
 }

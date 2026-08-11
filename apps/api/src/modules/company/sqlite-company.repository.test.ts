@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 
 import { schemaStatements as fullSchema } from "../../infrastructure/database/schema-definitions";
+import { createFifoLock } from "../../infrastructure/database/fifo-lock";
 import { SqliteCompanyRepository } from "./adapters/sqlite-company.repository";
 
 function createTestDb(): Database.Database {
@@ -601,5 +602,87 @@ describe("SqliteCompanyRepository employee search (issue #183)", () => {
     expect(
       repo.listEmployeesPaged({ filters: { search: "" }, limit: 50 }).total,
     ).toBe(3);
+  });
+});
+
+describe("SqliteCompanyRepository sync-writer lock guard (issue #322)", () => {
+  let db: Database.Database;
+  let lock: ReturnType<typeof createFifoLock>;
+  let repo: SqliteCompanyRepository;
+
+  beforeEach(() => {
+    db = createTestDb();
+    lock = createFifoLock();
+    repo = new SqliteCompanyRepository(db, lock);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("runs sync writes normally when the connection lock is free", () => {
+    const employee = repo.createEmployee({
+      firstName: "Ahmed",
+      lastName: "Ben Ali",
+      phone: "0555123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    expect(repo.getEmployeeById(employee.id)?.firstName).toBe("Ahmed");
+  });
+
+  it("refuses to run a sync writer while another flow holds the connection open", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // A foreign async flow holds the connection open across a real await
+    // (the account bcrypt window). A sync writer must NOT silently join it
+    // as a SAVEPOINT — it would be rolled back with the outer transaction.
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(() =>
+      repo.createEmployee({
+        firstName: "Should",
+        lastName: "Throw",
+        phone: "0666123456",
+        roleId: "role-worker",
+        status: "ACTIVE",
+      }),
+    ).toThrow(/busy|transaction/i);
+
+    release();
+    await holder;
+
+    // Once the connection is free, the same write succeeds.
+    const employee = repo.createEmployee({
+      firstName: "Now",
+      lastName: "Works",
+      phone: "0666123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    expect(repo.getEmployeeById(employee.id)?.firstName).toBe("Now");
+  });
+
+  it("still nests sync writes inside withTransaction (SAVEPOINT join)", () => {
+    // Nested writes inside the repository's own synchronous transaction
+    // remain SAVEPOINTs (better-sqlite3) and must keep working.
+    const employeeId = repo.withTransaction(() => {
+      const employee = repo.createEmployee({
+        firstName: "Nested",
+        lastName: "Write",
+        phone: "0777123456",
+        roleId: "role-worker",
+        status: "ACTIVE",
+      });
+      repo.updateEmployee({ id: employee.id, firstName: "Nested-Updated" });
+      return employee.id;
+    });
+    expect(repo.getEmployeeById(employeeId)?.firstName).toBe("Nested-Updated");
   });
 });

@@ -39,6 +39,14 @@ export type AccountRepositoryTransaction = {
 /** Repository interface for account data access with transaction support. */
 export type AccountRepository = {
   withTransaction<T>(run: (transaction: AccountRepositoryTransaction) => Promise<T>): Promise<T>;
+  /**
+   * Read the hashed credential password for a user OUTSIDE any transaction
+   * (issue #322). Lets the service verify a password (bcrypt, ~100ms) before
+   * opening the transaction, so the shared-connection lock is never held
+   * across a real event-loop yield — a sync writer running meanwhile would
+   * otherwise be absorbed into the open transaction.
+   */
+  findCredentialPasswordByUserId(userId: string): Promise<string | null>;
 };
 
 class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransaction {
@@ -160,6 +168,17 @@ export class DrizzleAccountRepository implements AccountRepository {
      */
     private readonly connectionLock: FifoLock,
   ) {}
+
+  /** Unlocked read of the hashed credential password (issue #322). */
+  async findCredentialPasswordByUserId(userId: string) {
+    const rows = await this.db
+      .select({ password: account.password })
+      .from(account)
+      .where(and(eq(account.userId, userId), eq(account.providerId, "credential")))
+      .limit(1);
+
+    return rows[0]?.password ?? null;
+  }
 
   withTransaction<T>(run: (transaction: AccountRepositoryTransaction) => Promise<T>) {
     return this.connectionLock.run(async () => {

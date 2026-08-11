@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
+import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 
 import type { CompanyRepository } from "../../company/company.repository.contracts";
 import type { MutationAuditContext } from "../../company/company.types";
@@ -41,12 +42,24 @@ import type {
 export interface SqliteInvoiceDebtPortDeps {
   db: BetterSqliteDatabase;
   repository: CompanyRepository;
+  /**
+   * Connection-wide FIFO lock (shared with every module that opens
+   * transactions on the same connection, wired in the composition root).
+   * The port's synchronous `db.transaction()` sites run under it so they
+   * never silently join another flow's open transaction (issue #322).
+   */
+  lock: FifoLock;
 }
 
 export function createSqliteInvoiceDebtPort(
   deps: SqliteInvoiceDebtPortDeps,
 ): InvoiceDebtPort {
-  const { db, repository } = deps;
+  const { db, repository, lock } = deps;
+
+  /** Run a synchronous better-sqlite3 transaction under the connection-wide lock (issue #322). */
+  function runSyncTransaction<T>(fn: () => T): T {
+    return lock.runSync(() => db.transaction(fn)());
+  }
 
   function ensureCounterpartyId(
     supplierName: string,
@@ -188,7 +201,7 @@ export function createSqliteInvoiceDebtPort(
       const debtDirection: "PAYABLE" | "RECEIVABLE" =
         input.direction === "SALE" ? "RECEIVABLE" : "PAYABLE";
 
-      const createOpening = db.transaction(() => {
+      const debtAccountId = runSyncTransaction(() => {
         const account = ensureDebtAccountId(
           counterpartyId,
           debtDirection,
@@ -234,7 +247,6 @@ export function createSqliteInvoiceDebtPort(
         return account.id;
       });
 
-      const debtAccountId = createOpening();
       return { debtAccountId };
     },
 
@@ -248,7 +260,7 @@ export function createSqliteInvoiceDebtPort(
       const { debtAccountId, totalAmount, paidAmount } =
         getInvoiceTotals(input.invoiceId);
 
-      const recordPayment = db.transaction(() => {
+      const { settled, nextBalance } = runSyncTransaction(() => {
         const currentBalance = getCurrentDebtAccountBalance(debtAccountId);
         const nextBalance = currentBalance - input.amount;
         const settled = nextBalance <= 0;
@@ -281,7 +293,6 @@ export function createSqliteInvoiceDebtPort(
         return { settled, nextBalance };
       });
 
-      const { settled, nextBalance } = recordPayment();
       const newPaidAmount = paidAmount + input.amount;
       const newRemainingAmount = Math.max(0, totalAmount - newPaidAmount);
 

@@ -119,4 +119,117 @@ describe("createFifoLock", () => {
     const result = await a.run(async () => b.run(async () => "nested-other"));
     expect(result).toBe("nested-other");
   });
+
+  it("runSync executes immediately when the lock is free", () => {
+    const lock = createFifoLock();
+
+    // A synchronous writer runs its own transaction directly when no
+    // async flow holds the connection.
+    expect(lock.runSync(() => 42)).toBe(42);
+  });
+
+  it("runSync executes directly when called inside a run (own-run join)", async () => {
+    const lock = createFifoLock();
+
+    // A sync writer reached from inside a locked async flow deliberately
+    // joins that flow's open transaction (join-outer pattern). It must NOT
+    // be treated as a foreign writer.
+    const result = await lock.run(async () => lock.runSync(() => "joined"));
+    expect(result).toBe("joined");
+  });
+
+  it("runSync throws when another operation holds the lock", async () => {
+    const lock = createFifoLock();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // A foreign async flow holds the connection open (like an async
+    // transaction awaiting bcrypt). A sync writer must not silently join it.
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(() => lock.runSync(() => "should-not-run")).toThrow(/busy|transaction/i);
+
+    release();
+    await holder;
+
+    // The queue is still usable once the holder settles.
+    expect(lock.runSync(() => "after")).toBe("after");
+  });
+
+  it("runSync on an independent lock is not blocked by another lock's run", async () => {
+    const a = createFifoLock();
+    const b = createFifoLock();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const holder = a.run(async () => {
+      await gate;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // The busy-check is per-lock: an unrelated lock's sync section is safe.
+    expect(b.runSync(() => "ok")).toBe("ok");
+
+    release();
+    await holder;
+  });
+
+  it("runSync keeps the queue alive after throwing", async () => {
+    const lock = createFifoLock();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(() => lock.runSync(() => "x")).toThrow(/busy|transaction/i);
+    release();
+    await holder;
+
+    await expect(lock.run(async () => "after")).resolves.toBe("after");
+  });
+
+  it("bounds the wait for a queued operation when timeoutMs is set", async () => {
+    const lock = createFifoLock({ timeoutMs: 30 });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // A never-settling holder must not make queued operations wait forever:
+    // the queued run rejects after the bound and abandons its slot.
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    const queued = lock.run(async () => "ran");
+
+    await expect(queued).rejects.toThrow(/timed out/i);
+    release();
+    await holder;
+
+    // The abandoned slot must not poison the queue.
+    await expect(lock.run(async () => "after")).resolves.toBe("after");
+  });
+
+  it("does not time out an operation that waits only briefly for its turn", async () => {
+    const lock = createFifoLock({ timeoutMs: 100 });
+
+    const first = lock.run(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return "a";
+    });
+    const second = lock.run(async () => "b");
+
+    await expect(Promise.all([first, second])).resolves.toEqual(["a", "b"]);
+  });
 });

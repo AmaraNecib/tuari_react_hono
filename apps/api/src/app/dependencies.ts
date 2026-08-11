@@ -143,8 +143,8 @@ export async function createAppDependencies(
     // Note: when dbAdapter=inmemory only the company domain is in-memory; the
     // inventory/invoice/payment modules still use the SQLite handle until those
     // adapters are introduced in a follow-up phase.
-    const companyRepository = createCompanyRepository(sharedDatabase, appConfig);
-    const inventoryRepository = createInventoryRepository(sharedDatabase);
+    const companyRepository = createCompanyRepository(sharedDatabase, appConfig, connectionLock);
+    const inventoryRepository = createInventoryRepository(sharedDatabase, connectionLock);
     const accountRepository = new DrizzleAccountRepository(db, connectionLock);
 
     // Construct each domain service off the same `WorkspaceMutationContext`
@@ -169,6 +169,7 @@ export async function createAppDependencies(
     const invoiceDebtPort = createSqliteInvoiceDebtPort({
       db: sharedDatabase,
       repository: companyRepository,
+      lock: connectionLock,
     });
     const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
     const paymentRepository = new PaymentRepositoryImpl(sharedDatabase, connectionLock);
