@@ -2,6 +2,7 @@ import { createAuth } from "../infrastructure/auth/auth";
 import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
 import { createFifoLock } from "../infrastructure/database/fifo-lock";
+import { createConfigFileKeyPersister, type DatabaseKeyPersister } from "../infrastructure/database/database-key-persister";
 import { createDatabaseKeyManager, type DatabaseKeyManager } from "../infrastructure/database/database-key-manager";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
 import { ensureDatabaseSchema } from "../infrastructure/database/schema";
@@ -86,6 +87,8 @@ export type AppDependencies = {
   updateService: UpdateService;
   updateHistoryService: UpdateHistoryService;
   databaseKeyManager: DatabaseKeyManager;
+  /** Persists a rotated DB key so a restart can still open the database (#265). */
+  databaseKeyPersister: DatabaseKeyPersister;
   employeeModule: EmployeeModule;
   invoiceModule: InvoiceModule;
   paymentModule: PaymentModule;
@@ -111,8 +114,9 @@ export async function createAppDependencies(
   config: CreateAppDependenciesConfig = {},
   appConfig: AppConfig = createAppConfig(),
 ): Promise<AppDependencies> {
+  const databasePath = config.databasePath?.trim() ? config.databasePath : appConfig.databasePath;
   const sharedDatabase = createDatabaseConnection(
-    config.databasePath?.trim() ? config.databasePath : appConfig.databasePath,
+    databasePath,
     config.databaseKey,
   );
   // Idempotent close: the root opens the connection, so the root closes it.
@@ -216,6 +220,14 @@ export async function createAppDependencies(
       updateService: new UpdateService(),
       updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase, connectionLock)),
       databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
+      // Persist a rotated key into the user-editable config file so a restart
+      // can still open the database (issue #265). The desktop host pins the
+      // key via its own secret store (env APP_DB_KEY beats the config file),
+      // so it performs its own rotation — this persister covers file-driven
+      // deployments and is the port's default contract.
+      databaseKeyPersister: createConfigFileKeyPersister(
+        process.env.TUARI_CONFIG_FILE?.trim() || null,
+      ),
       employeeModule,
       invoiceModule,
       paymentModule,

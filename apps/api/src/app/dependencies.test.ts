@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -213,6 +213,31 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
     // the factory's concern and requires the native binding).
     expect(dbKeyCapture).toHaveBeenCalledWith("test-db-key");
     expect(deps.companyService.listRoles().items).toHaveLength(SEEDED_ROLE_KEYS.length);
+  });
+
+  it("wires the databaseKeyPersister to the config file (issue #265)", async () => {
+    const { createAppDependencies } = await import("./dependencies");
+    const config = createAppConfig({ BETTER_AUTH_SECRET: TEST_AUTH_SECRET });
+    const configDir = mkdtempSync(join(tmpdir(), "tuari-deps-persist-"));
+    const configPath = join(configDir, "config.json");
+    try {
+      vi.stubEnv("TUARI_CONFIG_FILE", configPath);
+
+      const deps = await createAppDependencies(
+        { databasePath: inMemoryDb, authInstance: fakeAuth },
+        config,
+      );
+      lastDeps = deps;
+
+      // The persister is the port the rekey handler calls after a successful
+      // changeKey — it must write into the configured config file.
+      expect(deps.databaseKeyPersister.persistKey("persisted-key-123")).toEqual({ success: true });
+      expect(existsSync(configPath)).toBe(true);
+      expect(JSON.parse(readFileSync(configPath, "utf8")).db_key).toBe("persisted-key-123");
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(configDir, { recursive: true, force: true });
+    }
   });
 
   it("honors the injected config for the attachments root path", async () => {

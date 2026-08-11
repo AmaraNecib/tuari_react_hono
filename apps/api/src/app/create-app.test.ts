@@ -39,6 +39,9 @@ const createDependencies = () => ({
   databaseKeyManager: {
     changeKey: vi.fn().mockReturnValue({ success: true }),
   },
+  databaseKeyPersister: {
+    persistKey: vi.fn().mockReturnValue({ success: true }),
+  },
 });
 
 describe("createApp RPC wiring", () => {

@@ -30,6 +30,7 @@ import type { UpdateHistoryService } from "../modules/update/update-history.serv
 import type { UpdateService } from "../modules/update/update.service";
 import type { RoleModule } from "../modules/rbac/role.module";
 import type { DatabaseKeyManager } from "../infrastructure/database/database-key-manager";
+import type { DatabaseKeyPersister } from "../infrastructure/database/database-key-persister";
 
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
@@ -46,6 +47,7 @@ type RouterDependencies = {
   updateHistoryService: UpdateHistoryService;
   roleModule: RoleModule;
   databaseKeyManager: DatabaseKeyManager;
+  databaseKeyPersister: DatabaseKeyPersister;
 };
 
 export function createRouter(
@@ -76,7 +78,7 @@ export function createRouter(
 
   const allHandlers = {
     ...baseHandlers,
-    ...createSystemHandlers(os, m, dependencies.companyService, dependencies.recoveryKeyService, dependencies.roleModule, dependencies.databaseKeyManager),
+    ...createSystemHandlers(os, m, dependencies.companyService, dependencies.recoveryKeyService, dependencies.roleModule, dependencies.databaseKeyManager, dependencies.databaseKeyPersister),
     ...createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
     ...createOperationsHandlers(os, m, dependencies.operationsService),
     ...createFinanceHandlers(os, m, dependencies.financeService),
