@@ -12,7 +12,10 @@
  */
 
 import { CompanyError } from "./company.errors";
-import { SYSTEM_ROLE_KEYS } from "./company.types";
+import {
+  isAssignableEmployeeRoleKey,
+  LEGACY_WORKFORCE_ROLE_KEYS,
+} from "./company.types";
 import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
 import type { FinanceRepository } from "./finance.repository";
@@ -35,12 +38,7 @@ export function requireAssignableEmployeeRole(
 ) {
   const role = requireRole(repository, roleId);
 
-  if (
-    !role.isSystem ||
-    !Object.values(SYSTEM_ROLE_KEYS).includes(
-      role.key as (typeof SYSTEM_ROLE_KEYS)[keyof typeof SYSTEM_ROLE_KEYS],
-    )
-  ) {
+  if (!role.isSystem || !isAssignableEmployeeRoleKey(role.key)) {
     throw new CompanyError("BUSINESS_RULE", "يمكن اختيار الأدوار النظامية فقط في هذه المرحلة.", [
       { field, message: "يمكن اختيار الأدوار النظامية فقط في هذه المرحلة." },
     ]);
@@ -87,7 +85,7 @@ export function requireActiveEmployee<T extends { status: string }>(employee: T,
 }
 
 export function requireEmployeeWorker(repository: WorkforceRepository, id: string, field: string) {
-  return requireEmployeeWithRoleKey(repository, id, SYSTEM_ROLE_KEYS.worker, field);
+  return requireEmployeeWithRoleKey(repository, id, LEGACY_WORKFORCE_ROLE_KEYS.worker, field);
 }
 
 export function requireProject(repository: OperationsRepository, projectId: string) {
@@ -151,8 +149,8 @@ export function ensureEmployeeTransitionAllowed(
   );
 
   if (
-    currentRoleKey === SYSTEM_ROLE_KEYS.worker &&
-    (nextRoleKey !== SYSTEM_ROLE_KEYS.worker || nextStatus !== "ACTIVE") &&
+    currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.worker &&
+    (nextRoleKey !== LEGACY_WORKFORCE_ROLE_KEYS.worker || nextStatus !== "ACTIVE") &&
     (hasActiveManagerAssignment || hasActiveProjectAssignment || hasActiveWarehouseAssignment)
   ) {
     throw new CompanyError(
@@ -168,8 +166,8 @@ export function ensureEmployeeTransitionAllowed(
   }
 
   if (
-    currentRoleKey === SYSTEM_ROLE_KEYS.projectManager &&
-    (nextRoleKey !== SYSTEM_ROLE_KEYS.projectManager || nextStatus !== "ACTIVE")
+    currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.projectManager &&
+    (nextRoleKey !== LEGACY_WORKFORCE_ROLE_KEYS.projectManager || nextStatus !== "ACTIVE")
   ) {
     const hasActiveManagedProjects =
       operationsRepo.listProjects({ managerId: employee.id, status: "ACTIVE" }).length > 0;
@@ -197,8 +195,8 @@ export function ensureEmployeeTransitionAllowed(
   }
 
   if (
-    currentRoleKey === SYSTEM_ROLE_KEYS.warehouseManager &&
-    (nextRoleKey !== SYSTEM_ROLE_KEYS.warehouseManager || nextStatus !== "ACTIVE")
+    currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager &&
+    (nextRoleKey !== LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager || nextStatus !== "ACTIVE")
   ) {
     const hasActiveWarehouses =
       operationsRepo.listWarehouses({ managerId: employee.id, status: "ACTIVE" }).length > 0;
@@ -242,7 +240,7 @@ export function ensureProjectTransitionAllowed(
       return false;
     }
 
-    return workforceRepo.getRoleById(employee.roleId)?.key === SYSTEM_ROLE_KEYS.worker;
+    return workforceRepo.getRoleById(employee.roleId)?.key === LEGACY_WORKFORCE_ROLE_KEYS.worker;
   });
 
   const managerWillChange = nextManagerId !== undefined && nextManagerId !== currentManagerId;
@@ -337,7 +335,7 @@ export function listActiveWorkerIdsForProject(
       }
 
       const employeeRole = workforceRepo.getRoleById(employee.roleId);
-      if (employeeRole?.key !== SYSTEM_ROLE_KEYS.worker) {
+      if (employeeRole?.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker) {
         return false;
       }
 

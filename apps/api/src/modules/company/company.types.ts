@@ -390,8 +390,44 @@ export type SystemLogListFilters = {
   toDate?: string;
 };
 
-export const SYSTEM_ROLE_KEYS = {
+export const ASSIGNABLE_ROLE_KEYS = {
+  admin: "admin",
+  manager: "manager",
+  viewer: "viewer",
+} as const;
+
+/**
+ * Legacy workforce lifecycle role keys (pre-Slice 3).
+ *
+ * These role KEYS no longer exist in the database — the RBAC consolidation
+ * (issue #10) dropped them and `applyRbacThreeRoleMigration` reassigned any
+ * employees attached to them onto `manager`, so only `admin` / `manager` /
+ * `viewer` are seeded. The workforce assignment lifecycle (manager
+ * assignment, workplace assignment, managed project/warehouse sync,
+ * project/warehouse manager checks) still branches on them and is therefore
+ * dormant; it is kept here verbatim (not mapped onto `manager`) because that
+ * lifecycle itself is slated for a redesign — see follow-up tracked from
+ * issue #263.
+ */
+export const LEGACY_WORKFORCE_ROLE_KEYS = {
   worker: "worker",
   projectManager: "project_manager",
   warehouseManager: "warehouse_manager",
 } as const;
+
+/**
+ * True when a role key may be assigned to an employee via create/update.
+ *
+ * Accepts the seeded assignable roles (`admin` / `manager` / `viewer`) plus
+ * the legacy workforce keys. The legacy keys cannot exist in a post-Slice-3
+ * database (the RBAC migration deletes them), so accepting them is a no-op
+ * in production — they are included so the dormant assignment lifecycle,
+ * which still branches on them and is exercised by the unit-test harness,
+ * can create its employees.
+ */
+export function isAssignableEmployeeRoleKey(key: string): boolean {
+  return (
+    (Object.values(ASSIGNABLE_ROLE_KEYS) as string[]).includes(key) ||
+    (Object.values(LEGACY_WORKFORCE_ROLE_KEYS) as string[]).includes(key)
+  );
+}

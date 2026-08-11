@@ -39,7 +39,7 @@ import { WorkspaceMutationContext } from "./workspace-mutation-context";
 import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
 import {
-  SYSTEM_ROLE_KEYS,
+  isAssignableEmployeeRoleKey,
   type EmployeeListFilters,
   type EmployeeSalaryPaymentListFilters,
   type EmployeeStateHistoryListFilters,
@@ -47,6 +47,7 @@ import {
   type MutationAuditContext,
   type ProjectManagerOwnershipHistoryListFilters,
   type WarehouseManagerOwnershipHistoryListFilters,
+  LEGACY_WORKFORCE_ROLE_KEYS,
 } from "./company.types";
 import { normalizeAlgeriaTimestamp } from "./company-time";
 import {
@@ -216,12 +217,7 @@ export class WorkforceService {
             field: buildBatchField(index, "roleId"),
             message: "تعذر العثور على الدور المطلوب.",
           });
-        } else if (
-          !role.isSystem ||
-          !Object.values(SYSTEM_ROLE_KEYS).includes(
-            role.key as (typeof SYSTEM_ROLE_KEYS)[keyof typeof SYSTEM_ROLE_KEYS],
-          )
-        ) {
+        } else if (!role.isSystem || !isAssignableEmployeeRoleKey(role.key)) {
           fieldErrors.push({
             field: buildBatchField(index, "roleId"),
             message: "يمكن اختيار الأدوار النظامية فقط في هذه المرحلة.",
@@ -258,7 +254,7 @@ export class WorkforceService {
           });
         }
 
-        if (role?.key !== SYSTEM_ROLE_KEYS.worker) {
+        if (role?.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker) {
           if (employee.managerId) {
             fieldErrors.push({
               field: buildBatchField(index, "managerId"),
@@ -314,7 +310,7 @@ export class WorkforceService {
 
         const managerRole = this.repository.getRoleById(manager.roleId);
 
-        if (managerRole?.key !== SYSTEM_ROLE_KEYS.projectManager) {
+        if (managerRole?.key !== LEGACY_WORKFORCE_ROLE_KEYS.projectManager) {
           fieldErrors.push({
             field: buildBatchField(index, "managerId"),
             message: "المدير المختار يجب أن يحمل دور مدير مشروع نشط.",
@@ -392,8 +388,8 @@ export class WorkforceService {
       );
 
       if (
-        currentRole.key !== SYSTEM_ROLE_KEYS.worker &&
-        nextRole.key === SYSTEM_ROLE_KEYS.worker &&
+        currentRole.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker &&
+        nextRole.key === LEGACY_WORKFORCE_ROLE_KEYS.worker &&
         nextStatus === "ACTIVE"
       ) {
         throw new CompanyError(
@@ -581,13 +577,13 @@ export class WorkforceService {
       const worker = requireEmployeeWithRoleKey(
         this.repository,
         input.workerId,
-        SYSTEM_ROLE_KEYS.worker,
+        LEGACY_WORKFORCE_ROLE_KEYS.worker,
         "workerId",
       );
       const manager = requireEmployeeWithRoleKey(
         this.repository,
         input.managerId,
-        SYSTEM_ROLE_KEYS.projectManager,
+        LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
         "managerId",
       );
 
@@ -671,7 +667,7 @@ export class WorkforceService {
       throw new CompanyError("BUSINESS_RULE", "لا يمكن تعديل مكان العمل إلا لعامل نشط.");
     }
 
-    if (role.key !== SYSTEM_ROLE_KEYS.worker) {
+    if (role.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker) {
       throw new CompanyError(
         "BUSINESS_RULE",
         "تغيير مكان العمل المباشر متاح للعمال فقط من هذه العملية.",
@@ -688,7 +684,7 @@ export class WorkforceService {
       const manager = requireEmployeeWithRoleKey(
         this.repository,
         input.managerId,
-        SYSTEM_ROLE_KEYS.projectManager,
+        LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
         "managerId",
       );
       requireActiveEmployee(manager, "managerId");
@@ -753,7 +749,7 @@ export class WorkforceService {
     const employee = requireEmployeeWithRoleKey(
       this.repository,
       input.employeeId,
-      SYSTEM_ROLE_KEYS.projectManager,
+      LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
       "employeeId",
     );
     requireActiveEmployee(employee, "employeeId");
@@ -814,7 +810,7 @@ export class WorkforceService {
     const employee = requireEmployeeWithRoleKey(
       this.repository,
       input.employeeId,
-      SYSTEM_ROLE_KEYS.warehouseManager,
+      LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager,
       "employeeId",
     );
     requireActiveEmployee(employee, "employeeId");
