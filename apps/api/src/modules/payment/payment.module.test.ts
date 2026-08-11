@@ -193,7 +193,16 @@ describe("PaymentModule", () => {
       await expect(
         paymentModule.create(makePaymentInput({
           totalAmount: 0,
-          allocations: [{ invoiceId: "inv-1", amount: 0 }],
+          allocations: [{ invoiceId: "inv-1", amount: 5000 }],
+        })),
+      ).rejects.toBeInstanceOf(PaymentInvalidAmountError);
+    });
+
+    it("rejects amounts beyond the safe integer range", async () => {
+      await expect(
+        paymentModule.create(makePaymentInput({
+          totalAmount: 2 ** 53,
+          allocations: [{ invoiceId: "inv-1", amount: 2 ** 53 }],
         })),
       ).rejects.toBeInstanceOf(PaymentInvalidAmountError);
     });
@@ -355,6 +364,14 @@ describe("PaymentModule", () => {
     function encodeCursor(sortValue: unknown, id: unknown): string {
       return Buffer.from(JSON.stringify({ sortValue, id })).toString("base64url");
     }
+
+    it("rejects a fractional page limit", async () => {
+      // sqlite LIMIT ? throws a datatype mismatch on fractional bounds — the
+      // shared schema's .int() rejects it at the seam before the adapter.
+      await expect(paymentModule.listPaged({ limit: 2.5 })).rejects.toBeInstanceOf(
+        PaymentInvalidLimitError,
+      );
+    });
 
     it("rejects a zero limit", async () => {
       await expect(paymentModule.listPaged({ limit: 0 })).rejects.toBeInstanceOf(

@@ -986,9 +986,11 @@ describe("RPC router", () => {
     await expect(
       client.paymentsCreate({ ...base, totalAmount: 5000, allocations: [{ invoiceId, amount: -5000 }] }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    // Non-positive page limits (the slice(0, -1) silent-drop shape).
+    // Non-positive page limits (the slice(0, -1) silent-drop shape) and
+    // fractional limits (sqlite LIMIT datatype-mismatch 500).
     await expect(client.paymentsList({ limit: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(client.paymentsList({ limit: -1 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(client.paymentsList({ limit: 2.5 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("forwards a failed recovery key consumption through the wire contract", async () => {

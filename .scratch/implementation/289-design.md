@@ -40,11 +40,16 @@ The module's `CreatePaymentInput` deliberately treats ids as opaque strings
 the *financial* constraints into shared primitives in `packages/contracts/src/payment.ts`
 and reuse them in both the contract schemas and the module:
 
-- `paymentAmountSchema = z.number().positive()` — used for `paymentSchema.totalAmount`,
-  `paymentAllocationSchema.amount`, `createPaymentInputSchema.totalAmount`,
-  `createPaymentAllocationInputSchema.amount`, and by the module.
-- `paymentListLimitSchema = z.number().min(1).max(100)` — used for
+- `paymentAmountSchema = z.number().positive().max(Number.MAX_SAFE_INTEGER)` — used
+  for `paymentSchema.totalAmount`, `paymentAllocationSchema.amount`,
+  `createPaymentInputSchema.totalAmount`, `createPaymentAllocationInputSchema.amount`,
+  and by the module. The `.max()` cap keeps amounts inside the integer precision
+  range the strict `!==` sum check and sqlite REAL columns represent exactly
+  (test-audit finding: `2**53` amounts previously passed).
+- `paymentListLimitSchema = z.number().int().min(1).max(100)` — used for
   `paymentListInputSchema.limit` (with `.default(50)` kept) and by the module.
+  `.int()` closes a wire-reachable 500: sqlite `LIMIT ?` throws a datatype
+  mismatch on fractional bounds like 2.5 (test-audit finding, verified empirically).
 
 The module throws new typed errors (`PaymentInvalidAmountError`,
 `PaymentEmptyAllocationsError`, `PaymentInvalidLimitError`) BEFORE the existing

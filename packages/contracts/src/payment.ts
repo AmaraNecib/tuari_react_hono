@@ -6,12 +6,18 @@ export const counterpartyTypeSchema = z.enum(["EXTERNAL_COUNTERPARTY", "WORKER"]
 /**
  * Shared monetary validity for payment amounts — the wire gate and the API
  * payment module seam enforce the SAME definition so the two cannot drift
- * (issue #289 service-boundary defense-in-depth).
+ * (issue #289 service-boundary defense-in-depth). `.max(MAX_SAFE_INTEGER)`
+ * keeps amounts inside the integer precision range the strict sum check and
+ * sqlite REAL columns can represent exactly.
  */
-export const paymentAmountSchema = z.number().positive();
+export const paymentAmountSchema = z.number().positive().max(Number.MAX_SAFE_INTEGER);
 
-/** Shared page-limit validity for payment listing (wire gate + module seam). */
-export const paymentListLimitSchema = z.number().min(1).max(100);
+/**
+ * Shared page-limit validity for payment listing (wire gate + module seam).
+ * `.int()` because sqlite `LIMIT ?` throws a datatype mismatch on fractional
+ * bounds (issue #289 + test-audit finding).
+ */
+export const paymentListLimitSchema = z.number().int().min(1).max(100);
 
 export const paymentAllocationSchema = z.object({
   id: z.string().uuid(),
