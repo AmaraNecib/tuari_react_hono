@@ -1,10 +1,58 @@
 import path from "node:path";
 import react from "@vitejs/plugin-react-swc";
 import tailwindcss from "@tailwindcss/vite";
+import type { Plugin, IndexHtmlTransformContext } from "vite";
 import { defineConfig } from "vite";
 
+/**
+ * Preload the primary Arabic body font woff2 into the BUILT index.html.
+ *
+ * Issue #281: preloading must be discoverable by the HTML preload scanner,
+ * which only sees the raw HTML before any JS runs. Injecting the `<link>` at
+ * runtime (main.tsx) defeats that — the font fetch would start only after the
+ * entry bundle downloads and evaluates. This hook emits the same hashed asset
+ * the CSS `@font-face` uses (same file -> same content hash -> same URL), so
+ * the preloaded resource is exactly the one the browser fetches for rendering.
+ */
+function preloadArabicFont(): Plugin {
+  return {
+    name: "html-preload-arabic-font",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler(_html: string, ctx: IndexHtmlTransformContext) {
+        const bundle = ctx.bundle;
+        if (!bundle) {
+          return undefined;
+        }
+        const font = Object.values(bundle).find(
+          (chunk): chunk is Extract<typeof chunk, { type: "asset" }> =>
+            chunk.type === "asset" &&
+            /ibm-plex-sans-arabic-arabic-400-normal.*\.woff2$/.test(chunk.fileName),
+        );
+        if (!font) {
+          return undefined;
+        }
+        return [
+          {
+            tag: "link",
+            attrs: {
+              rel: "preload",
+              as: "font",
+              type: "font/woff2",
+              crossorigin: "anonymous",
+              href: `/${font.fileName}`,
+            },
+            injectTo: "head-prepend",
+          },
+        ];
+      },
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), preloadArabicFont()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

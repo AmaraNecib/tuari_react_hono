@@ -76,3 +76,46 @@ test('root package scripts keep web hygiene validation in normal checks', async 
   assert.match(packageJson.scripts.lint, /check:web-hygiene/);
   assert.match(packageJson.scripts.test, /check:web-hygiene/);
 });
+
+test('fonts are self-hosted: index.html has no Google Fonts links or preconnects', async () => {
+  const html = await readRepoFile('apps/web/index.html');
+
+  assert.doesNotMatch(html, /fonts\.googleapis\.com/);
+  assert.doesNotMatch(html, /fonts\.gstatic\.com/);
+  assert.doesNotMatch(html, /preconnect/i);
+});
+
+test('fonts are self-hosted: styles.css never imports Google Fonts CSS', async () => {
+  const css = await readRepoFile('apps/web/src/styles.css');
+
+  assert.doesNotMatch(css, /googleapis\.com/);
+  assert.doesNotMatch(css, /gstatic\.com/);
+});
+
+test('fonts are self-hosted: every family the design tokens reference is declared', async () => {
+  const css = await readRepoFile('apps/web/src/styles.css');
+
+  // Each family the token stack references must be declared: static families
+  // come in via @fontsource @imports (their @font-face lives in the package css),
+  // variable families via hand-written @font-face blocks in styles.css.
+  const expectedFamilies = [
+    ['Instrument Serif', 'instrument-serif'],
+    ['Inter Tight Variable', 'inter-tight'],
+    ['JetBrains Mono Variable', 'jetbrains-mono'],
+    ['IBM Plex Sans Arabic', 'ibm-plex-sans-arabic'],
+    ['Amiri', 'amiri'],
+    ['Noto Naskh Arabic', 'noto-naskh-arabic'],
+    ['Noto Sans Arabic Variable', 'noto-sans-arabic'],
+  ];
+
+  for (const [family, fontsourcePackage] of expectedFamilies) {
+    // fontsource CSS uses single quotes, hand-written @font-face uses double.
+    const familyDecl = new RegExp(`font-family:\\s*["']${family}["']`);
+    const imported = css.includes(`@import "@fontsource/${fontsourcePackage}`);
+    assert.ok(
+      familyDecl.test(css) || imported,
+      `expected family "${family}" to be declared in apps/web/src/styles.css ` +
+        `(via @fontsource/${fontsourcePackage} import or an inline @font-face)`,
+    );
+  }
+});

@@ -86,6 +86,24 @@ describe("web prod-HTML hygiene (#282)", () => {
       // on an empty or failed build.
       expect(distIndexHtml).toContain('<div id="root"></div>');
       expect(distIndexHtml).toMatch(/<script[^>]*type="module"[^>]*src="\/assets\/index-[^"]+\.js"/);
+
+      // Issue #281: the primary Arabic body font must be preloaded as a
+      // STATIC link in the served HTML (discoverable by the HTML preload
+      // scanner before any JS runs), not injected at runtime from main.tsx.
+      const preloadMatch = distIndexHtml.match(
+        /<link rel="preload" as="font" type="font\/woff2" crossorigin="anonymous" href="(\/assets\/[^"]*ibm-plex-sans-arabic-arabic-400-normal[^"]*\.woff2)"/,
+      );
+      const preloadHref = preloadMatch?.[1];
+      expect(preloadHref, "dist/index.html must preload the Arabic body font").toBeDefined();
+      // The preloaded URL must be exactly the hashed file the built CSS
+      // @font-face fetches — a stale/unrelated woff2 would defeat the preload.
+      const cssHref = distIndexHtml.match(/href="(\/assets\/index-[^"]+\.css)"/)?.[1];
+      expect(cssHref, "dist/index.html must reference a hashed CSS asset").toBeDefined();
+      const distCss = readFileSync(join(buildOutDir, cssHref!.replace(/^\//, "")), "utf8");
+      // The CSS @font-face references the file by bare filename; compare the
+      // preloaded URL's basename so a re-hash anywhere breaks the pin.
+      const preloadFile = preloadHref!.split("/").pop()!;
+      expect(distCss).toContain(preloadFile);
     },
     120_000,
   );
