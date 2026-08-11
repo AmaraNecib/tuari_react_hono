@@ -129,7 +129,9 @@ writer throw loudly instead of silently corrupting).
 `dependencies.ts` threads the shared `connectionLock` into
 `createCompanyRepository(sharedDatabase, appConfig, connectionLock)`,
 `createInventoryRepository(sharedDatabase, connectionLock)`, and
-`createSqliteInvoiceDebtPort({ db, repository, lock: connectionLock })`.
+`createSqliteInvoiceDebtPort({ db, repository, lock: connectionLock })`,
+plus the already-locked five async openers and
+`SqliteUpdateHistoryPort(sharedDatabase, connectionLock)`.
 `config/database.ts` + `company.repository.ts` factories gain optional lock
 params threaded through `buildSqliteCompanyRepository`.
 

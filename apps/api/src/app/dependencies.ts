@@ -211,7 +211,7 @@ export async function createAppDependencies(
       sessionService: new SessionService(auth, permissionResolver),
       recoveryKeyService,
       updateService: new UpdateService(),
-      updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase)),
+      updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase, connectionLock)),
       databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
       employeeModule,
       invoiceModule,
