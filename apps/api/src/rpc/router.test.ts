@@ -955,6 +955,19 @@ describe("RPC router", () => {
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "        " }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    // #234: invisible format chars (ZWSP) survive trim() — they are not
+    // WhiteSpace — so a ZWSP-only key must be rejected at the wire gate, not
+    // passed to the hash comparison / PRAGMA rekey.
+    await expect(client.consumeRecoveryKey({ key: "\u200B" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(client.revokeRecoveryKey({ keyId: "\u200B\u200B" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "\u200B".repeat(8) }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("forwards a failed recovery key consumption through the wire contract", async () => {

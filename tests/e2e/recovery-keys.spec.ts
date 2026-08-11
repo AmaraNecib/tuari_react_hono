@@ -160,6 +160,19 @@ test("recovery key lifecycle: generate, mask, revoke, consume, replenish, max po
   }, `${API_URL}/rpc/consumeRecoveryKey`)
   expect(malformedStatus).toBe(400)
 
+  // ── #234: a zero-width-space key survives trim() (not WhiteSpace) but the
+  // wire gate must reject invisible format chars, not hash-compare them. ────
+  const zwspStatus = await page.evaluate(async (url) => {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ json: { key: "\u200B\u200B" } }),
+    })
+    return response.status
+  }, `${API_URL}/rpc/consumeRecoveryKey`)
+  expect(zwspStatus).toBe(400)
+
   // Pool reflects all transitions after a reload (fresh fetch).
   await page.reload()
   await expect(page.getByRole("heading", { name: "الإعدادات" })).toBeVisible()

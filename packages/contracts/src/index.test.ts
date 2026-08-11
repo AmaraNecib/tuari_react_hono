@@ -951,6 +951,74 @@ describe("contracts", () => {
       expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: null })).toThrow();
     });
 
+    it("rejects recovery keys containing invisible format characters (#234)", () => {
+      // #234: trim() keeps Cf (format) chars — a ZWSP-only key passes min(1).
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\u200B" })).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\u200B\u200B\u200B" })).toThrow();
+      expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "\u200B\u200B" })).toThrow();
+
+      // Cf chars embedded inside an otherwise-valid key are rejected too —
+      // these are exact-match secrets, so there is no "visible enough"
+      // (stricter than the auth.ts name rule, which only rejects
+      // all-invisible strings). Category members beyond ZWSP: LRM (U+200E),
+      // RLM (U+200F), ZWNJ (U+200C), ZWJ (U+200D).
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u200Bc3d4" })).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u200Ec3d4" })).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u200Fc3d4" })).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u200Cc3d4" })).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u200Dc3d4" })).toThrow();
+
+      // Surrounding whitespace is trimmed first; the embedded Cf survives
+      // trim and is still rejected.
+      expect(() =>
+        consumeRecoveryKeyInputSchema.parse({ key: "  a1b2\u200Bc3d4  " }),
+      ).toThrow();
+
+      // Valid keys are unaffected (regression).
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2-c3d4-e5f6" })).toEqual({
+        key: "a1b2-c3d4-e5f6",
+      });
+      expect(revokeRecoveryKeyInputSchema.parse({ keyId: "key-1" })).toEqual({ keyId: "key-1" });
+    });
+
+    it("rejects DB key change inputs containing invisible format characters (#234)", () => {
+      // The exact issue case: 8 ZWSP passes min(8) and would become the
+      // PRAGMA rekey value.
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u200B".repeat(8) }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "\u200B", newKey: "new-key-123" }),
+      ).toThrow();
+
+      // Embedded Cf in either field is rejected (exact-match secret semantics).
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old\u200Bkey", newKey: "new-key-123" }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "new\u200Bkey-123" }),
+      ).toThrow();
+
+      // Valid values are unaffected (regression).
+      expect(
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "new-key-123" }),
+      ).toEqual({ currentKey: "old-key", newKey: "new-key-123" });
+    });
+
+    it("reports only the too-short issue for a too-short invisible newKey (#234)", () => {
+      // 3 ZWSP < min(8): the Cf refine must defer to .min(8) — a single
+      // too_small issue, not doubled too_small + custom issues.
+      const result = changeDbKeyInputSchema.safeParse({
+        currentKey: "old-key",
+        newKey: "\u200B\u200B\u200B",
+      });
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("unreachable");
+      const newKeyIssues = result.error.issues.filter((issue) => issue.path[0] === "newKey");
+      expect(newKeyIssues).toHaveLength(1);
+      expect(newKeyIssues[0]?.code).toBe("too_small");
+    });
+
     it("validates the database encryption key change input", () => {
       expect(
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "new-key-123" }),
