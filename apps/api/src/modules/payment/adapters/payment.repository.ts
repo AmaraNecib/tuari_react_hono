@@ -8,6 +8,7 @@ import type {
   PaymentListFilters,
   PaymentListSortField,
   SortDirection,
+  PaymentDeleteResult,
 } from "../payment.types";
 
 const SORT_COLUMN_MAP: Record<PaymentListSortField, string> = {
@@ -21,9 +22,9 @@ const SORT_COLUMN_MAP: Record<PaymentListSortField, string> = {
  *
  * Transaction discipline: every WRITE path is serialized through the
  * connection-wide lock — `runInTransaction` (the whole validate → create →
- * allocate flow) and `deletePayment` (its sync transaction). The unlocked
- * read methods (`findById`, `findPaged`, `findAllocationsByPaymentId`) and
- * `createPayment`/`createAllocation` are join surface: they execute on the
+ * allocate flow) and `deleteIfUnallocated` (its sync transaction). The
+ * unlocked read methods (`findById`, `findPaged`, `findAllocationsByPaymentId`)
+ * and `createPayment`/`createAllocation` are join surface: they execute on the
  * connection as-is, so they must only be called (a) outside any transaction,
  * or (b) from inside a `runInTransaction` callback where they join the open
  * transaction. Never call them from an unrelated module's open transaction.
@@ -191,16 +192,32 @@ export class PaymentRepositoryImpl implements PaymentRepository {
     };
   }
 
-  async deletePayment(id: string): Promise<void> {
+  async deleteIfUnallocated(id: string): Promise<PaymentDeleteResult> {
     // Sync transaction (better-sqlite3) — must not BEGIN while another
     // module holds an open transaction on the shared connection, so it
-    // runs under the connection-wide lock too.
+    // runs under the connection-wide lock too. The existence + allocation
+    // guard lives INSIDE the transaction, so the check and the delete are
+    // one critical section: a concurrent create for the same payment id
+    // (itself serialized on the same lock) either lands entirely before
+    // (→ HAS_ALLOCATIONS, nothing deleted) or entirely after (→ DELETED,
+    // then the create re-inserts a fresh payment). The issue-#289 TOCTOU
+    // window is closed by construction.
     return this.connectionLock.run(async () => {
-      const transaction = this.db.transaction(() => {
-        this.db.prepare(`DELETE FROM "payment_allocation" WHERE payment_id = ?`).run(id);
+      const transaction = this.db.transaction((): PaymentDeleteResult => {
+        const exists = this.db.prepare(`SELECT 1 FROM "payment" WHERE id = ?`).get(id);
+        if (!exists) {
+          return { status: "NOT_FOUND" };
+        }
+        const { c: allocationCount } = this.db
+          .prepare(`SELECT COUNT(*) AS c FROM "payment_allocation" WHERE payment_id = ?`)
+          .get(id) as { c: number };
+        if (allocationCount > 0) {
+          return { status: "HAS_ALLOCATIONS", count: allocationCount };
+        }
         this.db.prepare(`DELETE FROM "payment" WHERE id = ?`).run(id);
+        return { status: "DELETED" };
       });
-      transaction();
+      return transaction();
     });
   }
 

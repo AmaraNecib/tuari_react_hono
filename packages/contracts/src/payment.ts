@@ -3,11 +3,21 @@ import { paymentMethodSchema } from "./core";
 
 export const counterpartyTypeSchema = z.enum(["EXTERNAL_COUNTERPARTY", "WORKER"]);
 
+/**
+ * Shared monetary validity for payment amounts — the wire gate and the API
+ * payment module seam enforce the SAME definition so the two cannot drift
+ * (issue #289 service-boundary defense-in-depth).
+ */
+export const paymentAmountSchema = z.number().positive();
+
+/** Shared page-limit validity for payment listing (wire gate + module seam). */
+export const paymentListLimitSchema = z.number().min(1).max(100);
+
 export const paymentAllocationSchema = z.object({
   id: z.string().uuid(),
   paymentId: z.string().uuid(),
   invoiceId: z.string().uuid(),
-  amount: z.number().positive(),
+  amount: paymentAmountSchema,
   createdAt: z.string().datetime(),
 });
 
@@ -17,7 +27,7 @@ export const paymentSchema = z.object({
   counterpartyId: z.string().uuid(),
   paymentDate: z.string().datetime(),
   paymentMethod: paymentMethodSchema,
-  totalAmount: z.number().positive(),
+  totalAmount: paymentAmountSchema,
   notes: z.string().nullable(),
   actorUserId: z.string().nullable(),
   actorLabel: z.string().nullable(),
@@ -29,7 +39,7 @@ export const paymentSchema = z.object({
 
 export const createPaymentAllocationInputSchema = z.object({
   invoiceId: z.string().uuid(),
-  amount: z.number().positive(),
+  amount: paymentAmountSchema,
 });
 
 export const createPaymentInputSchema = z.object({
@@ -38,7 +48,7 @@ export const createPaymentInputSchema = z.object({
   counterpartyId: z.string().uuid(),
   paymentDate: z.string().datetime(),
   paymentMethod: paymentMethodSchema,
-  totalAmount: z.number().positive(),
+  totalAmount: paymentAmountSchema,
   notes: z.string().nullable().optional(),
   allocations: z.array(createPaymentAllocationInputSchema).min(1),
 });
@@ -58,7 +68,7 @@ export const paymentListInputSchema = z.object({
     })
     .optional(),
   cursor: z.string().optional(),
-  limit: z.number().min(1).max(100).default(50),
+  limit: paymentListLimitSchema.default(50),
 });
 
 export const paymentListOutputSchema = z.object({

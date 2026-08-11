@@ -53,7 +53,39 @@ export interface PaymentListFilters {
 export type PaymentListSortField = "paymentDate" | "totalAmount" | "createdAt";
 export type SortDirection = "asc" | "desc";
 
+/**
+ * Result of the atomic guarded delete. The check (payment exists, has no
+ * allocations) and the delete happen inside ONE lock-held transaction, so
+ * an allocation created concurrently can never be silently cascade-deleted
+ * (issue #289 gap 4).
+ */
+export type PaymentDeleteResult =
+  | { status: "DELETED" }
+  | { status: "NOT_FOUND" }
+  | { status: "HAS_ALLOCATIONS"; count: number };
+
 // --- Typed errors ---
+
+export class PaymentEmptyAllocationsError extends Error {
+  constructor() {
+    super("Payment must allocate at least one invoice");
+    this.name = "PaymentEmptyAllocationsError";
+  }
+}
+
+export class PaymentInvalidAmountError extends Error {
+  constructor(public readonly amount: number) {
+    super(`Payment amount must be a positive number; received ${amount}`);
+    this.name = "PaymentInvalidAmountError";
+  }
+}
+
+export class PaymentInvalidLimitError extends Error {
+  constructor(public readonly limit: number) {
+    super(`Page limit must be between 1 and 100; received ${limit}`);
+    this.name = "PaymentInvalidLimitError";
+  }
+}
 
 export class PaymentNotFoundError extends Error {
   constructor(public readonly paymentId: string) {

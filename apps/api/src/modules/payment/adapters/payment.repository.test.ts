@@ -272,17 +272,56 @@ describe("PaymentRepositoryImpl (sqlite)", () => {
     expect(paymentRows(rawDb)).toHaveLength(1); // payment write committed
   });
 
-  it("deletePayment is a no-op for a missing id (module guards existence)", async () => {
-    await expect(repo.deletePayment("nope")).resolves.toBeUndefined();
+  it("deleteIfUnallocated returns NOT_FOUND for a missing id", async () => {
+    const result = await repo.deleteIfUnallocated("nope");
+    expect(result).toEqual({ status: "NOT_FOUND" });
     expect(paymentRows(rawDb)).toHaveLength(0);
   });
 
-  it("deletePayment removes the payment and its allocations atomically", async () => {
+  it("deleteIfUnallocated refuses when allocations exist and deletes nothing", async () => {
     await insertPayment(repo, "pmt-del");
     expect(paymentRows(rawDb)).toHaveLength(1);
 
-    await repo.deletePayment("pmt-del");
+    const result = await repo.deleteIfUnallocated("pmt-del");
 
+    expect(result).toEqual({ status: "HAS_ALLOCATIONS", count: 1 });
+    // Guarded delete: the payment AND its allocation survive untouched.
+    expect(paymentRows(rawDb)).toHaveLength(1);
+    expect(allocationRows(rawDb)).toHaveLength(1);
+  });
+
+  it("deleteIfUnallocated reports the exact allocation count", async () => {
+    await repo.runInTransaction(async () => {
+      await repo.createPayment(paymentInput("pmt-multi"));
+      await repo.createAllocation({
+        id: "pmt-multi-alloc-1",
+        paymentId: "pmt-multi",
+        invoiceId: "inv-1",
+        amount: 500,
+        createdAt: "2026-06-25T10:00:00.000Z",
+      });
+      await repo.createAllocation({
+        id: "pmt-multi-alloc-2",
+        paymentId: "pmt-multi",
+        invoiceId: "inv-1",
+        amount: 500,
+        createdAt: "2026-06-25T10:00:00.000Z",
+      });
+    });
+
+    const result = await repo.deleteIfUnallocated("pmt-multi");
+
+    expect(result).toEqual({ status: "HAS_ALLOCATIONS", count: 2 });
+    expect(paymentRows(rawDb)).toHaveLength(1);
+    expect(allocationRows(rawDb)).toHaveLength(2);
+  });
+
+  it("deleteIfUnallocated deletes an unallocated payment", async () => {
+    await repo.createPayment(paymentInput("pmt-empty"));
+
+    const result = await repo.deleteIfUnallocated("pmt-empty");
+
+    expect(result).toEqual({ status: "DELETED" });
     expect(paymentRows(rawDb)).toHaveLength(0);
     expect(allocationRows(rawDb)).toHaveLength(0);
   });

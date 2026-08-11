@@ -5,6 +5,7 @@ import type {
   PaymentListFilters,
   PaymentListSortField,
   SortDirection,
+  PaymentDeleteResult,
 } from "./payment.types";
 
 export interface PaymentRepository {
@@ -44,7 +45,13 @@ export interface PaymentRepository {
     createdAt: string;
   }): Promise<PaymentAllocation>;
 
-  deletePayment(id: string): Promise<void>;
+  /**
+   * Atomically delete a payment ONLY if it has no allocations. The existence
+   * check, the allocation check, and the delete run inside one lock-held
+   * transaction (issue #289 gap 4) — an allocation created concurrently can
+   * never be silently cascade-deleted.
+   */
+  deleteIfUnallocated(id: string): Promise<PaymentDeleteResult>;
 
   findAllocationsByPaymentId(paymentId: string): Promise<PaymentAllocation[]>;
 

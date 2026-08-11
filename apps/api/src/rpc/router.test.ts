@@ -957,6 +957,40 @@ describe("RPC router", () => {
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
+  it("rejects financially invalid payment input at the wire contract", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createClient(router, createContext());
+
+    // #289: the wire gate is the user-facing surface for the payment module
+    // (no web/desktop UI calls these procedures yet). These pin the FULL path
+    // (auth + permission + contract gate) so a future schema regression that
+    // would let a phantom/negative payment through is caught end-to-end.
+    const base = {
+      counterpartyType: "EXTERNAL_COUNTERPARTY",
+      counterpartyId: "11111111-1111-1111-1111-111111111111",
+      paymentDate: "2026-06-25T10:00:00.000Z",
+      paymentMethod: "CASH",
+    };
+    const invoiceId = "22222222-2222-2222-2222-222222222222";
+
+    // Empty allocations — the #289 phantom-payment shape.
+    await expect(
+      client.paymentsCreate({ ...base, totalAmount: 5000, allocations: [] }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // Zero total amount.
+    await expect(
+      client.paymentsCreate({ ...base, totalAmount: 0, allocations: [{ invoiceId, amount: 0 }] }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // Negative allocation amount.
+    await expect(
+      client.paymentsCreate({ ...base, totalAmount: 5000, allocations: [{ invoiceId, amount: -5000 }] }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // Non-positive page limits (the slice(0, -1) silent-drop shape).
+    await expect(client.paymentsList({ limit: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(client.paymentsList({ limit: -1 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
   it("forwards a failed recovery key consumption through the wire contract", async () => {
     const harness = createHarness();
     const router = createTestRouter(harness, undefined, {
