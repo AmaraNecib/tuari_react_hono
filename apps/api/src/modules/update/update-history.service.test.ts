@@ -9,6 +9,7 @@ import Database from "better-sqlite3";
 import { schemaStatements } from "../../infrastructure/database/schema-definitions";
 import { UpdateHistoryService } from "./update-history.service";
 import { SqliteUpdateHistoryPort } from "./adapters/sqlite-update-history.port";
+import { createFifoLock, FifoLockBusyError } from "../../infrastructure/database/fifo-lock";
 
 function createTestEnv() {
   const dbDir = mkdtempSync(join(tmpdir(), "update-history-test-"));
@@ -118,5 +119,59 @@ describe("UpdateHistoryService", () => {
       expect(latest?.success).toBe(false);
       expect(latest?.errorMessage).toBe("Failed");
     });
+  });
+});
+
+describe("SqliteUpdateHistoryPort lock guard (issue #322)", () => {
+  let dbDir: string;
+  let rawDb: Database.Database;
+  let lock: ReturnType<typeof createFifoLock>;
+  let port: SqliteUpdateHistoryPort;
+
+  beforeEach(() => {
+    dbDir = mkdtempSync(join(tmpdir(), "update-history-guard-"));
+    const dbPath = join(dbDir, "test.sqlite");
+    rawDb = new Database(dbPath);
+    rawDb.pragma("foreign_keys = ON");
+    for (const stmt of schemaStatements) {
+      rawDb.exec(stmt);
+    }
+    lock = createFifoLock();
+    port = new SqliteUpdateHistoryPort(rawDb, lock);
+  });
+
+  afterEach(() => {
+    rawDb.close();
+    rmSync(dbDir, { recursive: true, force: true });
+  });
+
+  it("writes normally when the connection lock is free", () => {
+    const record = port.recordUpdate({ version: "1.2.3", success: true });
+    expect(record.version).toBe("1.2.3");
+  });
+
+  it("throws FifoLockBusyError instead of joining a foreign open transaction", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // A foreign async flow holds the connection across a real await; the
+    // plain update-history write must not silently join it (issue #322).
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(() => port.recordUpdate({ version: "1.2.3", success: true })).toThrow(
+      FifoLockBusyError,
+    );
+
+    release();
+    await holder;
+
+    // The write succeeds once the connection is free.
+    const record = port.recordUpdate({ version: "1.2.4", success: true });
+    expect(record.version).toBe("1.2.4");
   });
 });

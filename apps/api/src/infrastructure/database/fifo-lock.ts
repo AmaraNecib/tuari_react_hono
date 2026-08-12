@@ -109,6 +109,20 @@ export class FifoLockBusyError extends Error {
   }
 }
 
+/**
+ * Thrown by {@link FifoLock.run} when a queued operation waits longer than
+ * the configured `timeoutMs` for its turn. Distinct type so callers can
+ * distinguish "waited too long for the connection" from ordinary failures.
+ */
+export class FifoLockTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(
+      `FifoLock: timed out after ${timeoutMs}ms waiting for the shared-connection lock.`,
+    );
+    this.name = "FifoLockTimeoutError";
+  }
+}
+
 /** The lock instance whose `run` is currently executing, if any. */
 const runContext = new AsyncLocalStorage<FifoLock>();
 
@@ -147,11 +161,7 @@ export function createFifoLock(options: FifoLockOptions = {}): FifoLock {
                 // caller and abandon the slot (release happens when the
                 // slot's turn arrives, so the chain keeps flowing).
                 abandoned = true;
-                reject(
-                  new Error(
-                    `FifoLock: timed out after ${timeoutMs}ms waiting for the shared-connection lock.`,
-                  ),
-                );
+                reject(new FifoLockTimeoutError(timeoutMs));
               }
             }, timeoutMs);
             timer.unref();

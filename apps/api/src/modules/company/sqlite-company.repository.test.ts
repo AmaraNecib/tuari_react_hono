@@ -655,6 +655,13 @@ describe("SqliteCompanyRepository sync-writer lock guard (issue #322)", () => {
       }),
     ).toThrow(FifoLockBusyError);
 
+    // The rejected writer must not have performed ANY write — a busy throw
+    // followed by a partial absorb would be the worst of both worlds.
+    const count = (
+      db.prepare(`SELECT COUNT(*) AS n FROM "employee"`).get() as { n: number }
+    ).n;
+    expect(count).toBe(0);
+
     release();
     await holder;
 

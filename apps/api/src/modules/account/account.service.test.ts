@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import Database from "better-sqlite3"
 
+import { schemaStatements } from "../../infrastructure/database/schema-definitions"
+import { createDrizzleFromSqlite } from "../../infrastructure/database/drizzle"
+import { createFifoLock } from "../../infrastructure/database/fifo-lock"
+import { DrizzleAccountRepository } from "./account.repository"
 import type { AccountRepository } from "./account.repository"
 import { AccountService, AccountServiceError } from "./account.service"
 
@@ -765,18 +770,13 @@ describe("AccountService", () => {
 })
 
 describe("AccountService transaction lock window (issue #322)", { timeout: 20000 }, () => {
-  it("does not hold the connection lock while the current password is being verified", async () => {
-    // Real Drizzle repo + real shared lock: proves the phone-change flow
-    // verifies the password BEFORE opening the transaction, so a sync
-    // writer from another module is never absorbed into an open account
-    // transaction during the bcrypt window (~100ms).
-    const Database = (await import("better-sqlite3")).default
-    const { schemaStatements } = await import("../../infrastructure/database/schema-definitions")
-    const { createDrizzleFromSqlite } = await import("../../infrastructure/database/drizzle")
-    const { createFifoLock } = await import("../../infrastructure/database/fifo-lock")
-    const { DrizzleAccountRepository } = await import("./account.repository")
+  // Real Drizzle repo + real shared lock for the invariant tests.
+  let rawDb: Database.Database | undefined
+  let repository: DrizzleAccountRepository
+  let lock: ReturnType<typeof createFifoLock>
 
-    const rawDb = new Database(":memory:")
+  beforeEach(() => {
+    rawDb = new Database(":memory:")
     rawDb.pragma("foreign_keys = ON")
     for (const stmt of schemaStatements) {
       rawDb.exec(stmt)
@@ -795,8 +795,20 @@ describe("AccountService transaction lock window (issue #322)", { timeout: 20000
       )
       .run("acct-1", "acct-1", "credential", "user-1", "hashed-password", now, now)
 
-    const lock = createFifoLock()
-    const repository = new DrizzleAccountRepository(createDrizzleFromSqlite(rawDb), lock)
+    lock = createFifoLock()
+    repository = new DrizzleAccountRepository(createDrizzleFromSqlite(rawDb), lock)
+  })
+
+  afterEach(() => {
+    rawDb?.close()
+    rawDb = undefined
+  })
+
+  it("does not hold the connection lock while the current password is being verified", async () => {
+    // Real Drizzle repo + real shared lock: proves the phone-change flow
+    // verifies the password BEFORE opening the transaction, so a sync
+    // writer from another module is never absorbed into an open account
+    // transaction during the bcrypt window (~100ms).
 
     // Gate the bcrypt verify: while it is pending, the lock must be free.
     let releaseVerify!: () => void
@@ -841,11 +853,53 @@ describe("AccountService transaction lock window (issue #322)", { timeout: 20000
     expect(result.user.phone).toBe("0612345670")
 
     // The profile row landed (the transaction committed afterwards).
-    const row = rawDb
+    const row = rawDb!
       .prepare(`SELECT "phoneNumber" FROM "user" WHERE "id" = 'user-1'`)
       .get() as { phoneNumber: string }
     expect(row.phoneNumber).toBe("0612345670")
+  })
 
-    rawDb.close()
+  it("skips the bcrypt verify entirely for name-only updates", async () => {
+    // No phone change → no password verification → no hash read. Pins the
+    // early-return guard that keeps bcrypt out of the common profile-edit
+    // path (and out of the lock).
+    const verify = vi.fn().mockResolvedValue(true)
+    const findCredentialPasswordByUserId = vi.fn().mockResolvedValue("hashed-password")
+
+    const service = new AccountService(
+      {
+        findCredentialPasswordByUserId,
+        withTransaction: vi.fn(async (callback) =>
+          callback({
+            createProfileHistory: vi.fn().mockResolvedValue(undefined),
+            findCredentialPasswordByUserId: vi.fn(),
+            findUserIdByPhoneNumber: vi.fn(),
+            updateUserProfile: vi.fn().mockResolvedValue({
+              id: "user-1",
+              name: "بلال",
+              phone: "0612345678",
+            }),
+          }),
+        ),
+      },
+      {
+        $context: Promise.resolve({
+          password: { verify },
+        }),
+        api: {
+          getSession: vi.fn().mockResolvedValue({
+            user: { id: "user-1", name: "عمارة", phoneNumber: "0612345678" },
+          }),
+        },
+      },
+    )
+
+    const result = await service.updateCurrentProfile(new Headers(), {
+      name: "بلال",
+      phone: "0612345678",
+    })
+    expect(result.user.name).toBe("بلال")
+    expect(verify).not.toHaveBeenCalled()
+    expect(findCredentialPasswordByUserId).not.toHaveBeenCalled()
   })
 })
