@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
-import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
+import { runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock";
 
 import type { CompanyRepository } from "../../company/company.repository.contracts";
 import type { MutationAuditContext } from "../../company/company.types";
@@ -57,8 +57,8 @@ export function createSqliteInvoiceDebtPort(
   const { db, repository, lock } = deps;
 
   /** Run a synchronous better-sqlite3 transaction under the connection-wide lock (issue #322). */
-  function runSyncTransaction<T>(fn: () => T): T {
-    return lock.runSync(() => db.transaction(fn)());
+  function guardedTransaction<T>(fn: () => T): T {
+    return runSyncTransaction(lock, (cb) => db.transaction(cb)(), fn);
   }
 
   function ensureCounterpartyId(
@@ -201,7 +201,7 @@ export function createSqliteInvoiceDebtPort(
       const debtDirection: "PAYABLE" | "RECEIVABLE" =
         input.direction === "SALE" ? "RECEIVABLE" : "PAYABLE";
 
-      const debtAccountId = runSyncTransaction(() => {
+      const debtAccountId = guardedTransaction(() => {
         const account = ensureDebtAccountId(
           counterpartyId,
           debtDirection,
@@ -260,7 +260,7 @@ export function createSqliteInvoiceDebtPort(
       const { debtAccountId, totalAmount, paidAmount } =
         getInvoiceTotals(input.invoiceId);
 
-      const { settled, nextBalance } = runSyncTransaction(() => {
+      const { settled, nextBalance } = guardedTransaction(() => {
         const currentBalance = getCurrentDebtAccountBalance(debtAccountId);
         const nextBalance = currentBalance - input.amount;
         const settled = nextBalance <= 0;

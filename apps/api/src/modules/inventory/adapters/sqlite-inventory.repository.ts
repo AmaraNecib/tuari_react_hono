@@ -12,7 +12,7 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import type { BetterSqliteDatabase } from "../../../types/sqlite"
 import * as schema from "../../../schema"
 import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzle"
-import { createFifoLock, type FifoLock } from "../../../infrastructure/database/fifo-lock"
+import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock"
 import { normalizeAuditContext } from "../../company/company.repository-mappers"
 import { createAlgeriaTimestamp } from "../../company/company-time"
 import type { MutationAuditContext } from "../../company/company.types"
@@ -231,13 +231,13 @@ export class DrizzleInventoryRepository implements InventoryRepository {
    * this flow, throw when another flow holds it open — never silently join
    * an unrelated open transaction.
    */
-  private runSyncTransaction<T>(fn: () => T): T {
-    return this.connectionLock.runSync(() => this.raw.transaction(fn)())
+  private guardedTransaction<T>(fn: () => T): T {
+    return runSyncTransaction(this.connectionLock, (cb) => this.raw.transaction(cb)(), fn)
   }
 
   /** Execute a callback inside a raw SQLite transaction. */
   withTransaction<T>(callback: () => T): T {
-    return this.runSyncTransaction(callback)
+    return this.guardedTransaction(callback)
   }
 
   // ── Item Definitions ────────────────────────────────────────────────
@@ -706,7 +706,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
     const audit = normalizeAuditContext(auditContext)
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       this.raw.prepare(
         `INSERT INTO inventory_outbound_transfer (id, transfer_date, from_type, from_id, counterparty_id, transfer_type, status, associated_debt_account_id, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

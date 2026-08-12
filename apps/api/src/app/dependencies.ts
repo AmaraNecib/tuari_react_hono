@@ -137,7 +137,10 @@ export async function createAppDependencies(
     // better-sqlite3 connection, and better-sqlite3 throws if a raw BEGIN is
     // issued while another transaction is open. Every module that opens a
     // transaction on the shared connection receives THIS lock (issue #288).
-    const connectionLock = createFifoLock();
+    // The 30s bound (issue #322 secondary) keeps a never-settling
+    // transaction from leaving every queued writer hanging forever — each
+    // waiting caller fails loudly after the bound instead of stalling.
+    const connectionLock = createFifoLock({ timeoutMs: 30_000 });
 
     // Config-aware repository selection: honors DB_ADAPTER (sqlite | inmemory).
     // Note: when dbAdapter=inmemory only the company domain is in-memory; the

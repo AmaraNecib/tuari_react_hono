@@ -112,20 +112,12 @@ export class AccountService {
     // inventory, invoice, ...) would be absorbed into the open transaction
     // and silently rolled back with it. The hash is read unlocked; the phone
     // uniqueness check still runs inside the transaction where it is atomic.
-    const passwordVerified = await this.verifyPasswordForPhoneChange(
-      session,
-      phone,
-      currentPassword,
-    )
+    // verifyPasswordForPhoneChange throws on failure, so reaching the
+    // transaction means verification (when required) already succeeded.
+    await this.verifyPasswordForPhoneChange(session, phone, currentPassword)
 
     return this.repository.withTransaction(async (tx) => {
       if (phone && phone !== session.phoneNumber) {
-        if (!passwordVerified) {
-          // Unreachable: verifyPasswordForPhoneChange throws on failure. Kept
-          // as a guard so a future refactor cannot silently skip verification.
-          throw new AccountServiceError("كلمة المرور الحالية غير صحيحة.", 401)
-        }
-
         const existingUserId = await tx.findUserIdByPhoneNumber(phone)
 
         if (existingUserId && existingUserId !== session.id) {
@@ -168,16 +160,16 @@ export class AccountService {
    * Verify the current password when the phone number is being changed.
    * Runs OUTSIDE the transaction (issue #322) so the expensive bcrypt verify
    * never holds the shared-connection lock. Throws the same errors the
-   * old in-transaction flow threw; returns true when no verification is
+   * old in-transaction flow threw; returns normally when no verification is
    * needed (no phone change) or the password is valid.
    */
   private async verifyPasswordForPhoneChange(
     session: CurrentSessionUser,
     phone: string | undefined,
     currentPassword: string | undefined,
-  ): Promise<boolean> {
+  ): Promise<void> {
     if (!phone || phone === session.phoneNumber) {
-      return true
+      return
     }
 
     if (!currentPassword || currentPassword.trim().length === 0) {
@@ -201,8 +193,6 @@ export class AccountService {
     if (!passwordValid) {
       throw new AccountServiceError("كلمة المرور الحالية غير صحيحة.", 401)
     }
-
-    return true
   }
 
   async recordPasswordChange(headers: Headers) {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 
 import { schemaStatements as fullSchema } from "../../infrastructure/database/schema-definitions";
-import { createFifoLock } from "../../infrastructure/database/fifo-lock";
+import { createFifoLock, FifoLockBusyError } from "../../infrastructure/database/fifo-lock";
 import { SqliteCompanyRepository } from "./adapters/sqlite-company.repository";
 
 function createTestDb(): Database.Database {
@@ -653,7 +653,7 @@ describe("SqliteCompanyRepository sync-writer lock guard (issue #322)", () => {
         roleId: "role-worker",
         status: "ACTIVE",
       }),
-    ).toThrow(/busy|transaction/i);
+    ).toThrow(FifoLockBusyError);
 
     release();
     await holder;

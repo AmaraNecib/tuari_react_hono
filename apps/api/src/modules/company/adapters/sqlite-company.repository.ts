@@ -24,7 +24,7 @@ import {
 } from "../../shared/cursor";
 import * as schema from "../../../schema";
 import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzle";
-import { createFifoLock, type FifoLock } from "../../../infrastructure/database/fifo-lock";
+import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock";
 import { createAlgeriaTimestamp } from "../company-time";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import type { CompanyRepository } from "../company.repository.contracts";
@@ -273,12 +273,12 @@ export class SqliteCompanyRepository implements CompanyRepository {
    * this flow, throw when another flow holds it open — never silently join
    * an unrelated open transaction.
    */
-  private runSyncTransaction<T>(fn: () => T): T {
-    return this.connectionLock.runSync(() => this.raw.transaction(fn)());
+  private guardedTransaction<T>(fn: () => T): T {
+    return runSyncTransaction(this.connectionLock, (cb) => this.raw.transaction(cb)(), fn);
   }
 
   withTransaction<T>(callback: () => T): T {
-    return this.runSyncTransaction(callback);
+    return this.guardedTransaction(callback);
   }
 
   // ── Bootstrap ────────────────────────────────────────────────────────
@@ -357,7 +357,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const id = crypto.randomUUID();
     const ts = createAlgeriaTimestamp();
     const a = normalizeAudit(audit);
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       this.db.insert(schema.employee).values({ id, firstName: data.firstName, lastName: data.lastName, phone: data.phone, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd ?? null, salaryPeriod: data.salaryPeriod ?? null, notes: data.notes ?? null, createdAt: ts, updatedAt: ts }).run();
       this.insertStateHistory({ employeeId: id, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd ?? null, salaryPeriod: data.salaryPeriod ?? null, eventType: "CREATED", startDate: ts, notes: data.notes ?? null, ...a });
     });
@@ -368,7 +368,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const employees: EmployeeRecord[] = [];
     const managerAssignments: EmployeeManagerAssignmentRecord[] = [];
     const projectAssignments: EmployeeProjectAssignmentRecord[] = [];
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       for (const row of data) {
         const eid = crypto.randomUUID();
         const ts = createAlgeriaTimestamp();
@@ -386,7 +386,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     if (!cur) return null;
     const a = normalizeAudit(audit);
     const ts = createAlgeriaTimestamp();
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       const u: Record<string, unknown> = { updatedAt: ts };
       if (data.firstName !== undefined) u.firstName = data.firstName;
       if (data.lastName !== undefined) u.lastName = data.lastName;
@@ -406,7 +406,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
   }
 
   deleteEmployee(id: string): boolean {
-    return this.runSyncTransaction(() => {
+    return this.guardedTransaction(() => {
       this.db.delete(schema.employeeStateHistory).where(eq(schema.employeeStateHistory.employeeId, id)).run();
       return this.db.delete(schema.employee).where(eq(schema.employee.id, id)).run().changes > 0;
     });
@@ -452,7 +452,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
   }
 
   assignEmployeeWorkplace(data: EmployeeWorkplaceAssignmentData, audit?: MutationAuditContext): void {
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       const am = this.getActiveManagerAssignmentByWorkerId(data.employeeId);
       const ap = this.getActiveProjectAssignmentByEmployeeId(data.employeeId);
       const aw = this.getActiveWarehouseAssignmentByEmployeeId(data.employeeId);
@@ -471,7 +471,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   syncManagedProjects(data: EmployeeManagedProjectsSyncData, audit?: MutationAuditContext): void {
     const a = normalizeAudit(audit);
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       const cur = this.listProjects({ managerId: data.employeeId }).map((p) => p.id);
       const curSet = new Set(cur);
       const nextSet = new Set(data.projectIds);
@@ -488,7 +488,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   syncManagedWarehouses(data: EmployeeManagedWarehousesSyncData, audit?: MutationAuditContext): void {
     const a = normalizeAudit(audit);
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       const cur = this.listWarehouses({ managerId: data.employeeId }).map((w) => w.id);
       const curSet = new Set(cur);
       const nextSet = new Set(data.warehouseIds);
@@ -620,7 +620,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   createProject(data: ProjectCreateData, audit?: MutationAuditContext): ProjectRecord {
     const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       this.db.insert(schema.project).values({ id, name: data.name, location: data.location ?? null, managerId: data.managerId ?? null, status: data.status, notes: data.notes ?? null, createdAt: ts, updatedAt: ts }).run();
       if (data.managerId && data.status === "ACTIVE") this.insertProjectManagerOwnershipHistory({ projectId: id, managerId: data.managerId, status: "ACTIVE", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
     });
@@ -631,7 +631,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const cur = this.getProjectById(data.id);
     if (!cur) return null;
     const a = normalizeAudit(audit); const ts = createAlgeriaTimestamp();
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       const nm = data.managerId !== undefined ? data.managerId : cur.managerId;
       const ns = data.status ?? cur.status;
       this.db.update(schema.project).set({ name: data.name ?? cur.name, location: data.location !== undefined ? data.location : cur.location, managerId: nm, status: ns, notes: data.notes !== undefined ? data.notes : cur.notes, updatedAt: ts }).where(eq(schema.project.id, data.id)).run();
@@ -661,7 +661,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   createWarehouse(data: WarehouseCreateData, audit?: MutationAuditContext): WarehouseRecord {
     const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       this.db.insert(schema.warehouse).values({ id, name: data.name, address: data.address ?? null, managerId: data.managerId ?? null, status: data.status, notes: data.notes ?? null, createdAt: ts, updatedAt: ts }).run();
       if (data.managerId && data.status === "ACTIVE") this.insertWarehouseManagerOwnershipHistory({ warehouseId: id, managerId: data.managerId, status: "ACTIVE", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
     });
@@ -672,7 +672,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const cur = this.getWarehouseById(data.id);
     if (!cur) return null;
     const a = normalizeAudit(audit); const ts = createAlgeriaTimestamp();
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       const nm = data.managerId !== undefined ? data.managerId : cur.managerId;
       const ns = data.status ?? cur.status;
       this.db.update(schema.warehouse).set({ name: data.name ?? cur.name, address: data.address !== undefined ? data.address : cur.address, managerId: nm, status: ns, notes: data.notes !== undefined ? data.notes : cur.notes, updatedAt: ts }).where(eq(schema.warehouse.id, data.id)).run();
@@ -883,20 +883,4 @@ export class SqliteCompanyRepository implements CompanyRepository {
   private endActiveWarehouseManagerOwnershipHistory(warehouseId: string, endDate: string, a: { actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
     this.db.update(schema.warehouseManagerOwnershipHistory).set({ endDate, status: "ENDED", actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.warehouseManagerOwnershipHistory.warehouseId, warehouseId), isNull(schema.warehouseManagerOwnershipHistory.endDate))).run();
   }
-}
-
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
-/**
- * Create a CompanyRepository from a raw SQLite handle.
- */
-/** Create a CompanyRepository from a raw SQLite handle. */
-export function createCompanyRepository(
-  rawDb: BetterSqliteDatabase,
-): CompanyRepository {
-  rawDb.pragma("foreign_keys = ON");
-  const drizzleDb = createDrizzleFromSqlite(rawDb);
-  return new SqliteCompanyRepository(drizzleDb, rawDb);
 }

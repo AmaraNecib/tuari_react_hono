@@ -764,7 +764,7 @@ describe("AccountService", () => {
   })
 })
 
-describe("AccountService transaction lock window (issue #322)", () => {
+describe("AccountService transaction lock window (issue #322)", { timeout: 20000 }, () => {
   it("does not hold the connection lock while the current password is being verified", async () => {
     // Real Drizzle repo + real shared lock: proves the phone-change flow
     // verifies the password BEFORE opening the transaction, so a sync

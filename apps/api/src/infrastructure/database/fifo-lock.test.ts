@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createFifoLock } from "./fifo-lock";
+import { createFifoLock, FifoLockBusyError } from "./fifo-lock";
 
 /**
  * FifoLock tests — pin the exact invariants the transaction model relies on:
@@ -138,7 +138,7 @@ describe("createFifoLock", () => {
     expect(result).toBe("joined");
   });
 
-  it("runSync throws when another operation holds the lock", async () => {
+  it("runSync throws FifoLockBusyError when another operation holds the lock", async () => {
     const lock = createFifoLock();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -152,7 +152,8 @@ describe("createFifoLock", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(() => lock.runSync(() => "should-not-run")).toThrow(/busy|transaction/i);
+    // The busy failure is a distinct, catchable type — not an opaque Error.
+    expect(() => lock.runSync(() => "should-not-run")).toThrow(FifoLockBusyError);
 
     release();
     await holder;
@@ -192,7 +193,7 @@ describe("createFifoLock", () => {
       await gate;
     });
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(() => lock.runSync(() => "x")).toThrow(/busy|transaction/i);
+    expect(() => lock.runSync(() => "x")).toThrow(FifoLockBusyError);
     release();
     await holder;
 
@@ -231,5 +232,11 @@ describe("createFifoLock", () => {
     const second = lock.run(async () => "b");
 
     await expect(Promise.all([first, second])).resolves.toEqual(["a", "b"]);
+  });
+
+  it("rejects a non-positive timeoutMs at construction", () => {
+    expect(() => createFifoLock({ timeoutMs: 0 })).toThrow(/positive integer/);
+    expect(() => createFifoLock({ timeoutMs: -5 })).toThrow(/positive integer/);
+    expect(() => createFifoLock({ timeoutMs: 1.5 })).toThrow(/positive integer/);
   });
 });

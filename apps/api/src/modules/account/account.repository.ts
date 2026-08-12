@@ -3,6 +3,24 @@ import type { AppDrizzle } from "../../infrastructure/database/drizzle";
 import type { FifoLock } from "../../infrastructure/database/fifo-lock";
 import { account, user, userProfileHistory } from "../../schema";
 
+/**
+ * Shared select for the hashed credential password — used by both the
+ * transaction-scoped reader and the unlocked reader (issue #322) so the
+ * query cannot drift between the two.
+ */
+async function selectCredentialPassword(
+  db: AppDrizzle,
+  userId: string,
+): Promise<string | null> {
+  const rows = await db
+    .select({ password: account.password })
+    .from(account)
+    .where(and(eq(account.userId, userId), eq(account.providerId, "credential")))
+    .limit(1);
+
+  return rows[0]?.password ?? null;
+}
+
 /** Represents a user's profile record (id, name, phone). */
 export type AccountProfileRecord = {
   id: string;
@@ -85,13 +103,7 @@ class DrizzleAccountRepositoryTransaction implements AccountRepositoryTransactio
 
   /** Look up the hashed password for a credential-type account. */
   async findCredentialPasswordByUserId(userId: string) {
-    const rows = await this.tx
-      .select({ password: account.password })
-      .from(account)
-      .where(and(eq(account.userId, userId), eq(account.providerId, "credential")))
-      .limit(1);
-
-    return rows[0]?.password ?? null;
+    return selectCredentialPassword(this.tx, userId);
   }
 
   /** Find a user ID by their phone number. */
@@ -171,13 +183,7 @@ export class DrizzleAccountRepository implements AccountRepository {
 
   /** Unlocked read of the hashed credential password (issue #322). */
   async findCredentialPasswordByUserId(userId: string) {
-    const rows = await this.db
-      .select({ password: account.password })
-      .from(account)
-      .where(and(eq(account.userId, userId), eq(account.providerId, "credential")))
-      .limit(1);
-
-    return rows[0]?.password ?? null;
+    return selectCredentialPassword(this.db, userId);
   }
 
   withTransaction<T>(run: (transaction: AccountRepositoryTransaction) => Promise<T>) {

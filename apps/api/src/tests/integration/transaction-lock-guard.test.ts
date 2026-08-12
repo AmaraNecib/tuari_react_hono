@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 
 import { schemaStatements as fullSchema } from "../../infrastructure/database/schema-definitions";
-import { createFifoLock } from "../../infrastructure/database/fifo-lock";
+import { createFifoLock, FifoLockBusyError } from "../../infrastructure/database/fifo-lock";
 import { SqliteCompanyRepository } from "../../modules/company/company.repository";
 import { WorkspaceMutationContext } from "../../modules/company/workspace-mutation-context";
 import { WorkforceService } from "../../modules/company/workforce.service";
@@ -94,7 +94,7 @@ describe("Transaction lock guard (issue #322)", () => {
         },
         AUDIT,
       ),
-    ).toThrow(/busy|transaction/i);
+    ).toThrow(FifoLockBusyError);
 
     release();
     await holder;

@@ -7,7 +7,7 @@
  */
 import { eq, and, sql } from "drizzle-orm";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
-import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
+import { runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock";
 import * as schema from "../../../schema";
 import { createDrizzleFromSqlite, type AppDrizzle } from "../../../infrastructure/database/drizzle";
 import type { InvoiceRepository as IInvoiceRepository } from "../invoice.repository";
@@ -98,8 +98,8 @@ export class InvoiceRepository implements IInvoiceRepository {
    * this flow, throw when another flow holds it open — never silently join
    * an unrelated open transaction.
    */
-  private runSyncTransaction<T>(fn: () => T): T {
-    return this.connectionLock.runSync(() => this.raw.transaction(fn)());
+  private guardedTransaction<T>(fn: () => T): T {
+    return runSyncTransaction(this.connectionLock, (cb) => this.raw.transaction(cb)(), fn);
   }
 
   /** Find invoice by ID with line items. */
@@ -217,7 +217,7 @@ export class InvoiceRepository implements IInvoiceRepository {
     createdAt: string; updatedAt: string;
     lineItems: { id: string; description: string; quantity: number; unitPrice: number; total: number }[];
   }): Promise<Invoice> {
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       this.db.insert(schema.invoice).values({
         id: data.id, invoiceNumber: data.invoiceNumber, supplierName: data.supplierName,
         supplierPhone: data.supplierPhone, warehouseId: data.warehouseId, projectId: data.projectId,
@@ -263,7 +263,7 @@ export class InvoiceRepository implements IInvoiceRepository {
     if (data.direction !== undefined) updates.direction = data.direction;
     if (data.updatedAt !== undefined) updates.updatedAt = data.updatedAt;
 
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       if (Object.keys(updates).length > 0) {
         this.db.update(schema.invoice).set(updates).where(eq(schema.invoice.id, id)).run();
       }
@@ -305,7 +305,7 @@ export class InvoiceRepository implements IInvoiceRepository {
 
   /** Delete invoice and its line items. */
   async delete(id: string): Promise<void> {
-    this.runSyncTransaction(() => {
+    this.guardedTransaction(() => {
       this.db.delete(schema.invoiceLineItem).where(eq(schema.invoiceLineItem.invoiceId, id)).run();
       this.db.delete(schema.invoice).where(eq(schema.invoice.id, id)).run();
     });

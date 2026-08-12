@@ -17,9 +17,12 @@
  *   invoice, recovery-key, bootstrap) queue behind the lock and hold
  *   it for the whole duration of their transaction. A queued run can
  *   additionally be bounded with `timeoutMs` (issue #322) so a
- *   never-settling transaction op cannot stall every queued writer
- *   forever — the queued operation rejects after the bound and
- *   abandons its slot.
+ *   never-settling transaction op cannot leave every queued caller
+ *   hanging forever: the queued operation rejects after the bound and
+ *   abandons its slot. NOTE the bound applies to the WAIT for a turn
+ *   only — a holder that starts and never settles still owns the
+ *   connection (it cannot be cancelled), but every waiting caller
+ *   fails loudly instead of stalling indefinitely.
  *
  * - `runSync` (sync, guarded — issue #322): synchronous writers
  *   (better-sqlite3 `db.transaction()` sites in the company,
@@ -46,11 +49,18 @@
  *   - `runSync` distinguishes "inside our own run" (join the open
  *     transaction — the deliberate join-outer pattern used by the
  *     payment/invoice module flows) from "another flow holds the lock"
- *     (throw). The guard is per-lock (the lock instance is stored, not a
- *     global flag), so independent locks never false-positive; it is
- *     best-effort — a nested call attached to a promise created OUTSIDE
- *     the run's async context bypasses it (no realistic caller does this;
- *     the escape hatch is the unlocked-view pattern).
+ *     (throws {@link FifoLockBusyError}). The guard is per-lock (the lock
+ *     instance is stored, not a global flag), so independent locks never
+ *     false-positive; it is best-effort — a nested call attached to a
+ *     promise created OUTSIDE the run's async context bypasses it (no
+ *     realistic caller does this; the escape hatch is the unlocked-view
+ *     pattern).
+ *   - ACCEPTED precedence inversion: a sync writer may run ahead of
+ *     earlier-QUEUED `run` operations when the lock is free (no
+ *     transaction is open yet, so nothing can be joined). Sync code
+ *     cannot wait, so this is inherent; for the single-user desktop
+ *     workload a sync writer jumping a queued-but-unstarted async run is
+ *     harmless.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 
@@ -64,8 +74,9 @@ export interface FifoLock {
    *   the open transaction; the writer deliberately joins it);
    * - lock free → execute immediately (safe: sync code cannot interleave,
    *   so check + execute is atomic with respect to the event loop);
-   * - lock held by ANOTHER flow → throw instead of silently joining that
-   *   flow's open transaction (issue #322 detection mechanism).
+   * - lock held by ANOTHER flow → throw {@link FifoLockBusyError} instead
+   *   of silently joining that flow's transaction (issue #322 detection
+   *   mechanism).
    */
   runSync<T>(operation: () => T): T;
 }
@@ -75,11 +86,27 @@ export interface FifoLockOptions {
    * Optional bound (ms) on how long a queued `run` waits for its turn.
    * On expiry the queued operation rejects with a descriptive error and
    * abandons its slot (it never executes; the chain still releases).
-   * Defaults to unbounded. The account bcrypt window (~100ms) is far
-   * below any sane bound — this exists to keep a never-settling
-   * transaction op from stalling every queued writer forever.
+   * Must be a positive integer. Defaults to unbounded. The account
+   * bcrypt window (~100ms) is far below any sane bound — this exists to
+   * keep a never-settling transaction op from leaving every queued
+   * writer hanging forever. Note it bounds the WAIT for a turn, not the
+   * holder's execution (a hung holder cannot be cancelled).
    */
   timeoutMs?: number;
+}
+
+/**
+ * Thrown by {@link FifoLock.runSync} when another flow holds the lock.
+ * Distinct type so callers (and the error-mapping layer) can distinguish
+ * "connection busy — retry" from ordinary failures.
+ */
+export class FifoLockBusyError extends Error {
+  constructor() {
+    super(
+      "FifoLock: connection busy — another flow holds the shared-connection lock. Refusing to execute now: this writer would join that flow's open transaction (or run while its lock is held) and could be silently rolled back with it.",
+    );
+    this.name = "FifoLockBusyError";
+  }
 }
 
 /** The lock instance whose `run` is currently executing, if any. */
@@ -87,6 +114,9 @@ const runContext = new AsyncLocalStorage<FifoLock>();
 
 export function createFifoLock(options: FifoLockOptions = {}): FifoLock {
   const { timeoutMs } = options;
+  if (timeoutMs !== undefined && (!Number.isInteger(timeoutMs) || timeoutMs <= 0)) {
+    throw new Error(`FifoLock: timeoutMs must be a positive integer, got ${timeoutMs}.`);
+  }
   /** Tail of the queue — only ever resolved by `release`, never rejected. */
   let tail: Promise<void> = Promise.resolve();
   /** Number of `run` operations currently EXECUTING (not merely queued). */
@@ -124,6 +154,7 @@ export function createFifoLock(options: FifoLockOptions = {}): FifoLock {
                 );
               }
             }, timeoutMs);
+            timer.unref();
           }
 
           previous
@@ -168,13 +199,26 @@ export function createFifoLock(options: FifoLockOptions = {}): FifoLock {
         return operation();
       }
       if (activeCount > 0) {
-        throw new Error(
-          "FifoLock: connection busy — another flow holds the shared-connection lock with an open transaction. Refusing to join it (a sync writer absorbed into an unrelated transaction would be silently rolled back).",
-        );
+        throw new FifoLockBusyError();
       }
       return operation();
     },
   };
 
   return lock;
+}
+
+/**
+ * Run a synchronous better-sqlite3 transaction under the connection-wide
+ * lock (issue #322). Shared by every adapter with sync transaction sites so
+ * a future module cannot forget the guard: free/own-run → execute now,
+ * foreign-held → {@link FifoLockBusyError} instead of silently joining an
+ * unrelated open transaction.
+ */
+export function runSyncTransaction<T>(
+  lock: FifoLock,
+  run: (fn: () => T) => T,
+  fn: () => T,
+): T {
+  return lock.runSync(() => run(fn));
 }
