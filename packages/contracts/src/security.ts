@@ -30,20 +30,54 @@ export const generatedRecoveryKeysSchema = z.object({
   })),
 })
 
+/**
+ * Shared key-field schema for exact-match secrets (#234).
+ *
+ * `trim()` removes only ECMAScript WhiteSpace/LineTerminator — format (Cf)
+ * characters such as U+200B ZWSP, U+200E/200F LRM/RLM and U+200C/200D
+ * ZWNJ/ZWJ are not WhiteSpace, so they survive trim and `.min()`. (U+FEFF
+ * BOM IS WhiteSpace and is trimmed at the edges; a mid-string U+FEFF is
+ * still caught by the Cf check below.) These
+ * fields are exact-match secrets (recovery keys are SHA-256-hashed, the DB
+ * key becomes the PRAGMA rekey value), so a string that CONTAINS a Cf
+ * codepoint anywhere is rejected — stricter than the auth.ts name/password
+ * checks, which only reject all-invisible strings: a key is either exactly
+ * right or wrong, there is no "visible enough".
+ *
+ * Residual class (documented, tracked as #334): invisible codepoints
+ * OUTSIDE Cf — e.g. U+2800 braille blank (So), combining marks (Mn), Cc
+ * controls, mid-string NBSP (Zs) — still pass. The issue scoped the fix to
+ * `\p{Cf}`; widening the class is a separate decision (#334).
+ *
+ * The length guard defers to `.min(min)` for every too-short value so a
+ * short+invisible key (e.g. 3 ZWSP against min(8)) yields a single
+ * too_small issue, not doubled too_small + custom issues (same pattern as
+ * the auth.ts password/name refines — zod ^4 runs refinements even after a
+ * failed check).
+ */
+const keyFieldSchema = (min: number, label: string) =>
+  z
+    .string()
+    .trim()
+    .min(min)
+    .refine((value) => value.length < min || !/[\p{Cf}]/u.test(value), {
+      message: `${label} must not contain invisible format characters (e.g. zero-width space)`,
+    })
+
 /** Input for consuming a recovery key. */
 export const consumeRecoveryKeyInputSchema = z.object({
-  key: z.string().trim().min(1),
+  key: keyFieldSchema(1, "recovery key"),
 })
 
 /** Input for revoking a recovery key. */
 export const revokeRecoveryKeyInputSchema = z.object({
-  keyId: z.string().trim().min(1),
+  keyId: keyFieldSchema(1, "recovery key id"),
 })
 
 /** Input for changing the database encryption key. */
 export const changeDbKeyInputSchema = z.object({
-  currentKey: z.string().trim().min(1),
-  newKey: z.string().trim().min(8),
+  currentKey: keyFieldSchema(1, "current encryption key"),
+  newKey: keyFieldSchema(8, "new encryption key"),
 })
 
 /**

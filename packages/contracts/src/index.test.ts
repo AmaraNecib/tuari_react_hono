@@ -954,6 +954,141 @@ describe("contracts", () => {
       expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: null })).toThrow();
     });
 
+    it("rejects recovery keys containing invisible format characters (#234)", () => {
+      // #234: trim() keeps Cf (format) chars — a ZWSP-only key passes min(1).
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\u200B" })).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\u200B\u200B\u200B" })).toThrow();
+      expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "\u200B\u200B" })).toThrow();
+
+      // Cf chars embedded inside an otherwise-valid key are rejected too —
+      // these are exact-match secrets, so there is no "visible enough"
+      // (stricter than the auth.ts name rule, which only rejects
+      // all-invisible strings). Category members beyond ZWSP: LRM (U+200E),
+      // RLM (U+200F), ZWNJ (U+200C), ZWJ (U+200D).
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u200Bc3d4" })).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u200Ec3d4" })).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u200Fc3d4" })).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u200Cc3d4" })).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u200Dc3d4" })).toThrow();
+
+      // Surrounding whitespace is trimmed first; the embedded Cf survives
+      // trim and is still rejected.
+      expect(() =>
+        consumeRecoveryKeyInputSchema.parse({ key: "  a1b2\u200Bc3d4  " }),
+      ).toThrow();
+
+      // A ZWSP-only key wrapped in whitespace is still rejected after trim
+      // (trim keeps the ZWSP — it is not WhiteSpace).
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: " \u200B " })).toThrow();
+
+      // Leading/trailing Cf on an otherwise-valid key is rejected too.
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\u200Ba1b2-c3d4" })).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2-c3d4\u200B" })).toThrow();
+
+      // Mid-string U+FEFF: FEFF IS ECMAScript WhiteSpace, so trim only strips
+      // it at the edges — an embedded one survives trim and is caught by the
+      // Cf check (comment claim pinned).
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a\uFEFFb" })).toThrow();
+
+      // Valid keys are unaffected (regression).
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2-c3d4-e5f6" })).toEqual({
+        key: "a1b2-c3d4-e5f6",
+      });
+      expect(revokeRecoveryKeyInputSchema.parse({ keyId: "key-1" })).toEqual({ keyId: "key-1" });
+    });
+
+    it("rejects DB key change inputs containing invisible format characters (#234)", () => {
+      // The exact issue case: 8 ZWSP passes min(8) and would become the
+      // PRAGMA rekey value.
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u200B".repeat(8) }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "\u200B", newKey: "new-key-123" }),
+      ).toThrow();
+
+      // Embedded Cf in either field is rejected (exact-match secret semantics).
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old\u200Bkey", newKey: "new-key-123" }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "new\u200Bkey-123" }),
+      ).toThrow();
+
+      // The Cf-as-sole-extra-char boundary: 7 visible + 1 ZWSP = length 8
+      // reaches the refine (custom issue), while 6 + 1 = 7 defers to
+      // too_small (pinned in the next test).
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "abcde12\u200B" }),
+      ).toThrow();
+
+      // Astral-plane Cf (surrogate pairs, each 2 UTF-16 units): 4x U+1BCA0
+      // = length 8 and 4x tag chars U+E0020-E007F = length 8 both reach the
+      // refine, so the length guard cannot be gamed with non-BMP codepoints.
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u{1BCA0}".repeat(4) }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({
+          currentKey: "old-key",
+          newKey: "\u{E0020}\u{E0021}\u{E0022}\u{E0023}",
+        }),
+      ).toThrow();
+
+      // Valid values are unaffected (regression).
+      expect(
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "new-key-123" }),
+      ).toEqual({ currentKey: "old-key", newKey: "new-key-123" });
+    });
+
+    it("reports only the too-short issue for a too-short invisible newKey (#234)", () => {
+      // 3 ZWSP < min(8): the Cf refine must defer to .min(8) — a single
+      // too_small issue, not doubled too_small + custom issues.
+      const result = changeDbKeyInputSchema.safeParse({
+        currentKey: "old-key",
+        newKey: "\u200B\u200B\u200B",
+      });
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("unreachable");
+      const newKeyIssues = result.error.issues.filter((issue) => issue.path[0] === "newKey");
+      expect(newKeyIssues).toHaveLength(1);
+      expect(newKeyIssues[0]?.code).toBe("too_small");
+
+      // Same deferral with a visible+Cf mix below the boundary (6 + 1 = 7).
+      const mixed = changeDbKeyInputSchema.safeParse({
+        currentKey: "old-key",
+        newKey: "abcde1\u200B",
+      });
+      expect(mixed.success).toBe(false);
+      if (mixed.success) throw new Error("unreachable");
+      expect(mixed.error.issues.filter((issue) => issue.path[0] === "newKey")).toHaveLength(1);
+    });
+
+    it("surfaces a user-facing message naming the invisible characters (#234)", () => {
+      // The issue asks for an error message telling the user the key contains
+      // invisible characters; the schema errors surface verbatim in the UI
+      // toast, so the message text is contract surface, not internal detail.
+      const result = consumeRecoveryKeyInputSchema.safeParse({ key: "\u200B" });
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("unreachable");
+      const keyIssue = result.error.issues.find((issue) => issue.path[0] === "key");
+      expect(keyIssue?.code).toBe("custom");
+      expect(keyIssue?.message).toMatch(/invisible format characters/);
+    });
+
+    it("accepts non-Cf invisible characters (documented residual class #334)", () => {
+      // #234 scopes the rejection to \p{Cf}. Invisible codepoints OUTSIDE Cf
+      // — U+2800 braille blank (So), combining marks (Mn), controls (Cc),
+      // mid-string NBSP (Zs) — still pass by design. This pins the current
+      // boundary so a future widening (issue #334) is a deliberate change.
+      expect(
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u2800".repeat(8) }),
+      ).toEqual({ currentKey: "old-key", newKey: "\u2800".repeat(8) });
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a\u2800b" })).toEqual({
+        key: "a\u2800b",
+      });
+    });
+
     it("validates the database encryption key change input", () => {
       expect(
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "new-key-123" }),
