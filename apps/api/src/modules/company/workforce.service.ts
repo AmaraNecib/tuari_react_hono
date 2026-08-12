@@ -155,7 +155,7 @@ export class WorkforceService {
         ]);
       }
 
-      if (this.repository.getEmployeeByPhone(input.phone)) {
+      if (this.repository.getEmployeeByPhone(input.phone.trim())) {
         throw new CompanyError("CONFLICT", "رقم هاتف العامل مستخدم بالفعل.", [
           { field: "phone", message: "رقم هاتف العامل مستخدم بالفعل." },
         ]);
