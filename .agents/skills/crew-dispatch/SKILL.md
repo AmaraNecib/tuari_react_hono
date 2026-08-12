@@ -129,7 +129,10 @@ TASK (mode: pipeline|smoke):
     it and follow ONLY its implementation stages, scoped to this issue and this
     worktree, and STOP before any stage that writes shared review evidence,
     branches, PRs, or remote state — the parent owns every one of those so
-    parallel lanes never collide.
+    parallel lanes never collide. Where that skill names a base branch,
+    package-manager commands, or repo conventions, the values in THIS brief
+    (BASE: <base-branch>, commands from package.json) win — the skill is a
+    template, the brief is the contract.
   - If not, follow this inline contract: write the design doc at
     <scratch>/<id>-design.md, implement TDD (read package.json for the real
     commands; unit tests + user-facing E2E if the flow is user-facing; run the
