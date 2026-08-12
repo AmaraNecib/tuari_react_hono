@@ -34,11 +34,19 @@ async function main() {
     },
   );
 
-  // Graceful shutdown (issue #265): stop accepting requests, then close the
+  // Graceful shutdown (issue #265): stop accepting requests (dropping idle
+  // keep-alive connections so close() does not hang on them), then close the
   // shared database connection (better-sqlite3 checkpoints the WAL on
-  // last-connection close) before exiting.
+  // last-connection close) before exiting. A force-exit timer guards against
+  // a stuck in-flight request keeping the process alive forever.
   installShutdownHook({
-    stopServer: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    stopServer: () =>
+      new Promise<void>((resolve) => {
+        // closeIdleConnections is present on the underlying http.Server but
+        // not declared on the hono ServerType — guard with a cast.
+        (server as unknown as { closeIdleConnections?: () => void }).closeIdleConnections?.()
+        server.close(() => resolve())
+      }),
     close: appDependencies.close,
   });
 }

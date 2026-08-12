@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { closeSync, openSync, readSync } from "node:fs";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
 import { createDatabaseConnection, escapeSqliteString } from "./factory";
 
@@ -65,19 +65,51 @@ const PLAIN_SQLITE_MAGIC = Buffer.from("SQLite format 3\0", "utf8");
  * offset 16). Returns `null` when the path is not a readable file
  * (`:memory:`, missing, or too short to hold a header) — callers fall back
  * to shared-connection verification.
+ *
+ * Reads exactly 16 bytes (never the whole file — databases can be large).
  */
 function detectEncryption(databasePath: string): "plain" | "encrypted" | null {
   if (!databasePath || databasePath === ":memory:") return null;
 
-  let header: Buffer;
+  let fd: number;
   try {
-    header = readFileSync(databasePath).subarray(0, 16);
+    fd = openSync(databasePath, "r");
   } catch {
     return null;
   }
 
-  if (header.length < 16) return null;
-  return header.equals(PLAIN_SQLITE_MAGIC) ? "plain" : "encrypted";
+  try {
+    const header = Buffer.alloc(16);
+    const bytesRead = readSync(fd, header, 0, 16, 0);
+    if (bytesRead < 16) return null;
+    return header.equals(PLAIN_SQLITE_MAGIC) ? "plain" : "encrypted";
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Open a scratch connection and verify that `key` actually opens the
+ * database. Returns true when the read succeeds. The scratch connection is
+ * always closed.
+ */
+function verifyKeyOnFreshConnection(
+  openConnection: (path: string, key: string) => BetterSqliteDatabase,
+  databasePath: string,
+  key: string,
+): boolean {
+  let scratch: BetterSqliteDatabase | null = null;
+  try {
+    scratch = openConnection(databasePath, key);
+    scratch.prepare("SELECT COUNT(*) FROM sqlite_master").get();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    scratch?.close();
+  }
 }
 
 /**
@@ -101,10 +133,12 @@ function detectEncryption(databasePath: string): "plain" | "encrypted" | null {
  *    behavior; plain better-sqlite3 treats the SQLCipher PRAGMAs as no-ops).
  *
  * The rekey re-encrypts the whole database in place via `PRAGMA rekey` on
- * the shared connection. Keys are single-quote-escaped (`''` doubling) before
- * interpolation into the PRAGMA SQL. The result never throws — a failed
- * verification, failed rekey, or unencrypted database maps onto the wire
- * failure output with an honest reason.
+ * the shared connection and is then verified on a fresh connection with the
+ * NEW key, so a silent rekey failure cannot report success. Keys are
+ * single-quote-escaped (`''` doubling) before interpolation into the PRAGMA
+ * SQL. The result never throws — a failed verification, failed rekey, or
+ * unencrypted database maps onto the wire failure output with an honest
+ * reason.
  */
 export function createDatabaseKeyManager(
   sqlite: BetterSqliteDatabase,
@@ -125,19 +159,13 @@ export function createDatabaseKeyManager(
       }
 
       if (encryption === "encrypted") {
-        let scratch: BetterSqliteDatabase | null = null;
-        try {
-          scratch = openConnection(databasePath, currentKey);
-          scratch.prepare("SELECT COUNT(*) FROM sqlite_master").get();
-        } catch {
+        if (!verifyKeyOnFreshConnection(openConnection, databasePath, currentKey)) {
           return { success: false, error: "Current encryption key is invalid" };
-        } finally {
-          scratch?.close();
         }
       } else {
         // `:memory:` or unreadable path — no file to re-open; fall back to the
         // shared connection (kept for dev/test on plain better-sqlite3, where
-        // the SQLCipher PRAGMAs are no-ops).
+        // the SQLCipher PRAGMAs are accepted as no-ops).
         try {
           sqlite.pragma(`key = '${escapeSqliteString(currentKey)}'`);
           sqlite.prepare("SELECT COUNT(*) FROM sqlite_master").get();
@@ -149,6 +177,17 @@ export function createDatabaseKeyManager(
       try {
         sqlite.pragma(`rekey = '${escapeSqliteString(newKey)}'`);
       } catch {
+        return { success: false, error: "Database re-encryption failed" };
+      }
+
+      // Confirm the database actually opens with the new key before reporting
+      // success (SQLCipher rekey on a WAL-mode connection must not silently
+      // fail). Only meaningful for real files — `:memory:` cannot be
+      // re-opened by path.
+      if (
+        encryption === "encrypted" &&
+        !verifyKeyOnFreshConnection(openConnection, databasePath, newKey)
+      ) {
         return { success: false, error: "Database re-encryption failed" };
       }
 

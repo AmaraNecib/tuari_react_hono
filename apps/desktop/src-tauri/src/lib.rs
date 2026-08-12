@@ -590,6 +590,15 @@ fn restore_db_key_in_store(
     }
 }
 
+/// Core completion logic: accept the rotated key as final and clear the
+/// rollback slot WITHOUT restoring — called when the rekey succeeded or its
+/// outcome is unknown (an ambiguous network failure must not overwrite the
+/// new key with the old one, or a rekeyed database would be orphaned).
+fn complete_db_key_rotation_in_store(previous: &mut Option<String>) -> Result<(), String> {
+    *previous = None;
+    Ok(())
+}
+
 /// Rotate the persisted DB encryption key (`app-db.key`) to `new_key`.
 ///
 /// The web flow calls this BEFORE the API `changeDbEncryptionKey` RPC so the
@@ -610,8 +619,8 @@ fn rotate_db_key(
 
 /// Roll back a DB key rotation to the value that was current before
 /// `rotate_db_key` (or delete the key when there was none). Called by the web
-/// flow when the API rekey RPC fails, so the keyring never diverges from the
-/// database's actual key (issue #265).
+/// flow when the API rekey RPC returns a definitive failure, so the keyring
+/// never diverges from the database's actual key (issue #265).
 #[tauri::command]
 fn restore_db_key(
     window: tauri::Window,
@@ -620,6 +629,21 @@ fn restore_db_key(
     assert_sensitive_command_window(&window)?;
     let mut previous = state.previous.lock().map_err(|error| error.to_string())?;
     restore_db_key_in_store(&state.store, &mut previous)
+}
+
+/// Accept the rotated key as final and clear the rollback slot without
+/// restoring. Called after a confirmed rekey (the new key is now the correct
+/// one) or after an ambiguous failure (a lost response must not overwrite the
+/// new key with the old one — that would permanently orphan a database that
+/// WAS re-encrypted server-side).
+#[tauri::command]
+fn complete_db_key_rotation(
+    window: tauri::Window,
+    state: tauri::State<'_, DatabaseKeyRotationState>,
+) -> Result<(), String> {
+    assert_sensitive_command_window(&window)?;
+    let mut previous = state.previous.lock().map_err(|error| error.to_string())?;
+    complete_db_key_rotation_in_store(&mut previous)
 }
 
 #[tauri::command]
@@ -1983,6 +2007,7 @@ pub fn run() {
             desktop_api_request,
             rotate_db_key,
             restore_db_key,
+            complete_db_key_rotation,
             desktop_sign_in_with_phone_number,
             desktop_change_password,
             desktop_sign_out_session,
@@ -2074,7 +2099,7 @@ mod tests {
         is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
         load_or_create_secret, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
-        restore_db_key_in_store, rotate_db_key_in_store,
+        complete_db_key_rotation_in_store, restore_db_key_in_store, rotate_db_key_in_store,
         should_force_reveal_main_window, AppReadyState, APP_DB_KEY_ACCOUNT,
         BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
         SecretStore, clear_app_ready, mark_app_ready_if_first,
@@ -2471,6 +2496,34 @@ mod tests {
             store.read(APP_DB_KEY_ACCOUNT).expect("read"),
             None,
             "rollback must delete a key that did not exist before"
+        );
+    }
+
+    #[test]
+    fn completing_a_rotation_keeps_the_new_key_and_clears_the_rollback_slot() {
+        let temp_dir = unique_temp_dir();
+        create_dir_all(&temp_dir).expect("create temp dir");
+        let store = SecretStore::file(temp_dir.clone());
+        store
+            .write(APP_DB_KEY_ACCOUNT, "original-key-123")
+            .expect("seed current key");
+        let mut previous = None;
+
+        rotate_db_key_in_store(&store, &mut previous, "new-key-456")
+            .expect("rotate");
+        assert_eq!(previous.as_deref().map(str::trim), Some("original-key-123"));
+
+        // A confirmed (or ambiguous) rekey acknowledges the new key as final:
+        // the rollback slot clears WITHOUT restoring the old key.
+        complete_db_key_rotation_in_store(&mut previous).expect("complete");
+        assert!(previous.is_none());
+        assert_eq!(
+            store
+                .read(APP_DB_KEY_ACCOUNT)
+                .expect("read")
+                .map(|key| key.trim().to_string())
+                .as_deref(),
+            Some("new-key-456")
         );
     }
 

@@ -76,12 +76,27 @@ async function invokeRestoreDbKey(): Promise<void> {
 }
 
 /**
+ * Ask the desktop host to accept the rotated key as final (the rekey
+ * succeeded or its outcome is unknown) — clears the rollback slot without
+ * restoring, so the original key is intentionally dropped.
+ */
+async function invokeCompleteDbKeyRotation(): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core")
+  await invoke("complete_db_key_rotation")
+}
+
+/**
  * Change the DB encryption key (no-op on the unencrypted web dev DB).
  *
  * On the desktop runtime the key lives in the host's secret store, so the
  * flow rotates the persisted key FIRST (atomic), then calls the API rekey
- * RPC, and rolls the rotation back on any failure — the keyring must never
- * diverge from the key the database was actually re-encrypted with.
+ * RPC, and rolls the rotation back when the API DEFINITIVELY did not rekey.
+ * An ambiguous failure (network drop / timeout — the rekey may have happened
+ * server-side before the response was lost) deliberately does NOT restore:
+ * overwriting the keyring with the old key would permanently orphan a
+ * rekeyed database, because the new key would be gone. The new key is kept
+ * and the rotation acknowledged instead; the original key remains in the
+ * desktop's rollback slot until the app restarts.
  */
 export function useChangeDbEncryptionKeyMutation() {
   return useMutation({
@@ -92,12 +107,17 @@ export function useChangeDbEncryptionKeyMutation() {
         try {
           const result = await rpcClient.changeDbEncryptionKey(input)
           if (!result.success) {
-            // The DB was NOT re-encrypted — put the original key back.
+            // The API definitively did NOT re-encrypt — put the original
+            // key back so the keyring and the database agree.
             await invokeRestoreDbKey().catch(() => {})
+            return result
           }
+          // Rekey confirmed — the new key is final.
+          await invokeCompleteDbKeyRotation().catch(() => {})
           return result
         } catch (error) {
-          await invokeRestoreDbKey().catch(() => {})
+          // Ambiguous outcome — keep the new key (see hook doc above).
+          await invokeCompleteDbKeyRotation().catch(() => {})
           throw error
         }
       }

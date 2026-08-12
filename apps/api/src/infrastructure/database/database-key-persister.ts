@@ -1,4 +1,12 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  writeSync,
+} from "node:fs";
 import type { DatabaseKeyChangeResult } from "./database-key-manager";
 
 /**
@@ -50,9 +58,17 @@ export function createConfigFileKeyPersister(
         }
         config.db_key = newKey;
 
-        // Atomic write: never leave a partially-written config file behind.
+        // Atomic + durable write: a temp file is written (with fsync so the
+        // bytes reach disk), then renamed over the target — a crash can never
+        // leave a partially-written config file behind.
         const tmpPath = `${configFilePath}.tmp`;
-        writeFileSync(tmpPath, JSON.stringify(config, null, 2));
+        const fd = openSync(tmpPath, "w");
+        try {
+          writeSync(fd, JSON.stringify(config, null, 2));
+          fsyncSync(fd);
+        } finally {
+          closeSync(fd);
+        }
         renameSync(tmpPath, configFilePath);
 
         return { success: true };

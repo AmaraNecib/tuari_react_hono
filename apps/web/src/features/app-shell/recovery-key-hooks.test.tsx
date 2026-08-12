@@ -62,9 +62,11 @@ describe("useChangeDbEncryptionKeyMutation", () => {
 
     await expect(result.current.mutateAsync(INPUT)).resolves.toEqual({ success: true })
 
-    // Rotation happens first, then the rekey RPC, and no rollback on success.
+    // Rotation happens first, then the rekey RPC. On a confirmed rekey the
+    // rotation is acknowledged as final (no restore — the new key is right).
     expect(invokeMock).toHaveBeenNthCalledWith(1, "rotate_db_key", { newKey: INPUT.newKey })
     expect(changeDbEncryptionKeyMock).toHaveBeenCalledWith(INPUT)
+    expect(invokeMock).toHaveBeenLastCalledWith("complete_db_key_rotation")
     expect(invokeMock).not.toHaveBeenCalledWith("restore_db_key")
   })
 
@@ -85,14 +87,18 @@ describe("useChangeDbEncryptionKeyMutation", () => {
     expect(invokeMock).toHaveBeenCalledWith("restore_db_key")
   })
 
-  it("rolls the rotation back when the RPC throws, and rethrows the error", async () => {
+  it("keeps the new key (does NOT restore) when the RPC throws — the rekey may have happened", async () => {
     isDesktopRuntimeMock.mockReturnValue(true)
     changeDbEncryptionKeyMock.mockRejectedValue(new Error("network down"))
     const { result } = renderMutation()
 
     await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("network down")
 
-    expect(invokeMock).toHaveBeenCalledWith("restore_db_key")
+    // An ambiguous failure (lost response) must NOT overwrite the new key
+    // with the old one — that would permanently orphan a database that WAS
+    // re-encrypted server-side. The rotation is acknowledged instead.
+    expect(invokeMock).toHaveBeenCalledWith("complete_db_key_rotation")
+    expect(invokeMock).not.toHaveBeenCalledWith("restore_db_key")
   })
 
   it("does not call the RPC (or roll back) when the rotation itself fails", async () => {
@@ -106,11 +112,11 @@ describe("useChangeDbEncryptionKeyMutation", () => {
     expect(invokeMock).toHaveBeenCalledTimes(1)
   })
 
-  it("swallows a rollback failure so the original RPC error still surfaces", async () => {
+  it("swallows a completion failure so the original RPC error still surfaces", async () => {
     isDesktopRuntimeMock.mockReturnValue(true)
     changeDbEncryptionKeyMock.mockRejectedValue(new Error("rekey failed"))
-    invokeMock.mockRejectedValueOnce(undefined) // rotate OK
-    invokeMock.mockRejectedValueOnce(new Error("keyring busy")) // restore fails — swallowed
+    invokeMock.mockResolvedValueOnce(undefined) // rotate OK
+    invokeMock.mockRejectedValueOnce(new Error("keyring busy")) // complete fails — swallowed
     const { result } = renderMutation()
 
     await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("rekey failed")

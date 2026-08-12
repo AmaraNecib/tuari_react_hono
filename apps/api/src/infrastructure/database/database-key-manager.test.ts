@@ -87,9 +87,35 @@ describe("createDatabaseKeyManager", () => {
     // Verification opened a scratch connection with the CURRENT key…
     expect(openConnection).toHaveBeenCalledWith(dbPath, "current-key");
     expect(scratch.connection.prepare).toHaveBeenCalledWith("SELECT COUNT(*) FROM sqlite_master");
-    // …and the scratch connection was closed.
-    expect(scratch.close).toHaveBeenCalledTimes(1);
+    // …and the rekey was confirmed on a fresh connection with the NEW key.
+    expect(openConnection).toHaveBeenLastCalledWith(dbPath, "new-key-123");
+    // Both scratch connections were closed.
+    expect(scratch.close).toHaveBeenCalledTimes(2);
     // The rekey ran on the shared connection with the NEW key.
+    expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
+  });
+
+  it("fails with a re-encryption message when the post-rekey verification fails", () => {
+    const dbPath = join(tempDir, "cipher.sqlite");
+    writeFileSync(dbPath, CIPHER_LIKE_HEADER);
+
+    const sqlite = makeSharedSqliteMock();
+    const failingScratch = makeScratchMock();
+    failingScratch.connection.prepare.mockImplementation(() => {
+      throw new Error("file is not a database");
+    });
+    const openConnection = vi.fn((path: string, key: string) =>
+      // current-key verification succeeds; new-key verification fails.
+      key === "current-key" ? makeScratchMock().connection : failingScratch.connection,
+    ) as unknown as DatabaseKeyManagerSeams["openConnection"];
+    const manager = makeManager(sqlite, dbPath, openConnection);
+
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({
+      success: false,
+      error: "Database re-encryption failed",
+    });
+
+    // The rekey itself ran, but the new key was not confirmed.
     expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
   });
 

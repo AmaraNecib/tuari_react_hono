@@ -24,6 +24,11 @@ export type ShutdownOptions = {
   log?: (message: string) => void;
   /** Process exit (defaults to process.exit). Injectable for tests. */
   exit?: (code?: number) => never;
+  /**
+   * Force-exit after this many ms if cleanup hangs (e.g. a stuck in-flight
+   * request keeps the HTTP server open). Defaults to 5000.
+   */
+  forceExitTimeoutMs?: number;
 };
 
 /**
@@ -37,7 +42,11 @@ export function createShutdownHandler(
   targets: ShutdownTargets,
   options: ShutdownOptions = {},
 ): () => Promise<void> {
-  const { log = (message: string) => console.log(message), exit = (code) => process.exit(code) } = options;
+  const {
+    log = (message: string) => console.log(message),
+    exit = (code) => process.exit(code),
+    forceExitTimeoutMs = 5000,
+  } = options;
   let shuttingDown = false;
 
   return async () => {
@@ -46,11 +55,22 @@ export function createShutdownHandler(
 
     log("Shutting down gracefully…");
 
+    // Force-exit guard: if cleanup hangs (a stuck request keeps the server
+    // open), exit anyway after the grace period so SIGTERM can never block
+    // the process forever.
+    const forceTimer = setTimeout(() => {
+      log("Shutdown timed out — forcing exit");
+      exit(1);
+    }, forceExitTimeoutMs);
+    forceTimer.unref();
+
     try {
       await targets.stopServer();
     } catch (error) {
       log(`Failed to stop the HTTP server cleanly: ${error instanceof Error ? error.message : String(error)}`);
     }
+
+    clearTimeout(forceTimer);
 
     try {
       targets.close();
