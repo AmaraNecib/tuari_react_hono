@@ -99,7 +99,10 @@ CONTEXT: <paste the issue essentials: what, why, acceptance criteria>
 BASE: target branch is `develop`; fetch and diff against `origin/develop`.
 
 TASK (mode: pipeline|smoke):
-- <pipeline> Load the repo's feature-implement skill
+- <pipeline> FIRST, search this repo's wisdom store for lessons matching your
+  issue's domain and read only the matches: `grep -rin "<domain>"
+  .agents/wisdom/*.md docs/lessons/*.md`. Then load the repo's
+  feature-implement skill
   (.agents/skills/feature-implement/SKILL.md in this worktree) and follow it
   for ONLY steps 1-4, scoped to THIS issue and THIS worktree:
   1. Tier + base SHA (target branch develop)
@@ -180,6 +183,13 @@ When the captain says "run the lanes for real", follow this order:
 
 1. **Preflight (never skip).**
    - `gh issue view <n>` for every lane; paste essentials into each brief.
+   - **Wisdom search:** grep the wisdom store for lessons matching each issue's
+     domain and paste the relevant ones into that lane's brief —
+     `grep -rin "<domain>" .agents/wisdom/*.md docs/lessons/*.md` (testing.md
+     for test work, architecture.md for module design, process.md for
+     CI/workflow, security.md for auth/data). Selective search, never a bulk
+     dump — the store is ~80KB and reading all of it is a context tax that
+     makes agents skip it, which is how its lessons get lost.
    - Build each lane's file set from `git -C <worktree> diff develop...HEAD
      --name-only` + the issue. Overlapping files across lanes = collision:
      narrow the lanes, serialize the shared files, or make the parent own them.
