@@ -99,14 +99,20 @@ CONTEXT: <paste the issue essentials: what, why, acceptance criteria>
 BASE: target branch is `develop`; fetch and diff against `origin/develop`.
 
 TASK (mode: pipeline|smoke):
-- <pipeline> Follow the repo's feature-implement workflow, scoped to THIS issue
-  and THIS worktree: write .scratch/implementation/<n>-design.md, implement TDD
-  (unit tests via pnpm test, Playwright E2E in tests/e2e/ if the flow is
-  user-facing, pnpm typecheck && pnpm test:web && pnpm test:api), then run guard
-  Phase 1. STOP once guard Phase 1 passes and report — do NOT push, do NOT open a
-  PR, do NOT run debate/test-audit/code-review. The parent owns every stage from
-  review onward so parallel lanes never collide on review evidence, branch
-  naming, or GitHub.
+- <pipeline> Load the repo's feature-implement skill
+  (.agents/skills/feature-implement/SKILL.md in this worktree) and follow it
+  for ONLY steps 1-4, scoped to THIS issue and THIS worktree:
+  1. Tier + base SHA (target branch develop)
+  2. Design doc at .scratch/implementation/<n>-design.md
+  3. Implement (TDD + Playwright): load the implement skill; unit tests via
+     pnpm test, Playwright E2E in tests/e2e/ if the flow is user-facing,
+     pnpm typecheck && pnpm test:web && pnpm test:api
+  4. Guard pre-review Phase 1 (contracts build, typecheck, lint, test:api,
+     test:web; cargo test + clippy if the Rust core is touched)
+  STOP after step 4 passes and report. Do NOT start steps 5-13 (quality
+  check, debate, test-audit, code-review, guard pre-push, push + PR, CI +
+  Greptile, report) — the parent runs every one of those per lane so parallel
+  lanes never collide on review evidence, branch naming, or GitHub.
 - <smoke> READ-ONLY. Change nothing. Inspect the code related to this issue and
   report: what the relevant module does, its structure, tests present, and any
   risks you notice.
