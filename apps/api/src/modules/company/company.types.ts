@@ -415,8 +415,12 @@ export const LEGACY_WORKFORCE_ROLE_KEYS = {
   warehouseManager: "warehouse_manager",
 } as const;
 
+export type AssignableRoleKey = (typeof ASSIGNABLE_ROLE_KEYS)[keyof typeof ASSIGNABLE_ROLE_KEYS];
+export type LegacyWorkforceRoleKey =
+  (typeof LEGACY_WORKFORCE_ROLE_KEYS)[keyof typeof LEGACY_WORKFORCE_ROLE_KEYS];
+
 /**
- * True when a role key may be assigned to an employee via create/update.
+ * True when a role key is accepted for employee assignment via create/update.
  *
  * Accepts the seeded assignable roles (`admin` / `manager` / `viewer`) plus
  * the legacy workforce keys. The legacy keys cannot exist in a post-Slice-3
@@ -425,9 +429,11 @@ export const LEGACY_WORKFORCE_ROLE_KEYS = {
  * which still branches on them and is exercised by the unit-test harness,
  * can create its employees.
  */
-export function isAssignableEmployeeRoleKey(key: string): boolean {
-  return (
-    (Object.values(ASSIGNABLE_ROLE_KEYS) as string[]).includes(key) ||
-    (Object.values(LEGACY_WORKFORCE_ROLE_KEYS) as string[]).includes(key)
-  );
+const ACCEPTED_EMPLOYEE_ROLE_KEYS = new Set<string>([
+  ...Object.values(ASSIGNABLE_ROLE_KEYS),
+  ...Object.values(LEGACY_WORKFORCE_ROLE_KEYS),
+]);
+
+export function isAcceptedEmployeeRoleKey(key: string): boolean {
+  return ACCEPTED_EMPLOYEE_ROLE_KEYS.has(key);
 }

@@ -24,23 +24,34 @@ with this root cause.
 
 ## Decision — intended assignable-role set post-Slice 3
 
-**Employees may be assigned exactly the three seeded system roles:
-`admin`, `manager`, `viewer`.** This matches, by construction:
+**The assignable set is the three seeded system roles: `admin`, `manager`,
+`viewer`.** This matches, by construction:
 
 - the RBAC seeds (`role-seeds.ts` / `schema-definitions.ts` `roleSeeds`),
 - the Slice-3 migration guarantee ("only admin, manager, viewer exist"),
 - the employee create form's role options (`rbacRolesList`).
 
-The legacy roles are **not** mapped onto `manager` in the domain logic. The
-migration *reassigned legacy employees* to `manager` (a data migration), but
-the workforce *assignment lifecycle* (manager assignment, workplace
-assignment, managed project/warehouse sync, project/warehouse manager
-checks) was designed around the 5-role HR model and its tests pin that model
-(e.g. `requireEmployeeWithRoleKey` rejects a worker for the
-project_manager key). Redesigning that lifecycle for the 3-role model is a
-separate domain change, tracked as follow-up (see Risks). This issue only
-aligns the **assignable-role validation** so the create/update flows work
-with the roles the system actually seeds.
+The assignable predicate (`isAcceptedEmployeeRoleKey`) **also** accepts the
+legacy workforce keys (`worker` / `project_manager` / `warehouse_manager`).
+That acceptance is a deliberate, documented no-op in production — the
+Slice-3 migration deletes those role rows, so the branch can never fire
+against real data. It exists so the dormant workforce assignment lifecycle
+(which still branches on those keys and is exercised by the unit-test
+harness with isSystem legacy roles) can create its employees. It is **not**
+a mapping of legacy keys onto `manager`: the lifecycle's worker vs
+project_manager vs warehouse_manager distinctions are preserved verbatim
+(see `LEGACY_WORKFORCE_ROLE_KEYS`) because redesigning that lifecycle is a
+separate domain change (follow-up #338).
+
+Note (debate F3): `employees:create` is held by the `manager` role, so a
+manager-role user can create an employee with the `admin` role. An employee
+record is a workforce label — employees do not authenticate through their
+role (the `user_id` login link is a separate, not-yet-enabled change per the
+#10 design) — so this mints no login account today. Whether `admin` should
+be assignable at all is a product decision tracked as follow-up #340.
+
+This issue only aligns the **assignable-role validation** so the create/
+update flows work with the roles the system actually seeds.
 
 ## Changes
 
@@ -86,8 +97,10 @@ Split the single legacy `SYSTEM_ROLE_KEYS` const into two named consts:
   (the harness keeps seeding the legacy lifecycle roles; references are
   mechanical).
 - New `company.role-assignability.test.ts`:
-  - `ASSIGNABLE_ROLE_KEYS` ⊇/⊆ the seeded system role keys (drift guard
-    against `DEFAULT_ROLE_PERMISSIONS`).
+  - `ASSIGNABLE_ROLE_KEYS` matches the seeded system role keys from BOTH
+    seed sources (`DEFAULT_ROLE_PERMISSIONS` and `roleSeeds` in
+    `schema-definitions.ts`) — drift guard.
+  - The helper still accepts the legacy workforce keys (pinned contract).
   - `requireAssignableEmployeeRole` accepts each of admin/manager/viewer and
     rejects a non-system role.
   - `createEmployee` / `createEmployeesBatch` succeed with admin/manager/viewer
@@ -132,11 +145,19 @@ now accept admin/manager/viewer roles instead of rejecting them.
    will catch every one (properties `worker`/`projectManager`/
    `warehouseManager` no longer exist on `ASSIGNABLE_ROLE_KEYS`).
 2. **Drift between the assignable set and the seeds** — mitigated by the
-   drift-guard test.
+   drift-guard test (both seed sources).
 3. **Dormant lifecycle debt** — the assignment lifecycle remains keyed on
    non-existent roles; it is unreachable from the post-Slice-3 UI and keeps
-   its pinned tests. Follow-up issue: redesign the workforce assignment
+   its pinned tests. Follow-up #338: redesign the workforce assignment
    lifecycle for the 3-role model (includes project/warehouse manager
    selection, which today also rejects every seeded employee).
 4. **E2E flakiness** — the un-skipped spec runs in the existing serial suite;
-   the update test is already defensive (visibility guards).
+   the create test selects its role explicitly and the update test asserts
+   the notes field unconditionally.
+5. **Admin assignability** — `employees:create` holders can mint an
+   `admin`-role employee (workforce label only, no login account). Product
+   decision tracked as follow-up #340.
+6. **Issue's salary claim** — the reported "native validation" block on the
+   salary pair is stale: the batch form's salary fields are conditionally
+   required (only when one of the pair is present), verified by
+   `employee-batch-schema.ts`. The spec fills the pair regardless.

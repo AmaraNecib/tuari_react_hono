@@ -22,7 +22,10 @@ test.describe("employees", () => {
     await page.getByLabel("الاسم الأول").first().fill(firstName)
     await page.getByLabel("اللقب").first().fill(lastName)
     await page.getByLabel("رقم الهاتف").first().fill(phone)
-    // دورة الأجر and قيمة الأجر are required — without them the form blocks on native validation.
+    // Select the seeded manager role explicitly (do not rely on the form default).
+    await page.getByLabel("الدور").selectOption({ label: "مدير عمليات" })
+    // Salary period + amount are conditionally required as a pair — fill both
+    // so the form's validation accepts the submission.
     await page.getByLabel("دورية الأجر").selectOption({ label: "شهري" })
     await page.getByLabel(/قيمة الأجر/).fill("10000")
 
@@ -47,14 +50,13 @@ test.describe("employees", () => {
     await page.getByRole("link", { name: /^تعديل$/ }).first().click()
     await expect(page.getByRole("heading", { name: /تعديل عامل/ })).toBeVisible()
 
-    // Update employee notes
+    // Update employee notes — the notes field is always present on the edit page.
     const notesField = page.getByLabel(/ملاحظات/).first()
-    if (await notesField.isVisible()) {
-      const updatedNotes = `تحديث-${uniqueSuffix()}`
-      await notesField.fill(updatedNotes)
-      await page.getByRole("button", { name: /حفظ/ }).first().click()
-      // Save navigates back to the details page where the updated notes render
-      await expect(page.getByText(updatedNotes)).toBeVisible({ timeout: 10_000 })
-    }
+    await expect(notesField).toBeVisible()
+    const updatedNotes = `تحديث-${uniqueSuffix()}`
+    await notesField.fill(updatedNotes)
+    await page.getByRole("button", { name: /حفظ/ }).first().click()
+    // Save navigates back to the details page where the updated notes render
+    await expect(page.getByText(updatedNotes)).toBeVisible({ timeout: 10_000 })
   })
 })

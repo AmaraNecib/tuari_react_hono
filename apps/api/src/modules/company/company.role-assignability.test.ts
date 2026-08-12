@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { roleSeeds } from "../../infrastructure/database/schema-definitions";
 import { DEFAULT_ROLE_PERMISSIONS } from "../rbac/role-seeds";
 import { CompanyError } from "./company.errors";
 import {
@@ -9,7 +10,7 @@ import {
 import { requireAssignableEmployeeRole } from "./company.entity-resolvers";
 import {
   ASSIGNABLE_ROLE_KEYS,
-  isAssignableEmployeeRoleKey,
+  isAcceptedEmployeeRoleKey,
   LEGACY_WORKFORCE_ROLE_KEYS,
 } from "./company.types";
 import type { CompanyService } from "./company.service";
@@ -45,9 +46,16 @@ describe("ASSIGNABLE_ROLE_KEYS vs RBAC seeds", () => {
     expect(assignableKeys).toEqual(seededSystemKeys);
   });
 
+  it("matches the schema-definitions role seeds exactly (second drift source)", () => {
+    const schemaSeedKeys = roleSeeds.map((seed) => seed.key).sort();
+    const assignableKeys = Object.values(ASSIGNABLE_ROLE_KEYS).sort();
+
+    expect(assignableKeys).toEqual(schemaSeedKeys);
+  });
+
   it("still accepts the legacy workforce keys so the dormant lifecycle harness keeps working", () => {
     for (const key of Object.values(LEGACY_WORKFORCE_ROLE_KEYS)) {
-      expect(isAssignableEmployeeRoleKey(key)).toBe(true);
+      expect(isAcceptedEmployeeRoleKey(key)).toBe(true);
     }
   });
 });

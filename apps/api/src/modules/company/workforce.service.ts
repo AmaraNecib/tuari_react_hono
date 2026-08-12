@@ -39,7 +39,7 @@ import { WorkspaceMutationContext } from "./workspace-mutation-context";
 import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
 import {
-  isAssignableEmployeeRoleKey,
+  isAcceptedEmployeeRoleKey,
   type EmployeeListFilters,
   type EmployeeSalaryPaymentListFilters,
   type EmployeeStateHistoryListFilters,
@@ -217,7 +217,7 @@ export class WorkforceService {
             field: buildBatchField(index, "roleId"),
             message: "تعذر العثور على الدور المطلوب.",
           });
-        } else if (!role.isSystem || !isAssignableEmployeeRoleKey(role.key)) {
+        } else if (!role.isSystem || !isAcceptedEmployeeRoleKey(role.key)) {
           fieldErrors.push({
             field: buildBatchField(index, "roleId"),
             message: "يمكن اختيار الأدوار النظامية فقط في هذه المرحلة.",

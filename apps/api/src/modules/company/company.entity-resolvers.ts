@@ -13,7 +13,7 @@
 
 import { CompanyError } from "./company.errors";
 import {
-  isAssignableEmployeeRoleKey,
+  isAcceptedEmployeeRoleKey,
   LEGACY_WORKFORCE_ROLE_KEYS,
 } from "./company.types";
 import type { WorkforceRepository } from "./workforce.repository";
@@ -38,7 +38,7 @@ export function requireAssignableEmployeeRole(
 ) {
   const role = requireRole(repository, roleId);
 
-  if (!role.isSystem || !isAssignableEmployeeRoleKey(role.key)) {
+  if (!role.isSystem || !isAcceptedEmployeeRoleKey(role.key)) {
     throw new CompanyError("BUSINESS_RULE", "يمكن اختيار الأدوار النظامية فقط في هذه المرحلة.", [
       { field, message: "يمكن اختيار الأدوار النظامية فقط في هذه المرحلة." },
     ]);
