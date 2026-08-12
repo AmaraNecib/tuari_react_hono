@@ -28,3 +28,13 @@
 ## Verdict
 
 No actionable findings on either axis → ✅ safe to push.
+
+---
+
+## Post-evidence delta (1fc8859 → 6ea1f22)
+
+Head moved by a single docs-only commit (`6ea1f22`): two wisdom entries appended
+to `.agents/wisdom/` (architecture.md + testing.md) — no code, contracts, or
+tests changed. Evidence re-pointed to the final head per the guard's
+staleness check (.agents/ is reviewable). The code reviewed at `1fc8859` is
+byte-identical.
