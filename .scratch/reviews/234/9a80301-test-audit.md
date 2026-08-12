@@ -49,3 +49,9 @@ Minor note addressed: E2E fetch-status blocks deduplicated via a
   1055 total)
 - `tests/e2e/recovery-keys.spec.ts` — lifecycle spec incl. ZWSP wire-gate
   check (1 passed; full suite run separately)
+
+---
+**Post-evidence delta**: evidence written against `44d6be5` (final code
+head). Commits `51dec2b` (evidence) and `9a80301` (wisdom lesson, docs-only)
+followed; no reviewable code changed since the review. Renamed to final SHA
+per the guard's evidence-refresh pattern.

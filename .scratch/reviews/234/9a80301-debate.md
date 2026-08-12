@@ -40,3 +40,9 @@ suite (index.test.ts 74/74 at review time) and the router wire suite
 - A legacy key crafted with Cf pre-fix would be unsubmittable for
   consume/revoke/rekey — keys are machine-generated, so practically
   impossible; the rejection is the point.
+
+---
+**Post-evidence delta**: evidence written against `44d6be5` (final code
+head). Commits `51dec2b` (evidence) and `9a80301` (wisdom lesson, docs-only)
+followed; no reviewable code changed since the review. Renamed to final SHA
+per the guard's evidence-refresh pattern.
