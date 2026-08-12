@@ -196,14 +196,30 @@ When the captain says "run the lanes for real", follow this order:
 4. **Collect.** When a lane reports done: read its pane output (report
    contract), then verify containment: `git -C <worktree> status` matches
    preflight + the lane's claimed files, and the main checkout is untouched.
-5. **Review fanout (parent, headless is fine — read-only).** For each lane's
-   diff, run `debate` (high-assurance only), `test-audit`, and `code-review` as
-   fresh-context `reviewer` children over `git diff develop...HEAD` in that
-   worktree. Fix findings by steering the lane or as parent-owned shared changes.
-6. **Guard + land.** guard Phase 2 per lane, then push + open one PR per lane
+5. **Review fanout (parent dispatches, fresh-context reviewers judge).** For each
+   lane's diff, run `debate` (high-assurance only), `test-audit`, and
+   `code-review` as fresh-context `reviewer` children over `git diff
+   develop...HEAD` in that worktree. The parent aggregates verdicts; it is a
+   dispatcher, not the judge.
+6. **Fix-findings loop (per lane, agent owns the fix).** For every lane with
+   must-fix/should-fix findings: send the findings back to that lane's live
+   agent via `herdr agent prompt <pane> "Reviewer findings: <findings>. Fix in
+   THIS worktree, re-run guard Phase 1, report what changed."`, then verify the
+   delta (re-review or fresh-context check). Loop until clean or explicitly
+   deferred. Two exceptions where the PARENT fixes directly: findings on a
+   shared seam (parent-owned file — fix once, all lanes get the updated base)
+   and findings after the lane's pane was closed.
+7. **Guard + land.** guard Phase 2 per lane, then push + open one PR per lane
    (branch already exists in the worktree) with the review evidence linked, wait
    for CI green, guard Phase 3, and hand the captain full PR URLs. NEVER merge
-   without the captain's explicit word.
+   without the captain's explicit word — when the captain says merge, the parent
+   executes it.
+8. **Wisdom (parent-owned, serialized — lanes never write shared state).**
+   capture-wisdom writes `.agents/wisdom/*.md` / `docs/lessons/` which is shared
+   repo state; 6 parallel lanes would collide, so the parent runs it: per-lane
+   technical lessons after each PR lands (feature-implement step 12's capture,
+   run by the parent from the lane report + review verdicts + diff), then one
+   crew-level pass at batch end for operational lessons about the run itself.
 
 If a lane needs the same shared file as another lane mid-run, stop and resolve
 seam ownership with the captain rather than letting both write it.
