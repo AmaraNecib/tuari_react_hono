@@ -71,4 +71,72 @@ describe("createAuth", () => {
 
     expect(typeof auth.api.signInPhoneNumber).toBe("function");
   });
+
+  // #321: a pre-#230 user whose hash was created from an all-invisible
+  // password can still sign in — the server verifies the input against the
+  // stored hash and has NO visible-character gate on sign-in (better-auth
+  // validates `password: z.string()` only). The web client's schema gate is
+  // the only blocker, and that is lifted for sign-in in the contracts/web
+  // change. This test seeds a real better-auth hash (same scrypt defaults the
+  // auth instance verifies with) and pins that the server side of the
+  // recovery path works end to end.
+  it("verifies a legacy whitespace-password hash at sign-in (#321 recovery)", async () => {
+    const { hashPassword } = await import("better-auth/crypto");
+    const { createDatabaseConnection } = await import("../../infrastructure/database/factory");
+    const { createDrizzleFromSqlite } = await import("../../infrastructure/database/drizzle");
+    const { ensureDatabaseSchema } = await import("../../infrastructure/database/schema");
+    const { BetterSqlite3Executor } = await import("../../infrastructure/database/sqlite-executor");
+    const { user, account } = await import("../../schema");
+
+    const raw = createDatabaseConnection(":memory:");
+    try {
+      await ensureDatabaseSchema(new BetterSqlite3Executor(raw));
+      const db = createDrizzleFromSqlite(raw);
+      const auth = createAuth(
+        db,
+        appConfigSchema.parse({ ...buildConfig(), betterAuthUrl: "http://127.0.0.1:9999" }),
+      );
+
+      const legacyPassword = "        ";
+      const hash = await hashPassword(legacyPassword);
+      const now = new Date().toISOString();
+      const userId = "legacy-user-1";
+
+      await db.insert(user).values({
+        id: userId,
+        name: "مستخدم قديم",
+        phoneNumber: "0555000001",
+        phoneNumberVerified: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(account).values({
+        id: "legacy-account-1",
+        accountId: "0555000001",
+        providerId: "credential",
+        userId,
+        password: hash,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // The legacy whitespace password matches the stored hash → session issued.
+      const signIn = await auth.api.signInPhoneNumber({
+        body: { phoneNumber: "0555000001", password: legacyPassword },
+        headers: new Headers(),
+      });
+      expect(signIn.token).toBeTruthy();
+      expect(signIn.user.phoneNumber).toBe("0555000001");
+
+      // Any other value still fails — the hash is the only credential.
+      await expect(
+        auth.api.signInPhoneNumber({
+          body: { phoneNumber: "0555000001", password: "         " },
+          headers: new Headers(),
+        }),
+      ).rejects.toThrow();
+    } finally {
+      raw.close();
+    }
+  }, 60_000);
 });

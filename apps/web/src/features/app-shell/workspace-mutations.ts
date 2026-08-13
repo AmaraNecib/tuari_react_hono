@@ -204,7 +204,12 @@ export function useUpdateAccountSettingsMutation() {
     }) => {
       const name = input.name?.trim() || undefined
       const phone = input.phone?.trim() || undefined
-      const currentPassword = input.currentPassword?.trim() || undefined
+      // The current password is verified against the stored hash EXACTLY as
+      // typed — it is never trimmed/normalized (passwords are opaque secrets;
+      // a pre-#230 legacy hash can be all-invisible, #321). Only the NEW
+      // password is trimmed so a whitespace-only new credential cannot be
+      // created (#230).
+      const currentPassword = input.currentPassword || undefined
       const newPassword = input.newPassword?.trim() || undefined
 
       if (!name && !phone && !currentPassword && !newPassword) {

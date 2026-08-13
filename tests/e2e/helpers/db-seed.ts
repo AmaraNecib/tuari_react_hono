@@ -122,3 +122,68 @@ export function seedEmployees(employees: SeedEmployee[]): void {
     db.close()
   }
 }
+
+/**
+ * Seed a legacy pre-#230 user whose stored hash was created from an
+ * all-invisible password (issue #321 recovery-path E2E).
+ *
+ * The hash is computed with better-auth's own `hashPassword` (loaded from the
+ * pnpm virtual store — same scrypt defaults the API's auth instance verifies
+ * with), so a sign-in with the legacy password really verifies against a
+ * genuine better-auth hash end to end. A pre-#230 user cannot be created
+ * through the bootstrap UI (it rejects all-invisible passwords), so seeding
+ * is the only honest way to stage the scenario.
+ */
+export async function seedLegacyPasswordUser(input: {
+  phone: string
+  name: string
+  legacyPassword: string
+}): Promise<void> {
+  const db = loadDatabaseConstructor()(findE2eDatabase())
+  try {
+    const authReq = loadBetterAuthRequire()
+    const { hashPassword } = await authReq("better-auth/crypto")
+    const hash = await hashPassword(input.legacyPassword)
+    const now = new Date().toISOString()
+    const userId = randomUUID()
+
+    // Idempotent across retries: drop any prior legacy user with this phone
+    // (cascades to its account/session rows) before inserting fresh rows.
+    db.prepare(`DELETE FROM "account" WHERE "accountId" = ?`).run(input.phone)
+    db.prepare(`DELETE FROM "user" WHERE "phoneNumber" = ?`).run(input.phone)
+
+    db.prepare(
+      `INSERT INTO "user" (id, name, image, "phoneNumber", "phoneNumberVerified", created_at, updated_at)
+       VALUES (?, ?, NULL, ?, 0, ?, ?)`,
+    ).run(userId, input.name, input.phone, now, now)
+    db.prepare(
+      `INSERT INTO "account" (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
+       VALUES (?, ?, 'credential', ?, ?, ?, ?)`,
+    ).run(randomUUID(), input.phone, userId, hash, now, now)
+  } finally {
+    db.close()
+  }
+}
+
+let betterAuthRequire: ReturnType<typeof createRequire> | null = null
+
+/**
+ * Load better-auth from the pnpm virtual store (isolated linker — not
+ * resolvable from the repo root), mirroring how `better-sqlite3` is loaded
+ * above. The store directory hash changes between installs, so the entry is
+ * discovered by prefix rather than pinned.
+ */
+function loadBetterAuthRequire(): ReturnType<typeof createRequire> {
+  if (betterAuthRequire) return betterAuthRequire
+  const pnpmDir = join(process.cwd(), "node_modules", ".pnpm")
+  const entry = readdirSync(pnpmDir).find(
+    (dir) => dir.startsWith("better-auth@") && !dir.includes("sqlcipher"),
+  )
+  if (!entry) {
+    throw new Error("better-auth not found in the pnpm virtual store")
+  }
+  betterAuthRequire = createRequire(
+    join(pnpmDir, entry, "node_modules", "better-auth", "package.json"),
+  )
+  return betterAuthRequire
+}

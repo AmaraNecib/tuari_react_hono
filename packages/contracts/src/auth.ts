@@ -3,7 +3,7 @@ import { z } from "zod";
 import { algerianPhoneSchema, entityIdSchema } from "./core";
 
 /**
- * Shared credential password policy (sign-in + bootstrap stay consistent).
+ * Credential password policy for NEW inputs (bootstrap, change-password).
  *
  * #230: length bounds alone admit a blank-looking password (8 spaces pass
  * `.min(8)`), which would hash into a usable credential. We deliberately do
@@ -19,7 +19,7 @@ import { algerianPhoneSchema, entityIdSchema } from "./core";
  * too_small/too_big + custom issues (same pattern as the bootstrap name
  * refine).
  */
-const passwordSchema = z
+export const passwordSchema = z
   .string()
   .min(8)
   .max(128)
@@ -31,9 +31,23 @@ const passwordSchema = z
     },
   );
 
+/**
+ * Password gate for SIGN-IN (verification against an existing hash).
+ *
+ * #321: sign-in does NOT carry the visible-character refine from #230. A
+ * sign-in input is verified against a hash that already exists — an
+ * all-invisible input can only succeed if the stored hash was itself created
+ * from an all-invisible value, which is impossible for hashes created after
+ * #230 (bootstrap and change-password both use {@link passwordSchema}).
+ * Accepting those inputs is therefore the deliberate legacy recovery channel
+ * for a user whose password predates #230, WITHOUT weakening the policy for
+ * new inputs. Length bounds stay so the wire input remains bounded.
+ */
+export const signInPasswordSchema = z.string().min(8).max(128);
+
 export const phonePasswordSignInSchema = z.object({
   phone: algerianPhoneSchema,
-  password: passwordSchema,
+  password: signInPasswordSchema,
   rememberMe: z.boolean().optional(),
 });
 
