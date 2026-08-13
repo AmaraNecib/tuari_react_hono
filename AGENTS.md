@@ -42,6 +42,16 @@ git commit -m "..."
 Follow `docs/engineering-workflow.md` and the `feature-implement` skill for all code changes.
 Read `.agents/wisdom/*.md` before starting a session.
 
+## Crew dispatch shape (parallel lanes)
+
+When running parallel agent lanes (the crew-dispatch skill), the default shape
+is VISIBLE agents — one Herdr workspace per lane, one live agent session per
+worktree — whenever the captain is present and the lanes mutate code. Headless
+children are only for read-only scouts/probes, or with the captain's explicit
+opt-in. An explicit captain instruction like "don't use herdr" / "run
+headless" always wins. Never let "run-to-completion" silently become
+"invisible".
+
 ## Issue-closing convention (multi-PR issues)
 
 An issue may need several PRs to be fully delivered. Never claim an issue is

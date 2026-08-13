@@ -50,13 +50,22 @@ and tells each lane exactly which skills to load.
 
 ## When to use which shape
 
-- **Default: visible agents.** The captain wants to SEE each agent work and
-  type into its terminal directly. Each lane = one workspace in the session
-  backend (Herdr/tmux/…) with a real agent session inside it, auto-detected in
-  the UI. Verified recipe (Herdr, any OS): see Launch.
-- **Lightweight alternative: headless children.** Cheaper, disposable, but not
-  visible as live terminals. Use for cheap scouts, read-only probes, or when the
-  captain isn't watching.
+- **Default: visible agents — REQUIRED for mutation lanes while the captain is
+  present.** The captain wants to SEE each agent work and type into its
+  terminal directly. Each lane = one workspace in the session backend
+  (Herdr/tmux/…) with a real agent session inside it, auto-detected in the UI.
+  Verified recipe (Herdr, any OS): see Launch.
+- **Headless children require explicit captain opt-in.** Cheaper, disposable,
+  not visible as live terminals. Allowed ONLY for cheap scouts, read-only
+  probes, when the captain is not watching — or when the captain explicitly
+  says so ("run headless" / "don't use herdr").
+- **Captain opt-out always wins.** If the captain says don't use Herdr (or a
+  specific backend), comply — visible lanes then mean that backend's
+  workspaces, or headless if that is what was asked.
+- **Decision gate (never silent):** before launching, record the chosen shape
+  and — for headless with a present captain — the captain's explicit opt-in.
+  If you didn't ask, you used the wrong shape. "Run-to-completion" never
+  means "invisible".
 - **Single issue, full pipeline** → run the repo's feature workflow directly
   with one agent; `crew-dispatch` is not needed.
 - **Mechanism check before trusting the machinery** → `--smoke` mode: lanes are
@@ -182,6 +191,10 @@ agent-prompt sequence above avoids that path and is verified.
 
 ## Launch (headless — the lightweight alternative)
 
+> Gate: headless REQUIRES the captain's explicit opt-in when the captain is
+> present and lanes mutate code. See "When to use which shape". An explicit
+> "don't use herdr" / "run headless" instruction also lands here.
+
 One async workflow, `runs.all`, per-child `cwd`. Do not launch lanes one at a
 time.
 
@@ -215,7 +228,9 @@ When the captain says "run the lanes for real", follow this order:
 
 1. **Preflight (never skip).** Intake steps above: issues, base branch, package
    manager + commands, scratch convention, available skills, worktree mapping,
-   seam check, wisdom search, git snapshot.
+   seam check, wisdom search, git snapshot. **Lane shape**: confirm
+   visible/headless with the captain (or apply their opt-out — "don't use
+   herdr" wins) and record the choice. Never default silently.
 2. **Brief.** Prompt every agent with the pipeline lane brief. Agents are
    already running in their panes; just `agent prompt` each.
 3. **Supervise.** Watch the backend's agent panel; steer by typing into a pane;
