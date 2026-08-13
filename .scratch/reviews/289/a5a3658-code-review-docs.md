@@ -1,7 +1,12 @@
 # Code-review evidence — docs PR: #289 wisdom capture (agent/wisdom-issue-289)
 
-**Head:** `8b37835` (single docs commit on top of develop `004e2e56`)
+**Head:** `a5a3658` (single docs commit on top of develop `3c14490`)
 **Scope:** `.agents/wisdom/architecture.md` + `.agents/wisdom/testing.md` (+39 prose lines)
+
+> SHA refreshed after `git rebase origin/develop` (was `8b37835`): the wisdom commit
+> was re-created on the new base `3c14490` (merged #234 security). Content of the
+> reviewed entries is unchanged; the rebase also folded the merged #234
+> "Stale contracts dist" section into testing.md (kept, different topic).
 
 ## Verdict: no blockers
 
