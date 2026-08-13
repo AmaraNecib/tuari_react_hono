@@ -11,7 +11,12 @@ test.describe("employees", () => {
     await page.getByRole("link", { name: "العاملون" }).first().click()
     await expect(page.getByRole("heading", { name: "العاملون" })).toBeVisible()
 
-    await page.getByRole("button", { name: "إضافة عامل" }).first().click()
+    // The header action is a navigation link (deep-linkable to /employees/create).
+    // The table's empty-state "add worker" BUTTON only renders when the list is
+    // empty, so relying on it makes this spec order-dependent: in the full suite
+    // (e.g. after employees-search seeds rows) it never appears. The header link
+    // is always present regardless of list state.
+    await page.getByRole("link", { name: "إضافة عامل" }).first().click()
     await expect(page.getByRole("heading", { name: /صفحة إضافة العاملين/ })).toBeVisible()
 
     const suffix = uniqueSuffix()
