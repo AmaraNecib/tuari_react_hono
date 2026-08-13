@@ -21,10 +21,9 @@ you learn something worth remembering.
 
 | File | What goes in it |
 |------|----------------|
-| `process.md` | Workflow, tooling, CI, CodeRabbit, PR conventions |
+| `process.md` | Workflow, tooling, CI, PR conventions, Greptile + CodeRabbit driving, review process |
 | `security.md` | Security patterns, vulnerabilities, contract violations |
 | `testing.md` | Test patterns, common mistakes, coverage advice |
-| `adversarial-review.md` | Critic/defender findings, CodeRabbit inline comment gotchas |
 | `architecture.md` | Design decisions, module boundaries |
 
 ## Severity labels

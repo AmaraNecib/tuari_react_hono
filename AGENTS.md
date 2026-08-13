@@ -35,12 +35,26 @@ git commit -m "..."
 
 - `.scratch/implementation/<issue-id>-design.md` — decision record, **keep committed** (it captures *why*).
 - `.scratch/reviews/<issue-id>/` — review evidence, **keep committed while the PR is open** (the guard skill checks evidence SHAs against HEAD). After the PR merges and the issue closes, the review files may be cleaned up.
-- Distill durable lessons into `.agents/wisdom/*.md` (via capture-wisdom) or `docs/lessons/` — those are read at session start and persist.
+- Distill durable lessons into `.agents/wisdom/*.md` (via capture-wisdom) — the ONE agent-facing store; `docs/lessons/` holds only human-facing rationale docs (e.g. gh-pr-merge-squash-issue-close.md). Agents grep wisdom, not lessons.
 
 ## Engineering workflow
 
 Follow `docs/engineering-workflow.md` and the `feature-implement` skill for all code changes.
 Read `.agents/wisdom/*.md` before starting a session.
+
+## Crew dispatch shape (parallel lanes)
+
+When running parallel agent lanes (the crew-dispatch skill), the default shape
+is VISIBLE agents — one Herdr workspace per lane, one live agent session per
+worktree — whenever the captain is present and the lanes mutate code. Headless
+children are only for read-only scouts/probes, or with the captain's explicit
+opt-in. An explicit captain instruction like "don't use herdr" / "run
+headless" always wins. Never let "run-to-completion" silently become
+"invisible".
+
+**Launching a lane goes through `scripts/crew/launch-lane.mjs`** — it is the
+only sanctioned launcher (workers and reviewers alike). If you are starting a
+lane without it, you are not doing crew dispatch.
 
 ## Issue-closing convention (multi-PR issues)
 

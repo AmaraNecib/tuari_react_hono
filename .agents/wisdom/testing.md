@@ -1,13 +1,28 @@
 # Testing Wisdom
 
-## Windows orphaned dev servers: kill the tsx-watch PARENT tree, and check the cmdline's worktree (🟠 Major)
+## Windows orphaned dev servers poison Playwright runs — kill the whole watcher tree (🟠 Major)
 
-On #183, port 4318 kept being "already used" even after `taskkill /F /T` on the listener: a stale `node tsx watch src/index.ts` from ANOTHER worktree (issue-230) respawned its API child seconds after each kill. Playwright's `reuseExistingServer:false` does NOT pre-check the port — it proceeds if `/health` answers, so the suite ran against the wrong worktree's server and stale DB ("Invalid phone number or password" on a supposedly-fresh DB). Tell: the listener's cmdline referenced `worktrees/issue-230-whitespace-pw/...tsx...` — NOT this worktree.
+`pnpm dev:api` (`tsx watch`) and `pnpm dev:web` (vite) leave process TREES alive on
+Windows that Playwright's webServer teardown never kills (#183, #254). The orphans
+keep their OLD DB (so bootstrap looks "already set up"), serve STALE vite modules
+(raw i18n keys, missing tabs), and rebind the API/web ports after `tsx watch`
+restarts — producing EADDRINUSE and transient "already used" failures. Playwright's
+`reuseExistingServer:false` does NOT pre-check the port: if anything answers the
+`/health` URL it proceeds, so tests silently run against the wrong worktree's
+server and stale DB ("Invalid phone number or password" on a supposedly-fresh DB).
+Netstat right before a run can be clean and the orphan still appears mid-run
+(delayed tsx-watch restart). Tell: the listener's cmdline references a DIFFERENT
+worktree path.
 
-Fix pattern: before local playwright runs, list listeners on the config ports AND their process cmdlines (`Get-CimInstance Win32_Process | ? {$_.CommandLine -match 'tsx|vite'}`); if the cmdline names a DIFFERENT worktree, walk the parent chain (listener → `tsx watch` node → `cmd /c tsx watch`) and `taskkill /F /T` the TOP of that tree (the cmd launcher), not the listener — the watcher respawns children. Also verify `apps/api/data/` (the E2E DB dir — APP_DB_PATH resolves against the API package cwd, NOT the repo root) is empty before a run.
-
-**Always**: match port listeners to their owning worktree via cmdline before trusting a "free" port; kill the whole watcher tree.
-
+**Always**: match port listeners to their owning worktree via cmdline before trusting
+a "free" port; kill the whole watcher tree, not the listener (`taskkill /F /T` the
+top of the chain — listener → tsx-watch node → cmd launcher; the watcher respawns
+children). Before/after local e2e runs kill ALL node processes whose cmdline
+contains the worktree path (`Get-CimInstance Win32_Process | Where-Object
+{$_.CommandLine -match "worktree-name"}`), verify ports stay free, delete
+`apps/api/data/*.sqlite*`, and prefer a no-watch server (`npx tsx src/index.ts`,
+not `pnpm dev:api`) for manual debugging. Deleting the sqlite file while a server
+holds it fails with "Device or resource busy" — kill first, then rm.
 ## In-memory test doubles must mirror sqlite's per-column semantics (🟠 Major)
 
 The in-memory employee repo concatenated `firstName lastName phone` into one haystack; sqlite matched each column with `OR`. A full-name term like `أحمد بلخير` matched in-memory (module tests green) but returned NOTHING on production sqlite — the test-audit edge-case hunter caught it. Fix: sqlite added `(first_name || ' ' || last_name) LIKE …` to mirror the concatenated haystack. **Always**: when a filter/query behaves differently in the in-memory double vs the sqlite adapter, add a discriminating test that would fail on the divergent side; assert the same term in BOTH adapters.
@@ -44,26 +59,6 @@ toast. The save is provably settled before the next step runs.
 **Always**: when an E2E asserts a toast as proof a mutation succeeded, gate the
 assertion on the mutation's HTTP response first. A `.first()`/substring toast
 match can silently pass on stale toasts.
-
-## Windows orphaned dev servers contaminate Playwright runs (🟠 Major)
-
-On #254, manual debugging APIs (`tsx watch src/index.ts` + a separate web
-dev server) left process TREES alive on Windows that Playwright's webServer
-teardown never killed. On the next `playwright test` run, the leftover
-listener answered the `/health` URL while Playwright's own API failed to bind
-(`EADDRINUSE` in the run log) — tests silently ran against the STALE server
-with its STALE DB (e.g. a bootstrapped manual DB made the fresh-DB bootstrap
-test see the sign-in screen). `kill <pnpm-parent>` alone doesn't work: `tsx
-watch` respawns its child. Also `reuseExistingServer: false` does NOT
-pre-check the port — if anything answers the URL, Playwright proceeds.
-
-Fix pattern: before every local playwright run, `taskkill /F /T` every PID
-listening on the config ports AND every `tsx watch`/`vite` process for the
-worktree, then verify the ports stay free (no respawn) and delete
-`apps/api/data/*.sqlite*`.
-
-**Always**: after any manual dev-server debugging, kill the full process tree
-(`taskkill /F /T`, `pkill -f tsx`), not just the PIDs you started.
 
 ## Read-only better-sqlite3 hides WAL-mode data (🟡 Minor)
 
@@ -197,22 +192,9 @@ attempt, it's the loaded-machine cold-start class, not a regression. Verify the
 failing file standalone, then retry the push. Do NOT "fix" web test files in an
 API-only PR.
 
-## Playwright E2E on Windows: orphaned `tsx watch`/vite servers poison runs (🟠 Major)
-
-`pnpm dev:api` runs `tsx watch` and `pnpm dev:web` runs vite; Playwright's webServer
-teardown on Windows often orphans them. The orphans keep their OLD DB (so bootstrap
-looks "already set up"), serve STALE vite modules (raw i18n keys, missing tabs), and
-rebind 4318/3000 after `tsx watch` restarts — producing EADDRINUSE and transient
-"already used" failures. Netstat right before a run can be clean and the orphan still
-appears mid-run (delayed tsx-watch restart).
-
-**Always**: before/after local e2e runs, kill ALL node processes whose cmdline contains
-the worktree path (`Get-CimInstance Win32_Process | Where-Object {$_.CommandLine -match
-"worktree-name"}`), verify ports are free, and prefer a no-watch server
-(`npx tsx src/index.ts`, not `pnpm dev:api`) for the manual API. Deleting the sqlite
-file while a server holds it fails with "Device or resource busy" — kill first, then rm.
-
 ## The e2e suite was fully red on develop — don't assume "existing" specs pass (🟠 Major)
+
+> STATUS: historical incident (pre-#227). The **Always** action below is the durable part.
 
 Before #227, no Playwright spec could get past login: the helper's
 `getByLabel("كلمة المرور")` strict-violated (the PasswordInput show/hide button made
@@ -228,6 +210,8 @@ show). There was no test-e2e CI job, so nothing caught this.
 fresh DB per run) — the target spec passing alone doesn't mean CI e2e is green.
 
 ## Employee creation via UI is impossible on develop (🟠 Major)
+
+> STATUS: tied to #263 (workforce role keys) — re-verify once it lands; the **Always** action is the durable part.
 
 `employeesBatchCreate` validates roles with `requireAssignableEmployeeRole`, which only
 accepts role keys worker/project_manager/warehouse_manager — but the RBAC consolidation

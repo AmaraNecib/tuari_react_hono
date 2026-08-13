@@ -30,20 +30,6 @@ then commit the evidence. The evidence commit itself only touches `.scratch/`
 
 **Always**: refresh evidence right before the final push, not after.
 
-## apps/api `env.ts` module-load throw — RESOLVED in #212 (🟢 Obsolete workaround)
-
-`src/infrastructure/config/env.ts` + `runtime-env.ts` (which evaluated `createEnv()` at
-import time and threw when `BETTER_AUTH_SECRET` was absent) were **deleted in #212** in
-favour of one injected `createAppConfig()` (Zod). The workaround below is no longer needed
-for the api config path: consumers receive the validated `AppConfig` from the composition
-root (`src/index.ts`), and `config/index.ts` reads env only inside the factory call.
-
-**If you see this throw again**: something still imports a module that reads env at import
-time. Historical pattern (pre-#212): set `process.env.BETTER_AUTH_SECRET` at the top of the
-test file **before a dynamic `await import()`** of the heavy module; vitest's per-file fork
-isolation keeps the mutation local. NOTE the cold better-auth transform still needs a
-generous describe timeout (~60s) under full-suite load — see dependencies.test.ts.
-
 ## Scoped v8 coverage without the repo's thresholds (🟡 Minor)
 
 `vitest.config.ts` gates 100% coverage only on `src/modules/{workforce,invoice}`. To measure
@@ -58,29 +44,50 @@ covered may drop out of the table between runs — re-check with the raw report.
 when a better-sqlite3 connection to that file is still open (Windows file locking). Always
 `deps.rawDatabase.close()` before deleting the temp DB in a test's `finally`.
 
-## Pre-push hook flake (contention test) — recurred on #212 (🟠 Major)
+## Pre-push hook runs the full suite and flakes on pre-existing tests — verify standalone, fix the flake in its own PR (🟠 Major)
 
-`sqlite-bootstrap.port.test.ts` "propagates a cross-connection write-lock contention"
-(5s default timeout, added in #196) intermittently times out under full-suite load,
-flaking the pre-push hook ~50% locally. Same handling as the #219 web flake: verify the
-full hook chain passes standalone (it did, twice), then push with `--no-verify` and let
-CI be authoritative. Tracked in #259 (raise the test timeout).
+The husky pre-push hook (`contracts build && typecheck && lint && test:api && test:web`)
+re-runs the ENTIRE pipeline, so a single pre-existing flaky test blocks every push
+until fixed or waived. Known instances: `home-view.test.tsx` (findBy*/timing flakes
+under full-suite load, #206/#219/#222, ~50%), `sqlite-bootstrap.port.test.ts`
+cross-connection write-lock contention (5s timeout, #196/#212/#259), and
+`navigateMock` timing right after a multi-PR merge (see the wisdom-conflict entry).
 
-## Greptile loop: re-trigger explicitly after fixes (🟡 Minor)
+**Always**: when the pre-push hook fails on a test you didn't touch:
+1. Confirm the suite passes standalone (target file, then the full chain if cheap).
+2. Prove the flake is pre-existing on base in a clean worktree
+   (`git worktree add <path> <base-sha>`, install, build contracts, run the file).
+3. Prefer fixing the flake in its OWN PR, merged before the blocked PR; otherwise
+   push with `--no-verify` and let CI (hosted runners, same jobs) be authoritative.
+   Document the waiver to the user. Never retry the suite repeatedly (~50% flake =
+   wasted minutes per attempt).
 
-`@greptile-apps review` comment re-triggers Greptile after a fix push. Greptile's
-inline summary gives a confidence score AND a "Files Needing Attention" list —
-check both, not just the score (guard Phase 3 reads the comment). A 4/5 with two
-style findings moved to 5/5 with none after one small fix round.
+## Greptile (external review bot) — how to drive it reliably (🟠 Major)
 
-**Always**: read the Greptile inline comment for actionable findings even when the
-check is green.
+`@greptile-apps review` re-triggers after a fix push. Reliable driving rules:
 
-## Pre-push hook can flake on known-flaky web tests; verify standalone then --no-verify (🟠 Major)
-
-On #206 the pre-push hook failed on `home-view.test.tsx` (3 tests: findByRole/timing failures under full-suite load) — the exact flake tracked in issue #219. The PR touched zero web files, and `pnpm --filter @tuari/web test` passed 341/341 standalone immediately after. The hook re-runs the entire pipeline (contracts build + typecheck + lint + test:api + test:web) so any known flaky suite can block pushes at random.
-
-**Always**: when the pre-push hook fails on a known-flaky test (check issue tracker / wisdom for the issue number), confirm the suite passes standalone, then push with `--no-verify` and let CI be the authoritative gate (hosted runners run the same jobs). Document the waiver to the user.
+- **Base branch first**: `gh pr create` defaults to the repo DEFAULT branch
+  (`main`), not `develop` — Greptile then diffs the wrong base, inflates file
+  counts (539/682 files), and hits its 500-file ceiling. Always pass
+  `--base develop`; fix an open PR with `gh pr edit <n> --base develop` and
+  verify `gh pr view <n> --json baseRefName` before re-triggering (#194, #300).
+- **Presence, not score**: read the inline comment (score + "Files Needing
+  Attention") even when the check is green; a trial-quota review has only the
+  upgrade prompt — treat as "Greptile unavailable", document on the PR, rely on
+  the local review pipeline (debate/test-audit/code-review evidence).
+- **Poll the check, not the comments**: after a fix push the old summary stays
+  until the new review lands — watch `gh pr checks` "Greptile Review" state
+  (pending → pass), then read the newest summary (#258).
+- **Re-trigger after workflow/docs pushes**: `.github/workflows/`, `.agents/`,
+  `docs/` commits are reviewable — a ci.yml push makes the prior review stale;
+  re-trigger before the pre-report gate (#206).
+- **It can stall entirely**: the check can VANISH (not pending, not quota) with
+  no review in ~30–40 min — treat as "Greptile unavailable"; verify the last
+  review's findings are addressed, document the constraint, rely on local
+  evidence (#268).
+- **Whole-file review**: Greptile reviews the whole touched file, not just the
+  diff — on a move/rename, skim the relocated file for pre-existing warts
+  (duplicated blocks, nondeterministic order) and fix them in the move (#209).
 
 ## Run git add/commit from the worktree root, never from nested scratch dirs (🟠 Major)
 
@@ -93,12 +100,6 @@ On #206, `cd ../..` from `.scratch/reviews/206` landed in `.scratch/`, so `git a
 The self-hosted runner was retired; ci.yml now runs on ubuntu-latest (migrated via PR #224). Runs queued on the old workflow either fail on infra (e.g. `test:coverage` exit 1 with local pass) or queue forever. If your branch's ci.yml still says `runs-on: self-hosted`, align it with the merged migration (copy `origin/develop`'s ci.yml) or merge develop in.
 
 **Always**: after a "CI host changed" notice, check `git diff HEAD origin/develop -- .github/workflows/ci.yml` and verify the PR's workflow matches the migrated one; when an old-runner run fails but the same command passes locally, cancel/re-run on the new workflow rather than debugging the code.
-
-## Greptile temporal check: workflow-config commits count as reviewable (🟡 Minor)
-
-On #206, Greptile's first auto-review targeted commit c644a14; after the head moved with a ci.yml change (identical to merged #224), the review was technically stale per Condition 2 (`.github/workflows/` is reviewable). Re-triggered `@greptile-apps review` and got a fresh 5/5 on the final head.
-
-**Always**: after ANY push that changes `.github/workflows/`, `.agents/`, or `docs/` (not just source), re-trigger Greptile before the pre-report gate.
 
 ## `[skip ci]` in any commit of a push suppresses ALL workflow events for that push (🟠 Major)
 
@@ -129,21 +130,6 @@ Turbo cache replays log lines from other worktrees (e.g. `cleanup-dirty-wip`) �
 paths in cached output are not the current worktree. Re-run the affected package's
 command directly when you need certainty it actually ran on your files.
 
-## Pre-push hook runs full test:web: pre-existing flakes block ALL pushes (🟠 Major)
-
-The husky pre-push hook (`pnpm ... && pnpm test:web`) means a single pre-existing
-flaky web test blocks every branch push until fixed or waived. On #222/#219 the
-flaky `home-view.test.tsx` (`findBy*` default 1s timeout under full-suite load)
-blocked pushes ~50% of the time. Pattern that worked: prove the flake is
-pre-existing on base in a clean worktree (`git worktree add <path> <base-sha>`,
-`pnpm install --filter @tuari/web...`, build contracts, run the file), file a
-separate fix PR, merge it BEFORE the blocked PR, then merge develop into the
-feature branch so the hook runs the fixed suite.
-
-**Always**: when the pre-push hook fails on a test you didn't touch, reproduce on
-base first; fix the flake in its own PR rather than retrying the suite repeatedly
-(~50% flake = wasted minutes per attempt).
-
 ## MSYS path conversion mangles `git show origin/develop:path` (🟡 Minor)
 
 On Windows Git Bash, `git show origin/develop:.github/workflows/ci.yml` becomes
@@ -167,30 +153,6 @@ new workflow (merge-ref resolution) AND a new run fires.
 origin/develop:.github/workflows/ci.yml | grep runs-on` shows the new host, then
 push an empty commit to force a fresh run.
 
-## Greptile trial credit limit returns a quota notice, not a review (🟡 Minor)
-
-At the 50-credit trial limit, `@greptile-apps review` produces a COMMENTED review
-whose body is only the upgrade prompt — no findings, no score. Treat it as
-"Greptile unavailable (external constraint)", document it on the PR, and rely on
-the local review pipeline (debate/test-audit/code-review evidence) for the
-quality gate instead of blocking the merge.
-
-**Always**: check the review body, not just presence — a quota-notice review is
-not a review; report the constraint to the user in the final summary.
-
-## `gh pr create` defaults the base to `main`, which breaks Greptile (🟠 Major)
-
-On #194, `gh pr create` (no `--base`) targeted the repo's default branch
-(`main`), even though the workflow mandates `develop`. Greptile then compared
-against `main`, saw "539 files found, 500 file limit", and refused to review.
-CI checks were green all along — the diff vs `develop` was only 8 files.
-
-**Always**: pass `--base develop` explicitly to `gh pr create`; if the PR is
-already open with the wrong base, run `gh pr edit <num> --base develop` and
-verify with `gh pr view <num> --json baseRefName` + `gh pr diff <num> --name-only`
-before triggering `@greptile-apps review` — otherwise Greptile reviews the
-wrong diff and hits its file-count ceiling.
-
 ## `gh pr create` targets the repo DEFAULT branch, not develop (🟠 Major)
 
 On #177 the PR was created against `main` (the repo's default branch) even
@@ -204,16 +166,6 @@ used the default branch, not the PR base.
 is `develop`; if not, `gh pr edit <n> --base develop` BEFORE triggering
 Greptile. A Greptile run against the wrong base is a wasted ~8-minute
 review cycle.
-
-## Greptile re-review after a fix push may lag; poll the check, not the summary (🟡 Minor)
-
-After pushing a Greptile-fix round, the old summary comment stays on the PR
-until the new review lands. The reliable signal is `gh pr checks` →
-"Greptile Review" state (pending → pass), not the comments list.
-
-**Always**: trigger `@greptile-apps review`, then poll `gh pr checks 258 |
-grep -i greptile`; only after it flips to `pass` read the newest "Greptile
-Summary" comment.
 
 ## E2E bootstrap helper was broken: substring label match + onboarding tour (🟠 Major)
 
@@ -268,41 +220,6 @@ describe where an issue came from and NEVER block closing it. Every SKIP is
 logged for human verification. It is a convenience, not the authority — the
 manual sweep still applies.
 
-## Greptile re-trigger can stall entirely: check disappears with no quota notice (🟠 Major)
-
-On #268 (issue #198), Greptile's auto-review at PR creation worked (4/5, "Safe to
-merge", 2 P2 findings). After the fix push, the "Greptile Review" check VANISHED
-from `gh pr checks` and two `@greptile-apps review` triggers + the retrigger link
-produced no new review or comment in ~40 minutes — not even the trial-quota
-upgrade notice. This differs from the known "re-review lags; poll the check"
-pattern (check stays pending) and from the quota notice pattern (comment with
-upgrade prompt).
-
-**Always**: when the Greptile check disappears entirely and no review lands after
-~30–40 min (with no quota notice), treat it as "Greptile unavailable (external
-constraint)": verify the LAST review's findings are provably addressed on the
-current head, document the constraint on the PR, and rely on the local review
-pipeline (debate/test-audit/code-review evidence) + CI for the quality gate
-instead of blocking. Do not burn more time re-triggering.
-## Greptile reviews the whole touched file, not just the diff — pre-fix warts on file moves (🟡 Minor)
-
-On #209 (a pure file move of `sqlite-role.repository.ts` + constructor narrowing),
-Greptile still flagged two P2 findings **inside the moved file's pre-existing body**:
-(1) `findById`/`findByKey` lacked the `ORDER BY permission` that `findAll` had
-(nondeterministic permission array order vs a real driver), and (2) the 7-field
-select projection was copy-pasted across all three readers. Both were pre-existing,
-nothing the diff introduced — but a "no-behavior-change" refactor that relocates a
-file invites a fresh read of that file's quality. The fix round (ROLE_FIELDS const
-+ orderBy + matching test assertions) was cheap and turned Greptile 5/5.
-
-**Always**: on a file move/rename, skim the relocated file for small quality warts
-(duplicated blocks, nondeterministic order, dead params) and fix them *in the move*
-— you'd fix them anyway after the first Greptile round, but doing it up front
-saves a full CI + Greptile cycle (~15 min). Note the convergence: the test-audit's
-F2 ("orderBy never asserted") and Greptile found the same ordering gap
-independently — the layered review works.
-
-
 ## Verify assigned ownership paths against the repo before launching worktree agents (🟠 Major)
 
 Running four issues in parallel (one subagent per worktree) with an exclusive
@@ -337,17 +254,6 @@ diagnosis-only run (read-only commands, no installs — `pnpm install` rewrites
 the forbidden lockfile) and require it to return the exact per-file diff needed.
 Don't let it open a PR or make partial non-forbidden changes that don't advance
 the issue.
-
-
-## Greptile file counts depend on the PR base branch (🟡 Minor)
-
-#300 was briefly opened against `main` instead of `develop`; Greptile then
-mis-counted 682 touched files and the review was noise. After correcting the PR
-base to `develop`, the review was clean ("safe to merge", no inline findings).
-
-**Always**: verify `gh pr view <n> --json baseRefName` is `develop` before
-trusting Greptile's file counts or summary; a fresh `gh pr edit <n> --base
-develop` + re-triggered review beats a noisy one against the wrong base.
 
 
 ## Orphaned pi agent processes from earlier sessions eat GBs of RAM and cause OOM mid-batch (🟠 Major)
@@ -495,3 +401,31 @@ needs the keyword too.
 BODY, not just the title. After ANY merge batch, verify every referenced
 issue: `gh issue view <n> --json state` and close manually with a comment if
 still OPEN — do not trust the title.
+
+
+
+
+## Review process: Greptile verification, adversarial review, CodeRabbit
+
+**Greptile findings are claims, not truth**: verify each against the current
+code before fixing — grep the file for the claimed usage; dismiss invalid
+findings with a line-number citation in a PR comment, never silently. On a pure
+file move, an import is only stale in a file where EVERY helper that referenced
+the type moved out (#202). The score is not evidence: Greptile can emit a high
+score with inline findings — the clean state is a 5/5 summary with ZERO inline
+threads; check `gh api repos/<o>/<r>/pulls/<n>/comments` (review threads
+endpoint) before calling a PR ready.
+
+**Adversarial review (debate critic/defender)**: when a finding says "duplicate
+check", grep the WHOLE repo for the pattern before fixing one copy — "local
+host" existed as `isLocalhostHostname` in the transport layer beyond
+`config/index.ts` + `env.ts`; route every check through the shared helper.
+
+**CodeRabbit** (incremental): a re-review EDITS its existing comment (same id),
+it does not post a new one; "already reviewed, review finished" = no meaningful
+change. Read existing comments first — re-trigger only when the latest commit
+changes reviewable code (Rust/TS/tests — NOT docs, config, .coderabbit.yaml),
+when it's stuck >10 min, or when unsure. Freshness: compare the review comment's
+createdAt vs the latest commit's committedDate. An "Outdated" badge does NOT
+mean fixed — read the current code. `⚠️ Warning` = advisory (mergeable; document
+why in the PR), `❌ Failed` = blocker.
