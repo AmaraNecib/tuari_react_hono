@@ -35,7 +35,7 @@ git commit -m "..."
 
 - `.scratch/implementation/<issue-id>-design.md` — decision record, **keep committed** (it captures *why*).
 - `.scratch/reviews/<issue-id>/` — review evidence, **keep committed while the PR is open** (the guard skill checks evidence SHAs against HEAD). After the PR merges and the issue closes, the review files may be cleaned up.
-- Distill durable lessons into `.agents/wisdom/*.md` (via capture-wisdom) or `docs/lessons/` — those are read at session start and persist.
+- Distill durable lessons into `.agents/wisdom/*.md` (via capture-wisdom) — the ONE agent-facing store; `docs/lessons/` holds only human-facing rationale docs (e.g. gh-pr-merge-squash-issue-close.md). Agents grep wisdom, not lessons.
 
 ## Engineering workflow
 
