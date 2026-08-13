@@ -231,13 +231,9 @@ export class DrizzleInventoryRepository implements InventoryRepository {
    * this flow, throw when another flow holds it open — never silently join
    * an unrelated open transaction.
    */
-  private guardedTransaction<T>(fn: () => T): T {
-    return runSyncTransaction(this.connectionLock, (cb) => this.raw.transaction(cb)(), fn)
-  }
-
   /** Execute a callback inside a raw SQLite transaction. */
   withTransaction<T>(callback: () => T): T {
-    return this.guardedTransaction(callback)
+    return runSyncTransaction(this.connectionLock, this.raw, callback)
   }
 
   // ── Item Definitions ────────────────────────────────────────────────
@@ -706,7 +702,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
     const audit = normalizeAuditContext(auditContext)
-    this.guardedTransaction(() => {
+    runSyncTransaction(this.connectionLock, this.raw, () => {
       this.raw.prepare(
         `INSERT INTO inventory_outbound_transfer (id, transfer_date, from_type, from_id, counterparty_id, transfer_type, status, associated_debt_account_id, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

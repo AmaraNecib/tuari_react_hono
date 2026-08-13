@@ -98,10 +98,6 @@ export class InvoiceRepository implements IInvoiceRepository {
    * this flow, throw when another flow holds it open — never silently join
    * an unrelated open transaction.
    */
-  private guardedTransaction<T>(fn: () => T): T {
-    return runSyncTransaction(this.connectionLock, (cb) => this.raw.transaction(cb)(), fn);
-  }
-
   /** Find invoice by ID with line items. */
   async findById(id: string): Promise<(Invoice & { lineItems: InvoiceLineItem[] }) | null> {
     const row = this.db.select().from(schema.invoice)
@@ -217,7 +213,7 @@ export class InvoiceRepository implements IInvoiceRepository {
     createdAt: string; updatedAt: string;
     lineItems: { id: string; description: string; quantity: number; unitPrice: number; total: number }[];
   }): Promise<Invoice> {
-    this.guardedTransaction(() => {
+    runSyncTransaction(this.connectionLock, this.raw, () => {
       this.db.insert(schema.invoice).values({
         id: data.id, invoiceNumber: data.invoiceNumber, supplierName: data.supplierName,
         supplierPhone: data.supplierPhone, warehouseId: data.warehouseId, projectId: data.projectId,
@@ -263,7 +259,7 @@ export class InvoiceRepository implements IInvoiceRepository {
     if (data.direction !== undefined) updates.direction = data.direction;
     if (data.updatedAt !== undefined) updates.updatedAt = data.updatedAt;
 
-    this.guardedTransaction(() => {
+    runSyncTransaction(this.connectionLock, this.raw, () => {
       if (Object.keys(updates).length > 0) {
         this.db.update(schema.invoice).set(updates).where(eq(schema.invoice.id, id)).run();
       }
@@ -305,7 +301,7 @@ export class InvoiceRepository implements IInvoiceRepository {
 
   /** Delete invoice and its line items. */
   async delete(id: string): Promise<void> {
-    this.guardedTransaction(() => {
+    runSyncTransaction(this.connectionLock, this.raw, () => {
       this.db.delete(schema.invoiceLineItem).where(eq(schema.invoiceLineItem.invoiceId, id)).run();
       this.db.delete(schema.invoice).where(eq(schema.invoice.id, id)).run();
     });

@@ -227,8 +227,10 @@ export function createFifoLock(options: FifoLockOptions = {}): FifoLock {
  */
 export function runSyncTransaction<T>(
   lock: FifoLock,
-  run: (fn: () => T) => T,
+  raw: {
+    transaction<U>(fn: () => U): () => U;
+  },
   fn: () => T,
 ): T {
-  return lock.runSync(() => run(fn));
+  return lock.runSync(() => raw.transaction(fn)());
 }

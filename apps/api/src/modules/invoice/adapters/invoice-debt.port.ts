@@ -57,10 +57,6 @@ export function createSqliteInvoiceDebtPort(
   const { db, repository, lock } = deps;
 
   /** Run a synchronous better-sqlite3 transaction under the connection-wide lock (issue #322). */
-  function guardedTransaction<T>(fn: () => T): T {
-    return runSyncTransaction(lock, (cb) => db.transaction(cb)(), fn);
-  }
-
   function ensureCounterpartyId(
     supplierName: string,
     supplierPhone: string | null,
@@ -201,7 +197,7 @@ export function createSqliteInvoiceDebtPort(
       const debtDirection: "PAYABLE" | "RECEIVABLE" =
         input.direction === "SALE" ? "RECEIVABLE" : "PAYABLE";
 
-      const debtAccountId = guardedTransaction(() => {
+      const debtAccountId = runSyncTransaction(lock, db, () => {
         const account = ensureDebtAccountId(
           counterpartyId,
           debtDirection,
@@ -260,7 +256,7 @@ export function createSqliteInvoiceDebtPort(
       const { debtAccountId, totalAmount, paidAmount } =
         getInvoiceTotals(input.invoiceId);
 
-      const { settled, nextBalance } = guardedTransaction(() => {
+      const { settled, nextBalance } = runSyncTransaction(lock, db, () => {
         const currentBalance = getCurrentDebtAccountBalance(debtAccountId);
         const nextBalance = currentBalance - input.amount;
         const settled = nextBalance <= 0;
