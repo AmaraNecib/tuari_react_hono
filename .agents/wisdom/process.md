@@ -30,20 +30,6 @@ then commit the evidence. The evidence commit itself only touches `.scratch/`
 
 **Always**: refresh evidence right before the final push, not after.
 
-## apps/api `env.ts` module-load throw — RESOLVED in #212 (🟢 Obsolete workaround)
-
-`src/infrastructure/config/env.ts` + `runtime-env.ts` (which evaluated `createEnv()` at
-import time and threw when `BETTER_AUTH_SECRET` was absent) were **deleted in #212** in
-favour of one injected `createAppConfig()` (Zod). The workaround below is no longer needed
-for the api config path: consumers receive the validated `AppConfig` from the composition
-root (`src/index.ts`), and `config/index.ts` reads env only inside the factory call.
-
-**If you see this throw again**: something still imports a module that reads env at import
-time. Historical pattern (pre-#212): set `process.env.BETTER_AUTH_SECRET` at the top of the
-test file **before a dynamic `await import()`** of the heavy module; vitest's per-file fork
-isolation keeps the mutation local. NOTE the cold better-auth transform still needs a
-generous describe timeout (~60s) under full-suite load — see dependencies.test.ts.
-
 ## Scoped v8 coverage without the repo's thresholds (🟡 Minor)
 
 `vitest.config.ts` gates 100% coverage only on `src/modules/{workforce,invoice}`. To measure
@@ -58,13 +44,23 @@ covered may drop out of the table between runs — re-check with the raw report.
 when a better-sqlite3 connection to that file is still open (Windows file locking). Always
 `deps.rawDatabase.close()` before deleting the temp DB in a test's `finally`.
 
-## Pre-push hook flake (contention test) — recurred on #212 (🟠 Major)
+## Pre-push hook runs the full suite and flakes on pre-existing tests — verify standalone, fix the flake in its own PR (🟠 Major)
 
-`sqlite-bootstrap.port.test.ts` "propagates a cross-connection write-lock contention"
-(5s default timeout, added in #196) intermittently times out under full-suite load,
-flaking the pre-push hook ~50% locally. Same handling as the #219 web flake: verify the
-full hook chain passes standalone (it did, twice), then push with `--no-verify` and let
-CI be authoritative. Tracked in #259 (raise the test timeout).
+The husky pre-push hook (`contracts build && typecheck && lint && test:api && test:web`)
+re-runs the ENTIRE pipeline, so a single pre-existing flaky test blocks every push
+until fixed or waived. Known instances: `home-view.test.tsx` (findBy*/timing flakes
+under full-suite load, #206/#219/#222, ~50%), `sqlite-bootstrap.port.test.ts`
+cross-connection write-lock contention (5s timeout, #196/#212/#259), and
+`navigateMock` timing right after a multi-PR merge (see the wisdom-conflict entry).
+
+**Always**: when the pre-push hook fails on a test you didn't touch:
+1. Confirm the suite passes standalone (target file, then the full chain if cheap).
+2. Prove the flake is pre-existing on base in a clean worktree
+   (`git worktree add <path> <base-sha>`, install, build contracts, run the file).
+3. Prefer fixing the flake in its OWN PR, merged before the blocked PR; otherwise
+   push with `--no-verify` and let CI (hosted runners, same jobs) be authoritative.
+   Document the waiver to the user. Never retry the suite repeatedly (~50% flake =
+   wasted minutes per attempt).
 
 ## Greptile loop: re-trigger explicitly after fixes (🟡 Minor)
 
@@ -75,12 +71,6 @@ style findings moved to 5/5 with none after one small fix round.
 
 **Always**: read the Greptile inline comment for actionable findings even when the
 check is green.
-
-## Pre-push hook can flake on known-flaky web tests; verify standalone then --no-verify (🟠 Major)
-
-On #206 the pre-push hook failed on `home-view.test.tsx` (3 tests: findByRole/timing failures under full-suite load) — the exact flake tracked in issue #219. The PR touched zero web files, and `pnpm --filter @tuari/web test` passed 341/341 standalone immediately after. The hook re-runs the entire pipeline (contracts build + typecheck + lint + test:api + test:web) so any known flaky suite can block pushes at random.
-
-**Always**: when the pre-push hook fails on a known-flaky test (check issue tracker / wisdom for the issue number), confirm the suite passes standalone, then push with `--no-verify` and let CI be the authoritative gate (hosted runners run the same jobs). Document the waiver to the user.
 
 ## Run git add/commit from the worktree root, never from nested scratch dirs (🟠 Major)
 
@@ -128,21 +118,6 @@ shows a run; if missing, push an empty commit (message must NOT contain
 Turbo cache replays log lines from other worktrees (e.g. `cleanup-dirty-wip`) —
 paths in cached output are not the current worktree. Re-run the affected package's
 command directly when you need certainty it actually ran on your files.
-
-## Pre-push hook runs full test:web: pre-existing flakes block ALL pushes (🟠 Major)
-
-The husky pre-push hook (`pnpm ... && pnpm test:web`) means a single pre-existing
-flaky web test blocks every branch push until fixed or waived. On #222/#219 the
-flaky `home-view.test.tsx` (`findBy*` default 1s timeout under full-suite load)
-blocked pushes ~50% of the time. Pattern that worked: prove the flake is
-pre-existing on base in a clean worktree (`git worktree add <path> <base-sha>`,
-`pnpm install --filter @tuari/web...`, build contracts, run the file), file a
-separate fix PR, merge it BEFORE the blocked PR, then merge develop into the
-feature branch so the hook runs the fixed suite.
-
-**Always**: when the pre-push hook fails on a test you didn't touch, reproduce on
-base first; fix the flake in its own PR rather than retrying the suite repeatedly
-(~50% flake = wasted minutes per attempt).
 
 ## MSYS path conversion mangles `git show origin/develop:path` (🟡 Minor)
 
