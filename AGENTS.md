@@ -52,6 +52,10 @@ opt-in. An explicit captain instruction like "don't use herdr" / "run
 headless" always wins. Never let "run-to-completion" silently become
 "invisible".
 
+**Launching a lane goes through `scripts/crew/launch-lane.mjs`** — it is the
+only sanctioned launcher (workers and reviewers alike). If you are starting a
+lane without it, you are not doing crew dispatch.
+
 ## Issue-closing convention (multi-PR issues)
 
 An issue may need several PRs to be fully delivered. Never claim an issue is

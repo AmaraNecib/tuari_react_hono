@@ -17,3 +17,7 @@ only for read-only probes/scouts, or with the captain's explicit "run
 headless" / "don't use herdr" instruction — which always wins. When the skill
 default and your convenience disagree, ask the captain; never silently switch
 shapes. Record the chosen shape in the preflight notes.
+
+**Launch lanes and reviewers through `scripts/crew/launch-lane.mjs`** — the
+visible path must be one command, never a multi-step friction gap an agent
+can skip around. If you are launching without it, you are doing it wrong.

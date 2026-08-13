@@ -163,6 +163,11 @@ REPORT CONTRACT — end your run with:
 
 ## Launch (visible agents — the default)
 
+> If the repo ships `scripts/crew/launch-lane.mjs` (or an equivalent launch
+> script), it is the ONLY sanctioned launcher for lanes AND reviewers — running
+> it is mandatory. It turns the verified recipe below into one command, so the
+> visible path is never the high-friction path.
+
 One workspace per lane in the session backend, one agent session in each, one
 brief per agent. Verified recipe for Herdr (any OS):
 
