@@ -75,16 +75,38 @@ describe("useChangeDbEncryptionKeyMutation", () => {
     changeDbEncryptionKeyMock.mockResolvedValue({
       success: false,
       error: "Current encryption key is invalid",
+      rekeyed: false,
     })
     const { result } = renderMutation()
 
     await expect(result.current.mutateAsync(INPUT)).resolves.toEqual({
       success: false,
       error: "Current encryption key is invalid",
+      rekeyed: false,
     })
 
     expect(invokeMock).toHaveBeenCalledWith("rotate_db_key", { newKey: INPUT.newKey })
     expect(invokeMock).toHaveBeenCalledWith("restore_db_key")
+  })
+
+  it("keeps the new key (does NOT restore) when the rekey succeeded but persistence failed", async () => {
+    isDesktopRuntimeMock.mockReturnValue(true)
+    changeDbEncryptionKeyMock.mockResolvedValue({
+      success: false,
+      error: "Failed to persist database encryption key",
+      rekeyed: true,
+    })
+    const { result } = renderMutation()
+
+    await expect(result.current.mutateAsync(INPUT)).resolves.toEqual({
+      success: false,
+      error: "Failed to persist database encryption key",
+      rekeyed: true,
+    })
+
+    // The DB IS on the new key — restoring the old key would orphan it.
+    expect(invokeMock).toHaveBeenCalledWith("complete_db_key_rotation")
+    expect(invokeMock).not.toHaveBeenCalledWith("restore_db_key")
   })
 
   it("keeps the new key (does NOT restore) when the RPC throws — the rekey may have happened", async () => {

@@ -107,9 +107,16 @@ export function useChangeDbEncryptionKeyMutation() {
         try {
           const result = await rpcClient.changeDbEncryptionKey(input)
           if (!result.success) {
-            // The API definitively did NOT re-encrypt — put the original
-            // key back so the keyring and the database agree.
-            await invokeRestoreDbKey().catch(() => {})
+            if (result.rekeyed) {
+              // The database WAS re-encrypted (only key persistence failed) —
+              // keep the new key; rolling the keyring back would orphan the
+              // re-encrypted database on the next restart.
+              await invokeCompleteDbKeyRotation().catch(() => {})
+            } else {
+              // The API definitively did NOT re-encrypt — put the original
+              // key back so the keyring and the database agree.
+              await invokeRestoreDbKey().catch(() => {})
+            }
             return result
           }
           // Rekey confirmed — the new key is final.

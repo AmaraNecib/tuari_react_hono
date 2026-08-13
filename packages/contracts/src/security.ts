@@ -83,14 +83,22 @@ export const changeDbKeyInputSchema = z.object({
 /**
  * Output for DB key change result.
  *
- * Discriminated on `success`: a failure always carries an `error` message,
- * and a success never does. Strict members reject the invalid combos
- * (`{ success: false }` without `error`, `{ success: true, error }`).
+ * Discriminated on `success`: a failure always carries an `error` message and
+ * a `rekeyed` flag, and a success never does. `rekeyed` tells the caller
+ * whether the database was actually re-encrypted before the failure surfaced
+ * (e.g. persistence of the new key failed AFTER a successful rekey) — the
+ * caller must roll the keyring back only when `rekeyed` is false, or it would
+ * orphan a database that IS on the new key (issue #265). Strict members
+ * reject the invalid combos.
  */
 export const changeDbKeyOutputSchema = z.discriminatedUnion("success", [
   z.object({ success: z.literal(true) }).strict(),
   z
-    .object({ success: z.literal(false), error: z.string().min(1) })
+    .object({
+      success: z.literal(false),
+      error: z.string().min(1),
+      rekeyed: z.boolean(),
+    })
     // Pure validator (no transform): output schemas reject, they don't
     // silently rewrite server-emitted values. Rejects blank-looking errors.
     .refine(({ error }) => error.trim().length > 0, {

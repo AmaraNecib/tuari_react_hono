@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -52,11 +59,27 @@ describe("createConfigFileKeyPersister", () => {
     const persister = createConfigFileKeyPersister(configPath);
     expect(persister.persistKey("new-key-123")).toEqual({ success: true });
 
-    expect(existsSync(`${configPath}.tmp`)).toBe(false);
+    // The temp file was renamed over the target — nothing with a .tmp
+    // suffix remains.
+    expect(readdirSync(tempDir).some((name) => name.endsWith(".tmp"))).toBe(false);
+  });
+
+  it("reports an honest failure (never throws) when the config file is not a JSON object", () => {
+    // A bare array is parseable JSON but has no object fields to preserve —
+    // overwriting it with the key would silently delete the existing content.
+    writeFileSync(configPath, "[]");
+
+    const persister = createConfigFileKeyPersister(configPath);
+    expect(persister.persistKey("new-key-123")).toEqual({
+      success: false,
+      error: "Failed to persist database encryption key",
+    });
+    // The original content is untouched.
+    expect(readFileSync(configPath, "utf8")).toBe("[]");
   });
 
   it("reports an honest failure (never throws) when the config file is unreadable", () => {
-    // A directory in the config path makes the read/rename fail.
+    // Invalid JSON makes the read-modify-write fail without touching the file.
     writeFileSync(configPath, "not-json{");
 
     const persister = createConfigFileKeyPersister(configPath);

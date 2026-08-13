@@ -142,7 +142,7 @@ describe("createDatabaseKeyManager", () => {
     expect(scratch.close).toHaveBeenCalledTimes(1);
   });
 
-  it("closes the scratch connection when opening it throws", () => {
+  it("fails when opening the scratch connection itself throws", () => {
     const dbPath = join(tempDir, "cipher.sqlite");
     writeFileSync(dbPath, CIPHER_LIKE_HEADER);
 
@@ -155,6 +155,35 @@ describe("createDatabaseKeyManager", () => {
     expect(manager.changeKey("old-key", "new-key-123")).toEqual({
       success: false,
       error: "Current encryption key is invalid",
+    });
+    expect(sqlite.pragma).not.toHaveBeenCalled();
+  });
+
+  it("treats a file too short for a header as fallback (shared-connection verification)", () => {
+    const dbPath = join(tempDir, "tiny.sqlite");
+    writeFileSync(dbPath, "short");
+
+    const sqlite = makeSharedSqliteMock();
+    const manager = makeManager(sqlite, dbPath, vi.fn());
+
+    // A <16-byte file cannot be classified — the manager falls back to the
+    // shared connection, so on plain better-sqlite3 the no-op PRAGMAs report
+    // success (dev/test behavior).
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({ success: true });
+    expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
+  });
+
+  it("rejects empty keys before touching the connection", () => {
+    const sqlite = makeSharedSqliteMock();
+    const manager = makeManager(sqlite, ":memory:", vi.fn());
+
+    expect(manager.changeKey("", "new-key-123")).toEqual({
+      success: false,
+      error: "Database encryption keys must not be empty",
+    });
+    expect(manager.changeKey("old-key", "   ")).toEqual({
+      success: false,
+      error: "Database encryption keys must not be empty",
     });
     expect(sqlite.pragma).not.toHaveBeenCalled();
   });

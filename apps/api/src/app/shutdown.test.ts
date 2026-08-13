@@ -75,6 +75,62 @@ describe("createShutdownHandler", () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining("db busy"));
     expect(exit).toHaveBeenCalledWith(0);
   });
+
+  it("force-exits after the grace period when stopping the server hangs", async () => {
+    vi.useFakeTimers();
+    try {
+      // A stuck in-flight request keeps server.close() pending forever.
+      const stopServer = vi.fn(() => new Promise<void>(() => {}));
+      const close = vi.fn();
+      const exit = vi.fn() as unknown as (code?: number) => never;
+      const log = vi.fn();
+
+      const handler = createShutdownHandler(
+        { stopServer, close },
+        { exit, log, forceExitTimeoutMs: 100 },
+      );
+
+      // Never awaited: the handler is stuck on stopServer until the timer.
+      void handler()
+      await vi.advanceTimersByTimeAsync(100);
+
+      // The force-exit guard fired: exit(1), and close() never ran (the
+      // server never stopped).
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(close).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith("Shutdown timed out — forcing exit");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the force-exit timer when cleanup completes in time", async () => {
+    vi.useFakeTimers();
+    try {
+      const stopServer = vi.fn();
+      const close = vi.fn();
+      const exit = vi.fn(() => {
+        throw new Error("exit");
+      });
+
+      const handler = createShutdownHandler(
+        { stopServer, close },
+        { exit, forceExitTimeoutMs: 100 },
+      );
+
+      const pending = handler().catch(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+      await pending;
+
+      // Clean completion: the timer was cleared, so advancing past the grace
+      // period must not fire a second exit.
+      await vi.advanceTimersByTimeAsync(200);
+      expect(exit).toHaveBeenCalledTimes(1);
+      expect(exit).toHaveBeenCalledWith(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("installShutdownHook", () => {

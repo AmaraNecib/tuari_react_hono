@@ -50,18 +50,24 @@ export function createConfigFileKeyPersister(
 
       try {
         // Read-modify-write: preserve every existing field, add/refresh
-        // `db_key`. An unreadable/invalid file is an honest failure — we
-        // must not silently drop the caller's other settings.
+        // `db_key`. An unreadable/invalid file — or a non-object document
+        // (e.g. a bare array) whose fields cannot be preserved — is an honest
+        // failure, never a silent content wipe.
         let config: Record<string, unknown> = {};
         if (existsSync(configFilePath)) {
-          config = JSON.parse(readFileSync(configFilePath, "utf8"));
+          const parsed: unknown = JSON.parse(readFileSync(configFilePath, "utf8"));
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+            throw new Error("config file is not a JSON object");
+          }
+          config = parsed as Record<string, unknown>;
         }
         config.db_key = newKey;
 
-        // Atomic + durable write: a temp file is written (with fsync so the
-        // bytes reach disk), then renamed over the target — a crash can never
-        // leave a partially-written config file behind.
-        const tmpPath = `${configFilePath}.tmp`;
+        // Atomic + durable write: a unique temp file is written (with fsync
+        // so the bytes reach disk), then renamed over the target — a crash
+        // can never leave a partially-written config file behind, and a
+        // concurrent writer cannot collide on the temp name.
+        const tmpPath = `${configFilePath}.${process.pid}.tmp`;
         const fd = openSync(tmpPath, "w");
         try {
           writeSync(fd, JSON.stringify(config, null, 2));

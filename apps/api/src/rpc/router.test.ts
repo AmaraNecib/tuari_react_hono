@@ -1038,7 +1038,11 @@ describe("RPC router", () => {
     // changeDbKeyOutputSchema. The success leg is covered in the next test.
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
-    ).resolves.toEqual({ success: false, error: "Current encryption key is invalid" });
+    ).resolves.toEqual({
+      success: false,
+      error: "Current encryption key is invalid",
+      rekeyed: false,
+    });
   });
 
   it("rekeys the database, persists the new key, and returns success through the wire contract", async () => {
@@ -1086,6 +1090,7 @@ describe("RPC router", () => {
     ).resolves.toEqual({
       success: false,
       error: "Failed to persist database encryption key",
+      rekeyed: true,
     });
     expect(changeKey).toHaveBeenCalledTimes(1);
     expect(persistKey).toHaveBeenCalledTimes(1);
@@ -1101,7 +1106,11 @@ describe("RPC router", () => {
     // short-circuit before persistence (there is nothing to persist).
     await expect(
       client.changeDbEncryptionKey({ currentKey: "wrong-key", newKey: "new-key-123" }),
-    ).resolves.toEqual({ success: false, error: "Current encryption key is invalid" });
+    ).resolves.toEqual({
+      success: false,
+      error: "Current encryption key is invalid",
+      rekeyed: false,
+    });
     expect(persistKey).not.toHaveBeenCalled();
   });
 

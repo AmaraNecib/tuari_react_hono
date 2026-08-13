@@ -88,12 +88,21 @@ export function createSystemHandlers(
         // a failed verification or rekey maps straight onto the wire failure
         // output shape with an honest reason.
         const result = databaseKeyManager.changeKey(currentKey, newKey);
-        if (!result.success) return result;
-        // The database was re-encrypted — persist the new key so a restart
+        if (!result.success) {
+          // The database was NOT re-encrypted — the caller can safely keep
+          // (or restore) its previous key.
+          return { ...result, rekeyed: false };
+        }
+        // The database WAS re-encrypted — persist the new key so a restart
         // can still open it (issue #265). A persistence failure is surfaced
-        // honestly: the DB is now on the new key, so a silent skip would lose
-        // the database on the next restart.
-        return databaseKeyPersister.persistKey(newKey);
+        // honestly WITH rekeyed: true, so the caller knows the database is on
+        // the new key and must NOT roll its keyring back (that would orphan
+        // the re-encrypted database).
+        const persisted = databaseKeyPersister.persistKey(newKey);
+        if (!persisted.success) {
+          return { ...persisted, rekeyed: true };
+        }
+        return { success: true };
       },
       toFailureResult,
     )),

@@ -152,6 +152,13 @@ export function createDatabaseKeyManager(
 
   return {
     changeKey(currentKey: string, newKey: string): DatabaseKeyChangeResult {
+      // Defensive guard mirroring the wire contract (changeDbKeyInputSchema
+      // trims and requires non-empty keys) — the port must never emit a
+      // PRAGMA with an empty key.
+      if (!currentKey.trim() || !newKey.trim()) {
+        return { success: false, error: "Database encryption keys must not be empty" };
+      }
+
       const encryption = detectEncryption(databasePath);
 
       if (encryption === "plain") {
