@@ -96,6 +96,42 @@ describe("usePhoneSignInMutation", () => {
     expect(phoneNumberSignInMock).not.toHaveBeenCalled()
   })
 
+  // #321: sign-in verifies against an existing hash, so an all-invisible
+  // password is dispatched to the server instead of being blocked client-side
+  // — it can only match a pre-#230 whitespace-password hash (the legacy
+  // recovery channel). Bootstrap/change-password stay strict elsewhere.
+  it("dispatches a legacy whitespace-only password to the auth client", async () => {
+    const queryClient = createAppQueryClient()
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined as never)
+
+    phoneNumberSignInMock.mockResolvedValue({
+      data: { ok: true },
+      error: null,
+    } as never)
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+
+    const { result } = renderHook(() => usePhoneSignInMutation(), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        phone: "0612345678",
+        password: "        ",
+      })
+    })
+
+    expect(phoneNumberSignInMock).toHaveBeenCalledWith({
+      phoneNumber: "0612345678",
+      password: "        ",
+      rememberMe: undefined,
+    })
+    expect(invalidateQueries).toHaveBeenCalledTimes(1)
+  })
+
   it("uses the desktop bearer-token login flow inside Tauri", async () => {
     const queryClient = createAppQueryClient()
     const invalidateQueries = vi

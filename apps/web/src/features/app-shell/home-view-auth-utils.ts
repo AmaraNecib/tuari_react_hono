@@ -50,6 +50,20 @@ export function mapBootstrapErrors(
     password,
   })
 
+  // #321: mapCredentialErrors delegates to the sign-in schema, which is
+  // legacy-compatible (no visible-character refine) so a pre-#230 whitespace
+  // password can be verified at sign-in. Bootstrap CREATES the credential, so
+  // the strict #230 policy must still surface client-side — re-check the
+  // password against the strict bootstrap schema result parsed above.
+  if (password.length > 0 && !result.success && result.error.issues.some((issue) => issue.path[0] === "password")) {
+    const isBlankPassword = result.error.issues.some(
+      (issue) => issue.path[0] === "password" && issue.code === "custom",
+    )
+    errors.password = isBlankPassword
+      ? copy.validation.passwordWhitespace
+      : copy.validation.passwordShort
+  }
+
   if (name.trim().length === 0) {
     errors.name = copy.validation.name
   } else if (!result.success && result.error.issues.some((issue) => issue.path[0] === "name")) {

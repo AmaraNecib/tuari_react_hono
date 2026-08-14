@@ -18,17 +18,19 @@ const VALID_PHONE = "0612345678"
 describe("mapCredentialErrors", () => {
   const copy = buildCopy()
 
-  it("shows the whitespace-only message for a spaces-only password", () => {
-    expect(mapCredentialErrors(copy, VALID_PHONE, "        ").password).toBe(
-      "auth.validation.passwordWhitespace",
-    )
+  // #321: sign-in only verifies against an existing hash, so an all-invisible
+  // password is no longer blocked client-side — it is the legacy recovery
+  // channel for a pre-#230 whitespace-password user (the server verifies the
+  // hash). Bootstrap stays strict (see mapBootstrapErrors below).
+  it("no longer blocks a spaces-only sign-in password (legacy recovery)", () => {
+    expect(mapCredentialErrors(copy, VALID_PHONE, "        ").password).toBeUndefined()
   })
 
-  it("shows the whitespace-only message for an invisible-characters password", () => {
+  it("no longer blocks an invisible-characters sign-in password", () => {
     expect(
       mapCredentialErrors(copy, VALID_PHONE, "\u200B\u200B\u200B\u200B\u200B\u200B\u200B\u200B")
         .password,
-    ).toBe("auth.validation.passwordWhitespace")
+    ).toBeUndefined()
   })
 
   it("still shows the short message for a short password", () => {
@@ -59,6 +61,21 @@ describe("mapBootstrapErrors", () => {
 
   it("shows the whitespace-only message for a blank-looking bootstrap password", () => {
     const errors = mapBootstrapErrors(copy, "المدير الأول", VALID_PHONE, "        ", "", false)
+    expect(errors.password).toBe("auth.validation.passwordWhitespace")
+  })
+
+  // #321: the bootstrap gate must stay strict even though the sign-in schema
+  // is now legacy-compatible — invisible-character passwords are still
+  // rejected when CREATING the credential.
+  it("shows the whitespace-only message for an invisible-characters bootstrap password", () => {
+    const errors = mapBootstrapErrors(
+      copy,
+      "المدير الأول",
+      VALID_PHONE,
+      "\u200B\u200B\u200B\u200B\u200B\u200B\u200B\u200B",
+      "",
+      false,
+    )
     expect(errors.password).toBe("auth.validation.passwordWhitespace")
   })
 

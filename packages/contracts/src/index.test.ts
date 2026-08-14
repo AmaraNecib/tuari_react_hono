@@ -71,9 +71,11 @@ describe("contracts", () => {
     ).toThrowError();
   });
 
-  // #230: blank-looking passwords shared by the sign-in and bootstrap matrices
-  // below (both schemas reuse the same passwordSchema, so the classes are
-  // identical by construction — a shared list keeps them that way).
+  // #230/#321: the visible-character policy applies where credentials are
+  // CREATED (bootstrap); sign-in only VERIFIES against an existing hash, so
+  // it must accept legacy all-invisible passwords (a pre-#230 hash can only
+  // be matched by the exact all-invisible value it was created from) — that
+  // is the #321 recovery channel. The two matrices below pin the split.
   const blankPasswords = [
     { label: "spaces", password: "        " },
     { label: "tabs", password: "\t\t\t\t\t\t\t\t" },
@@ -86,9 +88,24 @@ describe("contracts", () => {
     { label: "mixed invisible chars", password: " \t\u00A0\u200B\n\r\uFEFF\u0002" },
   ] as const;
 
-  it.each(blankPasswords)("rejects a $label sign-in password", ({ password }) => {
+  // #321: sign-in is verification-only — an all-invisible input is the only
+  // thing that can match a pre-#230 hash, so it must be allowed through the
+  // wire gate (min/max length still apply, enforced below).
+  it.each(blankPasswords)("accepts a $label sign-in password (legacy verification)", ({ password }) => {
     expect(() =>
       phonePasswordSignInSchema.parse({
+        phone: "0612345678",
+        password,
+      }),
+    ).not.toThrow();
+  });
+
+  // #230 intact for NEW inputs: bootstrap creates the credential, so the
+  // visible-character refine must still reject every all-invisible class.
+  it.each(blankPasswords)("rejects a $label bootstrap password (#230)", ({ password }) => {
+    expect(() =>
+      authBootstrapInputSchema.parse({
+        name: "المدير الأول",
         phone: "0612345678",
         password,
       }),
@@ -142,6 +159,35 @@ describe("contracts", () => {
   // a single too_big issue, not doubled too_big + custom issues.
   it("reports only the too-long issue for an over-long blank sign-in password", () => {
     const result = phonePasswordSignInSchema.safeParse({
+      phone: "0612345678",
+      password: " ".repeat(129),
+    });
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error("unreachable");
+    const passwordIssues = result.error.issues.filter((issue) => issue.path[0] === "password");
+    expect(passwordIssues).toHaveLength(1);
+    expect(passwordIssues[0]?.code).toBe("too_big");
+  });
+
+  // #321: the strict bootstrap schema keeps the #230 length guard — a
+  // short+blank (6 spaces) or over-long+blank (129 spaces) bootstrap
+  // password yields a single length issue, not doubled length + custom.
+  it("reports only the too-short issue for a short blank bootstrap password", () => {
+    const result = authBootstrapInputSchema.safeParse({
+      name: "المدير الأول",
+      phone: "0612345678",
+      password: "      ",
+    });
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error("unreachable");
+    const passwordIssues = result.error.issues.filter((issue) => issue.path[0] === "password");
+    expect(passwordIssues).toHaveLength(1);
+    expect(passwordIssues[0]?.code).toBe("too_small");
+  });
+
+  it("reports only the too-long issue for an over-long blank bootstrap password", () => {
+    const result = authBootstrapInputSchema.safeParse({
+      name: "المدير الأول",
       phone: "0612345678",
       password: " ".repeat(129),
     });

@@ -196,11 +196,13 @@ export function SettingsSection({
     const nextErrors: typeof fieldErrors = {}
     const trimmedName = name.trim()
     const trimmedPhone = phone.trim()
-    const trimmedCurrentPassword = currentPassword.trim()
     const trimmedNewPassword = newPassword.trim()
     const hasNameChanged = trimmedName !== currentName.trim()
     const hasPhoneChanged = trimmedPhone !== currentPhone.trim()
-    const hasPasswordChange = trimmedCurrentPassword.length > 0 || trimmedNewPassword.length > 0
+    // The current password is verified against the stored hash EXACTLY as
+    // typed — it must NOT be trimmed (a pre-#230 legacy hash can be
+    // all-invisible; #321). Only the new password is normalized below.
+    const hasPasswordChange = currentPassword.length > 0 || trimmedNewPassword.length > 0
 
     if (!hasNameChanged && !hasPhoneChanged && !hasPasswordChange) {
       nextErrors.name = t("toasts.accountNoChanges")
@@ -211,7 +213,7 @@ export function SettingsSection({
     }
 
     if (hasPasswordChange || hasPhoneChanged) {
-      if (trimmedCurrentPassword.length === 0) {
+      if (currentPassword.length === 0) {
         nextErrors.currentPassword = t("toasts.accountPasswordCurrentRequiredForSensitiveChanges")
       }
     }
@@ -231,7 +233,7 @@ export function SettingsSection({
 
     try {
       await onSaveAccount({
-        currentPassword: trimmedCurrentPassword || undefined,
+        currentPassword: currentPassword.length > 0 ? currentPassword : undefined,
         name: hasNameChanged ? trimmedName : undefined,
         newPassword: trimmedNewPassword || undefined,
         phone: hasPhoneChanged ? trimmedPhone : undefined,
