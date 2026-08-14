@@ -977,6 +977,19 @@ describe("RPC router", () => {
     await expect(
       client.changeDbEncryptionKey({ currentKey: "\u200B", newKey: "new-key-123" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    // #334: invisible codepoints OUTSIDE Cf are rejected at the wire gate
+    // too — combining marks (Mn), braille blank (U+2800, So) and invisible
+    // control chars (Cc) render as nothing but pass min()/hash-compare.
+    await expect(client.consumeRecoveryKey({ key: "\u0301\u0301" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(client.consumeRecoveryKey({ key: "\u2800\u2800" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "\u0001".repeat(8) }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("rejects financially invalid payment input at the wire contract", async () => {

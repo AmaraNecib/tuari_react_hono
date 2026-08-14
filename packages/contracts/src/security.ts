@@ -31,7 +31,7 @@ export const generatedRecoveryKeysSchema = z.object({
 })
 
 /**
- * Shared key-field schema for exact-match secrets (#234).
+ * Shared key-field schema for exact-match secrets (#234, #334).
  *
  * `trim()` removes only ECMAScript WhiteSpace/LineTerminator — format (Cf)
  * characters such as U+200B ZWSP, U+200E/200F LRM/RLM and U+200C/200D
@@ -39,15 +39,36 @@ export const generatedRecoveryKeysSchema = z.object({
  * BOM IS WhiteSpace and is trimmed at the edges; a mid-string U+FEFF is
  * still caught by the Cf check below.) These
  * fields are exact-match secrets (recovery keys are SHA-256-hashed, the DB
- * key becomes the PRAGMA rekey value), so a string that CONTAINS a Cf
+ * key becomes the PRAGMA rekey value), so a string that CONTAINS a rejected
  * codepoint anywhere is rejected — stricter than the auth.ts name/password
  * checks, which only reject all-invisible strings: a key is either exactly
  * right or wrong, there is no "visible enough".
  *
- * Residual class (documented, tracked as #334): invisible codepoints
- * OUTSIDE Cf — e.g. U+2800 braille blank (So), combining marks (Mn), Cc
- * controls, mid-string NBSP (Zs) — still pass. The issue scoped the fix to
- * `\p{Cf}`; widening the class is a separate decision (#334).
+ * Rejected anywhere (#334, closes the #234 residual class):
+ * - `\p{Cf}` format chars (ZWSP, LRM/RLM, ZWNJ/ZWJ, soft hyphen, …) —
+ *   invisible, never render.
+ * - `\p{Mn}` nonspacing marks (combining accents U+0300-U+036F, variation
+ *   selectors, …) — invisible; an embedded mark makes a key LOOK right but
+ *   never match.
+ * - U+2800 BRAILLE BLANK — renders as a blank cell; 8 of them pass
+ *   min(8) and would become the PRAGMA rekey value. Only the blank-cell
+ *   symbol is targeted — visible So symbols (©, …) stay allowed.
+ * - `\p{Cc}` EXCEPT tab/LF/VT/FF/CR (U+0009-U+000D). Invisible controls
+ *   (U+0000-U+0008, U+000E-U+001F, U+007F-U+009F) render as nothing but
+ *   `.min()` counts them. Tab/LF/VT/FF/CR are the ECMAScript-whitespace
+ *   subset — visible formatting: the #221 pin deliberately accepts an
+ *   internal newline in a recovery key (wrapped-across-email-line paste),
+ *   and `\r`/`\t` are common paste artifacts. They are still stripped by
+ *   trim() at the edges, so an all-whitespace-control key trims to "" and
+ *   fails `.min()`.
+ *
+ * Deliberately ALLOWED: Zs separators (space, NBSP, …) — internal
+ * whitespace renders as a visible gap and is the #221 "preserved, not
+ * normalized" intent; pure-Zs strings cannot pass anyway (every Zs is
+ * ECMAScript WhiteSpace → trim → "" → min() fails). Residual (out of the
+ * #334 scope): blank Lo letters such as Hangul fillers (U+3164, …) still
+ * pass — no realistic input path, and catching them would reject every CJK
+ * ideograph.
  *
  * The length guard defers to `.min(min)` for every too-short value so a
  * short+invisible key (e.g. 3 ZWSP against min(8)) yields a single
@@ -60,9 +81,14 @@ const keyFieldSchema = (min: number, label: string) =>
     .string()
     .trim()
     .min(min)
-    .refine((value) => value.length < min || !/[\p{Cf}]/u.test(value), {
-      message: `${label} must not contain invisible format characters (e.g. zero-width space)`,
-    })
+    .refine(
+      (value) =>
+        value.length < min ||
+        !/(?:[\p{Cf}\p{Mn}\u2800]|(?![\x09-\x0D])[\p{Cc}])/u.test(value),
+      {
+        message: `${label} must not contain invisible characters (e.g. zero-width space, combining marks, control characters)`,
+      },
+    )
 
 /** Input for consuming a recovery key. */
 export const consumeRecoveryKeyInputSchema = z.object({

@@ -1110,7 +1110,7 @@ describe("contracts", () => {
       expect(mixed.error.issues.filter((issue) => issue.path[0] === "newKey")).toHaveLength(1);
     });
 
-    it("surfaces a user-facing message naming the invisible characters (#234)", () => {
+    it("surfaces a user-facing message naming the invisible characters (#234/#334)", () => {
       // The issue asks for an error message telling the user the key contains
       // invisible characters; the schema errors surface verbatim in the UI
       // toast, so the message text is contract surface, not internal detail.
@@ -1119,19 +1119,89 @@ describe("contracts", () => {
       if (result.success) throw new Error("unreachable");
       const keyIssue = result.error.issues.find((issue) => issue.path[0] === "key");
       expect(keyIssue?.code).toBe("custom");
-      expect(keyIssue?.message).toMatch(/invisible format characters/);
+      expect(keyIssue?.message).toMatch(/invisible characters/);
     });
 
-    it("accepts non-Cf invisible characters (documented residual class #334)", () => {
-      // #234 scopes the rejection to \p{Cf}. Invisible codepoints OUTSIDE Cf
-      // — U+2800 braille blank (So), combining marks (Mn), controls (Cc),
-      // mid-string NBSP (Zs) — still pass by design. This pins the current
-      // boundary so a future widening (issue #334) is a deliberate change.
-      expect(
+    it("rejects braille blank, combining marks, and invisible control chars (#334)", () => {
+      // #334: #234 rejected Cf only — invisible codepoints OUTSIDE Cf still
+      // passed. Braille blank (U+2800, So) renders as a blank cell: 8 of them
+      // pass min(8) and would become the PRAGMA rekey value (the issue's
+      // headline case).
+      expect(() =>
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u2800".repeat(8) }),
-      ).toEqual({ currentKey: "old-key", newKey: "\u2800".repeat(8) });
-      expect(consumeRecoveryKeyInputSchema.parse({ key: "a\u2800b" })).toEqual({
-        key: "a\u2800b",
+      ).toThrow();
+      // Embedded braille blank is rejected too (blank cell inside the key).
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a\u2800b" })).toThrow();
+
+      // Combining marks (Mn) — invisible standalone AND embedded: a key that
+      // LOOKS like "abcdef" but never matches (the exact-match hazard).
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u0301".repeat(8) }),
+      ).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a\u0301b" })).toThrow();
+
+      // Control chars (Cc, U+0000-U+001F) — min() counts them but they render
+      // nothing. DEL (U+007F) and the C1 range are invisible controls too.
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u0000".repeat(8) }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u0001".repeat(8) }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u001F".repeat(8) }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u007F".repeat(8) }),
+      ).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a\u0001b" })).toThrow();
+
+      // Same gates on the other key fields (defense in depth, #234 precedent).
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\u2800\u2800" })).toThrow();
+      expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "\u0301\u0301" })).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "\u0001", newKey: "new-key-123" }),
+      ).toThrow();
+
+      // Valid keys are unaffected (regression).
+      expect(
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "new-key-123" }),
+      ).toEqual({ currentKey: "old-key", newKey: "new-key-123" });
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2-c3d4-e5f6" })).toEqual({
+        key: "a1b2-c3d4-e5f6",
+      });
+    });
+
+    it("preserves internal formatting whitespace in keys (#221 pin + #334 carve-out)", () => {
+      // #334 rejects Cc controls EXCEPT tab/LF/VT/FF/CR — the ECMAScript
+      // whitespace subset, which renders as visible formatting. The #221 pin
+      // (a recovery key wrapped across an email line) deliberately accepts an
+      // internal newline; the carve-out keeps that green.
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2-c3d4\ne5f6" })).toEqual({
+        key: "a1b2-c3d4\ne5f6",
+      });
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2\tc3d4" })).toEqual({
+        key: "a1b2\tc3d4",
+      });
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2\rc3d4" })).toEqual({
+        key: "a1b2\rc3d4",
+      });
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2\r\nc3d4" })).toEqual({
+        key: "a1b2\r\nc3d4",
+      });
+
+      // Mid-string NBSP (Zs) is deliberately preserved too (the issue's
+      // "excluding Zs" decision): it renders as a visible space gap, and pure
+      // Zs strings cannot pass anyway (every Zs is ECMAScript WhiteSpace →
+      // trim → "" → min() fails).
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u00A0c3d4" })).toEqual({
+        key: "a1b2\u00A0c3d4",
+      });
+
+      // No over-reach: visible So symbols (©) pass — only U+2800 braille
+      // blank (the blank-cell symbol) is rejected, not the whole So class.
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a\u00A9b" })).toEqual({
+        key: "a\u00A9b",
       });
     });
 
