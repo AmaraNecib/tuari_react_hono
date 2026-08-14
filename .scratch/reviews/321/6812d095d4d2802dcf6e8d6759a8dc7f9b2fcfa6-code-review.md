@@ -1,7 +1,7 @@
 # Code Review Evidence — Issue #321 (High-assurance tier)
 
 - **Fixed point (base):** `origin/develop` @ `3c14490`
-- **Head (evidence SHA):** `5c6f8a4b102a546eab76c6a882e4b822914ec72a`
+- **Head (evidence SHA):** `6812d095d4d2802dcf6e8d6759a8dc7f9b2fcfa6`
 - **Diff:** `git diff 3c14490...5c6f8a4` — 13 files, +641/−18 (one commit:
   `5c6f8a4 feat(auth): legacy whitespace-password sign-in recovery path (part of #321)`)
 - **Spec source:** `.scratch/implementation/321-design.md` + issue #321 body
@@ -103,3 +103,36 @@ sign-in. Both are documented in the debate evidence file.
 - **Standards:** still 0 findings (delta is comment/doc text only).
 - **Re-validation:** `pnpm typecheck` exit 0 (4/4); `pnpm test:api` exit 0
   (63 files, 1070 tests); `pnpm test:web` exit 0 (58 files, 480 tests).
+
+---
+
+## Post-evidence delta (fix loop → `6812d09`)
+
+- **New HEAD:** `6812d095d4d2802dcf6e8d6759a8dc7f9b2fcfa6` (rounds 2–3 below).
+- **Round 2 — E2E bootstrap-owner staging (`b59404d`, fix(e2e)):** the CI
+  full-suite run exposed a *staging* bug, not a product one: the suite shares
+  one per-run DB, an earlier spec (admin-account) had bootstrapped the
+  workspace, and the app shell mounts the owner-gated `workspaceSnapshot` RPC
+  after ANY sign-in — so the seeded legacy user (a second user) hit
+  `UNAUTHORIZED` and the dashboard never rendered ([26/42] failure). Fixed in
+  `tests/e2e/helpers/db-seed.ts` + `tests/e2e/legacy-password-recovery.spec.ts`:
+  the seed records the current `app_bootstrap_state` owner, re-points the
+  singleton at the legacy user (the honest #321 staging — they ARE the original
+  admin), and returns a `restoreOwner` handle the spec invokes in `afterAll` so
+  downstream specs keep the canonical admin as owner. Product behavior
+  unchanged — the admin gate is intact; critical checks 1–4 still hold.
+- **Round 3 — docs policy-scope correction (`6812d09`, docs(auth)):** Greptile
+  P2 — `docs/auth-recovery.md` Background still claimed #230's visible-character
+  policy applies when a credential is created "(bootstrap, change-password)".
+  Change-password is not schema-gated (client-side trim + 8..128 only;
+  better-auth's route validates the string plus length). Corrected to
+  bootstrap-only enforcement, stated precisely what change-password enforces
+  today, and noted the `\p{Cf}`-only (ZWSP/LRM/BOM) gap as a known limitation
+  with a follow-up reference. Docs-only — zero behavior change.
+- **Standards:** still 0 findings across both rounds (round 2 is E2E staging +
+  spec/helper changes; round 3 is doc text).
+- **Re-validation:** full 42-test suite green twice (40 passed / 2 skipped,
+  legacy spec at [26/42], zero owner-gate errors in the server log); legacy
+  spec green twice in isolation (1/1 each); `pnpm typecheck` 4/4; `pnpm
+  test:api` 63 files / 1070 tests; `pnpm test:web` 58 files / 480 tests; all
+  six hygiene checks exit 0.

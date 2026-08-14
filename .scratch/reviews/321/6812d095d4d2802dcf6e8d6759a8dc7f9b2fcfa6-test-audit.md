@@ -1,7 +1,7 @@
 # Test Audit Evidence — Issue #321 (High-assurance tier)
 
 - **Base:** `origin/develop` @ `3c14490`
-- **Head (evidence SHA):** `5c6f8a4b102a546eab76c6a882e4b822914ec72a`
+- **Head (evidence SHA):** `6812d095d4d2802dcf6e8d6759a8dc7f9b2fcfa6`
 - **Audit scope:** test files changed by the diff, their corresponding source
   files, and the E2E spec + seed helper. Three lenses: edge-case hunter,
   coverage analyst, quality reviewer.
@@ -113,3 +113,27 @@ Grade: **A**
   unchanged; resolves to `better-auth@1.6.20` today, pinned by a passing E2E.
 - **Re-validation:** `pnpm typecheck` exit 0 (4/4); `pnpm test:api` exit 0
   (63 files, 1070 tests); `pnpm test:web` exit 0 (58 files, 480 tests).
+
+---
+
+## Post-evidence delta (fix loop → `6812d09`)
+
+- **New HEAD:** `6812d095d4d2802dcf6e8d6759a8dc7f9b2fcfa6` (rounds 2–3 below).
+- **Round 2 — E2E bootstrap-owner staging (`b59404d`, fix(e2e)):** the CI
+  failure was a *staging* bug in the E2E seed/spec, not a test-coverage gap. In
+  the shared per-run DB an earlier spec had bootstrapped the workspace, so the
+  seeded legacy user (a second user) failed the owner-gated `workspaceSnapshot`
+  after sign-in and the dashboard never rendered. `seedLegacyPasswordUser` now
+  stages the legacy user AS the bootstrap owner — records + re-points the
+  `app_bootstrap_state` singleton, returns a `restoreOwner` handle the spec
+  calls in `afterAll`. This adds a new executable edge: the seed's owner
+  handoff + restore is exercised live by the full suite (handoff path in-suite,
+  create+delete path in the two isolated runs). Audit edges #1/#2 from the
+  original run are unchanged.
+- **Round 3 — docs policy-scope correction (`6812d09`, docs(auth)):** doc-text
+  only; no test changes, all audited coverage still stands.
+- **Re-validation:** full E2E suite green twice (40 passed / 2 skipped, legacy
+  spec [26/42], zero `UNAUTHORIZED` owner-gate errors in the server log);
+  legacy spec green twice in isolation (1/1 each); `pnpm typecheck` 4/4;
+  `pnpm test:api` 63 files / 1070 tests; `pnpm test:web` 58 files / 480 tests;
+  all six hygiene checks exit 0.
