@@ -23,6 +23,8 @@ import {
   type DebtPartyDetailInput,
   type DebtSettlementInput,
   type ExternalCounterpartyCreateInput,
+  getDebtAccountNetContribution,
+  getNetDebtBalance,
 } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
@@ -30,10 +32,8 @@ import {
   assertDebtEntryDateNotBackdated,
   buildDebtPartyKey,
   getDebtAccountBalanceLabel,
-  getDebtAccountNetContribution,
   getDebtAccountStatus,
   getDebtBalanceLabel,
-  getNetDebtBalance,
   normalizeSignedMoneyAmount,
   normalizeText,
   successResult,

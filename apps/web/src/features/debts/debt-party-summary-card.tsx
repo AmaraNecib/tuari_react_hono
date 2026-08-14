@@ -3,9 +3,10 @@
  * Displays summary information for a debt party.
  */
 import { useTranslation } from "react-i18next"
+import { getNetDebtBalance } from "@tuari/contracts"
 import type { DebtAccount } from "@tuari/contracts"
 import { Surface } from "@/features/shared/page-primitives"
-import { formatDebtMoney, getCombinedDebtBalance, getDebtBalanceMeta } from "./debt-utils"
+import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
 /**
@@ -13,7 +14,7 @@ import { cn } from "@/lib/utils"
  */
 export function DebtPartySummaryCard({ accounts, personName }: { accounts: DebtAccount[]; personName: string }) {
   const { t } = useTranslation()
-  const combinedBalance = getCombinedDebtBalance(accounts)
+  const combinedBalance = getNetDebtBalance(accounts)
   const balanceMeta = getDebtBalanceMeta(combinedBalance)
   const openCount = accounts.filter((a) => a.status === "OPEN").length
   const settledCount = accounts.filter((a) => a.status === "SETTLED").length

@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next"
 import { useMemo, useState } from "react"
+import { getNetDebtBalance } from "@tuari/contracts"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
@@ -14,7 +15,6 @@ import { ConsolidationDialog } from "./consolidation-dialog"
 import { DebtLedgerPanel } from "./debt-ledger-panel"
 import {
   formatDebtMoney,
-  getCombinedDebtBalance,
   getDebtAccountBalanceMeta,
   getDebtBalanceMeta,
   getDebtDirectionLabel,
@@ -70,7 +70,7 @@ export function DebtCasesPanel({
     [sortedAccounts, debtEntriesByAccountId],
   )
   const totalBalanceDzd = useMemo(
-    () => getCombinedDebtBalance(sortedAccounts),
+    () => getNetDebtBalance(sortedAccounts),
     [sortedAccounts],
   )
   const hasPayable = sortedAccounts.some((a) => a.direction === "PAYABLE")
