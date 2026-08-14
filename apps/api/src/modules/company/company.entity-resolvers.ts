@@ -12,7 +12,9 @@
  */
 
 import { CompanyError } from "./company.errors";
+import type { WorkspaceAdminAuthorizer } from "./company.helpers";
 import {
+  ASSIGNABLE_ROLE_KEYS,
   isAcceptedEmployeeRoleKey,
   LEGACY_WORKFORCE_ROLE_KEYS,
 } from "./company.types";
@@ -31,10 +33,56 @@ export function requireRole(repository: WorkforceRepository, roleId: string) {
   return role;
 }
 
+/**
+ * Shared caller-facing message for the admin-role assignment privilege gate.
+ * Kept in one place so the single create/update guard and the batch-create
+ * field error cannot drift apart.
+ */
+export const ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE =
+  "تخصيص دور الإدارة متاح فقط لحساب الإدارة الرئيسي.";
+
+/**
+ * Admin-role assignment privilege gate (Greptile P1 fix, tracked via #340).
+ *
+ * Assigning the `admin` role to an employee mints a record that, once
+ * permission resolution links users to employees by phone, grants the
+ * matching account every admin permission. Only a caller that already holds
+ * the admin-level grant — the bootstrap owner, per `WorkspaceAdminAuthorizer`
+ * — may assign it. Any other caller (e.g. a `manager` holding
+ * `employees:create`) is rejected with UNAUTHORIZED, closing the
+ * privilege-escalation path where a lesser grant mints an admin.
+ *
+ * Fail-closed: when no authorizer is configured or the actor is unknown,
+ * the caller's grant cannot be proven, so the admin assignment is rejected.
+ * `manager` / `viewer` and the legacy workforce keys are unaffected.
+ */
+export function requireAdminAssignmentGrant(
+  authorizer: WorkspaceAdminAuthorizer | undefined,
+  actorUserId: string | null,
+  roleKey: string,
+  field: string,
+): void {
+  if (roleKey !== ASSIGNABLE_ROLE_KEYS.admin) {
+    return;
+  }
+
+  const holdsAdminGrant =
+    authorizer !== undefined &&
+    actorUserId !== null &&
+    authorizer.isBootstrapOwner(actorUserId);
+
+  if (!holdsAdminGrant) {
+    throw new CompanyError("UNAUTHORIZED", ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE, [
+      { field, message: ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE },
+    ]);
+  }
+}
+
 export function requireAssignableEmployeeRole(
   repository: WorkforceRepository,
   roleId: string,
   field: string,
+  caller?: { authorizer: WorkspaceAdminAuthorizer | undefined; actorUserId: string | null },
 ) {
   const role = requireRole(repository, roleId);
 
@@ -43,6 +91,8 @@ export function requireAssignableEmployeeRole(
       { field, message: "يمكن اختيار الأدوار النظامية فقط في هذه المرحلة." },
     ]);
   }
+
+  requireAdminAssignmentGrant(caller?.authorizer, caller?.actorUserId ?? null, role.key, field);
 
   return role;
 }

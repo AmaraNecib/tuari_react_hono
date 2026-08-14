@@ -4,6 +4,7 @@ import { roleSeeds } from "../../infrastructure/database/schema-definitions";
 import { DEFAULT_ROLE_PERMISSIONS } from "../rbac/role-seeds";
 import { CompanyError } from "./company.errors";
 import {
+  createAuditContext,
   createCompanyHarnessTracker,
   createInMemoryCompanyHarness,
 } from "./company.test-helpers";
@@ -16,6 +17,14 @@ import {
 import type { CompanyService } from "./company.service";
 
 type SqliteDatabase = ReturnType<typeof createInMemoryCompanyHarness>["database"];
+
+/** The only identity the admin-role grant test authorizer recognizes as owner. */
+const OWNER_USER_ID = "owner-user-1";
+
+/** Test authorizer: only `OWNER_USER_ID` holds the admin-level grant. */
+const adminAuthorizer = {
+  isBootstrapOwner: (userId: string) => userId === OWNER_USER_ID,
+};
 
 function insertSystemRole(database: SqliteDatabase, key: string, name: string) {
   const now = new Date().toISOString();
@@ -79,14 +88,47 @@ describe("requireAssignableEmployeeRole (post-Slice 3)", () => {
   const { createHarness, closeAll } = createCompanyHarnessTracker();
   afterEach(closeAll);
 
-  it("accepts each seeded system role: admin, manager, viewer", () => {
+  it("accepts manager and viewer without any caller grant (unchanged)", () => {
     const { repository, database } = createHarness();
 
-    for (const key of Object.values(ASSIGNABLE_ROLE_KEYS)) {
+    for (const key of ["manager", "viewer"] as const) {
       insertSystemRole(database, key, key);
       const roleId = getRoleIdByKey(database, key);
       expect(() => requireAssignableEmployeeRole(repository, roleId, "roleId")).not.toThrow();
     }
+  });
+
+  it("rejects the admin role when no caller grant is provable (fail closed)", () => {
+    const { repository, database } = createHarness();
+    insertSystemRole(database, "admin", "admin");
+
+    expect(() =>
+      requireAssignableEmployeeRole(repository, getRoleIdByKey(database, "admin"), "roleId"),
+    ).toThrowError(CompanyError);
+  });
+
+  it("accepts the admin role only when the caller holds the admin grant", () => {
+    const { repository, database } = createHarness();
+    insertSystemRole(database, "admin", "admin");
+
+    expect(() =>
+      requireAssignableEmployeeRole(repository, getRoleIdByKey(database, "admin"), "roleId", {
+        authorizer: adminAuthorizer,
+        actorUserId: OWNER_USER_ID,
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects the admin role when the caller holds a lesser grant (manager)", () => {
+    const { repository, database } = createHarness();
+    insertSystemRole(database, "admin", "admin");
+
+    expect(() =>
+      requireAssignableEmployeeRole(repository, getRoleIdByKey(database, "admin"), "roleId", {
+        authorizer: adminAuthorizer,
+        actorUserId: "manager-user-1",
+      }),
+    ).toThrowError(CompanyError);
   });
 
   it("rejects a non-system role", () => {
@@ -125,24 +167,61 @@ describe("employee creation with assignable roles (post-Slice 3)", () => {
     database: SqliteDatabase,
     roleKey: string,
     phone: string,
+    auditContext?: Parameters<CompanyService["createEmployee"]>[1],
   ) {
     insertSystemRole(database, roleKey, roleKey);
-    return service.createEmployee({
-      firstName: "عامل",
-      lastName: roleKey,
-      phone,
-      roleId: getRoleIdByKey(database, roleKey),
-      status: "ACTIVE",
-    }).item;
+    return service.createEmployee(
+      {
+        firstName: "عامل",
+        lastName: roleKey,
+        phone,
+        roleId: getRoleIdByKey(database, roleKey),
+        status: "ACTIVE",
+      },
+      auditContext,
+    ).item;
   }
 
-  it("createEmployee accepts admin/manager/viewer roles", () => {
+  it("createEmployee accepts manager and viewer roles", () => {
     const { service, database } = createHarness();
 
-    for (const roleKey of Object.values(ASSIGNABLE_ROLE_KEYS)) {
+    for (const roleKey of ["manager", "viewer"] as const) {
       const employee = createAssignableEmployee(service, database, roleKey, `0554123${roleKey}`);
       expect(employee.roleId).toBe(getRoleIdByKey(database, roleKey));
     }
+  });
+
+  it("createEmployee rejects minting an admin employee without the admin grant", () => {
+    const { service, database } = createHarness();
+    insertSystemRole(database, "admin", "admin");
+
+    try {
+      service.createEmployee({
+        firstName: "عامل",
+        lastName: "إدارة",
+        phone: "0554123000",
+        roleId: getRoleIdByKey(database, "admin"),
+        status: "ACTIVE",
+      });
+      expect.unreachable("admin minting should have been rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CompanyError);
+      expect((error as CompanyError).appError.code).toBe("UNAUTHORIZED");
+    }
+  });
+
+  it("createEmployee allows an admin-holder to mint an admin employee", () => {
+    const { service, database } = createHarness({ workspaceAdminAuthorizer: adminAuthorizer });
+
+    const employee = createAssignableEmployee(
+      service,
+      database,
+      "admin",
+      "0554123001",
+      createAuditContext({ actorUserId: OWNER_USER_ID }),
+    );
+
+    expect(employee.roleId).toBe(getRoleIdByKey(database, "admin"));
   });
 
   it("createEmployee rejects a non-system role", () => {
@@ -234,15 +313,48 @@ describe("employee creation with assignable roles (post-Slice 3)", () => {
     );
   });
 
-  it("createEmployeesBatch accepts a batch of assignable roles", () => {
+  it("updateEmployee rejects promoting an employee to admin without the grant", () => {
+    const { service, database } = createHarness();
+    const employee = createAssignableEmployee(service, database, "manager", "0554100002");
+    insertSystemRole(database, "admin", "admin");
+
+    try {
+      service.updateEmployee({ id: employee.id, roleId: getRoleIdByKey(database, "admin") });
+      expect.unreachable("admin promotion should have been rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CompanyError);
+      expect((error as CompanyError).appError.code).toBe("UNAUTHORIZED");
+    }
+  });
+
+  it("updateEmployee allows an admin-holder to promote an employee to admin", () => {
+    const { service, database } = createHarness({ workspaceAdminAuthorizer: adminAuthorizer });
+    const employee = createAssignableEmployee(
+      service,
+      database,
+      "manager",
+      "0554100003",
+      createAuditContext({ actorUserId: OWNER_USER_ID }),
+    );
+    insertSystemRole(database, "admin", "admin");
+
+    const updated = service.updateEmployee(
+      { id: employee.id, roleId: getRoleIdByKey(database, "admin") },
+      createAuditContext({ actorUserId: OWNER_USER_ID }),
+    ).item;
+
+    expect(updated.roleId).toBe(getRoleIdByKey(database, "admin"));
+  });
+
+  it("createEmployeesBatch accepts a batch of manager and viewer roles", () => {
     const { service, database } = createHarness();
 
-    for (const roleKey of Object.values(ASSIGNABLE_ROLE_KEYS)) {
+    for (const roleKey of ["manager", "viewer"] as const) {
       insertSystemRole(database, roleKey, roleKey);
     }
 
     const result = service.createEmployeesBatch({
-      employees: Object.values(ASSIGNABLE_ROLE_KEYS).map((roleKey, index) => ({
+      employees: ["manager", "viewer"].map((roleKey, index) => ({
         firstName: "عامل",
         lastName: roleKey,
         phone: `0554233${index}`,
@@ -256,7 +368,67 @@ describe("employee creation with assignable roles (post-Slice 3)", () => {
       })),
     });
 
-    expect(result.item.employees).toHaveLength(3);
+    expect(result.item.employees).toHaveLength(2);
+  });
+
+  it("createEmployeesBatch rejects an admin row without the grant (UNAUTHORIZED, persists nothing)", () => {
+    const { service, database } = createHarness();
+    insertSystemRole(database, "admin", "admin");
+
+    try {
+      service.createEmployeesBatch({
+        employees: [
+          {
+            firstName: "عامل",
+            lastName: "إدارة",
+            phone: "0554111131",
+            roleId: getRoleIdByKey(database, "admin"),
+            status: "ACTIVE" as const,
+            salaryAmountDzd: null,
+            salaryPeriod: null,
+            notes: null,
+            managerId: null,
+            projectId: null,
+          },
+        ],
+      });
+      expect.unreachable("batch admin minting should have been rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CompanyError);
+      expect((error as CompanyError).appError.code).toBe("UNAUTHORIZED");
+    }
+
+    const count = database
+      .prepare('SELECT COUNT(*) AS n FROM "employee"')
+      .get() as { n: number };
+    expect(count.n).toBe(0);
+  });
+
+  it("createEmployeesBatch allows an admin-holder to batch-create admin employees", () => {
+    const { service, database } = createHarness({ workspaceAdminAuthorizer: adminAuthorizer });
+    insertSystemRole(database, "admin", "admin");
+
+    const result = service.createEmployeesBatch(
+      {
+        employees: [
+          {
+            firstName: "عامل",
+            lastName: "إدارة",
+            phone: "0554111132",
+            roleId: getRoleIdByKey(database, "admin"),
+            status: "ACTIVE" as const,
+            salaryAmountDzd: null,
+            salaryPeriod: null,
+            notes: null,
+            managerId: null,
+            projectId: null,
+          },
+        ],
+      },
+      createAuditContext({ actorUserId: OWNER_USER_ID }),
+    );
+
+    expect(result.item.employees).toHaveLength(1);
   });
 
   it("createEmployeesBatch rejects a non-system role with a roleId field error", () => {
@@ -318,15 +490,15 @@ describe("employee creation with assignable roles (post-Slice 3)", () => {
 
   it("createEmployeesBatch rejects a mixed batch atomically (persists nothing)", () => {
     const { service, database } = createHarness();
-    insertSystemRole(database, "admin", "admin");
+    insertSystemRole(database, "manager", "manager");
     insertCustomRole(database, "custom");
-    const adminRoleId = getRoleIdByKey(database, "admin");
+    const managerRoleId = getRoleIdByKey(database, "manager");
 
     const validRow = {
       firstName: "عامل",
       lastName: "سليم",
       phone: "0554111111",
-      roleId: adminRoleId,
+      roleId: managerRoleId,
       status: "ACTIVE" as const,
       salaryAmountDzd: null,
       salaryPeriod: null,

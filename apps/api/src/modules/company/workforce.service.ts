@@ -40,6 +40,7 @@ import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
 import {
   isAcceptedEmployeeRoleKey,
+  ASSIGNABLE_ROLE_KEYS,
   type EmployeeListFilters,
   type EmployeeSalaryPaymentListFilters,
   type EmployeeStateHistoryListFilters,
@@ -51,6 +52,7 @@ import {
 } from "./company.types";
 import { normalizeAlgeriaTimestamp } from "./company-time";
 import {
+  ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE,
   ensureEmployeeTransitionAllowed,
   ensureProjectTransitionAllowed,
   ensureWarehouseTransitionAllowed,
@@ -141,7 +143,10 @@ export class WorkforceService {
     return this.mutation.withTransaction(() => {
       const audit = this.mutation.createMutationAuditContext(auditContext);
 
-      requireAssignableEmployeeRole(this.repository, input.roleId, "roleId");
+      requireAssignableEmployeeRole(this.repository, input.roleId, "roleId", {
+        authorizer: this.mutation.adminAuthorizer,
+        actorUserId: audit.actorUserId,
+      });
 
       if ((input.salaryAmountDzd ?? null) !== null && !input.salaryPeriod) {
         throw new CompanyError("VALIDATION", "يجب اختيار دورية الأجر مع قيمة الأجر.", [
@@ -185,6 +190,14 @@ export class WorkforceService {
 
       const fieldErrors: Array<{ field: string; message: string }> = [];
       const seenPhones = new Set<string>();
+      // Admin-role minting privilege gate (Greptile P1, tracked via #340): a
+      // batch row requesting the `admin` role is only permitted when the
+      // caller provably holds the admin-level grant (bootstrap owner).
+      const holdsAdminGrant =
+        this.mutation.adminAuthorizer !== undefined &&
+        audit.actorUserId !== null &&
+        this.mutation.adminAuthorizer.isBootstrapOwner(audit.actorUserId);
+      let adminGrantViolation: { field: string; message: string } | null = null;
       const normalizedEmployees: Array<{
         firstName: string;
         lastName: string;
@@ -222,6 +235,11 @@ export class WorkforceService {
             field: buildBatchField(index, "roleId"),
             message: "يمكن اختيار الأدوار النظامية فقط في هذه المرحلة.",
           });
+        } else if (role.key === ASSIGNABLE_ROLE_KEYS.admin && !holdsAdminGrant) {
+          adminGrantViolation ??= {
+            field: buildBatchField(index, "roleId"),
+            message: ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE,
+          };
         }
 
         if (seenPhones.has(employee.phone)) {
@@ -353,6 +371,12 @@ export class WorkforceService {
         }
       });
 
+      if (adminGrantViolation) {
+        throw new CompanyError("UNAUTHORIZED", ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE, [
+          adminGrantViolation,
+        ]);
+      }
+
       if (fieldErrors.length > 0) {
         throw new CompanyError(
           "VALIDATION",
@@ -374,7 +398,10 @@ export class WorkforceService {
       const current = requireEmployee(this.repository, input.id);
       const currentRole = requireRole(this.repository, current.roleId);
       const nextRole = input.roleId
-        ? requireAssignableEmployeeRole(this.repository, input.roleId, "roleId")
+        ? requireAssignableEmployeeRole(this.repository, input.roleId, "roleId", {
+            authorizer: this.mutation.adminAuthorizer,
+            actorUserId: audit.actorUserId,
+          })
         : currentRole;
       const nextStatus = input.status ?? current.status;
 

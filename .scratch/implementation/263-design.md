@@ -161,3 +161,41 @@ now accept admin/manager/viewer roles instead of rejecting them.
    salary pair is stale: the batch form's salary fields are conditionally
    required (only when one of the pair is present), verified by
    `employee-batch-schema.ts`. The spec fills the pair regardless.
+
+## P1 fix — admin-role assignment privilege gate (Greptile, PR #342)
+
+**Finding**: `requireAssignableEmployeeRole` (company.entity-resolvers.ts)
+accepted the `admin` role for any caller holding `employees:create` (the
+`manager` role). Permission resolution matches users to employees by phone
+and derives authorization from `employee.roleId`, so a manager could mint an
+`admin` employee whose matching account would inherit every admin permission
+— a privilege-escalation path (risk 5 above, deferred to follow-up #340).
+
+**Decision (Direction 1 — caller-grant check, not removal from the set)**:
+assigning the `admin` role now requires the caller to hold the admin-level
+grant — the bootstrap owner, per `WorkspaceAdminAuthorizer.isBootstrapOwner`
+(the only admin-level identity the system models). Callers without a provable
+grant (managers, anonymous actors, systems without an authorizer configured)
+are rejected with `UNAUTHORIZED`. The gate **fails closed**: no authorizer /
+no actor ⇒ no provable grant ⇒ admin assignment rejected.
+
+- `requireAssignableEmployeeRole` takes an optional `caller`
+  (`{ authorizer, actorUserId }`) and delegates to the new
+  `requireAdminAssignmentGrant` guard; `createEmployee` / `updateEmployee`
+  pass the mutation audit actor. The batch path applies the same rule per
+  row and throws `UNAUTHORIZED` when any row requests `admin` without the
+  grant (atomic — nothing persists).
+- `manager` / `viewer` and the legacy workforce keys are unaffected.
+- `WorkspaceMutationContext` exposes the configured authorizer via a getter
+  so the service can hand it to the pure resolver guard; the guard itself
+  stays a pure function over `(authorizer, actorUserId, roleKey, field)`.
+- Tests (`company.role-assignability.test.ts`, 29 tests): resolver-level
+  pins (admin without grant ⇒ reject, admin with owner ⇒ accept, manager
+  caller ⇒ reject), service-level create/update/batch pins (manager cannot
+  mint admin; admin-holder can; batch UNAUTHORIZED persists nothing). The
+  harness accepts an optional `workspaceAdminAuthorizer` for the
+  admin-holder scenarios.
+- The `ASSIGNABLE_ROLE_KEYS` set still contains `admin` — the set is what
+  the UI/validation offer; the grant check is what decides who may use it.
+  Whether non-owner admins should ever mint admins remains the #340 product
+  decision; today the answer is no.

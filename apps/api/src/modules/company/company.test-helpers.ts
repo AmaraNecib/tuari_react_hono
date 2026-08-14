@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 
 import { SqliteCompanyRepository } from "./company.repository";
 import { CompanyService } from "./company.service";
+import type { WorkspaceAdminAuthorizer } from "./company.helpers";
 import { LEGACY_WORKFORCE_ROLE_KEYS, type MutationAuditContext } from "./company.types";
 
 const schemaStatements = [
@@ -265,8 +266,8 @@ const schemaStatements = [
 export function createCompanyHarnessTracker() {
   const harnesses: Array<ReturnType<typeof createInMemoryCompanyHarness>> = [];
 
-  const createHarness = () => {
-    const harness = createInMemoryCompanyHarness();
+  const createHarness = (options?: { workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer }) => {
+    const harness = createInMemoryCompanyHarness(options);
     harnesses.push(harness);
     return harness;
   };
@@ -289,7 +290,9 @@ export function createAuditContext(overrides?: Partial<MutationAuditContext>) {
   };
 }
 
-export function createInMemoryCompanyHarness() {
+export function createInMemoryCompanyHarness(options?: {
+  workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer;
+}) {
   const database = new Database(":memory:");
   database.pragma("foreign_keys = ON");
 
@@ -326,7 +329,7 @@ export function createInMemoryCompanyHarness() {
   );
 
   const repository = new SqliteCompanyRepository(database);
-  const service = new CompanyService(repository);
+  const service = new CompanyService(repository, options?.workspaceAdminAuthorizer);
 
   return {
     database,
