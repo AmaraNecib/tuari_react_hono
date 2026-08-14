@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { getDebtAccountNetContribution, getNetDebtBalance } from "@tuari/contracts";
+
 import {
   InMemoryStore,
   InMemoryWorkforceRepository,
@@ -10,10 +12,8 @@ import {
   buildDebtPartyKey,
   deleteResult,
   getDebtAccountBalanceLabel,
-  getDebtAccountNetContribution,
   getDebtAccountStatus,
   getDebtBalanceLabel,
-  getNetDebtBalance,
   normalizeMutationAuditContext,
   normalizeSalaryAmount,
   normalizeSignedMoneyAmount,

@@ -4,6 +4,7 @@ export * from "./workforce";
 export * from "./projects";
 export * from "./warehouses";
 export * from "./debts";
+export * from "./debt-helpers";
 export * from "./inventory";
 export * from "./system-log";
 export * from "./workspace";
