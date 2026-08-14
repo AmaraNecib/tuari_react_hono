@@ -1408,7 +1408,20 @@ export async function applyPaymentAllocationRestrictMigration(db: DbExecutor): P
     "payment_allocation",
   );
   const tableSql = tableRow?.sql ?? "";
-  const alreadyRestrict = tableSql.includes("ON DELETE RESTRICT");
+  // Scoped check: the fast path must only fire when the payment_id FK itself
+  // is RESTRICT. A blanket `ON DELETE RESTRICT` scan would wrongly treat a DB
+  // where only *another* allocation FK (e.g. invoice_id) became RESTRICT as
+  // already-migrated, leaving a legacy cascading payment_id in place so a raw
+  // payment delete silently removes allocations. Each FK is declared on its
+  // own line in the DDL, so line-scoping the match is equivalent to
+  // clause-scoping it.
+  const alreadyRestrict = tableSql
+    .split("\n")
+    .some(
+      (line) =>
+        line.includes('FOREIGN KEY ("payment_id") REFERENCES "payment"') &&
+        line.includes("ON DELETE RESTRICT"),
+    );
 
   // Fresh DBs (schemaStatements already builds the RESTRICT table) take the
   // no-rebuild fast path: record the key and return.

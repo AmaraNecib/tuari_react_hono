@@ -677,4 +677,67 @@ describe("applyPaymentAllocationRestrictMigration (issue #335)", () => {
       .all(paymentAllocationRestrictMigrationKey) as Array<{ key: string }>;
     expect(keyRow?.key).toBe(paymentAllocationRestrictMigrationKey);
   });
+
+  it("rebuilds when only another FK (invoice_id) is RESTRICT but payment_id is still CASCADE", async () => {
+    const db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(`
+      CREATE TABLE "app_schema_state" (
+        "key" TEXT NOT NULL PRIMARY KEY,
+        "executed_at" DATETIME NOT NULL
+      );
+      CREATE TABLE "payment" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "total_amount" REAL NOT NULL,
+        "created_at" TEXT NOT NULL
+      );
+      CREATE TABLE "invoice" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "total_amount" REAL NOT NULL,
+        "created_at" TEXT NOT NULL
+      );
+    `);
+    // payment_id keeps the legacy CASCADE; only the invoice_id FK is RESTRICT.
+    // An unscoped `ON DELETE RESTRICT` scan of the DDL would wrongly take the
+    // no-rebuild fast path and leave payment_id cascade-deletable.
+    db.exec(`CREATE TABLE "payment_allocation" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "payment_id" TEXT NOT NULL,
+      "invoice_id" TEXT NOT NULL,
+      "amount" REAL NOT NULL,
+      "created_at" TEXT NOT NULL,
+      CONSTRAINT "payment_allocation_payment_id_fkey"
+        FOREIGN KEY ("payment_id") REFERENCES "payment" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+      CONSTRAINT "payment_allocation_invoice_id_fkey"
+        FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    )`);
+    db.prepare(
+      'INSERT INTO "payment" ("id", "total_amount", "created_at") VALUES (?, ?, ?)',
+    ).run("pmt-1", 1000, "2026-01-01T00:00:00.000Z");
+    db.prepare(
+      'INSERT INTO "invoice" ("id", "total_amount", "created_at") VALUES (?, ?, ?)',
+    ).run("inv-1", 1000, "2026-01-01T00:00:00.000Z");
+    db.prepare(
+      'INSERT INTO "payment_allocation" ("id", "payment_id", "invoice_id", "amount", "created_at") VALUES (?, ?, ?, ?, ?)',
+    ).run("alloc-1", "pmt-1", "inv-1", 1000, "2026-01-01T00:00:00.000Z");
+
+    await applyPaymentAllocationRestrictMigration(asDbExecutor(db));
+
+    // The rebuild ran (not the fast path): payment_id is now RESTRICT.
+    expect(getPaymentIdFkeyLine(db)).toContain("ON DELETE RESTRICT");
+    expect(getPaymentIdFkeyLine(db)).not.toContain("ON DELETE CASCADE");
+    const [keyRow] = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(paymentAllocationRestrictMigrationKey) as Array<{ key: string }>;
+    expect(keyRow?.key).toBe(paymentAllocationRestrictMigrationKey);
+
+    // The rebuilt FK is enforced: a raw delete of the allocated payment fails
+    // loudly instead of cascade-deleting the allocation.
+    expect(() =>
+      db.prepare('DELETE FROM "payment" WHERE "id" = ?').run("pmt-1"),
+    ).toThrow(/FOREIGN KEY constraint failed/i);
+    expect(
+      (db.prepare('SELECT COUNT(*) AS c FROM "payment_allocation"').get() as { c: number }).c,
+    ).toBe(1);
+  });
 });
