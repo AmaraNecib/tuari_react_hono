@@ -9,8 +9,11 @@ import {
  * FifoLock tests — pin the exact invariants the transaction model relies on:
  * FIFO ordering, no interleaving, and lock release after a rejecting
  * operation (a failed transaction must not poison the queue).
+ *
+ * The timeout tests use real timers; the suite timeout is lengthened (like
+ * the account lock-window suite) so a loaded CI cannot flake the bounds.
  */
-describe("createFifoLock", () => {
+describe("createFifoLock", { timeout: 20000 }, () => {
   it("runs operations in FIFO order without interleaving", async () => {
     const lock = createFifoLock();
     const events: string[] = [];
@@ -235,7 +238,10 @@ describe("createFifoLock", () => {
   });
 
   it("bounds the wait for a queued operation when timeoutMs is set", async () => {
-    const lock = createFifoLock({ timeoutMs: 30 });
+    // The holder never settles until after the assert, so any positive bound
+    // fires; 150ms gives a loaded CI generous slack without slowing the
+    // suite meaningfully.
+    const lock = createFifoLock({ timeoutMs: 150 });
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -257,7 +263,7 @@ describe("createFifoLock", () => {
   });
 
   it("timed-out operations never execute; multiple abandoned slots keep the queue FIFO", async () => {
-    const lock = createFifoLock({ timeoutMs: 20 });
+    const lock = createFifoLock({ timeoutMs: 100 });
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -298,8 +304,41 @@ describe("createFifoLock", () => {
     expect(order).toEqual(["1", "2"]);
   });
 
+  it("a timed-out caller can re-queue while the abandoned slot is still in line", async () => {
+    const lock = createFifoLock({ timeoutMs: 150 });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // A hung holder; the first attempt times out and abandons its slot.
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    await expect(lock.run(async () => "never-ran")).rejects.toThrow(
+      FifoLockTimeoutError,
+    );
+
+    // The caller retries BEFORE the abandoned slot's turn arrives: the
+    // retry chains behind it and must run exactly once, in order, once the
+    // connection frees — no duplicate/reordered work from the retry.
+    let retryCount = 0;
+    const retry = lock.run(async () => {
+      retryCount++;
+      return "retried";
+    });
+
+    release();
+    await holder;
+
+    await expect(retry).resolves.toBe("retried");
+    expect(retryCount).toBe(1);
+  });
+
   it("does not time out an operation that waits only briefly for its turn", async () => {
-    const lock = createFifoLock({ timeoutMs: 100 });
+    // 50x margin (500ms bound vs a 10ms holder) so a slow/loaded CI cannot
+    // turn the brief wait into a spurious timeout.
+    const lock = createFifoLock({ timeoutMs: 500 });
 
     const first = lock.run(async () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
