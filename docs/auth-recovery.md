@@ -8,10 +8,13 @@ policy was enforced — a window that only existed between bootstrap and #230.
 ## Background
 
 #230 rejects all-invisible passwords (whitespace, format/control chars, …) when
-a credential is **created** (bootstrap, change-password). The stored hash of a
-pre-#230 account is untouched, but sign-in was blocked client-side because the
-sign-in form validated against the same policy schema — leaving the account with
-no escape hatch.
+a credential is **created** — enforced on the bootstrap path only
+(`passwordSchema` in `packages/contracts/src/auth.ts`). The Settings
+change-password path is **not** schema-gated (client-side trim + 8–128 length
+only; see the known-gap note below), a pre-existing #230 gap. The stored hash
+of a pre-#230 account is untouched, but sign-in was blocked client-side because
+the sign-in form validated against the same policy schema — leaving the account
+with no escape hatch.
 
 #321 fixes this by making **sign-in verification-only**: the sign-in schema no
 longer carries the visible-character refine, so an all-invisible input is
@@ -53,12 +56,17 @@ This destroys all workspace data and is only a recovery of last resort.
 
 - The sign-in schema still enforces length bounds (8–128) and the phone format;
   only the visible-character rule was relaxed for **verification**.
-- Known gap (pre-existing, NOT introduced by #321): the change-password path is
-  not schema-gated — the new-password field is checked client-side only (trim +
-  8–128 length) and better-auth's route validates any string, so a
-  format-character-only (e.g. ZWSP) new password can still be set. Since #321
-  made sign-in verification-only, such a hash becomes usable at sign-in;
-  recommended as a follow-up issue (a change-password policy gate).
+- Known gap (pre-existing, NOT introduced by #321): the Settings change-password
+  path is not schema-gated. What it enforces today is **length only** — the web
+  client trims the new password and checks 8–128 characters
+  (`workspace-mutations.ts`), and better-auth's change-password route validates
+  `newPassword: z.string()` plus length. The #230 visible-character refine is
+  absent, so a `\p{Cf}`-only new password (format characters such as
+  ZWSP/LRM/BOM — no visible codepoint) can still be set. Since #321 made sign-in
+  verification-only, such a hash becomes usable at sign-in; recommended as a
+  follow-up issue (a change-password policy gate). `passwordSchema`'s JSDoc in
+  `packages/contracts/src/auth.ts` carries the same scope note so the schema is
+  not misread as covering change-password.
 - OTP-based reset and admin-assisted resets are intentionally not implemented:
   OTP delivery requires an external provider (#283), and a reset that bypasses
   the current password would be an account-takeover primitive on a loopback API.
