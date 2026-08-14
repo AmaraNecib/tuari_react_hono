@@ -266,6 +266,53 @@ struct DesktopApiResponse {
     body: Vec<u8>,
 }
 
+const DESKTOP_API_BRIDGE_ERROR_KIND: &str = "desktop-api-bridge";
+const DESKTOP_API_FAILURE_PRE_DELIVERY: &str = "pre-delivery";
+const DESKTOP_API_FAILURE_RESPONSE_BODY_READ: &str = "response-body-read";
+const DESKTOP_API_FAILURE_UNKNOWN: &str = "unknown";
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopApiBridgeErrorMetadata {
+    kind: &'static str,
+    phase: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopApiBridgeError {
+    message: String,
+    desktop_bridge: DesktopApiBridgeErrorMetadata,
+}
+
+impl DesktopApiBridgeError {
+    fn with_phase(message: impl Into<String>, phase: &'static str) -> Self {
+        Self {
+            message: message.into(),
+            desktop_bridge: DesktopApiBridgeErrorMetadata {
+                kind: DESKTOP_API_BRIDGE_ERROR_KIND,
+                phase,
+            },
+        }
+    }
+
+    fn pre_delivery(message: impl Into<String>) -> Self {
+        Self::with_phase(message, DESKTOP_API_FAILURE_PRE_DELIVERY)
+    }
+
+    fn response_body_read(message: impl Into<String>) -> Self {
+        Self::with_phase(message, DESKTOP_API_FAILURE_RESPONSE_BODY_READ)
+    }
+
+    fn unknown(message: impl Into<String>) -> Self {
+        Self::with_phase(message, DESKTOP_API_FAILURE_UNKNOWN)
+    }
+
+    fn into_message(self) -> String {
+        self.message
+    }
+}
+
 #[derive(Deserialize)]
 struct DesktopTokenResponse {
     token: Option<String>,
@@ -475,18 +522,26 @@ fn extract_response_error_message(status: reqwest::StatusCode, body: &[u8], fall
 async fn send_desktop_api_request(
     request: DesktopApiRequest,
     state: &tauri::State<'_, DesktopAuthRuntimeState>,
-) -> Result<DesktopApiResponse, String> {
+) -> Result<DesktopApiResponse, DesktopApiBridgeError> {
     if request.body.is_some() && request.multipart_files.is_some() {
-        return Err("Desktop API bridge cannot send raw and multipart bodies together.".to_string());
+        return Err(DesktopApiBridgeError::pre_delivery(
+            "Desktop API bridge cannot send raw and multipart bodies together.",
+        ));
     }
 
     let method = reqwest::Method::from_bytes(request.method.trim().as_bytes())
-        .map_err(|error| format!("Unsupported desktop API method: {error}"))?;
-    let url = resolve_api_url(&request.path)?;
+        .map_err(|error| {
+            DesktopApiBridgeError::pre_delivery(format!(
+                "Unsupported desktop API method: {error}"
+            ))
+        })?;
+    let url = resolve_api_url(&request.path).map_err(DesktopApiBridgeError::pre_delivery)?;
 
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|error| format!("Failed to initialize desktop API client: {error}"))?;
+    let client = reqwest::Client::builder().build().map_err(|error| {
+        DesktopApiBridgeError::pre_delivery(format!(
+            "Failed to initialize desktop API client: {error}"
+        ))
+    })?;
     let mut builder = client.request(method, url).header("Origin", DESKTOP_REQUEST_ORIGIN);
 
     for (name, value) in request.headers {
@@ -496,7 +551,9 @@ async fn send_desktop_api_request(
     }
 
     if request.authenticated {
-        if let Some(session) = resolve_active_desktop_auth_session(state)? {
+        if let Some(session) = resolve_active_desktop_auth_session(state)
+            .map_err(DesktopApiBridgeError::pre_delivery)?
+        {
             builder = builder.bearer_auth(session.token);
         }
     }
@@ -506,10 +563,16 @@ async fn send_desktop_api_request(
 
         for file in files {
             let mut part = reqwest::multipart::Part::bytes(file.bytes).file_name(file.file_name);
-            if let Some(mime_type) = file.mime_type.as_deref().filter(|mime_type| !mime_type.trim().is_empty()) {
-                part = part
-                    .mime_str(mime_type)
-                    .map_err(|error| format!("Invalid desktop upload mime type: {error}"))?;
+            if let Some(mime_type) = file
+                .mime_type
+                .as_deref()
+                .filter(|mime_type| !mime_type.trim().is_empty())
+            {
+                part = part.mime_str(mime_type).map_err(|error| {
+                    DesktopApiBridgeError::pre_delivery(format!(
+                        "Invalid desktop upload mime type: {error}"
+                    ))
+                })?;
             }
 
             form = form.part(file.field_name, part);
@@ -520,10 +583,14 @@ async fn send_desktop_api_request(
         builder = builder.body(body);
     }
 
-    let response = builder
-        .send()
-        .await
-        .map_err(|error| format!("Desktop API bridge request failed: {error}"))?;
+    let response = builder.send().await.map_err(|error| {
+        let message = format!("Desktop API bridge request failed: {error}");
+        if error.is_connect() {
+            DesktopApiBridgeError::pre_delivery(message)
+        } else {
+            DesktopApiBridgeError::unknown(message)
+        }
+    })?;
     let status = response.status();
     let headers = response
         .headers()
@@ -538,7 +605,11 @@ async fn send_desktop_api_request(
     let body = response
         .bytes()
         .await
-        .map_err(|error| format!("Failed to read desktop API bridge response body: {error}"))?
+        .map_err(|error| {
+            DesktopApiBridgeError::response_body_read(format!(
+                "Failed to read desktop API bridge response body: {error}"
+            ))
+        })?
         .to_vec();
 
     Ok(DesktopApiResponse {
@@ -553,10 +624,12 @@ async fn desktop_api_request(
     window: tauri::Window,
     request: DesktopApiRequest,
     state: tauri::State<'_, DesktopAuthRuntimeState>,
-) -> Result<DesktopApiResponse, String> {
-    assert_sensitive_command_window(&window)?;
+) -> Result<DesktopApiResponse, DesktopApiBridgeError> {
+    assert_sensitive_command_window(&window).map_err(DesktopApiBridgeError::pre_delivery)?;
     if !is_allowed_desktop_bridge_path(&request.path) {
-        return Err("Desktop API bridge path is not allowed.".to_string());
+        return Err(DesktopApiBridgeError::pre_delivery(
+            "Desktop API bridge path is not allowed.",
+        ));
     }
     send_desktop_api_request(request, &state).await
 }
@@ -680,7 +753,8 @@ async fn desktop_sign_in_with_phone_number(
         },
         &state,
     )
-    .await?;
+    .await
+    .map_err(DesktopApiBridgeError::into_message)?;
 
     if !(200..300).contains(&response.status) {
         return Err(extract_response_error_message(
@@ -727,7 +801,8 @@ async fn desktop_change_password(
         },
         &state,
     )
-    .await?;
+    .await
+    .map_err(DesktopApiBridgeError::into_message)?;
 
     if !(200..300).contains(&response.status) {
         return Err(extract_response_error_message(
@@ -2108,7 +2183,8 @@ mod tests {
         load_or_create_secret, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
         complete_db_key_rotation_in_store, restore_db_key_in_store, rotate_db_key_in_store,
-        should_force_reveal_main_window, AppReadyState, APP_DB_KEY_ACCOUNT,
+        should_force_reveal_main_window, AppReadyState, DesktopApiBridgeError,
+        DESKTOP_API_BRIDGE_ERROR_KIND, APP_DB_KEY_ACCOUNT,
         BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
         SecretStore, clear_app_ready, mark_app_ready_if_first,
     };
@@ -2122,6 +2198,41 @@ mod tests {
             .expect("system time before unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("tuari-runtime-secrets-{unique_suffix}"))
+    }
+
+    #[test]
+    fn serializes_bridge_failure_phases_for_the_web_classifier() {
+        let pre_delivery = serde_json::to_value(DesktopApiBridgeError::pre_delivery(
+            "connection refused",
+        ))
+        .expect("serialize pre-delivery error");
+        assert_eq!(
+            pre_delivery["desktopBridge"]["kind"],
+            DESKTOP_API_BRIDGE_ERROR_KIND
+        );
+        assert_eq!(pre_delivery["desktopBridge"]["phase"], "pre-delivery");
+
+        let response_body = serde_json::to_value(DesktopApiBridgeError::response_body_read(
+            "response body read failed",
+        ))
+        .expect("serialize response-body error");
+        assert_eq!(
+            response_body["desktopBridge"]["phase"],
+            "response-body-read"
+        );
+
+        let unknown = serde_json::to_value(DesktopApiBridgeError::unknown("request failed"))
+            .expect("serialize unknown error");
+        assert_eq!(unknown["desktopBridge"]["phase"], "unknown");
+        assert_eq!(
+            unknown["message"],
+            "request failed",
+            "the message survives so auth commands can still surface it"
+        );
+        assert_eq!(
+            DesktopApiBridgeError::unknown("request failed").into_message(),
+            "request failed"
+        );
     }
 
     #[test]

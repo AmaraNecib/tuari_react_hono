@@ -74,4 +74,58 @@ describe("desktopApiFetch", () => {
       message: "native bridge failed",
     })
   })
+
+  it("preserves the native delivery phase when normalizing structured bridge failures", async () => {
+    invokeMock.mockRejectedValueOnce({
+      message: "response body read failed",
+      desktopBridge: {
+        kind: "desktop-api-bridge",
+        phase: "response-body-read",
+      },
+    })
+
+    const { desktopApiFetch } = await import("./desktop-api-bridge")
+
+    await expect(desktopApiFetch("http://127.0.0.1:4318/rpc")).rejects.toMatchObject({
+      message: "response body read failed",
+      desktopBridge: {
+        kind: "desktop-api-bridge",
+        phase: "response-body-read",
+      },
+    })
+  })
+
+  it("marks request-construction failures as pre-delivery (the invoke never ran)", async () => {
+    const { desktopApiFetch } = await import("./desktop-api-bridge")
+
+    await expect(
+      desktopApiFetch("https://example.com/evil", { authenticated: true }),
+    ).rejects.toMatchObject({
+      desktopBridge: {
+        kind: "desktop-api-bridge",
+        phase: "pre-delivery",
+      },
+    })
+    expect(invokeMock).not.toHaveBeenCalled()
+  })
+
+  it("falls back to the unknown phase when the native marker is invalid", async () => {
+    invokeMock.mockRejectedValueOnce({
+      message: "mangled failure",
+      desktopBridge: {
+        kind: "some-other-kind",
+        phase: "response-body-read",
+      },
+    })
+
+    const { desktopApiFetch } = await import("./desktop-api-bridge")
+
+    await expect(desktopApiFetch("http://127.0.0.1:4318/rpc")).rejects.toMatchObject({
+      message: "mangled failure",
+      desktopBridge: {
+        kind: "desktop-api-bridge",
+        phase: "unknown",
+      },
+    })
+  })
 })

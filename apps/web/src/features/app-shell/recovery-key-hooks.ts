@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { i18n } from "@/i18n"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
+import { getDesktopBridgeFailurePhase, DESKTOP_BRIDGE_FAILURE_PHASE } from "@/lib/desktop-api-bridge"
 import { rpcClient } from "@/lib/orpc-client"
 import { showErrorToast } from "@/lib/toast"
 
@@ -86,6 +87,29 @@ async function invokeCompleteDbKeyRotation(): Promise<void> {
 }
 
 /**
+ * True only when a thrown RPC error PROVES the database was not re-encrypted:
+ * the native bridge explicitly marked the request as pre-delivery, or the
+ * server rejected it with a client error (status < 500 — validation/auth ran
+ * before the handler). Every other thrown error is unknown: a response-body
+ * read can fail after the API has rekeyed, and an unmarked bridge/transport
+ * error does not prove that the request was never delivered.
+ */
+function rpcFailureProvesNoRekey(error: unknown): boolean {
+  const bridgePhase = getDesktopBridgeFailurePhase(error)
+  if (bridgePhase !== undefined) {
+    return bridgePhase === DESKTOP_BRIDGE_FAILURE_PHASE.PRE_DELIVERY
+  }
+
+  if (typeof error !== "object" || error === null) return false
+  const candidate = error as { code?: unknown; status?: unknown }
+  if (typeof candidate.code !== "string" || typeof candidate.status !== "number") {
+    return false
+  }
+  const status = candidate.status
+  return status >= 400 && status < 500 && status !== 408 && status !== 499
+}
+
+/**
  * Change the DB encryption key (no-op on the unencrypted web dev DB).
  *
  * On the desktop runtime the key lives in the host's secret store, so the
@@ -103,13 +127,17 @@ async function invokeCompleteDbKeyRotation(): Promise<void> {
  *   keep the rollback slot (do NOT clear it) so a later re-verification can
  *   still restore if it proves definitive. The returned result surfaces the
  *   honest "rekey applied but verification pending" state.
- * - RPC throws (network drop / timeout — the rekey may have happened
- *   server-side before the response was lost): keep the new key and
- *   acknowledge the rotation — overwriting the keyring with the old key
- *   would permanently orphan a rekeyed database. `complete_db_key_rotation`
- *   clears the rollback slot WITHOUT restoring, so the original key is
- *   intentionally dropped (never written back over a possibly-rekeyed
- *   database).
+ * - The native bridge marks a request as pre-delivery, or the server rejects
+ *   it with a client error (< 500): the database was DEFINITELY not
+ *   re-encrypted — restore the original key so the keyring and the database
+ *   agree. A pre-delivery failure must never complete the rotation: dropping
+ *   the only old-key rollback slot while the database still requires the old
+ *   key breaks the next startup.
+ * - The bridge marks a response-body read failure, a 5xx server error, or any
+ *   other unclassified thrown error: keep the new key AND the rollback slot
+ *   (neither restore nor complete) — the outcome stays pending, same as the
+ *   server-side `ambiguous: true` state, for a same-session
+ *   retry/re-verification.
  */
 export function useChangeDbEncryptionKeyMutation() {
   return useMutation({
@@ -146,9 +174,14 @@ export function useChangeDbEncryptionKeyMutation() {
           await invokeCompleteDbKeyRotation().catch(() => {})
           return result
         } catch (error) {
-          // Ambiguous outcome (lost response) — keep the new key (see hook
-          // doc above).
-          await invokeCompleteDbKeyRotation().catch(() => {})
+          // Restore only when the error explicitly proves that the database
+          // was not rekeyed. The desktop bridge marks a connection failure as
+          // pre-delivery and a response-body read failure as post-delivery;
+          // all unclassified errors fail closed to the pending state so a
+          // rekeyed database is never orphaned.
+          if (rpcFailureProvesNoRekey(error)) {
+            await invokeRestoreDbKey().catch(() => {})
+          }
           throw error
         }
       }

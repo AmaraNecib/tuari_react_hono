@@ -20,6 +20,10 @@ vi.mock("@/lib/orpc-client", () => ({
 
 import { invoke } from "@tauri-apps/api/core"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
+import {
+  DESKTOP_BRIDGE_ERROR_KIND,
+  DESKTOP_BRIDGE_FAILURE_PHASE,
+} from "@/lib/desktop-api-bridge"
 import { rpcClient } from "@/lib/orpc-client"
 import { useChangeDbEncryptionKeyMutation } from "./recovery-key-hooks"
 
@@ -38,6 +42,15 @@ function renderMutation() {
 }
 
 const INPUT = { currentKey: "old-key", newKey: "new-key-123" }
+
+type DesktopBridgeFailurePhase =
+  (typeof DESKTOP_BRIDGE_FAILURE_PHASE)[keyof typeof DESKTOP_BRIDGE_FAILURE_PHASE]
+
+function desktopBridgeError(message: string, phase: DesktopBridgeFailurePhase) {
+  return Object.assign(new Error(message), {
+    desktopBridge: { kind: DESKTOP_BRIDGE_ERROR_KIND, phase },
+  })
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -136,18 +149,112 @@ describe("useChangeDbEncryptionKeyMutation", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
   })
 
-  it("keeps the new key (does NOT restore) when the RPC throws — the rekey may have happened", async () => {
+  it("restores the old key when the RPC fails before delivery (transport/bridge error)", async () => {
     isDesktopRuntimeMock.mockReturnValue(true)
-    changeDbEncryptionKeyMock.mockRejectedValue(new Error("network down"))
+    // The bridge explicitly marks a connection failure as pre-delivery. The
+    // database was DEFINITELY not rekeyed.
+    changeDbEncryptionKeyMock.mockRejectedValue(
+      desktopBridgeError("network down", DESKTOP_BRIDGE_FAILURE_PHASE.PRE_DELIVERY),
+    )
     const { result } = renderMutation()
 
     await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("network down")
 
-    // An ambiguous failure (lost response) must NOT overwrite the new key
-    // with the old one — that would permanently orphan a database that WAS
-    // re-encrypted server-side. The rotation is acknowledged instead.
-    expect(invokeMock).toHaveBeenCalledWith("complete_db_key_rotation")
+    // A pre-delivery failure must roll the rotation back: completing it
+    // would drop the only old-key rollback slot while the database still
+    // requires the old key, breaking the next startup (review finding).
+    expect(invokeMock).toHaveBeenCalledWith("restore_db_key")
+    expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
+  })
+
+  it("keeps the new key and rollback slot when the bridge fails reading a response body after delivery", async () => {
+    isDesktopRuntimeMock.mockReturnValue(true)
+    // The Rust bridge received response headers before the body read failed.
+    // There is no ORPC metadata, but the API handler may already have
+    // rekeyed the database, so this outcome is unknown.
+    changeDbEncryptionKeyMock.mockRejectedValue(
+      desktopBridgeError(
+        "Failed to read desktop API bridge response body",
+        DESKTOP_BRIDGE_FAILURE_PHASE.RESPONSE_BODY_READ,
+      ),
+    )
+    const { result } = renderMutation()
+
+    await expect(result.current.mutateAsync(INPUT)).rejects.toThrow(
+      "Failed to read desktop API bridge response body",
+    )
+
+    // Keep the new key AND the rollback slot: neither restore nor complete is
+    // safe when the response was delivered but could not be consumed.
+    expect(invokeMock).toHaveBeenCalledWith("rotate_db_key", { newKey: INPUT.newKey })
     expect(invokeMock).not.toHaveBeenCalledWith("restore_db_key")
+    expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
+  })
+
+  it("keeps the new key and rollback slot for an unclassified RPC failure", async () => {
+    isDesktopRuntimeMock.mockReturnValue(true)
+    // Missing both ORPC metadata and the bridge phase is not proof of
+    // pre-delivery. Fail closed: the outcome stays pending.
+    changeDbEncryptionKeyMock.mockRejectedValue(new Error("unclassified failure"))
+    const { result } = renderMutation()
+
+    await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("unclassified failure")
+
+    expect(invokeMock).not.toHaveBeenCalledWith("restore_db_key")
+    expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
+  })
+
+  it("keeps the new key and rollback slot when the bridge failure phase is unknown", async () => {
+    isDesktopRuntimeMock.mockReturnValue(true)
+    // A non-connect send failure is not proof of pre-delivery: the request
+    // may have been delivered before the connection died. Fail closed.
+    changeDbEncryptionKeyMock.mockRejectedValue(
+      desktopBridgeError("bridge request failed", DESKTOP_BRIDGE_FAILURE_PHASE.UNKNOWN),
+    )
+    const { result } = renderMutation()
+
+    await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("bridge request failed")
+
+    expect(invokeMock).not.toHaveBeenCalledWith("restore_db_key")
+    expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
+  })
+
+  it("restores the old key when the server rejects the RPC with a client error (4xx — handler never ran)", async () => {
+    isDesktopRuntimeMock.mockReturnValue(true)
+    // ORPC server errors carry a string code + numeric status. A 401 means
+    // the auth middleware rejected the request BEFORE the rekey handler ran
+    // — the database was definitely not re-encrypted.
+    changeDbEncryptionKeyMock.mockRejectedValue(
+      Object.assign(new Error("Unauthorized"), { code: "UNAUTHORIZED", status: 401 }),
+    )
+    const { result } = renderMutation()
+
+    await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("Unauthorized")
+
+    expect(invokeMock).toHaveBeenCalledWith("restore_db_key")
+    expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
+  })
+
+  it("keeps the new key AND the rollback slot when the RPC throws a 5xx server error (outcome unknown)", async () => {
+    isDesktopRuntimeMock.mockReturnValue(true)
+    // A 500 means the server RESPONDED — the rekey handler may have run
+    // before the failure, so the outcome is unknown. Neither restore (would
+    // orphan a rekeyed DB) nor complete (would drop the only way back if the
+    // rekey did NOT happen) — the rollback slot stays for a same-session
+    // retry/re-verification.
+    changeDbEncryptionKeyMock.mockRejectedValue(
+      Object.assign(new Error("Internal Server Error"), {
+        code: "INTERNAL_SERVER_ERROR",
+        status: 500,
+      }),
+    )
+    const { result } = renderMutation()
+
+    await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("Internal Server Error")
+
+    expect(invokeMock).toHaveBeenCalledWith("rotate_db_key", { newKey: INPUT.newKey })
+    expect(invokeMock).not.toHaveBeenCalledWith("restore_db_key")
+    expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
   })
 
   it("does not call the RPC (or roll back) when the rotation itself fails", async () => {
@@ -161,11 +268,13 @@ describe("useChangeDbEncryptionKeyMutation", () => {
     expect(invokeMock).toHaveBeenCalledTimes(1)
   })
 
-  it("swallows a completion failure so the original RPC error still surfaces", async () => {
+  it("swallows a failing restore so the original pre-delivery RPC error still surfaces", async () => {
     isDesktopRuntimeMock.mockReturnValue(true)
-    changeDbEncryptionKeyMock.mockRejectedValue(new Error("rekey failed"))
+    changeDbEncryptionKeyMock.mockRejectedValue(
+      desktopBridgeError("rekey failed", DESKTOP_BRIDGE_FAILURE_PHASE.PRE_DELIVERY),
+    )
     invokeMock.mockResolvedValueOnce(undefined) // rotate OK
-    invokeMock.mockRejectedValueOnce(new Error("keyring busy")) // complete fails — swallowed
+    invokeMock.mockRejectedValueOnce(new Error("keyring busy")) // restore fails — swallowed
     const { result } = renderMutation()
 
     await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("rekey failed")
