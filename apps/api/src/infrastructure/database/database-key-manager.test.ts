@@ -95,7 +95,7 @@ describe("createDatabaseKeyManager", () => {
     expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
   });
 
-  it("fails with a re-encryption message when the post-rekey verification fails", () => {
+  it("reports an AMBIGUOUS post-rekey verification failure (rekeyed: false + ambiguous: true)", () => {
     const dbPath = join(tempDir, "cipher.sqlite");
     writeFileSync(dbPath, CIPHER_LIKE_HEADER);
 
@@ -113,17 +113,22 @@ describe("createDatabaseKeyManager", () => {
     ) as unknown as DatabaseKeyManagerSeams["openConnection"];
     const manager = makeManager(sqlite, dbPath, openConnection);
 
+    // The rekey RAN, but the probe could not verify the new key — the
+    // outcome is AMBIGUOUS. Reporting plain rekeyed: false would make the
+    // caller restore the old key and orphan a database that is likely on the
+    // new key (Greptile P1). The port must say so explicitly.
     expect(manager.changeKey("current-key", "new-key-123")).toEqual({
       success: false,
-      error: "Database re-encryption failed",
+      error: "Database re-encryption could not be verified",
       rekeyed: false,
+      ambiguous: true,
     });
 
     // The rekey itself ran, but the new key was not confirmed.
     expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
   });
 
-  it("does not acknowledge rotation (rekeyed: false) when a post-rekey probe fails with a transient/system error", () => {
+  it("reports an AMBIGUOUS post-rekey probe failure (rekeyed: false + ambiguous: true) on a transient/system error", () => {
     const dbPath = join(tempDir, "cipher.sqlite");
     writeFileSync(dbPath, CIPHER_LIKE_HEADER);
 
@@ -144,15 +149,17 @@ describe("createDatabaseKeyManager", () => {
       .mockReturnValue(failingScratch.connection) as unknown as DatabaseKeyManagerSeams["openConnection"];
     const manager = makeManager(sqlite, dbPath, openConnection);
 
-    // The port must NOT claim the database is on the new key from a probe
-    // that could not verify it — that would make the caller drop the
-    // old-key rollback slot and acknowledge the rotation, orphaning the
-    // database if the rekey actually left it on the old key (Greptile P1).
-    // Ambiguous → rekeyed: false (no key rotation acknowledged).
+    // The rekey likely SUCCEEDED but could not be verified — the port must
+    // NOT claim the database is on the old key (plain rekeyed: false would
+    // make the caller restore the old key and orphan a re-encrypted
+    // database, Greptile P1). Ambiguous → rekeyed: false + ambiguous: true:
+    // the caller keeps the new key and the rollback slot, and surfaces the
+    // honest "rekey applied but verification pending" state.
     expect(manager.changeKey("current-key", "new-key-123")).toEqual({
       success: false,
-      error: "Database re-encryption failed",
+      error: "Database re-encryption could not be verified",
       rekeyed: false,
+      ambiguous: true,
     });
     // current-key verify + new-key probe — no further discrimination probe.
     expect(openConnection).toHaveBeenCalledTimes(2);
@@ -168,8 +175,9 @@ describe("createDatabaseKeyManager", () => {
     rejectingScratch.connection.prepare.mockImplementation(() => {
       // SQLCipher's definitive wrong-key signal — the read failed with
       // SQLITE_NOTADB, so the NEW key was really rejected (the rekey did
-      // not apply). Still rekeyed: false — the database is NOT on the new
-      // key, so restoring the old key is safe.
+      // not apply). This is NOT ambiguous: the probe RAN and proved the
+      // database is NOT on the new key, so rekeyed: false WITHOUT the
+      // ambiguous flag is correct, and restoring the old key is safe.
       const error = new Error("file is not a database") as Error & { code?: string };
       error.code = "SQLITE_NOTADB";
       throw error;
@@ -183,6 +191,7 @@ describe("createDatabaseKeyManager", () => {
       .mockReturnValue(rejectingScratch.connection) as unknown as DatabaseKeyManagerSeams["openConnection"];
     const manager = makeManager(sqlite, dbPath, openConnection);
 
+    // DEFINITIVE failure — no ambiguous flag: the caller restores the old key.
     expect(manager.changeKey("current-key", "new-key-123")).toEqual({
       success: false,
       error: "Database re-encryption failed",

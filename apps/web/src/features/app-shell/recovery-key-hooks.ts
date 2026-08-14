@@ -91,13 +91,25 @@ async function invokeCompleteDbKeyRotation(): Promise<void> {
  * On the desktop runtime the key lives in the host's secret store, so the
  * flow rotates the persisted key FIRST (atomic), then calls the API rekey
  * RPC, and rolls the rotation back when the API DEFINITIVELY did not rekey.
- * An ambiguous failure (network drop / timeout — the rekey may have happened
- * server-side before the response was lost) deliberately does NOT restore:
- * overwriting the keyring with the old key would permanently orphan a
- * rekeyed database, because the new key would be gone. The new key is kept
- * and the rotation acknowledged instead — `complete_db_key_rotation` clears
- * the rollback slot WITHOUT restoring, so the original key is intentionally
- * dropped (never written back over a possibly-rekeyed database).
+ *
+ * Failure outcomes are tri-state (issue #265, Greptile P1):
+ * - `rekeyed: true` — the DB WAS re-encrypted (only key persistence failed);
+ *   keep the new key and acknowledge the rotation.
+ * - `rekeyed: false` (no `ambiguous`) — the API DEFINITIVELY did not rekey;
+ *   restore the original key so the keyring and the database agree.
+ * - `ambiguous: true` — the rekey ran server-side but its verification could
+ *   not complete (transient probe failure). The DB is LIKELY on the new key:
+ *   keep the new key (restoring would orphan the re-encrypted database) AND
+ *   keep the rollback slot (do NOT clear it) so a later re-verification can
+ *   still restore if it proves definitive. The returned result surfaces the
+ *   honest "rekey applied but verification pending" state.
+ * - RPC throws (network drop / timeout — the rekey may have happened
+ *   server-side before the response was lost): keep the new key and
+ *   acknowledge the rotation — overwriting the keyring with the old key
+ *   would permanently orphan a rekeyed database. `complete_db_key_rotation`
+ *   clears the rollback slot WITHOUT restoring, so the original key is
+ *   intentionally dropped (never written back over a possibly-rekeyed
+ *   database).
  */
 export function useChangeDbEncryptionKeyMutation() {
   return useMutation({
@@ -113,6 +125,16 @@ export function useChangeDbEncryptionKeyMutation() {
               // keep the new key; rolling the keyring back would orphan the
               // re-encrypted database on the next restart.
               await invokeCompleteDbKeyRotation().catch(() => {})
+            } else if (result.ambiguous) {
+              // AMBIGUOUS (Greptile P1): the rekey ran but the post-rekey
+              // verification could not complete (transient/system probe
+              // failure). The database is LIKELY on the new key — restoring
+              // the old key would orphan it on the next startup. Keep the
+              // new key AND keep the rollback slot (neither restore nor
+              // complete): the returned result surfaces the honest "rekey
+              // applied but verification pending" state, and the retained
+              // slot lets a later re-verification still restore if it
+              // proves definitive.
             } else {
               // The API definitively did NOT re-encrypt — put the original
               // key back so the keyring and the database agree.
@@ -124,7 +146,8 @@ export function useChangeDbEncryptionKeyMutation() {
           await invokeCompleteDbKeyRotation().catch(() => {})
           return result
         } catch (error) {
-          // Ambiguous outcome — keep the new key (see hook doc above).
+          // Ambiguous outcome (lost response) — keep the new key (see hook
+          // doc above).
           await invokeCompleteDbKeyRotation().catch(() => {})
           throw error
         }

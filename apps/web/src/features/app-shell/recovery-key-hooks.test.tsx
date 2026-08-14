@@ -109,6 +109,33 @@ describe("useChangeDbEncryptionKeyMutation", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("restore_db_key")
   })
 
+  it("keeps the new key AND the rollback slot (no restore, no complete) when the rekey is AMBIGUOUS", async () => {
+    isDesktopRuntimeMock.mockReturnValue(true)
+    changeDbEncryptionKeyMock.mockResolvedValue({
+      success: false,
+      error: "Database re-encryption could not be verified",
+      rekeyed: false,
+      ambiguous: true,
+    })
+    const { result } = renderMutation()
+
+    await expect(result.current.mutateAsync(INPUT)).resolves.toEqual({
+      success: false,
+      error: "Database re-encryption could not be verified",
+      rekeyed: false,
+      ambiguous: true,
+    })
+
+    // AMBIGUOUS (Greptile P1): the rekey ran server-side but its verification
+    // could not complete — the DB is LIKELY on the new key. Restoring the old
+    // key would orphan it on the next startup; clearing the rollback slot
+    // would lose the only way back. The hook must do NEITHER and surface the
+    // honest "rekey applied but verification pending" state via the result.
+    expect(invokeMock).toHaveBeenCalledWith("rotate_db_key", { newKey: INPUT.newKey })
+    expect(invokeMock).not.toHaveBeenCalledWith("restore_db_key")
+    expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
+  })
+
   it("keeps the new key (does NOT restore) when the RPC throws — the rekey may have happened", async () => {
     isDesktopRuntimeMock.mockReturnValue(true)
     changeDbEncryptionKeyMock.mockRejectedValue(new Error("network down"))

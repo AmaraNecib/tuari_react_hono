@@ -91,10 +91,12 @@ export function createSystemHandlers(
         if (!result.success) {
           // The port reports rekeyed: true only when the database IS on the
           // new key despite the failure (a verified rekey whose persistence
-          // failed). Ambiguous post-rekey probe failures are rekeyed: false
-          // — the caller keeps the old-key rollback slot and does not
-          // acknowledge the rotation. The ?? false default keeps every
-          // other failure on the same safe side.
+          // failed). Ambiguous post-rekey probe failures (Greptile P1) — the
+          // rekey ran but could not be verified — are forwarded with
+          // rekeyed: false AND ambiguous: true: the caller must NOT restore
+          // the old key (the database is likely on the new key) and must NOT
+          // clear the rollback slot; the outcome stays pending. The
+          // ?? false default keeps every other failure on the same safe side.
           return { ...result, rekeyed: result.rekeyed ?? false };
         }
         // The database WAS re-encrypted — persist the new key so a restart

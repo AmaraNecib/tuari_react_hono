@@ -1142,6 +1142,37 @@ describe("RPC router", () => {
     expect(persistKey).not.toHaveBeenCalled();
   });
 
+  it("forwards the port's ambiguous post-rekey probe failure so the caller never restores the old key", async () => {
+    const harness = createHarness();
+    // The port reports rekeyed: false + ambiguous: true when the rekey ran
+    // but the post-rekey verification could not complete (Greptile P1). The
+    // wire MUST forward the ambiguity unchanged: a plain rekeyed: false
+    // would make the desktop caller restore the old key and orphan a
+    // database that is likely on the new key.
+    const changeKey = vi.fn(() => ({
+      success: false as const,
+      error: "Database re-encryption could not be verified",
+      rekeyed: false,
+      ambiguous: true,
+    }));
+    const persistKey = vi.fn();
+    const router = createTestRouter(harness, undefined, {}, { changeKey }, { persistKey });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
+    ).resolves.toEqual({
+      success: false,
+      error: "Database re-encryption could not be verified",
+      rekeyed: false,
+      ambiguous: true,
+    });
+    // Nothing is persisted on a failed rekey; the ambiguous flag survives
+    // the wire unchanged so the caller keeps the rollback slot.
+    expect(changeKey).toHaveBeenCalledTimes(1);
+    expect(persistKey).not.toHaveBeenCalled();
+  });
+
   it("generates an inventory report through the RPC contract (derived filter input)", async () => {
     const harness = createHarness();
     const router = createTestRouter(harness);

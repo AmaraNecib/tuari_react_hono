@@ -2,10 +2,25 @@ import { closeSync, openSync, readSync } from "node:fs";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
 import { createDatabaseConnection, escapeSqliteString } from "./factory";
 
-/** Result of a database encryption-key change. Mirrors the RPC wire output. */
+/**
+ * Result of a database encryption-key change. Mirrors the RPC wire output.
+ *
+ * Failure outcomes are tri-state on the rekey (Greptile P1):
+ * - `rekeyed: true` — the database IS on the new key (a verified rekey whose
+ *   persistence failed); the caller must KEEP the new key.
+ * - `rekeyed: false` without `ambiguous` — the database DEFINITIVELY is NOT
+ *   on the new key (the post-rekey probe ran and rejected it); restoring the
+ *   old key is safe and correct.
+ * - `rekeyed: false` with `ambiguous: true` — the rekey ran but the
+ *   post-rekey verification could not complete (transient/system probe
+ *   failure: lock, binding, connection, file). The database is LIKELY on the
+ *   new key, so the caller must NOT restore the old key (that would orphan
+ *   the database on the next startup) and must NOT clear the rollback slot —
+ *   the outcome stays pending for a later re-verification.
+ */
 export type DatabaseKeyChangeResult =
   | { success: true }
-  | { success: false; error: string; rekeyed?: boolean };
+  | { success: false; error: string; rekeyed?: boolean; ambiguous?: boolean };
 
 /**
  * Verifies and rotates the SQLCipher database encryption key.
@@ -169,14 +184,17 @@ function probeKeyOnFreshConnection(
  * unencrypted database maps onto the wire failure output with an honest
  * reason.
  *
- * Post-rekey probe honesty (Greptile P1): a probe that did not VERIFY the
- * new key opens the database — a definitive wrong-key rejection (the rekey
- * did not apply) or a transient/system error (lock, binding, connection —
- * the rekey may or may not have taken) — is reported as an ambiguous
- * failure with `rekeyed: false`, never `rekeyed: true`. Claiming the
- * rotation applied would make the caller drop the old-key rollback slot;
- * if the rekey actually left the database on the old key (the rekey-on-WAL
- * no-op hazard), the next startup could not open it at all.
+ * Post-rekey probe honesty (Greptile P1): the verification result is
+ * tri-state, never binary. A probe that VERIFIES the new key opens the
+ * database reports success. A probe that RAN and definitively rejected the
+ * new key (SQLITE_NOTADB — the rekey did not apply, e.g. the rekey-on-WAL
+ * no-op hazard) reports `rekeyed: false` with NO `ambiguous` flag: restoring
+ * the old key is safe. A probe that COULD NOT RUN (transient/system error:
+ * lock, binding, connection, file) reports `rekeyed: false` WITH
+ * `ambiguous: true`: the rekey likely succeeded, so the caller must not
+ * restore the old key (that would orphan the re-encrypted database) and must
+ * not clear the rollback slot — the outcome stays pending. `rekeyed: true`
+ * is never claimed without a verified probe.
  */
 export function createDatabaseKeyManager(
   sqlite: BetterSqliteDatabase,
@@ -231,23 +249,32 @@ export function createDatabaseKeyManager(
       // re-opened by path.
       if (encryption === "encrypted") {
         const newKeyProbe = probeKeyOnFreshConnection(openConnection, databasePath, newKey);
-        if (newKeyProbe !== "opens") {
-          // Post-rekey verification failed — the new key could not be
-          // VERIFIED to open the database. That is never grounds to report
-          // rekeyed: true (Greptile P1): whether the probe got a definitive
-          // wrong-key rejection (the rekey did not apply at all) or a
-          // transient/system error (lock, binding, connection — the rekey
-          // may or may not have taken), "couldn't verify" is not "the
-          // database IS on the new key". Claiming the rotation applied
-          // would make the caller drop the old-key rollback slot and
-          // acknowledge the rotation; if the rekey actually left the
-          // database on the old key, the next startup could not open it.
-          // Report the ambiguous/failure state instead: the caller keeps
-          // the old key and does not acknowledge the rotation.
+        if (newKeyProbe === "wrong-key") {
+          // DEFINITIVE failure: the probe RAN and SQLCipher rejected the new
+          // key (SQLITE_NOTADB) — the rekey did not apply (the rekey-on-WAL
+          // no-op hazard). The database is NOT on the new key, so restoring
+          // the old key is safe and correct. No `ambiguous` flag.
           return {
             success: false,
             error: "Database re-encryption failed",
             rekeyed: false,
+          };
+        }
+        if (newKeyProbe === "error") {
+          // AMBIGUOUS (Greptile P1): the rekey RAN, but the post-rekey probe
+          // could not verify anything — a transient/system failure (lock,
+          // binding, connection, file). The database is LIKELY on the new
+          // key, so reporting a plain `rekeyed: false` would make the caller
+          // restore the old key and orphan the re-encrypted database on the
+          // next startup. Report the ambiguity explicitly: the caller keeps
+          // the new key, keeps the rollback slot, and surfaces the honest
+          // "rekey applied but verification pending" state instead of
+          // restoring.
+          return {
+            success: false,
+            error: "Database re-encryption could not be verified",
+            rekeyed: false,
+            ambiguous: true,
           };
         }
       }
