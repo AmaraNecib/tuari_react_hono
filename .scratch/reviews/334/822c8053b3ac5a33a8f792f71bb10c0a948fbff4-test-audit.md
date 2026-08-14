@@ -47,3 +47,6 @@ assertions; comment claims pinned; regression-safe in both directions).
 - Local runs at HEAD: contracts 160/160, API 1170 passed | 1 skipped, web
   494/494, full Playwright suite 42/42 (previous HEAD — e2e spec unchanged
   since; wire additions covered by router seam).
+
+---
+post-evidence delta: evidence rename + wisdom commit (docs-only, no code change). Review content remains valid.

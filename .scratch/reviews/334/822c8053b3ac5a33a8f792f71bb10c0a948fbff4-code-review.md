@@ -51,3 +51,6 @@ lone surrogates pass (documented residual).
 ## Verdict
 
 No actionable findings from either axis → ✅ safe to push.
+
+---
+post-evidence delta: evidence rename + wisdom commit (docs-only, no code change). Review content remains valid.
