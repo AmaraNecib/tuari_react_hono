@@ -44,3 +44,39 @@ union is the scoped bridge), F9/F10.
 - `pnpm lint`: passed
 - `pnpm test:web`: 476 passed
 - E2E `tests/e2e/employees.spec.ts`: 2 passed
+
+## Post-evidence delta (Greptile P1 fix)
+
+**Delta SHA**: `71cd5f7` — fix(api): gate admin role assignment behind the admin grant (part of #263)
+
+**Delta files**: `apps/api/src/modules/company/company.entity-resolvers.ts`,
+`apps/api/src/modules/company/workforce.service.ts`,
+`apps/api/src/modules/company/workspace-mutation-context.ts`,
+`apps/api/src/modules/company/company.test-helpers.ts`,
+`apps/api/src/modules/company/company.role-assignability.test.ts`,
+`.scratch/implementation/263-design.md`.
+
+Narrow, security-focused delta applied **after** this evidence was gathered:
+
+- Greptile P1: `requireAssignableEmployeeRole` accepted the `admin` role for
+  any caller holding `employees:create` (the `manager` role), letting a
+  lesser grant mint an `admin` employee whose phone-linked account would
+  inherit every admin permission.
+- Fix (Direction 1, caller-grant check): `requireAssignableEmployeeRole` now
+  takes an optional `caller` (`{ authorizer, actorUserId }`) and enforces
+  `requireAdminAssignmentGrant` — the `admin` role may only be assigned by a
+  caller holding the admin-level grant (bootstrap owner per
+  `WorkspaceAdminAuthorizer.isBootstrapOwner`); everyone else gets
+  UNAUTHORIZED. The gate fails closed (no authorizer/actor ⇒ no grant).
+- Batch-create applies the same rule per row and throws UNAUTHORIZED
+  atomically (nothing persists). `manager`/`viewer` and legacy keys unchanged.
+- `WorkspaceMutationContext` exposes the authorizer via a getter; the guard
+  stays a pure resolver function. Harness accepts an optional authorizer.
+- Tests: 9 tests added/re-pinned in `company.role-assignability.test.ts`
+  (resolver-level manager-reject / owner-accept / fail-closed; service-level
+  create/update/batch manager-reject and admin-holder-accept).
+
+This delta is a single new guard whose behavior is pinned by the new tests;
+the prior Standards/Spec conclusions for the reviewed surface are unaffected.
+Re-verified after the delta: `pnpm typecheck`, `pnpm lint`, `pnpm test:api`
+(1084 passed), `pnpm test:web` (476 passed), contracts build.
