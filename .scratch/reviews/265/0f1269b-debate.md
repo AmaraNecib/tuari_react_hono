@@ -1,6 +1,6 @@
 # Debate — issue #265 (Composition root follow-ups) — final review round
 
-**Head:** `0d47056` (post-evidence delta: Greptile P1 fix round — persister 0600 mode + rekeyed-probe honesty; SHA refreshed from 0105e48)
+**Head:** `0f1269b` (post-evidence delta: Greptile re-review round 3 — tri-state post-rekey verification: ambiguous probe failures no longer trigger an old-key restore; SHA refreshed from 0d47056)
 **Base:** `origin/develop` @ `3c1449043bab7dd28cba4d13b1e072ae1f3999ca` (merge-base == base; branch `refactor/issue-265` rebased)
 **Tier:** High-assurance (crypto key path — "highest-severity open item in the audit" per owner comment).
 **Lane state:** completed worker lane; 7 commits (`e29c746`…`d8acada`). This is the final review round against the full diff `origin/develop...HEAD`.
@@ -137,3 +137,26 @@ could not verify the new key never reports `rekeyed: true` (ambiguous
 failure → caller keeps the old-key rollback slot). Re-verified: typecheck
 4/4, `test:api` 1109 passed | 1 skipped, `test:web` 484 passed. See
 `0d47056-code-review.md` delta note for details.
+
+## Post-evidence delta (0f1269b — Greptile re-review round 3, tri-state rekey verification)
+
+Greptile re-review flagged two P1s (same root cause) on the post-rekey probe
+path: a transient probe failure after a successful rekey was reported as
+plain `rekeyed: false`, which the desktop caller read as definitive failure
+and restored the OLD key → the re-encrypted database could not be opened on
+the next startup. This round made the outcome tri-state:
+
+- Definitive wrong-key rejection (probe ran, SQLITE_NOTADB) → `rekeyed:
+false` with no `ambiguous` — restoring the old key is safe (unchanged).
+- Probe could NOT run (transient lock/binding/connection/file error) →
+`rekeyed: false` + `ambiguous: true` — the caller keeps the new key AND the
+rollback slot, surfaces "rekey applied but verification pending", and does
+not restore.
+- Verified probe → `rekeyed: true` (unchanged).
+
+The wire schema carries the optional `ambiguous` flag (a refine rejects it
+combined with `rekeyed: true`); the web hook branches on `ambiguous` before
+`rekeyed` so it never restores on ambiguity. Both critic P1s are addressed
+by this delta; no remaining critic finding applies to the changed lines.
+Re-verified: contracts build + 131 tests, typecheck 4/4, lint 2/2,
+`test:api` 1110 passed | 1 skipped, `test:web` 485 passed. No Rust touched.

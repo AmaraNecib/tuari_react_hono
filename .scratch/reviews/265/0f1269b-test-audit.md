@@ -1,6 +1,6 @@
 # Test Audit — issue #265 (Composition root follow-ups) — final review round
 
-**Head:** `0d47056` (post-evidence delta: Greptile P1 fix round — persister 0600 mode + rekeyed-probe honesty; SHA refreshed from 0105e48)
+**Head:** `0f1269b` (post-evidence delta: Greptile re-review round 3 — tri-state post-rekey verification: ambiguous probe failures no longer trigger an old-key restore; SHA refreshed from 0d47056)
 **Base:** `origin/develop` @ `3c1449043bab7dd28cba4d13b1e072ae1f3999ca`
 **Tier:** High-assurance (crypto key path).
 
@@ -123,3 +123,28 @@ comment refreshed (the port's `rekeyed: true` now only reflects a verified
 rekey whose persistence failed). Re-verified: `test:api` 65 files, 1109
 passed | 1 skipped (manager 17, persister 12, router rekeyed-path tests);
 `test:web` 59 files, 484 passed; typecheck 4/4.
+
+## Post-evidence delta (0f1269b — Greptile re-review round 3, tri-state rekey verification)
+
+New tests for the tri-state outcome (Greptile P1 round):
+
+- **Port** `database-key-manager.test.ts`: transient post-rekey probe →
+`{ rekeyed: false, ambiguous: true }` with the "could not be verified" error
+(2 tests, renamed to the tri-state contract); definitive SQLITE_NOTADB
+rejection stays plain `rekeyed: false` (1 test, comments refreshed).
+- **Router** `router.test.ts`: the handler forwards the port's `ambiguous:
+true` unchanged through the wire (1 new test).
+- **Web hook** `recovery-key-hooks.test.tsx`: ambiguous result → keeps the
+new key AND the rollback slot — asserts `restore_db_key` AND
+`complete_db_key_rotation` are both NOT invoked (1 new test).
+- **Contracts** `index.test.ts`: `{ rekeyed: false, ambiguous: true }`
+parses; `{ rekeyed: true, ambiguous: true }` rejected (2 new pins).
+
+This closes the previous audit's E2 gap precisely: the "rekey succeeded but
+post-rekey verification failed" case is now discriminated into ambiguous
+(no restore) vs definitive (restore), each pinned at port, wire, and
+orchestration level.
+
+Re-verified on 0f1269b: `pnpm --filter @tuari/contracts test` (131 passed),
+`pnpm test:api` (65 files, 1110 passed | 1 skipped), `pnpm test:web` (59
+files, 485 passed), typecheck 4/4, lint 2/2. No Rust touched.

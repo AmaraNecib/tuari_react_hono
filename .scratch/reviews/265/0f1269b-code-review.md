@@ -1,6 +1,6 @@
 # Code Review — issue #265 (Composition root follow-ups) — final review round
 
-**Head:** `0d47056` (post-evidence delta: Greptile P1 fix round — persister 0600 mode + rekeyed-probe honesty; SHA refreshed from 0105e48)
+**Head:** `0f1269b` (post-evidence delta: Greptile re-review round 3 — tri-state post-rekey verification: ambiguous probe failures no longer trigger an old-key restore; SHA refreshed from 0d47056)
 **Base:** `origin/develop` @ `3c1449043bab7dd28cba4d13b1e072ae1f3999ca`
 **Diff:** `git diff origin/develop...HEAD` (23 files, +1960/−220). Commits: `e29c746` (schema threading), `d119bde` (rekey verification + persister), `e08caa2` (shutdown), `7d06b86` (desktop rotation), `705395a` (design doc), `ce66f26` (debate fixes), `d8acada` (final hardening).
 
@@ -109,3 +109,39 @@ renamed to the final code SHA per `process.md` (post-evidence delta note).
 Re-verified on 0d47056: `pnpm typecheck` (4/4 tasks), `pnpm test:api`
 (65 files, 1109 passed | 1 skipped), `pnpm test:web` (59 files, 484
 passed). No Rust touched in this round.
+
+## Post-evidence delta (0f1269b — Greptile re-review round 3, tri-state rekey verification)
+
+Greptile re-review found two P1s sharing one root cause: an ambiguous
+post-rekey probe (transient connection/lock/binding/fs error after a
+SUCCESSFUL `PRAGMA rekey`) was reported as a plain `rekeyed: false`, so the
+desktop caller restored the OLD persisted key and the next startup could not
+open the re-encrypted database. The fix makes the rekey outcome tri-state
+end-to-end (Standards/Spec both re-checked against the diff at 0f1269b):
+
+- **Port** (`database-key-manager.ts`): the post-rekey probe branch now
+distinguishes `wrong-key` (probe RAN and definitively rejected the new key
+→ `rekeyed: false` with no `ambiguous`, restore is safe — unchanged) from
+`error` (probe COULD NOT RUN → `rekeyed: false` + `ambiguous: true` with the
+distinct error "Database re-encryption could not be verified"). `rekeyed:
+true` still requires a verified probe.
+- **Wire** (`packages/contracts/src/security.ts`): the failure member gains
+optional `ambiguous: boolean`; a refine rejects `rekeyed: true` +
+`ambiguous: true`. Backward compatible — every previously pinned shape still
+parses (strict member still rejects unknown keys).
+- **Handler** (`apps/api/src/rpc/handlers/system.ts`): forwards `ambiguous:
+true` unchanged (comment refreshed to the tri-state contract).
+- **Desktop orchestration** (`recovery-key-hooks.ts`): on `ambiguous`, the
+hook does NEITHER restore NOR complete — the new key AND the rollback slot
+are both retained, and the returned result surfaces the honest "rekey applied
+but verification pending" state. The definitive-failure restore and the
+verified paths are unchanged.
+- **Tests**: port (transient probe → ambiguous; definitive rejection stays
+plain `rekeyed: false`), router (ambiguous forwarded through the wire), web
+hook (ambiguous → no restore, no complete), contracts (ambiguous member
+parses; `rekeyed:true` + `ambiguous` rejected).
+
+Re-verified on 0f1269b: `pnpm --filter @tuari/contracts build` ✓,
+`pnpm --filter @tuari/contracts test` (131 passed), `pnpm typecheck` (4/4),
+`pnpm lint` (2/2), `pnpm test:api` (65 files, 1110 passed | 1 skipped),
+`pnpm test:web` (59 files, 485 passed). No Rust touched.
