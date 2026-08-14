@@ -283,7 +283,9 @@ export class InvoiceRepository implements IInvoiceRepository {
     const updates: Record<string, unknown> = { status, updatedAt: new Date().toISOString() };
     if (additionalUpdates?.paidAmount !== undefined) updates.paidAmount = additionalUpdates.paidAmount;
     if (additionalUpdates?.remainingAmount !== undefined) updates.remainingAmount = additionalUpdates.remainingAmount;
-    this.db.update(schema.invoice).set(updates).where(eq(schema.invoice.id, id)).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.invoice).set(updates).where(eq(schema.invoice.id, id)).run();
+    });
     const result = await this.findById(id);
     if (!result) throw new Error(`Invoice ${id} not found after status update`);
     return result;
@@ -291,9 +293,11 @@ export class InvoiceRepository implements IInvoiceRepository {
 
   /** Mark invoice as received with debt account. */
   async markReceivedWithDebtAccount(id: string, debtAccountId: string): Promise<Invoice> {
-    this.db.update(schema.invoice).set({
-      status: "RECEIVED", debtAccountId, updatedAt: new Date().toISOString(),
-    }).where(eq(schema.invoice.id, id)).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.invoice).set({
+        status: "RECEIVED", debtAccountId, updatedAt: new Date().toISOString(),
+      }).where(eq(schema.invoice.id, id)).run();
+    });
     const result = await this.findById(id);
     if (!result) throw new Error(`Invoice ${id} not found after receive`);
     return result;

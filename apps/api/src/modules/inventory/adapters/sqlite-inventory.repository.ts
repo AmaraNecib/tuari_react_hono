@@ -264,12 +264,14 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
     const audit = normalizeAuditContext(auditContext)
-    this.db.insert(schema.inventoryItemDefinition).values({
-      id, name: data.name, itemType: data.itemType, unit: data.unit ?? null,
-      description: data.description ?? null, isActive: 1,
-      actorUserId: audit.actorUserId, actorLabel: audit.actorLabel,
-      transactionId: audit.transactionId, createdAt: timestamp, updatedAt: timestamp,
-    }).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.inventoryItemDefinition).values({
+        id, name: data.name, itemType: data.itemType, unit: data.unit ?? null,
+        description: data.description ?? null, isActive: 1,
+        actorUserId: audit.actorUserId, actorLabel: audit.actorLabel,
+        transactionId: audit.transactionId, createdAt: timestamp, updatedAt: timestamp,
+      }).run()
+    })
     return this.getItemDefinitionById(id)!
   }
 
@@ -287,11 +289,13 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       updatedAt: createAlgeriaTimestamp(),
     }
 
-    this.db.update(schema.inventoryItemDefinition).set({
-      name: next.name, itemType: next.itemType, unit: next.unit ?? null,
-      description: next.description ?? null, isActive: next.isActive ? 1 : 0,
-      updatedAt: next.updatedAt,
-    }).where(eq(schema.inventoryItemDefinition.id, data.id)).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.inventoryItemDefinition).set({
+        name: next.name, itemType: next.itemType, unit: next.unit ?? null,
+        description: next.description ?? null, isActive: next.isActive ? 1 : 0,
+        updatedAt: next.updatedAt,
+      }).where(eq(schema.inventoryItemDefinition.id, data.id)).run()
+    })
 
     return this.getItemDefinitionById(data.id)
   }
@@ -358,22 +362,26 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   createInvoiceGroup(data: InventoryInvoiceGroupCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
-    this.db.insert(schema.inventoryInvoiceGroup).values({
-      id, invoiceNumber: data.invoiceNumber ?? null, supplierName: data.supplierName ?? null,
-      invoiceDate: data.invoiceDate ?? null, warehouseId: data.warehouseId ?? null,
-      projectId: data.projectId ?? null, externalCounterpartyId: data.externalCounterpartyId ?? null,
-      grossTotalDzd: data.grossTotalDzd ?? 0, paidAmountDzd: data.paidAmountDzd ?? 0,
-      remainingDebtDzd: data.remainingDebtDzd ?? 0, debtAccountId: data.debtAccountId ?? null,
-      note: data.note ?? null, createdAt: timestamp, updatedAt: timestamp,
-    }).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.inventoryInvoiceGroup).values({
+        id, invoiceNumber: data.invoiceNumber ?? null, supplierName: data.supplierName ?? null,
+        invoiceDate: data.invoiceDate ?? null, warehouseId: data.warehouseId ?? null,
+        projectId: data.projectId ?? null, externalCounterpartyId: data.externalCounterpartyId ?? null,
+        grossTotalDzd: data.grossTotalDzd ?? 0, paidAmountDzd: data.paidAmountDzd ?? 0,
+        remainingDebtDzd: data.remainingDebtDzd ?? 0, debtAccountId: data.debtAccountId ?? null,
+        note: data.note ?? null, createdAt: timestamp, updatedAt: timestamp,
+      }).run()
+    })
     return this.getInvoiceGroupById(id)!
   }
 
   /** updateInvoiceGroupPayment. */
   updateInvoiceGroupPayment(id: string, paidAmountDzd: number, remainingDebtDzd: number, _auditContext?: MutationAuditContext) {
-    this.db.update(schema.inventoryInvoiceGroup).set({
-      paidAmountDzd, remainingDebtDzd, updatedAt: createAlgeriaTimestamp(),
-    }).where(eq(schema.inventoryInvoiceGroup.id, id)).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.inventoryInvoiceGroup).set({
+        paidAmountDzd, remainingDebtDzd, updatedAt: createAlgeriaTimestamp(),
+      }).where(eq(schema.inventoryInvoiceGroup.id, id)).run()
+    })
     return this.getInvoiceGroupById(id)
   }
 
@@ -414,14 +422,16 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   createEntry(data: InventoryEntryCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
-    this.db.insert(schema.inventoryEntry).values({
-      id, invoiceGroupId: data.invoiceGroupId, itemDefinitionId: data.itemDefinitionId,
-      warehouseId: data.warehouseId ?? null, projectId: data.projectId ?? null,
-      itemType: data.itemType, itemName: data.itemName, unit: data.unit ?? null,
-      quantity: data.quantity, unitPriceDzd: data.unitPriceDzd ?? null,
-      totalPriceDzd: data.totalPriceDzd, note: data.note ?? null,
-      createdAt: timestamp, updatedAt: timestamp,
-    }).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.inventoryEntry).values({
+        id, invoiceGroupId: data.invoiceGroupId, itemDefinitionId: data.itemDefinitionId,
+        warehouseId: data.warehouseId ?? null, projectId: data.projectId ?? null,
+        itemType: data.itemType, itemName: data.itemName, unit: data.unit ?? null,
+        quantity: data.quantity, unitPriceDzd: data.unitPriceDzd ?? null,
+        totalPriceDzd: data.totalPriceDzd, note: data.note ?? null,
+        createdAt: timestamp, updatedAt: timestamp,
+      }).run()
+    })
     return this.listEntriesByInvoiceGroupId(data.invoiceGroupId).find((entry) => entry.id === id)!
   }
 
@@ -431,15 +441,17 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   createAssetUnit(data: InventoryAssetUnitCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
-    this.db.insert(schema.inventoryAssetUnit).values({
-      id, inventoryEntryId: data.inventoryEntryId, assetName: data.assetName,
-      assetTag: data.assetTag ?? null, serialNumber: data.serialNumber ?? null,
-      condition: data.condition ?? null, purchaseDate: data.purchaseDate ?? null,
-      purchasePriceDzd: data.purchasePriceDzd, currentWarehouseId: data.currentWarehouseId ?? null,
-      currentProjectId: data.currentProjectId ?? null,
-      currentLocationLabel: resolveLocationLabelByIds(this.raw, data.currentWarehouseId, data.currentProjectId),
-      note: data.note ?? null, createdAt: timestamp, updatedAt: timestamp,
-    }).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.inventoryAssetUnit).values({
+        id, inventoryEntryId: data.inventoryEntryId, assetName: data.assetName,
+        assetTag: data.assetTag ?? null, serialNumber: data.serialNumber ?? null,
+        condition: data.condition ?? null, purchaseDate: data.purchaseDate ?? null,
+        purchasePriceDzd: data.purchasePriceDzd, currentWarehouseId: data.currentWarehouseId ?? null,
+        currentProjectId: data.currentProjectId ?? null,
+        currentLocationLabel: resolveLocationLabelByIds(this.raw, data.currentWarehouseId, data.currentProjectId),
+        note: data.note ?? null, createdAt: timestamp, updatedAt: timestamp,
+      }).run()
+    })
     const row = this.db.select().from(schema.inventoryAssetUnit)
       .where(eq(schema.inventoryAssetUnit.id, id)).limit(1).all()[0]
     return mapAssetUnit(row!)
@@ -455,12 +467,14 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   /** updateAssetUnitLocation. */
   updateAssetUnitLocation(id: string, location: { currentWarehouseId?: string | null; currentProjectId?: string | null; currentLocationLabel?: string | null }) {
-    this.db.update(schema.inventoryAssetUnit).set({
-      currentWarehouseId: location.currentWarehouseId ?? null,
-      currentProjectId: location.currentProjectId ?? null,
-      currentLocationLabel: location.currentLocationLabel ?? resolveLocationLabelByIds(this.raw, location.currentWarehouseId, location.currentProjectId),
-      updatedAt: createAlgeriaTimestamp(),
-    }).where(eq(schema.inventoryAssetUnit.id, id)).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.inventoryAssetUnit).set({
+        currentWarehouseId: location.currentWarehouseId ?? null,
+        currentProjectId: location.currentProjectId ?? null,
+        currentLocationLabel: location.currentLocationLabel ?? resolveLocationLabelByIds(this.raw, location.currentWarehouseId, location.currentProjectId),
+        updatedAt: createAlgeriaTimestamp(),
+      }).where(eq(schema.inventoryAssetUnit.id, id)).run()
+    })
     return this.getAssetUnitById(id)
   }
 
@@ -481,11 +495,13 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   createConsumableBalance(data: InventoryConsumableBalanceCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
-    this.db.insert(schema.inventoryConsumableBalance).values({
-      id, inventoryEntryId: data.inventoryEntryId, itemDefinitionId: data.itemDefinitionId,
-      warehouseId: data.warehouseId ?? null, projectId: data.projectId ?? null,
-      quantity: data.quantity, createdAt: timestamp, updatedAt: timestamp,
-    }).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.inventoryConsumableBalance).values({
+        id, inventoryEntryId: data.inventoryEntryId, itemDefinitionId: data.itemDefinitionId,
+        warehouseId: data.warehouseId ?? null, projectId: data.projectId ?? null,
+        quantity: data.quantity, createdAt: timestamp, updatedAt: timestamp,
+      }).run()
+    })
     return this.getConsumableBalanceByEntryAndLocation({
       inventoryEntryId: data.inventoryEntryId, warehouseId: data.warehouseId, projectId: data.projectId,
     })!
@@ -551,15 +567,19 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 
   /** updateConsumableBalanceQuantity. */
   updateConsumableBalanceQuantity(id: string, quantity: number) {
-    this.db.update(schema.inventoryConsumableBalance).set({
-      quantity, updatedAt: createAlgeriaTimestamp(),
-    }).where(eq(schema.inventoryConsumableBalance.id, id)).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.inventoryConsumableBalance).set({
+        quantity, updatedAt: createAlgeriaTimestamp(),
+      }).where(eq(schema.inventoryConsumableBalance.id, id)).run()
+    })
   }
 
   /** deleteConsumableBalance. */
   deleteConsumableBalance(id: string) {
-    this.db.delete(schema.inventoryConsumableBalance)
-      .where(eq(schema.inventoryConsumableBalance.id, id)).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.delete(schema.inventoryConsumableBalance)
+        .where(eq(schema.inventoryConsumableBalance.id, id)).run()
+    })
   }
 
   // ── Movements ───────────────────────────────────────────────────────
@@ -568,14 +588,16 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   createMovement(data: InventoryMovementCreateData) {
     const id = crypto.randomUUID()
     const createdAt = createAlgeriaTimestamp()
-    this.db.insert(schema.inventoryMovement).values({
-      id, movementType: data.movementType, itemType: data.itemType,
-      inventoryEntryId: data.inventoryEntryId ?? null, assetUnitId: data.assetUnitId ?? null,
-      quantity: data.quantity, fromWarehouseId: data.fromWarehouseId ?? null,
-      fromProjectId: data.fromProjectId ?? null, toWarehouseId: data.toWarehouseId ?? null,
-      toProjectId: data.toProjectId ?? null, note: data.note ?? null,
-      occurredAt: data.occurredAt, createdAt,
-    }).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.inventoryMovement).values({
+        id, movementType: data.movementType, itemType: data.itemType,
+        inventoryEntryId: data.inventoryEntryId ?? null, assetUnitId: data.assetUnitId ?? null,
+        quantity: data.quantity, fromWarehouseId: data.fromWarehouseId ?? null,
+        fromProjectId: data.fromProjectId ?? null, toWarehouseId: data.toWarehouseId ?? null,
+        toProjectId: data.toProjectId ?? null, note: data.note ?? null,
+        occurredAt: data.occurredAt, createdAt,
+      }).run()
+    })
     const row = this.db.select().from(schema.inventoryMovement)
       .where(eq(schema.inventoryMovement.id, id)).limit(1).all()[0]
     return mapMovement(row!)
@@ -679,11 +701,13 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   createAttachment(data: InventoryInvoiceAttachmentCreateData) {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
-    this.db.insert(schema.inventoryInvoiceAttachment).values({
-      id, invoiceGroupId: data.invoiceGroupId, originalName: data.originalName,
-      mimeType: data.mimeType, byteSize: data.byteSize, storageKey: data.storageKey,
-      relativePath: data.relativePath, sha256: data.sha256 ?? null, createdAt: timestamp,
-    }).run()
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.inventoryInvoiceAttachment).values({
+        id, invoiceGroupId: data.invoiceGroupId, originalName: data.originalName,
+        mimeType: data.mimeType, byteSize: data.byteSize, storageKey: data.storageKey,
+        relativePath: data.relativePath, sha256: data.sha256 ?? null, createdAt: timestamp,
+      }).run()
+    })
     return this.getAttachmentById(id)!
   }
 
