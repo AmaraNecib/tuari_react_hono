@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 
 import { createApp } from "./app/create-app";
 import { createAppDependencies } from "./app/dependencies";
+import { installShutdownHook } from "./app/shutdown";
 import { createAppConfig } from "./config";
 
 async function main() {
@@ -22,7 +23,7 @@ async function main() {
     authRateLimitMaxRequests: config.authRateLimitMaxRequests,
   });
 
-  serve(
+  const server = serve(
     {
       fetch: app.fetch,
       port: config.port,
@@ -32,6 +33,22 @@ async function main() {
       console.log(`API listening on http://${info.address}:${info.port}`);
     },
   );
+
+  // Graceful shutdown (issue #265): stop accepting requests (dropping idle
+  // keep-alive connections so close() does not hang on them), then close the
+  // shared database connection (better-sqlite3 checkpoints the WAL on
+  // last-connection close) before exiting. A force-exit timer guards against
+  // a stuck in-flight request keeping the process alive forever.
+  installShutdownHook({
+    stopServer: () =>
+      new Promise<void>((resolve) => {
+        // closeIdleConnections is present on the underlying http.Server but
+        // not declared on the hono ServerType — guard with a cast.
+        (server as unknown as { closeIdleConnections?: () => void }).closeIdleConnections?.()
+        server.close(() => resolve())
+      }),
+    close: appDependencies.close,
+  });
 }
 
 main().catch((error) => {

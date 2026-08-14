@@ -46,6 +46,20 @@ describe("loadConfigFile", () => {
     const file = loadConfigFile({ TUARI_CONFIG_FILE: path });
     expect(file).toEqual({ db_adapter: "inmemory", db_path: "data/custom.sqlite" });
   });
+
+  it("loads a config file with a persisted db_key", () => {
+    const path = writeConfig({ db_key: "persisted-key-123" });
+    const file = loadConfigFile({ TUARI_CONFIG_FILE: path });
+    expect(file).toEqual({ db_key: "persisted-key-123" });
+  });
+
+  it("rejects a config file whose db_key is too short to be a real key", () => {
+    // Mirrors the wire schema (newKey is min(8)) — a shorter value is a
+    // misconfiguration, and an empty/blank one would silently resolve to a
+    // PLAIN database on restart, defeating encryption.
+    const path = writeConfig({ db_key: "short" });
+    expect(loadConfigFile({ TUARI_CONFIG_FILE: path })).toBeNull();
+  });
 });
 
 describe("mergeConfigIntoEnv", () => {
@@ -58,6 +72,19 @@ describe("mergeConfigIntoEnv", () => {
     const merged = mergeConfigIntoEnv({ db_adapter: "inmemory", db_path: "data/custom.sqlite" }, {});
     expect(merged.DB_ADAPTER).toBe("inmemory");
     expect(merged.APP_DB_PATH).toBe("data/custom.sqlite");
+  });
+
+  it("merges a persisted db_key into APP_DB_KEY when env is absent", () => {
+    const merged = mergeConfigIntoEnv({ db_key: "persisted-key-123" }, {});
+    expect(merged.APP_DB_KEY).toBe("persisted-key-123");
+  });
+
+  it("env APP_DB_KEY wins over a persisted db_key", () => {
+    const merged = mergeConfigIntoEnv(
+      { db_key: "config-key-123" },
+      { APP_DB_KEY: "env-key-123" },
+    );
+    expect(merged.APP_DB_KEY).toBe("env-key-123");
   });
 
   it("env vars win over the config file", () => {

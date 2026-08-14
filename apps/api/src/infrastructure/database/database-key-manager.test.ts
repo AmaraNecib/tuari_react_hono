@@ -1,65 +1,332 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import Database from "better-sqlite3";
 
 import type { BetterSqliteDatabase } from "../../types/sqlite";
-import { createDatabaseKeyManager } from "./database-key-manager";
+import {
+  createDatabaseKeyManager,
+  type DatabaseKeyManagerSeams,
+} from "./database-key-manager";
+
+/** First 16 bytes of a plain SQLite file (the standard magic header). */
+const PLAIN_MAGIC = Buffer.from("SQLite format 3\0", "utf8");
+
+/** A 16-byte non-magic header — what SQLCipher's random salt region looks like. */
+const CIPHER_LIKE_HEADER = Buffer.from("0123456789abcdef", "utf8");
+
+function makeSharedSqliteMock() {
+  const pragma = vi.fn();
+  const prepare = vi.fn().mockReturnValue({ get: () => ({ count: 0 }) });
+  return {
+    pragma,
+    prepare,
+    close: vi.fn(),
+  } as unknown as BetterSqliteDatabase;
+}
+
+function makeScratchMock() {
+  const close = vi.fn();
+  const connection = {
+    prepare: vi.fn().mockReturnValue({ get: () => ({ count: 0 }) }),
+    close,
+  };
+  return { connection, close };
+}
+
+function makeManager(
+  sqlite: BetterSqliteDatabase,
+  databasePath: string,
+  openConnection: DatabaseKeyManagerSeams["openConnection"],
+) {
+  return createDatabaseKeyManager(sqlite, { databasePath, openConnection });
+}
 
 describe("createDatabaseKeyManager", () => {
-  it("verifies the current key and rekeys a live connection", () => {
-    const sqlite = new Database(":memory:");
-    try {
-      const manager = createDatabaseKeyManager(sqlite as unknown as BetterSqliteDatabase);
+  let tempDir: string;
 
-      // On plain better-sqlite3 the SQLCipher PRAGMAs are no-ops, so the
-      // verification read succeeds and the manager reports success — proving
-      // the statements execute against a real connection.
-      expect(manager.changeKey("current-key", "new-key-123")).toEqual({ success: true });
-    } finally {
-      sqlite.close();
-    }
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), "tuari-db-key-"));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("rejects an unencrypted database file explicitly and never rekeys", () => {
+    // A real plain-SQLite file (magic header at offset 0).
+    const dbPath = join(tempDir, "plain.sqlite");
+    writeFileSync(dbPath, PLAIN_MAGIC);
+
+    const sqlite = makeSharedSqliteMock();
+    const manager = makeManager(sqlite, dbPath, vi.fn());
+
+    expect(manager.changeKey("old-key", "new-key-123")).toEqual({
+      success: false,
+      error: "Database is not encrypted",
+    });
+
+    // Neither verification nor rekey touched the shared connection.
+    expect(sqlite.pragma).not.toHaveBeenCalled();
+    expect(sqlite.prepare).not.toHaveBeenCalled();
+  });
+
+  it("verifies the current key on a fresh connection and rekeys (encrypted file)", () => {
+    // A non-magic header reads as SQLCipher-encrypted.
+    const dbPath = join(tempDir, "cipher.sqlite");
+    writeFileSync(dbPath, CIPHER_LIKE_HEADER);
+
+    const sqlite = makeSharedSqliteMock();
+    const scratch = makeScratchMock();
+    const openConnection = vi.fn().mockReturnValue(scratch.connection);
+    const manager = makeManager(sqlite, dbPath, openConnection);
+
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({ success: true });
+
+    // Verification opened a scratch connection with the CURRENT key…
+    expect(openConnection).toHaveBeenCalledWith(dbPath, "current-key");
+    expect(scratch.connection.prepare).toHaveBeenCalledWith("SELECT COUNT(*) FROM sqlite_master");
+    // …and the rekey was confirmed on a fresh connection with the NEW key.
+    expect(openConnection).toHaveBeenLastCalledWith(dbPath, "new-key-123");
+    // Both scratch connections were closed.
+    expect(scratch.close).toHaveBeenCalledTimes(2);
+    // The rekey ran on the shared connection with the NEW key.
+    expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
+  });
+
+  it("reports an AMBIGUOUS post-rekey verification failure (rekeyed: false + ambiguous: true)", () => {
+    const dbPath = join(tempDir, "cipher.sqlite");
+    writeFileSync(dbPath, CIPHER_LIKE_HEADER);
+
+    const sqlite = makeSharedSqliteMock();
+    const failingScratch = makeScratchMock();
+    failingScratch.connection.prepare.mockImplementation(() => {
+      // A plain Error carries no SQLITE_NOTADB code — classified as a
+      // transient/system probe failure (couldn't verify), not a definitive
+      // wrong-key rejection.
+      throw new Error("file is not a database");
+    });
+    const openConnection = vi.fn((path: string, key: string) =>
+      // current-key verification succeeds; new-key verification fails.
+      key === "current-key" ? makeScratchMock().connection : failingScratch.connection,
+    ) as unknown as DatabaseKeyManagerSeams["openConnection"];
+    const manager = makeManager(sqlite, dbPath, openConnection);
+
+    // The rekey RAN, but the probe could not verify the new key — the
+    // outcome is AMBIGUOUS. Reporting plain rekeyed: false would make the
+    // caller restore the old key and orphan a database that is likely on the
+    // new key (Greptile P1). The port must say so explicitly.
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({
+      success: false,
+      error: "Database re-encryption could not be verified",
+      rekeyed: false,
+      ambiguous: true,
+    });
+
+    // The rekey itself ran, but the new key was not confirmed.
+    expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
+  });
+
+  it("reports an AMBIGUOUS post-rekey probe failure (rekeyed: false + ambiguous: true) on a transient/system error", () => {
+    const dbPath = join(tempDir, "cipher.sqlite");
+    writeFileSync(dbPath, CIPHER_LIKE_HEADER);
+
+    const sqlite = makeSharedSqliteMock();
+    const failingScratch = makeScratchMock();
+    failingScratch.connection.prepare.mockImplementation(() => {
+      // A transient/system failure (lock, binding, connection) — NOT the
+      // definitive SQLITE_NOTADB wrong-key signal. The probe could not
+      // verify anything about which key the database is on.
+      throw new Error("database is locked");
+    });
+    // Current-key verification succeeds; every post-rekey probe fails
+    // transiently (both the new-key probe and, had the old code still
+    // probed it, the current-key probe) — the rekey outcome is UNKNOWN.
+    const openConnection = vi
+      .fn()
+      .mockReturnValueOnce(makeScratchMock().connection)
+      .mockReturnValue(failingScratch.connection) as unknown as DatabaseKeyManagerSeams["openConnection"];
+    const manager = makeManager(sqlite, dbPath, openConnection);
+
+    // The rekey likely SUCCEEDED but could not be verified — the port must
+    // NOT claim the database is on the old key (plain rekeyed: false would
+    // make the caller restore the old key and orphan a re-encrypted
+    // database, Greptile P1). Ambiguous → rekeyed: false + ambiguous: true:
+    // the caller keeps the new key and the rollback slot, and surfaces the
+    // honest "rekey applied but verification pending" state.
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({
+      success: false,
+      error: "Database re-encryption could not be verified",
+      rekeyed: false,
+      ambiguous: true,
+    });
+    // current-key verify + new-key probe — no further discrimination probe.
+    expect(openConnection).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not acknowledge rotation (rekeyed: false) when the post-rekey probe definitively rejects the new key", () => {
+    const dbPath = join(tempDir, "cipher.sqlite");
+    writeFileSync(dbPath, CIPHER_LIKE_HEADER);
+
+    const sqlite = makeSharedSqliteMock();
+    const openingScratch = makeScratchMock();
+    const rejectingScratch = makeScratchMock();
+    rejectingScratch.connection.prepare.mockImplementation(() => {
+      // SQLCipher's definitive wrong-key signal — the read failed with
+      // SQLITE_NOTADB, so the NEW key was really rejected (the rekey did
+      // not apply). This is NOT ambiguous: the probe RAN and proved the
+      // database is NOT on the new key, so rekeyed: false WITHOUT the
+      // ambiguous flag is correct, and restoring the old key is safe.
+      const error = new Error("file is not a database") as Error & { code?: string };
+      error.code = "SQLITE_NOTADB";
+      throw error;
+    });
+    // Current-key verification succeeds; the new-key probe is definitively
+    // rejected → the rekey silently no-op'd (the rekey-on-WAL hazard);
+    // rolling the keyring back to the old key is correct.
+    const openConnection = vi
+      .fn()
+      .mockReturnValueOnce(openingScratch.connection)
+      .mockReturnValue(rejectingScratch.connection) as unknown as DatabaseKeyManagerSeams["openConnection"];
+    const manager = makeManager(sqlite, dbPath, openConnection);
+
+    // DEFINITIVE failure — no ambiguous flag: the caller restores the old key.
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({
+      success: false,
+      error: "Database re-encryption failed",
+      rekeyed: false,
+    });
+    // current-key verify + new-key probe.
+    expect(openConnection).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats a missing database file as fallback (shared-connection verification)", () => {
+    // No file on disk at all — detectEncryption's openSync throws and the
+    // manager falls back to the shared connection (dev/test behavior on plain
+    // better-sqlite3, where the SQLCipher PRAGMAs are no-ops).
+    const dbPath = join(tempDir, "does-not-exist.sqlite");
+
+    const sqlite = makeSharedSqliteMock();
+    const manager = makeManager(sqlite, dbPath, vi.fn());
+
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({ success: true });
+    expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
+  });
+
+  it("fails when the fresh-connection verification rejects the current key", () => {
+    const dbPath = join(tempDir, "cipher.sqlite");
+    writeFileSync(dbPath, CIPHER_LIKE_HEADER);
+
+    const sqlite = makeSharedSqliteMock();
+    const scratch = makeScratchMock();
+    scratch.connection.prepare.mockImplementation(() => {
+      throw new Error("file is not a database");
+    });
+    const openConnection = vi.fn().mockReturnValue(scratch.connection);
+    const manager = makeManager(sqlite, dbPath, openConnection);
+
+    expect(manager.changeKey("wrong-key", "new-key-123")).toEqual({
+      success: false,
+      error: "Current encryption key is invalid",
+    });
+
+    // Rekey must never run after a failed verification.
+    expect(sqlite.pragma).not.toHaveBeenCalled();
+    // The scratch connection is still closed on the failure path.
+    expect(scratch.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails when opening the scratch connection itself throws", () => {
+    const dbPath = join(tempDir, "cipher.sqlite");
+    writeFileSync(dbPath, CIPHER_LIKE_HEADER);
+
+    const sqlite = makeSharedSqliteMock();
+    const openConnection = vi.fn(() => {
+      throw new Error("failed to open");
+    });
+    const manager = makeManager(sqlite, dbPath, openConnection);
+
+    expect(manager.changeKey("old-key", "new-key-123")).toEqual({
+      success: false,
+      error: "Current encryption key is invalid",
+    });
+    expect(sqlite.pragma).not.toHaveBeenCalled();
+  });
+
+  it("treats a file too short for a header as fallback (shared-connection verification)", () => {
+    const dbPath = join(tempDir, "tiny.sqlite");
+    writeFileSync(dbPath, "short");
+
+    const sqlite = makeSharedSqliteMock();
+    const manager = makeManager(sqlite, dbPath, vi.fn());
+
+    // A <16-byte file cannot be classified — the manager falls back to the
+    // shared connection, so on plain better-sqlite3 the no-op PRAGMAs report
+    // success (dev/test behavior).
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({ success: true });
+    expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
+  });
+
+  it("rejects empty keys before touching the connection", () => {
+    const sqlite = makeSharedSqliteMock();
+    const manager = makeManager(sqlite, ":memory:", vi.fn());
+
+    expect(manager.changeKey("", "new-key-123")).toEqual({
+      success: false,
+      error: "Database encryption keys must not be empty",
+    });
+    expect(manager.changeKey("old-key", "   ")).toEqual({
+      success: false,
+      error: "Database encryption keys must not be empty",
+    });
+    expect(sqlite.pragma).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the shared connection for :memory: databases (dev/test behavior)", () => {
+    const sqlite = makeSharedSqliteMock();
+    const manager = makeManager(sqlite, ":memory:", vi.fn());
+
+    // On plain better-sqlite3 the SQLCipher PRAGMAs are no-ops, so the
+    // verification read succeeds and the manager reports success — proving
+    // the statements execute against a real connection.
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({ success: true });
+    expect(sqlite.pragma).toHaveBeenNthCalledWith(1, "key = 'current-key'");
+    expect(sqlite.pragma).toHaveBeenNthCalledWith(2, "rekey = 'new-key-123'");
   });
 
   it("interpolates keys into the PRAGMA statements with single quotes escaped", () => {
-    const pragma = vi.fn();
-    const prepare = vi.fn().mockReturnValue({ get: () => ({ count: 0 }) });
-    const manager = createDatabaseKeyManager({
-      pragma,
-      prepare,
-    } as unknown as BetterSqliteDatabase);
+    const sqlite = makeSharedSqliteMock();
+    const manager = makeManager(sqlite, ":memory:", vi.fn());
 
     expect(manager.changeKey("old-key", "new-key-'quoted'")).toEqual({ success: true });
 
     // Exact statements the handler previously built — verification read first,
     // rekey second, single quotes doubled ('' — not spliced).
-    expect(pragma).toHaveBeenNthCalledWith(1, "key = 'old-key'");
-    expect(pragma).toHaveBeenNthCalledWith(2, "rekey = 'new-key-''quoted'''");
-    expect(prepare).toHaveBeenCalledWith("SELECT COUNT(*) FROM sqlite_master");
+    expect(sqlite.pragma).toHaveBeenNthCalledWith(1, "key = 'old-key'");
+    expect(sqlite.pragma).toHaveBeenNthCalledWith(2, "rekey = 'new-key-''quoted'''");
+    expect(sqlite.prepare).toHaveBeenCalledWith("SELECT COUNT(*) FROM sqlite_master");
   });
 
   it("escapes single quotes in the current key verification PRAGMA too", () => {
-    const pragma = vi.fn();
-    const prepare = vi.fn().mockReturnValue({ get: () => ({ count: 0 }) });
-    const manager = createDatabaseKeyManager({
-      pragma,
-      prepare,
-    } as unknown as BetterSqliteDatabase);
+    const sqlite = makeSharedSqliteMock();
+    const manager = makeManager(sqlite, ":memory:", vi.fn());
 
     expect(manager.changeKey("old-'quoted'", "new-key")).toEqual({ success: true });
 
-    // The current key crosses the same ''-doubling path — a regression here
-    // would silently mis-verify keys on the crypto path.
-    expect(pragma).toHaveBeenNthCalledWith(1, "key = 'old-''quoted'''");
-    expect(pragma).toHaveBeenNthCalledWith(2, "rekey = 'new-key'");
+    expect(sqlite.pragma).toHaveBeenNthCalledWith(1, "key = 'old-''quoted'''");
+    expect(sqlite.pragma).toHaveBeenNthCalledWith(2, "rekey = 'new-key'");
   });
 
-  it("fails with the wire copy when the current-key verification read fails", () => {
+  it("fails with the wire copy when the shared-connection verification read fails", () => {
     const pragma = vi.fn().mockImplementation(() => {
       throw new Error("file is not a database");
     });
-    const manager = createDatabaseKeyManager({
+    const sqlite = {
       pragma,
       prepare: vi.fn(),
-    } as unknown as BetterSqliteDatabase);
+    } as unknown as BetterSqliteDatabase;
+    const manager = makeManager(sqlite, ":memory:", vi.fn());
 
     expect(manager.changeKey("wrong-key", "new-key-123")).toEqual({
       success: false,
@@ -74,11 +341,11 @@ describe("createDatabaseKeyManager", () => {
     const pragma = vi.fn().mockImplementation((sql: string) => {
       if (sql.startsWith("rekey")) throw new Error("database is locked");
     });
-    const prepare = vi.fn().mockReturnValue({ get: () => ({ count: 0 }) });
-    const manager = createDatabaseKeyManager({
+    const sqlite = {
       pragma,
-      prepare,
-    } as unknown as BetterSqliteDatabase);
+      prepare: vi.fn().mockReturnValue({ get: () => ({ count: 0 }) }),
+    } as unknown as BetterSqliteDatabase;
+    const manager = makeManager(sqlite, ":memory:", vi.fn());
 
     // The port's result contract must hold even when the rekey throws — the
     // handler maps this to a graceful wire failure instead of a 500, and the
@@ -88,5 +355,33 @@ describe("createDatabaseKeyManager", () => {
       error: "Database re-encryption failed",
     });
     expect(pragma).toHaveBeenCalledTimes(2);
+  });
+
+  it("still rekeys a real live connection for :memory: (plain better-sqlite3 no-op)", () => {
+    const sqlite = new Database(":memory:");
+    try {
+      const manager = createDatabaseKeyManager(
+        sqlite as unknown as BetterSqliteDatabase,
+        { databasePath: ":memory:", openConnection: vi.fn() },
+      );
+
+      expect(manager.changeKey("current-key", "new-key-123")).toEqual({ success: true });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("resolves the database path from the connection when no seam is given", () => {
+    const sqlite = makeSharedSqliteMock();
+    Object.defineProperty(sqlite, "name", { value: join(tempDir, "cipher.sqlite") });
+    writeFileSync(join(tempDir, "cipher.sqlite"), CIPHER_LIKE_HEADER);
+
+    const scratch = makeScratchMock();
+    const manager = createDatabaseKeyManager(sqlite, {
+      openConnection: vi.fn().mockReturnValue(scratch.connection),
+    });
+
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({ success: true });
+    expect(scratch.connection.prepare).toHaveBeenCalledWith("SELECT COUNT(*) FROM sqlite_master");
   });
 });

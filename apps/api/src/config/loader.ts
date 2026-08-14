@@ -20,6 +20,15 @@ export const configFileSchema = z.object({
   db_adapter: dbAdapterSchema.optional(),
   /** SQLite database file path (maps to APP_DB_PATH). */
   db_path: z.string().optional(),
+  /**
+   * SQLCipher encryption key (maps to APP_DB_KEY when env is unset). Written
+   * by the rekey flow (#265) so a restart can still open the database. Min
+   * length mirrors the wire schema (`changeDbKeyInputSchema.newKey` is
+   * min(8)) — a shorter value is a misconfiguration, and an empty/blank one
+   * would silently resolve to a PLAIN database (empty string is falsy in
+   * `resolveDatabaseConstructor`), defeating encryption on restart.
+   */
+  db_key: z.string().min(8).optional(),
   // Postgres fields are accepted for forward compatibility (adapter not yet shipped).
   pg_host: z.string().optional(),
   pg_port: z.number().int().positive().max(65535).optional(),
@@ -88,6 +97,9 @@ export function mergeConfigIntoEnv(
     merged.DATABASE_URL === undefined
   ) {
     merged.APP_DB_PATH = file.db_path;
+  }
+  if (file.db_key !== undefined && merged.APP_DB_KEY === undefined) {
+    merged.APP_DB_KEY = file.db_key;
   }
   if (file.pg_host !== undefined && merged.PG_HOST === undefined) {
     merged.PG_HOST = file.pg_host;

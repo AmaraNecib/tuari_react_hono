@@ -1199,8 +1199,44 @@ describe("contracts", () => {
       // The two valid pairs the handler can emit.
       expect(changeDbKeyOutputSchema.parse({ success: true })).toEqual({ success: true });
       expect(
-        changeDbKeyOutputSchema.parse({ success: false, error: "Current encryption key is invalid" }),
-      ).toEqual({ success: false, error: "Current encryption key is invalid" });
+        changeDbKeyOutputSchema.parse({
+          success: false,
+          error: "Current encryption key is invalid",
+          rekeyed: false,
+        }),
+      ).toEqual({
+        success: false,
+        error: "Current encryption key is invalid",
+        rekeyed: false,
+      });
+      expect(
+        changeDbKeyOutputSchema.parse({
+          success: false,
+          error: "Failed to persist database encryption key",
+          rekeyed: true,
+        }),
+      ).toEqual({
+        success: false,
+        error: "Failed to persist database encryption key",
+        rekeyed: true,
+      });
+      // The AMBIGUOUS member (Greptile P1): the rekey ran but the post-rekey
+      // verification could not complete — rekeyed: false PLUS ambiguous: true
+      // so the caller keeps the new key, keeps the rollback slot, and does
+      // NOT restore the old key.
+      expect(
+        changeDbKeyOutputSchema.parse({
+          success: false,
+          error: "Database re-encryption could not be verified",
+          rekeyed: false,
+          ambiguous: true,
+        }),
+      ).toEqual({
+        success: false,
+        error: "Database re-encryption could not be verified",
+        rekeyed: false,
+        ambiguous: true,
+      });
 
       // #221: logically invalid combinations are rejected — a failure without
       // an error message, and a success that carries an error.
@@ -1210,6 +1246,20 @@ describe("contracts", () => {
       // A failure must carry a non-empty, non-blank error message.
       expect(() => changeDbKeyOutputSchema.parse({ success: false, error: "" })).toThrow();
       expect(() => changeDbKeyOutputSchema.parse({ success: false, error: "   " })).toThrow();
+      // …and must declare whether the database was re-encrypted (#265).
+      expect(() =>
+        changeDbKeyOutputSchema.parse({ success: false, error: "boom" }),
+      ).toThrow();
+      // A verified rekey is never ambiguous — ambiguous: true only marks a
+      // verification that COULD NOT complete (Greptile P1).
+      expect(() =>
+        changeDbKeyOutputSchema.parse({
+          success: false,
+          error: "boom",
+          rekeyed: true,
+          ambiguous: true,
+        }),
+      ).toThrow();
       // Strict members reject unknown keys on either branch.
       expect(() => changeDbKeyOutputSchema.parse({ success: true, extra: "x" })).toThrow();
       expect(() =>

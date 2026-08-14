@@ -83,19 +83,46 @@ export const changeDbKeyInputSchema = z.object({
 /**
  * Output for DB key change result.
  *
- * Discriminated on `success`: a failure always carries an `error` message,
- * and a success never does. Strict members reject the invalid combos
- * (`{ success: false }` without `error`, `{ success: true, error }`).
+ * Discriminated on `success`: a failure always carries an `error` message and
+ * a `rekeyed` flag, and a success never does. `rekeyed` tells the caller
+ * whether the database was actually re-encrypted before the failure surfaced
+ * (e.g. persistence of the new key failed AFTER a successful rekey) — the
+ * caller must roll the keyring back only when `rekeyed` is false, or it would
+ * orphan a database that IS on the new key (issue #265).
+ *
+ * Rekey outcomes are tri-state (issue #265, Greptile P1):
+ * - `rekeyed: true` — the database IS on the new key (verified rekey); keep
+ *   the new key and clear the rollback slot.
+ * - `rekeyed: false` WITHOUT `ambiguous` — the database DEFINITIVELY is NOT
+ *   on the new key; restoring the old key is safe.
+ * - `rekeyed: false` WITH `ambiguous: true` — the rekey ran but the
+ *   post-rekey verification could not complete (transient/system probe
+ *   failure). The database is likely on the new key: do NOT restore the old
+ *   key and do NOT clear the rollback slot — surface the honest "rekey
+ *   applied but verification pending" state instead. `ambiguous` never
+ *   combines with `rekeyed: true` (a verified rekey is not ambiguous).
+ * Strict members reject the invalid combos.
  */
 export const changeDbKeyOutputSchema = z.discriminatedUnion("success", [
   z.object({ success: z.literal(true) }).strict(),
   z
-    .object({ success: z.literal(false), error: z.string().min(1) })
+    .object({
+      success: z.literal(false),
+      error: z.string().min(1),
+      rekeyed: z.boolean(),
+      ambiguous: z.boolean().optional(),
+    })
     // Pure validator (no transform): output schemas reject, they don't
     // silently rewrite server-emitted values. Rejects blank-looking errors.
     .refine(({ error }) => error.trim().length > 0, {
       message: "error must contain non-whitespace characters",
       path: ["error"],
+    })
+    // A verified rekey is never ambiguous — `ambiguous` only marks a
+    // verification that COULD NOT complete (Greptile P1).
+    .refine(({ rekeyed, ambiguous }) => !(rekeyed && ambiguous), {
+      message: "ambiguous must not combine with rekeyed: true",
+      path: ["ambiguous"],
     })
     .strict(),
 ])

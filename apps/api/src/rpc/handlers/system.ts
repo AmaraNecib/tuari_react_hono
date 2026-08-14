@@ -7,6 +7,7 @@ import type { CompanyService } from "../../modules/company/company.service";
 import type { RecoveryKeyService } from "../../modules/auth/recovery-key.service";
 import type { RoleModule } from "../../modules/rbac/role.module";
 import type { DatabaseKeyManager } from "../../infrastructure/database/database-key-manager";
+import type { DatabaseKeyPersister } from "../../infrastructure/database/database-key-persister";
 import type { RpcMiddleware } from "../rpc-middleware";
 import type { ChangeDbKeyInput, ConsumeRecoveryKeyInput, RevokeRecoveryKeyInput } from "./handler-inputs";
 
@@ -21,6 +22,8 @@ import type { ChangeDbKeyInput, ConsumeRecoveryKeyInput, RevokeRecoveryKeyInput 
  * @param databaseKeyManager - Narrow port for verifying/rotating the database
  *                             encryption key (the raw handle stays in the
  *                             composition root)
+ * @param databaseKeyPersister - Persists a rotated key so a process restart
+ *                               can still open the database (issue #265)
  */
 export function createSystemHandlers(
   os: ReturnType<typeof implement>,
@@ -29,6 +32,7 @@ export function createSystemHandlers(
   recoveryKeyService: RecoveryKeyService,
   roleModule: RoleModule,
   databaseKeyManager: DatabaseKeyManager,
+  databaseKeyPersister: DatabaseKeyPersister,
 ) {
   return {
     workspaceSnapshot: os.workspaceSnapshot.handler(m.queryAuth(async () => {
@@ -78,11 +82,33 @@ export function createSystemHandlers(
     changeDbEncryptionKey: os.changeDbEncryptionKey.handler(m.mutationAudit(
       ({ input }) => {
         const { currentKey, newKey } = input as ChangeDbKeyInput;
-        // The port verifies the current key (touching encrypted pages) and
-        // re-encrypts with the new key via PRAGMA rekey. It never throws — a
-        // failed verification or rekey maps straight onto the wire failure
+        // The port verifies the current key (fresh connection — SQLCipher
+        // ignores `PRAGMA key` after the first read on the shared connection)
+        // and re-encrypts with the new key via PRAGMA rekey. It never throws —
+        // a failed verification or rekey maps straight onto the wire failure
         // output shape with an honest reason.
-        return databaseKeyManager.changeKey(currentKey, newKey);
+        const result = databaseKeyManager.changeKey(currentKey, newKey);
+        if (!result.success) {
+          // The port reports rekeyed: true only when the database IS on the
+          // new key despite the failure (a verified rekey whose persistence
+          // failed). Ambiguous post-rekey probe failures (Greptile P1) — the
+          // rekey ran but could not be verified — are forwarded with
+          // rekeyed: false AND ambiguous: true: the caller must NOT restore
+          // the old key (the database is likely on the new key) and must NOT
+          // clear the rollback slot; the outcome stays pending. The
+          // ?? false default keeps every other failure on the same safe side.
+          return { ...result, rekeyed: result.rekeyed ?? false };
+        }
+        // The database WAS re-encrypted — persist the new key so a restart
+        // can still open it (issue #265). A persistence failure is surfaced
+        // honestly WITH rekeyed: true, so the caller knows the database is on
+        // the new key and must NOT roll its keyring back (that would orphan
+        // the re-encrypted database).
+        const persisted = databaseKeyPersister.persistKey(newKey);
+        if (!persisted.success) {
+          return { ...persisted, rekeyed: true };
+        }
+        return { success: true };
       },
       toFailureResult,
     )),

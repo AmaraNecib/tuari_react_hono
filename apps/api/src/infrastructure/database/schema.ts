@@ -19,17 +19,6 @@ import {
   statusConstraintMigrationKey,
 } from "./schema-definitions";
 
-// Module-level executor set during initialization
-let _executor: DbExecutor | null = null;
-
-/** Get the initialized database executor (throws if not set). */
-function getExecutor(): DbExecutor {
-  if (!_executor) {
-    throw new Error("Database executor not initialized. Call ensureDatabaseSchema(db) first.");
-  }
-  return _executor;
-}
-
 /** Check if an error is a duplicate column warning (safe to ignore). */
 function isDuplicateColumnError(error: unknown) {
   return error instanceof Error && error.message.includes("duplicate column name");
@@ -41,20 +30,20 @@ function isMissingColumnError(error: unknown) {
 }
 
 /** Get column metadata for a table via PRAGMA table_info. */
-async function getTableColumns(tableName: string) {
-  return getExecutor().$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info("${tableName}")`);
+async function getTableColumns(db: DbExecutor, tableName: string) {
+  return db.$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info("${tableName}")`);
 }
 
 /** Check if a table has a specific column. */
-async function hasColumn(tableName: string, columnName: string) {
-  const columns = await getTableColumns(tableName);
+async function hasColumn(db: DbExecutor, tableName: string, columnName: string) {
+  const columns = await getTableColumns(db, tableName);
 
   return columns.some((column) => column.name === columnName);
 }
 
 /** Get the CREATE TABLE statement for a table from sqlite_master. */
-async function getTableSql(tableName: string) {
-  const [row] = await getExecutor().$queryRawUnsafe<Array<{ sql: string | null }>>(
+async function getTableSql(db: DbExecutor, tableName: string) {
+  const [row] = await db.$queryRawUnsafe<Array<{ sql: string | null }>>(
     'SELECT "sql" FROM "sqlite_master" WHERE "type" = ? AND "name" = ? LIMIT 1',
     "table",
     tableName,
@@ -64,11 +53,11 @@ async function getTableSql(tableName: string) {
 }
 
 /** Check if all status CHECK constraints are already applied. */
-async function hasStatusCheckConstraints() {
+async function hasStatusCheckConstraints(db: DbExecutor) {
   const tableSql = await Promise.all(
     companyStatusConstraintChecks.map(async ({ table, fragment }) => ({
       table,
-      hasFragment: (await getTableSql(table)).includes(fragment),
+      hasFragment: (await getTableSql(db, table)).includes(fragment),
     })),
   );
 
@@ -76,91 +65,91 @@ async function hasStatusCheckConstraints() {
 }
 
 /** Migrate legacy camelCase timestamp columns to snake_case. */
-async function syncLegacyTimestampColumns() {
-  if ((await hasColumn("user", "createdAt")) || (await hasColumn("user", "updatedAt"))) {
-    await getExecutor().$executeRawUnsafe(
+async function syncLegacyTimestampColumns(db: DbExecutor) {
+  if ((await hasColumn(db, "user", "createdAt")) || (await hasColumn(db, "user", "updatedAt"))) {
+    await db.$executeRawUnsafe(
       'UPDATE "user" SET "created_at" = COALESCE("created_at", "createdAt"), "updated_at" = COALESCE("updated_at", "updatedAt") WHERE "createdAt" IS NOT NULL OR "updatedAt" IS NOT NULL',
     );
   }
 
-  if ((await hasColumn("session", "createdAt")) || (await hasColumn("session", "updatedAt"))) {
-    await getExecutor().$executeRawUnsafe(
+  if ((await hasColumn(db, "session", "createdAt")) || (await hasColumn(db, "session", "updatedAt"))) {
+    await db.$executeRawUnsafe(
       'UPDATE "session" SET "created_at" = COALESCE("created_at", "createdAt"), "updated_at" = COALESCE("updated_at", "updatedAt") WHERE "createdAt" IS NOT NULL OR "updatedAt" IS NOT NULL',
     );
   }
 
-  if ((await hasColumn("account", "created_at")) || (await hasColumn("account", "updated_at"))) {
-    await getExecutor().$executeRawUnsafe(
+  if ((await hasColumn(db, "account", "created_at")) || (await hasColumn(db, "account", "updated_at"))) {
+    await db.$executeRawUnsafe(
       'UPDATE "account" SET "createdAt" = COALESCE("createdAt", "created_at"), "updatedAt" = COALESCE("updatedAt", "updated_at") WHERE "created_at" IS NOT NULL OR "updated_at" IS NOT NULL',
     );
   }
 
   if (
-    (await hasColumn("verification", "created_at")) ||
-    (await hasColumn("verification", "updated_at"))
+    (await hasColumn(db, "verification", "created_at")) ||
+    (await hasColumn(db, "verification", "updated_at"))
   ) {
-    await getExecutor().$executeRawUnsafe(
+    await db.$executeRawUnsafe(
       'UPDATE "verification" SET "createdAt" = COALESCE("createdAt", "created_at"), "updatedAt" = COALESCE("updatedAt", "updated_at") WHERE "created_at" IS NOT NULL OR "updated_at" IS NOT NULL',
     );
   }
 }
 
 /** Create missing inventory project/warehouse indexes. */
-async function ensureInventoryProjectIndexes() {
-  if (await hasColumn("inventory_invoice_group", "project_id")) {
-    await getExecutor().$executeRawUnsafe(
+async function ensureInventoryProjectIndexes(db: DbExecutor) {
+  if (await hasColumn(db, "inventory_invoice_group", "project_id")) {
+    await db.$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "inventory_invoice_group_project_id_idx" ON "inventory_invoice_group" ("project_id", "created_at")',
     )
   }
 
-  if (await hasColumn("inventory_entry", "project_id")) {
-    await getExecutor().$executeRawUnsafe(
+  if (await hasColumn(db, "inventory_entry", "project_id")) {
+    await db.$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "inventory_entry_project_id_idx" ON "inventory_entry" ("project_id")',
     )
   }
 
-  if (await hasColumn("inventory_invoice_group", "external_counterparty_id")) {
-    await getExecutor().$executeRawUnsafe(
+  if (await hasColumn(db, "inventory_invoice_group", "external_counterparty_id")) {
+    await db.$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "inventory_invoice_group_external_counterparty_id_idx" ON "inventory_invoice_group" ("external_counterparty_id")',
     )
   }
 
-  if (await hasColumn("inventory_asset_unit", "current_warehouse_id")) {
-    await getExecutor().$executeRawUnsafe(
+  if (await hasColumn(db, "inventory_asset_unit", "current_warehouse_id")) {
+    await db.$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "inventory_asset_unit_current_warehouse_id_idx" ON "inventory_asset_unit" ("current_warehouse_id")',
     )
   }
 
-  if (await hasColumn("inventory_asset_unit", "current_project_id")) {
-    await getExecutor().$executeRawUnsafe(
+  if (await hasColumn(db, "inventory_asset_unit", "current_project_id")) {
+    await db.$executeRawUnsafe(
       'CREATE INDEX IF NOT EXISTS "inventory_asset_unit_current_project_id_idx" ON "inventory_asset_unit" ("current_project_id")',
     )
   }
 
-  await getExecutor().$executeRawUnsafe(
+  await db.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_inventory_entry_id_idx" ON "inventory_consumable_balance" ("inventory_entry_id")',
   )
-  await getExecutor().$executeRawUnsafe(
+  await db.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_item_definition_id_idx" ON "inventory_consumable_balance" ("item_definition_id")',
   )
-  await getExecutor().$executeRawUnsafe(
+  await db.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_warehouse_id_idx" ON "inventory_consumable_balance" ("warehouse_id")',
   )
-  await getExecutor().$executeRawUnsafe(
+  await db.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_project_id_idx" ON "inventory_consumable_balance" ("project_id")',
   )
-  await getExecutor().$executeRawUnsafe(
+  await db.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_movement_inventory_entry_id_idx" ON "inventory_movement" ("inventory_entry_id", "occurred_at")',
   )
-  await getExecutor().$executeRawUnsafe(
+  await db.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "inventory_movement_asset_unit_id_idx" ON "inventory_movement" ("asset_unit_id", "occurred_at")',
   )
 }
 
 /** Repair legacy auth tables with wrong column naming. */
-async function repairLegacyAuthTables() {
-  if ((await hasColumn("account", "created_at")) || (await hasColumn("account", "updated_at"))) {
-    await getExecutor().$transaction(async (tx) => {
+async function repairLegacyAuthTables(db: DbExecutor) {
+  if ((await hasColumn(db, "account", "created_at")) || (await hasColumn(db, "account", "updated_at"))) {
+    await db.$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "account_repaired"');
       await tx.$executeRawUnsafe(
         `CREATE TABLE "account_repaired" (
@@ -236,10 +225,10 @@ async function repairLegacyAuthTables() {
   }
 
   if (
-    (await hasColumn("verification", "created_at")) ||
-    (await hasColumn("verification", "updated_at"))
+    (await hasColumn(db, "verification", "created_at")) ||
+    (await hasColumn(db, "verification", "updated_at"))
   ) {
-    await getExecutor().$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "verification_repaired"');
       await tx.$executeRawUnsafe(
         `CREATE TABLE "verification_repaired" (
@@ -292,8 +281,8 @@ async function repairLegacyAuthTables() {
 }
 
 /** Drop obsolete tables and mark migration complete. */
-async function runObsoleteMigrations() {
-  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
+async function runObsoleteMigrations(db: DbExecutor) {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     obsoleteMigrationKey,
   );
@@ -302,7 +291,7 @@ async function runObsoleteMigrations() {
     return;
   }
 
-  await getExecutor().$transaction(async (tx) => {
+  await db.$transaction(async (tx) => {
     await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "todos"');
     await tx.$executeRawUnsafe(
       'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
@@ -313,8 +302,8 @@ async function runObsoleteMigrations() {
 }
 
 /** Add CHECK constraints on status columns via table recreation. */
-async function runStatusConstraintMigrations() {
-  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
+async function runStatusConstraintMigrations(db: DbExecutor) {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     statusConstraintMigrationKey,
   );
@@ -323,8 +312,8 @@ async function runStatusConstraintMigrations() {
     return;
   }
 
-  if (await hasStatusCheckConstraints()) {
-    await getExecutor().$executeRawUnsafe(
+  if (await hasStatusCheckConstraints(db)) {
+    await db.$executeRawUnsafe(
       'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
       statusConstraintMigrationKey,
       new Date().toISOString(),
@@ -332,13 +321,13 @@ async function runStatusConstraintMigrations() {
     return;
   }
 
-  const hasWarehouseAssignmentTable = Boolean(await getTableSql("employee_warehouse_assignment"));
-  const hasEmployeeUserIdColumn = await hasColumn("employee", "user_id");
+  const hasWarehouseAssignmentTable = Boolean(await getTableSql(db, "employee_warehouse_assignment"));
+  const hasEmployeeUserIdColumn = await hasColumn(db, "employee", "user_id");
 
-  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await db.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
-    await getExecutor().$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "employee_warehouse_assignment_checked"');
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "employee_project_assignment_checked"');
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "employee_manager_assignment_checked"');
@@ -508,13 +497,13 @@ async function runStatusConstraintMigrations() {
       );
     });
   } finally {
-    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
 }
 
  /** Backfill actor_label from user names for audit records. */
-async function runActorLabelBackfillMigration() {
-  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
+async function runActorLabelBackfillMigration(db: DbExecutor) {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     actorLabelBackfillMigrationKey,
   );
@@ -525,7 +514,7 @@ async function runActorLabelBackfillMigration() {
 
   const timestamp = new Date().toISOString();
 
-  await getExecutor().$transaction(async (tx) => {
+  await db.$transaction(async (tx) => {
     const statements = [
       'UPDATE "employee_manager_assignment" SET "actor_label" = (SELECT "name" FROM "user" WHERE "id" = "actor_user_id") WHERE "actor_label" IS NULL AND "actor_user_id" IS NOT NULL',
       'UPDATE "employee_project_assignment" SET "actor_label" = (SELECT "name" FROM "user" WHERE "id" = "actor_user_id") WHERE "actor_label" IS NULL AND "actor_user_id" IS NOT NULL',
@@ -550,8 +539,8 @@ async function runActorLabelBackfillMigration() {
 }
 
  /** Consolidate duplicate debt accounts per party into single accounts. */
-async function runDebtSingleAccountMigration() {
-  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
+async function runDebtSingleAccountMigration(db: DbExecutor) {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     debtSingleAccountMigrationKey,
   )
@@ -564,8 +553,8 @@ async function runDebtSingleAccountMigration() {
   // column never existed; the migration has nothing to consolidate.
   // Detect this via column existence and mark the migration done so
   // subsequent startups are no-ops.
-  if (!(await hasColumn("debt_account", "current_balance_dzd"))) {
-    await getExecutor().$executeRawUnsafe(
+  if (!(await hasColumn(db, "debt_account", "current_balance_dzd"))) {
+    await db.$executeRawUnsafe(
       'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
       debtSingleAccountMigrationKey,
       new Date().toISOString(),
@@ -639,10 +628,10 @@ async function runDebtSingleAccountMigration() {
     return entryType
   }
 
-  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF")
+  await db.$executeRawUnsafe("PRAGMA foreign_keys = OFF")
 
   try {
-    await getExecutor().$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       const accounts = await tx.$queryRawUnsafe<DebtAccountRow[]>(
         'SELECT * FROM "debt_account" ORDER BY "created_at" ASC, "updated_at" ASC, "id" ASC',
       )
@@ -861,13 +850,13 @@ async function runDebtSingleAccountMigration() {
       )
     })
   } finally {
-    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON")
+    await db.$executeRawUnsafe("PRAGMA foreign_keys = ON")
   }
 }
 
  /** Add OUTBOUND_SALE to inventory movement type CHECK constraint. */
-async function runAddOutboundTransferMigration() {
-  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
+async function runAddOutboundTransferMigration(db: DbExecutor) {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     addOutboundTransferMigrationKey,
   );
@@ -876,10 +865,10 @@ async function runAddOutboundTransferMigration() {
     return;
   }
 
-  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await db.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
-    await getExecutor().$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "inventory_movement_updated"');
       await tx.$executeRawUnsafe(
         `CREATE TABLE "inventory_movement_updated" (
@@ -949,13 +938,13 @@ async function runAddOutboundTransferMigration() {
       );
     });
   } finally {
-    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
 }
 
  /** Add ADVANCE to debt entry type CHECK constraint. */
-async function runAddAdvanceDebtEntryMigration() {
-  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
+async function runAddAdvanceDebtEntryMigration(db: DbExecutor) {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     addAdvanceDebtEntryMigrationKey,
   );
@@ -965,10 +954,10 @@ async function runAddAdvanceDebtEntryMigration() {
   }
 
   // If the old column names don't exist, the schema is already new — skip.
-  const hasOldColumn = await columnExists(getExecutor(), "debt_entry", "signed_amount_dzd");
+  const hasOldColumn = await columnExists(db, "debt_entry", "signed_amount_dzd");
   if (!hasOldColumn) {
     // Mark as done so we don't retry on every startup.
-    await getExecutor().$executeRawUnsafe(
+    await db.$executeRawUnsafe(
       'INSERT OR IGNORE INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
       addAdvanceDebtEntryMigrationKey,
       new Date().toISOString(),
@@ -976,10 +965,10 @@ async function runAddAdvanceDebtEntryMigration() {
     return;
   }
 
-  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await db.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
-    await getExecutor().$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "debt_entry_updated"');
       await tx.$executeRawUnsafe(
         `CREATE TABLE "debt_entry_updated" (
@@ -1037,13 +1026,13 @@ async function runAddAdvanceDebtEntryMigration() {
       );
     });
   } finally {
-    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
 }
 
  /** Add reason_category, currency, status, and void columns to debt_entry. */
-async function runDebtEntryConstraintsMigration() {
-  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
+async function runDebtEntryConstraintsMigration(db: DbExecutor) {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     debtEntryReasonCategoryMigrationKey,
   );
@@ -1052,10 +1041,10 @@ async function runDebtEntryConstraintsMigration() {
     return;
   }
 
-  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await db.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
-    await getExecutor().$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       await tx.$executeRawUnsafe('DROP TABLE IF EXISTS "debt_entry_checked"');
       await tx.$executeRawUnsafe(
         `CREATE TABLE "debt_entry_checked" (
@@ -1134,13 +1123,13 @@ async function runDebtEntryConstraintsMigration() {
       );
     });
   } finally {
-    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
 }
 
  /** Rename *_dzd columns, add invoice-debt linkage columns. */
-async function runInvoiceDebtLinkageMigration() {
-  const [migrationRow] = await getExecutor().$queryRawUnsafe<Array<{ key: string }>>(
+async function runInvoiceDebtLinkageMigration(db: DbExecutor) {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
     'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
     invoiceDebtLinkageMigrationKey,
   );
@@ -1183,12 +1172,12 @@ async function runInvoiceDebtLinkageMigration() {
     { column: "remaining_amount", ddl: 'REAL NOT NULL DEFAULT 0' },
   ] as const;
 
-  await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await db.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
   try {
-    await getExecutor().$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       for (const { table, from, to } of renamePairs) {
-        const fromExists = await hasColumn(table, from);
-        const toExists = await hasColumn(table, to);
+        const fromExists = await hasColumn(db, table, from);
+        const toExists = await hasColumn(db, table, to);
         if (fromExists && !toExists) {
           await tx.$executeRawUnsafe(
             `ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`,
@@ -1197,14 +1186,14 @@ async function runInvoiceDebtLinkageMigration() {
       }
 
       for (const { column, ddl } of debtEntryAdditions) {
-        if (!(await hasColumn("debt_entry", column))) {
+        if (!(await hasColumn(db, "debt_entry", column))) {
           await tx.$executeRawUnsafe(
             `ALTER TABLE "debt_entry" ADD COLUMN "${column}" ${ddl}`,
           );
         }
       }
       for (const { column, ddl } of invoiceAdditions) {
-        if (!(await hasColumn("invoice", column))) {
+        if (!(await hasColumn(db, "invoice", column))) {
           await tx.$executeRawUnsafe(
             `ALTER TABLE "invoice" ADD COLUMN "${column}" ${ddl}`,
           );
@@ -1227,7 +1216,7 @@ async function runInvoiceDebtLinkageMigration() {
       );
     });
   } finally {
-    await getExecutor().$executeRawUnsafe("PRAGMA foreign_keys = ON");
+    await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
   }
 }
 
@@ -1309,8 +1298,8 @@ async function columnExists(
 }
 
  /** Apply debt_account balance column rename migration. */
-async function runDebtAccountBalanceRenameMigration() {
-  await applyDebtAccountBalanceRename(getExecutor());
+async function runDebtAccountBalanceRenameMigration(db: DbExecutor) {
+  await applyDebtAccountBalanceRename(db);
 }
 
 // Issue #22: split each counterparty's debt into a payable and a
@@ -1371,8 +1360,8 @@ export async function applyDebtAccountDirectionMigration(db: DbExecutor): Promis
 }
 
  /** Add direction column and composite unique index to debt_account. */
-async function runDebtAccountDirectionMigration() {
-  await applyDebtAccountDirectionMigration(getExecutor());
+async function runDebtAccountDirectionMigration(db: DbExecutor) {
+  await applyDebtAccountDirectionMigration(db);
 }
 
 // Issue #335: payment_allocation.payment_id FK must be ON DELETE RESTRICT so a
@@ -1477,14 +1466,14 @@ export async function applyPaymentAllocationRestrictMigration(db: DbExecutor): P
 }
 
  /** Apply payment_allocation RESTRICT rebuild migration. */
-async function runPaymentAllocationRestrictMigration() {
-  await applyPaymentAllocationRestrictMigration(getExecutor());
+async function runPaymentAllocationRestrictMigration(db: DbExecutor) {
+  await applyPaymentAllocationRestrictMigration(db);
 }
 
  /** Seed or update default roles from role-seeds.ts. */
-async function ensureSeedRoles() {
+async function ensureSeedRoles(db: DbExecutor) {
   for (const role of roleSeeds) {
-    const existing = (await getExecutor().$queryRawUnsafe<Array<{ id: string }>>(
+    const existing = (await db.$queryRawUnsafe<Array<{ id: string }>>(
       'SELECT id FROM "role" WHERE key = ? LIMIT 1',
       role.key,
     ))[0];
@@ -1492,7 +1481,7 @@ async function ensureSeedRoles() {
     const timestamp = new Date().toISOString();
 
     if (!existing) {
-      await getExecutor().$executeRawUnsafe(
+      await db.$executeRawUnsafe(
         'INSERT INTO "role" (id, key, name, description, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         crypto.randomUUID(),
         role.key,
@@ -1505,7 +1494,7 @@ async function ensureSeedRoles() {
       continue;
     }
 
-    await getExecutor().$executeRawUnsafe(
+    await db.$executeRawUnsafe(
       'UPDATE "role" SET name = ?, description = ?, is_system = ?, updated_at = ? WHERE key = ?',
       role.name,
       role.description,
@@ -1517,9 +1506,9 @@ async function ensureSeedRoles() {
 }
 
  /** Seed role-permission mappings from role-seeds.ts. */
-async function ensureSeedRolePermissions() {
+async function ensureSeedRolePermissions(db: DbExecutor) {
   // Get all role IDs (key → UUID mapping)
-  const roles = (await getExecutor().$queryRawUnsafe<Array<{ id: string; key: string }>>(
+  const roles = (await db.$queryRawUnsafe<Array<{ id: string; key: string }>>(
     'SELECT id, key FROM "role"',
   ));
   const roleIdByKey = new Map(roles.map((r) => [r.key, r.id]));
@@ -1530,14 +1519,14 @@ async function ensureSeedRolePermissions() {
     const roleId = roleIdByKey.get(roleKey);
     if (!roleId) continue;
 
-    const existing = (await getExecutor().$queryRawUnsafe<Array<{ id: string }>>(
+    const existing = (await db.$queryRawUnsafe<Array<{ id: string }>>(
       'SELECT id FROM "role_permission" WHERE role_id = ? AND permission = ? LIMIT 1',
       roleId,
       permission,
     ))[0];
 
     if (!existing) {
-      await getExecutor().$executeRawUnsafe(
+      await db.$executeRawUnsafe(
         'INSERT INTO "role_permission" (id, role_id, permission, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
         crypto.randomUUID(),
         roleId,
@@ -1668,8 +1657,8 @@ export async function applyRbacThreeRoleMigration(db: DbExecutor): Promise<void>
   }
 }
 
-async function runRbacThreeRoleMigration() {
-  await applyRbacThreeRoleMigration(getExecutor());
+async function runRbacThreeRoleMigration(db: DbExecutor) {
+  await applyRbacThreeRoleMigration(db);
 }
 
 /** Ensure legacy employee tables can be linked to an optional auth identity. */
@@ -1692,14 +1681,11 @@ export async function applyEmployeeUserLinkMigration(db: DbExecutor): Promise<vo
 }
 
 export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
-  _executor = db;
-  const executor = getExecutor();
-
-  await executor.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+  await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
 
   for (const statement of schemaStatements) {
     try {
-      await getExecutor().$executeRawUnsafe(statement)
+      await db.$executeRawUnsafe(statement)
     } catch (error) {
       if (!isMissingColumnError(error) || (!statement.includes("project_id") && !statement.includes("external_counterparty_id") && !statement.includes("current_warehouse_id") && !statement.includes("current_project_id"))) {
         throw error
@@ -1709,7 +1695,7 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
 
   for (const statement of additiveStatements) {
     try {
-      await getExecutor().$executeRawUnsafe(statement);
+      await db.$executeRawUnsafe(statement);
     } catch (error) {
       if (!isDuplicateColumnError(error)) {
         throw error;
@@ -1717,28 +1703,28 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
     }
   }
 
-  await ensureInventoryProjectIndexes()
-  await applyEmployeeUserLinkMigration(executor)
+  await ensureInventoryProjectIndexes(db)
+  await applyEmployeeUserLinkMigration(db)
 
-  await runObsoleteMigrations();
-  await runStatusConstraintMigrations();
-  await runActorLabelBackfillMigration();
-  await runDebtSingleAccountMigration();
-  await runAddOutboundTransferMigration();
-  await runAddAdvanceDebtEntryMigration();
-  await runInvoiceDebtLinkageMigration();
-  await runDebtEntryConstraintsMigration();
-  await runDebtAccountBalanceRenameMigration();
-  await runDebtAccountDirectionMigration();
-  await runPaymentAllocationRestrictMigration();
+  await runObsoleteMigrations(db);
+  await runStatusConstraintMigrations(db);
+  await runActorLabelBackfillMigration(db);
+  await runDebtSingleAccountMigration(db);
+  await runAddOutboundTransferMigration(db);
+  await runAddAdvanceDebtEntryMigration(db);
+  await runInvoiceDebtLinkageMigration(db);
+  await runDebtEntryConstraintsMigration(db);
+  await runDebtAccountBalanceRenameMigration(db);
+  await runDebtAccountDirectionMigration(db);
+  await runPaymentAllocationRestrictMigration(db);
 
-  await syncLegacyTimestampColumns();
-  await repairLegacyAuthTables();
+  await syncLegacyTimestampColumns(db);
+  await repairLegacyAuthTables(db);
 
-  await ensureSeedRoles();
-  await ensureSeedRolePermissions();
+  await ensureSeedRoles(db);
+  await ensureSeedRolePermissions(db);
 
   // Run AFTER seeding so the new `manager` role is guaranteed to exist
   // before legacy roles are removed.
-  await runRbacThreeRoleMigration();
+  await runRbacThreeRoleMigration(db);
 }

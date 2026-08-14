@@ -60,6 +60,9 @@ describe("RPC router", () => {
     databaseKeyManager: unknown = {
       changeKey: () => ({ success: false, error: "Current encryption key is invalid" }),
     },
+    databaseKeyPersister: unknown = {
+      persistKey: () => ({ success: true } as const),
+    },
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -103,6 +106,7 @@ describe("RPC router", () => {
       updateService: {} as never,
       updateHistoryService: {} as never,
       databaseKeyManager: databaseKeyManager as never,
+      databaseKeyPersister: databaseKeyPersister as never,
     } as never);
   }
 
@@ -1034,13 +1038,18 @@ describe("RPC router", () => {
     // changeDbKeyOutputSchema. The success leg is covered in the next test.
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
-    ).resolves.toEqual({ success: false, error: "Current encryption key is invalid" });
+    ).resolves.toEqual({
+      success: false,
+      error: "Current encryption key is invalid",
+      rekeyed: false,
+    });
   });
 
-  it("rekeys the database and returns success through the wire contract", async () => {
+  it("rekeys the database, persists the new key, and returns success through the wire contract", async () => {
     const harness = createHarness();
     const changeKey = vi.fn((_currentKey: string, _newKey: string) => ({ success: true } as const));
-    const router = createTestRouter(harness, undefined, {}, { changeKey });
+    const persistKey = vi.fn(() => ({ success: true } as const));
+    const router = createTestRouter(harness, undefined, {}, { changeKey }, { persistKey });
     const client = createRouterClient(router, { context: createContext() as never });
 
     // The success leg of changeDbKeyOutputSchema ({ success: true }) is
@@ -1051,6 +1060,9 @@ describe("RPC router", () => {
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
     ).resolves.toEqual({ success: true });
     expect(changeKey).toHaveBeenNthCalledWith(1, "old-key", "new-key-123");
+    // After a successful rekey the new key must be persisted so a restart can
+    // still open the database (issue #265).
+    expect(persistKey).toHaveBeenNthCalledWith(1, "new-key-123");
 
     // A key containing a single quote is passed through untouched — the port
     // escapes it ('' doubling), not the handler.
@@ -1058,6 +1070,107 @@ describe("RPC router", () => {
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-'quoted'" }),
     ).resolves.toEqual({ success: true });
     expect(changeKey).toHaveBeenLastCalledWith("old-key", "new-key-'quoted'");
+    expect(persistKey).toHaveBeenLastCalledWith("new-key-'quoted'");
+  });
+
+  it("surfaces a persistence failure honestly after a successful rekey", async () => {
+    const harness = createHarness();
+    const changeKey = vi.fn(() => ({ success: true } as const));
+    const persistKey = vi.fn(() => ({
+      success: false as const,
+      error: "Failed to persist database encryption key",
+    }));
+    const router = createTestRouter(harness, undefined, {}, { changeKey }, { persistKey });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    // The DB was rekeyed but the key is not durable — the wire must say so
+    // rather than silently claiming success (a restart would lose the DB).
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
+    ).resolves.toEqual({
+      success: false,
+      error: "Failed to persist database encryption key",
+      rekeyed: true,
+    });
+    expect(changeKey).toHaveBeenCalledTimes(1);
+    expect(persistKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not persist the key when the rekey itself fails", async () => {
+    const harness = createHarness();
+    const persistKey = vi.fn();
+    const router = createTestRouter(harness, undefined, {}, undefined, { persistKey });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    // databaseKeyManager defaults to a rejecting stub — a failed rekey must
+    // short-circuit before persistence (there is nothing to persist).
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "wrong-key", newKey: "new-key-123" }),
+    ).resolves.toEqual({
+      success: false,
+      error: "Current encryption key is invalid",
+      rekeyed: false,
+    });
+    expect(persistKey).not.toHaveBeenCalled();
+  });
+
+  it("forwards the port's rekeyed:true discrimination when the rekey is known to have applied", async () => {
+    const harness = createHarness();
+    // The port reports rekeyed: true only when it has evidence the database
+    // IS on the new key (a verified rekey whose persistence failed). The
+    // wire MUST forward it unchanged so the caller keeps the new key instead
+    // of restoring the old one (which would orphan a DB on the new key).
+    const changeKey = vi.fn(() => ({
+      success: false as const,
+      error: "Database re-encryption failed",
+      rekeyed: true,
+    }));
+    const persistKey = vi.fn();
+    const router = createTestRouter(harness, undefined, {}, { changeKey }, { persistKey });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
+    ).resolves.toEqual({
+      success: false,
+      error: "Database re-encryption failed",
+      rekeyed: true,
+    });
+    // Nothing is persisted on a failed rekey, and the caller keeps the new
+    // key — the wire contract must not rewrite the port's discrimination.
+    expect(changeKey).toHaveBeenCalledTimes(1);
+    expect(persistKey).not.toHaveBeenCalled();
+  });
+
+  it("forwards the port's ambiguous post-rekey probe failure so the caller never restores the old key", async () => {
+    const harness = createHarness();
+    // The port reports rekeyed: false + ambiguous: true when the rekey ran
+    // but the post-rekey verification could not complete (Greptile P1). The
+    // wire MUST forward the ambiguity unchanged: a plain rekeyed: false
+    // would make the desktop caller restore the old key and orphan a
+    // database that is likely on the new key.
+    const changeKey = vi.fn(() => ({
+      success: false as const,
+      error: "Database re-encryption could not be verified",
+      rekeyed: false,
+      ambiguous: true,
+    }));
+    const persistKey = vi.fn();
+    const router = createTestRouter(harness, undefined, {}, { changeKey }, { persistKey });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
+    ).resolves.toEqual({
+      success: false,
+      error: "Database re-encryption could not be verified",
+      rekeyed: false,
+      ambiguous: true,
+    });
+    // Nothing is persisted on a failed rekey; the ambiguous flag survives
+    // the wire unchanged so the caller keeps the rollback slot.
+    expect(changeKey).toHaveBeenCalledTimes(1);
+    expect(persistKey).not.toHaveBeenCalled();
   });
 
   it("generates an inventory report through the RPC contract (derived filter input)", async () => {
