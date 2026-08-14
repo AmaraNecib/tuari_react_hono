@@ -12,6 +12,7 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import type { BetterSqliteDatabase } from "../../../types/sqlite"
 import * as schema from "../../../schema"
 import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzle"
+import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock"
 import { normalizeAuditContext } from "../../company/company.repository-mappers"
 import { createAlgeriaTimestamp } from "../../company/company-time"
 import type { MutationAuditContext } from "../../company/company.types"
@@ -213,13 +214,26 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   constructor(
     private readonly db: BetterSQLite3Database<typeof schema>,
     private readonly raw: BetterSqliteDatabase,
+    /**
+     * Connection-wide FIFO lock (shared with every module that opens
+     * transactions on the same connection, wired in the composition root).
+     * Sync writers route their transactions through `runSyncTransaction` so
+     * they never silently join another flow's open transaction (issue #322).
+     */
+    private readonly connectionLock: FifoLock = createFifoLock(),
   ) {
     this.raw.pragma("foreign_keys = ON")
   }
 
+  /**
+   * Run a synchronous better-sqlite3 transaction under the connection-wide
+   * lock (issue #322): execute immediately when the lock is free or owned by
+   * this flow, throw when another flow holds it open — never silently join
+   * an unrelated open transaction.
+   */
   /** Execute a callback inside a raw SQLite transaction. */
   withTransaction<T>(callback: () => T): T {
-    return this.raw.transaction(callback)()
+    return runSyncTransaction(this.connectionLock, this.raw, callback)
   }
 
   // ── Item Definitions ────────────────────────────────────────────────
@@ -688,7 +702,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     const id = crypto.randomUUID()
     const timestamp = createAlgeriaTimestamp()
     const audit = normalizeAuditContext(auditContext)
-    this.raw.transaction(() => {
+    runSyncTransaction(this.connectionLock, this.raw, () => {
       this.raw.prepare(
         `INSERT INTO inventory_outbound_transfer (id, transfer_date, from_type, from_id, counterparty_id, transfer_type, status, associated_debt_account_id, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -702,7 +716,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
           "INSERT INTO inventory_outbound_transfer_item (id, transfer_id, item_id, quantity, unit_price_dzd, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         ).run(itemId, id, item.itemId, item.quantity, item.unitPriceDzd ?? null, timestamp)
       }
-    })()
+    })
     return this.getOutboundTransferById(id)!
   }
 
@@ -727,7 +741,10 @@ export class DrizzleInventoryRepository implements InventoryRepository {
 // ---------------------------------------------------------------------------
 
 /** Create a Drizzle-backed InventoryRepository from a raw SQLite handle. */
-export function createInventoryRepository(rawDb: BetterSqliteDatabase): InventoryRepository {
+export function createInventoryRepository(
+  rawDb: BetterSqliteDatabase,
+  connectionLock?: FifoLock,
+): InventoryRepository {
   const drizzleDb = createDrizzleFromSqlite(rawDb)
-  return new DrizzleInventoryRepository(drizzleDb, rawDb)
+  return new DrizzleInventoryRepository(drizzleDb, rawDb, connectionLock)
 }

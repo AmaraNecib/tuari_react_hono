@@ -137,14 +137,17 @@ export async function createAppDependencies(
     // better-sqlite3 connection, and better-sqlite3 throws if a raw BEGIN is
     // issued while another transaction is open. Every module that opens a
     // transaction on the shared connection receives THIS lock (issue #288).
-    const connectionLock = createFifoLock();
+    // The 30s bound (issue #322 secondary) keeps a never-settling
+    // transaction from leaving every queued writer hanging forever — each
+    // waiting caller fails loudly after the bound instead of stalling.
+    const connectionLock = createFifoLock({ timeoutMs: 30_000 });
 
     // Config-aware repository selection: honors DB_ADAPTER (sqlite | inmemory).
     // Note: when dbAdapter=inmemory only the company domain is in-memory; the
     // inventory/invoice/payment modules still use the SQLite handle until those
     // adapters are introduced in a follow-up phase.
-    const companyRepository = createCompanyRepository(sharedDatabase, appConfig);
-    const inventoryRepository = createInventoryRepository(sharedDatabase);
+    const companyRepository = createCompanyRepository(sharedDatabase, appConfig, connectionLock);
+    const inventoryRepository = createInventoryRepository(sharedDatabase, connectionLock);
     const accountRepository = new DrizzleAccountRepository(db, connectionLock);
 
     // Construct each domain service off the same `WorkspaceMutationContext`
@@ -169,6 +172,7 @@ export async function createAppDependencies(
     const invoiceDebtPort = createSqliteInvoiceDebtPort({
       db: sharedDatabase,
       repository: companyRepository,
+      lock: connectionLock,
     });
     const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
     const paymentRepository = new PaymentRepositoryImpl(sharedDatabase, connectionLock);
@@ -210,7 +214,7 @@ export async function createAppDependencies(
       sessionService: new SessionService(auth, permissionResolver),
       recoveryKeyService,
       updateService: new UpdateService(),
-      updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase)),
+      updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase, connectionLock)),
       databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
       employeeModule,
       invoiceModule,

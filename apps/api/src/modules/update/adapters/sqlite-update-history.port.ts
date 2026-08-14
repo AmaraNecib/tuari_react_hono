@@ -8,6 +8,7 @@
  */
 import type { RecordUpdateInput, UpdateRecord } from "@tuari/contracts";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
+import { createFifoLock, type FifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { UpdateHistoryPort } from "../update-history.types";
 
 /**
@@ -23,20 +24,33 @@ type UpdateHistoryRow = {
 };
 
 export class SqliteUpdateHistoryPort implements UpdateHistoryPort {
-  constructor(private readonly db: BetterSqliteDatabase) {}
+  constructor(
+    private readonly db: BetterSqliteDatabase,
+    /**
+     * Connection-wide FIFO lock (shared with every module that opens
+     * transactions on the same connection, wired in the composition root).
+     * The plain write runs under it so it never silently joins another
+     * flow's open transaction (issue #322).
+     */
+    private readonly connectionLock: FifoLock = createFifoLock(),
+  ) {}
 
   recordUpdate(input: RecordUpdateInput): UpdateRecord {
     const appliedAt = new Date().toISOString();
-    const stmt = this.db.prepare(
-      `INSERT INTO "update_history" ("version", "applied_at", "success", "error_message")
-       VALUES (?, ?, ?, ?)`,
-    );
-    const result = stmt.run(
-      input.version,
-      appliedAt,
-      input.success ? 1 : 0,
-      input.errorMessage ?? null,
-    );
+    // Sync write under the connection-wide lock: execute now when the lock
+    // is free or owned by this flow, throw when another flow holds it open.
+    const result = this.connectionLock.runSync(() => {
+      const stmt = this.db.prepare(
+        `INSERT INTO "update_history" ("version", "applied_at", "success", "error_message")
+         VALUES (?, ?, ?, ?)`,
+      );
+      return stmt.run(
+        input.version,
+        appliedAt,
+        input.success ? 1 : 0,
+        input.errorMessage ?? null,
+      );
+    });
     return {
       id: result.lastInsertRowid as number,
       version: input.version,

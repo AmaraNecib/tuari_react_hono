@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { createFifoLock } from "./fifo-lock";
+import {
+  createFifoLock,
+  FifoLockBusyError,
+  FifoLockTimeoutError,
+} from "./fifo-lock";
 
 /**
  * FifoLock tests — pin the exact invariants the transaction model relies on:
  * FIFO ordering, no interleaving, and lock release after a rejecting
  * operation (a failed transaction must not poison the queue).
+ *
+ * The timeout tests use real timers; the suite timeout is lengthened (like
+ * the account lock-window suite) so a loaded CI cannot flake the bounds.
  */
-describe("createFifoLock", () => {
+describe("createFifoLock", { timeout: 20000 }, () => {
   it("runs operations in FIFO order without interleaving", async () => {
     const lock = createFifoLock();
     const events: string[] = [];
@@ -118,5 +125,233 @@ describe("createFifoLock", () => {
     // allowed.
     const result = await a.run(async () => b.run(async () => "nested-other"));
     expect(result).toBe("nested-other");
+  });
+
+  it("runSync executes immediately when the lock is free", () => {
+    const lock = createFifoLock();
+
+    // A synchronous writer runs its own transaction directly when no
+    // async flow holds the connection.
+    expect(lock.runSync(() => 42)).toBe(42);
+  });
+
+  it("runSync executes directly when called inside a run (own-run join)", async () => {
+    const lock = createFifoLock();
+
+    // A sync writer reached from inside a locked async flow deliberately
+    // joins that flow's open transaction (join-outer pattern). It must NOT
+    // be treated as a foreign writer.
+    const result = await lock.run(async () => lock.runSync(() => "joined"));
+    expect(result).toBe("joined");
+  });
+
+  it("runSync still joins our own run across an await hop", async () => {
+    const lock = createFifoLock();
+
+    // The production join-outer flows (payment/invoice runInTransaction
+    // → recordInvoicePayment) reach the sync writer AFTER an await inside
+    // the run — the exact hop where AsyncLocalStorage propagation could
+    // regress. The own-run detection must survive a real yield.
+    const result = await lock.run(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return lock.runSync(() => "joined-after-yield");
+    });
+    expect(result).toBe("joined-after-yield");
+  });
+
+  it("runSync throws FifoLockBusyError when another operation holds the lock", async () => {
+    const lock = createFifoLock();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // A foreign async flow holds the connection open (like an async
+    // transaction awaiting bcrypt). A sync writer must not silently join it.
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // The busy failure is a distinct, catchable type — not an opaque Error.
+    expect(() => lock.runSync(() => "should-not-run")).toThrow(FifoLockBusyError);
+
+    release();
+    await holder;
+
+    // The queue is still usable once the holder settles.
+    expect(lock.runSync(() => "after")).toBe("after");
+  });
+
+  it("runSync runs ahead of a queued-but-unstarted run (documented precedence inversion)", async () => {
+    const lock = createFifoLock();
+    let started = false;
+
+    // A queued async run has NOT started yet (activeCount === 0), so the
+    // sync writer executes immediately instead of queueing behind it — no
+    // transaction is open to join. Pins the accepted precedence inversion.
+    const queued = lock.run(async () => {
+      started = true;
+      return "tx";
+    });
+    expect(lock.runSync(() => "sync-first")).toBe("sync-first");
+    await queued;
+    expect(started).toBe(true);
+  });
+
+  it("runSync on an independent lock is not blocked by another lock's run", async () => {
+    const a = createFifoLock();
+    const b = createFifoLock();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const holder = a.run(async () => {
+      await gate;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // The busy-check is per-lock: an unrelated lock's sync section is safe.
+    expect(b.runSync(() => "ok")).toBe("ok");
+
+    release();
+    await holder;
+  });
+
+  it("runSync keeps the queue alive after throwing", async () => {
+    const lock = createFifoLock();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(() => lock.runSync(() => "x")).toThrow(FifoLockBusyError);
+    release();
+    await holder;
+
+    await expect(lock.run(async () => "after")).resolves.toBe("after");
+  });
+
+  it("bounds the wait for a queued operation when timeoutMs is set", async () => {
+    // The holder never settles until after the assert, so any positive bound
+    // fires; 150ms gives a loaded CI generous slack without slowing the
+    // suite meaningfully.
+    const lock = createFifoLock({ timeoutMs: 150 });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // A never-settling holder must not make queued operations wait forever:
+    // the queued run rejects after the bound and abandons its slot.
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    const queued = lock.run(async () => "ran");
+
+    await expect(queued).rejects.toThrow(FifoLockTimeoutError);
+    release();
+    await holder;
+
+    // The abandoned slot must not poison the queue.
+    await expect(lock.run(async () => "after")).resolves.toBe("after");
+  });
+
+  it("timed-out operations never execute; multiple abandoned slots keep the queue FIFO", async () => {
+    const lock = createFifoLock({ timeoutMs: 100 });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // A hung holder; several queued ops all time out and abandon their
+    // slots. None of them may execute (no side effects after the caller
+    // already gave up), and once the holder releases the queue must still
+    // be FIFO.
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    let executed = false;
+    await expect(
+      lock.run(async () => {
+        executed = true;
+      }),
+    ).rejects.toThrow(FifoLockTimeoutError);
+    await expect(
+      lock.run(async () => {
+        executed = true;
+      }),
+    ).rejects.toThrow(FifoLockTimeoutError);
+    expect(executed).toBe(false);
+
+    release();
+    await holder;
+
+    const order: string[] = [];
+    await Promise.all([
+      lock.run(async () => {
+        order.push("1");
+      }),
+      lock.run(async () => {
+        order.push("2");
+      }),
+    ]);
+    expect(order).toEqual(["1", "2"]);
+  });
+
+  it("a timed-out caller can re-queue while the abandoned slot is still in line", async () => {
+    const lock = createFifoLock({ timeoutMs: 150 });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // A hung holder; the first attempt times out and abandons its slot.
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    await expect(lock.run(async () => "never-ran")).rejects.toThrow(
+      FifoLockTimeoutError,
+    );
+
+    // The caller retries BEFORE the abandoned slot's turn arrives: the
+    // retry chains behind it and must run exactly once, in order, once the
+    // connection frees — no duplicate/reordered work from the retry.
+    let retryCount = 0;
+    const retry = lock.run(async () => {
+      retryCount++;
+      return "retried";
+    });
+
+    release();
+    await holder;
+
+    await expect(retry).resolves.toBe("retried");
+    expect(retryCount).toBe(1);
+  });
+
+  it("does not time out an operation that waits only briefly for its turn", async () => {
+    // 50x margin (500ms bound vs a 10ms holder) so a slow/loaded CI cannot
+    // turn the brief wait into a spurious timeout.
+    const lock = createFifoLock({ timeoutMs: 500 });
+
+    const first = lock.run(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return "a";
+    });
+    const second = lock.run(async () => "b");
+
+    await expect(Promise.all([first, second])).resolves.toEqual(["a", "b"]);
+  });
+
+  it("rejects a non-positive timeoutMs at construction", () => {
+    expect(() => createFifoLock({ timeoutMs: 0 })).toThrow(/positive integer/);
+    expect(() => createFifoLock({ timeoutMs: -5 })).toThrow(/positive integer/);
+    expect(() => createFifoLock({ timeoutMs: 1.5 })).toThrow(/positive integer/);
   });
 });
