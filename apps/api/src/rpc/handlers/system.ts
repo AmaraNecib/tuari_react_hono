@@ -89,11 +89,12 @@ export function createSystemHandlers(
         // output shape with an honest reason.
         const result = databaseKeyManager.changeKey(currentKey, newKey);
         if (!result.success) {
-          // The port discriminates whether the database WAS re-encrypted
-          // before the failure surfaced (post-rekey verification failed but
-          // the NEW key is the one on disk) — the caller must roll its
-          // keyring back only when rekeyed is false, or it would orphan a
-          // database that IS on the new key.
+          // The port reports rekeyed: true only when the database IS on the
+          // new key despite the failure (a verified rekey whose persistence
+          // failed). Ambiguous post-rekey probe failures are rekeyed: false
+          // — the caller keeps the old-key rollback slot and does not
+          // acknowledge the rotation. The ?? false default keeps every
+          // other failure on the same safe side.
           return { ...result, rekeyed: result.rekeyed ?? false };
         }
         // The database WAS re-encrypted — persist the new key so a restart

@@ -102,6 +102,9 @@ describe("createDatabaseKeyManager", () => {
     const sqlite = makeSharedSqliteMock();
     const failingScratch = makeScratchMock();
     failingScratch.connection.prepare.mockImplementation(() => {
+      // A plain Error carries no SQLITE_NOTADB code — classified as a
+      // transient/system probe failure (couldn't verify), not a definitive
+      // wrong-key rejection.
       throw new Error("file is not a database");
     });
     const openConnection = vi.fn((path: string, key: string) =>
@@ -120,49 +123,64 @@ describe("createDatabaseKeyManager", () => {
     expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
   });
 
-  it("discriminates rekeyed:true when neither key opens the database after a failed post-rekey verification", () => {
+  it("does not acknowledge rotation (rekeyed: false) when a post-rekey probe fails with a transient/system error", () => {
     const dbPath = join(tempDir, "cipher.sqlite");
     writeFileSync(dbPath, CIPHER_LIKE_HEADER);
 
     const sqlite = makeSharedSqliteMock();
-    const openingScratch = makeScratchMock();
     const failingScratch = makeScratchMock();
     failingScratch.connection.prepare.mockImplementation(() => {
-      throw new Error("file is not a database");
+      // A transient/system failure (lock, binding, connection) — NOT the
+      // definitive SQLITE_NOTADB wrong-key signal. The probe could not
+      // verify anything about which key the database is on.
+      throw new Error("database is locked");
     });
-    // Current-key verification succeeds (first call); new-key verification AND
-    // the old-key probe both fail → the DB is on the NEW key (the rekey
-    // applied), so the caller must NOT roll its keyring back.
+    // Current-key verification succeeds; every post-rekey probe fails
+    // transiently (both the new-key probe and, had the old code still
+    // probed it, the current-key probe) — the rekey outcome is UNKNOWN.
     const openConnection = vi
       .fn()
-      .mockReturnValueOnce(openingScratch.connection)
+      .mockReturnValueOnce(makeScratchMock().connection)
       .mockReturnValue(failingScratch.connection) as unknown as DatabaseKeyManagerSeams["openConnection"];
     const manager = makeManager(sqlite, dbPath, openConnection);
 
+    // The port must NOT claim the database is on the new key from a probe
+    // that could not verify it — that would make the caller drop the
+    // old-key rollback slot and acknowledge the rotation, orphaning the
+    // database if the rekey actually left it on the old key (Greptile P1).
+    // Ambiguous → rekeyed: false (no key rotation acknowledged).
     expect(manager.changeKey("current-key", "new-key-123")).toEqual({
       success: false,
       error: "Database re-encryption failed",
-      rekeyed: true,
+      rekeyed: false,
     });
-    // current-key verify + new-key verify + old-key probe = 3 fresh openings.
-    expect(openConnection).toHaveBeenCalledTimes(3);
+    // current-key verify + new-key probe — no further discrimination probe.
+    expect(openConnection).toHaveBeenCalledTimes(2);
   });
 
-  it("discriminates rekeyed:false when the old key still opens the database (rekey silently no-op'd)", () => {
+  it("does not acknowledge rotation (rekeyed: false) when the post-rekey probe definitively rejects the new key", () => {
     const dbPath = join(tempDir, "cipher.sqlite");
     writeFileSync(dbPath, CIPHER_LIKE_HEADER);
 
     const sqlite = makeSharedSqliteMock();
     const openingScratch = makeScratchMock();
-    const failingScratch = makeScratchMock();
-    failingScratch.connection.prepare.mockImplementation(() => {
-      throw new Error("file is not a database");
+    const rejectingScratch = makeScratchMock();
+    rejectingScratch.connection.prepare.mockImplementation(() => {
+      // SQLCipher's definitive wrong-key signal — the read failed with
+      // SQLITE_NOTADB, so the NEW key was really rejected (the rekey did
+      // not apply). Still rekeyed: false — the database is NOT on the new
+      // key, so restoring the old key is safe.
+      const error = new Error("file is not a database") as Error & { code?: string };
+      error.code = "SQLITE_NOTADB";
+      throw error;
     });
-    // New-key verification fails, but the CURRENT key still opens the
-    // database → the rekey never applied; restoring the old key is safe.
-    const openConnection = vi.fn((_path: string, key: string) =>
-      key === "new-key-123" ? failingScratch.connection : openingScratch.connection,
-    ) as unknown as DatabaseKeyManagerSeams["openConnection"];
+    // Current-key verification succeeds; the new-key probe is definitively
+    // rejected → the rekey silently no-op'd (the rekey-on-WAL hazard);
+    // rolling the keyring back to the old key is correct.
+    const openConnection = vi
+      .fn()
+      .mockReturnValueOnce(openingScratch.connection)
+      .mockReturnValue(rejectingScratch.connection) as unknown as DatabaseKeyManagerSeams["openConnection"];
     const manager = makeManager(sqlite, dbPath, openConnection);
 
     expect(manager.changeKey("current-key", "new-key-123")).toEqual({
@@ -170,8 +188,8 @@ describe("createDatabaseKeyManager", () => {
       error: "Database re-encryption failed",
       rekeyed: false,
     });
-    // current-key verify + new-key verify + old-key probe.
-    expect(openConnection).toHaveBeenCalledTimes(3);
+    // current-key verify + new-key probe.
+    expect(openConnection).toHaveBeenCalledTimes(2);
   });
 
   it("treats a missing database file as fallback (shared-connection verification)", () => {

@@ -6,6 +6,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -81,6 +82,22 @@ describe("createConfigFileKeyPersister", () => {
     // suffix remains.
     expect(readdirSync(tempDir).some((name) => name.endsWith(".tmp"))).toBe(false);
   });
+
+  // File modes are meaningless on Windows — the POSIX permission check only
+  // runs where chmod semantics exist.
+  it.skipIf(process.platform === "win32")(
+    "writes the key-bearing config file with restrictive 0600 permissions",
+    () => {
+      const persister = createConfigFileKeyPersister(configPath);
+      expect(persister.persistKey("new-key-123")).toEqual({ success: true });
+
+      // The temp file is opened with an explicit 0600 mode (mirroring the
+      // desktop secret-file writer) and the rename preserves that mode over
+      // the target — a permissive umask must never widen the key-bearing
+      // file's permissions (Greptile P1).
+      expect(statSync(configPath).mode & 0o777).toBe(0o600);
+    },
+  );
 
   it("cleans up the tmp file when the atomic rename fails (honest failure, no stale tmp)", () => {
     const persister = createConfigFileKeyPersister(configPath);

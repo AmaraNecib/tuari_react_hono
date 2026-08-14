@@ -1114,11 +1114,11 @@ describe("RPC router", () => {
     expect(persistKey).not.toHaveBeenCalled();
   });
 
-  it("forwards the port's rekeyed:true discrimination when the rekey outcome is unknown", async () => {
+  it("forwards the port's rekeyed:true discrimination when the rekey is known to have applied", async () => {
     const harness = createHarness();
-    // The manager probed with both keys and neither opens the database — the
-    // rekey applied but verification false-negatived (or the DB is damaged).
-    // The wire MUST say rekeyed: true so the caller keeps the new key instead
+    // The port reports rekeyed: true only when it has evidence the database
+    // IS on the new key (a verified rekey whose persistence failed). The
+    // wire MUST forward it unchanged so the caller keeps the new key instead
     // of restoring the old one (which would orphan a DB on the new key).
     const changeKey = vi.fn(() => ({
       success: false as const,

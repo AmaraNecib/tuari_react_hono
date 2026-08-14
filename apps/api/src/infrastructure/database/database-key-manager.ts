@@ -91,22 +91,51 @@ function detectEncryption(databasePath: string): "plain" | "encrypted" | null {
 }
 
 /**
- * Open a scratch connection and verify that `key` actually opens the
- * database. Returns true when the read succeeds. The scratch connection is
- * always closed.
+ * Result of probing a fresh connection with a key:
+ * - `"opens"` — the key was verified to open the database;
+ * - `"wrong-key"` — the database DEFINITIVELY rejected the key (SQLCipher
+ *   surfaces a wrong key as SQLITE_NOTADB when the first read runs);
+ * - `"error"` — the probe could not verify anything (transient/system
+ *   failure: connection open, binding, lock, or file error). This is NOT
+ *   evidence that the key is wrong — the database may be on either key.
  */
-function verifyKeyOnFreshConnection(
+type KeyProbeResult = "opens" | "wrong-key" | "error";
+
+/** SQLITE_NOTADB (26) — SQLCipher rejects a read with the wrong key this way. */
+const SQLITE_NOTADB_ERRNO = 26;
+
+/**
+ * True when `error` is SQLCipher's definitive wrong-key signal
+ * (SQLITE_NOTADB — "file is not a database" from a read with the wrong
+ * key). Anything else — a lock/busy error, an open/binding failure, or an
+ * unexpected error shape — is a transient/system failure and cannot prove
+ * the key is wrong.
+ */
+function isDefinitiveWrongKeySignal(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as { code?: unknown; errno?: unknown };
+  return candidate.code === "SQLITE_NOTADB" || candidate.errno === SQLITE_NOTADB_ERRNO;
+}
+
+/**
+ * Open a scratch connection and probe whether `key` opens the database.
+ * Returns the tri-state {@link KeyProbeResult} — a definitive wrong-key
+ * rejection is distinguished from a transient/system failure so callers
+ * never mistake "couldn't verify" for "the key is wrong". The scratch
+ * connection is always closed.
+ */
+function probeKeyOnFreshConnection(
   openConnection: (path: string, key: string) => BetterSqliteDatabase,
   databasePath: string,
   key: string,
-): boolean {
+): KeyProbeResult {
   let scratch: BetterSqliteDatabase | null = null;
   try {
     scratch = openConnection(databasePath, key);
     scratch.prepare("SELECT COUNT(*) FROM sqlite_master").get();
-    return true;
-  } catch {
-    return false;
+    return "opens";
+  } catch (error) {
+    return isDefinitiveWrongKeySignal(error) ? "wrong-key" : "error";
   } finally {
     scratch?.close();
   }
@@ -139,6 +168,15 @@ function verifyKeyOnFreshConnection(
  * SQL. The result never throws — a failed verification, failed rekey, or
  * unencrypted database maps onto the wire failure output with an honest
  * reason.
+ *
+ * Post-rekey probe honesty (Greptile P1): a probe that did not VERIFY the
+ * new key opens the database — a definitive wrong-key rejection (the rekey
+ * did not apply) or a transient/system error (lock, binding, connection —
+ * the rekey may or may not have taken) — is reported as an ambiguous
+ * failure with `rekeyed: false`, never `rekeyed: true`. Claiming the
+ * rotation applied would make the caller drop the old-key rollback slot;
+ * if the rekey actually left the database on the old key (the rekey-on-WAL
+ * no-op hazard), the next startup could not open it at all.
  */
 export function createDatabaseKeyManager(
   sqlite: BetterSqliteDatabase,
@@ -166,7 +204,7 @@ export function createDatabaseKeyManager(
       }
 
       if (encryption === "encrypted") {
-        if (!verifyKeyOnFreshConnection(openConnection, databasePath, currentKey)) {
+        if (probeKeyOnFreshConnection(openConnection, databasePath, currentKey) !== "opens") {
           return { success: false, error: "Current encryption key is invalid" };
         }
       } else {
@@ -191,27 +229,27 @@ export function createDatabaseKeyManager(
       // success (SQLCipher rekey on a WAL-mode connection must not silently
       // fail). Only meaningful for real files — `:memory:` cannot be
       // re-opened by path.
-      if (
-        encryption === "encrypted" &&
-        !verifyKeyOnFreshConnection(openConnection, databasePath, newKey)
-      ) {
-        // The new key does not open the database. Discriminate which key it
-        // IS on so the caller rolls the keyring back only when that is safe:
-        // - the CURRENT key still opens it → the rekey silently no-op'd (the
-        //   SQLCipher rekey-on-WAL hazard) → restoring the old key is correct;
-        // - NEITHER key opens it → the rekey applied but this verification
-        //   false-negatived (transient lock/binding error) → the DB is on the
-        //   NEW key, and restoring the old key would orphan it.
-        const currentKeyStillOpens = verifyKeyOnFreshConnection(
-          openConnection,
-          databasePath,
-          currentKey,
-        );
-        return {
-          success: false,
-          error: "Database re-encryption failed",
-          rekeyed: !currentKeyStillOpens,
-        };
+      if (encryption === "encrypted") {
+        const newKeyProbe = probeKeyOnFreshConnection(openConnection, databasePath, newKey);
+        if (newKeyProbe !== "opens") {
+          // Post-rekey verification failed — the new key could not be
+          // VERIFIED to open the database. That is never grounds to report
+          // rekeyed: true (Greptile P1): whether the probe got a definitive
+          // wrong-key rejection (the rekey did not apply at all) or a
+          // transient/system error (lock, binding, connection — the rekey
+          // may or may not have taken), "couldn't verify" is not "the
+          // database IS on the new key". Claiming the rotation applied
+          // would make the caller drop the old-key rollback slot and
+          // acknowledge the rotation; if the rekey actually left the
+          // database on the old key, the next startup could not open it.
+          // Report the ambiguous/failure state instead: the caller keeps
+          // the old key and does not acknowledge the rotation.
+          return {
+            success: false,
+            error: "Database re-encryption failed",
+            rekeyed: false,
+          };
+        }
       }
 
       return { success: true };

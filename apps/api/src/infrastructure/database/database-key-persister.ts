@@ -12,6 +12,14 @@ import { configFileSchema } from "../../config/loader";
 import type { DatabaseKeyChangeResult } from "./database-key-manager";
 
 /**
+ * Restrictive mode for the key-bearing replacement file: owner read/write
+ * only. Mirrors the desktop secret-file writer's `0o600` convention — a
+ * permissive umask must never leave the persisted `db_key` readable by
+ * other local users.
+ */
+const KEY_FILE_MODE = 0o600;
+
+/**
  * Persists a newly rotated database encryption key so a process restart can
  * still open the database (issue #265).
  *
@@ -77,9 +85,13 @@ export function createConfigFileKeyPersister(
         // Atomic + durable write: a unique temp file is written (with fsync
         // so the bytes reach disk), then renamed over the target — a crash
         // can never leave a partially-written config file behind, and a
-        // concurrent writer cannot collide on the temp name.
+        // concurrent writer cannot collide on the temp name. The temp file
+        // is opened with an explicit restrictive mode (owner rw only) so a
+        // permissive umask can never widen the key-bearing replacement's
+        // permissions before the rename (rename preserves the temp file's
+        // mode over the target).
         const tmpPath = `${configFilePath}.${process.pid}.tmp`;
-        const fd = openSync(tmpPath, "w");
+        const fd = openSync(tmpPath, "w", KEY_FILE_MODE);
         try {
           writeSync(fd, JSON.stringify(config, null, 2));
           fsyncSync(fd);
