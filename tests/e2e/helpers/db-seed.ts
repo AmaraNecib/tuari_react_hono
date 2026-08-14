@@ -124,6 +124,19 @@ export function seedEmployees(employees: SeedEmployee[]): void {
 }
 
 /**
+ * The result of seeding the legacy user, including the ownership-restore
+ * handle the spec must call once it is done (see {@link seedLegacyPasswordUser}).
+ */
+export type LegacyPasswordSeedResult = {
+  /**
+   * Restores the bootstrap-owner state the seed changed, so the shared
+   * per-run E2E DB keeps the suite's canonical admin as the owner after the
+   * legacy spec finishes. Reopens the same DB file the seed wrote to.
+   */
+  restoreOwner: () => void
+}
+
+/**
  * Seed a legacy pre-#230 user whose stored hash was created from an
  * all-invisible password (issue #321 recovery-path E2E).
  *
@@ -133,13 +146,25 @@ export function seedEmployees(employees: SeedEmployee[]): void {
  * genuine better-auth hash end to end. A pre-#230 user cannot be created
  * through the bootstrap UI (it rejects all-invisible passwords), so seeding
  * is the only honest way to stage the scenario.
+ *
+ * Ownership handoff: the app shell mounts the owner-gated `workspaceSnapshot`
+ * RPC after ANY sign-in, so the legacy user must be the bootstrap owner while
+ * the legacy spec runs (in the #321 scenario they are the original admin who
+ * created the account pre-#230). In the full suite an earlier spec has already
+ * bootstrapped the workspace, so the singleton `app_bootstrap_state` row is
+ * recorded and re-pointed at the legacy user; the returned {@link
+ * LegacyPasswordSeedResult.restoreOwner} reverts that so downstream specs keep
+ * the canonical admin as owner. In an isolated run no state row exists yet —
+ * the seed creates one and the restore drops it again (ownership then falls
+ * back to the oldest user, which is the suite admin once the legacy spec ends).
  */
 export async function seedLegacyPasswordUser(input: {
   phone: string
   name: string
   legacyPassword: string
-}): Promise<void> {
-  const db = loadDatabaseConstructor()(findE2eDatabase())
+}): Promise<LegacyPasswordSeedResult> {
+  const dbPath = findE2eDatabase()
+  const db = loadDatabaseConstructor()(dbPath)
   try {
     const authReq = loadBetterAuthRequire()
     const { hashPassword } = await authReq("better-auth/crypto")
@@ -152,14 +177,59 @@ export async function seedLegacyPasswordUser(input: {
     db.prepare(`DELETE FROM "account" WHERE "accountId" = ?`).run(input.phone)
     db.prepare(`DELETE FROM "user" WHERE "phoneNumber" = ?`).run(input.phone)
 
+    // phoneNumberVerified mirrors the bootstrap-created owner (1): in the #321
+    // scenario the legacy user IS the original admin account.
     db.prepare(
       `INSERT INTO "user" (id, name, image, "phoneNumber", "phoneNumberVerified", created_at, updated_at)
-       VALUES (?, ?, NULL, ?, 0, ?, ?)`,
+       VALUES (?, ?, NULL, ?, 1, ?, ?)`,
     ).run(userId, input.name, input.phone, now, now)
     db.prepare(
       `INSERT INTO "account" (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
        VALUES (?, ?, 'credential', ?, ?, ?, ?)`,
     ).run(randomUUID(), input.phone, userId, hash, now, now)
+
+    // ── Bootstrap-owner handoff ───────────────────────────────────────────
+    // Record the current owner state BEFORE mutating it. This is the last
+    // write of the seed: if anything above threw, no ownership change was made
+    // and restoreOwner() is never returned, so the caller's afterAll no-ops
+    // instead of clobbering the suite's real owner.
+    const stateRow = db
+      .prepare(`SELECT "user_id" AS userId FROM "app_bootstrap_state" WHERE "singleton" = 1`)
+      .get() as { userId: string | null } | undefined
+    const hadStateRow = stateRow !== undefined
+    const previousOwnerId = stateRow?.userId ?? null
+
+    db.prepare(
+      `INSERT INTO "app_bootstrap_state" ("singleton", "created_at", "user_id")
+       VALUES (1, ?, ?)
+       ON CONFLICT("singleton") DO UPDATE SET "user_id" = excluded."user_id"`,
+    ).run(now, userId)
+
+    return {
+      restoreOwner: () => {
+        const restoreDb = loadDatabaseConstructor()(dbPath)
+        try {
+          if (hadStateRow && previousOwnerId) {
+            restoreDb
+              .prepare(`UPDATE "app_bootstrap_state" SET "user_id" = ? WHERE "singleton" = 1`)
+              .run(previousOwnerId)
+          } else if (hadStateRow) {
+            // The row existed but had no owner (user_id NULL): restore exactly
+            // that state.
+            restoreDb
+              .prepare(`UPDATE "app_bootstrap_state" SET "user_id" = NULL WHERE "singleton" = 1`)
+              .run()
+          } else {
+            // No state row existed before the seed: drop the one we created so
+            // ownership falls back to the oldest user (the suite's admin, whose
+            // createdAt predates the legacy user's).
+            restoreDb.prepare(`DELETE FROM "app_bootstrap_state" WHERE "singleton" = 1`).run()
+          }
+        } finally {
+          restoreDb.close()
+        }
+      },
+    }
   } finally {
     db.close()
   }

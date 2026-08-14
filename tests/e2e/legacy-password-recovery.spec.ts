@@ -33,12 +33,30 @@ const currentPasswordInput = (page: Page) =>
 const newPasswordInput = (page: Page) =>
   page.getByRole("textbox", { name: /^كلمة المرور الجديدة/ })
 
+/**
+ * Restores the bootstrap-owner handoff performed by the seed. The app shell
+ * mounts the owner-gated `workspaceSnapshot` RPC after any sign-in, so the
+ * seeded legacy user must BE the bootstrap owner while this spec runs — but
+ * in the full suite an earlier spec (admin-account) already bootstrapped the
+ * workspace, and the specs that sort after this file sign in as the canonical
+ * admin. The seed therefore re-points the singleton owner row at the legacy
+ * user and this handle reverts it once the spec is done (also on failure —
+ * Playwright runs afterAll even when beforeAll threw, and the handle is a
+ * no-op if the seed never completed).
+ */
+let restoreOwner: (() => void) | null = null
+
 test.beforeAll(async () => {
-  await seedLegacyPasswordUser({
+  const seeded = await seedLegacyPasswordUser({
     phone: LEGACY_PHONE,
     name: LEGACY_NAME,
     legacyPassword: LEGACY_PASSWORD,
   })
+  restoreOwner = seeded.restoreOwner
+})
+
+test.afterAll(async () => {
+  restoreOwner?.()
 })
 
 /** Opens Settings → Account (the default tab, so navigation suffices). */
