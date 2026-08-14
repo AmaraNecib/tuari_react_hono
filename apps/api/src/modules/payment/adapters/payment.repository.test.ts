@@ -366,4 +366,32 @@ describe("PaymentRepositoryImpl (sqlite)", () => {
     expect(allocs).toHaveLength(1);
     expect(allocs[0]!.invoiceId).toBe("inv-1");
   });
+
+  // ── Issue #335: raw DELETE FROM "payment" must fail loudly ──────────────
+  // payment_allocation.payment_id is ON DELETE RESTRICT: a raw delete (admin
+  // script, mis-wired caller, another module) must throw instead of silently
+  // cascade-deleting the allocations while the invoice stays PAID and the
+  // debt entry stays booked.
+  it("a raw DELETE FROM payment on an allocated payment fails loudly (FK RESTRICT, no silent cascade)", async () => {
+    await insertPayment(repo, "pmt-raw");
+    expect(paymentRows(rawDb)).toHaveLength(1);
+    expect(allocationRows(rawDb)).toHaveLength(1);
+
+    expect(() =>
+      rawDb.prepare(`DELETE FROM "payment" WHERE id = ?`).run("pmt-raw"),
+    ).toThrow(/FOREIGN KEY constraint failed/i);
+
+    // Nothing was deleted — no silent cascade of the allocation.
+    expect(paymentRows(rawDb)).toHaveLength(1);
+    expect(allocationRows(rawDb)).toHaveLength(1);
+  });
+
+  it("a raw DELETE FROM payment on an UNallocated payment still succeeds", async () => {
+    await repo.createPayment(paymentInput("pmt-raw-empty"));
+
+    rawDb.prepare(`DELETE FROM "payment" WHERE id = ?`).run("pmt-raw-empty");
+
+    expect(paymentRows(rawDb)).toHaveLength(0);
+    expect(allocationRows(rawDb)).toHaveLength(0);
+  });
 });

@@ -11,6 +11,7 @@ import {
   debtSingleAccountMigrationKey,
   invoiceDebtLinkageMigrationKey,
   obsoleteMigrationKey,
+  paymentAllocationRestrictMigrationKey,
   rbacThreeRoleMigrationKey,
   rolePermissionSeeds,
   roleSeeds,
@@ -1374,6 +1375,99 @@ async function runDebtAccountDirectionMigration() {
   await applyDebtAccountDirectionMigration(getExecutor());
 }
 
+// Issue #335: payment_allocation.payment_id FK must be ON DELETE RESTRICT so a
+// raw DELETE FROM "payment" on an allocated payment fails loudly instead of
+// silently cascade-deleting allocations (invoice stays PAID, debt entry stays
+// booked). SQLite cannot ALTER an FK constraint, so the migration rebuilds the
+// table (rename → create → copy → drop) and recreates its indexes.
+//
+// Idempotent:
+//   - skips if `app_schema_state` already has the migration key
+//   - skips the rebuild if the live table's sqlite_master SQL already
+//     contains `ON DELETE RESTRICT` (fresh DBs created from the updated
+//     schemaStatements) and just records the state key
+//   - wraps the rebuild + state insert in a single transaction with
+//     `PRAGMA foreign_keys` toggled OFF outside it (restored in `finally`),
+//     matching `applyDebtAccountBalanceRename`
+//
+// The rebuild DDL mirrors `schemaStatements`' payment_allocation definition:
+// any future column/constraint change must be applied to BOTH places.
+export async function applyPaymentAllocationRestrictMigration(db: DbExecutor): Promise<void> {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    paymentAllocationRestrictMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  const [tableRow] = await db.$queryRawUnsafe<Array<{ sql: string | null }>>(
+    'SELECT "sql" FROM "sqlite_master" WHERE "type" = ? AND "name" = ? LIMIT 1',
+    "table",
+    "payment_allocation",
+  );
+  const tableSql = tableRow?.sql ?? "";
+  const alreadyRestrict = tableSql.includes("ON DELETE RESTRICT");
+
+  // Fresh DBs (schemaStatements already builds the RESTRICT table) take the
+  // no-rebuild fast path: record the key and return.
+  if (alreadyRestrict) {
+    await db.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+        paymentAllocationRestrictMigrationKey,
+        new Date().toISOString(),
+      );
+    });
+    return;
+  }
+
+  await db.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  try {
+    await db.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        'ALTER TABLE "payment_allocation" RENAME TO "payment_allocation_legacy"',
+      );
+      await tx.$executeRawUnsafe(
+        `CREATE TABLE "payment_allocation" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "payment_id" TEXT NOT NULL,
+          "invoice_id" TEXT NOT NULL,
+          "amount" REAL NOT NULL CHECK ("amount" > 0),
+          "created_at" DATETIME NOT NULL,
+          CONSTRAINT "payment_allocation_payment_id_fkey"
+            FOREIGN KEY ("payment_id") REFERENCES "payment" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+          CONSTRAINT "payment_allocation_invoice_id_fkey"
+            FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+        )`,
+      );
+      await tx.$executeRawUnsafe(
+        'INSERT INTO "payment_allocation" ("id", "payment_id", "invoice_id", "amount", "created_at") SELECT "id", "payment_id", "invoice_id", "amount", "created_at" FROM "payment_allocation_legacy"',
+      );
+      await tx.$executeRawUnsafe('DROP TABLE "payment_allocation_legacy"');
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "payment_allocation_payment_id_idx" ON "payment_allocation" ("payment_id")',
+      );
+      await tx.$executeRawUnsafe(
+        'CREATE INDEX IF NOT EXISTS "payment_allocation_invoice_id_idx" ON "payment_allocation" ("invoice_id")',
+      );
+      await tx.$executeRawUnsafe(
+        'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+        paymentAllocationRestrictMigrationKey,
+        new Date().toISOString(),
+      );
+    });
+  } finally {
+    await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+  }
+}
+
+ /** Apply payment_allocation RESTRICT rebuild migration. */
+async function runPaymentAllocationRestrictMigration() {
+  await applyPaymentAllocationRestrictMigration(getExecutor());
+}
+
  /** Seed or update default roles from role-seeds.ts. */
 async function ensureSeedRoles() {
   for (const role of roleSeeds) {
@@ -1623,6 +1717,7 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   await runDebtEntryConstraintsMigration();
   await runDebtAccountBalanceRenameMigration();
   await runDebtAccountDirectionMigration();
+  await runPaymentAllocationRestrictMigration();
 
   await syncLegacyTimestampColumns();
   await repairLegacyAuthTables();

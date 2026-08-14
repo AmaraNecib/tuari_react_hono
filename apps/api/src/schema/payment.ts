@@ -27,7 +27,7 @@ export const paymentAllocation = sqliteTable("payment_allocation", {
   id: text("id").primaryKey(),
   paymentId: text("payment_id")
     .notNull()
-    .references(() => payment.id, { onDelete: "cascade" }),
+    .references(() => payment.id, { onDelete: "restrict" }),
   invoiceId: text("invoice_id").notNull(),
   amountDzd: real("amount_dzd").notNull(),
   createdAt: text("created_at").notNull(),

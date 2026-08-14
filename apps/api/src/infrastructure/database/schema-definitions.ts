@@ -644,7 +644,7 @@ export const schemaStatements = [
     "amount" REAL NOT NULL CHECK ("amount" > 0),
     "created_at" DATETIME NOT NULL,
     CONSTRAINT "payment_allocation_payment_id_fkey"
-      FOREIGN KEY ("payment_id") REFERENCES "payment" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+      FOREIGN KEY ("payment_id") REFERENCES "payment" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "payment_allocation_invoice_id_fkey"
       FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE CASCADE ON UPDATE CASCADE
   )`,
@@ -754,6 +754,13 @@ export const debtAccountBalanceRenameMigrationKey = "rename_debt_account_balance
 export const debtAccountDirectionMigrationKey = "add_debt_account_direction_v1"
 export const debtEntryReasonCategoryMigrationKey = "add_debt_entry_reason_category_v1"
 export const invoiceDirectionMigrationKey = "add_invoice_direction_v1"
+
+// Issue #335: payment_allocation.payment_id is ON DELETE RESTRICT so a raw
+// DELETE FROM "payment" on an allocated payment fails loudly instead of
+// silently cascade-deleting allocations (invoice stays PAID, debt entry stays
+// booked). Fresh DBs get the constraint from schemaStatements; existing DBs
+// are rebuilt by applyPaymentAllocationRestrictMigration.
+export const paymentAllocationRestrictMigrationKey = "payment_allocation_restrict_fk_v1"
 
 // Issue #10 — Slice 3 three-tier RBAC. Drops legacy roles (worker,
 // project_manager, warehouse_manager) and reassigns any employees that

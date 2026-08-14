@@ -4,6 +4,7 @@ import {
   createSchemaDefinitions,
   debtAccountBalanceRenameMigrationKey,
   invoiceDirectionMigrationKey,
+  paymentAllocationRestrictMigrationKey,
   rolePermissionSeeds,
 } from "./schema-definitions";
 import { DEFAULT_ROLE_PERMISSIONS } from "../../modules/rbac/role-seeds";
@@ -282,6 +283,32 @@ describe("invoice schema (#26 direction column)", () => {
       expect.arrayContaining([
         expect.stringContaining('ALTER TABLE "invoice" ADD COLUMN "direction"'),
       ]),
+    );
+  });
+});
+
+describe("payment_allocation schema (#335 restrict FK)", () => {
+  const definitions = createSchemaDefinitions();
+
+  it("declares the payment_id FK with ON DELETE RESTRICT (no silent cascade)", () => {
+    const allocDef = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "payment_allocation"'),
+    );
+    expect(allocDef).toBeDefined();
+    expect(allocDef).toContain('"payment_id" TEXT NOT NULL');
+
+    const fkLine = allocDef!
+      .split("\n")
+      .find((line) =>
+        line.includes('FOREIGN KEY ("payment_id") REFERENCES "payment"'),
+      );
+    expect(fkLine).toContain("ON DELETE RESTRICT");
+    expect(fkLine).not.toContain("ON DELETE CASCADE");
+  });
+
+  it("declares a unique migration key for the restrict rebuild", () => {
+    expect(paymentAllocationRestrictMigrationKey).toBe(
+      "payment_allocation_restrict_fk_v1",
     );
   });
 });
