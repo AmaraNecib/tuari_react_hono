@@ -1,6 +1,6 @@
 # Test Audit — issue #265 (Composition root follow-ups) — final review round
 
-**Head:** `0f1269b` (post-evidence delta: Greptile re-review round 3 — tri-state post-rekey verification: ambiguous probe failures no longer trigger an old-key restore; SHA refreshed from 0d47056)
+**Head:** `b94ed35` (post-evidence delta: rebase onto develop @ 6481df9 — PR #347 conflict resolution; SHA refreshed from 0f1269b)
 **Base:** `origin/develop` @ `3c1449043bab7dd28cba4d13b1e072ae1f3999ca`
 **Tier:** High-assurance (crypto key path).
 
@@ -148,3 +148,17 @@ orchestration level.
 Re-verified on 0f1269b: `pnpm --filter @tuari/contracts test` (131 passed),
 `pnpm test:api` (65 files, 1110 passed | 1 skipped), `pnpm test:web` (59
 files, 485 passed), typecheck 4/4, lint 2/2. No Rust touched.
+
+## Post-evidence delta (b94ed35 — rebase onto develop @ 6481df9, PR #347 conflict resolution)
+
+Rebase round — no new production tests authored; the existing tri-state
+suite was re-executed against the merged tree. Coverage delta from
+develop's merged PRs is additive only (#345 auth-contract tests, #349
+debt-helper tests, #342/#351 schema/migration tests). The rebase surfaced
+one conflict (`schema.ts`, executor threading vs #351's payment-FK
+migration) resolved by threading the new migration — its own tests
+(`schema-definitions.test.ts`, `schema-migrations.test.ts`, payment
+repository tests from #351) all pass. Re-verified on b94ed35: contracts
+4 files / 158 passed, `test:api` 67 files / 1170 passed | 1 skipped,
+`test:web` 59 files / 486 passed, typecheck 4/4, lint 2/2. No Rust
+touched.

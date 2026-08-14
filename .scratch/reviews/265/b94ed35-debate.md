@@ -1,6 +1,6 @@
 # Debate — issue #265 (Composition root follow-ups) — final review round
 
-**Head:** `0f1269b` (post-evidence delta: Greptile re-review round 3 — tri-state post-rekey verification: ambiguous probe failures no longer trigger an old-key restore; SHA refreshed from 0d47056)
+**Head:** `b94ed35` (post-evidence delta: rebase onto develop @ 6481df9 — PR #347 conflict resolution; SHA refreshed from 0f1269b)
 **Base:** `origin/develop` @ `3c1449043bab7dd28cba4d13b1e072ae1f3999ca` (merge-base == base; branch `refactor/issue-265` rebased)
 **Tier:** High-assurance (crypto key path — "highest-severity open item in the audit" per owner comment).
 **Lane state:** completed worker lane; 7 commits (`e29c746`…`d8acada`). This is the final review round against the full diff `origin/develop...HEAD`.
@@ -160,3 +160,17 @@ combined with `rekeyed: true`); the web hook branches on `ambiguous` before
 by this delta; no remaining critic finding applies to the changed lines.
 Re-verified: contracts build + 131 tests, typecheck 4/4, lint 2/2,
 `test:api` 1110 passed | 1 skipped, `test:web` 485 passed. No Rust touched.
+
+## Post-evidence delta (b94ed35 — rebase onto develop @ 6481df9, PR #347 conflict resolution)
+
+Rebased all 13 #265 commits onto the advanced develop (3c14490 → 6481df9;
+merged #342/#345/#349/#350/#351). The only content conflict was
+`schema.ts`: #265 removed the module-global `getExecutor` while #351 added a
+`getExecutor()`-based payment-FK RESTRICT migration. Resolved by threading
+`db` through the new migration (both behaviors intact — no #265 feature
+lost, none of develop's merged features lost). `dependencies.ts` and
+`packages/contracts/src/index.test.ts` auto-merged cleanly and were
+verified to contain BOTH sides' changes. Re-verified on b94ed35: contracts
+build + 158 tests, typecheck 4/4, lint 2/2, `test:api` 1170 passed | 1
+skipped, `test:web` 486 passed. No Rust touched. See the code-review delta
+note for the file-level resolution list.

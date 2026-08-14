@@ -1,6 +1,6 @@
 # Code Review — issue #265 (Composition root follow-ups) — final review round
 
-**Head:** `0f1269b` (post-evidence delta: Greptile re-review round 3 — tri-state post-rekey verification: ambiguous probe failures no longer trigger an old-key restore; SHA refreshed from 0d47056)
+**Head:** `b94ed35` (post-evidence delta: rebase onto develop @ 6481df9 — PR #347 conflict resolution; SHA refreshed from 0f1269b)
 **Base:** `origin/develop` @ `3c1449043bab7dd28cba4d13b1e072ae1f3999ca`
 **Diff:** `git diff origin/develop...HEAD` (23 files, +1960/−220). Commits: `e29c746` (schema threading), `d119bde` (rekey verification + persister), `e08caa2` (shutdown), `7d06b86` (desktop rotation), `705395a` (design doc), `ce66f26` (debate fixes), `d8acada` (final hardening).
 
@@ -145,3 +145,34 @@ Re-verified on 0f1269b: `pnpm --filter @tuari/contracts build` ✓,
 `pnpm --filter @tuari/contracts test` (131 passed), `pnpm typecheck` (4/4),
 `pnpm lint` (2/2), `pnpm test:api` (65 files, 1110 passed | 1 skipped),
 `pnpm test:web` (59 files, 485 passed). No Rust touched.
+
+## Post-evidence delta (b94ed35 — rebase onto develop @ 6481df9, PR #347 conflict resolution)
+
+PR #347 went CONFLICTING after develop advanced 3c14490 → 6481df9 with
+merged PRs #342 (263), #345 (321), #349 (277), #350 (307), #351 (335).
+Rebased `refactor/issue-265` (13 commits replayed) onto origin/develop.
+Conflict resolution — BOTH sides kept, no #265 behavior dropped:
+
+- **`apps/api/src/infrastructure/database/schema.ts`** (only content
+  conflict): the #265 executor-threading (module-global `getExecutor`
+  removal) collided with #335's new `applyPaymentAllocationRestrictMigration`
+  (payment FK RESTRICT rebuild), which still called `getExecutor()`. Resolved
+  by threading `db: DbExecutor` through the new wrapper
+  (`runPaymentAllocationRestrictMigration(db)`) and adding the threaded call
+  to `ensureDatabaseSchema`'s run list. Zero `getExecutor`/`_executor`
+  references remain (rg-verified).
+- **`apps/api/src/app/dependencies.ts`** (auto-merged, verified): both
+  develop's connection-lock threading (`createFifoLock({ timeoutMs: 30_000 })`
+  + lock threading into repositories/ports, #322/#335/#263) and #265's
+  `databaseKeyPersister` wiring (env-gated null-path no-op on desktop) are
+  present.
+- **`packages/contracts/src/index.test.ts`** (auto-merged, verified): both
+  #265's changeDbKey tri-state pins and #345/#349's auth/debt-helper test
+  cases are present. `security.ts` was untouched by develop (0 diff) — #265's
+  `ambiguous` flag applies cleanly.
+
+Re-verified on b94ed35: `pnpm --filter @tuari/contracts build` ✓,
+`pnpm --filter @tuari/contracts test` (4 files, 158 passed),
+`pnpm typecheck` (4/4), `pnpm lint` (2/2), `pnpm test:api` (67 files,
+1170 passed | 1 skipped), `pnpm test:web` (59 files, 486 passed). No Rust
+touched.
