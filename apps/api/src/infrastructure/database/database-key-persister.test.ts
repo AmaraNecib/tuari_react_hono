@@ -1,16 +1,33 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   existsSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loadConfigFile } from "../../config/loader";
 import { createConfigFileKeyPersister } from "./database-key-persister";
+
+// Wrap renameSync so the atomic-rename step can be forced to fail on demand
+// (a real read-only dir is unreliable cross-platform). Every other fs call
+// delegates to the real implementation.
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    renameSync: vi.fn((...args: Parameters<typeof actual.renameSync>) =>
+      actual.renameSync(...args),
+    ),
+  };
+});
+
+const renameSyncMock = vi.mocked(renameSync);
 
 describe("createConfigFileKeyPersister", () => {
   let tempDir: string;
@@ -19,6 +36,7 @@ describe("createConfigFileKeyPersister", () => {
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "tuari-persist-"));
     configPath = join(tempDir, "config.json");
+    renameSyncMock.mockClear();
   });
 
   afterEach(() => {
@@ -62,6 +80,47 @@ describe("createConfigFileKeyPersister", () => {
     // The temp file was renamed over the target — nothing with a .tmp
     // suffix remains.
     expect(readdirSync(tempDir).some((name) => name.endsWith(".tmp"))).toBe(false);
+  });
+
+  it("cleans up the tmp file when the atomic rename fails (honest failure, no stale tmp)", () => {
+    const persister = createConfigFileKeyPersister(configPath);
+    renameSyncMock.mockImplementationOnce(() => {
+      throw new Error("rename denied");
+    });
+
+    expect(persister.persistKey("new-key-123")).toEqual({
+      success: false,
+      error: "Failed to persist database encryption key",
+    });
+
+    // The tmp file was written but the rename failed — the best-effort
+    // cleanup must remove it so no stale `.pid.tmp` is left behind.
+    expect(readdirSync(tempDir).some((name) => name.endsWith(".tmp"))).toBe(false);
+    expect(renameSyncMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to write a merged config the loader would reject (honest failure, file untouched)", () => {
+    // A user-edited config that broke a field's type (pg_port must be a
+    // number). Writing db_key into it would produce a config a restart
+    // IGNORES — stale-key startup → DB loss. The persister must fail here.
+    writeFileSync(configPath, JSON.stringify({ pg_port: "abc" }));
+
+    const persister = createConfigFileKeyPersister(configPath);
+    expect(persister.persistKey("new-key-123")).toEqual({
+      success: false,
+      error: "Failed to persist database encryption key",
+    });
+    // The original content is untouched.
+    expect(readFileSync(configPath, "utf8")).toBe(JSON.stringify({ pg_port: "abc" }));
+  });
+
+  it("writes a config the loader accepts (round-trip with loadConfigFile)", () => {
+    const persister = createConfigFileKeyPersister(configPath);
+    expect(persister.persistKey("new-key-123")).toEqual({ success: true });
+
+    // The loader must be able to read back exactly what the persister wrote
+    // (persister output and loader schema stay aligned).
+    expect(loadConfigFile({ TUARI_CONFIG_FILE: configPath })).toEqual({ db_key: "new-key-123" });
   });
 
   it("reports an honest failure (never throws) when the config file is not a JSON object", () => {

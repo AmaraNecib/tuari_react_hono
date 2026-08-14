@@ -131,6 +131,41 @@ describe("createShutdownHandler", () => {
       vi.useRealTimers();
     }
   });
+
+  it("keeps the force-exit guard armed through close() and still exits cleanly when close() fails", async () => {
+    vi.useFakeTimers();
+    try {
+      const stopServer = vi.fn();
+      const close = vi.fn(() => {
+        throw new Error("db busy");
+      });
+      const exit = vi.fn(() => {
+        throw new Error("exit");
+      });
+      const log = vi.fn();
+
+      const handler = createShutdownHandler(
+        { stopServer, close },
+        { exit, log, forceExitTimeoutMs: 100 },
+      );
+
+      const pending = handler().catch(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+      await pending;
+
+      // close() failure is logged and shutdown still exits 0; the force-exit
+      // timer is only cleared AFTER close() ran (it covers both cleanup
+      // steps), so advancing past the grace period must not fire a forced
+      // exit(1) on top of the clean exit.
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("db busy"));
+      expect(exit).toHaveBeenCalledTimes(1);
+      expect(exit).toHaveBeenCalledWith(0);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(exit).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("installShutdownHook", () => {

@@ -52,6 +52,14 @@ describe("loadConfigFile", () => {
     const file = loadConfigFile({ TUARI_CONFIG_FILE: path });
     expect(file).toEqual({ db_key: "persisted-key-123" });
   });
+
+  it("rejects a config file whose db_key is too short to be a real key", () => {
+    // Mirrors the wire schema (newKey is min(8)) — a shorter value is a
+    // misconfiguration, and an empty/blank one would silently resolve to a
+    // PLAIN database on restart, defeating encryption.
+    const path = writeConfig({ db_key: "short" });
+    expect(loadConfigFile({ TUARI_CONFIG_FILE: path })).toBeNull();
+  });
 });
 
 describe("mergeConfigIntoEnv", () => {

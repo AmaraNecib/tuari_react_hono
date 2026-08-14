@@ -579,13 +579,21 @@ fn rotate_db_key_in_store(
 }
 
 /// Core rollback logic: restore the previous key, or delete the entry when
-/// there was none before the rotation.
+/// there was none before the rotation. The rollback slot is cleared only
+/// AFTER the write succeeds — clearing it first would lose the pre-rotation
+/// key on a transient write failure, and a subsequent restore would then
+/// DELETE the (new) key from the store, orphaning a database that is still
+/// on the old key.
 fn restore_db_key_in_store(
     store: &SecretStore,
     previous: &mut Option<String>,
 ) -> Result<(), String> {
-    match previous.take() {
-        Some(key) => store.write(APP_DB_KEY_ACCOUNT, &key),
+    match previous.as_ref() {
+        Some(key) => {
+            store.write(APP_DB_KEY_ACCOUNT, key)?;
+            *previous = None;
+            Ok(())
+        }
         None => store.delete(APP_DB_KEY_ACCOUNT),
     }
 }
@@ -2547,6 +2555,83 @@ mod tests {
                 .as_deref(),
             Some("current-key-123"),
             "a rejected rotation must leave the stored key untouched"
+        );
+    }
+
+    #[test]
+    fn restore_keeps_the_rollback_slot_when_the_write_fails() {
+        let temp_dir = unique_temp_dir();
+        create_dir_all(&temp_dir).expect("create temp dir");
+        let store = SecretStore::file(temp_dir.clone());
+        store
+            .write(APP_DB_KEY_ACCOUNT, "original-key-123")
+            .expect("seed current key");
+        let mut previous = None;
+
+        rotate_db_key_in_store(&store, &mut previous, "new-key-456")
+            .expect("rotate");
+        assert_eq!(previous.as_deref().map(str::trim), Some("original-key-123"));
+
+        // Force the restore write to fail: replace the account file with a
+        // directory so write_secret_file cannot write through it.
+        let account_path = temp_dir.join(APP_DB_KEY_ACCOUNT);
+        std::fs::remove_file(&account_path).expect("remove key file");
+        create_dir_all(&account_path).expect("replace with dir");
+
+        let error =
+            restore_db_key_in_store(&store, &mut previous).expect_err("write must fail");
+        assert!(error.contains("Failed to write secret file"));
+
+        // The rollback slot is NOT cleared by a failed restore — a retry
+        // after the store recovers can still roll back (and must not DELETE
+        // the new key, which would orphan a database still on the old key).
+        assert_eq!(previous.as_deref().map(str::trim), Some("original-key-123"));
+
+        // Recover the store and retry: the restore now succeeds and clears
+        // the slot.
+        std::fs::remove_dir_all(&account_path).expect("remove dir");
+        restore_db_key_in_store(&store, &mut previous).expect("restore after recovery");
+        assert!(previous.is_none());
+        assert_eq!(
+            store
+                .read(APP_DB_KEY_ACCOUNT)
+                .expect("read")
+                .map(|key| key.trim().to_string())
+                .as_deref(),
+            Some("original-key-123")
+        );
+    }
+
+    #[test]
+    fn double_rotation_remembers_the_first_new_key_for_rollback() {
+        let temp_dir = unique_temp_dir();
+        create_dir_all(&temp_dir).expect("create temp dir");
+        let store = SecretStore::file(temp_dir.clone());
+        store
+            .write(APP_DB_KEY_ACCOUNT, "first-key-123")
+            .expect("seed");
+        let mut previous = None;
+
+        rotate_db_key_in_store(&store, &mut previous, "second-key-456")
+            .expect("first rotate");
+        complete_db_key_rotation_in_store(&mut previous).expect("complete");
+        assert!(previous.is_none());
+
+        // A second rotation must remember the FIRST new key as the rollback
+        // target — not None (which would make a later restore DELETE the key
+        // instead of writing it back).
+        rotate_db_key_in_store(&store, &mut previous, "third-key-789")
+            .expect("second rotate");
+        assert_eq!(previous.as_deref().map(str::trim), Some("second-key-456"));
+
+        restore_db_key_in_store(&store, &mut previous).expect("restore");
+        assert_eq!(
+            store
+                .read(APP_DB_KEY_ACCOUNT)
+                .expect("read")
+                .map(|key| key.trim().to_string())
+                .as_deref(),
+            Some("second-key-456")
         );
     }
 }

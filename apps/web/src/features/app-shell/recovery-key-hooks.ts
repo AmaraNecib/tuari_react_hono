@@ -95,8 +95,9 @@ async function invokeCompleteDbKeyRotation(): Promise<void> {
  * server-side before the response was lost) deliberately does NOT restore:
  * overwriting the keyring with the old key would permanently orphan a
  * rekeyed database, because the new key would be gone. The new key is kept
- * and the rotation acknowledged instead; the original key remains in the
- * desktop's rollback slot until the app restarts.
+ * and the rotation acknowledged instead — `complete_db_key_rotation` clears
+ * the rollback slot WITHOUT restoring, so the original key is intentionally
+ * dropped (never written back over a possibly-rekeyed database).
  */
 export function useChangeDbEncryptionKeyMutation() {
   return useMutation({

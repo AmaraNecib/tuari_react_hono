@@ -22,9 +22,13 @@ export const configFileSchema = z.object({
   db_path: z.string().optional(),
   /**
    * SQLCipher encryption key (maps to APP_DB_KEY when env is unset). Written
-   * by the rekey flow (#265) so a restart can still open the database.
+   * by the rekey flow (#265) so a restart can still open the database. Min
+   * length mirrors the wire schema (`changeDbKeyInputSchema.newKey` is
+   * min(8)) — a shorter value is a misconfiguration, and an empty/blank one
+   * would silently resolve to a PLAIN database (empty string is falsy in
+   * `resolveDatabaseConstructor`), defeating encryption on restart.
    */
-  db_key: z.string().optional(),
+  db_key: z.string().min(8).optional(),
   // Postgres fields are accepted for forward compatibility (adapter not yet shipped).
   pg_host: z.string().optional(),
   pg_port: z.number().int().positive().max(65535).optional(),

@@ -1114,6 +1114,34 @@ describe("RPC router", () => {
     expect(persistKey).not.toHaveBeenCalled();
   });
 
+  it("forwards the port's rekeyed:true discrimination when the rekey outcome is unknown", async () => {
+    const harness = createHarness();
+    // The manager probed with both keys and neither opens the database — the
+    // rekey applied but verification false-negatived (or the DB is damaged).
+    // The wire MUST say rekeyed: true so the caller keeps the new key instead
+    // of restoring the old one (which would orphan a DB on the new key).
+    const changeKey = vi.fn(() => ({
+      success: false as const,
+      error: "Database re-encryption failed",
+      rekeyed: true,
+    }));
+    const persistKey = vi.fn();
+    const router = createTestRouter(harness, undefined, {}, { changeKey }, { persistKey });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "new-key-123" }),
+    ).resolves.toEqual({
+      success: false,
+      error: "Database re-encryption failed",
+      rekeyed: true,
+    });
+    // Nothing is persisted on a failed rekey, and the caller keeps the new
+    // key — the wire contract must not rewrite the port's discrimination.
+    expect(changeKey).toHaveBeenCalledTimes(1);
+    expect(persistKey).not.toHaveBeenCalled();
+  });
+
   it("generates an inventory report through the RPC contract (derived filter input)", async () => {
     const harness = createHarness();
     const router = createTestRouter(harness);

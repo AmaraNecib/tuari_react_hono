@@ -28,7 +28,9 @@ vi.mock("../modules/inventory/inventory.storage", async (importOriginal) => {
 // Captures the database key passed to the connection factory so the
 // `config.databaseKey` wiring can be pinned without depending on the SQLCipher
 // native binding being built (it is not in every environment). The key is
-// stripped here so the plain better-sqlite3 connection opens as usual.
+// stripped here so the plain better-sqlite3 connection opens as usual — an
+// explicit "" (not undefined) so a test-stubbed APP_DB_KEY env cannot leak
+// into the real factory's env fallback and force the SQLCipher binding.
 vi.mock("../infrastructure/database/factory", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../infrastructure/database/factory")>();
@@ -36,7 +38,7 @@ vi.mock("../infrastructure/database/factory", async (importOriginal) => {
     ...actual,
     createDatabaseConnection: (databasePath?: string, databaseKey?: string | null) => {
       dbKeyCapture(databaseKey);
-      return actual.createDatabaseConnection(databasePath, undefined);
+      return actual.createDatabaseConnection(databasePath, "");
     },
   };
 });
@@ -234,6 +236,36 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
       expect(deps.databaseKeyPersister.persistKey("persisted-key-123")).toEqual({ success: true });
       expect(existsSync(configPath)).toBe(true);
       expect(JSON.parse(readFileSync(configPath, "utf8")).db_key).toBe("persisted-key-123");
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+
+  it("never writes a plaintext key to the config file when APP_DB_KEY is env-pinned (desktop deployment)", async () => {
+    const { createAppDependencies } = await import("./dependencies");
+    const config = createAppConfig({ BETTER_AUTH_SECRET: TEST_AUTH_SECRET });
+    const configDir = mkdtempSync(join(tmpdir(), "tuari-deps-envkey-"));
+    const configPath = join(configDir, "config.json");
+    try {
+      // The desktop host pins the key via its own secret store and sets
+      // TUARI_CONFIG_FILE unconditionally — env APP_DB_KEY wins over any
+      // config `db_key` in mergeConfigIntoEnv, so a config copy would be
+      // BOTH unread and a plaintext duplicate of a keyring secret (#265
+      // review round: must-fix #1).
+      vi.stubEnv("APP_DB_KEY", "env-pinned-key-123");
+      vi.stubEnv("TUARI_CONFIG_FILE", configPath);
+
+      const deps = await createAppDependencies(
+        { databasePath: inMemoryDb, authInstance: fakeAuth },
+        config,
+      );
+      lastDeps = deps;
+
+      // The persister is a no-op in this configuration: success, and NO
+      // config file is created or touched.
+      expect(deps.databaseKeyPersister.persistKey("rotated-key-123")).toEqual({ success: true });
+      expect(existsSync(configPath)).toBe(false);
     } finally {
       vi.unstubAllEnvs();
       rmSync(configDir, { recursive: true, force: true });

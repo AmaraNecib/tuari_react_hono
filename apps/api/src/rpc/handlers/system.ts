@@ -89,9 +89,12 @@ export function createSystemHandlers(
         // output shape with an honest reason.
         const result = databaseKeyManager.changeKey(currentKey, newKey);
         if (!result.success) {
-          // The database was NOT re-encrypted — the caller can safely keep
-          // (or restore) its previous key.
-          return { ...result, rekeyed: false };
+          // The port discriminates whether the database WAS re-encrypted
+          // before the failure surfaced (post-rekey verification failed but
+          // the NEW key is the one on disk) — the caller must roll its
+          // keyring back only when rekeyed is false, or it would orphan a
+          // database that IS on the new key.
+          return { ...result, rekeyed: result.rekeyed ?? false };
         }
         // The database WAS re-encrypted — persist the new key so a restart
         // can still open it (issue #265). A persistence failure is surfaced

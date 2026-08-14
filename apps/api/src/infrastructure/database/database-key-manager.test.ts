@@ -113,9 +113,77 @@ describe("createDatabaseKeyManager", () => {
     expect(manager.changeKey("current-key", "new-key-123")).toEqual({
       success: false,
       error: "Database re-encryption failed",
+      rekeyed: false,
     });
 
     // The rekey itself ran, but the new key was not confirmed.
+    expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
+  });
+
+  it("discriminates rekeyed:true when neither key opens the database after a failed post-rekey verification", () => {
+    const dbPath = join(tempDir, "cipher.sqlite");
+    writeFileSync(dbPath, CIPHER_LIKE_HEADER);
+
+    const sqlite = makeSharedSqliteMock();
+    const openingScratch = makeScratchMock();
+    const failingScratch = makeScratchMock();
+    failingScratch.connection.prepare.mockImplementation(() => {
+      throw new Error("file is not a database");
+    });
+    // Current-key verification succeeds (first call); new-key verification AND
+    // the old-key probe both fail → the DB is on the NEW key (the rekey
+    // applied), so the caller must NOT roll its keyring back.
+    const openConnection = vi
+      .fn()
+      .mockReturnValueOnce(openingScratch.connection)
+      .mockReturnValue(failingScratch.connection) as unknown as DatabaseKeyManagerSeams["openConnection"];
+    const manager = makeManager(sqlite, dbPath, openConnection);
+
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({
+      success: false,
+      error: "Database re-encryption failed",
+      rekeyed: true,
+    });
+    // current-key verify + new-key verify + old-key probe = 3 fresh openings.
+    expect(openConnection).toHaveBeenCalledTimes(3);
+  });
+
+  it("discriminates rekeyed:false when the old key still opens the database (rekey silently no-op'd)", () => {
+    const dbPath = join(tempDir, "cipher.sqlite");
+    writeFileSync(dbPath, CIPHER_LIKE_HEADER);
+
+    const sqlite = makeSharedSqliteMock();
+    const openingScratch = makeScratchMock();
+    const failingScratch = makeScratchMock();
+    failingScratch.connection.prepare.mockImplementation(() => {
+      throw new Error("file is not a database");
+    });
+    // New-key verification fails, but the CURRENT key still opens the
+    // database → the rekey never applied; restoring the old key is safe.
+    const openConnection = vi.fn((_path: string, key: string) =>
+      key === "new-key-123" ? failingScratch.connection : openingScratch.connection,
+    ) as unknown as DatabaseKeyManagerSeams["openConnection"];
+    const manager = makeManager(sqlite, dbPath, openConnection);
+
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({
+      success: false,
+      error: "Database re-encryption failed",
+      rekeyed: false,
+    });
+    // current-key verify + new-key verify + old-key probe.
+    expect(openConnection).toHaveBeenCalledTimes(3);
+  });
+
+  it("treats a missing database file as fallback (shared-connection verification)", () => {
+    // No file on disk at all — detectEncryption's openSync throws and the
+    // manager falls back to the shared connection (dev/test behavior on plain
+    // better-sqlite3, where the SQLCipher PRAGMAs are no-ops).
+    const dbPath = join(tempDir, "does-not-exist.sqlite");
+
+    const sqlite = makeSharedSqliteMock();
+    const manager = makeManager(sqlite, dbPath, vi.fn());
+
+    expect(manager.changeKey("current-key", "new-key-123")).toEqual({ success: true });
     expect(sqlite.pragma).toHaveBeenCalledWith("rekey = 'new-key-123'");
   });
 

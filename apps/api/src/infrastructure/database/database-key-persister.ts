@@ -5,8 +5,10 @@ import {
   openSync,
   readFileSync,
   renameSync,
+  unlinkSync,
   writeSync,
 } from "node:fs";
+import { configFileSchema } from "../../config/loader";
 import type { DatabaseKeyChangeResult } from "./database-key-manager";
 
 /**
@@ -63,6 +65,15 @@ export function createConfigFileKeyPersister(
         }
         config.db_key = newKey;
 
+        // The loader is the reader of this file — a merged document it would
+        // reject (e.g. a user-edited field that broke its type) must fail
+        // HERE, honestly, instead of writing a config that a restart ignores
+        // (stale-key startup → DB loss). The rekey wire schema guarantees
+        // newKey is ≥ 8 chars, so a valid pre-existing config always merges.
+        if (!configFileSchema.safeParse(config).success) {
+          throw new Error("merged config would be rejected by the loader");
+        }
+
         // Atomic + durable write: a unique temp file is written (with fsync
         // so the bytes reach disk), then renamed over the target — a crash
         // can never leave a partially-written config file behind, and a
@@ -79,6 +90,14 @@ export function createConfigFileKeyPersister(
 
         return { success: true };
       } catch {
+        // Best-effort cleanup: a failed write/rename must not leave a stale
+        // temp file behind (the failure itself is reported honestly below).
+        try {
+          unlinkSync(`${configFilePath}.${process.pid}.tmp`);
+        } catch {
+          // Ignore — the tmp may not exist; the honest failure is what
+          // matters.
+        }
         return {
           success: false,
           error: "Failed to persist database encryption key",

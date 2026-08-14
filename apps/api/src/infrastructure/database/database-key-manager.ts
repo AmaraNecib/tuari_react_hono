@@ -5,7 +5,7 @@ import { createDatabaseConnection, escapeSqliteString } from "./factory";
 /** Result of a database encryption-key change. Mirrors the RPC wire output. */
 export type DatabaseKeyChangeResult =
   | { success: true }
-  | { success: false; error: string };
+  | { success: false; error: string; rekeyed?: boolean };
 
 /**
  * Verifies and rotates the SQLCipher database encryption key.
@@ -195,7 +195,23 @@ export function createDatabaseKeyManager(
         encryption === "encrypted" &&
         !verifyKeyOnFreshConnection(openConnection, databasePath, newKey)
       ) {
-        return { success: false, error: "Database re-encryption failed" };
+        // The new key does not open the database. Discriminate which key it
+        // IS on so the caller rolls the keyring back only when that is safe:
+        // - the CURRENT key still opens it → the rekey silently no-op'd (the
+        //   SQLCipher rekey-on-WAL hazard) → restoring the old key is correct;
+        // - NEITHER key opens it → the rekey applied but this verification
+        //   false-negatived (transient lock/binding error) → the DB is on the
+        //   NEW key, and restoring the old key would orphan it.
+        const currentKeyStillOpens = verifyKeyOnFreshConnection(
+          openConnection,
+          databasePath,
+          currentKey,
+        );
+        return {
+          success: false,
+          error: "Database re-encryption failed",
+          rekeyed: !currentKeyStillOpens,
+        };
       }
 
       return { success: true };

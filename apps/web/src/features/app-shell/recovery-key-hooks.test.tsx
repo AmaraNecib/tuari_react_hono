@@ -143,4 +143,28 @@ describe("useChangeDbEncryptionKeyMutation", () => {
 
     await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("rekey failed")
   })
+
+  it("swallows a failing restore so the original RPC failure still surfaces", async () => {
+    isDesktopRuntimeMock.mockReturnValue(true)
+    changeDbEncryptionKeyMock.mockResolvedValue({
+      success: false,
+      error: "Current encryption key is invalid",
+      rekeyed: false,
+    })
+    invokeMock.mockResolvedValueOnce(undefined) // rotate OK
+    invokeMock.mockRejectedValueOnce(new Error("keyring busy")) // restore fails — swallowed
+    const { result } = renderMutation()
+
+    // The definitive-failure result is still returned to the caller — a
+    // failing rollback must not mask it (the keyring may stay on the new key,
+    // which the user must be told about via the surfaced error).
+    await expect(result.current.mutateAsync(INPUT)).resolves.toEqual({
+      success: false,
+      error: "Current encryption key is invalid",
+      rekeyed: false,
+    })
+
+    expect(invokeMock).toHaveBeenCalledWith("restore_db_key")
+    expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
+  })
 })

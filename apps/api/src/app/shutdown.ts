@@ -70,13 +70,16 @@ export function createShutdownHandler(
       log(`Failed to stop the HTTP server cleanly: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    clearTimeout(forceTimer);
-
     try {
       targets.close();
     } catch (error) {
       log(`Failed to close the database connection cleanly: ${error instanceof Error ? error.message : String(error)}`);
     }
+
+    // The force-exit guard stays armed through BOTH cleanup steps (a hanging
+    // server OR a hanging close would otherwise block forever); it is only
+    // cleared once cleanup finished.
+    clearTimeout(forceTimer);
 
     log("Shutdown complete");
     exit(0);

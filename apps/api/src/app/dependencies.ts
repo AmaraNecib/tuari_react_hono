@@ -222,11 +222,13 @@ export async function createAppDependencies(
       databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
       // Persist a rotated key into the user-editable config file so a restart
       // can still open the database (issue #265). The desktop host pins the
-      // key via its own secret store (env APP_DB_KEY beats the config file),
-      // so it performs its own rotation — this persister covers file-driven
-      // deployments and is the port's default contract.
+      // key via its own secret store — mergeConfigIntoEnv only ever reads a
+      // config `db_key` when env APP_DB_KEY is UNSET, so when APP_DB_KEY is
+      // set (the desktop deployment) a config copy would be both unread AND
+      // a plaintext duplicate of a keyring secret. The persister is a no-op
+      // (null path) in that case and covers file-driven deployments only.
       databaseKeyPersister: createConfigFileKeyPersister(
-        process.env.TUARI_CONFIG_FILE?.trim() || null,
+        process.env.APP_DB_KEY ? null : process.env.TUARI_CONFIG_FILE?.trim() || null,
       ),
       employeeModule,
       invoiceModule,
