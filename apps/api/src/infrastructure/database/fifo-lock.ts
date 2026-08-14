@@ -32,7 +32,11 @@
  *   while another flow holds the lock would be silently absorbed
  *   into that flow's open transaction as a SAVEPOINT and rolled back
  *   with it — the throw turns that silent corruption into a loud,
- *   debuggable failure (the issue's "detection mechanism").
+ *   debuggable failure (the issue's "detection mechanism"). Issue
+ *   #348 completed the routing: every sync writer in the company,
+ *   inventory and invoice adapters — plain single-statement writes
+ *   and private helpers included — runs under `runSyncTransaction`, so
+ *   no write site can silently join an unrelated open transaction.
  *
  * Guarantees:
  *   - FIFO: `run` callbacks execute in call order, never interleaved.

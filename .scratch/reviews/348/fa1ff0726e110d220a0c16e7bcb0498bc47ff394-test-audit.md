@@ -1,0 +1,48 @@
+# Issue #348 — Test Audit Evidence
+
+**Issue:** #348 — API: plain sync db.transaction() writers lack a tripwire (deferred D1 from #322)
+**Tier:** Standard (defense-in-depth completion of #322's High-assurance D1)
+**Base:** `d3ea907` (origin/develop merge-base)
+**Head reviewed:** `fa1ff07` (final HEAD after the audit fix loop; initial HEAD `e291d92`)
+
+## Process
+
+Three parallel sub-agents (edge case hunter, coverage analyst, quality reviewer)
+over `git diff d3ea907...HEAD` — the three repository adapters, the new
+tripwire suite in `apps/api/src/tests/integration/transaction-lock-guard.test.ts`,
+`fifo-lock.ts`, and the design doc `.scratch/implementation/348-design.md`.
+
+## Verdict
+
+No blockers. Implementation faithful to the D1 enumeration — **37/37 enumerated
+write sites wrapped in `runSyncTransaction`** (verified by grep across the three
+modules). Tripwire proven per writer family and per sync/async surface; all
+targeted suites green.
+
+## Findings → disposition
+
+| # | Sev | Finding | Disposition |
+|---|---|---|---|
+| T1 | 🟠 | ~24 of 37 wrapped writers have no direct tripwire test (updateDebtAccount, updateDebtEntryBalanceAfter, endManagerAssignment, createExternalCounterparty, updateInvoiceGroupPayment, role/debt/assignment families, 10 inventory writers) | **Fixed** — added tripwire tests for updateDebtAccount, updateDebtEntryBalanceAfter, endManagerAssignment, createExternalCounterparty, inventory updateInvoiceGroupPayment; createManagerAssignment retained |
+| T2 | 🔴 | Multi-statement writers (upsertEmployee): no "busy attempt leaves no trace" assertion — a dropped wrap on an earlier statement would pass the throw test while leaking a row | **Fixed** — added `a busy upsert attempt leaves no trace once the holder releases` (asserts no employee row + zero state-history rows after the busy throw) |
+| T3 | 🟠 | Join-outer half (own-run join across a real yield) never asserted for newly-wrapped writers — a regression in the ALS branch would break the deliberate join pattern while all busy tests still pass | **Fixed** — added `a newly-wrapped writer still joins our own open run across a real yield` (createRole inside `lock.run`); transitively reinforced by the #322 port-join test (createDebtEntry/updateDebtAccount) and payment-module suites (updateStatus) |
+| T4 | 🟡 | Async tests duplicated the 8-line gate/holder/release block; no `try/finally` release — a failed busy assertion would dangle the holder | **Fixed** — added `expectRejectsBusyWhileHeld` helper; both async helpers release in `finally` |
+| T5 | 🟡 | upsertEmployee success path only asserted the employee row, never the nested `insertStateHistory` SAVEPOINT path (a silent no-op history write would pass) | **Fixed** — asserted exactly one CREATED `employee_state_history` row |
+| T6 | 🟡 | Precedence inversion (sync writer ahead of a queued-but-unstarted run) untested in this suite | **Dismissed** — already pinned at the primitive level in `fifo-lock.test.ts` ("runSync runs ahead of a queued-but-unstarted run"); out of this suite's scope |
+| T7 | 🟡 | Holder never opens a real transaction in the busy tests; actual absorb scenario (foreign BEGIN open) not simulated end-to-end | **Dismissed** — guard keys on `activeCount` (not `inTransaction`), so behavior is identical; the primitive-level tests and #322's join tests cover the real-transaction shapes |
+| T8 | 🟡 | Early-return/no-op writers (updateRole on missing row, end*Assignment when not ACTIVE) return silently while held — correct, but the guard-below-early-return ordering is untested | **Accepted** — behavior documented in design doc; a refactor moving the guard above the early return is caught by code review; not a data-integrity risk |
+
+## Post-evidence delta
+
+Evidence originally written against `e291d92`; renamed to final SHA `fa1ff07`
+after the fix loop (test-only changes: T1–T5 fixes; one type-literal fix
+`periodType: "MONTHLY" as const`). No production code changed after `e291d92`.
+
+## Residual risks (documented, unchanged)
+
+- Writers outside the three adapters remain unwrapped by design: auth bootstrap
+  port, recovery-key port, better-auth session writes (residual D2 from #322).
+- A `BEGIN` opened on the raw connection outside any lock would still absorb a
+  sync writer silently — pre-existing, out of scope.
+- ALS own-run detection is best-effort (promise created outside the run's async
+  context bypasses it) — documented in `fifo-lock.ts` as unrealistic.

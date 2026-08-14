@@ -1,0 +1,63 @@
+# Issue #348 — Code Review Evidence
+
+**Issue:** #348 — API: plain sync db.transaction() writers lack a tripwire (deferred D1 from #322)
+**Tier:** Standard
+**Base:** `d3ea907` (origin/develop merge-base)
+**Head reviewed:** `fa1ff07` (final HEAD after the review fix loop)
+
+## Process
+
+Two parallel sub-agents over `git diff d3ea907...HEAD` (commits e291d92 = wrap
+implementation, fa1ff07 = test-audit fix loop):
+- **Standards** — repo conventions (AGENTS.md, engineering-workflow.md,
+  `.agents/wisdom/`, the established #322 `runSyncTransaction` pattern in
+  `fifo-lock.ts`) + Fowler smell baseline.
+- **Spec** — issue #348 body + `.scratch/implementation/348-design.md`.
+
+## Standards
+
+All judgement calls; no hard violations.
+
+1. **Duplicated Code / pattern drift (low, company repo):** the repo already
+   exposes `withTransaction` (the public seam, `:277`) while the #322-era
+   internal sites — and all new #348 sites — call `runSyncTransaction`
+   directly. Two idioms in one file. **Disposition: not changed** — the new
+   sites match the dominant in-file idiom (11 pre-existing #322 sites); the
+   `withTransaction` seam is the service-facing API used by
+   finance/operations services. A file-wide idiom unification is out of scope.
+2. **Atomicity side effect (note):** `upsertEmployee` and `reassignWorkers`
+   previously autocommitted statement-by-statement; the wrap makes them
+   atomic. **Fixed** — design doc's "Behavior change" bullet updated to state
+   the positive atomicity side effect explicitly.
+3. **Doc drift (note):** company class docstring + `fifo-lock.ts` module
+   header cited #322 only. **Fixed** — both now reference #348 completing the
+   routing of every sync writer.
+4. No Mysterious Name / Speculative Generality / Message Chains / Middle Man
+   smells; per-site wrap is the issue-mandated mechanism (the rejected
+   connection-level interceptor is documented in the design doc).
+
+## Spec
+
+No missing requirements, no scope creep, implementation correct.
+
+- Acceptance ("every sync db.transaction() writer runs under
+  runSyncTransaction, OR a detection mechanism flags joins"): **met
+  structurally** — grep audit confirms every `.run()` write site in the three
+  modules sits inside `runSyncTransaction` (company 24 sites incl. private
+  helpers, inventory 12, invoice 2 + pre-existing).
+- Every writer named in the issue (createRole, upsertEmployee, createDebtAccount,
+  createDebtEntry, voidDebtEntry, assignment/history ~705-880,
+  createItemDefinition, createInvoiceGroup, updateStatus,
+  markReceivedWithDebtAccount) wrapped; the full D1 enumeration also covered.
+- Nested wraps (e.g. `upsertEmployee` → `insertStateHistory`) become
+  SAVEPOINTs — correct join per `fifo-lock.ts` semantics.
+- Join-outer preserved (test pins it; payment/invoice/inventory suites green).
+- Residual: busy-throw coverage is sampled per writer family, not exhaustive
+  per-writer (structural grep audit compensates) — accepted, documented in
+  test-audit evidence.
+
+## Summary
+
+- Standards: 3 findings, all judgement calls — worst is the low-severity
+  withTransaction-vs-direct pattern drift (pre-existing, not changed).
+- Spec: 0 findings.

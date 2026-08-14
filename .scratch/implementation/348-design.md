@@ -145,9 +145,13 @@ No changes to `fifo-lock.ts` (the primitive already covers all four cases).
   module's open transaction must still join, not throw. Covered by the
   existing integration cases (invoice-debt port joins `lock.run`; payment
   `recordInvoicePayment` joins) plus the full module suites.
-- **Behavior change:** none intended — wrap is transparent except for the new
-  busy-throw, which is the desired tripwire and only fires when a foreign flow
-  holds the connection (today unreachable per invariant D).
+- **Behavior change:** none beyond the intended busy-throw and one positive
+  side effect — multi-statement writers that previously autocommitted
+  statement-by-statement are now atomic: `upsertEmployee` (employee insert +
+  state history) and `reassignWorkers` (the whole reassignment loop) now
+  commit or roll back as one unit. This is strictly safer (no partial
+  writes) and was already the semantic of every other wrapped multi-statement
+  writer.
 
 ## Acceptance
 

@@ -239,7 +239,8 @@ export class SqliteCompanyRepository implements CompanyRepository {
    * Connection-wide FIFO lock (shared with every module that opens
    * transactions on the same connection, wired in the composition root).
    * Sync writers route their transactions through `runSyncTransaction` so
-   * they never silently join another flow's open transaction (issue #322).
+   * they never silently join another flow's open transaction (issues #322
+   * and #348: every sync write in this module runs under the lock).
    * Defaults to a fresh per-instance lock so direct test constructions keep
    * compiling; production injects the shared instance.
    */
