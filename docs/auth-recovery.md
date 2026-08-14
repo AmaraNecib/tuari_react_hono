@@ -16,9 +16,11 @@ no escape hatch.
 #321 fixes this by making **sign-in verification-only**: the sign-in schema no
 longer carries the visible-character refine, so an all-invisible input is
 accepted and verified against the stored hash. It can only match a hash that was
-itself created from that exact value (impossible for post-#230 accounts), so the
-policy for **new** inputs is unchanged: bootstrap and change-password still
-reject all-invisible passwords.
+itself created from that exact value (impossible for accounts bootstrapped after
+#230, which still reject all-invisible passwords). The policy for **new**
+inputs at bootstrap is unchanged; the Settings change-password path is
+gated exactly as it was before (client-side trim + length only — see the
+known-gap note below).
 
 ## Supported recovery paths
 
@@ -51,6 +53,12 @@ This destroys all workspace data and is only a recovery of last resort.
 
 - The sign-in schema still enforces length bounds (8–128) and the phone format;
   only the visible-character rule was relaxed for **verification**.
+- Known gap (pre-existing, NOT introduced by #321): the change-password path is
+  not schema-gated — the new-password field is checked client-side only (trim +
+  8–128 length) and better-auth's route validates any string, so a
+  format-character-only (e.g. ZWSP) new password can still be set. Since #321
+  made sign-in verification-only, such a hash becomes usable at sign-in;
+  recommended as a follow-up issue (a change-password policy gate).
 - OTP-based reset and admin-assisted resets are intentionally not implemented:
   OTP delivery requires an external provider (#283), and a reset that bypasses
   the current password would be an account-takeover primitive on a loopback API.

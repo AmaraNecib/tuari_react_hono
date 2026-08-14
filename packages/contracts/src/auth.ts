@@ -3,7 +3,8 @@ import { z } from "zod";
 import { algerianPhoneSchema, entityIdSchema } from "./core";
 
 /**
- * Credential password policy for NEW inputs (bootstrap, change-password).
+ * Credential password policy for NEW inputs at bootstrap (credential
+ * creation).
  *
  * #230: length bounds alone admit a blank-looking password (8 spaces pass
  * `.min(8)`), which would hash into a usable credential. We deliberately do
@@ -18,6 +19,15 @@ import { algerianPhoneSchema, entityIdSchema } from "./core";
  * spaces) password yields a single length issue, not doubled
  * too_small/too_big + custom issues (same pattern as the bootstrap name
  * refine).
+ *
+ * Scope note: this schema gates where credentials are CREATED (bootstrap
+ * only). Sign-in uses {@link signInPasswordSchema} (verification-only,
+ * #321), and the Settings change-password path is NOT schema-gated — it is
+ * checked client-side only (trim + 8..128 length, settings-section.tsx /
+ * workspace-mutations.ts) and better-auth's change-password route validates
+ * `newPassword: z.string()` plus length. A `\p{Cf}`-only (e.g. ZWSP) new
+ * password can therefore still be set via change-password: pre-existing
+ * #230 gap, tracked as a follow-up (do not claim this schema covers it).
  */
 export const passwordSchema = z
   .string()
@@ -37,11 +47,14 @@ export const passwordSchema = z
  * #321: sign-in does NOT carry the visible-character refine from #230. A
  * sign-in input is verified against a hash that already exists — an
  * all-invisible input can only succeed if the stored hash was itself created
- * from an all-invisible value, which is impossible for hashes created after
- * #230 (bootstrap and change-password both use {@link passwordSchema}).
- * Accepting those inputs is therefore the deliberate legacy recovery channel
- * for a user whose password predates #230, WITHOUT weakening the policy for
- * new inputs. Length bounds stay so the wire input remains bounded.
+ * from an all-invisible value. For hashes created after #230 that is only
+ * possible through bootstrap (which uses {@link passwordSchema}); the
+ * Settings change-password path is NOT schema-gated (client-side trim +
+ * length only — see {@link passwordSchema}) and is a pre-existing #230 gap
+ * tracked as a follow-up. Accepting all-invisible inputs at sign-in is the
+ * deliberate legacy recovery channel for a user whose password predates
+ * #230, WITHOUT weakening the policy for new inputs. Length bounds stay so
+ * the wire input remains bounded.
  */
 export const signInPasswordSchema = z.string().min(8).max(128);
 
