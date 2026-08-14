@@ -136,18 +136,58 @@ describe("useChangeDbEncryptionKeyMutation", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
   })
 
-  it("keeps the new key (does NOT restore) when the RPC throws — the rekey may have happened", async () => {
+  it("restores the old key when the RPC fails before delivery (transport/bridge error)", async () => {
     isDesktopRuntimeMock.mockReturnValue(true)
+    // A plain transport error (no ORPC code/status — the bridge threw before
+    // the request reached the API). The database was DEFINITELY not rekeyed.
     changeDbEncryptionKeyMock.mockRejectedValue(new Error("network down"))
     const { result } = renderMutation()
 
     await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("network down")
 
-    // An ambiguous failure (lost response) must NOT overwrite the new key
-    // with the old one — that would permanently orphan a database that WAS
-    // re-encrypted server-side. The rotation is acknowledged instead.
-    expect(invokeMock).toHaveBeenCalledWith("complete_db_key_rotation")
+    // A pre-delivery failure must roll the rotation back: completing it
+    // would drop the only old-key rollback slot while the database still
+    // requires the old key, breaking the next startup (review finding).
+    expect(invokeMock).toHaveBeenCalledWith("restore_db_key")
+    expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
+  })
+
+  it("restores the old key when the server rejects the RPC with a client error (4xx — handler never ran)", async () => {
+    isDesktopRuntimeMock.mockReturnValue(true)
+    // ORPC server errors carry a string code + numeric status. A 401 means
+    // the auth middleware rejected the request BEFORE the rekey handler ran
+    // — the database was definitely not re-encrypted.
+    changeDbEncryptionKeyMock.mockRejectedValue(
+      Object.assign(new Error("Unauthorized"), { code: "UNAUTHORIZED", status: 401 }),
+    )
+    const { result } = renderMutation()
+
+    await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("Unauthorized")
+
+    expect(invokeMock).toHaveBeenCalledWith("restore_db_key")
+    expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
+  })
+
+  it("keeps the new key AND the rollback slot when the RPC throws a 5xx server error (outcome unknown)", async () => {
+    isDesktopRuntimeMock.mockReturnValue(true)
+    // A 500 means the server RESPONDED — the rekey handler may have run
+    // before the failure, so the outcome is unknown. Neither restore (would
+    // orphan a rekeyed DB) nor complete (would drop the only way back if the
+    // rekey did NOT happen) — the rollback slot stays for a same-session
+    // retry/re-verification.
+    changeDbEncryptionKeyMock.mockRejectedValue(
+      Object.assign(new Error("Internal Server Error"), {
+        code: "INTERNAL_SERVER_ERROR",
+        status: 500,
+      }),
+    )
+    const { result } = renderMutation()
+
+    await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("Internal Server Error")
+
+    expect(invokeMock).toHaveBeenCalledWith("rotate_db_key", { newKey: INPUT.newKey })
     expect(invokeMock).not.toHaveBeenCalledWith("restore_db_key")
+    expect(invokeMock).not.toHaveBeenCalledWith("complete_db_key_rotation")
   })
 
   it("does not call the RPC (or roll back) when the rotation itself fails", async () => {
@@ -161,11 +201,11 @@ describe("useChangeDbEncryptionKeyMutation", () => {
     expect(invokeMock).toHaveBeenCalledTimes(1)
   })
 
-  it("swallows a completion failure so the original RPC error still surfaces", async () => {
+  it("swallows a failing restore so the original pre-delivery RPC error still surfaces", async () => {
     isDesktopRuntimeMock.mockReturnValue(true)
     changeDbEncryptionKeyMock.mockRejectedValue(new Error("rekey failed"))
     invokeMock.mockResolvedValueOnce(undefined) // rotate OK
-    invokeMock.mockRejectedValueOnce(new Error("keyring busy")) // complete fails — swallowed
+    invokeMock.mockRejectedValueOnce(new Error("keyring busy")) // restore fails — swallowed
     const { result } = renderMutation()
 
     await expect(result.current.mutateAsync(INPUT)).rejects.toThrow("rekey failed")
