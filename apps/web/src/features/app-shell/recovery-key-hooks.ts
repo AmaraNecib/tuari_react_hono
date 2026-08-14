@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { i18n } from "@/i18n"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
+import { getDesktopBridgeFailurePhase, DESKTOP_BRIDGE_FAILURE_PHASE } from "@/lib/desktop-api-bridge"
 import { rpcClient } from "@/lib/orpc-client"
 import { showErrorToast } from "@/lib/toast"
 
@@ -86,26 +87,23 @@ async function invokeCompleteDbKeyRotation(): Promise<void> {
 }
 
 /**
- * True when a thrown RPC error PROVES the database was not re-encrypted:
- * the request never reached the API (transport/bridge failure — no server
- * response) or the server rejected it with a client error (status < 500 —
- * validation/auth ran before the handler). False when the outcome is
- * unknown (5xx, or a timeout-ish code like 408/499 — the handler may have
- * rekeyed before failing): the caller must keep the new key and the
- * rollback slot instead of restoring.
- *
- * ORPC server errors always carry a string `code` + numeric `status` (the
- * `ORPCError` class); their absence means the request never produced a
- * server response. The desktop bridge talks to a LOCAL loopback API, so a
- * request that was delivered but whose response was lost is not a realistic
- * failure — the dominant transport failure is a connection refusal (API not
- * running), which is provably pre-delivery.
+ * True only when a thrown RPC error PROVES the database was not re-encrypted:
+ * the native bridge explicitly marked the request as pre-delivery, or the
+ * server rejected it with a client error (status < 500 — validation/auth ran
+ * before the handler). Every other thrown error is unknown: a response-body
+ * read can fail after the API has rekeyed, and an unmarked bridge/transport
+ * error does not prove that the request was never delivered.
  */
 function rpcFailureProvesNoRekey(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return true
+  const bridgePhase = getDesktopBridgeFailurePhase(error)
+  if (bridgePhase !== undefined) {
+    return bridgePhase === DESKTOP_BRIDGE_FAILURE_PHASE.PRE_DELIVERY
+  }
+
+  if (typeof error !== "object" || error === null) return false
   const candidate = error as { code?: unknown; status?: unknown }
   if (typeof candidate.code !== "string" || typeof candidate.status !== "number") {
-    return true
+    return false
   }
   const status = candidate.status
   return status >= 400 && status < 500 && status !== 408 && status !== 499
@@ -129,15 +127,15 @@ function rpcFailureProvesNoRekey(error: unknown): boolean {
  *   keep the rollback slot (do NOT clear it) so a later re-verification can
  *   still restore if it proves definitive. The returned result surfaces the
  *   honest "rekey applied but verification pending" state.
- * - The RPC throws before the request reaches the API (transport/bridge
- *   failure) or the server rejects it with a client error (< 500): the
- *   database was DEFINITELY not re-encrypted — restore the original key so
- *   the keyring and the database agree. A pre-delivery failure must never
- *   complete the rotation: dropping the only old-key rollback slot while
- *   the database still requires the old key breaks the next startup.
- * - The RPC throws with a 5xx server error (the handler may have rekeyed
- *   before failing): keep the new key AND the rollback slot (neither
- *   restore nor complete) — the outcome stays pending, same as the
+ * - The native bridge marks a request as pre-delivery, or the server rejects
+ *   it with a client error (< 500): the database was DEFINITELY not
+ *   re-encrypted — restore the original key so the keyring and the database
+ *   agree. A pre-delivery failure must never complete the rotation: dropping
+ *   the only old-key rollback slot while the database still requires the old
+ *   key breaks the next startup.
+ * - The bridge marks a response-body read failure, a 5xx server error, or any
+ *   other unclassified thrown error: keep the new key AND the rollback slot
+ *   (neither restore nor complete) — the outcome stays pending, same as the
  *   server-side `ambiguous: true` state, for a same-session
  *   retry/re-verification.
  */
@@ -176,18 +174,11 @@ export function useChangeDbEncryptionKeyMutation() {
           await invokeCompleteDbKeyRotation().catch(() => {})
           return result
         } catch (error) {
-          // The RPC threw. What the keyring does depends on WHERE the
-          // failure happened — a blanket "keep the new key" is wrong when
-          // the request never reached the API (review finding):
-          // - NEVER DELIVERED (transport/bridge failure — no server
-          //   response) or rejected with a client error (< 500 — validation/
-          //   auth ran before the handler): the database was DEFINITELY not
-          //   re-encrypted. Restore the old key — completing the rotation
-          //   here would drop the only old-key rollback slot while the
-          //   database still requires the old key, breaking the next startup.
-          // - 5xx (or a timeout-ish code): the handler may have rekeyed
-          //   before failing — keep the new key AND the rollback slot
-          //   (neither restore nor complete) so the outcome stays pending.
+          // Restore only when the error explicitly proves that the database
+          // was not rekeyed. The desktop bridge marks a connection failure as
+          // pre-delivery and a response-body read failure as post-delivery;
+          // all unclassified errors fail closed to the pending state so a
+          // rekeyed database is never orphaned.
           if (rpcFailureProvesNoRekey(error)) {
             await invokeRestoreDbKey().catch(() => {})
           }

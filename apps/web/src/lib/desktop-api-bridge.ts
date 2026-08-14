@@ -45,6 +45,65 @@ type DesktopChangePasswordInput = {
 
 const FORWARDED_HEADER_DENYLIST = new Set(["authorization", "cookie", "host", "origin", "content-length"])
 
+/** Stable discriminator for structured errors returned by the native bridge. */
+export const DESKTOP_BRIDGE_ERROR_KIND = "desktop-api-bridge" as const
+
+/**
+ * Delivery phases reported by the native bridge.
+ *
+ * `pre-delivery` is reserved for failures that prove the HTTP request never
+ * reached the local API. `response-body-read` means response headers arrived
+ * and the request outcome is therefore unknown. `unknown` is the fail-closed
+ * bucket for bridge failures that cannot prove either outcome.
+ */
+export const DESKTOP_BRIDGE_FAILURE_PHASE = {
+  PRE_DELIVERY: "pre-delivery",
+  RESPONSE_BODY_READ: "response-body-read",
+  UNKNOWN: "unknown",
+} as const
+
+export type DesktopBridgeFailurePhase =
+  (typeof DESKTOP_BRIDGE_FAILURE_PHASE)[keyof typeof DESKTOP_BRIDGE_FAILURE_PHASE]
+
+export type DesktopBridgeErrorMetadata = {
+  kind: typeof DESKTOP_BRIDGE_ERROR_KIND
+  phase: DesktopBridgeFailurePhase
+}
+
+type DesktopBridgeError = Error & {
+  desktopBridge?: DesktopBridgeErrorMetadata
+}
+
+function getDesktopBridgeErrorMetadata(error: unknown): DesktopBridgeErrorMetadata | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined
+  }
+
+  const metadata = Reflect.get(error, "desktopBridge")
+  if (typeof metadata !== "object" || metadata === null) {
+    return undefined
+  }
+
+  const kind = Reflect.get(metadata, "kind")
+  const phase = Reflect.get(metadata, "phase")
+  if (kind !== DESKTOP_BRIDGE_ERROR_KIND || !isDesktopBridgeFailurePhase(phase)) {
+    return undefined
+  }
+
+  return { kind, phase }
+}
+
+function isDesktopBridgeFailurePhase(value: unknown): value is DesktopBridgeFailurePhase {
+  return value === DESKTOP_BRIDGE_FAILURE_PHASE.PRE_DELIVERY
+    || value === DESKTOP_BRIDGE_FAILURE_PHASE.RESPONSE_BODY_READ
+    || value === DESKTOP_BRIDGE_FAILURE_PHASE.UNKNOWN
+}
+
+/** Read the native bridge delivery marker from an RPC failure, if present. */
+export function getDesktopBridgeFailurePhase(error: unknown): DesktopBridgeFailurePhase | undefined {
+  return getDesktopBridgeErrorMetadata(error)?.phase
+}
+
 function getDesktopBridgeErrorMessage(error: unknown) {
   if (typeof error === "string" && error.trim().length > 0) {
     return error
@@ -64,13 +123,24 @@ function getDesktopBridgeErrorMessage(error: unknown) {
   return "Desktop bridge request failed."
 }
 
+function markDesktopBridgeFailure(error: unknown, phase: DesktopBridgeFailurePhase): DesktopBridgeError {
+  const normalizedError: DesktopBridgeError =
+    error instanceof Error ? error : new Error(getDesktopBridgeErrorMessage(error))
+  normalizedError.desktopBridge = { kind: DESKTOP_BRIDGE_ERROR_KIND, phase }
+  return normalizedError
+}
+
 async function invokeDesktopBridgeCommand<TResponse>(command: string, args?: Record<string, unknown>) {
   const { invoke } = await import("@tauri-apps/api/core")
 
   try {
     return await invoke<TResponse>(command, args)
   } catch (error) {
-    throw error instanceof Error ? error : new Error(getDesktopBridgeErrorMessage(error))
+    const normalizedError = markDesktopBridgeFailure(
+      error,
+      getDesktopBridgeErrorMetadata(error)?.phase ?? DESKTOP_BRIDGE_FAILURE_PHASE.UNKNOWN,
+    )
+    throw normalizedError
   }
 }
 
@@ -157,20 +227,29 @@ export async function desktopApiFetch(input: RequestInfo | URL, init?: DesktopAp
     return globalThis.fetch(input, init)
   }
 
-  const request = input instanceof Request ? input : null
-  const headers = {
-    ...normalizeHeaders(request?.headers),
-    ...normalizeHeaders(init?.headers),
-  }
-  const response = await invokeDesktopBridgeCommand<DesktopBridgeResponse>("desktop_api_request", {
-    request: {
+  let bridgeRequest: DesktopBridgeRequest
+  try {
+    const request = input instanceof Request ? input : null
+    const headers = {
+      ...normalizeHeaders(request?.headers),
+      ...normalizeHeaders(init?.headers),
+    }
+    bridgeRequest = {
       authenticated: init?.authenticated === true,
       body: init?.multipartFiles ? undefined : await resolveRequestBody(input, init),
       headers,
       method: init?.method ?? request?.method ?? "GET",
       multipartFiles: init?.multipartFiles,
       path: resolveDesktopApiPath(input),
-    } satisfies DesktopBridgeRequest,
+    } satisfies DesktopBridgeRequest
+  } catch (error) {
+    // Request construction happens before the native command is invoked, so
+    // it is definitive that no HTTP request was delivered.
+    throw markDesktopBridgeFailure(error, DESKTOP_BRIDGE_FAILURE_PHASE.PRE_DELIVERY)
+  }
+
+  const response = await invokeDesktopBridgeCommand<DesktopBridgeResponse>("desktop_api_request", {
+    request: bridgeRequest,
   })
 
   return new Response(Uint8Array.from(response.body), {
