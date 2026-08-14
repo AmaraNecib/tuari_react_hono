@@ -6,12 +6,14 @@ import {
   applyEmployeeUserLinkMigration,
   applyDebtAccountBalanceRename,
   applyDebtAccountDirectionMigration,
+  applyPaymentAllocationRestrictMigration,
   applyRbacThreeRoleMigration,
   type DbExecutor,
 } from "./schema";
 import {
   debtAccountBalanceRenameMigrationKey,
   debtAccountDirectionMigrationKey,
+  paymentAllocationRestrictMigrationKey,
   rbacThreeRoleMigrationKey,
 } from "./schema-definitions";
 import { BetterSqlite3Executor } from "./sqlite-executor";
@@ -76,9 +78,11 @@ describe("applyEmployeeUserLinkMigration", () => {
  * using raw SQLite.
  *
  * Implements the raw SQLite interface used by the migration:
- * raw execute, and a synchronous transaction callback that yields a
- * same-shaped `DbExecutor` for the txn body.
+ * raw execute, and a savepoint-backed transaction callback that yields a
+ * same-shaped `DbExecutor` for the txn body (mirrors the production
+ * `BetterSqlite3Executor`).
  */
+let savepointCounter = 0;
 function asDbExecutor(database: Database.Database): DbExecutor {
   function makeDb(inner: Database.Database): DbExecutor {
     return {
@@ -89,17 +93,29 @@ function asDbExecutor(database: Database.Database): DbExecutor {
         return inner.prepare(sql).run(...params).changes;
       },
       async $transaction<T>(work: (tx: DbExecutor) => Promise<T>): Promise<T> {
-        // better-sqlite3 transactions are synchronous and block the event loop.
-        // We use the prepared statements on the same connection to preserve
-        // the atomicity guarantees expected by the migration (rename + key
-        // insert in a single transaction).
-        let result!: T;
-        inner.transaction(() => {
-          void work(makeDb(inner)).then((value) => {
-            result = value;
-          });
-        })();
-        return result;
+        // better-sqlite3 transactions are synchronous, so the async work
+        // cannot run inside `db.transaction(...)`. Mirror the production
+        // `BetterSqlite3Executor` (sqlite-executor.ts): open a SAVEPOINT,
+        // await the async work, then RELEASE / ROLLBACK — the work runs
+        // while the savepoint is open, so the whole body is atomic and the
+        // `await` actually waits for it (an early-resolving wrapper would
+        // let the next assertion observe a half-applied migration and turn
+        // a late work rejection into an unhandled promise rejection).
+        const savepoint = `tx_test_${++savepointCounter}`;
+        inner.exec(`SAVEPOINT ${savepoint}`);
+        try {
+          const result = await work(makeDb(inner));
+          inner.exec(`RELEASE SAVEPOINT ${savepoint}`);
+          return result;
+        } catch (error) {
+          try {
+            inner.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+            inner.exec(`RELEASE SAVEPOINT ${savepoint}`);
+          } catch {
+            // Savepoint may already be released/rolled back.
+          }
+          throw error;
+        }
       },
     };
   }
@@ -508,5 +524,220 @@ describe("applyRbacThreeRoleMigration (issue #10)", () => {
       .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
       .all(rbacThreeRoleMigrationKey);
     expect(stateRows).toHaveLength(0);
+  });
+});
+
+// Issue #335: payment_allocation.payment_id FK must be ON DELETE RESTRICT so a
+// raw DELETE FROM "payment" fails loudly instead of silently cascade-deleting
+// allocations while the invoice stays PAID and the debt entry stays booked.
+// SQLite cannot ALTER an FK constraint, so the migration rebuilds the table.
+describe("applyPaymentAllocationRestrictMigration (issue #335)", () => {
+  const LEGACY_TABLE_SQL = `CREATE TABLE "payment_allocation" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "payment_id" TEXT NOT NULL,
+    "invoice_id" TEXT NOT NULL,
+    "amount" REAL NOT NULL,
+    "created_at" TEXT NOT NULL,
+    CONSTRAINT "payment_allocation_payment_id_fkey"
+      FOREIGN KEY ("payment_id") REFERENCES "payment" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+  )`;
+
+  function createLegacyDb() {
+    const db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(`
+      CREATE TABLE "app_schema_state" (
+        "key" TEXT NOT NULL PRIMARY KEY,
+        "executed_at" DATETIME NOT NULL
+      );
+      CREATE TABLE "payment" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "total_amount" REAL NOT NULL,
+        "created_at" TEXT NOT NULL
+      );
+      CREATE TABLE "invoice" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "total_amount" REAL NOT NULL,
+        "created_at" TEXT NOT NULL
+      );
+    `);
+    db.exec(LEGACY_TABLE_SQL);
+    db.prepare(
+      'INSERT INTO "payment" ("id", "total_amount", "created_at") VALUES (?, ?, ?)',
+    ).run("pmt-1", 1000, "2026-01-01T00:00:00.000Z");
+    db.prepare(
+      'INSERT INTO "invoice" ("id", "total_amount", "created_at") VALUES (?, ?, ?)',
+    ).run("inv-1", 1000, "2026-01-01T00:00:00.000Z");
+    db.prepare(
+      'INSERT INTO "payment_allocation" ("id", "payment_id", "invoice_id", "amount", "created_at") VALUES (?, ?, ?, ?, ?)',
+    ).run("alloc-1", "pmt-1", "inv-1", 1000, "2026-01-01T00:00:00.000Z");
+    return db;
+  }
+
+  function getTableSql(db: Database.Database, table: string) {
+    return (
+      db
+        .prepare('SELECT "sql" FROM "sqlite_master" WHERE "type" = ? AND "name" = ?')
+        .get("table", table) as { sql: string }
+    ).sql;
+  }
+
+  function getPaymentIdFkeyLine(db: Database.Database) {
+    return getTableSql(db, "payment_allocation")
+      .split("\n")
+      .find((line) =>
+        line.includes('FOREIGN KEY ("payment_id") REFERENCES "payment"'),
+      )!;
+  }
+
+  it("rebuilds payment_allocation with ON DELETE RESTRICT and preserves rows on a legacy DB", async () => {
+    const db = createLegacyDb();
+    expect(getPaymentIdFkeyLine(db)).toContain("ON DELETE CASCADE");
+
+    await applyPaymentAllocationRestrictMigration(asDbExecutor(db));
+
+    // payment_id FK is now RESTRICT; the invoice_id FK keeps its CASCADE.
+    expect(getPaymentIdFkeyLine(db)).toContain("ON DELETE RESTRICT");
+    expect(getPaymentIdFkeyLine(db)).not.toContain("ON DELETE CASCADE");
+    expect(getTableSql(db, "payment_allocation")).toContain(
+      'FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE CASCADE',
+    );
+
+    // Data preserved across the rebuild.
+    const alloc = db
+      .prepare('SELECT "payment_id", "amount" FROM "payment_allocation" WHERE "id" = ?')
+      .get("alloc-1") as { payment_id: string; amount: number };
+    expect(alloc.payment_id).toBe("pmt-1");
+    expect(alloc.amount).toBe(1000);
+
+    // Migration key recorded.
+    const [keyRow] = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(paymentAllocationRestrictMigrationKey) as Array<{ key: string }>;
+    expect(keyRow?.key).toBe(paymentAllocationRestrictMigrationKey);
+
+    // The rebuilt FK is enforced: a raw delete of the allocated payment
+    // now fails loudly instead of cascade-deleting the allocation.
+    expect(() =>
+      db.prepare('DELETE FROM "payment" WHERE "id" = ?').run("pmt-1"),
+    ).toThrow(/FOREIGN KEY constraint failed/i);
+    expect(
+      (db.prepare('SELECT COUNT(*) AS c FROM "payment_allocation"').get() as { c: number }).c,
+    ).toBe(1);
+  });
+
+  it("is a no-op on a DB where the migration has already run (state key guard)", async () => {
+    const db = createLegacyDb();
+    await applyPaymentAllocationRestrictMigration(asDbExecutor(db));
+    const sqlAfterFirst = getTableSql(db, "payment_allocation");
+
+    await applyPaymentAllocationRestrictMigration(asDbExecutor(db));
+
+    expect(getTableSql(db, "payment_allocation")).toBe(sqlAfterFirst);
+    const keys = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(paymentAllocationRestrictMigrationKey) as Array<{ key: string }>;
+    expect(keys).toHaveLength(1);
+  });
+
+  it("records the state key without rebuilding on a fresh DB that already uses RESTRICT", async () => {
+    const db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(`
+      CREATE TABLE "app_schema_state" (
+        "key" TEXT NOT NULL PRIMARY KEY,
+        "executed_at" DATETIME NOT NULL
+      );
+      CREATE TABLE "payment" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "total_amount" REAL NOT NULL,
+        "created_at" TEXT NOT NULL
+      );
+      CREATE TABLE "invoice" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "total_amount" REAL NOT NULL,
+        "created_at" TEXT NOT NULL
+      );
+    `);
+    db.exec(
+      LEGACY_TABLE_SQL.replace("ON DELETE CASCADE", "ON DELETE RESTRICT"),
+    );
+    db.prepare(
+      'INSERT INTO "payment" ("id", "total_amount", "created_at") VALUES (?, ?, ?)',
+    ).run("pmt-1", 1000, "2026-01-01T00:00:00.000Z");
+    db.prepare(
+      'INSERT INTO "payment_allocation" ("id", "payment_id", "invoice_id", "amount", "created_at") VALUES (?, ?, ?, ?, ?)',
+    ).run("alloc-1", "pmt-1", "inv-1", 1000, "2026-01-01T00:00:00.000Z");
+
+    await applyPaymentAllocationRestrictMigration(asDbExecutor(db));
+
+    expect(getTableSql(db, "payment_allocation")).toContain("ON DELETE RESTRICT");
+    const [keyRow] = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(paymentAllocationRestrictMigrationKey) as Array<{ key: string }>;
+    expect(keyRow?.key).toBe(paymentAllocationRestrictMigrationKey);
+  });
+
+  it("rebuilds when only another FK (invoice_id) is RESTRICT but payment_id is still CASCADE", async () => {
+    const db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(`
+      CREATE TABLE "app_schema_state" (
+        "key" TEXT NOT NULL PRIMARY KEY,
+        "executed_at" DATETIME NOT NULL
+      );
+      CREATE TABLE "payment" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "total_amount" REAL NOT NULL,
+        "created_at" TEXT NOT NULL
+      );
+      CREATE TABLE "invoice" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "total_amount" REAL NOT NULL,
+        "created_at" TEXT NOT NULL
+      );
+    `);
+    // payment_id keeps the legacy CASCADE; only the invoice_id FK is RESTRICT.
+    // An unscoped `ON DELETE RESTRICT` scan of the DDL would wrongly take the
+    // no-rebuild fast path and leave payment_id cascade-deletable.
+    db.exec(`CREATE TABLE "payment_allocation" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "payment_id" TEXT NOT NULL,
+      "invoice_id" TEXT NOT NULL,
+      "amount" REAL NOT NULL,
+      "created_at" TEXT NOT NULL,
+      CONSTRAINT "payment_allocation_payment_id_fkey"
+        FOREIGN KEY ("payment_id") REFERENCES "payment" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+      CONSTRAINT "payment_allocation_invoice_id_fkey"
+        FOREIGN KEY ("invoice_id") REFERENCES "invoice" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    )`);
+    db.prepare(
+      'INSERT INTO "payment" ("id", "total_amount", "created_at") VALUES (?, ?, ?)',
+    ).run("pmt-1", 1000, "2026-01-01T00:00:00.000Z");
+    db.prepare(
+      'INSERT INTO "invoice" ("id", "total_amount", "created_at") VALUES (?, ?, ?)',
+    ).run("inv-1", 1000, "2026-01-01T00:00:00.000Z");
+    db.prepare(
+      'INSERT INTO "payment_allocation" ("id", "payment_id", "invoice_id", "amount", "created_at") VALUES (?, ?, ?, ?, ?)',
+    ).run("alloc-1", "pmt-1", "inv-1", 1000, "2026-01-01T00:00:00.000Z");
+
+    await applyPaymentAllocationRestrictMigration(asDbExecutor(db));
+
+    // The rebuild ran (not the fast path): payment_id is now RESTRICT.
+    expect(getPaymentIdFkeyLine(db)).toContain("ON DELETE RESTRICT");
+    expect(getPaymentIdFkeyLine(db)).not.toContain("ON DELETE CASCADE");
+    const [keyRow] = db
+      .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
+      .all(paymentAllocationRestrictMigrationKey) as Array<{ key: string }>;
+    expect(keyRow?.key).toBe(paymentAllocationRestrictMigrationKey);
+
+    // The rebuilt FK is enforced: a raw delete of the allocated payment fails
+    // loudly instead of cascade-deleting the allocation.
+    expect(() =>
+      db.prepare('DELETE FROM "payment" WHERE "id" = ?').run("pmt-1"),
+    ).toThrow(/FOREIGN KEY constraint failed/i);
+    expect(
+      (db.prepare('SELECT COUNT(*) AS c FROM "payment_allocation"').get() as { c: number }).c,
+    ).toBe(1);
   });
 });
