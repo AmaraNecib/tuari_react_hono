@@ -198,10 +198,10 @@ describe("invalidateWorkspaceDomains", () => {
     expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: workspaceQueryPrefix })
   })
 
-  it("rejects a non-flat (parameterized) key at compile time", () => {
+  it("rejects a non-flat (parameterized) key at compile time", async () => {
     const { client } = mockQueryClient()
     // @ts-expect-error parameterized detail keys are not WorkspaceDomain entries
-    invalidateWorkspaceDomains(client, userId, { inventoryAsset: true })
+    await invalidateWorkspaceDomains(client, userId, { inventoryAsset: true })
   })
 
   it("is a no-op for an empty domain record", async () => {
