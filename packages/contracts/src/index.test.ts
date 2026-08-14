@@ -1156,6 +1156,25 @@ describe("contracts", () => {
       ).toThrow();
       expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a\u0001b" })).toThrow();
 
+      // Zs separators (issue case 4): a mid-string NBSP survives trim() (it is
+      // edge-only) and renders indistinguishable from a regular space in a
+      // monospace key field — rejected anywhere. Plain spaces too.
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "a1b2\u00A0c3d4e5f6" }),
+      ).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a1b2 c3d4" })).toThrow();
+
+      // Blank-rendering Lo letters: Hangul fillers are the enumerable blank
+      // cells outside the issue's named classes — same hazard as U+2800, and
+      // U+3164 is a known obfuscation vector.
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u3164".repeat(8) }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u115F".repeat(8) }),
+      ).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a\uFFA0b" })).toThrow();
+
       // Same gates on the other key fields (defense in depth, #234 precedent).
       expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\u2800\u2800" })).toThrow();
       expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "\u0301\u0301" })).toThrow();
@@ -1172,7 +1191,7 @@ describe("contracts", () => {
       });
     });
 
-    it("preserves internal formatting whitespace in keys (#221 pin + #334 carve-out)", () => {
+    it("preserves visible formatting whitespace in keys (#221 pin + #334 carve-out)", () => {
       // #334 rejects Cc controls EXCEPT tab/LF/VT/FF/CR — the ECMAScript
       // whitespace subset, which renders as visible formatting. The #221 pin
       // (a recovery key wrapped across an email line) deliberately accepts an
@@ -1190,18 +1209,26 @@ describe("contracts", () => {
         key: "a1b2\r\nc3d4",
       });
 
-      // Mid-string NBSP (Zs) is deliberately preserved too (the issue's
-      // "excluding Zs" decision): it renders as a visible space gap, and pure
-      // Zs strings cannot pass anyway (every Zs is ECMAScript WhiteSpace →
-      // trim → "" → min() fails).
-      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u00A0c3d4" })).toEqual({
-        key: "a1b2\u00A0c3d4",
+      // Zl/Zp line/paragraph separators render as visible line breaks —
+      // consistent with the LF carve-out (documented residual).
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u2028c3d4" })).toEqual({
+        key: "a1b2\u2028c3d4",
       });
 
-      // No over-reach: visible So symbols (©) pass — only U+2800 braille
-      // blank (the blank-cell symbol) is rejected, not the whole So class.
+      // Edge whitespace is still trimmed first — the #221 test with NBSP +
+      // line-separator padding around a valid key normalizes to the key.
+      expect(consumeRecoveryKeyInputSchema.parse({
+        key: "\u00A0a1b2-c3d4-e5f6\u2028",
+      })).toEqual({ key: "a1b2-c3d4-e5f6" });
+
+      // No over-reach: visible So symbols (©) and Lo letters (CJK) pass —
+      // only U+2800 braille blank and the blank Hangul fillers are rejected,
+      // not the whole So/Lo classes.
       expect(consumeRecoveryKeyInputSchema.parse({ key: "a\u00A9b" })).toEqual({
         key: "a\u00A9b",
+      });
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a\u4E2Db" })).toEqual({
+        key: "a\u4E2Db",
       });
     });
 

@@ -50,9 +50,18 @@ export const generatedRecoveryKeysSchema = z.object({
  * - `\p{Mn}` nonspacing marks (combining accents U+0300-U+036F, variation
  *   selectors, …) — invisible; an embedded mark makes a key LOOK right but
  *   never match.
+ * - `\p{Zs}` space separators (space, NBSP, ideographic space, …) — issue
+ *   case 4: trim() is edge-only, so a mid-string NBSP survived. A space
+ *   renders blank and is indistinguishable from a regular space in a
+ *   monospace key field, and no generated key contains one. (The #221 pin
+ *   is untouched — its pinned character is LF, a Cc, preserved by the Cc
+ *   carve-out below.)
  * - U+2800 BRAILLE BLANK — renders as a blank cell; 8 of them pass
  *   min(8) and would become the PRAGMA rekey value. Only the blank-cell
  *   symbol is targeted — visible So symbols (©, …) stay allowed.
+ * - Blank-rendering Lo letters: Hangul fillers U+115F/U+1160/U+3164/U+FFA0
+ *   (the enumerable blank cells outside the issue's named classes — same
+ *   hazard as U+2800, and U+3164 is a known obfuscation vector).
  * - `\p{Cc}` EXCEPT tab/LF/VT/FF/CR (U+0009-U+000D). Invisible controls
  *   (U+0000-U+0008, U+000E-U+001F, U+007F-U+009F) render as nothing but
  *   `.min()` counts them. Tab/LF/VT/FF/CR are the ECMAScript-whitespace
@@ -62,13 +71,12 @@ export const generatedRecoveryKeysSchema = z.object({
  *   trim() at the edges, so an all-whitespace-control key trims to "" and
  *   fails `.min()`.
  *
- * Deliberately ALLOWED: Zs separators (space, NBSP, …) — internal
- * whitespace renders as a visible gap and is the #221 "preserved, not
- * normalized" intent; pure-Zs strings cannot pass anyway (every Zs is
- * ECMAScript WhiteSpace → trim → "" → min() fails). Residual (out of the
- * #334 scope): blank Lo letters such as Hangul fillers (U+3164, …) still
- * pass — no realistic input path, and catching them would reject every CJK
- * ideograph.
+ * Deliberately ALLOWED: Zl/Zp line/paragraph separators (U+2028/U+2029)
+ * — they render as visible line breaks, consistent with the LF carve-out
+ * above. Residual (documented): unassigned codepoints / lone surrogates
+ * (Cn) still pass — programmatic/corrupt-paste only, no IME input path.
+ * Visible symbols (©, emoji, …) and letters (incl. CJK ideographs) pass
+ * as intended.
  *
  * The length guard defers to `.min(min)` for every too-short value so a
  * short+invisible key (e.g. 3 ZWSP against min(8)) yields a single
@@ -84,9 +92,11 @@ const keyFieldSchema = (min: number, label: string) =>
     .refine(
       (value) =>
         value.length < min ||
-        !/(?:[\p{Cf}\p{Mn}\u2800]|(?![\x09-\x0D])[\p{Cc}])/u.test(value),
+        !/(?:[\p{Cf}\p{Mn}\p{Zs}\u2800\u115F\u1160\u3164\uFFA0]|(?![\x09-\x0D])[\p{Cc}])/u.test(
+          value,
+        ),
       {
-        message: `${label} must not contain invisible characters (e.g. zero-width space, combining marks, control characters)`,
+        message: `${label} must not contain blank or invisible characters (e.g. spaces, zero-width space, combining marks, control characters)`,
       },
     )
 

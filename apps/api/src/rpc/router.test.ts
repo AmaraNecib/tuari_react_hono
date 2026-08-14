@@ -990,6 +990,11 @@ describe("RPC router", () => {
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "\u0001".repeat(8) }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // Issue case 4: a mid-string NBSP survives trim() (edge-only) — the Zs
+    // class is rejected anywhere, so it never becomes a rekey value.
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "a1b2\u00A0c3d4e5f6" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("rejects financially invalid payment input at the wire contract", async () => {

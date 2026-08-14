@@ -191,6 +191,12 @@ async function fetchRpcStatus(page: Page, procedure: string, input: unknown): Pr
     key: "\u0001\u0001",
   })
   expect(controlCharStatus).toBe(400)
+  // Issue case 4: a mid-string NBSP survives trim() (edge-only) — the Zs
+  // class is rejected anywhere, so a key with an embedded NBSP gets a 400.
+  const nbspStatus = await fetchRpcStatus(page, "consumeRecoveryKey", {
+    key: "a1b2\u00A0c3d4",
+  })
+  expect(nbspStatus).toBe(400)
 
   // Pool reflects all transitions after a reload (fresh fetch).
   await page.reload()
