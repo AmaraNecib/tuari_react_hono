@@ -995,6 +995,11 @@ describe("RPC router", () => {
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "a1b2\u00A0c3d4e5f6" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // Blank Hangul filler (U+3164) rides the same shared regex — rejected at
+    // the wire too, so it can never become a rekey value.
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "\u3164".repeat(8) }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("rejects financially invalid payment input at the wire contract", async () => {

@@ -1166,14 +1166,42 @@ describe("contracts", () => {
 
       // Blank-rendering Lo letters: Hangul fillers are the enumerable blank
       // cells outside the issue's named classes — same hazard as U+2800, and
-      // U+3164 is a known obfuscation vector.
+      // U+3164 is a known obfuscation vector. All four fillers are pinned so
+      // a silent regex typo cannot drop one.
       expect(() =>
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u3164".repeat(8) }),
       ).toThrow();
       expect(() =>
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u115F".repeat(8) }),
       ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u1160".repeat(8) }),
+      ).toThrow();
       expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a\uFFA0b" })).toThrow();
+
+      // Carve-out boundaries: U+0008 (BS) is the last rejected C0 below the
+      // tab/LF/VT/FF/CR carve-out; U+000E (SO) is the first rejected C0 above
+      // it; the C1 range U+0080-U+009F is rejected at the far end.
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u0008".repeat(8) }),
+      ).toThrow();
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a\u000Eb" })).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u0080".repeat(8) }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u009F".repeat(8) }),
+      ).toThrow();
+
+      // More Zs members than the pinned space/NBSP (ideographic space).
+      expect(() => consumeRecoveryKeyInputSchema.parse({ key: "a\u3000b" })).toThrow();
+
+      // Astral-plane Mn (surrogate pairs): 4x U+1D167 = UTF-16 length 8,
+      // reaching the refine — the same length-guard gaming surface #234
+      // pinned for astral Cf.
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u{1D167}".repeat(4) }),
+      ).toThrow();
 
       // Same gates on the other key fields (defense in depth, #234 precedent).
       expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\u2800\u2800" })).toThrow();
@@ -1214,6 +1242,19 @@ describe("contracts", () => {
       expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u2028c3d4" })).toEqual({
         key: "a1b2\u2028c3d4",
       });
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u2029c3d4" })).toEqual({
+        key: "a1b2\u2029c3d4",
+      });
+
+      // The full carve-out range: VT (U+000B) and FF (U+000C) are accepted
+      // like tab/LF/CR — pinning all five members so a carve-out narrowing
+      // trips a test.
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u000Bc3d4" })).toEqual({
+        key: "a1b2\u000Bc3d4",
+      });
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a1b2\u000Cc3d4" })).toEqual({
+        key: "a1b2\u000Cc3d4",
+      });
 
       // Edge whitespace is still trimmed first — the #221 test with NBSP +
       // line-separator padding around a valid key normalizes to the key.
@@ -1223,13 +1264,46 @@ describe("contracts", () => {
 
       // No over-reach: visible So symbols (©) and Lo letters (CJK) pass —
       // only U+2800 braille blank and the blank Hangul fillers are rejected,
-      // not the whole So/Lo classes.
+      // not the whole So/Lo classes. Visible spacing marks (Mc, e.g. U+0903)
+      // also pass — the Mn rejection must never broaden to \p{M}.
       expect(consumeRecoveryKeyInputSchema.parse({ key: "a\u00A9b" })).toEqual({
         key: "a\u00A9b",
       });
       expect(consumeRecoveryKeyInputSchema.parse({ key: "a\u4E2Db" })).toEqual({
         key: "a\u4E2Db",
       });
+      expect(consumeRecoveryKeyInputSchema.parse({ key: "a\u0903b" })).toEqual({
+        key: "a\u0903b",
+      });
+    });
+
+    it("defers to min() for too-short values of the widened classes (#334)", () => {
+      // The length guard must defer to .min(8) for the NEW classes too: a
+      // 7-visible + 1-rejected key (len 8) reaches the refine, while
+      // 6 + 1 = 7 yields a single too_small issue (the #234 pattern).
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "abcde12\u2800" }),
+      ).toThrow();
+      const result = changeDbKeyInputSchema.safeParse({
+        currentKey: "old-key",
+        newKey: "abcde1\u2800",
+      });
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("unreachable");
+      const newKeyIssues = result.error.issues.filter((issue) => issue.path[0] === "newKey");
+      expect(newKeyIssues).toHaveLength(1);
+      expect(newKeyIssues[0]?.code).toBe("too_small");
+
+      // Same deferral for Mn (3 combining marks < min(8)).
+      const mnResult = changeDbKeyInputSchema.safeParse({
+        currentKey: "old-key",
+        newKey: "\u0301\u0301\u0301",
+      });
+      expect(mnResult.success).toBe(false);
+      if (mnResult.success) throw new Error("unreachable");
+      expect(
+        mnResult.error.issues.filter((issue) => issue.path[0] === "newKey"),
+      ).toHaveLength(1);
     });
 
     it("validates the database encryption key change input", () => {
