@@ -1,0 +1,59 @@
+# Code Review — issue #307 (Web: WorkspaceDomain mapped type collapses to never)
+
+- **Head SHA**: `aaf25bb83446916ee0fdd3cd529c6929acdcf289`
+- **Base**: `origin/develop` @ `3c1449043bab7dd28cba4d13b1e072ae1f3999ca`
+- **Diff**: `git diff origin/develop...HEAD` — 3 files, +159/−7
+- **Commit**: `aaf25bb fix(web): WorkspaceDomain no longer collapses to never` (single commit, "Part of #307")
+- **Spec sources**: GitHub issue #307 (fetched via `gh issue view 307`); `.scratch/implementation/307-design.md`
+- **Standards sources**: `docs/engineering-workflow.md`, `AGENTS.md`; baseline Fowler smells
+
+---
+
+## Standards
+
+### Findings
+
+| # | Severity | Finding | Location |
+|---|---|---|---|
+| S1 | nit | **Duplicated Code (intentional, judgement call)** — the 20-key flat list is pinned in two places: the runtime flat-factory test (`factory.length <= 1` derived list) and the type-probe `toEqualTypeOf` union. This is the issue's explicit "single source of truth" mechanism, not production duplication: both lists are derived from / pinned against the same factory, and any factory change fails both tests, so they cannot silently drift. Documented repo standard (engineering-workflow: design doc) endorses the approach. | `workspace-keys.test.ts:66-85, 90-107` |
+| S2 | nit | **Unawaited async call in a test** — the compile-time-only negative probe invokes the real async `invalidateWorkspaceDomains` without `await` (floating promise). Executes against a mocked client; no crash, no flake, but not idiomatic. | `workspace-keys.test.ts:200-205` |
+| S3 | nit | **Theoretical arity edge** — a future factory with an optional second param `(userId, opts?)` would be included by the runtime predicate (`Function.length` 1 ⇒ `<= 1`) but excluded by `Parameters<F>["length"] extends 0 | 1` (tuple length `1 | 2`). No such factory exists; the pinned tests force an explicit decision on introduction. The `0 | 1` choice is still the right one — it has exact parity with the runtime predicate for every current factory, including the zero-param edge (documented in the fix table). | `workspace-keys.ts:91-93`; `307-design.md` |
+
+No hard violations of documented standards:
+
+- **Design doc before code** — ✅ `.scratch/implementation/307-design.md` present, committed with the change (AGENTS.md requires it committed).
+- **Commit hygiene** — ✅ exactly 3 files (design doc, source, test); no scratch/session noise; no `git add -A` residue.
+- **Module conventions** — ✅ derived-type + pinned-test pattern preserved; pure module untouched; `SNAPSHOT_BACKED_DOMAINS` correctly upgraded `ReadonlySet<string>` → `ReadonlySet<WorkspaceDomain>` with the stale workaround NOTE removed; comment explains the `0 | 1` predicate and its runtime twin.
+- **Minimality** — ✅ one-line predicate change + comment + type narrowing + tests; no speculative generality, no shotgun surgery (call sites audited, not edited).
+- **Lint** — ✅ `pnpm --filter @tuari/web lint` exit 0.
+
+## Spec
+
+### Findings
+
+| # | Severity | Finding | Location |
+|---|---|---|---|
+| P1 | none | **AC1 — probe compiles**: `const d: WorkspaceDomain = "roles"` ✅ verified (typecheck exit 0; positive probe in test file). | `workspace-keys.test.ts:90` |
+| P2 | none | **AC2 — non-flat key rejected at compile time**: ✅ verified. `@ts-expect-error` directive is *used* (unused ⇒ TS2578 ⇒ typecheck red). Independent in-memory `ts.createProgram` check confirmed post-fix rejection (`{ inventoryAsset: true }` → excess-property error) and pre-fix silent acceptance (`{}` accepts any literal) — so the probe genuinely guards the regression. | `workspace-keys.test.ts:200-205` |
+| P3 | none | **AC3 — full `test:web` green**: ✅ 58 files / 478 tests, exit 0. | — |
+| P4 | none | **"Keep the runtime flat-list test in sync with the type (single source of truth)"**: ✅ the runtime pinned list was already correct (20 flat keys incl. `workspaceSnapshot`); the type now resolves to exactly that union. No test-list edit was needed, and none was made. | `workspace-keys.ts:91-93`; `workspace-keys.test.ts:66-85` |
+| P5 | none | **"Fixing it will surface any call sites passing non-flat keys (expected: none — audit before closing)"**: ✅ audit complete — all 27 `invalidateWorkspaceDomains` calls in `workspace-mutations.ts` pass only flat keys (`employees, projects, warehouses, debtsSummary, debtsDetail, systemLog, roles, externalCounterparties`); whole-app typecheck confirms no valid call site errors. | `workspace-mutations.ts:253-915` |
+
+### Design-doc conformance (fix as specified)
+
+- Chosen predicate `Parameters<F>["length"] extends 0 | 1` matches the design doc's selected candidate (exact parity with `factory.length <= 1`, zero-param edge included). ✅
+- `SNAPSHOT_BACKED_DOMAINS` typed `ReadonlySet<WorkspaceDomain>`, stale NOTE removed. ✅
+- All three planned tests (positive probe, exact-union probe, negative `@ts-expect-error` probe) present. ✅
+- `workspaceSnapshot` joins the union — consistent with the runtime flat list; invalidation of it is harmless (snapshot key itself; not in `SNAPSHOT_BACKED_DOMAINS`, so no double-invalidation). ✅
+- No scope creep: no runtime behavior change, no API/contracts change, `packages/` untouched, no E2E (Standard tier, type-level fix — justified). ✅
+
+## Summary
+
+- **Standards axis**: 3 findings, all nits (intentional test-list duplication, floating promise, theoretical arity edge). Worst: none rise above nit level; all are documented or self-correcting.
+- **Spec axis**: 0 findings — all three acceptance criteria verified in code, the runtime/type single-source-of-truth is in lock-step, and the call-site audit expectation (no non-flat call sites) holds.
+
+## Residual risks
+
+- `WorkspaceDomain` now includes `workspaceSnapshot`; a future caller passing it invalidates the snapshot key directly — behavior-neutral, but a semantic broadening of the invalidation vocabulary. Documented in design doc.
+- The `0 | 1` predicate and `factory.length <= 1` diverge for a hypothetical optional-second-param factory; pinned tests catch it on introduction, but a dev must then reconcile type vs runtime list explicitly.
+- Historical red-green of the probes is documented (design doc claims TDD) but not provable from the single squashed commit; the probe *mechanism* was independently verified to be regression-sensitive.
