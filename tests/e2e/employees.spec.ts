@@ -4,21 +4,19 @@ import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 test.describe.configure({ mode: "serial" })
 
-// Deferred: employee batch creation is blocked by a pre-existing API/UI
-// mismatch — `employeesBatchCreate` only accepts the legacy roles
-// (worker/project_manager/warehouse_manager), but the RBAC consolidation
-// (Slice 3) removed those roles. Every role the UI offers
-// (admin/manager/viewer) is rejected with "يمكن اختيار الأدوار النظامية
-// فقط في هذه المرحلة.", so the create flow cannot complete through the UI.
-// Needs a separate workforce-domain fix before this spec can run.
-test.describe.skip("employees (deferred — role validation blocks creation)", () => {
+test.describe("employees", () => {
   test("admin creates an employee and the new record appears in the list", async ({ page }) => {
     await bootstrapOrSignIn(page)
 
     await page.getByRole("link", { name: "العاملون" }).first().click()
     await expect(page.getByRole("heading", { name: "العاملون" })).toBeVisible()
 
-    await page.getByRole("button", { name: "إضافة عامل" }).first().click()
+    // The header action is a navigation link (deep-linkable to /employees/create).
+    // The table's empty-state "add worker" BUTTON only renders when the list is
+    // empty, so relying on it makes this spec order-dependent: in the full suite
+    // (e.g. after employees-search seeds rows) it never appears. The header link
+    // is always present regardless of list state.
+    await page.getByRole("link", { name: "إضافة عامل" }).first().click()
     await expect(page.getByRole("heading", { name: /صفحة إضافة العاملين/ })).toBeVisible()
 
     const suffix = uniqueSuffix()
@@ -29,7 +27,10 @@ test.describe.skip("employees (deferred — role validation blocks creation)", (
     await page.getByLabel("الاسم الأول").first().fill(firstName)
     await page.getByLabel("اللقب").first().fill(lastName)
     await page.getByLabel("رقم الهاتف").first().fill(phone)
-    // دورة الأجر and قيمة الأجر are required — without them the form blocks on native validation.
+    // Select the seeded manager role explicitly (do not rely on the form default).
+    await page.getByLabel("الدور").selectOption({ label: "مدير عمليات" })
+    // Salary period + amount are conditionally required as a pair — fill both
+    // so the form's validation accepts the submission.
     await page.getByLabel("دورية الأجر").selectOption({ label: "شهري" })
     await page.getByLabel(/قيمة الأجر/).fill("10000")
 
@@ -45,24 +46,22 @@ test.describe.skip("employees (deferred — role validation blocks creation)", (
     await expect(page.getByRole("heading", { name: "العاملون" })).toBeVisible()
 
     // Click the first employee in the list to view their details
-    await page.getByRole("button", { name: /عرض التفاصيل/ }).first().click()
+    await page.getByRole("button", { name: /^عرض$/ }).first().click()
 
-    // Wait for the employee detail page to load
-    await expect(page.getByRole("heading", { name: /تفاصيل العامل/ })).toBeVisible()
+    // Wait for the employee detail page to load (heading is the employee name)
+    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible()
 
-    // Find and click the edit button
-    const editButton = page.getByRole("button", { name: /تعديل/ }).first()
-    if (await editButton.isVisible()) {
-      await editButton.click()
+    // Find and click the edit link
+    await page.getByRole("link", { name: /^تعديل$/ }).first().click()
+    await expect(page.getByRole("heading", { name: /تعديل عامل/ })).toBeVisible()
 
-      // Update employee notes
-      const notesField = page.getByLabel(/الملاحظات/).first()
-      if (await notesField.isVisible()) {
-        const updatedNotes = `تحديث-${uniqueSuffix()}`
-        await notesField.fill(updatedNotes)
-        await page.getByRole("button", { name: /حفظ/ }).first().click()
-        await expect(page.getByText("تم حفظ التغييرات")).toBeVisible({ timeout: 5_000 })
-      }
-    }
+    // Update employee notes — the notes field is always present on the edit page.
+    const notesField = page.getByLabel(/ملاحظات/).first()
+    await expect(notesField).toBeVisible()
+    const updatedNotes = `تحديث-${uniqueSuffix()}`
+    await notesField.fill(updatedNotes)
+    await page.getByRole("button", { name: /حفظ/ }).first().click()
+    // Save navigates back to the details page where the updated notes render
+    await expect(page.getByText(updatedNotes)).toBeVisible({ timeout: 10_000 })
   })
 })

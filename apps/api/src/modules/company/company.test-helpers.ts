@@ -2,7 +2,8 @@ import Database from "better-sqlite3";
 
 import { SqliteCompanyRepository } from "./company.repository";
 import { CompanyService } from "./company.service";
-import { SYSTEM_ROLE_KEYS, type MutationAuditContext } from "./company.types";
+import type { WorkspaceAdminAuthorizer } from "./company.helpers";
+import { LEGACY_WORKFORCE_ROLE_KEYS, type MutationAuditContext } from "./company.types";
 
 const schemaStatements = [
   `CREATE TABLE "user" (
@@ -265,8 +266,8 @@ const schemaStatements = [
 export function createCompanyHarnessTracker() {
   const harnesses: Array<ReturnType<typeof createInMemoryCompanyHarness>> = [];
 
-  const createHarness = () => {
-    const harness = createInMemoryCompanyHarness();
+  const createHarness = (options?: { workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer }) => {
+    const harness = createInMemoryCompanyHarness(options);
     harnesses.push(harness);
     return harness;
   };
@@ -289,7 +290,9 @@ export function createAuditContext(overrides?: Partial<MutationAuditContext>) {
   };
 }
 
-export function createInMemoryCompanyHarness() {
+export function createInMemoryCompanyHarness(options?: {
+  workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer;
+}) {
   const database = new Database(":memory:");
   database.pragma("foreign_keys = ON");
 
@@ -305,10 +308,10 @@ export function createInMemoryCompanyHarness() {
   const insertRole = database.prepare(
     'INSERT INTO "role" (id, key, name, description, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
   );
-  insertRole.run(workerRoleId, SYSTEM_ROLE_KEYS.worker, "عامل", "الدور التنفيذي الأساسي للعمال الميدانيين", 1, now, now);
+  insertRole.run(workerRoleId, LEGACY_WORKFORCE_ROLE_KEYS.worker, "عامل", "الدور التنفيذي الأساسي للعمال الميدانيين", 1, now, now);
   insertRole.run(
     projectManagerRoleId,
-    SYSTEM_ROLE_KEYS.projectManager,
+    LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
     "مدير مشروع",
     "مسؤول عن متابعة العمال والمشاريع الميدانية",
     1,
@@ -317,7 +320,7 @@ export function createInMemoryCompanyHarness() {
   );
   insertRole.run(
     warehouseManagerRoleId,
-    SYSTEM_ROLE_KEYS.warehouseManager,
+    LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager,
     "مدير مخزن",
     "مسؤول عن تشغيل وإدارة المستودعات",
     1,
@@ -326,7 +329,7 @@ export function createInMemoryCompanyHarness() {
   );
 
   const repository = new SqliteCompanyRepository(database);
-  const service = new CompanyService(repository);
+  const service = new CompanyService(repository, options?.workspaceAdminAuthorizer);
 
   return {
     database,

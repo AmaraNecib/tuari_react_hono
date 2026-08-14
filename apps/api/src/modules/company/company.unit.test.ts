@@ -37,7 +37,7 @@ import {
   requireRole,
   requireWarehouse,
 } from "./company.entity-resolvers";
-import { SYSTEM_ROLE_KEYS } from "./company.types";
+import { LEGACY_WORKFORCE_ROLE_KEYS } from "./company.types";
 import { createCompanyRepository } from "./company.repository";
 
 describe("CompanyError / toFailureResult", () => {
@@ -202,7 +202,7 @@ describe("company.entity-resolvers", () => {
       status: "ACTIVE",
     }).item;
     expect(() =>
-      requireEmployeeWithRoleKey(repository, employee.id, SYSTEM_ROLE_KEYS.projectManager, "roleId"),
+      requireEmployeeWithRoleKey(repository, employee.id, LEGACY_WORKFORCE_ROLE_KEYS.projectManager, "roleId"),
     ).toThrowError(CompanyError);
   });
 
@@ -289,8 +289,8 @@ describe("company.entity-resolvers", () => {
           repository,
           repository,
           worker,
-          SYSTEM_ROLE_KEYS.worker,
-          SYSTEM_ROLE_KEYS.projectManager,
+          LEGACY_WORKFORCE_ROLE_KEYS.worker,
+          LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
           "ACTIVE",
         ),
       ).toThrowError(CompanyError);
@@ -299,8 +299,8 @@ describe("company.entity-resolvers", () => {
           repository,
           repository,
           worker,
-          SYSTEM_ROLE_KEYS.worker,
-          SYSTEM_ROLE_KEYS.worker,
+          LEGACY_WORKFORCE_ROLE_KEYS.worker,
+          LEGACY_WORKFORCE_ROLE_KEYS.worker,
           "INACTIVE",
         ),
       ).toThrowError(CompanyError);
@@ -321,8 +321,8 @@ describe("company.entity-resolvers", () => {
           repository,
           repository,
           manager,
-          SYSTEM_ROLE_KEYS.projectManager,
-          SYSTEM_ROLE_KEYS.worker,
+          LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
+          LEGACY_WORKFORCE_ROLE_KEYS.worker,
           "ACTIVE",
         ),
       ).toThrowError(CompanyError);
@@ -343,8 +343,8 @@ describe("company.entity-resolvers", () => {
           repository,
           repository,
           manager,
-          SYSTEM_ROLE_KEYS.warehouseManager,
-          SYSTEM_ROLE_KEYS.worker,
+          LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager,
+          LEGACY_WORKFORCE_ROLE_KEYS.worker,
           "ACTIVE",
         ),
       ).toThrowError(CompanyError);
@@ -364,8 +364,8 @@ describe("company.entity-resolvers", () => {
           repository,
           repository,
           manager,
-          SYSTEM_ROLE_KEYS.projectManager,
-          SYSTEM_ROLE_KEYS.projectManager,
+          LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
+          LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
           "INACTIVE",
         ),
       ).not.toThrow();
@@ -610,8 +610,8 @@ describe("company.entity-resolvers", () => {
           repository,
           repository,
           whManager,
-          SYSTEM_ROLE_KEYS.warehouseManager,
-          SYSTEM_ROLE_KEYS.worker,
+          LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager,
+          LEGACY_WORKFORCE_ROLE_KEYS.worker,
           "ACTIVE",
         ),
       ).toThrowError(CompanyError);
@@ -631,8 +631,8 @@ describe("company.entity-resolvers", () => {
           repository,
           repository,
           whManager,
-          SYSTEM_ROLE_KEYS.warehouseManager,
-          SYSTEM_ROLE_KEYS.warehouseManager,
+          LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager,
+          LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager,
           "INACTIVE",
         ),
       ).not.toThrow();

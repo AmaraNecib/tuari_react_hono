@@ -12,7 +12,12 @@
  */
 
 import { CompanyError } from "./company.errors";
-import { SYSTEM_ROLE_KEYS } from "./company.types";
+import type { WorkspaceAdminAuthorizer } from "./company.helpers";
+import {
+  ASSIGNABLE_ROLE_KEYS,
+  isAcceptedEmployeeRoleKey,
+  LEGACY_WORKFORCE_ROLE_KEYS,
+} from "./company.types";
 import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
 import type { FinanceRepository } from "./finance.repository";
@@ -28,23 +33,66 @@ export function requireRole(repository: WorkforceRepository, roleId: string) {
   return role;
 }
 
+/**
+ * Shared caller-facing message for the admin-role assignment privilege gate.
+ * Kept in one place so the single create/update guard and the batch-create
+ * field error cannot drift apart.
+ */
+export const ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE =
+  "تخصيص دور الإدارة متاح فقط لحساب الإدارة الرئيسي.";
+
+/**
+ * Admin-role assignment privilege gate (Greptile P1 fix, tracked via #340).
+ *
+ * Assigning the `admin` role to an employee mints a record that, once
+ * permission resolution links users to employees by phone, grants the
+ * matching account every admin permission. Only a caller that already holds
+ * the admin-level grant — the bootstrap owner, per `WorkspaceAdminAuthorizer`
+ * — may assign it. Any other caller (e.g. a `manager` holding
+ * `employees:create`) is rejected with UNAUTHORIZED, closing the
+ * privilege-escalation path where a lesser grant mints an admin.
+ *
+ * Fail-closed: when no authorizer is configured or the actor is unknown,
+ * the caller's grant cannot be proven, so the admin assignment is rejected.
+ * `manager` / `viewer` and the legacy workforce keys are unaffected.
+ */
+export function requireAdminAssignmentGrant(
+  authorizer: WorkspaceAdminAuthorizer | undefined,
+  actorUserId: string | null,
+  roleKey: string,
+  field: string,
+): void {
+  if (roleKey !== ASSIGNABLE_ROLE_KEYS.admin) {
+    return;
+  }
+
+  const holdsAdminGrant =
+    authorizer !== undefined &&
+    actorUserId !== null &&
+    authorizer.isBootstrapOwner(actorUserId);
+
+  if (!holdsAdminGrant) {
+    throw new CompanyError("UNAUTHORIZED", ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE, [
+      { field, message: ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE },
+    ]);
+  }
+}
+
 export function requireAssignableEmployeeRole(
   repository: WorkforceRepository,
   roleId: string,
   field: string,
+  caller?: { authorizer: WorkspaceAdminAuthorizer | undefined; actorUserId: string | null },
 ) {
   const role = requireRole(repository, roleId);
 
-  if (
-    !role.isSystem ||
-    !Object.values(SYSTEM_ROLE_KEYS).includes(
-      role.key as (typeof SYSTEM_ROLE_KEYS)[keyof typeof SYSTEM_ROLE_KEYS],
-    )
-  ) {
+  if (!role.isSystem || !isAcceptedEmployeeRoleKey(role.key)) {
     throw new CompanyError("BUSINESS_RULE", "يمكن اختيار الأدوار النظامية فقط في هذه المرحلة.", [
       { field, message: "يمكن اختيار الأدوار النظامية فقط في هذه المرحلة." },
     ]);
   }
+
+  requireAdminAssignmentGrant(caller?.authorizer, caller?.actorUserId ?? null, role.key, field);
 
   return role;
 }
@@ -87,7 +135,7 @@ export function requireActiveEmployee<T extends { status: string }>(employee: T,
 }
 
 export function requireEmployeeWorker(repository: WorkforceRepository, id: string, field: string) {
-  return requireEmployeeWithRoleKey(repository, id, SYSTEM_ROLE_KEYS.worker, field);
+  return requireEmployeeWithRoleKey(repository, id, LEGACY_WORKFORCE_ROLE_KEYS.worker, field);
 }
 
 export function requireProject(repository: OperationsRepository, projectId: string) {
@@ -151,8 +199,8 @@ export function ensureEmployeeTransitionAllowed(
   );
 
   if (
-    currentRoleKey === SYSTEM_ROLE_KEYS.worker &&
-    (nextRoleKey !== SYSTEM_ROLE_KEYS.worker || nextStatus !== "ACTIVE") &&
+    currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.worker &&
+    (nextRoleKey !== LEGACY_WORKFORCE_ROLE_KEYS.worker || nextStatus !== "ACTIVE") &&
     (hasActiveManagerAssignment || hasActiveProjectAssignment || hasActiveWarehouseAssignment)
   ) {
     throw new CompanyError(
@@ -168,8 +216,8 @@ export function ensureEmployeeTransitionAllowed(
   }
 
   if (
-    currentRoleKey === SYSTEM_ROLE_KEYS.projectManager &&
-    (nextRoleKey !== SYSTEM_ROLE_KEYS.projectManager || nextStatus !== "ACTIVE")
+    currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.projectManager &&
+    (nextRoleKey !== LEGACY_WORKFORCE_ROLE_KEYS.projectManager || nextStatus !== "ACTIVE")
   ) {
     const hasActiveManagedProjects =
       operationsRepo.listProjects({ managerId: employee.id, status: "ACTIVE" }).length > 0;
@@ -197,8 +245,8 @@ export function ensureEmployeeTransitionAllowed(
   }
 
   if (
-    currentRoleKey === SYSTEM_ROLE_KEYS.warehouseManager &&
-    (nextRoleKey !== SYSTEM_ROLE_KEYS.warehouseManager || nextStatus !== "ACTIVE")
+    currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager &&
+    (nextRoleKey !== LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager || nextStatus !== "ACTIVE")
   ) {
     const hasActiveWarehouses =
       operationsRepo.listWarehouses({ managerId: employee.id, status: "ACTIVE" }).length > 0;
@@ -242,7 +290,7 @@ export function ensureProjectTransitionAllowed(
       return false;
     }
 
-    return workforceRepo.getRoleById(employee.roleId)?.key === SYSTEM_ROLE_KEYS.worker;
+    return workforceRepo.getRoleById(employee.roleId)?.key === LEGACY_WORKFORCE_ROLE_KEYS.worker;
   });
 
   const managerWillChange = nextManagerId !== undefined && nextManagerId !== currentManagerId;
@@ -337,7 +385,7 @@ export function listActiveWorkerIdsForProject(
       }
 
       const employeeRole = workforceRepo.getRoleById(employee.roleId);
-      if (employeeRole?.key !== SYSTEM_ROLE_KEYS.worker) {
+      if (employeeRole?.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker) {
         return false;
       }
 

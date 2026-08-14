@@ -39,7 +39,8 @@ import { WorkspaceMutationContext } from "./workspace-mutation-context";
 import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
 import {
-  SYSTEM_ROLE_KEYS,
+  isAcceptedEmployeeRoleKey,
+  ASSIGNABLE_ROLE_KEYS,
   type EmployeeListFilters,
   type EmployeeSalaryPaymentListFilters,
   type EmployeeStateHistoryListFilters,
@@ -47,9 +48,11 @@ import {
   type MutationAuditContext,
   type ProjectManagerOwnershipHistoryListFilters,
   type WarehouseManagerOwnershipHistoryListFilters,
+  LEGACY_WORKFORCE_ROLE_KEYS,
 } from "./company.types";
 import { normalizeAlgeriaTimestamp } from "./company-time";
 import {
+  ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE,
   ensureEmployeeTransitionAllowed,
   ensureProjectTransitionAllowed,
   ensureWarehouseTransitionAllowed,
@@ -140,7 +143,10 @@ export class WorkforceService {
     return this.mutation.withTransaction(() => {
       const audit = this.mutation.createMutationAuditContext(auditContext);
 
-      requireAssignableEmployeeRole(this.repository, input.roleId, "roleId");
+      requireAssignableEmployeeRole(this.repository, input.roleId, "roleId", {
+        authorizer: this.mutation.adminAuthorizer,
+        actorUserId: audit.actorUserId,
+      });
 
       if ((input.salaryAmountDzd ?? null) !== null && !input.salaryPeriod) {
         throw new CompanyError("VALIDATION", "يجب اختيار دورية الأجر مع قيمة الأجر.", [
@@ -154,7 +160,7 @@ export class WorkforceService {
         ]);
       }
 
-      if (this.repository.getEmployeeByPhone(input.phone)) {
+      if (this.repository.getEmployeeByPhone(input.phone.trim())) {
         throw new CompanyError("CONFLICT", "رقم هاتف العامل مستخدم بالفعل.", [
           { field: "phone", message: "رقم هاتف العامل مستخدم بالفعل." },
         ]);
@@ -184,6 +190,14 @@ export class WorkforceService {
 
       const fieldErrors: Array<{ field: string; message: string }> = [];
       const seenPhones = new Set<string>();
+      // Admin-role minting privilege gate (Greptile P1, tracked via #340): a
+      // batch row requesting the `admin` role is only permitted when the
+      // caller provably holds the admin-level grant (bootstrap owner).
+      const holdsAdminGrant =
+        this.mutation.adminAuthorizer !== undefined &&
+        audit.actorUserId !== null &&
+        this.mutation.adminAuthorizer.isBootstrapOwner(audit.actorUserId);
+      let adminGrantViolation: { field: string; message: string } | null = null;
       const normalizedEmployees: Array<{
         firstName: string;
         lastName: string;
@@ -216,16 +230,16 @@ export class WorkforceService {
             field: buildBatchField(index, "roleId"),
             message: "تعذر العثور على الدور المطلوب.",
           });
-        } else if (
-          !role.isSystem ||
-          !Object.values(SYSTEM_ROLE_KEYS).includes(
-            role.key as (typeof SYSTEM_ROLE_KEYS)[keyof typeof SYSTEM_ROLE_KEYS],
-          )
-        ) {
+        } else if (!role.isSystem || !isAcceptedEmployeeRoleKey(role.key)) {
           fieldErrors.push({
             field: buildBatchField(index, "roleId"),
             message: "يمكن اختيار الأدوار النظامية فقط في هذه المرحلة.",
           });
+        } else if (role.key === ASSIGNABLE_ROLE_KEYS.admin && !holdsAdminGrant) {
+          adminGrantViolation ??= {
+            field: buildBatchField(index, "roleId"),
+            message: ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE,
+          };
         }
 
         if (seenPhones.has(employee.phone)) {
@@ -258,7 +272,7 @@ export class WorkforceService {
           });
         }
 
-        if (role?.key !== SYSTEM_ROLE_KEYS.worker) {
+        if (role?.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker) {
           if (employee.managerId) {
             fieldErrors.push({
               field: buildBatchField(index, "managerId"),
@@ -314,7 +328,7 @@ export class WorkforceService {
 
         const managerRole = this.repository.getRoleById(manager.roleId);
 
-        if (managerRole?.key !== SYSTEM_ROLE_KEYS.projectManager) {
+        if (managerRole?.key !== LEGACY_WORKFORCE_ROLE_KEYS.projectManager) {
           fieldErrors.push({
             field: buildBatchField(index, "managerId"),
             message: "المدير المختار يجب أن يحمل دور مدير مشروع نشط.",
@@ -357,6 +371,12 @@ export class WorkforceService {
         }
       });
 
+      if (adminGrantViolation) {
+        throw new CompanyError("UNAUTHORIZED", ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE, [
+          adminGrantViolation,
+        ]);
+      }
+
       if (fieldErrors.length > 0) {
         throw new CompanyError(
           "VALIDATION",
@@ -378,7 +398,10 @@ export class WorkforceService {
       const current = requireEmployee(this.repository, input.id);
       const currentRole = requireRole(this.repository, current.roleId);
       const nextRole = input.roleId
-        ? requireAssignableEmployeeRole(this.repository, input.roleId, "roleId")
+        ? requireAssignableEmployeeRole(this.repository, input.roleId, "roleId", {
+            authorizer: this.mutation.adminAuthorizer,
+            actorUserId: audit.actorUserId,
+          })
         : currentRole;
       const nextStatus = input.status ?? current.status;
 
@@ -392,8 +415,8 @@ export class WorkforceService {
       );
 
       if (
-        currentRole.key !== SYSTEM_ROLE_KEYS.worker &&
-        nextRole.key === SYSTEM_ROLE_KEYS.worker &&
+        currentRole.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker &&
+        nextRole.key === LEGACY_WORKFORCE_ROLE_KEYS.worker &&
         nextStatus === "ACTIVE"
       ) {
         throw new CompanyError(
@@ -581,13 +604,13 @@ export class WorkforceService {
       const worker = requireEmployeeWithRoleKey(
         this.repository,
         input.workerId,
-        SYSTEM_ROLE_KEYS.worker,
+        LEGACY_WORKFORCE_ROLE_KEYS.worker,
         "workerId",
       );
       const manager = requireEmployeeWithRoleKey(
         this.repository,
         input.managerId,
-        SYSTEM_ROLE_KEYS.projectManager,
+        LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
         "managerId",
       );
 
@@ -671,7 +694,7 @@ export class WorkforceService {
       throw new CompanyError("BUSINESS_RULE", "لا يمكن تعديل مكان العمل إلا لعامل نشط.");
     }
 
-    if (role.key !== SYSTEM_ROLE_KEYS.worker) {
+    if (role.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker) {
       throw new CompanyError(
         "BUSINESS_RULE",
         "تغيير مكان العمل المباشر متاح للعمال فقط من هذه العملية.",
@@ -688,7 +711,7 @@ export class WorkforceService {
       const manager = requireEmployeeWithRoleKey(
         this.repository,
         input.managerId,
-        SYSTEM_ROLE_KEYS.projectManager,
+        LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
         "managerId",
       );
       requireActiveEmployee(manager, "managerId");
@@ -753,7 +776,7 @@ export class WorkforceService {
     const employee = requireEmployeeWithRoleKey(
       this.repository,
       input.employeeId,
-      SYSTEM_ROLE_KEYS.projectManager,
+      LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
       "employeeId",
     );
     requireActiveEmployee(employee, "employeeId");
@@ -814,7 +837,7 @@ export class WorkforceService {
     const employee = requireEmployeeWithRoleKey(
       this.repository,
       input.employeeId,
-      SYSTEM_ROLE_KEYS.warehouseManager,
+      LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager,
       "employeeId",
     );
     requireActiveEmployee(employee, "employeeId");

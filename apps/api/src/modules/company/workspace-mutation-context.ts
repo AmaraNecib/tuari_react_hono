@@ -23,6 +23,16 @@ export class WorkspaceMutationContext {
     private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
   ) {}
 
+  /**
+   * The configured workspace-admin authorizer, if any. The workforce service
+   * hands it to the admin-role assignment guard so the privilege boundary
+   * (only the bootstrap owner may mint an `admin` employee) is enforced at
+   * the role-validation point, independently of the mutation-wide gate.
+   */
+  get adminAuthorizer(): WorkspaceAdminAuthorizer | undefined {
+    return this.workspaceAdminAuthorizer;
+  }
+
   /** Validates and normalizes the audit context. Throws if a non-admin tries to mutate when the authorizer is configured. */
   createMutationAuditContext(
     auditContext?: RawAuditContext,

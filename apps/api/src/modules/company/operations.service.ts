@@ -32,7 +32,7 @@ import { WorkspaceMutationContext } from "./workspace-mutation-context";
 import type { OperationsRepository } from "./operations.repository";
 import type { WorkforceRepository } from "./workforce.repository";
 import {
-  SYSTEM_ROLE_KEYS,
+  LEGACY_WORKFORCE_ROLE_KEYS,
   type MutationAuditContext,
   type ProjectAssignmentListFilters,
   type ProjectListFilters,
@@ -78,7 +78,7 @@ export class OperationsService {
           requireEmployeeWithRoleKey(
             this.workforceRepo,
             input.managerId,
-            SYSTEM_ROLE_KEYS.projectManager,
+            LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
             "managerId",
           ),
           "managerId",
@@ -122,7 +122,7 @@ export class OperationsService {
           requireEmployeeWithRoleKey(
             this.workforceRepo,
             input.managerId,
-            SYSTEM_ROLE_KEYS.projectManager,
+            LEGACY_WORKFORCE_ROLE_KEYS.projectManager,
             "managerId",
           ),
           "managerId",
@@ -174,7 +174,7 @@ export class OperationsService {
           requireEmployeeWithRoleKey(
             this.workforceRepo,
             input.managerId,
-            SYSTEM_ROLE_KEYS.warehouseManager,
+            LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager,
             "managerId",
           ),
           "managerId",
@@ -215,7 +215,7 @@ export class OperationsService {
           requireEmployeeWithRoleKey(
             this.workforceRepo,
             input.managerId,
-            SYSTEM_ROLE_KEYS.warehouseManager,
+            LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager,
             "managerId",
           ),
           "managerId",
@@ -276,9 +276,9 @@ export class OperationsService {
         requireActiveEmployee(employee, "employeeId");
 
         if (
-          employeeRole.key !== SYSTEM_ROLE_KEYS.worker &&
-          employeeRole.key !== SYSTEM_ROLE_KEYS.projectManager &&
-          employeeRole.key !== SYSTEM_ROLE_KEYS.warehouseManager
+          employeeRole.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker &&
+          employeeRole.key !== LEGACY_WORKFORCE_ROLE_KEYS.projectManager &&
+          employeeRole.key !== LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager
         ) {
           throw new CompanyError("BUSINESS_RULE", "لا يمكن ربط هذا الدور بموقع عمل نشط.", [
             { field: "employeeId", message: "لا يمكن ربط هذا الدور بموقع عمل نشط." },
@@ -404,9 +404,9 @@ export class OperationsService {
         requireActiveEmployee(employee, "employeeId");
 
         if (
-          employeeRole.key !== SYSTEM_ROLE_KEYS.worker &&
-          employeeRole.key !== SYSTEM_ROLE_KEYS.projectManager &&
-          employeeRole.key !== SYSTEM_ROLE_KEYS.warehouseManager
+          employeeRole.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker &&
+          employeeRole.key !== LEGACY_WORKFORCE_ROLE_KEYS.projectManager &&
+          employeeRole.key !== LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager
         ) {
           throw new CompanyError("BUSINESS_RULE", "لا يمكن ربط هذا الدور بموقع عمل نشط.", [
             { field: "employeeId", message: "لا يمكن ربط هذا الدور بموقع عمل نشط." },

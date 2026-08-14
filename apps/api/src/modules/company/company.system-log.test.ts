@@ -4,7 +4,7 @@ import Database from "better-sqlite3";
 import { schemaStatements as fullSchema } from "../../infrastructure/database/schema-definitions";
 import { SqliteCompanyRepository } from "./adapters/sqlite-company.repository";
 import { CompanyService } from "./company.service";
-import { SYSTEM_ROLE_KEYS } from "./company.types";
+import { LEGACY_WORKFORCE_ROLE_KEYS } from "./company.types";
 
 /**
  * System log aggregation tests. Uses the FULL schema (including inventory
@@ -34,9 +34,9 @@ describe("buildCompanySystemLog coverage", () => {
       projectManager: crypto.randomUUID(),
       warehouseManager: crypto.randomUUID(),
     };
-    insertRole.run(roleIds.worker, SYSTEM_ROLE_KEYS.worker, "عامل", now, now);
-    insertRole.run(roleIds.projectManager, SYSTEM_ROLE_KEYS.projectManager, "مدير مشروع", now, now);
-    insertRole.run(roleIds.warehouseManager, SYSTEM_ROLE_KEYS.warehouseManager, "مدير مخزن", now, now);
+    insertRole.run(roleIds.worker, LEGACY_WORKFORCE_ROLE_KEYS.worker, "عامل", now, now);
+    insertRole.run(roleIds.projectManager, LEGACY_WORKFORCE_ROLE_KEYS.projectManager, "مدير مشروع", now, now);
+    insertRole.run(roleIds.warehouseManager, LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager, "مدير مخزن", now, now);
 
     repo = new SqliteCompanyRepository(db);
     service = new CompanyService(repo);
