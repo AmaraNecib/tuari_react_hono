@@ -281,6 +281,8 @@ describe("Plain sync writers tripwire (issue #348)", () => {
    * Hold the connection with a foreign async flow (the account bcrypt
    * window, issue #322), assert `action` throws {@link FifoLockBusyError},
    * then release the holder so the same write can succeed afterwards.
+   * The release always runs (finally) so a failed assertion never dangles
+   * the holder.
    */
   async function expectBusyWhileHeld(action: () => unknown): Promise<void> {
     let release!: () => void;
@@ -292,10 +294,34 @@ describe("Plain sync writers tripwire (issue #348)", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(action).toThrow(FifoLockBusyError);
+    try {
+      expect(action).toThrow(FifoLockBusyError);
+    } finally {
+      release();
+      await holder;
+    }
+  }
 
-    release();
-    await holder;
+  /**
+   * Same as {@link expectBusyWhileHeld} for async writers: the busy throw
+   * surfaces as a rejection, so the caller awaits `rejects.toThrow`.
+   */
+  async function expectRejectsBusyWhileHeld(action: () => Promise<unknown>): Promise<void> {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holder = lock.run(async () => {
+      await gate;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    try {
+      await expect(action()).rejects.toThrow(FifoLockBusyError);
+    } finally {
+      release();
+      await holder;
+    }
   }
 
   /** Insert a minimal invoice row so invoice writers have a target row. */
@@ -328,6 +354,32 @@ describe("Plain sync writers tripwire (issue #348)", () => {
     const created = repo.upsertEmployee(employee);
     expect(created.firstName).toBe("Karim");
     expect(repo.getEmployeeByPhone("0777123456")?.id).toBe("emp-348-upsert");
+    // The nested insertStateHistory wrap (private helper) also committed:
+    // exactly one CREATED history row, no SAVEPOINT regression.
+    const history = db
+      .prepare(`SELECT COUNT(*) AS n FROM "employee_state_history" WHERE "employee_id" = ?`)
+      .get("emp-348-upsert") as { n: number };
+    expect(history.n).toBe(1);
+  });
+
+  it("a busy upsert attempt leaves no trace once the holder releases", async () => {
+    const employee = {
+      id: "emp-348-no-trace",
+      firstName: "No",
+      lastName: "Trace",
+      phone: "0777999999",
+      roleId: "role-worker",
+      status: "ACTIVE" as const,
+    };
+    await expectBusyWhileHeld(() => repo.upsertEmployee(employee));
+    // The busy throw fired before any statement executed: no employee and
+    // no state-history row were absorbed into (or autocommitted behind)
+    // the foreign flow.
+    expect(repo.getEmployeeByPhone("0777999999")).toBeNull();
+    const history = db.prepare(`SELECT COUNT(*) AS n FROM "employee_state_history"`).get() as {
+      n: number;
+    };
+    expect(history.n).toBe(0);
   });
 
   it("createDebtAccount throws busy while another flow holds the connection", async () => {
@@ -435,6 +487,116 @@ describe("Plain sync writers tripwire (issue #348)", () => {
     expect(created.managerId).toBe(manager.id);
   });
 
+  it("createExternalCounterparty throws busy while another flow holds the connection", async () => {
+    await expectBusyWhileHeld(() =>
+      repo.createExternalCounterparty({ fullName: "External Co", phoneNumber: "0555111222" }),
+    );
+    const counterparty = repo.createExternalCounterparty({
+      fullName: "External Co",
+      phoneNumber: "0555111222",
+    });
+    expect(counterparty.fullName).toBe("External Co");
+  });
+
+  it("updateDebtAccount throws busy while another flow holds the connection", async () => {
+    const worker = repo.createEmployee({
+      firstName: "Update",
+      lastName: "Debt",
+      phone: "0555000008",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    const account = repo.createDebtAccount({
+      partyType: "INTERNAL_WORKER",
+      workerId: worker.id,
+      status: "OPEN",
+      direction: "PAYABLE",
+      currentBalance: 0,
+    });
+    await expectBusyWhileHeld(() =>
+      repo.updateDebtAccount({ id: account.id, status: "OPEN", currentBalance: 50 }),
+    );
+    const updated = repo.updateDebtAccount({ id: account.id, status: "OPEN", currentBalance: 50 });
+    expect(updated?.currentBalance).toBe(50);
+  });
+
+  it("updateDebtEntryBalanceAfter throws busy while another flow holds the connection", async () => {
+    const worker = repo.createEmployee({
+      firstName: "Balance",
+      lastName: "After",
+      phone: "0555000009",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    const account = repo.createDebtAccount({
+      partyType: "INTERNAL_WORKER",
+      workerId: worker.id,
+      status: "OPEN",
+      direction: "PAYABLE",
+      currentBalance: 0,
+    });
+    const entry = repo.createDebtEntry({
+      debtAccountId: account.id,
+      entryType: "ADJUSTMENT",
+      signedAmountDzd: 100,
+      entryDate: "2026-03-01T00:00:00.000Z",
+      balanceAfterDzd: 100,
+    });
+    await expectBusyWhileHeld(() => repo.updateDebtEntryBalanceAfter(entry.id, 200));
+    repo.updateDebtEntryBalanceAfter(entry.id, 200);
+    expect(repo.getDebtEntryById(entry.id)?.balanceAfterDzd).toBe(200);
+  });
+
+  it("endManagerAssignment throws busy while another flow holds the connection", async () => {
+    const worker = repo.createEmployee({
+      firstName: "End",
+      lastName: "Assign",
+      phone: "0555000010",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    const manager = repo.createEmployee({
+      firstName: "End",
+      lastName: "Manager",
+      phone: "0555000011",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    const assignment = repo.createManagerAssignment({
+      workerId: worker.id,
+      managerId: manager.id,
+      status: "ACTIVE",
+      startDate: "2026-03-01T00:00:00.000Z",
+      endDate: null,
+      notes: null,
+    });
+    await expectBusyWhileHeld(() =>
+      repo.endManagerAssignment({
+        id: assignment.id,
+        endDate: "2026-04-01T00:00:00.000Z",
+        notes: null,
+      }),
+    );
+    const ended = repo.endManagerAssignment({
+      id: assignment.id,
+      endDate: "2026-04-01T00:00:00.000Z",
+      notes: null,
+    });
+    expect(ended?.status).toBe("ENDED");
+  });
+
+  it("a newly-wrapped writer still joins our own open run across a real yield", async () => {
+    // The join-outer half of the tripwire: inside lock.run (the payment /
+    // invoice-debt pattern), a wrapped sync writer must execute immediately
+    // and commit with the outer flow — not throw busy.
+    const role = await lock.run(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return repo.createRole({ key: "joiner", name: "Joiner" });
+    });
+    expect(role.key).toBe("joiner");
+    expect(repo.getRoleByKey("joiner")?.id).toBe(role.id);
+  });
+
   it("createSalaryPayment throws busy while another flow holds the connection", async () => {
     const worker = repo.createEmployee({
       firstName: "Salary",
@@ -445,7 +607,7 @@ describe("Plain sync writers tripwire (issue #348)", () => {
     });
     const payment = {
       employeeId: worker.id,
-      periodType: "MONTHLY",
+      periodType: "MONTHLY" as const,
       expectedAmountDzd: 50000,
       actualAmountDzd: 50000,
       paymentDate: "2026-03-01T00:00:00.000Z",
@@ -471,24 +633,20 @@ describe("Plain sync writers tripwire (issue #348)", () => {
     expect(group.supplierName).toBe("Supplier X");
   });
 
+  it("inventory updateInvoiceGroupPayment throws busy while another flow holds the connection", async () => {
+    const group = inventory.createInvoiceGroup({ supplierName: "Supplier Y" });
+    await expectBusyWhileHeld(() => inventory.updateInvoiceGroupPayment(group.id, 200, 800));
+    const updated = inventory.updateInvoiceGroupPayment(group.id, 200, 800);
+    expect(updated?.paidAmountDzd).toBe(200);
+    expect(updated?.remainingDebtDzd).toBe(800);
+  });
+
   // ── Invoice writers (async → the busy throw surfaces as a rejection) ──
 
   it("invoice updateStatus rejects busy while another flow holds the connection", async () => {
     seedInvoice("inv-348-1", "Acme Corp");
 
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const holder = lock.run(async () => {
-      await gate;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    await expect(invoiceRepo.updateStatus("inv-348-1", "RECEIVED")).rejects.toThrow(FifoLockBusyError);
-
-    release();
-    await holder;
+    await expectRejectsBusyWhileHeld(() => invoiceRepo.updateStatus("inv-348-1", "RECEIVED"));
 
     const updated = await invoiceRepo.updateStatus("inv-348-1", "RECEIVED");
     expect(updated.status).toBe("RECEIVED");
@@ -511,21 +669,9 @@ describe("Plain sync writers tripwire (issue #348)", () => {
     });
     seedInvoice("inv-348-2", "Acme Corp");
 
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const holder = lock.run(async () => {
-      await gate;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    await expect(invoiceRepo.markReceivedWithDebtAccount("inv-348-2", account.id)).rejects.toThrow(
-      FifoLockBusyError,
+    await expectRejectsBusyWhileHeld(() =>
+      invoiceRepo.markReceivedWithDebtAccount("inv-348-2", account.id),
     );
-
-    release();
-    await holder;
 
     const updated = await invoiceRepo.markReceivedWithDebtAccount("inv-348-2", account.id);
     expect(updated.status).toBe("RECEIVED");
