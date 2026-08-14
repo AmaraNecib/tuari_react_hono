@@ -1,6 +1,6 @@
 # Test Audit — issue #265 (Composition root follow-ups) — final review round
 
-**Head:** `0105e489b37b2c2fa2dd8caeaf89c2bbf6246f6a`
+**Head:** `0d47056` (post-evidence delta: Greptile P1 fix round — persister 0600 mode + rekeyed-probe honesty; SHA refreshed from 0105e48)
 **Base:** `origin/develop` @ `3c1449043bab7dd28cba4d13b1e072ae1f3999ca`
 **Tier:** High-assurance (crypto key path).
 
@@ -108,3 +108,18 @@ with the recommended code fixes + tests:
 Re-verified: full API 1109/1109 (65 files; manager 17, persister 11,
 shutdown 8, loader 8, dependencies 8, router rekeyed-path tests), web
 484/484 (hooks 8/8), contracts 131/131, Rust `cargo test --lib` 105/105.
+
+---
+
+## Post-evidence delta — Greptile P1 fix round (SHA refreshed 0105e48 → 0d47056)
+
+Greptile P1 fix round (PR #347); evidence renamed to final code SHA per
+`process.md`. Test changes in this round: persister gains a POSIX-only mode
+assertion (0600 on the renamed config); key-manager replaces the two old
+`rekeyed` discrimination tests with (1) transient post-rekey probe failure →
+`rekeyed: false` (both-probes-fail path — the Greptile P1 headline) and
+(2) definitive `SQLITE_NOTADB` rejection → `rekeyed: false`; `router.test.ts`
+comment refreshed (the port's `rekeyed: true` now only reflects a verified
+rekey whose persistence failed). Re-verified: `test:api` 65 files, 1109
+passed | 1 skipped (manager 17, persister 12, router rekeyed-path tests);
+`test:web` 59 files, 484 passed; typecheck 4/4.

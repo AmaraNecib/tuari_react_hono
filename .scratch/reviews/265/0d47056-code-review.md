@@ -1,6 +1,6 @@
 # Code Review — issue #265 (Composition root follow-ups) — final review round
 
-**Head:** `0105e489b37b2c2fa2dd8caeaf89c2bbf6246f6a`
+**Head:** `0d47056` (post-evidence delta: Greptile P1 fix round — persister 0600 mode + rekeyed-probe honesty; SHA refreshed from 0105e48)
 **Base:** `origin/develop` @ `3c1449043bab7dd28cba4d13b1e072ae1f3999ca`
 **Diff:** `git diff origin/develop...HEAD` (23 files, +1960/−220). Commits: `e29c746` (schema threading), `d119bde` (rekey verification + persister), `e08caa2` (shutdown), `7d06b86` (desktop rotation), `705395a` (design doc), `ce66f26` (debate fixes), `d8acada` (final hardening).
 
@@ -80,3 +80,32 @@ and resolves every open finding:
 **Still open (documented):** debate #5 (real-SQLCipher-binding WAL rekey
 smoke test — binding absent in this workspace; landing-lane prerequisite) and
 #8 (in-memory rollback slot crash window — follow-up).
+
+---
+
+## Post-evidence delta — Greptile P1 fix round (SHA refreshed 0105e48 → 0d47056)
+
+This round addresses the two Greptile P1 findings on PR #347; evidence files
+renamed to the final code SHA per `process.md` (post-evidence delta note).
+
+- **F1 (security):** `database-key-persister.ts` — the key-bearing tmp file
+  is now opened with an explicit `0o600` mode (`KEY_FILE_MODE`, mirroring the
+  desktop secret-file writer) so a permissive umask cannot widen the
+  replacement file's permissions before the atomic rename. Test asserts 0600
+  on the renamed config (skipped on Windows where modes are meaningless).
+- **F2 (correctness):** `database-key-manager.ts` — post-rekey probes now
+  return a tri-state (`opens` / `wrong-key` / `error`); `error` (transient/
+  system) is never treated as evidence. A post-rekey probe that could not
+  VERIFY the new key — definitive `SQLITE_NOTADB` rejection OR transient
+  failure — reports `rekeyed: false` (ambiguous; caller keeps the old-key
+  rollback slot, no rotation acknowledged) instead of the old
+  `rekeyed: !currentKeyStillOpens` inference that claimed `rekeyed: true`
+  when both probes failed. The old-key discrimination probe was removed (its
+  only consumer was the now-removed inference). Tests: transient
+  both-probes-fail path asserts `rekeyed: false`; definitive-rejection path
+  asserts `rekeyed: false`; stale comments in `system.ts` and
+  `router.test.ts` updated to the corrected contract.
+
+Re-verified on 0d47056: `pnpm typecheck` (4/4 tasks), `pnpm test:api`
+(65 files, 1109 passed | 1 skipped), `pnpm test:web` (59 files, 484
+passed). No Rust touched in this round.

@@ -1,6 +1,6 @@
 # Debate — issue #265 (Composition root follow-ups) — final review round
 
-**Head:** `0105e489b37b2c2fa2dd8caeaf89c2bbf6246f6a`
+**Head:** `0d47056` (post-evidence delta: Greptile P1 fix round — persister 0600 mode + rekeyed-probe honesty; SHA refreshed from 0105e48)
 **Base:** `origin/develop` @ `3c1449043bab7dd28cba4d13b1e072ae1f3999ca` (merge-base == base; branch `refactor/issue-265` rebased)
 **Tier:** High-assurance (crypto key path — "highest-severity open item in the audit" per owner comment).
 **Lane state:** completed worker lane; 7 commits (`e29c746`…`d8acada`). This is the final review round against the full diff `origin/develop...HEAD`.
@@ -124,3 +124,16 @@ open dispositions:
 Re-verified after fixes: API 1109/1109, contracts 131/131, web 484/484
 (incl. hooks 8/8), Rust `cargo test --lib` 105/105, `cargo clippy --lib`
 clean, `tsc --noEmit` + eslint clean.
+
+---
+
+## Post-evidence delta — Greptile P1 fix round (SHA refreshed 0105e48 → 0d47056)
+
+Greptile P1 fix round (PR #347); evidence renamed to final code SHA per
+`process.md`. Two fixes, both in `apps/api/src/infrastructure/database/`:
+persister writes the key-bearing config via a tmp file opened with explicit
+`0o600` mode; key-manager post-rekey probes are tri-state and a probe that
+could not verify the new key never reports `rekeyed: true` (ambiguous
+failure → caller keeps the old-key rollback slot). Re-verified: typecheck
+4/4, `test:api` 1109 passed | 1 skipped, `test:web` 484 passed. See
+`0d47056-code-review.md` delta note for details.
