@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, expectTypeOf, it, vi } from "vitest"
 import { QueryClient } from "@tanstack/react-query"
 
 import { orpc } from "@/lib/orpc-client"
@@ -6,6 +6,7 @@ import {
   getCachedSessionUserId,
   invalidateUserScopedQuery,
   invalidateWorkspaceDomains,
+  type WorkspaceDomain,
   workspaceDomainQueryPrefix,
   workspaceQueryKeys,
   workspaceQueryPrefix,
@@ -85,6 +86,39 @@ describe("workspaceQueryKeys", () => {
     ])
   })
 
+  it("resolves WorkspaceDomain to exactly the flat key names (type-level probe)", () => {
+    // Compile-time assertions: `tsc --noEmit` typechecks this test file, so
+    // `pnpm typecheck` enforces them. This probe is RED when WorkspaceDomain
+    // collapses to `never` (the pre-fix bug): a never-typed record accepts
+    // any key, so the literal below stops compiling once the type is real.
+    const flatDomain: WorkspaceDomain = "roles"
+    expectTypeOf<WorkspaceDomain>().toEqualTypeOf<
+      | "debtAccounts"
+      | "debtsDetail"
+      | "debtsSummary"
+      | "employeeStateHistory"
+      | "employees"
+      | "externalCounterparties"
+      | "inventoryInvoices"
+      | "inventoryItems"
+      | "inventoryOutboundTransfers"
+      | "managerAssignments"
+      | "projectAssignments"
+      | "projectManagerOwnership"
+      | "projects"
+      | "roles"
+      | "salaryPayments"
+      | "systemLog"
+      | "warehouseAssignments"
+      | "warehouseManagerOwnership"
+      | "warehouses"
+      | "workspaceSnapshot"
+    >()
+    // Parameterized detail keys must NOT join the flat vocabulary.
+    expectTypeOf<WorkspaceDomain>().not.toEqualTypeOf<"inventoryAsset" | "employees">()
+    expect(flatDomain).toBe("roles")
+  })
+
   it("keeps the parameterized detail keys user-scoped and parameter-scoped", () => {
     expect(workspaceQueryKeys.inventoryAsset(userId, "asset-1")).toEqual([
       "phase1", "workspace-domain", "inventory-asset", userId, "asset-1",
@@ -162,6 +196,12 @@ describe("invalidateWorkspaceDomains", () => {
     expect(invalidateQueries).toHaveBeenCalledTimes(1)
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceDomainQueryPrefix })
     expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: workspaceQueryPrefix })
+  })
+
+  it("rejects a non-flat (parameterized) key at compile time", () => {
+    const { client } = mockQueryClient()
+    // @ts-expect-error parameterized detail keys are not WorkspaceDomain entries
+    invalidateWorkspaceDomains(client, userId, { inventoryAsset: true })
   })
 
   it("is a no-op for an empty domain record", async () => {

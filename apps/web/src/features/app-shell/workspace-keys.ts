@@ -87,9 +87,16 @@ export const workspaceQueryKeys = {
  * `invalidateWorkspaceDomains`. Derived from the factory by arity, so a key
  * added as a flat entry automatically joins the invalidation vocabulary and
  * a parameterized key is rejected at compile time.
+ *
+ * `0 | 1` (not `1`): flat factories are declared with a default param
+ * (`(userId: UserId = ANONYMOUS) => ...`), which makes the tuple element
+ * optional, so `Parameters<F>["length"]` is `0 | 1`. Checking against `1`
+ * alone would map every flat key to `never` and collapse the type (issue
+ * #307); `0 | 1` mirrors the runtime predicate `factory.length <= 1` used by
+ * the flat-factory list test.
  */
 export type WorkspaceDomain = {
-  [K in keyof typeof workspaceQueryKeys]: Parameters<(typeof workspaceQueryKeys)[K]>["length"] extends 1 ? K : never
+  [K in keyof typeof workspaceQueryKeys]: Parameters<(typeof workspaceQueryKeys)[K]>["length"] extends 0 | 1 ? K : never
 }[keyof typeof workspaceQueryKeys]
 
 /**
@@ -112,12 +119,11 @@ export function getCachedSessionUserId(queryClient: Pick<QueryClient, "getQueryD
  * systemLog) are deliberately excluded so a debts-only mutation does not
  * drag the whole snapshot through the wire again.
  *
- * NOTE: typed as `string` because the repo's `WorkspaceDomain` mapped type
- * collapses to `never` (a pre-existing bug: optional tuple elements make
- * `Parameters<F>["length"]` `0 | 1`, so `extends 1` is always false). The
- * membership is pinned by the invalidateWorkspaceDomains unit tests.
+ * Typed as `ReadonlySet<WorkspaceDomain>`: the membership is pinned by the
+ * invalidateWorkspaceDomains unit tests, and the flat vocabulary is derived
+ * from the same factory, so a domain cannot drift out of the type.
  */
-const SNAPSHOT_BACKED_DOMAINS: ReadonlySet<string> = new Set([
+const SNAPSHOT_BACKED_DOMAINS: ReadonlySet<WorkspaceDomain> = new Set([
   "roles",
   "employees",
   "projects",
