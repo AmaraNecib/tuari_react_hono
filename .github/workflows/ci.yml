@@ -20,7 +20,7 @@ jobs:
   lint:
     name: Lint
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,7 +36,7 @@ jobs:
   typecheck:
     name: Type Check
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,7 +59,7 @@ jobs:
   # Shared change-detection job: computes which areas this PR touches.
   detect:
     name: Detect changed areas
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       rust: ${{ steps.resolve.outputs.rust }}
       api: ${{ steps.resolve.outputs.api }}
@@ -117,18 +117,17 @@ jobs:
   test-rust:
     name: "Test Rust Core (no tauri:: imports)"
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: detect
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Install Linux system dependencies (Tauri)
+      - name: Verify pre-installed Tauri system deps
         if: needs.detect.outputs.rust == 'true'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          pkg-config --exists webkit2gtk-4.1 && echo "webkit2gtk-4.1 present" || { echo "missing webkit2gtk-4.1 (install once on the runner, as root)"; exit 1; }
 
       - name: Install Rust toolchain
         if: needs.detect.outputs.rust == 'true'
@@ -177,7 +176,7 @@ jobs:
   test-api:
     name: Test API
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: detect
     steps:
       - uses: actions/checkout@v4
@@ -203,7 +202,7 @@ jobs:
   test-web:
     name: Test Web
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: detect
     steps:
       - uses: actions/checkout@v4
@@ -229,7 +228,7 @@ jobs:
   test-e2e:
     name: Test E2E
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: detect
     steps:
       - uses: actions/checkout@v4
@@ -246,7 +245,7 @@ jobs:
       # Playwright browser cache (issue #333): Chromium (~120MB) was
       # re-downloaded on every E2E run (~40s). Key on the exact Playwright
       # version so an upgrade busts the cache automatically. On a hit the
-      # `playwright install --with-deps chromium` step below skips the
+      # `playwright install chromium` step below skips the
       # download; on a miss it installs and the post-step saves the cache.
       - name: Resolve Playwright version (cache key)
         id: pw-version
@@ -267,7 +266,7 @@ jobs:
       - name: Test E2E
         if: needs.detect.outputs.e2e == 'true'
         run: |
-          pnpm exec playwright install --with-deps chromium
+          pnpm exec playwright install chromium
           pnpm test:e2e
 
       - name: E2E skipped (no api/web/contracts/e2e changes)
@@ -277,7 +276,7 @@ jobs:
   build:
     name: Build
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     # Runs CONCURRENTLY with the test jobs (issue #333): previously this waited
     # on all five test jobs, so every PR paid test-time PLUS build-time
     # sequentially (~1.5 min of pure tail latency). Branch protection still

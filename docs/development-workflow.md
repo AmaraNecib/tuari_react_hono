@@ -374,12 +374,12 @@ Environments are configured via the GitHub UI under Settings > Environments.
 
 ### 12.6 CI Runners & Caching
 
-CI runs on **GitHub-hosted runners** — `ubuntu-latest` for the CI and release-metadata workflows, `windows-latest` for the release build workflows (`beta.yml`, `nightly.yml`, `release.yml`). No self-hosted runner is used. Tools are provisioned per-run and caches are keyed by `actions/cache`:
+CI (`ci.yml`) runs on **self-hosted Linux runners** (`runner-1` / `runner-2`, systemd services running as the `github` user on the CI VPS). The release-flavored workflows stay on **GitHub-hosted** runners — `windows-latest` for the release builds (`beta.yml`, `nightly.yml`, `release.yml`) and `ubuntu-latest` for `release-metadata.yml`. On the self-hosted runners, tools are provisioned per-run by the setup actions and caches are keyed by `actions/cache`:
 
 - **pnpm store:** `actions/setup-node` with `cache: pnpm` — keyed on `pnpm-lock.yaml`
 - **Rust/Cargo:** `Swatinem/rust-cache` scoped to `apps/desktop/src-tauri`
 - **Node/pnpm/Rust versions:** pinned per-run (`setup-node` 22, `pnpm/action-setup` from `packageManager`, `dtolnay/rust-toolchain@stable`)
-- **Linux system deps (Tauri):** installed in the `Test Rust Core` CI job via `apt-get` (`libwebkit2gtk-4.1-dev` etc.)
+- **System deps (Tauri + Playwright):** pre-installed once on the runners as `root` (`libwebkit2gtk-4.1-dev`, `build-essential`, `curl`, `wget`, `file`, `libxdo-dev`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, plus Playwright's Chromium OS deps). Jobs do **not** run `sudo apt-get` — they only verify presence (e.g. `pkg-config --exists webkit2gtk-4.1`) and install the Chromium *binary* (`pnpm exec playwright install chromium`) into the run's cache. The runner service users hold **no elevated privileges**.
 - **Checkout:** Uses default `clean: true` (actions/checkout) — each run gets a fresh workspace, avoiding stale artifacts from previous runs
 
 ### 12.7 Smoke Testing
