@@ -10,9 +10,16 @@ If any check fails, stop and report. Do not proceed.
 
 ## Derive repository
 
+The guard must work when GitHub is unavailable. In local-only mode, derive the
+repository and branch from Git alone; do not call `gh repo view`.
+
 ```bash
-gh repo view --json nameWithOwner --jq .nameWithOwner
+git rev-parse --show-toplevel
+git status --short --branch
+git rev-parse --verify HEAD
 ```
+
+Use `gh repo view` only after the user explicitly opts back into remote mode.
 
 ## Phase 1 — Pre-commit
 
@@ -32,9 +39,11 @@ If the change touches Rust Core (`apps/desktop/src-tauri/src/`):
 [ ] cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings — clean?
 ```
 
-## Phase 2 — Pre-push
+## Phase 2 — Local pre-Greptile / remote pre-push
 
-Run before pushing and opening a PR. Uses the Husky pre-push hook.
+In local-only mode this is the pre-Greptile gate; in remote mode it is also the
+pre-push gate. It never pushes by itself. Uses the Husky pre-push hook when the
+hook is available.
 
 ```
 [ ] pnpm --filter @tuari/contracts build — compiles?
@@ -81,14 +90,27 @@ get the docs-only exemption.
 
 ## Phase 3 — Pre-report
 
-Run before reporting "ready for merge".
+Run before reporting a local handoff or remote merge-readiness.
+
+### Local-only mode (current)
 
 ```
-[ ] CI — all checks green on GitHub? (lint, typecheck, test-api, test-web, test-rust, build)
-[ ] Greptile — no actionable findings? (check PR comments, not just score)
-[ ] PR description — accurate and complete?
-[ ] Any deferred items — documented with follow-up issues?
-[ ] Wisdom — any lessons to capture?
+[ ] Local checks green (lint, typecheck, test-api, test-web, and Rust when relevant)
+[ ] Review evidence current for the selected tier
+[ ] Greptile CLI result is for the final HEAD and has no actionable findings
+[ ] Deferred items documented in docs/local-issue-status.md or a local follow-up
+[ ] Wisdom captured when a durable lesson was learned
+[ ] Report does not claim CI, PR, merge, or issue closure
+```
+
+### Remote mode
+
+```
+[ ] CI — all required checks green on GitHub
+[ ] Greptile — no actionable findings (inspect findings, not just command status)
+[ ] PR description — accurate and complete
+[ ] Any deferred items — documented with follow-up issues
+[ ] Wisdom — any lessons to capture
 ```
 
 ## When a check fails
@@ -99,5 +121,6 @@ Run before reporting "ready for merge".
    note the waiver and continue.
 4. If the user says "fix it", fix it and re-run the check.
 
-**Mandatory gates (never skip):** typecheck, lint, test, CI green,
-Greptile inline-comment inspection. These must pass.
+**Mandatory gates (never skip):** typecheck, lint, applicable tests, and a
+clean Greptile result. In local-only mode the Greptile CLI JSON/result replaces
+hosted PR comment inspection; CI is deferred until the remote is restored.
