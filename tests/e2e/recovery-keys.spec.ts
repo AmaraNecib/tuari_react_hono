@@ -176,6 +176,28 @@ async function fetchRpcStatus(page: Page, procedure: string, input: unknown): Pr
   const zwspStatus = await fetchRpcStatus(page, "consumeRecoveryKey", { key: "\u200B\u200B" })
   expect(zwspStatus).toBe(400)
 
+  // ── #334: invisible codepoints OUTSIDE Cf are rejected too — braille blank
+  // (So, renders as a blank cell), combining marks (Mn) and control chars (Cc)
+  // all render as nothing, so they must never reach the hash comparison. ────
+  const brailleBlankStatus = await fetchRpcStatus(page, "consumeRecoveryKey", {
+    key: "\u2800\u2800",
+  })
+  expect(brailleBlankStatus).toBe(400)
+  const combiningMarkStatus = await fetchRpcStatus(page, "consumeRecoveryKey", {
+    key: "\u0301\u0301",
+  })
+  expect(combiningMarkStatus).toBe(400)
+  const controlCharStatus = await fetchRpcStatus(page, "consumeRecoveryKey", {
+    key: "\u0001\u0001",
+  })
+  expect(controlCharStatus).toBe(400)
+  // Issue case 4: a mid-string NBSP survives trim() (edge-only) — the Zs
+  // class is rejected anywhere, so a key with an embedded NBSP gets a 400.
+  const nbspStatus = await fetchRpcStatus(page, "consumeRecoveryKey", {
+    key: "a1b2\u00A0c3d4",
+  })
+  expect(nbspStatus).toBe(400)
+
   // Pool reflects all transitions after a reload (fresh fetch).
   await page.reload()
   await expect(page.getByRole("heading", { name: "الإعدادات" })).toBeVisible()

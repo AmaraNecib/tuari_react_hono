@@ -977,6 +977,29 @@ describe("RPC router", () => {
     await expect(
       client.changeDbEncryptionKey({ currentKey: "\u200B", newKey: "new-key-123" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    // #334: invisible codepoints OUTSIDE Cf are rejected at the wire gate
+    // too — combining marks (Mn), braille blank (U+2800, So) and invisible
+    // control chars (Cc) render as nothing but pass min()/hash-compare.
+    await expect(client.consumeRecoveryKey({ key: "\u0301\u0301" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(client.consumeRecoveryKey({ key: "\u2800\u2800" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "\u0001".repeat(8) }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // Issue case 4: a mid-string NBSP survives trim() (edge-only) — the Zs
+    // class is rejected anywhere, so it never becomes a rekey value.
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "a1b2\u00A0c3d4e5f6" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // Blank Hangul filler (U+3164) rides the same shared regex — rejected at
+    // the wire too, so it can never become a rekey value.
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "\u3164".repeat(8) }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("rejects financially invalid payment input at the wire contract", async () => {
