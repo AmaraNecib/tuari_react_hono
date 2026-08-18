@@ -13,7 +13,7 @@ import {
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
-} from "./app-shell-table-primitives"
+} from "@/features/shared/table-primitives"
 
 function getSalaryPeriodLabelKey(value: "DAILY" | "WEEKLY" | "MONTHLY" | null) {
   if (value === "DAILY") return "detailPages.salary.daily"

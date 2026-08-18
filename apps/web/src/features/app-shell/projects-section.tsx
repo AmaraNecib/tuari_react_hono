@@ -12,8 +12,8 @@ import {
   AppShellTableHeaderCell,
   AppShellTableRow,
   usePaginatedRows,
-} from "./app-shell-table-primitives"
-import { TablePaginationControls } from "./table-pagination-controls"
+} from "@/features/shared/table-primitives"
+import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
 
 export type ProjectRow = {
   id: string

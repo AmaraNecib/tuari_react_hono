@@ -10,7 +10,7 @@ import {
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
-} from "@/features/app-shell/app-shell-table-primitives"
+} from "./table-primitives"
 import { cn } from "@/lib/utils"
 
 import { PageActionGroup, PageHeader, Surface } from "./page-primitives"

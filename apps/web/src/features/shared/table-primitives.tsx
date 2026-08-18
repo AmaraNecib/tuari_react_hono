@@ -4,26 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Surface } from "@/features/shared/page-primitives"
 import { cn } from "@/lib/utils"
-
-/**
- * @description Component
- */
-export function AppShellSectionSurface({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <Surface variant="panel" className={cn("overflow-hidden", className)} dir="rtl">
-      {children}
-    </Surface>
-  )
-}
-
-/**
- * @description Component
- */
-export function AppShellSectionBody({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("space-y-6 p-6 xl:p-7", className)} dir="rtl">{children}</div>
-}
 
 /**
  * @description Component
