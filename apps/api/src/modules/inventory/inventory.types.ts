@@ -154,12 +154,21 @@ export type InventoryStoredUpload = {
   sha256: string
 }
 
-/** InventoryUploadFile. */
+/**
+ * InventoryUploadFile.
+ *
+ * `bytes` is a LAZY loader: the service only invokes it after its count /
+ * total-size / per-file-size / MIME validation passes for a file that will
+ * actually be stored. The transport hands over file metadata + a way to read
+ * the bytes without buffering them, so over-limit requests are rejected
+ * before any byte-array copy is allocated (issue #214 — buffering is owned by
+ * the module, not the transport).
+ */
 export type InventoryUploadFile = {
   name: string
   type: string
   size: number
-  bytes: Uint8Array
+  bytes: () => Promise<Uint8Array>
 }
 
 /** InventoryOutboundTransferRecord. */

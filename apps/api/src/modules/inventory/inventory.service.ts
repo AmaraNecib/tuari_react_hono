@@ -681,10 +681,15 @@ export class InventoryService {
           throw new InventoryError("VALIDATION", `حجم الملف كبير جدًا: ${file.name}`)
         }
 
+        // Read the bytes only after every limit check passes — over-limit
+        // requests are rejected before any byte-array copy is allocated
+        // (issue #214: lazy bytes owned by the module, not the transport).
+        const byteContent = await file.bytes()
+
         const saved = await this.storage.saveInvoiceAttachment({
           invoiceGroupId,
           originalName: file.name,
-          bytes: file.bytes,
+          bytes: byteContent,
         })
 
         savedFiles.push({

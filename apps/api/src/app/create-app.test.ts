@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { AccountServiceError } from "../modules/account/account.service";
+import { InventoryError } from "../modules/inventory/inventory.errors";
 import { createApp, createTransportSecurity } from "./create-app";
 
 const transportSecurity = {
@@ -16,7 +17,8 @@ const createDependencies = () => ({
   },
   accountService: {
     getCurrentSessionUser: vi.fn(),
-    recordPasswordChangeForUser: vi.fn(),
+    resolvePasswordChangeActor: vi.fn(),
+    recordPasswordChangeAudit: vi.fn(),
     updateCurrentProfile: vi.fn(),
   },
   authBootstrapService: {
@@ -26,6 +28,10 @@ const createDependencies = () => ({
   },
   companyService: {
     listRoles: vi.fn(),
+  },
+  inventoryService: {
+    addInvoiceAttachments: vi.fn(),
+    getAttachmentDownload: vi.fn(),
   },
   sessionService: {
     getCurrentUser: vi.fn(),
@@ -147,6 +153,61 @@ describe("createApp RPC wiring", () => {
     await expect(response.json()).resolves.toEqual({ message: "Blocked origin." });
     expect(response.status).toBe(403);
     expect(dependencies.auth.handler).not.toHaveBeenCalled();
+  });
+
+  it("blocks inventory requests from disallowed origins via the collapsed middleware", async () => {
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/api/inventory/invoice-groups/group-1/attachments", {
+        method: "POST",
+        headers: {
+          origin: "https://evil.example",
+        },
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({ message: "Blocked origin." });
+    expect(response.status).toBe(403);
+    expect(dependencies.authBootstrapService.isBootstrapOwner).not.toHaveBeenCalled();
+  });
+
+  it("maps inventory attachment validation failures to 400 responses without re-checking limits in the transport", async () => {
+    const dependencies = createDependencies();
+    dependencies.accountService.getCurrentSessionUser.mockResolvedValue({
+      id: "user-1",
+      name: "Taylor",
+      phoneNumber: "0612345678",
+    });
+    dependencies.inventoryService.addInvoiceAttachments.mockRejectedValue(
+      new InventoryError("VALIDATION", "إجمالي حجم الملفات كبير جدًا.", [
+        { field: "files", message: "يرجى تقليل إجمالي حجم المرفقات قبل الرفع." },
+      ]),
+    );
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const formData = new FormData();
+    formData.append("files", new File([new Uint8Array(1024)], "invoice.pdf", { type: "application/pdf" }));
+    const response = await app.request(
+      new Request("http://localhost/api/inventory/invoice-groups/group-1/attachments", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+        },
+        body: formData,
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: {
+        code: "VALIDATION",
+        message: "إجمالي حجم الملفات كبير جدًا.",
+        fieldErrors: [{ field: "files", message: "يرجى تقليل إجمالي حجم المرفقات قبل الرفع." }],
+      },
+    });
   });
 
   it("adds hardened security headers to API responses", async () => {
@@ -284,13 +345,10 @@ describe("createApp RPC wiring", () => {
     expect(dependencies.accountService.updateCurrentProfile).toHaveBeenCalledTimes(1);
   });
 
-  it("records password changes server-side after a successful auth change", async () => {
+  it("resolves the actor before the auth handler and records the audit after success", async () => {
     const dependencies = createDependencies();
-    dependencies.accountService.getCurrentSessionUser.mockResolvedValue({
-      id: "user-1",
-      name: "Taylor",
-      phoneNumber: "0612345678",
-    });
+    const actor = { id: "user-1", name: "Taylor", phoneNumber: "0612345678" };
+    dependencies.accountService.resolvePasswordChangeActor.mockResolvedValue(actor);
     dependencies.auth.handler.mockResolvedValue(
       new Response(JSON.stringify({ token: "rotated-token" }), {
         status: 200,
@@ -312,29 +370,53 @@ describe("createApp RPC wiring", () => {
     );
 
     await expect(response.json()).resolves.toEqual({ token: "rotated-token" });
+    // Actor resolution happens FIRST so the audit context survives a session
+    // revoke performed by the auth change itself — pin the call order.
+    expect(dependencies.accountService.resolvePasswordChangeActor).toHaveBeenCalledTimes(1);
     expect(dependencies.auth.handler).toHaveBeenCalledTimes(1);
-    expect(dependencies.accountService.recordPasswordChangeForUser).toHaveBeenCalledWith({
-      id: "user-1",
-      name: "Taylor",
-      phoneNumber: "0612345678",
-    });
+    expect(
+      dependencies.accountService.resolvePasswordChangeActor.mock.invocationCallOrder[0]!,
+    ).toBeLessThan(dependencies.auth.handler.mock.invocationCallOrder[0]!);
+    expect(dependencies.accountService.recordPasswordChangeAudit).toHaveBeenCalledWith(actor);
   });
 
-  it("preserves a successful password-change response when audit logging fails", async () => {
+  it("skips the audit delegation when the auth change does not succeed", async () => {
     const dependencies = createDependencies();
-    dependencies.accountService.getCurrentSessionUser.mockResolvedValue({
-      id: "user-1",
-      name: "Taylor",
-      phoneNumber: "0612345678",
-    });
-    dependencies.accountService.recordPasswordChangeForUser.mockRejectedValue(new Error("audit failed"));
+    const actor = { id: "user-1", name: "Taylor", phoneNumber: "0612345678" };
+    dependencies.accountService.resolvePasswordChangeActor.mockResolvedValue(actor);
+    dependencies.auth.handler.mockResolvedValue(
+      new Response(JSON.stringify({ message: "Bad credentials" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/api/auth/change-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:3000",
+        },
+        body: JSON.stringify({ currentPassword: "wrong", newPassword: "new-password-123" }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ message: "Bad credentials" });
+    expect(dependencies.accountService.recordPasswordChangeAudit).not.toHaveBeenCalled();
+  });
+
+  it("passes an unresolvable actor to the audit method without failing the change", async () => {
+    const dependencies = createDependencies();
+    dependencies.accountService.resolvePasswordChangeActor.mockResolvedValue(null);
     dependencies.auth.handler.mockResolvedValue(
       new Response(JSON.stringify({ token: "rotated-token" }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
     );
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const app = createApp(dependencies as never, transportSecurity);
 
     const response = await app.request(
@@ -348,10 +430,9 @@ describe("createApp RPC wiring", () => {
       }),
     );
 
-    await expect(response.json()).resolves.toEqual({ token: "rotated-token" });
     expect(response.status).toBe(200);
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
+    await expect(response.json()).resolves.toEqual({ token: "rotated-token" });
+    expect(dependencies.accountService.recordPasswordChangeAudit).toHaveBeenCalledWith(null);
   });
 
   it("maps account-service validation failures to HTTP responses", async () => {

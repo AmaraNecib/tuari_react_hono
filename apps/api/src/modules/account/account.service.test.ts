@@ -769,6 +769,124 @@ describe("AccountService", () => {
   })
 })
 
+describe("AccountService password-change audit ownership (issue #214)", () => {
+  const actor = { id: "user-1", name: "عمارة", phoneNumber: "0612345678" }
+
+  it("resolves the audit actor from the request session", async () => {
+    const service = new AccountService(
+      { withTransaction: vi.fn(), findCredentialPasswordByUserId: vi.fn() },
+      {
+        $context: Promise.resolve({ password: { verify: vi.fn() } }),
+        api: {
+          getSession: vi.fn().mockResolvedValue({ user: actor }),
+        },
+      },
+    )
+
+    await expect(service.resolvePasswordChangeActor(new Headers())).resolves.toEqual(actor)
+  })
+
+  it("returns null instead of throwing when the session cannot be resolved", async () => {
+    const service = new AccountService(
+      { withTransaction: vi.fn(), findCredentialPasswordByUserId: vi.fn() },
+      {
+        $context: Promise.resolve({ password: { verify: vi.fn() } }),
+        api: {
+          getSession: vi.fn().mockResolvedValue(null),
+        },
+      },
+    )
+
+    await expect(service.resolvePasswordChangeActor(new Headers())).resolves.toBeNull()
+  })
+
+  it("returns null instead of throwing when the session lookup itself rejects", async () => {
+    // Pins the try/catch → null branch of resolvePasswordChangeActor: a
+    // corrupt cookie / gateway outage must never fail the password change.
+    const service = new AccountService(
+      { withTransaction: vi.fn(), findCredentialPasswordByUserId: vi.fn() },
+      {
+        $context: Promise.resolve({ password: { verify: vi.fn() } }),
+        api: {
+          getSession: vi.fn().mockRejectedValue(new Error("bad cookie")),
+        },
+      },
+    )
+
+    await expect(service.resolvePasswordChangeActor(new Headers())).resolves.toBeNull()
+  })
+
+  it("records the audit entry for a resolved actor", async () => {
+    const createProfileHistory = vi.fn().mockResolvedValue(undefined)
+    const service = new AccountService(
+      {
+        withTransaction: vi.fn(async (callback) =>
+          callback({
+            createProfileHistory,
+            findCredentialPasswordByUserId: vi.fn(),
+            findUserIdByPhoneNumber: vi.fn(),
+            updateUserProfile: vi.fn(),
+          }),
+        ),
+        findCredentialPasswordByUserId: vi.fn(),
+      },
+      {
+        $context: Promise.resolve({ password: { verify: vi.fn() } }),
+        api: { getSession: vi.fn() },
+      },
+    )
+
+    await service.recordPasswordChangeAudit(actor)
+
+    expect(createProfileHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorLabel: "عمارة",
+        passwordChanged: 1,
+      }),
+    )
+  })
+
+  it("warns and skips the audit when the actor is unavailable", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    const withTransaction = vi.fn()
+    const service = new AccountService(
+      { withTransaction, findCredentialPasswordByUserId: vi.fn() },
+      {
+        $context: Promise.resolve({ password: { verify: vi.fn() } }),
+        api: { getSession: vi.fn() },
+      },
+    )
+
+    await service.recordPasswordChangeAudit(null)
+
+    expect(withTransaction).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[auth] Password change succeeded but actor audit context could not be resolved",
+    )
+    warnSpy.mockRestore()
+  })
+
+  it("warns and swallows audit-write failures instead of failing the password change", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    const service = new AccountService(
+      {
+        withTransaction: vi.fn(async () => {
+          throw new Error("audit failed")
+        }),
+        findCredentialPasswordByUserId: vi.fn(),
+      },
+      {
+        $context: Promise.resolve({ password: { verify: vi.fn() } }),
+        api: { getSession: vi.fn() },
+      },
+    )
+
+    await expect(service.recordPasswordChangeAudit(actor)).resolves.toBeUndefined()
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+})
+
 describe("AccountService transaction lock window (issue #322)", { timeout: 20000 }, () => {
   // Real Drizzle repo + real shared lock for the invariant tests.
   let rawDb: Database.Database | undefined

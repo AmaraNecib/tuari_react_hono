@@ -286,6 +286,42 @@ reservation (`transaction.immediate()` / explicit `BEGIN IMMEDIATE`), never
 plain `db.transaction()`. A guard's reads are only trustworthy if they run
 under the reservation they protect.
 
+## "Move the policy into the module" includes the allocation AFTER the validation (🟡 Minor / Greptile P2)
+
+On #214, moving the invoice-attachment limits from the transport route into
+`InventoryService` removed the duplicated constants, but the route still
+converted every submitted `File` into a `Uint8Array` (`file.arrayBuffer()`) for
+ALL files BEFORE calling the service — so over-limit uploads still allocated
+byte copies up to the 30 MB multipart cap on the rejected path. The old route
+had rejected count/total BEFORE that conversion. Greptile (4/5 → 5/5 after the
+fix) flagged it as P2. The fix made `InventoryUploadFile.bytes` a **lazy
+loader** that the service invokes only after its count/total/per-file/MIME
+validation passes for a file that will be stored; the route hands over
+metadata + a `() => file.arrayBuffer().then(...)`. Focused tests pin that the
+bytes loader is never invoked on the rejected path.
+
+**Always**: when consolidating a policy into its owning module, check whether
+the transport was doing expensive work (buffering/allocation/IO) BEFORE the
+module's validation. The module should own the ordering too — pass lazy
+loaders so the module validates first and only then does the expensive part.
+
+## Evidence files must be re-pinned to the final HEAD after any reviewable change (🟡 Minor / process)
+
+After the debate/test-audit/code-review, a Greptile P2 fix committed
+`c808da3` which changed `inventory.types.ts` / `inventory.service.ts` /
+`create-app.ts` / tests — all reviewable files. The evidence files named
+`eaca0d4-*` therefore failed the guard's freshness check (reviewable files
+changed since the evidence SHA). Fix: rename every evidence markdown to the
+new final HEAD SHA (`c808da3-*`) and append an explicit post-evidence note
+documenting what changed after the review and that the delta is pinned by the
+new tests + the clean Greptile run on that exact HEAD. The guard rule only
+re-validates if non-scratch files changed; `.scratch/` is non-reviewable.
+
+**Always**: after emitting any code/test change post-review (Greptile fix,
+debate fix, test audit fix, comment tidy), re-pin all `.scratch/reviews/<id>/`
+evidence filenames to the new HEAD SHA and add a freshness note, and re-run the
+Greptile gate on that exact HEAD before Guard Phase 3.
+
 ## runSyncTransaction composes: nested wraps are SAVEPOINT joins, and wrapping EVERY sync writer makes the tripwire structural (💡 Design Principle)
 
 On #348 (the D1 deferral from #322), the remaining plain sync `.run()` writers
