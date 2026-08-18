@@ -269,6 +269,14 @@ jobs:
           pnpm exec playwright install chromium
           pnpm test:e2e
 
+      - name: Upload Playwright HTML report
+        if: needs.detect.outputs.e2e == 'true' && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 (immutable SHA, matching the cache action pinning practice)
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
       - name: E2E skipped (no api/web/contracts/e2e changes)
         if: needs.detect.outputs.e2e != 'true'
         run: echo "No E2E-relevant changes — skipping (required check satisfied)"

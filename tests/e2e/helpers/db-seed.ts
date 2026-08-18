@@ -29,15 +29,20 @@ type SeedEmployee = {
 /** The minimal better-sqlite3 surface the seeding needs. */
 type SeedDatabase = {
   prepare: (sql: string) => {
+    all: (...params: unknown[]) => unknown[]
     get: (...params: unknown[]) => unknown
     run: (...params: unknown[]) => void
   }
+  /** Raw SQL execution (used by the db-isolation reset helper). */
+  exec: (sql: string) => void
+  /** Pragmas such as `foreign_keys` (used by the db-isolation reset helper). */
+  pragma: (statement: string) => unknown
   close: () => void
 }
 
 let databaseConstructor: ((path: string) => SeedDatabase) | null = null
 
-function loadDatabaseConstructor() {
+export function loadDatabaseConstructor() {
   if (databaseConstructor) return databaseConstructor
   const pnpmDir = join(process.cwd(), "node_modules", ".pnpm")
   const entry = readdirSync(pnpmDir).find(
@@ -60,7 +65,7 @@ function loadDatabaseConstructor() {
  * file lands in `apps/api/data/`; the root `data/` is checked as a fallback
  * (one file per Playwright run — the newest by mtime).
  */
-function findE2eDatabase(): string {
+export function findE2eDatabase(): string {
   const candidates: Array<{ path: string; mtime: number }> = []
   for (const dataDir of [
     join(process.cwd(), "apps", "api", "data"),
