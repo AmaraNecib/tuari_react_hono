@@ -239,7 +239,8 @@ export class SqliteCompanyRepository implements CompanyRepository {
    * Connection-wide FIFO lock (shared with every module that opens
    * transactions on the same connection, wired in the composition root).
    * Sync writers route their transactions through `runSyncTransaction` so
-   * they never silently join another flow's open transaction (issue #322).
+   * they never silently join another flow's open transaction (issues #322
+   * and #348: every sync write in this module runs under the lock).
    * Defaults to a fresh per-instance lock so direct test constructions keep
    * compiling; production injects the shared instance.
    */
@@ -304,7 +305,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
   createRole(data: RoleCreateData): RoleRecord {
     const id = crypto.randomUUID();
     const ts = createAlgeriaTimestamp();
-    this.db.insert(schema.role).values({ id, key: data.key, name: data.name, description: data.description ?? null, isSystem: 0, createdAt: ts, updatedAt: ts }).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.role).values({ id, key: data.key, name: data.name, description: data.description ?? null, isSystem: 0, createdAt: ts, updatedAt: ts }).run();
+    });
     return this.getRoleById(id)!;
   }
 
@@ -312,12 +315,14 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const cur = this.getRoleById(data.id);
     if (!cur) return null;
     const ts = createAlgeriaTimestamp();
-    this.db.update(schema.role).set({ key: data.key ?? cur.key, name: data.name ?? cur.name, description: data.description !== undefined ? data.description : cur.description, updatedAt: ts }).where(eq(schema.role.id, data.id)).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.role).set({ key: data.key ?? cur.key, name: data.name ?? cur.name, description: data.description !== undefined ? data.description : cur.description, updatedAt: ts }).where(eq(schema.role.id, data.id)).run();
+    });
     return this.getRoleById(data.id);
   }
 
   deleteRole(id: string): boolean {
-    return this.db.delete(schema.role).where(eq(schema.role.id, id)).run().changes > 0;
+    return runSyncTransaction(this.connectionLock, this.raw, () => this.db.delete(schema.role).where(eq(schema.role.id, id)).run().changes > 0);
   }
 
   countEmployeesByRoleId(roleId: string): number {
@@ -442,8 +447,10 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const id = (data as { id?: string }).id ?? crypto.randomUUID();
     const ca = (data as { createdAt?: string }).createdAt ?? createAlgeriaTimestamp();
     const ua = (data as { updatedAt?: string }).updatedAt ?? ca;
-    this.db.insert(schema.employee).values({ id, firstName: cd.firstName, lastName: cd.lastName, phone: cd.phone, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, notes: cd.notes ?? null, createdAt: ca, updatedAt: ua }).run();
-    this.insertStateHistory({ employeeId: id, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, eventType: "CREATED", startDate: ca, notes: cd.notes ?? null, actorUserId: null, actorLabel: null, transactionId: null });
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.employee).values({ id, firstName: cd.firstName, lastName: cd.lastName, phone: cd.phone, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, notes: cd.notes ?? null, createdAt: ca, updatedAt: ua }).run();
+      this.insertStateHistory({ employeeId: id, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, eventType: "CREATED", startDate: ca, notes: cd.notes ?? null, actorUserId: null, actorLabel: null, transactionId: null });
+    });
     return this.getEmployeeById(id)!;
   }
 
@@ -514,7 +521,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   createExternalCounterparty(data: ExternalCounterpartyCreateData): ExternalCounterpartyRecord {
     const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp();
-    this.db.insert(schema.externalCounterparty).values({ id, fullName: data.fullName, phoneNumber: data.phoneNumber, note: data.note ?? null, createdAt: ts, updatedAt: ts }).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.externalCounterparty).values({ id, fullName: data.fullName, phoneNumber: data.phoneNumber, note: data.note ?? null, createdAt: ts, updatedAt: ts }).run();
+    });
     return this.getExternalCounterpartyById(id)!;
   }
 
@@ -550,7 +559,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   createDebtAccount(data: DebtAccountCreateData, audit?: MutationAuditContext): DebtAccountRecord {
     const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
-    this.db.insert(schema.debtAccount).values({ id, partyType: data.partyType, workerId: data.workerId ?? null, externalCounterpartyId: data.externalCounterpartyId ?? null, status: data.status, direction: data.direction, currentBalance: data.currentBalance, note: data.note ?? null, settledAt: data.settledAt ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.debtAccount).values({ id, partyType: data.partyType, workerId: data.workerId ?? null, externalCounterpartyId: data.externalCounterpartyId ?? null, status: data.status, direction: data.direction, currentBalance: data.currentBalance, note: data.note ?? null, settledAt: data.settledAt ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    });
     return this.getDebtAccountById(id)!;
   }
 
@@ -558,7 +569,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const cur = this.getDebtAccountById(data.id);
     if (!cur) return null;
     const a = normalizeAudit(audit); const ts = createAlgeriaTimestamp();
-    this.db.update(schema.debtAccount).set({ status: data.status, currentBalance: data.currentBalance, settledAt: data.settledAt ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: ts }).where(eq(schema.debtAccount.id, data.id)).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.debtAccount).set({ status: data.status, currentBalance: data.currentBalance, settledAt: data.settledAt ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: ts }).where(eq(schema.debtAccount.id, data.id)).run();
+    });
     return this.getDebtAccountById(data.id);
   }
 
@@ -582,7 +595,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   createDebtEntry(data: DebtEntryCreateData, audit?: MutationAuditContext): DebtEntryRecord {
     const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
-    this.db.insert(schema.debtEntry).values({ id, debtAccountId: data.debtAccountId, entryType: data.entryType, signedAmount: data.signedAmountDzd, entryDate: data.entryDate, note: data.note ?? null, balanceAfter: data.balanceAfterDzd, reasonCategory: data.reasonCategory ?? "INVOICE_DRIVEN", reasonDetail: data.reasonDetail ?? null, paymentMethod: data.paymentMethod ?? null, status: data.status ?? "LIVE", voidedAt: data.voidedAt ?? null, voidedBy: data.voidedBy ?? null, voidReason: data.voidReason ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.debtEntry).values({ id, debtAccountId: data.debtAccountId, entryType: data.entryType, signedAmount: data.signedAmountDzd, entryDate: data.entryDate, note: data.note ?? null, balanceAfter: data.balanceAfterDzd, reasonCategory: data.reasonCategory ?? "INVOICE_DRIVEN", reasonDetail: data.reasonDetail ?? null, paymentMethod: data.paymentMethod ?? null, status: data.status ?? "LIVE", voidedAt: data.voidedAt ?? null, voidedBy: data.voidedBy ?? null, voidReason: data.voidReason ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    });
     return this.getDebtEntryById(id)!;
   }
 
@@ -591,12 +606,16 @@ export class SqliteCompanyRepository implements CompanyRepository {
     if (!cur) return null;
     if (cur.status !== "LIVE") return cur;
     const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
-    this.db.update(schema.debtEntry).set({ status: "VOIDED", voidedAt: data.voidedAt, voidedBy: data.voidedBy ?? a.actorLabel ?? a.actorUserId, voidReason: data.voidReason, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: ts }).where(eq(schema.debtEntry.id, data.id)).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.debtEntry).set({ status: "VOIDED", voidedAt: data.voidedAt, voidedBy: data.voidedBy ?? a.actorLabel ?? a.actorUserId, voidReason: data.voidReason, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: ts }).where(eq(schema.debtEntry.id, data.id)).run();
+    });
     return this.getDebtEntryById(data.id);
   }
 
   updateDebtEntryBalanceAfter(id: string, balanceAfterDzd: number): void {
-    this.db.update(schema.debtEntry).set({ balanceAfter: balanceAfterDzd, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.debtEntry.id, id)).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.debtEntry).set({ balanceAfter: balanceAfterDzd, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.debtEntry.id, id)).run();
+    });
   }
 
   // ── Projects ─────────────────────────────────────────────────────────
@@ -702,7 +721,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   createManagerAssignment(data: ManagerAssignmentCreateData, audit?: MutationAuditContext): EmployeeManagerAssignmentRecord {
     const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
-    this.db.insert(schema.employeeManagerAssignment).values({ id, workerId: data.workerId, managerId: data.managerId, status: data.status, startDate: data.startDate, endDate: data.endDate ?? null, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.employeeManagerAssignment).values({ id, workerId: data.workerId, managerId: data.managerId, status: data.status, startDate: data.startDate, endDate: data.endDate ?? null, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    });
     return this.getManagerAssignmentById(id)!;
   }
 
@@ -711,7 +732,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
     if (!cur) return null;
     if (cur.status !== "ACTIVE") return cur;
     const a = normalizeAudit(audit);
-    this.db.update(schema.employeeManagerAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeManagerAssignment.id, data.id)).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.employeeManagerAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeManagerAssignment.id, data.id)).run();
+    });
     return this.getManagerAssignmentById(data.id);
   }
 
@@ -737,7 +760,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   createProjectAssignment(data: ProjectAssignmentCreateData, audit?: MutationAuditContext): EmployeeProjectAssignmentRecord {
     const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
-    this.db.insert(schema.employeeProjectAssignment).values({ id, employeeId: data.employeeId, projectId: data.projectId, status: data.status, startDate: data.startDate, endDate: data.endDate ?? null, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.employeeProjectAssignment).values({ id, employeeId: data.employeeId, projectId: data.projectId, status: data.status, startDate: data.startDate, endDate: data.endDate ?? null, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    });
     return this.getProjectAssignmentById(id)!;
   }
 
@@ -746,7 +771,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
     if (!cur) return null;
     if (cur.status !== "ACTIVE") return cur;
     const a = normalizeAudit(audit);
-    this.db.update(schema.employeeProjectAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeProjectAssignment.id, data.id)).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.employeeProjectAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeProjectAssignment.id, data.id)).run();
+    });
     return this.getProjectAssignmentById(data.id);
   }
 
@@ -772,7 +799,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   createWarehouseAssignment(data: WarehouseAssignmentCreateData, audit?: MutationAuditContext): EmployeeWarehouseAssignmentRecord {
     const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
-    this.db.insert(schema.employeeWarehouseAssignment).values({ id, employeeId: data.employeeId, warehouseId: data.warehouseId, status: data.status, startDate: data.startDate, endDate: data.endDate ?? null, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.employeeWarehouseAssignment).values({ id, employeeId: data.employeeId, warehouseId: data.warehouseId, status: data.status, startDate: data.startDate, endDate: data.endDate ?? null, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    });
     return this.getWarehouseAssignmentById(id)!;
   }
 
@@ -781,7 +810,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
     if (!cur) return null;
     if (cur.status !== "ACTIVE") return cur;
     const a = normalizeAudit(audit);
-    this.db.update(schema.employeeWarehouseAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeWarehouseAssignment.id, data.id)).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.employeeWarehouseAssignment).set({ status: "ENDED", endDate: data.endDate, notes: data.notes ?? cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: createAlgeriaTimestamp() }).where(eq(schema.employeeWarehouseAssignment.id, data.id)).run();
+    });
     return this.getWarehouseAssignmentById(data.id);
   }
 
@@ -823,7 +854,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   createSalaryPayment(data: EmployeeSalaryPaymentCreateData, audit?: MutationAuditContext): EmployeeSalaryPaymentRecord {
     const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
-    this.db.insert(schema.employeeSalaryPayment).values({ id, employeeId: data.employeeId, periodType: data.periodType, expectedAmountDzd: data.expectedAmountDzd, actualAmountDzd: data.actualAmountDzd, paymentDate: data.paymentDate, note: data.note ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.employeeSalaryPayment).values({ id, employeeId: data.employeeId, periodType: data.periodType, expectedAmountDzd: data.expectedAmountDzd, actualAmountDzd: data.actualAmountDzd, paymentDate: data.paymentDate, note: data.note ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+    });
     return this.listSalaryPayments({ employeeId: data.employeeId }).find((e) => e.id === id)!;
   }
 
@@ -841,42 +874,56 @@ export class SqliteCompanyRepository implements CompanyRepository {
 
   /** Insert an employee state history record (hire, update, termination). */
   private insertStateHistory(data: { employeeId: string; roleId: string; status: string; salaryAmountDzd: number | null; salaryPeriod: string | null; eventType: string; startDate: string; notes: string | null; actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
-    this.db.insert(schema.employeeStateHistory).values({ id: crypto.randomUUID(), employeeId: data.employeeId, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd, salaryPeriod: data.salaryPeriod, eventType: data.eventType, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.employeeStateHistory).values({ id: crypto.randomUUID(), employeeId: data.employeeId, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd, salaryPeriod: data.salaryPeriod, eventType: data.eventType, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
+    });
   }
 
   /** End the current active state history for an employee. */
   private endActiveStateHistory(employeeId: string, endDate: string, a: { actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
-    this.db.update(schema.employeeStateHistory).set({ endDate, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.employeeStateHistory.employeeId, employeeId), isNull(schema.employeeStateHistory.endDate))).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.employeeStateHistory).set({ endDate, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.employeeStateHistory.employeeId, employeeId), isNull(schema.employeeStateHistory.endDate))).run();
+    });
   }
 
   /** Reassign workers to a new manager within a transaction. */
   private reassignWorkers(data: { workerIds: string[]; managerId: string; timestamp: string }, audit?: MutationAuditContext) {
     const a = normalizeAudit(audit);
-    for (const wid of data.workerIds) {
-      const cur = this.getActiveManagerAssignmentByWorkerId(wid);
-      if (cur?.managerId === data.managerId) continue;
-      if (cur) this.db.update(schema.employeeManagerAssignment).set({ status: "ENDED", endDate: data.timestamp, notes: cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: data.timestamp }).where(eq(schema.employeeManagerAssignment.id, cur.id)).run();
-      this.db.insert(schema.employeeManagerAssignment).values({ id: crypto.randomUUID(), workerId: wid, managerId: data.managerId, status: "ACTIVE", startDate: data.timestamp, endDate: null, notes: null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: data.timestamp, updatedAt: data.timestamp }).run();
-    }
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      for (const wid of data.workerIds) {
+        const cur = this.getActiveManagerAssignmentByWorkerId(wid);
+        if (cur?.managerId === data.managerId) continue;
+        if (cur) this.db.update(schema.employeeManagerAssignment).set({ status: "ENDED", endDate: data.timestamp, notes: cur.notes, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: data.timestamp }).where(eq(schema.employeeManagerAssignment.id, cur.id)).run();
+        this.db.insert(schema.employeeManagerAssignment).values({ id: crypto.randomUUID(), workerId: wid, managerId: data.managerId, status: "ACTIVE", startDate: data.timestamp, endDate: null, notes: null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: data.timestamp, updatedAt: data.timestamp }).run();
+      }
+    });
   }
 
   /** Insert a project manager ownership history record. */
   private insertProjectManagerOwnershipHistory(data: { projectId: string; managerId: string; status: string; startDate: string; notes: string | null; actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
-    this.db.insert(schema.projectManagerOwnershipHistory).values({ id: crypto.randomUUID(), projectId: data.projectId, managerId: data.managerId, status: data.status, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.projectManagerOwnershipHistory).values({ id: crypto.randomUUID(), projectId: data.projectId, managerId: data.managerId, status: data.status, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
+    });
   }
 
   /** End the active project manager ownership history. */
   private endActiveProjectManagerOwnershipHistory(projectId: string, endDate: string, a: { actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
-    this.db.update(schema.projectManagerOwnershipHistory).set({ endDate, status: "ENDED", actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.projectManagerOwnershipHistory.projectId, projectId), isNull(schema.projectManagerOwnershipHistory.endDate))).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.projectManagerOwnershipHistory).set({ endDate, status: "ENDED", actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.projectManagerOwnershipHistory.projectId, projectId), isNull(schema.projectManagerOwnershipHistory.endDate))).run();
+    });
   }
 
   /** Insert a warehouse manager ownership history record. */
   private insertWarehouseManagerOwnershipHistory(data: { warehouseId: string; managerId: string; status: string; startDate: string; notes: string | null; actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
-    this.db.insert(schema.warehouseManagerOwnershipHistory).values({ id: crypto.randomUUID(), warehouseId: data.warehouseId, managerId: data.managerId, status: data.status, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.insert(schema.warehouseManagerOwnershipHistory).values({ id: crypto.randomUUID(), warehouseId: data.warehouseId, managerId: data.managerId, status: data.status, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
+    });
   }
 
   /** End the active warehouse manager ownership history. */
   private endActiveWarehouseManagerOwnershipHistory(warehouseId: string, endDate: string, a: { actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
-    this.db.update(schema.warehouseManagerOwnershipHistory).set({ endDate, status: "ENDED", actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.warehouseManagerOwnershipHistory.warehouseId, warehouseId), isNull(schema.warehouseManagerOwnershipHistory.endDate))).run();
+    runSyncTransaction(this.connectionLock, this.raw, () => {
+      this.db.update(schema.warehouseManagerOwnershipHistory).set({ endDate, status: "ENDED", actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, updatedAt: endDate }).where(and(eq(schema.warehouseManagerOwnershipHistory.warehouseId, warehouseId), isNull(schema.warehouseManagerOwnershipHistory.endDate))).run();
+    });
   }
 }
