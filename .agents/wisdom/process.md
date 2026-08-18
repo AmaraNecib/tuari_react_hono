@@ -38,6 +38,34 @@ a different file set (e.g. the config module) without tripping the thresholds:
 The report is per-file; use the "Uncovered Line #s" column to hunt branches. Files fully
 covered may drop out of the table between runs — re-check with the raw report.
 
+## Local-only Greptile: pass the cached base ref, not local `develop` (🟠 Major)
+
+On #259 the CLI's `--branch <base>` named the base to diff against. Local `develop`
+(`bb144f3`) was AHEAD of the cached `origin/develop` (`6be3497`) in the worktree's ancestry,
+so `--branch develop` would have made Greptile diff an enormous unrelated range instead of
+the tiny test-only change. Because the repo is unreachable in local-only mode, only the
+cached `origin/develop` ref matches the pinned base SHA.
+
+**Always**: in local-only mode run `greptile review --json --branch origin/develop` (the
+cached ref that resolves to your pinned base — verify with `git rev-parse origin/develop`),
+and inspect the raw summary before trusting a clean 5/5: it must describe only YOUR diff.
+A green exit alone is not clean; confirm `comments: []` at confidence 5.
+
+## Testing a "never"-typed defensive branch and an auth-plugin validator (🟡 Minor)
+
+Two useful patterns from closing #259's deferred branches:
+- A `switch` `default:` that `throw`s after a `const _exhaustive: never = …` assignment is
+  unreachable through the validated schema by construction — the only way to cover it is a
+  scoped per-test cast (`{ ...config, dbAdapter: "postgres" } as unknown as AppConfig`)
+  with a comment explaining it pins future defense-in-depth (schema growth). Greptile and
+  review accepted this as honest.
+- better-auth's `phoneNumber` plugin calls `phoneNumberValidator` BEFORE any DB access on
+  both the `send-phone-number-otp` and `sign-in/phone-number` routes, so the validator's
+  return-false branch can be tested with a fake db (`createAuth({} as never, config)`); only
+  the validator-true path (which reaches the verification store) needs the real dependency
+  graph. The two routes produce distinct errors (`"Invalid phone number"` vs the sendOTP
+  hard-fail), so assertions discriminate which branch fired.
+
 ## Windows EBUSY deleting a better-sqlite3 test DB (🟡 Minor)
 
 `rmSync(dbDir, {recursive:true})` on a temp dir fails with `EBUSY: resource busy or locked`
