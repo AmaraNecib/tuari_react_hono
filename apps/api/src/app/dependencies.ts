@@ -52,8 +52,10 @@ export type CreateAppDependenciesConfig = {
   /** SQLite file path (or `:memory:`). Defaults to `appConfig.databasePath`. */
   databasePath?: string;
   /**
-   * SQLCipher encryption key. Defaults to `process.env.APP_DB_KEY`. The
-   * validated `AppConfig` carries no key field, so env is the only fallback.
+   * SQLCipher encryption key. Defaults to the resolved application config's
+   * `databaseKey` — itself env `APP_DB_KEY` first, then the config file's
+   * `db_key` (see `createAppConfig`). Explicit injection always wins, so the
+   * desktop host can still pin the key via its own secret store (#265/#352).
    */
   databaseKey?: string;
   /**
@@ -115,9 +117,17 @@ export async function createAppDependencies(
   appConfig: AppConfig = createAppConfig(),
 ): Promise<AppDependencies> {
   const databasePath = config.databasePath?.trim() ? config.databasePath : appConfig.databasePath;
+  // Resolve the SQLCipher key: the explicit injection seam wins (desktop host
+  // pinning, tests); otherwise the resolved application config key (env
+  // APP_DB_KEY first, then the config file's `db_key`). Before #265 this fell
+  // back only to process.env inside the factory, silently losing a
+  // config-file `db_key` — a config-keyed encrypted deployment could not open
+  // its database on restart. The key is null when no key is configured, which
+  // the factory treats as an unencrypted (plain) database.
+  const resolvedDatabaseKey = config.databaseKey ?? appConfig.databaseKey;
   const sharedDatabase = createDatabaseConnection(
     databasePath,
-    config.databaseKey,
+    resolvedDatabaseKey,
   );
   // Idempotent close: the root opens the connection, so the root closes it.
   // `close` is also invoked on construction failure so a partially-built root

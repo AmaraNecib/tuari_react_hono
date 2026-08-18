@@ -85,6 +85,57 @@ describe("createAppConfig", () => {
     expect(config.databasePath).toBe("./data/from-url.sqlite");
   });
 
+  // -----------------------------------------------------------------------
+  // Database key resolution (issue #265)
+  // -----------------------------------------------------------------------
+
+  it("defaults the database key to null when none is configured", () => {
+    const config = createAppConfig(requiredAuth);
+    expect(config.databaseKey).toBeNull();
+  });
+
+  it("resolves APP_DB_KEY into the database key", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_KEY: "env-db-key-123",
+    });
+    expect(config.databaseKey).toBe("env-db-key-123");
+  });
+
+  it("treats a blank APP_DB_KEY as no key (plain database)", () => {
+    // An explicit-but-blank env key is a deliberate "no key" override: it
+    // blocks any config-file db_key in mergeConfigIntoEnv (env wins) and
+    // resolves to null here — the same plain-DB outcome as no key at all.
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_KEY: "   ",
+    });
+    expect(config.databaseKey).toBeNull();
+  });
+
+  it("resolves the config file's db_key into the database key when env is unset", () => {
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(configPath, JSON.stringify({ db_key: "config-db-key-123" }), "utf8");
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      TUARI_CONFIG_FILE: configPath,
+    });
+    expect(config.databaseKey).toBe("config-db-key-123");
+  });
+
+  it("env APP_DB_KEY wins over the config file's db_key", () => {
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(configPath, JSON.stringify({ db_key: "config-db-key-123" }), "utf8");
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      TUARI_CONFIG_FILE: configPath,
+      APP_DB_KEY: "env-wins-key-123",
+    });
+    expect(config.databaseKey).toBe("env-wins-key-123");
+  });
+
   it("rejects non-file DATABASE_URL values", () => {
     expect(() =>
       createAppConfig({
@@ -509,6 +560,7 @@ describe("createAppConfig", () => {
     expect(config).toHaveProperty("dbAdapter");
     expect(config).toHaveProperty("databasePath");
     expect(config).toHaveProperty("databaseUrl");
+    expect(config).toHaveProperty("databaseKey");
     expect(config).toHaveProperty("attachmentsRootPath");
     expect(config).toHaveProperty("host");
     expect(config).toHaveProperty("port");

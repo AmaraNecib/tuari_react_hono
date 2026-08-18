@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -116,6 +116,22 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
     expect(roles.items.map((role) => role.key).sort()).toEqual(SEEDED_ROLE_KEYS);
   });
 
+  it("passes null (no key) to the factory when no key is resolved", async () => {
+    const { createAppDependencies } = await import("./dependencies");
+    const config = createAppConfig({ BETTER_AUTH_SECRET: TEST_AUTH_SECRET });
+
+    const deps = await createAppDependencies(
+      { databasePath: inMemoryDb, authInstance: fakeAuth },
+      config,
+    );
+    lastDeps = deps;
+
+    // No explicit injection and no config/env key -> the factory receives null
+    // (the factory treats null as a plain, unencrypted database).
+    expect(dbKeyCapture).toHaveBeenCalledWith(null);
+    expect(deps.companyService.listRoles().items).toHaveLength(SEEDED_ROLE_KEYS.length);
+  });
+
   it("honors the injected config for the bootstrap setup key", async () => {
     const { createAppDependencies } = await import("./dependencies");
     // Ambient key must not leak in — only the injected config may decide.
@@ -215,6 +231,60 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
     // the factory's concern and requires the native binding).
     expect(dbKeyCapture).toHaveBeenCalledWith("test-db-key");
     expect(deps.companyService.listRoles().items).toHaveLength(SEEDED_ROLE_KEYS.length);
+  });
+
+  it("opens the database with the config-file db_key when no key is injected (issue #265)", async () => {
+    const { createAppDependencies } = await import("./dependencies");
+    const configDir = mkdtempSync(join(tmpdir(), "tuari-deps-config-key-"));
+    const configPath = join(configDir, "config.json");
+    try {
+      // An encrypted deployment that relies on the app config file (env
+      // APP_DB_KEY unset) for its key — e.g. after the rekey persister wrote
+      // `db_key` into the config file — must be able to open its database on
+      // restart. The resolved app config key must reach the factory.
+      writeFileSync(configPath, JSON.stringify({ db_key: "config-db-key-123" }), "utf8");
+      const config = createAppConfig({
+        BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
+        TUARI_CONFIG_FILE: configPath,
+      });
+
+      const deps = await createAppDependencies(
+        { databasePath: inMemoryDb, authInstance: fakeAuth },
+        config,
+      );
+      lastDeps = deps;
+
+      expect(dbKeyCapture).toHaveBeenCalledWith("config-db-key-123");
+      expect(deps.companyService.listRoles().items).toHaveLength(SEEDED_ROLE_KEYS.length);
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+
+  it("lets an injected databaseKey win over the config-file db_key", async () => {
+    const { createAppDependencies } = await import("./dependencies");
+    const configDir = mkdtempSync(join(tmpdir(), "tuari-deps-inject-wins-"));
+    const configPath = join(configDir, "config.json");
+    try {
+      writeFileSync(configPath, JSON.stringify({ db_key: "config-db-key-123" }), "utf8");
+      const config = createAppConfig({
+        BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
+        TUARI_CONFIG_FILE: configPath,
+      });
+
+      const deps = await createAppDependencies(
+        { databasePath: inMemoryDb, databaseKey: "injected-key-123", authInstance: fakeAuth },
+        config,
+      );
+      lastDeps = deps;
+
+      // Explicit injection (desktop host pinning) always wins over the
+      // resolved config key — the rekey/rollback design is preserved.
+      expect(dbKeyCapture).toHaveBeenCalledWith("injected-key-123");
+      expect(deps.companyService.listRoles().items).toHaveLength(SEEDED_ROLE_KEYS.length);
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
   });
 
   it("wires the databaseKeyPersister to the config file (issue #265)", async () => {

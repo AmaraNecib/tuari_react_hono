@@ -63,6 +63,15 @@ export const appConfigSchema = z.object({
   databasePath: z.string(),
   /** SQLite file URL (file:///path/to/db.sqlite). */
   databaseUrl: z.string().startsWith("file:"),
+  /**
+   * SQLCipher encryption key resolved from env (APP_DB_KEY) first, then the
+   * config file (`db_key`), mirroring `mergeConfigIntoEnv` precedence. Null
+   * means the database is unencrypted (plain better-sqlite3). The rekey flow
+   * persists a rotated key into the config file (#265) so a restart can still
+   * open the database — surfacing it here lets the composition root open with
+   * the resolved key instead of dropping it.
+   */
+  databaseKey: z.string().nullable().default(null),
   /** Root directory for file attachments (invoices, etc.). */
   attachmentsRootPath: z.string(),
 
@@ -228,6 +237,10 @@ export function createAppConfig(
     dbAdapter,
     databasePath: database.databasePath,
     databaseUrl: database.databaseUrl,
+    // Resolved DB encryption key (env APP_DB_KEY first, then config `db_key`).
+    // Empty/blank resolves to null (plain DB), matching the factory's env
+    // fallback semantics.
+    databaseKey: effectiveSource.APP_DB_KEY?.trim() || null,
     attachmentsRootPath: database.attachmentsRootPath,
     host,
     port,
