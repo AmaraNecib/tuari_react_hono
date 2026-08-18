@@ -201,7 +201,9 @@ outputs at:
 ```
 
 The parent agent decides what to fix, defer, or reject; do not treat a score as
-proof that a finding is valid.
+proof that a finding is valid. A lane may propose a follow-up PR for work that
+is genuinely outside scope, but must ask the parent first with the proposed
+follow-up and dependency/order impact. No silent deferrals.
 
 ## 7. Test audit — Standard and High-assurance
 
@@ -311,7 +313,8 @@ Run `capture-wisdom` when a finding or failure is durable. The report must state
 - checks and exact results;
 - local review evidence paths;
 - Greptile score/findings and local loop iterations;
-- remaining work and whether it is shipped, local-only, deferred, or unknown.
+- remaining work and whether it is shipped, local-only, deferred, or unknown;
+- explicit parent decisions for any deferral and any lane/worktree reorder.
 
 ## Completion definitions
 

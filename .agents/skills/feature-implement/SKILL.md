@@ -16,6 +16,12 @@ Git refs. Do not use `gh issue`, `gh pr`, PR comments, `git fetch`, `git push`,
 or GitHub Actions until the user explicitly says the remote repository is
 available again.
 
+Crew policy: use at most six concurrent mutation worktrees. The parent may push
+and open/update a PR after the gates pass, but **must never merge**, even after
+Greptile reports 5/5. Close a Herdr workspace only when its lane is terminal
+and no follow-up is expected; keep reusable lanes alive and preserve
+workspace/pane/session identifiers before closing.
+
 ## Mode selection and base SHA
 
 At the start of a run:
@@ -170,7 +176,9 @@ content. Save `.scratch/reviews/<issue-id>/<HEAD>-code-review.md`.
 
 Fix actionable findings, rerun the local checks, and regenerate evidence after
 any reviewable-file change. Greptile findings are claims: verify each finding
-against current code before fixing it.
+against current code before fixing it. If a finding appears outside scope, ask
+the parent before deferring it; include the proposed follow-up, dependency
+impact, and whether it should change the current lane/worktree order.
 
 ### 9. Guard Phase 2 — local pre-report gate
 
@@ -183,6 +191,12 @@ Evidence filenames must contain the final reviewed `HEAD` SHA. Evidence-only
 follow-up commits require a freshness check and a post-evidence note.
 
 ### 10. Greptile review — CLI, not PR comments
+
+In a visible crew lane, delegate this step to the lane when practical: the lane
+should run the CLI in its own worktree and send status, confidence, comments,
+run id, and actionable findings through `crew_report`. The parent aggregates
+that report and reruns only when the lane is blocked, the result is stale, or an
+independent review is required.
 
 Greptile reviews the current local checkout through its CLI. It does not need
 a GitHub PR. Run the `cli-review` skill first:
@@ -217,7 +231,8 @@ In local-only mode, Phase 3 verifies:
 - local contracts/typecheck/lint/API/web/Rust checks are green as applicable
 - local code-review, test-audit, and debate evidence is present and current
 - the latest Greptile CLI result is clean and corresponds to the final code
-- deferred work is recorded in the local issue status ledger
+- deferred work is recorded in the local issue status ledger and has an
+  explicit parent decision; lanes never defer silently
 - no remote operation was implied by the report
 
 Do not wait for CI, PR comments, or GitHub issue state in this mode.
@@ -244,8 +259,8 @@ A local implementation is **ready for later integration**, not merged, only when
 
 Never claim an issue is closed or merged while GitHub is unavailable. When the
 remote is restored, rebase/compare against the fresh `develop`, rerun all local
-checks and Greptile review, then use the remote PR/CI lifecycle only with the
-user's approval.
+checks and Greptile review, then push/open or update the remote PR only with the
+user's approval. Stop after the PR is created or updated; never merge it.
 
 ## Review tiers
 
