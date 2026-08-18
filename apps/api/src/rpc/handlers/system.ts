@@ -55,7 +55,13 @@ export function createSystemHandlers(
       return recoveryKeyService.getPoolStatus();
     })),
 
-    generateRecoveryKeys: os.generateRecoveryKeys.handler(m.mutationAudit(
+    // Defense-in-depth (#175): these are the high-value credential / encryption-
+    // rotation mutations in the threat surface (recovery-key pool + DB-key
+    // rotation). They already require a bootstrap-owner session; the rate-limited
+    // variant additionally charges each against the shared per-IP budget
+    // (100 req / 15 min) so a compromised-but-active session, or IP-level abuse,
+    // cannot thrash these expensive/irreversible operations.
+    generateRecoveryKeys: os.generateRecoveryKeys.handler(m.mutationAuditRateLimited(
       async () => {
         const keys = await recoveryKeyService.generateKeys();
         return { keys };
@@ -63,7 +69,7 @@ export function createSystemHandlers(
       toFailureResult,
     )),
 
-    consumeRecoveryKey: os.consumeRecoveryKey.handler(m.mutationAudit(
+    consumeRecoveryKey: os.consumeRecoveryKey.handler(m.mutationAuditRateLimited(
       async ({ input }) => {
         const success = await recoveryKeyService.consumeKey((input as ConsumeRecoveryKeyInput).key);
         return { success };
@@ -71,7 +77,7 @@ export function createSystemHandlers(
       toFailureResult,
     )),
 
-    revokeRecoveryKey: os.revokeRecoveryKey.handler(m.mutationAudit(
+    revokeRecoveryKey: os.revokeRecoveryKey.handler(m.mutationAuditRateLimited(
       async ({ input }) => {
         const success = await recoveryKeyService.revokeKey((input as RevokeRecoveryKeyInput).keyId);
         return { success };
@@ -79,7 +85,7 @@ export function createSystemHandlers(
       toFailureResult,
     )),
 
-    changeDbEncryptionKey: os.changeDbEncryptionKey.handler(m.mutationAudit(
+    changeDbEncryptionKey: os.changeDbEncryptionKey.handler(m.mutationAuditRateLimited(
       ({ input }) => {
         const { currentKey, newKey } = input as ChangeDbKeyInput;
         // The port verifies the current key (fresh connection — SQLCipher

@@ -71,9 +71,14 @@ export function createRouter(
     authSetupStatus: os.authSetupStatus.handler(async () =>
       dependencies.authBootstrapService.getSetupStatus(),
     ),
-    authBootstrap: os.authBootstrap.handler(async ({ input }) =>
-      dependencies.authBootstrapService.bootstrapFirstUser(input),
-    ),
+    authBootstrap: os.authBootstrap.handler(async ({ context, input }) => {
+      // Defense-in-depth (#175): the setup secret is the one in-scope
+      // credential verified by an unauthenticated endpoint. Charge it against
+      // the shared per-IP budget (same socket-keyed limiter as the auth routes)
+      // so the strong secret is additionally protected against online guessing.
+      m.rateLimit(context);
+      return dependencies.authBootstrapService.bootstrapFirstUser(input);
+    }),
   };
 
   const allHandlers = {

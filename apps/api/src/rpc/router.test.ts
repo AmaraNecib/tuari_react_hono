@@ -902,6 +902,36 @@ describe("RPC router", () => {
     expect(bootstrapFirstUser).not.toHaveBeenCalled();
   });
 
+  it("rate-limits the unauthenticated authBootstrap setup-secret endpoint (#175)", async () => {
+    const harness = createHarness();
+    const bootstrapFirstUser = vi.fn(async () => ({
+      success: true as const,
+      message: "created",
+      item: { id: "user-1", name: "Taylor", phone: "0612345678", version: "0.0.0" },
+    }));
+    const router = createTestRouter(harness, { bootstrapFirstUser: bootstrapFirstUser as never });
+    const client = createRouterClient(router, { context: createContext(null) as never });
+    const validInput = {
+      name: "Taylor",
+      phone: "0612345678",
+      password: "StrongPass123!",
+      setupSecret: "setup-secret",
+    };
+
+    // 100 valid attempts fit the per-IP budget and reach the service.
+    for (let i = 0; i < 100; i++) {
+      await expect(client.authBootstrap(validInput)).resolves.toMatchObject({ success: true });
+    }
+    expect(bootstrapFirstUser).toHaveBeenCalledTimes(100);
+
+    // The 101st is rejected by the per-IP limiter before touching the service,
+    // defending the setup secret against online guessing.
+    await expect(client.authBootstrap(validInput)).rejects.toMatchObject({
+      code: "TOO_MANY_REQUESTS",
+    });
+    expect(bootstrapFirstUser).toHaveBeenCalledTimes(100);
+  });
+
   it("attaches zod field issues to the wire-gate validation error", async () => {
     const harness = createHarness();
     const bootstrapFirstUser = vi.fn();
@@ -927,6 +957,38 @@ describe("RPC router", () => {
       },
     });
     expect(bootstrapFirstUser).not.toHaveBeenCalled();
+  });
+
+  it("rate-limits the recovery-key / DB-key rotation mutations (#175)", async () => {
+    const harness = createHarness();
+    const consumeKey = vi.fn(async () => true);
+    const revokeKey = vi.fn(async () => true);
+    const generateKeys = vi.fn(async () => []);
+    const getPoolStatus = vi.fn(async () => ({
+      availableCount: 0,
+      totalCount: 0,
+      maxPoolSize: 5,
+      maskedKeys: [],
+    }));
+    const recoveryKeyService = { consumeKey, revokeKey, generateKeys, getPoolStatus };
+    const router = createTestRouter(harness, {}, recoveryKeyService);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    // 100 authenticated consume calls fit the shared per-IP budget.
+    for (let i = 0; i < 100; i++) {
+      await expect(
+        client.consumeRecoveryKey({ key: "a1b2-c3d4-e5f6" }),
+      ).resolves.toMatchObject({ success: true });
+    }
+    expect(consumeKey).toHaveBeenCalledTimes(100);
+
+    // The 101st is throttled client-side (the service is never reached), so a
+    // compromised-but-active admin session cannot thrash the recovery/DB-key
+    // rotation surface.
+    await expect(
+      client.consumeRecoveryKey({ key: "a1b2-c3d4-e5f6" }),
+    ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+    expect(consumeKey).toHaveBeenCalledTimes(100);
   });
 
   it("rejects invalid recovery/DB key input at the wire contract", async () => {
