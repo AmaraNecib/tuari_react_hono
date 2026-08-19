@@ -116,6 +116,14 @@ cross-connection write-lock contention (5s timeout, #196/#212/#259), and
 - **Whole-file review**: Greptile reviews the whole touched file, not just the
   diff — on a move/rename, skim the relocated file for pre-existing warts
   (duplicated blocks, nondeterministic order) and fix them in the move (#209).
+- **CLI mode can flag PRE-EXISTING base-level items**: `greptile review --json
+  --branch <pinned-base>` may report confidence <5 over a file the branch never
+  touched (e.g. a retired self-hosted runner pool the base commit itself
+  introduced). Verify scope with `git diff <base>..HEAD -- <flagged-file>`
+  (empty diff = out of scope), record it as deferred work for the parent, and
+  gate on the actual comments array — zero actionable comments on the diff is
+  a clean verdict for the branch even when confidenceReasoning mentions a base
+  concern (dynamic-ports lane).
 
 ## Run git add/commit from the worktree root, never from nested scratch dirs (🟠 Major)
 

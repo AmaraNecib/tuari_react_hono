@@ -1,8 +1,10 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
 
 import { BOOTSTRAP_SETUP_KEY } from "./helpers/session"
+import { apiBaseUrl, webBaseUrl } from "./helpers/urls"
 
-const API_URL = "http://127.0.0.1:4318"
+const API_URL = apiBaseUrl()
+const WEB_ORIGIN = webBaseUrl()
 
 /**
  * Drives the authBootstrap ORPC procedure over the wire — the same endpoint
@@ -12,7 +14,7 @@ async function callBootstrap(request: APIRequestContext, setupSecret: string) {
   const response = await request.post(`${API_URL}/rpc/authBootstrap`, {
     // The /rpc/* middleware rejects requests without an allowed Origin —
     // mirror the web app's origin exactly as a browser would.
-    headers: { Origin: "http://127.0.0.1:3000" },
+    headers: { Origin: WEB_ORIGIN },
     data: {
       json: {
         name: "مدير الاختبار",
@@ -67,7 +69,7 @@ test("bootstrap rejects a whitespace-only password at the wire gate (#230)", asy
   // `password`, NOT a length issue and NOT a setup-key/conflict envelope.
   // Deterministic in both DB states (fresh standalone vs bootstrapped suite).
   const response = await request.post(`${API_URL}/rpc/authBootstrap`, {
-    headers: { Origin: "http://127.0.0.1:3000" },
+    headers: { Origin: WEB_ORIGIN },
     data: {
       json: {
         name: "مدير الاختبار",

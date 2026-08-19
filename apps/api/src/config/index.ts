@@ -41,14 +41,32 @@ const splitCsv = (value: string) =>
 
 const defaultPort = 4318;
 const defaultHost = "127.0.0.1";
-const defaultAllowedOrigins = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
+const defaultWebPort = 3000;
+
+/**
+ * Origins that must always be allowed regardless of the web dev port: the
+ * desktop (Tauri) shell and its IPC origins. These are desktop-packaging
+ * constants — see the dynamic-ports design doc; the desktop sidecar is out of
+ * the local parallel-lane flow and keeps its baked-in 1420/tauri origins.
+ */
+const frameworkOrigins = [
   "http://localhost:1420",
   "http://127.0.0.1:1420",
   "http://tauri.localhost",
   "https://tauri.localhost",
   "tauri://localhost",
+];
+
+/**
+ * Build the default CORS allowlist for a given web dev port. The web app
+ * (vite dev server on 127.0.0.1) is the primary browser origin; it is derived
+ * from WEB_PORT so parallel lanes on distinct ports get a matching allowlist.
+ * Loopback-only: both localhost and 127.0.0.1 are enumerated.
+ */
+const defaultAllowedOriginsForWebPort = (webPort: string | number) => [
+  `http://localhost:${webPort}`,
+  `http://127.0.0.1:${webPort}`,
+  ...frameworkOrigins,
 ];
 
 // ---------------------------------------------------------------------------
@@ -83,7 +101,7 @@ export const appConfigSchema = z.object({
   /** Allowed CORS origins. */
   allowedOrigins: z
     .array(z.string())
-    .default(normalizeOriginList(defaultAllowedOrigins)),
+    .default(normalizeOriginList(defaultAllowedOriginsForWebPort(defaultWebPort))),
   /** Trust X-Forwarded-* headers from proxies. */
   trustProxyHeaders: z.boolean().default(false),
   /**
@@ -182,10 +200,21 @@ export function createAppConfig(
     return p;
   })();
 
+  const webPort = (() => {
+    if (effectiveSource.WEB_PORT === undefined) return defaultWebPort;
+    const p = Number(effectiveSource.WEB_PORT);
+    if (!Number.isInteger(p) || p <= 0 || p > 65535) {
+      throw new Error(
+        `WEB_PORT must be a positive integer between 1 and 65535, received "${effectiveSource.WEB_PORT}"`,
+      );
+    }
+    return p;
+  })();
+
   const allowedOrigins =
     effectiveSource.ALLOWED_ORIGINS !== undefined
       ? normalizeOriginList(splitCsv(effectiveSource.ALLOWED_ORIGINS))
-      : normalizeOriginList(defaultAllowedOrigins);
+      : normalizeOriginList(defaultAllowedOriginsForWebPort(webPort));
 
   const trustProxyHeaders = (() => {
     if (effectiveSource.API_TRUST_PROXY_HEADERS === undefined) return false;

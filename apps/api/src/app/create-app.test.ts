@@ -126,6 +126,58 @@ describe("createApp RPC wiring", () => {
     expect(response.status).toBe(403);
   });
 
+  it("allows a distinct configured web port origin (parallel-lane CORS)", async () => {
+    const laneSecurity = {
+      allowedOrigins: [
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:1420",
+        "http://127.0.0.1:1420",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
+      ],
+    } as const;
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, laneSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/rpc/health", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://127.0.0.1:3001",
+        },
+        body: JSON.stringify({ json: null, meta: [] }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({});
+  });
+
+  it("blocks an origin from a different lane's port", async () => {
+    const laneSecurity = {
+      allowedOrigins: ["http://127.0.0.1:3001"],
+    } as const;
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, laneSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/rpc/health", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://127.0.0.1:3002",
+        },
+        body: JSON.stringify({ json: null, meta: [] }),
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({ message: "Blocked origin." });
+    expect(response.status).toBe(403);
+  });
+
   it("allows top-level auth GET requests with a missing origin", async () => {
     const dependencies = createDependencies();
     const app = createApp(dependencies as never, transportSecurity);

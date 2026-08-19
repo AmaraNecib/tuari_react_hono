@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
 import { bootstrapOrSignIn } from "./helpers/session"
+import { apiBaseUrl } from "./helpers/urls"
 
 // Serial because the pool is shared DB state; retries would re-run against a
 // mutated pool and break the empty-state precondition, so disable them here.
@@ -12,7 +13,7 @@ const KEY_PATTERN = /^[0-9a-f]{6}-[0-9a-f]{6}-[0-9a-f]{6}$/
 const MASKED_PATTERN = /^[0-9a-f]{4}-\*{4}-\*{4}$/
 
 /** The web app talks to the API at this origin (see playwright.config.ts). */
-const API_URL = "http://127.0.0.1:4318"
+const API_URL = apiBaseUrl()
 
 type RecoveryKeyPoolStatus = {
   availableCount: number

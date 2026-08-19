@@ -205,6 +205,52 @@ describe("createAppConfig", () => {
     expect(config.betterAuthUrl).toBe("http://127.0.0.1:8080");
   });
 
+  it("derives the default web origin allowlist from WEB_PORT", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      WEB_PORT: "3001",
+    });
+
+    expect(config.allowedOrigins).toContain("http://localhost:3001");
+    expect(config.allowedOrigins).toContain("http://127.0.0.1:3001");
+    // Desktop/framework origins are preserved regardless of the web port.
+    expect(config.allowedOrigins).toContain("http://localhost:1420");
+    expect(config.allowedOrigins).toContain("tauri://localhost");
+    // The old baked-in web port is NOT included when WEB_PORT is overridden.
+    expect(config.allowedOrigins).not.toContain("http://localhost:3000");
+    expect(config.allowedOrigins).not.toContain("http://127.0.0.1:3000");
+  });
+
+  it("keeps the default web origin at 3000 when WEB_PORT is unset", () => {
+    const config = createAppConfig(requiredAuth);
+    expect(config.allowedOrigins).toContain("http://localhost:3000");
+    expect(config.allowedOrigins).toContain("http://127.0.0.1:3000");
+  });
+
+  it("lets an explicit ALLOWED_ORIGINS win over WEB_PORT", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      WEB_PORT: "3001",
+      ALLOWED_ORIGINS: "http://localhost:8080",
+    });
+
+    expect(config.allowedOrigins).toEqual(["http://localhost:8080"]);
+  });
+
+  it("rejects non-integer or out-of-range WEB_PORT values", () => {
+    expect(() =>
+      createAppConfig({ ...requiredAuth, WEB_PORT: "abc" }),
+    ).toThrow("WEB_PORT must be a positive integer");
+
+    expect(() =>
+      createAppConfig({ ...requiredAuth, WEB_PORT: "0" }),
+    ).toThrow("WEB_PORT must be a positive integer between 1 and 65535");
+
+    expect(() =>
+      createAppConfig({ ...requiredAuth, WEB_PORT: "65536" }),
+    ).toThrow("WEB_PORT must be a positive integer between 1 and 65535");
+  });
+
   it("parses ALLOWED_ORIGINS CSV into an array", () => {
     const config = createAppConfig({
       ...requiredAuth,
