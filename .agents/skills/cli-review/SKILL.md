@@ -43,17 +43,14 @@ Check whether `greptile` is installed:
 command -v greptile
 ```
 
-If it is missing, do not install it automatically. Ask the user for permission, then show the recommended install command:
+If it is missing, do not install it automatically. Ask the user for permission, then show the recommended install command **using the project's own package manager** (detect it from the lockfile: `pnpm-lock.yaml` → `pnpm add -g greptile`, `package-lock.json` → `npm i -g greptile`, `bun.lockb`/`bun.lock` → `bun add -g greptile`):
 
 ```bash
-npm i -g greptile
+# match the repo's package manager (pnpm here)
+pnpm add -g greptile
 ```
 
-If npm is unavailable, offer the shell installer fallback:
-
-```bash
-curl -fsSL "https://greptile.com/cli/install" | sh
-```
+Do NOT pipe an unpinned remote installer (`curl ... | sh`) to the shell. If a global install via the project's package manager is unavailable (e.g. the environment's tool policy blocks that PM's global-install command), do NOT silently switch to a different package manager or installer — tell the user which PM is blocked and ask them to allow it or install Greptile themselves. If the CLI is already present (`command -v greptile` succeeds), skip installation entirely.
 
 After installation, re-run `command -v greptile`.
 
