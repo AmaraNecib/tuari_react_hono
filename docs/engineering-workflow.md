@@ -8,7 +8,7 @@ local mode is the default while the GitHub repository is unavailable.
 
 | Mode | Source of truth | Allowed review transport | Finish state |
 | --- | --- | --- | --- |
-| **Local-only** (current) | Current checkout, local branches/worktrees, cached refs, `docs/local-issue-status.md` | Greptile CLI (`greptile review --json`) | Locally verified and ready for later integration; never “merged” or “closed” |
+| **Local-only** (current) | Current checkout, local branches/worktrees, cached refs, `docs/local-issue-status.md` | Greptile CLI (`greptile review --json`) | Locally verified and ready for later integration; never "merged" or "closed" |
 | Remote | Fresh `develop`, issue/PR data, CI | PR/CI plus Greptile CLI or hosted review | Ready/merged only when the user authorizes the remote lifecycle |
 
 Selecting local-only mode is not a downgrade in code quality. It removes the
@@ -21,11 +21,11 @@ The old issue tracker was generated into ignored `tmp/issue-tracker.html` from
 `gh issue list`. That file is a presentation cache, not a durable source, and
 `.scratch/issues/` is intentionally ignored. The durable offline sources are:
 
-- `docs/local-issue-snapshot.json` — the 49-ticket title snapshot;
-- `docs/local-issue-status.md` — evidence-based shipped/local/unverified status;
-- `.scratch/implementation/<issue-id>-design.md` — implementation decisions;
-- `.scratch/reviews/<issue-id>/` — review evidence;
-- local branches and cached refs — implementation material.
+- `docs/local-issue-snapshot.json`: the 49-ticket title snapshot;
+- `docs/local-issue-status.md`: evidence-based shipped/local/unverified status;
+- `.scratch/implementation/<issue-id>-design.md`: implementation decisions;
+- `.scratch/reviews/<issue-id>/`: review evidence;
+- local branches and cached refs: implementation material.
 
 Regenerate the ignored visual tracker without GitHub:
 
@@ -153,9 +153,10 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings
 ```
 
-Do not let the first external system discover predictable failures.
+Run these checks locally so a predictable failure surfaces in the worktree,
+not first on an external system.
 
-## 4. Guard Phase 1 — pre-review
+## 4. Guard Phase 1: pre-review
 
 Run the local pre-review gate before any deeper review:
 
@@ -191,7 +192,7 @@ Select relevant skills rather than loading every skill:
 | Playwright architecture/selectors | `playwright-best-practices` |
 | Accessibility/keyboard/RTL | `accessibility` |
 
-## 6. Debate — High-assurance only
+## 6. Debate: High-assurance only
 
 Run the `debate` skill with the pinned base. Preserve critic and defender
 outputs at:
@@ -205,7 +206,7 @@ proof that a finding is valid. A lane may propose a follow-up PR for work that
 is genuinely outside scope, but must ask the parent first with the proposed
 follow-up and dependency/order impact. No silent deferrals.
 
-## 7. Test audit — Standard and High-assurance
+## 7. Test audit: Standard and High-assurance
 
 Run `test-audit` against the current diff. It checks edge/error/empty states,
 assertion quality, E2E coverage, and shallow tests. Save:
@@ -223,13 +224,12 @@ git diff <base-sha>...HEAD
 git log <base-sha>..HEAD --oneline
 ```
 
-The two axes remain separate:
+The two axes remain separate: the Standards axis checks repo rules and the
+smell baseline; the Spec axis checks the local design, local issue snapshot,
+and any checked-in PRD/spec.
 
-- **Standards** — repo rules and the smell baseline;
-- **Spec** — the local design, local issue snapshot, and any checked-in PRD/spec.
-
-If the issue body is not available locally, the Spec axis must say “no spec
-available”; it must not guess. Save:
+If the issue body is not available locally, the Spec axis must say "no spec
+available"; it must not guess. Save:
 
 ```
 .scratch/reviews/<issue-id>/<head-sha>-code-review.md
@@ -238,7 +238,7 @@ available”; it must not guess. Save:
 Fix actionable findings, rerun local checks, then regenerate evidence. Greptile
 findings are claims: verify them in the current code before changing anything.
 
-## 9. Guard Phase 2 — local pre-Greptile gate
+## 9. Guard Phase 2: local pre-Greptile gate
 
 Verify all applicable local checks, evidence freshness, and handoff state.
 Evidence filenames must contain the final reviewed `HEAD` SHA. If the code
@@ -289,10 +289,10 @@ Store evidence for a ticket as:
 ```
 
 The gate is clean only when the latest result reports confidence 5/5 with zero
-unresolved/actionable findings, or an equivalent explicit “no actionable
-findings” result. Check the current code before dismissing a false positive.
+unresolved/actionable findings, or an equivalent explicit "no actionable
+findings" result. Check the current code before dismissing a false positive.
 
-## 11. Guard Phase 3 — local pre-report
+## 11. Guard Phase 3: local pre-report
 
 In local-only mode, verify:
 
@@ -303,7 +303,7 @@ In local-only mode, verify:
   design/ticket;
 - the report does not imply CI, PR, merge, or issue closure.
 
-There is no “wait for CI” step while GitHub is unavailable.
+There is no "wait for CI" step while GitHub is unavailable.
 
 ## 12. Wisdom and report
 

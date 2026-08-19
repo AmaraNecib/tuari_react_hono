@@ -5,7 +5,6 @@ description: "Mandatory lifecycle orchestrator for implementing a local or remot
 
 # Feature Implementation Orchestration
 
-**Start here for every code, test, workflow, configuration, or skill change.**
 Read `docs/engineering-workflow.md`, `docs/local-issue-status.md` (when the
 work is ticket-driven), and `.agents/wisdom/*.md` first.
 
@@ -46,13 +45,11 @@ Record in the design/review evidence:
 
 ## Enforced lifecycle
 
-Do not skip or reorder the applicable gates.
-
 ### 1. Resolve the ticket locally
 
 For a numbered ticket, read `docs/local-issue-status.md` and
 `docs/local-issue-snapshot.json`. Then inspect the named branch, design, and
-review evidence. A row marked “Base shipped; local follow-up remains” must be
+review evidence. A row marked "Base shipped; local follow-up remains" must be
 diffed against the cached base before replaying anything; do not duplicate a
 change that is already present.
 
@@ -80,7 +77,7 @@ than a live issue file.
 
 ### 3. Implement with tests
 
-Load the `implement` skill and use TDD at the agreed seams. Every user-facing
+Load the `implement` skill and use `TDD` at the agreed seams. Every user-facing
 feature includes a Playwright test in `tests/e2e/`; business logic includes
 unit/integration tests. During implementation run the relevant checks, normally:
 
@@ -114,7 +111,7 @@ never add generated output merely because a build produced it. If a legacy
 tracked generated file appears in the base, document it; do not copy or add a
 new generated version to the feature branch.
 
-### 4. Guard Phase 1 — pre-review
+### 4. Guard Phase 1: pre-review
 
 Run `guard` Phase 1 before any review. In local-only mode it means local
 commands only:
@@ -139,6 +136,7 @@ Load only the skills relevant to the change:
 | New module, interface, or architecture | `codebase-design` |
 | Complex logic or edge cases | `diagnosing-bugs` |
 | Domain entities or terminology | `domain-modeling` |
+| Writing tests | `TDD` |
 | Production code | `code-review` |
 | UI or visual design | `frontend-design`, `web-design-guidelines` |
 | Existing UI polish | `redesign-existing-projects` |
@@ -150,12 +148,12 @@ Load only the skills relevant to the change:
 | Playwright tests | `playwright-best-practices` |
 | Accessibility/keyboard/RTL | `accessibility` |
 
-### 6. Debate — High-assurance only
+### 6. Debate: High-assurance only
 
 For High-assurance work, run `debate` against the fixed base SHA. Save the
 result as `.scratch/reviews/<issue-id>/<HEAD>-debate.md`.
 
-### 7. Test audit — Standard and High-assurance
+### 7. Test audit: Standard and High-assurance
 
 Run `test-audit` for Standard and High-assurance work. It must check edge
 cases, meaningful assertions, failure/empty states, and E2E coverage. Save
@@ -175,28 +173,22 @@ The Standards and Spec axes must use local designs/specs and
 content. Save `.scratch/reviews/<issue-id>/<HEAD>-code-review.md`.
 
 Fix actionable findings, rerun the local checks, and regenerate evidence after
-any reviewable-file change. Greptile findings are claims: verify each finding
-against current code before fixing it. If a finding appears outside scope, ask
+any reviewable-file change. Greptile findings are claims: verify each against
+current code before fixing. If a finding appears outside scope, ask
 the parent before deferring it; include the proposed follow-up, dependency
 impact, and whether it should change the current lane/worktree order.
 
-### 9. Guard Phase 2 — local pre-report gate
+### 9. Guard Phase 2: local pre-report gate
 
 Run `guard` Phase 2. Verify local checks, review evidence freshness, and that
 the branch is in a reportable state. A clean working tree is preferred; if the
 user wants an uncommitted local handoff, report every uncommitted file and do
 not claim the work is ready to integrate.
 
-Evidence filenames must contain the final reviewed `HEAD` SHA. Evidence-only
+Evidence filenames must contain the final reviewed `HEAD` SHA; evidence-only
 follow-up commits require a freshness check and a post-evidence note.
 
-### 10. Greptile review — CLI, not PR comments
-
-In a visible crew lane, delegate this step to the lane when practical: the lane
-should run the CLI in its own worktree and send status, confidence, comments,
-run id, and actionable findings through `crew_report`. The parent aggregates
-that report and reruns only when the lane is blocked, the result is stale, or an
-independent review is required.
+### 10. Greptile review via the CLI, not PR comments
 
 Greptile reviews the current local checkout through its CLI. It does not need
 a GitHub PR. Run the `cli-review` skill first:
@@ -208,9 +200,8 @@ greptile review --json --branch <base-branch>
 
 Pass the pinned base branch/ref; omitting it can compare against the repository
 default branch and review an unrelated, enormous diff. If the issue needs an iterative fix loop, run `greploop --local` after the
-first review. The local loop may inspect and fix actionable findings, but it
-must never push, create a PR, post a comment, resolve a remote thread, or run
-`git add -A`. Re-run the local checks after every code fix.
+first review. The local loop may inspect and fix actionable findings, but no push, no PR, no
+comments, no `git add -A`. Re-run the local checks after every code fix.
 
 Save the raw CLI result and a concise summary under:
 
@@ -224,7 +215,7 @@ The local Greptile gate passes only when the latest result is clean: confidence
 explicitly reports no actionable findings. A successful command by itself is
 not a clean verdict.
 
-### 11. Guard Phase 3 — local pre-report
+### 11. Guard Phase 3: local pre-report
 
 In local-only mode, Phase 3 verifies:
 
@@ -250,12 +241,7 @@ Run `capture-wisdom` for any durable lesson. Report:
 
 ## Local-only completion rules
 
-A local implementation is **ready for later integration**, not merged, only when:
-
-1. the local gates pass;
-2. the appropriate test-audit/debate/code-review evidence is current;
-3. `cli-review`/`greploop --local` reports no actionable findings; and
-4. the working tree/commit state is reported accurately.
+A local implementation is ready for later integration, not merged, only when the gates above pass, the review evidence is current, the latest Greptile result is clean, and the working tree state is reported accurately.
 
 Never claim an issue is closed or merged while GitHub is unavailable. When the
 remote is restored, rebase/compare against the fresh `develop`, rerun all local
@@ -270,4 +256,3 @@ user's approval. Stop after the PR is created or updated; never merge it.
 | Standard | Code, tests, CI, workflow, config, UI, API, skills | Guard Phase 1 → quality check → test-audit → code-review → Guard Phase 2 → CLI Greptile → Guard Phase 3 |
 | High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard plus debate |
 
-Do not lower a tier to avoid a required review.
