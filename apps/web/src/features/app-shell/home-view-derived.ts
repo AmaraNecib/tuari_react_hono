@@ -1,9 +1,11 @@
 import type { HomeViewCopy, HomeViewDetailCopy } from "./home-view-copy"
 import {
   buildEmployeeDerivedCollections,
+  buildEmployeeRelationshipFacts,
   buildEmployeeRows,
   buildManagerOptions,
   buildWarehouseManagerOptions,
+  buildEmployeeRow,
 } from "./home-view-derived-employees"
 import { buildHomeViewDerivedLookups } from "./home-view-derived-lookups"
 import {
@@ -33,7 +35,8 @@ export function buildHomeViewDerived({
   workspace: DemoWorkspace
 }) {
   const lookups = buildHomeViewDerivedLookups(workspace)
-  const employeeRows = buildEmployeeRows({ copy, lookups, t, workspace })
+  const relationshipFacts = buildEmployeeRelationshipFacts(workspace)
+  const employeeRows = buildEmployeeRows({ copy, lookups, relationshipFacts, t, workspace })
   const projects = buildProjectRows({ copy, lookups, t, workspace })
   const warehouses = buildWarehouseRows({ copy, lookups, t, workspace })
   const managerOptions = buildManagerOptions({ lookups, workspace })
@@ -62,6 +65,21 @@ export function buildHomeViewDerived({
 
   return {
     employeeRows,
+    /**
+     * Builds a single employee table row against the same workspace-derived
+     * context (lookups, relationship facts, shell copy, t) that produced
+     * `employeeRows`. This is the single public row-builder for paged/search
+     * subsets (e.g. the employees section) — it keeps consumers off the
+     * internal home-view-derived-* modules (issue #217).
+     */
+    buildEmployeeTableRow: (employee: DemoWorkspace["employees"][number]) =>
+      buildEmployeeRow({
+        copy: { shell: copy.shell },
+        employee,
+        lookups,
+        relationshipFacts,
+        t,
+      }),
     projects,
     warehouses,
     roles: workspace.roles,

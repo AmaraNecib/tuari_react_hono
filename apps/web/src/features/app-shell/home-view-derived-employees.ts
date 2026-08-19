@@ -237,16 +237,17 @@ export function buildEmployeeRows({
   lookups,
   t,
   workspace,
+  relationshipFacts: suppliedRelationshipFacts,
 }: {
   copy: Pick<HomeViewCopy, "shell">
   lookups: HomeViewDerivedLookups
   t: Translate
-/**
- * buildManagerOptions({ component.
- */
   workspace: DemoWorkspace
+  /** Precomputed facts reused by the seam's single-row builder (issue #217). */
+  relationshipFacts?: EmployeeRelationshipFacts
 }) {
-  const relationshipFacts = buildEmployeeRelationshipFacts(workspace)
+  const relationshipFacts =
+    suppliedRelationshipFacts ?? buildEmployeeRelationshipFacts(workspace)
 
   return workspace.employees
     .map((employee) => buildEmployeeRow({ copy, employee, lookups, relationshipFacts, t }))

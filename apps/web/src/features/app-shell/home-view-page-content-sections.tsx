@@ -60,7 +60,6 @@ export function HomeViewPageSectionContent({
   updateAccountPending,
   paginationCursor,
   paginationLimit,
-  workspace,
 }: Pick<
   HomeViewPageContentProps,
   | "copy"
@@ -77,7 +76,6 @@ export function HomeViewPageSectionContent({
   | "paginationCursor"
   | "paginationLimit"
   | "paginationPrevCursors"
-  | "workspace"
   | "page"
   | "resetWorkspacePending"
   | "session"
@@ -132,16 +130,13 @@ export function HomeViewPageSectionContent({
           }}
           createTarget={workspaceRoutes.employeeCreate()}
           cursor={paginationCursor}
-          
           employeePage={employeePage}
           emptyLabel={copy.shell.empty}
           limit={paginationLimit}
           managerOptions={derived.managerOptions}
-          noManagerLabel={copy.shell.noManager}
-          noProjectLabel={copy.shell.noProject}
+          buildEmployeeTableRow={derived.buildEmployeeTableRow}
           roles={derived.roles}
           title={copy.sections.employees.label}
-          workspace={workspace!}
         />,
       )
 
