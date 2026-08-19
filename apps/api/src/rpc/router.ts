@@ -88,7 +88,7 @@ export function createRouter(
     ...createOperationsHandlers(os, m, dependencies.operationsService),
     ...createFinanceHandlers(os, m, dependencies.financeService),
     ...createInventoryHandlers(os, m, dependencies.inventoryService),
-    ...createReportsHandlers(os, m, dependencies.companyService, dependencies.inventoryService),
+    ...createReportsHandlers(os, m, dependencies.financeService, dependencies.inventoryService),
     ...createInvoiceHandlers(os, m, dependencies.invoiceModule),
     ...createPaymentHandlers(os, m, dependencies.paymentModule),
     ...createUpdateHandlers(os, m, dependencies.updateService, dependencies.updateHistoryService),

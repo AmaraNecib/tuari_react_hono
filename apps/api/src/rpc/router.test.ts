@@ -5,8 +5,15 @@
 // @ts-nocheck
 import { createRouterClient } from "@orpc/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import Database from "better-sqlite3";
 
 import { createInMemoryCompanyHarness } from "../modules/company/company.test-helpers";
+import { schemaStatements } from "../infrastructure/database/schema-definitions";
+import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
+import { InventoryService } from "../modules/inventory/inventory.service";
+import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
@@ -30,10 +37,14 @@ type RpcClient = ReturnType<typeof createRouterClient<never, never>>
 
 describe("RPC router", () => {
   const harnesses: Array<ReturnType<typeof createInMemoryCompanyHarness>> = [];
+  const inventoryDbs: Database.Database[] = [];
 
   afterEach(() => {
     while (harnesses.length > 0) {
       harnesses.pop()?.close();
+    }
+    while (inventoryDbs.length > 0) {
+      inventoryDbs.pop()?.close();
     }
   });
 
@@ -41,6 +52,20 @@ describe("RPC router", () => {
     const harness = createInMemoryCompanyHarness();
     harnesses.push(harness);
     return harness;
+  };
+
+  /** Real InventoryService over a fresh legacy-schema in-memory DB (empty data). */
+  const createEmptyInventoryService = () => {
+    const inventoryDb = new Database(":memory:");
+    for (const statement of schemaStatements) {
+      inventoryDb.exec(statement);
+    }
+    inventoryDbs.push(inventoryDb);
+    return new InventoryService(
+      createInventoryRepository(inventoryDb),
+      // Attachments are never written in these wiring tests; a bare path suffices.
+      new InventoryAttachmentStorage(join(tmpdir(), "router-reports-attachments")),
+    );
   };
 
   const authBootstrapService = {
@@ -97,7 +122,7 @@ describe("RPC router", () => {
       workforceService: new WorkforceService(repository, repository, mutation),
       operationsService: new OperationsService(repository, repository, mutation),
       financeService: new FinanceService(repository, repository, mutation),
-      inventoryService: {} as never,
+      inventoryService: createEmptyInventoryService(),
       employeeModule,
       invoiceModule: {} as never,
       paymentModule,

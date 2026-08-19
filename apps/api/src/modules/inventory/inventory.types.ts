@@ -176,6 +176,41 @@ export type InventoryOutboundTransferRecord = InventoryOutboundTransfer
 /** OutboundTransferItemRecord. */
 export type OutboundTransferItemRecord = OutboundTransferItemInput & { id: string; createdAt: string }
 
+/**
+ * Flat valuation row for the INVENTORY report — an inventory entry joined with
+ * its invoice-group document date and a resolved location label. Aggregated by
+ * the InventoryService report generator; produced by the repository in one
+ * query (avoiding N+1 entry lookups per invoice group).
+ */
+export type InventoryValuationRow = {
+  /** Inventory entry id. */
+  id: string
+  itemType: InventoryEntry["itemType"]
+  itemName: string
+  quantity: number
+  /** Unit price when the entry captured one (nullable per the contract). */
+  unitPriceDzd: number | null
+  totalPriceDzd: number
+  lastUpdated: string
+  /** Window + aging basis: invoice date (or entry creation when unset). */
+  documentDate: string
+  /** Warehouse or project id the entry was received into (null when unlocated). */
+  locationId: string | null
+  /** Location kind — disambiguates warehouse/project id namespaces in grouping. */
+  locationType: "WAREHOUSE" | "PROJECT" | null
+  locationLabel: string
+}
+
+/**
+ * Movement row for the MOVEMENT report — inventory movement joined with the
+ * unit price of the linked entry (null when the movement has no entry link,
+ * e.g. asset outbound sales). Value is derived as quantity × unit price.
+ */
+export type InventoryMovementValuationRow = {
+  movement: InventoryMovementRecord
+  unitPriceDzd: number | null
+}
+
 /** InventoryOutboundTransferCreateData. */
 export type InventoryOutboundTransferCreateData = {
   fromType: InventoryOutboundTransfer["fromType"]

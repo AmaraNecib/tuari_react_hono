@@ -19,6 +19,8 @@ import type {
   InventoryItemDefinitionUpdateData,
   InventoryOutboundTransferCreateData,
   InventoryOutboundTransferRecord,
+  InventoryMovementValuationRow,
+  InventoryValuationRow,
 } from "./inventory.types"
 
 // ---------------------------------------------------------------------------
@@ -106,4 +108,10 @@ export interface InventoryRepository {
   listMovementsByLocation(input: { warehouseId?: string; projectId?: string; dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }): InventoryMovementRecord[]
   /** listAllMovements. */
   listAllMovements(input: { dateFrom?: string; dateTo?: string; movementType?: string; limit?: number }): InventoryMovementRecord[]
+  /** resolveLocationLabel. */
+  resolveLocationLabel(warehouseId?: string | null, projectId?: string | null): string
+  /** listInventoryValuations. */
+  listInventoryValuations(): InventoryValuationRow[]
+  /** listMovementValuations. */
+  listMovementValuations(): InventoryMovementValuationRow[]
 }
