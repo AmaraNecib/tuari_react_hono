@@ -93,6 +93,18 @@ do not add a generated file just because a build command created it. If the
 base contains a legacy tracked generated artifact, leave it out of the feature
 diff and document it rather than copying a fresh build output.
 
+## Coverage policy
+
+The API coverage gate (see `apps/api/vitest.config.ts`) keeps lines,
+statements, functions, and branches all at a strict 100% - "tests pass" keeps
+its meaning. The #242 report code contains defensive branches that are
+provably unreachable given the surrounding logic; those are handled with a
+commented `/* v8 ignore */` escape (which excludes them from the numbers), not
+by lowering the threshold, so any REACHABLE untested branch still fails the
+gate. An aggregate floor would let real gaps pass silently, so it is
+intentionally not used. A branch marked unreachable must be documented in a
+comment and genuinely impossible, not a way to dodge a real hole.
+
 ## 1. Pin the base and tier
 
 Start from the repository root:
