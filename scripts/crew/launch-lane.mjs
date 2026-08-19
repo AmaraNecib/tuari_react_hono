@@ -45,8 +45,34 @@ import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const [, , label, cwd, brief] = process.argv;
-const parentPaneId = process.env.HERDR_PANE_ID;
 const safeLabel = String(label || "lane").replace(/[^a-zA-Z0-9._-]/g, "_");
+
+// Resolve the pane that owns this lane. HERDR_PANE_ID may be stale or absent
+// (e.g. a Herdr restart renumbered panes, or launch-lane runs outside a pane).
+// A stale id silently hides the lane from its real parent in crew-watch
+// (isFamilyAgent requires manifest.parentPaneId === the parent's pane), so we
+// only trust it if it is still a live herdr pane; otherwise return null, which
+// makes crew-watch fall back to legacy "show all" rather than hiding the lane.
+const liveParentPane = () => {
+  const fromEnv = process.env.HERDR_PANE_ID;
+  if (fromEnv) {
+    try {
+      const panes = execFileSync("herdr", ["pane", "list"], {
+        encoding: "utf8",
+        maxBuffer: 1 << 24,
+      }).toString().trim();
+      const ids = (JSON.parse(panes)?.result?.panes ?? []).map((p) => p.pane_id);
+      if (ids.includes(fromEnv)) return fromEnv;
+    } catch {
+      // An unverified parent must not constrain crew-watch family routing.
+      // If we cannot confirm the pane is live, fall back to null (show-all)
+      // rather than trusting a possibly-stale env value that would keep
+      // hiding the relaunched lane from its real parent.
+      return null;
+    }
+  }
+  return null;
+};
 
 if (!label || !cwd) {
   console.error("usage: launch-lane.mjs <label> <worktree-abs-path> [brief-file]");
@@ -78,7 +104,7 @@ const seedManifest = {
   label,
   cwd,
   brief: brief || null,
-  parentPaneId: parentPaneId || null,
+  parentPaneId: liveParentPane(),
   createdAt: new Date().toISOString(),
 };
 
@@ -89,6 +115,8 @@ const writeManifest = (patch) => {
   } catch {
     // first write or unreadable manifest: start from the seed
   }
+  // Always refresh parentPaneId to the live parent, never preserve a stale one.
+  current.parentPaneId = liveParentPane();
   mkdirSync(crewDir, { recursive: true });
   writeFileSync(
     manifestPath,

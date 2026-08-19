@@ -95,3 +95,10 @@ evidence, and the cached `origin/develop` ref (`6a678c0`).
    creating a fresh design document.
 4. Keep parent/reference rows as navigation; closing a child does not prove the
    parent acceptance criteria are complete.
+
+## Tracked follow-ups (raised by lanes; not part of a merged PR)
+
+| Origin | Item | Ruling |
+|--------|------|--------|
+| #175 recovery chain (issue-175-migration lane, 2026-08-19) | update_history / update-delivery recovery path (`SqliteUpdateHistoryPort`, `modules/update/*`): partial update application on restart has no recovery hardening/tests, no tracked issue. | **Tracked follow-up** (open); not in MVP gate. Needs a scoped issue + decision to harden+test or explicitly accept as out of scope. |
+| #175 recovery chain (issue-175-migration lane, 2026-08-19) | `.agents/skills/cli-review/SKILL.md` unpinned `curl | sh` install. | **Fixed** in a dedicated PR (see open PR); reworded to avoid unpinned remote pipe. |
