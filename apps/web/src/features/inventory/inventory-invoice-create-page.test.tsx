@@ -49,6 +49,12 @@ const DEFINITIONS = [
   { id: "def-1", name: "مادة استهلاكية 1", itemType: "CONSUMABLE", unit: "قطعة", key: "consumable_1" },
 ]
 
+/** Progressive disclosure section titles (from the ar resource). */
+const DEBT_SECTION = "الدين والدفع"
+const COUNTERPARTY_SECTION = "ربط بجهة خارجية"
+const DEFAULTS_SECTION = "المستودع والمشروع الافتراضي"
+const NOTES_SECTION = "ملاحظات وملفات"
+
 function makeQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } })
 }
@@ -62,6 +68,18 @@ function renderPage() {
     </QueryClientProvider>,
   )
   return { onCreated, ...utils }
+}
+
+/** Opens a progressive-disclosure section by clicking its toggle header. */
+function openSection(title: string) {
+  fireEvent.click(screen.getByRole("button", { name: title }))
+  expect(screen.getByRole("button", { name: title }).getAttribute("aria-expanded")).toBe("true")
+}
+
+/** Closes an open progressive-disclosure section. */
+function closeSection(title: string) {
+  fireEvent.click(screen.getByRole("button", { name: title }))
+  expect(screen.getByRole("button", { name: title }).getAttribute("aria-expanded")).toBe("false")
 }
 
 /** Finds the header combobox (Base UI) trigger inside the <label> that owns the field label. */
@@ -117,22 +135,37 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe("InventoryInvoiceCreatePage header-level default warehouse/project", () => {
-  beforeEach(() => {
-    mocks.itemDefinitionsQuery.mockReturnValue({ data: { items: DEFINITIONS } })
-    mocks.warehousesQuery.mockReturnValue({ data: { items: WAREHOUSES } })
-    mocks.projectsQuery.mockReturnValue({ data: { items: PROJECTS } })
-    mocks.counterpartiesQuery.mockReturnValue({ data: { items: [] } })
-    mocks.createInvoiceMutation.mutateAsync.mockResolvedValue({
-      item: { group: { id: "inv-1" } },
-      message: "تم إنشاء الفاتورة.",
-    })
-    mocks.uploadInvoiceAttachments.mockResolvedValue(undefined)
+/** Shared query/mutation mock values for both describe blocks. */
+function mockQueries() {
+  mocks.itemDefinitionsQuery.mockReturnValue({ data: { items: DEFINITIONS } })
+  mocks.warehousesQuery.mockReturnValue({ data: { items: WAREHOUSES } })
+  mocks.projectsQuery.mockReturnValue({ data: { items: PROJECTS } })
+  mocks.counterpartiesQuery.mockReturnValue({ data: { items: [] } })
+  mocks.createInvoiceMutation.mutateAsync.mockResolvedValue({
+    item: { group: { id: "inv-1" } },
+    message: "تم إنشاء الفاتورة.",
   })
+  mocks.uploadInvoiceAttachments.mockResolvedValue(undefined)
+}
+
+/** Base UI's popup settling + act-wrapped add-line clicks can exceed the 5s
+    default under parallel-load CPU contention (repo-known flake class, see the
+    act() wrap comments in the #24 suite). Assertions are unchanged; only the
+    per-test budget grows. */
+const BASE_UI_TIMEOUT = 10_000
+
+describe("InventoryInvoiceCreatePage header-level default warehouse/project", () => {
+  beforeEach(() => mockQueries())
+
+  // Issue #25: the warehouse/project defaults live in a collapsible section,
+  // so every test below opens it first — exactly what a user must do to reach
+  // the fields. The seeding/XOR assertions are unchanged.
 
   it("keeps the default warehouse selection visible and in form state across re-renders", async () => {
+
     renderPage()
 
+    openSection(DEFAULTS_SECTION)
     await selectHeaderComboboxOption("المستودع الافتراضي", "المستودع المركزي")
 
     // The trigger displays the selected warehouse name (not the empty label).
@@ -149,11 +182,13 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
     await waitFor(() => {
       expect(headerCombobox("المستودع الافتراضي").textContent).toContain("المستودع المركزي")
     })
-  })
+  }, BASE_UI_TIMEOUT)
 
   it("keeps the default project selection visible across re-renders", async () => {
+
     renderPage()
 
+    openSection(DEFAULTS_SECTION)
     await selectHeaderComboboxOption("المشروع الافتراضي", "مشروع التوسعة")
 
     expect(headerCombobox("المشروع الافتراضي").textContent).toContain("مشروع التوسعة")
@@ -169,11 +204,13 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
     await waitFor(() => {
       expect(headerCombobox("المشروع الافتراضي").textContent).toContain("مشروع التوسعة")
     })
-  })
+  }, BASE_UI_TIMEOUT)
 
   it("applies the header defaults to a line item that leaves its own warehouse/project unset", async () => {
+
     renderPage()
 
+    openSection(DEFAULTS_SECTION)
     await selectHeaderComboboxOption("المستودع الافتراضي", "المستودع المركزي")
 
     // Fill the first (consumable) line: choose an item definition; leave its
@@ -184,11 +221,13 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
     expect(payload.warehouseId).toBe("wh-1")
     expect(payload.entries[0].warehouseId).toBe("wh-1")
     expect(payload.entries[0].projectId).toBeNull()
-  })
+  }, BASE_UI_TIMEOUT)
 
   it("keeps a line item's own warehouse when it overrides the header default", async () => {
+
     renderPage()
 
+    openSection(DEFAULTS_SECTION)
     await selectHeaderComboboxOption("المستودع الافتراضي", "المستودع المركزي")
 
     fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
@@ -199,11 +238,13 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
     expect(payload.warehouseId).toBe("wh-1")
     expect(payload.entries[0].warehouseId).toBe("wh-2")
     expect(payload.entries[0].projectId).toBeNull()
-  })
+  }, BASE_UI_TIMEOUT)
 
   it("does not seed the header warehouse into a line that picks its own project", async () => {
+
     renderPage()
 
+    openSection(DEFAULTS_SECTION)
     await selectHeaderComboboxOption("المستودع الافتراضي", "المستودع المركزي")
 
     fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
@@ -213,11 +254,13 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
     const payload = await submitInvoice()
     expect(payload.entries[0].warehouseId).toBeNull()
     expect(payload.entries[0].projectId).toBe("prj-1")
-  })
+  }, BASE_UI_TIMEOUT)
 
   it("seeds the header project into a line that leaves its own project unset", async () => {
+
     renderPage()
 
+    openSection(DEFAULTS_SECTION)
     await selectHeaderComboboxOption("المشروع الافتراضي", "مشروع التوسعة")
 
     // Fill the first (consumable) line: choose an item definition; leave its
@@ -228,5 +271,177 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
     expect(payload.projectId).toBe("prj-1")
     expect(payload.entries[0].projectId).toBe("prj-1")
     expect(payload.entries[0].warehouseId).toBeNull()
+  }, BASE_UI_TIMEOUT)
+})
+
+describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => {
+  beforeEach(() => mockQueries())
+
+  it("shows only the essential create path fields by default", () => {
+    renderPage()
+
+    // Essential path: invoice number + date are visible with no interaction.
+    expect(screen.getByText("رقم الفاتورة")).not.toBeNull()
+    expect(screen.getByText("تاريخ الفاتورة")).not.toBeNull()
+
+    // Section titles are the only less-used fields visible when collapsed.
+    expect(screen.getByRole("button", { name: DEBT_SECTION }).getAttribute("aria-expanded")).toBe("false")
+    expect(screen.getByRole("button", { name: COUNTERPARTY_SECTION }).getAttribute("aria-expanded")).toBe("false")
+    expect(screen.getByRole("button", { name: DEFAULTS_SECTION }).getAttribute("aria-expanded")).toBe("false")
+    expect(screen.getByRole("button", { name: NOTES_SECTION }).getAttribute("aria-expanded")).toBe("false")
+
+    // Debt, counterparty/supplier, defaults, and notes/files fields are not mounted.
+    expect(screen.queryByText("هل هذه دين؟")).toBeNull()
+    expect(screen.queryByText("الجهة الخارجية")).toBeNull()
+    expect(screen.queryByText("اسم المورد")).toBeNull()
+    expect(screen.queryByText("المستودع الافتراضي")).toBeNull()
+    expect(screen.queryByText("المشروع الافتراضي")).toBeNull()
+    expect(screen.queryByText("ملاحظة")).toBeNull()
+    expect(screen.queryByText("ملفات الفاتورة")).toBeNull()
+  })
+
+  it("reveals the counterparty/supplier fields only after opening their section", () => {
+    renderPage()
+
+    expect(screen.queryByText("الجهة الخارجية")).toBeNull()
+    expect(screen.queryByText("اسم المورد")).toBeNull()
+
+    openSection(COUNTERPARTY_SECTION)
+
+    expect(screen.getByText("الجهة الخارجية")).not.toBeNull()
+    expect(screen.getByText("اسم المورد")).not.toBeNull()
+  })
+
+  it("reveals the default warehouse/project fields only after opening their section", () => {
+    renderPage()
+
+    expect(screen.queryByText("المستودع الافتراضي")).toBeNull()
+    expect(screen.queryByText("المشروع الافتراضي")).toBeNull()
+
+    openSection(DEFAULTS_SECTION)
+
+    expect(screen.getByText("المستودع الافتراضي")).not.toBeNull()
+    expect(screen.getByText("المشروع الافتراضي")).not.toBeNull()
+  })
+
+  it("reveals the notes/files fields only after opening their section", () => {
+    renderPage()
+
+    expect(screen.queryByText("ملفات الفاتورة")).toBeNull()
+    expect(screen.queryByText("ملاحظة")).toBeNull()
+
+    openSection(NOTES_SECTION)
+
+    expect(screen.getByText("ملاحظة")).not.toBeNull()
+    expect(screen.getByText("ملفات الفاتورة")).not.toBeNull()
+  })
+
+  it("shows debt fields only when the debt section is opened and 'is this a debt?' is yes", () => {
+    renderPage()
+
+    // Collapsed: no debt select at all.
+    expect(screen.queryByText("هل هذه دين؟")).toBeNull()
+
+    openSection(DEBT_SECTION)
+
+    // Opened but "لا": the debt select appears, payment fields stay hidden.
+    expect(screen.getByText("هل هذه دين؟")).not.toBeNull()
+    expect(screen.queryByText("طريقة الدفع")).toBeNull()
+    expect(screen.queryByText("المدفوع الآن")).toBeNull()
+
+    // Flip to "نعم": payment method + paid-now appear next to the debt select.
+    fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
+    expect(screen.getByText("طريقة الدفع")).not.toBeNull()
+    expect(screen.getByText("المدفوع الآن")).not.toBeNull()
+
+    // Flip back to "لا": payment fields vanish again (as before the disclosure
+    // change), while the debt select stays because the section is open.
+    fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "NO" } })
+    expect(screen.queryByText("طريقة الدفع")).toBeNull()
+    expect(screen.queryByText("المدفوع الآن")).toBeNull()
+    expect(screen.getByText("هل هذه دين؟")).not.toBeNull()
+  })
+
+  it("keeps debt payment fields and values when the section is closed and reopened", () => {
+    renderPage()
+
+    openSection(DEBT_SECTION)
+    fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
+    fireEvent.change(screen.getByLabelText("طريقة الدفع", { exact: false }), { target: { value: "PERCENT" } })
+    fireEvent.change(screen.getByLabelText("النسبة المدفوعة"), { target: { value: "25" } })
+
+    closeSection(DEBT_SECTION)
+    expect(screen.queryByText("هل هذه دين؟")).toBeNull()
+
+    // Reopening must restore the whole debt state: select, chosen option,
+    // payment type and its paid-now value.
+    openSection(DEBT_SECTION)
+    expect(screen.getByText("هل هذه دين؟")).not.toBeNull()
+    expect((screen.getByLabelText("هل هذه دين؟") as HTMLSelectElement).value).toBe("YES")
+    expect((screen.getByLabelText("طريقة الدفع", { exact: false }) as HTMLSelectElement).value).toBe("PERCENT")
+    expect((screen.getByLabelText("النسبة المدفوعة") as HTMLInputElement).value).toBe("25")
+  })
+
+  it("keeps the default warehouse selection when its section is closed and reopened", async () => {
+
+    renderPage()
+
+    openSection(DEFAULTS_SECTION)
+    await selectHeaderComboboxOption("المستودع الافتراضي", "المستودع المركزي")
+
+    // Collapse: the combobox unmounts with the section.
+    closeSection(DEFAULTS_SECTION)
+    expect(screen.queryByText("المستودع الافتراضي")).toBeNull()
+
+    // Reopen: the header default selection must survive the unmount/remount.
+    openSection(DEFAULTS_SECTION)
+    expect(headerCombobox("المستودع الافتراضي").textContent).toContain("المستودع المركزي")
+    expect(headerCombobox("المستودع الافتراضي").textContent).not.toContain("بدون مستودع")
+  }, BASE_UI_TIMEOUT)
+
+  it("keeps sections expanded when a line item is added or removed (re-render)", async () => {
+
+    renderPage()
+
+    openSection(DEBT_SECTION)
+    openSection(COUNTERPARTY_SECTION)
+    openSection(DEFAULTS_SECTION)
+    openSection(NOTES_SECTION)
+
+    // A re-render (adding a line) must not collapse any open section.
+    await act(async () => {
+      fireEvent.click(screen.getByText("إضافة مادة"))
+    })
+
+    expect(screen.getByRole("button", { name: DEBT_SECTION }).getAttribute("aria-expanded")).toBe("true")
+    expect(screen.getByRole("button", { name: COUNTERPARTY_SECTION }).getAttribute("aria-expanded")).toBe("true")
+    expect(screen.getByRole("button", { name: DEFAULTS_SECTION }).getAttribute("aria-expanded")).toBe("true")
+    expect(screen.getByRole("button", { name: NOTES_SECTION }).getAttribute("aria-expanded")).toBe("true")
+    expect(screen.getByText("هل هذه دين؟")).not.toBeNull()
+    expect(screen.getByText("المستودع الافتراضي")).not.toBeNull()
+
+    // A re-render that removes a line must behave identically.
+    await act(async () => {
+      fireEvent.click(screen.getAllByText("حذف")[0]!)
+    })
+    expect(screen.getByRole("button", { name: DEBT_SECTION }).getAttribute("aria-expanded")).toBe("true")
+    expect(screen.getByRole("button", { name: DEFAULTS_SECTION }).getAttribute("aria-expanded")).toBe("true")
+    expect(screen.getByText("هل هذه دين؟")).not.toBeNull()
+  }, BASE_UI_TIMEOUT)
+
+  it("submits debt + payment payload when the debt section is used", async () => {
+    renderPage()
+
+    openSection(DEBT_SECTION)
+    fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
+    fireEvent.change(screen.getByLabelText("المدفوع الآن"), { target: { value: "1500.5" } })
+
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+
+    const payload = await submitInvoice()
+    expect(payload.createDebt).toBe(true)
+    expect(payload.paymentInputType).toBe("AMOUNT")
+    expect(payload.paidAmountDzd).toBe(1500.5)
+    expect(payload.paidPercent).toBeNull()
   })
 })

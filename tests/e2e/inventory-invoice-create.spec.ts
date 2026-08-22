@@ -50,6 +50,13 @@ test.describe("inventory invoice create — header default warehouse persistence
     await page.goto("/invoices/create")
     await expect(page.getByRole("heading", { name: "إضافة مخزون بالفاتورة" })).toBeVisible()
 
+    // Issue #25: the header defaults now live in a collapsible section — open
+    // it first. The disclosure must not hide the seeding behavior.
+    const defaultsSection = page.getByRole("button", { name: "المستودع والمشروع الافتراضي" })
+    await expect(defaultsSection).toHaveAttribute("aria-expanded", "false")
+    await defaultsSection.click()
+    await expect(defaultsSection).toHaveAttribute("aria-expanded", "true")
+
     // 1) Pick the default warehouse in the header custom combobox. The
     // combobox opens on mouse down and lists the warehouses as options.
     const warehouseField = page.locator("label").filter({ hasText: "المستودع الافتراضي" })

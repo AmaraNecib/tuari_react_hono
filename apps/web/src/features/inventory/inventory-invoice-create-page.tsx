@@ -6,6 +6,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { FileInput, NativeSelect } from "@/components/ui/form-controls"
 import { CreateableSelect } from "@/components/ui/createable-select"
+import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 
 import {
@@ -248,8 +249,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
           />
           {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
 
-          {/* Compact 3-column grid for small fields */}
-          <div className="grid gap-3 md:grid-cols-3">
+          {/* Essential create path: invoice number + date, always visible */}
+          <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1.5 text-sm">
               <FieldLabel label="رقم الفاتورة" />
               <Input placeholder="تلقائي" value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} />
@@ -258,131 +259,146 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
               <FieldLabel label={t("common.invoiceDate")} />
               <DatePicker value={invoiceDate} onChange={setInvoiceDate} />
             </label>
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label={t("inventory.invoiceCreate.isDebt")} />
-              <NativeSelect value={createDebt ? "YES" : "NO"} onChange={(event) => setCreateDebt(event.target.value === "YES")}>
-                <option value="NO">{t("common.no")}</option>
-                <option value="YES">{t("common.yes")}</option>
-              </NativeSelect>
-            </label>
           </div>
 
-          {/* Counterparty and supplier — 2 columns */}
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label="الجهة الخارجية" />
-              <CreateableSelect
-                value={externalCounterpartyId}
-                onChange={(id) => {
-                  setExternalCounterpartyId(id)
-                  if (id) {
-                    const counterparty = counterparties.find((item) => item.id === id)
-                    setSupplierName(counterparty?.fullName ?? "")
-                  }
-                }}
-                options={counterparties.map((c) => ({ id: c.id, name: c.fullName }))}
-                emptyLabel="بدون جهة خارجية"
-                createLabel="إنشاء جهة خارجية"
-                createFields={[
-                  { key: "fullName", label: t("externals.create.fullName"), placeholder: t("externals.create.fullNamePlaceholder"), required: true },
-                  { key: "phoneNumber", label: "رقم الهاتف", placeholder: "0612345678" },
-                ]}
-                onCreate={async (data) => {
-                  const result = await createCounterpartyMutation.mutateAsync({
-                    fullName: data.fullName ?? "",
-                    phoneNumber: data.phoneNumber || "",
-                    note: null,
-                  })
-                  const item = result.item as { id: string; fullName: string | null } | undefined
-                  return { id: item?.id ?? "", name: item?.fullName ?? "" }
-                }}
-              />
-            </label>
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label="اسم المورد" />
-              <Input placeholder="اختياري إذا أدخلت جهة خارجية" value={supplierName} onChange={(event) => setSupplierName(event.target.value)} />
-            </label>
-          </div>
-
-          {/* Warehouse, Project, Debt fields — 3 columns */}
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label={t("inventory.invoiceCreate.defaultWarehouse")} />
-              <CreateableSelect
-                value={warehouseId}
-                onChange={(id) => { setWarehouseId(id); if (id) setProjectId("") }}
-                options={warehouses.map((w) => ({ id: w.id, name: w.name }))}
-                emptyLabel="بدون مستودع"
-                createLabel="إنشاء مستودع"
-                createFields={[
-                  { key: "name", label: "اسم المستودع", placeholder: "المستودع...", required: true },
-                  { key: "address", label: "العنوان", placeholder: "المدينة..." },
-                ]}
-                onCreate={async (data) => {
-                  const result = await createWarehouseMutation.mutateAsync({
-                    name: data.name ?? "",
-                    address: data.address || null,
-                    managerId: null,
-                    status: "ACTIVE",
-                    notes: null,
-                  })
-                  const item = result.item as { id: string; name: string } | undefined
-                  return { id: item?.id ?? "", name: item?.name ?? "" }
-                }}
-              />
-            </label>
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label={t("inventory.invoiceCreate.defaultProject")} />
-              <CreateableSelect
-                value={projectId}
-                onChange={(id) => { setProjectId(id); if (id) setWarehouseId("") }}
-                options={projects.map((p) => ({ id: p.id, name: p.name }))}
-                emptyLabel="بدون مشروع"
-                createLabel="إنشاء مشروع"
-                createFields={[
-                  { key: "name", label: "اسم المشروع", placeholder: "المشروع...", required: true },
-                  { key: "location", label: "الموقع", placeholder: "المدينة..." },
-                ]}
-                onCreate={async (data) => {
-                  const result = await createProjectMutation.mutateAsync({
-                    name: data.name ?? "",
-                    location: data.location || null,
-                    managerId: null,
-                    status: "ACTIVE",
-                    notes: null,
-                  })
-                  const item = result.item as { id: string; name: string } | undefined
-                  return { id: item?.id ?? "", name: item?.name ?? "" }
-                }}
-              />
-            </label>
-            {createDebt ? (
-              <>
+          {/* Progressive disclosure: less-used fields live in collapsible sections.
+              Each section keeps its open state in the CollapsibleSection's own
+              useState and is rendered unconditionally in this page tree, so
+              adding/removing line items (which re-renders this page) never
+              remounts a section or collapses one the user already opened. */}
+          <div className="space-y-3">
+            <CollapsibleSection title={t("inventory.invoiceCreate.debtSection")}>
+              <div className="grid gap-3 md:grid-cols-3">
                 <label className="space-y-1.5 text-sm">
-                  <FieldLabel label="طريقة الدفع" required />
-                  <NativeSelect value={paymentInputType} onChange={(event) => setPaymentInputType(event.target.value as "AMOUNT" | "PERCENT")}>
-                    <option value="AMOUNT">مبلغ ثابت</option>
-                    <option value="PERCENT">نسبة مئوية</option>
+                  <FieldLabel label={t("inventory.invoiceCreate.isDebt")} />
+                  <NativeSelect value={createDebt ? "YES" : "NO"} onChange={(event) => setCreateDebt(event.target.value === "YES")}>
+                    <option value="NO">{t("common.no")}</option>
+                    <option value="YES">{t("common.yes")}</option>
                   </NativeSelect>
                 </label>
-                <label className="space-y-1.5 text-sm">
-                  <FieldLabel label={paymentInputType === "AMOUNT" ? "المدفوع الآن" : "النسبة المدفوعة"} />
-                  <Input type="number" min="0" step="0.01" value={paidValue} onChange={(event) => setPaidValue(event.target.value)} />
-                </label>
-              </>
-            ) : null}
-          </div>
+                {createDebt ? (
+                  <>
+                    <label className="space-y-1.5 text-sm">
+                      <FieldLabel label="طريقة الدفع" required />
+                      <NativeSelect value={paymentInputType} onChange={(event) => setPaymentInputType(event.target.value as "AMOUNT" | "PERCENT")}>
+                        <option value="AMOUNT">مبلغ ثابت</option>
+                        <option value="PERCENT">نسبة مئوية</option>
+                      </NativeSelect>
+                    </label>
+                    <label className="space-y-1.5 text-sm">
+                      <FieldLabel label={paymentInputType === "AMOUNT" ? "المدفوع الآن" : "النسبة المدفوعة"} />
+                      <Input type="number" min="0" step="0.01" value={paidValue} onChange={(event) => setPaidValue(event.target.value)} />
+                    </label>
+                  </>
+                ) : null}
+              </div>
+            </CollapsibleSection>
 
-          {/* Note and files — full width */}
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label={t("common.note", "ملاحظات")} />
-              <Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="اختياري" />
-            </label>
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label="ملفات الفاتورة" />
-              <FileInput multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
-            </label>
+            <CollapsibleSection title={t("inventory.invoiceCreate.counterpartySection")}>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label="الجهة الخارجية" />
+                  <CreateableSelect
+                    value={externalCounterpartyId}
+                    onChange={(id) => {
+                      setExternalCounterpartyId(id)
+                      if (id) {
+                        const counterparty = counterparties.find((item) => item.id === id)
+                        setSupplierName(counterparty?.fullName ?? "")
+                      }
+                    }}
+                    options={counterparties.map((c) => ({ id: c.id, name: c.fullName }))}
+                    emptyLabel="بدون جهة خارجية"
+                    createLabel="إنشاء جهة خارجية"
+                    createFields={[
+                      { key: "fullName", label: t("externals.create.fullName"), placeholder: t("externals.create.fullNamePlaceholder"), required: true },
+                      { key: "phoneNumber", label: "رقم الهاتف", placeholder: "0612345678" },
+                    ]}
+                    onCreate={async (data) => {
+                      const result = await createCounterpartyMutation.mutateAsync({
+                        fullName: data.fullName ?? "",
+                        phoneNumber: data.phoneNumber || "",
+                        note: null,
+                      })
+                      const item = result.item as { id: string; fullName: string | null } | undefined
+                      return { id: item?.id ?? "", name: item?.fullName ?? "" }
+                    }}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label="اسم المورد" />
+                  <Input placeholder="اختياري إذا أدخلت جهة خارجية" value={supplierName} onChange={(event) => setSupplierName(event.target.value)} />
+                </label>
+              </div>
+            </CollapsibleSection>
+
+            <CollapsibleSection title={t("inventory.invoiceCreate.defaultsSection")}>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label={t("inventory.invoiceCreate.defaultWarehouse")} />
+                  <CreateableSelect
+                    value={warehouseId}
+                    onChange={(id) => { setWarehouseId(id); if (id) setProjectId("") }}
+                    options={warehouses.map((w) => ({ id: w.id, name: w.name }))}
+                    emptyLabel="بدون مستودع"
+                    createLabel="إنشاء مستودع"
+                    createFields={[
+                      { key: "name", label: "اسم المستودع", placeholder: "المستودع...", required: true },
+                      { key: "address", label: "العنوان", placeholder: "المدينة..." },
+                    ]}
+                    onCreate={async (data) => {
+                      const result = await createWarehouseMutation.mutateAsync({
+                        name: data.name ?? "",
+                        address: data.address || null,
+                        managerId: null,
+                        status: "ACTIVE",
+                        notes: null,
+                      })
+                      const item = result.item as { id: string; name: string } | undefined
+                      return { id: item?.id ?? "", name: item?.name ?? "" }
+                    }}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label={t("inventory.invoiceCreate.defaultProject")} />
+                  <CreateableSelect
+                    value={projectId}
+                    onChange={(id) => { setProjectId(id); if (id) setWarehouseId("") }}
+                    options={projects.map((p) => ({ id: p.id, name: p.name }))}
+                    emptyLabel="بدون مشروع"
+                    createLabel="إنشاء مشروع"
+                    createFields={[
+                      { key: "name", label: "اسم المشروع", placeholder: "المشروع...", required: true },
+                      { key: "location", label: "الموقع", placeholder: "المدينة..." },
+                    ]}
+                    onCreate={async (data) => {
+                      const result = await createProjectMutation.mutateAsync({
+                        name: data.name ?? "",
+                        location: data.location || null,
+                        managerId: null,
+                        status: "ACTIVE",
+                        notes: null,
+                      })
+                      const item = result.item as { id: string; name: string } | undefined
+                      return { id: item?.id ?? "", name: item?.name ?? "" }
+                    }}
+                  />
+                </label>
+              </div>
+            </CollapsibleSection>
+
+            <CollapsibleSection title={t("inventory.invoiceCreate.notesSection")}>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label={t("common.note", "ملاحظات")} />
+                  <Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="اختياري" />
+                </label>
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label="ملفات الفاتورة" />
+                  <FileInput multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+                </label>
+              </div>
+            </CollapsibleSection>
           </div>
         </PageSurfaceContent>
       </Surface>

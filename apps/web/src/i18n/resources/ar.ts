@@ -866,6 +866,10 @@ export const ar = {
         warehouse: "المستودع",
         project: "المشروع",
         save: "حفظ الفاتورة",
+        debtSection: "الدين والدفع",
+        counterpartySection: "ربط بجهة خارجية",
+        defaultsSection: "المستودع والمشروع الافتراضي",
+        notesSection: "ملاحظات وملفات",
         invalidAssetPrice: "سعر الأصل غير صالح في السطر {{index}} - الأصل {{assetIndex}}.",
       },
       location: {
