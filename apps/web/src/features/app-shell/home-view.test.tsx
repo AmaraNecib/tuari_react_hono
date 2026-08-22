@@ -670,8 +670,11 @@ describe("HomeView workspace shell", () => {
     renderWorkspace("dashboard", { sessionUser: demoUser })
     fireEvent.click(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]!)
 
-    expect(screen.getByText("الجهات الخارجية")).toBeTruthy()
-    expect(screen.getByText("الرواتب")).toBeTruthy()
+    // The label also appears on the dashboard counterparties stat card, so
+    // scope the assertion to the sidebar navigation only (issue #23).
+    const sidebar = document.querySelector('[data-tour="sidebar"]')
+    expect(within(sidebar as HTMLElement).getByText("الجهات الخارجية")).toBeTruthy()
+    expect(within(sidebar as HTMLElement).getByText("الرواتب")).toBeTruthy()
   })
 
   it("shows worker manager and project controls on the employee edit page", async () => {
@@ -912,7 +915,11 @@ describe("global search (Ctrl+K) — debounced and lazy (issue #280)", () => {
   })
 
   it("fetches the seven search-corpus queries only while the dialog is open", () => {
-    renderWorkspace("dashboard", { sessionUser: demoUser })
+    // Render a non-dashboard page: the dashboard section (issue #23)
+    // legitimately mounts the inventory/invoices queries for its stat cards,
+    // so the search gating is only observable where the shell is the sole
+    // consumer of the corpus query hooks.
+    renderWorkspace("projects", { sessionUser: demoUser })
 
     // Shell mounts with the dialog closed → every corpus query disabled.
     expect(getSearchQueryState()).toEqual({

@@ -250,7 +250,16 @@ const workspace: DemoWorkspace = {
       updatedAt: "2026-03-05T10:00:00.000Z",
     },
   ],
-  externalCounterparties: [],
+  externalCounterparties: [
+    {
+      id: "external-1",
+      fullName: "شركة المقاولات الجزائرية",
+      phoneNumber: "0555000006",
+      note: null,
+      createdAt: "2026-03-13T10:00:00.000Z",
+      updatedAt: "2026-03-13T10:00:00.000Z",
+    },
+  ],
   debtAccounts: [],
   debtEntries: [],
   salaryPayments: [
@@ -307,6 +316,7 @@ describe("buildHomeViewDerived composition (single public seam)", () => {
       projects: 2,
       warehouses: 1,
       roles: 3,
+      counterparties: 1,
     })
   })
 })

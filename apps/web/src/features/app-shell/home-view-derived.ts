@@ -44,6 +44,7 @@ export function buildHomeViewDerived({
   let activeWorkers = 0
   let activeProjects = 0
   let visibleWarehouses = 0
+  const counterparties = workspace.externalCounterparties.length
 
   for (const employee of employeeRows) {
     if (employee.status === "ACTIVE" && employee.isWorker) {
@@ -116,6 +117,7 @@ export function buildHomeViewDerived({
       projects: activeProjects,
       warehouses: visibleWarehouses,
       roles: workspace.roles.length,
+      counterparties,
     },
   }
 }

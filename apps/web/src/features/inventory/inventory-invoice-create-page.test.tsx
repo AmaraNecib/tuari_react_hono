@@ -139,8 +139,13 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
     expect(headerCombobox("المستودع الافتراضي").textContent).toContain("المستودع المركزي")
     expect(headerCombobox("المستودع الافتراضي").textContent).not.toContain("بدون مستودع")
 
-    // Re-render by adding a line item; the selection must persist.
-    fireEvent.click(screen.getByText("إضافة مادة"))
+    // Re-render by adding a line item; the selection must persist. The click
+    // is wrapped in act() so Base UI Select's async popup/option state settles
+    // inside the act scope — otherwise the trailing flush can exceed the
+    // per-test timeout under parallel load (same fix as the project sibling).
+    await act(async () => {
+      fireEvent.click(screen.getByText("إضافة مادة"))
+    })
     await waitFor(() => {
       expect(headerCombobox("المستودع الافتراضي").textContent).toContain("المستودع المركزي")
     })

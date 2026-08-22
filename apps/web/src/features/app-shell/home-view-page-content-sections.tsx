@@ -100,6 +100,10 @@ export function HomeViewPageSectionContent({
               projects: copy.metrics.projects,
               warehouses: copy.metrics.warehouses,
               roles: copy.metrics.roles,
+              invoices: copy.metrics.invoices,
+              outstandingDebts: copy.metrics.outstandingDebts,
+              items: copy.metrics.items,
+              counterparties: copy.metrics.counterparties,
             }}
             metrics={derived.metrics}
           />
