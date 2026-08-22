@@ -188,12 +188,17 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       paidPercent: createDebt && paymentInputType === "PERCENT" ? Number(paidValue || 0) : null,
       note: note || null,
       entries: lines.map((line) => {
+        // Seed header-level defaults into lines that leave their own
+        // warehouse/project unset. A line that explicitly picks one of them
+        // never inherits the other (warehouse XOR project is enforced per line).
+        const lineWarehouseId = line.warehouseId || (line.projectId ? null : warehouseId || null)
+        const lineProjectId = line.projectId || (line.warehouseId ? null : projectId || null)
         if (line.kind === "CONSUMABLE") {
           return {
             kind: "CONSUMABLE" as const,
             itemDefinitionId: line.itemDefinitionId,
-            warehouseId: line.warehouseId || null,
-            projectId: line.projectId || null,
+            warehouseId: lineWarehouseId,
+            projectId: lineProjectId,
             quantity: Number(line.quantity),
             unitPriceDzd: Number(line.unitPriceDzd),
             totalPriceDzd: Number(line.totalPriceDzd),
@@ -204,8 +209,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
         return {
           kind: "ASSET" as const,
           itemDefinitionId: line.itemDefinitionId,
-          warehouseId: line.warehouseId || null,
-          projectId: line.projectId || null,
+          warehouseId: lineWarehouseId,
+          projectId: lineProjectId,
           note: line.note || null,
           assets: line.assets.map((asset) => ({
             assetName: asset.assetName,

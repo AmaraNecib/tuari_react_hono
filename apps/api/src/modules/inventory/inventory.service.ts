@@ -284,8 +284,15 @@ export class InventoryService {
         throw new InventoryError("VALIDATION", "لا يمكن إضافة عنصر غير نشط.", [{ field: `entries.${index}.itemDefinitionId`, message: "لا يمكن إضافة عنصر غير نشط." }])
       }
 
-      const effectiveWarehouseId = entry.warehouseId ?? input.warehouseId ?? null
-      const effectiveProjectId = entry.projectId ?? input.projectId ?? null
+      // Destination inheritance is XOR-aware: an entry that explicitly picks
+      // one side must NOT inherit the header default for the other side
+      // (a null here means "inherit the header default", so sending null for
+      // the opposite destination of an explicit pick would resurrect both
+      // destinations and violate the per-entry warehouse XOR project rule).
+      const effectiveWarehouseId =
+        entry.warehouseId ?? (entry.projectId ? null : input.warehouseId ?? null)
+      const effectiveProjectId =
+        entry.projectId ?? (entry.warehouseId ? null : input.projectId ?? null)
 
       validateSingleDestination(effectiveWarehouseId, effectiveProjectId, `entries.${index}.warehouseId`)
       requireOneDestination(effectiveWarehouseId, effectiveProjectId, `entries.${index}.warehouseId`)

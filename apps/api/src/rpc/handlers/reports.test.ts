@@ -890,4 +890,75 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
       code: "BAD_REQUEST",
     });
   });
+
+  it("entry that explicitly picks one destination never inherits the opposite header default", async () => {
+    const env = await setup();
+    const { companyRepo, inventoryService } = env;
+
+    const wh = companyRepo.createWarehouse(
+      { name: "مستودع الإرث", address: "الجزائر", status: "ACTIVE", notes: null },
+      AUDIT,
+    );
+    const pj = companyRepo.createProject(
+      { name: "مشروع الإرث", location: "وهران", status: "ACTIVE", notes: null },
+      AUDIT,
+    );
+    const cement = inventoryService.createItemDefinition(
+      { name: "أسمنت إرث", itemType: "CONSUMABLE", unit: "kg", description: "" },
+      AUDIT,
+    ).item;
+
+    // Header defaults to a WAREHOUSE; the line explicitly picks a PROJECT.
+    // The line must resolve to the project only — the header warehouse must
+    // NOT be re-inherited through the entry's null warehouseId (that would
+    // resurrect both destinations and trip the XOR rule).
+    const g1 = inventoryService.createInvoiceGroup(
+      {
+        invoiceNumber: "IN-XOR-1",
+        supplierName: "مورد إرث",
+        warehouseId: wh.id,
+        entries: [
+          {
+            kind: "CONSUMABLE",
+            itemDefinitionId: cement.id,
+            quantity: 10,
+            unitPriceDzd: 100,
+            totalPriceDzd: 1000,
+            projectId: pj.id,
+          },
+        ],
+      },
+      AUDIT,
+    ).item;
+
+    // Header defaults to a PROJECT; the line explicitly picks a WAREHOUSE.
+    const g2 = inventoryService.createInvoiceGroup(
+      {
+        invoiceNumber: "IN-XOR-2",
+        supplierName: "مورد إرث",
+        projectId: pj.id,
+        entries: [
+          {
+            kind: "CONSUMABLE",
+            itemDefinitionId: cement.id,
+            quantity: 5,
+            unitPriceDzd: 100,
+            totalPriceDzd: 500,
+            warehouseId: wh.id,
+          },
+        ],
+      },
+      AUDIT,
+    ).item;
+
+    const entries1 = inventoryService.getInvoiceGroup(g1.group.id).item.entries;
+    expect(entries1).toHaveLength(1);
+    expect(entries1[0].warehouseId).toBeNull();
+    expect(entries1[0].projectId).toBe(pj.id);
+
+    const entries2 = inventoryService.getInvoiceGroup(g2.group.id).item.entries;
+    expect(entries2).toHaveLength(1);
+    expect(entries2[0].warehouseId).toBe(wh.id);
+    expect(entries2[0].projectId).toBeNull();
+  });
 });
