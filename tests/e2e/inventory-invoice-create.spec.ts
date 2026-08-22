@@ -83,13 +83,20 @@ test.describe("inventory invoice create — header default warehouse persistence
     await page.getByRole("button", { name: "حفظ الفاتورة" }).click()
     await expect(page.getByRole("link", { name: "تفاصيل الفاتورة" })).toBeVisible({ timeout: 20_000 })
 
-    // 5) The header default was seeded into BOTH lines at the persistence
+    // 5) The details view must actually mount and render the created invoice
+    //    (issue #30). The unique line-item name can only appear on this page
+    //    if `inventoryInvoiceGroupsGet` fired and the details UI received the
+    //    group payload — the post-create navigation bug left this main empty
+    //    and made zero further requests after the create RPC. Assert the
+    //    data-dependent content first so a regression fails on the
+    //    meaningful assert, not on static shell chrome.
+    await expect(page.getByText(itemName).first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole("button", { name: "العودة إلى الفواتير" })).toBeVisible()
+    await expect(page.getByText("سجل الحركات")).toBeVisible()
+
+    // 6) The header default was seeded into BOTH lines at the persistence
     //    seam: each entry row carries the default warehouse id (looked up by
-    //    name) and no project. NOTE: asserting via the invoice details page is
-    //    not possible right now — after `onCreated` navigates to
-    //    /invoices/$invoiceId the details view renders an empty main and never
-    //    issues inventoryInvoiceGroupsGet (pre-existing, reported to the
-    //    parent as an out-of-scope finding).
+    //    name) and no project. The DB seam still verifies the created rows.
     const Database = loadDatabaseConstructor()
     const db = new Database(findE2eDatabase(), { readonly: true })
     try {

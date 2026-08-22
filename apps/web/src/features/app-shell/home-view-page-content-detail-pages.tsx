@@ -407,7 +407,15 @@ export function HomeViewPageDetailContent({
               onBack={() => void navigation.goToInvoices()}
             />,
           )
-        : null
+        : (
+            <MissingRecordState
+              backLabel={detailCopy.shared.back}
+              description={detailCopy.shared.missingRecordDescription}
+              navigation={navigation}
+              target={workspaceRoutes.invoices()}
+              title="تفاصيل الفاتورة"
+            />
+          )
 
     case "outbound-transfers":
       return renderLazy(

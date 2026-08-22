@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   demoUser,
+  getInvoiceGroupQueryState,
   getSearchQueryState,
+  makeInvoiceGroupDetail,
   makeWorkspaceData,
   mockAllMutations,
   renderWorkspace,
@@ -464,6 +466,54 @@ describe("HomeView workspace shell", () => {
 
     expect(await screen.findByRole("heading", { name: "مبنى الإدارة الجديد" })).toBeTruthy()
     expect(screen.getByText("العمال المرتبطون")).toBeTruthy()
+  })
+
+  it("renders the created invoice details once the route id is provided (issue #30)", async () => {
+    renderWorkspace("invoice-details", {
+      sessionUser: demoUser,
+      invoiceId: "invoice-1",
+      invoiceGroupDetail: makeInvoiceGroupDetail(),
+    })
+
+    // The details view must mount the inventory invoice group query and
+    // render the fetched invoice — invoice number, line items (both
+    // CONSUMABLE and ASSET), totals, movements and attachments surfaces.
+    // Before issue #30 the id never reached HomeViewPageContent, so the
+    // main stayed empty.
+    expect(await screen.findByRole("heading", { name: "FAC-2026-001" })).toBeTruthy()
+    expect((await screen.findAllByText("أسمنت")).length).toBeGreaterThan(0)
+    expect(screen.getAllByText("الإجمالي: 1500.00 دج").length).toBeGreaterThan(0)
+    // ASSET entry branch: renders the asset count label and the asset row
+    // (entry line name and the asset row both carry the asset name).
+    expect(screen.getByText("عدد الأصول: 1")).toBeTruthy()
+    expect(screen.getAllByText("حاسوب محمول").length).toBeGreaterThan(0)
+    // Movement + attachment entry content (proves the entries render, not
+    // just the section headers).
+    expect(screen.getAllByText(/شراء - مادة/).length).toBeGreaterThan(0)
+    expect(screen.getByText("فاتورة-المورد.pdf")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "العودة إلى الفواتير" })).toBeTruthy()
+  })
+
+  it("routes the invoice route param into the inventory invoice group query (issue #30)", async () => {
+    renderWorkspace("invoice-details", {
+      sessionUser: demoUser,
+      invoiceId: "invoice-1",
+      invoiceGroupDetail: makeInvoiceGroupDetail(),
+    })
+
+    await screen.findByRole("heading", { name: "FAC-2026-001" })
+    expect(getInvoiceGroupQueryState().invoiceId).toBe("invoice-1")
+  })
+
+  it("shows the missing-record fallback for an id-less invoice details route (issue #30)", () => {
+    renderWorkspace("invoice-details", { sessionUser: demoUser })
+
+    expect(
+      screen.getByText("تعذر العثور على هذا السجل أو لم يعد متاحًا ضمن البيانات الحالية."),
+    ).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "العودة" }))
+
+    expect(mocks.navigateMock).toHaveBeenCalledWith({ to: "/invoices" })
   })
 
   it("opens a dedicated project create page and navigates to the new record", async () => {

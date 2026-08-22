@@ -217,6 +217,7 @@ export function HomeView({
           copy={copy}
           derived={derived}
           detailTab={detailTab}
+          invoiceId={invoiceId}
           page={page}
           paginationCursor={paginationCursor}
           paginationLimit={paginationLimit}
