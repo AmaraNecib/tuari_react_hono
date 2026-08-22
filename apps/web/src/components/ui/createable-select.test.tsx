@@ -84,6 +84,62 @@ describe("CreateableSelect display name derivation", () => {
   })
 })
 
+describe("CreateableSelect popup positioning/animation (issue #28)", () => {
+  it("opens without the trigger-aligned mode or the scale animation", async () => {
+    const trigger = renderSelect({ value: "wh-1" }).trigger
+    fireEvent.mouseDown(trigger)
+    const listbox = await screen.findByRole("listbox")
+    // The popup is the scrolling container wrapping the Base UI list.
+    const popup = listbox.closest('[data-slot="select-content"]') as HTMLElement | null
+    expect(popup).not.toBeNull()
+    // Trigger-aligned mode is OFF by default (alignItemWithTrigger=false). This
+    // test pins that default: if the mode is ever restored — add
+    // `data-align-trigger={...}` back to the Popup and re-enable
+    // `origin-(--transform-origin)` / `data-[align-trigger=true]:animate-none` /
+    // `zoom-in-95` in select.tsx — every assertion below MUST start failing, so
+    // the regression (async fixed-position re-place behind the CDP box-model
+    // race, issue #28) is caught here rather than in the browser.
+    expect(popup!.getAttribute("data-align-trigger")).toBeNull()
+    expect(popup!.className).toContain("fade-in-0")
+    expect(popup!.className).not.toContain("zoom-in-95")
+    expect(popup!.className).not.toContain("transform-origin")
+    expect(popup!.className).not.toContain("animate-none")
+  })
+
+  it("commits a selection on successive open/close cycles", async () => {
+    const onChange = vi.fn()
+    const trigger = renderSelect({
+      value: "",
+      onChange,
+      options: [
+        { id: "wh-1", name: "المستودع المركزي" },
+        { id: "wh-2", name: "مستودع المبيعات" },
+      ],
+    }).trigger
+
+    // Cycle 1: open, pick the second option.
+    fireEvent.mouseDown(trigger)
+    let listbox = await screen.findByRole("listbox")
+    const firstPick = await within(listbox).findByRole("option", { name: "مستودع المبيعات" })
+    fireEvent.mouseEnter(firstPick)
+    fireEvent.click(firstPick)
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith("wh-2"))
+
+    // Toggle-close (Base UI useClick: event "mousedown", toggle=true), reopen.
+    // Note: we cannot assert the popup unmounts here — Base UI keeps it mounted
+    // during the exit transition and jsdom never fires transitionend.
+    fireEvent.mouseDown(trigger)
+    fireEvent.mouseDown(trigger)
+    listbox = await screen.findByRole("listbox")
+    const secondPick = await within(listbox).findByRole("option", { name: "المستودع المركزي" })
+    fireEvent.mouseEnter(secondPick)
+    fireEvent.click(secondPick)
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledTimes(2))
+    expect(onChange).toHaveBeenLastCalledWith("wh-1")
+  })
+})
+
 function SelectHarness({ onChange }: { onChange: (value: string) => void }) {
   return (
     <label>
