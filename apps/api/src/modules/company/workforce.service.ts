@@ -745,11 +745,19 @@ export class WorkforceService {
     }
 
     if (input.nextType === "WAREHOUSE") {
-      throw new CompanyError(
-        "BUSINESS_RULE",
-        "ربط العمال من هذه الشاشة يتم عبر مدير مشروع ومشروع فقط.",
-        [{ field: "warehouseId", message: "ربط العمال من هذه الشاشة يتم عبر مدير مشروع ومشروع فقط." }],
-      );
+      if (!input.warehouseId) {
+        throw new CompanyError("VALIDATION", "يجب اختيار مستودع صالح.", [
+          { field: "warehouseId", message: "يجب اختيار مستودع صالح." },
+        ]);
+      }
+
+      const warehouse = requireWarehouse(this.operationsRepo, input.warehouseId);
+
+      if (warehouse.status !== "ACTIVE") {
+        throw new CompanyError("BUSINESS_RULE", "لا يمكن ربط العامل إلا بمستودع نشط.", [
+          { field: "warehouseId", message: "لا يمكن ربط العامل إلا بمستودع نشط." },
+        ]);
+      }
     }
 
     this.repository.assignEmployeeWorkplace(

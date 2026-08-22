@@ -36,8 +36,11 @@ test.describe("employees — critical path", () => {
     await page.getByLabel("الاسم الأول").first().fill(firstName)
     await page.getByLabel("اللقب").first().fill(lastName)
     await page.getByLabel("رقم الهاتف").first().fill(phone)
-    // Select the seeded manager role explicitly (do not rely on the form default).
-    await page.getByLabel("الدور").selectOption({ label: "مدير عمليات" })
+    // Select a seeded selectable role explicitly (do not rely on the form
+    // default). Only the workforce labels are assignable now — manager/viewer
+    // were removed — and worker additionally requires a workplace placement,
+    // so use the project_manager label (مدير مشروع).
+    await page.getByLabel("الدور").selectOption({ label: "مدير مشروع" })
     // Salary period + amount are conditionally required as a pair — fill both
     // so the form's validation accepts the submission.
     await page.getByLabel("دورية الأجر").selectOption({ label: "شهري" })
@@ -62,13 +65,14 @@ test.describe("employees — critical path", () => {
     await page.getByRole("link", { name: /^تعديل$/ }).first().click()
     await expect(page.getByRole("heading", { name: /تعديل عامل/ })).toBeVisible()
 
-    // Switch the role from manager to viewer.
-    await page.getByLabel("الدور").selectOption({ label: "مشاهد" })
+    // Switch the role between two selectable workforce labels (manager/viewer
+    // were removed with the single-actor model; warehouse_manager is selectable).
+    await page.getByLabel("الدور").selectOption({ label: "مدير مخزن" })
     await page.getByRole("button", { name: "حفظ كل التغييرات" }).click()
 
     // The save navigates back to the details page where the new role renders.
     await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText("مشاهد")).toBeVisible()
+    await expect(page.getByText("مدير مخزن")).toBeVisible()
   })
 
   test("admin soft-deletes an employee and the list no longer shows them", async ({ page }) => {

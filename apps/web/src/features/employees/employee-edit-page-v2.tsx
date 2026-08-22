@@ -18,6 +18,7 @@ import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import type { EmployeeManagerOption } from "./employee-batch-row-card"
 import type { EmployeeTableRow } from "./employee-table"
+import { classifyWorkforceRole, isEmployeeRoleSelectable } from "./role-classification"
 
 type FormState = {
   firstName: string
@@ -111,9 +112,7 @@ export function EmployeeEditPageV2({
     () => roles.find((role) => role.id === state.roleId)?.key ?? employee.roleKey,
     [employee.roleKey, roles, state.roleId],
   )
-  const isWorker = selectedRoleKey === "worker"
-  const isProjectManager = selectedRoleKey === "project_manager"
-  const isWarehouseManager = selectedRoleKey === "warehouse_manager"
+  const { isWorker, isProjectManager, isWarehouseManager } = classifyWorkforceRole(selectedRoleKey)
   const hasWarehouseWorkerPlacement = isWorker && Boolean(employee.currentWarehouseId)
   const selectedManager = managerOptions.find((manager) => manager.id === workerManagerId) ?? null
   const workerProjectOptions = selectedManager?.projectOptions ?? []
@@ -196,7 +195,7 @@ export function EmployeeEditPageV2({
         </Field>
         <Field label={t("detailPages.employee.role")} error={errors.roleId}>
           <NativeSelect value={state.roleId} onChange={(event) => updateRole(event.target.value)}>
-            {roles.map((role) => (
+            {roles.filter((role) => isEmployeeRoleSelectable(role.key)).map((role) => (
               <option key={role.id} disabled={currentRoleKey !== "worker" && role.key === "worker"} value={role.id}>
                 {role.name}
               </option>
@@ -253,12 +252,6 @@ export function EmployeeEditPageV2({
               </NativeSelect>
             </Field>
           </>
-        ) : null}
-
-        {hasWarehouseWorkerPlacement ? (
-          <div className="rounded-xl border border-border/60 bg-sidebar/90 px-4 py-3 text-sm text-muted-foreground sm:col-span-2">
-            {t("detailPages.employee.editPage.warehousePlacementNotice")}
-          </div>
         ) : null}
 
         {isProjectManager ? (

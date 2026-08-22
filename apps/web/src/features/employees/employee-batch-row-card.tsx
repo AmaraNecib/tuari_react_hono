@@ -8,6 +8,7 @@ import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
 
 import type { EmployeeDraft, EmployeeDraftErrors } from "./employee-batch-schema"
+import { isEmployeeRoleSelectable } from "./role-classification"
 
 export type EmployeeManagerOption = {
   id: string
@@ -127,7 +128,7 @@ export function EmployeeBatchRowCard({
           <span className="text-sm font-medium text-foreground">{copy.roleLabel}</span>
           <select className={fieldClassName} name={`employee-role-${index}`} value={draft.roleId} onChange={(event) => onChange(index, "roleId", event.target.value)}>
             <option value="">{copy.rolePlaceholder}</option>
-            {roles.map((role) => (
+            {roles.filter((role) => isEmployeeRoleSelectable(role.key)).map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
               </option>

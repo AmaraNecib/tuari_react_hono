@@ -319,23 +319,18 @@ describe("applyRbacThreeRoleMigration — rollback recovery (§M7)", () => {
       /injected migration failure/,
     );
 
-    // The legacy `worker` role was rolled back (ready for the retry to drop it).
+    // The workforce role is preserved — issue #20 makes it a first-class
+    // seeded role, so this migration never consolidates/deletes it.
     const worker = db
       .prepare('SELECT "id" FROM "role" WHERE "key" = ?')
       .get("worker") as { id: string } | undefined;
     expect(worker?.id).toBe("role-legacy-worker");
 
-    // Legacy permission row restored.
+    // The permission normalization was rolled back (still the dotted form).
     const perm = db
       .prepare('SELECT "permission" FROM "role_permission" WHERE "id" = ?')
       .get("perm-legacy") as { permission: string } | undefined;
     expect(perm?.permission).toBe("employees.create");
-
-    // Employee is back on the legacy worker role (reassignment rolled back).
-    const emp = db
-      .prepare('SELECT "role_id" FROM "employee" WHERE "id" = ?')
-      .get("emp-1") as { role_id: string };
-    expect(emp.role_id).toBe("role-legacy-worker");
 
     expect(stateKeys(db)).not.toContain(rbacThreeRoleMigrationKey);
   });
@@ -353,17 +348,18 @@ describe("applyRbacThreeRoleMigration — rollback recovery (§M7)", () => {
       (db.prepare('SELECT COUNT(*) AS c FROM "role" WHERE "key" = ?').get("worker") as { c: number }).c,
     ).toBe(1);
 
-    // Same database file, next startup: legacy roles are dropped and the key
-    // is recorded exactly once.
+    // Same database file, next startup: the key is recorded and the dotted
+    // permission is normalized; the workforce role is NOT dropped.
     db.exec('DROP TRIGGER "test_fail_first_state_insert"');
     await applyRbacThreeRoleMigration(ex(db));
 
     expect(
       (db.prepare('SELECT COUNT(*) AS c FROM "role" WHERE "key" = ?').get("worker") as { c: number }).c,
-    ).toBe(0);
-    expect(
-      (db.prepare('SELECT COUNT(*) AS c FROM "role" WHERE "key" = ?').get("manager") as { c: number }).c,
     ).toBe(1);
+    const perm = db
+      .prepare('SELECT "permission" FROM "role_permission" WHERE "id" = ?')
+      .get("perm-legacy") as { permission: string };
+    expect(perm.permission).toBe("employees:create");
     expect(stateKeys(db)).toEqual([rbacThreeRoleMigrationKey]);
   });
 });

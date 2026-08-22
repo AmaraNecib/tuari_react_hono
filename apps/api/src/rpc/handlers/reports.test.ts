@@ -159,17 +159,11 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     const { financeService, companyRepo, raw } = env;
 
     // FinanceService.createDebtAccount requires the internal worker to hold
-    // the legacy "worker" role key, but the RBAC three-role migration drops
-    // that role in production. This is a pre-existing gap (#242 scope is the
-    // report, not worker-debt creation) — for the test we re-add a
-    // worker-keyed role so an INTERNAL_WORKER party is exercisable end to end.
-    const workerRoleId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    raw
-      .prepare(
-        'INSERT INTO "role" (id, key, name, description, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(workerRoleId, "worker", "عامل", "عامل ميداني", 1, now, now);
+    // the "worker" role key. That role is now a seeded default (issue #20), so
+    // we reuse the seeded role instead of inserting one.
+    const workerRoleId = (raw
+      .prepare('SELECT id FROM "role" WHERE key = ?')
+      .get("worker") as { id: string }).id;
 
     const counterpartyA = financeService.createExternalCounterparty(
       { fullName: "شركة الفاضل", phoneNumber: "0661234567" },

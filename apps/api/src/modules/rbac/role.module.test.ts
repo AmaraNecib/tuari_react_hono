@@ -43,17 +43,18 @@ describe("RoleModule (Slice 3 RBAC)", () => {
   beforeEach(() => {
     repository = new InMemoryRoleRepository();
     repository.seed(buildRoleRecord("admin"));
-    repository.seed(buildRoleRecord("manager"));
-    repository.seed(buildRoleRecord("viewer"));
+    repository.seed(buildRoleRecord("project_manager"));
+    repository.seed(buildRoleRecord("warehouse_manager"));
+    repository.seed(buildRoleRecord("worker"));
     module = new RoleModule({ repository });
   });
 
   describe("list()", () => {
     it("returns all roles with their permissions", async () => {
       const roles = await module.list();
-      expect(roles).toHaveLength(3);
+      expect(roles).toHaveLength(4);
       const keys = roles.map((r) => r.key).sort();
-      expect(keys).toEqual(["admin", "manager", "viewer"]);
+      expect(keys).toEqual(["admin", "project_manager", "warehouse_manager", "worker"]);
     });
 
     it("returns roles sorted by key for stable display", async () => {
@@ -91,27 +92,21 @@ describe("RoleModule (Slice 3 RBAC)", () => {
   });
 
   describe("getByKey()", () => {
-    it("returns the manager role with its operational permissions", async () => {
-      const role = await module.getByKey("manager");
+    it("returns a workforce label with no permissions", async () => {
+      const role = await module.getByKey("project_manager");
       expect(role).not.toBeNull();
-      expect(role!.name).toBe("مدير عمليات");
+      expect(role!.name).toBe("مدير مشروع");
       expect(role!.isSystem).toBe(true);
-      expect(role!.permissions).toContain("employees:create");
-      expect(role!.permissions).toContain("inventory:transfer");
-      expect(role!.permissions).toContain("debts:read");
-      expect(role!.permissions).not.toContain("debts:create");
+      expect(role!.permissions).toEqual([]);
     });
 
-    it("returns the viewer role with read-only permissions", async () => {
-      const role = await module.getByKey("viewer");
-      expect(role).not.toBeNull();
-      expect(role!.permissions).toContain("employees:read");
-      expect(role!.permissions).not.toContain("employees:create");
-      expect(role!.permissions).not.toContain("inventory:transfer");
+    it("returns null for the removed legacy manager/viewer roles", async () => {
+      expect(await module.getByKey("manager")).toBeNull();
+      expect(await module.getByKey("viewer")).toBeNull();
     });
 
     it("returns null when the key is unknown", async () => {
-      const role = await module.getByKey("worker");
+      const role = await module.getByKey("owner");
       expect(role).toBeNull();
     });
   });

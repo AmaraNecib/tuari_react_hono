@@ -52,7 +52,12 @@ const fakeAuth = { handler: () => new Response(null, { status: 200 }) } as unkno
 const inMemoryDb = ":memory:";
 
 /** The roles seeded by `ensureSeedRoles` on a freshly migrated database. */
-const SEEDED_ROLE_KEYS = ["admin", "manager", "viewer"];
+const SEEDED_ROLE_KEYS = [
+  "admin",
+  "project_manager",
+  "warehouse_manager",
+  "worker",
+];
 
 /** Pin ambient env so the default `createAppConfig()` path is deterministic. */
 const stubCleanEnv = () => {

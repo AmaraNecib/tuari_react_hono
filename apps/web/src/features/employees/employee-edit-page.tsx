@@ -18,6 +18,7 @@ import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import type { EmployeeManagerOption } from "./employee-batch-row-card"
 import type { EmployeeTableRow } from "./employee-table"
+import { classifyWorkforceRole, isEmployeeRoleSelectable } from "./role-classification"
 
 type FormState = {
   firstName: string
@@ -31,7 +32,7 @@ type FormState = {
 }
 
 type FormErrors = Partial<
-  Record<keyof FormState | "managerId" | "projectId", string>
+  Record<keyof FormState | "managerId" | "projectId" | "warehouseId" | "workplaceType", string>
 >
 
 type ManagedOption = {
@@ -76,6 +77,7 @@ export function EmployeeEditPage({
   managedProjectOptions,
   managedWarehouseOptions,
   roles,
+  warehouseOptions = [],
 }: {
   currentManagedProjectIds: string[]
   currentManagedWarehouseIds: string[]
@@ -84,6 +86,7 @@ export function EmployeeEditPage({
   managedProjectOptions: ManagedOption[]
   managedWarehouseOptions: ManagedOption[]
   roles: Role[]
+  warehouseOptions?: Array<{ id: string; label: string }>
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -95,6 +98,10 @@ export function EmployeeEditPage({
   const [errors, setErrors] = useState<FormErrors>({})
   const [workerManagerId, setWorkerManagerId] = useState(employee.currentManagerId ?? "")
   const [workerProjectId, setWorkerProjectId] = useState(employee.currentProjectId ?? "")
+  const [workerWarehouseId, setWorkerWarehouseId] = useState(employee.currentWarehouseId ?? "")
+  const [workplaceType, setWorkplaceType] = useState<"NONE" | "PROJECT" | "WAREHOUSE">(() =>
+    employee.currentProjectId ? "PROJECT" : employee.currentWarehouseId ? "WAREHOUSE" : "NONE",
+  )
   const [selectedManagedProjectIds, setSelectedManagedProjectIds] = useState<string[]>(currentManagedProjectIds)
   const [selectedManagedWarehouseIds, setSelectedManagedWarehouseIds] = useState<string[]>(currentManagedWarehouseIds)
   const previousEmployeeIdRef = useRef(employee.id)
@@ -109,6 +116,8 @@ export function EmployeeEditPage({
     setErrors({})
     setWorkerManagerId(employee.currentManagerId ?? "")
     setWorkerProjectId(employee.currentProjectId ?? "")
+    setWorkerWarehouseId(employee.currentWarehouseId ?? "")
+    setWorkplaceType(employee.currentProjectId ? "PROJECT" : employee.currentWarehouseId ? "WAREHOUSE" : "NONE")
     setSelectedManagedProjectIds(currentManagedProjectIds)
     setSelectedManagedWarehouseIds(currentManagedWarehouseIds)
   }, [currentManagedProjectIds, currentManagedWarehouseIds, employee])
@@ -118,10 +127,7 @@ export function EmployeeEditPage({
     () => roles.find((role) => role.id === state.roleId)?.key ?? employee.roleKey,
     [employee.roleKey, roles, state.roleId],
   )
-  const isWorker = selectedRoleKey === "worker"
-  const isProjectManager = selectedRoleKey === "project_manager"
-  const isWarehouseManager = selectedRoleKey === "warehouse_manager"
-  const hasWarehouseWorkerPlacement = isWorker && Boolean(employee.currentWarehouseId)
+  const { isWorker, isProjectManager, isWarehouseManager } = classifyWorkforceRole(selectedRoleKey)
   const selectedManager = managerOptions.find((manager) => manager.id === workerManagerId) ?? null
   const workerProjectOptions = selectedManager?.projectOptions ?? []
   const statusOptions = [
@@ -184,13 +190,21 @@ export function EmployeeEditPage({
       nextErrors.salaryAmountDzd = t("detailPages.employee.editPage.validation.salaryAmountRequired")
     }
 
-    if (isWorker && state.status === "ACTIVE" && !hasWarehouseWorkerPlacement) {
-      if (!workerManagerId) {
-        nextErrors.managerId = t("detailPages.employee.editPage.validation.managerRequired")
-      }
+    if (isWorker && state.status === "ACTIVE") {
+      if (workplaceType === "PROJECT") {
+        if (!workerManagerId) {
+          nextErrors.managerId = t("detailPages.employee.editPage.validation.managerRequired")
+        }
 
-      if (!workerProjectId) {
-        nextErrors.projectId = t("detailPages.employee.editPage.validation.projectRequired")
+        if (!workerProjectId) {
+          nextErrors.projectId = t("detailPages.employee.editPage.validation.projectRequired")
+        }
+      } else if (workplaceType === "WAREHOUSE") {
+        if (!workerWarehouseId) {
+          nextErrors.warehouseId = t("detailPages.employee.editPage.validation.warehouseRequired")
+        }
+      } else {
+        nextErrors.workplaceType = t("detailPages.employee.editPage.validation.workplaceRequired")
       }
     }
 
@@ -200,9 +214,12 @@ export function EmployeeEditPage({
       return
     }
 
-    const workerPlacementChanged =
+    const workplaceChanged =
+      workplaceType !==
+        (employee.currentProjectId ? "PROJECT" : employee.currentWarehouseId ? "WAREHOUSE" : "NONE") ||
       workerManagerId !== (employee.currentManagerId ?? "") ||
       workerProjectId !== (employee.currentProjectId ?? "") ||
+      workerWarehouseId !== (employee.currentWarehouseId ?? "") ||
       currentRoleKey !== selectedRoleKey ||
       state.status !== employee.status
 
@@ -249,13 +266,13 @@ export function EmployeeEditPage({
       notes: state.notes.trim() || null,
     })
 
-    if (isWorker && state.status === "ACTIVE" && !hasWarehouseWorkerPlacement && workerPlacementChanged) {
+    if (isWorker && state.status === "ACTIVE" && workplaceChanged) {
       await updateEmployeeWorkplaceMutation.mutateAsync({
         employeeId: employee.id,
-        managerId: workerManagerId || null,
-        nextType: "PROJECT",
-        projectId: workerProjectId || null,
-        warehouseId: null,
+        managerId: workplaceType === "PROJECT" ? workerManagerId || null : null,
+        nextType: workplaceType,
+        projectId: workplaceType === "PROJECT" ? workerProjectId || null : null,
+        warehouseId: workplaceType === "WAREHOUSE" ? workerWarehouseId || null : null,
       })
     }
 
@@ -318,7 +335,7 @@ export function EmployeeEditPage({
             </Field>
             <Field label={t("detailPages.employee.role")} error={errors.roleId}>
               <NativeSelect value={state.roleId} onChange={(event) => updateRole(event.target.value)}>
-                {roles.map((role) => (
+                {roles.filter((role) => isEmployeeRoleSelectable(role.key)).map((role) => (
                   <option key={role.id} disabled={currentRoleKey !== "worker" && role.key === "worker"} value={role.id}>
                     {role.name}
                   </option>
@@ -353,41 +370,78 @@ export function EmployeeEditPage({
           title={t("detailPages.employee.editPage.workTitle")}
         >
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {isWorker && !hasWarehouseWorkerPlacement ? (
+            {isWorker ? (
               <>
-                <Field label={t("detailPages.employee.editPage.directManager")} error={errors.managerId}>
+                <Field label={t("detailPages.employee.editPage.workplaceType")} error={errors.workplaceType} className="md:col-span-2 xl:col-span-3">
                   <NativeSelect
-                    value={workerManagerId}
+                    value={workplaceType}
                     onChange={(event) => {
-                      setWorkerManagerId(event.target.value)
-                      setWorkerProjectId("")
+                      const next = event.target.value as "NONE" | "PROJECT" | "WAREHOUSE"
+                      setWorkplaceType(next)
+                      if (next === "PROJECT") {
+                        setWorkerWarehouseId("")
+                      }
+                      if (next === "WAREHOUSE") {
+                        setWorkerManagerId("")
+                        setWorkerProjectId("")
+                      }
+                      if (next === "NONE") {
+                        setWorkerManagerId("")
+                        setWorkerProjectId("")
+                        setWorkerWarehouseId("")
+                      }
                     }}
                   >
-                    <option value="">{t("detailPages.employee.editPage.selectProjectManager")}</option>
-                    {managerOptions.map((manager) => (
-                      <option key={manager.id} value={manager.id}>
-                        {manager.label}
-                      </option>
-                    ))}
+                    <option value="NONE">{t("detailPages.employee.editPage.noWorkplace")}</option>
+                    <option value="PROJECT">{t("detailPages.employee.editPage.projectPlacement")}</option>
+                    <option value="WAREHOUSE">{t("detailPages.employee.editPage.warehousePlacement")}</option>
                   </NativeSelect>
                 </Field>
-                <Field label={t("detailPages.employee.editPage.currentProject")} error={errors.projectId}>
-                  <NativeSelect disabled={!workerManagerId} value={workerProjectId} onChange={(event) => setWorkerProjectId(event.target.value)}>
-                    <option value="">{t("detailPages.employee.editPage.selectManagerProject")}</option>
-                    {workerProjectOptions.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.label}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </Field>
-              </>
-            ) : null}
 
-            {hasWarehouseWorkerPlacement ? (
-              <div className="md:col-span-2 xl:col-span-3 rounded-xl border border-border/60 bg-sidebar/90 px-4 py-3 text-sm text-muted-foreground">
-                {t("detailPages.employee.editPage.warehousePlacementNotice")}
-              </div>
+                {workplaceType === "PROJECT" ? (
+                  <>
+                    <Field label={t("detailPages.employee.editPage.directManager")} error={errors.managerId}>
+                      <NativeSelect
+                        value={workerManagerId}
+                        onChange={(event) => {
+                          setWorkerManagerId(event.target.value)
+                          setWorkerProjectId("")
+                        }}
+                      >
+                        <option value="">{t("detailPages.employee.editPage.selectProjectManager")}</option>
+                        {managerOptions.map((manager) => (
+                          <option key={manager.id} value={manager.id}>
+                            {manager.label}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </Field>
+                    <Field label={t("detailPages.employee.editPage.currentProject")} error={errors.projectId}>
+                      <NativeSelect disabled={!workerManagerId} value={workerProjectId} onChange={(event) => setWorkerProjectId(event.target.value)}>
+                        <option value="">{t("detailPages.employee.editPage.selectManagerProject")}</option>
+                        {workerProjectOptions.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.label}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </Field>
+                  </>
+                ) : null}
+
+                {workplaceType === "WAREHOUSE" ? (
+                  <Field label={t("detailPages.employee.editPage.warehouse")} error={errors.warehouseId} className="md:col-span-2 xl:col-span-3">
+                    <NativeSelect value={workerWarehouseId} onChange={(event) => setWorkerWarehouseId(event.target.value)}>
+                      <option value="">{t("detailPages.employee.editPage.selectWarehouse")}</option>
+                      {warehouseOptions.map((warehouse) => (
+                        <option key={warehouse.id} value={warehouse.id}>
+                          {warehouse.label}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </Field>
+                ) : null}
+              </>
             ) : null}
           </div>
 

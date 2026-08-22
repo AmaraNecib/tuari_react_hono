@@ -129,6 +129,77 @@ export function seedEmployees(employees: SeedEmployee[]): void {
 }
 
 /**
+ * Seed a single employee linked to an existing role KEY (e.g. worker,
+ * project_manager, warehouse_manager). Returns the new employee id. Phones
+ * must be unique per test ATTEMPT (see `uniqueSuffix` / retries are shared).
+ */
+export function seedEmployeeByRole(input: {
+  firstName: string
+  lastName: string
+  phone: string
+  roleKey: string
+  status?: "ACTIVE" | "INACTIVE" | "LEFT"
+}): string {
+  const db = loadDatabaseConstructor()(findE2eDatabase())
+  try {
+    const roleRow = db
+      .prepare(`SELECT id FROM role WHERE key = ?`)
+      .get(input.roleKey) as { id: string } | undefined
+    if (!roleRow) {
+      throw new Error(`seedEmployeeByRole: role '${input.roleKey}' not seeded`)
+    }
+    const id = randomUUID()
+    const ts = new Date().toISOString()
+    db.prepare(
+      `INSERT INTO employee
+         (id, first_name, last_name, phone, user_id, role_id, status,
+          salary_amount_dzd, salary_period, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, NULL, NULL, ?, ?)`,
+    ).run(id, input.firstName, input.lastName, input.phone, roleRow.id, input.status ?? "ACTIVE", ts, ts)
+    return id
+  } finally {
+    db.close()
+  }
+}
+
+/** Seed an ACTIVE project and assign it to a manager employee. Returns the project id. */
+export function seedProjectWithManager(input: {
+  name: string
+  managerId: string
+}): string {
+  const db = loadDatabaseConstructor()(findE2eDatabase())
+  try {
+    const id = randomUUID()
+    const ts = new Date().toISOString()
+    db.prepare(
+      `INSERT INTO project
+         (id, name, location, manager_id, status, notes, created_at, updated_at)
+       VALUES (?, ?, NULL, ?, 'ACTIVE', NULL, ?, ?)`,
+    ).run(id, input.name, input.managerId, ts, ts)
+    return id
+  } finally {
+    db.close()
+  }
+}
+
+/** Seed an ACTIVE warehouse. Returns the warehouse id. */
+export function seedWarehouse(input: { name: string }): string {
+  const db = loadDatabaseConstructor()(findE2eDatabase())
+  try {
+    const id = randomUUID()
+    const ts = new Date().toISOString()
+    db.prepare(
+      `INSERT INTO warehouse
+         (id, name, address, manager_id, status, notes, created_at, updated_at)
+       VALUES (?, ?, NULL, NULL, 'ACTIVE', NULL, ?, ?)`,
+    ).run(id, input.name, ts, ts)
+    return id
+  } finally {
+    db.close()
+  }
+}
+
+/**
  * The result of seeding the legacy user, including the ownership-restore
  * handle the spec must call once it is done (see {@link seedLegacyPasswordUser}).
  */

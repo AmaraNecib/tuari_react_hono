@@ -11,7 +11,9 @@ import type { HomeViewPageContentProps } from "./home-view-page-content-shared"
 const DashboardSection = lazy(async () => import("./dashboard-section").then((module) => ({ default: module.DashboardSection })))
 const EmployeesSection = lazy(async () => import("./employees-section").then((module) => ({ default: module.EmployeesSection })))
 const ProjectsSection = lazy(async () => import("./projects-section").then((module) => ({ default: module.ProjectsSection })))
-const RolesSection = lazy(async () => import("./roles-section").then((module) => ({ default: module.RolesSection })))
+// RolesSection is intentionally NOT imported/routed for now (issue #20): the
+// role add/edit surface is hidden as a 404. The component file roles-section.tsx
+// is kept for a future role-management surface.
 const SalariesSection = lazy(async () => import("./salaries-section").then((module) => ({ default: module.SalariesSection })))
 const SettingsSection = lazy(async () => import("./settings-section").then((module) => ({ default: module.SettingsSection })))
 const SystemLogSection = lazy(async () => import("./system-log-section").then((module) => ({ default: module.SystemLogSection })))
@@ -223,21 +225,18 @@ export function HomeViewPageSectionContent({
       )
 
     case "roles":
-      return renderSection(
-        <RolesSection
-          columns={{
-            name: copy.columns.name,
-            key: copy.columns.key,
-            system: copy.columns.system,
-            description: copy.columns.description,
-            permissions: copy.shell.rolesPermissions,
-          }}
-          emptyLabel={copy.shell.empty}
-          noLabel={copy.common.no}
-          roles={derived.roles}
-          title={copy.sections.roles.label}
-          yesLabel={copy.common.yes}
-        />,
+      // The role add/edit surface is hidden for now (issue #20): the admin
+      // orchestrates the workforce via the assignment UI, and roles are
+      // seeded defaults. Treat the roles page as a 404 like any nonexistent
+      // route — the RolesSection component is kept (not deleted) for a future
+      // surface where role permissions can be managed/granted.
+      return (
+        <Surface className="py-12 text-center" role="alert" variant="panel">
+          <p className="text-lg font-semibold text-foreground">
+            {copy.shell.pageNotFound}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{copy.shell.pageNotFoundDescription}</p>
+        </Surface>
       )
 
     case "settings":

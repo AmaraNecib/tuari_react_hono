@@ -610,7 +610,7 @@ describe("WorkforceService coverage branches", () => {
       ).toThrowError(CompanyError);
     });
 
-    it("rejects WAREHOUSE nextType", () => {
+    it("applies a WAREHOUSE workplace assignment end-to-end", () => {
       const { service, roleIds } = createHarness();
       const worker = service.createEmployee({
         firstName: "عامل",
@@ -619,9 +619,35 @@ describe("WorkforceService coverage branches", () => {
         roleId: roleIds.worker,
         status: "ACTIVE",
       }).item;
+      const warehouse = service.createWarehouse({ name: "مخزن", status: "ACTIVE" }).item;
+      const result = service.assignEmployeeWorkplace(
+        { employeeId: worker.id, nextType: "WAREHOUSE", warehouseId: warehouse.id },
+        audit(),
+      );
+      expect(result.success).toBe(true);
+      const assignments = service.listWarehouseAssignments({ employeeId: worker.id }).items;
+      expect(assignments).toHaveLength(1);
+      expect(assignments[0]?.warehouseId).toBe(warehouse.id);
+    });
+
+    it("rejects a WAREHOUSE placement with a missing or inactive warehouse", () => {
+      const { service, roleIds } = createHarness();
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "مخزن",
+        phone: "0554000024",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+      expect(() =>
+        service.assignEmployeeWorkplace({ employeeId: worker.id, nextType: "WAREHOUSE" }, audit()),
+      ).toThrowError(CompanyError);
+      const inactiveWarehouse = service
+        .createWarehouse({ name: "مخزن غير نشط", status: "INACTIVE" })
+        .item;
       expect(() =>
         service.assignEmployeeWorkplace(
-          { employeeId: worker.id, nextType: "WAREHOUSE", warehouseId: "w1" },
+          { employeeId: worker.id, nextType: "WAREHOUSE", warehouseId: inactiveWarehouse.id },
           audit(),
         ),
       ).toThrowError(CompanyError);

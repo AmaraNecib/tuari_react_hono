@@ -1,4 +1,5 @@
 import { getArabicRoleLabel } from "@/features/shared/status-meta"
+import { isProjectManagerRoleKey, isWarehouseManagerRoleKey, isWorkerRoleKey } from "@/features/employees/role-classification"
 
 import type { HomeViewCopy, HomeViewDetailCopy } from "./home-view-copy"
 import { formatName } from "./home-view-derived-formatters"
@@ -119,15 +120,15 @@ export function deriveEmployeeDeleteState(facts: EmployeeDeleteFacts, t: Transla
 }
 
 export function deriveEmployeeLeaveState(facts: EmployeeLeaveFacts, t: Translate) {
-  const workerStillLinked = facts.roleKey === "worker" && (facts.hasManagerAssignment || facts.hasProjectAssignment || facts.hasWarehouseAssignment)
+  const workerStillLinked = isWorkerRoleKey(facts.roleKey) && (facts.hasManagerAssignment || facts.hasProjectAssignment || facts.hasWarehouseAssignment)
   const projectManagerStillLinked =
-    facts.roleKey === "project_manager" &&
+    isProjectManagerRoleKey(facts.roleKey) &&
     (facts.hasActiveProjectManagerProject ||
       facts.hasProjectAssignment ||
       facts.hasWarehouseAssignment ||
       facts.hasActiveProjectManagerReports)
   const warehouseManagerStillLinked =
-    facts.roleKey === "warehouse_manager" &&
+    isWarehouseManagerRoleKey(facts.roleKey) &&
     (facts.hasActiveWarehouseManagerWarehouse || facts.hasProjectAssignment || facts.hasWarehouseAssignment)
 
   const canLeave = facts.employeeStatus === "ACTIVE" && !workerStillLinked && !projectManagerStillLinked && !warehouseManagerStillLinked
@@ -224,7 +225,7 @@ export function buildEmployeeRow({
  * buildEmployeeRows({ component.
  */
     notes: employee.notes,
-    isWorker: role?.key === "worker",
+    isWorker: isWorkerRoleKey(role?.key ?? null),
     ...deleteState,
     ...leaveState,
     createdAt: employee.createdAt,
@@ -273,7 +274,7 @@ export function buildManagerOptions({
   )
 
   return workspace.employees
-    .filter((employee) => employee.status === "ACTIVE" && lookups.roleById.get(employee.roleId)?.key === "project_manager")
+    .filter((employee) => employee.status === "ACTIVE" && isProjectManagerRoleKey(lookups.roleById.get(employee.roleId)?.key))
     .map((employee) => ({
       id: employee.id,
       label: `${formatName(employee)} - ${employee.phone}`,
@@ -295,7 +296,7 @@ export function buildWarehouseManagerOptions({
   workspace: DemoWorkspace
 }) {
   return workspace.employees
-    .filter((employee) => employee.status === "ACTIVE" && lookups.roleById.get(employee.roleId)?.key === "warehouse_manager")
+    .filter((employee) => employee.status === "ACTIVE" && isWarehouseManagerRoleKey(lookups.roleById.get(employee.roleId)?.key))
     .map((employee) => ({
       id: employee.id,
       label: `${formatName(employee)} - ${employee.phone}`,

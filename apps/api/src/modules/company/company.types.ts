@@ -392,8 +392,9 @@ export type SystemLogListFilters = {
 
 export const ASSIGNABLE_ROLE_KEYS = {
   admin: "admin",
-  manager: "manager",
-  viewer: "viewer",
+  projectManager: "project_manager",
+  warehouseManager: "warehouse_manager",
+  worker: "worker",
 } as const;
 
 /**

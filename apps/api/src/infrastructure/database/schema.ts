@@ -1566,54 +1566,18 @@ export async function applyRbacThreeRoleMigration(db: DbExecutor): Promise<void>
     return;
   }
 
-  const legacyKeys = ["worker", "project_manager", "warehouse_manager"];
-
   await db.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
 
   try {
     await db.$transaction(async (tx) => {
-      // Resolve the manager role id (created by ensureSeedRoles above).
-      const [managerRow] = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-        'SELECT id FROM "role" WHERE key = ? LIMIT 1',
-        "manager",
-      );
-
-      if (!managerRow) {
-        // Defensive: ensureSeedRoles should have created the manager role
-        // before this migration runs. If it's missing for any reason, bail
-        // out and let a later startup retry.
-        throw new Error("rbac_three_role_v1: 'manager' role missing — ensureSeedRoles did not run");
-      }
-
-      const managerId = managerRow.id;
-
-      // Reassign any employees pointing at legacy roles onto the manager role.
-      for (const legacyKey of legacyKeys) {
-        const [legacyRow] = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-          'SELECT id FROM "role" WHERE key = ? LIMIT 1',
-          legacyKey,
-        );
-        if (!legacyRow) continue;
-
-        await tx.$executeRawUnsafe(
-          'UPDATE "employee" SET "role_id" = ?, "updated_at" = ? WHERE "role_id" = ?',
-          managerId,
-          new Date().toISOString(),
-          legacyRow.id,
-        );
-
-        // Drop any role_permission rows for the legacy role.
-        await tx.$executeRawUnsafe(
-          'DELETE FROM "role_permission" WHERE "role_id" = ?',
-          legacyRow.id,
-        );
-
-        // Drop the legacy role itself.
-        await tx.$executeRawUnsafe(
-          'DELETE FROM "role" WHERE "id" = ?',
-          legacyRow.id,
-        );
-      }
+      // This migration once consolidated the legacy workforce roles
+      // (worker / project_manager / warehouse_manager) into a single
+      // "manager" role (Slice 3 / three-tier RBAC). As of issue #20 those
+      // roles are seeded again as first-class organizational labels, so the
+      // consolidation must NOT run — it would delete freshly-seeded roles on
+      // a new database. Existing databases already recorded this migration in
+      // app_schema_state, so only the (idempotent) permission-format
+      // normalisation below runs here.
 
       // Normalise the permission column format from `resource.action` to
       // `resource:action` for any rows that slipped through the colon-only

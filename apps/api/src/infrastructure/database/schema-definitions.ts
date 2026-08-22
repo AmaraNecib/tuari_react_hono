@@ -818,14 +818,15 @@ export const companyStatusConstraintChecks = [
   },
 ] as const
 
-// Roles seeded on first run (Issue #10 — three-tier RBAC).
-// Keep this list in sync with `apps/api/src/modules/rbac/role-seeds.ts`.
-// Legacy roles (worker, project_manager, warehouse_manager) are intentionally
-// dropped per the Slice 3 acceptance criteria.
+// Roles seeded on first run (issue #20 workforce model — single-actor: admin
+// only; the workforce labels are organizational and the legacy manager/viewer
+// roles were removed). Keep this list in sync with
+// `apps/api/src/modules/rbac/role-seeds.ts`.
 export const roleSeeds = [
   { key: "admin", name: "مدير النظام", description: "الحساب الإداري الرئيسي — له جميع الصلاحيات", isSystem: true },
-  { key: "manager", name: "مدير عمليات", description: "يدير الموظفين والمشاريع والمستودعات والمخزون — صلاحيات تشغيلية كاملة", isSystem: true },
-  { key: "viewer", name: "مشاهد", description: "حساب للقراءة فقط — لا يمكنه تعديل أي بيانات", isSystem: true },
+  { key: "project_manager", name: "مدير مشروع", description: "منظم — يدير واحدًا أو أكثر من المشاريع والعاملين المرتبطين بها", isSystem: true },
+  { key: "warehouse_manager", name: "مدير مخزن", description: "منظم — يدير المستودع وفريق العاملين المرتبطين به", isSystem: true },
+  { key: "worker", name: "عامل", description: "منظم — العامل الميداني المرتبط بمشروع تحت مدير أو بمستودع", isSystem: true },
 ] as const;
 
 // ---------- role_permission seeds ----------

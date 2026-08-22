@@ -10,6 +10,7 @@ import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashbo
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
+import { classifyWorkforceRole } from "./role-classification"
 import {
   RecordHistoryTable,
   RecordInfoCard,
@@ -131,9 +132,7 @@ export function EmployeeDetailsPage({
   workHistory: EmployeeWorkHistoryRow[]
 }) {
   const { t } = useTranslation()
-  const isProjectManager = employee.roleKey === "project_manager"
-  const isWarehouseManager = employee.roleKey === "warehouse_manager"
-  const isWorker = employee.roleKey === "worker"
+  const { isProjectManager, isWarehouseManager, isWorker } = classifyWorkforceRole(employee.roleKey)
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const createSalaryPaymentMutation = useCreateSalaryPaymentMutation()
   const [paymentDate, setPaymentDate] = useState(() => getAlgeriaDateInputValue())

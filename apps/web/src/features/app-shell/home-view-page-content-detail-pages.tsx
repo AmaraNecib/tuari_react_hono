@@ -294,6 +294,9 @@ export function HomeViewPageDetailContent({
                 }))}
               managerOptions={selectedEmployeeManagerOptions}
               roles={derived.roles}
+              warehouseOptions={derived.warehouses
+                .filter((warehouse) => warehouse.status === "ACTIVE")
+                .map((warehouse) => ({ id: warehouse.id, label: warehouse.name }))}
             />,
           )
         : (

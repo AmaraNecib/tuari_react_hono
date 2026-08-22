@@ -48,6 +48,8 @@ export type HomeViewCopy = {
     addWarehouse: string
     addRole: string
     rolesPermissions: string
+    pageNotFound: string
+    pageNotFoundDescription: string
     collapse: string
     expand: string
     themeToggle: string
@@ -263,6 +265,8 @@ export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
       addWarehouse: t("shell.addWarehouse"),
       addRole: t("shell.addRole"),
       rolesPermissions: t("shell.rolesPermissions"),
+      pageNotFound: t("shell.pageNotFound"),
+      pageNotFoundDescription: t("shell.pageNotFoundDescription"),
       collapse: t("shell.collapse"),
       expand: t("shell.expand"),
       themeToggle: t("shell.themeToggle"),
