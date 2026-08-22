@@ -782,6 +782,9 @@ export const ar = {
         ongoing: "مستمر",
         unexpectedValue: "قيمة غير متوقعة: {{value}}",
       },
+      invoice: {
+        loadError: "تعذر تحميل بيانات الفاتورة. حاول مرة أخرى.",
+      },
       shell: {
         activeWorkersCount: "{{count}} عامل نشط",
         itemsGuide: "دليل العناصر",

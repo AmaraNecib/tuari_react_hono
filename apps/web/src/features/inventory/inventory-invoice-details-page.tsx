@@ -1,4 +1,7 @@
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
+import type { TFunction } from "i18next"
+import { TriangleAlert } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,11 +32,34 @@ function buildLocationHref(location: { warehouseId?: string | null; projectId?: 
   return null
 }
 
+/**
+ * Error surface for the invoice-group query. The details route must not stay
+ * on the loading line forever when the invoice-group RPC fails (invalid or
+ * 404 id) or settles without data — surface the failure with a retry,
+ * mirroring the DebtsLoadError pattern (icon + message + retry).
+ */
+function InvoiceLoadError({ onRetry, t }: { onRetry: () => void; t: TFunction }) {
+  return (
+    <Surface className="border-destructive/25 p-6" role="alert" variant="panel">
+      <div className="flex flex-col items-center gap-4 py-10 text-center">
+        <TriangleAlert className="h-10 w-10 text-destructive" aria-hidden="true" />
+        <p className="max-w-md text-sm leading-6 text-foreground">
+          {t("detailPages.invoice.loadError")}
+        </p>
+        <Button variant="outline" onClick={onRetry}>
+          {t("common.retry")}
+        </Button>
+      </div>
+    </Surface>
+  )
+}
+
 /** Invoice detail page with item list and payment recording. */
 /**
  * @description Component
  */
 export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: string; onBack: () => void }) {
+  const { t } = useTranslation()
   const invoiceQuery = useInventoryInvoiceGroupQuery(invoiceId)
   const [transferSectionExpanded] = useState(false)
   // Only fetch warehouses/projects when transfer section is expanded (lazy loading optimization)
@@ -52,6 +78,13 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
 
   async function handleAttachmentOpen(attachment: { id: string; originalName: string }) {
     await downloadDesktopApiFile(resolveApiUrl(`/api/inventory/attachments/${attachment.id}`), attachment.originalName)
+  }
+
+  // Error surface (issue #34): when the invoice-group query errored (invalid
+  // or 404 id) or settled without data, replace the page instead of showing
+  // the loading line forever. Pending still renders the loader below.
+  if (!invoiceQuery.isPending && (invoiceQuery.isError || !detail)) {
+    return <InvoiceLoadError onRetry={() => void invoiceQuery.refetch()} t={t} />
   }
 
   return (
