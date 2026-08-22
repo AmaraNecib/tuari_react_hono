@@ -27,6 +27,7 @@ export const employee = sqliteTable("employee", {
   salaryAmountDzd: real("salary_amount_dzd"),
   salaryPeriod: text("salary_period"),
   notes: text("notes"),
+  occupation: text("occupation"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (table) => [uniqueIndex("employee_user_id_key").on(table.userId)]);

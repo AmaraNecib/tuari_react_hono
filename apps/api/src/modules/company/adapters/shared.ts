@@ -66,7 +66,7 @@ export function toEmployee(r: typeof schema.employee.$inferSelect): EmployeeReco
     roleId: r.roleId, status: r.status as EmployeeRecord["status"],
     salaryAmountDzd: r.salaryAmountDzd ?? null,
     salaryPeriod: r.salaryPeriod as EmployeeRecord["salaryPeriod"],
-    notes: r.notes ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt,
+    notes: r.notes ?? null, occupation: r.occupation ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
 }
 

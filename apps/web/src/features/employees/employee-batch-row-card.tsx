@@ -22,6 +22,7 @@ type EmployeeBatchRowCardCopy = {
   lastNameLabel: string
   phoneLabel: string
   roleLabel: string
+  occupationLabel: string
   salaryAmountLabel: string
   salaryPeriodLabel: string
   salaryAmountPlaceholder: string
@@ -38,6 +39,7 @@ type EmployeeBatchRowCardCopy = {
   lastNamePlaceholder: string
   phonePlaceholder: string
   rolePlaceholder: string
+  occupationPlaceholder: string
   notesPlaceholder: string
   remove: string
 }
@@ -122,6 +124,17 @@ export function EmployeeBatchRowCard({
             onChange={(event) => onChange(index, "phone", event.target.value)}
           />
           {errors.phone ? <p className="text-sm text-destructive">{errors.phone}</p> : null}
+        </label>
+
+        <label className="flex flex-col gap-2.5">
+          <span className="text-sm font-medium text-foreground">{copy.occupationLabel}</span>
+          <Input
+            name={`employee-occupation-${index}`}
+            placeholder={copy.occupationPlaceholder}
+            value={draft.occupation}
+            onChange={(event) => onChange(index, "occupation", event.target.value)}
+          />
+          {errors.occupation ? <p className="text-sm text-destructive">{errors.occupation}</p> : null}
         </label>
 
         <label className="flex flex-col gap-2.5">

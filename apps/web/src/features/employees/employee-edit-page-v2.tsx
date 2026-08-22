@@ -28,6 +28,7 @@ type FormState = {
   status: EmployeeTableRow["status"]
   salaryAmountDzd: string
   salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | ""
+  occupation: string
   notes: string
 }
 
@@ -50,6 +51,7 @@ function createFormState(employee: EmployeeTableRow): FormState {
     status: employee.status,
     salaryAmountDzd: employee.salaryAmountDzd == null ? "" : String(employee.salaryAmountDzd),
     salaryPeriod: employee.salaryPeriod ?? "",
+    occupation: employee.occupation ?? "",
     notes: employee.notes ?? "",
   }
 }
@@ -201,6 +203,13 @@ export function EmployeeEditPageV2({
               </option>
             ))}
           </NativeSelect>
+        </Field>
+        <Field label={t("detailPages.employee.editPage.occupation")} error={errors.occupation}>
+          <Input
+            placeholder={t("detailPages.employee.editPage.occupationPlaceholder")}
+            value={state.occupation}
+            onChange={(event) => setState({ ...state, occupation: event.target.value })}
+          />
         </Field>
         <Field label={t("detailPages.employee.editPage.status")} error={errors.status}>
           <NativeSelect

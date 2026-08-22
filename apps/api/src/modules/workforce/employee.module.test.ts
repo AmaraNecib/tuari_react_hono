@@ -60,6 +60,41 @@ describe("EmployeeModule", () => {
       });
       expect(employee.id).toBeDefined();
       expect(employee.createdAt).toBeDefined();
+      expect(employee.occupation).toBeNull();
+    });
+
+    it("persists an optional occupation on create", async () => {
+      seedWorkerRole();
+
+      const employee = await employeeModule.create({
+        firstName: "Ahmed",
+        lastName: "Ben Ali",
+        phone: "0555123456",
+        roleId: "role-worker",
+        occupation: "عامل بناء",
+      });
+
+      expect(employee.occupation).toBe("عامل بناء");
+      const found = await employeeModule.findById(employee.id);
+      expect(found?.occupation).toBe("عامل بناء");
+    });
+
+    it("updates and clears the occupation field", async () => {
+      seedWorkerRole();
+
+      const employee = await employeeModule.create({
+        firstName: "Ahmed",
+        lastName: "Ben Ali",
+        phone: "0555123456",
+        roleId: "role-worker",
+        occupation: "عامل بناء",
+      });
+
+      const updated = await employeeModule.update(employee.id, { id: employee.id, occupation: "نقاش" });
+      expect(updated.occupation).toBe("نقاش");
+
+      const cleared = await employeeModule.update(employee.id, { id: employee.id, occupation: null });
+      expect(cleared.occupation).toBeNull();
     });
 
     it("rejects creation with duplicate phone number", async () => {

@@ -35,6 +35,7 @@ export const employeeSchema = z.object({
   salaryAmountDzd: z.number().nonnegative().nullable(),
   salaryPeriod: salaryPeriodSchema.nullable(),
   notes: nullableTextSchema,
+  occupation: nullableTextSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
@@ -134,6 +135,7 @@ export const employeeCreateInputSchema = z.object({
   salaryAmountDzd: z.number().nonnegative().nullable().optional(),
   salaryPeriod: salaryPeriodSchema.nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
+  occupation: z.string().trim().max(120).nullable().optional(),
 });
 
 export const employeeBatchCreateRowInputSchema = employeeCreateInputSchema.extend({
@@ -151,6 +153,7 @@ export const employeeUpdateInputSchema = z.object({
   salaryAmountDzd: z.number().nonnegative().nullable().optional(),
   salaryPeriod: salaryPeriodSchema.nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
+  occupation: z.string().trim().max(120).nullable().optional(),
 });
 
 export const employeeListInputSchema = z

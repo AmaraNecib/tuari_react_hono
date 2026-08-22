@@ -61,6 +61,16 @@ describe("CompanyService facade delegations", () => {
     }).item;
     const updated = service.updateEmployee({ id: worker.id, notes: "ملاحظة" }, audit()).item;
     expect(updated.notes).toBe("ملاحظة");
+    const withOccupation = service.updateEmployee(
+      { id: worker.id, occupation: "عامل بناء" },
+      audit(),
+    ).item;
+    expect(withOccupation.occupation).toBe("عامل بناء");
+    const clearedOccupation = service.updateEmployee(
+      { id: worker.id, occupation: null },
+      audit(),
+    ).item;
+    expect(clearedOccupation.occupation).toBeNull();
     const paymentTarget = service.createEmployee({
       firstName: "عامل",
       lastName: "رواتب",

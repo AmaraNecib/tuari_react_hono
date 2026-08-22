@@ -37,6 +37,7 @@ export type EmployeeTableRow = {
   currentWarehouseAssignmentId: string | null
   currentWorkplace: string
   notes: string | null
+  occupation: string | null
   isWorker: boolean
   canDelete: boolean
   canLeave: boolean

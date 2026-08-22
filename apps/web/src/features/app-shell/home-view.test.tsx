@@ -277,7 +277,7 @@ describe("HomeView workspace shell", () => {
     fireEvent.change(screen.getAllByLabelText("رقم الهاتف")[0]!, {
       target: { value: "0555123456" },
     })
-    fireEvent.change(screen.getAllByLabelText("الدور")[0]!, {
+    fireEvent.change(screen.getAllByLabelText("صلاحية التطبيق")[0]!, {
       target: { value: "role-project-manager" },
     })
     fireEvent.change(screen.getAllByPlaceholderText("10000")[0]!, {
@@ -296,7 +296,7 @@ describe("HomeView workspace shell", () => {
     fireEvent.change(screen.getAllByLabelText("رقم الهاتف")[1]!, {
       target: { value: "0666123456" },
     })
-    fireEvent.change(screen.getAllByLabelText("الدور")[1]!, {
+    fireEvent.change(screen.getAllByLabelText("صلاحية التطبيق")[1]!, {
       target: { value: "role-worker" },
     })
     fireEvent.change(screen.getAllByLabelText("المدير المباشر")[1]!, {
@@ -370,6 +370,15 @@ describe("HomeView workspace shell", () => {
     expect(await screen.findByText("المعلومات الشخصية")).toBeTruthy()
     expect(screen.getByText("سجل العمل")).toBeTruthy()
     expect(screen.getByRole("tab", { name: "المالية" })).toBeTruthy()
+    expect(screen.getByText("المهنة / الدور الوظيفي")).toBeTruthy()
+    expect(screen.getByText("عامل بناء")).toBeTruthy()
+  })
+
+  it("shows the no-occupation fallback on an employee without an occupation", async () => {
+    renderWorkspace("employee-details", { sessionUser: demoUser, employeeId: "employee-manager-1" })
+
+    expect(await screen.findByText("المهنة / الدور الوظيفي")).toBeTruthy()
+    expect(screen.getByText("غير محدد")).toBeTruthy()
   })
 
   it("routes back to employees when a requested employee record is missing", () => {

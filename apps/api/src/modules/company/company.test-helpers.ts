@@ -50,6 +50,7 @@ const schemaStatements = [
     "salary_amount_dzd" REAL,
     "salary_period" TEXT,
     "notes" TEXT,
+    "occupation" TEXT,
     "created_at" DATETIME NOT NULL,
     "updated_at" DATETIME NOT NULL,
     UNIQUE ("user_id"),

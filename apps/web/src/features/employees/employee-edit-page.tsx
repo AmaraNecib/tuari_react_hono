@@ -28,6 +28,7 @@ type FormState = {
   status: EmployeeTableRow["status"]
   salaryAmountDzd: string
   salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | ""
+  occupation: string
   notes: string
 }
 
@@ -50,6 +51,7 @@ function createFormState(employee: EmployeeTableRow): FormState {
     status: employee.status,
     salaryAmountDzd: employee.salaryAmountDzd == null ? "" : String(employee.salaryAmountDzd),
     salaryPeriod: employee.salaryPeriod ?? "",
+    occupation: employee.occupation ?? "",
     notes: employee.notes ?? "",
   }
 }
@@ -178,6 +180,10 @@ export function EmployeeEditPage({
       nextErrors.roleId = t("detailPages.employee.editPage.validation.roleRequired")
     }
 
+    if (state.occupation.trim().length > 120) {
+      nextErrors.occupation = t("detailPages.employee.editPage.validation.occupationTooLong")
+    }
+
     if (Number.isNaN(salaryAmount)) {
       nextErrors.salaryAmountDzd = t("detailPages.employee.editPage.validation.salaryAmountInvalid")
     }
@@ -263,6 +269,7 @@ export function EmployeeEditPage({
       status: state.status,
       salaryAmountDzd: salaryAmount,
       salaryPeriod: state.salaryPeriod || null,
+      occupation: state.occupation.trim() || null,
       notes: state.notes.trim() || null,
     })
 
@@ -346,6 +353,13 @@ export function EmployeeEditPage({
                   {t("detailPages.employee.editPage.roleWorkerHint")}
                 </p>
               ) : null}
+            </Field>
+            <Field label={t("detailPages.employee.editPage.occupation")} error={errors.occupation}>
+              <Input
+                placeholder={t("detailPages.employee.editPage.occupationPlaceholder")}
+                value={state.occupation}
+                onChange={(event) => setState({ ...state, occupation: event.target.value })}
+              />
             </Field>
             <Field label={t("detailPages.employee.editPage.status")} error={errors.status}>
               <NativeSelect

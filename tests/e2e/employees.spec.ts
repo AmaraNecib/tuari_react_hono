@@ -40,7 +40,7 @@ test.describe("employees — critical path", () => {
     // default). Only the workforce labels are assignable now — manager/viewer
     // were removed — and worker additionally requires a workplace placement,
     // so use the project_manager label (مدير مشروع).
-    await page.getByLabel("الدور").selectOption({ label: "مدير مشروع" })
+    await page.getByLabel("صلاحية التطبيق").selectOption({ label: "مدير مشروع" })
     // Salary period + amount are conditionally required as a pair — fill both
     // so the form's validation accepts the submission.
     await page.getByLabel("دورية الأجر").selectOption({ label: "شهري" })
@@ -67,7 +67,7 @@ test.describe("employees — critical path", () => {
 
     // Switch the role between two selectable workforce labels (manager/viewer
     // were removed with the single-actor model; warehouse_manager is selectable).
-    await page.getByLabel("الدور").selectOption({ label: "مدير مخزن" })
+    await page.getByLabel("صلاحية التطبيق").selectOption({ label: "مدير مخزن" })
     await page.getByRole("button", { name: "حفظ كل التغييرات" }).click()
 
     // The save navigates back to the details page where the new role renders.

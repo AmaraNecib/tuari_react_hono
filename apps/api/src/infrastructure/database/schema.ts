@@ -347,6 +347,7 @@ async function runStatusConstraintMigrations(db: DbExecutor) {
           "salary_amount_dzd" REAL,
           "salary_period" TEXT,
           "notes" TEXT,
+          "occupation" TEXT,
           "created_at" DATETIME NOT NULL,
           "updated_at" DATETIME NOT NULL,
           UNIQUE ("user_id"),
@@ -446,7 +447,7 @@ async function runStatusConstraintMigrations(db: DbExecutor) {
       );
 
       await tx.$executeRawUnsafe(
-        `INSERT INTO "employee_checked" ("id", "first_name", "last_name", "phone", "user_id", "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "created_at", "updated_at") SELECT "id", "first_name", "last_name", "phone", ${hasEmployeeUserIdColumn ? '"user_id"' : "NULL"}, "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "created_at", "updated_at" FROM "employee"`,
+        `INSERT INTO "employee_checked" ("id", "first_name", "last_name", "phone", "user_id", "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "occupation", "created_at", "updated_at") SELECT "id", "first_name", "last_name", "phone", ${hasEmployeeUserIdColumn ? '"user_id"' : "NULL"}, "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "occupation", "created_at", "updated_at" FROM "employee"`,
       );
       await tx.$executeRawUnsafe(
         'INSERT INTO "project_checked" ("id", "name", "location", "manager_id", "status", "notes", "created_at", "updated_at") SELECT "id", "name", "location", "manager_id", "status", "notes", "created_at", "updated_at" FROM "project"',

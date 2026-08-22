@@ -306,6 +306,7 @@ export function useUpdateEmployeeMutation() {
       salaryAmountDzd?: number | null
       salaryPeriod?: Employee["salaryPeriod"]
       notes?: string | null
+      occupation?: string | null
     }) => {
       const result = await rpcClient.employeesUpdate(input)
       return requireEntitySuccess(result)

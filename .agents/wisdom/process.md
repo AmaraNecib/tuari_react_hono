@@ -496,3 +496,24 @@ cleanest single review per lane and leave re-verification budget for findings yo
 cap is hit, keep the raw JSON of the review that ran, fix every actionable finding (verifying
 each against current code), pinpoint each fix with a test, and flag the re-verification blocker
 to the parent. Do not claim a clean verdict you could not obtain.
+
+## Greptile CLI diffs against the LOCAL base branch label: realign a stale local develop before `--branch develop` (🟡 Minor)
+
+On #26 the local `develop` label pointed at an ancient commit (`7097719`), so
+`greptile review --branch develop` reviewed ~20 unrelated commits (inflated
+summary, confidence over base-era code). Fix: point the local label at the
+cached origin ref with `git update-ref refs/heads/develop <origin/develop SHA>`
+(there is no `--base-sha` option on the CLI), then re-run. The parent brief's
+"BASE = origin/develop @ SHA" is the truth; a stale local label is a lie.
+
+## CRLF legacy files: `git diff --check` flags added lines in CRLF-stored files (🟢 Minor)
+
+A few files in this repo are committed CRLF (verified byte-level: base blob
+100% CRLF — e.g. schema-definitions.ts, company.types.ts,
+company.repository-mappers.ts, company.test-helpers.ts, contracts/index.test.ts,
+debts-mvp-web.test.tsx). Adding lines to them with LF trips
+`git diff --check` ("trailing whitespace", i.e. the CR). Neither `.husky/pre-push`
+nor CI runs `--check`, so it's noise — but keep the file's own EOL convention
+(append CRLF in CRLF files) so whole-file diffs stay small and the whistles
+stay quiet. Normalize with a byte-safe pass (`readFileSync` → replace
+`/\r?\n/g` with `\r\n`), never sed.

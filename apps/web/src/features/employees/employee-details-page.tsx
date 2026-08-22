@@ -219,6 +219,7 @@ export function EmployeeDetailsPage({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <RecordInfoCard label={t("detailPages.employee.fullName")} value={employee.name} />
           <RecordInfoCard label={t("detailPages.employee.role")} value={employee.role} />
+          <RecordInfoCard label={t("detailPages.employee.occupation")} value={employee.occupation?.trim() || t("detailPages.employee.noOccupation")} />
           <RecordInfoCard label={t("detailPages.employee.phone")} value={employee.phone} valueClassName="text-right font-mono" />
           <RecordInfoCard label={t("detailPages.employee.status")} value={getArabicStatusLabel(employee.status)} />
           {isWorker ? <RecordInfoCard label={t("detailPages.employee.currentManager")} value={employee.managerName || t("detailPages.employee.noCurrentManager")} /> : null}

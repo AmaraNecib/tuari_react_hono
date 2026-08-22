@@ -128,6 +128,7 @@ export type EmployeeCreateData = {
   salaryAmountDzd?: number | null;
   salaryPeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null;
   notes?: string | null;
+  occupation?: string | null;
 };
 
 export type EmployeeBatchCreateData = EmployeeCreateData & {
@@ -151,6 +152,7 @@ export type EmployeeUpdateData = {
   salaryAmountDzd?: number | null;
   salaryPeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null;
   notes?: string | null;
+  occupation?: string | null;
 };
 
 export type ProjectCreateData = {

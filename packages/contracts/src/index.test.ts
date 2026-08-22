@@ -22,9 +22,12 @@ import {
   externalCounterpartyCreateInputSchema,
   externalCounterpartySchema,
   employeeBatchCreateInputSchema,
+  employeeBatchCreateRowInputSchema,
   employeeBatchLimit,
+  employeeCreateInputSchema,
   employeeProjectAssignmentSchema,
   employeeSalaryPaymentCreateInputSchema,
+  employeeUpdateInputSchema,
   employeeWarehouseAssignmentSchema,
   employeeSchema,
   invoiceCreateInputSchema,
@@ -376,10 +379,75 @@ describe("contracts", () => {
           salaryAmountDzd: 4500,
           salaryPeriod: "DAILY",
         notes: null,
+        occupation: null,
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       }).phone,
     ).toBe("0612345678");
+  });
+
+  it("accepts an optional occupation on employee create and caps its length", () => {
+    const parsed = employeeCreateInputSchema.parse({
+      firstName: "Amara",
+      lastName: "Necib",
+      phone: "0612345678",
+      roleId: "role-worker",
+      occupation: "  عامل بناء  ",
+    });
+    expect(parsed.occupation).toBe("عامل بناء");
+
+    expect(() =>
+      employeeCreateInputSchema.parse({
+        firstName: "Amara",
+        lastName: "Necib",
+        phone: "0612345678",
+        roleId: "role-worker",
+        occupation: "م".repeat(121),
+      }),
+    ).toThrowError();
+
+    expect(
+      employeeCreateInputSchema.parse({
+        firstName: "Amara",
+        lastName: "Necib",
+        phone: "0612345678",
+        roleId: "role-worker",
+      }).occupation,
+    ).toBeUndefined();
+  });
+
+  it("accepts occupation on update, batch rows, null, and whitespace-only values", () => {
+    expect(
+      employeeUpdateInputSchema.parse({
+        id: "employee-1",
+        occupation: "نقاش",
+      }).occupation,
+    ).toBe("نقاش");
+
+    const batchRow = employeeBatchCreateRowInputSchema.parse({
+      firstName: "Amara",
+      lastName: "Necib",
+      phone: "0612345678",
+      roleId: "role-worker",
+      occupation: "سائق",
+    });
+    expect(batchRow.occupation).toBe("سائق");
+
+    expect(
+      employeeUpdateInputSchema.parse({ id: "employee-1", occupation: null }).occupation,
+    ).toBeNull();
+
+    // Whitespace-only trims to "" (the API converts empty to null via
+    // normalizeText before persistence).
+    expect(
+      employeeCreateInputSchema.parse({
+        firstName: "Amara",
+        lastName: "Necib",
+        phone: "0612345678",
+        roleId: "role-worker",
+        occupation: "   ",
+      }).occupation,
+    ).toBe("");
   });
 
   it("accepts create payloads for core company entities", () => {

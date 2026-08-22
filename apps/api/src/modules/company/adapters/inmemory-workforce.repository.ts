@@ -120,7 +120,7 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
       roleId: data.roleId, status: data.status,
       salaryAmountDzd: data.salaryAmountDzd ?? null,
       salaryPeriod: data.salaryPeriod ?? null,
-      notes: data.notes ?? null, createdAt: ts, updatedAt: ts,
+      notes: data.notes ?? null, occupation: data.occupation ?? null, createdAt: ts, updatedAt: ts,
     };
     this.store.employees.set(id, employee);
     this.insertStateHistory({ employeeId: id, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd ?? null, salaryPeriod: data.salaryPeriod ?? null, eventType: "CREATED", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
@@ -152,6 +152,7 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
       salaryAmountDzd: data.salaryAmountDzd !== undefined ? data.salaryAmountDzd : cur.salaryAmountDzd,
       salaryPeriod: data.salaryPeriod !== undefined ? data.salaryPeriod : cur.salaryPeriod,
       notes: data.notes !== undefined ? data.notes : cur.notes,
+      occupation: data.occupation !== undefined ? data.occupation : cur.occupation,
       updatedAt: ts,
     };
     this.store.employees.set(data.id, employee);
@@ -178,7 +179,7 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
     const id = (data as { id?: string }).id ?? newId();
     const ca = (data as { createdAt?: string }).createdAt ?? now();
     const ua = (data as { updatedAt?: string }).updatedAt ?? ca;
-    const employee: EmployeeRecord = { id, firstName: cd.firstName, lastName: cd.lastName, phone: cd.phone, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, notes: cd.notes ?? null, createdAt: ca, updatedAt: ua };
+    const employee: EmployeeRecord = { id, firstName: cd.firstName, lastName: cd.lastName, phone: cd.phone, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, notes: cd.notes ?? null, occupation: cd.occupation ?? null, createdAt: ca, updatedAt: ua };
     this.store.employees.set(id, employee);
     this.insertStateHistory({ employeeId: id, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, eventType: "CREATED", startDate: ca, notes: cd.notes ?? null, actorUserId: null, actorLabel: null, transactionId: null });
     return employee;

@@ -225,6 +225,7 @@ export function buildEmployeeRow({
  * buildEmployeeRows({ component.
  */
     notes: employee.notes,
+    occupation: employee.occupation ?? null,
     isWorker: isWorkerRoleKey(role?.key ?? null),
     ...deleteState,
     ...leaveState,

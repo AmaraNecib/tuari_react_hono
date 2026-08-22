@@ -176,6 +176,7 @@ export class WorkforceService {
           salaryAmountDzd: normalizeSalaryAmount(input.salaryAmountDzd),
           salaryPeriod: input.salaryPeriod ?? null,
           notes: normalizeText(input.notes),
+          occupation: normalizeText(input.occupation),
         },
         audit,
       );
@@ -207,6 +208,7 @@ export class WorkforceService {
         salaryAmountDzd: number | null;
         salaryPeriod: EmployeeBatchCreateInput["employees"][number]["salaryPeriod"];
         notes: string | null;
+        occupation: string | null;
         managerId: string | null;
         projectId: string | null;
       }> = input.employees.map((employee) => ({
@@ -218,6 +220,7 @@ export class WorkforceService {
         salaryAmountDzd: normalizeSalaryAmount(employee.salaryAmountDzd),
         salaryPeriod: employee.salaryPeriod ?? null,
         notes: normalizeText(employee.notes),
+        occupation: normalizeText(employee.occupation),
         managerId: employee.managerId ?? null,
         projectId: employee.projectId ?? null,
       }));
@@ -473,6 +476,7 @@ export class WorkforceService {
               : undefined,
           salaryPeriod: input.salaryPeriod !== undefined ? input.salaryPeriod : undefined,
           notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
+          occupation: input.occupation !== undefined ? normalizeText(input.occupation) : undefined,
         },
         audit,
       );
