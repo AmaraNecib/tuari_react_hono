@@ -77,6 +77,18 @@ export function AppShellEmptyStateRow({ colSpan, children }: { colSpan: number; 
 }
 
 /**
+ * One-line guidance under an empty-state label. Shared so every empty state
+ * (table rows and panel empties) uses the same hint styling instead of
+ * forking per-page classes.
+ */
+/**
+ * @description Component
+ */
+export function AppShellEmptyHint({ children }: { children: ReactNode }) {
+  return <p className="max-w-sm text-[12px] leading-5 text-ink-3">{children}</p>
+}
+
+/**
  * @description Component
  */
 export function AppShellActionGroup({ children, className }: { children: ReactNode; className?: string }) {
