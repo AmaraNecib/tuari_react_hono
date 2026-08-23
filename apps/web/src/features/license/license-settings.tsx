@@ -8,7 +8,7 @@
 import { useTranslation } from "react-i18next"
 import { AlertCircle, CheckCircle2, Clock, Crown, KeyRound, ShieldAlert, Star, Users } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { useLicenseStatus } from "./license-hooks"
 
@@ -89,26 +89,35 @@ export function LicenseSettings() {
   // ── Loading state ──
   if (isLoading) {
     return (
-      <Surface variant="panel" className="p-5 border border-line rounded-xl">
-        <div className="flex items-center justify-center py-12">
-          <p className="text-sm text-muted-foreground">{t("common.loading", "جارٍ التحميل...")}</p>
-        </div>
-      </Surface>
+      <LoadErrorSurface
+        className="p-5"
+        contentClassName="py-12"
+        icon={ShieldAlert}
+        iconClassName="h-12 w-12 text-muted-foreground"
+        messageClassName="text-muted-foreground"
+        isLoading
+        loadingLabel={t("common.loading")}
+        message={t("license.loadError")}
+        retryLabel={t("common.retry")}
+        onRetry={() => void refetch()}
+      />
     )
   }
 
   // ── Error state ──
   if (isError || !data) {
     return (
-      <Surface variant="panel" className="p-5 border border-line rounded-xl">
-        <div className="flex flex-col items-center gap-4 py-12">
-          <ShieldAlert className="h-12 w-12 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">{t("license.loadError")}</p>
-          <Button variant="outline" onClick={() => refetch()}>
-            {t("common.retry")}
-          </Button>
-        </div>
-      </Surface>
+      <LoadErrorSurface
+        className="p-5"
+        contentClassName="py-12"
+        errorClassName="border-line"
+        icon={ShieldAlert}
+        iconClassName="h-12 w-12 text-muted-foreground"
+        messageClassName="text-muted-foreground"
+        message={t("license.loadError")}
+        retryLabel={t("common.retry")}
+        onRetry={() => void refetch()}
+      />
     )
   }
 
