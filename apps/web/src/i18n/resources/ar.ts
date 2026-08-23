@@ -875,10 +875,13 @@ export const ar = {
         warehouse: "المستودع",
         project: "المشروع",
         save: "حفظ الفاتورة",
+        retryAttachments: "إعادة محاولة رفع المرفقات",
         debtSection: "الدين والدفع",
         counterpartySection: "ربط بجهة خارجية",
         defaultsSection: "المستودع والمشروع الافتراضي",
         notesSection: "ملاحظات وملفات",
+        invalidPaidAmount: "المبلغ المدفوع يجب أن يكون صفرًا أو أكثر.",
+        invalidPaidPercent: "النسبة المدفوعة يجب أن تكون بين 0 و 100.",
         invalidAssetPrice: "سعر الأصل غير صالح في السطر {{index}} - الأصل {{assetIndex}}.",
       },
       location: {

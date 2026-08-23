@@ -8,6 +8,7 @@ import { FileInput, NativeSelect } from "@/components/ui/form-controls"
 import { CreateableSelect } from "@/components/ui/createable-select"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { showErrorToast } from "@/lib/toast"
 
 import {
   uploadInvoiceAttachments,
@@ -112,6 +113,11 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   const [files, setFiles] = useState<File[]>([])
   const [lines, setLines] = useState<LineState[]>([createConsumableLine()])
   const [formError, setFormError] = useState<string | null>(null)
+  // Set once the invoice is created: the attachment upload targets THIS id,
+  // so a retry after an upload failure can never re-run the creation mutation
+  // (which would persist a duplicate invoice + duplicate financial entries).
+  const [createdInvoiceGroupId, setCreatedInvoiceGroupId] = useState<string | null>(null)
+  const [uploadingAttachments, setUploadingAttachments] = useState(false)
 
   const definitionItems = definitionsQuery.data?.items
   const definitions = useMemo(() => definitionItems ?? [], [definitionItems])
@@ -130,6 +136,21 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   function validateForm() {
     if (warehouseId && projectId) {
       return "اختر مستودعًا أو مشروعًا واحدًا فقط كوجهة افتراضية."
+    }
+
+    // The wire contract bounds the paid fields (amount >= 0, percent 0-100);
+    // mirror both bounds here so invalid values never leave the client.
+    if (createDebt && paymentInputType === "PERCENT") {
+      const percent = Number(paidValue)
+      if (percent < 0 || percent > 100) {
+        return t("inventory.invoiceCreate.invalidPaidPercent", "النسبة المدفوعة يجب أن تكون بين 0 و 100.")
+      }
+    }
+
+    if (createDebt && paymentInputType === "AMOUNT") {
+      if (Number(paidValue) < 0) {
+        return t("inventory.invoiceCreate.invalidPaidAmount", "المبلغ المدفوع يجب أن يكون صفرًا أو أكثر.")
+      }
     }
 
     for (const [index, line] of lines.entries()) {
@@ -171,66 +192,122 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     const validationMessage = validateForm()
     if (validationMessage) {
       setFormError(validationMessage)
-      throw new Error(validationMessage)
+      // Resolve instead of throwing: validation failures render via formError,
+      // and a rejected promise from here would surface as an unhandled
+      // rejection in dev/CI logs.
+      return
     }
 
     setFormError(null)
 
-    const result = await createMutation.mutateAsync({
-      invoiceNumber: invoiceNumber || null,
-      supplierName: (selectedCounterparty?.fullName ?? supplierName) || null,
-      invoiceDate: invoiceDate ? new Date(invoiceDate).toISOString() : null,
-      warehouseId: warehouseId || null,
-      projectId: projectId || null,
-      externalCounterpartyId: externalCounterpartyId || null,
-      createDebt,
-      paymentInputType: createDebt ? paymentInputType : undefined,
-      paidAmountDzd: createDebt && paymentInputType === "AMOUNT" ? Number(paidValue || 0) : null,
-      paidPercent: createDebt && paymentInputType === "PERCENT" ? Number(paidValue || 0) : null,
-      note: note || null,
-      entries: lines.map((line) => {
-        // Seed header-level defaults into lines that leave their own
-        // warehouse/project unset. A line that explicitly picks one of them
-        // never inherits the other (warehouse XOR project is enforced per line).
-        const lineWarehouseId = line.warehouseId || (line.projectId ? null : warehouseId || null)
-        const lineProjectId = line.projectId || (line.warehouseId ? null : projectId || null)
-        if (line.kind === "CONSUMABLE") {
+    let groupId: string
+    try {
+      const result = await createMutation.mutateAsync({
+        invoiceNumber: invoiceNumber || null,
+        supplierName: (selectedCounterparty?.fullName ?? supplierName) || null,
+        invoiceDate: invoiceDate ? new Date(invoiceDate).toISOString() : null,
+        warehouseId: warehouseId || null,
+        projectId: projectId || null,
+        externalCounterpartyId: externalCounterpartyId || null,
+        createDebt,
+        paymentInputType: createDebt ? paymentInputType : undefined,
+        paidAmountDzd: createDebt && paymentInputType === "AMOUNT" ? Number(paidValue || 0) : null,
+        paidPercent: createDebt && paymentInputType === "PERCENT" ? Number(paidValue || 0) : null,
+        note: note || null,
+        entries: lines.map((line) => {
+          // Seed header-level defaults into lines that leave their own
+          // warehouse/project unset. A line that explicitly picks one of them
+          // never inherits the other (warehouse XOR project is enforced per line).
+          const lineWarehouseId = line.warehouseId || (line.projectId ? null : warehouseId || null)
+          const lineProjectId = line.projectId || (line.warehouseId ? null : projectId || null)
+          if (line.kind === "CONSUMABLE") {
+            return {
+              kind: "CONSUMABLE" as const,
+              itemDefinitionId: line.itemDefinitionId,
+              warehouseId: lineWarehouseId,
+              projectId: lineProjectId,
+              quantity: Number(line.quantity),
+              unitPriceDzd: Number(line.unitPriceDzd),
+              totalPriceDzd: Number(line.totalPriceDzd),
+              note: line.note || null,
+            }
+          }
+
           return {
-            kind: "CONSUMABLE" as const,
+            kind: "ASSET" as const,
             itemDefinitionId: line.itemDefinitionId,
             warehouseId: lineWarehouseId,
             projectId: lineProjectId,
-            quantity: Number(line.quantity),
-            unitPriceDzd: Number(line.unitPriceDzd),
-            totalPriceDzd: Number(line.totalPriceDzd),
             note: line.note || null,
+            assets: line.assets.map((asset) => ({
+              assetName: asset.assetName,
+              assetTag: asset.assetTag || null,
+              serialNumber: asset.serialNumber || null,
+              condition: asset.condition,
+              purchaseDate: asset.purchaseDate ? new Date(asset.purchaseDate).toISOString() : null,
+              purchasePriceDzd: Number(asset.purchasePriceDzd),
+              note: asset.note || null,
+            })),
           }
-        }
-
-        return {
-          kind: "ASSET" as const,
-          itemDefinitionId: line.itemDefinitionId,
-          warehouseId: lineWarehouseId,
-          projectId: lineProjectId,
-          note: line.note || null,
-          assets: line.assets.map((asset) => ({
-            assetName: asset.assetName,
-            assetTag: asset.assetTag || null,
-            serialNumber: asset.serialNumber || null,
-            condition: asset.condition,
-            purchaseDate: asset.purchaseDate ? new Date(asset.purchaseDate).toISOString() : null,
-            purchasePriceDzd: Number(asset.purchasePriceDzd),
-            note: asset.note || null,
-          })),
-        }
-      }),
-    })
-
-    if (files.length > 0) {
-      await uploadInvoiceAttachments(result.item.group.id, files)
+        }),
+      })
+      groupId = result.item.group.id
+    } catch {
+      // The mutation's onError already surfaced a toast; never navigate on a
+      // failed save, and never let the rejection reach the click handler's
+      // catch unnecessarily (the toast is the user-facing signal).
+      return
     }
 
-    onCreated(result.item.group.id)
+    if (files.length > 0) {
+      // Creation succeeded — remember the invoice id only when attachments
+      // still need uploading: any retry must target THIS id and can never
+      // re-run the creation mutation (a second save click would otherwise
+      // persist a duplicate invoice + financial entries). With no files there
+      // is nothing to retry, so the save flow completes normally below.
+      setCreatedInvoiceGroupId(groupId)
+      setUploadingAttachments(true)
+      try {
+        await uploadInvoiceAttachments(groupId, files)
+      } catch {
+        // The invoice was already saved — surface the failed upload (the
+        // creation mutation's onError does NOT cover this separate step) and
+        // stay on the page in the retry state: the user must see the partial
+        // save and be able to retry the upload against the same invoice id.
+        showErrorToast("تم حفظ الفاتورة لكن تعذر رفع ملفات المرفقات.")
+        return
+      } finally {
+        setUploadingAttachments(false)
+      }
+    }
+
+    onCreated(groupId)
+  }
+
+  /**
+   * Retries ONLY the attachment upload for the already-created invoice.
+   * Never touches the creation mutation — duplication is impossible from here.
+   */
+  async function handleRetryAttachmentUpload() {
+    if (!createdInvoiceGroupId || uploadingAttachments) return
+
+    if (files.length === 0) {
+      // Nothing left to upload; the invoice already exists.
+      onCreated(createdInvoiceGroupId)
+      return
+    }
+
+    setUploadingAttachments(true)
+    try {
+      await uploadInvoiceAttachments(createdInvoiceGroupId, files)
+    } catch {
+      showErrorToast("تم حفظ الفاتورة لكن تعذر رفع ملفات المرفقات.")
+      return
+    } finally {
+      setUploadingAttachments(false)
+    }
+
+    onCreated(createdInvoiceGroupId)
   }
 
   return (
@@ -519,9 +596,27 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       })}
 
       <div className="flex items-center justify-end gap-3">
-        <Button disabled={createMutation.isPending || lines.length === 0} onClick={() => void handleSubmit()}>
-          {createMutation.isPending ? t("common.saving") : t("inventory.invoiceCreate.save")}
-        </Button>
+        {createdInvoiceGroupId ? (
+          <Button disabled={uploadingAttachments} onClick={() => {
+            void handleRetryAttachmentUpload().catch(() => {
+              showErrorToast("تعذر حفظ الفاتورة.")
+            })
+          }}>
+            {t("inventory.invoiceCreate.retryAttachments")}
+          </Button>
+        ) : (
+          <Button disabled={createMutation.isPending || lines.length === 0} onClick={() => {
+            void handleSubmit().catch(() => {
+              // Every known failure path (validation, mutation, attachment
+              // upload) is handled inside handleSubmit with a field error or
+              // toast. This catch only covers unexpected errors — surface them
+              // and never let an unhandled rejection reach dev/CI logs.
+              showErrorToast("تعذر حفظ الفاتورة.")
+            })
+          }}>
+            {createMutation.isPending ? t("common.saving") : t("inventory.invoiceCreate.save")}
+          </Button>
+        )}
         <Button variant="outline" onClick={() => window.history.back()}>
           {t("common.cancel")}
         </Button>

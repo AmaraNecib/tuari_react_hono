@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { showErrorToast } from "@/lib/toast"
 import { InventoryInvoiceCreatePage } from "./inventory-invoice-create-page"
 
 const mocks = vi.hoisted(() => ({
@@ -18,6 +19,11 @@ const mocks = vi.hoisted(() => ({
   createProjectMutation: { isPending: false, mutateAsync: vi.fn() },
   createCounterpartyMutation: { isPending: false, mutateAsync: vi.fn() },
   uploadInvoiceAttachments: vi.fn(),
+}))
+
+vi.mock("@/lib/toast", () => ({
+  showErrorToast: vi.fn(),
+  showSuccessToast: vi.fn(),
 }))
 
 vi.mock("./inventory-hooks", () => ({
@@ -443,5 +449,174 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
     expect(payload.paymentInputType).toBe("AMOUNT")
     expect(payload.paidAmountDzd).toBe(1500.5)
     expect(payload.paidPercent).toBeNull()
+  })
+
+  // Issue #42: paid-value bounds must be validated before the payload reaches
+  // the API. Each blocked test doubles as the unhandled-rejection guard:
+  // vitest fails a run on an unhandled rejection, so clicking save with an
+  // invalid paid value and observing the inline field error proves the submit
+  // handler resolved instead of throwing through `void handleSubmit()`.
+  it("blocks submitting a negative paid amount (issue #42)", () => {
+    renderPage()
+
+    openSection(DEBT_SECTION)
+    fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
+    fireEvent.change(screen.getByLabelText("المدفوع الآن"), { target: { value: "-5" } })
+
+    fireEvent.click(screen.getByText("حفظ الفاتورة"))
+
+    expect(screen.getByText("المبلغ المدفوع يجب أن يكون صفرًا أو أكثر.")).not.toBeNull()
+    expect(mocks.createInvoiceMutation.mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it("blocks submitting a paid percent above 100 (issue #42)", () => {
+    renderPage()
+
+    openSection(DEBT_SECTION)
+    fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
+    fireEvent.change(screen.getByLabelText("طريقة الدفع", { exact: false }), { target: { value: "PERCENT" } })
+    fireEvent.change(screen.getByLabelText("النسبة المدفوعة"), { target: { value: "150" } })
+
+    fireEvent.click(screen.getByText("حفظ الفاتورة"))
+
+    expect(screen.getByText("النسبة المدفوعة يجب أن تكون بين 0 و 100.")).not.toBeNull()
+    expect(mocks.createInvoiceMutation.mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it("blocks submitting a negative paid percent (issue #42)", () => {
+    renderPage()
+
+    openSection(DEBT_SECTION)
+    fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
+    fireEvent.change(screen.getByLabelText("طريقة الدفع", { exact: false }), { target: { value: "PERCENT" } })
+    fireEvent.change(screen.getByLabelText("النسبة المدفوعة"), { target: { value: "-1" } })
+
+    fireEvent.click(screen.getByText("حفظ الفاتورة"))
+
+    expect(screen.getByText("النسبة المدفوعة يجب أن تكون بين 0 و 100.")).not.toBeNull()
+    expect(mocks.createInvoiceMutation.mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it("accepts the boundary paid values: amount 0 and percent 100 (issue #42)", async () => {
+    renderPage()
+
+    openSection(DEBT_SECTION)
+    fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
+    fireEvent.change(screen.getByLabelText("المدفوع الآن"), { target: { value: "0" } })
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+
+    const amountPayload = await submitInvoice()
+    expect(amountPayload.paidAmountDzd).toBe(0)
+
+    // Percent mode at the upper boundary still submits.
+    mocks.createInvoiceMutation.mutateAsync.mockClear()
+    fireEvent.change(screen.getByLabelText("طريقة الدفع", { exact: false }), { target: { value: "PERCENT" } })
+    fireEvent.change(screen.getByLabelText("النسبة المدفوعة"), { target: { value: "100" } })
+
+    const percentPayload = await submitInvoice()
+    expect(percentPayload.paidPercent).toBe(100)
+  })
+
+  it("shows a retry action and does not navigate when attachment upload fails (duplicate-invoice guard)", async () => {
+    const { onCreated } = renderPage()
+
+    // The invoice is created first; only the attachment upload rejects. The
+    // user must see a clear error, must NOT be navigated away past an
+    // invisible partial save, and the Save button must disappear so a second
+    // save click can never re-run the creation mutation.
+    mocks.uploadInvoiceAttachments.mockRejectedValue(new Error("تعذر رفع ملفات الفاتورة."))
+
+    openSection(NOTES_SECTION)
+    fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
+      target: { files: [new File(["bytes"], "facture.pdf", { type: "application/pdf" })] },
+    })
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+
+    fireEvent.click(screen.getByText("حفظ الفاتورة"))
+
+    await waitFor(() => {
+      expect(mocks.createInvoiceMutation.mutateAsync).toHaveBeenCalledTimes(1)
+      expect(showErrorToast).toHaveBeenCalledWith("تم حفظ الفاتورة لكن تعذر رفع ملفات المرفقات.")
+    })
+    expect(onCreated).not.toHaveBeenCalled()
+    // Save is gone; only the retry action can be used from now on.
+    expect(screen.queryByText("حفظ الفاتورة")).toBeNull()
+    expect(screen.getByRole("button", { name: "إعادة محاولة رفع المرفقات" })).not.toBeNull()
+  })
+
+  it("retries the attachment upload with the SAME invoice id without re-creating it", async () => {
+    const { onCreated } = renderPage()
+    const attachment = new File(["bytes"], "facture.pdf", { type: "application/pdf" })
+
+    mocks.uploadInvoiceAttachments.mockRejectedValueOnce(new Error("تعذر رفع ملفات الفاتورة."))
+
+    openSection(NOTES_SECTION)
+    fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
+      target: { files: [attachment] },
+    })
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+
+    // First save: invoice created, upload fails.
+    fireEvent.click(screen.getByText("حفظ الفاتورة"))
+    await waitFor(() => {
+      expect(showErrorToast).toHaveBeenCalled()
+      expect(screen.getByRole("button", { name: "إعادة محاولة رفع المرفقات" })).not.toBeNull()
+    })
+
+    // Second attempt must hit ONLY the upload path, with the same invoice id.
+    mocks.uploadInvoiceAttachments.mockResolvedValueOnce(undefined)
+    fireEvent.click(screen.getByRole("button", { name: "إعادة محاولة رفع المرفقات" }))
+
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalledWith("inv-1")
+    })
+    // Creation ran exactly once; the retry re-used the created invoice id.
+    expect(mocks.createInvoiceMutation.mutateAsync).toHaveBeenCalledTimes(1)
+    expect(mocks.uploadInvoiceAttachments).toHaveBeenCalledTimes(2)
+    expect(mocks.uploadInvoiceAttachments).toHaveBeenNthCalledWith(2, "inv-1", [attachment])
+  })
+
+  it("stays in retry state when the retried upload fails again", async () => {
+    const { onCreated } = renderPage()
+
+    mocks.uploadInvoiceAttachments.mockRejectedValue(new Error("تعذر رفع ملفات الفاتورة."))
+
+    openSection(NOTES_SECTION)
+    fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
+      target: { files: [new File(["bytes"], "facture.pdf", { type: "application/pdf" })] },
+    })
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+
+    fireEvent.click(screen.getByText("حفظ الفاتورة"))
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "إعادة محاولة رفع المرفقات" })).not.toBeNull()
+    })
+    expect(showErrorToast).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole("button", { name: "إعادة محاولة رفع المرفقات" }))
+
+    await waitFor(() => {
+      expect(showErrorToast).toHaveBeenCalledTimes(2)
+    })
+    // Still no navigation, still no re-creation, still in retry state.
+    expect(onCreated).not.toHaveBeenCalled()
+    expect(mocks.createInvoiceMutation.mutateAsync).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: "إعادة محاولة رفع المرفقات" })).not.toBeNull()
+  })
+
+  it("does not navigate when the invoice creation mutation rejects (review fix)", async () => {
+    const { onCreated } = renderPage()
+
+    mocks.createInvoiceMutation.mutateAsync.mockRejectedValue(new Error("تعذر إنشاء الفاتورة."))
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+
+    fireEvent.click(screen.getByText("حفظ الفاتورة"))
+
+    await waitFor(() => {
+      expect(mocks.createInvoiceMutation.mutateAsync).toHaveBeenCalled()
+    })
+    // Let the rejected mutateAsync settle through handleSubmit's catch.
+    await act(async () => {})
+    expect(onCreated).not.toHaveBeenCalled()
   })
 })

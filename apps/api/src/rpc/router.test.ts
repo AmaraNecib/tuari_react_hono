@@ -1125,6 +1125,48 @@ describe("RPC router", () => {
     await expect(client.paymentsList({ limit: 2.5 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
+  it("rejects out-of-bounds invoice paid values at the wire contract (issue #42)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createClient(router, createContext());
+
+    // #42: the web UI now mirrors these bounds (amount >= 0, percent 0-100);
+    // pin the server side of the same rule so a contract-schema regression
+    // cannot silently let a negative amount or >100 percent through. The wire
+    // gate fires before any handler/middleware, so BAD_REQUEST with the exact
+    // field issue path proves the bounds hold server-side.
+    await expect(
+      client.inventoryInvoiceGroupsCreate({ paidAmountDzd: -5 }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      data: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: ["paidAmountDzd"] }),
+        ]),
+      },
+    });
+    await expect(
+      client.inventoryInvoiceGroupsCreate({ paidPercent: 150 }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      data: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: ["paidPercent"] }),
+        ]),
+      },
+    });
+    await expect(
+      client.inventoryInvoiceGroupsCreate({ paidPercent: -1 }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      data: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: ["paidPercent"] }),
+        ]),
+      },
+    });
+  });
+
   it("forwards a failed recovery key consumption through the wire contract", async () => {
     const harness = createHarness();
     const router = createTestRouter(harness, undefined, {
