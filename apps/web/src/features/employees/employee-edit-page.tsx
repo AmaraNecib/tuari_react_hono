@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { type Role } from "@tuari/contracts"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
+import { TriangleAlert } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, FieldSection, NativeSelect, Textarea } from "@/components/ui/form-controls"
@@ -14,9 +15,16 @@ import {
   useUpdateEmployeeWorkplaceMutation,
 } from "@/features/app-shell/mock-dashboard"
 import { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
+import { rpcClient } from "@/lib/orpc-client"
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import type { EmployeeManagerOption } from "./employee-batch-row-card"
+import {
+  computeSaveFailureRollback,
+  placementStateFromEmployee,
+  type EmployeeSavePlan,
+  type PlacementState,
+} from "./employee-save-reconcile"
 import type { EmployeeTableRow } from "./employee-table"
 import { classifyWorkforceRole, isEmployeeRoleSelectable } from "./role-classification"
 
@@ -36,13 +44,29 @@ type FormErrors = Partial<
   Record<keyof FormState | "managerId" | "projectId" | "warehouseId" | "workplaceType", string>
 >
 
+type SaveErrorKind = "nothingSaved" | "partialRolledBack" | "partialUnverified"
+
+/** Profile fields shared by the table row and the wire `Employee` record. */
+type EmployeeProfile = Pick<
+  EmployeeTableRow,
+  | "firstName"
+  | "lastName"
+  | "phone"
+  | "roleId"
+  | "status"
+  | "salaryAmountDzd"
+  | "salaryPeriod"
+  | "occupation"
+  | "notes"
+>
+
 type ManagedOption = {
   id: string
   label: string
   secondary: string
 }
 
-function createFormState(employee: EmployeeTableRow): FormState {
+function createFormState(employee: EmployeeProfile): FormState {
   return {
     firstName: employee.firstName,
     lastName: employee.lastName,
@@ -98,6 +122,7 @@ export function EmployeeEditPage({
   const syncManagedWarehousesMutation = useSyncManagedWarehousesMutation()
   const [state, setState] = useState<FormState>(() => createFormState(employee))
   const [errors, setErrors] = useState<FormErrors>({})
+  const [saveError, setSaveError] = useState<SaveErrorKind | null>(null)
   const [workerManagerId, setWorkerManagerId] = useState(employee.currentManagerId ?? "")
   const [workerProjectId, setWorkerProjectId] = useState(employee.currentProjectId ?? "")
   const [workerWarehouseId, setWorkerWarehouseId] = useState(employee.currentWarehouseId ?? "")
@@ -107,6 +132,9 @@ export function EmployeeEditPage({
   const [selectedManagedProjectIds, setSelectedManagedProjectIds] = useState<string[]>(currentManagedProjectIds)
   const [selectedManagedWarehouseIds, setSelectedManagedWarehouseIds] = useState<string[]>(currentManagedWarehouseIds)
   const previousEmployeeIdRef = useRef(employee.id)
+  // Guards against a second submit while a save or its rollback is in flight
+  // (Enter-key submits can fire before the button's isPending disables it).
+  const saveInFlightRef = useRef(false)
 
   useEffect(() => {
     if (previousEmployeeIdRef.current === employee.id) {
@@ -161,6 +189,8 @@ export function EmployeeEditPage({
   }
 
   async function handleSaveAll() {
+    setSaveError(null)
+
     const nextErrors: FormErrors = {}
     const salaryAmount = parseSalaryAmount(state.salaryAmountDzd)
 
@@ -260,51 +290,145 @@ export function EmployeeEditPage({
       return
     }
 
-    await updateEmployeeMutation.mutateAsync({
-      id: employee.id,
-      firstName: state.firstName.trim(),
-      lastName: state.lastName.trim(),
-      phone: state.phone.trim(),
-      roleId: state.roleId,
-      status: state.status,
-      salaryAmountDzd: salaryAmount,
-      salaryPeriod: state.salaryPeriod || null,
-      occupation: state.occupation.trim() || null,
-      notes: state.notes.trim() || null,
-    })
+    const preSavePlacement = placementStateFromEmployee(employee)
+    const preSaveManagedProjectIds = currentManagedProjectIds
+    const preSaveManagedWarehouseIds = currentManagedWarehouseIds
 
-    if (isWorker && state.status === "ACTIVE" && workplaceChanged) {
-      await updateEmployeeWorkplaceMutation.mutateAsync({
-        employeeId: employee.id,
-        managerId: workplaceType === "PROJECT" ? workerManagerId || null : null,
-        nextType: workplaceType,
-        projectId: workplaceType === "PROJECT" ? workerProjectId || null : null,
-        warehouseId: workplaceType === "WAREHOUSE" ? workerWarehouseId || null : null,
-      })
+    const savePlan: EmployeeSavePlan = {
+      workplace:
+        isWorker && state.status === "ACTIVE" && workplaceChanged
+          ? {
+              managerId: workplaceType === "PROJECT" ? workerManagerId || null : null,
+              nextType: workplaceType,
+              projectId: workplaceType === "PROJECT" ? workerProjectId || null : null,
+              warehouseId: workplaceType === "WAREHOUSE" ? workerWarehouseId || null : null,
+            }
+          : null,
+      managedProjects: isProjectManager && state.status === "ACTIVE" && managedProjectsChanged ? { nextIds: selectedManagedProjectIds } : null,
+      managedWarehouses: isWarehouseManager && state.status === "ACTIVE" && managedWarehousesChanged ? { nextIds: selectedManagedWarehouseIds } : null,
     }
 
-    if (isProjectManager && state.status === "ACTIVE" && managedProjectsChanged) {
-      await syncManagedProjectsMutation.mutateAsync({
-        currentIds: currentManagedProjectIds,
-        employeeId: employee.id,
-        nextIds: selectedManagedProjectIds,
-      })
-    }
+    // Sequential mutations: an earlier success persists even if a later step
+    // fails. The rollback below reconciles the page to what actually persisted.
+    let profilePersisted = false
+    const succeededSteps: Array<"workplace" | "managedProjects" | "managedWarehouses"> = []
 
-    if (isWarehouseManager && state.status === "ACTIVE" && managedWarehousesChanged) {
-      await syncManagedWarehousesMutation.mutateAsync({
-        currentIds: currentManagedWarehouseIds,
-        employeeId: employee.id,
-        nextIds: selectedManagedWarehouseIds,
+    try {
+      await updateEmployeeMutation.mutateAsync({
+        id: employee.id,
+        firstName: state.firstName.trim(),
+        lastName: state.lastName.trim(),
+        phone: state.phone.trim(),
+        roleId: state.roleId,
+        status: state.status,
+        salaryAmountDzd: salaryAmount,
+        salaryPeriod: state.salaryPeriod || null,
+        occupation: state.occupation.trim() || null,
+        notes: state.notes.trim() || null,
       })
+      profilePersisted = true
+
+      if (savePlan.workplace) {
+        await updateEmployeeWorkplaceMutation.mutateAsync({
+          employeeId: employee.id,
+          ...savePlan.workplace,
+        })
+        succeededSteps.push("workplace")
+      }
+
+      if (savePlan.managedProjects) {
+        await syncManagedProjectsMutation.mutateAsync({
+          currentIds: currentManagedProjectIds,
+          employeeId: employee.id,
+          nextIds: savePlan.managedProjects.nextIds,
+        })
+        succeededSteps.push("managedProjects")
+      }
+
+      if (savePlan.managedWarehouses) {
+        await syncManagedWarehousesMutation.mutateAsync({
+          currentIds: currentManagedWarehouseIds,
+          employeeId: employee.id,
+          nextIds: savePlan.managedWarehouses.nextIds,
+        })
+        succeededSteps.push("managedWarehouses")
+      }
+    } catch {
+      await reconcileAfterPartialSaveFailure(savePlan, {
+        profilePersisted,
+        succeededSteps,
+        preSavePlacement,
+        preSaveManagedProjectIds,
+        preSaveManagedWarehouseIds,
+      })
+      return
     }
 
     void navigateToWorkspaceRoute(navigate, workspaceRoutes.employeeDetails(employee.id))
   }
 
+  async function reconcileAfterPartialSaveFailure(
+    savePlan: EmployeeSavePlan,
+    context: {
+      profilePersisted: boolean
+      succeededSteps: Array<"workplace" | "managedProjects" | "managedWarehouses">
+      preSavePlacement: PlacementState
+      preSaveManagedProjectIds: string[]
+      preSaveManagedWarehouseIds: string[]
+    },
+  ) {
+    if (!context.profilePersisted) {
+      // The profile mutation itself failed: nothing persisted, so keep the typed
+      // form and let the user fix the data and retry.
+      setSaveError("nothingSaved")
+      return
+    }
+
+    // A later mutation failed: restore the placement / managed-scope controls to
+    // exactly what the server holds (submitted values for steps that succeeded,
+    // pre-save values for steps that failed or never ran).
+    const rollback = computeSaveFailureRollback({
+      plan: savePlan,
+      succeededSteps: context.succeededSteps,
+      preSavePlacement: context.preSavePlacement,
+      preSaveManagedProjectIds: context.preSaveManagedProjectIds,
+      preSaveManagedWarehouseIds: context.preSaveManagedWarehouseIds,
+    })
+
+    setWorkerManagerId(rollback.placement.workerManagerId)
+    setWorkerProjectId(rollback.placement.workerProjectId)
+    setWorkerWarehouseId(rollback.placement.workerWarehouseId)
+    setWorkplaceType(rollback.placement.workplaceType)
+    setSelectedManagedProjectIds(rollback.managedProjectIds)
+    setSelectedManagedWarehouseIds(rollback.managedWarehouseIds)
+    setErrors({})
+
+    // Profile fields persisted: re-fetch the authoritative record and reconcile.
+    try {
+      const result = await rpcClient.employeesGet({ id: employee.id })
+
+      if (!result.success) {
+        throw new Error(result.error.message)
+      }
+
+      setState(createFormState(result.item))
+      setSaveError("partialRolledBack")
+    } catch {
+      setSaveError("partialUnverified")
+    }
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    void handleSaveAll()
+
+    if (saveInFlightRef.current) {
+      return
+    }
+
+    saveInFlightRef.current = true
+    void handleSaveAll().finally(() => {
+      saveInFlightRef.current = false
+    })
   }
 
   return (
@@ -325,6 +449,21 @@ export function EmployeeEditPage({
           description={t("detailPages.employee.editPage.description")}
           title={`${t("detailPages.employee.editTitle")} ${employee.name}`}
         />
+
+        {saveError ? (
+          <div
+            aria-live="assertive"
+            className="flex items-start gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm text-destructive"
+            role="alert"
+          >
+            <TriangleAlert className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" />
+            <p>
+              {saveError === "nothingSaved" ? t("detailPages.employee.editPage.saveNothingSaved") : null}
+              {saveError === "partialRolledBack" ? t("detailPages.employee.editPage.savePartialRolledBack") : null}
+              {saveError === "partialUnverified" ? t("detailPages.employee.editPage.savePartialUnverified") : null}
+            </p>
+          </div>
+        ) : null}
 
         <FieldSection
           description={t("detailPages.employee.editPage.personalDescription")}

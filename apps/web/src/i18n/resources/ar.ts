@@ -660,6 +660,9 @@ export const ar = {
           salaryPeriod: "دورية الأجر",
           selectSalaryPeriod: "اختر دورية الأجر",
           saveAll: "حفظ كل التغييرات",
+          saveNothingSaved: "تعذر حفظ التغييرات — لم يُحفظ أي تعديل. تحقق من البيانات ثم أعد المحاولة.",
+          savePartialRolledBack: "لم تُحفظ كل التغييرات. عُدِّلت الحقول لتعكس آخر حالة محفوظة — راجعها ثم أعد الحفظ.",
+          savePartialUnverified: "حدث خطأ أثناء الحفظ وقد لا تكون بعض التغييرات محفوظة. أعد تحميل الصفحة للتحقق من الحالة الحالية.",
           validation: {
             firstNameRequired: "الاسم الأول مطلوب.",
             lastNameRequired: "اللقب مطلوب.",
