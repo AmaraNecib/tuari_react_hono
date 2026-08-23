@@ -26,6 +26,7 @@ const EXCLUDE_DIR_NODES = new Set([
   "teach",
   "improve-codebase-architecture",
   "unslop",
+  "i-have-adhd",
 ])
 const EXCLUDE_FILES = new Set(["descriptions.md"])
 
