@@ -284,6 +284,21 @@ export const employeeSyncManagedWarehousesInputSchema = z.object({
   warehouseIds: z.array(entityIdSchema),
 });
 
+/** Atomic employee edit payload. Profile and submitted relationship writes share one transaction.
+ *
+ * Relationship fields are optional on purpose (PR #51 review): an omitted field means
+ * "leave the server-side relationships untouched", so a stale page saving only profile
+ * fields cannot revert newer concurrent placement or managed-scope updates. A submitted
+ * `placement` still follows the issue #20 rule (ignored for non-active workers). */
+export const employeeSaveInputSchema = employeeUpdateInputSchema.extend({
+  placement: employeeAssignWorkplaceInputSchema
+    .omit({ employeeId: true })
+    .nullable()
+    .optional(),
+  managedProjectIds: z.array(entityIdSchema).optional(),
+  managedWarehouseIds: z.array(entityIdSchema).optional(),
+});
+
 export const warehouseAssignmentEndInputSchema = z.object({
   id: entityIdSchema,
   endDate: timestampSchema.optional(),
@@ -327,6 +342,7 @@ export type EmployeeBatchCreateRowInput = z.infer<typeof employeeBatchCreateRowI
 export type EmployeeBatchCreateInput = z.infer<typeof employeeBatchCreateInputSchema>;
 export type EmployeeBatchCreateResult = z.infer<typeof employeeBatchCreateResultSchema>;
 export type EmployeeUpdateInput = z.infer<typeof employeeUpdateInputSchema>;
+export type EmployeeSaveInput = z.infer<typeof employeeSaveInputSchema>;
 export type EmployeeAssignWorkplaceInput = z.infer<typeof employeeAssignWorkplaceInputSchema>;
 export type EmployeeSyncManagedProjectsInput = z.infer<typeof employeeSyncManagedProjectsInputSchema>;
 export type EmployeeSyncManagedWarehousesInput = z.infer<typeof employeeSyncManagedWarehousesInputSchema>;

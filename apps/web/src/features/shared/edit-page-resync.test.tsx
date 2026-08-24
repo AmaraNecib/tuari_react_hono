@@ -10,6 +10,7 @@ import { ProjectEditPage } from "@/features/projects/project-edit-page"
 import { WarehouseEditPage } from "@/features/warehouses/warehouse-edit-page"
 
 const mockNavigate = vi.fn()
+const mockSaveEmployee = vi.fn().mockResolvedValue(undefined)
 const mockUpdateEmployee = vi.fn().mockResolvedValue(undefined)
 const mockUpdateEmployeeWorkplace = vi.fn().mockResolvedValue(undefined)
 const mockSyncManagedProjects = vi.fn().mockResolvedValue(undefined)
@@ -34,6 +35,7 @@ vi.mock("@/router/navigation", () => ({
 }))
 
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
+  useSaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockSaveEmployee }),
   useUpdateEmployeeMutation: () => ({ isPending: false, mutateAsync: mockUpdateEmployee }),
   useUpdateEmployeeWorkplaceMutation: () => ({ isPending: false, mutateAsync: mockUpdateEmployeeWorkplace }),
   useSyncManagedProjectsMutation: () => ({ isPending: false, mutateAsync: mockSyncManagedProjects }),
@@ -49,6 +51,7 @@ afterEach(() => {
 describe("edit pages resync when record props change", () => {
   beforeEach(() => {
     mockNavigate.mockReset()
+    mockSaveEmployee.mockClear()
     mockUpdateEmployee.mockClear()
     mockUpdateEmployeeWorkplace.mockClear()
     mockSyncManagedProjects.mockClear()
@@ -364,12 +367,12 @@ describe("edit pages resync when record props change", () => {
     fireEvent.click(screen.getByRole("button", { name: "حفظ كل التغييرات" }))
 
     await waitFor(() => {
-      expect(mockUpdateEmployee).toHaveBeenCalledWith(
+      expect(mockSaveEmployee).toHaveBeenCalledWith(
         expect.objectContaining({ id: "emp-occupation", occupation: "عامل بناء" }),
       )
     })
 
-    mockUpdateEmployee.mockClear()
+    mockSaveEmployee.mockClear()
 
     rerender(
       <EmployeeEditPage
@@ -389,6 +392,6 @@ describe("edit pages resync when record props change", () => {
     fireEvent.click(screen.getByRole("button", { name: "حفظ كل التغييرات" }))
 
     expect(screen.getByText("المهنة يجب ألا تتجاوز 120 حرفًا.")).toBeTruthy()
-    expect(mockUpdateEmployee).not.toHaveBeenCalled()
+    expect(mockSaveEmployee).not.toHaveBeenCalled()
   })
 })

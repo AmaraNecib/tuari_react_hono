@@ -28,6 +28,7 @@ export {
   useVoidDebtEntryMutation,
   useSyncManagedProjectsMutation,
   useSyncManagedWarehousesMutation,
+  useSaveEmployeeMutation,
   useUpdateAccountSettingsMutation,
   useUpdateEmployeeMutation,
   useUpdateEmployeeWorkplaceMutation,

@@ -746,18 +746,18 @@ describe("HomeView workspace shell", () => {
     expect(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]).toBeTruthy()
   })
 
-  it("does not resubmit workplace links when worker placement stays unchanged", async () => {
-    mocks.updateEmployeeMutate.mockResolvedValue({ success: true })
-    mocks.updateEmployeeWorkplaceMutate.mockResolvedValue({ success: true })
+  it("submits unchanged workplace links as part of the atomic batch", async () => {
+    mocks.saveEmployeeMutate.mockResolvedValue({ success: true })
 
     renderWorkspace("employee-edit", { sessionUser: demoUser, employeeId: "employee-worker-1" })
 
     fireEvent.click(await screen.findByRole("button", { name: "حفظ كل التغييرات" }))
 
     await waitFor(() => {
-      expect(mocks.updateEmployeeMutate).toHaveBeenCalled()
+      expect(mocks.saveEmployeeMutate).toHaveBeenCalled()
     })
 
+    expect(mocks.updateEmployeeMutate).not.toHaveBeenCalled()
     expect(mocks.updateEmployeeWorkplaceMutate).not.toHaveBeenCalled()
   })
 

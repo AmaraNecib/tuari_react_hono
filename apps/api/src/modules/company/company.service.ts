@@ -1,6 +1,6 @@
 /** Compatibility facade for legacy RPC/test callers; domain services own behavior. */
 
-import type { DebtAccountCreateInput, DebtConsolidationInput, DebtEntryCreateInput, DebtEntryRecordPaymentInput, DebtEntryVoidInput, DebtPartyDetailInput, DebtSettlementInput, EmployeeAssignWorkplaceInput, EmployeeBatchCreateInput, EmployeeCreateInput, EmployeeSalaryPaymentCreateInput, EmployeeSyncManagedProjectsInput, EmployeeSyncManagedWarehousesInput, EmployeeUpdateInput, ExternalCounterpartyCreateInput, ManagerAssignmentCreateInput, ManagerAssignmentEndInput, ProjectAssignmentCreateInput, ProjectAssignmentEndInput, ProjectCreateInput, ProjectUpdateInput, RoleCreateInput, RoleUpdateInput, WarehouseAssignmentCreateInput, WarehouseAssignmentEndInput, WarehouseCreateInput, WarehouseUpdateInput } from "@tuari/contracts";
+import type { DebtAccountCreateInput, DebtConsolidationInput, DebtEntryCreateInput, DebtEntryRecordPaymentInput, DebtEntryVoidInput, DebtPartyDetailInput, DebtSettlementInput, EmployeeAssignWorkplaceInput, EmployeeBatchCreateInput, EmployeeCreateInput, EmployeeSalaryPaymentCreateInput, EmployeeSaveInput, EmployeeSyncManagedProjectsInput, EmployeeSyncManagedWarehousesInput, EmployeeUpdateInput, ExternalCounterpartyCreateInput, ManagerAssignmentCreateInput, ManagerAssignmentEndInput, ProjectAssignmentCreateInput, ProjectAssignmentEndInput, ProjectCreateInput, ProjectUpdateInput, RoleCreateInput, RoleUpdateInput, WarehouseAssignmentCreateInput, WarehouseAssignmentEndInput, WarehouseCreateInput, WarehouseUpdateInput } from "@tuari/contracts";
 
 import type { CompanyRepository } from "./company.repository.contracts";
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
@@ -74,6 +74,9 @@ export class CompanyService {
   }
   updateEmployee(input: EmployeeUpdateInput, auditContext?: MutationAuditContext) {
     return this.workforce.updateEmployee(input, auditContext);
+  }
+  saveEmployee(input: EmployeeSaveInput, auditContext?: MutationAuditContext) {
+    return this.workforce.saveEmployee(input, auditContext);
   }
   deleteEmployee(id: string, auditContext?: MutationAuditContext) {
     return this.workforce.deleteEmployee(id, auditContext);

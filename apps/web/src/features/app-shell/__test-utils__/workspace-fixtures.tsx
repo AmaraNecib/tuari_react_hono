@@ -274,6 +274,7 @@ const mockFns = {
   bootstrapMutate: vi.fn(),
   signOutMutate: vi.fn(),
   createEmployeesBatchMutate: vi.fn(),
+  saveEmployeeMutate: vi.fn(),
   updateEmployeeMutate: vi.fn(),
   leaveEmployeeMutate: vi.fn(),
   deleteEmployeeMutate: vi.fn(),
@@ -342,6 +343,7 @@ vi.mock("../mock-dashboard", () => ({
   useSettleDebtAccountMutation: () => ({ isPending: false, mutate: vi.fn() }),
   useRecordDebtPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useSaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.saveEmployeeMutate }),
   useUpdateEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.updateEmployeeMutate }),
   useLeaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.leaveEmployeeMutate }),
   useDeleteEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.deleteEmployeeMutate }),
@@ -371,6 +373,7 @@ vi.mock("../workspace-mutations", () => ({
   useUpdateProjectMutation: () => ({ isPending: false, mutateAsync: mockFns.updateProjectMutate }),
   useCreateEmployeesBatchMutation: () => ({ isPending: false, mutateAsync: mockFns.createEmployeesBatchMutate }),
   useCreateExternalCounterpartyMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useSaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.saveEmployeeMutate }),
   useUpdateEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.updateEmployeeMutate }),
   useLeaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.leaveEmployeeMutate }),
   useDeleteEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.deleteEmployeeMutate }),
@@ -730,6 +733,7 @@ export interface WorkspaceMocks {
   bootstrapMutate: Mock
   signOutMutate: Mock
   createEmployeesBatchMutate: Mock
+  saveEmployeeMutate: Mock
   updateEmployeeMutate: Mock
   leaveEmployeeMutate: Mock
   deleteEmployeeMutate: Mock
@@ -760,6 +764,7 @@ export function mockAllMutations(): WorkspaceMocks {
     bootstrapMutate: mockFns.bootstrapMutate,
     signOutMutate: mockFns.signOutMutate,
     createEmployeesBatchMutate: mockFns.createEmployeesBatchMutate,
+    saveEmployeeMutate: mockFns.saveEmployeeMutate,
     updateEmployeeMutate: mockFns.updateEmployeeMutate,
     leaveEmployeeMutate: mockFns.leaveEmployeeMutate,
     deleteEmployeeMutate: mockFns.deleteEmployeeMutate,
