@@ -182,6 +182,30 @@ export function seedProjectWithManager(input: {
   }
 }
 
+/** Seed external counterparties for combobox E2E coverage. Returns their ids. */
+export function seedExternalCounterparties(
+  counterparties: Array<{ fullName: string; phoneNumber: string }>,
+): string[] {
+  const db = loadDatabaseConstructor()(findE2eDatabase())
+  try {
+    const insert = db.prepare(
+      `INSERT INTO external_counterparty
+         (id, full_name, phone_number, note, created_at, updated_at)
+       VALUES (?, ?, ?, NULL, ?, ?)`,
+    )
+    const ids: string[] = []
+    const now = new Date().toISOString()
+    for (const counterparty of counterparties) {
+      const id = randomUUID()
+      insert.run(id, counterparty.fullName, counterparty.phoneNumber, now, now)
+      ids.push(id)
+    }
+    return ids
+  } finally {
+    db.close()
+  }
+}
+
 /** Seed an ACTIVE warehouse. Returns the warehouse id. */
 export function seedWarehouse(input: { name: string }): string {
   const db = loadDatabaseConstructor()(findE2eDatabase())
