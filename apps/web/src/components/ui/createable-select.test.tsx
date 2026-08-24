@@ -74,8 +74,7 @@ describe("CreateableSelect display name derivation", () => {
     fireEvent.mouseDown(trigger)
     const popup = await screen.findByRole("listbox")
     const option = await within(popup).findByRole("option", { name: "مستودع المبيعات" })
-    fireEvent.mouseEnter(option)
-    fireEvent.click(option)
+    pickOption(option)
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith("wh-2"))
     rerender(<SelectHarness onChange={onChange} />)
@@ -121,8 +120,7 @@ describe("CreateableSelect popup positioning/animation (issue #28)", () => {
     fireEvent.mouseDown(trigger)
     let listbox = await screen.findByRole("listbox")
     const firstPick = await within(listbox).findByRole("option", { name: "مستودع المبيعات" })
-    fireEvent.mouseEnter(firstPick)
-    fireEvent.click(firstPick)
+    pickOption(firstPick)
     await waitFor(() => expect(onChange).toHaveBeenCalledWith("wh-2"))
 
     // Toggle-close (Base UI useClick: event "mousedown", toggle=true), reopen.
@@ -132,13 +130,24 @@ describe("CreateableSelect popup positioning/animation (issue #28)", () => {
     fireEvent.mouseDown(trigger)
     listbox = await screen.findByRole("listbox")
     const secondPick = await within(listbox).findByRole("option", { name: "المستودع المركزي" })
-    fireEvent.mouseEnter(secondPick)
-    fireEvent.click(secondPick)
+    pickOption(secondPick)
 
     await waitFor(() => expect(onChange).toHaveBeenCalledTimes(2))
     expect(onChange).toHaveBeenLastCalledWith("wh-1")
   })
 })
+
+/**
+ * Simulate a real browser mouse pick. Since Base UI 1.5+ (#4699 hardening), an
+ * item click only commits when the press started on the item itself
+ * (`allowMouseSelectionRef`, set by pointerdown) — bare synthetic clicks are
+ * treated as drag/ghost clicks and ignored. Playwright fires the full real
+ * pointer sequence, so this only matters for the jsdom simulation here.
+ */
+function pickOption(option: Element) {
+  fireEvent.pointerDown(option, { button: 0, pointerId: 1, pointerType: "mouse" })
+  fireEvent.click(option)
+}
 
 function SelectHarness({ onChange }: { onChange: (value: string) => void }) {
   return (
