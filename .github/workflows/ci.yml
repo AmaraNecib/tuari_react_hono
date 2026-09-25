@@ -35,6 +35,7 @@ jobs:
       # Root-level gates turbo never runs: turbo has no root lint task, so the
       # prose gate and the issue-closing harness would silently pass CI.
       - run: pnpm check:unslop
+      - run: pnpm test:prose
       - run: pnpm test:ci-scripts
 
   typecheck:
