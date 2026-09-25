@@ -44,7 +44,7 @@ and tells each lane exactly which skills to load.
 
 | Role | Agent | Contract |
 |---|---|---|
-| Parent | you (this session) | Intake, lane briefs, launch, supervision, verification, review fanout, landing. Never edits lane code. |
+| Parent | you (this session) | Intake, lane briefs, launch, supervision, verification, review fanout, landing. Never edits lane code; receives `crew_report` handoffs. |
 | Worker lane | one agent per worktree | One lane, one worktree, one bounded task. May edit only inside its worktree. |
 | Reviewer | fresh-context agents | Read-only review of each lane's diff; parent aggregates. |
 
@@ -54,7 +54,11 @@ and tells each lane exactly which skills to load.
   present.** The captain wants to SEE each agent work and type into its
   terminal directly. Each lane = one workspace in the session backend
   (Herdr/tmux/…) with a real agent session inside it, auto-detected in the UI.
-  Verified recipe (Herdr, any OS): see Launch.
+  Visible lanes launched by `launch-lane.mjs` also receive the `crew_report`
+  tool, which writes a handoff artifact and sends a completion/blocker message
+  directly to the parent pane. Verified recipe (Herdr, any OS): see Launch.
+  Project policy defaults to six concurrent mutation lanes; the captain may
+  explicitly choose another positive cap for a batch.
 - **Headless children require explicit captain opt-in.** Cheaper, disposable,
   not visible as live terminals. Allowed ONLY for cheap scouts, read-only
   probes, when the captain is not watching — or when the captain explicitly
@@ -125,30 +129,44 @@ AUTHORITY BOUNDARY (hard rules):
 - You may commit only inside this worktree, on branch <BRANCH>.
 - Do not push, open PRs, merge, or touch the remote. The parent owns landing.
 - Do not run `git add -A` / `git add .`; stage only the files you changed.
+- At progress, completion, or blockage, call the visible-lane `crew_report`
+  tool. Include branch/HEAD, changed files, commands + exit codes, risks, and
+  the next action. If work may be deferred, include the exact finding,
+  proposed follow-up PR, dependency impact, and ask the parent to decide
+  fix-now versus defer. The tool sends the report to the parent; the final
+  text report is still required as a fallback.
 
 ISSUE: #<n> — <title>
 CONTEXT: <paste the issue essentials: what, why, acceptance criteria>
 BASE: <base-branch>; fetch and diff against origin/<base-branch>.
+SKILLS/ROUTING: <pipeline> lanes MUST load and follow
+  .agents/skills/feature-implement/SKILL.md (the launcher preamble enforces
+  this too, so a custom brief cannot skip it); review/smoke lanes may skip it
+  and follow the brief's own contract.
 
 TASK (mode: pipeline|smoke):
 - <pipeline> FIRST, grep the project's lessons for your domain and read only the
   matches: `grep -rin "<domain>" .agents/wisdom/*.md docs/lessons/*.md` (skip
   if the files don't exist). Then:
   - If the project has a feature-implement skill (check .agents/skills/), load
-    it and follow ONLY its implementation stages, scoped to this issue and this
-    worktree, and STOP before any stage that writes shared review evidence,
-    branches, PRs, or remote state — the parent owns every one of those so
-    parallel lanes never collide. Where that skill names a base branch,
-    package-manager commands, or repo conventions, the values in THIS brief
-    (BASE: <base-branch>, commands from package.json) win — the skill is a
-    template, the brief is the contract.
+    it and follow its implementation stages, scoped to this issue and this
+    worktree. The lane may run local `cli-review` and `greploop --local` against
+    the pinned base and report the raw Greptile status/findings to the parent.
+    Stop before pushing, opening PRs, merging, or changing remote state — the
+    parent owns those so parallel lanes never collide. Issue-specific review
+    evidence may be refreshed by the lane when the parent explicitly delegates
+    it; shared/cross-lane evidence remains parent-owned. Where that skill names
+    a base branch, package-manager commands, or repo conventions, the values in
+    THIS brief (BASE: <base-branch>, commands from package.json) win — the skill
+    is a template, the brief is the contract.
   - If not, follow this inline contract: write the design doc at
     <scratch>/<id>-design.md, implement TDD (read package.json for the real
     commands; unit tests + user-facing E2E if the flow is user-facing; run the
     project's typecheck/lint/tests), then run the project's guard equivalent —
     build + typecheck + lint + tests all green — and STOP.
-  STOP after implementation + local checks pass and report. Do NOT open PRs,
-  do NOT push, do NOT run reviews.
+  STOP after implementation + local checks pass, run the delegated local
+  Greptile review when requested, and report. Do NOT open PRs, do NOT push, do
+  NOT merge, and do not decide silent deferrals.
 - <smoke> READ-ONLY. Change nothing. Inspect the code related to this issue and
   report: what the relevant module does, its structure, tests present, and any
   risks you notice.
@@ -159,6 +177,9 @@ REPORT CONTRACT — end your run with:
 - Files changed (pipeline) or files inspected (smoke)
 - Commands run with exit codes; validation evidence (pipeline)
 - Anything you needed from outside the worktree
+- A `crew_report` handoff with `status: done` or `status: blocked` before
+  stopping (visible lanes); if the tool is unavailable, write the same JSON
+  shape to `.scratch/sessions/crew/handoffs/<lane>.json` and say so
 ```
 
 ## Launch (visible agents — the default)
@@ -244,25 +265,35 @@ When the captain says "run the lanes for real", follow this order:
 4. **Collect.** When a lane reports done: read its output (report contract),
    then verify containment: `git -C <worktree> status` matches preflight + the
    lane's claimed files, and the main checkout is untouched.
-5. **Review fanout (parent dispatches, fresh-context reviewers judge).** For
-   each lane's diff, run the project's review skills (debate/test-audit/
-   code-review) as fresh-context reviewer children over
-   `git diff <base>...HEAD` in that worktree; if the skills are absent, follow
-   the inline contract: findings with severity + file:line, grouped by
-   must-fix / should-fix / nit. The parent aggregates verdicts; it is a
-   dispatcher, not the judge.
+5. **Review fanout (delegate first, parent aggregates).** Ask each live lane to
+   run its local tests plus `cli-review`/`greploop --local` against the pinned
+   base and send structured status/findings through `crew_report`. For
+   Standard/High-assurance work, the parent may additionally dispatch fresh
+   read-only debate/test-audit/code-review reviewers when independent review is
+   needed. Findings are grouped by must-fix / should-fix / nit; the parent
+   aggregates verdicts and makes scope/deferral decisions rather than repeating
+   every command inline.
 6. **Fix-findings loop (per lane, agent owns the fix).** For every lane with
    must-fix/should-fix findings: send the findings back to that lane's live
    agent (`agent prompt <pane> "Reviewer findings: <findings>. Fix in THIS
    worktree, re-run the checks, report what changed."`), then verify the delta.
-   Loop until clean or explicitly deferred. Two exceptions where the PARENT
-   fixes directly: findings on a shared seam (parent-owned file — fix once,
-   all lanes get the updated base) and findings after the lane's pane closed.
+   Loop until clean or the parent explicitly decides to defer. A lane may not
+   silently call a finding out of scope: it must send a `crew_report` with
+   `status: blocked`, the exact finding, proposed follow-up PR, dependency
+   impact, and a parent decision request. The parent decides fix-now versus
+   defer and may reorder/queue lanes accordingly. Two exceptions where the
+   PARENT fixes directly: findings on a shared seam (parent-owned file — fix
+   once, all lanes get the updated base) and findings after the lane's pane
+   closed.
 7. **Guard + land.** Run the project's guard (or the inline check set) per
-   lane, then push + open one PR per lane (branch already exists in the
+   lane, then push + open/update one PR per lane (branch already exists in the
    worktree) with the review evidence linked, wait for CI green, and hand the
-   captain full PR URLs. NEVER merge without the captain's explicit word — when
-   the captain says merge, the parent executes it.
+   captain full PR URLs. A 5/5 review is the stop condition, not merge
+   permission: crew automation must NEVER merge. After the parent receives the
+   handoff and creates/updates the PR, close the Herdr workspace only if the
+   lane is terminal and no follow-up is expected. Keep reusable lanes alive;
+   when closing, preserve the workspace/pane/session identifiers so the parent
+   can reopen or resume the lane if needed.
 8. **Lessons (parent-owned, serialized — lanes never write shared state).**
    If the project keeps lessons (capture-wisdom / docs/lessons/ / AGENTS.md
    convention), the parent files per-lane technical lessons after each PR lands
@@ -297,7 +328,8 @@ run is not attributed to the lane.
 ## Reporting and landing
 
 - Report per-lane outcomes in plain language: status, changed files,
-  validation evidence, risks. Never paste raw transcripts verbatim.
+  validation evidence, risks, deferred-work decisions, and dependency/order
+  changes. Never paste raw transcripts verbatim.
 - Landing stays with the parent and the captain: per-lane PRs, full URLs, CI
   green before merge, never merge without the captain's word.
 

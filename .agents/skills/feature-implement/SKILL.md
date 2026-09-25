@@ -1,199 +1,258 @@
 ---
 name: feature-implement
-description: "Mandatory lifecycle orchestrator for code-changing issues. Delegates to implement, debate, guard, code-review, capture-wisdom. Read this first when the user says 'work on issue #N' or 'implement this feature'."
+description: "Mandatory lifecycle orchestrator for implementing a local or remote issue. Uses local verification, code review, Greptile CLI review, and the local Greploop loop without requiring a pull request."
 ---
 
 # Feature Implementation Orchestration
 
-**Start here.** This is the mandatory entry point for all feature work.
-Read `@docs/engineering-workflow.md` and `.agents/wisdom/*.md` first.
+Read `docs/engineering-workflow.md`, `docs/local-issue-status.md` (when the
+work is ticket-driven), and `.agents/wisdom/*.md` first.
 
-## Enforced order
+This repository currently runs in **local-only mode** because the GitHub
+repository is unavailable. The source of truth is the current checkout,
+local branches/worktrees, `docs/local-issue-snapshot.json`, and the cached
+Git refs. Do not use `gh issue`, `gh pr`, PR comments, `git fetch`, `git push`,
+or GitHub Actions until the user explicitly says the remote repository is
+available again.
 
-Do not skip or reorder these steps.
+Crew policy: use at most six concurrent mutation worktrees. The parent may push
+and open/update a PR after the gates pass, but **must never merge**, even after
+Greptile reports 5/5. Close a Herdr workspace only when its lane is terminal
+and no follow-up is expected; keep reusable lanes alive and preserve
+workspace/pane/session identifiers before closing.
 
-### 1. Tier and base SHA
+## Mode selection and base SHA
 
-**Select review tier:**
+At the start of a run:
 
-| Tier | When |
-|------|------|
-| **Lightweight** | Truly non-reviewable files only (.gitignore, LICENSE, .scratch/) |
-| **Standard** | Code, CI, workflow, config, skills, UI, API endpoints |
-| **High-assurance** | Authz/permissions (RBAC), licensing/crypto, debt financial calculations, security |
+```bash
+git rev-parse --show-toplevel
+git status --short --branch
+git rev-parse develop
+BASE_SHA=$(git merge-base develop HEAD)
+```
 
-Record the tier. Pass it to `guard`.
+Use the local `develop` ref as the base when it exists. If it does not, use a
+cached `origin/develop` ref without fetching it and record that it is cached.
+Never silently use a stale remote ref as if it were live.
 
-**Resolve base commit once:**
+Record in the design/review evidence:
 
-1. Target branch is always `develop` (unless the PR specifies a different base).
-2. Fetch: `git fetch origin develop`
-3. Compute merge-base: `git merge-base origin/develop HEAD`
-4. Record target branch name and SHA for all subsequent steps.
+- `mode: local-only` (or `mode: remote` after the user opts back in)
+- ticket number/path and ticket source
+- target ref and resolved base SHA
+- review tier: Lightweight, Standard, or High-assurance
 
-### 2. Design (.scratch/implementation/)
+## Enforced lifecycle
 
-Before writing production code, create a design document:
+### 1. Resolve the ticket locally
+
+For a numbered ticket, read `docs/local-issue-status.md` and
+`docs/local-issue-snapshot.json`. Then inspect the named branch, design, and
+review evidence. A row marked "Base shipped; local follow-up remains" must be
+diffed against the cached base before replaying anything; do not duplicate a
+change that is already present.
+
+If the ticket is only a GitHub URL and has no local description, stop and ask
+for the missing requirements. Do not invent acceptance criteria from a title.
+
+### 2. Design before production code
+
+Create or update:
 
 ```
 .scratch/implementation/<issue-id>-design.md
 ```
 
-The design must specify:
-- Public API / component interfaces
-- Dependencies
-- Planned tests (unit + Playwright E2E)
-- Implementation risks
+The design must state:
 
-### 3. Implement (TDD + Playwright)
+- public APIs, component interfaces, or changed contracts
+- dependencies and ownership boundaries
+- planned unit/integration tests and Playwright E2E tests where applicable
+- implementation risks, migration concerns, and local-only constraints
+- the fixed base SHA and review tier
 
-Load `implement` skill. It handles TDD at pre-agreed seams.
+Reference `docs/local-issue-status.md` when an issue is a local snapshot rather
+than a live issue file.
 
-**Every feature MUST include:**
+### 3. Implement with tests
 
-- **Unit tests** for business logic (via `pnpm test` / vitest)
-- **Playwright E2E tests** for the user-facing flow, added to `tests/e2e/`
-- Run `pnpm typecheck && pnpm test:web && pnpm test:api` during implementation
+Load the `implement` skill and use `TDD` at the agreed seams. Every user-facing
+feature includes a Playwright test in `tests/e2e/`; business logic includes
+unit/integration tests. During implementation run the relevant checks, normally:
 
-If the feature touches the Rust Core (`apps/desktop/src-tauri/src/`), also run:
+```bash
+pnpm typecheck
+pnpm test:web
+pnpm test:api
+```
+
+For Rust Core changes also run:
+
 ```bash
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings
 ```
 
-### 4. Guard pre-review (Phase 1)
+### Source-only staging rule
 
-Run `guard` Phase 1 (pre-commit) to confirm everything compiles:
-- `pnpm --filter @tuari/contracts build`
-- `pnpm typecheck`
-- `pnpm lint`
-- `pnpm test:api`
-- `pnpm test:web`
+Builds and test commands may generate `dist/`, `target/`, sidecar binaries,
+Tauri schemas, coverage, Playwright reports, or other ignored artifacts. Those
+are never part of a source change. Before committing or pushing a local PR,
+inspect the exact file set:
 
-If the feature touches Rust Core, also run:
-- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`
-- `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings`
+```bash
+git diff --name-only <base-sha>...HEAD
+git status --short --ignored
+```
 
-Do NOT proceed to reviews until this passes.
+Stage named source/config/test/evidence files only. Never use `git add -A` and
+never add generated output merely because a build produced it. If a legacy
+tracked generated file appears in the base, document it; do not copy or add a
+new generated version to the feature branch.
+
+### 4. Guard Phase 1: pre-review
+
+Run `guard` Phase 1 before any review. In local-only mode it means local
+commands only:
+
+```bash
+pnpm --filter @tuari/contracts build
+pnpm typecheck
+pnpm lint
+pnpm test:api
+pnpm test:web
+```
+
+Do not proceed while a required local check fails. If a failure is unrelated,
+prove it on the base and document the waiver rather than hiding it.
 
 ### 5. Quality check
 
-Load relevant skills from the workflow's quality check table:
+Load only the skills relevant to the change:
 
-| If the change touches... | Load these skills |
-|---|---|
+| Change | Skill |
+| --- | --- |
 | New module, interface, or architecture | `codebase-design` |
-| Complex logic, state, or edge cases | `diagnosing-bugs` |
-| Domain entities, terms, or data models | `domain-modeling` |
-| Any production code | `code-review` |
-| UI components, pages, or visual design | `frontend-design`, `web-design-guidelines` |
-| Existing UI that needs polish | `redesign-existing-projects` |
-| Adding/managing shadcn/ui components | `shadcn` |
-| Component API design, prop proliferation | `vercel-composition-patterns` |
+| Complex logic or edge cases | `diagnosing-bugs` |
+| Domain entities or terminology | `domain-modeling` |
+| Writing tests | `TDD` |
+| Production code | `code-review` |
+| UI or visual design | `frontend-design`, `web-design-guidelines` |
+| Existing UI polish | `redesign-existing-projects` |
+| shadcn/ui | `shadcn` |
+| Component API/prop design | `vercel-composition-patterns` |
 | React rendering performance | `vercel-react-best-practices` |
-| Tauri desktop features (IPC, window, system tray) | `tauri-v2` |
-| Hono API routes, middleware, validation | `hono` |
-| Playwright E2E test design | `playwright-best-practices` |
-| Accessibility, RTL, keyboard navigation | `accessibility` |
+| Tauri IPC/window/runtime | `tauri-v2` |
+| Hono routes/middleware/validation | `hono` |
+| Playwright tests | `playwright-best-practices` |
+| Accessibility/keyboard/RTL | `accessibility` |
 
-### 6. Debate — High-assurance only
+### 6. Debate: High-assurance only
 
-Load `debate` with resolved base SHA. Saves evidence to
-`.scratch/reviews/<issue-id>/<head-sha>-debate.md`.
+For High-assurance work, run `debate` against the fixed base SHA. Save the
+result as `.scratch/reviews/<issue-id>/<HEAD>-debate.md`.
 
-### 7. Test audit — Standard and High-assurance
+### 7. Test audit: Standard and High-assurance
 
-Load `test-audit` with resolved base SHA. Saves evidence to
-`.scratch/reviews/<issue-id>/<head-sha>-test-audit.md`.
+Run `test-audit` for Standard and High-assurance work. It must check edge
+cases, meaningful assertions, failure/empty states, and E2E coverage. Save
+`.scratch/reviews/<issue-id>/<HEAD>-test-audit.md`.
 
-**Checks performed:**
-- Edge case coverage (empty states, error states, boundary values)
-- Test quality (meaningful assertions, not just "doesn't crash")
-- E2E coverage (critical user path is tested via Playwright)
-- No shallow/missing tests
+### 8. Local code review
 
-### 8. Pre-push self-review (code-review)
-
-Run `code-review` skill against `git diff <base-sha>...HEAD`. Save output to
-`.scratch/reviews/<issue-id>/<head-sha>-code-review.md`.
-
-### 9. Guard pre-push (Phase 2)
-
-Run `guard` Phase 2. Verifies:
-- All checks pass (typecheck, lint, test:api, test:web)
-- Review evidence files exist and are not stale
-- Working tree is clean
-
-**Evidence staleness check:**
-- Extract SHA from evidence filenames in `.scratch/reviews/<issue-id>/`
-- Compare to `git rev-parse HEAD`
-- If different, inspect `git diff --name-only <evidence-sha> HEAD`:
-  - If any reviewable file changed → evidence is **STALE**, must regenerate
-  - If only non-reviewable files (.gitignore, LICENSE, .scratch/) → valid
-
-### 10. Push + PR
-
-Branch naming: `feature/<issue-id>-<short-description>`, `fix/<issue-id>-<description>`,
-`refactor/<issue-id>-<description>`, or `agent/<description>`.
+Run `code-review` against the pinned local base:
 
 ```bash
-git push origin <branch-name>
-gh pr create \
-  --title "M<X.Y>: <description> (closes #<issue-id>)" \
-  --body "See .scratch/reviews/<issue-id>/ for review evidence"
+git diff <base-sha>...HEAD
+git log <base-sha>..HEAD --oneline
 ```
 
-After opening the PR, publish a concise review-evidence summary as a PR comment.
+The Standards and Spec axes must use local designs/specs and
+`docs/local-issue-status.md`; they must not attempt to fetch GitHub issue or PR
+content. Save `.scratch/reviews/<issue-id>/<HEAD>-code-review.md`.
 
-### 11. CI + Greptile
+Fix actionable findings, rerun the local checks, and regenerate evidence after
+any reviewable-file change. Greptile findings are claims: verify each against
+current code before fixing. If a finding appears outside scope, ask
+the parent before deferring it; include the proposed follow-up, dependency
+impact, and whether it should change the current lane/worktree order.
 
-Wait for CI green (all 6 jobs: lint, typecheck, test-api, test-web, test-rust, build).
+### 9. Guard Phase 2: local pre-report gate
 
-Once CI is green:
-- Trigger Greptile: comment `@greptile-apps review` in the PR
-- Wait for Greptile to complete
-- Address any actionable findings (fix locally → push → wait for CI → re-trigger)
-- Repeat until Greptile passes with no actionable findings
+Run `guard` Phase 2. Verify local checks, review evidence freshness, and that
+the branch is in a reportable state. A clean working tree is preferred; if the
+user wants an uncommitted local handoff, report every uncommitted file and do
+not claim the work is ready to integrate.
 
-### 12. Guard pre-report (Phase 3) + Capture wisdom
+Evidence filenames must contain the final reviewed `HEAD` SHA; evidence-only
+follow-up commits require a freshness check and a post-evidence note.
 
-Run `guard` Phase 3. Verifies:
-- CI — all checks green on GitHub
-- PR description — accurate and complete
-- Any deferred items — documented with follow-up issues
+### 10. Greptile review via the CLI, not PR comments
 
-Then run `capture-wisdom` to save any lessons learned.
+Greptile reviews the current local checkout through its CLI. It does not need
+a GitHub PR. Run the `cli-review` skill first:
 
-### 13. Report
+```bash
+greptile whoami
+greptile review --json --branch <base-branch>
+```
 
-Report to the user: PR link, CI status, Greptile verdict, any deferred items.
+Pass the pinned base branch/ref; omitting it can compare against the repository
+default branch and review an unrelated, enormous diff. If the issue needs an iterative fix loop, run `greploop --local` after the
+first review. The local loop may inspect and fix actionable findings, but no push, no PR, no
+comments, no `git add -A`. Re-run the local checks after every code fix.
 
-## Merge rules
+Save the raw CLI result and a concise summary under:
 
-- The agent may merge **only when ALL** of these are true:
-  1. The user explicitly says to merge
-  2. CI is green (all 6 jobs)
-  3. Greptile has no actionable findings
-  4. The agent finds no blocker
-- Merge command:
-  ```bash
-  gh pr merge <num> --squash --subject "M<x.y>: <title> (closes #<issue>)"
-  ```
-- If any condition is not met, report to the user — do not merge.
+```
+.scratch/reviews/<issue-id>/<HEAD>-greptile-local.json
+.scratch/reviews/<issue-id>/<HEAD>-greptile-local.md
+```
 
-## Where to start
+The local Greptile gate passes only when the latest result is clean: confidence
+5/5 with zero unresolved/actionable findings, or an equivalent CLI result that
+explicitly reports no actionable findings. A successful command by itself is
+not a clean verdict.
 
-| State | Start at |
-|-------|----------|
-| Nothing exists | Read workflow + wisdom |
-| No design doc | Step 1 → design |
-| Code not written | Step 2 — implement |
-| No reviews done | Step 3 — guard pre-review |
-| No quality check | Step 4 — quality check |
-| No debate | Step 5 — debate |
-| No test audit | Step 6 — test audit |
-| No code-review | Step 7 — code-review |
-| Locally unverified | Step 8 — guard pre-push |
-| Not pushed | Step 9 — push + PR |
-| CI not green | Step 10 — CI + Greptile |
-| All done | Step 11 — guard pre-report → Step 12 — report |
+### 11. Guard Phase 3: local pre-report
+
+In local-only mode, Phase 3 verifies:
+
+- local contracts/typecheck/lint/API/web/Rust checks are green as applicable
+- local code-review, test-audit, and debate evidence is present and current
+- the latest Greptile CLI result is clean and corresponds to the final code
+- deferred work is recorded in the local issue status ledger and has an
+  explicit parent decision; lanes never defer silently
+- no remote operation was implied by the report
+
+Do not wait for CI, PR comments, or GitHub issue state in this mode.
+
+### 12. Capture wisdom and report
+
+Run `capture-wisdom` for any durable lesson. Report:
+
+- ticket and local branch/worktree
+- base SHA and final HEAD SHA
+- checks run and their results
+- local Greptile confidence/findings and loop iterations
+- evidence paths
+- deferred items and whether they are shipped, local-only, or unverified
+
+## Local-only completion rules
+
+A local implementation is ready for later integration, not merged, only when the gates above pass, the review evidence is current, the latest Greptile result is clean, and the working tree state is reported accurately.
+
+Never claim an issue is closed or merged while GitHub is unavailable. When the
+remote is restored, rebase/compare against the fresh `develop`, rerun all local
+checks and Greptile review, then push/open or update the remote PR only with the
+user's approval. Stop after the PR is created or updated; never merge it.
+
+## Review tiers
+
+| Tier | Applies to | Required review |
+| --- | --- | --- |
+| Lightweight | Truly non-reviewable files only | Guard Phase 1 → quality check → report |
+| Standard | Code, tests, CI, workflow, config, UI, API, skills | Guard Phase 1 → quality check → test-audit → code-review → Guard Phase 2 → CLI Greptile → Guard Phase 3 |
+| High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard plus debate |
+
