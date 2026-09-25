@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test"
 
 import { bootstrapOrSignIn, TEST_PASSWORD, TEST_PHONE } from "./helpers/session"
+import { apiBaseUrl, webBaseUrl } from "./helpers/urls"
 
 test.describe.configure({ mode: "serial" })
 
-const API_URL = "http://127.0.0.1:4318"
+const API_URL = apiBaseUrl()
+const WEB_ORIGIN = webBaseUrl()
 
 /**
  * Security batch regression (#283):
@@ -29,7 +31,7 @@ test("authenticated RPC calls with a spoofed X-Forwarded-For header still succee
   await bootstrapOrSignIn(page)
 
   const signIn = await request.post(`${API_URL}/api/auth/sign-in/phone-number`, {
-    headers: { origin: "http://localhost:3000" },
+    headers: { origin: WEB_ORIGIN },
     data: { phoneNumber: TEST_PHONE, password: TEST_PASSWORD },
   })
   expect(signIn.status()).toBe(200)
@@ -43,7 +45,7 @@ test("authenticated RPC calls with a spoofed X-Forwarded-For header still succee
   const session = await request.post(`${API_URL}/rpc/session`, {
     headers: {
       "content-type": "application/json",
-      origin: "http://localhost:3000",
+      origin: WEB_ORIGIN,
       cookie: sessionCookie,
       "x-forwarded-for": "203.0.113.99",
     },
