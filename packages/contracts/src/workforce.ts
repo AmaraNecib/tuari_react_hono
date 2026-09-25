@@ -35,6 +35,7 @@ export const employeeSchema = z.object({
   salaryAmountDzd: z.number().nonnegative().nullable(),
   salaryPeriod: salaryPeriodSchema.nullable(),
   notes: nullableTextSchema,
+  occupation: nullableTextSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
@@ -134,6 +135,7 @@ export const employeeCreateInputSchema = z.object({
   salaryAmountDzd: z.number().nonnegative().nullable().optional(),
   salaryPeriod: salaryPeriodSchema.nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
+  occupation: z.string().trim().max(120).nullable().optional(),
 });
 
 export const employeeBatchCreateRowInputSchema = employeeCreateInputSchema.extend({
@@ -151,6 +153,7 @@ export const employeeUpdateInputSchema = z.object({
   salaryAmountDzd: z.number().nonnegative().nullable().optional(),
   salaryPeriod: salaryPeriodSchema.nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
+  occupation: z.string().trim().max(120).nullable().optional(),
 });
 
 export const employeeListInputSchema = z
@@ -281,6 +284,21 @@ export const employeeSyncManagedWarehousesInputSchema = z.object({
   warehouseIds: z.array(entityIdSchema),
 });
 
+/** Atomic employee edit payload. Profile and submitted relationship writes share one transaction.
+ *
+ * Relationship fields are optional on purpose (PR #51 review): an omitted field means
+ * "leave the server-side relationships untouched", so a stale page saving only profile
+ * fields cannot revert newer concurrent placement or managed-scope updates. A submitted
+ * `placement` still follows the issue #20 rule (ignored for non-active workers). */
+export const employeeSaveInputSchema = employeeUpdateInputSchema.extend({
+  placement: employeeAssignWorkplaceInputSchema
+    .omit({ employeeId: true })
+    .nullable()
+    .optional(),
+  managedProjectIds: z.array(entityIdSchema).optional(),
+  managedWarehouseIds: z.array(entityIdSchema).optional(),
+});
+
 export const warehouseAssignmentEndInputSchema = z.object({
   id: entityIdSchema,
   endDate: timestampSchema.optional(),
@@ -324,6 +342,7 @@ export type EmployeeBatchCreateRowInput = z.infer<typeof employeeBatchCreateRowI
 export type EmployeeBatchCreateInput = z.infer<typeof employeeBatchCreateInputSchema>;
 export type EmployeeBatchCreateResult = z.infer<typeof employeeBatchCreateResultSchema>;
 export type EmployeeUpdateInput = z.infer<typeof employeeUpdateInputSchema>;
+export type EmployeeSaveInput = z.infer<typeof employeeSaveInputSchema>;
 export type EmployeeAssignWorkplaceInput = z.infer<typeof employeeAssignWorkplaceInputSchema>;
 export type EmployeeSyncManagedProjectsInput = z.infer<typeof employeeSyncManagedProjectsInputSchema>;
 export type EmployeeSyncManagedWarehousesInput = z.infer<typeof employeeSyncManagedWarehousesInputSchema>;

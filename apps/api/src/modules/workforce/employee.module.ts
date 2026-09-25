@@ -121,6 +121,7 @@ export class EmployeeModule {
       salaryAmountDzd: input.salaryAmountDzd ?? null,
       salaryPeriod: input.salaryPeriod ?? null,
       notes: input.notes ?? null,
+      occupation: input.occupation ?? null,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -264,6 +265,7 @@ export class EmployeeModule {
       salaryAmountDzd: record.salaryAmountDzd,
       salaryPeriod: record.salaryPeriod,
       notes: record.notes,
+      occupation: record.occupation ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

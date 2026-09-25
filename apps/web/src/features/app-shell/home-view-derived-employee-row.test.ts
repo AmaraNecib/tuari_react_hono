@@ -20,6 +20,7 @@ function buildFixture(): {
         roleId: "role-worker",
         status: "ACTIVE",
         notes: null,
+        occupation: "عامل بناء",
         salaryAmountDzd: 30000,
         salaryPeriod: "MONTHLY",
         createdAt: "2024-01-01T00:00:00.000Z",
@@ -79,6 +80,7 @@ describe("buildEmployeeRow", () => {
     expect(row.roleKey).toBe("worker")
     expect(row.isWorker).toBe(true)
     expect(row.name).toBe("Alice A")
+    expect(row.occupation).toBe("عامل بناء")
     expect(row.canDelete).toBe(true)
     expect(row.canLeave).toBe(true)
   })

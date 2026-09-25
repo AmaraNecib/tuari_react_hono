@@ -125,11 +125,16 @@ describe("repository mappers", () => {
     expect(employee.salaryAmountDzd).toBe(50000);
     expect(employee.salaryPeriod).toBe("MONTHLY");
     expect(employee.notes).toBe("ملاحظة");
+    expect(employee.occupation).toBeNull();
 
-    const sparse = mapEmployee({ ...baseRow, salary_amount_dzd: null, salary_period: null, notes: null });
+    const occupied = mapEmployee({ ...baseRow, occupation: "  عامل بناء  " });
+    expect(occupied.occupation).toBe("عامل بناء");
+
+    const sparse = mapEmployee({ ...baseRow, salary_amount_dzd: null, salary_period: null, notes: null, occupation: null });
     expect(sparse.salaryAmountDzd).toBeNull();
     expect(sparse.salaryPeriod).toBeNull();
     expect(sparse.notes).toBeNull();
+    expect(sparse.occupation).toBeNull();
   });
 
   it("mapProject maps location/manager/status", () => {

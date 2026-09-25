@@ -5,6 +5,7 @@ import type {
   EmployeeBatchCreateInput,
   EmployeeCreateInput,
   EmployeeSalaryPaymentCreateInput,
+  EmployeeSaveInput,
   EmployeeSyncManagedProjectsInput,
   EmployeeSyncManagedWarehousesInput,
   EmployeeUpdateInput,
@@ -90,6 +91,10 @@ export function createWorkforceHandlers(
     ))),
     employeesUpdate: os.employeesUpdate.handler(m.withPermission("employees:update", m.withAudit(
       ({ input, auditContext }) => workforceService.updateEmployee(input as EmployeeUpdateInput, auditContext),
+      toFailureResult,
+    ))),
+    employeesSave: os.employeesSave.handler(m.withPermission("employees:update", m.withAudit(
+      ({ input, auditContext }) => workforceService.saveEmployee(input as EmployeeSaveInput, auditContext),
       toFailureResult,
     ))),
     employeesDelete: os.employeesDelete.handler(m.withPermission("employees:delete", m.withAudit(

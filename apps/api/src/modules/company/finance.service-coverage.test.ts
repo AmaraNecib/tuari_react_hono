@@ -840,4 +840,123 @@ describe("FinanceService coverage branches", () => {
       ).toThrowError(CompanyError);
     });
   });
+
+  describe("generateDebtReport — aggregation edge cases", () => {
+    it("excludes a debt account whose live entries are all voided from the report", () => {
+      const { service, roleIds } = createHarness();
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "ملغى بالكامل",
+        phone: "0551000020",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+      const entry = service.finance.createEmployeeDebtEntry({
+        employeeId: worker.id,
+        entryType: "OPENING",
+        amountDzd: 500,
+        entryDate: "2026-02-01T10:00:00+01:00",
+      });
+      // Void the only entry: the account keeps existing but now has zero LIVE
+      // entries, so the report inclusion filter must take its empty-list fallback.
+      service.voidDebtEntry({ entryId: entry.id, voidReason: "خطأ تسجيل" }, audit());
+
+      const report = service.finance.generateDebtReport({});
+      expect(report.byParty.some((p) => p.partyId === worker.id)).toBe(false);
+      expect(report.summary.partyCount).toBe(0);
+    });
+
+    it("falls back to the account id as party name when the referenced party stops resolving", () => {
+      const { service, database, roleIds } = createHarness();
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "غائب عن التقرير",
+        phone: "0551000021",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+      const entry = service.finance.createEmployeeDebtEntry({
+        employeeId: worker.id,
+        entryType: "OPENING",
+        amountDzd: 700,
+        entryDate: "2026-02-01T10:00:00+01:00",
+      });
+      // Orphan the worker reference so neither the employee nor a counterparty
+      // resolves, forcing the report partyName fallback chain down to the id.
+      database.pragma("foreign_keys = OFF");
+      database
+        .prepare('UPDATE "debt_account" SET "worker_id" = ? WHERE "id" = ?')
+        .run("ghost-report-worker", entry.debtAccountId);
+      database.pragma("foreign_keys = ON");
+
+      const report = service.finance.generateDebtReport({});
+      const party = report.byParty.find((p) => p.partyId === "ghost-report-worker")!;
+      expect(party.partyName).toBe(entry.debtAccountId);
+    });
+
+    it("keeps the first account's lastTransaction when a later same-party account is not newer", () => {
+      const { service } = createHarness();
+      const counterparty = service.createExternalCounterparty({
+        fullName: "طرف حسابان",
+        phoneNumber: "0214444000",
+      }).item;
+      // Two ledgers for one counterparty. listDebtAccounts folds accounts in
+      // updatedAt DESC order, so the second account processed is not
+      // deterministic here — give both openings the SAME entry date so that
+      // whichever account folds second has a latest entry that is NOT strictly
+      // newer than the party's previous lastTransaction (equal date). The party
+      // merge must then keep the previous lastTransaction instead of regressing.
+      service.createDebtAccount({
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: 600,
+        openingEntryDate: "2026-02-01T10:00:00+01:00",
+      });
+      service.createDebtAccount({
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 400,
+        openingEntryDate: "2026-02-01T10:00:00+01:00",
+      });
+
+      const report = service.finance.generateDebtReport({});
+      const party = report.byParty.find((p) => p.partyId === counterparty.id)!;
+      expect(party.outstandingDzd).toBe(1000);
+      expect(party.lastTransaction).toBe("2026-02-01T10:00:00+01:00");
+    });
+
+    it("breaks equal-outstanding ties with the Arabic name comparison", () => {
+      const { service } = createHarness();
+      const first = service.createExternalCounterparty({
+        fullName: "شركة أ",
+        phoneNumber: "0214444004",
+      }).item;
+      const second = service.createExternalCounterparty({
+        fullName: "شركة ب",
+        phoneNumber: "0214444005",
+      }).item;
+      service.createDebtAccount({
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: first.id,
+        openingBalanceDzd: 400,
+        openingEntryDate: "2026-02-01T10:00:00+01:00",
+      });
+      service.createDebtAccount({
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: second.id,
+        openingBalanceDzd: 400,
+        openingEntryDate: "2026-02-01T10:00:00+01:00",
+      });
+
+      const report = service.finance.generateDebtReport({});
+      const parties = report.byParty;
+      expect(parties).toHaveLength(2);
+      expect(parties[0]!.outstandingDzd).toBe(400);
+      expect(parties[1]!.outstandingDzd).toBe(400);
+      // Equal amounts → the amount difference is zero → localeCompare("ar") decides.
+      expect(parties[0]!.partyName).toBe("شركة أ");
+      expect(parties[1]!.partyName).toBe("شركة ب");
+    });
+  });
 });

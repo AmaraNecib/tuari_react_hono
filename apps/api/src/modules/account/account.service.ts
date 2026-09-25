@@ -199,4 +199,38 @@ export class AccountService {
     const session = await this.getCurrentSessionUser(headers)
     await this.recordPasswordChangeForUser(session)
   }
+
+  /**
+   * Resolve the actor for the password-change audit WITHOUT throwing. Returns
+   * null when the request carries no resolvable session — the route then runs
+   * the auth change anyway and skips auditing. Issue #214: the audit policy
+   * (resolve-or-null) lives in the owning module, not the transport layer.
+   */
+  async resolvePasswordChangeActor(headers: Headers): Promise<CurrentSessionUser | null> {
+    try {
+      return await this.getCurrentSessionUser(headers)
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Record a password-change audit entry for an actor resolved BEFORE the
+   * auth handler ran (a successful change may revoke/rotate the session, so
+   * the request-time session is the only reliable actor context). Never
+   * throws: a missing actor or failed audit write is logged and skipped so
+   * the password change itself always succeeds.
+   */
+  async recordPasswordChangeAudit(actor: CurrentSessionUser | null): Promise<void> {
+    if (!actor) {
+      console.warn("[auth] Password change succeeded but actor audit context could not be resolved")
+      return
+    }
+
+    try {
+      await this.recordPasswordChangeForUser(actor)
+    } catch (error) {
+      console.warn("[auth] Password change audit could not be recorded", error)
+    }
+  }
 }

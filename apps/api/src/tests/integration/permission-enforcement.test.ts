@@ -29,11 +29,16 @@ function createContext(user: (SessionUser & { permissions: string[] }) | null): 
 }
 
 // Derive permissions from the canonical RBAC seeds so role drift is caught.
-const _roleSeeds = DEFAULT_ROLE_PERMISSIONS;
+// Only `admin` is seeded with permissions; the workforce labels are empty and
+// the legacy manager/viewer roles no longer exist.
+function permsFor(key: string): readonly Permission[] {
+  return DEFAULT_ROLE_PERMISSIONS.find((s) => s.role.key === key)!.permissions;
+}
 const ROLE_PERMISSIONS = {
-  admin: _roleSeeds.find((s) => s.role.key === "admin")!.permissions,
-  manager: _roleSeeds.find((s) => s.role.key === "manager")!.permissions,
-  viewer: _roleSeeds.find((s) => s.role.key === "viewer")!.permissions,
+  admin: permsFor("admin"),
+  worker: permsFor("worker"),
+  project_manager: permsFor("project_manager"),
+  warehouse_manager: permsFor("warehouse_manager"),
 } as const satisfies Record<string, readonly Permission[]>;
 
 const DOMAINS = [
@@ -80,136 +85,22 @@ describe("Cross-domain: Permission enforcement", () => {
     }
   });
 
-  it("manager can perform employees CRUD (create/read/update/delete)", async () => {
-    const managerPerms = [...ROLE_PERMISSIONS.manager];
-    for (const action of ["create", "read", "update", "delete"] as const) {
-      const handler = middleware.withPermission(
-        `employees:${action}` as Permission,
-        async () => ({ allowed: true }),
-      );
-
-      await expect(
-        handler({
-          context: createContext(mockUser(managerPerms)),
-          input: {},
-        }),
-      ).resolves.toEqual({ allowed: true });
-    }
-  });
-
-  it("manager can perform projects/warehouses/inventory CRUD + inventory transfer", async () => {
-    const managerPerms = [...ROLE_PERMISSIONS.manager];
-    const allowed: Permission[] = [
-      "projects:create", "projects:read", "projects:update", "projects:delete",
-      "warehouses:create", "warehouses:read", "warehouses:update", "warehouses:delete",
-      "inventory:create", "inventory:read", "inventory:update", "inventory:delete", "inventory:transfer",
-    ];
-    for (const permission of allowed) {
-      const handler = middleware.withPermission(
-        permission,
-        async () => ({ allowed: true }),
-      );
-      await expect(
-        handler({
-          context: createContext(mockUser(managerPerms)),
-          input: {},
-        }),
-      ).resolves.toEqual({ allowed: true });
-    }
-  });
-
-  it("manager can read debts but cannot mutate or settle them", async () => {
-    const managerPerms = [...ROLE_PERMISSIONS.manager];
-
-    const allowed: Permission[] = ["debts:read"];
-    for (const permission of allowed) {
-      const handler = middleware.withPermission(permission, async () => ({ allowed: true }));
-      await expect(
-        handler({
-          context: createContext(mockUser(managerPerms)),
-          input: {},
-        }),
-      ).resolves.toEqual({ allowed: true });
-    }
-
-    const denied: Permission[] = ["debts:create", "debts:update", "debts:settle"];
-    for (const permission of denied) {
-      const handler = middleware.withPermission(permission, async () => ({ allowed: true }));
-      await expect(
-        handler({
-          context: createContext(mockUser(managerPerms)),
-          input: {},
-        }),
-      ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    }
-  });
-
-  it("manager cannot mutate invoices or payments", async () => {
-    const managerPerms = [...ROLE_PERMISSIONS.manager];
-    const denied: Permission[] = [
-      "invoices:create", "invoices:update", "invoices:delete",
-      "payments:create", "payments:update", "payments:delete",
-    ];
-    for (const permission of denied) {
-      const handler = middleware.withPermission(permission, async () => ({ allowed: true }));
-      await expect(
-        handler({
-          context: createContext(mockUser(managerPerms)),
-          input: {},
-        }),
-      ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    }
-  });
-
-  it("viewer can read every entity (read-only)", async () => {
-    const viewerPerms = [...ROLE_PERMISSIONS.viewer];
-    const expectedReads: Permission[] = [
-      "employees:read",
-      "projects:read",
-      "warehouses:read",
-      "inventory:read",
-      "debts:read",
-      "invoices:read",
-      "payments:read",
-    ];
-    for (const permission of expectedReads) {
-      const handler = middleware.withPermission(permission, async () => ({ allowed: true }));
-      await expect(
-        handler({
-          context: createContext(mockUser(viewerPerms)),
-          input: {},
-        }),
-      ).resolves.toEqual({ allowed: true });
-    }
-  });
-
-  it("viewer cannot mutate any entity (403 FORBIDDEN)", async () => {
-    const viewerPerms = [...ROLE_PERMISSIONS.viewer];
-    const denied: Permission[] = ALL_PERMISSIONS.filter(
-      (p) => !(viewerPerms as Permission[]).includes(p),
-    );
-
-    for (const permission of denied) {
-      const handler = middleware.withPermission(permission, async () => ({ allowed: true }));
-      await expect(
-        handler({
-          context: createContext(mockUser(viewerPerms)),
-          input: {},
-        }),
-      ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    }
-  });
-
-  it("viewer cannot create or update employees (the core acceptance test)", async () => {
-    const viewerPerms = [...ROLE_PERMISSIONS.viewer];
-    for (const permission of ["employees:create", "employees:update", "employees:delete"] as Permission[]) {
-      const handler = middleware.withPermission(permission, async () => ({ allowed: true }));
-      await expect(
-        handler({
-          context: createContext(mockUser(viewerPerms)),
-          input: {},
-        }),
-      ).rejects.toThrow(ORPCError);
+  it("workforce labels (empty perms) are denied every permission", async () => {
+    // worker / project_manager / warehouse_manager carry no permissions, so
+    // a user holding one of those labels can never act. (The former
+    // manager/viewer roles are removed entirely.)
+    for (const label of ["worker", "project_manager", "warehouse_manager"] as const) {
+      const perms = [...ROLE_PERMISSIONS[label]];
+      expect(perms).toEqual([]);
+      for (const permission of ALL_PERMISSIONS) {
+        const handler = middleware.withPermission(permission, async () => ({ allowed: true }));
+        await expect(
+          handler({
+            context: createContext(mockUser(perms)),
+            input: {},
+          }),
+        ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      }
     }
   });
 
@@ -232,11 +123,9 @@ describe("Cross-domain: Permission enforcement", () => {
     }
   });
 
-  it.each([
-    ["admin", ROLE_PERMISSIONS.admin],
-    ["manager", ROLE_PERMISSIONS.manager],
-    ["viewer", ROLE_PERMISSIONS.viewer],
-  ] as const)("role %s has the correct permission grants and denials", async (role: string, expected: readonly Permission[]) => {
+  it.each(
+    Object.entries(ROLE_PERMISSIONS) as [string, readonly Permission[]][],
+  )("role %s has the correct permission grants and denials", async (role: string, expected: readonly Permission[]) => {
     const expectedPerms = [...expected];
     // All expected permissions are granted
     for (const perm of expectedPerms) {

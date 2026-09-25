@@ -27,6 +27,15 @@ const adminAuthorizer = {
 };
 
 function insertSystemRole(database: SqliteDatabase, key: string, name: string) {
+  // Idempotent: the harness already seeds the workforce labels, so re-inserting
+  // one would hit the UNIQUE key constraint. Only insert when the key is
+  // missing (used for admin / custom placeholders the harness does not seed).
+  const existing = database
+    .prepare('SELECT "id" FROM "role" WHERE "key" = ? LIMIT 1')
+    .get(key) as { id: string } | undefined;
+  if (existing) {
+    return;
+  }
   const now = new Date().toISOString();
   database
     .prepare(
@@ -88,10 +97,10 @@ describe("requireAssignableEmployeeRole (post-Slice 3)", () => {
   const { createHarness, closeAll } = createCompanyHarnessTracker();
   afterEach(closeAll);
 
-  it("accepts manager and viewer without any caller grant (unchanged)", () => {
+  it("accepts workforce labels without any caller grant", () => {
     const { repository, database } = createHarness();
 
-    for (const key of ["manager", "viewer"] as const) {
+    for (const key of ["worker", "project_manager"] as const) {
       insertSystemRole(database, key, key);
       const roleId = getRoleIdByKey(database, key);
       expect(() => requireAssignableEmployeeRole(repository, roleId, "roleId")).not.toThrow();
@@ -182,10 +191,10 @@ describe("employee creation with assignable roles (post-Slice 3)", () => {
     ).item;
   }
 
-  it("createEmployee accepts manager and viewer roles", () => {
+  it("createEmployee accepts workforce label roles", () => {
     const { service, database } = createHarness();
 
-    for (const roleKey of ["manager", "viewer"] as const) {
+    for (const roleKey of ["worker", "project_manager"] as const) {
       const employee = createAssignableEmployee(service, database, roleKey, `0554123${roleKey}`);
       expect(employee.roleId).toBe(getRoleIdByKey(database, roleKey));
     }
@@ -256,8 +265,8 @@ describe("employee creation with assignable roles (post-Slice 3)", () => {
 
   it("createEmployee detects a duplicate phone even when the new phone is padded", () => {
     const { service, database } = createHarness();
-    insertSystemRole(database, "manager", "manager");
-    const roleId = getRoleIdByKey(database, "manager");
+    insertSystemRole(database, "worker", "worker");
+    const roleId = getRoleIdByKey(database, "worker");
 
     service.createEmployee({
       firstName: "عامل",
@@ -292,20 +301,20 @@ describe("employee creation with assignable roles (post-Slice 3)", () => {
     expect(employee.roleId).toBe(roleIds.worker);
   });
 
-  it("updateEmployee accepts a role change to a seeded role", () => {
+  it("updateEmployee accepts a role change to a workforce label", () => {
     const { service, database } = createHarness();
-    const employee = createAssignableEmployee(service, database, "manager", "0554100000");
-    insertSystemRole(database, "viewer", "viewer");
-    const viewerRoleId = getRoleIdByKey(database, "viewer");
+    const employee = createAssignableEmployee(service, database, "worker", "0554100000");
+    insertSystemRole(database, "project_manager", "project_manager");
+    const pmRoleId = getRoleIdByKey(database, "project_manager");
 
-    const updated = service.updateEmployee({ id: employee.id, roleId: viewerRoleId }).item;
+    const updated = service.updateEmployee({ id: employee.id, roleId: pmRoleId }).item;
 
-    expect(updated.roleId).toBe(viewerRoleId);
+    expect(updated.roleId).toBe(pmRoleId);
   });
 
   it("updateEmployee rejects a role change to a non-system role", () => {
     const { service, database } = createHarness();
-    const employee = createAssignableEmployee(service, database, "manager", "0554100001");
+    const employee = createAssignableEmployee(service, database, "worker", "0554100001");
     insertCustomRole(database, "custom");
 
     expect(() => service.updateEmployee({ id: employee.id, roleId: "custom-custom" })).toThrowError(
@@ -315,7 +324,7 @@ describe("employee creation with assignable roles (post-Slice 3)", () => {
 
   it("updateEmployee rejects promoting an employee to admin without the grant", () => {
     const { service, database } = createHarness();
-    const employee = createAssignableEmployee(service, database, "manager", "0554100002");
+    const employee = createAssignableEmployee(service, database, "worker", "0554100002");
     insertSystemRole(database, "admin", "admin");
 
     try {
@@ -332,7 +341,7 @@ describe("employee creation with assignable roles (post-Slice 3)", () => {
     const employee = createAssignableEmployee(
       service,
       database,
-      "manager",
+      "worker",
       "0554100003",
       createAuditContext({ actorUserId: OWNER_USER_ID }),
     );
@@ -346,15 +355,15 @@ describe("employee creation with assignable roles (post-Slice 3)", () => {
     expect(updated.roleId).toBe(getRoleIdByKey(database, "admin"));
   });
 
-  it("createEmployeesBatch accepts a batch of manager and viewer roles", () => {
+  it("createEmployeesBatch accepts a batch of workforce label roles", () => {
     const { service, database } = createHarness();
 
-    for (const roleKey of ["manager", "viewer"] as const) {
+    for (const roleKey of ["project_manager", "warehouse_manager"] as const) {
       insertSystemRole(database, roleKey, roleKey);
     }
 
     const result = service.createEmployeesBatch({
-      employees: ["manager", "viewer"].map((roleKey, index) => ({
+      employees: ["project_manager", "warehouse_manager"].map((roleKey, index) => ({
         firstName: "عامل",
         lastName: roleKey,
         phone: `0554233${index}`,

@@ -85,6 +85,57 @@ describe("createAppConfig", () => {
     expect(config.databasePath).toBe("./data/from-url.sqlite");
   });
 
+  // -----------------------------------------------------------------------
+  // Database key resolution (issue #265)
+  // -----------------------------------------------------------------------
+
+  it("defaults the database key to null when none is configured", () => {
+    const config = createAppConfig(requiredAuth);
+    expect(config.databaseKey).toBeNull();
+  });
+
+  it("resolves APP_DB_KEY into the database key", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_KEY: "env-db-key-123",
+    });
+    expect(config.databaseKey).toBe("env-db-key-123");
+  });
+
+  it("treats a blank APP_DB_KEY as no key (plain database)", () => {
+    // An explicit-but-blank env key is a deliberate "no key" override: it
+    // blocks any config-file db_key in mergeConfigIntoEnv (env wins) and
+    // resolves to null here — the same plain-DB outcome as no key at all.
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_KEY: "   ",
+    });
+    expect(config.databaseKey).toBeNull();
+  });
+
+  it("resolves the config file's db_key into the database key when env is unset", () => {
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(configPath, JSON.stringify({ db_key: "config-db-key-123" }), "utf8");
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      TUARI_CONFIG_FILE: configPath,
+    });
+    expect(config.databaseKey).toBe("config-db-key-123");
+  });
+
+  it("env APP_DB_KEY wins over the config file's db_key", () => {
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(configPath, JSON.stringify({ db_key: "config-db-key-123" }), "utf8");
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      TUARI_CONFIG_FILE: configPath,
+      APP_DB_KEY: "env-wins-key-123",
+    });
+    expect(config.databaseKey).toBe("env-wins-key-123");
+  });
+
   it("rejects non-file DATABASE_URL values", () => {
     expect(() =>
       createAppConfig({
@@ -152,6 +203,52 @@ describe("createAppConfig", () => {
     });
 
     expect(config.betterAuthUrl).toBe("http://127.0.0.1:8080");
+  });
+
+  it("derives the default web origin allowlist from WEB_PORT", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      WEB_PORT: "3001",
+    });
+
+    expect(config.allowedOrigins).toContain("http://localhost:3001");
+    expect(config.allowedOrigins).toContain("http://127.0.0.1:3001");
+    // Desktop/framework origins are preserved regardless of the web port.
+    expect(config.allowedOrigins).toContain("http://localhost:1420");
+    expect(config.allowedOrigins).toContain("tauri://localhost");
+    // The old baked-in web port is NOT included when WEB_PORT is overridden.
+    expect(config.allowedOrigins).not.toContain("http://localhost:3000");
+    expect(config.allowedOrigins).not.toContain("http://127.0.0.1:3000");
+  });
+
+  it("keeps the default web origin at 3000 when WEB_PORT is unset", () => {
+    const config = createAppConfig(requiredAuth);
+    expect(config.allowedOrigins).toContain("http://localhost:3000");
+    expect(config.allowedOrigins).toContain("http://127.0.0.1:3000");
+  });
+
+  it("lets an explicit ALLOWED_ORIGINS win over WEB_PORT", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      WEB_PORT: "3001",
+      ALLOWED_ORIGINS: "http://localhost:8080",
+    });
+
+    expect(config.allowedOrigins).toEqual(["http://localhost:8080"]);
+  });
+
+  it("rejects non-integer or out-of-range WEB_PORT values", () => {
+    expect(() =>
+      createAppConfig({ ...requiredAuth, WEB_PORT: "abc" }),
+    ).toThrow("WEB_PORT must be a positive integer");
+
+    expect(() =>
+      createAppConfig({ ...requiredAuth, WEB_PORT: "0" }),
+    ).toThrow("WEB_PORT must be a positive integer between 1 and 65535");
+
+    expect(() =>
+      createAppConfig({ ...requiredAuth, WEB_PORT: "65536" }),
+    ).toThrow("WEB_PORT must be a positive integer between 1 and 65535");
   });
 
   it("parses ALLOWED_ORIGINS CSV into an array", () => {
@@ -509,6 +606,7 @@ describe("createAppConfig", () => {
     expect(config).toHaveProperty("dbAdapter");
     expect(config).toHaveProperty("databasePath");
     expect(config).toHaveProperty("databaseUrl");
+    expect(config).toHaveProperty("databaseKey");
     expect(config).toHaveProperty("attachmentsRootPath");
     expect(config).toHaveProperty("host");
     expect(config).toHaveProperty("port");

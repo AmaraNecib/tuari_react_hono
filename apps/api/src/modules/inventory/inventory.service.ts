@@ -4,11 +4,14 @@ import type {
   InventoryInvoiceGroupCreateInput,
   InventoryItemDefinitionCreateInput,
   InventoryItemDefinitionUpdateInput,
+  InventoryReport,
+  MovementReport,
 } from "@tuari/contracts"
 
 import { InventoryError } from "./inventory.errors"
 import { CompanyError } from "../company/company.errors"
 import { createAlgeriaTimestamp } from "../company/company-time"
+import { ageInDays, resolveReportWindow, roundMoney } from "../company/report.helpers"
 import type { MutationAuditContext } from "../company/company.types"
 import type {
   InventoryAssetUnitCreateData,
@@ -117,6 +120,12 @@ const ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES = new Set([
 const MAX_INVOICE_ATTACHMENT_COUNT = 10
 const MAX_INVOICE_ATTACHMENT_SIZE = 5 * 1024 * 1024
 const MAX_INVOICE_ATTACHMENT_TOTAL_SIZE = 15 * 1024 * 1024
+
+// ---------------------------------------------------------------------------
+// Report aggregation helpers (shared with FinanceService — see
+// ../company/report.helpers.ts)
+// ---------------------------------------------------------------------------
+
 
 /**
  * Inventory service handling item definitions, movements, invoices, transfers, and location contents.
@@ -275,8 +284,15 @@ export class InventoryService {
         throw new InventoryError("VALIDATION", "لا يمكن إضافة عنصر غير نشط.", [{ field: `entries.${index}.itemDefinitionId`, message: "لا يمكن إضافة عنصر غير نشط." }])
       }
 
-      const effectiveWarehouseId = entry.warehouseId ?? input.warehouseId ?? null
-      const effectiveProjectId = entry.projectId ?? input.projectId ?? null
+      // Destination inheritance is XOR-aware: an entry that explicitly picks
+      // one side must NOT inherit the header default for the other side
+      // (a null here means "inherit the header default", so sending null for
+      // the opposite destination of an explicit pick would resurrect both
+      // destinations and violate the per-entry warehouse XOR project rule).
+      const effectiveWarehouseId =
+        entry.warehouseId ?? (entry.projectId ? null : input.warehouseId ?? null)
+      const effectiveProjectId =
+        entry.projectId ?? (entry.warehouseId ? null : input.projectId ?? null)
 
       validateSingleDestination(effectiveWarehouseId, effectiveProjectId, `entries.${index}.warehouseId`)
       requireOneDestination(effectiveWarehouseId, effectiveProjectId, `entries.${index}.warehouseId`)
@@ -681,10 +697,15 @@ export class InventoryService {
           throw new InventoryError("VALIDATION", `حجم الملف كبير جدًا: ${file.name}`)
         }
 
+        // Read the bytes only after every limit check passes — over-limit
+        // requests are rejected before any byte-array copy is allocated
+        // (issue #214: lazy bytes owned by the module, not the transport).
+        const byteContent = await file.bytes()
+
         const saved = await this.storage.saveInvoiceAttachment({
           invoiceGroupId,
           originalName: file.name,
-          bytes: file.bytes,
+          bytes: byteContent,
         })
 
         savedFiles.push({
@@ -921,5 +942,221 @@ export class InventoryService {
       throw new InventoryError("NOT_FOUND", "التحويل المحدد غير موجود.")
     }
     return transfer
+  }
+
+  /**
+   * Generate the INVENTORY report.
+   *
+   * Real aggregation over invoice entries (joined with their invoice-group
+   * document date) — the dashboard's total-value/assets cards. Semantics:
+   * window = [startDate, endDate] applied on the document date
+   * (invoice date, falling back to entry creation); unbounded sides are open.
+   * Values are the entry total prices split by item type — no fabricated
+   * splits or proportions. Empty windows yield an honest all-zero report.
+   */
+  generateInventoryReport(input: { startDate?: string; endDate?: string }): InventoryReport {
+    const { startMs, endMs, reportDateMs } = resolveReportWindow(input)
+    const rows = this.repository.listInventoryValuations().filter((row) => {
+      const documentMs = Date.parse(row.documentDate)
+      return documentMs >= startMs && documentMs <= endMs
+    })
+
+    let totalAssetsRaw = 0
+    let totalConsumablesRaw = 0
+    for (const row of rows) {
+      if (row.itemType === "ASSET") {
+        totalAssetsRaw += row.totalPriceDzd
+      } else {
+        totalConsumablesRaw += row.totalPriceDzd
+      }
+    }
+    const totalAssetsDzd = roundMoney(totalAssetsRaw)
+    const totalConsumablesDzd = roundMoney(totalConsumablesRaw)
+    const totalValueDzd = roundMoney(totalAssetsRaw + totalConsumablesRaw)
+
+    const locations = new Map<string, {
+      locationId: string | null
+      locationLabel: string
+      assetCount: number
+      assetValueDzd: number
+      consumableCount: number
+    }>()
+    for (const row of rows) {
+      // Warehouse and project ids live in separate namespaces, so a warehouse
+      // and a project can share an id string; key by a location-kind-qualified
+      // id so they never merge, while still emitting the single nullable id.
+      const key = row.locationType === "WAREHOUSE" ? `w:${row.locationId}` : row.locationType === "PROJECT" ? `p:${row.locationId}` : "__unlocated__"
+      const current = locations.get(key) ?? {
+        locationId: row.locationId,
+        locationLabel: row.locationLabel,
+        assetCount: 0,
+        assetValueDzd: 0,
+        consumableCount: 0,
+      }
+      if (row.itemType === "ASSET") {
+        current.assetCount += row.quantity
+        current.assetValueDzd += row.totalPriceDzd
+      } else {
+        current.consumableCount += row.quantity
+      }
+      locations.set(key, current)
+    }
+    const byLocation = Array.from(locations.values())
+      .map((location) => ({ ...location, assetValueDzd: roundMoney(location.assetValueDzd) }))
+      .sort((a, b) => a.locationLabel.localeCompare(b.locationLabel, "ar"))
+
+    const items = new Map<string, {
+      itemName: string
+      quantity: number
+      valueDzd: number
+      lastUpdated: string
+    }>()
+    for (const row of rows) {
+      const current = items.get(row.itemName) ?? {
+        itemName: row.itemName,
+        quantity: 0,
+        valueDzd: 0,
+        lastUpdated: row.lastUpdated,
+      }
+      current.quantity += row.quantity
+      current.valueDzd += row.totalPriceDzd
+      if (row.lastUpdated > current.lastUpdated) {
+        current.lastUpdated = row.lastUpdated
+      }
+      items.set(row.itemName, current)
+    }
+    const byItemType = Array.from(items.values())
+      .map((item) => ({ ...item, valueDzd: roundMoney(item.valueDzd) }))
+      .sort((a, b) => b.valueDzd - a.valueDzd || a.itemName.localeCompare(b.itemName, "ar"))
+
+    const agingAccumulators: Record<
+      "0-30_DAYS" | "31-90_DAYS" | "90-180_DAYS" | "180+_DAYS",
+      { count: number; valueDzd: number }
+    > = {
+      "0-30_DAYS": { count: 0, valueDzd: 0 },
+      "31-90_DAYS": { count: 0, valueDzd: 0 },
+      "90-180_DAYS": { count: 0, valueDzd: 0 },
+      "180+_DAYS": { count: 0, valueDzd: 0 },
+    }
+    for (const row of rows) {
+      const age = ageInDays(Date.parse(row.documentDate), reportDateMs)
+      const category =
+        age <= 30 ? "0-30_DAYS" : age <= 89 ? "31-90_DAYS" : age <= 179 ? "90-180_DAYS" : "180+_DAYS"
+      agingAccumulators[category].count += 1
+      agingAccumulators[category].valueDzd += row.totalPriceDzd
+    }
+    const agingAnalysis = (["0-30_DAYS", "31-90_DAYS", "90-180_DAYS", "180+_DAYS"] as const).map(
+      (ageCategory) => ({
+        ageCategory,
+        count: agingAccumulators[ageCategory].count,
+        valueDzd: roundMoney(agingAccumulators[ageCategory].valueDzd),
+      }),
+    )
+
+    return {
+      type: "INVENTORY",
+      generatedAt: createAlgeriaTimestamp(),
+      summary: {
+        totalAssetsDzd,
+        totalConsumablesDzd,
+        totalValueDzd,
+      },
+      byLocation,
+      byItemType,
+      agingAnalysis,
+    }
+  }
+
+  /**
+   * Generate the MOVEMENT report.
+   *
+   * Real aggregation over inventory movements in the window (applied on
+   * `occurredAt`). Movement value = quantity × the linked entry's unit price;
+   * movements without an entry link (e.g. asset outbound sales, which record
+   * no entry reference) honestly contribute value 0 — never an estimate.
+   */
+  generateMovementReport(input: { startDate?: string; endDate?: string }): MovementReport {
+    const { startMs, endMs } = resolveReportWindow(input)
+    const rows = this.repository.listMovementValuations().filter(({ movement }) => {
+      const occurredMs = Date.parse(movement.occurredAt)
+      return occurredMs >= startMs && occurredMs <= endMs
+    })
+
+    let assetTransfers = 0
+    let consumableTransfers = 0
+    let outboundSales = 0
+    for (const { movement } of rows) {
+      if (movement.movementType === "TRANSFER") {
+        if (movement.itemType === "ASSET") {
+          assetTransfers += 1
+        } else {
+          consumableTransfers += 1
+        }
+      } else if (movement.movementType === "OUTBOUND_SALE") {
+        outboundSales += 1
+      }
+    }
+
+    const byType = (["PURCHASE", "TRANSFER", "OUTBOUND_SALE"] as const).map((movementType) => {
+      const ofType = rows.filter(({ movement }) => movement.movementType === movementType)
+      const valueDzd = ofType.reduce(
+        (sum, { movement, unitPriceDzd }) => sum + (unitPriceDzd ?? 0) * movement.quantity,
+        0,
+      )
+      return { movementType, count: ofType.length, valueDzd: roundMoney(valueDzd) }
+    })
+
+    const periods = new Map<string, { count: number; valueDzd: number }>()
+    for (const { movement, unitPriceDzd } of rows) {
+      const period = movement.occurredAt.slice(0, 7)
+      const current = periods.get(period) ?? { count: 0, valueDzd: 0 }
+      current.count += 1
+      current.valueDzd += (unitPriceDzd ?? 0) * movement.quantity
+      periods.set(period, current)
+    }
+    const byPeriod = Array.from(periods.entries())
+      .map(([period, { count, valueDzd }]) => ({ period, count, valueDzd: roundMoney(valueDzd) }))
+      .sort((a, b) => a.period.localeCompare(b.period))
+
+    const destinations = new Map<string, {
+      destinationLabel: string
+      receiveCount: number
+      valueDzd: number
+    }>()
+    for (const { movement, unitPriceDzd } of rows) {
+      if (!movement.toWarehouseId && !movement.toProjectId) {
+        continue
+      }
+      const key = movement.toWarehouseId ?? movement.toProjectId ?? ""
+      const current = destinations.get(key) ?? {
+        destinationLabel: this.repository.resolveLocationLabel(movement.toWarehouseId, movement.toProjectId),
+        receiveCount: 0,
+        valueDzd: 0,
+      }
+      current.receiveCount += 1
+      current.valueDzd += (unitPriceDzd ?? 0) * movement.quantity
+      destinations.set(key, current)
+    }
+    const topDestinations = Array.from(destinations.values())
+      .map((destination) => ({ ...destination, valueDzd: roundMoney(destination.valueDzd) }))
+      .sort(
+        (a, b) =>
+          b.receiveCount - a.receiveCount || a.destinationLabel.localeCompare(b.destinationLabel, "ar"),
+      )
+      .slice(0, 10)
+
+    return {
+      type: "MOVEMENT",
+      generatedAt: createAlgeriaTimestamp(),
+      summary: {
+        totalMovements: rows.length,
+        assetTransfers,
+        consumableTransfers,
+        outboundSales,
+      },
+      byType,
+      byPeriod,
+      topDestinations,
+    }
   }
 }

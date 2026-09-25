@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CompanyError } from "./company.errors";
 import { createAuditContext, createCompanyHarnessTracker } from "./company.test-helpers";
@@ -9,6 +9,342 @@ describe("WorkforceService coverage branches", () => {
   afterEach(closeAll);
 
   const audit = () => createAuditContext();
+
+  describe("atomic employee save", () => {
+    it("saves an active worker profile and placement in one operation", () => {
+      const { service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "مشروع",
+        phone: "0554000101",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const project = service.createProject({
+        name: "مشروع نشط",
+        managerId: manager.id,
+        status: "ACTIVE",
+      }).item;
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "نشط",
+        phone: "0554000102",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+
+      const result = service.saveEmployee({
+        ...worker,
+        firstName: "عامل معدل",
+        placement: {
+          nextType: "PROJECT",
+          managerId: manager.id,
+          projectId: project.id,
+          warehouseId: null,
+        },
+        managedProjectIds: [],
+        managedWarehouseIds: [],
+      }, audit());
+
+      expect(result.item.firstName).toBe("عامل معدل");
+      expect(service.listManagerAssignments({ workerId: worker.id }).items).toHaveLength(1);
+      expect(service.listProjectAssignments({ employeeId: worker.id }).items).toHaveLength(1);
+    });
+
+    it("keeps a newer concurrent placement when a stale save omits relationship fields", () => {
+      const { service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "تزامن",
+        phone: "0554000111",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const staleProject = service.createProject({ name: "مشروع قديم", managerId: manager.id, status: "ACTIVE" }).item;
+      const warehouse = service.createWarehouse({ name: "مستودع جديد", status: "ACTIVE" }).item;
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "تزامن",
+        phone: "0554000112",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+
+      // The stale page's load-time snapshot: the worker sits on the old project.
+      service.saveEmployee({
+        ...worker,
+        placement: { nextType: "PROJECT", managerId: manager.id, projectId: staleProject.id, warehouseId: null },
+        managedProjectIds: [],
+        managedWarehouseIds: [],
+      }, audit());
+
+      // A newer concurrent update moves the worker to a warehouse.
+      service.assignEmployeeWorkplace(
+        { employeeId: worker.id, nextType: "WAREHOUSE", warehouseId: warehouse.id },
+        audit(),
+      );
+
+      // The stale page then saves an unrelated profile field without touching
+      // relationship controls; the server must keep the newer placement.
+      const result = service.saveEmployee({ ...worker, firstName: "عامل بعد التزامن" }, audit());
+
+      expect(result.item.firstName).toBe("عامل بعد التزامن");
+      expect(service.listProjectAssignments({ employeeId: worker.id, status: "ACTIVE" }).items).toHaveLength(0);
+      expect(service.listWarehouseAssignments({ employeeId: worker.id, status: "ACTIVE" }).items).toHaveLength(1);
+    });
+
+    it("rejects a profile-only save that would leave an ACTIVE worker unplaced", () => {
+      const { service, roleIds } = createHarness();
+      const unplacedWorker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "بلا مكان",
+        phone: "0554000114",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+
+      // Issue #20: an ACTIVE worker must have a project-or-warehouse
+      // placement, so a stale profile-only save cannot sneak an unplaced
+      // worker through (E2E worker-assignment regression).
+      expect(() => service.saveEmployee({ ...unplacedWorker, firstName: "لا يجب أن تحفظ" }, audit()))
+        .toThrow("اختر مكان عمل للعامل النشط (مشروع أو مستودع).");
+      expect(service.getEmployee(unplacedWorker.id).item.firstName).toBe("عامل");
+    });
+
+    it("still saves a profile-only batch for an INACTIVE unplaced worker", () => {
+      const { service, roleIds } = createHarness();
+      const inactiveWorker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "غير نشط",
+        phone: "0554000115",
+        roleId: roleIds.worker,
+        status: "INACTIVE",
+      }).item;
+
+      const result = service.saveEmployee({ ...inactiveWorker, firstName: "عامل معدل" }, audit());
+
+      expect(result.item.firstName).toBe("عامل معدل");
+    });
+
+    it("keeps newer managed-scope updates when a stale save omits relationship fields", () => {
+      const { service, roleIds } = createHarness();
+      const projectManager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "نطاق",
+        phone: "0554000113",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const projectA = service.createProject({ name: "مشروع أ", managerId: projectManager.id, status: "ACTIVE" }).item;
+      const projectB = service.createProject({ name: "مشروع ب", managerId: projectManager.id, status: "ACTIVE" }).item;
+
+      service.saveEmployee({ ...projectManager, managedProjectIds: [projectA.id] }, audit());
+
+      // A newer concurrent update grants management of a second project.
+      service.syncManagedProjects(
+        { employeeId: projectManager.id, projectIds: [projectA.id, projectB.id] },
+        audit(),
+      );
+
+      const result = service.saveEmployee({ ...projectManager, firstName: "مدير بعد التزامن" }, audit());
+
+      expect(result.item.firstName).toBe("مدير بعد التزامن");
+      expect(service.listProjects({ managerId: projectManager.id }).items.map((project) => project.id).sort())
+        .toEqual([projectA.id, projectB.id].sort());
+    });
+
+    it("rolls the profile back when a workplace write fails", () => {
+      const { repository, service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "مكان",
+        phone: "0554000108",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const project = service.createProject({ name: "مشروع مكان", managerId: manager.id, status: "ACTIVE" }).item;
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "مكان",
+        phone: "0554000109",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+      const originalAssign = repository.assignEmployeeWorkplace.bind(repository);
+      vi.spyOn(repository, "assignEmployeeWorkplace").mockImplementation((data, context) => {
+        originalAssign(data, context);
+        throw new Error("injected workplace failure");
+      });
+
+      expect(() => service.saveEmployee({
+        ...worker,
+        firstName: "لا يجب أن تحفظ",
+        placement: { nextType: "PROJECT", managerId: manager.id, projectId: project.id, warehouseId: null },
+        managedProjectIds: [],
+        managedWarehouseIds: [],
+      }, audit())).toThrow("injected workplace failure");
+      expect(service.getEmployee(worker.id).item.firstName).toBe("عامل");
+      expect(service.listManagerAssignments({ workerId: worker.id }).items).toHaveLength(0);
+      expect(service.listProjectAssignments({ employeeId: worker.id }).items).toHaveLength(0);
+    });
+
+    it("rolls the profile back when a managed-scope write fails", () => {
+      const { repository, service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "فشل",
+        phone: "0554000103",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      service.createProject({
+        name: "مشروع فشل",
+        managerId: manager.id,
+        status: "ACTIVE",
+      });
+      const replacementProject = service.createProject({
+        name: "مشروع بديل",
+        status: "ACTIVE",
+      }).item;
+      const ownershipCountBefore = service.listProjectManagerOwnershipHistory({ managerId: manager.id }).items.length;
+      const originalSync = repository.syncManagedProjects.bind(repository);
+      vi.spyOn(repository, "syncManagedProjects").mockImplementation((data, context) => {
+        originalSync(data, context);
+        throw new Error("injected managed-project failure");
+      });
+
+      expect(() => service.saveEmployee({
+        ...manager,
+        firstName: "لا يجب أن تحفظ",
+        placement: null,
+        managedProjectIds: [replacementProject.id],
+        managedWarehouseIds: [],
+      }, audit())).toThrow("injected managed-project failure");
+      expect(service.getEmployee(manager.id).item.firstName).toBe("مدير");
+      expect(repository.getProjectById(replacementProject.id)?.managerId).toBeNull();
+      expect(service.listProjectManagerOwnershipHistory({ managerId: manager.id }).items).toHaveLength(ownershipCountBefore);
+    });
+
+    it("rolls the profile back when a managed-warehouse write fails", () => {
+      const { repository, service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "مخزن فشل",
+        phone: "0554000110",
+        roleId: roleIds.warehouseManager,
+        status: "ACTIVE",
+      }).item;
+      const warehouse = service.createWarehouse({ name: "مخزن فشل", status: "ACTIVE" }).item;
+      const ownershipCountBefore = service.listWarehouseManagerOwnershipHistory({ managerId: manager.id }).items.length;
+      const originalSync = repository.syncManagedWarehouses.bind(repository);
+      vi.spyOn(repository, "syncManagedWarehouses").mockImplementation((data, context) => {
+        originalSync(data, context);
+        throw new Error("injected managed-warehouse failure");
+      });
+
+      expect(() => service.saveEmployee({
+        ...manager,
+        firstName: "لا يجب أن تحفظ",
+        placement: null,
+        managedProjectIds: [],
+        managedWarehouseIds: [warehouse.id],
+      }, audit())).toThrow("injected managed-warehouse failure");
+      expect(service.getEmployee(manager.id).item.firstName).toBe("مدير");
+      expect(repository.getWarehouseById(warehouse.id)?.managerId).toBeNull();
+      expect(service.listWarehouseManagerOwnershipHistory({ managerId: manager.id }).items).toHaveLength(ownershipCountBefore);
+    });
+
+    it("syncs active project and warehouse managers and ignores inactive placement", () => {
+      const { service, roleIds } = createHarness();
+      const projectManager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "مشاريع",
+        phone: "0554000104",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const project = service.createProject({ name: "مشروع إدارة", managerId: projectManager.id, status: "ACTIVE" }).item;
+      service.saveEmployee({
+        ...projectManager,
+        placement: null,
+        managedProjectIds: [project.id],
+        managedWarehouseIds: [],
+      }, audit());
+      expect(service.listProjectManagerOwnershipHistory({ managerId: projectManager.id }).items).toHaveLength(1);
+
+      const warehouseManager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "مخازن",
+        phone: "0554000105",
+        roleId: roleIds.warehouseManager,
+        status: "ACTIVE",
+      }).item;
+      const warehouse = service.createWarehouse({ name: "مخزن إدارة", managerId: warehouseManager.id, status: "ACTIVE" }).item;
+      service.saveEmployee({
+        ...warehouseManager,
+        placement: null,
+        managedProjectIds: [],
+        managedWarehouseIds: [warehouse.id],
+      }, audit());
+      expect(service.listWarehouseManagerOwnershipHistory({ managerId: warehouseManager.id }).items).toHaveLength(1);
+
+      const inactiveWorker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "غير نشط",
+        phone: "0554000106",
+        roleId: roleIds.worker,
+        status: "INACTIVE",
+      }).item;
+      const result = service.saveEmployee({
+        ...inactiveWorker,
+        placement: {
+          nextType: "PROJECT",
+          managerId: "missing-manager",
+          projectId: "missing-project",
+          warehouseId: null,
+        },
+        managedProjectIds: [],
+        managedWarehouseIds: [],
+      }, audit());
+      expect(result.item.status).toBe("INACTIVE");
+      expect(service.listManagerAssignments({ workerId: inactiveWorker.id }).items).toHaveLength(0);
+    });
+
+    it("does not call the worker placement write when a placed active worker has no placement payload", () => {
+      const { repository, service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "تخطي",
+        phone: "0554000116",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const project = service.createProject({ name: "مشروع تخطي", managerId: manager.id, status: "ACTIVE" }).item;
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "بدون ربط",
+        phone: "0554000107",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+      // The worker already holds a placement, so omitting the placement field
+      // is a valid profile-only save that must not rewrite relationships.
+      service.assignEmployeeWorkplace(
+        { employeeId: worker.id, nextType: "PROJECT", managerId: manager.id, projectId: project.id },
+        audit(),
+      );
+      const placement = vi.spyOn(repository, "assignEmployeeWorkplace");
+
+      service.saveEmployee({
+        ...worker,
+        firstName: "عامل معدل",
+        managedProjectIds: [],
+        managedWarehouseIds: [],
+      }, audit());
+      expect(placement).not.toHaveBeenCalled();
+      expect(service.getEmployee(worker.id).item.firstName).toBe("عامل معدل");
+    });
+  });
 
   describe("roles", () => {
     it("getRole resolves an existing role and rejects a missing one", () => {
@@ -610,7 +946,7 @@ describe("WorkforceService coverage branches", () => {
       ).toThrowError(CompanyError);
     });
 
-    it("rejects WAREHOUSE nextType", () => {
+    it("applies a WAREHOUSE workplace assignment end-to-end", () => {
       const { service, roleIds } = createHarness();
       const worker = service.createEmployee({
         firstName: "عامل",
@@ -619,9 +955,35 @@ describe("WorkforceService coverage branches", () => {
         roleId: roleIds.worker,
         status: "ACTIVE",
       }).item;
+      const warehouse = service.createWarehouse({ name: "مخزن", status: "ACTIVE" }).item;
+      const result = service.assignEmployeeWorkplace(
+        { employeeId: worker.id, nextType: "WAREHOUSE", warehouseId: warehouse.id },
+        audit(),
+      );
+      expect(result.success).toBe(true);
+      const assignments = service.listWarehouseAssignments({ employeeId: worker.id }).items;
+      expect(assignments).toHaveLength(1);
+      expect(assignments[0]?.warehouseId).toBe(warehouse.id);
+    });
+
+    it("rejects a WAREHOUSE placement with a missing or inactive warehouse", () => {
+      const { service, roleIds } = createHarness();
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "مخزن",
+        phone: "0554000024",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+      expect(() =>
+        service.assignEmployeeWorkplace({ employeeId: worker.id, nextType: "WAREHOUSE" }, audit()),
+      ).toThrowError(CompanyError);
+      const inactiveWarehouse = service
+        .createWarehouse({ name: "مخزن غير نشط", status: "INACTIVE" })
+        .item;
       expect(() =>
         service.assignEmployeeWorkplace(
-          { employeeId: worker.id, nextType: "WAREHOUSE", warehouseId: "w1" },
+          { employeeId: worker.id, nextType: "WAREHOUSE", warehouseId: inactiveWarehouse.id },
           audit(),
         ),
       ).toThrowError(CompanyError);
