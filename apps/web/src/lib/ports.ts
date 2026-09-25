@@ -83,6 +83,11 @@ export function resolveWebServer(
 
 /** API base URL — `API_PORT` (default 4318), loopback, normalized. */
 export function apiBaseUrl(env: Record<string, string | undefined> = process.env): string {
+  // PLAYWRIGHT_API_URL pins the suite — and any spec that talks to the API
+  // directly — to an explicitly managed API. Required when the web server is
+  // externally managed, so the browser and the specs read the same data.
+  const explicit = env.PLAYWRIGHT_API_URL?.trim()
+  if (explicit) return explicit.replace(/\/+$/, "")
   return `http://127.0.0.1:${normalizePort(env.API_PORT, DEFAULT_API_PORT)}`
 }
 
