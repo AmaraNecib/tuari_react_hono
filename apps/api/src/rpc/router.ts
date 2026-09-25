@@ -71,9 +71,14 @@ export function createRouter(
     authSetupStatus: os.authSetupStatus.handler(async () =>
       dependencies.authBootstrapService.getSetupStatus(),
     ),
-    authBootstrap: os.authBootstrap.handler(async ({ input }) =>
-      dependencies.authBootstrapService.bootstrapFirstUser(input),
-    ),
+    authBootstrap: os.authBootstrap.handler(async ({ context, input }) => {
+      // Defense-in-depth (#175): the setup secret is the one in-scope
+      // credential verified by an unauthenticated endpoint. Charge it against
+      // the shared per-IP budget (same socket-keyed limiter as the auth routes)
+      // so the strong secret is additionally protected against online guessing.
+      m.rateLimit(context);
+      return dependencies.authBootstrapService.bootstrapFirstUser(input);
+    }),
   };
 
   const allHandlers = {
@@ -83,7 +88,7 @@ export function createRouter(
     ...createOperationsHandlers(os, m, dependencies.operationsService),
     ...createFinanceHandlers(os, m, dependencies.financeService),
     ...createInventoryHandlers(os, m, dependencies.inventoryService),
-    ...createReportsHandlers(os, m, dependencies.companyService, dependencies.inventoryService),
+    ...createReportsHandlers(os, m, dependencies.financeService, dependencies.inventoryService),
     ...createInvoiceHandlers(os, m, dependencies.invoiceModule),
     ...createPaymentHandlers(os, m, dependencies.paymentModule),
     ...createUpdateHandlers(os, m, dependencies.updateService, dependencies.updateHistoryService),

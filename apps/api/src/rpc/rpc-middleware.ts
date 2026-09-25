@@ -116,6 +116,21 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
   }
 
   return {
+    /**
+     * Charge one request against the shared per-IP budget for the caller.
+     *
+     * Used to throttle unauthenticated base-RPC handlers (e.g. `authBootstrap`,
+     * which verifies the setup secret) that do not go through the
+     * authenticated `*RateLimited` wrappers. Keeps these unauthenticated RPC
+     * surfaces on the same spoof-proof socket-keyed budget as the authenticated
+     * RPC wrappers (note: the `/api/auth/*` routes use a separately
+     * instantiated 30-request limiter, so they are NOT on this shared budget).
+     * Throws `TOO_MANY_REQUESTS` when the budget is exhausted.
+     */
+    rateLimit(context: RpcContext): void {
+      checkRateLimit(context);
+    },
+
     queryAuth<TInput, TOutput>(
       handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput>,
     ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {

@@ -758,6 +758,86 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       .limit(1).all()[0]
     return row ? mapOutboundTransfer(row) : null
   }
+
+  // ── Report reads ────────────────────────────────────────────────────
+
+  /** resolveLocationLabel. */
+  resolveLocationLabel(warehouseId?: string | null, projectId?: string | null) {
+    return resolveLocationLabelByIds(this.raw, warehouseId, projectId)
+  }
+
+  /** listInventoryValuations. */
+  listInventoryValuations() {
+    const rows = this.db.select({
+      id: schema.inventoryEntry.id,
+      itemType: schema.inventoryEntry.itemType,
+      itemName: schema.inventoryEntry.itemName,
+      quantity: schema.inventoryEntry.quantity,
+      unitPriceDzd: schema.inventoryEntry.unitPriceDzd,
+      totalPriceDzd: schema.inventoryEntry.totalPriceDzd,
+      updatedAt: schema.inventoryEntry.updatedAt,
+      warehouseId: schema.inventoryEntry.warehouseId,
+      projectId: schema.inventoryEntry.projectId,
+      invoiceDate: schema.inventoryInvoiceGroup.invoiceDate,
+      groupCreatedAt: schema.inventoryInvoiceGroup.createdAt,
+    }).from(schema.inventoryEntry)
+      .innerJoin(
+        schema.inventoryInvoiceGroup,
+        eq(schema.inventoryEntry.invoiceGroupId, schema.inventoryInvoiceGroup.id),
+      )
+      .all()
+
+    return rows.map((row) => {
+      const locationId = row.warehouseId ?? row.projectId ?? null
+      const locationType = (row.warehouseId ? "WAREHOUSE" : row.projectId ? "PROJECT" : null) as "WAREHOUSE" | "PROJECT" | null
+      return {
+        id: String(row.id),
+        itemType: row.itemType as "CONSUMABLE" | "ASSET",
+        itemName: String(row.itemName),
+        quantity: Number(row.quantity ?? 0),
+        unitPriceDzd: row.unitPriceDzd != null ? Number(row.unitPriceDzd) : null,
+        totalPriceDzd: Number(row.totalPriceDzd ?? 0),
+        lastUpdated: String(row.updatedAt),
+        documentDate: String(row.invoiceDate ?? row.groupCreatedAt),
+        locationId,
+        locationType,
+        locationLabel: resolveLocationLabelByIds(this.raw, row.warehouseId, row.projectId),
+      }
+    })
+  }
+
+  /** listMovementValuations. */
+  listMovementValuations() {
+    const rows = this.db.select({
+      movement: schema.inventoryMovement,
+      unitPriceDzd: schema.inventoryEntry.unitPriceDzd,
+      assetPurchasePriceDzd: schema.inventoryAssetUnit.purchasePriceDzd,
+    }).from(schema.inventoryMovement)
+      .leftJoin(
+        schema.inventoryEntry,
+        eq(schema.inventoryMovement.inventoryEntryId, schema.inventoryEntry.id),
+      )
+      .leftJoin(
+        schema.inventoryAssetUnit,
+        eq(schema.inventoryMovement.assetUnitId, schema.inventoryAssetUnit.id),
+      )
+      .orderBy(asc(schema.inventoryMovement.occurredAt), asc(schema.inventoryMovement.createdAt))
+      .all()
+
+    return rows.map((row) => {
+      // Movements that move a specific asset unit (PURCHASE/TRANSFER of an ASSET)
+      // are valued at that asset's own purchase price; the linked entry's unit
+      // price is an AVERAGE across the entry's assets, which would misvalue a
+      // transfer when the entry holds assets at differing prices. Movements with
+      // no asset unit (consumables) fall back to the entry's unit price.
+      const unitPriceDzd =
+        row.assetPurchasePriceDzd ?? row.unitPriceDzd
+      return {
+        movement: mapMovement(row.movement),
+        unitPriceDzd: unitPriceDzd != null ? Number(unitPriceDzd) : null,
+      }
+    })
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -118,12 +118,15 @@ describe("debt_account schema (#22 direction column)", () => {
 });
 
 describe("rolePermissionSeeds", () => {
-  it("generates seed entries for all default roles (admin, manager, viewer)", () => {
+  it("generates role_permission seed rows only for admin (the only role with permissions)", () => {
     const seeds = rolePermissionSeeds();
     const roleKeys = [...new Set(seeds.map((s) => s.roleId))];
-    expect(roleKeys).toContain("admin");
-    expect(roleKeys).toContain("manager");
-    expect(roleKeys).toContain("viewer");
+    // Only admin has permissions, so only admin emits a seed row. The
+    // workforce labels carry no permissions → no rows; manager/viewer removed.
+    expect(roleKeys).toEqual(["admin"]);
+    for (const key of ["manager", "viewer", "project_manager", "warehouse_manager", "worker"]) {
+      expect(seeds.some((s) => s.roleId === key)).toBe(false);
+    }
   });
 
   it("admin has all permissions", () => {
@@ -136,33 +139,14 @@ describe("rolePermissionSeeds", () => {
     expect(adminPerms).toEqual(expected);
   });
 
-  it("manager has employees/projects/warehouses/inventory CRUD + debts:read", () => {
+  it("workforce labels carry no permissions (manager/viewer removed)", () => {
     const seeds = rolePermissionSeeds();
-    const managerPerms = seeds.filter((s) => s.roleId === "manager").map((s) => s.permission);
-    expect(managerPerms).toContain("employees:create");
-    expect(managerPerms).toContain("employees:delete");
-    expect(managerPerms).toContain("inventory:transfer");
-    expect(managerPerms).toContain("debts:read");
-    expect(managerPerms).not.toContain("debts:create");
-  });
-
-  it("viewer has read-only permissions on all entities", () => {
-    const seeds = rolePermissionSeeds();
-    const viewerPerms = seeds
-      .filter((s) => s.roleId === "viewer")
-      .map((s) => s.permission)
-      .sort();
-    expect(viewerPerms).toEqual(
-      [
-        "debts:read",
-        "employees:read",
-        "inventory:read",
-        "invoices:read",
-        "payments:read",
-        "projects:read",
-        "warehouses:read",
-      ].sort(),
-    );
+    for (const key of ["project_manager", "warehouse_manager", "worker"]) {
+      expect(seeds.filter((s) => s.roleId === key).map((s) => s.permission)).toEqual([]);
+    }
+    // No seed rows exist for the removed manager/viewer roles at all.
+    expect(seeds.some((s) => s.roleId === "manager")).toBe(false);
+    expect(seeds.some((s) => s.roleId === "viewer")).toBe(false);
   });
 
   it("each seed has roleId and permission in the colon-separated form", () => {

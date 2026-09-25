@@ -52,6 +52,14 @@ export function newId(): string {
   return crypto.randomUUID();
 }
 
+function cloneMap<T>(source: Map<string, T>): Map<string, T> {
+  const copy = new Map<string, T>();
+  for (const [key, value] of source) {
+    copy.set(key, structuredClone(value));
+  }
+  return copy;
+}
+
 /** In-memory table store. */
 export class InMemoryStore {
   roles = new Map<string, RoleRecord>();
@@ -72,9 +80,50 @@ export class InMemoryStore {
   users = new Map<string, AuthUserRecord>();
   bootstrapState = new Map<string, BootstrapStateRecord>();
 
-  /** Run a callback "in a transaction" (no-op in-memory, kept for API parity). */
+  /** Run a callback with rollback semantics matching the SQLite adapter. */
   transaction<T>(callback: () => T): T {
-    return callback();
+    const snapshots = {
+      roles: cloneMap(this.roles),
+      employees: cloneMap(this.employees),
+      projects: cloneMap(this.projects),
+      warehouses: cloneMap(this.warehouses),
+      managerAssignments: cloneMap(this.managerAssignments),
+      projectAssignments: cloneMap(this.projectAssignments),
+      warehouseAssignments: cloneMap(this.warehouseAssignments),
+      employeeStateHistory: cloneMap(this.employeeStateHistory),
+      projectManagerOwnershipHistory: cloneMap(this.projectManagerOwnershipHistory),
+      warehouseManagerOwnershipHistory: cloneMap(this.warehouseManagerOwnershipHistory),
+      salaryPayments: cloneMap(this.salaryPayments),
+      externalCounterparties: cloneMap(this.externalCounterparties),
+      debtAccounts: cloneMap(this.debtAccounts),
+      debtEntries: cloneMap(this.debtEntries),
+      userProfileHistory: cloneMap(this.userProfileHistory),
+      users: cloneMap(this.users),
+      bootstrapState: cloneMap(this.bootstrapState),
+    };
+
+    try {
+      return callback();
+    } catch (error) {
+      this.roles = snapshots.roles;
+      this.employees = snapshots.employees;
+      this.projects = snapshots.projects;
+      this.warehouses = snapshots.warehouses;
+      this.managerAssignments = snapshots.managerAssignments;
+      this.projectAssignments = snapshots.projectAssignments;
+      this.warehouseAssignments = snapshots.warehouseAssignments;
+      this.employeeStateHistory = snapshots.employeeStateHistory;
+      this.projectManagerOwnershipHistory = snapshots.projectManagerOwnershipHistory;
+      this.warehouseManagerOwnershipHistory = snapshots.warehouseManagerOwnershipHistory;
+      this.salaryPayments = snapshots.salaryPayments;
+      this.externalCounterparties = snapshots.externalCounterparties;
+      this.debtAccounts = snapshots.debtAccounts;
+      this.debtEntries = snapshots.debtEntries;
+      this.userProfileHistory = snapshots.userProfileHistory;
+      this.users = snapshots.users;
+      this.bootstrapState = snapshots.bootstrapState;
+      throw error;
+    }
   }
 
   insertProjectManagerOwnershipHistory(data: Omit<ProjectManagerOwnershipHistoryRecord, "id" | "endDate" | "createdAt" | "updatedAt">): void {
