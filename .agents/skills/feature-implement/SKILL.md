@@ -8,16 +8,12 @@ description: "Mandatory lifecycle orchestrator for implementing a local or remot
 Read `docs/engineering-workflow.md`, `docs/local-issue-status.md` (when the
 work is ticket-driven), and `.agents/wisdom/*.md` first.
 
-This repository works against the remote (`AmaraNecib/tuari_react_hono`), so the
-source of truth is the current checkout **plus** the GitHub issue/PR state.
-Default to the remote workflow: `gh issue`, `gh pr`, `git fetch`, `git push`,
-GitHub Actions, and the hosted review gates on the pushed PR.
-
-Use local-only mode **only** when the remote is genuinely unreachable or the
-user explicitly asks for it. In that mode the source of truth is the checkout,
-local branches/worktrees, `docs/local-issue-snapshot.json`, and cached refs; do
-not use `gh issue`, `gh pr`, PR comments, `git fetch`, `git push`, or GitHub
-Actions, and stop at a local handoff instead of a PR.
+This repository currently runs in **local-only mode** because the GitHub
+repository is unavailable. The source of truth is the current checkout,
+local branches/worktrees, `docs/local-issue-snapshot.json`, and the cached
+Git refs. Do not use `gh issue`, `gh pr`, PR comments, `git fetch`, `git push`,
+or GitHub Actions until the user explicitly says the remote repository is
+available again.
 
 Crew policy: use at most six concurrent mutation worktrees. The parent may push
 and open/update a PR after the gates pass, but **must never merge**, even after
@@ -42,20 +38,23 @@ Never silently use a stale remote ref as if it were live.
 
 Record in the design/review evidence:
 
-- `mode: local-only` (or `mode: remote` after the user opts back in)
+- `mode: remote` (default) or `mode: local-only` when the remote is genuinely
+  unreachable or the user asked for it
 - ticket number/path and ticket source
 - target ref and resolved base SHA
 - review tier: Lightweight, Standard, or High-assurance
 
 ## Enforced lifecycle
 
-### 1. Resolve the ticket locally
+### 1. Resolve the ticket (remote first)
 
-For a numbered ticket, read `docs/local-issue-status.md` and
-`docs/local-issue-snapshot.json`. Then inspect the named branch, design, and
-review evidence. A row marked "Base shipped; local follow-up remains" must be
-diffed against the cached base before replaying anything; do not duplicate a
-change that is already present.
+In remote mode, read the issue from GitHub (`gh issue view <n> --json
+number,title,body,labels,state`) and treat its acceptance criteria as the spec.
+In local-only mode, read `docs/local-issue-status.md` and
+`docs/local-issue-snapshot.json` instead. Then inspect the named branch, design,
+and review evidence. A row marked "Base shipped; local follow-up remains" must be
+diffed against the base before replaying anything; do not duplicate a change that
+is already present.
 
 If the ticket is only a GitHub URL and has no local description, stop and ask
 for the missing requirements. Do not invent acceptance criteria from a title.
@@ -192,10 +191,12 @@ not claim the work is ready to integrate.
 Evidence filenames must contain the final reviewed `HEAD` SHA; evidence-only
 follow-up commits require a freshness check and a post-evidence note.
 
-### 10. Greptile review via the CLI, not PR comments
+### 10. Greptile review: CLI locally, hosted on the PR
 
-Greptile reviews the current local checkout through its CLI. It does not need
-a GitHub PR. Run the `cli-review` skill first:
+Use both, in this order:
+
+1. Before pushing, run the CLI against the pinned base so findings are cheap to
+   fix in the checkout:
 
 ```bash
 greptile whoami
@@ -203,9 +204,14 @@ greptile review --json --branch <base-branch>
 ```
 
 Pass the pinned base branch/ref; omitting it can compare against the repository
-default branch and review an unrelated, enormous diff. If the issue needs an iterative fix loop, run `greploop --local` after the
-first review. The local loop may inspect and fix actionable findings, but no push, no PR, no
-comments, no `git add -A`. Re-run the local checks after every code fix.
+default branch and review an unrelated, enormous diff. If the issue needs an
+iterative fix loop, run `greploop --local` after the first review. Re-run the
+local checks after every code fix.
+
+2. After pushing, the hosted review runs on the PR. Read its score and every
+   finding from the PR (`gh pr view <n> --json comments`), not only the check
+   status, and fix real findings with a new commit. Do not claim a clean verdict
+   from a stale review: match the reviewed commit to the current head.
 
 Save the raw CLI result and a concise summary under:
 
@@ -219,18 +225,28 @@ The local Greptile gate passes only when the latest result is clean: confidence
 explicitly reports no actionable findings. A successful command by itself is
 not a clean verdict.
 
-### 11. Guard Phase 3: local pre-report
+### 11. Guard Phase 3: pre-report
 
-In local-only mode, Phase 3 verifies:
+Phase 3 verifies:
 
-- local contracts/typecheck/lint/API/web/Rust checks are green as applicable
-- local code-review, test-audit, and debate evidence is present and current
-- the latest Greptile CLI result is clean and corresponds to the final code
-- deferred work is recorded in the local issue status ledger and has an
-  explicit parent decision; lanes never defer silently
-- no remote operation was implied by the report
+- contracts/typecheck/lint/API/web/Rust checks are green as applicable
+- code-review, test-audit, and debate evidence is present and current
+- the latest Greptile result is clean and corresponds to the final code (CLI
+  before the push, hosted after it)
+- deferred work has an explicit parent decision; lanes never defer silently
 
-Do not wait for CI, PR comments, or GitHub issue state in this mode.
+In **remote mode**, finish the loop instead of stopping at a local handoff:
+
+1. Push the branch (`git push origin <branch>`) with explicit staging.
+2. Open or update the PR with the issue link (`Closes #N` only when the whole
+   issue ships; `Part of #N` otherwise) and the evidence summary.
+3. Wait for the hosted CI checks and the hosted Greptile review on the pushed
+   head; re-run flaky infrastructure jobs and fix real findings.
+4. Report the PR URL, the check states, and the Greptile score, then stop.
+   **Never merge** — the parent owns the merge decision.
+
+In **local-only mode**, report the local state and stop; do not wait for CI or
+PR state.
 
 ### 12. Capture wisdom and report
 
