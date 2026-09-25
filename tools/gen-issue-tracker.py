@@ -38,7 +38,7 @@ def save_local_snapshot(issues):
         'sourceStatus': 'live GitHub snapshot',
         'issues': issues,
     }
-    LOCAL_SNAPSHOT.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\\n', encoding='utf-8')
+    LOCAL_SNAPSHOT.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
 def get_issues(offline):
@@ -226,7 +226,7 @@ def main():
         n = i['number']
         lvl = LEVELS.get(n, 3)
         title = i['title']
-        body = (i.get('body') or '')[:400].replace('"', '&quot;').replace('\n', ' ')
+        body = (i.get('body') or '')[:400].replace('\n', ' ')
         labels = [l['name'] for l in i.get('labels', [])]
         prio = 'high' if any('high' in l for l in labels) else 'med' if any('med' in l for l in labels) else ''
         tier = tier_for(n)

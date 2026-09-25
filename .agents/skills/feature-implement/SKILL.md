@@ -8,12 +8,16 @@ description: "Mandatory lifecycle orchestrator for implementing a local or remot
 Read `docs/engineering-workflow.md`, `docs/local-issue-status.md` (when the
 work is ticket-driven), and `.agents/wisdom/*.md` first.
 
-This repository currently runs in **local-only mode** because the GitHub
-repository is unavailable. The source of truth is the current checkout,
-local branches/worktrees, `docs/local-issue-snapshot.json`, and the cached
-Git refs. Do not use `gh issue`, `gh pr`, PR comments, `git fetch`, `git push`,
-or GitHub Actions until the user explicitly says the remote repository is
-available again.
+This repository works against the remote (`AmaraNecib/tuari_react_hono`), so the
+source of truth is the current checkout **plus** the GitHub issue/PR state.
+Default to the remote workflow: `gh issue`, `gh pr`, `git fetch`, `git push`,
+GitHub Actions, and the hosted review gates on the pushed PR.
+
+Use local-only mode **only** when the remote is genuinely unreachable or the
+user explicitly asks for it. In that mode the source of truth is the checkout,
+local branches/worktrees, `docs/local-issue-snapshot.json`, and cached refs; do
+not use `gh issue`, `gh pr`, PR comments, `git fetch`, `git push`, or GitHub
+Actions, and stop at a local handoff instead of a PR.
 
 Crew policy: use at most six concurrent mutation worktrees. The parent may push
 and open/update a PR after the gates pass, but **must never merge**, even after
