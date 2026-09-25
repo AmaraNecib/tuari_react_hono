@@ -1117,14 +1117,9 @@ describe("contracts", () => {
       expect(() =>
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "\u200B".repeat(8) }),
       ).toThrow();
-      expect(() =>
-        changeDbKeyInputSchema.parse({ currentKey: "\u200B", newKey: "new-key-123" }),
-      ).toThrow();
 
-      // Embedded Cf in either field is rejected (exact-match secret semantics).
-      expect(() =>
-        changeDbKeyInputSchema.parse({ currentKey: "old\u200Bkey", newKey: "new-key-123" }),
-      ).toThrow();
+      // Embedded Cf in the NEW key is rejected (exact-match secret semantics).
+      // currentKey is exempt on purpose — see the legacy-currentKey test below.
       expect(() =>
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "new\u200Bkey-123" }),
       ).toThrow();
@@ -1153,6 +1148,37 @@ describe("contracts", () => {
       expect(
         changeDbKeyInputSchema.parse({ currentKey: "old-key", newKey: "new-key-123" }),
       ).toEqual({ currentKey: "old-key", newKey: "new-key-123" });
+    });
+
+    it("accepts a legacy currentKey containing blank/invisible characters so it stays rotatable (#334)", () => {
+      // Greptile P2 on the widened rule: a key created BEFORE #334 may contain
+      // an internal space, NBSP, or combining mark. The database still opens
+      // with it (startup enforces only the new-key length; the service only
+      // requires non-empty and then PROVES the key by re-opening the DB), so a
+      // wire-level rejection here would leave those users unable to rotate.
+      const legacyCurrentKeys = [
+        "old key 2020", // internal space (issue case 4 class)
+        "old\u00A0key", // NBSP
+        "old\u0301key", // combining acute
+        "old\u200Bkey", // ZWSP
+        "\u2800\u2800\u2800\u2800\u2800\u2800\u2800\u2800", // braille blanks
+        "old\u0001key", // invisible control
+      ];
+      for (const currentKey of legacyCurrentKeys) {
+        expect(changeDbKeyInputSchema.parse({ currentKey, newKey: "new-key-123" })).toEqual({
+          currentKey,
+          newKey: "new-key-123",
+        });
+      }
+
+      // The exemption is for currentKey only — a newKey of the same shape is
+      // still rejected, and currentKey still cannot be empty/whitespace-only.
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "old key 2020", newKey: "new key 2020" }),
+      ).toThrow();
+      expect(() =>
+        changeDbKeyInputSchema.parse({ currentKey: "   ", newKey: "new-key-123" }),
+      ).toThrow();
     });
 
     it("reports only the too-short issue for a too-short invisible newKey (#234)", () => {
@@ -1274,9 +1300,12 @@ describe("contracts", () => {
       // Same gates on the other key fields (defense in depth, #234 precedent).
       expect(() => consumeRecoveryKeyInputSchema.parse({ key: "\u2800\u2800" })).toThrow();
       expect(() => revokeRecoveryKeyInputSchema.parse({ keyId: "\u0301\u0301" })).toThrow();
-      expect(() =>
+      // ...EXCEPT currentKey, which must accept whatever a pre-rule database is
+      // encrypted with so the owner can still rotate it (dedicated test below);
+      // the new key keeps the strict rule.
+      expect(
         changeDbKeyInputSchema.parse({ currentKey: "\u0001", newKey: "new-key-123" }),
-      ).toThrow();
+      ).toEqual({ currentKey: "\u0001", newKey: "new-key-123" });
 
       // Valid keys are unaffected (regression).
       expect(

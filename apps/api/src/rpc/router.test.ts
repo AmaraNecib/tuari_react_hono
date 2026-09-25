@@ -1059,11 +1059,19 @@ describe("RPC router", () => {
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "\u200B".repeat(8) }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    // currentKey half of the same gate: a ZWSP-only current key is rejected
-    // before any PRAGMA is built.
+    // currentKey is deliberately exempt from the blank/invisible rule: a key
+    // that predates the rule (or any other key the user mistypes) must reach
+    // the service, which PROVES it by re-opening the database. A rejected
+    // wire request here would strand legacy keys with no rotation path.
     await expect(
       client.changeDbEncryptionKey({ currentKey: "\u200B", newKey: "new-key-123" }),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    ).resolves.toMatchObject({ success: false });
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old key 2020", newKey: "new-key-123" }),
+    ).resolves.toMatchObject({ success: false });
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old\u00A0key", newKey: "new-key-123" }),
+    ).resolves.toMatchObject({ success: false });
 
     // #334: invisible codepoints OUTSIDE Cf are rejected at the wire gate
     // too — combining marks (Mn), braille blank (U+2800, So) and invisible

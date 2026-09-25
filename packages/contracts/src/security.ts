@@ -110,9 +110,26 @@ export const revokeRecoveryKeyInputSchema = z.object({
   keyId: keyFieldSchema(1, "recovery key id"),
 })
 
-/** Input for changing the database encryption key. */
+/**
+ * Input for changing the database encryption key.
+ *
+ * `currentKey` is deliberately NOT held to the strict blank/invisible rule
+ * above: it names a key that ALREADY exists. A deployment whose DB key
+ * predates #334 can legitimately hold an internal space, NBSP, or combining
+ * mark — such a key still opens the database at startup (the loader only
+ * enforces the new-key length, and the service accepts any non-empty value),
+ * so rejecting it here would strand those users with no way to rotate their
+ * key through Settings or the RPC. The existing key is proven by re-opening
+ * the database with it (SQLCipher probe), which is the correct gate: a wrong
+ * key fails verification regardless of its charset.
+ *
+ * `newKey` keeps the strict rule — it is the value we persist going forward.
+ */
 export const changeDbKeyInputSchema = z.object({
-  currentKey: keyFieldSchema(1, "current encryption key"),
+  currentKey: z
+    .string()
+    .trim()
+    .min(1, { message: "current encryption key must not be empty" }),
   newKey: keyFieldSchema(8, "new encryption key"),
 })
 
