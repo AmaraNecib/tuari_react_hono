@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   demoUser,
+  getInvoiceGroupQueryState,
   getSearchQueryState,
+  makeInvoiceGroupDetail,
   makeWorkspaceData,
   mockAllMutations,
   renderWorkspace,
@@ -275,7 +277,7 @@ describe("HomeView workspace shell", () => {
     fireEvent.change(screen.getAllByLabelText("رقم الهاتف")[0]!, {
       target: { value: "0555123456" },
     })
-    fireEvent.change(screen.getAllByLabelText("الدور")[0]!, {
+    fireEvent.change(screen.getAllByLabelText("صلاحية التطبيق")[0]!, {
       target: { value: "role-project-manager" },
     })
     fireEvent.change(screen.getAllByPlaceholderText("10000")[0]!, {
@@ -294,7 +296,7 @@ describe("HomeView workspace shell", () => {
     fireEvent.change(screen.getAllByLabelText("رقم الهاتف")[1]!, {
       target: { value: "0666123456" },
     })
-    fireEvent.change(screen.getAllByLabelText("الدور")[1]!, {
+    fireEvent.change(screen.getAllByLabelText("صلاحية التطبيق")[1]!, {
       target: { value: "role-worker" },
     })
     fireEvent.change(screen.getAllByLabelText("المدير المباشر")[1]!, {
@@ -368,6 +370,15 @@ describe("HomeView workspace shell", () => {
     expect(await screen.findByText("المعلومات الشخصية")).toBeTruthy()
     expect(screen.getByText("سجل العمل")).toBeTruthy()
     expect(screen.getByRole("tab", { name: "المالية" })).toBeTruthy()
+    expect(screen.getByText("المهنة / الدور الوظيفي")).toBeTruthy()
+    expect(screen.getByText("عامل بناء")).toBeTruthy()
+  })
+
+  it("shows the no-occupation fallback on an employee without an occupation", async () => {
+    renderWorkspace("employee-details", { sessionUser: demoUser, employeeId: "employee-manager-1" })
+
+    expect(await screen.findByText("المهنة / الدور الوظيفي")).toBeTruthy()
+    expect(screen.getByText("غير محدد")).toBeTruthy()
   })
 
   it("routes back to employees when a requested employee record is missing", () => {
@@ -464,6 +475,54 @@ describe("HomeView workspace shell", () => {
 
     expect(await screen.findByRole("heading", { name: "مبنى الإدارة الجديد" })).toBeTruthy()
     expect(screen.getByText("العمال المرتبطون")).toBeTruthy()
+  })
+
+  it("renders the created invoice details once the route id is provided (issue #30)", async () => {
+    renderWorkspace("invoice-details", {
+      sessionUser: demoUser,
+      invoiceId: "invoice-1",
+      invoiceGroupDetail: makeInvoiceGroupDetail(),
+    })
+
+    // The details view must mount the inventory invoice group query and
+    // render the fetched invoice — invoice number, line items (both
+    // CONSUMABLE and ASSET), totals, movements and attachments surfaces.
+    // Before issue #30 the id never reached HomeViewPageContent, so the
+    // main stayed empty.
+    expect(await screen.findByRole("heading", { name: "FAC-2026-001" })).toBeTruthy()
+    expect((await screen.findAllByText("أسمنت")).length).toBeGreaterThan(0)
+    expect(screen.getAllByText("الإجمالي: 1500.00 دج").length).toBeGreaterThan(0)
+    // ASSET entry branch: renders the asset count label and the asset row
+    // (entry line name and the asset row both carry the asset name).
+    expect(screen.getByText("عدد الأصول: 1")).toBeTruthy()
+    expect(screen.getAllByText("حاسوب محمول").length).toBeGreaterThan(0)
+    // Movement + attachment entry content (proves the entries render, not
+    // just the section headers).
+    expect(screen.getAllByText(/شراء - مادة/).length).toBeGreaterThan(0)
+    expect(screen.getByText("فاتورة-المورد.pdf")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "العودة إلى الفواتير" })).toBeTruthy()
+  })
+
+  it("routes the invoice route param into the inventory invoice group query (issue #30)", async () => {
+    renderWorkspace("invoice-details", {
+      sessionUser: demoUser,
+      invoiceId: "invoice-1",
+      invoiceGroupDetail: makeInvoiceGroupDetail(),
+    })
+
+    await screen.findByRole("heading", { name: "FAC-2026-001" })
+    expect(getInvoiceGroupQueryState().invoiceId).toBe("invoice-1")
+  })
+
+  it("shows the missing-record fallback for an id-less invoice details route (issue #30)", () => {
+    renderWorkspace("invoice-details", { sessionUser: demoUser })
+
+    expect(
+      screen.getByText("تعذر العثور على هذا السجل أو لم يعد متاحًا ضمن البيانات الحالية."),
+    ).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "العودة" }))
+
+    expect(mocks.navigateMock).toHaveBeenCalledWith({ to: "/invoices" })
   })
 
   it("opens a dedicated project create page and navigates to the new record", async () => {
@@ -620,8 +679,11 @@ describe("HomeView workspace shell", () => {
     renderWorkspace("dashboard", { sessionUser: demoUser })
     fireEvent.click(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]!)
 
-    expect(screen.getByText("الجهات الخارجية")).toBeTruthy()
-    expect(screen.getByText("الرواتب")).toBeTruthy()
+    // The label also appears on the dashboard counterparties stat card, so
+    // scope the assertion to the sidebar navigation only (issue #23).
+    const sidebar = document.querySelector('[data-tour="sidebar"]')
+    expect(within(sidebar as HTMLElement).getByText("الجهات الخارجية")).toBeTruthy()
+    expect(within(sidebar as HTMLElement).getByText("الرواتب")).toBeTruthy()
   })
 
   it("shows worker manager and project controls on the employee edit page", async () => {
@@ -684,18 +746,18 @@ describe("HomeView workspace shell", () => {
     expect(screen.getAllByRole("button", { name: "توسيع الشريط الجانبي" })[0]).toBeTruthy()
   })
 
-  it("does not resubmit workplace links when worker placement stays unchanged", async () => {
-    mocks.updateEmployeeMutate.mockResolvedValue({ success: true })
-    mocks.updateEmployeeWorkplaceMutate.mockResolvedValue({ success: true })
+  it("submits unchanged workplace links as part of the atomic batch", async () => {
+    mocks.saveEmployeeMutate.mockResolvedValue({ success: true })
 
     renderWorkspace("employee-edit", { sessionUser: demoUser, employeeId: "employee-worker-1" })
 
     fireEvent.click(await screen.findByRole("button", { name: "حفظ كل التغييرات" }))
 
     await waitFor(() => {
-      expect(mocks.updateEmployeeMutate).toHaveBeenCalled()
+      expect(mocks.saveEmployeeMutate).toHaveBeenCalled()
     })
 
+    expect(mocks.updateEmployeeMutate).not.toHaveBeenCalled()
     expect(mocks.updateEmployeeWorkplaceMutate).not.toHaveBeenCalled()
   })
 
@@ -862,7 +924,11 @@ describe("global search (Ctrl+K) — debounced and lazy (issue #280)", () => {
   })
 
   it("fetches the seven search-corpus queries only while the dialog is open", () => {
-    renderWorkspace("dashboard", { sessionUser: demoUser })
+    // Render a non-dashboard page: the dashboard section (issue #23)
+    // legitimately mounts the inventory/invoices queries for its stat cards,
+    // so the search gating is only observable where the shell is the sole
+    // consumer of the corpus query hooks.
+    renderWorkspace("projects", { sessionUser: demoUser })
 
     // Shell mounts with the dialog closed → every corpus query disabled.
     expect(getSearchQueryState()).toEqual({

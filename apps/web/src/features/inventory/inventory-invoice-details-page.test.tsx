@@ -1,0 +1,279 @@
+// @vitest-environment jsdom
+
+import "@/i18n"
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { InventoryInvoiceGroupDetail } from "@tuari/contracts"
+
+import { InventoryInvoiceDetailsPage } from "./inventory-invoice-details-page"
+
+const mocks = vi.hoisted(() => ({
+  invoiceGroupQuery: vi.fn(),
+  warehousesQuery: vi.fn(),
+  projectsQuery: vi.fn(),
+  transferAssetMutation: { isPending: false, mutateAsync: vi.fn() },
+  transferConsumableMutation: { isPending: false, mutateAsync: vi.fn() },
+}))
+
+vi.mock("./inventory-hooks", () => ({
+  useInventoryInvoiceGroupQuery: () => mocks.invoiceGroupQuery(),
+  useInventoryWarehousesQuery: () => mocks.warehousesQuery(),
+  useInventoryProjectsQuery: () => mocks.projectsQuery(),
+  useTransferInventoryAssetMutation: () => mocks.transferAssetMutation,
+  useTransferInventoryConsumableMutation: () => mocks.transferConsumableMutation,
+}))
+
+vi.mock("./record-invoice-payment-dialog", () => ({
+  RecordInvoicePaymentDialog: () => null,
+}))
+
+function makeQueryClient() {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } })
+}
+
+/**
+ * Minimal invoice-group detail with both entry shapes (CONSUMABLE + ASSET),
+ * a movement, an attachment and a consumable balance — enough to prove the
+ * success layout renders end to end (issue #34 regression guard).
+ */
+function makeInvoiceGroupDetail(): InventoryInvoiceGroupDetail {
+  const createdAt = "2026-03-20T10:00:00.000Z"
+  return {
+    group: {
+      id: "invoice-1",
+      invoiceNumber: "FAC-2026-001",
+      supplierName: "مورد الاختبار",
+      invoiceDate: createdAt,
+      warehouseId: "warehouse-1",
+      projectId: null,
+      externalCounterpartyId: null,
+      grossTotalDzd: 1500,
+      paidAmountDzd: 500,
+      remainingDebtDzd: 1000,
+      debtAccountId: null,
+      note: null,
+      createdAt,
+      updatedAt: createdAt,
+    },
+    entries: [
+      {
+        id: "entry-1",
+        invoiceGroupId: "invoice-1",
+        itemDefinitionId: "item-def-1",
+        warehouseId: "warehouse-1",
+        projectId: null,
+        itemType: "CONSUMABLE",
+        itemName: "أسمنت",
+        unit: "كيس",
+        quantity: 10,
+        unitPriceDzd: 150,
+        totalPriceDzd: 1500,
+        note: null,
+        createdAt,
+        updatedAt: createdAt,
+        assets: [],
+      },
+      {
+        id: "entry-2",
+        invoiceGroupId: "invoice-1",
+        itemDefinitionId: "item-def-2",
+        warehouseId: null,
+        projectId: "project-1",
+        itemType: "ASSET",
+        itemName: "حاسوب محمول",
+        unit: null,
+        quantity: 1,
+        unitPriceDzd: 3000,
+        totalPriceDzd: 3000,
+        note: null,
+        createdAt,
+        updatedAt: createdAt,
+        assets: [
+          {
+            id: "asset-1",
+            inventoryEntryId: "entry-2",
+            assetName: "حاسوب محمول",
+            assetTag: null,
+            serialNumber: null,
+            condition: null,
+            purchaseDate: null,
+            purchasePriceDzd: 3000,
+            currentWarehouseId: null,
+            currentProjectId: "project-1",
+            currentLocationLabel: "مشروع التوسعة",
+            note: null,
+            createdAt,
+            updatedAt: createdAt,
+          },
+        ],
+      },
+    ],
+    attachments: [
+      {
+        id: "att-1",
+        invoiceGroupId: "invoice-1",
+        originalName: "فاتورة-المورد.pdf",
+        mimeType: "application/pdf",
+        byteSize: 1024,
+        storageKey: "attachments/invoice-1/att-1.pdf",
+        relativePath: "/api/inventory/attachments/att-1",
+        downloadUrl: "http://127.0.0.1:4318/api/inventory/attachments/att-1",
+        sha256: null,
+        createdAt,
+      },
+    ],
+    movements: [
+      {
+        id: "mov-1",
+        itemType: "CONSUMABLE",
+        movementType: "PURCHASE",
+        quantity: 10,
+        inventoryEntryId: "entry-1",
+        assetUnitId: null,
+        fromWarehouseId: null,
+        fromProjectId: null,
+        toWarehouseId: "warehouse-1",
+        toProjectId: null,
+        occurredAt: createdAt,
+        note: null,
+        createdAt,
+      },
+    ],
+    consumableBalances: [
+      {
+        id: "balance-1",
+        inventoryEntryId: "entry-1",
+        itemDefinitionId: "item-def-1",
+        itemName: "أسمنت",
+        locationLabel: "المستودع المركزي",
+        quantity: 8,
+        warehouseId: "warehouse-1",
+        projectId: null,
+        createdAt,
+        updatedAt: createdAt,
+      },
+    ],
+  }
+}
+
+type InvoiceQueryState = {
+  data: InventoryInvoiceGroupDetail | undefined
+  isPending: boolean
+  isError: boolean
+  refetch: ReturnType<typeof vi.fn>
+}
+
+function resolveQuery(query: InvoiceQueryState) {
+  mocks.invoiceGroupQuery.mockReturnValue(query)
+}
+
+function renderPage(query: InvoiceQueryState) {
+  resolveQuery(query)
+  mocks.warehousesQuery.mockReturnValue({ data: { items: [] }, isPending: false, isError: false })
+  mocks.projectsQuery.mockReturnValue({ data: { items: [] }, isPending: false, isError: false })
+  const onBack = vi.fn()
+  const utils = render(
+    <QueryClientProvider client={makeQueryClient()}>
+      <InventoryInvoiceDetailsPage invoiceId="invoice-1" onBack={onBack} />
+    </QueryClientProvider>,
+  )
+  return { onBack, ...utils }
+}
+
+function successQuery(): InvoiceQueryState {
+  return { data: makeInvoiceGroupDetail(), isPending: false, isError: false, refetch: vi.fn() }
+}
+
+function errorQuery(): InvoiceQueryState {
+  return { data: undefined, isPending: false, isError: true, refetch: vi.fn() }
+}
+
+function noDataQuery(): InvoiceQueryState {
+  return { data: undefined, isPending: false, isError: false, refetch: vi.fn() }
+}
+
+function pendingQuery(): InvoiceQueryState {
+  return { data: undefined, isPending: true, isError: false, refetch: vi.fn() }
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+afterEach(() => {
+  cleanup()
+})
+
+describe("InventoryInvoiceDetailsPage error surface (issue #34)", () => {
+  it("renders the load-error surface instead of infinite loading when the invoice-group query errors", () => {
+    renderPage(errorQuery())
+
+    expect(screen.getByRole("alert")).toBeTruthy()
+    expect(
+      screen.getByText("تعذر تحميل بيانات الفاتورة. حاول مرة أخرى."),
+    ).toBeTruthy()
+    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeTruthy()
+    // No stale loader text, no partial invoice content.
+    expect(screen.queryByText("جارٍ تحميل بيانات الفاتورة...")).toBeNull()
+    expect(screen.queryByRole("heading", { name: "FAC-2026-001" })).toBeNull()
+  })
+
+  it("refetches the invoice-group query when the retry button is clicked", () => {
+    const query = errorQuery()
+    renderPage(query)
+
+    fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }))
+
+    expect(query.refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it("renders the load-error surface for the has-id-but-data-undefined case (settled, no error)", () => {
+    renderPage(noDataQuery())
+
+    expect(screen.getByRole("alert")).toBeTruthy()
+    expect(
+      screen.getByText("تعذر تحميل بيانات الفاتورة. حاول مرة أخرى."),
+    ).toBeTruthy()
+    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeTruthy()
+    expect(screen.queryByText("جارٍ تحميل بيانات الفاتورة...")).toBeNull()
+    expect(screen.queryByRole("heading", { name: "FAC-2026-001" })).toBeNull()
+  })
+
+  it("prefers the error surface over a retained invoice when a settled refetch fails", () => {
+    // TanStack v5 keeps stale data after a failed background refetch: isError
+    // is true while data still holds the last payload. The error surface must
+    // win so the user sees the failure (and a retry) instead of the stale
+    // invoice as if nothing went wrong.
+    renderPage({ ...successQuery(), isError: true })
+
+    expect(screen.getByRole("alert")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeTruthy()
+    expect(
+      screen.queryByRole("heading", { name: "FAC-2026-001" }),
+    ).toBeNull()
+  })
+
+  it("keeps the loader while the invoice-group query is pending", () => {
+    renderPage(pendingQuery())
+
+    expect(screen.getByText("جارٍ تحميل بيانات الفاتورة...")).toBeTruthy()
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.queryByRole("button", { name: "إعادة المحاولة" })).toBeNull()
+  })
+
+  it("renders the invoice details unchanged on success", () => {
+    renderPage(successQuery())
+
+    expect(screen.getByRole("heading", { name: "FAC-2026-001" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "العودة إلى الفواتير" })).toBeTruthy()
+    expect(screen.getAllByText("الإجمالي: 1500.00 دج").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("أسمنت").length).toBeGreaterThan(0)
+    expect(screen.getByText("عدد الأصول: 1")).toBeTruthy()
+    expect(screen.getAllByText("حاسوب محمول").length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/شراء - مادة/).length).toBeGreaterThan(0)
+    expect(screen.getByText("فاتورة-المورد.pdf")).toBeTruthy()
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+})

@@ -3,7 +3,18 @@
  * Calls the API which stores data in SQLite via Drizzle.
  */
 
-const API_BASE = import.meta.env.DEV ? "http://localhost:3000" : ""
+// In dev the API normally runs on the loopback API port (4318 by default);
+// honor an explicit VITE_API_URL (set by the E2E/parallel-lane dev servers)
+// rather than hardcoding a fixed host/port, and derive from the serving
+// hostname as a fallback. The fallback PORT follows the current lane's
+// API_PORT (injected by vite as VITE_API_PORT) so a lane running only
+// API_PORT=<n> still routes analytics to its own API instead of 4318.
+// Never exposes anything beyond loopback.
+const DEFAULT_API_PORT = (import.meta.env.VITE_API_PORT as string | undefined)?.trim() || "4318"
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.trim()
+  || (import.meta.env.DEV
+    ? `http://${typeof window !== "undefined" ? window.location.hostname : "127.0.0.1"}:${DEFAULT_API_PORT}`
+    : "")
 
 interface AnalyticsEvent {
   event: string

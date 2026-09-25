@@ -2,15 +2,17 @@ import type { ReactNode } from "react"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
+import { WorkspaceLink, type WorkspaceRouteTarget } from "@/router/navigation"
 import { buttonVariants } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
+  AppShellEmptyHint,
   AppShellEmptyStateRow,
   AppShellTableFrame,
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
-} from "@/features/app-shell/app-shell-table-primitives"
+} from "./table-primitives"
 import { cn } from "@/lib/utils"
 
 import { PageActionGroup, PageHeader, Surface } from "./page-primitives"
@@ -173,6 +175,8 @@ export function RecordInfoCard({
  */
 export function RecordHistoryTable({
   columns,
+  emptyAction,
+  emptyHint,
   emptyLabel,
   rows,
 }: {
@@ -182,6 +186,8 @@ export function RecordHistoryTable({
     period?: string
     status?: string
   }
+  emptyAction?: { label: string; target: WorkspaceRouteTarget }
+  emptyHint?: string
   emptyLabel: string
   rows: Array<{
     id: string
@@ -221,7 +227,20 @@ export function RecordHistoryTable({
                 </AppShellTableRow>
               ))
             ) : (
-              <AppShellEmptyStateRow colSpan={4}>{emptyLabel}</AppShellEmptyStateRow>
+              <AppShellEmptyStateRow colSpan={4}>
+                <div className="flex flex-col items-center gap-2.5">
+                  <p>{emptyLabel}</p>
+                  {emptyHint ? <AppShellEmptyHint>{emptyHint}</AppShellEmptyHint> : null}
+                  {emptyAction ? (
+                    <WorkspaceLink
+                      className={cn(buttonVariants({ variant: "default", size: "sm" }))}
+                      target={emptyAction.target}
+                    >
+                      {emptyAction.label}
+                    </WorkspaceLink>
+                  ) : null}
+                </div>
+              </AppShellEmptyStateRow>
             )}
           </tbody>
         </table>

@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { AppShellEmptyHint } from "@/features/shared/table-primitives"
 import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 
 import { useCreateInventoryItemDefinitionMutation, useInventoryItemDefinitionsQuery } from "./inventory-hooks"
@@ -113,6 +114,7 @@ export function InventoryItemDefinitionsPage() {
           ) : (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
               <p className="text-sm text-muted-foreground">{t("inventoryPage.itemDefinitions.empty")}</p>
+              <AppShellEmptyHint>{t("inventoryPage.itemDefinitions.emptyHint")}</AppShellEmptyHint>
               <Button size="sm" onClick={() => void handleCreate()} disabled={name.trim().length === 0}>
                 {t("inventoryPage.itemDefinitions.createButton")}
               </Button>

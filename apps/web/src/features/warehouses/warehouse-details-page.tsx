@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { InventoryLocationContentsSection } from "@/features/inventory/inventory-location-contents-section"
 import { LocationTransferHistory } from "@/features/inventory/location-transfer-history"
+import { workspaceRoutes } from "@/router/navigation"
 import {
   RecordHistoryTable,
   RecordInfoCard,
@@ -108,6 +109,11 @@ export function WarehouseDetailsPage({
             period: t("detailPages.warehouse.teamPeriod"),
             status: t("detailPages.warehouse.teamStatus"),
           }}
+          emptyAction={{
+            label: t("detailPages.warehouse.teamEmptyAction"),
+            target: workspaceRoutes.employees(),
+          }}
+          emptyHint={t("detailPages.warehouse.teamEmptyHint")}
           emptyLabel={t("detailPages.warehouse.teamEmpty")}
           rows={teamRows}
         />

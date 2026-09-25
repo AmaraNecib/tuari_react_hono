@@ -1,11 +1,16 @@
 import { expect, test } from "@playwright/test"
 
+import { resetE2eDatabase } from "./helpers/db-isolation"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 test.describe.configure({ mode: "serial" })
 
-test.describe("employees", () => {
-  test("admin creates an employee and the new record appears in the list", async ({ page }) => {
+test.beforeAll(() => {
+  resetE2eDatabase()
+})
+
+test.describe("employees — critical path", () => {
+  test("admin creates an employee with phone + role and the list shows them immediately", async ({ page }) => {
     await bootstrapOrSignIn(page)
 
     await page.getByRole("link", { name: "العاملون" }).first().click()
@@ -22,13 +27,20 @@ test.describe("employees", () => {
     const suffix = uniqueSuffix()
     const firstName = `أحمد-${suffix}`
     const lastName = `بن صالح`
-    const phone = `06${Math.floor(10000000 + Math.random() * 89999999)}`
+    const phoneSalt = Array.from(suffix).reduce(
+      (hash, character) => (hash * 31 + character.charCodeAt(0)) % 90_000_000,
+      0,
+    )
+    const phone = `06${String(phoneSalt).padStart(8, "0")}`
 
     await page.getByLabel("الاسم الأول").first().fill(firstName)
     await page.getByLabel("اللقب").first().fill(lastName)
     await page.getByLabel("رقم الهاتف").first().fill(phone)
-    // Select the seeded manager role explicitly (do not rely on the form default).
-    await page.getByLabel("الدور").selectOption({ label: "مدير عمليات" })
+    // Select a seeded selectable role explicitly (do not rely on the form
+    // default). Only the workforce labels are assignable now — manager/viewer
+    // were removed — and worker additionally requires a workplace placement,
+    // so use the project_manager label (مدير مشروع).
+    await page.getByLabel("صلاحية التطبيق").selectOption({ label: "مدير مشروع" })
     // Salary period + amount are conditionally required as a pair — fill both
     // so the form's validation accepts the submission.
     await page.getByLabel("دورية الأجر").selectOption({ label: "شهري" })
@@ -36,32 +48,50 @@ test.describe("employees", () => {
 
     await page.getByRole("button", { name: "حفظ العامل" }).click()
 
-    await expect(page.getByText(firstName)).toBeVisible({ timeout: 10_000 })
+    // The save returns to the list where the new employee's full name renders.
+    await expect(page.getByText(`${firstName} ${lastName}`)).toBeVisible({ timeout: 10_000 })
   })
 
-  test("admin can update an employee record", async ({ page }) => {
+  test("admin changes an employee's role via the edit page", async ({ page }) => {
     await bootstrapOrSignIn(page)
 
     await page.getByRole("link", { name: "العاملون" }).first().click()
     await expect(page.getByRole("heading", { name: "العاملون" })).toBeVisible()
 
-    // Click the first employee in the list to view their details
+    // Open the employee created in the previous test (serial mode).
     await page.getByRole("button", { name: /^عرض$/ }).first().click()
-
-    // Wait for the employee detail page to load (heading is the employee name)
     await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible()
 
-    // Find and click the edit link
     await page.getByRole("link", { name: /^تعديل$/ }).first().click()
     await expect(page.getByRole("heading", { name: /تعديل عامل/ })).toBeVisible()
 
-    // Update employee notes — the notes field is always present on the edit page.
-    const notesField = page.getByLabel(/ملاحظات/).first()
-    await expect(notesField).toBeVisible()
-    const updatedNotes = `تحديث-${uniqueSuffix()}`
-    await notesField.fill(updatedNotes)
-    await page.getByRole("button", { name: /حفظ/ }).first().click()
-    // Save navigates back to the details page where the updated notes render
-    await expect(page.getByText(updatedNotes)).toBeVisible({ timeout: 10_000 })
+    // Switch the role between two selectable workforce labels (manager/viewer
+    // were removed with the single-actor model; warehouse_manager is selectable).
+    await page.getByLabel("صلاحية التطبيق").selectOption({ label: "مدير مخزن" })
+    await page.getByRole("button", { name: "حفظ كل التغييرات" }).click()
+
+    // The save navigates back to the details page where the new role renders.
+    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText("مدير مخزن")).toBeVisible()
+  })
+
+  test("admin soft-deletes an employee and the list no longer shows them", async ({ page }) => {
+    await bootstrapOrSignIn(page)
+
+    await page.getByRole("link", { name: "العاملون" }).first().click()
+    await expect(page.getByRole("heading", { name: "العاملون" })).toBeVisible()
+
+    const row = page.getByRole("row", { name: /بن صالح/ }).first()
+    await expect(row).toBeVisible()
+    await row.getByRole("button", { name: "حذف" }).click()
+
+    await expect(page.getByRole("alertdialog")).toBeVisible()
+    await page.getByRole("button", { name: "تأكيد" }).click()
+
+    // The row disappears from the list (queryAllByRole — an empty result
+    // legitimately reaches zero matches and getAllByRole would throw).
+    await expect
+      .poll(async () => page.getByRole("row", { name: /بن صالح/ }).count())
+      .toBe(0)
   })
 })

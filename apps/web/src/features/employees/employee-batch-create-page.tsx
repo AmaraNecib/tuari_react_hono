@@ -39,6 +39,7 @@ function localizeRowErrors(
     phone: string
     phoneFormat: string
     roleId: string
+    occupation: string
     salaryAmountDzd: string
     salaryAmountInvalid: string
     salaryPeriod: string
@@ -58,6 +59,7 @@ function localizeRowErrors(
           : copy.phoneFormat
       : undefined,
     roleId: rowError.roleId ? copy.roleId : undefined,
+    occupation: rowError.occupation ? copy.occupation : undefined,
     salaryAmountDzd: rowError.salaryAmountDzd
       ? rowError.salaryAmountDzd === "invalid"
         ? copy.salaryAmountInvalid
@@ -79,7 +81,7 @@ function mapServerErrors(error: AppMutationError, rowCount: number) {
 
   for (const fieldError of error.fieldErrors) {
     const match =
-      /^employees\.(\d+)\.(firstName|lastName|phone|roleId|salaryAmountDzd|salaryPeriod|managerId|projectId|notes)$/.exec(
+      /^employees\.(\d+)\.(firstName|lastName|phone|roleId|occupation|salaryAmountDzd|salaryPeriod|managerId|projectId|notes)$/.exec(
         fieldError.field,
       )
 
@@ -149,6 +151,7 @@ export function EmployeeBatchCreatePage({
     lastNameLabel: t("employeeForm.lastNameLabel"),
     phoneLabel: t("auth.phoneLabel"),
     roleLabel: t("employeeForm.roleLabel"),
+    occupationLabel: t("employeeForm.occupationLabel"),
     salaryAmountLabel: t("employeeForm.salaryAmountLabel"),
     salaryPeriodLabel: t("employeeForm.salaryPeriodLabel"),
     managerLabel: t("employeeForm.managerLabel"),
@@ -159,6 +162,7 @@ export function EmployeeBatchCreatePage({
     lastNamePlaceholder: t("employeeForm.lastNamePlaceholder"),
     phonePlaceholder: t("auth.phonePlaceholder"),
     rolePlaceholder: t("employeeForm.rolePlaceholder"),
+    occupationPlaceholder: t("employeeForm.occupationPlaceholder"),
     salaryAmountPlaceholder: "10000",
     salaryPeriodPlaceholder: t("employeeForm.selectSalaryPeriod"),
     notesPlaceholder: t("employeeForm.notesPlaceholder"),
@@ -173,6 +177,7 @@ export function EmployeeBatchCreatePage({
       phone: t("auth.validation.phone"),
       phoneFormat: t("auth.validation.phoneFormat"),
       roleId: t("employeeForm.validation.roleId"),
+      occupation: t("employeeForm.validation.occupation"),
       salaryAmountDzd: t("employeeForm.validation.salaryAmountRequired"),
       salaryAmountInvalid: t("employeeForm.validation.salaryAmountInvalid"),
       salaryPeriod: t("employeeForm.validation.salaryPeriodRequired"),
@@ -323,6 +328,7 @@ export function EmployeeBatchCreatePage({
               lastNameLabel: copy.lastNameLabel,
               phoneLabel: copy.phoneLabel,
               roleLabel: copy.roleLabel,
+              occupationLabel: copy.occupationLabel,
               salaryAmountLabel: copy.salaryAmountLabel,
               salaryPeriodLabel: copy.salaryPeriodLabel,
               salaryAmountPlaceholder: copy.salaryAmountPlaceholder,
@@ -339,6 +345,7 @@ export function EmployeeBatchCreatePage({
               lastNamePlaceholder: copy.lastNamePlaceholder,
               phonePlaceholder: copy.phonePlaceholder,
               rolePlaceholder: copy.rolePlaceholder,
+              occupationPlaceholder: copy.occupationPlaceholder,
               notesPlaceholder: copy.notesPlaceholder,
               remove: copy.remove,
             }}

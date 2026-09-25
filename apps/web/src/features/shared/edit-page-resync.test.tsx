@@ -2,7 +2,7 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { EmployeeEditPage } from "@/features/employees/employee-edit-page"
@@ -10,6 +10,7 @@ import { ProjectEditPage } from "@/features/projects/project-edit-page"
 import { WarehouseEditPage } from "@/features/warehouses/warehouse-edit-page"
 
 const mockNavigate = vi.fn()
+const mockSaveEmployee = vi.fn().mockResolvedValue(undefined)
 const mockUpdateEmployee = vi.fn().mockResolvedValue(undefined)
 const mockUpdateEmployeeWorkplace = vi.fn().mockResolvedValue(undefined)
 const mockSyncManagedProjects = vi.fn().mockResolvedValue(undefined)
@@ -34,6 +35,7 @@ vi.mock("@/router/navigation", () => ({
 }))
 
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
+  useSaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockSaveEmployee }),
   useUpdateEmployeeMutation: () => ({ isPending: false, mutateAsync: mockUpdateEmployee }),
   useUpdateEmployeeWorkplaceMutation: () => ({ isPending: false, mutateAsync: mockUpdateEmployeeWorkplace }),
   useSyncManagedProjectsMutation: () => ({ isPending: false, mutateAsync: mockSyncManagedProjects }),
@@ -49,6 +51,7 @@ afterEach(() => {
 describe("edit pages resync when record props change", () => {
   beforeEach(() => {
     mockNavigate.mockReset()
+    mockSaveEmployee.mockClear()
     mockUpdateEmployee.mockClear()
     mockUpdateEmployeeWorkplace.mockClear()
     mockSyncManagedProjects.mockClear()
@@ -322,5 +325,73 @@ describe("edit pages resync when record props change", () => {
     expect(screen.getByDisplayValue("مستودع ثان")).toBeTruthy()
     expect(screen.getByDisplayValue("سطاوالي")).toBeTruthy()
     expect(screen.getByDisplayValue("ملاحظات ثانية")).toBeTruthy()
+  })
+
+  it("sends the occupation field on save and rejects >120 chars", async () => {
+    const employee = {
+      id: "emp-occupation",
+      firstName: "علي",
+      lastName: "بن حميد",
+      name: "علي بن حميد",
+      phone: "0555555555",
+      roleId: "role-worker",
+      roleKey: "worker",
+      role: "عامل",
+      status: "ACTIVE",
+      salaryAmountDzd: 4500,
+      salaryPeriod: "DAILY",
+      notes: null,
+      occupation: null,
+      currentManagerId: "mgr-1",
+      currentManagerName: "مدير 1",
+      currentProjectId: "proj-1",
+      currentWarehouseId: null,
+      currentWorkplace: "مشروع 1",
+    } as const
+
+    const { rerender } = render(
+      <EmployeeEditPage
+        currentManagedProjectIds={[]}
+        currentManagedWarehouseIds={[]}
+        employee={employee as never}
+        managedProjectOptions={[]}
+        managedWarehouseOptions={[]}
+        managerOptions={[{ id: "mgr-1", label: "مدير 1", projectOptions: [{ id: "proj-1", label: "مشروع 1" }] }]}
+        roles={[{ id: "role-worker", key: "worker", name: "عامل" } as never]}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText("المهنة / الدور الوظيفي"), {
+      target: { value: "عامل بناء" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "حفظ كل التغييرات" }))
+
+    await waitFor(() => {
+      expect(mockSaveEmployee).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "emp-occupation", occupation: "عامل بناء" }),
+      )
+    })
+
+    mockSaveEmployee.mockClear()
+
+    rerender(
+      <EmployeeEditPage
+        currentManagedProjectIds={[]}
+        currentManagedWarehouseIds={[]}
+        employee={{ ...employee, occupation: null } as never}
+        managedProjectOptions={[]}
+        managedWarehouseOptions={[]}
+        managerOptions={[{ id: "mgr-1", label: "مدير 1", projectOptions: [{ id: "proj-1", label: "مشروع 1" }] }]}
+        roles={[{ id: "role-worker", key: "worker", name: "عامل" } as never]}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText("المهنة / الدور الوظيفي"), {
+      target: { value: "م".repeat(121) },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "حفظ كل التغييرات" }))
+
+    expect(screen.getByText("المهنة يجب ألا تتجاوز 120 حرفًا.")).toBeTruthy()
+    expect(mockSaveEmployee).not.toHaveBeenCalled()
   })
 })

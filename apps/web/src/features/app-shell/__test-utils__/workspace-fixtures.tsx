@@ -28,7 +28,7 @@ import type { ReactNode } from "react"
 
 import { AppPreferencesProvider } from "@/features/preferences/preferences"
 import { HomeView, type HomeViewPage } from "../home-view"
-import type { WorkspaceSnapshot } from "@tuari/contracts"
+import type { InventoryInvoiceGroupDetail, WorkspaceSnapshot } from "@tuari/contracts"
 
 // ─── Hoisted: navigateMock + AppMutationError must exist before vi.mock factories ───
 const { navigateMock, AppMutationError } = vi.hoisted(() => {
@@ -75,6 +75,7 @@ const mockState: {
   debtsSummaryError: boolean
   debtsSummaryPending: boolean
   systemLogData: { items: Array<Record<string, unknown>> }
+  invoiceGroupDetail: InventoryInvoiceGroupDetail | undefined
 } = {
   sessionUser: null,
   sessionPending: false,
@@ -88,6 +89,7 @@ const mockState: {
   debtsSummaryError: false,
   debtsSummaryPending: false,
   systemLogData: defaultSystemLogData,
+  invoiceGroupDetail: undefined,
 }
 
 // ─── Search query gating state (issue #280) ────────────────────
@@ -121,6 +123,148 @@ export function getSearchQueryState() {
   return { ...searchState }
 }
 
+// ─── Invoice group query state (issue #30) ───────────────────
+// Records the invoiceId the invoice-details page requested from the
+// singular inventory invoice-group hook. This is the exact wiring seam
+// the routing bug broke: the route param must reach the mounted query.
+
+const invoiceGroupQueryState: {
+  invoiceId: string | undefined
+  enabled: boolean
+} = {
+  invoiceId: undefined,
+  enabled: false,
+}
+
+/** Latest invoiceId requested from useInventoryInvoiceGroupQuery. */
+export function getInvoiceGroupQueryState() {
+  return { ...invoiceGroupQueryState }
+}
+
+/**
+ * Detail payload for the created-invoice details view (issue #30).
+ * Mirrors what the API returns from inventoryInvoiceGroupsGet.
+ */
+export function makeInvoiceGroupDetail(): InventoryInvoiceGroupDetail {
+  const createdAt = "2026-03-20T10:00:00.000Z"
+  return {
+    group: {
+      id: "invoice-1",
+      invoiceNumber: "FAC-2026-001",
+      supplierName: "مورد الاختبار",
+      invoiceDate: createdAt,
+      warehouseId: "warehouse-1",
+      projectId: null,
+      externalCounterpartyId: null,
+      grossTotalDzd: 1500,
+      paidAmountDzd: 500,
+      remainingDebtDzd: 1000,
+      debtAccountId: null,
+      note: null,
+      createdAt,
+      updatedAt: createdAt,
+    },
+    entries: [
+      {
+        id: "entry-1",
+        invoiceGroupId: "invoice-1",
+        itemDefinitionId: "item-def-1",
+        warehouseId: "warehouse-1",
+        projectId: null,
+        itemType: "CONSUMABLE",
+        itemName: "أسمنت",
+        unit: "كيس",
+        quantity: 10,
+        unitPriceDzd: 150,
+        totalPriceDzd: 1500,
+        note: null,
+        createdAt,
+        updatedAt: createdAt,
+        assets: [],
+      },
+      {
+        id: "entry-2",
+        invoiceGroupId: "invoice-1",
+        itemDefinitionId: "item-def-2",
+        warehouseId: null,
+        projectId: "project-1",
+        itemType: "ASSET",
+        itemName: "حاسوب محمول",
+        unit: null,
+        quantity: 1,
+        unitPriceDzd: 80000,
+        totalPriceDzd: 80000,
+        note: null,
+        createdAt,
+        updatedAt: createdAt,
+        assets: [
+          {
+            id: "asset-1",
+            inventoryEntryId: "entry-2",
+            assetName: "حاسوب محمول",
+            assetTag: "AST-001",
+            serialNumber: null,
+            condition: "USED",
+            purchaseDate: createdAt,
+            purchasePriceDzd: 80000,
+            currentWarehouseId: null,
+            currentProjectId: "project-1",
+            currentLocationLabel: "مشروع المقر الجديد",
+            note: null,
+            createdAt,
+            updatedAt: createdAt,
+          },
+        ],
+      },
+    ],
+    attachments: [
+      {
+        id: "attachment-1",
+        invoiceGroupId: "invoice-1",
+        originalName: "فاتورة-المورد.pdf",
+        mimeType: "application/pdf",
+        byteSize: 1024,
+        storageKey: "storage/attachment-1",
+        relativePath: "/api/inventory/attachments/attachment-1",
+        downloadUrl: "http://127.0.0.1:4318/api/inventory/attachments/attachment-1",
+        sha256: null,
+        createdAt,
+      },
+    ],
+    movements: [
+      {
+        id: "movement-1",
+        movementType: "PURCHASE",
+        itemType: "CONSUMABLE",
+        inventoryEntryId: "entry-1",
+        assetUnitId: null,
+        quantity: 10,
+        fromWarehouseId: null,
+        fromProjectId: null,
+        toWarehouseId: "warehouse-1",
+        toProjectId: null,
+        note: null,
+        occurredAt: createdAt,
+        createdAt,
+      },
+    ],
+    consumableBalances: [
+      {
+        id: "balance-1",
+        inventoryEntryId: "entry-1",
+        itemDefinitionId: "item-def-1",
+        itemName: "أسمنت",
+        warehouseId: "warehouse-1",
+        projectId: null,
+        quantity: 10,
+        locationLabel: "المستودع الرئيسي",
+        createdAt,
+        updatedAt: createdAt,
+      },
+    ],
+  }
+}
+
 // ─── Mock functions ──────────────────────────────────────────────
 // Module-internal mock functions. Tests control them via the typed
 // mocks object returned by mockAllMutations().
@@ -130,6 +274,7 @@ const mockFns = {
   bootstrapMutate: vi.fn(),
   signOutMutate: vi.fn(),
   createEmployeesBatchMutate: vi.fn(),
+  saveEmployeeMutate: vi.fn(),
   updateEmployeeMutate: vi.fn(),
   leaveEmployeeMutate: vi.fn(),
   deleteEmployeeMutate: vi.fn(),
@@ -198,6 +343,7 @@ vi.mock("../mock-dashboard", () => ({
   useSettleDebtAccountMutation: () => ({ isPending: false, mutate: vi.fn() }),
   useRecordDebtPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useSaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.saveEmployeeMutate }),
   useUpdateEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.updateEmployeeMutate }),
   useLeaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.leaveEmployeeMutate }),
   useDeleteEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.deleteEmployeeMutate }),
@@ -227,6 +373,7 @@ vi.mock("../workspace-mutations", () => ({
   useUpdateProjectMutation: () => ({ isPending: false, mutateAsync: mockFns.updateProjectMutate }),
   useCreateEmployeesBatchMutation: () => ({ isPending: false, mutateAsync: mockFns.createEmployeesBatchMutate }),
   useCreateExternalCounterpartyMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useSaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.saveEmployeeMutate }),
   useUpdateEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.updateEmployeeMutate }),
   useLeaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.leaveEmployeeMutate }),
   useDeleteEmployeeMutation: () => ({ isPending: false, mutateAsync: mockFns.deleteEmployeeMutate }),
@@ -375,7 +522,16 @@ vi.mock("@/features/inventory/inventory-hooks", async (importOriginal) => ({
     searchState.invoices = enabled
     return { data: { items: [] }, isPending: false, isError: false }
   },
-  useInventoryInvoiceGroupQuery: () => ({ data: undefined, isPending: false, isError: false }),
+  useInventoryInvoiceGroupQuery: (invoiceId: string | undefined) => {
+    invoiceGroupQueryState.invoiceId = invoiceId
+    invoiceGroupQueryState.enabled = Boolean(invoiceId)
+    return {
+      data: invoiceId ? mockState.invoiceGroupDetail : undefined,
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    }
+  },
   useInventoryLocationContentsQuery: () => ({
     data: { balances: [], assets: [] },
     isPending: false,
@@ -464,6 +620,7 @@ export function makeWorkspaceData(
         salaryAmountDzd: 95000,
         salaryPeriod: "MONTHLY",
         notes: null,
+        occupation: null,
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -477,6 +634,7 @@ export function makeWorkspaceData(
         salaryAmountDzd: 4500,
         salaryPeriod: "DAILY",
         notes: "عامل ميداني",
+        occupation: "عامل بناء",
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -575,6 +733,7 @@ export interface WorkspaceMocks {
   bootstrapMutate: Mock
   signOutMutate: Mock
   createEmployeesBatchMutate: Mock
+  saveEmployeeMutate: Mock
   updateEmployeeMutate: Mock
   leaveEmployeeMutate: Mock
   deleteEmployeeMutate: Mock
@@ -605,6 +764,7 @@ export function mockAllMutations(): WorkspaceMocks {
     bootstrapMutate: mockFns.bootstrapMutate,
     signOutMutate: mockFns.signOutMutate,
     createEmployeesBatchMutate: mockFns.createEmployeesBatchMutate,
+    saveEmployeeMutate: mockFns.saveEmployeeMutate,
     updateEmployeeMutate: mockFns.updateEmployeeMutate,
     leaveEmployeeMutate: mockFns.leaveEmployeeMutate,
     deleteEmployeeMutate: mockFns.deleteEmployeeMutate,
@@ -641,6 +801,7 @@ export function resetAllMutations(mocks: WorkspaceMocks): void {
   mockState.debtsSummaryError = false
   mockState.debtsSummaryPending = false
   mockState.systemLogData = { ...defaultSystemLogData, items: [...defaultSystemLogData.items] }
+  mockState.invoiceGroupDetail = undefined
 
   searchState.employees = undefined
   searchState.projects = undefined
@@ -649,6 +810,8 @@ export function resetAllMutations(mocks: WorkspaceMocks): void {
   searchState.externals = undefined
   searchState.inventory = undefined
   searchState.invoices = undefined
+  invoiceGroupQueryState.invoiceId = undefined
+  invoiceGroupQueryState.enabled = false
 
   for (const key of Object.keys(mocks) as Array<keyof WorkspaceMocks>) {
     mocks[key].mockReset()
@@ -700,10 +863,14 @@ export function renderWorkspace(
     detailTab?: string
     /** Currently viewed employee id. */
     employeeId?: string
+    /** Currently viewed invoice id. */
+    invoiceId?: string
     /** Currently viewed project id. */
     projectId?: string
     /** Currently viewed warehouse id. */
     warehouseId?: string
+    /** Detail payload returned by the inventory invoice group query. */
+    invoiceGroupDetail?: InventoryInvoiceGroupDetail | undefined
   },
 ): RenderResult {
   // Apply all state options before rendering.
@@ -717,6 +884,7 @@ export function renderWorkspace(
   mockState.workspaceData = "workspaceData" in opts ? opts.workspaceData : makeWorkspaceData()
   mockState.debtsSummaryError = "debtsSummaryError" in opts ? opts.debtsSummaryError! : false
   mockState.debtsSummaryPending = "debtsSummaryPending" in opts ? opts.debtsSummaryPending! : false
+  mockState.invoiceGroupDetail = "invoiceGroupDetail" in opts ? opts.invoiceGroupDetail : undefined
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -730,6 +898,7 @@ export function renderWorkspace(
         <HomeView
           detailTab={options?.detailTab}
           employeeId={options?.employeeId}
+          invoiceId={options?.invoiceId}
           page={page}
           projectId={options?.projectId}
           warehouseId={options?.warehouseId}

@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
-import { AppShellFilterShell, DateRangeFilter, usePaginatedRows } from "@/features/app-shell/app-shell-table-primitives";
-import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls";
+import { AppShellFilterShell, DateRangeFilter, usePaginatedRows } from "@/features/shared/table-primitives";
+import { TablePaginationControls } from "@/features/shared/table-pagination-controls";
 import { rpcClient } from "@/lib/orpc-client";
 
 interface AuditLog {

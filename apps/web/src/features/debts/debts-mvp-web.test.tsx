@@ -260,6 +260,7 @@ describe("debts MVP web UI", () => {
           managerName: "أحمد بلخير",
           name: "علي بن حميد",
           notes: null,
+          occupation: "عامل بناء",
           phone: "0555200120",
           role: "عامل",
           roleId: "role-worker",

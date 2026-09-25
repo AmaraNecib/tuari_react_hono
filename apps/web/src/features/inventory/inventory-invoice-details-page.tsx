@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { downloadDesktopApiFile } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
@@ -34,6 +36,7 @@ function buildLocationHref(location: { warehouseId?: string | null; projectId?: 
  * @description Component
  */
 export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: string; onBack: () => void }) {
+  const { t } = useTranslation()
   const invoiceQuery = useInventoryInvoiceGroupQuery(invoiceId)
   const [transferSectionExpanded] = useState(false)
   // Only fetch warehouses/projects when transfer section is expanded (lazy loading optimization)
@@ -52,6 +55,19 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
 
   async function handleAttachmentOpen(attachment: { id: string; originalName: string }) {
     await downloadDesktopApiFile(resolveApiUrl(`/api/inventory/attachments/${attachment.id}`), attachment.originalName)
+  }
+
+  // Error surface (issue #34): when the invoice-group query errored (invalid
+  // or 404 id) or settled without data, replace the page instead of showing
+  // the loading line forever. Pending still renders the loader below.
+  if (!invoiceQuery.isPending && (invoiceQuery.isError || !detail)) {
+    return (
+      <LoadErrorSurface
+        message={t("detailPages.invoice.loadError")}
+        retryLabel={t("common.retry")}
+        onRetry={() => void invoiceQuery.refetch()}
+      />
+    )
   }
 
   return (

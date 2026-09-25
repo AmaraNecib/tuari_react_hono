@@ -12,7 +12,7 @@ import {
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
-} from "@/features/app-shell/app-shell-table-primitives"
+} from "@/features/shared/table-primitives"
 import { getArabicStatusLabel, getStatusTone } from "@/features/shared/status-meta"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 
@@ -37,6 +37,7 @@ export type EmployeeTableRow = {
   currentWarehouseAssignmentId: string | null
   currentWorkplace: string
   notes: string | null
+  occupation: string | null
   isWorker: boolean
   canDelete: boolean
   canLeave: boolean

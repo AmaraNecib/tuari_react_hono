@@ -10,6 +10,8 @@ import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashbo
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
+import { classifyWorkforceRole } from "./role-classification"
+import { workspaceRoutes } from "@/router/navigation"
 import {
   RecordHistoryTable,
   RecordInfoCard,
@@ -131,9 +133,7 @@ export function EmployeeDetailsPage({
   workHistory: EmployeeWorkHistoryRow[]
 }) {
   const { t } = useTranslation()
-  const isProjectManager = employee.roleKey === "project_manager"
-  const isWarehouseManager = employee.roleKey === "warehouse_manager"
-  const isWorker = employee.roleKey === "worker"
+  const { isProjectManager, isWarehouseManager, isWorker } = classifyWorkforceRole(employee.roleKey)
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const createSalaryPaymentMutation = useCreateSalaryPaymentMutation()
   const [paymentDate, setPaymentDate] = useState(() => getAlgeriaDateInputValue())
@@ -155,6 +155,10 @@ export function EmployeeDetailsPage({
   const currencyLabel = t("detailPages.salary.currency")
   const salaryPeriodLabel = (value: EmployeeTableRow["salaryPeriod"]) => t(getSalaryPeriodLabelKey(value))
   const noNotesLabel = t("common.noNotes")
+  // The #20 workplace placement flow persists only for ACTIVE workers, so
+  // non-active workers must not get an edit-workplace CTA that would be
+  // silently ignored.
+  const canAssignWorkplace = isWorker && employee.status === "ACTIVE"
   const managedProjectCountLabel = managedProjects.length > 0 ? `${managedProjects.length} ${t("detailPages.employee.projectUnit")}` : t("detailPages.employee.noManagedProjects")
   const managedWarehouseCountLabel = managedWarehouses.length > 0 ? `${managedWarehouses.length} ${t("detailPages.employee.warehouseUnit")}` : t("detailPages.employee.noManagedWarehouses")
   const managedProjectNamesLabel = managedProjects.length > 0 ? managedProjects.join("، ") : t("detailPages.employee.noManagedProjectNames")
@@ -220,6 +224,7 @@ export function EmployeeDetailsPage({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <RecordInfoCard label={t("detailPages.employee.fullName")} value={employee.name} />
           <RecordInfoCard label={t("detailPages.employee.role")} value={employee.role} />
+          <RecordInfoCard label={t("detailPages.employee.occupation")} value={employee.occupation?.trim() || t("detailPages.employee.noOccupation")} />
           <RecordInfoCard label={t("detailPages.employee.phone")} value={employee.phone} valueClassName="text-right font-mono" />
           <RecordInfoCard label={t("detailPages.employee.status")} value={getArabicStatusLabel(employee.status)} />
           {isWorker ? <RecordInfoCard label={t("detailPages.employee.currentManager")} value={employee.managerName || t("detailPages.employee.noCurrentManager")} /> : null}
@@ -240,6 +245,12 @@ export function EmployeeDetailsPage({
 
       <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="history">
         <RecordHistoryTable
+          emptyAction={
+            canAssignWorkplace
+              ? { label: t("detailPages.employee.noWorkHistoryAction"), target: workspaceRoutes.employeeEdit(employee.id) }
+              : undefined
+          }
+          emptyHint={canAssignWorkplace ? t("detailPages.employee.noWorkHistoryHint") : undefined}
           emptyLabel={t("detailPages.employee.noWorkHistory")}
           rows={workHistory}
         />
