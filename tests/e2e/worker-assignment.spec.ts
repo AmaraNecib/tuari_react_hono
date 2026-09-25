@@ -8,6 +8,10 @@ import {
 } from "./helpers/db-seed"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
+import { databaseFixturesAvailable } from "./helpers/db-isolation"
+
+
+test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 test.describe.configure({ mode: "serial" })
 
 const seeded = {
