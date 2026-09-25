@@ -3,8 +3,7 @@
 **Tier:** Standard (defense-in-depth completion of #322's High-assurance review;
 financial-integrity adjacency, but no new authz/crypto/debt logic — mechanical
 wrap of existing writers behind the existing tripwire primitive).
-**Base:** `origin/develop` @ `6be34976954dee8b6ef33a34ce923d348270cdb0`
-**Reviewed HEAD:** `2ef149972d9724c49625c6fb0df359e2b998767c0`
+**Base:** `develop` (merge-base of `refactor/issue-348`)
 **Branch:** `refactor/issue-348`
 
 ## Problem
@@ -31,9 +30,6 @@ invoice that never pass through `runSync`:
   `deleteConsumableBalance`, `createMovement`, `createAttachment`.
 - **invoice** (`invoice.repository.ts`): `updateStatus`,
   `markReceivedWithDebtAccount`.
-
-**Enumeration total:** 38 writer methods — 24 company (17 public + 7 private
-helpers), 12 inventory, and 2 invoice.
 
 **Mechanism (why it matters):** a bare statement executed on the shared
 better-sqlite3 connection while another flow's transaction is open does not
@@ -110,25 +106,18 @@ three modules now runs under `runSyncTransaction`.**
 ## Changes
 
 1. `apps/api/src/modules/company/adapters/sqlite-company.repository.ts` —
-   wrap 24 enumerated writer methods (17 public writers + 7 private helpers).
+   wrap 24 write sites (17 public writers + 7 private helpers).
 2. `apps/api/src/modules/inventory/adapters/sqlite-inventory.repository.ts` —
-   wrap 12 enumerated writer methods.
-3. `apps/api/src/modules/invoice/adapters/invoice.repository.ts` — wrap 2
-   enumerated writer methods: `updateStatus` and
-   `markReceivedWithDebtAccount`.
-
-The implementation therefore routes all 38 enumerated writer methods through
-`runSyncTransaction`; pre-existing multi-statement methods retain one enclosing
-tripwire around their complete statement sequence.
+   wrap 12 writers.
+3. `apps/api/src/modules/invoice/adapters/invoice.repository.ts` — wrap
+   `updateStatus` and `markReceivedWithDebtAccount`.
 4. `apps/api/src/tests/integration/transaction-lock-guard.test.ts` — new
    describe block: for each previously-unwrapped writer, assert it throws
    `FifoLockBusyError` while a foreign flow holds the connection, then
    succeeds and is durable once the connection is free (mirrors the existing
    #322 cases).
 
-No primitive behavior changes to `fifo-lock.ts`; its module documentation was
-updated to record that #348 completes this routing. The primitive already covers
-all four cases.
+No changes to `fifo-lock.ts` (the primitive already covers all four cases).
 
 ## Tests
 
@@ -166,9 +155,7 @@ all four cases.
 
 ## Acceptance
 
-- Every one of the 38 sync writer methods enumerated in D1 runs under
-  `runSyncTransaction` (24 company + 12 inventory + 2 invoice). A structural
-  audit confirms that every database `.run()` in the three target adapters is
-  lexically inside an enclosing `runSyncTransaction`; pre-existing
-  multi-statement methods are guarded by their enclosing wrapper.
+- Every sync writer enumerated in D1 runs under `runSyncTransaction` (grep
+  audit: no unwrapped `this.db.insert/update/delete(...).run()` or
+  `this.raw.prepare(...).run()` remains in the three modules).
 - Tripwire tests pass for the named writers; full suite green.
