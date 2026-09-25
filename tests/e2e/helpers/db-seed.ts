@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { existsSync, readdirSync, statSync } from "node:fs"
 import { createRequire } from "node:module"
-import { join } from "node:path"
+import { isAbsolute, join } from "node:path"
 
 /**
  * E2E DB seeding helper (issue #183).
@@ -66,6 +66,33 @@ export function loadDatabaseConstructor() {
  * (one file per Playwright run — the newest by mtime).
  */
 export function findE2eDatabase(): string {
+  // An externally managed API has no local file to reset or seed. Failing here
+  // with an explanation beats silently mutating a stale local database while
+  // the browser talks to the external one (Greptile finding on this slice).
+  if (process.env.E2E_API_MANAGED === "0") {
+    throw new Error(
+      "This run targets an externally managed API (PLAYWRIGHT_API_URL), so the direct-SQLite fixtures cannot reset or seed its database. Run against a managed local server, or drop the specs that assert on the database file.",
+    )
+  }
+  // Prefer the database THIS run started: playwright.config.ts exports the
+  // exact path it handed to the API, so a concurrent run in the same
+  // checkout can never be reset by mistake (Greptile finding on this slice).
+  const declared = process.env.APP_DB_PATH?.trim()
+  if (declared) {
+    // The managed API runs with cwd=apps/api (pnpm --filter @tuari/api dev) and
+    // opens the file there, while the workers run from the repo root. Check the
+    // API's own location FIRST: if both interpretations exist, the repo-root
+    // file is not the one the browser reads.
+    const candidates = isAbsolute(declared)
+      ? [declared]
+      : [join(process.cwd(), "apps", "api", declared), join(process.cwd(), declared)]
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) return candidate
+    }
+    throw new Error(
+      `APP_DB_PATH is set to ${declared} but no database exists at: ${candidates.join(", ")} — did the API start?`,
+    )
+  }
   const candidates: Array<{ path: string; mtime: number }> = []
   for (const dataDir of [
     join(process.cwd(), "apps", "api", "data"),
