@@ -77,6 +77,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.pull_request.number }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || '0' }}
+          # A real pull_request closed+merged event is already gated by this
+          # workflow's `if:`, so the script skips its own API qualification
+          # (a transient read must never silently leave issues open).
+          EVENT_QUALIFIED: ${{ github.event_name == 'pull_request' && '1' || '0' }}
           # PR_BODY comes from context on the real trigger (cheap, no API
           # call); the dispatch harness leaves it empty so the script fetches
           # the body AND enforces the merged-into-develop qualification.

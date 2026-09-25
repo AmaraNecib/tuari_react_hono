@@ -3,7 +3,7 @@ Generate tmp/issue-tracker.html from GitHub or the durable local snapshot.
 Run: python tools/gen-issue-tracker.py --offline
 """
 import argparse
-import subprocess, json, re, sys, os
+import subprocess, json, re, sys, os, html as html_mod
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,6 +97,23 @@ LEVELS = {
     190: 0, 191: 0, 211: 0, 235: 0, 248: 0,
 }
 
+
+def js_json(obj):
+    """JSON that is safe to embed inside a <script> block.
+
+    json.dumps leaves '<' intact, so an issue title containing '</script>'
+    would end the block and let issue-authored text execute as page script.
+    """
+    return (
+        json.dumps(obj, ensure_ascii=False)
+        .replace('<', '\\u003c')
+        .replace('>', '\\u003e')
+        .replace('&', '\\u0026')
+        .replace('\u2028', '\\u2028')
+        .replace('\u2029', '\\u2029')
+    )
+
+
 # Priority order WITHIN each level — the first MAX_PARALLEL of these get the
 # colored READY badge. Lower number = higher priority.
 PRIORITY = [
@@ -113,7 +130,7 @@ PRIORITY = [
 ]
 
 # Max parallel worktrees shown as READY/colored per level
-MAX_PARALLEL = 8
+MAX_PARALLEL = 6  # crew policy default: six concurrent mutation lanes
 
 # Worktree names for issues we've already created
 WORKTREES = {
@@ -146,14 +163,14 @@ CONFLICTS = {
 }
 
 BLOCKED_BY = {
-    199: ['#198'],
-    213: ['#238'],  # native: 212 closed; keep simple
-    216: ['#213'],
-    255: ['#251', '#249', '#250', '#253', '#252'],
-    257: ['#255'],
-    210: ['#209'],
-    217: ['#236'],
-    265: ['#238'],
+    199: [198],
+    213: [238],  # native: 212 closed; keep simple
+    216: [213],
+    255: [251, 249, 250, 253, 252],
+    257: [255],
+    210: [209],
+    217: [236],
+    265: [238],
 }
 
 SKILLS = {
@@ -208,7 +225,7 @@ def main():
     for i in open_items:
         n = i['number']
         lvl = LEVELS.get(n, 3)
-        title = i['title'].replace('"', '&quot;')
+        title = i['title']
         body = (i.get('body') or '')[:400].replace('"', '&quot;').replace('\n', ' ')
         labels = [l['name'] for l in i.get('labels', [])]
         prio = 'high' if any('high' in l for l in labels) else 'med' if any('med' in l for l in labels) else ''
@@ -285,8 +302,8 @@ def main():
         if c['tier'] == 'High-assurance': badges += '<span class="badge b-high">HIGH-ASSURANCE</span>'
         if c['lvl'] == 0: badges += '<span class="badge b-tier">REF</span>'
         meta = []
-        if c['blockers']: meta.append(f'<span class="blocker">⛔ needs: {", ".join("#"+b for b in c["blockers"])}</span>')
-        if c['unlocks']: meta.append(f'<span>🔓 unlocks: {", ".join("#"+u for u in c["unlocks"])}</span>')
+        if c['blockers']: meta.append(f'<span class="blocker">⛔ needs: {", ".join("#"+str(b) for b in c["blockers"])}</span>')
+        if c['unlocks']: meta.append(f'<span>🔓 unlocks: {", ".join("#"+str(u) for u in c["unlocks"])}</span>')
         if c['conflicts']: meta.append(f'<span class="conflict">⚠ conflicts: {", ".join(c["conflicts"])}</span>')
         if c['skills'] and c['lvl'] > 0: meta.append(f'<span>🧩 {c["skills"]}</span>')
         copy = f'<button class="btn btn-copy" data-n="{c["n"]}"><span class="ico">📋</span> Copy launch prompt</button>' if c['wb'] and c['lvl'] > 0 else ''
@@ -299,8 +316,8 @@ def main():
         wb_note = f'<div style="font-size:11px;color:var(--cyan);margin-top:4px">worktree: worktrees/{c["wb"]} ✓ deps ready</div>' if c['wb'] else ''
         return f'''<div class="card {extra}" data-n="{c["n"]}" data-lvl="{c["lvl"]}" data-state="open" data-ready="{1 if c["ready"] else 0}" data-conflict="{1 if c["conflicts"] else 0}">
     <div class="card-top"><div class="num">#{c["n"]}</div><div class="badges">{badges}</div></div>
-    <div class="title">{c["title"]}</div>
-    <div class="desc">{c["body"]}</div>
+    <div class="title">{html_mod.escape(c["title"])}</div>
+    <div class="desc">{html_mod.escape(c["body"])}</div>
     {f'<div class="meta">{"".join(meta)}</div>' if meta else ''}
     {wb_note}
     <div class="actions">{copy}{ghbtn}</div>
@@ -319,8 +336,8 @@ def main():
 
     # JSON for the copy-prompt JS
     import json as j
-    js_data = j.dumps(cards)
-    source_js = j.dumps(source)
+    js_data = js_json(cards)
+    source_js = js_json(source)
 
     html = f'''<!DOCTYPE html>
 <html lang="en">

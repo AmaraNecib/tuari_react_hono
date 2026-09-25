@@ -12,6 +12,11 @@
 #   PR_NUMBER           — PR whose body is scanned (required)
 #   PR_BODY             — optional; fetched via the API when absent
 #   DRY_RUN=1           — log what WOULD happen, never close anything
+#   EVENT_QUALIFIED=1   — set by the workflow for a real pull_request
+#                         closed+merged event; the workflow `if:` already
+#                         proved merged-into-develop, so the in-script API
+#                         qualification is skipped (a transient read failure
+#                         must never silently leave delivered issues open).
 #   GITHUB_STEP_SUMMARY — optional; a Closed/Skipped table is appended there
 #
 # Backend: bash + curl + jq — deliberately AVOIDS the `gh` CLI. The repo's
@@ -224,28 +229,40 @@ for num in $numbers; do
     continue
   fi
 
+  # QUALIFICATION (defense in depth, issue #54): never close for a PR that
+  # was not merged into develop. A real pull_request merge event already proves
+  # that in the workflow `if:` and passes EVENT_QUALIFIED=1, so no API read is
+  # needed there — a transient read failure must never silently leave delivered
+  # issues open. Dispatch/dry runs must prove it in-script.
+  # Uses the PULLS endpoint — GET /issues/N (PR-as-issue) carries no
+  # .merged/.base fields (verified live; Greptile finding).
+  if [ -z "${QUALIFIED:-}" ]; then
+    if [ "${EVENT_QUALIFIED:-0}" = "1" ]; then
+      echo "  QUALIFIED: pull_request merge event (workflow-gated, no API read)"
+      QUALIFIED=1
+    else
+      pr_merged=$(api "pulls/${PR_NUMBER}" '.merged // false')
+      show_api_diag
+      pr_base=$(api "pulls/${PR_NUMBER}" '.base.ref // ""')
+      show_api_diag
+      if [ -z "$pr_merged" ] || [ -z "$pr_base" ]; then
+        echo "  ERROR: cannot read PR #$PR_NUMBER merged/base state from the API — refusing to close anything"
+        summarize ERROR "PR #$PR_NUMBER" "PR state unreadable — no closes performed"
+        exit 1
+      fi
+      if [ "$pr_merged" != "true" ] || [ "$pr_base" != "develop" ]; then
+        echo "  WARN: PR #$PR_NUMBER not merged into develop (merged=$pr_merged base=$pr_base) — refusing to close anything"
+        summarize WARNED "PR #$PR_NUMBER" "not merged into develop — no closes performed"
+        exit 0
+      fi
+      QUALIFIED=1
+    fi
+  fi
+
   if [ "$DRY_RUN" = "1" ]; then
     echo "  DRY RUN: WOULD CLOSE #$num"
     summarize WOULD-CLOSE "#$num" "dry run — no action taken"
     continue
-  fi
-
-  # QUALIFICATION (defense in depth, issue #54): never close for a PR that
-  # was not merged into develop. The pull_request trigger is already gated
-  # by the workflow `if:`; the workflow_dispatch harness must enforce it
-  # in-script, or `dry_run=false` could close issues from an unmerged PR.
-  # Uses the PULLS endpoint — GET /issues/N (PR-as-issue) carries no
-  # .merged/.base fields (verified live; Greptile finding).
-  if [ -z "${QUALIFIED:-}" ]; then
-    pr_merged=$(api "pulls/${PR_NUMBER}" '.merged // false')
-    pr_base=$(api "pulls/${PR_NUMBER}" '.base.ref // ""')
-    show_api_diag
-    if [ "$pr_merged" != "true" ] || [ "$pr_base" != "develop" ]; then
-      echo "  WARN: PR #$PR_NUMBER not merged into develop (merged=$pr_merged base=$pr_base) — refusing to close anything"
-      summarize WARNED "PR #$PR_NUMBER" "not merged into develop — no closes performed"
-      exit 0
-    fi
-    QUALIFIED=1
   fi
 
   # Real close: PATCH state=closed, then comment. Both fail-open with a WARN —

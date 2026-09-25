@@ -32,6 +32,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo lint
+      # Root-level gates turbo never runs: turbo has no root lint task, so the
+      # prose gate and the issue-closing harness would silently pass CI.
+      - run: pnpm check:unslop
+      - run: pnpm test:ci-scripts
 
   typecheck:
     name: Type Check
@@ -124,10 +128,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Verify pre-installed Tauri system deps
+      - name: Install Tauri system deps
         if: needs.detect.outputs.rust == 'true'
         run: |
-          pkg-config --exists webkit2gtk-4.1 && echo "webkit2gtk-4.1 present" || { echo "missing webkit2gtk-4.1 (install once on the runner, as root)"; exit 1; }
+          if pkg-config --exists webkit2gtk-4.1; then
+            echo "webkit2gtk-4.1 already present"
+          else
+            sudo apt-get update
+            sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          fi
 
       - name: Install Rust toolchain
         if: needs.detect.outputs.rust == 'true'
@@ -266,7 +275,7 @@ jobs:
       - name: Test E2E
         if: needs.detect.outputs.e2e == 'true'
         run: |
-          pnpm exec playwright install chromium
+          pnpm exec playwright install --with-deps chromium
           pnpm test:e2e
 
       - name: Upload Playwright HTML report

@@ -116,6 +116,7 @@ check() { # name expected actual
 assert_closed() { check "$1 closed #$2" "yes" "$([ -f "$TMP/closed_$2" ] && echo yes || echo no)"; }
 assert_not_closed() { check "$1 did NOT close #$2" "no" "$([ -f "$TMP/closed_$2" ] && echo yes || echo no)"; }
 assert_has() { grep -qE "$2" <<<"$1" && check "$3" yes yes || check "$3" yes no; }
+assert_not_has() { grep -qE "$2" <<<"$1" && check "$3" no yes || check "$3" no no; }
 
 # ── Scenarios ────────────────────────────────────────────────────────────
 
@@ -199,11 +200,30 @@ check "close failure warns but exits 0" "0" "$RC"
 assert_has "$OUT" "WARN: failed to close #110" "WARN echoed"
 
 reset_state
+# A dry run applies the same merge qualification now, so this fixture must carry merged/base.
+jq -cn --arg s open --arg b 'Closes #111' '{state:$s, body:$b, merged:true, base:{ref:"develop"}}' >"$TMP/issues/42.json"
 mk_issue 111 open "dry run target"
 OUT=$(DRY_RUN=1 PR_NUMBER=42 PR_BODY="Closes #111" bash "$TARGET" 2>&1); RC=$?
 check "dry run exits 0" "0" "$RC"
 assert_not_closed "DRY_RUN never closes" 111
 assert_has "$OUT" "WOULD CLOSE #111" "dry run logs intent"
+
+# Parity: a dry run must not promise a close the real path would refuse
+reset_state
+jq -cn --arg s open --arg b 'Closes #116' '{state:$s, body:$b, merged:false, base:{ref:"develop"}}' >"$TMP/issues/42.json"
+mk_issue 116 open "unmerged dry run target"
+OUT=$(DRY_RUN=1 PR_NUMBER=42 PR_BODY="Closes #116" bash "$TARGET" 2>&1); RC=$?
+check "unmerged dry run exits 0" "0" "$RC"
+assert_not_has "$OUT" "WOULD CLOSE #116" "unmerged dry run promises nothing"
+assert_has "$OUT" "not merged into develop" "unmerged dry run echoes the refusal reason"
+
+# A real merge event skips the qualification reads entirely (EVENT_QUALIFIED=1)
+reset_state
+jq -cn --arg s open --arg b 'Closes #117' '{state:$s, body:$b, merged:false, base:{ref:""}}' >"$TMP/issues/42.json"
+mk_issue 117 open "merge-event target"
+OUT=$(EVENT_QUALIFIED=1 PR_NUMBER=42 PR_BODY="Closes #117" bash "$TARGET" 2>&1); RC=$?
+check "merge-event run closes without a qualification read" "0" "$RC"
+assert_closed "merge-event run" 117
 
 # Summary file output
 reset_state
