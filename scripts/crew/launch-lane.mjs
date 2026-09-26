@@ -2,12 +2,13 @@
 /**
  * launch-lane.mjs — spawn a VISIBLE Herdr agent lane rooted at a worktree.
  *
- * This is the ONLY sanctioned way to launch crew-dispatch lanes (workers and
- * reviewers) in this repo. It encapsulates the verified Herdr recipe
+ * This is the ONLY sanctioned way to launch VISIBLE crew-dispatch lanes (workers
+ * and reviewers) in this repo. It encapsulates the verified Herdr recipe
  * (workspace create -> pane run -> agent prompt) so the visible path is one
- * command. If you are launching a lane any other way — e.g. headless subagent
- * children — you are doing it wrong. See AGENTS.md "Crew dispatch shape" and
- * .agents/skills/crew-dispatch/SKILL.md.
+ * command. It does NOT cover the headless shape: when the captain explicitly
+ * opts into headless ("run headless" / "don't use herdr"), lanes launch through
+ * the async subagent workflow instead and this script does not apply. See
+ * AGENTS.md "Crew dispatch shape" and .agents/skills/crew-dispatch/SKILL.md.
  *
  * Manifest lifecycle: the lane manifest is written with status "starting"
  * before the Herdr launch sequence and is promoted to "ready" (with the
@@ -204,7 +205,16 @@ try {
     const existingPane = pickPane(workspaceId);
     const existingRoot = normalizePath(existingPane?.cwd);
     const requestedRoot = normalizePath(cwd);
-    if (existingRoot && requestedRoot && existingRoot !== requestedRoot) {
+    // Reuse only when the existing workspace PROVABLY belongs to this worktree.
+    // A label is not an identity: a reused label pointing at another checkout
+    // would deliver the brief to an agent working on the wrong files, and an
+    // unresolvable pane/cwd is exactly that case, not a pass.
+    if (!existingPane || !existingRoot) {
+      fail(
+        `[launch-lane] workspace ${label} exists but its root pane/cwd cannot be resolved; close it or choose another label (refusing to reuse an unverified workspace)`,
+      );
+    }
+    if (existingRoot !== requestedRoot) {
       fail(
         `[launch-lane] workspace ${label} is rooted at ${existingPane.cwd} not ${cwd}; close it or choose another label`,
       );
@@ -242,11 +252,42 @@ try {
   }
   console.log(`[launch-lane] agent ${pane.agent} ready in ${pane.pane_id} (${pane.agent_status})`);
 
-  // 4. Wait until the agent is idle before prompting (so the brief is not lost).
+  // 4. Wait until the agent is idle before prompting, so the brief is not lost.
+  //    Stay tied to the pane whose worktree we verified: a workspace can hold
+  //    several panes, so re-resolving by workspace could hand the brief to a
+  //    different checkout when the pane order changes. A vanished pane, a cwd
+  //    that no longer matches, or an agent still busy after the timeout is a
+  //    hard failure the operator can act on.
+  const requestedRootForPane = normalizePath(cwd);
+  const findVerifiedPane = () => {
+    const panes = herdr(["pane", "list"]).result.panes ?? [];
+    return panes.find((p) => p.pane_id === pane.pane_id);
+  };
+  let idle = false;
   for (let i = 0; i < 30; i++) {
-    const p = pickPane(workspaceId);
-    if (!p || p.agent_status === "idle") break;
+    const current = findVerifiedPane();
+    if (!current) {
+      fail(
+        `[launch-lane] pane ${pane.pane_id} disappeared while waiting for idle — not prompting`,
+      );
+    }
+    const currentRoot = normalizePath(current.cwd);
+    if (!currentRoot || currentRoot !== requestedRootForPane) {
+      fail(
+        `[launch-lane] pane ${current.pane_id} now reports cwd ${current.cwd ?? "(unknown)"} instead of ${cwd} — not prompting`,
+      );
+    }
+    pane = current;
+    if (current.agent_status === "idle") {
+      idle = true;
+      break;
+    }
     await sleep(1000);
+  }
+  if (!idle) {
+    fail(
+      `[launch-lane] agent in ${pane.pane_id} is still ${pane.agent_status} after 30s — not prompting (that would interrupt the running lane)`,
+    );
   }
 
   // 5. Prompt with the brief file if provided (routing preamble first, so a
