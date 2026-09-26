@@ -1,0 +1,253 @@
+{
+  "schema": 1,
+  "capturedAt": "2026-08-17",
+  "source": "tmp/issue-tracker.html",
+  "sourceStatus": "offline snapshot; GitHub repository unavailable",
+  "issues": [
+    {
+      "number": 271,
+      "title": "i18n: 69 t() calls render raw key strings + ar.ts resource drift (555 missing keys) + CI key check",
+      "body": ""
+    },
+    {
+      "number": 275,
+      "title": "A11y: focus trap + dialog semantics on the four live custom modals (search, shortcuts, tour, filters drawer)",
+      "body": ""
+    },
+    {
+      "number": 282,
+      "title": "Web hygiene: strip dev livereload script from prod HTML, remove 6 dead deps, shadcn→devDeps, fix radix barrel import",
+      "body": ""
+    },
+    {
+      "number": 214,
+      "title": "Thin the transport seam — policy back into the modules",
+      "body": ""
+    },
+    {
+      "number": 230,
+      "title": "Auth: reject whitespace-only passwords in the shared credential schema",
+      "body": ""
+    },
+    {
+      "number": 232,
+      "title": "Add adapter-level transaction tests for the company persistence seam",
+      "body": ""
+    },
+    {
+      "number": 241,
+      "title": "One transport branch for desktop / browser",
+      "body": ""
+    },
+    {
+      "number": 242,
+      "title": "Reports: stop stubbing what the dashboard renders",
+      "body": ""
+    },
+    {
+      "number": 243,
+      "title": "Collapse the table-primitive families",
+      "body": ""
+    },
+    {
+      "number": 244,
+      "title": "One source of truth for the workspace page union",
+      "body": ""
+    },
+    {
+      "number": 247,
+      "title": "RPC wire tests: cover getRecoveryKeyPool / generateRecoveryKeys passthrough",
+      "body": ""
+    },
+    {
+      "number": 259,
+      "title": "Coverage follow-up: config-module deferred branches (auth plugin callbacks, narrow DB adapter factories)",
+      "body": ""
+    },
+    {
+      "number": 263,
+      "title": "E2E: employee create flow is blocked by workforce role validation mismatch",
+      "body": ""
+    },
+    {
+      "number": 265,
+      "title": "Composition root follow-ups: persist DB key after rekey, graceful shutdown, schema executor global",
+      "body": ""
+    },
+    {
+      "number": 277,
+      "title": "Quality: move debt sign helpers to @tuari/contracts, delete the web copy",
+      "body": ""
+    },
+    {
+      "number": 278,
+      "title": "Quality: attach zod issues to VALIDATION ORPCError + align web error-handling special case",
+      "body": ""
+    },
+    {
+      "number": 281,
+      "title": "Web perf: self-host fonts, drop Google Fonts links + preconnects, preload Arabic woff2",
+      "body": ""
+    },
+    {
+      "number": 284,
+      "title": "Repo hygiene: remove nul file, stale prisma tsconfig include, mount SkipNavigation, focus ring, sidebar backdrop close",
+      "body": ""
+    },
+    {
+      "number": 287,
+      "title": "Desktop: Tauri splashscreen loading window (no blank window on cold start)",
+      "body": ""
+    },
+    {
+      "number": 288,
+      "title": "API: harden shared-connection transaction model (connection-wide lock, BEGIN IMMEDIATE, payment adapter tx tests)",
+      "body": ""
+    },
+    {
+      "number": 289,
+      "title": "Payment module: validate non-zero/non-negative amounts, allocations, and page limit",
+      "body": ""
+    },
+    {
+      "number": 294,
+      "title": "Web sign-in error is untranslated (raw better-auth message shown)",
+      "body": ""
+    },
+    {
+      "number": 307,
+      "title": "Web: WorkspaceDomain mapped type collapses to never — invalidation domains record is untyped",
+      "body": ""
+    },
+    {
+      "number": 312,
+      "title": "Web hygiene: convert remaining px to rem across UI (follow-up from #282)",
+      "body": ""
+    },
+    {
+      "number": 183,
+      "title": "Backend: add search/filter parameter to cursor-based list queries",
+      "body": ""
+    },
+    {
+      "number": 217,
+      "title": "Deepen the dashboard view-model seam — one module for the workspace view model",
+      "body": ""
+    },
+    {
+      "number": 228,
+      "title": "Recovery-key e2e 'simulated password change' test is a no-op",
+      "body": ""
+    },
+    {
+      "number": 229,
+      "title": "RecoveryKeyPort: consider findKeyById to avoid listAllKeys().find() in revokeKey",
+      "body": ""
+    },
+    {
+      "number": 234,
+      "title": "Security schema: zero-width/format chars bypass key-input trim",
+      "body": ""
+    },
+    {
+      "number": 252,
+      "title": "Coverage 85%: update + remaining small modules",
+      "body": ""
+    },
+    {
+      "number": 253,
+      "title": "Coverage 85%: inventory module",
+      "body": ""
+    },
+    {
+      "number": 255,
+      "title": "Contract: delete the workforce/invoice-only coverage include",
+      "body": ""
+    },
+    {
+      "number": 256,
+      "title": "Web coverage thresholds: 85% on apps/web",
+      "body": ""
+    },
+    {
+      "number": 199,
+      "title": "Clean the router — remove rawDatabase dependency",
+      "body": ""
+    },
+    {
+      "number": 213,
+      "title": "Collapse the CompanyService facade — one domain module per RPC seam",
+      "body": ""
+    },
+    {
+      "number": 216,
+      "title": "Unify the bootstrap-owner gateway — one interface, two copies today",
+      "body": ""
+    },
+    {
+      "number": 237,
+      "title": "Audit page: one system log, working filter",
+      "body": ""
+    },
+    {
+      "number": 240,
+      "title": "Rename the mock seam — mock-dashboard is the domain API layer",
+      "body": ""
+    },
+    {
+      "number": 257,
+      "title": "Failure-mode tests for the debt ledger",
+      "body": ""
+    },
+    {
+      "number": 175,
+      "title": "M7 — Production Hardening: E2E tests, recovery/rollback coverage, performance profiling, security review",
+      "body": ""
+    },
+    {
+      "number": 178,
+      "title": "Plan 006 Phase 5: complete the 4 missing critical-path E2E specs",
+      "body": ""
+    },
+    {
+      "number": 176,
+      "title": "Plan 003 — UI Polish: complete M1–M10 polish milestones",
+      "body": ""
+    },
+    {
+      "number": 182,
+      "title": "Architecture: add provider-neutral persistence ports and provider resolution",
+      "body": ""
+    },
+    {
+      "number": 238,
+      "title": "Composition root residue: legacy endpoints + vestigial slots",
+      "body": ""
+    },
+    {
+      "number": 190,
+      "title": "Spec: Persistence Boundary Refactoring",
+      "body": ""
+    },
+    {
+      "number": 191,
+      "title": "Persistence Boundary Refactoring",
+      "body": ""
+    },
+    {
+      "number": 211,
+      "title": "Wayfinder map: ship the six architecture-review deepenings",
+      "body": ""
+    },
+    {
+      "number": 235,
+      "title": "Wayfinder map: ship the 2026-08-03 web-layer deepenings",
+      "body": ""
+    },
+    {
+      "number": 248,
+      "title": "Coverage enforcement + failure-mode testing policy (parent)",
+      "body": ""
+    }
+  ]
+}
