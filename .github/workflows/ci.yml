@@ -149,6 +149,14 @@ jobs:
         with:
           workspaces: "apps/desktop/src-tauri"
 
+      - name: "Test Rust core (lib + integration)"
+        # The license/trust core gates what a customer can run, so it must be
+        # exercised in CI, not just linted. The Tauri system deps above are
+        # already installed for this job, and the cargo cache is warm.
+        if: needs.detect.outputs.rust == 'true'
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --lib --tests
+
       - name: "Verify tool versions"
         if: needs.detect.outputs.rust == 'true'
         run: |

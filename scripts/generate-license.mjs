@@ -3,8 +3,14 @@
 // generate-license.mjs — CLI tool for signing license files
 // Usage: node scripts/generate-license.mjs --edition professional --features multi_user,lan_server --max-users 10
 //        node scripts/generate-license.mjs --help
+//
+// Output is the signed wire format the desktop app verifies:
+//   <base64url(payload JSON)>.<base64url(Ed25519 signature)>
+// The signature must be produced by the private half of the key embedded as
+// `EMBEDDED_PUBLIC_KEY` in apps/desktop/src-tauri/src/license.rs.
 
-import { createHash } from "node:crypto";
+import { createHash, createPrivateKey, sign as ed25519Sign } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
 
@@ -98,6 +104,34 @@ if (maxUsers === 0) {
 }
 
 console.log(`Generated license:\n  ID: ${licenseId}\n  Edition: ${edition}\n  Customer: ${issuedTo}\n`);
+
+// ── Sign ──────────────────────────────────────────────────────────────
+// base64url WITH padding: the Rust verifier uses base64's URL_SAFE engine,
+// which rejects an unpadded payload (Node's base64url output is unpadded).
+function base64Url(buf) {
+  const encoded = buf.toString("base64url");
+  return encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
+}
+
+let signingKey;
+try {
+  signingKey = createPrivateKey(readFileSync(privateKeyPath, "utf8"));
+} catch (error) {
+  console.error(`Error: cannot read the Ed25519 private key at ${privateKeyPath}: ${error.message}`);
+  process.exit(1);
+}
+
+const payloadBytes = Buffer.from(JSON.stringify(payload), "utf8");
+const signature = ed25519Sign(null, payloadBytes, signingKey);
+const license = `${base64Url(payloadBytes)}.${base64Url(signature)}`;
+
+if (outputPath) {
+  writeFileSync(outputPath, `${license}\n`, "utf8");
+  console.log(`Signed license written to ${outputPath}`);
+  console.log("Send this file to the customer; they activate it in Settings → License.");
+} else {
+  console.log(license);
+}
 
 function generateId(length) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";

@@ -57,3 +57,10 @@ worktrees/
 # Playwright run artifacts
 test-results/
 playwright-report/
+
+# Signing material and issued licenses — NEVER commit these.
+# The vendor private key lives outside the repository (see docs/license-issuance.md).
+*.pem
+*.key
+*.lic
+!apps/desktop/src-tauri/src/trust/**/*.rs
