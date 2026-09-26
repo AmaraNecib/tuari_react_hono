@@ -658,6 +658,73 @@ mod tests {
     }
 
     #[test]
+    fn aged_trial_stays_out_of_grace_after_tracker_deleted() {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let now = chrono::Utc::now().timestamp();
+        let aged = now - 100 * 86400;
+        fs::write(
+            dir.join("clock-tracker.json"),
+            serde_json::json!({ "last_seen_wall": now, "install_wall": aged }).to_string(),
+        )
+        .unwrap();
+        fs::write(
+            dir.join("install-anchor.json"),
+            serde_json::json!({ "install_wall": aged }).to_string(),
+        )
+        .unwrap();
+
+        let manager = LicenseManager::initialize(&dir).unwrap();
+        assert_ne!(manager.status(), LicenseStatus::Grace);
+        assert_eq!(manager.days_remaining(), 0);
+
+        // Clock-tamper recovery: delete the tracker, then re-initialize.
+        fs::remove_file(dir.join("clock-tracker.json")).unwrap();
+        let manager = LicenseManager::initialize(&dir).unwrap();
+        assert_ne!(
+            manager.status(),
+            LicenseStatus::Grace,
+            "deleting the tracker must not restart the trial"
+        );
+        assert_eq!(manager.days_remaining(), 0);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn licensed_install_is_unaffected_by_tracker_reset() {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let now = chrono::Utc::now();
+        let info = LicenseInfo {
+            license_id: "LCE-20260701-LICENSED".to_string(),
+            issued_to: "Licensed Co".to_string(),
+            email: "licensed@test.com".to_string(),
+            edition: "enterprise".to_string(),
+            features: vec!["encrypted_db".to_string()],
+            max_users: 0,
+            valid_from: now - chrono::Duration::days(10),
+            valid_until: None,
+            license_type: "perpetual".to_string(),
+        };
+        let manager = LicenseManager {
+            license: Mutex::new(Some(info)),
+            trusted_keys: Vec::new(),
+            data_dir: Some(dir.clone()),
+        };
+        assert_eq!(manager.status(), LicenseStatus::Valid);
+
+        // Create the clock state, then run the recovery path.
+        let _ = crate::clock::check_clock_consistency(&dir).unwrap();
+        fs::remove_file(dir.join("clock-tracker.json")).unwrap();
+        assert_eq!(
+            manager.status(),
+            LicenseStatus::Valid,
+            "a licensed install must not regress after the tracker reset"
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn activate_accepts_valid_content() {
         let (signing_key, public_key) = generate_keypair();
         let manager = LicenseManager::with_keys(vec![public_key]);
