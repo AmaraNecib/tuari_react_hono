@@ -6,45 +6,45 @@ came from as `path:line`. No prices and no marketing copy: capabilities only.
 
 ## How to read the status tags
 
-The document's base is `develop` @ `7c7c833`. Two license changes are in flight
-on sibling branches and are marked `[in flight]`:
+The document's base is `develop` @ `2704c86`. The license-enforcement change
+(`feat/license-enforcement`, PR #389) landed in `develop` at this base, so its
+policy is shipped behavior. One change is still in flight:
 
 | Tag | Meaning |
 | --- | --- |
 | `[shipped]` | Present in `develop` at this document's base. |
-| `[in flight]` | Present on `feat/license-enforcement` (PR #389) or `feat/license-sellable-anchor`; not yet in `develop`. |
+| `[in flight]` | Present on `feat/license-sellable-anchor` (PR #387); not yet in `develop`. |
 
 The capability tables (editions, feature map, license types, seats) describe the
-code on `develop`. Sections 4 and 6 separate shipped behavior from the in-flight
-behavior, because that is where the buyer-facing promise and the code currently
-diverge.
+code on `develop`. Sections 4 and 6 no longer split enforcement into shipped and
+in-flight columns: the refusal policy is shipped.
 
 ## 1. Editions
 
 Three editions, ordered. `meetsMinEdition` compares rank, so a higher edition
-satisfies every lower-edition minimum (`apps/api/src/infrastructure/license.ts:57`
-and `:66`).
+satisfies every lower-edition minimum (`apps/api/src/infrastructure/license.ts:142`
+and `:151`).
 
 | Edition | Rank | Arabic label shown in the shell | Source |
 | --- | --- | --- | --- |
-| `standard` | 0 | قياسي | `packages/contracts/src/license.ts:18`, `apps/api/src/infrastructure/license.ts:57`, `apps/desktop/src-tauri/src/lib.rs:853` |
+| `standard` | 0 | قياسي | `packages/contracts/src/license.ts:18`, `apps/api/src/infrastructure/license.ts:142`, `apps/desktop/src-tauri/src/lib.rs:853` |
 | `professional` | 1 | احترافي | same |
 | `enterprise` | 2 | انتربرايز | same |
 
 Default when nothing is licensed: `standard`, with an empty feature list
-(`apps/api/src/infrastructure/license.ts:35`, `apps/desktop/src-tauri/src/license.rs:549`).
+(`apps/api/src/infrastructure/license.ts:79`, `apps/desktop/src-tauri/src/license.rs:549`).
 The web UI labels are `Standard` / `Professional` / `Enterprise`
 (`apps/web/src/features/license/license-settings.tsx:21`).
 
 The three editions are not cumulative feature bundles in the code. The license
 carries an explicit `features` array, and `editionToMinEdition` is only the
 *minimum* edition that a feature implies. Nothing adds features automatically
-from the edition (`apps/api/src/infrastructure/license.ts:83`).
+from the edition (`apps/api/src/infrastructure/license.ts:168`).
 
 ## 2. Feature to minimum edition
 
 Authoritative map: `editionToMinEdition` in
-`apps/api/src/infrastructure/license.ts:83`. Feature enum:
+`apps/api/src/infrastructure/license.ts:168`. Feature enum:
 `packages/contracts/src/license.ts:29`.
 
 | Feature | Min edition | What it is meant to enable | Wired to product code? |
@@ -91,24 +91,25 @@ The shell computes a `LicenseStatus` (`apps/desktop/src-tauri/src/license.rs:37`
 logic at `:412`) and exports the coarser `TUARI_LICENSE_STATUS` string only when
 `LicenseManager::initialize` succeeds (`apps/desktop/src-tauri/src/lib.rs:2052`,
 `apps/desktop/src-tauri/src/license.rs:502`, mapping at `:536` for a licensed
-install and `:557` for no license). The API reads that string, and when the
+install and `:557` for no license). The API reads that string; when the
 variable is absent it falls back to `standard` / no features / `maxUsers 1` /
-`trial` (`apps/api/src/infrastructure/license.ts:36`, `:51`).
+`unknown` (`apps/api/src/infrastructure/license.ts:79`, `:61`), which refuses
+writes.
 
-| Env status (API sees) | Shell `LicenseStatus` | When it applies | Writes `[shipped]` | Writes `[in flight]` |
-| --- | --- | --- | --- | --- |
-| `active` | `Valid`, `Warning` | Licensed and before `validUntil` (or perpetual). `Warning` is the last 30 days before expiry. | Yes | Yes |
-| `trial` | `Grace` | No license file, within the 30-day post-install window. | Yes | Yes |
-| `grace` | `ExpiredGrace` | Licensed, past `validUntil`, within 30 days after it. | Yes | No (read-only) |
-| `expired` | `Locked` (and the currently unreachable `Expired`) | Licensed and past `validUntil` + 30 days. | Yes | No |
-| `inactive` | `NotYetActive` | Clock is before `validFrom`. | Yes | No |
-| `suspicious` | `Tampered` | A clock inconsistency seen by a manager that already initialized; `status()` also fails closed on tracker I/O errors (`:414`). A tamper at startup fails `initialize` instead (next row). | Yes | No |
-| `unknown` | `Invalid` | No license file and outside the post-install window (`:433` returns `Invalid`, `:562` maps it to `unknown`). | Yes | No |
-| `trial` (defaulted) | none; `initialize` returned `Err` | Bad signature, malformed license, I/O error, or a clock tamper at startup (`apps/desktop/src-tauri/src/license.rs:114`). The shell then sets no license vars (`apps/desktop/src-tauri/src/lib.rs:2051`) and the API falls back to `standard` / `trial` (`apps/api/src/infrastructure/license.ts:36`, `:51`). | Yes | Yes |
+| Env status (API sees) | Shell `LicenseStatus` | When it applies | Writes |
+| --- | --- | --- | --- |
+| `active` | `Valid`, `Warning` | Licensed and before `validUntil` (or perpetual). `Warning` is the last 30 days before expiry. | Yes |
+| `trial` | `Grace` | No license file, within the 30-day post-install window. | Yes |
+| `grace` | `ExpiredGrace` | Licensed, past `validUntil`, within 30 days after it. | No (read-only) |
+| `expired` | `Locked` (and the currently unreachable `Expired`) | Licensed and past `validUntil` + 30 days. | No |
+| `inactive` | `NotYetActive` | Clock is before `validFrom`. | No |
+| `suspicious` | `Tampered` | A clock inconsistency seen by a manager that already initialized; `status()` also fails closed on tracker I/O errors (`:414`). A tamper at startup fails `initialize` instead (next row). | No |
+| `unknown` | `Invalid` | No license file and outside the post-install window (`:440` returns `Invalid`, `:562` maps it to `unknown`). | No |
+| `unknown` (defaulted) | none; `initialize` returned `Err` | Bad signature, malformed license, I/O error, or a clock tamper at startup (`apps/desktop/src-tauri/src/license.rs:114`). The shell then sets no license vars (`apps/desktop/src-tauri/src/lib.rs:2052`), so the API falls back to `standard` / `unknown` and refuses writes (`apps/api/src/infrastructure/license.ts:61`; the omitted status is #399). | No |
 
-The `[shipped]` write column is `develop` at this document's base: no license
-status refuses a write there. The `[in flight]` column is the PR #389 policy
-(section 6a).
+The `Writes` column is `mutationLicenseRefusalMessage`
+(`apps/api/src/infrastructure/license.ts:109`), applied to every audited
+mutation (section 6a). It describes `develop` at this document's base.
 
 The 30-day post-install window is `GRACE_PERIOD_DAYS = 30`
 (`apps/desktop/src-tauri/src/clock.rs:19`, check at `:131`). The 30-day
@@ -137,7 +138,7 @@ settings page renders those
 | --- | --- |
 | `maxUsers` is a non-negative integer; `0` means unlimited. | `packages/contracts/src/license.ts:62`; `apps/desktop/src-tauri/src/license.rs:374` ("0 = unlimited"). |
 | The shell parses a missing `maxUsers` as `0` (unlimited). | `apps/desktop/src-tauri/src/license.rs:299`. |
-| The API reads `TUARI_LICENSE_MAX_USERS`, defaulting to `1` when the variable is absent. | `apps/api/src/infrastructure/license.ts:40`. Note the mismatch: absent in Rust is `0`, absent in the API is `1`. |
+| The API reads `TUARI_LICENSE_MAX_USERS`, defaulting to `1` when the variable is absent. | `apps/api/src/infrastructure/license.ts:83`. Note the mismatch: absent in Rust is `0`, absent in the API is `1`. |
 | The value reaches the API through `TUARI_LICENSE_MAX_USERS`, and `1` when no license is loaded. | `apps/desktop/src-tauri/src/license.rs:502`, `:551`. |
 | The settings UI shows the seat count only when it is greater than `0`. | `apps/web/src/features/license/license-settings.tsx:244`. |
 | Nothing enforces it. No code compares the user count to `maxUsers`; it is read only for display. | `grep -rn "maxUsers"` finds only the contract, the env reader, the IPC shape, and the settings UI (section 8, gap 2). |
@@ -150,19 +151,12 @@ architecture doc's claimed enforcement in `AuthBootstrapService`
 
 ### 6a. License status on writes
 
-`[shipped]` Nothing refuses writes by license status. The only status check is
-`requireActiveLicense`, which rejects `expired` only
-(`apps/api/src/rpc/rpc-middleware.ts:91`), and it is called only from
-`requireEdition` and `requireFeature` (`:255`, `:281`), which have no production
-callers (section 6b). An `expired`, `inactive`, `suspicious`, or `unknown`
-license still writes to the database on `develop`.
-
-`[in flight]` `feat/license-enforcement` makes the status binding:
+`[shipped]` The license status is binding on writes:
 
 - `mutationLicenseRefusalMessage(status)` returns no message for `active` and
   `trial`, a read-only message for `grace`, and a refusal for `expired`,
   `inactive`, `suspicious`, `unknown`, and any unrecognised value
-  (`apps/api/src/infrastructure/license.ts:103` on `feat/license-enforcement`).
+  (`apps/api/src/infrastructure/license.ts:109`).
 - It is wired into every audited mutation through the audit-context creators
   (`requireWritableLicense` at `apps/api/src/rpc/rpc-middleware.ts:97`, called
   at `:118` and `:128`), so `mutationAudit`, `mutationAuditRateLimited`, and
@@ -173,19 +167,19 @@ license still writes to the database on `develop`.
 - Authentication runs first, so an anonymous caller gets the usual auth error
   and not the license state.
 - `readLicenseRefusalMessage` is the read-side variant that also allows `grace`
-  (`apps/api/src/infrastructure/license.ts:130`), used by the edition/feature
+  (`apps/api/src/infrastructure/license.ts:136`), used by the edition/feature
   gates.
-- An unrecognised `TUARI_LICENSE_STATUS` value is parsed to `unknown` rather
-  than cast through, so a typo fails closed
-  (`apps/api/src/infrastructure/license.ts:53`).
+- A missing, blank, or unrecognised `TUARI_LICENSE_STATUS` value is parsed to
+  `unknown` rather than cast through, so a failed shell init or a typo fails
+  closed (`apps/api/src/infrastructure/license.ts:59`).
 
 ### 6b. Edition and feature gates
 
-`requireEdition` (`apps/api/src/rpc/rpc-middleware.ts:247`) and
-`requireFeature` (`:273`) are defined and unit-tested, but no production RPC
+`requireEdition` (`apps/api/src/rpc/rpc-middleware.ts:266`) and
+`requireFeature` (`:292`) are defined and unit-tested, but no production RPC
 uses either. A repo-wide grep for both names returns only the definitions and
 `apps/api/src/rpc/rpc-middleware.test.ts`. No product operation is edition- or
-feature-gated today, on `develop` or on the in-flight branch.
+feature-gated today.
 
 Consequence: `lan_server`, `multi_user`, `advanced_reports`, `external_api`,
 `multi_site_sync`, and `audit_export` are inert. `encrypted_db` and
@@ -213,6 +207,13 @@ Without `encrypted_db`, the workspace opens a plain, unencrypted SQLite file,
 regardless of edition. That is the entire practical difference the license makes
 today.
 
+The flag is not reversible for an existing workspace. If a database was created
+while the license carried `encrypted_db`, a later launch whose license lacks the
+feature drops `APP_DB_KEY`, and the factory opens the still-encrypted file with
+plain `better-sqlite3` (`apps/api/src/infrastructure/database/factory.ts:23`,
+`:51`); the workspace then cannot start. The same happens on the failed-init
+path in section 4, where the shell sets no license vars at all. Tracked as #402.
+
 ## 7. What a buyer gets per tier
 
 Built from sections 2 and 6. "Not enforced yet" means the license flag exists
@@ -238,13 +239,14 @@ Caveats for sales:
    `encrypted_db` feature.
 2. Encryption follows the `encrypted_db` feature on the signed license, not the
    edition. `editionToMinEdition` states the minimum edition the feature implies
-   (`apps/api/src/infrastructure/license.ts:83`); the shell checks
+   (`apps/api/src/infrastructure/license.ts:168`); the shell checks
    `has_feature("encrypted_db")` (`apps/desktop/src-tauri/src/lib.rs:2058`). An
    Enterprise license without the feature opens a plain database, and a
-   Professional license that carries it enables encryption.
-3. The `grace` window is read-only `[in flight]`. On `develop` it is fully
-   writable, so "read-only after expiry" cannot be promised until PR #389
-   lands.
+   Professional license that carries it enables encryption. The flag is not
+   reversible for an existing workspace: the file stays encrypted while the key
+   is no longer passed, so it cannot be opened (section 6c, #402).
+3. The `grace` window is read-only, shipped in `develop` at this base
+   (section 6a).
 4. The seat counts in the architecture doc's matrix (1 / 10 / unlimited at
    `docs/licensing-architecture.md:272`) are not in the code. `maxUsers` comes
    from the license payload, and nothing enforces it.
@@ -285,8 +287,7 @@ Recorded, not fixed here. This lane changes no code.
 7. **Architecture-doc drift, both directions.** The doc claims
    `AuthBootstrapService` enforces `maxUsers` (`docs/licensing-architecture.md:389`)
    and that `.env_clear()` is missing (`:367`); neither is true in the code.
-   Reconcile `docs/licensing-architecture.md` with this document once PR #389
-   lands.
+   Reconcile `docs/licensing-architecture.md` with this document.
 
 ## Evidence index
 
@@ -297,5 +298,5 @@ Recorded, not fixed here. This lane changes no code.
 | License types | `packages/contracts/src/license.ts`, `apps/desktop/src-tauri/src/license.rs`, `scripts/generate-license.mjs` (both refs) |
 | Status states | `apps/desktop/src-tauri/src/license.rs`, `apps/desktop/src-tauri/src/clock.rs`, `apps/desktop/src-tauri/src/lib.rs`, `apps/api/src/infrastructure/license.ts`, `apps/web/src/features/license/license-settings.tsx` |
 | Seats | `packages/contracts/src/license.ts`, `apps/desktop/src-tauri/src/license.rs`, `apps/api/src/infrastructure/license.ts`, `apps/web/src/features/license/license-settings.tsx` |
-| Enforcement | `apps/api/src/rpc/rpc-middleware.ts`, `apps/api/src/infrastructure/license.ts`, `apps/api/src/app/create-app.ts`, `apps/api/src/modules/account/account.service.ts`, `apps/desktop/src-tauri/src/lib.rs`, `apps/api/src/infrastructure/database/factory.ts` (the API files on `feat/license-enforcement`) |
+| Enforcement | `apps/api/src/rpc/rpc-middleware.ts`, `apps/api/src/infrastructure/license.ts`, `apps/api/src/app/create-app.ts`, `apps/api/src/modules/account/account.service.ts`, `apps/desktop/src-tauri/src/lib.rs`, `apps/api/src/infrastructure/database/factory.ts` (all on `develop` at this base) |
 | Gaps | `docs/licensing-architecture.md`, the above |
