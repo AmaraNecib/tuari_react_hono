@@ -522,7 +522,7 @@ Tauri startup
 
 ### 6.2 First-Run & Grace Period UX
 
-#### 6.2.1 First-Run Flow (no license, no install-timestamp)
+#### 6.2.1 First-Run Flow (no license, no install anchor)
 
 ```
 User opens Tuari for the first time
@@ -536,7 +536,7 @@ User opens Tuari for the first time
   │   │   [تخطي]                               │
   │   └─────────────────────────────────────┘
   │
-  ├── "Start trial" → create install-timestamp → grant Standard edition for 30 days
+  ├── "Start trial" → create install-anchor.json → grant Standard edition for 30 days
   ├── "Activate" → show file picker for license.lic
   └── "Skip" → show welcome screen on next startup too
 ```
@@ -544,12 +544,12 @@ User opens Tuari for the first time
 #### 6.2.2 Grace Period (post-install, no license)
 
 ```
-  ├── install-timestamp < 30 days from now
+  ├── install-anchor.json < 30 days from now
   │     → App functions normally with Standard edition features
   │     → Small banner in bottom-right: "النسخة التجريبية — يتبقى N يوم"
   │     → Settings → Licensing shows countdown and upgrade options
   │
-  └── install-timestamp ≥ 30 days from now
+  └── install-anchor.json ≥ 30 days from now
         → Full-screen lock: "انتهت الفترة التجريبية"
         → Buttons: "تفعيل الترخيص" | "شراء النسخة"
         → Existing data remains on disk, accessible after activation
@@ -872,7 +872,7 @@ The current design supports subscriptions via the `licenseType` field:
 |--------------|----------|
 | `perpetual` | No `validUntil` check, or distant future |
 | `subscription` | Must be renewed before `validUntil` |
-| `trial` | 30-day trial (also tracked via install-timestamp) |
+| `trial` | 30-day trial (also tracked via `install-anchor.json`) |
 | `grace` | Post-expiry reduced functionality |
 
 ### 13.2 Subscription Flow (Future)

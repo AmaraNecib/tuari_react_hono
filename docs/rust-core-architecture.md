@@ -462,8 +462,8 @@ These service interfaces constitute the **stable contract** between the Trust Au
 | `key-rotation-*.json` | `<app_data>/Tuari/` | Key rotation certificates |
 | `better-auth.secret` | OS credential store (`com.tuari.desktop.secrets`); owner-only `<app_data>/runtime/secrets/` fallback only when the OS store is unavailable | Auth signing secret (injected via `BETTER_AUTH_SECRET`) |
 | `app-db.key` | OS credential store (`com.tuari.desktop.secrets`); owner-only fallback file | SQLCipher database key (injected via `APP_DB_KEY`) |
-| `clock-tracker.json` | `<app_data>/runtime/state/` | Monotonic clock tracker |
-| `install-timestamp` | `<app_data>/runtime/state/` | First-install timestamp |
+| `clock-tracker.json` | `<app_data>/Tuari/` | Clock high-water mark (resettable) |
+| `install-anchor.json` | `<app_data>/Tuari/` | Durable trial install anchor |
 
 ---
 
