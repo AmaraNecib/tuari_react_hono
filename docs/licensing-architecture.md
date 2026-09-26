@@ -386,6 +386,8 @@ if license_manager.has_feature(EncryptedDb) {
 
 **Verdict:** Effective only if `.env_clear()` is used. The raw signed license payload is never exposed to the sidecar — only the parsed fields that Rust explicitly chooses to share.
 
+The gate is only as good as the artifact. The desktop build ships the binding or fails: `apps/desktop/scripts/build-sidecar.mjs` refuses to package a runtime without a loadable `better-sqlite3-sqlcipher` addon unless it is explicitly told to build a plaintext-only artifact (`--allow-plaintext` / `TUARI_ALLOW_PLAINTEXT_DB=1`, with a loud banner). At runtime the API factory additionally probes `PRAGMA cipher_version` after keying, so a plain binding is refused instead of accepting `PRAGMA key` as a no-op. See `docs/editions-and-features.md` §6c (#402).
+
 #### 5.2.3 Max Users
 
 The `maxUsers` field is enforced in the API sidecar's `AuthBootstrapService`:
@@ -688,7 +690,10 @@ On next startup:
    - UI shows warning: "لقد تجاوزت الحد الأقصى لعدد المستخدمين المسموح به في نسختك الحالية."
 4. If encrypted database was in use and new license doesn't include it:
    - App starts but cannot read the encrypted DB.
-   - Shows error: "قاعدة البيانات مشفرة وتتطلب نسخة انتربرايز."
+   - `[shipped]` The API factory refuses up front: a non-`SQLite format 3` file
+     opened with no key throws "it is almost certainly SQLCipher-encrypted, but
+     no database key is active" rather than failing at the first query (#402).
+   - Intended UI error: "قاعدة البيانات مشفرة وتتطلب نسخة انتربرايز."
    - User must purchase Enterprise or migrate data to an unencrypted database.
 5. Locked features become unavailable at API level.
 6. Data created while using higher edition remains intact (read-only for gated features).

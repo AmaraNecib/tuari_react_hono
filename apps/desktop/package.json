@@ -11,9 +11,10 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "pnpm run sidecar:build && tauri build",
     "sidecar:build": "node ./scripts/build-sidecar.mjs",
-    "typecheck": "pnpm run sidecar:build && cargo check --manifest-path ./src-tauri/Cargo.toml"
+    "typecheck": "node ./scripts/build-sidecar.mjs --allow-plaintext && cargo check --manifest-path ./src-tauri/Cargo.toml"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.10.1"
+    "@tauri-apps/cli": "^2.10.1",
+    "node-gyp": "^11.5.0"
   }
 }

@@ -192,16 +192,25 @@ the desktop shell enforces it:
 
 - The shell sets `APP_DB_KEY` on the API sidecar only when
   `manager.has_feature("encrypted_db")` is true
-  (`apps/desktop/src-tauri/src/lib.rs:2058`). The sidecar environment is cleared
+  (`apps/desktop/src-tauri/src/lib.rs:2102`). The sidecar environment is cleared
   first (`:2025`), so a system-level `APP_DB_KEY` cannot leak in.
 - The API database factory uses the key when present: it loads
   `better-sqlite3-sqlcipher` and runs `PRAGMA key` plus
-  `cipher_compatibility = 4` (`apps/api/src/infrastructure/database/factory.ts:51`,
-  `:27`, `:56`). With no key it returns plain `better-sqlite3`
-  (`apps/api/src/infrastructure/database/factory.ts:23`).
-- If a key is present but the sqlcipher binding is not built, the factory
-  throws rather than opening an unencrypted database
-  (`apps/api/src/infrastructure/database/factory.ts:29`).
+  `cipher_compatibility = 4`. With no key it returns plain `better-sqlite3`
+  (`apps/api/src/infrastructure/database/factory.ts`).
+- The binding must be shipped, not merely buildable. `build-sidecar.mjs` fails
+  the desktop build when the SQLCipher native binding is missing, instead of
+  silently packaging a plaintext-only runtime (#402). The gate may be waived only
+  with an explicit `--allow-plaintext` / `TUARI_ALLOW_PLAINTEXT_DB=1`, which
+  prints a loud banner; release builds never pass it. `pnpm-workspace.yaml`
+  leaves `better-sqlite3-sqlcipher` out of `onlyBuiltDependencies` so a plain
+  `pnpm install` does not attempt the native build; the sidecar build drives
+  `node-gyp` itself via its pinned devDependency.
+- The factory does not trust `require()`: after keying it requires a non-empty
+  `PRAGMA cipher_version`. Plain `better-sqlite3` accepts the SQLCipher PRAGMAs
+  as no-ops, so this is what actually proves the binding encrypts. A key with a
+  non-encrypting binding is refused (connection closed, clear error), never
+  ignored.
 
 Without `encrypted_db`, the workspace opens a plain, unencrypted SQLite file,
 regardless of edition. That is the entire practical difference the license makes
@@ -209,10 +218,12 @@ today.
 
 The flag is not reversible for an existing workspace. If a database was created
 while the license carried `encrypted_db`, a later launch whose license lacks the
-feature drops `APP_DB_KEY`, and the factory opens the still-encrypted file with
-plain `better-sqlite3` (`apps/api/src/infrastructure/database/factory.ts:23`,
-`:51`); the workspace then cannot start. The same happens on the failed-init
-path in section 4, where the shell sets no license vars at all. Tracked as #402.
+feature drops `APP_DB_KEY`. The factory reads the file header before opening it
+and refuses a non-`SQLite format 3` file with a message naming the cause (the
+workspace is encrypted and `encrypted_db`/`APP_DB_KEY` is not active), rather
+than failing at the first query with an opaque `file is not a database` (#402).
+The same applies on the failed-init path in section 4, where the shell sets no
+license vars at all.
 
 ## 7. What a buyer gets per tier
 
@@ -240,11 +251,12 @@ Caveats for sales:
 2. Encryption follows the `encrypted_db` feature on the signed license, not the
    edition. `editionToMinEdition` states the minimum edition the feature implies
    (`apps/api/src/infrastructure/license.ts:168`); the shell checks
-   `has_feature("encrypted_db")` (`apps/desktop/src-tauri/src/lib.rs:2058`). An
+   `has_feature("encrypted_db")` (`apps/desktop/src-tauri/src/lib.rs:2102`). An
    Enterprise license without the feature opens a plain database, and a
    Professional license that carries it enables encryption. The flag is not
    reversible for an existing workspace: the file stays encrypted while the key
-   is no longer passed, so it cannot be opened (section 6c, #402).
+   is no longer passed, so it is refused with a clear "encrypted workspace, no
+   key" message instead of being opened as plaintext (section 6c, #402).
 3. The `grace` window is read-only, shipped in `develop` at this base
    (section 6a).
 4. The seat counts in the architecture doc's matrix (1 / 10 / unlimited at
