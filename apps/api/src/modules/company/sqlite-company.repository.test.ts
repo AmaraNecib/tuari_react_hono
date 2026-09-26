@@ -658,6 +658,20 @@ describe("SqliteCompanyRepository employee search (issue #183)", () => {
       repo.listEmployeesPaged({ filters: { search: "" }, limit: 50 }).total,
     ).toBe(3);
   });
+
+  it("counts employees with the same filter semantics as listEmployees", () => {
+    // No filter: every row regardless of status.
+    expect(repo.countEmployees()).toBe(3);
+    // The seat check only cares about ACTIVE rows.
+    expect(repo.countEmployees({ status: "ACTIVE" })).toBe(2);
+    expect(repo.countEmployees({ status: "INACTIVE" })).toBe(1);
+    expect(repo.countEmployees({ status: "LEFT" })).toBe(0);
+    // Search/role filters mirror the list query.
+    expect(repo.countEmployees({ search: "ben" })).toBe(1);
+    expect(repo.countEmployees({ search: "a", status: "ACTIVE" })).toBe(2);
+    expect(repo.countEmployees({ roleId: "missing-role" })).toBe(0);
+    expect(repo.countEmployees({ search: "%" })).toBe(0);
+  });
 });
 
 describe("SqliteCompanyRepository sync-writer lock guard (issue #322)", () => {

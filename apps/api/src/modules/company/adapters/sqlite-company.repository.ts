@@ -134,7 +134,15 @@ function buildEmployeeSearchWhere(search: string): SQL {
         AND ${schema.role.name} LIKE ${pattern} ESCAPE '\\'))`;
 }
 
-/** Build a Drizzle WHERE clause from an array of conditions. */
+/** Build the WHERE conditions shared by every filtered employee query. */
+function buildEmployeeFilterConditions(filters?: EmployeeListFilters): WhereCond[] {
+  const conditions: WhereCond[] = [];
+  if (filters?.roleId) conditions.push(eq(schema.employee.roleId, filters.roleId));
+  if (filters?.status) conditions.push(eq(schema.employee.status, filters.status));
+  if (filters?.search?.trim()) conditions.push(buildEmployeeSearchWhere(filters.search.trim()));
+  return conditions;
+}
+
 /** Build a Drizzle WHERE clause from an array of conditions. */
 function buildWhere(conditions: WhereCond[]): WhereCond | undefined {
   if (conditions.length === 0) return undefined;
@@ -332,13 +340,15 @@ export class SqliteCompanyRepository implements CompanyRepository {
   // ── Employees ────────────────────────────────────────────────────────
 
   listEmployees(filters?: EmployeeListFilters): EmployeeRecord[] {
-    const conds: WhereCond[] = [];
-    if (filters?.roleId) conds.push(eq(schema.employee.roleId, filters.roleId));
-    if (filters?.status) conds.push(eq(schema.employee.status, filters.status));
-    if (filters?.search?.trim()) conds.push(buildEmployeeSearchWhere(filters.search.trim()));
-    const w = buildWhere(conds);
+    const w = buildWhere(buildEmployeeFilterConditions(filters));
     const q = this.db.select().from(schema.employee);
     return (w ? q.where(w) : q).orderBy(asc(sql`first_name COLLATE NOCASE`), asc(sql`last_name COLLATE NOCASE`), asc(schema.employee.createdAt)).all().map(toEmployee);
+  }
+
+  countEmployees(filters?: EmployeeListFilters): number {
+    const w = buildWhere(buildEmployeeFilterConditions(filters));
+    const q = this.db.select({ count: count() }).from(schema.employee);
+    return Number((w ? q.where(w) : q).all()[0]?.count ?? 0);
   }
 
   getEmployeeById(id: string): EmployeeRecord | null {
@@ -415,10 +425,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
   }
 
   listEmployeesPaged(query: { filters?: EmployeeListFilters; cursor?: string; limit: number }): { items: EmployeeRecord[]; total: number; nextCursor: string | null } {
-    const fc: WhereCond[] = [];
-    if (query.filters?.roleId) fc.push(eq(schema.employee.roleId, query.filters.roleId));
-    if (query.filters?.status) fc.push(eq(schema.employee.status, query.filters.status));
-    if (query.filters?.search?.trim()) fc.push(buildEmployeeSearchWhere(query.filters.search.trim()));
+    const fc = buildEmployeeFilterConditions(query.filters);
     const fw = buildWhere(fc);
     const total = Number((fw ? this.db.select({ count: count() }).from(schema.employee).where(fw) : this.db.select({ count: count() }).from(schema.employee)).all()[0]?.count ?? 0);
 

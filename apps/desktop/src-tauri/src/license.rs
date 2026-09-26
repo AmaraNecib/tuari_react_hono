@@ -548,7 +548,11 @@ impl LicenseManager {
         } else {
             map.insert("TUARI_LICENSE_EDITION".to_string(), "standard".to_string());
             map.insert("TUARI_LICENSE_FEATURES".to_string(), String::new());
-            map.insert("TUARI_LICENSE_MAX_USERS".to_string(), "1".to_string());
+            // No license = no seat cap (0 is the unlimited sentinel). The API
+            // seat rule only caps an `active` license, and the no-license
+            // branch is `trial`/`unknown`; forwarding 0 matches
+            // `get_license_status`, which reports `max_users: 0` here.
+            map.insert("TUARI_LICENSE_MAX_USERS".to_string(), "0".to_string());
             map.insert(
                 "TUARI_LICENSE_CUSTOMER".to_string(),
                 "null".to_string(),
@@ -801,7 +805,7 @@ mod tests {
         let manager = LicenseManager::empty();
         let env = manager.to_env_map();
         assert_eq!(env.get("TUARI_LICENSE_EDITION").unwrap(), "standard");
-        assert_eq!(env.get("TUARI_LICENSE_MAX_USERS").unwrap(), "1");
+        assert_eq!(env.get("TUARI_LICENSE_MAX_USERS").unwrap(), "0");
         assert_eq!(env.get("TUARI_LICENSE_STATUS").unwrap(), "unknown");
     }
 

@@ -63,17 +63,26 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
   }
 
   listEmployees(filters?: EmployeeListFilters): EmployeeRecord[] {
-    const all = Array.from(this.store.employees.values());
-    const needle = filters?.search?.trim().toLowerCase();
-    const filtered = filters ? all.filter((e) =>
-      (!filters.roleId || e.roleId === filters.roleId) &&
-      (!filters.status || e.status === filters.status) &&
-      (!needle || this.matchesSearch(e, needle)),
-    ) : all;
-    return filtered.sort((a, b) => {
+    return this.filterEmployees(filters).sort((a, b) => {
       const byName = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
       return byName !== 0 ? byName : sortByDate(a, b);
     });
+  }
+
+  countEmployees(filters?: EmployeeListFilters): number {
+    return this.filterEmployees(filters).length;
+  }
+
+  /** Filter employees by the same predicate the SQLite adapter applies. */
+  private filterEmployees(filters?: EmployeeListFilters): EmployeeRecord[] {
+    const all = Array.from(this.store.employees.values());
+    if (!filters) return all;
+    const needle = filters.search?.trim().toLowerCase();
+    return all.filter((e) =>
+      (!filters.roleId || e.roleId === filters.roleId) &&
+      (!filters.status || e.status === filters.status) &&
+      (!needle || this.matchesSearch(e, needle)),
+    );
   }
 
   /** Case-insensitive haystack incl. the role's display name (issue #183). */

@@ -41,6 +41,7 @@ export class InMemoryCompanyRepository implements CompanyRepository {
   deleteRole(id: string) { return this.workforce.deleteRole(id); }
   countEmployeesByRoleId(roleId: string) { return this.workforce.countEmployeesByRoleId(roleId); }
   listEmployees(filters?: Parameters<CompanyRepository["listEmployees"]>[0]) { return this.workforce.listEmployees(filters); }
+  countEmployees(filters?: Parameters<CompanyRepository["countEmployees"]>[0]) { return this.workforce.countEmployees(filters); }
   listEmployeesPaged(query: Parameters<CompanyRepository["listEmployeesPaged"]>[0]) { return this.workforce.listEmployeesPaged(query); }
   getEmployeeById(id: string) { return this.workforce.getEmployeeById(id); }
   getEmployeeByPhone(phone: string) { return this.workforce.getEmployeeByPhone(phone); }

@@ -22,7 +22,7 @@ describe("getLicenseInfo", () => {
     const info = getLicenseInfo();
     expect(info.edition).toBe("standard");
     expect(info.features).toEqual([]);
-    expect(info.maxUsers).toBe(1);
+    expect(info.maxUsers).toBe(0);
     expect(info.customer).toBeNull();
     expect(info.expiresAt).toBeNull();
     expect(info.status).toBe("unknown");
@@ -52,9 +52,9 @@ describe("getLicenseInfo", () => {
     expect(info.maxUsers).toBe(10);
   });
 
-  it("defaults maxUsers to 1 when env var is missing", () => {
+  it("defaults maxUsers to 0 (unlimited) when env var is missing", () => {
     const info = getLicenseInfo();
-    expect(info.maxUsers).toBe(1);
+    expect(info.maxUsers).toBe(0);
   });
 
   it("handles NaN maxUsers gracefully", () => {

@@ -80,7 +80,11 @@ export function getLicenseInfo(): LicenseInfo {
     features: (process.env.TUARI_LICENSE_FEATURES ?? "")
       .split(",")
       .filter(Boolean) as LicensedFeature[],
-    maxUsers: parseInt(process.env.TUARI_LICENSE_MAX_USERS ?? "1", 10),
+    // 0 means unlimited. The shell always forwards a value; when the API runs
+    // without the shell (dev/tests) an unset variable must be explicitly
+    // UNCAPPED, not the historic silent one-seat default. A non-finite value
+    // (garbage env) is likewise treated as unlimited by the seat rule.
+    maxUsers: parseInt(process.env.TUARI_LICENSE_MAX_USERS ?? "0", 10),
     customer: process.env.TUARI_LICENSE_CUSTOMER
       ? (() => {
           try {

@@ -24,6 +24,7 @@ export class SqliteWorkforceRepository implements WorkforceRepository {
   deleteRole(id: string): boolean { return this.inner.deleteRole(id); }
   countEmployeesByRoleId(roleId: string): number { return this.inner.countEmployeesByRoleId(roleId); }
   listEmployees(filters?: EmployeeListFilters): EmployeeRecord[] { return this.inner.listEmployees(filters); }
+  countEmployees(filters?: EmployeeListFilters): number { return this.inner.countEmployees(filters); }
   listEmployeesPaged(query: { filters?: EmployeeListFilters; cursor?: string; limit: number }): { items: EmployeeRecord[]; total: number; nextCursor: string | null } { return this.inner.listEmployeesPaged(query); }
   getEmployeeById(id: string): EmployeeRecord | null { return this.inner.getEmployeeById(id); }
   getEmployeeByPhone(phone: string): EmployeeRecord | null { return this.inner.getEmployeeByPhone(phone); }

@@ -29,6 +29,7 @@ import {
 } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
+import { assertActiveEmployeeSeatAvailable } from "./employee-seat-limit";
 import {
   buildBatchField,
   deleteResult,
@@ -165,6 +166,10 @@ export class WorkforceService {
         throw new CompanyError("CONFLICT", "رقم هاتف العامل مستخدم بالفعل.", [
           { field: "phone", message: "رقم هاتف العامل مستخدم بالفعل." },
         ]);
+      }
+
+      if (input.status === "ACTIVE") {
+        assertActiveEmployeeSeatAvailable(this.repository);
       }
 
       const employee = this.repository.createEmployee(
@@ -389,6 +394,11 @@ export class WorkforceService {
         );
       }
 
+      const activeRows = normalizedEmployees.filter(
+        (employee) => employee.status === "ACTIVE",
+      ).length;
+      assertActiveEmployeeSeatAvailable(this.repository, activeRows);
+
       const result = this.repository.createEmployeesBatch(normalizedEmployees, audit);
 
       return successResult("تم إنشاء دفعة العاملين بنجاح.", result);
@@ -461,6 +471,10 @@ export class WorkforceService {
         throw new CompanyError("VALIDATION", "يجب إدخال قيمة الأجر مع دورية الأجر.", [
           { field: "salaryAmountDzd", message: "يجب إدخال قيمة الأجر مع دورية الأجر." },
         ]);
+      }
+
+      if (current.status !== "ACTIVE" && nextStatus === "ACTIVE") {
+        assertActiveEmployeeSeatAvailable(this.repository);
       }
 
       const employee = this.repository.updateEmployee(
