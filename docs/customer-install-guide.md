@@ -50,8 +50,9 @@ API refuses every audited mutation while the status is `expired`, `inactive`,
 `suspicious` (clock tampering) or `unknown`, with a message telling you what to
 do. Reading data still works, so you can reach the License screen and activate.
 
-During the trial (`trial`) and any post-expiry grace period (`grace`) everything
-works normally.
+During the post-install trial (`trial`) everything works normally. After the
+license expires, the `grace` window is **read-only** until you renew: reading
+still works, but changes are refused.
 
 Edition and feature lists are recorded in the license and shown on the License
 screen, but the API does not yet restrict any operation by them — the status
@@ -72,20 +73,21 @@ The database, attachments, `license.lic` and `clock-tracker.json` live under the
 app's data directory — `%APPDATA%\com.tuari.desktop\Tuari` on a normal install
 (a portable build keeps the same tree in `<install folder>\data`).
 
-**The database is encrypted, and its key is kept in the Windows Credential
-Manager, not in that directory.** So:
+**Encryption depends on the license.** The app passes a database key to the API
+only when the license carries the `encrypted_db` feature; without it the
+workspace opens unencrypted. When it does, the key lives in the Windows
+Credential Manager, not in that directory. So:
 
-- Copying the data directory alone is **not** a restorable backup: on a new
-  Windows profile, or after the credential entry is lost, the app generates a
-  fresh key at startup and cannot open the restored database.
-- A complete backup is the data directory **plus** the database-key credential
-  entry (service `com.tuari.desktop.secrets`, account `app-db.key`, in Windows
-  Credential Manager) — export it, or keep the original Windows profile.
-- Restoring a backup onto a new Windows profile, or any install whose credential
-  store no longer holds the matching `app-db.key`, is **not supported by the app
-  today**: there is no screen that lets you supply a key before the database
-  opens. Keep the Windows profile, or the key entry, with the backup; if both are
-  lost, contact support.
+- With `encrypted_db`: copying the data directory alone is **not** a restorable
+  backup. On a new Windows profile, or after the credential entry is lost, the
+  app generates a fresh key at startup and cannot open the restored database. A
+  complete backup is the data directory **plus** the credential entry (service
+  `com.tuari.desktop.secrets`, account `app-db.key`, in Windows Credential
+  Manager) — export it, or keep the original Windows profile. Restoring after
+  both are lost is **not supported by the app today** (there is no screen to
+  supply a key before the database opens); contact support.
+- Without `encrypted_db`: the data directory is not encrypted, and the
+  credential-store backup advice does not apply.
 
 **Settings → Security** is not a restore flow. It changes the database key while
 the database is already open (current key → new key) and manages one-time
