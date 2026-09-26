@@ -8,16 +8,20 @@ description: "Mandatory lifecycle orchestrator for implementing a local or remot
 Read `docs/engineering-workflow.md`, `docs/local-issue-status.md` (when the
 work is ticket-driven), and `.agents/wisdom/*.md` first.
 
-This repository currently runs in **local-only mode** because the GitHub
-repository is unavailable. The source of truth is the current checkout,
-local branches/worktrees, `docs/local-issue-snapshot.json`, and the cached
-Git refs. Do not use `gh issue`, `gh pr`, PR comments, `git fetch`, `git push`,
-or GitHub Actions until the user explicitly says the remote repository is
-available again.
+This repository works against the remote (`AmaraNecib/tuari_react_hono`), so the
+source of truth is the current checkout **plus** the GitHub issue/PR state.
+Default to the remote workflow: `gh issue`, `gh pr`, `git fetch`, `git push`,
+GitHub Actions, and the hosted review gates on the pushed PR.
+
+Use local-only mode **only** when the remote is genuinely unreachable or the
+user explicitly asks for it. In that mode the source of truth is the checkout,
+local branches/worktrees, `docs/local-issue-snapshot.json`, and cached refs; do
+not use `gh issue`, `gh pr`, PR comments, `git fetch`, `git push`, or GitHub
+Actions, and stop at a local handoff instead of a PR.
 
 Crew policy: use at most six concurrent mutation worktrees. The parent may push
-and open/update a PR after the gates pass, but **must never merge**, even after
-Greptile reports 5/5. Close a Herdr workspace only when its lane is terminal
+and open/update a PR after the gates pass, and merges only under the Merge rules
+below (never on a lane's own initiative; a lane never merges at all). Close a Herdr workspace only when its lane is terminal
 and no follow-up is expected; keep reusable lanes alive and preserve
 workspace/pane/session identifiers before closing.
 
@@ -252,7 +256,8 @@ gate:
    issue ships; `Part of #N` otherwise) and the evidence summary. After opening
    it, publish a concise review-evidence summary as a PR comment (what was
    verified, the commands, the evidence paths) so a reviewer does not have to
-   dig through `.scratch/`.
+   dig through `.scratch/`. **Update that comment whenever a later push changes
+   what was verified** — a stale evidence comment is worse than none.
 3. Wait for the hosted CI checks on the pushed head; re-run flaky
    infrastructure jobs rather than changing unrelated code.
 4. Read the hosted review on that head — summary **and** inline findings:
@@ -269,7 +274,8 @@ gh api repos/{owner}/{repo}/pulls/<n>/comments \  # inline, file-level findings
    the request.
 6. Repeat 3-5 until CI is green and the review on the current head is clean.
 7. Report the PR URL, the check states, and the Greptile score, then stop.
-   **Never merge** — the parent owns the merge decision.
+   A **lane** never merges. The **parent** merges only under the Merge
+   rules below — never on a lane's own initiative.
 
 In **local-only mode**, report the local state and stop; do not wait for CI or
 PR state.
@@ -319,7 +325,7 @@ state instead of merging.
 | Not pushed, or PR not opened/updated | Step 10 |
 | Local Greptile not clean | Step 10 (CLI gate) |
 | CI red, or Greptile stale/not clean on the head | Step 11 |
-| All green and 5/5 | Step 12 → merge rules → Step 13 |
+| All green and 5/5 | Step 12 (capture wisdom + report) → Merge rules (parent only) |
 
 ## Local-only completion rules
 
@@ -328,7 +334,8 @@ A local implementation is ready for later integration, not merged, only when the
 Never claim an issue is closed or merged while GitHub is unavailable. When the
 remote is restored, rebase/compare against the fresh `develop`, rerun all local
 checks and Greptile review, then push/open or update the remote PR only with the
-user's approval. Stop after the PR is created or updated; never merge it.
+user's approval. In local-only mode nothing is merged; once the remote is
+restored, the remote loop and the Merge rules below apply.
 
 ## Review tiers
 
