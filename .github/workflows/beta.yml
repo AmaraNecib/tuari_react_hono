@@ -298,7 +298,7 @@ jobs:
             --notes "Beta release $version" `
             --target "$env:GITHUB_SHA" `
             --prerelease `
-            '--no-latest' `
+            '--latest=false' `
             --repo "${{ github.repository }}" `
             $artifactFiles
 
