@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -86,4 +86,61 @@ test('CI/CD workflow files exist and have correct triggers', async () => {
   assert.match(beta, /sign-update\.mjs/);
   assert.match(beta, /verify-release-assets\.mjs/);
   assert.match(beta, /Rust Core boundaries/);
+});
+
+test('workflow files do not embed a column-0 PowerShell here-string terminator', async () => {
+  const workflowDir = path.join(rootDir, '.github/workflows');
+  const entries = await readdir(workflowDir);
+  const workflows = entries.filter((name) => name.endsWith('.yml'));
+
+  assert.ok(workflows.length > 0, 'expected workflow files to exist');
+
+  for (const name of workflows) {
+    const source = await readRepoFile(path.join('.github/workflows', name));
+    // A `'@` at column 0 ends a YAML block scalar early and makes the whole
+    // workflow unparseable. This is the regression that broke beta, release,
+    // and nightly before they could parse at all.
+    assert.doesNotMatch(source, /^'@/m, `${name} has a column-0 here-string terminator`);
+  }
+});
+
+test('release workflows join the generated key output before splitting', async () => {
+  for (const name of ['beta.yml', 'release.yml', 'nightly.yml']) {
+    const source = await readRepoFile(path.join('.github/workflows', name));
+
+    // Node prints each PEM on its own line and PowerShell captures that as a
+    // string array, so the output must be joined before `-split`. Without the
+    // join, $parts[0] holds only the first PEM line and signing uses a
+    // truncated private key.
+    assert.match(
+      source,
+      /\$result = \(node -e \$nodeScript\) -join "`n"/,
+      `${name} must join the key output before splitting it`,
+    );
+    assert.doesNotMatch(
+      source,
+      /\$result = node -e \$nodeScript\n\s*\$parts =/,
+      `${name} must not split the unjoined key output`,
+    );
+    assert.match(source, /\$parts\[0\] \| Out-File -FilePath \(Join-Path \$env:RUNNER_TEMP "signing-key\.pem"\)/);
+    assert.match(source, /\$parts\[1\] \| Out-File -FilePath \(Join-Path \$env:RUNNER_TEMP "verification-key\.pem"\)/);
+  }
+});
+
+test('release guard aborts when the main fetch fails', async () => {
+  const release = await readRepoFile('.github/workflows/release.yml');
+
+  // A failed fetch must abort before merge-base reads FETCH_HEAD. Otherwise a
+  // stale FETCH_HEAD left by checkout can satisfy the ancestry check and let
+  // an off-main tag through.
+  const fetchIndex = release.indexOf('git fetch --no-tags');
+  const mergeBaseIndex = release.indexOf('git merge-base --is-ancestor HEAD FETCH_HEAD');
+
+  assert.ok(fetchIndex !== -1, 'release.yml should fetch main');
+  assert.ok(mergeBaseIndex !== -1, 'release.yml should check ancestry against FETCH_HEAD');
+  assert.ok(fetchIndex < mergeBaseIndex, 'the fetch must run before merge-base');
+
+  const between = release.slice(fetchIndex, mergeBaseIndex);
+  assert.match(between, /if \(\$LASTEXITCODE -ne 0\)/, 'the fetch must be followed by an exit-code check');
+  assert.match(between, /exit 1/, 'a failed fetch must abort the job');
 });
