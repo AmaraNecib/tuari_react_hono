@@ -44,13 +44,14 @@ works, and the License screen shows the days remaining.
 The app verifies the signature offline and stores the license locally. You will
 see the edition, the features and the expiry (perpetual licenses show no expiry).
 
-**After the 30-day trial the app reports a locked license and stops serving
-license-gated operations.** Be precise about the current scope of enforcement:
-edition- and feature-gated operations are refused (`UPGRADE_REQUIRED`), an
-expired license is refused, and the License screen shows the locked state — but
-ordinary authenticated mutations are **not** blocked yet. Treat the trial as a
-courtesy period, not as a technical lock: enforcement hardening (refusing
-mutations while locked) is tracked separately.
+**After the 30-day trial the app locks: it refuses changes until a valid license
+is activated.** The desktop shell reports the license status to the API, and the
+API refuses every audited mutation while the status is `expired`, `inactive`,
+`suspicious` (clock tampering) or `unknown`, with a message telling you what to
+do. Reading data still works, so you can reach the License screen and activate.
+
+During the trial (`trial`) and any post-expiry grace period (`grace`) everything
+works normally.
 
 Troubleshooting:
 
