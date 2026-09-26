@@ -5,8 +5,15 @@
 // @ts-nocheck
 import { createRouterClient } from "@orpc/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import Database from "better-sqlite3";
 
 import { createInMemoryCompanyHarness } from "../modules/company/company.test-helpers";
+import { schemaStatements } from "../infrastructure/database/schema-definitions";
+import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
+import { InventoryService } from "../modules/inventory/inventory.service";
+import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
@@ -30,10 +37,14 @@ type RpcClient = ReturnType<typeof createRouterClient<never, never>>
 
 describe("RPC router", () => {
   const harnesses: Array<ReturnType<typeof createInMemoryCompanyHarness>> = [];
+  const inventoryDbs: Database.Database[] = [];
 
   afterEach(() => {
     while (harnesses.length > 0) {
       harnesses.pop()?.close();
+    }
+    while (inventoryDbs.length > 0) {
+      inventoryDbs.pop()?.close();
     }
   });
 
@@ -41,6 +52,20 @@ describe("RPC router", () => {
     const harness = createInMemoryCompanyHarness();
     harnesses.push(harness);
     return harness;
+  };
+
+  /** Real InventoryService over a fresh legacy-schema in-memory DB (empty data). */
+  const createEmptyInventoryService = () => {
+    const inventoryDb = new Database(":memory:");
+    for (const statement of schemaStatements) {
+      inventoryDb.exec(statement);
+    }
+    inventoryDbs.push(inventoryDb);
+    return new InventoryService(
+      createInventoryRepository(inventoryDb),
+      // Attachments are never written in these wiring tests; a bare path suffices.
+      new InventoryAttachmentStorage(join(tmpdir(), "router-reports-attachments")),
+    );
   };
 
   const authBootstrapService = {
@@ -97,7 +122,7 @@ describe("RPC router", () => {
       workforceService: new WorkforceService(repository, repository, mutation),
       operationsService: new OperationsService(repository, repository, mutation),
       financeService: new FinanceService(repository, repository, mutation),
-      inventoryService: {} as never,
+      inventoryService: createEmptyInventoryService(),
       employeeModule,
       invoiceModule: {} as never,
       paymentModule,
@@ -902,6 +927,36 @@ describe("RPC router", () => {
     expect(bootstrapFirstUser).not.toHaveBeenCalled();
   });
 
+  it("rate-limits the unauthenticated authBootstrap setup-secret endpoint (#175)", async () => {
+    const harness = createHarness();
+    const bootstrapFirstUser = vi.fn(async () => ({
+      success: true as const,
+      message: "created",
+      item: { id: "user-1", name: "Taylor", phone: "0612345678", version: "0.0.0" },
+    }));
+    const router = createTestRouter(harness, { bootstrapFirstUser: bootstrapFirstUser as never });
+    const client = createRouterClient(router, { context: createContext(null) as never });
+    const validInput = {
+      name: "Taylor",
+      phone: "0612345678",
+      password: "StrongPass123!",
+      setupSecret: "setup-secret",
+    };
+
+    // 100 valid attempts fit the per-IP budget and reach the service.
+    for (let i = 0; i < 100; i++) {
+      await expect(client.authBootstrap(validInput)).resolves.toMatchObject({ success: true });
+    }
+    expect(bootstrapFirstUser).toHaveBeenCalledTimes(100);
+
+    // The 101st is rejected by the per-IP limiter before touching the service,
+    // defending the setup secret against online guessing.
+    await expect(client.authBootstrap(validInput)).rejects.toMatchObject({
+      code: "TOO_MANY_REQUESTS",
+    });
+    expect(bootstrapFirstUser).toHaveBeenCalledTimes(100);
+  });
+
   it("attaches zod field issues to the wire-gate validation error", async () => {
     const harness = createHarness();
     const bootstrapFirstUser = vi.fn();
@@ -927,6 +982,38 @@ describe("RPC router", () => {
       },
     });
     expect(bootstrapFirstUser).not.toHaveBeenCalled();
+  });
+
+  it("rate-limits the recovery-key / DB-key rotation mutations (#175)", async () => {
+    const harness = createHarness();
+    const consumeKey = vi.fn(async () => true);
+    const revokeKey = vi.fn(async () => true);
+    const generateKeys = vi.fn(async () => []);
+    const getPoolStatus = vi.fn(async () => ({
+      availableCount: 0,
+      totalCount: 0,
+      maxPoolSize: 5,
+      maskedKeys: [],
+    }));
+    const recoveryKeyService = { consumeKey, revokeKey, generateKeys, getPoolStatus };
+    const router = createTestRouter(harness, {}, recoveryKeyService);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    // 100 authenticated consume calls fit the shared per-IP budget.
+    for (let i = 0; i < 100; i++) {
+      await expect(
+        client.consumeRecoveryKey({ key: "a1b2-c3d4-e5f6" }),
+      ).resolves.toMatchObject({ success: true });
+    }
+    expect(consumeKey).toHaveBeenCalledTimes(100);
+
+    // The 101st is throttled client-side (the service is never reached), so a
+    // compromised-but-active admin session cannot thrash the recovery/DB-key
+    // rotation surface.
+    await expect(
+      client.consumeRecoveryKey({ key: "a1b2-c3d4-e5f6" }),
+    ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+    expect(consumeKey).toHaveBeenCalledTimes(100);
   });
 
   it("rejects invalid recovery/DB key input at the wire contract", async () => {
@@ -972,10 +1059,41 @@ describe("RPC router", () => {
     await expect(
       client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "\u200B".repeat(8) }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    // currentKey half of the same gate: a ZWSP-only current key is rejected
-    // before any PRAGMA is built.
+    // currentKey is deliberately exempt from the blank/invisible rule: a key
+    // that predates the rule (or any other key the user mistypes) must reach
+    // the service, which PROVES it by re-opening the database. A rejected
+    // wire request here would strand legacy keys with no rotation path.
     await expect(
       client.changeDbEncryptionKey({ currentKey: "\u200B", newKey: "new-key-123" }),
+    ).resolves.toMatchObject({ success: false });
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old key 2020", newKey: "new-key-123" }),
+    ).resolves.toMatchObject({ success: false });
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old\u00A0key", newKey: "new-key-123" }),
+    ).resolves.toMatchObject({ success: false });
+
+    // #334: invisible codepoints OUTSIDE Cf are rejected at the wire gate
+    // too — combining marks (Mn), braille blank (U+2800, So) and invisible
+    // control chars (Cc) render as nothing but pass min()/hash-compare.
+    await expect(client.consumeRecoveryKey({ key: "\u0301\u0301" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(client.consumeRecoveryKey({ key: "\u2800\u2800" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "\u0001".repeat(8) }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // Issue case 4: a mid-string NBSP survives trim() (edge-only) — the Zs
+    // class is rejected anywhere, so it never becomes a rekey value.
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "a1b2\u00A0c3d4e5f6" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // Blank Hangul filler (U+3164) rides the same shared regex — rejected at
+    // the wire too, so it can never become a rekey value.
+    await expect(
+      client.changeDbEncryptionKey({ currentKey: "old-key", newKey: "\u3164".repeat(8) }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
@@ -1013,6 +1131,48 @@ describe("RPC router", () => {
     await expect(client.paymentsList({ limit: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(client.paymentsList({ limit: -1 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(client.paymentsList({ limit: 2.5 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rejects out-of-bounds invoice paid values at the wire contract (issue #42)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createClient(router, createContext());
+
+    // #42: the web UI now mirrors these bounds (amount >= 0, percent 0-100);
+    // pin the server side of the same rule so a contract-schema regression
+    // cannot silently let a negative amount or >100 percent through. The wire
+    // gate fires before any handler/middleware, so BAD_REQUEST with the exact
+    // field issue path proves the bounds hold server-side.
+    await expect(
+      client.inventoryInvoiceGroupsCreate({ paidAmountDzd: -5 }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      data: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: ["paidAmountDzd"] }),
+        ]),
+      },
+    });
+    await expect(
+      client.inventoryInvoiceGroupsCreate({ paidPercent: 150 }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      data: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: ["paidPercent"] }),
+        ]),
+      },
+    });
+    await expect(
+      client.inventoryInvoiceGroupsCreate({ paidPercent: -1 }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      data: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: ["paidPercent"] }),
+        ]),
+      },
+    });
   });
 
   it("forwards a failed recovery key consumption through the wire contract", async () => {

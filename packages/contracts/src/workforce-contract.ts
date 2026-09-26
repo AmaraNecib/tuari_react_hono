@@ -26,6 +26,7 @@ import {
   employeeStateHistorySchema,
   employeeSyncManagedProjectsInputSchema,
   employeeSyncManagedWarehousesInputSchema,
+  employeeSaveInputSchema,
   employeeUpdateInputSchema,
   employeeWarehouseAssignmentSchema,
   managerAssignmentCreateInputSchema,
@@ -69,6 +70,9 @@ export const workforceContract = {
     .output(createEntityResultSchema(employeeBatchCreateResultSchema)),
   employeesUpdate: oc
     .input(employeeUpdateInputSchema)
+    .output(createEntityResultSchema(employeeSchema)),
+  employeesSave: oc
+    .input(employeeSaveInputSchema)
     .output(createEntityResultSchema(employeeSchema)),
   employeesDelete: oc.input(idInputSchema).output(createDeleteResultSchema),
   employeesAssignWorkplace: oc

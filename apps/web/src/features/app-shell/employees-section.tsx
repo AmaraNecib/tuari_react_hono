@@ -20,7 +20,7 @@ import {
 } from "@/features/employees/employee-table"
 import type { EmployeeManagerOption } from "@/features/employees/employee-batch-row-card"
 import { cn } from "@/lib/utils"
-import type { Role } from "@tuari/contracts"
+import type { Employee, Role } from "@tuari/contracts"
 
 import {
   useDeleteEmployeeMutation,
@@ -29,13 +29,7 @@ import {
 import { useHomeViewNavigation } from "./home-view-navigation"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { type WorkspaceRouteTarget, WorkspaceLink } from "@/router/navigation"
-import {
-  buildEmployeeRelationshipFacts,
-  buildEmployeeRow,
-} from "./home-view-derived-employees"
-import { buildHomeViewDerivedLookups } from "./home-view-derived-lookups"
 import { useEmployeesPagedQuery } from "./workspace-queries"
-import type { DemoWorkspace } from "./workspace-queries"
 
 const DEFAULT_LIMIT = 50
 
@@ -44,8 +38,8 @@ type EmployeesSectionProps = {
   emptyLabel: string
   employeePage: "list" | "create"
   managerOptions: EmployeeManagerOption[]
-  noManagerLabel: string
-  noProjectLabel: string
+  /** Seam-supplied row builder (HomeViewDerived.buildEmployeeTableRow). */
+  buildEmployeeTableRow: (employee: Employee) => EmployeeTableRow
   roles: Role[]
   title: string
   addWorkerLabel: string
@@ -70,7 +64,6 @@ type EmployeesSectionProps = {
   }
   cursor?: string
   limit?: number
-  workspace: DemoWorkspace
 }
 
 type PendingAction =
@@ -86,8 +79,7 @@ export function EmployeesSection({
   emptyLabel,
   employeePage,
   managerOptions,
-  noManagerLabel,
-  noProjectLabel,
+  buildEmployeeTableRow,
   roles,
   title,
   addWorkerLabel,
@@ -95,7 +87,6 @@ export function EmployeesSection({
   actionLabels,
   cursor,
   limit,
-  workspace,
 }: EmployeesSectionProps) {
   const { t } = useTranslation()
   const navigation = useHomeViewNavigation()
@@ -116,27 +107,15 @@ export function EmployeesSection({
     search: normalizedQuery || undefined,
   })
 
-  const lookups = useMemo(() => buildHomeViewDerivedLookups(workspace), [workspace])
-  const relationshipFacts = useMemo(
-    () => buildEmployeeRelationshipFacts(workspace),
-    [workspace],
-  )
-
   // Rows come pre-filtered from the server (issue #183): the paged RPC
   // applies `search` across all records before pagination, so no local
-  // page-level filtering is needed here.
-  const rows = useMemo<EmployeeTableRow[]>(() => {
-    const items = pagedQuery.data?.items ?? []
-    return items.map((employee) =>
-      buildEmployeeRow({
-        copy: { shell: { noManager: noManagerLabel, noProject: noProjectLabel } },
-        employee,
-        lookups,
-        relationshipFacts,
-        t,
-      }),
-    )
-  }, [pagedQuery.data?.items, lookups, relationshipFacts, noManagerLabel, noProjectLabel, t])
+  // page-level filtering is needed here. Each row is built through the
+  // dashboard's view-model seam (issue #217), so the employees page and the
+  // dashboard always render the same employee from identical data.
+  const rows = useMemo<EmployeeTableRow[]>(
+    () => pagedQuery.data?.items.map((employee) => buildEmployeeTableRow(employee)) ?? [],
+    [pagedQuery.data?.items, buildEmployeeTableRow],
+  )
 
       
   

@@ -5,7 +5,10 @@ import { defineConfig } from "vitest/config";
  *
  * - Uses v8 coverage provider (faster, more accurate branch tracking)
  * - Excludes test files, types, and adapters from coverage requirements
- * - Sets thresholds so CI fails if coverage drops below 100%
+ * - Lines/statements/functions must stay at 100%; branches sit at a 99 safety
+ *   floor so provably-unreachable defensive branches (see #242) do not force
+ *   illegal-state tests or v8 pragmas. A genuinely impossible branch may be
+ *   marked with a commented v8-ignore escape (see the thresholds note below).
  */
 export default defineConfig({
   test: {
@@ -13,8 +16,15 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html"],
       thresholds: {
-        // Coverage thresholds for the workforce deep module foundation (Issue #8).
-        // As we add more modules, expand `include` to cover them too.
+        // Coverage policy: ALL thresholds are strict 100% ("tests pass" keeps
+        // its meaning). A provably-unreachable DEFENSIVE branch may be marked
+        // with a commented `/* v8 ignore */` escape: v8 then excludes it from
+        // the numbers, so any REACHABLE untested branch still fails the gate
+        // while impossible defensive branches don't demand illegal-state
+        // tests. (In-module: the #242 unreachable branches live in
+        // src/modules/company/finance.service.ts, covered here, so the escape
+        // applies in scope.) Do not lower the branch threshold: an aggregate
+        // floor would let real gaps pass silently.
         statements: 100,
         branches: 100,
         functions: 100,

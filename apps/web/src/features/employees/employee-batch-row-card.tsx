@@ -8,6 +8,7 @@ import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
 
 import type { EmployeeDraft, EmployeeDraftErrors } from "./employee-batch-schema"
+import { isEmployeeRoleSelectable } from "./role-classification"
 
 export type EmployeeManagerOption = {
   id: string
@@ -21,6 +22,7 @@ type EmployeeBatchRowCardCopy = {
   lastNameLabel: string
   phoneLabel: string
   roleLabel: string
+  occupationLabel: string
   salaryAmountLabel: string
   salaryPeriodLabel: string
   salaryAmountPlaceholder: string
@@ -37,6 +39,7 @@ type EmployeeBatchRowCardCopy = {
   lastNamePlaceholder: string
   phonePlaceholder: string
   rolePlaceholder: string
+  occupationPlaceholder: string
   notesPlaceholder: string
   remove: string
 }
@@ -124,10 +127,21 @@ export function EmployeeBatchRowCard({
         </label>
 
         <label className="flex flex-col gap-2.5">
+          <span className="text-sm font-medium text-foreground">{copy.occupationLabel}</span>
+          <Input
+            name={`employee-occupation-${index}`}
+            placeholder={copy.occupationPlaceholder}
+            value={draft.occupation}
+            onChange={(event) => onChange(index, "occupation", event.target.value)}
+          />
+          {errors.occupation ? <p className="text-sm text-destructive">{errors.occupation}</p> : null}
+        </label>
+
+        <label className="flex flex-col gap-2.5">
           <span className="text-sm font-medium text-foreground">{copy.roleLabel}</span>
           <select className={fieldClassName} name={`employee-role-${index}`} value={draft.roleId} onChange={(event) => onChange(index, "roleId", event.target.value)}>
             <option value="">{copy.rolePlaceholder}</option>
-            {roles.map((role) => (
+            {roles.filter((role) => isEmployeeRoleSelectable(role.key)).map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
               </option>

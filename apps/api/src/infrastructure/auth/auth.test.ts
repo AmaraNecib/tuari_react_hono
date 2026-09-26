@@ -66,6 +66,63 @@ describe("createAuth", () => {
     }
   }, 60_000);
 
+  it("refuses to send an OTP for a phone number that fails the Algerian-format validator", async () => {
+    // Deferred branch from #212: phoneNumberValidator's return-false path. An
+    // invalid-format number must be rejected BEFORE sendOTP runs — the error is
+    // better-auth's "Invalid phone number" (validator gate), not the "OTP delivery
+    // is not configured" sendOTP hard-fail. The validator rejects before any DB
+    // access, so the fake db (`{} as never`) is sufficient here.
+    const auth = createAuth({} as never, buildConfig());
+
+    await expect(
+      auth.api.sendPhoneNumberOTP({
+        body: { phoneNumber: "0999123456" },
+        headers: new Headers(),
+      }),
+    ).rejects.toThrow(/Invalid phone number/);
+  });
+
+  it("refuses password sign-in for a phone number that fails the Algerian-format validator", async () => {
+    // Validator false at the sign-in seam: the number is rejected before the user
+    // row is even looked up, so no DB is needed. Pins the same #212-deferred branch
+    // through the sign-in route.
+    const auth = createAuth({} as never, buildConfig());
+
+    await expect(
+      auth.api.signInPhoneNumber({
+        body: { phoneNumber: "0999123456", password: "whatever" },
+        headers: new Headers(),
+      }),
+    ).rejects.toThrow(/Invalid phone number/);
+  });
+
+  it("accepts all Algerian phone prefixes (05/06/07) and still refuses OTP delivery", async () => {
+    // Pins the phoneNumberValidator's true path for EVERY regex arm: the only
+    // blocker after a valid 05/06/07 number is the deliberate sendOTP hard-fail,
+    // never a spurious validation rejection. Real dependency graph + real in-memory
+    // DB are required because a valid number proceeds past the validator to the
+    // verification store before sendOTP throws.
+    const { createAppDependencies } = await import("../../app/dependencies");
+    const config = appConfigSchema.parse({
+      ...buildConfig(),
+      betterAuthUrl: "http://127.0.0.1:9999",
+    });
+    const deps = await createAppDependencies({ databasePath: ":memory:" }, config);
+
+    try {
+      for (const phoneNumber of ["0555000001", "0666000001", "0777000001"]) {
+        await expect(
+          deps.auth.api.sendPhoneNumberOTP({
+            body: { phoneNumber },
+            headers: new Headers(),
+          }),
+        ).rejects.toThrow(/OTP delivery is not configured/);
+      }
+    } finally {
+      deps.close();
+    }
+  }, 60_000);
+
   it("keeps password-based phone sign-in wired for the login flow", () => {
     const auth = createAuth({} as never, buildConfig());
 

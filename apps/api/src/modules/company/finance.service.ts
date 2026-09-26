@@ -21,6 +21,7 @@ import {
   type DebtEntryRecordPaymentInput,
   type DebtEntryVoidInput,
   type DebtPartyDetailInput,
+  type DebtReport,
   type DebtSettlementInput,
   type ExternalCounterpartyCreateInput,
   getDebtAccountNetContribution,
@@ -44,10 +45,12 @@ import type { WorkforceRepository } from "./workforce.repository";
 import {
   type DebtAccountListFilters,
   type DebtEntryListFilters,
+  type DebtEntryRecord,
   type ExternalCounterpartyListFilters,
   type MutationAuditContext,
 } from "./company.types";
-import { normalizeAlgeriaTimestamp } from "./company-time";
+import { createAlgeriaTimestamp, normalizeAlgeriaTimestamp } from "./company-time";
+import { MS_PER_DAY, resolveReportWindow, roundMoney } from "./report.helpers";
 import {
   requireDebtAccount,
   requireEmployee,
@@ -842,5 +845,206 @@ export class FinanceService {
       .sort((left, right) => Date.parse(right.latestActivityAt) - Date.parse(left.latestActivityAt));
 
     return { parties, debtAccounts };
+  }
+
+  /**
+   * Generate the DEBT report.
+   *
+   * Real aggregation over debt accounts + LIVE entries — the dashboard's
+   * outstanding/overdue/aging/top-debtor cards. Semantics (documented in
+   * issue #242 design):
+   *  - An account participates iff it has at least one LIVE entry whose
+   *    `entryDate` falls inside [startDate, endDate]; unbounded sides are open.
+   *    Balances are point-in-time as of now/endDate.
+   *  - Age = whole days from the account's OLDEST live entry to the report
+   *    date (clamped ≥ 0). No due date exists in the domain, so "overdue" is
+   *    defined operationally as OPEN balances aged ≥ 60 days (the 60+ bucket).
+   *  - Settled = |signedAmount| of LIVE SETTLEMENT entries per account.
+   *  - topDebtors `daysSinceLastPayment` = days since the party's latest LIVE
+   *    PAYMENT entry; when no payment exists it falls back to days since the
+   *    latest LIVE entry (a documented proxy, never a fabricated payment date).
+   *  - Direction semantics: `totalOutstandingDzd`, `overdueDzd` and the aging
+   *    amounts aggregate GROSS open balances across BOTH PAYABLE and RECEIVABLE
+   *    directions (exposure magnitude, always non-negative). The net sign
+   *    convention lives in `getDebtAccountNetContribution`/`getNetDebtBalance`
+   *    in @tuari/contracts and is used elsewhere; this report deliberately does
+   *    not net directions (a net figure can go negative, which the contract's
+   *    non-negative schema cannot represent).
+   */
+  generateDebtReport(input: { startDate?: string; endDate?: string }): DebtReport {
+    const { startMs, endMs, reportDateMs } = resolveReportWindow(input);
+
+    const accounts = this.repository.listDebtAccounts();
+
+    const liveEntriesByAccount = new Map<string, DebtEntryRecord[]>();
+    for (const entry of this.repository.listAllDebtEntries()) {
+      if (entry.status !== "LIVE") {
+        continue;
+      }
+      const list = liveEntriesByAccount.get(entry.debtAccountId) ?? [];
+      list.push(entry);
+      liveEntriesByAccount.set(entry.debtAccountId, list);
+    }
+
+    const employeesById = new Map(
+      this.workforceRepo.listEmployees().map((employee) => [employee.id, employee]),
+    );
+    const counterpartiesById = new Map(
+      this.repository
+        .listExternalCounterparties()
+        .map((counterparty) => [counterparty.id, counterparty]),
+    );
+
+    const includedAccounts = accounts.filter((account) => {
+      const entries = liveEntriesByAccount.get(account.id) ?? [];
+      return entries.some((entry) => {
+        const entryMs = Date.parse(entry.entryDate);
+        return entryMs >= startMs && entryMs <= endMs;
+      });
+    });
+
+    const agingAccumulators: Record<
+      "0-30_DAYS" | "31-60_DAYS" | "60+_DAYS",
+      { countOpen: number; amountDzd: number }
+    > = {
+      "0-30_DAYS": { countOpen: 0, amountDzd: 0 },
+      "31-60_DAYS": { countOpen: 0, amountDzd: 0 },
+      "60+_DAYS": { countOpen: 0, amountDzd: 0 },
+    };
+
+    const partyMap = new Map<
+      string,
+      {
+        partyId: string;
+        partyName: string;
+        partyType: "INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY";
+        outstandingDzd: number;
+        settledDzd: number;
+        lastTransaction: string | null;
+        /** Milliseconds of the latest LIVE entry (any type) — topDebtors fallback. */
+        latestEntryMs: number;
+        /** Milliseconds of the latest LIVE PAYMENT entry — topDebtors. */
+        latestPaymentMs: number;
+      }
+    >();
+
+    let totalOutstandingDzd = 0;
+    let totalSettledDzd = 0;
+    let overdueDzd = 0;
+
+    for (const account of includedAccounts) {
+      // includedAccounts guarantees >= 1 live entry; fallback is defensive and unreachable
+      /* v8 ignore start */
+      const entries = liveEntriesByAccount.get(account.id) ?? [];
+      /* v8 ignore stop */
+      const oldestMs = Math.min(...entries.map((entry) => Date.parse(entry.entryDate)));
+      const age = Math.max(0, Math.floor((reportDateMs - oldestMs) / MS_PER_DAY));
+
+      const accountOutstanding = account.status === "OPEN" ? account.currentBalance : 0;
+      const accountSettled =
+        account.status === "SETTLED"
+          ? entries
+              .filter((entry) => entry.entryType === "SETTLEMENT")
+              .reduce((sum, entry) => sum + Math.abs(entry.signedAmountDzd), 0)
+          : 0;
+
+      totalOutstandingDzd += accountOutstanding;
+      totalSettledDzd += accountSettled;
+
+      if (account.status === "OPEN") {
+        // Boundary: age 60 lands in "60+_DAYS" so the 60+ bucket always equals
+        // the overdue figure (both mean age >= 60). 30 stays in "0-30_DAYS".
+        const ageCategory =
+          age <= 30 ? "0-30_DAYS" : age <= 59 ? "31-60_DAYS" : "60+_DAYS";
+        agingAccumulators[ageCategory].countOpen += 1;
+        agingAccumulators[ageCategory].amountDzd += account.currentBalance;
+        if (age >= 60) {
+          overdueDzd += account.currentBalance;
+        }
+      }
+
+      const key = buildDebtPartyKey(account);
+      const employee = account.workerId ? employeesById.get(account.workerId) : null;
+      const counterparty = account.externalCounterpartyId
+        ? counterpartiesById.get(account.externalCounterpartyId)
+        : null;
+      // entries is provably non-empty; entry_date is NOT NULL, so the empty-string fallback never fires
+      /* v8 ignore start */
+      const latestTransaction = [...entries]
+        .sort((a, b) => b.entryDate.localeCompare(a.entryDate))[0]?.entryDate ?? "";
+      /* v8 ignore stop */
+      const entryMs = Math.max(0, ...entries.map((entry) => Date.parse(entry.entryDate)));
+      const paymentMs = Math.max(
+        0,
+        ...entries
+          .filter((entry) => entry.entryType === "PAYMENT")
+          .map((entry) => Date.parse(entry.entryDate)),
+      );
+      const current = partyMap.get(key);
+      const previous = current?.lastTransaction ?? null;
+
+      partyMap.set(key, {
+        // debt_account CHECK enforces exactly one party ref; the account.id fallback is unreachable
+        /* v8 ignore start */
+        partyId: account.workerId ?? account.externalCounterpartyId ?? account.id,
+        /* v8 ignore stop */
+        partyName: employee
+          ? `${employee.firstName} ${employee.lastName}`
+          : counterparty?.fullName ?? account.id,
+        partyType: account.partyType,
+        outstandingDzd: (current?.outstandingDzd ?? 0) + accountOutstanding,
+        settledDzd: (current?.settledDzd ?? 0) + accountSettled,
+        lastTransaction:
+          !previous || Date.parse(latestTransaction) > Date.parse(previous)
+            ? latestTransaction
+            : previous,
+        latestEntryMs: Math.max(current?.latestEntryMs ?? 0, entryMs),
+        latestPaymentMs: Math.max(current?.latestPaymentMs ?? 0, paymentMs),
+      });
+    }
+
+    const byParty = Array.from(partyMap.values())
+      .map((party) => ({
+        partyId: party.partyId,
+        partyName: party.partyName,
+        partyType: party.partyType,
+        outstandingDzd: roundMoney(party.outstandingDzd),
+        settledDzd: roundMoney(party.settledDzd),
+        lastTransaction: party.lastTransaction,
+      }))
+      .sort(
+        (a, b) => b.outstandingDzd - a.outstandingDzd || a.partyName.localeCompare(b.partyName, "ar"),
+      );
+
+    const topDebtors = Array.from(partyMap.values())
+      .filter((party) => party.outstandingDzd > 0)
+      .sort((a, b) => b.outstandingDzd - a.outstandingDzd)
+      .slice(0, 10)
+      .map((party) => {
+        const referenceMs = party.latestPaymentMs > 0 ? party.latestPaymentMs : party.latestEntryMs;
+        return {
+          partyName: party.partyName,
+          amountDzd: roundMoney(party.outstandingDzd),
+          daysSinceLastPayment: Math.max(0, Math.floor((reportDateMs - referenceMs) / MS_PER_DAY)),
+        };
+      });
+
+    return {
+      type: "DEBT",
+      generatedAt: createAlgeriaTimestamp(),
+      summary: {
+        totalOutstandingDzd: roundMoney(totalOutstandingDzd),
+        totalSettledDzd: roundMoney(totalSettledDzd),
+        overdueDzd: roundMoney(overdueDzd),
+        partyCount: byParty.length,
+      },
+      agingBreakdown: (["0-30_DAYS", "31-60_DAYS", "60+_DAYS"] as const).map((ageCategory) => ({
+        ageCategory,
+        countOpen: agingAccumulators[ageCategory].countOpen,
+        amountDzd: roundMoney(agingAccumulators[ageCategory].amountDzd),
+      })),
+      byParty,
+      topDebtors,
+    };
   }
 }

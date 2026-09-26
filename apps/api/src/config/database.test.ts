@@ -8,7 +8,7 @@ import {
   createFinanceRepository,
   createAuditRepository,
 } from "./database";
-import { createAppConfig } from "./index";
+import { createAppConfig, type AppConfig } from "./index";
 import { InMemoryStore } from "../modules/company/adapters";
 
 const config = createAppConfig({
@@ -64,6 +64,30 @@ describe("database adapter factories", () => {
     const repo = createAuditRepository(createRawDb(), config);
     expect(typeof repo.isBootstrapOwner).toBe("function");
     expect(typeof repo.listUserProfileHistory).toBe("function");
+  });
+
+  it("all factories fail loudly on an unsupported adapter value", () => {
+    // Deferred branch from #212: the `default` / exhaustive-fail path in every
+    // adapter factory. `dbAdapterSchema` (sqlite | inmemory) makes this unreachable
+    // through a validated AppConfig by construction — exactly the defense-in-depth
+    // contract being pinned: when a future adapter (e.g. Postgres) is added to the
+    // schema but a factory case is forgotten, the value must fail loudly, never be
+    // silently mis-wired. The cast is the only way to reach the branch and is scoped
+    // to the test. If the schema grows a "postgres" member, update the cast value.
+    const unsupported = { ...config, dbAdapter: "postgres" } as unknown as AppConfig;
+    const rawDb = undefined as never;
+
+    const factories = [
+      () => createCompanyRepository(rawDb, unsupported),
+      () => createWorkforceRepository(rawDb, unsupported),
+      () => createOperationsRepository(rawDb, unsupported),
+      () => createFinanceRepository(rawDb, unsupported),
+      () => createAuditRepository(rawDb, unsupported),
+    ];
+
+    for (const factory of factories) {
+      expect(factory).toThrow(/Unsupported db adapter: postgres/);
+    }
   });
 
   // InMemory adapter factories (rawDb is ignored)

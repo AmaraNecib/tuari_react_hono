@@ -4,26 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Surface } from "@/features/shared/page-primitives"
 import { cn } from "@/lib/utils"
-
-/**
- * @description Component
- */
-export function AppShellSectionSurface({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <Surface variant="panel" className={cn("overflow-hidden", className)} dir="rtl">
-      {children}
-    </Surface>
-  )
-}
-
-/**
- * @description Component
- */
-export function AppShellSectionBody({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("space-y-6 p-6 xl:p-7", className)} dir="rtl">{children}</div>
-}
 
 /**
  * @description Component
@@ -93,6 +74,18 @@ export function AppShellEmptyStateRow({ colSpan, children }: { colSpan: number; 
       </td>
     </tr>
   )
+}
+
+/**
+ * One-line guidance under an empty-state label. Shared so every empty state
+ * (table rows and panel empties) uses the same hint styling instead of
+ * forking per-page classes.
+ */
+/**
+ * @description Component
+ */
+export function AppShellEmptyHint({ children }: { children: ReactNode }) {
+  return <p className="max-w-sm text-[12px] leading-5 text-ink-3">{children}</p>
 }
 
 /**

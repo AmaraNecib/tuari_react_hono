@@ -18,6 +18,7 @@ export type EmployeeDraft = {
   firstName: string
   lastName: string
   phone: string
+  occupation: string
   roleId: string
   salaryAmountDzd: string
   salaryPeriod: NonNullable<Employee["salaryPeriod"]> | ""
@@ -36,6 +37,7 @@ export function createEmptyEmployeeDraft(defaultRoleId = ""): EmployeeDraft {
     firstName: "",
     lastName: "",
     phone: "",
+    occupation: "",
     roleId: defaultRoleId,
     salaryAmountDzd: "",
     salaryPeriod: "",
@@ -70,6 +72,7 @@ export function normalizeEmployeeDraft(draft: EmployeeDraft) {
  */
     lastName: draft.lastName.trim(),
     phone: draft.phone.trim(),
+    occupation: draft.occupation.trim() || undefined,
     roleId: draft.roleId,
     status: "ACTIVE" as const,
     salaryAmountDzd: parseSalaryAmount(draft.salaryAmountDzd),
@@ -99,6 +102,10 @@ export function validateEmployeeDraft(draft: EmployeeDraft) {
 
       if (field === "phone") {
         errors.phone = issue.message
+      }
+
+      if (field === "occupation") {
+        errors.occupation = issue.message
       }
 
       if (field === "roleId") {

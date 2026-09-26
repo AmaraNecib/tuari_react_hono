@@ -60,6 +60,7 @@ export function mapEmployee(row: SqliteRow): EmployeeRecord {
     salaryAmountDzd: row.salary_amount_dzd === null || row.salary_amount_dzd === undefined ? null : Number(row.salary_amount_dzd),
     salaryPeriod: row.salary_period ? String(row.salary_period) as EmployeeRecord["salaryPeriod"] : null,
     notes: toNullableText(row.notes),
+    occupation: toNullableText(row.occupation),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   }

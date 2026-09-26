@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
-import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls"
+import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
 
 import { formatDebtMoney, getDebtBalanceMeta } from "@/features/debts/debt-utils"
 

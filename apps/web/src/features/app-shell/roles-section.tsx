@@ -30,7 +30,7 @@ import {
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
-} from "./app-shell-table-primitives"
+} from "@/features/shared/table-primitives"
 
 type RolesSectionProps = {
   columns: {

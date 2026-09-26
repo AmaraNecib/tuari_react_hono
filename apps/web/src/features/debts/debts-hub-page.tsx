@@ -12,7 +12,7 @@ import {
 import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { Surface } from "@/features/shared/page-primitives"
-import { TablePaginationControls } from "@/features/app-shell/table-pagination-controls"
+import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
 import { getDebtBalanceMeta, formatDebtMoney } from "./debt-utils"
 
 type FilterOption = "all" | "owed-to-us" | "owed-by-us" | "settled"

@@ -508,22 +508,22 @@ describe("applyRbacThreeRoleMigration (issue #10)", () => {
     expect(permission?.permission).toBe("employees.create");
   });
 
-  it("leaves permission data unchanged when the manager role is missing", async () => {
+  it("normalizes permission format and records the key without consolidating roles (issue #20)", async () => {
     const db = createRbacMigrationDb(false);
 
-    await expect(
-      applyRbacThreeRoleMigration(new BetterSqlite3Executor(db)),
-    ).rejects.toThrow("manager' role missing");
+    // The migration no longer requires/consolidates a manager role: it only
+    // normalizes resource.action → resource:colon and records the key.
+    await expect(applyRbacThreeRoleMigration(new BetterSqlite3Executor(db))).resolves.toBeUndefined();
 
     const [permission] = db
       .prepare('SELECT "permission" FROM "role_permission" WHERE "id" = ?')
       .all("permission-legacy") as Array<{ permission: string }>;
-    expect(permission?.permission).toBe("employees.create");
+    expect(permission?.permission).toBe("employees:create");
 
     const stateRows = db
       .prepare('SELECT "key" FROM "app_schema_state" WHERE "key" = ?')
       .all(rbacThreeRoleMigrationKey);
-    expect(stateRows).toHaveLength(0);
+    expect(stateRows).toHaveLength(1);
   });
 });
 

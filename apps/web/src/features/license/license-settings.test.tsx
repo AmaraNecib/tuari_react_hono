@@ -103,6 +103,20 @@ describe("LicenseSettings", () => {
     expect(screen.queryByText("إعادة المحاولة")).toBeTruthy();
   });
 
+  it("keeps the neutral border on the license error panel (no destructive border regression, issue #38 review)", () => {
+    mockUseLicenseStatus.mockReturnValue({
+      isLoading: false,
+      isError: true,
+      data: undefined,
+      refetch: vi.fn(),
+    });
+
+    renderWithQuery(<LicenseSettings />);
+    const alertClasses = screen.getByRole("alert").className;
+    expect(alertClasses).toContain("border-line");
+    expect(alertClasses).not.toContain("border-destructive");
+  });
+
   it("shows license info for a valid license", () => {
     mockUseLicenseStatus.mockReturnValue({
       isLoading: false,

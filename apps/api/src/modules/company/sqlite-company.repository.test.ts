@@ -78,6 +78,61 @@ describe("SqliteCompanyRepository end/void idempotency", () => {
     expect(reEnded?.endDate).toBe("2026-03-01T00:00:00.000Z");
   });
 
+  it("persists and updates the employee occupation field", () => {
+    const created = repo.createEmployee({
+      firstName: "Ahmed",
+      lastName: "Ben Ali",
+      phone: "0555123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+      occupation: "عامل بناء",
+    });
+    expect(created.occupation).toBe("عامل بناء");
+
+    const missing = repo.createEmployee({
+      firstName: "Sara",
+      lastName: "Bouzid",
+      phone: "0666123456",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    expect(missing.occupation).toBeNull();
+
+    const updated = repo.updateEmployee({ id: created.id, occupation: "نقاش" });
+    expect(updated?.occupation).toBe("نقاش");
+    expect(updated?.firstName).toBe("Ahmed");
+
+    const cleared = repo.updateEmployee({ id: created.id, occupation: null });
+    expect(cleared?.occupation).toBeNull();
+  });
+
+  it("persists occupation through the batch creation path", () => {
+    const batch = repo.createEmployeesBatch([
+      {
+        firstName: "Ahmed",
+        lastName: "Ben Ali",
+        phone: "0555123456",
+        roleId: "role-worker",
+        status: "ACTIVE",
+        occupation: "سائق",
+        managerId: null,
+        projectId: null,
+      },
+      {
+        firstName: "Sara",
+        lastName: "Bouzid",
+        phone: "0666123456",
+        roleId: "role-worker",
+        status: "ACTIVE",
+        managerId: null,
+        projectId: null,
+      },
+    ]);
+
+    expect(batch.employees[0]?.occupation).toBe("سائق");
+    expect(batch.employees[1]?.occupation).toBeNull();
+  });
+
   it("re-ending an already-ENDED project assignment is a no-op", () => {
     const worker = repo.createEmployee({
       firstName: "Yacine",

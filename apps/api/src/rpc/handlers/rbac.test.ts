@@ -72,15 +72,19 @@ const os = {
 } as never;
 
 describe("RBAC RPC handlers (Issue #10)", () => {
-  it("rbacRolesList returns all three default roles for an admin", async () => {
+  it("rbacRolesList returns the four default roles for an admin", async () => {
     const handlers = createRbacHandlers(os, buildMiddleware(), new RoleModule({ repository: seedRoles() }));
     const result = await handlers.rbacRolesList({ context: context(user(["employees:read"])), input: undefined });
 
-    expect(result.items).toHaveLength(3);
+    expect(result.items).toHaveLength(4);
     const keys = result.items.map((r: { key: string }) => r.key);
     expect(keys).toContain("admin");
-    expect(keys).toContain("manager");
-    expect(keys).toContain("viewer");
+    expect(keys).toContain("project_manager");
+    expect(keys).toContain("warehouse_manager");
+    expect(keys).toContain("worker");
+    // The legacy manager/viewer roles are removed from the seed.
+    expect(keys).not.toContain("manager");
+    expect(keys).not.toContain("viewer");
   });
 
   it("rbacRolesList requires authentication (UNAUTHORIZED for missing user)", async () => {
@@ -98,15 +102,12 @@ describe("RBAC RPC handlers (Issue #10)", () => {
     });
   });
 
-  it("rbacRolesGet returns the manager role with its operational permissions", async () => {
+  it("rbacRolesGet returns a workforce label role with no permissions", async () => {
     const handlers = createRbacHandlers(os, buildMiddleware(), new RoleModule({ repository: seedRoles() }));
-    const result = await handlers.rbacRolesGet({ context: context(user(["employees:read"])), input: { id: "id-manager" } });
+    const result = await handlers.rbacRolesGet({ context: context(user(["employees:read"])), input: { id: "id-worker" } });
 
-    expect(result.key).toBe("manager");
-    expect(result.permissions).toContain("employees:create");
-    expect(result.permissions).toContain("inventory:transfer");
-    expect(result.permissions).toContain("debts:read");
-    expect(result.permissions).not.toContain("debts:create");
+    expect(result.key).toBe("worker");
+    expect(result.permissions).toEqual([]);
   });
 
   it("rbacRolesGet returns 404 when the role id is unknown", async () => {

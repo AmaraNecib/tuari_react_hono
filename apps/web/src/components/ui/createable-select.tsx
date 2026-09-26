@@ -83,6 +83,17 @@ export function CreateableSelect({
   const resolvedPlaceholder = placeholder ?? t("common.noOptions")
   const resolvedCreateLabel = createLabel ?? t("common.createNew")
 
+  // Base UI resolves the closed trigger's label from the registered popup items,
+  // which are only present while the popup is open. Without an explicit display
+  // text the trigger falls back to the raw value (e.g. a UUID), so the selection
+  // looks lost on re-render. Derive the display name from the matching option
+  // (falling back to the explicit displayValue and finally the raw value).
+  const selectedOption = options.find((option) => option.id === value)
+  const resolvedDisplayValue =
+    (displayValue && displayValue.trim()) ||
+    (selectedOption && selectedOption.name.trim()) ||
+    (value ? value : "")
+
   function handleValueChange(selectedValue: string | null) {
     if (!selectedValue) return
     if (selectedValue === "__create_new__") {
@@ -132,7 +143,7 @@ export function CreateableSelect({
         <SelectTrigger className={className}>
           <SelectValue
             placeholder={resolvedEmptyLabel}
-            children={displayValue && displayValue.length > 0 ? displayValue : undefined}
+            children={resolvedDisplayValue.length > 0 ? resolvedDisplayValue : undefined}
           />
         </SelectTrigger>
         <SelectContent>

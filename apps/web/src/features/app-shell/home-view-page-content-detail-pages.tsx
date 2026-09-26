@@ -3,11 +3,8 @@
  * Lazy-loads detail pages based on route.
  */
 import { lazy, Suspense, type ReactNode } from "react"
-import { TriangleAlert } from "lucide-react"
-import type { TFunction } from "i18next"
 
-import { Button } from "@/components/ui/button"
-import { Surface } from "@/features/shared/page-primitives"
+import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { workspaceRoutes } from "@/router/navigation"
 import {
@@ -22,34 +19,6 @@ import type { HomeViewPageContentProps } from "./home-view-page-content-shared"
 import { MissingRecordState } from "./home-view-page-content-shared"
 
 const EMPTY_DEBTS_SUMMARY: DebtsSummary = { parties: [], debtAccounts: [] }
-
-/**
- * Error surface for the feature-scoped debts queries. Debts pages must not
- * silently render an empty hub/ledger when the debts RPC fails — surface the
- * failure with a retry, matching the shell's workspace error boundary and the
- * license-settings load-error pattern (icon + message + retry).
- */
-function DebtsLoadError({
-  onRetry,
-  t,
-}: {
-  onRetry: () => void
-  t: TFunction
-}) {
-  return (
-    <Surface className="border-destructive/25 p-6" role="alert" variant="panel">
-      <div className="flex flex-col items-center gap-4 py-10 text-center">
-        <TriangleAlert className="h-10 w-10 text-destructive" aria-hidden="true" />
-        <p className="max-w-md text-sm leading-6 text-foreground">
-          {t("debts.loadError")}
-        </p>
-        <Button variant="outline" onClick={onRetry}>
-          {t("common.retry")}
-        </Button>
-      </div>
-    </Surface>
-  )
-}
 
 const DebtsHubPage = lazy(async () => import("@/features/debts/debts-hub-page").then((module) => ({ default: module.DebtsHubPage })))
 const DebtCreatePage = lazy(async () => import("@/features/debts/debt-create-page").then((module) => ({ default: module.DebtCreatePage })))
@@ -153,7 +122,7 @@ export function HomeViewPageDetailContent({
         return renderLazy(detailPageFallback)
       }
       if (debtsSummaryQuery.isError) {
-        return renderLazy(<DebtsLoadError onRetry={() => void debtsSummaryQuery.refetch()} t={t} />)
+        return renderLazy(<LoadErrorSurface message={t("debts.loadError")} retryLabel={t("common.retry")} onRetry={() => void debtsSummaryQuery.refetch()} />)
       }
       {
         const hub = buildDebtsHubRows(debtsSummary, derived.externalCounterparties)
@@ -182,7 +151,7 @@ export function HomeViewPageDetailContent({
         return renderLazy(detailPageFallback)
       }
       if (debtsSummaryQuery.isError) {
-        return renderLazy(<DebtsLoadError onRetry={() => void debtsSummaryQuery.refetch()} t={t} />)
+        return renderLazy(<LoadErrorSurface message={t("debts.loadError")} retryLabel={t("common.retry")} onRetry={() => void debtsSummaryQuery.refetch()} />)
       }
       return renderLazy(
         <ExternalCounterpartiesPage
@@ -199,7 +168,7 @@ export function HomeViewPageDetailContent({
         }
         if (employeeDebtsDetailQuery.isError) {
           return renderLazy(
-            <DebtsLoadError onRetry={() => void employeeDebtsDetailQuery.refetch()} t={t} />,
+            <LoadErrorSurface message={t("debts.loadError")} retryLabel={t("common.retry")} onRetry={() => void employeeDebtsDetailQuery.refetch()} />,
           )
         }
       }
@@ -239,7 +208,7 @@ export function HomeViewPageDetailContent({
         }
         if (externalDebtsDetailQuery.isError) {
           return renderLazy(
-            <DebtsLoadError onRetry={() => void externalDebtsDetailQuery.refetch()} t={t} />,
+            <LoadErrorSurface message={t("debts.loadError")} retryLabel={t("common.retry")} onRetry={() => void externalDebtsDetailQuery.refetch()} />,
           )
         }
       }
@@ -294,6 +263,9 @@ export function HomeViewPageDetailContent({
                 }))}
               managerOptions={selectedEmployeeManagerOptions}
               roles={derived.roles}
+              warehouseOptions={derived.warehouses
+                .filter((warehouse) => warehouse.status === "ACTIVE")
+                .map((warehouse) => ({ id: warehouse.id, label: warehouse.name }))}
             />,
           )
         : (
@@ -404,7 +376,15 @@ export function HomeViewPageDetailContent({
               onBack={() => void navigation.goToInvoices()}
             />,
           )
-        : null
+        : (
+            <MissingRecordState
+              backLabel={detailCopy.shared.back}
+              description={detailCopy.shared.missingRecordDescription}
+              navigation={navigation}
+              target={workspaceRoutes.invoices()}
+              title="تفاصيل الفاتورة"
+            />
+          )
 
     case "outbound-transfers":
       return renderLazy(

@@ -34,6 +34,7 @@ describe("InMemoryEmployeeRepository.findPaged", () => {
       salaryAmountDzd: null,
       salaryPeriod: null,
       notes: null,
+      occupation: null,
       createdAt: new Date(createdAtMs).toISOString(),
       updatedAt: new Date(createdAtMs).toISOString(),
     }

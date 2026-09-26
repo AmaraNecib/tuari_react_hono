@@ -21,6 +21,7 @@ import {
   type EmployeeSyncManagedProjectsInput,
   type EmployeeSyncManagedWarehousesInput,
   type EmployeeUpdateInput,
+  type EmployeeSaveInput,
   type ManagerAssignmentCreateInput,
   type ManagerAssignmentEndInput,
   type RoleCreateInput,
@@ -176,6 +177,7 @@ export class WorkforceService {
           salaryAmountDzd: normalizeSalaryAmount(input.salaryAmountDzd),
           salaryPeriod: input.salaryPeriod ?? null,
           notes: normalizeText(input.notes),
+          occupation: normalizeText(input.occupation),
         },
         audit,
       );
@@ -207,6 +209,7 @@ export class WorkforceService {
         salaryAmountDzd: number | null;
         salaryPeriod: EmployeeBatchCreateInput["employees"][number]["salaryPeriod"];
         notes: string | null;
+        occupation: string | null;
         managerId: string | null;
         projectId: string | null;
       }> = input.employees.map((employee) => ({
@@ -218,6 +221,7 @@ export class WorkforceService {
         salaryAmountDzd: normalizeSalaryAmount(employee.salaryAmountDzd),
         salaryPeriod: employee.salaryPeriod ?? null,
         notes: normalizeText(employee.notes),
+        occupation: normalizeText(employee.occupation),
         managerId: employee.managerId ?? null,
         projectId: employee.projectId ?? null,
       }));
@@ -473,11 +477,73 @@ export class WorkforceService {
               : undefined,
           salaryPeriod: input.salaryPeriod !== undefined ? input.salaryPeriod : undefined,
           notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
+          occupation: input.occupation !== undefined ? normalizeText(input.occupation) : undefined,
         },
         audit,
       );
 
       return successResult("تم تحديث بيانات العامل بنجاح.", employee!);
+    });
+  }
+
+  /** Save an employee profile and all applicable workforce relationships atomically.
+   *
+   * Relationship fields are opt-in: when the client omits them (a stale page saving only
+   * profile data), the server-side placement and managed scope stay untouched so a
+   * concurrent newer update is never reverted by old snapshots. */
+  saveEmployee(input: EmployeeSaveInput, auditContext?: MutationAuditContext) {
+    return this.mutation.withTransaction(() => {
+      const audit = this.mutation.createMutationAuditContext(auditContext);
+      const { placement, managedProjectIds, managedWarehouseIds, ...profile } = input;
+      const result = this.updateEmployee(profile, audit);
+      const employee = requireEmployee(this.repository, input.id);
+      const role = requireRole(this.repository, employee.roleId);
+
+      // Issue #20: workplace placement is meaningful only for active workers.
+      // A submitted placement for another status is intentionally ignored.
+      if (employee.status === "ACTIVE") {
+        if (role.key === LEGACY_WORKFORCE_ROLE_KEYS.worker) {
+          if (placement) {
+            this.assignEmployeeWorkplace(
+              { employeeId: input.id, ...placement },
+              audit,
+            );
+          } else if (
+            // An ACTIVE worker must always end up placed; a profile-only save
+            // for a worker who has no placement at all is rejected instead of
+            // silently keeping them unplaced.
+            this.operationsRepo.listProjectAssignments({ employeeId: input.id, status: "ACTIVE" }).length === 0 &&
+            this.operationsRepo.listWarehouseAssignments({ employeeId: input.id, status: "ACTIVE" }).length === 0
+          ) {
+            throw new CompanyError(
+              "BUSINESS_RULE",
+              "اختر مكان عمل للعامل النشط (مشروع أو مستودع).",
+              [
+                {
+                  field: "workplaceType",
+                  message: "اختر مكان عمل للعامل النشط (مشروع أو مستودع).",
+                },
+              ],
+            );
+          }
+        }
+
+        if (role.key === LEGACY_WORKFORCE_ROLE_KEYS.projectManager && managedProjectIds) {
+          this.syncManagedProjects(
+            { employeeId: input.id, projectIds: managedProjectIds },
+            audit,
+          );
+        }
+
+        if (role.key === LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager && managedWarehouseIds) {
+          this.syncManagedWarehouses(
+            { employeeId: input.id, warehouseIds: managedWarehouseIds },
+            audit,
+          );
+        }
+      }
+
+      return result;
     });
   }
 
@@ -745,11 +811,19 @@ export class WorkforceService {
     }
 
     if (input.nextType === "WAREHOUSE") {
-      throw new CompanyError(
-        "BUSINESS_RULE",
-        "ربط العمال من هذه الشاشة يتم عبر مدير مشروع ومشروع فقط.",
-        [{ field: "warehouseId", message: "ربط العمال من هذه الشاشة يتم عبر مدير مشروع ومشروع فقط." }],
-      );
+      if (!input.warehouseId) {
+        throw new CompanyError("VALIDATION", "يجب اختيار مستودع صالح.", [
+          { field: "warehouseId", message: "يجب اختيار مستودع صالح." },
+        ]);
+      }
+
+      const warehouse = requireWarehouse(this.operationsRepo, input.warehouseId);
+
+      if (warehouse.status !== "ACTIVE") {
+        throw new CompanyError("BUSINESS_RULE", "لا يمكن ربط العامل إلا بمستودع نشط.", [
+          { field: "warehouseId", message: "لا يمكن ربط العامل إلا بمستودع نشط." },
+        ]);
+      }
     }
 
     this.repository.assignEmployeeWorkplace(

@@ -11,9 +11,9 @@ import {
   AppShellTableHeaderCell,
   AppShellTableRow,
   usePaginatedRows,
-} from "./app-shell-table-primitives"
+} from "@/features/shared/table-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
-import { TablePaginationControls } from "./table-pagination-controls"
+import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
 
 export type WarehouseRow = {
   id: string

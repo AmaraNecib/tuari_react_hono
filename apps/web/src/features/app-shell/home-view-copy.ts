@@ -48,6 +48,8 @@ export type HomeViewCopy = {
     addWarehouse: string
     addRole: string
     rolesPermissions: string
+    pageNotFound: string
+    pageNotFoundDescription: string
     collapse: string
     expand: string
     themeToggle: string
@@ -117,6 +119,10 @@ export type HomeViewCopy = {
     projects: string
     warehouses: string
     roles: string
+    invoices: string
+    outstandingDebts: string
+    items: string
+    counterparties: string
   }
   columns: {
     name: string
@@ -263,6 +269,8 @@ export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
       addWarehouse: t("shell.addWarehouse"),
       addRole: t("shell.addRole"),
       rolesPermissions: t("shell.rolesPermissions"),
+      pageNotFound: t("shell.pageNotFound"),
+      pageNotFoundDescription: t("shell.pageNotFoundDescription"),
       collapse: t("shell.collapse"),
       expand: t("shell.expand"),
       themeToggle: t("shell.themeToggle"),
@@ -332,6 +340,13 @@ export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
       projects: t("metrics.projects"),
       warehouses: t("metrics.warehouses"),
       roles: t("metrics.roles"),
+      // Reuse existing i18n keys (issue #23) — the dashboard sections labels
+      // already exist in the nav/search vocabulary, so no new strings and no
+      // drift risk with the ar.ts-only resource.
+      invoices: t("shell.invoices"),
+      outstandingDebts: t("dashboardPage.outstandingDebts"),
+      items: t("shell.itemsGuide"),
+      counterparties: t("sections.externals.label"),
     },
     columns: {
       name: t("columns.name"),

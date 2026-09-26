@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
-import { DateRangeFilter } from "@/features/app-shell/app-shell-table-primitives";
+import { DateRangeFilter } from "@/features/shared/table-primitives";
 import { useReportQuery, formatReportAsCSV } from "@/hooks/use-report-queries";
 
 type ReportType = "INVENTORY" | "DEBT" | "MOVEMENT";

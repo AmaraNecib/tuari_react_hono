@@ -6,9 +6,11 @@ import { cors } from "hono/cors";
 import type { AppDependencies } from "./dependencies";
 import { isLocalHostname, normalizeOrigin } from "../infrastructure/config/url";
 import { bodyLimitMiddleware } from "../middleware/body-limit";
+import { createOriginBlockingMiddleware } from "../middleware/origin-blocking";
 import { resolveClientIp, SlidingWindowRateLimiter } from "../infrastructure/rate-limiter";
 import { AccountServiceError } from "../modules/account/account.service";
 import { InventoryError } from "../modules/inventory/inventory.errors";
+import type { InventoryUploadFile } from "../modules/inventory/inventory.types";
 import { createRouter } from "../rpc/router";
 import { createRpcContext } from "../rpc/context";
 
@@ -79,9 +81,6 @@ function getRemoteAddress(env: unknown) {
   const maybeEnv = env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined
   return maybeEnv?.incoming?.socket?.remoteAddress
 }
-
-const MAX_INVOICE_ATTACHMENT_COUNT = 10
-const MAX_INVOICE_ATTACHMENT_TOTAL_SIZE = 25 * 1024 * 1024
 
 function getAppErrorStatus(code: "VALIDATION" | "UNAUTHORIZED" | "NOT_FOUND" | "CONFLICT" | "BUSINESS_RULE") {
   switch (code) {
@@ -167,17 +166,19 @@ export function createApp(
   // Global request-body size guard: 1 MB for JSON/urlencoded, 30 MB for multipart.
   // When a Content-Length is present this rejects with 413 BEFORE the body is read,
   // so multipart uploads are never fully buffered past the cap (defense in depth
-  // below the route-level per-file + total attachment caps).
+  // below the module-owned per-file + total attachment caps).
   app.use("*", bodyLimitMiddleware);
 
+  app.use(
+    "/api/auth/*",
+    // Auth endpoints allow originless top-level GET/HEAD (browser navigation);
+    // every other request must carry an allow-listed Origin.
+    // Pass the bound closure so a future this-dependent isAllowedOrigin
+    // refactor cannot silently fail closed (issue #214 debate finding).
+    createOriginBlockingMiddleware((origin) => transport.isAllowedOrigin(origin), { allowOriginlessSafelist: true }),
+  );
+
   app.use("/api/auth/*", async (c, next) => {
-    const origin = c.req.header("origin")
-    const isTopLevelSafeAuthRequest = !origin && ["GET", "HEAD"].includes(c.req.method)
-
-    if (!isTopLevelSafeAuthRequest && !transport.isAllowedOrigin(origin)) {
-      return c.json({ message: "Blocked origin." }, 403);
-    }
-
     const ip = resolveClientIp({
       forwardedFor: c.req.header("x-forwarded-for"),
       realIp: c.req.header("x-real-ip"),
@@ -192,21 +193,9 @@ export function createApp(
     await next();
   });
 
-  app.use("/rpc/*", async (c, next) => {
-    if (!transport.isAllowedOrigin(c.req.header("origin"))) {
-      return c.json({ message: "Blocked origin." }, 403);
-    }
+  app.use("/rpc/*", createOriginBlockingMiddleware((origin) => transport.isAllowedOrigin(origin)));
 
-    await next();
-  });
-
-  app.use("/api/inventory/*", async (c, next) => {
-    if (!transport.isAllowedOrigin(c.req.header("origin"))) {
-      return c.json({ message: "Blocked origin." }, 403)
-    }
-
-    await next()
-  })
+  app.use("/api/inventory/*", createOriginBlockingMiddleware((origin) => transport.isAllowedOrigin(origin)));
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
@@ -234,13 +223,11 @@ export function createApp(
   });
 
   app.post("/api/auth/change-password", async (c) => {
-    let actor: Awaited<ReturnType<typeof dependencies.accountService.getCurrentSessionUser>> | null = null
-
-    try {
-      actor = await dependencies.accountService.getCurrentSessionUser(c.req.raw.headers)
-    } catch {
-      actor = null
-    }
+    // Resolve the audit actor BEFORE the auth handler runs: a successful
+    // password change may revoke/rotate the request's session, so the
+    // request-time session is the only reliable actor context. The audit
+    // policy (resolve-or-null, warn-and-skip) lives in the account module.
+    const actor = await dependencies.accountService.resolvePasswordChangeActor(c.req.raw.headers)
 
     const response = await dependencies.auth.handler(c.req.raw)
 
@@ -248,17 +235,7 @@ export function createApp(
       return c.newResponse(response.body, response)
     }
 
-    if (!actor) {
-      console.warn("[auth] Password change succeeded but actor audit context could not be resolved")
-      return c.newResponse(response.body, response)
-    }
-
-    try {
-      await dependencies.accountService.recordPasswordChangeForUser(actor)
-    } catch (error) {
-      console.warn("[auth] Password change audit could not be recorded", error)
-    }
-
+    await dependencies.accountService.recordPasswordChangeAudit(actor)
     return c.newResponse(response.body, response)
   });
 
@@ -277,27 +254,16 @@ export function createApp(
       const formData = await c.req.formData()
       const files = formData.getAll("files").filter((value): value is File => value instanceof File)
 
-      if (files.length > MAX_INVOICE_ATTACHMENT_COUNT) {
-        throw new InventoryError("VALIDATION", "عدد الملفات المرفوعة كبير جدًا.", [
-          { field: "files", message: `الحد الأقصى هو ${MAX_INVOICE_ATTACHMENT_COUNT} ملفات لكل فاتورة.` },
-        ])
-      }
-
-      const totalFileSize = files.reduce((sum, file) => sum + file.size, 0)
-      if (totalFileSize > MAX_INVOICE_ATTACHMENT_TOTAL_SIZE) {
-        throw new InventoryError("VALIDATION", "إجمالي حجم الملفات كبير جدًا.", [
-          { field: "files", message: "يرجى تقليل إجمالي حجم المرفقات قبل الرفع." },
-        ])
-      }
-
-      const normalizedFiles = await Promise.all(
-        files.map(async (file) => ({
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          bytes: new Uint8Array(await file.arrayBuffer()),
-        })),
-      )
+      // Hand the inventory module metadata + a lazy bytes loader. The module
+      // owns the attachment limits AND buffering: it rejects count/size-invalid
+      // uploads before reading any byte content (issue #214), so over-limit
+      // requests never allocate a byte-array copy here.
+      const normalizedFiles: InventoryUploadFile[] = files.map((file) => ({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        bytes: () => file.arrayBuffer().then((buffer) => new Uint8Array(buffer)),
+      }))
 
       const attachments = await dependencies.inventoryService.addInvoiceAttachments(
         invoiceGroupId,

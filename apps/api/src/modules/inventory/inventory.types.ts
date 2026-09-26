@@ -154,18 +154,62 @@ export type InventoryStoredUpload = {
   sha256: string
 }
 
-/** InventoryUploadFile. */
+/**
+ * InventoryUploadFile.
+ *
+ * `bytes` is a LAZY loader: the service only invokes it after its count /
+ * total-size / per-file-size / MIME validation passes for a file that will
+ * actually be stored. The transport hands over file metadata + a way to read
+ * the bytes without buffering them, so over-limit requests are rejected
+ * before any byte-array copy is allocated (issue #214 — buffering is owned by
+ * the module, not the transport).
+ */
 export type InventoryUploadFile = {
   name: string
   type: string
   size: number
-  bytes: Uint8Array
+  bytes: () => Promise<Uint8Array>
 }
 
 /** InventoryOutboundTransferRecord. */
 export type InventoryOutboundTransferRecord = InventoryOutboundTransfer
 /** OutboundTransferItemRecord. */
 export type OutboundTransferItemRecord = OutboundTransferItemInput & { id: string; createdAt: string }
+
+/**
+ * Flat valuation row for the INVENTORY report — an inventory entry joined with
+ * its invoice-group document date and a resolved location label. Aggregated by
+ * the InventoryService report generator; produced by the repository in one
+ * query (avoiding N+1 entry lookups per invoice group).
+ */
+export type InventoryValuationRow = {
+  /** Inventory entry id. */
+  id: string
+  itemType: InventoryEntry["itemType"]
+  itemName: string
+  quantity: number
+  /** Unit price when the entry captured one (nullable per the contract). */
+  unitPriceDzd: number | null
+  totalPriceDzd: number
+  lastUpdated: string
+  /** Window + aging basis: invoice date (or entry creation when unset). */
+  documentDate: string
+  /** Warehouse or project id the entry was received into (null when unlocated). */
+  locationId: string | null
+  /** Location kind — disambiguates warehouse/project id namespaces in grouping. */
+  locationType: "WAREHOUSE" | "PROJECT" | null
+  locationLabel: string
+}
+
+/**
+ * Movement row for the MOVEMENT report — inventory movement joined with the
+ * unit price of the linked entry (null when the movement has no entry link,
+ * e.g. asset outbound sales). Value is derived as quantity × unit price.
+ */
+export type InventoryMovementValuationRow = {
+  movement: InventoryMovementRecord
+  unitPriceDzd: number | null
+}
 
 /** InventoryOutboundTransferCreateData. */
 export type InventoryOutboundTransferCreateData = {

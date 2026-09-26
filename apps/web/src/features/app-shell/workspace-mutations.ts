@@ -7,6 +7,7 @@ import {
   type AuthBootstrapInput,
   type Employee,
   type EmployeeBatchCreateInput,
+  type EmployeeSaveInput,
   type Project,
   type Role,
   type SessionUser,
@@ -306,6 +307,7 @@ export function useUpdateEmployeeMutation() {
       salaryAmountDzd?: number | null
       salaryPeriod?: Employee["salaryPeriod"]
       notes?: string | null
+      occupation?: string | null
     }) => {
       const result = await rpcClient.employeesUpdate(input)
       return requireEntitySuccess(result)
@@ -316,6 +318,29 @@ export function useUpdateEmployeeMutation() {
 /**
  * useDeleteEmployeeMutation() component.
  */
+    },
+    onError: (error) => {
+      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    },
+  })
+}
+
+export function useSaveEmployeeMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["phase1", "workspace", "employees", "save"],
+    mutationFn: async (input: EmployeeSaveInput) =>
+      requireEntitySuccess(await rpcClient.employeesSave(input)),
+    onSuccess: async ({ message }) => {
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), {
+        employees: true,
+        projects: true,
+        warehouses: true,
+        debtsSummary: true,
+        debtsDetail: true,
+      })
+      showSuccessToast(message)
     },
     onError: (error) => {
       showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))

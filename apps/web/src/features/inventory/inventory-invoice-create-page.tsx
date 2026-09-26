@@ -6,7 +6,9 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { FileInput, NativeSelect } from "@/components/ui/form-controls"
 import { CreateableSelect } from "@/components/ui/createable-select"
+import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { showErrorToast } from "@/lib/toast"
 
 import {
   uploadInvoiceAttachments,
@@ -111,6 +113,11 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   const [files, setFiles] = useState<File[]>([])
   const [lines, setLines] = useState<LineState[]>([createConsumableLine()])
   const [formError, setFormError] = useState<string | null>(null)
+  // Set once the invoice is created: the attachment upload targets THIS id,
+  // so a retry after an upload failure can never re-run the creation mutation
+  // (which would persist a duplicate invoice + duplicate financial entries).
+  const [createdInvoiceGroupId, setCreatedInvoiceGroupId] = useState<string | null>(null)
+  const [uploadingAttachments, setUploadingAttachments] = useState(false)
 
   const definitionItems = definitionsQuery.data?.items
   const definitions = useMemo(() => definitionItems ?? [], [definitionItems])
@@ -129,6 +136,21 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   function validateForm() {
     if (warehouseId && projectId) {
       return "اختر مستودعًا أو مشروعًا واحدًا فقط كوجهة افتراضية."
+    }
+
+    // The wire contract bounds the paid fields (amount >= 0, percent 0-100);
+    // mirror both bounds here so invalid values never leave the client.
+    if (createDebt && paymentInputType === "PERCENT") {
+      const percent = Number(paidValue)
+      if (percent < 0 || percent > 100) {
+        return t("inventory.invoiceCreate.invalidPaidPercent", "النسبة المدفوعة يجب أن تكون بين 0 و 100.")
+      }
+    }
+
+    if (createDebt && paymentInputType === "AMOUNT") {
+      if (Number(paidValue) < 0) {
+        return t("inventory.invoiceCreate.invalidPaidAmount", "المبلغ المدفوع يجب أن يكون صفرًا أو أكثر.")
+      }
     }
 
     for (const [index, line] of lines.entries()) {
@@ -170,61 +192,122 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     const validationMessage = validateForm()
     if (validationMessage) {
       setFormError(validationMessage)
-      throw new Error(validationMessage)
+      // Resolve instead of throwing: validation failures render via formError,
+      // and a rejected promise from here would surface as an unhandled
+      // rejection in dev/CI logs.
+      return
     }
 
     setFormError(null)
 
-    const result = await createMutation.mutateAsync({
-      invoiceNumber: invoiceNumber || null,
-      supplierName: (selectedCounterparty?.fullName ?? supplierName) || null,
-      invoiceDate: invoiceDate ? new Date(invoiceDate).toISOString() : null,
-      warehouseId: warehouseId || null,
-      projectId: projectId || null,
-      externalCounterpartyId: externalCounterpartyId || null,
-      createDebt,
-      paymentInputType: createDebt ? paymentInputType : undefined,
-      paidAmountDzd: createDebt && paymentInputType === "AMOUNT" ? Number(paidValue || 0) : null,
-      paidPercent: createDebt && paymentInputType === "PERCENT" ? Number(paidValue || 0) : null,
-      note: note || null,
-      entries: lines.map((line) => {
-        if (line.kind === "CONSUMABLE") {
-          return {
-            kind: "CONSUMABLE" as const,
-            itemDefinitionId: line.itemDefinitionId,
-            warehouseId: line.warehouseId || null,
-            projectId: line.projectId || null,
-            quantity: Number(line.quantity),
-            unitPriceDzd: Number(line.unitPriceDzd),
-            totalPriceDzd: Number(line.totalPriceDzd),
-            note: line.note || null,
+    let groupId: string
+    try {
+      const result = await createMutation.mutateAsync({
+        invoiceNumber: invoiceNumber || null,
+        supplierName: (selectedCounterparty?.fullName ?? supplierName) || null,
+        invoiceDate: invoiceDate ? new Date(invoiceDate).toISOString() : null,
+        warehouseId: warehouseId || null,
+        projectId: projectId || null,
+        externalCounterpartyId: externalCounterpartyId || null,
+        createDebt,
+        paymentInputType: createDebt ? paymentInputType : undefined,
+        paidAmountDzd: createDebt && paymentInputType === "AMOUNT" ? Number(paidValue || 0) : null,
+        paidPercent: createDebt && paymentInputType === "PERCENT" ? Number(paidValue || 0) : null,
+        note: note || null,
+        entries: lines.map((line) => {
+          // Seed header-level defaults into lines that leave their own
+          // warehouse/project unset. A line that explicitly picks one of them
+          // never inherits the other (warehouse XOR project is enforced per line).
+          const lineWarehouseId = line.warehouseId || (line.projectId ? null : warehouseId || null)
+          const lineProjectId = line.projectId || (line.warehouseId ? null : projectId || null)
+          if (line.kind === "CONSUMABLE") {
+            return {
+              kind: "CONSUMABLE" as const,
+              itemDefinitionId: line.itemDefinitionId,
+              warehouseId: lineWarehouseId,
+              projectId: lineProjectId,
+              quantity: Number(line.quantity),
+              unitPriceDzd: Number(line.unitPriceDzd),
+              totalPriceDzd: Number(line.totalPriceDzd),
+              note: line.note || null,
+            }
           }
-        }
 
-        return {
-          kind: "ASSET" as const,
-          itemDefinitionId: line.itemDefinitionId,
-          warehouseId: line.warehouseId || null,
-          projectId: line.projectId || null,
-          note: line.note || null,
-          assets: line.assets.map((asset) => ({
-            assetName: asset.assetName,
-            assetTag: asset.assetTag || null,
-            serialNumber: asset.serialNumber || null,
-            condition: asset.condition,
-            purchaseDate: asset.purchaseDate ? new Date(asset.purchaseDate).toISOString() : null,
-            purchasePriceDzd: Number(asset.purchasePriceDzd),
-            note: asset.note || null,
-          })),
-        }
-      }),
-    })
-
-    if (files.length > 0) {
-      await uploadInvoiceAttachments(result.item.group.id, files)
+          return {
+            kind: "ASSET" as const,
+            itemDefinitionId: line.itemDefinitionId,
+            warehouseId: lineWarehouseId,
+            projectId: lineProjectId,
+            note: line.note || null,
+            assets: line.assets.map((asset) => ({
+              assetName: asset.assetName,
+              assetTag: asset.assetTag || null,
+              serialNumber: asset.serialNumber || null,
+              condition: asset.condition,
+              purchaseDate: asset.purchaseDate ? new Date(asset.purchaseDate).toISOString() : null,
+              purchasePriceDzd: Number(asset.purchasePriceDzd),
+              note: asset.note || null,
+            })),
+          }
+        }),
+      })
+      groupId = result.item.group.id
+    } catch {
+      // The mutation's onError already surfaced a toast; never navigate on a
+      // failed save, and never let the rejection reach the click handler's
+      // catch unnecessarily (the toast is the user-facing signal).
+      return
     }
 
-    onCreated(result.item.group.id)
+    if (files.length > 0) {
+      // Creation succeeded — remember the invoice id only when attachments
+      // still need uploading: any retry must target THIS id and can never
+      // re-run the creation mutation (a second save click would otherwise
+      // persist a duplicate invoice + financial entries). With no files there
+      // is nothing to retry, so the save flow completes normally below.
+      setCreatedInvoiceGroupId(groupId)
+      setUploadingAttachments(true)
+      try {
+        await uploadInvoiceAttachments(groupId, files)
+      } catch {
+        // The invoice was already saved — surface the failed upload (the
+        // creation mutation's onError does NOT cover this separate step) and
+        // stay on the page in the retry state: the user must see the partial
+        // save and be able to retry the upload against the same invoice id.
+        showErrorToast("تم حفظ الفاتورة لكن تعذر رفع ملفات المرفقات.")
+        return
+      } finally {
+        setUploadingAttachments(false)
+      }
+    }
+
+    onCreated(groupId)
+  }
+
+  /**
+   * Retries ONLY the attachment upload for the already-created invoice.
+   * Never touches the creation mutation — duplication is impossible from here.
+   */
+  async function handleRetryAttachmentUpload() {
+    if (!createdInvoiceGroupId || uploadingAttachments) return
+
+    if (files.length === 0) {
+      // Nothing left to upload; the invoice already exists.
+      onCreated(createdInvoiceGroupId)
+      return
+    }
+
+    setUploadingAttachments(true)
+    try {
+      await uploadInvoiceAttachments(createdInvoiceGroupId, files)
+    } catch {
+      showErrorToast("تم حفظ الفاتورة لكن تعذر رفع ملفات المرفقات.")
+      return
+    } finally {
+      setUploadingAttachments(false)
+    }
+
+    onCreated(createdInvoiceGroupId)
   }
 
   return (
@@ -243,8 +326,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
           />
           {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
 
-          {/* Compact 3-column grid for small fields */}
-          <div className="grid gap-3 md:grid-cols-3">
+          {/* Essential create path: invoice number + date, always visible */}
+          <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1.5 text-sm">
               <FieldLabel label="رقم الفاتورة" />
               <Input placeholder="تلقائي" value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} />
@@ -253,131 +336,146 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
               <FieldLabel label={t("common.invoiceDate")} />
               <DatePicker value={invoiceDate} onChange={setInvoiceDate} />
             </label>
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label={t("inventory.invoiceCreate.isDebt")} />
-              <NativeSelect value={createDebt ? "YES" : "NO"} onChange={(event) => setCreateDebt(event.target.value === "YES")}>
-                <option value="NO">{t("common.no")}</option>
-                <option value="YES">{t("common.yes")}</option>
-              </NativeSelect>
-            </label>
           </div>
 
-          {/* Counterparty and supplier — 2 columns */}
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label="الجهة الخارجية" />
-              <CreateableSelect
-                value={externalCounterpartyId}
-                onChange={(id) => {
-                  setExternalCounterpartyId(id)
-                  if (id) {
-                    const counterparty = counterparties.find((item) => item.id === id)
-                    setSupplierName(counterparty?.fullName ?? "")
-                  }
-                }}
-                options={counterparties.map((c) => ({ id: c.id, name: c.fullName }))}
-                emptyLabel="بدون جهة خارجية"
-                createLabel="إنشاء جهة خارجية"
-                createFields={[
-                  { key: "fullName", label: t("externals.create.fullName"), placeholder: t("externals.create.fullNamePlaceholder"), required: true },
-                  { key: "phoneNumber", label: "رقم الهاتف", placeholder: "0612345678" },
-                ]}
-                onCreate={async (data) => {
-                  const result = await createCounterpartyMutation.mutateAsync({
-                    fullName: data.fullName ?? "",
-                    phoneNumber: data.phoneNumber || "",
-                    note: null,
-                  })
-                  const item = result.item as { id: string; fullName: string | null } | undefined
-                  return { id: item?.id ?? "", name: item?.fullName ?? "" }
-                }}
-              />
-            </label>
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label="اسم المورد" />
-              <Input placeholder="اختياري إذا أدخلت جهة خارجية" value={supplierName} onChange={(event) => setSupplierName(event.target.value)} />
-            </label>
-          </div>
-
-          {/* Warehouse, Project, Debt fields — 3 columns */}
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label={t("inventory.invoiceCreate.defaultWarehouse")} />
-              <CreateableSelect
-                value={warehouseId}
-                onChange={(id) => { setWarehouseId(id); if (id) setProjectId("") }}
-                options={warehouses.map((w) => ({ id: w.id, name: w.name }))}
-                emptyLabel="بدون مستودع"
-                createLabel="إنشاء مستودع"
-                createFields={[
-                  { key: "name", label: "اسم المستودع", placeholder: "المستودع...", required: true },
-                  { key: "address", label: "العنوان", placeholder: "المدينة..." },
-                ]}
-                onCreate={async (data) => {
-                  const result = await createWarehouseMutation.mutateAsync({
-                    name: data.name ?? "",
-                    address: data.address || null,
-                    managerId: null,
-                    status: "ACTIVE",
-                    notes: null,
-                  })
-                  const item = result.item as { id: string; name: string } | undefined
-                  return { id: item?.id ?? "", name: item?.name ?? "" }
-                }}
-              />
-            </label>
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label={t("inventory.invoiceCreate.defaultProject")} />
-              <CreateableSelect
-                value={projectId}
-                onChange={(id) => { setProjectId(id); if (id) setWarehouseId("") }}
-                options={projects.map((p) => ({ id: p.id, name: p.name }))}
-                emptyLabel="بدون مشروع"
-                createLabel="إنشاء مشروع"
-                createFields={[
-                  { key: "name", label: "اسم المشروع", placeholder: "المشروع...", required: true },
-                  { key: "location", label: "الموقع", placeholder: "المدينة..." },
-                ]}
-                onCreate={async (data) => {
-                  const result = await createProjectMutation.mutateAsync({
-                    name: data.name ?? "",
-                    location: data.location || null,
-                    managerId: null,
-                    status: "ACTIVE",
-                    notes: null,
-                  })
-                  const item = result.item as { id: string; name: string } | undefined
-                  return { id: item?.id ?? "", name: item?.name ?? "" }
-                }}
-              />
-            </label>
-            {createDebt ? (
-              <>
+          {/* Progressive disclosure: less-used fields live in collapsible sections.
+              Each section keeps its open state in the CollapsibleSection's own
+              useState and is rendered unconditionally in this page tree, so
+              adding/removing line items (which re-renders this page) never
+              remounts a section or collapses one the user already opened. */}
+          <div className="space-y-3">
+            <CollapsibleSection title={t("inventory.invoiceCreate.debtSection")}>
+              <div className="grid gap-3 md:grid-cols-3">
                 <label className="space-y-1.5 text-sm">
-                  <FieldLabel label="طريقة الدفع" required />
-                  <NativeSelect value={paymentInputType} onChange={(event) => setPaymentInputType(event.target.value as "AMOUNT" | "PERCENT")}>
-                    <option value="AMOUNT">مبلغ ثابت</option>
-                    <option value="PERCENT">نسبة مئوية</option>
+                  <FieldLabel label={t("inventory.invoiceCreate.isDebt")} />
+                  <NativeSelect value={createDebt ? "YES" : "NO"} onChange={(event) => setCreateDebt(event.target.value === "YES")}>
+                    <option value="NO">{t("common.no")}</option>
+                    <option value="YES">{t("common.yes")}</option>
                   </NativeSelect>
                 </label>
-                <label className="space-y-1.5 text-sm">
-                  <FieldLabel label={paymentInputType === "AMOUNT" ? "المدفوع الآن" : "النسبة المدفوعة"} />
-                  <Input type="number" min="0" step="0.01" value={paidValue} onChange={(event) => setPaidValue(event.target.value)} />
-                </label>
-              </>
-            ) : null}
-          </div>
+                {createDebt ? (
+                  <>
+                    <label className="space-y-1.5 text-sm">
+                      <FieldLabel label="طريقة الدفع" required />
+                      <NativeSelect value={paymentInputType} onChange={(event) => setPaymentInputType(event.target.value as "AMOUNT" | "PERCENT")}>
+                        <option value="AMOUNT">مبلغ ثابت</option>
+                        <option value="PERCENT">نسبة مئوية</option>
+                      </NativeSelect>
+                    </label>
+                    <label className="space-y-1.5 text-sm">
+                      <FieldLabel label={paymentInputType === "AMOUNT" ? "المدفوع الآن" : "النسبة المدفوعة"} />
+                      <Input type="number" min="0" step="0.01" value={paidValue} onChange={(event) => setPaidValue(event.target.value)} />
+                    </label>
+                  </>
+                ) : null}
+              </div>
+            </CollapsibleSection>
 
-          {/* Note and files — full width */}
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label={t("common.note", "ملاحظات")} />
-              <Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="اختياري" />
-            </label>
-            <label className="space-y-1.5 text-sm">
-              <FieldLabel label="ملفات الفاتورة" />
-              <FileInput multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
-            </label>
+            <CollapsibleSection title={t("inventory.invoiceCreate.counterpartySection")}>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label="الجهة الخارجية" />
+                  <CreateableSelect
+                    value={externalCounterpartyId}
+                    onChange={(id) => {
+                      setExternalCounterpartyId(id)
+                      if (id) {
+                        const counterparty = counterparties.find((item) => item.id === id)
+                        setSupplierName(counterparty?.fullName ?? "")
+                      }
+                    }}
+                    options={counterparties.map((c) => ({ id: c.id, name: c.fullName }))}
+                    emptyLabel="بدون جهة خارجية"
+                    createLabel="إنشاء جهة خارجية"
+                    createFields={[
+                      { key: "fullName", label: t("externals.create.fullName"), placeholder: t("externals.create.fullNamePlaceholder"), required: true },
+                      { key: "phoneNumber", label: "رقم الهاتف", placeholder: "0612345678" },
+                    ]}
+                    onCreate={async (data) => {
+                      const result = await createCounterpartyMutation.mutateAsync({
+                        fullName: data.fullName ?? "",
+                        phoneNumber: data.phoneNumber || "",
+                        note: null,
+                      })
+                      const item = result.item as { id: string; fullName: string | null } | undefined
+                      return { id: item?.id ?? "", name: item?.fullName ?? "" }
+                    }}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label="اسم المورد" />
+                  <Input placeholder="اختياري إذا أدخلت جهة خارجية" value={supplierName} onChange={(event) => setSupplierName(event.target.value)} />
+                </label>
+              </div>
+            </CollapsibleSection>
+
+            <CollapsibleSection title={t("inventory.invoiceCreate.defaultsSection")}>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label={t("inventory.invoiceCreate.defaultWarehouse")} />
+                  <CreateableSelect
+                    value={warehouseId}
+                    onChange={(id) => { setWarehouseId(id); if (id) setProjectId("") }}
+                    options={warehouses.map((w) => ({ id: w.id, name: w.name }))}
+                    emptyLabel="بدون مستودع"
+                    createLabel="إنشاء مستودع"
+                    createFields={[
+                      { key: "name", label: "اسم المستودع", placeholder: "المستودع...", required: true },
+                      { key: "address", label: "العنوان", placeholder: "المدينة..." },
+                    ]}
+                    onCreate={async (data) => {
+                      const result = await createWarehouseMutation.mutateAsync({
+                        name: data.name ?? "",
+                        address: data.address || null,
+                        managerId: null,
+                        status: "ACTIVE",
+                        notes: null,
+                      })
+                      const item = result.item as { id: string; name: string } | undefined
+                      return { id: item?.id ?? "", name: item?.name ?? "" }
+                    }}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label={t("inventory.invoiceCreate.defaultProject")} />
+                  <CreateableSelect
+                    value={projectId}
+                    onChange={(id) => { setProjectId(id); if (id) setWarehouseId("") }}
+                    options={projects.map((p) => ({ id: p.id, name: p.name }))}
+                    emptyLabel="بدون مشروع"
+                    createLabel="إنشاء مشروع"
+                    createFields={[
+                      { key: "name", label: "اسم المشروع", placeholder: "المشروع...", required: true },
+                      { key: "location", label: "الموقع", placeholder: "المدينة..." },
+                    ]}
+                    onCreate={async (data) => {
+                      const result = await createProjectMutation.mutateAsync({
+                        name: data.name ?? "",
+                        location: data.location || null,
+                        managerId: null,
+                        status: "ACTIVE",
+                        notes: null,
+                      })
+                      const item = result.item as { id: string; name: string } | undefined
+                      return { id: item?.id ?? "", name: item?.name ?? "" }
+                    }}
+                  />
+                </label>
+              </div>
+            </CollapsibleSection>
+
+            <CollapsibleSection title={t("inventory.invoiceCreate.notesSection")}>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label={t("common.note", "ملاحظات")} />
+                  <Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="اختياري" />
+                </label>
+                <label className="space-y-1.5 text-sm">
+                  <FieldLabel label="ملفات الفاتورة" />
+                  <FileInput multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+                </label>
+              </div>
+            </CollapsibleSection>
           </div>
         </PageSurfaceContent>
       </Surface>
@@ -498,9 +596,27 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       })}
 
       <div className="flex items-center justify-end gap-3">
-        <Button disabled={createMutation.isPending || lines.length === 0} onClick={() => void handleSubmit()}>
-          {createMutation.isPending ? t("common.saving") : t("inventory.invoiceCreate.save")}
-        </Button>
+        {createdInvoiceGroupId ? (
+          <Button disabled={uploadingAttachments} onClick={() => {
+            void handleRetryAttachmentUpload().catch(() => {
+              showErrorToast("تعذر حفظ الفاتورة.")
+            })
+          }}>
+            {t("inventory.invoiceCreate.retryAttachments")}
+          </Button>
+        ) : (
+          <Button disabled={createMutation.isPending || lines.length === 0} onClick={() => {
+            void handleSubmit().catch(() => {
+              // Every known failure path (validation, mutation, attachment
+              // upload) is handled inside handleSubmit with a field error or
+              // toast. This catch only covers unexpected errors — surface them
+              // and never let an unhandled rejection reach dev/CI logs.
+              showErrorToast("تعذر حفظ الفاتورة.")
+            })
+          }}>
+            {createMutation.isPending ? t("common.saving") : t("inventory.invoiceCreate.save")}
+          </Button>
+        )}
         <Button variant="outline" onClick={() => window.history.back()}>
           {t("common.cancel")}
         </Button>

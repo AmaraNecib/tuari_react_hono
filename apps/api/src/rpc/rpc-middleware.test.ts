@@ -505,3 +505,40 @@ describe("RPC Middleware — license gating", () => {
     });
   });
 });
+
+describe("RPC Middleware — rateLimit helper (unauthenticated base handlers)", () => {
+  it("charges the shared per-IP budget and throws TOO_MANY_REQUESTS when exhausted", () => {
+    const middleware = createRpcMiddleware({
+      authBootstrapService: { isBootstrapOwner: vi.fn().mockResolvedValue(true) },
+    });
+
+    const context = createMockContext(null, { remoteAddress: "192.0.2.20" });
+
+    // 100 requests fit the budget from one socket.
+    for (let i = 0; i < 100; i++) {
+      expect(() => middleware.rateLimit(context)).not.toThrow();
+    }
+
+    // The 101st is rejected.
+    expect(() => middleware.rateLimit(context)).toThrowError(
+      expect.objectContaining({ code: "TOO_MANY_REQUESTS" }),
+    );
+  });
+
+  it("keys the budget on the socket and ignores spoofed proxy headers", () => {
+    const middleware = createRpcMiddleware({
+      authBootstrapService: { isBootstrapOwner: vi.fn().mockResolvedValue(true) },
+    });
+
+    // Same socket, different spoofed x-forwarded-for each time → still ONE budget.
+    for (let i = 0; i < 100; i++) {
+      const c = createMockContext(null, { remoteAddress: "192.0.2.21" });
+      c.headers.set("x-forwarded-for", `203.0.113.${i}`);
+      expect(() => middleware.rateLimit(c)).not.toThrow();
+    }
+
+    expect(() =>
+      middleware.rateLimit(createMockContext(null, { remoteAddress: "192.0.2.21" })),
+    ).toThrowError(expect.objectContaining({ code: "TOO_MANY_REQUESTS" }));
+  });
+});

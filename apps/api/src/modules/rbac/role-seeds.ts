@@ -14,17 +14,39 @@ export type RolePermissionSeed = {
 };
 
 /**
- * Default roles seeded on first run (Issue #10 — three-tier RBAC):
+ * Default roles seeded on first run (issue #20 workforce model — single-actor):
  *
- *  - ADMIN   → all permissions (system owner, bootstrap user)
- *  - MANAGER → day-to-day operations on employees, projects, warehouses,
- *              inventory, plus read-only on debts
- *  - VIEWER  → read-only across all entities
+ *  - ADMIN             → all permissions (system owner / bootstrap user). In
+ *                        the MVP the admin is the ONLY role that acts in the
+ *                        app and performs every assignment.
+ *  - PROJECT_MANAGER   → organizational label (one or more projects + their
+ *                        workers); no app permissions yet.
+ *  - WAREHOUSE_MANAGER → organizational label (a warehouse + its team); no
+ *                        app permissions yet.
+ *  - WORKER            → organizational label (a worker assigned to one
+ *                        project under a manager, or to a warehouse); no app
+ *                        permissions yet.
  *
- * Custom roles can be added at runtime; these three are the immutable
- * starting set. Other internal roles that previously existed
- * (worker, project_manager, warehouse_manager) are intentionally
- * consolidated into MANAGER per the Slice 3 acceptance criteria.
+ * WHY `manager` / `viewer` were REMOVED, and how to bring them back:
+ *  The captain moved to a single-actor model — only `admin` acts. The former
+ *  `manager` (day-to-day ops CRUD) and `viewer` (read-only) roles from the
+ *  older three-tier RBAC were removed from the seed entirely: they held
+ *  permissions that let a non-admin account act, which is not wanted. They are
+ *  GONE from freshly-seeded databases. (An already-provisioned database that
+ *  seeded them before this change keeps its rows, but the UI role selector and
+ *  the backend `ASSIGNABLE_ROLE_KEYS` no longer offer them, so they cannot be
+ *  assigned to a new employee; issue #20's scope covers the fresh-creation
+ *  path, not tearing down long-lived databases — see the #263 follow-up.)
+ *  To re-add manager or viewer later, define a RolePermissionSeed here (with
+ *  the desired permission strings), add the key to `roleSeeds` in
+ *  schema-definitions.ts and to `ASSIGNABLE_ROLE_KEYS` in company.types.ts,
+ *  then offer it in the UI role selector. RBAC reads these seeds at first-run
+ *  seeding and enforces whatever permissions the role holds.
+ *
+ * The three workforce labels carry EMPTY permissions on purpose: they do not
+ * sign in or act in the MVP (the admin orchestrates; the labels organize who
+ * manages what and which worker belongs to which project). Empty keeps any
+ * future permission grant purely additive and unable to break callers.
  *
  * All permission strings use the `resource:action` form.
  */
@@ -40,48 +62,33 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionSeed[] = [
   },
   {
     role: {
-      key: "manager",
-      name: "مدير عمليات",
-      description: "يدير الموظفين والمشاريع والمستودعات والمخزون — صلاحيات تشغيلية كاملة",
+      key: "project_manager",
+      name: "مدير مشروع",
+      description: "منظم — يدير واحدًا أو أكثر من المشاريع والعاملين المرتبطين بها",
       isSystem: true,
     },
-    permissions: [
-      "employees:create",
-      "employees:read",
-      "employees:update",
-      "employees:delete",
-      "projects:create",
-      "projects:read",
-      "projects:update",
-      "projects:delete",
-      "warehouses:create",
-      "warehouses:read",
-      "warehouses:update",
-      "warehouses:delete",
-      "inventory:create",
-      "inventory:read",
-      "inventory:update",
-      "inventory:delete",
-      "inventory:transfer",
-      "debts:read",
-    ] as Permission[],
+    // Organizational labels: they do NOT sign in or hold app permissions in
+    // the MVP — the admin performs every action. Empty here on purpose so a
+    // future permission grant is purely additive and cannot break callers.
+    permissions: [] as Permission[],
   },
   {
     role: {
-      key: "viewer",
-      name: "مشاهد",
-      description: "حساب للقراءة فقط — لا يمكنه تعديل أي بيانات",
+      key: "warehouse_manager",
+      name: "مدير مخزن",
+      description: "منظم — يدير المستودع وفريق العاملين المرتبطين به",
       isSystem: true,
     },
-    permissions: [
-      "employees:read",
-      "projects:read",
-      "warehouses:read",
-      "inventory:read",
-      "debts:read",
-      "invoices:read",
-      "payments:read",
-    ] as Permission[],
+    permissions: [] as Permission[],
+  },
+  {
+    role: {
+      key: "worker",
+      name: "عامل",
+      description: "منظم — العامل الميداني المرتبط بمشروع تحت مدير أو بمستودع",
+      isSystem: true,
+    },
+    permissions: [] as Permission[],
   },
 ];
 

@@ -48,4 +48,32 @@ describe("employee batch salary fields", () => {
     expect(result.isValid).toBe(false)
     expect(result.rowErrors[0]?.salaryPeriod).toBe("required")
   })
+
+  it("normalizes an optional occupation into the batch payload", () => {
+    const draft = {
+      ...createEmptyEmployeeDraft("role-worker"),
+      firstName: "سمير",
+      lastName: "بوقرة",
+      phone: "0555123456",
+      occupation: "  عامل بناء  ",
+    }
+
+    expect(normalizeEmployeeDraft(draft).occupation).toBe("عامل بناء")
+    expect(normalizeEmployeeDraft(createEmptyEmployeeDraft("role-worker")).occupation).toBeUndefined()
+  })
+
+  it("rejects an occupation longer than 120 characters", () => {
+    const draft = {
+      ...createEmptyEmployeeDraft("role-worker"),
+      firstName: "سمير",
+      lastName: "بوقرة",
+      phone: "0555123456",
+      occupation: "م".repeat(121),
+    }
+
+    const result = validateEmployeeBatch([draft])
+
+    expect(result.isValid).toBe(false)
+    expect(result.rowErrors[0]?.occupation).toBeTruthy()
+  })
 })

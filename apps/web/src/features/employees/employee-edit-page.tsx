@@ -3,21 +3,19 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { type Role } from "@tuari/contracts"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
+import { TriangleAlert } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, FieldSection, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
-import {
-  useSyncManagedProjectsMutation,
-  useSyncManagedWarehousesMutation,
-  useUpdateEmployeeMutation,
-  useUpdateEmployeeWorkplaceMutation,
-} from "@/features/app-shell/mock-dashboard"
+import { useSaveEmployeeMutation } from "@/features/app-shell/mock-dashboard"
 import { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import type { EmployeeManagerOption } from "./employee-batch-row-card"
+import type { EmployeeSavePlan } from "./employee-save-reconcile"
 import type { EmployeeTableRow } from "./employee-table"
+import { classifyWorkforceRole, isEmployeeRoleSelectable } from "./role-classification"
 
 type FormState = {
   firstName: string
@@ -27,11 +25,29 @@ type FormState = {
   status: EmployeeTableRow["status"]
   salaryAmountDzd: string
   salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | ""
+  occupation: string
   notes: string
 }
 
 type FormErrors = Partial<
-  Record<keyof FormState | "managerId" | "projectId", string>
+  Record<keyof FormState | "managerId" | "projectId" | "warehouseId" | "workplaceType", string>
+>
+
+/** A rejected batch is atomic (nothing persisted), so "nothingSaved" is the only save-error state. */
+type SaveErrorKind = "nothingSaved"
+
+/** Profile fields shared by the table row and the wire `Employee` record. */
+type EmployeeProfile = Pick<
+  EmployeeTableRow,
+  | "firstName"
+  | "lastName"
+  | "phone"
+  | "roleId"
+  | "status"
+  | "salaryAmountDzd"
+  | "salaryPeriod"
+  | "occupation"
+  | "notes"
 >
 
 type ManagedOption = {
@@ -40,7 +56,7 @@ type ManagedOption = {
   secondary: string
 }
 
-function createFormState(employee: EmployeeTableRow): FormState {
+function createFormState(employee: EmployeeProfile): FormState {
   return {
     firstName: employee.firstName,
     lastName: employee.lastName,
@@ -49,6 +65,7 @@ function createFormState(employee: EmployeeTableRow): FormState {
     status: employee.status,
     salaryAmountDzd: employee.salaryAmountDzd == null ? "" : String(employee.salaryAmountDzd),
     salaryPeriod: employee.salaryPeriod ?? "",
+    occupation: employee.occupation ?? "",
     notes: employee.notes ?? "",
   }
 }
@@ -76,6 +93,7 @@ export function EmployeeEditPage({
   managedProjectOptions,
   managedWarehouseOptions,
   roles,
+  warehouseOptions = [],
 }: {
   currentManagedProjectIds: string[]
   currentManagedWarehouseIds: string[]
@@ -84,20 +102,32 @@ export function EmployeeEditPage({
   managedProjectOptions: ManagedOption[]
   managedWarehouseOptions: ManagedOption[]
   roles: Role[]
+  warehouseOptions?: Array<{ id: string; label: string }>
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const updateEmployeeMutation = useUpdateEmployeeMutation()
-  const updateEmployeeWorkplaceMutation = useUpdateEmployeeWorkplaceMutation()
-  const syncManagedProjectsMutation = useSyncManagedProjectsMutation()
-  const syncManagedWarehousesMutation = useSyncManagedWarehousesMutation()
+  const saveEmployeeMutation = useSaveEmployeeMutation()
   const [state, setState] = useState<FormState>(() => createFormState(employee))
   const [errors, setErrors] = useState<FormErrors>({})
+  const [saveError, setSaveError] = useState<SaveErrorKind | null>(null)
   const [workerManagerId, setWorkerManagerId] = useState(employee.currentManagerId ?? "")
   const [workerProjectId, setWorkerProjectId] = useState(employee.currentProjectId ?? "")
+  const [workerWarehouseId, setWorkerWarehouseId] = useState(employee.currentWarehouseId ?? "")
+  const [workplaceType, setWorkplaceType] = useState<"NONE" | "PROJECT" | "WAREHOUSE">(() =>
+    employee.currentProjectId ? "PROJECT" : employee.currentWarehouseId ? "WAREHOUSE" : "NONE",
+  )
   const [selectedManagedProjectIds, setSelectedManagedProjectIds] = useState<string[]>(currentManagedProjectIds)
   const [selectedManagedWarehouseIds, setSelectedManagedWarehouseIds] = useState<string[]>(currentManagedWarehouseIds)
+  // Relationship fields are only submitted when the user actually edited them
+  // (PR #51 review). An untouched control holds a load-time snapshot; sending it
+  // would let a stale page revert newer concurrent relationship changes.
+  const [placementDirty, setPlacementDirty] = useState(false)
+  const [managedProjectsDirty, setManagedProjectsDirty] = useState(false)
+  const [managedWarehousesDirty, setManagedWarehousesDirty] = useState(false)
   const previousEmployeeIdRef = useRef(employee.id)
+  // Guards against a second submit while a save is in flight
+  // (Enter-key submits can fire before the button's isPending disables it).
+  const saveInFlightRef = useRef(false)
 
   useEffect(() => {
     if (previousEmployeeIdRef.current === employee.id) {
@@ -109,8 +139,13 @@ export function EmployeeEditPage({
     setErrors({})
     setWorkerManagerId(employee.currentManagerId ?? "")
     setWorkerProjectId(employee.currentProjectId ?? "")
+    setWorkerWarehouseId(employee.currentWarehouseId ?? "")
+    setWorkplaceType(employee.currentProjectId ? "PROJECT" : employee.currentWarehouseId ? "WAREHOUSE" : "NONE")
     setSelectedManagedProjectIds(currentManagedProjectIds)
     setSelectedManagedWarehouseIds(currentManagedWarehouseIds)
+    setPlacementDirty(false)
+    setManagedProjectsDirty(false)
+    setManagedWarehousesDirty(false)
   }, [currentManagedProjectIds, currentManagedWarehouseIds, employee])
 
   const currentRoleKey = employee.roleKey
@@ -118,10 +153,7 @@ export function EmployeeEditPage({
     () => roles.find((role) => role.id === state.roleId)?.key ?? employee.roleKey,
     [employee.roleKey, roles, state.roleId],
   )
-  const isWorker = selectedRoleKey === "worker"
-  const isProjectManager = selectedRoleKey === "project_manager"
-  const isWarehouseManager = selectedRoleKey === "warehouse_manager"
-  const hasWarehouseWorkerPlacement = isWorker && Boolean(employee.currentWarehouseId)
+  const { isWorker, isProjectManager, isWarehouseManager } = classifyWorkforceRole(selectedRoleKey)
   const selectedManager = managerOptions.find((manager) => manager.id === workerManagerId) ?? null
   const workerProjectOptions = selectedManager?.projectOptions ?? []
   const statusOptions = [
@@ -134,11 +166,7 @@ export function EmployeeEditPage({
     { value: "WEEKLY", label: t("detailPages.salary.weekly") },
     { value: "MONTHLY", label: t("detailPages.salary.monthly") },
   ] satisfies Array<{ value: "DAILY" | "WEEKLY" | "MONTHLY"; label: string }>
-  const isSaving =
-    updateEmployeeMutation.isPending ||
-    updateEmployeeWorkplaceMutation.isPending ||
-    syncManagedProjectsMutation.isPending ||
-    syncManagedWarehousesMutation.isPending
+  const isSaving = saveEmployeeMutation.isPending
 
   function updateRole(roleId: string) {
     const nextRoleKey = roles.find((role) => role.id === roleId)?.key ?? ""
@@ -153,6 +181,14 @@ export function EmployeeEditPage({
   }
 
   async function handleSaveAll() {
+    setSaveError(null)
+
+    // An ACTIVE worker with no placement at all must still satisfy the #20
+    // requirement on every save; omitting an untouched NONE would otherwise
+    // sneak an unplaced active worker through. Workers who already have a
+    // placement only submit it when the user edited the controls.
+    const workerNeedsPlacement = !employee.currentManagerId && !employee.currentProjectId && !employee.currentWarehouseId
+
     const nextErrors: FormErrors = {}
     const salaryAmount = parseSalaryAmount(state.salaryAmountDzd)
 
@@ -172,6 +208,10 @@ export function EmployeeEditPage({
       nextErrors.roleId = t("detailPages.employee.editPage.validation.roleRequired")
     }
 
+    if (state.occupation.trim().length > 120) {
+      nextErrors.occupation = t("detailPages.employee.editPage.validation.occupationTooLong")
+    }
+
     if (Number.isNaN(salaryAmount)) {
       nextErrors.salaryAmountDzd = t("detailPages.employee.editPage.validation.salaryAmountInvalid")
     }
@@ -184,13 +224,21 @@ export function EmployeeEditPage({
       nextErrors.salaryAmountDzd = t("detailPages.employee.editPage.validation.salaryAmountRequired")
     }
 
-    if (isWorker && state.status === "ACTIVE" && !hasWarehouseWorkerPlacement) {
-      if (!workerManagerId) {
-        nextErrors.managerId = t("detailPages.employee.editPage.validation.managerRequired")
-      }
+    if (isWorker && state.status === "ACTIVE" && (placementDirty || workerNeedsPlacement)) {
+      if (workplaceType === "PROJECT") {
+        if (!workerManagerId) {
+          nextErrors.managerId = t("detailPages.employee.editPage.validation.managerRequired")
+        }
 
-      if (!workerProjectId) {
-        nextErrors.projectId = t("detailPages.employee.editPage.validation.projectRequired")
+        if (!workerProjectId) {
+          nextErrors.projectId = t("detailPages.employee.editPage.validation.projectRequired")
+        }
+      } else if (workplaceType === "WAREHOUSE") {
+        if (!workerWarehouseId) {
+          nextErrors.warehouseId = t("detailPages.employee.editPage.validation.warehouseRequired")
+        }
+      } else {
+        nextErrors.workplaceType = t("detailPages.employee.editPage.validation.workplaceRequired")
       }
     }
 
@@ -199,24 +247,6 @@ export function EmployeeEditPage({
     if (Object.keys(nextErrors).length > 0) {
       return
     }
-
-    const workerPlacementChanged =
-      workerManagerId !== (employee.currentManagerId ?? "") ||
-      workerProjectId !== (employee.currentProjectId ?? "") ||
-      currentRoleKey !== selectedRoleKey ||
-      state.status !== employee.status
-
-    const managedProjectsChanged =
-      selectedManagedProjectIds.length !== currentManagedProjectIds.length ||
-      selectedManagedProjectIds.some((id) => !currentManagedProjectIds.includes(id)) ||
-      currentRoleKey !== selectedRoleKey ||
-      state.status !== employee.status
-
-    const managedWarehousesChanged =
-      selectedManagedWarehouseIds.length !== currentManagedWarehouseIds.length ||
-      selectedManagedWarehouseIds.some((id) => !currentManagedWarehouseIds.includes(id)) ||
-      currentRoleKey !== selectedRoleKey ||
-      state.status !== employee.status
 
     const requiresBlockedTransition =
       (currentRoleKey === "worker" &&
@@ -237,42 +267,46 @@ export function EmployeeEditPage({
       return
     }
 
-    await updateEmployeeMutation.mutateAsync({
-      id: employee.id,
-      firstName: state.firstName.trim(),
-      lastName: state.lastName.trim(),
-      phone: state.phone.trim(),
-      roleId: state.roleId,
-      status: state.status,
-      salaryAmountDzd: salaryAmount,
-      salaryPeriod: state.salaryPeriod || null,
-      notes: state.notes.trim() || null,
-    })
+    const includeWorkplace = isWorker && state.status === "ACTIVE" && (placementDirty || workerNeedsPlacement)
+    const includeManagedProjects = managedProjectsDirty && isProjectManager && state.status === "ACTIVE"
+    const includeManagedWarehouses = managedWarehousesDirty && isWarehouseManager && state.status === "ACTIVE"
 
-    if (isWorker && state.status === "ACTIVE" && !hasWarehouseWorkerPlacement && workerPlacementChanged) {
-      await updateEmployeeWorkplaceMutation.mutateAsync({
-        employeeId: employee.id,
-        managerId: workerManagerId || null,
-        nextType: "PROJECT",
-        projectId: workerProjectId || null,
-        warehouseId: null,
-      })
+    const savePlan: EmployeeSavePlan = {
+      workplace:
+        includeWorkplace
+          ? {
+              managerId: workplaceType === "PROJECT" ? workerManagerId || null : null,
+              nextType: workplaceType,
+              projectId: workplaceType === "PROJECT" ? workerProjectId || null : null,
+              warehouseId: workplaceType === "WAREHOUSE" ? workerWarehouseId || null : null,
+            }
+          : null,
+      managedProjects: includeManagedProjects ? { nextIds: selectedManagedProjectIds } : null,
+      managedWarehouses: includeManagedWarehouses ? { nextIds: selectedManagedWarehouseIds } : null,
     }
 
-    if (isProjectManager && state.status === "ACTIVE" && managedProjectsChanged) {
-      await syncManagedProjectsMutation.mutateAsync({
-        currentIds: currentManagedProjectIds,
-        employeeId: employee.id,
-        nextIds: selectedManagedProjectIds,
+    // The server owns the transaction and rolls the whole batch back on failure.
+    try {
+      await saveEmployeeMutation.mutateAsync({
+        id: employee.id,
+        firstName: state.firstName.trim(),
+        lastName: state.lastName.trim(),
+        phone: state.phone.trim(),
+        roleId: state.roleId,
+        status: state.status,
+        salaryAmountDzd: salaryAmount,
+        salaryPeriod: state.salaryPeriod || null,
+        occupation: state.occupation.trim() || null,
+        notes: state.notes.trim() || null,
+        ...(savePlan.workplace ? { placement: savePlan.workplace } : {}),
+        ...(savePlan.managedProjects ? { managedProjectIds: savePlan.managedProjects.nextIds } : {}),
+        ...(savePlan.managedWarehouses ? { managedWarehouseIds: savePlan.managedWarehouses.nextIds } : {}),
       })
-    }
-
-    if (isWarehouseManager && state.status === "ACTIVE" && managedWarehousesChanged) {
-      await syncManagedWarehousesMutation.mutateAsync({
-        currentIds: currentManagedWarehouseIds,
-        employeeId: employee.id,
-        nextIds: selectedManagedWarehouseIds,
-      })
+    } catch {
+      // A rejected batch means nothing persisted (the server transaction is
+      // all-or-nothing), so keep every typed value and let the user retry.
+      setSaveError("nothingSaved")
+      return
     }
 
     void navigateToWorkspaceRoute(navigate, workspaceRoutes.employeeDetails(employee.id))
@@ -280,7 +314,15 @@ export function EmployeeEditPage({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    void handleSaveAll()
+
+    if (saveInFlightRef.current) {
+      return
+    }
+
+    saveInFlightRef.current = true
+    void handleSaveAll().finally(() => {
+      saveInFlightRef.current = false
+    })
   }
 
   return (
@@ -302,6 +344,19 @@ export function EmployeeEditPage({
           title={`${t("detailPages.employee.editTitle")} ${employee.name}`}
         />
 
+        {saveError ? (
+          <div
+            aria-live="assertive"
+            className="flex items-start gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm text-destructive"
+            role="alert"
+          >
+            <TriangleAlert className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" />
+            <p>
+              {saveError === "nothingSaved" ? t("detailPages.employee.editPage.saveNothingSaved") : null}
+            </p>
+          </div>
+        ) : null}
+
         <FieldSection
           description={t("detailPages.employee.editPage.personalDescription")}
           title={t("detailPages.employee.editPage.personalTitle")}
@@ -318,7 +373,7 @@ export function EmployeeEditPage({
             </Field>
             <Field label={t("detailPages.employee.role")} error={errors.roleId}>
               <NativeSelect value={state.roleId} onChange={(event) => updateRole(event.target.value)}>
-                {roles.map((role) => (
+                {roles.filter((role) => isEmployeeRoleSelectable(role.key)).map((role) => (
                   <option key={role.id} disabled={currentRoleKey !== "worker" && role.key === "worker"} value={role.id}>
                     {role.name}
                   </option>
@@ -329,6 +384,13 @@ export function EmployeeEditPage({
                   {t("detailPages.employee.editPage.roleWorkerHint")}
                 </p>
               ) : null}
+            </Field>
+            <Field label={t("detailPages.employee.editPage.occupation")} error={errors.occupation}>
+              <Input
+                placeholder={t("detailPages.employee.editPage.occupationPlaceholder")}
+                value={state.occupation}
+                onChange={(event) => setState({ ...state, occupation: event.target.value })}
+              />
             </Field>
             <Field label={t("detailPages.employee.editPage.status")} error={errors.status}>
               <NativeSelect
@@ -353,41 +415,86 @@ export function EmployeeEditPage({
           title={t("detailPages.employee.editPage.workTitle")}
         >
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {isWorker && !hasWarehouseWorkerPlacement ? (
+            {isWorker ? (
               <>
-                <Field label={t("detailPages.employee.editPage.directManager")} error={errors.managerId}>
+                <Field label={t("detailPages.employee.editPage.workplaceType")} error={errors.workplaceType} className="md:col-span-2 xl:col-span-3">
                   <NativeSelect
-                    value={workerManagerId}
+                    value={workplaceType}
                     onChange={(event) => {
-                      setWorkerManagerId(event.target.value)
-                      setWorkerProjectId("")
+                      const next = event.target.value as "NONE" | "PROJECT" | "WAREHOUSE"
+                      setPlacementDirty(true)
+                      setWorkplaceType(next)
+                      if (next === "PROJECT") {
+                        setWorkerWarehouseId("")
+                      }
+                      if (next === "WAREHOUSE") {
+                        setWorkerManagerId("")
+                        setWorkerProjectId("")
+                      }
+                      if (next === "NONE") {
+                        setWorkerManagerId("")
+                        setWorkerProjectId("")
+                        setWorkerWarehouseId("")
+                      }
                     }}
                   >
-                    <option value="">{t("detailPages.employee.editPage.selectProjectManager")}</option>
-                    {managerOptions.map((manager) => (
-                      <option key={manager.id} value={manager.id}>
-                        {manager.label}
-                      </option>
-                    ))}
+                    <option value="NONE">{t("detailPages.employee.editPage.noWorkplace")}</option>
+                    <option value="PROJECT">{t("detailPages.employee.editPage.projectPlacement")}</option>
+                    <option value="WAREHOUSE">{t("detailPages.employee.editPage.warehousePlacement")}</option>
                   </NativeSelect>
                 </Field>
-                <Field label={t("detailPages.employee.editPage.currentProject")} error={errors.projectId}>
-                  <NativeSelect disabled={!workerManagerId} value={workerProjectId} onChange={(event) => setWorkerProjectId(event.target.value)}>
-                    <option value="">{t("detailPages.employee.editPage.selectManagerProject")}</option>
-                    {workerProjectOptions.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.label}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </Field>
-              </>
-            ) : null}
 
-            {hasWarehouseWorkerPlacement ? (
-              <div className="md:col-span-2 xl:col-span-3 rounded-xl border border-border/60 bg-sidebar/90 px-4 py-3 text-sm text-muted-foreground">
-                {t("detailPages.employee.editPage.warehousePlacementNotice")}
-              </div>
+                {workplaceType === "PROJECT" ? (
+                  <>
+                    <Field label={t("detailPages.employee.editPage.directManager")} error={errors.managerId}>
+                      <NativeSelect
+                        value={workerManagerId}
+                        onChange={(event) => {
+                          setPlacementDirty(true)
+                          setWorkerManagerId(event.target.value)
+                          setWorkerProjectId("")
+                        }}
+                      >
+                        <option value="">{t("detailPages.employee.editPage.selectProjectManager")}</option>
+                        {managerOptions.map((manager) => (
+                          <option key={manager.id} value={manager.id}>
+                            {manager.label}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </Field>
+                    <Field label={t("detailPages.employee.editPage.currentProject")} error={errors.projectId}>
+                      <NativeSelect disabled={!workerManagerId} value={workerProjectId} onChange={(event) => {
+                        setPlacementDirty(true)
+                        setWorkerProjectId(event.target.value)
+                      }}>
+                        <option value="">{t("detailPages.employee.editPage.selectManagerProject")}</option>
+                        {workerProjectOptions.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.label}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </Field>
+                  </>
+                ) : null}
+
+                {workplaceType === "WAREHOUSE" ? (
+                  <Field label={t("detailPages.employee.editPage.warehouse")} error={errors.warehouseId} className="md:col-span-2 xl:col-span-3">
+                    <NativeSelect value={workerWarehouseId} onChange={(event) => {
+                      setPlacementDirty(true)
+                      setWorkerWarehouseId(event.target.value)
+                    }}>
+                      <option value="">{t("detailPages.employee.editPage.selectWarehouse")}</option>
+                      {warehouseOptions.map((warehouse) => (
+                        <option key={warehouse.id} value={warehouse.id}>
+                          {warehouse.label}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </Field>
+                ) : null}
+              </>
             ) : null}
           </div>
 
@@ -397,11 +504,12 @@ export function EmployeeEditPage({
               items={managedProjectOptions}
               selectedIds={selectedManagedProjectIds}
               title={t("detailPages.employee.editPage.managedProjectsTitle")}
-              onToggle={(projectId) =>
+              onToggle={(projectId) => {
+                setManagedProjectsDirty(true)
                 setSelectedManagedProjectIds((current) =>
                   current.includes(projectId) ? current.filter((id) => id !== projectId) : [...current, projectId],
                 )
-              }
+              }}
             />
           ) : null}
 
@@ -411,11 +519,12 @@ export function EmployeeEditPage({
               items={managedWarehouseOptions}
               selectedIds={selectedManagedWarehouseIds}
               title={t("detailPages.employee.editPage.managedWarehousesTitle")}
-              onToggle={(warehouseId) =>
+              onToggle={(warehouseId) => {
+                setManagedWarehousesDirty(true)
                 setSelectedManagedWarehouseIds((current) =>
                   current.includes(warehouseId) ? current.filter((id) => id !== warehouseId) : [...current, warehouseId],
                 )
-              }
+              }}
             />
           ) : null}
         </FieldSection>
