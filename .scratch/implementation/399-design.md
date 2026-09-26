@@ -82,6 +82,9 @@ EncryptedDb feature is unknown and must not be granted.
 
 ## Deferred / review notes
 
-The parent brief pins the verify commands and asks for the mapping + env tests;
-debate/test-audit are scoped to the parent's judgement. No API change is
-proposed or needed.
+The parent brief pins the verify commands and asks for the mapping + env tests.
+Lane evidence: `code-review` + `test-audit` (self-audit) and a local Greptile
+CLI run (confidence 5/5, zero comments) on the implementation HEAD. The guard
+classifies licensing as High-assurance, which normally adds an independent
+`debate`; that was not run in-lane — the parent decides whether to schedule it
+before merge. No API change is proposed or needed.
