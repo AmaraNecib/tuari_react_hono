@@ -109,3 +109,65 @@ rules for the value that IDENTIFIES what already exists must stay permissive
 enough to accept what earlier versions produced, and let verification (hash
 compare, DB re-open, signature check) be the gate. Ask: "if a user's existing
 data violates my new rule, can they still migrate off it?"
+
+## A resettable recovery file must not hold the trial anchor (🟠 Major)
+
+On #396, `clock-tracker.json` stored both the clock high-water mark and
+`install_wall`, and the post-install trial was derived from `install_wall`. The
+documented recovery for a false clock-tamper warning is deleting that file.
+Because a missing file was recreated with `install_wall = now`, the recovery
+also restarted the 30-day trial, forever. Split the two: the resettable tracker
+keeps the high-water mark, and a second file (`install-anchor.json`) holds the
+install time. The install time is the earliest of the two, and the anchor is
+only ever moved earlier, so neither a fresh tracker nor a hand-edited one can
+inflate the window. A pre-anchor install seeds the anchor from its existing
+tracker instead of `now`, so upgrading does not hand it a fresh trial.
+
+**Always**: when a file is documented as safe to delete for recovery, it must
+carry only the state that recovery is meant to clear. Any derived entitlement
+(trial window, quota anchor, cache of a license decision) needs a durable home
+the recovery does not touch, and the reader must take the earliest credible
+evidence rather than trusting whichever file happens to exist.
+
+## Fail-closed entitlement files need an atomic write, or the fail-closed reader locks the customer (🟠 Major / Greptile P1)
+
+The trial anchor is read fail-closed: unparseable JSON means "tampered", which
+locks the installation. That makes the write path part of the security story —
+an in-place `fs::write` that is interrupted (power loss, crash, a second
+instance reading mid-write) leaves truncated JSON, and the fail-closed reader
+then punishes a legitimate customer for a crash. Fixed with `write_atomic`:
+stage the bytes in a sibling temp file (`<file>.<pid>.<seq>.tmp`, so two
+processes never share a staging name), `write_all` + `sync_all`, then
+`fs::rename` over the target — a same-directory rename is atomic, so readers see
+either the old file or the new one, never a half-written one. On any failure the
+staging file is removed and the target is left intact.
+
+**Always**: when a reader treats malformed content as hostile, the writer must
+be atomic (temp + fsync + rename). Pair it with a test that a corrupt file is
+left byte-for-byte untouched, so a retry cannot silently "repair" it into a
+fresh entitlement. A parent-directory fsync is not worth it on Windows (no
+meaningful directory fsync, and a lost rename keeps the *earlier* — safer —
+anchor value), so skip it rather than writing platform-specific code for
+durability the threat model does not need.
+
+## An atomic write is only atomic if the rename lands: budget a bounded retry (🟠 Major / Greptile P1)
+
+The temp+rename write above is correct but not sufficient on Windows. Replacing
+a target that another process holds open for reading — a second app instance,
+an antivirus scanner, a search indexer — makes the destination `fs::rename`
+fail with a sharing violation / access denied. The lock is transient, but a
+single-shot rename lets that reader *defeat the write*: the trial anchor is
+never persisted and the customer sees a clock-tamper lock. Fixed (#398 round 3)
+with a bounded retry around the rename: 5 attempts, 20/40/80/160 ms, staging
+file kept across every attempt and removed only on final failure, and an error
+naming the target path plus the OS error.
+
+**Always**: for a fail-closed file whose *absence* is losing or hostile, the
+rename must be retried on a short bounded backoff; a transient reader must not
+be able to turn an atomic write into no write. Keep it bounded (a few attempts
+over ~300 ms, never `loop {}`) so a genuinely un-writable target still fails
+promptly, and keep the staging file alive between attempts — deleting it on the
+first failure defeats the retry. Make the retry testable without the OS: inject
+the rename closure and the sleep function, then assert success-after-N-failures,
+the give-up bound, and staging cleanup on final failure. A test that only calls
+the real `fs::rename` cannot cover any of those three.
