@@ -75,6 +75,23 @@ and tells each lane exactly which skills to load.
 - **Mechanism check before trusting the machinery** → `--smoke` mode: lanes are
   read-only (inspect + report, change nothing).
 
+## Lane naming (one convention, enforced)
+
+A lane label is an identity: it names the Herdr workspace, the lane manifest and
+the handoff. Use **`<type>-<short-slug>`** in kebab-case — the same shape the
+worktree directory and the branch use:
+
+| Label | Branch | Worktree |
+| --- | --- | --- |
+| `fix-dashboard-followups` | `fix/282-dashboard-followups` | `worktrees/fix-dashboard-followups` |
+| `chore-ui-skills` | `chore/66-ui-skills` | `worktrees/chore-ui-skills` |
+| `feat-release-path` | `feat/release-installer-path` | `worktrees/feat-release-path` |
+
+Allowed types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `perf`,
+`release`, `issue`, `rev`. `launch-lane.mjs` rejects anything else before it
+creates workspace state, so a bare issue number, a project codename or a
+sentence can never become a lane name.
+
 ## Intake — resolve everything from the target repo
 
 Nothing is assumed; detect each of these before launching:

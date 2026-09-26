@@ -48,6 +48,20 @@ import { setTimeout as sleep } from "node:timers/promises";
 const [, , label, cwd, brief] = process.argv;
 const safeLabel = String(label || "lane").replace(/[^a-zA-Z0-9._-]/g, "_");
 
+// Lane labels follow one convention: <type>-<short-slug> in kebab-case, e.g.
+// fix-dashboard-followups, chore-ui-skills, feat-release-path. The label is an
+// identity — it names the Herdr workspace, the manifest and the handoff — so an
+// off-convention label (a bare issue number, "mvp-...", a sentence) is rejected
+// before any workspace state exists.
+const LANE_LABEL_PATTERN = /^(feat|fix|chore|refactor|test|docs|perf|release|issue|rev)-[a-z0-9]+(-[a-z0-9]+)*$/;
+if (!LANE_LABEL_PATTERN.test(safeLabel)) {
+  console.error(
+    `[launch-lane] label "${label}" breaks the lane naming convention <type>-<short-slug> ` +
+      `(e.g. fix-dashboard-followups). Allowed types: feat, fix, chore, refactor, test, docs, perf, release, issue, rev.`,
+  );
+  process.exit(2);
+}
+
 // Resolve the pane that owns this lane. HERDR_PANE_ID may be stale or absent
 // (e.g. a Herdr restart renumbered panes, or launch-lane runs outside a pane).
 // A stale id silently hides the lane from its real parent in crew-watch
