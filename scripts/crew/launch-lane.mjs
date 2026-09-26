@@ -253,15 +253,28 @@ try {
   console.log(`[launch-lane] agent ${pane.agent} ready in ${pane.pane_id} (${pane.agent_status})`);
 
   // 4. Wait until the agent is idle before prompting, so the brief is not lost.
-  //    Re-resolve the pane on every tick and never prompt a stale pane or
-  //    interrupt a live lane: a vanished pane, or an agent still busy after the
-  //    timeout, is a hard failure the operator can act on.
+  //    Stay tied to the pane whose worktree we verified: a workspace can hold
+  //    several panes, so re-resolving by workspace could hand the brief to a
+  //    different checkout when the pane order changes. A vanished pane, a cwd
+  //    that no longer matches, or an agent still busy after the timeout is a
+  //    hard failure the operator can act on.
+  const requestedRootForPane = normalizePath(cwd);
+  const findVerifiedPane = () => {
+    const panes = herdr(["pane", "list"]).result.panes ?? [];
+    return panes.find((p) => p.pane_id === pane.pane_id);
+  };
   let idle = false;
   for (let i = 0; i < 30; i++) {
-    const current = pickPane(workspaceId);
+    const current = findVerifiedPane();
     if (!current) {
       fail(
-        `[launch-lane] pane for workspace ${workspaceId} disappeared while waiting for idle — not prompting`,
+        `[launch-lane] pane ${pane.pane_id} disappeared while waiting for idle — not prompting`,
+      );
+    }
+    const currentRoot = normalizePath(current.cwd);
+    if (!currentRoot || currentRoot !== requestedRootForPane) {
+      fail(
+        `[launch-lane] pane ${current.pane_id} now reports cwd ${current.cwd ?? "(unknown)"} instead of ${cwd} — not prompting`,
       );
     }
     pane = current;
