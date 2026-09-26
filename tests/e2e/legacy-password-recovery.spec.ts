@@ -2,6 +2,9 @@ import { expect, test, type Page } from "@playwright/test"
 
 import { seedLegacyPasswordUser } from "./helpers/db-seed"
 import { dismissUserJourneyTour, signIn } from "./helpers/session"
+import { databaseFixturesAvailable } from "./helpers/db-isolation"
+
+test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 
 // Serial + no retries: this spec mutates the seeded legacy user's password
 // (legacy → recovered), and the shared per-run DB would break the final
