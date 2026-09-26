@@ -418,7 +418,7 @@ export function getLicenseInfo(): LicenseInfo {
   return {
     edition: process.env.TUARI_LICENSE_EDITION ?? 'standard',
     features: (process.env.TUARI_LICENSE_FEATURES ?? '').split(',').filter(Boolean),
-    maxUsers: parseInt(process.env.TUARI_LICENSE_MAX_USERS ?? '1', 10),
+    maxUsers: parseInt(process.env.TUARI_LICENSE_MAX_USERS ?? '0', 10),
     customer: process.env.TUARI_LICENSE_CUSTOMER 
       ? JSON.parse(process.env.TUARI_LICENSE_CUSTOMER) 
       : null,
@@ -1095,7 +1095,7 @@ function getLicenseInfo(): LicenseInfo {
   return {
     edition: (process.env.TUARI_LICENSE_EDITION ?? 'standard') as LicenseInfo['edition'],
     features: (process.env.TUARI_LICENSE_FEATURES ?? '').split(',').filter(Boolean),
-    maxUsers: parseInt(process.env.TUARI_LICENSE_MAX_USERS ?? '1', 10),
+    maxUsers: parseInt(process.env.TUARI_LICENSE_MAX_USERS ?? '0', 10),
     customer: process.env.TUARI_LICENSE_CUSTOMER
       ? JSON.parse(process.env.TUARI_LICENSE_CUSTOMER)
       : null,
