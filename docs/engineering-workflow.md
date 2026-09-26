@@ -27,15 +27,12 @@ The old issue tracker was generated into ignored `tmp/issue-tracker.html` from
 - `.scratch/reviews/<issue-id>/`: review evidence;
 - local branches and cached refs: implementation material.
 
-Regenerate the ignored visual tracker without GitHub:
-
-```bash
-python tools/gen-issue-tracker.py --offline
-```
-
-Offline snapshot mode is the default. GitHub is contacted only when explicitly
-requested with `--refresh`; a successful live fetch then refreshes the durable
-local snapshot.
+The snapshot is the durable offline record; read it directly rather than
+regenerating anything. The former `tools/gen-issue-tracker.py` HTML generator was
+removed: it was the only Python in the repository, no script or CI step invoked
+it, and it duplicated the GitHub issue views while carrying its own escaping
+bugs. If a visual board is wanted again, build it in the repo's own toolchain
+(Node/TypeScript) so it runs in CI and can be tested.
 
 ## Feature lifecycle
 

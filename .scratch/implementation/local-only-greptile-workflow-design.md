@@ -13,8 +13,9 @@ not required or implied.
 - `docs/local-issue-snapshot.json` stores the durable 49-ticket title snapshot.
 - `docs/local-issue-status.md` records evidence-based shipped/local/unverified
   status and points to branches/commits.
-- `tools/gen-issue-tracker.py --offline` regenerates the ignored visual tracker
-  without calling GitHub.
+- ~~`tools/gen-issue-tracker.py --offline`~~ — REMOVED. The generator was the only
+  Python in the repo, nothing invoked it, and it duplicated GitHub's issue views;
+  `docs/local-issue-snapshot.json` is now read directly instead.
 - `feature-implement`, `engineering-workflow`, `guard`, and `code-review`
   select local refs/specs and local gates when offline.
 - `cli-review` is the single-review command; `greploop --local` iterates over
@@ -40,8 +41,9 @@ unresolved findings, or an equivalent explicit clean result.
 ## Planned validation
 
 - Parse and count the offline snapshot (49 unique tickets).
-- Run `python -m py_compile tools/gen-issue-tracker.py`.
-- Run `python tools/gen-issue-tracker.py --offline` and verify the generated
-  tracker reports 49 tickets.
+- ~~Run `python -m py_compile tools/gen-issue-tracker.py`~~ and
+  ~~`python tools/gen-issue-tracker.py --offline`~~ — both obsolete: the generator
+  was removed. Validate by parsing `docs/local-issue-snapshot.json` directly and
+  confirming it still holds 49 unique tickets.
 - Review the updated skills/docs for forbidden PR-comment/push requirements in
   local mode.
