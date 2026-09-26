@@ -27,6 +27,13 @@
 import { findE2eDatabase, loadDatabaseConstructor } from "./db-seed"
 
 /**
+ * False when the suite targets an externally managed API: there is no local
+ * database file for the direct-SQLite fixtures to reset or seed, so the specs
+ * that need one skip with a reason instead of failing mid-flow.
+ */
+export const databaseFixturesAvailable = process.env.E2E_API_MANAGED !== "0"
+
+/**
  * Transactional tables emptied by a reset, in FK-safe order. `foreign_keys`
  * is toggled OFF on the reset connection anyway, so order is belt-and-braces
  * for readers — the pragma is the guarantee.

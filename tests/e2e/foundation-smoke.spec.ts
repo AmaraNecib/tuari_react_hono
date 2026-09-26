@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test"
 
 import { BOOTSTRAP_SETUP_KEY } from "./helpers/session"
+import { apiBaseUrl } from "./helpers/urls"
 
 test.describe.configure({ mode: "serial" })
 
@@ -66,7 +67,7 @@ test("phase 1 shell signs in and keeps a collapsible fixed sidebar", async ({ pa
 })
 
 test("api health responds for the web shell", async ({ request }) => {
-  const response = await request.get("http://127.0.0.1:4318/health")
+  const response = await request.get(`${apiBaseUrl()}/health`)
 
   expect(response.ok()).toBe(true)
   await expect(response.json()).resolves.toMatchObject({ status: "ok" })
