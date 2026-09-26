@@ -88,6 +88,42 @@ test('CI/CD workflow files exist and have correct triggers', async () => {
   assert.match(beta, /Rust Core boundaries/);
 });
 
+test('publish workflows run the installer smoke test after packaging and before the upload', async () => {
+  const channels = [
+    { name: 'beta.yml', channel: 'beta', uploadMarker: 'gh release create' },
+    { name: 'release.yml', channel: 'stable', uploadMarker: 'softprops/action-gh-release' },
+    { name: 'nightly.yml', channel: 'nightly', uploadMarker: 'gh release create' },
+  ];
+
+  for (const { name, channel, uploadMarker } of channels) {
+    const source = await readRepoFile(path.join('.github/workflows', name));
+
+    // The gate must run the built artifact. An index of -1 means the workflow
+    // does not run it at all.
+    const smokeIndex = source.indexOf('scripts/smoke/installer-smoke.mjs');
+    assert.ok(smokeIndex !== -1, `${name} must run scripts/smoke/installer-smoke.mjs`);
+
+    // It must run after packaging (no rebuild) and before the release upload,
+    // or a non-starting installer can still be published.
+    const packageIndex = source.indexOf('portable:only');
+    assert.ok(packageIndex !== -1, `${name} should build the portable package`);
+    assert.ok(packageIndex < smokeIndex, `${name} must run the installer smoke test after packaging`);
+
+    const uploadIndex = source.indexOf(uploadMarker);
+    assert.ok(uploadIndex !== -1, `${name} should upload a release`);
+    assert.ok(smokeIndex < uploadIndex, `${name} must run the installer smoke test before the release upload`);
+
+    // It must point at the staged artifact the release uploads, not at a
+    // rebuild in the bundle directory.
+    assert.match(
+      source,
+      new RegExp(`tuari-\\$version-${channel}-portable\\.zip`),
+      `${name} must point the installer smoke test at the staged portable zip`,
+    );
+    assert.match(source, /--installer/, `${name} must pass the staged NSIS installer to the smoke test`);
+  }
+});
+
 test('workflow files do not embed a column-0 PowerShell here-string terminator', async () => {
   const workflowDir = path.join(rootDir, '.github/workflows');
   const entries = await readdir(workflowDir);

@@ -275,6 +275,20 @@ jobs:
             --version "${{ steps.manifest.outputs.version }}" `
             --channel stable
 
+      - name: Run installer smoke test
+        shell: pwsh
+        run: |
+          # Launch the staged portable build the way a customer does: extract
+          # the zip the release will upload, start Tuari.exe, wait for the API
+          # sidecar and /health, and confirm the database was written. This is
+          # the only gate that runs the built artifact. A build whose sidecar
+          # cannot start fails here, before the release exists.
+          $artifactsDir = "${{ steps.manifest.outputs.artifacts_dir }}"
+          $version = "${{ steps.manifest.outputs.version }}"
+          $zipPath = Join-Path $artifactsDir "tuari-$version-stable-portable.zip"
+          $installerPath = Join-Path $artifactsDir "tuari-$version-stable-setup.exe"
+          node scripts/smoke/installer-smoke.mjs --zip "$zipPath" --installer "$installerPath"
+
       # ── List staged artifacts ────────────────────────────
 
       - name: List staged artifacts
