@@ -99,6 +99,8 @@ mod license_signer_interop {
             "interop@example.com".into(),
             "--private-key".into(),
             dir.join("key.pem").to_str().unwrap().to_string(),
+            // Throwaway key: the CLI refuses non-production keys by default.
+            "--allow-nonproduction-key".into(),
         ];
         args.extend(extra_args.iter().map(|s| s.to_string()));
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();

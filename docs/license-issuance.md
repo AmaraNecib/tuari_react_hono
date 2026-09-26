@@ -40,16 +40,27 @@ node scripts/generate-license.mjs \
 
 Options: `--edition standard|professional|enterprise`, `--features` (comma
 separated), `--max-users` (non-negative integer; `0` = unlimited; anything
-non-numeric or negative is rejected before signing), `--license-type
-perpetual|subscription|trial`, `--valid-until <RFC 3339 or YYYY-MM-DD>`.
-`--valid-until` is required for `subscription` and `trial`; only `perpetual`
-may omit it. A bare date (`2027-01-01`) is normalised to `2027-01-01T00:00:00Z`,
-so the app never silently treats a time-limited license as perpetual.
+non-numeric, negative, or above 4294967295 is rejected before signing — the app
+stores seats in 32 bits, so a larger count would wrap to unlimited),
+`--license-type perpetual|subscription|trial`, `--valid-until <RFC 3339 or
+YYYY-MM-DD>`. `--valid-until` is required for `subscription` and `trial`; only
+`perpetual` may omit it. The date and time are validated before signing: a bare
+date (`2027-01-01`) is normalised to `2027-01-01T00:00:00Z`, and impossible
+dates (`2027-02-30`) or out-of-range times are rejected, so the app never
+silently treats a time-limited license as perpetual.
+
+The signer derives the public half of `--private-key` and refuses to issue
+unless it matches `EMBEDDED_PUBLIC_KEY`, the anchor compiled into the app. A
+license signed with any other key can never activate, so the mismatch fails
+before a file is produced. Tests and dev builds that genuinely need another key
+pass `--allow-nonproduction-key`; the runbook path never needs it.
 
 The output is the signed wire format the app verifies:
 `<base64url(payload JSON)>.<base64url(signature)>`. The license is the only
 thing printed to stdout, so `> customer.lic` (no `--output`) produces a file the
-app accepts; the human summary goes to stderr.
+app accepts; the human summary goes to stderr. `--output` writes the file with
+owner-only permissions (0600) because it carries the customer's name, email,
+and a transferable license value.
 
 ## Verifying a minted license before sending it
 
