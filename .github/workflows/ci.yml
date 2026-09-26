@@ -37,6 +37,7 @@ jobs:
       - run: pnpm check:unslop
       - run: pnpm test:prose
       - run: pnpm test:ci-scripts
+      - run: pnpm check:license-signer
 
   typecheck:
     name: Type Check
@@ -81,6 +82,10 @@ jobs:
           filters: |
             rust:
               - 'apps/desktop/src-tauri/**'
+              # The Node signer defines the wire format the Rust verifier
+              # enforces, so a signer-only change must re-run the Rust suite
+              # (tests/license_signer_interop.rs mints with it).
+              - 'scripts/generate-license.mjs'
             api:
               - 'apps/api/**'
               - 'packages/contracts/**'
@@ -149,13 +154,13 @@ jobs:
         with:
           workspaces: "apps/desktop/src-tauri"
 
-      - name: "Test Rust core (lib + integration)"
-        # The license/trust core gates what a customer can run, so it must be
-        # exercised in CI, not just linted. The Tauri system deps above are
-        # already installed for this job, and the cargo cache is warm.
+      - name: Install Node.js (signer interop test)
+        # tests/license_signer_interop.rs shells out to
+        # scripts/generate-license.mjs, so the Rust job needs Node in PATH.
         if: needs.detect.outputs.rust == 'true'
-        working-directory: apps/desktop/src-tauri
-        run: cargo test --lib --tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: "Verify tool versions"
         if: needs.detect.outputs.rust == 'true'
@@ -184,6 +189,9 @@ jobs:
           echo "PASSED: No forbidden imports found"
 
       - name: Test Rust Core
+        # The license/trust core gates what a customer can run, so this step
+        # runs the whole crate: lib unit tests, the integration suites
+        # (including the Node-signer→Rust-verifier interop test), and doctests.
         if: needs.detect.outputs.rust == 'true'
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 

@@ -695,6 +695,34 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// Optional operator check: point `LICENSE_UNDER_TEST` at a freshly minted
+    /// `.lic` file and this verifies it against the anchor compiled into the
+    /// app, exactly as the runtime does. It is skipped when the variable is
+    /// unset (CI has no vendor key); the signer→verifier interop test covers
+    /// that path automatically.
+    #[test]
+    fn verifies_license_under_test_when_provided() {
+        let path = match std::env::var("LICENSE_UNDER_TEST") {
+            Ok(path) if !path.trim().is_empty() => path,
+            _ => {
+                eprintln!(
+                    "LICENSE_UNDER_TEST not set — skipping the vendor-anchor check \
+                     (set it to a minted .lic path to verify a real issuance)"
+                );
+                return;
+            }
+        };
+
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read LICENSE_UNDER_TEST={path}: {e}"));
+        let manager = LicenseManager::with_keys(vec![EMBEDDED_PUBLIC_KEY]);
+        manager.activate(content.trim()).unwrap_or_else(|e| {
+            panic!(
+                "LICENSE_UNDER_TEST={path} does not verify against the embedded anchor: {e:?}"
+            )
+        });
+    }
+
     #[test]
     fn activate_accepts_valid_content() {
         let (signing_key, public_key) = generate_keypair();

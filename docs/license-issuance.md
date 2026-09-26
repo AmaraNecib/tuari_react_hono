@@ -19,8 +19,10 @@ anchor is a zeroed placeholder or the published RFC 8032 test vector — the val
 that shipped before 0.1.0, which would have let anyone mint a working license.
 
 **If the private key is lost**, no new licenses can be issued. Existing installs
-keep working; issuing again requires shipping a build with a new public key (or
-a key-rotation certificate signed by the current Root CA key).
+keep working. There is no recovery path that avoids touching customers: the
+Root CA used to sign rotation certificates *is* this same key, so a lost key
+cannot sign its own replacement. Recovery means shipping a build carrying a new
+public key.
 
 ## Mint a license
 
@@ -37,11 +39,36 @@ node scripts/generate-license.mjs \
 ```
 
 Options: `--edition standard|professional|enterprise`, `--features` (comma
-separated), `--max-users` (`0` = unlimited), `--license-type
-perpetual|subscription|trial`, `--valid-until <ISO 8601>` (omit for perpetual).
+separated), `--max-users` (non-negative integer; `0` = unlimited; anything
+non-numeric or negative is rejected before signing), `--license-type
+perpetual|subscription|trial`, `--valid-until <RFC 3339 or YYYY-MM-DD>`.
+`--valid-until` is required for `subscription` and `trial`; only `perpetual`
+may omit it. A bare date (`2027-01-01`) is normalised to `2027-01-01T00:00:00Z`,
+so the app never silently treats a time-limited license as perpetual.
 
 The output is the signed wire format the app verifies:
-`<base64url(payload JSON)>.<base64url(signature)>`.
+`<base64url(payload JSON)>.<base64url(signature)>`. The license is the only
+thing printed to stdout, so `> customer.lic` (no `--output`) produces a file the
+app accepts; the human summary goes to stderr.
+
+## Verifying a minted license before sending it
+
+Mint the file, then point `LICENSE_UNDER_TEST` at it and run the license tests:
+
+```bash
+cd apps/desktop/src-tauri
+LICENSE_UNDER_TEST=/path/to/customer-license.lic cargo test --lib
+```
+
+`verifies_license_under_test_when_provided` reads that file and verifies it
+against the public key compiled into the app, using the same code path the
+runtime uses. It fails if the minted file would not activate. Without the
+variable the test prints a skip note — CI has no vendor key.
+
+The signer's wire format is also pinned continuously: `tests/license_signer_interop.rs`
+mints with a throwaway keypair through `scripts/generate-license.mjs` and
+verifies the result with the Rust verifier. CI runs it whenever the signer or
+the Rust crate changes (`cargo test`).
 
 ## Customer activation
 
@@ -52,16 +79,3 @@ The output is the signed wire format the app verifies:
 
 A tampered or unsigned license is rejected with an invalid-signature error; the
 customer sees the activation failure instead of a silently unlicensed app.
-
-## Verifying a minted license before sending it
-
-The end-to-end check lives outside the repo (it needs a real license file):
-
-```bash
-# mint, then confirm the app's anchor accepts it
-cd apps/desktop/src-tauri
-LICENSE_UNDER_TEST=/path/to/customer-license.lic cargo test --lib
-```
-
-`cargo test --lib --tests` runs in CI, so the trust anchors and the wire format
-are covered on every change.
