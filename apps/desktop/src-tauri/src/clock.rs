@@ -21,12 +21,18 @@ use crate::error::RustCoreError;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const CLOCK_TOLERANCE_SECS: i64 = 86400; // 24 hours
 const GRACE_PERIOD_DAYS: i64 = 30;
 const TRACKER_FILE: &str = "clock-tracker.json";
 const ANCHOR_FILE: &str = "install-anchor.json";
+
+/// Monotonic counter that makes each staging file name unique within a
+/// process, so two concurrent writers never share one.
+static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Persisted clock state for tamper detection.
 ///
@@ -82,24 +88,66 @@ fn read_anchor(state_dir: &Path) -> Result<Option<InstallAnchor>, RustCoreError>
     }
 }
 
+/// Temporary sibling path used as the staging file for an atomic write.
+///
+/// Kept in the same directory as the target (so the rename cannot cross a
+/// volume) and tagged with the process id plus a per-write sequence (so two
+/// concurrent writers do not clobber each other's staging file).
+fn atomic_temp_path(path: &Path) -> Result<PathBuf, RustCoreError> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| RustCoreError::Internal("clock state path has no file name".to_string()))?;
+    let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    Ok(path.with_file_name(format!(
+        "{file_name}.{}.{sequence}.tmp",
+        std::process::id()
+    )))
+}
+
+/// Write `contents` to `path` crash-safely.
+///
+/// The data is staged in a temporary sibling file, flushed to disk, and then
+/// renamed over the target. A rename within the same directory is atomic on
+/// every supported platform, so a crash mid-write or a concurrent reader sees
+/// either the old complete file or the new complete file — never a truncated
+/// one. A failed write removes the staging file and leaves the target intact.
+fn write_atomic(path: &Path, contents: &str) -> Result<(), RustCoreError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| RustCoreError::IoError(Box::new(e)))?;
+    }
+
+    let temp_path = atomic_temp_path(path)?;
+    let staged = (|| -> std::io::Result<()> {
+        let mut file = fs::File::create(&temp_path)?;
+        file.write_all(contents.as_bytes())?;
+        file.sync_all()?;
+        Ok(())
+    })();
+
+    if let Err(e) = staged {
+        let _ = fs::remove_file(&temp_path);
+        return Err(RustCoreError::IoError(Box::new(e)));
+    }
+
+    fs::rename(&temp_path, path).map_err(|e| {
+        let _ = fs::remove_file(&temp_path);
+        RustCoreError::IoError(Box::new(e))
+    })
+}
+
 fn write_tracker(state_dir: &Path, tracker: &ClockTracker) -> Result<(), RustCoreError> {
     let path = state_dir.join(TRACKER_FILE);
     let json = serde_json::to_string(tracker)
         .map_err(|_| RustCoreError::Internal("clock tracker serialization failed".to_string()))?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| RustCoreError::IoError(Box::new(e)))?;
-    }
-    fs::write(&path, &json).map_err(|e| RustCoreError::IoError(Box::new(e)))
+    write_atomic(&path, &json)
 }
 
 fn write_anchor(state_dir: &Path, install_wall: i64) -> Result<(), RustCoreError> {
     let path = state_dir.join(ANCHOR_FILE);
     let json = serde_json::to_string(&InstallAnchor { install_wall })
         .map_err(|_| RustCoreError::Internal("install anchor serialization failed".to_string()))?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| RustCoreError::IoError(Box::new(e)))?;
-    }
-    fs::write(&path, &json).map_err(|e| RustCoreError::IoError(Box::new(e)))
+    write_atomic(&path, &json)
 }
 
 /// Resolve the earliest credible install timestamp from the durable anchor and
@@ -258,6 +306,12 @@ mod tests {
             serde_json::to_string(&InstallAnchor { install_wall }).unwrap(),
         )
         .unwrap();
+    }
+
+    /// Write arbitrary (possibly corrupt) bytes to a state file.
+    fn seed_raw(dir: &Path, file_name: &str, content: &str) {
+        fs::create_dir_all(dir).unwrap();
+        fs::write(dir.join(file_name), content).unwrap();
     }
 
     fn read_anchor(dir: &Path) -> InstallAnchor {
@@ -504,6 +558,122 @@ mod tests {
             aged,
             "the anchor must never be moved forward"
         );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn corrupt_anchor_fails_closed_and_does_not_restart_trial() {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let now = Utc::now().timestamp();
+        let aged = now - 100 * 86400;
+        // A legitimate aged install: the resettable tracker still holds the
+        // true install time. The anchor is truncated, as a crash mid-write
+        // would have left it before atomic writes.
+        seed_tracker(&dir, now, aged);
+        let corrupt = "{ \"install_wall\": ";
+        seed_raw(&dir, ANCHOR_FILE, corrupt);
+
+        let status = check_clock_consistency(&dir);
+        assert!(
+            matches!(status, Err(RustCoreError::InvalidFormat)),
+            "corrupt anchor must fail closed, got: {status:?}"
+        );
+        // Fail closed: no grace window and no silent trial restart.
+        assert!(grace_days_remaining(&dir).is_err());
+        assert!(!is_within_grace_period(&dir).unwrap_or(false));
+
+        // The corrupt file is left untouched — never silently rewritten with
+        // `now`, which is exactly what would restart the trial.
+        assert_eq!(fs::read_to_string(dir.join(ANCHOR_FILE)).unwrap(), corrupt);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn corrupt_tracker_fails_closed_as_before() {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let now = Utc::now().timestamp();
+        let aged = now - 100 * 86400;
+        seed_anchor(&dir, aged);
+        seed_raw(&dir, TRACKER_FILE, "not json at all");
+
+        assert!(matches!(
+            check_clock_consistency(&dir),
+            Err(RustCoreError::InvalidFormat)
+        ));
+        assert!(grace_days_remaining(&dir).is_err());
+        assert!(!is_within_grace_period(&dir).unwrap_or(false));
+
+        // The valid anchor is preserved and still readable.
+        assert_eq!(read_anchor(&dir).install_wall, aged);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn atomic_temp_path_is_unique_and_a_sibling_of_the_target() {
+        let dir = temp_dir();
+        let path = dir.join(ANCHOR_FILE);
+
+        let first = atomic_temp_path(&path).unwrap();
+        let second = atomic_temp_path(&path).unwrap();
+
+        assert_ne!(first, second, "concurrent writers must not share a staging file");
+        assert_eq!(first.parent(), path.parent(), "staging file must stay on the target volume");
+        assert_eq!(second.parent(), path.parent());
+        assert!(first.to_string_lossy().ends_with(".tmp"));
+    }
+
+    #[test]
+    fn atomic_write_replaces_target_and_leaves_no_staging_file() {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.json");
+        write_atomic(&path, "old-and-longer-content").unwrap();
+        write_atomic(&path, "new").unwrap();
+
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+            .map(|entry| entry.file_name())
+            .collect();
+        assert!(leftovers.is_empty(), "staging files left behind: {leftovers:?}");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn atomic_write_creates_missing_parent_directories() {
+        let base = temp_dir();
+        let path = base.join("nested").join("state").join(ANCHOR_FILE);
+
+        write_atomic(&path, "{\"install_wall\":0}").unwrap();
+
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"install_wall\":0}");
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn atomic_write_reports_failure_without_replacing_target_and_cleans_up() {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        // A directory can never be replaced by a file rename, so the final
+        // rename fails. The helper must surface the error and remove its
+        // staging file rather than leaving debris behind.
+        let path = dir.join("state.json");
+        fs::create_dir(&path).unwrap();
+
+        assert!(write_atomic(&path, "replacement").is_err());
+        assert!(path.is_dir(), "a failed write must not replace the target");
+
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+            .map(|entry| entry.file_name())
+            .collect();
+        assert!(leftovers.is_empty(), "staging files left behind: {leftovers:?}");
         fs::remove_dir_all(&dir).unwrap();
     }
 }
