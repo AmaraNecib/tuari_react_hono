@@ -15,9 +15,9 @@ on sibling branches and are marked `[in flight]`:
 | `[in flight]` | Present on `feat/license-enforcement` (PR #389) or `feat/license-sellable-anchor`; not yet in `develop`. |
 
 The capability tables (editions, feature map, license types, seats) describe the
-code on `develop`. The enforcement section (6) separates shipped behavior from
-the in-flight behavior, because that is where the buyer-facing promise and the
-code currently diverge.
+code on `develop`. Sections 4 and 6 separate shipped behavior from the in-flight
+behavior, because that is where the buyer-facing promise and the code currently
+diverge.
 
 ## 1. Editions
 
@@ -53,7 +53,7 @@ Authoritative map: `editionToMinEdition` in
 | `multi_user` | professional | More than one user account | No. `maxUsers` is displayed but never enforced (section 5). |
 | `advanced_reports` | professional | Advanced reporting | No consumer outside the feature enum and the min-edition map. |
 | `external_api` | professional | External API access | No consumer. The RPC API exists for the bundled UI, with no license gate and no API-key auth. |
-| `encrypted_db` | enterprise | SQLCipher-encrypted workspace database | **Yes.** The only flag that sets `APP_DB_KEY` (section 6c). |
+| `encrypted_db` | enterprise | SQLCipher-encrypted workspace database | **Yes.** The shell checks this feature flag, not the edition, before setting `APP_DB_KEY` (section 6c). |
 | `multi_site_sync` | enterprise | Multi-site data sync | No consumer. |
 | `audit_export` | enterprise | Export the audit log | No consumer. The audit log itself is ungated and available in every edition. |
 | `priority_support` | enterprise | Priority support | Process, not code. `docs/licensing-architecture.md:286` classifies it as "Support process (not code)". |
@@ -88,29 +88,38 @@ treated as perpetual (section 8, gap 5).
 ## 4. Runtime status states
 
 The shell computes a `LicenseStatus` (`apps/desktop/src-tauri/src/license.rs:37`,
-logic at `:412`) and serializes a coarser string into the API's environment as
-`TUARI_LICENSE_STATUS` (`apps/desktop/src-tauri/src/license.rs:502`, mapping at
-`:536` for a licensed install and `:557` for no license). The API reads that
-string as `LicenseInfo["status"]`
-(`apps/api/src/infrastructure/license.ts:34`).
+logic at `:412`) and exports the coarser `TUARI_LICENSE_STATUS` string only when
+`LicenseManager::initialize` succeeds (`apps/desktop/src-tauri/src/lib.rs:2052`,
+`apps/desktop/src-tauri/src/license.rs:502`, mapping at `:536` for a licensed
+install and `:557` for no license). The API reads that string, and when the
+variable is absent it falls back to `standard` / no features / `maxUsers 1` /
+`trial` (`apps/api/src/infrastructure/license.ts:36`, `:51`).
 
-| Env status (API sees) | Shell `LicenseStatus` | When it applies | Writes allowed |
-| --- | --- | --- | --- |
-| `active` | `Valid`, `Warning` | Licensed and before `validUntil` (or perpetual). `Warning` is the last 30 days before expiry. | Yes |
-| `trial` | `Grace` | No license file, within the 30-day post-install window. | Yes |
-| `grace` | `ExpiredGrace` | Licensed, past `validUntil`, within 30 days after it. | Read-only `[in flight]`; writable `[shipped]` (nothing refuses writes on `develop`, section 6a) |
-| `expired` | `Locked` (and the currently unreachable `Expired`) | Past `validUntil` + 30 days, or no license and the post-install window has closed. | No |
-| `inactive` | `NotYetActive` | Clock is before `validFrom`. | No |
-| `suspicious` | `Tampered` | Clock-tracker detects an inconsistency; also fails closed on tracker I/O errors. | No |
-| `unknown` | `Invalid` | No license and outside the post-install window, or the license failed verification. | No |
+| Env status (API sees) | Shell `LicenseStatus` | When it applies | Writes `[shipped]` | Writes `[in flight]` |
+| --- | --- | --- | --- | --- |
+| `active` | `Valid`, `Warning` | Licensed and before `validUntil` (or perpetual). `Warning` is the last 30 days before expiry. | Yes | Yes |
+| `trial` | `Grace` | No license file, within the 30-day post-install window. | Yes | Yes |
+| `grace` | `ExpiredGrace` | Licensed, past `validUntil`, within 30 days after it. | Yes | No (read-only) |
+| `expired` | `Locked` (and the currently unreachable `Expired`) | Licensed and past `validUntil` + 30 days. | Yes | No |
+| `inactive` | `NotYetActive` | Clock is before `validFrom`. | Yes | No |
+| `suspicious` | `Tampered` | A clock inconsistency seen by a manager that already initialized; `status()` also fails closed on tracker I/O errors (`:414`). A tamper at startup fails `initialize` instead (next row). | Yes | No |
+| `unknown` | `Invalid` | No license file and outside the post-install window (`:433` returns `Invalid`, `:562` maps it to `unknown`). | Yes | No |
+| `trial` (defaulted) | none; `initialize` returned `Err` | Bad signature, malformed license, I/O error, or a clock tamper at startup (`apps/desktop/src-tauri/src/license.rs:114`). The shell then sets no license vars (`apps/desktop/src-tauri/src/lib.rs:2051`) and the API falls back to `standard` / `trial` (`apps/api/src/infrastructure/license.ts:36`, `:51`). | Yes | Yes |
+
+The `[shipped]` write column is `develop` at this document's base: no license
+status refuses a write there. The `[in flight]` column is the PR #389 policy
+(section 6a).
 
 The 30-day post-install window is `GRACE_PERIOD_DAYS = 30`
 (`apps/desktop/src-tauri/src/clock.rs:19`, check at `:131`). The 30-day
 post-expiry window is an inline `chrono::Duration::days(30)`
 (`apps/desktop/src-tauri/src/license.rs:452`).
 
-Clock tampering is checked before anything else and overrides all other states
-(`apps/desktop/src-tauri/src/license.rs:414`). When there is no license file,
+Clock tampering is checked before any other status, but only after `initialize`
+succeeds: `initialize` runs the same check and returns `ClockTampered`
+(`apps/desktop/src-tauri/src/license.rs:114`), so a tampered clock at startup
+never reaches this table. Inside `status()` the check overrides every other state
+(`apps/desktop/src-tauri/src/license.rs:414`). When no license file is present,
 `TUARI_LICENSE_EDITION` is `standard` and `TUARI_LICENSE_MAX_USERS` is `1`
 (`apps/desktop/src-tauri/src/license.rs:549`).
 
@@ -200,8 +209,9 @@ the desktop shell enforces it:
   throws rather than opening an unencrypted database
   (`apps/api/src/infrastructure/database/factory.ts:29`).
 
-Without `encrypted_db`, the workspace opens a plain, unencrypted SQLite file.
-That is the entire practical difference the license makes today.
+Without `encrypted_db`, the workspace opens a plain, unencrypted SQLite file,
+regardless of edition. That is the entire practical difference the license makes
+today.
 
 ## 7. What a buyer gets per tier
 
@@ -215,20 +225,27 @@ but no code checks it, so any edition currently gets the capability.
 | More than one user account | Per license (`maxUsers`), not tied to the edition in code | Per license | Per license | Yes. Seats are never counted. |
 | Advanced reports | No | Intended | Intended | Yes. |
 | External API access | No | Intended | Intended | Yes. |
-| Encrypted workspace database | No | No | Yes | **No, this one is enforced** by the shell (6c). |
+| Encrypted workspace database | Feature `encrypted_db` only | Feature `encrypted_db` only | Feature `encrypted_db` only | **No, this one is enforced** by the shell (6c). |
 | Multi-site sync | No | No | Intended | Yes. No sync code exists. |
 | Audit-log export | No | No | Intended | Yes. The audit log itself is ungated. |
 | Priority support | No | No | Yes | Not code; a support commitment. |
 
-Two honest caveats for sales:
+Caveats for sales:
 
 1. Until the edition/feature gates have callers, a standard license runs the
    full unencrypted product. The only capability the license actually withholds
-   today is database encryption.
-2. The `grace` window is read-only `[in flight]`. On `develop` it is fully
+   today is database encryption, and only when the license does not carry the
+   `encrypted_db` feature.
+2. Encryption follows the `encrypted_db` feature on the signed license, not the
+   edition. `editionToMinEdition` states the minimum edition the feature implies
+   (`apps/api/src/infrastructure/license.ts:83`); the shell checks
+   `has_feature("encrypted_db")` (`apps/desktop/src-tauri/src/lib.rs:2058`). An
+   Enterprise license without the feature opens a plain database, and a
+   Professional license that carries it enables encryption.
+3. The `grace` window is read-only `[in flight]`. On `develop` it is fully
    writable, so "read-only after expiry" cannot be promised until PR #389
    lands.
-3. The seat counts in the architecture doc's matrix (1 / 10 / unlimited at
+4. The seat counts in the architecture doc's matrix (1 / 10 / unlimited at
    `docs/licensing-architecture.md:272`) are not in the code. `maxUsers` comes
    from the license payload, and nothing enforces it.
 
