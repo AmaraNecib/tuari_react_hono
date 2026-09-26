@@ -2005,6 +2005,47 @@ fn wait_for_api_ready(child: &mut Child, server_log_path: &Path) -> Result<(), S
     }
 }
 
+/// Map a `LicenseManager::initialize` failure to the `TUARI_LICENSE_STATUS`
+/// string the API sidecar understands (see
+/// `apps/api/src/infrastructure/license.ts::LICENSE_STATUSES`).
+///
+/// `ClockTampered` is the only failure the shell can attribute to a specific
+/// cause, so it is the only one that becomes `suspicious` (the API's message
+/// tells the user to correct the system clock). Every other failure — a
+/// malformed, tampered, or unreadable `license.lic`, a crypto error, an IO
+/// error — is an opaque verification failure and fails closed as `unknown`,
+/// matching the API's default for a missing value. #399.
+fn license_status_for_error(error: &crate::error::RustCoreError) -> &'static str {
+    match error {
+        crate::error::RustCoreError::ClockTampered { .. } => "suspicious",
+        _ => "unknown",
+    }
+}
+
+/// Structured `TUARI_LICENSE_*` env block emitted when
+/// `LicenseManager::initialize` fails.
+///
+/// Mirrors the neutral defaults `getLicenseInfo` assumes when a variable is
+/// absent (`standard` edition, no features, unlimited seats, no customer, no
+/// expiry) so the sidecar sees the same shape it already handles — but sets
+/// `TUARI_LICENSE_STATUS` explicitly to the failure reason instead of leaving
+/// it unset. Before #399 the whole block was omitted on this path, so a corrupt
+/// `license.lic` and a tampered clock both surfaced as an opaque
+/// "license not verified" lock.
+fn license_failure_env_map(error: &crate::error::RustCoreError) -> HashMap<String, String> {
+    HashMap::from([
+        ("TUARI_LICENSE_EDITION".to_string(), "standard".to_string()),
+        ("TUARI_LICENSE_FEATURES".to_string(), String::new()),
+        ("TUARI_LICENSE_MAX_USERS".to_string(), "0".to_string()),
+        ("TUARI_LICENSE_CUSTOMER".to_string(), "null".to_string()),
+        ("TUARI_LICENSE_EXPIRES_AT".to_string(), String::new()),
+        (
+            "TUARI_LICENSE_STATUS".to_string(),
+            license_status_for_error(error).to_string(),
+        ),
+    ])
+}
+
 fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
     let attachments_root = resolve_attachments_root(&app_db_path);
@@ -2091,16 +2132,27 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         );
     }
 
-    // Set structured license env vars for the API sidecar per Licensing Architecture §15.5
+    // Set structured license env vars for the API sidecar per Licensing Architecture §15.5.
+    // #399: on an initialization failure the block is still emitted, with an
+    // explicit status (clock -> "suspicious", everything else -> "unknown"), so
+    // the API and support can tell WHY licensing failed instead of seeing an
+    // omitted variable. The API keeps its own fail-closed default regardless.
     if let Ok(tuari_dir) = resolve_tuari_dir(app) {
-        if let Ok(manager) = crate::license::LicenseManager::initialize(&tuari_dir) {
-            let env_map = manager.to_env_map();
-            for (key, value) in &env_map {
-                command.env(key, value);
+        match crate::license::LicenseManager::initialize(&tuari_dir) {
+            Ok(manager) => {
+                let env_map = manager.to_env_map();
+                for (key, value) in &env_map {
+                    command.env(key, value);
+                }
+                // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
+                if manager.has_feature("encrypted_db") {
+                    command.env("APP_DB_KEY", runtime_secrets.app_db_key);
+                }
             }
-            // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
-            if manager.has_feature("encrypted_db") {
-                command.env("APP_DB_KEY", runtime_secrets.app_db_key);
+            Err(error) => {
+                for (key, value) in license_failure_env_map(&error) {
+                    command.env(key, value);
+                }
             }
         }
     }
@@ -2224,6 +2276,7 @@ mod tests {
         copy_allowlisted_legacy_runtime_files_if_missing, encode_secret,
         has_portable_runtime_layout, is_allowed_desktop_bridge_path,
         is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
+        license_failure_env_map, license_status_for_error,
         load_or_create_secret, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
         complete_db_key_rotation_in_store, restore_db_key_in_store, rotate_db_key_in_store,
@@ -2237,12 +2290,114 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+    use crate::error::RustCoreError;
+
     fn unique_temp_dir() -> PathBuf {
         let unique_suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system time before unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("tuari-runtime-secrets-{unique_suffix}"))
+    }
+
+    #[test]
+    fn maps_every_initialize_failure_to_an_explicit_license_status() {
+        // The two categories from #399: clock inconsistency is the one failure
+        // the shell can attribute (`suspicious`); every other failure is an
+        // opaque verification failure that fails closed as `unknown`.
+        let cases: Vec<(RustCoreError, &str)> = vec![
+            (
+                RustCoreError::ClockTampered {
+                    estimated_time: chrono::Utc::now(),
+                    reason: "system clock moved backwards".to_string(),
+                },
+                "suspicious",
+            ),
+            (RustCoreError::InvalidFormat, "unknown"),
+            (RustCoreError::InvalidPayload, "unknown"),
+            (RustCoreError::InvalidSignature, "unknown"),
+            (RustCoreError::LicenseFileNotFound, "unknown"),
+            (RustCoreError::Expired, "unknown"),
+            (
+                RustCoreError::CryptoError("verify failed".to_string()),
+                "unknown",
+            ),
+            (RustCoreError::Internal("unexpected".to_string()), "unknown"),
+            (
+                RustCoreError::ActivationFailed("bad key".to_string()),
+                "unknown",
+            ),
+            (
+                RustCoreError::InsufficientDiskSpace {
+                    required: 10,
+                    available: 1,
+                },
+                "unknown",
+            ),
+            (
+                RustCoreError::IoError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "license.lic is unreadable",
+                ))),
+                "unknown",
+            ),
+        ];
+
+        for (error, expected) in cases {
+            assert_eq!(
+                license_status_for_error(&error),
+                expected,
+                "unexpected status for {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn failed_init_env_map_contains_an_explicit_status_not_an_omitted_block() {
+        // A corrupt license.lic: previously the whole TUARI_LICENSE_* block was
+        // dropped, so the API saw no status at all. It must now be present,
+        // explicit, and non-blank.
+        let error = RustCoreError::InvalidFormat;
+        let env_map = license_failure_env_map(&error);
+
+        let status = env_map
+            .get("TUARI_LICENSE_STATUS")
+            .expect("failure env map must set TUARI_LICENSE_STATUS explicitly");
+        assert!(!status.trim().is_empty(), "status must not be blank");
+        assert_eq!(status, "unknown");
+
+        // The rest of the block carries the neutral defaults the API already
+        // assumes when a variable is absent (getLicenseInfo).
+        assert_eq!(
+            env_map.get("TUARI_LICENSE_EDITION").map(String::as_str),
+            Some("standard")
+        );
+        assert_eq!(
+            env_map.get("TUARI_LICENSE_FEATURES").map(String::as_str),
+            Some("")
+        );
+        assert_eq!(
+            env_map.get("TUARI_LICENSE_MAX_USERS").map(String::as_str),
+            Some("0")
+        );
+        assert_eq!(
+            env_map.get("TUARI_LICENSE_CUSTOMER").map(String::as_str),
+            Some("null")
+        );
+        assert_eq!(
+            env_map.get("TUARI_LICENSE_EXPIRES_AT").map(String::as_str),
+            Some("")
+        );
+
+        // A tampered clock is the one failure that is attributed, not opaque.
+        let clock_map = license_failure_env_map(&RustCoreError::ClockTampered {
+            estimated_time: chrono::Utc::now(),
+            reason: "clock moved backwards".to_string(),
+        });
+        assert_eq!(
+            clock_map.get("TUARI_LICENSE_STATUS").map(String::as_str),
+            Some("suspicious")
+        );
     }
 
     #[test]
