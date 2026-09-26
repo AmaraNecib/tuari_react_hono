@@ -45,6 +45,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import { resolveLaneModel, reusedAgentPinNotice } from "./lane-model.mjs";
+
 const [, , label, cwd, brief] = process.argv;
 const safeLabel = String(label || "lane").replace(/[^a-zA-Z0-9._-]/g, "_");
 
@@ -252,8 +254,20 @@ try {
     const p = pickPane(workspaceId);
     return p && p.agent_status && p.agent_status !== "unknown" && p.agent;
   };
-  if (!agentReady()) {
-    execFileSync("herdr", ["pane", "run", pane.pane_id, "pi"], { stdio: "inherit" });
+  // PI_LANE_MODEL pins the lane's model. It is an opt-in: unset means the pane
+  // inherits the operator's pi default (this launcher must stay zero-config in
+  // any repo), and set means the lane runs on exactly that model. Lanes have
+  // died instantly on a model the account cannot use ("Codex error: The model
+  // gpt-5.5 does not exist"), so pinning is the documented remedy — but the
+  // launcher must not invent a model on the operator's behalf.
+  const { pinned: pinnedModel, command: piCommand } = resolveLaneModel();
+  // Whether the pin could be applied is decided here, before the launch: an
+  // agent that was already running keeps its model, and only that case may warn.
+  const reusedAgent = agentReady();
+  if (!reusedAgent) {
+    execFileSync("herdr", ["pane", "run", pane.pane_id, piCommand], { stdio: "inherit" });
+    if (pinnedModel) console.log(`[launch-lane] starting pi with --model ${pinnedModel}`);
+    else console.log("[launch-lane] PI_LANE_MODEL is not set; pi starts with your configured default");
     console.log("[launch-lane] started pi agent, waiting for detection...");
     for (let i = 0; i < 30; i++) {
       if (agentReady()) break;
@@ -264,6 +278,13 @@ try {
     }
     pane = pickPane(workspaceId);
   }
+  // A reused agent is already running, so the pin cannot be applied to it.
+  // Silently ignoring it would let the operator believe the lane runs on the
+  // pinned model when it does not — but a fresh launch DID get the pin, so
+  // warning there would be a lie in the other direction. Both conditions are
+  // part of the helper so the decision stays unit-tested.
+  const pinNotice = reusedAgentPinNotice(pinnedModel, reusedAgent);
+  if (pinNotice) console.warn(pinNotice);
   console.log(`[launch-lane] agent ${pane.agent} ready in ${pane.pane_id} (${pane.agent_status})`);
 
   // 4. Wait until the agent is idle before prompting, so the brief is not lost.
