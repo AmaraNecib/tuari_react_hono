@@ -85,14 +85,20 @@ With `encrypted_db`, the key normally lives in the Windows Credential Manager
 (service `com.tuari.desktop.secrets`, account `app-db.key`). When the OS
 credential store is unavailable, the app writes the same key to
 `%APPDATA%\com.tuari.desktop\runtime\secrets\app-db.key` instead — outside the
-`Tuari` data directory. So:
+data directory, and under `%APPDATA%` even for a portable build. So:
 
-- Copying `Tuari` alone is **not** a restorable backup. On a new Windows profile,
-  or after the key is lost, the app generates a fresh key at startup and cannot
-  open the restored database.
-- A complete backup is the whole `%APPDATA%\com.tuari.desktop` folder (which also
-  holds `runtime\secrets`) **plus** the credential entry when the key is in the
-  Credential Manager — export it, or keep the original Windows profile.
+- Copying the data directory alone is **not** a restorable backup. On a new
+  Windows profile, or after the key is lost, the app generates a fresh key at
+  startup and cannot open the restored database.
+- A complete backup is the data directory above **plus** the key:
+  - On a **normal install**, back up the whole `%APPDATA%\com.tuari.desktop`
+    folder. It holds both the data (`Tuari`) and the fallback key
+    (`runtime\secrets`).
+  - On a **portable build**, back up `<install folder>\data` **and**
+    `%APPDATA%\com.tuari.desktop\runtime\secrets`, because the data is portable
+    but the fallback key is not.
+  - When the key is in the Credential Manager, export the credential entry (or
+    keep the original Windows profile) instead of relying on the fallback file.
 - Restoring after the key is lost is **not supported by the app today** (there is
   no screen to supply a key before the database opens); contact support.
 
