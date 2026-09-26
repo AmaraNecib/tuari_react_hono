@@ -34,14 +34,19 @@ describe("resolveLaneModel", () => {
 
 describe("reusedAgentPinNotice", () => {
   it("warns that the pin was not applied when an agent is reused", () => {
-    const notice = reusedAgentPinNotice("opencode-go/x");
+    const notice = reusedAgentPinNotice("opencode-go/x", true);
     expect(notice).toContain("PI_LANE_MODEL=opencode-go/x");
     expect(notice).toContain("NOT applied");
     // The operator needs the way out, not just the problem.
     expect(notice).toContain("Close the workspace and relaunch");
   });
 
+  it("stays silent on a fresh launch, where the pin really was applied", () => {
+    expect(reusedAgentPinNotice("opencode-go/x", false)).toBeNull();
+  });
+
   it("stays silent when no pin was requested", () => {
-    expect(reusedAgentPinNotice(null)).toBeNull();
+    expect(reusedAgentPinNotice(null, true)).toBeNull();
+    expect(reusedAgentPinNotice(null, false)).toBeNull();
   });
 });

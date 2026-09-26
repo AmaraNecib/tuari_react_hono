@@ -29,13 +29,15 @@ export function resolveLaneModel(env = process.env) {
 /**
  * The pin cannot be applied to an agent that is already running: `--model` is
  * a launch argument. Say so instead of letting the operator believe the pin
- * took effect.
+ * took effect. A FRESH launch did get the pin, so it must not warn — that
+ * would be a false alarm on the common path.
  *
  * @param {string | null} pinned
+ * @param {boolean} reused whether the lane reused an already-running agent
  * @returns {string | null} a warning line, or null when there is nothing to warn about
  */
-export function reusedAgentPinNotice(pinned) {
-  if (!pinned) return null;
+export function reusedAgentPinNotice(pinned, reused) {
+  if (!pinned || !reused) return null;
   return (
     `[launch-lane] PI_LANE_MODEL=${pinned} was NOT applied: this lane reuses an agent that is already running, ` +
     `and --model only takes effect at launch. Close the workspace and relaunch to pin the model, or unset ` +
