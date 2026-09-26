@@ -374,7 +374,7 @@ Environments are configured via the GitHub UI under Settings > Environments.
 
 ### 12.6 CI Runners & Caching
 
-CI (`ci.yml`) runs on **self-hosted Linux runners** (`runner-1` / `runner-2`, systemd services running as the `github` user on the CI VPS). The release-flavored workflows stay on **GitHub-hosted** runners — `windows-latest` for the release builds (`beta.yml`, `nightly.yml`, `release.yml`) and `ubuntu-latest` for `release-metadata.yml`. On the self-hosted runners, tools are provisioned per-run by the setup actions and caches are keyed by `actions/cache`:
+CI (`ci.yml`) runs on **GitHub-hosted runners**: every job uses `ubuntu-latest`, including the Rust job, which installs `libwebkit2gtk-4.1-dev` via `apt-get` when the runner lacks it, and the E2E job, which installs Chromium with `playwright install --with-deps`. The release-flavored workflows are GitHub-hosted as well — `windows-latest` for the release builds (`beta.yml`, `nightly.yml`, `release.yml`) and `ubuntu-latest` for `release-metadata.yml`. Tools are provisioned per-run by the setup actions and caches are keyed by `actions/cache`:
 
 - **pnpm store:** `actions/setup-node` with `cache: pnpm` — keyed on `pnpm-lock.yaml`
 - **Rust/Cargo:** `Swatinem/rust-cache` scoped to `apps/desktop/src-tauri`

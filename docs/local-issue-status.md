@@ -37,15 +37,15 @@ evidence, and the cached `origin/develop` ref (`6a678c0`).
 | 271 | i18n: 69 raw-key calls, resource drift, and CI key check | **Base shipped; local follow-up remains** | `bb144f3` is in cached `origin/develop`; `refactor/issue-271-i18n-resources` has later source/evidence work. |
 | 275 | A11y semantics and focus traps for four custom modals | **Base shipped; local follow-up remains** | `b182705` is cached; `refactor/issue-275-tour-a11y` has later test/review work. |
 | 282 | Web hygiene and production HTML/dependency cleanup | **Base shipped; local follow-up remains** | `3d4ebd1` is cached; `refactor/issue-282-web-hygiene` has later hygiene/test polish. |
-| 214 | Thin the transport seam | **No issue-specific local evidence** | No issue branch/design/review evidence found. Parent/map context: #211. |
+| 214 | Thin the transport seam | **Implemented and reviewed locally; not shipped in cached `develop`** | Design + review evidence ships with the recovery-line port stack (`.scratch/implementation/214-design.md`, `.scratch/reviews/214/`). |
 | 230 | Reject whitespace-only passwords | **Base shipped; local follow-up remains** | `24b8aa3` is cached; `refactor/issue-230-whitespace-pw` has the reviewed boundary/E2E follow-up. |
 | 232 | Adapter-level company transaction tests | **Implemented and reviewed locally; not shipped** | `refactor/issue-232-tx-tests` has implementation and review evidence; its test changes are not in cached `origin/develop`. |
 | 241 | One transport branch for desktop/browser | **No issue-specific local evidence** | No issue branch/design/review evidence found. Parent/map context: #235. |
-| 242 | Reports should stop returning dashboard stubs | **No issue-specific local evidence** | No issue branch/design/review evidence found. Parent/map context: #235. |
-| 243 | Collapse table primitive families | **No issue-specific local evidence** | No issue branch/design/review evidence found. Parent/map context: #235. |
+| 242 | Reports should stop returning dashboard stubs | **Implemented and reviewed locally; not shipped in cached `develop`** | Design + review evidence ships with the recovery-line port stack (`.scratch/implementation/242-design.md`, `.scratch/reviews/242/`). |
+| 243 | Collapse table primitive families | **Implemented and reviewed locally; not shipped in cached `develop`** | Design + review evidence ships with the recovery-line port stack (`.scratch/implementation/243-design.md`, `.scratch/reviews/243/`). |
 | 244 | One source of truth for the workspace page union | **No issue-specific local evidence** | No issue branch/design/review evidence found. Parent/map context: #235. |
 | 247 | Recovery-key RPC wire tests | **Base shipped; local follow-up remains** | Equivalent passthrough merge `abf769a` is cached; `refactor/issue-247-rpc-wire-tests` has additional boundary tests/evidence. |
-| 259 | Config-module deferred coverage branches | **No issue-specific local evidence** | No issue branch/design/review evidence found. Inspect config coverage before starting. |
+| 259 | Config-module deferred coverage branches | **Implemented and reviewed locally; not shipped in cached `develop`** | Design + review evidence ships with the recovery-line port stack (`.scratch/implementation/259-design.md`, `.scratch/reviews/259/`). |
 | 263 | Employee-create role validation mismatch | **Base shipped; local follow-up remains** | `96a5eca` is cached; `refactor/issue-263` contains the reviewed E2E/admin-guard follow-up. |
 | 265 | Rekey persistence, graceful shutdown, schema executor | **Base shipped; local follow-up remains** | `d3ea907` is cached; `fix/issue-265-rpc-restore` contains later rekey failure handling and review evidence. |
 | 277 | Move debt sign helpers to contracts | **Base shipped; local follow-up remains** | `8800f9a` is cached; `refactor/issue-277` contains the reviewed negative-balance test round. |
@@ -59,7 +59,7 @@ evidence, and the cached `origin/develop` ref (`6a678c0`).
 | 307 | Type-safe `WorkspaceDomain` invalidation map | **Base shipped; local follow-up remains** | `6481df9` is cached; `refactor/issue-307` contains the reviewed compile-time probe follow-up. |
 | 312 | Convert remaining UI px values to rem | **No issue-specific local evidence** | No issue branch/design/review evidence found. Follow-up from #282; scope must be re-audited locally. |
 | 183 | Server-side search/filter for cursor lists | **Base/equivalent shipped; local follow-up remains** | Related search merge `37a4de0` is cached; `refactor/issue-183-search-filter` contains additional search/test work. |
-| 217 | Deepen dashboard view-model seam | **No issue-specific local evidence** | No issue branch/design/review evidence found. Parent/map context: #211. |
+| 217 | Deepen dashboard view-model seam | **Implemented and reviewed locally; not shipped in cached `develop`** | Design + review evidence ships with the recovery-line port stack (`.scratch/implementation/217-design.md`, `.scratch/reviews/217/`). |
 | 228 | Remove/rename the no-op recovery-key E2E claim | **Implemented and reviewed locally; not shipped** | `refactor/issue-228-recovery-e2e` has the reviewed test rename/documentation fix; no equivalent change is in cached `origin/develop`. |
 | 229 | Add `findKeyById` to RecoveryKeyPort | **No issue-specific local evidence** | No issue branch/design/review evidence found. Deferred from #195. |
 | 234 | Reject zero-width/format characters in key inputs | **Base shipped; local follow-up remains** | `3c14490` is cached; `refactor/issue-234` contains later contract/wire-test evidence. |

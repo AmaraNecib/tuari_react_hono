@@ -1,15 +1,15 @@
 # Engineering Workflow
 
-This document is the canonical lifecycle for Tuari changes. It supports both a
-normal remote repository and the current **local-only recovery mode**. The
-local mode is the default while the GitHub repository is unavailable.
+This document is the canonical lifecycle for Tuari changes. It supports the
+normal remote repository (**the default**) and a **local-only fallback** for
+when the GitHub repository is genuinely unreachable or the user asks for it.
 
 ## Repository modes
 
 | Mode | Source of truth | Allowed review transport | Finish state |
 | --- | --- | --- | --- |
-| **Local-only** (current) | Current checkout, local branches/worktrees, cached refs, `docs/local-issue-status.md` | Greptile CLI (`greptile review --json`) | Locally verified and ready for later integration; never "merged" or "closed" |
-| Remote | Fresh `develop`, issue/PR data, CI | PR/CI plus Greptile CLI or hosted review | Ready/merged only when the user authorizes the remote lifecycle |
+| **Remote** (default) | Fresh `develop`, issue/PR data, CI | PR/CI plus Greptile CLI or hosted review | PR opened/updated; merged only when the user authorizes it |
+| Local-only (fallback) | Current checkout, local branches/worktrees, cached refs, `docs/local-issue-status.md` | Greptile CLI (`greptile review --json`) | Locally verified and ready for later integration; never "merged" or "closed" |
 
 Selecting local-only mode is not a downgrade in code quality. It removes the
 GitHub transport dependency while retaining the local tests, two-axis review,
