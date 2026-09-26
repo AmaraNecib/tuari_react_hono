@@ -34,9 +34,14 @@ jobs:
       # ── Branch guard: verify tag is an ancestor of main ──
       - name: Verify tag is on main branch
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git fetch origin main
-          git merge-base --is-ancestor HEAD origin/main
+          # Checkout runs with persist-credentials: false, so it leaves no git
+          # credentials for this step. Fetch main with a token scoped to this
+          # step only, and compare against FETCH_HEAD.
+          git fetch --no-tags "https://x-access-token:$env:GH_TOKEN@github.com/${{ github.repository }}.git" main
+          git merge-base --is-ancestor HEAD FETCH_HEAD
           if ($LASTEXITCODE -ne 0) {
             Write-Host "Tag ${{ github.ref_name }} is not an ancestor of main — aborting release."
             exit 1
@@ -130,13 +135,10 @@ jobs:
             echo "has_production_keys=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           } else {
             Write-Host "No production secrets configured — generating temporary CI signing key pair"
-            $nodeScript = @'
-            const crypto = require("node:crypto");
-            const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
-            process.stdout.write(privateKey.export({ type: "pkcs8", format: "pem" }));
-            process.stdout.write("---SEPARATOR---");
-            process.stdout.write(publicKey.export({ type: "spki", format: "pem" }));
-'@
+            # Keep the program on one line: a PowerShell here-string terminator
+            # must sit at column 0, which would end this YAML block scalar early
+            # and make the whole workflow file unparseable.
+            $nodeScript = 'const crypto = require("node:crypto"); const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519"); process.stdout.write(privateKey.export({ type: "pkcs8", format: "pem" })); process.stdout.write("---SEPARATOR---"); process.stdout.write(publicKey.export({ type: "spki", format: "pem" }));'
             $result = node -e $nodeScript
             $parts = $result -split "---SEPARATOR---"
             $parts[0] | Out-File -FilePath (Join-Path $env:RUNNER_TEMP "signing-key.pem") -Encoding ascii -NoNewline
