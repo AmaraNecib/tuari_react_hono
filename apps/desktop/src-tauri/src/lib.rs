@@ -177,6 +177,37 @@ fn is_api_sidecar_command_line(command_line: &str) -> bool {
         .all(|marker| lower.contains(marker))
 }
 
+/// Strips the Windows extended-length ("verbatim") path prefix.
+///
+/// Tauri's `resource_dir()` returns `\\?\`-prefixed paths on Windows. The
+/// prefix is fine for `CreateProcess` (the executable loads), but the bundled
+/// Node runtime cannot resolve a main script whose argument carries it: the
+/// CommonJS loader fails with `EISDIR: illegal operation on a directory,
+/// lstat 'C:'` before any JavaScript runs.
+///
+/// `\\?\UNC\server\share` maps back to `\\server\share`; every other
+/// `\\?\`-prefixed path drops the prefix. Paths without the prefix are
+/// returned unchanged, so this is a no-op on POSIX and on already-plain
+/// Windows paths.
+fn strip_windows_extended_path_prefix(path: &str) -> String {
+    const VERBATIM_PREFIX: &str = r"\\?\";
+
+    let Some(rest) = path.strip_prefix(VERBATIM_PREFIX) else {
+        return path.to_string();
+    };
+
+    // `\\?\UNC\server\share` is the verbatim spelling of `\\server\share`.
+    // Windows paths are case-insensitive, so accept `unc\` too.
+    if rest
+        .get(..4)
+        .is_some_and(|head| head.eq_ignore_ascii_case(r"UNC\"))
+    {
+        return format!(r"\\{}", &rest[4..]);
+    }
+
+    rest.to_string()
+}
+
 // Rust Core module declarations
 pub mod error;
 pub mod crypto;
@@ -2013,7 +2044,9 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         let sidecar_path = runtime_dir.join("dist").join("index.cjs");
 
         let mut cmd = Command::new(node_path);
-        cmd.arg(sidecar_path);
+        cmd.arg(strip_windows_extended_path_prefix(
+            &sidecar_path.to_string_lossy(),
+        ));
         cmd.current_dir(runtime_dir);
         cmd
     };
@@ -2037,6 +2070,17 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .env("DATABASE_URL", to_sqlite_url(&app_db_path))
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(error_log_file));
+
+    // The bundled Node runtime needs `SystemRoot`: Node seeds its OpenSSL CSPRNG
+    // from the Windows security provider through that path, and `env_clear()`
+    // above removes it. Without it Node aborts during startup with
+    // `Assertion failed: ncrypto::CSPRNG(nullptr, 0)` and the sidecar dies
+    // before it can bind the API port. `windir`, `PATH`, and `TEMP` were each
+    // tested and made no difference; see scripts/smoke/sidecar-env-repro.ps1.
+    #[cfg(target_os = "windows")]
+    if let Ok(system_root) = std::env::var("SystemRoot") {
+        command.env("SystemRoot", system_root);
+    }
 
     // Point the API sidecar at the user-editable config.json (may not exist
     // yet — the API treats a missing file as "use env/defaults").
@@ -2183,7 +2227,8 @@ mod tests {
         load_or_create_secret, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
         complete_db_key_rotation_in_store, restore_db_key_in_store, rotate_db_key_in_store,
-        should_force_reveal_main_window, AppReadyState, DesktopApiBridgeError,
+        should_force_reveal_main_window, strip_windows_extended_path_prefix,
+        AppReadyState, DesktopApiBridgeError,
         DESKTOP_API_BRIDGE_ERROR_KIND, APP_DB_KEY_ACCOUNT,
         BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
         SecretStore, clear_app_ready, mark_app_ready_if_first,
@@ -2528,6 +2573,40 @@ mod tests {
         assert!(!is_sensitive_command_window_allowed("splashscreen"));
         assert!(!is_sensitive_command_window_allowed("MAIN"));
         assert!(!is_sensitive_command_window_allowed("main "));
+    }
+
+    #[test]
+    fn strips_the_windows_extended_length_path_prefix() {
+        // The form Tauri's resource_dir() produces on Windows.
+        assert_eq!(
+            strip_windows_extended_path_prefix(
+                r"\\?\C:\Program Files\Tuari\bin\api-runtime\dist\index.cjs"
+            ),
+            r"C:\Program Files\Tuari\bin\api-runtime\dist\index.cjs"
+        );
+
+        // Verbatim UNC paths map back to their normal spelling.
+        assert_eq!(
+            strip_windows_extended_path_prefix(r"\\?\UNC\server\share\tuari\index.cjs"),
+            r"\\server\share\tuari\index.cjs"
+        );
+        assert_eq!(
+            strip_windows_extended_path_prefix(r"\\?\unc\server\share\tuari\index.cjs"),
+            r"\\server\share\tuari\index.cjs"
+        );
+
+        // An already-plain path is unchanged.
+        assert_eq!(
+            strip_windows_extended_path_prefix(
+                r"C:\Program Files\Tuari\bin\api-runtime\dist\index.cjs"
+            ),
+            r"C:\Program Files\Tuari\bin\api-runtime\dist\index.cjs"
+        );
+        assert_eq!(
+            strip_windows_extended_path_prefix("/opt/tuari/bin/api-runtime/dist/index.cjs"),
+            "/opt/tuari/bin/api-runtime/dist/index.cjs"
+        );
+        assert_eq!(strip_windows_extended_path_prefix(""), "");
     }
 
     #[test]
