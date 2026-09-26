@@ -249,7 +249,10 @@ gate:
 
 1. Push the branch (`git push origin <branch>`) with explicit staging.
 2. Open or update the PR with the issue link (`Closes #N` only when the whole
-   issue ships; `Part of #N` otherwise) and the evidence summary.
+   issue ships; `Part of #N` otherwise) and the evidence summary. After opening
+   it, publish a concise review-evidence summary as a PR comment (what was
+   verified, the commands, the evidence paths) so a reviewer does not have to
+   dig through `.scratch/`.
 3. Wait for the hosted CI checks on the pushed head; re-run flaky
    infrastructure jobs rather than changing unrelated code.
 4. Read the hosted review on that head — summary **and** inline findings:
@@ -281,6 +284,42 @@ Run `capture-wisdom` for any durable lesson. Report:
 - local Greptile confidence/findings and loop iterations
 - evidence paths
 - deferred items and whether they are shipped, local-only, or unverified
+
+## Merge rules
+
+The **parent** may merge a PR only when every one of these holds:
+
+1. The user has authorized merging — an explicit "merge it", or a standing
+   instruction such as "merge when CI is green and Greptile is 5/5". Absent
+   that, report and stop.
+2. Every required CI check is green **on the pushed head**.
+3. Greptile is clean **on that same head** (5/5, or an explicit no-actionable
+   findings verdict). A verdict on an older commit does not count — check the
+   reviewed SHA against `headRefOid`, and re-request a review after each push.
+4. No blocker remains (unresolved finding, failing gate, unknown deferral).
+
+```bash
+gh pr merge <num> --squash
+```
+
+A **lane never merges**, under any score. If a condition fails, report the exact
+state instead of merging.
+
+## Where to start (resume table)
+
+| State | Start at |
+| --- | --- |
+| Nothing exists | Read `docs/engineering-workflow.md` + `.agents/wisdom/*.md` |
+| No design doc | Step 2 — design |
+| Code not written | Step 3 — implement |
+| Guard Phase 1 not run | Step 4 |
+| No quality check / debate / test audit | Steps 5–7 |
+| No code review | Step 8 |
+| Guard Phase 2 not run | Step 9 |
+| Not pushed, or PR not opened/updated | Step 10 |
+| Local Greptile not clean | Step 10 (CLI gate) |
+| CI red, or Greptile stale/not clean on the head | Step 11 |
+| All green and 5/5 | Step 12 → merge rules → Step 13 |
 
 ## Local-only completion rules
 
