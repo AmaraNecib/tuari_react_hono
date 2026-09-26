@@ -15,9 +15,9 @@ it, how to run the smoke test that launches it, and what still needs a human.
 The smoke test closes the gap between "the zip contains an exe" and "the exe
 runs". It does not replace a human looking at the window.
 
-Current status: the smoke test fails on a locally built artifact. See
-"Defects found by the smoke test" at the end for the two blockers and the
-verified fix recipe.
+Current status: the smoke test passes 22/22 with exit 0 on a locally built
+artifact. Two startup blockers it found are fixed; the story and the remaining
+known gaps are at the end of this document.
 
 ## Build the artifacts
 
@@ -173,17 +173,18 @@ manual:
 - Update download, signature verification, and restart.
 - Codesigning and notarisation. The local build is unsigned.
 
-## Defects found by the smoke test (2026-09-26)
+## Defects found and fixed by the smoke test (2026-09-26)
 
-The built artifact never starts its API. On a fresh extract, `Tuari.exe` spawns
-the sidecar, the sidecar dies during Node startup, and the app exits with code
-101 after its 15 second API wait. There are two independent causes, both in
-`spawn_api_process` (`apps/desktop/src-tauri/src/lib.rs`).
+The built artifact never started its API. On a fresh extract, `Tuari.exe` spawned
+the sidecar, the sidecar died during Node startup, and the app exited with code
+101 after its 15 second API wait. There were two independent causes, both in
+`spawn_api_process` (`apps/desktop/src-tauri/src/lib.rs`). Both are fixed; the
+fix commit predates the doc update that replaced this section.
 
 ### 1. `env_clear()` drops `SystemRoot`, so Node aborts in its CSPRNG check
 
 The shell spawns the sidecar with `command.env_clear()` and then sets only its
-own allowlist. That drops `SystemRoot`, and the bundled Node 22.23.2 aborts:
+own allowlist. That dropped `SystemRoot`, and the bundled Node 22.23.2 aborted:
 
 ```
 #  <extract>\bin\node.exe[5148]: ... node::InitializeOncePerProcessInternal
@@ -205,13 +206,15 @@ pwsh -NoProfile -File scripts/smoke/sidecar-env-repro.ps1 -ExtractDir <extracted
 | `PATH=C:\WINDOWS\system32;C:\WINDOWS` | abort |
 | `TEMP=<temp dir>` | abort |
 
-Fix: re-add `SystemRoot` for the sidecar child on Windows after `env_clear()`.
-That keeps the clear-and-allowlist intent while giving the runtime the one
-variable its OpenSSL seeding needs.
+Fixed with the smallest set that works: `SystemRoot` alone is re-set from the
+parent environment for the sidecar child on Windows, after `env_clear()`. That
+keeps the clear-and-allowlist intent while giving the runtime the one variable
+its OpenSSL seeding needs. The code comment names the abort it prevents, and the
+repro script is the artifact-level proof.
 
-### 2. The sidecar path keeps the `\\?\` extended-length prefix
+### 2. The sidecar path kept the `\\?\` extended-length prefix
 
-Tauri's `resource_dir()` returns a `\\?\`-prefixed path, and the shell passes
+Tauri's `resource_dir()` returns a `\\?\`-prefixed path, and the shell passed
 `runtime_dir/dist/index.cjs` straight to `node.exe`. Node's CommonJS main-module
 resolution cannot handle that prefix:
 
@@ -231,28 +234,23 @@ only the argument differs:
 | `\\?\C:\...\bin\api-runtime\dist\index.cjs` | exits with the `EISDIR` above |
 
 Defect 1 hid this one: the process aborted before module resolution ever ran.
-Fix: strip the `\\?\` prefix before passing the path as the argument.
+Fixed by extracting the prefix strip into a pure helper,
+`strip_windows_extended_path_prefix`, with a unit test covering a verbatim drive
+path, a verbatim UNC path, and an already-plain path. The helper is a no-op on
+POSIX and on plain Windows paths.
 
-### Verified fix recipe (not applied here)
+### Result after both fixes
 
-Applying both fixes with a temporary local patch and rebuilding makes the smoke
-test pass 22/22 with exit 0: sidecar running, `/health` returning
-`{"status":"ok"}`, `TUARI_LICENSE_STATUS=trial`, a fresh database with 38 tables
-written by this run, and clean shutdown. The patch was not committed, because it
-changes the Rust shell and needs its own review, tests, and a `cargo clippy`
-pass. The recipe is:
+`node scripts/smoke/installer-smoke.mjs` exits 0 with 22/22 checks: sidecar
+running, `GET /health` returning `{"status":"ok"}`, `TUARI_LICENSE_STATUS=trial`,
+`TUARI_LICENSE_EDITION=standard`, `APP_DB_KEY` absent, a fresh 38-table database
+written by this run, and clean shutdown. `cargo test` and
+`cargo clippy --lib -- -D warnings` are green on the fix commit.
 
-1. After `command.env_clear()`, set `SystemRoot` from the parent environment for
-the sidecar child on Windows.
-2. Pass the sidecar entry point as a plain `C:\...` path, without the `\\?\`
-   prefix that `resource_dir()` carries.
+## Known gaps
 
-Until both land, the smoke test fails six checks, all traceable to the sidecar
-never starting: no sidecar process, no health response, an unobservable
-environment, no database, no license handoff, and no schema to read. The bundle
-layout, declared resources, installer binary, and cleanup checks pass.
-
-## Other gaps the smoke test surfaced
+These are real but out of scope for the smoke-test lane. They are reported to the
+parent as separate issues.
 
 - The sidecar build falls back to plain `better-sqlite3` when the
   `better-sqlite3-sqlcipher` native binding is not present, and it prints a

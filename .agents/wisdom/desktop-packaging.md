@@ -20,6 +20,9 @@ Isolation, run against the extracted bundle: launching `bin/node.exe` with
 abort. Adding `SystemRoot=C:\WINDOWS` makes it start and bind. `windir`, `PATH`,
 and `TEMP` do not. `scripts/smoke/sidecar-env-repro.ps1` runs that matrix.
 
+Fixed on the `test/installer-smoke` branch by re-setting `SystemRoot` from the
+parent environment for the sidecar child on Windows after `env_clear()`.
+
 **Always**: when a desktop shell spawns a bundled runtime with a cleared
 environment, restore the variables that runtime's own dependencies need. On
 Windows, `SystemRoot` is load-bearing for the OpenSSL CSPRNG seeding Node runs at
@@ -41,6 +44,10 @@ Tauri's `resource_dir()` returns a `\\?\`-prefixed path on Windows, and the
 shell passed `runtime_dir/dist/index.cjs` through unmodified. The prefix is fine
 for `CreateProcess` (the exe loads) but breaks `path.resolve` + `realpathSync` in
 the loader for the script argument.
+
+Fixed on the `test/installer-smoke` branch with
+`strip_windows_extended_path_prefix` in `lib.rs`, a pure helper covered by a unit
+test for verbatim drive, verbatim UNC, and plain paths.
 
 **Always**: strip the Windows extended-length prefix (`\\?\`) before handing a
 Tauri path to a child process as a script argument. And when two startup
