@@ -142,7 +142,10 @@ jobs:
             # must sit at column 0, which would end this YAML block scalar early
             # and make the whole workflow file unparseable.
             $nodeScript = 'const crypto = require("node:crypto"); const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519"); process.stdout.write(privateKey.export({ type: "pkcs8", format: "pem" })); process.stdout.write("---SEPARATOR---"); process.stdout.write(publicKey.export({ type: "spki", format: "pem" }));'
-            $result = node -e $nodeScript
+            # Node prints each PEM on its own line, and PowerShell captures
+            # that as a string array; join it into one string before splitting,
+            # otherwise $parts[0] is only the first PEM line.
+            $result = (node -e $nodeScript) -join "`n"
             $parts = $result -split "---SEPARATOR---"
             $parts[0] | Out-File -FilePath (Join-Path $env:RUNNER_TEMP "signing-key.pem") -Encoding ascii -NoNewline
             $parts[1] | Out-File -FilePath (Join-Path $env:RUNNER_TEMP "verification-key.pem") -Encoding ascii -NoNewline

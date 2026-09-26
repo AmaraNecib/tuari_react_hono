@@ -186,31 +186,43 @@ being downloaded, but a customer may notice them.
 
 ## Verifying a published installer
 
-Download and hash the asset:
+Download every asset the release published:
 
 ```bash
-gh release download beta --repo AmaraNecib/tuari_react_hono \
-  --pattern '*-setup.exe' --dir ./verify
-cd verify
-certutil -hashfile ./tuari-0.1.0-beta-setup.exe SHA256
+gh release download beta --repo AmaraNecib/tuari_react_hono --dir ./verify
+ls ./verify
+```
+
+The installer asset is named `tuari-<version>-<channel>-setup.exe`. For the
+`0.1.0-beta.1` example that is `tuari-0.1.0-beta.1-beta-setup.exe`. Hash it:
+
+```bash
+certutil -hashfile ./verify/tuari-0.1.0-beta.1-beta-setup.exe SHA256
 ```
 
 Run the installer. It uses `installMode: currentUser`, so it installs under the
 user profile without an admin prompt. Launch Tuari, complete first-run setup,
 and confirm the version in the app matches the release.
 
-To verify the update package and portable zip the way CI does:
+To verify the portable zip and update package the way CI does, run the script
+from the repository root (it resolves `scripts/` against the current directory)
+and point `--artifacts` at the download directory:
 
 ```bash
 node scripts/verify-release-assets.mjs \
-  --artifacts <dir-with-downloaded-assets> \
+  --artifacts ./verify \
   --public-key <public-key.pem> \
   --version 0.1.0-beta.1 \
   --channel beta
 ```
 
 That command exits 0 only when the portable zip contains `Tuari.exe` and the
-`.update` signature verifies against the public key.
+`.update` signature verifies against the public key. The key must be the one
+that signed this release. While the update signing secrets are unset, CI signs
+with an ephemeral key that it discards when the job ends, so an external
+operator cannot reproduce the signature check. Set `UPDATE_PUBLIC_KEY` first if
+you need it. Without a matching key the portable-zip check still runs and only
+the signature check fails.
 
 ## Troubleshooting
 

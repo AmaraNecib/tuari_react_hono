@@ -126,7 +126,42 @@ Run in this worktree, Windows, Node 22.23.2, pnpm 10.8.1, cargo 1.88.0.
 The sign-and-verify step was reproduced locally with the real artifacts and a
 CI-shaped ephemeral key: manifest for `0.1.0`, signature under `key-id
 ci-generated-key`, `verify-release-assets.mjs --channel beta` passed both the
-portable-zip and signature checks.
+portable-zip and signature checks. That first reproduction called Node
+directly, which is why the PowerShell output-capture defect below slipped past
+it; the round 3 fix was re-verified through PowerShell.
+
+## Round 3 review fixes (PR #391)
+
+Greptile reviewed head `758fe89` at 3/5. All four findings were verified
+against the source and all four are real.
+
+- **P1, generated keys lose their contents (`beta.yml:146`, same in `release.yml`,
+  `nightly.yml`).** PowerShell captures native-command output as a string array,
+  one element per line, and `-split` maps over the elements. `$parts[0]` was
+  therefore only `-----BEGIN PRIVATE KEY-----`. Reproduced with `pwsh`: the
+  captured value was `System.Object[]` with 6 elements and `parts[0]` had no
+  `END PRIVATE KEY` line. Fixed by joining before splitting:
+  `$result = (node -e $nodeScript) -join "`n"`. The full keygen, sign, and
+  verify path then passed through PowerShell with a complete PEM pair.
+- **P1, failed fetch can bypass the guard (`release.yml:43`).** This was a
+  regression from round 2. The guard read `FETCH_HEAD` without checking that the
+  fetch succeeded, and checkout leaves its own `FETCH_HEAD`, so a stale value
+  could satisfy the ancestry check. Fixed by aborting the step when the fetch
+  exits non-zero, before `merge-base` runs.
+- **P2, wrong installer name in the runbook (`docs/release.md`).** The beta job
+  stages `tuari-<version>-beta-setup.exe`, so version `0.1.0-beta.1` produces
+  `tuari-0.1.0-beta.1-beta-setup.exe`. The hash example had dropped the `.1`.
+- **P2, verification steps cannot run (`docs/release.md`).** The example changed
+  into `./verify` and only downloaded the installer, so `scripts/` did not
+  resolve and the verifier had no portable zip or `.update`. Fixed to download
+  all assets and run from the repository root. Added the caveat that the
+  signature check needs the key that signed the release, which the ephemeral CI
+  key does not provide.
+
+Tests added in `tests/workflow-assets.test.mjs`: no workflow may contain a
+column-0 here-string terminator; the three release workflows must join the key
+output before splitting; the release guard must abort when the `main` fetch
+fails.
 
 ## Risks and constraints
 
