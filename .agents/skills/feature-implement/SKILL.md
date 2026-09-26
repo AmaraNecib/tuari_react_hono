@@ -254,10 +254,12 @@ gate:
 1. Push the branch (`git push origin <branch>`) with explicit staging.
 2. Open or update the PR with the issue link (`Closes #N` only when the whole
    issue ships; `Part of #N` otherwise) and the evidence summary. After opening
-   it, publish a concise review-evidence summary as a PR comment (what was
-   verified, the commands, the evidence paths) so a reviewer does not have to
-   dig through `.scratch/`. **Update that comment whenever a later push changes
-   what was verified** — a stale evidence comment is worse than none.
+   it, publish a concise review-evidence summary as a PR comment: the commands
+   that were run and their **results inline**, because a reviewer cannot open the
+   gitignored `.scratch/` files from the PR. Cite `.scratch/` paths only as a
+   secondary pointer for the local operator. **Update that comment whenever a
+   later push changes what was verified** — a stale evidence comment is worse
+   than none.
 3. Wait for the hosted CI checks on the pushed head; re-run flaky
    infrastructure jobs rather than changing unrelated code.
 4. Read the hosted review on that head — summary **and** inline findings:
