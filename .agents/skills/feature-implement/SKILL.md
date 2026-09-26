@@ -208,10 +208,19 @@ default branch and review an unrelated, enormous diff. If the issue needs an
 iterative fix loop, run `greploop --local` after the first review. Re-run the
 local checks after every code fix.
 
-2. After pushing, the hosted review runs on the PR. Read its score and every
-   finding from the PR (`gh pr view <n> --json comments`), not only the check
-   status, and fix real findings with a new commit. Do not claim a clean verdict
-   from a stale review: match the reviewed commit to the current head.
+2. After pushing, the hosted review runs on the PR. Read its score and **every**
+   finding from the PR — the summary comment and the inline review comments are
+   different endpoints:
+
+```bash
+gh pr view <n> --json comments                     # summary + confidence score
+gh api repos/{owner}/{repo}/pulls/<n>/comments \  # inline, file-level findings
+  --paginate --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'
+```
+
+   Fix real findings with a new commit, request a fresh review, and never claim
+   a clean verdict from a stale one: match the reviewed commit to the current
+   head.
 
 Save the raw CLI result and a concise summary under:
 
@@ -225,24 +234,38 @@ The local Greptile gate passes only when the latest result is clean: confidence
 explicitly reports no actionable findings. A successful command by itself is
 not a clean verdict.
 
-### 11. Guard Phase 3: pre-report
+### 11. Guard Phase 3, then the remote loop
 
-Phase 3 verifies:
+**Phase 3a — local gate, before any push.** All of these must hold:
 
 - contracts/typecheck/lint/API/web/Rust checks are green as applicable
 - code-review, test-audit, and debate evidence is present and current
-- the latest Greptile result is clean and corresponds to the final code (CLI
-  before the push, hosted after it)
+- the CLI Greptile result is clean **on the final local HEAD**
 - deferred work has an explicit parent decision; lanes never defer silently
 
-In **remote mode**, finish the loop instead of stopping at a local handoff:
+**Phase 3b — the remote loop, in this order.** Hosted CI and the hosted review
+cannot exist before the PR does, so they are verified here, not in the pre-push
+gate:
 
 1. Push the branch (`git push origin <branch>`) with explicit staging.
 2. Open or update the PR with the issue link (`Closes #N` only when the whole
    issue ships; `Part of #N` otherwise) and the evidence summary.
-3. Wait for the hosted CI checks and the hosted Greptile review on the pushed
-   head; re-run flaky infrastructure jobs and fix real findings.
-4. Report the PR URL, the check states, and the Greptile score, then stop.
+3. Wait for the hosted CI checks on the pushed head; re-run flaky
+   infrastructure jobs rather than changing unrelated code.
+4. Read the hosted review on that head — summary **and** inline findings:
+
+```bash
+gh pr view <n> --json comments                     # review summary + score
+gh api repos/{owner}/{repo}/pulls/<n>/comments \  # inline, file-level findings
+  --paginate --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'
+```
+
+5. Match the review's "Last reviewed commit" to the current head. After every
+   fix push, request a fresh review (`@greptile-apps review`) and wait for the
+   new verdict — an automatic review runs on PR creation, later commits need
+   the request.
+6. Repeat 3-5 until CI is green and the review on the current head is clean.
+7. Report the PR URL, the check states, and the Greptile score, then stop.
    **Never merge** — the parent owns the merge decision.
 
 In **local-only mode**, report the local state and stop; do not wait for CI or
