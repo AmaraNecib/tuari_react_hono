@@ -33,8 +33,12 @@ function setLicense(status: string, maxUsers?: number): void {
 
 function repositoryWithActiveCount(activeCount: number) {
   return {
-    listEmployees: (filters?: { status?: string }) =>
-      filters?.status === "ACTIVE" ? new Array(activeCount).fill({}) : [],
+    countEmployees: (filters?: { status?: string }) =>
+      filters?.status === "ACTIVE" ? activeCount : 0,
+    // The seat check must never materialise rows; fail loudly if it does.
+    listEmployees: () => {
+      throw new Error("the seat check must not list employees");
+    },
   } as unknown as Parameters<typeof assertActiveEmployeeSeatAvailable>[0];
 }
 
@@ -117,6 +121,23 @@ describe("assertActiveEmployeeSeatAvailable", () => {
     expect(() =>
       assertActiveEmployeeSeatAvailable(repositoryWithActiveCount(50)),
     ).not.toThrow();
+  });
+
+  it("counts ACTIVE employees through the count path", () => {
+    setLicense("active", 5);
+    const calls: Array<{ status?: string } | undefined> = [];
+    const repository = {
+      countEmployees: (filters?: { status?: string }) => {
+        calls.push(filters);
+        return 0;
+      },
+      listEmployees: () => {
+        throw new Error("the seat check must not list employees");
+      },
+    } as unknown as Parameters<typeof assertActiveEmployeeSeatAvailable>[0];
+
+    expect(() => assertActiveEmployeeSeatAvailable(repository)).not.toThrow();
+    expect(calls).toEqual([{ status: "ACTIVE" }]);
   });
 
   it("does not cap the post-expiry grace window", () => {

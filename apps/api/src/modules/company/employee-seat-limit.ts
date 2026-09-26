@@ -24,7 +24,7 @@ import { CompanyError } from "./company.errors";
 import type { WorkforceRepository } from "./workforce.repository";
 
 /** The narrow repository seam the seat rule needs to count active employees. */
-type ActiveEmployeeReader = Pick<WorkforceRepository, "listEmployees">;
+type ActiveEmployeeReader = Pick<WorkforceRepository, "countEmployees">;
 
 /**
  * Refuse a mutation that would push the ACTIVE employee count over the
@@ -58,7 +58,7 @@ export function assertActiveEmployeeSeatAvailable(
     return;
   }
 
-  const currentActiveEmployees = repository.listEmployees({ status: "ACTIVE" }).length;
+  const currentActiveEmployees = repository.countEmployees({ status: "ACTIVE" });
   const nextActiveEmployees = currentActiveEmployees + additionalActiveEmployees;
 
   if (nextActiveEmployees > license.maxUsers) {

@@ -50,6 +50,13 @@ export interface WorkforceRepository {
   // Employees
   listEmployees(filters?: EmployeeListFilters): EmployeeRecord[];
   /**
+   * Count employees matching the same filters as {@link listEmployees}
+   * without materialising the rows (`SELECT COUNT(*)`). Used by the
+   * license seat check, which must not load every employee just to count
+   * the ACTIVE ones.
+   */
+  countEmployees(filters?: EmployeeListFilters): number;
+  /**
    * Cursor-paginated employee list. The cursor is opaque (produced
    * by `encodeCursor` in `modules/shared/cursor.ts`). Returns the
    * page sorted by `(created_at DESC, id DESC)` plus the total
