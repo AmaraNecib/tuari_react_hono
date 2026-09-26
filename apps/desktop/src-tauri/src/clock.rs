@@ -21,14 +21,33 @@ use crate::error::RustCoreError;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+use std::time::Duration;
 
 const CLOCK_TOLERANCE_SECS: i64 = 86400; // 24 hours
 const GRACE_PERIOD_DAYS: i64 = 30;
 const TRACKER_FILE: &str = "clock-tracker.json";
 const ANCHOR_FILE: &str = "install-anchor.json";
+
+/// How many times the atomic write retries the final rename before giving up.
+///
+/// On Windows, replacing the target while another process (a second app
+/// instance, an antivirus scanner, a search indexer) holds it open for reading
+/// fails with a sharing violation instead of succeeding. That lock is
+/// transient, so the write retries a few times rather than letting a
+/// momentary reader defeat the trial anchor.
+const RENAME_MAX_ATTEMPTS: u32 = 5;
+
+/// Base delay for the rename backoff, doubled on each retry.
+///
+/// With five attempts the sleep schedule is 20/40/80/160 ms: a 300 ms
+/// worst-case window — long enough to outlast a transient reader, short enough
+/// not to stall startup. Deliberately bounded; the write never retries
+/// forever.
+const RENAME_BACKOFF_BASE_MS: u64 = 20;
 
 /// Monotonic counter that makes each staging file name unique within a
 /// process, so two concurrent writers never share one.
@@ -105,14 +124,81 @@ fn atomic_temp_path(path: &Path) -> Result<PathBuf, RustCoreError> {
     )))
 }
 
+/// Backoff delay before retry `attempt` (1-indexed): 20, 40, 80, 160 ms.
+fn rename_retry_delay(attempt: u32) -> Duration {
+    let factor = 1u64
+        .checked_shl(attempt.saturating_sub(1))
+        .unwrap_or(u64::MAX);
+    Duration::from_millis(RENAME_BACKOFF_BASE_MS.saturating_mul(factor))
+}
+
+/// Retry `rename` up to `max_attempts` times with exponential backoff.
+///
+/// The rename operation and the sleep function are injected so the retry
+/// policy can be exercised in unit tests without touching the OS or waiting on
+/// the wall clock. `sleep` is only called between attempts, never after the
+/// final failure.
+///
+/// Every error is retried, not an enumerated set of Windows sharing codes: the
+/// code a transient reader produces varies (access denied 5, sharing violation
+/// 32, lock violation 33, user-mapped file 1224) and a missed code would
+/// silently reintroduce the defeat this exists to prevent. The attempt bound
+/// keeps even a permanently un-writable target to a 300 ms delay before the
+/// error surfaces.
+fn rename_with_retry<R, S>(
+    from: &Path,
+    to: &Path,
+    max_attempts: u32,
+    mut rename: R,
+    mut sleep: S,
+) -> io::Result<()>
+where
+    R: FnMut(&Path, &Path) -> io::Result<()>,
+    S: FnMut(Duration),
+{
+    debug_assert!(max_attempts >= 1, "a rename must be attempted at least once");
+    let mut attempt: u32 = 1;
+    loop {
+        match rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(err) if attempt >= max_attempts => return Err(err),
+            Err(_) => {
+                sleep(rename_retry_delay(attempt));
+                attempt += 1;
+            }
+        }
+    }
+}
+
 /// Write `contents` to `path` crash-safely.
 ///
 /// The data is staged in a temporary sibling file, flushed to disk, and then
 /// renamed over the target. A rename within the same directory is atomic on
 /// every supported platform, so a crash mid-write or a concurrent reader sees
 /// either the old complete file or the new complete file — never a truncated
-/// one. A failed write removes the staging file and leaves the target intact.
+/// one.
+///
+/// The rename is retried with exponential backoff: another process holding the
+/// target open for reading makes the replace fail on Windows until it lets go,
+/// and a transient reader must not be able to block the write. The staging file
+/// survives every retry and is only removed once the write is given up, with an
+/// error naming the target path and the underlying OS error.
 fn write_atomic(path: &Path, contents: &str) -> Result<(), RustCoreError> {
+    write_atomic_with(path, contents, |from, to| fs::rename(from, to), thread::sleep)
+}
+
+/// `write_atomic`, with the rename operation and sleep function injected so the
+/// staging/retry/cleanup behaviour is unit-testable without the OS.
+fn write_atomic_with<R, S>(
+    path: &Path,
+    contents: &str,
+    rename: R,
+    sleep: S,
+) -> Result<(), RustCoreError>
+where
+    R: FnMut(&Path, &Path) -> io::Result<()>,
+    S: FnMut(Duration),
+{
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| RustCoreError::IoError(Box::new(e)))?;
     }
@@ -130,9 +216,17 @@ fn write_atomic(path: &Path, contents: &str) -> Result<(), RustCoreError> {
         return Err(RustCoreError::IoError(Box::new(e)));
     }
 
-    fs::rename(&temp_path, path).map_err(|e| {
+    // Keep the staging file across every retry: a transient reader holding the
+    // target open is exactly what a later attempt is meant to outlast.
+    rename_with_retry(&temp_path, path, RENAME_MAX_ATTEMPTS, rename, sleep).map_err(|e| {
         let _ = fs::remove_file(&temp_path);
-        RustCoreError::IoError(Box::new(e))
+        RustCoreError::IoError(Box::new(io::Error::new(
+            e.kind(),
+            format!(
+                "failed to replace {} after {RENAME_MAX_ATTEMPTS} rename attempts: {e}",
+                path.display()
+            ),
+        )))
     })
 }
 
@@ -277,7 +371,8 @@ pub fn reliable_now(state_dir: &Path) -> Result<DateTime<Utc>, RustCoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::io;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use std::path::PathBuf;
 
     fn temp_dir() -> PathBuf {
@@ -317,6 +412,23 @@ mod tests {
     fn read_anchor(dir: &Path) -> InstallAnchor {
         let content = fs::read_to_string(dir.join(ANCHOR_FILE)).unwrap();
         serde_json::from_str(&content).unwrap()
+    }
+
+    /// Names of every staging file still present in `dir`.
+    fn staging_files(dir: &Path) -> Vec<String> {
+        fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// An error shaped like the Windows sharing violation a transient reader
+    /// (second instance, antivirus, indexer) produces. Kept portable so the
+    /// retry policy is tested on every OS, not just Windows.
+    fn sharing_violation() -> io::Error {
+        io::Error::new(io::ErrorKind::PermissionDenied, "sharing violation")
     }
 
     #[test]
@@ -633,12 +745,7 @@ mod tests {
         write_atomic(&path, "new").unwrap();
 
         assert_eq!(fs::read_to_string(&path).unwrap(), "new");
-        let leftovers: Vec<_> = fs::read_dir(&dir)
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
-            .map(|entry| entry.file_name())
-            .collect();
+        let leftovers = staging_files(&dir);
         assert!(leftovers.is_empty(), "staging files left behind: {leftovers:?}");
         fs::remove_dir_all(&dir).unwrap();
     }
@@ -667,13 +774,148 @@ mod tests {
         assert!(write_atomic(&path, "replacement").is_err());
         assert!(path.is_dir(), "a failed write must not replace the target");
 
-        let leftovers: Vec<_> = fs::read_dir(&dir)
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
-            .map(|entry| entry.file_name())
-            .collect();
+        let leftovers = staging_files(&dir);
         assert!(leftovers.is_empty(), "staging files left behind: {leftovers:?}");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn rename_retry_succeeds_after_a_transient_failure() {
+        // A reader holding the target open makes the first attempts fail; the
+        // retry must outlast it rather than failing the write.
+        let mut attempts = 0u32;
+        let mut delays = Vec::new();
+
+        rename_with_retry(
+            Path::new("staging.tmp"),
+            Path::new("target.json"),
+            RENAME_MAX_ATTEMPTS,
+            |_, _| {
+                attempts += 1;
+                if attempts < 3 {
+                    Err(sharing_violation())
+                } else {
+                    Ok(())
+                }
+            },
+            |delay| delays.push(delay),
+        )
+        .expect("a later attempt must succeed");
+
+        assert_eq!(attempts, 3, "must stop retrying after the first success");
+        assert_eq!(
+            delays,
+            vec![Duration::from_millis(20), Duration::from_millis(40)],
+            "only the failed attempts are followed by a backoff sleep"
+        );
+    }
+
+    #[test]
+    fn rename_retry_gives_up_after_the_attempt_bound() {
+        let mut attempts = 0u32;
+        let mut sleeps = 0u32;
+
+        let err = rename_with_retry(
+            Path::new("staging.tmp"),
+            Path::new("target.json"),
+            4,
+            |_, _| {
+                attempts += 1;
+                Err(sharing_violation())
+            },
+            |_| sleeps += 1,
+        )
+        .expect_err("a permanently held target must surface an error");
+
+        assert_eq!(attempts, 4, "must stop at the attempt bound, not retry forever");
+        assert_eq!(sleeps, 3, "one fewer sleep than attempts");
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn rename_retry_backoff_doubles_within_a_bounded_window() {
+        let delays: Vec<Duration> = (1..RENAME_MAX_ATTEMPTS).map(rename_retry_delay).collect();
+        assert_eq!(
+            delays,
+            vec![
+                Duration::from_millis(20),
+                Duration::from_millis(40),
+                Duration::from_millis(80),
+                Duration::from_millis(160),
+            ]
+        );
+        let total_ms: u128 = delays.iter().map(Duration::as_millis).sum();
+        assert_eq!(total_ms, 300, "worst-case retry window must stay short");
+    }
+
+    #[test]
+    fn atomic_write_retries_past_a_transient_rename_failure() {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.json");
+        fs::write(&path, "old").unwrap();
+
+        let mut attempts = 0u32;
+        write_atomic_with(
+            &path,
+            "new",
+            |from, to| {
+                attempts += 1;
+                if attempts == 1 {
+                    Err(sharing_violation())
+                } else {
+                    fs::rename(from, to)
+                }
+            },
+            |_| {},
+        )
+        .expect("the write must survive a transient rename failure");
+
+        assert_eq!(attempts, 2);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+        assert!(staging_files(&dir).is_empty(), "staging file must be consumed by the rename");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn atomic_write_removes_staging_file_after_exhausting_rename_retries() {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.json");
+        fs::write(&path, "old").unwrap();
+
+        let mut attempts = 0u32;
+        let err = write_atomic_with(
+            &path,
+            "replacement",
+            |_, _| {
+                attempts += 1;
+                Err(sharing_violation())
+            },
+            |_| {},
+        )
+        .expect_err("an exhausted retry must fail");
+
+        assert_eq!(attempts, RENAME_MAX_ATTEMPTS);
+        let message = err.to_string();
+        assert!(
+            message.contains("state.json"),
+            "the error must name the target path: {message}"
+        );
+        assert!(
+            message.contains("sharing violation"),
+            "the error must carry the underlying OS error: {message}"
+        );
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "old",
+            "a failed write must leave the previous state intact"
+        );
+        let leftovers = staging_files(&dir);
+        assert!(
+            leftovers.is_empty(),
+            "staging file must be cleaned up on final failure: {leftovers:?}"
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 }
