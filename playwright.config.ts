@@ -68,6 +68,10 @@ const sharedEnv = {
   BETTER_AUTH_URL: apiUrl,
   APP_DB_PATH: e2eDbPath,
   BOOTSTRAP_SETUP_KEY,
+  // The E2E suite drives the API without the desktop shell, so it must opt in
+  // to a writable license explicitly: the API fails CLOSED (status `unknown`)
+  // when TUARI_LICENSE_STATUS is absent.
+  TUARI_LICENSE_STATUS: "trial",
   // The E2E suite signs in from one IP (127.0.0.1) many times per run; the
   // prod default auth limiter (30 req/15 min/IP) would 429 the last tests.
   API_AUTH_RATE_LIMIT_MAX_REQUESTS: "500",

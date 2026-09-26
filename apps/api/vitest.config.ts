@@ -12,6 +12,14 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
   test: {
+    // The unit/integration suites exercise the WRITABLE paths, so they run with
+    // the post-install trial status. The production default for a missing
+    // status is `unknown` (fail closed, see parseLicenseStatus); that path is
+    // pinned explicitly in infrastructure/license.test.ts, and any test that
+    // sets its own TUARI_LICENSE_STATUS overrides this.
+    env: {
+      TUARI_LICENSE_STATUS: "trial",
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

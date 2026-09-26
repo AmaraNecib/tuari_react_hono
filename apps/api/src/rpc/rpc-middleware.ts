@@ -4,7 +4,7 @@ import type { Edition, LicensedFeature } from "@tuari/contracts";
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import type { Permission } from "../modules/rbac/permissions";
 import { SlidingWindowRateLimiter, resolveClientIp } from "../infrastructure/rate-limiter";
-import { getLicenseInfo, meetsMinEdition, editionToMinEdition } from "../infrastructure/license";
+import { getLicenseInfo, meetsMinEdition, editionToMinEdition, mutationLicenseRefusalMessage, readLicenseRefusalMessage, type LicenseInfo } from "../infrastructure/license";
 import { requireCurrentUser, type RpcContext } from "./context";
 
 export type MutationAuditContext = {
@@ -81,23 +81,41 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
   }
 
   /**
-   * Shared check: rejects expired licenses.
+   * Refuses AUDITED MUTATIONS when the license cannot write.
    *
-   * The Rust shell is the primary gate for expiry (it controls whether the
-   * sidecar starts at all past the locked phase), but this sidecar guard
-   * ensures that even if `TUARI_LICENSE_STATUS` is set to `"expired"` the
-   * API does not serve gated operations.
+   * The shell reports its status through TUARI_LICENSE_STATUS; this guard is
+   * what makes that status binding for the API. Writes require `active` or the
+   * post-install `trial` period. The post-expiry `grace` window is READ-ONLY:
+   * reads and edition/feature gates still pass, but audited mutations are
+   * refused until the license is renewed. Every other status — including an
+   * unrecognised value — is refused, so the check fails closed.
+   *
+   * Callers must authenticate FIRST (see `createMutationAuditContext` and
+   * `createAuditContextForUser`), so an anonymous caller gets the usual auth
+   * error instead of learning the license state.
    */
-  function requireActiveLicense(license: ReturnType<typeof getLicenseInfo>): void {
-    if (license.status === "expired") {
-      throw new ORPCError("UPGRADE_REQUIRED", {
-        message: "انتهت صلاحية الترخيص. يرجى تجديد الترخيص للوصول إلى هذه الميزة.",
-      });
+  function requireWritableLicense(license: LicenseInfo): void {
+    const message = mutationLicenseRefusalMessage(license.status);
+    if (message) {
+      throw new ORPCError("UPGRADE_REQUIRED", { message });
+    }
+  }
+
+  /**
+   * Read-side gate for edition/feature checks. Same policy as
+   * {@link requireWritableLicense}, except the read-only `grace` window is
+   * allowed through.
+   */
+  function requireUsableLicense(license: LicenseInfo): void {
+    const message = readLicenseRefusalMessage(license.status);
+    if (message) {
+      throw new ORPCError("UPGRADE_REQUIRED", { message });
     }
   }
 
   async function createAuditContextForUser(context: RpcContext): Promise<MutationAuditContext> {
     const currentUser = await requireAuthenticatedUser(context);
+    requireWritableLicense(getLicenseInfo());
     return {
       actorUserId: currentUser.id,
       actorLabel: currentUser.name ?? currentUser.phone,
@@ -107,6 +125,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
 
   async function createMutationAuditContext(context: RpcContext): Promise<MutationAuditContext> {
     const currentUser = await requireWorkspaceAdmin(context);
+    requireWritableLicense(getLicenseInfo());
 
     return {
       actorUserId: currentUser.id,
@@ -252,7 +271,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
         await requireAuthenticatedUser(context);
 
         const license = getLicenseInfo();
-        requireActiveLicense(license);
+        requireUsableLicense(license);
 
         if (!meetsMinEdition(license.edition, minEdition)) {
           throw new ORPCError("UPGRADE_REQUIRED", {
@@ -278,7 +297,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
         await requireAuthenticatedUser(context);
 
         const license = getLicenseInfo();
-        requireActiveLicense(license);
+        requireUsableLicense(license);
 
         if (!license.features.includes(feature)) {
           const minEdition = editionToMinEdition(feature);

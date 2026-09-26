@@ -12,16 +12,59 @@ import type { Edition, LicensedFeature } from "@tuari/contracts";
 
 // ─── Public types ──────────────────────────────────────────────
 
-export interface LicenseInfo {
+// Mirrors the desktop shell's TUARI_LICENSE_STATUS mapping
+// (apps/desktop/src-tauri/src/license.rs): Valid|Warning -> active,
+// ExpiredGrace -> grace, Locked|Expired -> expired, NotYetActive -> inactive,
+// Tampered -> suspicious, Grace -> trial, Invalid -> unknown.
+//
+// This tuple is the ONE definition of the known set: the env reader validates
+// against it and the refusal helpers switch on it, so an unrecognised value can
+// never slip through as "usable".
+export const LICENSE_STATUSES = [
+  "active",
+  "trial",
+  "grace",
+  "expired",
+  "inactive",
+  "suspicious",
+  "unknown",
+] as const;
+
+export type LicenseStatus = (typeof LICENSE_STATUSES)[number];
+
+export type LicenseInfo = {
   edition: Edition;
   features: LicensedFeature[];
   maxUsers: number;
   customer: { name: string; email: string } | null;
   expiresAt: string | null;
-  status: "active" | "trial" | "expired" | "grace";
+  status: LicenseStatus;
 }
 
 // ─── Env-var reader ────────────────────────────────────────────
+
+/**
+ * Validate a raw `TUARI_LICENSE_STATUS` value against the known set.
+ *
+ * A missing or blank status FAILS CLOSED as `unknown`. The desktop shell only
+ * sets the license env block when `LicenseManager::initialize` succeeds
+ * (apps/desktop/src-tauri/src/lib.rs); when initialization fails — a tampered
+ * clock or an invalid `license.lic` — it still launches the sidecar with the
+ * status absent. Treating that as a writable `trial` would leave the API fully
+ * writable, which is exactly the state the license check exists to prevent.
+ *
+ * Any unrecognised value is likewise a typo or status drift and becomes
+ * `unknown`.
+ */
+function parseLicenseStatus(raw: string | undefined): LicenseStatus {
+  if (raw === undefined || raw.trim() === "") {
+    return "unknown";
+  }
+
+  return (LICENSE_STATUSES as readonly string[]).includes(raw)
+    ? (raw as LicenseStatus)
+    : "unknown";
+}
 
 /**
  * Read the current license info from the environment.
@@ -48,8 +91,50 @@ export function getLicenseInfo(): LicenseInfo {
         })()
       : null,
     expiresAt: process.env.TUARI_LICENSE_EXPIRES_AT || null,
-    status: (process.env.TUARI_LICENSE_STATUS ?? "trial") as LicenseInfo["status"],
+    status: parseLicenseStatus(process.env.TUARI_LICENSE_STATUS),
   };
+}
+
+// ─── Status → refusal message ──────────────────────────────────
+
+/**
+ * Customer-facing refusal message for a license status that cannot perform
+ * AUDITED MUTATIONS, or `null` when writes are allowed.
+ *
+ * `active` and the post-install `trial` are writable. `grace` (the post-expiry
+ * window) is deliberately READ-ONLY: audited mutations are refused until the
+ * license is renewed. Every other status — and every unrecognised value, via
+ * the `default` — is refused as unusable.
+ */
+export function mutationLicenseRefusalMessage(status: LicenseStatus): string | null {
+  switch (status) {
+    case "active":
+    case "trial":
+      return null;
+    case "grace":
+      return "انتهت صلاحية الترخيص. مساحة العمل للقراءة فقط حتى تجديد الترخيص.";
+    case "expired":
+      return "انتهت صلاحية الترخيص. يرجى تجديد الترخيص للمتابعة.";
+    case "inactive":
+      return "الترخيص غير مُفعّل بعد. يرجى تفعيل الترخيص من صفحة الترخيص.";
+    case "suspicious":
+      return "تم اكتشاف تغيير في ساعة النظام. صحّح التاريخ وأعد تشغيل التطبيق.";
+    case "unknown":
+      return "تعذّر التحقق من الترخيص. يرجى إعادة تفعيل الترخيص.";
+    default:
+      // Defensive only: an out-of-band value (cast/JSON) must fail closed, not
+      // fall through to "allowed".
+      return "تعذّر التحقق من الترخيص. يرجى إعادة تفعيل الترخيص.";
+  }
+}
+
+/**
+ * Refusal message for READ-side gates (edition/feature access), or `null` when
+ * access is allowed. Same policy as {@link mutationLicenseRefusalMessage} except
+ * the read-only `grace` window is allowed through.
+ */
+export function readLicenseRefusalMessage(status: LicenseStatus): string | null {
+  return status === "grace" ? null : mutationLicenseRefusalMessage(status);
 }
 
 // ─── Edition comparison ────────────────────────────────────────

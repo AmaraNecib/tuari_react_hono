@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ORPCError } from "@orpc/server";
 import { createRpcMiddleware, type RpcMiddleware } from "./rpc-middleware";
 import type { RpcContext } from "./context";
@@ -304,6 +304,9 @@ describe("RPC Middleware — license gating", () => {
         delete process.env[key];
       }
     }
+    // Edition/feature gates below assume a writable license; the fail-closed
+    // missing-status path is pinned in the enforcement suite and license.test.ts.
+    process.env.TUARI_LICENSE_STATUS = "trial";
     rpcMiddleware = createRpcMiddleware({
       authBootstrapService: { isBootstrapOwner: vi.fn().mockResolvedValue(true) },
     });
@@ -503,6 +506,107 @@ describe("RPC Middleware — license gating", () => {
 
       expect(handler).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("RPC Middleware — license enforcement on mutations", () => {
+  // Mutations must be refused whenever the license cannot write: the shell
+  // reports the status through TUARI_LICENSE_STATUS, and ordinary audited
+  // mutations used to ignore it entirely (only edition/feature gates checked).
+  // The post-install `trial` stays writable; the post-expiry `grace` window is
+  // READ-ONLY, so audited mutations are refused there too.
+  let rpcMiddleware: RpcMiddleware;
+  const adminUser = {
+    id: "u1",
+    name: "Test",
+    phone: "0612345678",
+    version: "0.0.0",
+    permissions: [],
+  };
+
+  const clearLicenseEnv = () => {
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith("TUARI_LICENSE_")) {
+        delete process.env[key];
+      }
+    }
+  };
+
+  beforeEach(() => {
+    clearLicenseEnv();
+    rpcMiddleware = createRpcMiddleware({
+      authBootstrapService: { isBootstrapOwner: vi.fn().mockResolvedValue(true) },
+    });
+  });
+
+  afterEach(() => {
+    clearLicenseEnv();
+  });
+
+  const wrapMutation = () =>
+    rpcMiddleware.mutationAudit(
+      () => ({ ok: true }),
+      (error: unknown) => error,
+    );
+
+  for (const status of ["expired", "inactive", "suspicious", "unknown", "grace"] as const) {
+    it(`refuses a mutation when the license status is ${status}`, async () => {
+      process.env.TUARI_LICENSE_STATUS = status;
+      await expect(
+        wrapMutation()({ context: createMockContext(adminUser), input: {} }),
+      ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });
+    });
+  }
+
+  it("tells the customer the grace window is read-only", async () => {
+    process.env.TUARI_LICENSE_STATUS = "grace";
+    await expect(
+      wrapMutation()({ context: createMockContext(adminUser), input: {} }),
+    ).rejects.toMatchObject({ message: expect.stringContaining("للقراءة فقط") });
+  });
+
+  it("refuses an unrecognised status instead of failing open", async () => {
+    process.env.TUARI_LICENSE_STATUS = "actve"; // typo for "active"
+    await expect(
+      wrapMutation()({ context: createMockContext(adminUser), input: {} }),
+    ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });
+  });
+
+  it("refuses a mutation when the status is missing (shell license init failed)", async () => {
+    // The desktop shell skips the license env block when
+    // `LicenseManager::initialize` fails (tampered clock / invalid license) but
+    // still launches the sidecar, so a missing status must refuse writes.
+    delete process.env.TUARI_LICENSE_STATUS;
+    await expect(
+      wrapMutation()({ context: createMockContext(adminUser), input: {} }),
+    ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });
+  });
+
+  for (const status of ["active", "trial"] as const) {
+    it(`allows a mutation when the license status is ${status}`, async () => {
+      process.env.TUARI_LICENSE_STATUS = status;
+      await expect(
+        wrapMutation()({ context: createMockContext(adminUser), input: {} }),
+      ).resolves.toMatchObject({ ok: true });
+    });
+  }
+
+  it("reports the auth error before the license error for an anonymous caller (mutationAudit)", async () => {
+    process.env.TUARI_LICENSE_STATUS = "expired";
+    await expect(
+      wrapMutation()({ context: createMockContext(null), input: {} }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("reports the auth error before the license error for an anonymous caller (withAudit)", async () => {
+    process.env.TUARI_LICENSE_STATUS = "expired";
+    const wrapAudited = rpcMiddleware.withAudit(
+      () => ({ ok: true }),
+      (error: unknown) => error,
+    );
+    await expect(
+      wrapAudited({ context: createMockContext(null), input: {} }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
 
