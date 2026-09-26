@@ -53,33 +53,44 @@ do. Reading data still works, so you can reach the License screen and activate.
 During the trial (`trial`) and any post-expiry grace period (`grace`) everything
 works normally.
 
+Edition and feature lists are recorded in the license and shown on the License
+screen, but the API does not yet restrict any operation by them — the status
+check above is the only license enforcement that applies to everyday changes.
+
 Troubleshooting:
 
 | Symptom | Cause |
 | --- | --- |
 | "invalid signature" | The license was edited, truncated, or issued for a different vendor key |
 | "expired" | `--valid-until` has passed; renew the license |
-| "clock tampering" | The system clock moved backwards, or it was previously set far forward and then corrected. Fix the clock, close the app, delete `clock-tracker.json` in the data directory, and start the app again (this resets the recorded time and clears the warning). |
-| License accepted but features missing | The edition/features in the license do not include them |
+| "clock tampering" | The system clock moved backwards, or it was previously set far forward and then corrected. Fix the clock, then contact support: the only reset step clears the recorded install time that starts the 30-day trial, so it is not a self-service fix. |
+| Expected feature not listed on the License screen | The license does not carry it. Editions and features are recorded but not yet enforced by the API. |
 
 ## 4. Your data
 
-The database, attachments and `clock-tracker.json` live in the app's data
-directory (per-user application data, `com.tuari.desktop`).
+The database, attachments, `license.lic` and `clock-tracker.json` live under the
+app's data directory — `%APPDATA%\com.tuari.desktop\Tuari` on a normal install
+(a portable build keeps the same tree in `<install folder>\data`).
 
 **The database is encrypted, and its key is kept in the Windows Credential
 Manager, not in that directory.** So:
 
 - Copying the data directory alone is **not** a restorable backup: on a new
   Windows profile, or after the credential entry is lost, the app generates a
-  fresh key and cannot open the restored database.
-- A complete backup is the data directory **plus** the credential entry
-  (service `com.tuari.desktop.auth`, account `desktop-bearer-token`, in Windows
+  fresh key at startup and cannot open the restored database.
+- A complete backup is the data directory **plus** the database-key credential
+  entry (service `com.tuari.desktop.secrets`, account `app-db.key`, in Windows
   Credential Manager) — export it, or keep the original Windows profile.
-- The reliable way to move a workspace is the app's own flow for it:
-  **Settings → Security** (recovery keys and the database encryption key), which
-  lets you re-wrap the database under a key you can reproduce on another
-  machine.
+- Restoring a backup onto a new Windows profile, or any install whose credential
+  store no longer holds the matching `app-db.key`, is **not supported by the app
+  today**: there is no screen that lets you supply a key before the database
+  opens. Keep the Windows profile, or the key entry, with the backup; if both are
+  lost, contact support.
+
+**Settings → Security** is not a restore flow. It changes the database key while
+the database is already open (current key → new key) and manages one-time
+recovery keys, which authorize an administrator password reset — neither can
+open a restored database.
 
 Take backups with the app closed.
 
