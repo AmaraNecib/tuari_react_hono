@@ -82,21 +82,20 @@ Nothing is assumed; detect each of these before launching:
 1. **Issues/tasks.** For each: fetch the issue (`gh issue view <n>` or the
    project's tracker) and paste the essentials into the lane brief. Never make a
    worker guess from a bare number.
-2. **Base branch.** Resolve the branch the project INTEGRATES into, which is
-   not necessarily `origin/HEAD`. Prefer EVIDENCE over naming, in this order:
+2. **Base branch.** Resolve the branch ORDINARY work integrates into. Signals,
+   strongest first, and never a guess from a branch name alone:
 
-   1. the base of recent merges —
-      `gh pr list --state merged --limit 5 --json baseRefName` (this is what the
-      project actually targets);
-   2. the documented convention (`AGENTS.md`, `docs/*workflow*`);
-   3. `git symbolic-ref --short refs/remotes/origin/HEAD`;
-   4. `develop` only as a last resort when nothing above resolved, and say so in
-      the brief (a repo can keep a stale `develop` while integrating into
-      `main`).
+   1. the documented convention (`AGENTS.md`, `docs/*workflow*`) — authoritative
+      when present;
+   2. the base of recent merged PRs, EXCLUDING release/hotfix branches
+      (`release/*`, `hotfix/*`, `chore/release*`): use it when at least three of
+      the last five qualifying merges agree on one base;
+   3. `git symbolic-ref --short refs/remotes/origin/HEAD`.
 
-   Put the resolved base in the brief AND pass it explicitly on landing
-   (`gh pr create --base <base>`), so a lane never branches from — or opens a
-   PR against — the wrong target.
+   If the signals disagree, stop and ask the captain which branch ordinary work
+   lands on — a release or hotfix merged into `main` must not redefine the target
+   for feature lanes. State the resolved base in the brief AND pass it explicitly
+   on landing (`gh pr create --base <base>`).
 3. **Package manager + commands.** Detect from the lockfile:
    `pnpm-lock.yaml` → pnpm, `package-lock.json` → npm, `yarn.lock` → yarn,
    `bun.lockb` → bun. Read the root `package.json` scripts and record the
