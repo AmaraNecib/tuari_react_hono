@@ -83,14 +83,20 @@ Nothing is assumed; detect each of these before launching:
    project's tracker) and paste the essentials into the lane brief. Never make a
    worker guess from a bare number.
 2. **Base branch.** Resolve the branch the project INTEGRATES into, which is
-   not necessarily `origin/HEAD`. Check in this order: the repo's documented
-   convention (`AGENTS.md`, `docs/*workflow*`), the base of recent merges
-   (`gh pr list --state merged --limit 5 --json baseRefName`), then `develop`
-   when it exists. Only fall back to
-   `git symbolic-ref --short refs/remotes/origin/HEAD` when none of those
-   exist. Put the resolved base in the brief AND pass it explicitly on landing
+   not necessarily `origin/HEAD`. Prefer EVIDENCE over naming, in this order:
+
+   1. the base of recent merges —
+      `gh pr list --state merged --limit 5 --json baseRefName` (this is what the
+      project actually targets);
+   2. the documented convention (`AGENTS.md`, `docs/*workflow*`);
+   3. `git symbolic-ref --short refs/remotes/origin/HEAD`;
+   4. `develop` only as a last resort when nothing above resolved, and say so in
+      the brief (a repo can keep a stale `develop` while integrating into
+      `main`).
+
+   Put the resolved base in the brief AND pass it explicitly on landing
    (`gh pr create --base <base>`), so a lane never branches from — or opens a
-   PR against — `main` in a repo that lands on `develop`.
+   PR against — the wrong target.
 3. **Package manager + commands.** Detect from the lockfile:
    `pnpm-lock.yaml` → pnpm, `package-lock.json` → npm, `yarn.lock` → yarn,
    `bun.lockb` → bun. Read the root `package.json` scripts and record the

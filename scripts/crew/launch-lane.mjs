@@ -2,12 +2,13 @@
 /**
  * launch-lane.mjs — spawn a VISIBLE Herdr agent lane rooted at a worktree.
  *
- * This is the ONLY sanctioned way to launch crew-dispatch lanes (workers and
- * reviewers) in this repo. It encapsulates the verified Herdr recipe
+ * This is the ONLY sanctioned way to launch VISIBLE crew-dispatch lanes (workers
+ * and reviewers) in this repo. It encapsulates the verified Herdr recipe
  * (workspace create -> pane run -> agent prompt) so the visible path is one
- * command. If you are launching a lane any other way — e.g. headless subagent
- * children — you are doing it wrong. See AGENTS.md "Crew dispatch shape" and
- * .agents/skills/crew-dispatch/SKILL.md.
+ * command. It does NOT cover the headless shape: when the captain explicitly
+ * opts into headless ("run headless" / "don't use herdr"), lanes launch through
+ * the async subagent workflow instead and this script does not apply. See
+ * AGENTS.md "Crew dispatch shape" and .agents/skills/crew-dispatch/SKILL.md.
  *
  * Manifest lifecycle: the lane manifest is written with status "starting"
  * before the Herdr launch sequence and is promoted to "ready" (with the
