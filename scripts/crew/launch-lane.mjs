@@ -253,7 +253,17 @@ try {
     return p && p.agent_status && p.agent_status !== "unknown" && p.agent;
   };
   if (!agentReady()) {
-    execFileSync("herdr", ["pane", "run", pane.pane_id, "pi"], { stdio: "inherit" });
+    // PI_LANE_MODEL pins the lane's model explicitly. Without it the pane
+    // inherits whatever pi defaults to at launch time, which has already
+    // produced lanes that died instantly on a model the account cannot use
+    // ("Codex error: The model gpt-5.5 does not exist"). The crew model is
+    // therefore the default rather than something the operator has to set by
+    // hand before every launch; PI_LANE_MODEL still overrides it.
+    const DEFAULT_LANE_MODEL = "opencode-go/deepseek-v4.1-flash";
+    const laneModel = process.env.PI_LANE_MODEL?.trim() || DEFAULT_LANE_MODEL;
+    const piCommand = `pi --model ${laneModel}`;
+    execFileSync("herdr", ["pane", "run", pane.pane_id, piCommand], { stdio: "inherit" });
+    if (laneModel) console.log(`[launch-lane] starting pi with --model ${laneModel}`);
     console.log("[launch-lane] started pi agent, waiting for detection...");
     for (let i = 0; i < 30; i++) {
       if (agentReady()) break;
