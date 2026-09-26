@@ -46,6 +46,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -61,6 +62,7 @@ const BUNDLE_ROOT = path.join(REPO_ROOT, "apps", "desktop", "src-tauri", "target
 const SIDECAR_PROBE_PS1 = path.join(SCRIPT_DIR, "windows-sidecar-probe.ps1");
 
 const REQUIRED_TABLES = ["user", "session", "account", "app_bootstrap_state", "employee"];
+const EXTRACT_MARKER = ".tuari-smoke-extract";
 const SIDECAR_ENV_KEYS = [
   "API_HOST",
   "API_PORT",
@@ -82,6 +84,7 @@ function parseArgs(argv) {
     installer: undefined,
     extractDir: undefined,
     keep: false,
+    force: false,
     timeoutMs: 90_000,
     healthPort: undefined,
   };
@@ -90,6 +93,10 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (arg === "--keep") {
       options.keep = true;
+      continue;
+    }
+    if (arg === "--force") {
+      options.force = true;
       continue;
     }
     const value = argv[index + 1];
@@ -137,7 +144,8 @@ function printUsage() {
       "Options:",
       "  --zip <path>         Portable zip to extract (default: newest in bundle/portable)",
       "  --installer <path>   NSIS installer to verify (default: newest in bundle/nsis)",
-      "  --extract-dir <path> Reuse an already-extracted portable directory",
+      "  --extract-dir <path> Reuse a smoke-owned portable directory",
+      "  --force              With --extract-dir, reset a non-empty smoke-owned directory",
       "  --health-port <n>    Override the API port (default: read from src/lib.rs)",
       "  --timeout-ms <n>     Sidecar/health wait budget (default: 90000)",
       "  --keep               Keep the temp extraction directory for inspection",
@@ -149,6 +157,9 @@ function printUsage() {
 // ─── Check bookkeeping ─────────────────────────────────────────────────────
 
 const checks = [];
+// Removals to run if main() rejects, so a fatal error never leaves a temp
+// extraction directory behind. The normal exit paths remove these themselves.
+const fatalCleanups = [];
 
 function record(name, ok, detail) {
   checks.push({ name, ok, detail });
@@ -183,6 +194,20 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+/**
+ * Prints the standard result footer and returns the number of failed checks.
+ * Called on every exit path so the script always reports what failed, including
+ * when a preflight check aborts the run before launch.
+ */
+function printSummary() {
+  const failed = checks.filter((entry) => !entry.ok);
+  console.log(`\n=== ${checks.length - failed.length}/${checks.length} checks passed ===`);
+  for (const entry of failed) {
+    console.error(`  FAILED: ${entry.name} (${entry.detail})`);
+  }
+  return failed.length;
 }
 
 // ─── Small filesystem helpers ──────────────────────────────────────────────
@@ -221,6 +246,55 @@ function newestMatching(dir, pattern) {
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
+}
+
+/**
+ * Refuses `--extract-dir` targets where deleting `bin` or `data` would reach
+ * outside the directory the operator named.
+ */
+function assertSafeExtractDir(dir) {
+  const parsed = path.parse(dir);
+  assert(
+    parsed.root !== dir,
+    `refusing to use a filesystem root as --extract-dir: ${dir}`,
+  );
+  assert(
+    path.resolve(dir) !== path.resolve(os.homedir()),
+    `refusing to use the home directory as --extract-dir: ${dir}`,
+  );
+  assert(
+    path.resolve(dir) !== path.resolve(REPO_ROOT),
+    `refusing to use the repository root as --extract-dir: ${dir}`,
+  );
+}
+
+/**
+ * Best-effort description of whatever holds a TCP port, used in the preflight
+ * failure so the operator can stop the right thing. Returns undefined when the
+ * owner cannot be identified.
+ */
+function describePortOwner(port) {
+  if (process.platform === "win32") {
+    const script = [
+      `$connection = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1`,
+      "if ($connection) {",
+      "  $process = Get-CimInstance Win32_Process -Filter \"ProcessId = $($connection.OwningProcess)\" -ErrorAction SilentlyContinue",
+      "  if ($process) { Write-Output (\"pid $($process.ProcessId) $($process.Name): $($process.CommandLine)\") }",
+      "  else { Write-Output (\"pid $($connection.OwningProcess) (process details unavailable)\") }",
+      "}",
+    ].join("\n");
+    const result = spawnSync(
+      "powershell",
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      { encoding: "utf8" },
+    );
+    const detail = result.stdout?.trim();
+    return detail ? detail : undefined;
+  }
+
+  const result = spawnSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" });
+  const detail = result.stdout?.trim().split("\n").slice(1).join("; ");
+  return detail ? detail : undefined;
 }
 
 // ─── Artifact + layout checks ──────────────────────────────────────────────
@@ -440,20 +514,64 @@ async function main() {
   const extractDir = options.extractDir
     ? path.resolve(options.extractDir)
     : path.join(os.tmpdir(), `tuari-smoke-${process.pid}-${Date.now()}`);
-  const shouldCleanExtractDir = !reuseExisting && !options.keep;
+  const markerPath = path.join(extractDir, EXTRACT_MARKER);
 
-  if (!reuseExisting) {
-    mkdirSync(extractDir, { recursive: true });
-    extractZip(zipPath, extractDir);
-  } else {
-    // A reused directory keeps its previous run's database, which would make the
-    // "first run created the database" check meaningless. Reset just the DB
-    // files so each run proves schema creation from scratch.
-    for (const suffix of ["", "-wal", "-shm"]) {
-      rmSync(path.join(extractDir, "data", "projects", "default", `tuari.sqlite${suffix}`), {
-        force: true,
-      });
+  // Ownership rules for --extract-dir. The script only deletes inside a
+  // directory it created, proved by the marker file it writes there. A
+  // directory the operator named is never removed, even on the cleanup path.
+  let resetReusedExtractDir = false;
+  if (reuseExisting) {
+    assertSafeExtractDir(extractDir);
+    if (existsSync(extractDir)) {
+      assert(
+        statSync(extractDir).isDirectory(),
+        `--extract-dir ${extractDir} exists but is not a directory`,
+      );
+    } else {
+      mkdirSync(extractDir, { recursive: true });
     }
+    if (readdirSync(extractDir).length > 0) {
+      assert(
+        existsSync(markerPath),
+        `--extract-dir ${extractDir} is not empty and has no ${EXTRACT_MARKER} marker, so this script cannot prove it owns it. Point --extract-dir at a new or empty directory, or remove that one yourself. --force does not override this.`,
+      );
+      assert(
+        options.force,
+        `--extract-dir ${extractDir} already holds a previous smoke extraction. Pass --force to reset the smoke artifacts inside it, or choose a new directory.`,
+      );
+      resetReusedExtractDir = true;
+    }
+  } else {
+    mkdirSync(extractDir, { recursive: true });
+  }
+
+  if (resetReusedExtractDir) {
+    // Every path below is joined onto extractDir, so nothing outside the
+    // directory the operator named is ever touched.
+    for (const name of ["Tuari.exe", "bin", "data"]) {
+      rmSync(path.join(extractDir, name), { recursive: true, force: true });
+    }
+    console.log(`  [note] --force: reset the previous extraction in ${extractDir}`);
+  }
+
+  writeFileSync(
+    markerPath,
+    `${JSON.stringify(
+      {
+        createdBy: "scripts/smoke/installer-smoke.mjs",
+        zip: zipPath,
+        createdAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  extractZip(zipPath, extractDir);
+
+  const shouldCleanExtractDir = !reuseExisting && !options.keep;
+  if (shouldCleanExtractDir) {
+    // Registered so a fatal error later in the run still removes the temp dir.
+    fatalCleanups.push(() => rmSync(extractDir, { recursive: true, force: true }));
   }
 
   const exePath = path.join(extractDir, "Tuari.exe");
@@ -515,12 +633,16 @@ async function main() {
   // ── 3. Pre-flight ────────────────────────────────────────────────────────
   console.log("\n[3/7] Pre-flight");
 
+  const preflightStart = checks.length;
+
   await checkAsync(`port ${healthPort} is free before launch`, async () => {
     const free = await isPortFree(healthPort);
-    assert(
-      free,
-      `port ${healthPort} is already in use; stop the process holding it (a stale dev server or another Tuari instance) and retry`,
-    );
+    if (!free) {
+      const owner = describePortOwner(healthPort);
+      throw new Error(
+        `port ${healthPort} is already in use${owner ? ` by ${owner}` : " by an unidentified process"}; stop it and retry`,
+      );
+    }
     return "free";
   });
 
@@ -528,6 +650,22 @@ async function main() {
     assert(!existsSync(dbPath), `${dbPath} already exists; use a fresh --extract-dir for a real first-run check`);
     return dataDir;
   });
+
+  const preflightFailures = checks.slice(preflightStart).filter((entry) => !entry.ok);
+  if (preflightFailures.length > 0) {
+    // A busy port means another Tuari instance may own the API, and launching
+    // this build would let its stale-sidecar cleanup kill that instance's
+    // sidecar. Abort with nothing started.
+    console.error(
+      `\nAborting before launch: ${preflightFailures.length} preflight check(s) failed. The app was not started.`,
+    );
+    if (shouldCleanExtractDir) {
+      rmSync(extractDir, { recursive: true, force: true });
+    } else {
+      console.log(`Extraction kept at ${extractDir}`);
+    }
+    return printSummary() === 0 ? 0 : 1;
+  }
 
   // The shell copies an allowlisted legacy database from `%PUBLIC%\Documents\Tuari`
   // into the data dir on launch, preserving mtime, so a database left by an
@@ -700,9 +838,12 @@ async function main() {
     if (sidecarEnv) {
       const status = sidecarEnv.TUARI_LICENSE_STATUS;
       const edition = sidecarEnv.TUARI_LICENSE_EDITION;
+      // This run is a fresh unlicensed install, so the shell's
+      // LicenseStatus::Grace is the only accepted handoff. `active` would mean
+      // the shell found a license that this run never placed there.
       assert(
-        status === "trial" || status === "active",
-        `TUARI_LICENSE_STATUS=${status} (expected "trial" for an unlicensed fresh install)`,
+        status === "trial",
+        `TUARI_LICENSE_STATUS=${status} (observed edition=${edition}); a fresh install with no license.lic must hand the sidecar exactly "trial" (Rust LicenseStatus::Grace)`,
       );
       return `TUARI_LICENSE_STATUS=${status}, TUARI_LICENSE_EDITION=${edition}`;
     }
@@ -764,13 +905,7 @@ async function main() {
     console.log(`\nExtraction kept at ${extractDir}`);
   }
 
-  const failed = checks.filter((entry) => !entry.ok);
-  console.log(`\n=== ${checks.length - failed.length}/${checks.length} checks passed ===`);
-  for (const entry of failed) {
-    console.error(`  FAILED: ${entry.name} (${entry.detail})`);
-  }
-
-  return failed.length === 0 ? 0 : 1;
+  return printSummary() === 0 ? 0 : 1;
 }
 
 async function waitFor(predicate, timeoutMs) {
@@ -790,5 +925,12 @@ main()
   })
   .catch((error) => {
     console.error(`\nFatal error: ${error.message}`);
+    for (const cleanup of fatalCleanups.splice(0)) {
+      try {
+        cleanup();
+      } catch {
+        // Best effort: the fatal error is what matters.
+      }
+    }
     process.exitCode = 1;
   });

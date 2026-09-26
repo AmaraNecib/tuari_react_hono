@@ -55,6 +55,11 @@ Tuari-portable/
       node_modules/better-sqlite3/build/Release/better_sqlite3.node
 ```
 
+The smoke script adds one file of its own to a directory it extracts into:
+`.tuari-smoke-extract`, which records the zip it came from and marks the
+directory as safe for the script to reset. A portable folder produced by
+`portable:only` does not contain it.
+
 ## Run the smoke test
 
 ```bash
@@ -65,17 +70,31 @@ Useful flags:
 
 - `--zip <path>` picks a specific portable zip.
 - `--installer <path>` picks a specific NSIS installer.
-- `--extract-dir <path> --keep` reuses an already-extracted folder and leaves it
-  on disk for inspection.
+- `--extract-dir <path>` reuses a smoke-owned directory instead of a fresh
+  temp one. The script writes a `.tuari-smoke-extract` marker into every
+  directory it creates, and it refuses to touch a non-empty directory that has
+  no marker, even with `--force`.
+- `--force` resets a non-empty smoke-owned extract directory (the marker is
+  present) by deleting `Tuari.exe`, `bin/`, and `data/` inside it before
+  extracting again. It never deletes anything outside that directory.
+- `--keep` keeps the extract directory for inspection.
 - `--timeout-ms <n>` raises the sidecar and health wait budget.
 - `--health-port <n>` overrides the port, which is otherwise read from
   `apps/desktop/src-tauri/src/lib.rs` so the script cannot drift from the shell.
 
-The script extracts to a fresh directory under the system temp dir, launches the
-extracted `Tuari.exe`, waits for the sidecar and the health endpoint, inspects
-the process environment and the data directory, then kills the app, kills the
-sidecar, confirms the port is free, and removes the temp directory. It exits 0
-only when every check passes and prints one line per check.
+The script extracts to a fresh directory under the system temp dir by default,
+launches the extracted `Tuari.exe`, waits for the sidecar and the health
+endpoint, inspects the process environment and the data directory, then kills
+the app, kills the sidecar, confirms the port is free, and removes the temp
+directory. It exits 0 only when every check passes and prints one line per
+check.
+
+Preflight runs before anything is launched. If the API port is already in use
+the script prints the port owner (pid, image name, command line), records the
+failure, aborts, and exits non-zero without starting `Tuari.exe`. That matters
+because the shell cleans up stale sidecars by command-line match, so a launch
+while another instance owns the port could kill that instance's sidecar. The
+extract directory is still cleaned up on the abort path.
 
 The script spawns `Tuari.exe` with `PUBLIC` pointed at a directory that does not
 exist. The shell's legacy migration sources its old data from
@@ -109,7 +128,9 @@ a normal launch, and never deletes them.
    shell migrated in cannot pass as a fresh one. `<extract>/data/clock-tracker.json`
    exists.
 9. No `license.lic` exists, so the app ran the no-license path, and
-   `TUARI_LICENSE_STATUS` is `trial`.
+   `TUARI_LICENSE_STATUS` is exactly `trial`. The check reports the observed
+   value and edition when it differs, so an `active` handoff on a fresh install
+   fails instead of passing.
 10. After shutdown, the database opens and holds `user`, `session`, `account`,
     `app_bootstrap_state`, and `employee`.
 

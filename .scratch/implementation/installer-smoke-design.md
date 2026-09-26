@@ -36,9 +36,14 @@ Two committed files plus this record:
 
 ## Interfaces
 
-- CLI: `--zip`, `--installer`, `--extract-dir`, `--keep`, `--timeout-ms`,
+- CLI: `--zip`, `--installer`, `--extract-dir`, `--force`, `--keep`, `--timeout-ms`,
   `--health-port`. Defaults resolve the newest artifacts under
   `apps/desktop/src-tauri/target/release/bundle`.
+- `--extract-dir` ownership: the script writes a `.tuari-smoke-extract` marker
+  into any directory it creates and only deletes inside a directory carrying
+  that marker. A non-empty unmarked directory is refused, even with `--force`;
+  a non-empty marked directory needs `--force`, which resets `Tuari.exe`,
+  `bin/`, and `data/` inside it and nothing outside it.
 - Exit code 0 when every check passes, 1 otherwise. One printed line per check.
 - The probe script emits one JSON object: `{ sidecars, env, envError }`. It never
   throws, so a locked-down machine degrades to a reported failure instead of a
@@ -59,7 +64,8 @@ Two committed files plus this record:
 
 The smoke script is the test. It is run against a real local build and must
 exit 0. It is self-cleaning and safe to re-run: each run uses a new temp
-directory, resets the database files when `--extract-dir` is reused, neutralizes
+directory, resets the smoke artifacts in a marked `--extract-dir` when `--force`
+is passed, neutralizes
 the legacy-data migration by overriding `PUBLIC`, and kills the processes it
 started in every exit path. On this build it fails, and the failure is the
 defect described in `docs/release-verification.md`.
