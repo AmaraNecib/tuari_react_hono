@@ -1,587 +1,359 @@
 # Engineering Workflow
 
-This document defines the permanent engineering workflow for the Tuari project. Every feature, from inception to merge, follows this lifecycle.
+This document is the canonical lifecycle for Tuari changes. It supports the
+normal remote repository (**the default**) and a **local-only fallback** for
+when the GitHub repository is genuinely unreachable or the user asks for it.
 
-The `feature-implement` skill orchestrates this entire lifecycle automatically. Use it as the entry point for all feature work.
+## Repository modes
 
----
+| Mode | Source of truth | Allowed review transport | Finish state |
+| --- | --- | --- | --- |
+| **Remote** (default) | Fresh `develop`, issue/PR data, CI | PR/CI plus Greptile CLI or hosted review | PR opened/updated; merged only when the user authorizes it |
+| Local-only (fallback) | Current checkout, local branches/worktrees, cached refs, `docs/local-issue-status.md` | Greptile CLI (`greptile review --json`) | Locally verified and ready for later integration; never "merged" or "closed" |
 
-## Feature Lifecycle
+Selecting local-only mode is not a downgrade in code quality. It removes the
+GitHub transport dependency while retaining the local tests, two-axis review,
+test audit, adversarial debate where required, and Greptile review.
+
+## Local ticket storage
+
+The old issue tracker was generated into ignored `tmp/issue-tracker.html` from
+`gh issue list`. That file is a presentation cache, not a durable source, and
+`.scratch/issues/` is intentionally ignored. The durable offline sources are:
+
+- `docs/local-issue-snapshot.json`: the 49-ticket title snapshot;
+- `docs/local-issue-status.md`: evidence-based shipped/local/unverified status;
+- `.scratch/implementation/<issue-id>-design.md`: implementation decisions;
+- `.scratch/reviews/<issue-id>/`: review evidence;
+- local branches and cached refs: implementation material.
+
+Regenerate the ignored visual tracker without GitHub:
+
+```bash
+python tools/gen-issue-tracker.py --offline
+```
+
+Offline snapshot mode is the default. GitHub is contacted only when explicitly
+requested with `--refresh`; a successful live fetch then refreshes the durable
+local snapshot.
+
+## Feature lifecycle
 
 ```
-Issue (GitHub)
+Local ticket/spec
     ↓
-Architecture / ADR (if required)
+Pin local base SHA + review tier
     ↓
 Design (.scratch/implementation/)
     ↓
-Implementation (implement skill: TDD + Playwright E2E)
+Implementation (TDD + Playwright where applicable)
     ↓
-Guard — Pre-commit (Phase 1)
+Guard Phase 1 — local pre-review checks
     ↓
-Quality Check (skill-guided: codebase-design, diagnosing-bugs, domain-modeling, ...)
+Quality check — relevant skills
     ↓
-Debate (High-assurance only)
+Debate — High-assurance only
     ↓
-Test Audit (Standard + High-assurance)
+Test audit — Standard + High-assurance
     ↓
-Pre-Push Self-Review (code-review skill)
+Code-review — local Standards + Spec axes
     ↓
-Guard — Pre-push (Phase 2)
+Guard Phase 2 — local pre-report checks
     ↓
-Push Feature Branch
+Greptile CLI review (`cli-review`)
     ↓
-Open Pull Request
+Greploop local fix/review loop when findings exist
     ↓
-GitHub Actions Verification
+Guard Phase 3 — local pre-report gate
     ↓
-Greptile Review
+Capture wisdom + report local handoff
     ↓
-Address Review Feedback
-    ↓
-Guard — Pre-report (Phase 3) + Capture Wisdom
-    ↓
-Merge into develop
-    ↓
-Close Issue
+[Remote restored, user approves] rebase → fresh checks → PR/CI lifecycle
 ```
 
----
+`feature-implement` is the mandatory orchestrator. Do not run a later phase
+without recording the earlier gate, its commands, and its result.
 
-## Step Details
+## Source-only change policy
 
-### 1. Issue
+Builds and test commands are allowed to generate local artifacts, but those
+artifacts must not enter a source PR. Common examples are `dist/`, `target/`,
+sidecar binaries, Tauri schemas, coverage directories, Playwright reports,
+SQLite files, and `node_modules/`.
 
-Every implementation starts from a GitHub Issue. The issue must reference:
-- The PRD it implements
-- The architecture document it conforms to
-- The ADRs that constrain it
+Before committing or pushing a local PR, inspect the exact file set:
 
-See `.github/ISSUE_TEMPLATE/feature.md` for the template.
+```bash
+git diff --name-only <base-sha>...HEAD
+git status --short --ignored
+```
 
-### 2. Architecture / ADR
+Stage named source/config/test/evidence files only. Never use `git add -A` and
+do not add a generated file just because a build command created it. If the
+base contains a legacy tracked generated artifact, leave it out of the feature
+diff and document it rather than copying a fresh build output.
 
-Architecture is frozen during a milestone. If implementation reveals a genuine architectural problem:
-- Stop implementation.
-- Open an ADR.
-- Resolve the architecture first.
-- Then continue implementation.
+## Coverage policy
 
-Do not silently diverge from the approved architecture.
+The API coverage gate (see `apps/api/vitest.config.ts`) keeps lines,
+statements, functions, and branches all at a strict 100% - "tests pass" keeps
+its meaning. The #242 report code contains defensive branches that are
+provably unreachable given the surrounding logic; those are handled with a
+commented `/* v8 ignore */` escape (which excludes them from the numbers), not
+by lowering the threshold, so any REACHABLE untested branch still fails the
+gate. An aggregate floor would let real gaps pass silently, so it is
+intentionally not used. A branch marked unreachable must be documented in a
+comment and genuinely impossible, not a way to dodge a real hole.
 
-### 3. Design
+## 1. Pin the base and tier
 
-Before writing production code, create a design document:
+Start from the repository root:
+
+```bash
+git rev-parse --show-toplevel
+git status --short --branch
+git rev-parse develop
+git merge-base develop HEAD
+```
+
+Use local `develop` when present. A cached `origin/develop` may be used only as
+an explicitly recorded fallback; do not fetch while in local-only mode. Pin one
+base SHA and use it for design, code review, and evidence.
+
+Choose one tier:
+
+| Tier | Applies to | Required lifecycle |
+| --- | --- | --- |
+| Lightweight | Truly non-reviewable files only (`.gitignore`, `.gitattributes`, `LICENSE`, scratch) | Guard 1 → relevant quality check → report |
+| Standard | Code, tests, CI, workflow, config, skills, UI, API | Guard 1 → quality check → test audit → code review → Guard 2 → CLI Greptile → Guard 3 |
+| High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard plus debate |
+
+Workflow files and skills are Standard because they change future engineering
+behavior. Do not label them Lightweight to avoid review.
+
+## 2. Design
+
+Before production changes, create:
 
 ```
 .scratch/implementation/<issue-id>-design.md
 ```
 
-The design document must specify:
-- Public API (structs, enums, traits, functions)
-- Internal dependencies
-- Planned tests (unit + Playwright E2E)
-- Implementation risks
-- Any deviations from the architecture
+It must specify public interfaces, dependencies, planned unit/integration and
+Playwright tests, risks, deviations from architecture, mode (`local-only`),
+and the pinned base SHA. For an issue from the offline snapshot, reference
+`docs/local-issue-status.md` instead of trying to fetch a deleted issue.
 
-### 4. Implementation (TDD + Playwright E2E)
+## 3. Implementation
 
-Load the `implement` skill. It reads the issue, implements using TDD at pre-agreed seams, runs typechecking and tests regularly, then runs `code-review` and commits to the current branch.
+Use the `implement` skill and TDD at explicit seams.
 
-**Every feature MUST include:**
-- **Unit tests** for business logic (via `pnpm test:api` / vitest)
-- **Playwright E2E tests** for the user-facing flow, added to `tests/e2e/`
-- Run `pnpm typecheck && pnpm test:web && pnpm test:api` during implementation
-
-See `.agents/skills/implement/SKILL.md` for details.
-
-### 4.5 — Guard Pre-commit (Phase 1)
-
-Before any review, run the `guard` skill Phase 1 (pre-commit) to confirm everything compiles:
-- `pnpm --filter @tuari/contracts build`
-- `pnpm typecheck`
-- `pnpm lint`
-- `pnpm test:api`
-- `pnpm test:web`
-
-Do NOT proceed to reviews until this passes.
-
-### 5 — Quality Check (Skill-Guided Review)
-
-After implementation but before deeper reviews, load relevant skills to catch issues early.
-
-The agent selects skills based on what the change touches:
-
-| If the change touches... | Load these skills |
-|---|---|
-| New module, interface, or architecture | `codebase-design` — check depth, seam placement, deletion test |
-| Complex logic, state, or edge cases | `diagnosing-bugs` — catch logic errors early |
-| Domain entities, terms, or data models | `domain-modeling` — check ubiquitous language alignment |
-| Any production code | `code-review` — review against coding standards |
-| UI components, pages, or visual design | `frontend-design` — distinctive visual identity; `web-design-guidelines` — a11y, UX audit |
-| Existing UI that needs polish | `redesign-existing-projects` — upgrade generic-looking designs |
-| Adding/managing shadcn/ui components | `shadcn` — component registry, styling |
-| Component API design, prop proliferation | `vercel-composition-patterns` — compound components, render props |
-| React rendering performance | `vercel-react-best-practices` — perf optimization patterns |
-| Tauri desktop features (IPC, window, system tray) | `tauri-v2` — Tauri v2 patterns and best practices |
-| Hono API routes, middleware, validation | `hono` — official Hono patterns from creator |
-| Playwright E2E test architecture, selectors | `playwright-best-practices` — test design patterns |
-| Accessibility, RTL, keyboard navigation | `accessibility` — Addy Osmani's a11y audit |
-| Unclear requirements or unknowns | `research` — investigate against primary sources |
-
-These skills supplement the `code-review` already run by `implement`. The agent does **not** load all blindly — it picks the ones relevant to the issue.
-
-**Why this exists:**
-- Catches design and logic problems before tests are written
-- Catches things `code-review` might miss (domain alignment, architecture depth, bug patterns)
-
-### 5.5 — Review Tiers
-
-Not every change needs the same review depth. Select the tier after implementation
-based on what the change touches:
-
-| Tier | Applies to | Required steps |
-|------|-----------|----------------|
-| **Lightweight** | Truly non-reviewable files only (.gitignore, .gitattributes, LICENSE, .scratch/) | Guard Phase 1 → Quality check → Push |
-| **Standard** | Code changes, CI, workflow, config, UI, API endpoints, skills | Guard Phase 1 → Quality check → Test audit → Code-review → Guard Phase 2 → Push |
-| **High-assurance** | Authz/permissions (RBAC), licensing/crypto, debt financial calculations, security | Guard Phase 1 → Quality check → Debate → Test audit → Code-review → Guard Phase 2 → Push |
-
-Record the selected tier at the start of implementation and pass it through all review steps.
-
-### 5.75 — Debate (High-assurance only)
-
-Load the `debate` skill. It runs **two parallel sub-agents**:
-- **Critic** — finds every flaw in the implementation
-- **Defender** — argues for the design decisions
-
-The parent agent synthesizes both and decides what to fix, defer, or dismiss.
-
-Evidence is saved to `.scratch/reviews/<issue-id>/<head-sha>-debate.md`.
-
-### 5.9 — Test Audit (Standard + High-assurance)
-
-Load the `test-audit` skill. It runs **three parallel sub-agents**:
-- **Edge case hunter** — finds untested edge cases
-- **Coverage analyst** — checks test coverage and depth
-- **Quality reviewer** — evaluates assertion quality and test design
-
-This catches shallow test coverage that "all tests pass" misses.
-
-Evidence is saved to `.scratch/reviews/<issue-id>/<head-sha>-test-audit.md`.
-
-**Checks performed:**
-- Edge case coverage (empty states, error states, boundary values)
-- Test quality (meaningful assertions, not just "doesn't crash")
-- E2E coverage (critical user path is tested via Playwright)
-- No shallow/missing tests
-
-### 6 — Pre-Push Self-Review (code-review skill)
-
-Before pushing any commit intended for review, run the complete local verification pipeline:
+Every user-facing feature includes a Playwright test in `tests/e2e/`. Business
+logic includes meaningful unit/integration tests. Run relevant checks during
+implementation:
 
 ```bash
-# Rust Core
+pnpm typecheck
+pnpm test:web
+pnpm test:api
+```
+
+For Rust Core changes:
+
+```bash
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings
+```
 
-# TypeScript
+Run these checks locally so a predictable failure surfaces in the worktree,
+not first on an external system.
+
+## 4. Guard Phase 1: pre-review
+
+Run the local pre-review gate before any deeper review:
+
+```bash
+pnpm --filter @tuari/contracts build
 pnpm typecheck
 pnpm lint
-pnpm test
-
-# Contracts
-pnpm --filter @tuari/contracts build
-
-# Architecture guardrails (no tauri:: imports in Rust Core)
-if grep -rnE '(^use tauri|tauri::)' apps/desktop/src-tauri/src/ --include='*.rs'; then
-  echo "ERROR: Rust Core modules must not import tauri::"
-  exit 1
-else
-  echo "PASSED: No tauri:: imports found in core modules"
-fi
+pnpm test:api
+pnpm test:web
 ```
 
-GitHub Actions **must not** be the first place failures are discovered. The objective is:
+Also run Rust test/clippy and repository architecture guardrails when relevant.
+Stop on failure. A pre-existing failure must be reproduced on the pinned base
+and documented; it must not be silently ignored.
 
-> GitHub Actions should verify the work, not discover predictable failures.
+## 5. Quality check
 
-After the review tiers above, the agent runs the `code-review` skill
-against the current branch to catch issues locally **before pushing**.
+Select relevant skills rather than loading every skill:
 
-**How it works:**
+| Change | Skill |
+| --- | --- |
+| New module/interface/architecture | `codebase-design` |
+| Complex state/edge cases | `diagnosing-bugs` |
+| Domain entities/terms | `domain-modeling` |
+| Production code | `code-review` |
+| UI/visual design | `frontend-design`, `web-design-guidelines` |
+| UI polish | `redesign-existing-projects` |
+| shadcn/ui | `shadcn` |
+| Component API design | `vercel-composition-patterns` |
+| React performance | `vercel-react-best-practices` |
+| Tauri runtime/IPC | `tauri-v2` |
+| Hono routing/middleware | `hono` |
+| Playwright architecture/selectors | `playwright-best-practices` |
+| Accessibility/keyboard/RTL | `accessibility` |
 
-1. The parent agent selects a review-capable model depending on available models
-   and their capabilities (e.g., a code-review-optimized model for the review task).
-2. The parent invokes the builtin `code-review` skill with the fixed point being
-   `develop` (or the merge-base of the feature branch):
-   ```
-   git diff develop...HEAD
-   ```
-3. The code-review skill spawns **two parallel sub-agents**:
-   - **Standards** — checks code against documented coding standards +
-     Fowler smell baseline
-   - **Spec** — checks if the implementation matches the originating
-     issue / PRD / spec
-4. The skill aggregates findings into a single report.
+## 6. Debate: High-assurance only
 
-**Pass/Fail:**
+Run the `debate` skill with the pinned base. Preserve critic and defender
+outputs at:
 
-- **No actionable findings** from either axis → ✅ safe to push.
-- **Actionable findings** → 🔧 fix them locally, re-run local verification,
-  then re-run the self-review.
-- **Only advisory warnings** (non-blocking) → agent uses judgment: push
-  with `status:needs-investigation` label or fix before pushing.
+```
+.scratch/reviews/<issue-id>/<head-sha>-debate.md
+```
 
-Evidence is saved to `.scratch/reviews/<issue-id>/<head-sha>-code-review.md`.
+The parent agent decides what to fix, defer, or reject; do not treat a score as
+proof that a finding is valid. A lane may propose a follow-up PR for work that
+is genuinely outside scope, but must ask the parent first with the proposed
+follow-up and dependency/order impact. No silent deferrals.
 
-### 6.5 — Guard Pre-push (Phase 2)
+## 7. Test audit: Standard and High-assurance
 
-Run `guard` Phase 2 before pushing. Verifies:
-- All checks pass (typecheck, lint, test:api, test:web)
-- Review evidence files exist and are not stale (SHA matches current HEAD)
-- Working tree is clean
+Run `test-audit` against the current diff. It checks edge/error/empty states,
+assertion quality, E2E coverage, and shallow tests. Save:
 
-**Evidence staleness check:**
-- Extract SHA from evidence filenames in `.scratch/reviews/<issue-id>/`
-- Compare to `git rev-parse HEAD`
-- If different, inspect `git diff --name-only <evidence-sha> HEAD`:
-  - If any reviewable file changed (packages/, .github/workflows/,
-    .agents/skills/, docs/) → evidence is **STALE**, must regenerate
-  - If only non-reviewable files (.gitignore, LICENSE, .scratch/) → valid
+```
+.scratch/reviews/<issue-id>/<head-sha>-test-audit.md
+```
 
-### 7 — Push Feature Branch
+## 8. Local code review
+
+Run `code-review` against the fixed point:
 
 ```bash
-git checkout develop
-git pull origin develop
-git checkout -b feature/<issue-id>-<short-description>
-# ... implement ...
-git push origin feature/<issue-id>-<short-description>
+git diff <base-sha>...HEAD
+git log <base-sha>..HEAD --oneline
 ```
 
-Branch naming conventions:
+The two axes remain separate: the Standards axis checks repo rules and the
+smell baseline; the Spec axis checks the local design, local issue snapshot,
+and any checked-in PRD/spec.
 
-| Prefix | Pattern | Example |
-|--------|---------|--------|
-| `feature/` | `feature/<issue-id>-<short-description>` | `feature/m1.1-rust-core-scaffolding` |
-| `fix/` | `fix/<issue-id>-<short-description>` | `fix/issue-160-rust-warnings` |
-| `refactor/` | `refactor/<issue-id>-<short-description>` | `refactor/plan-005-god-object-splits` |
-| `agent/` | `agent/<short-description>` | `agent/cleanup-dirty-wip` |
-
-The `agent/` prefix is reserved for admin/cleanup/housekeeping tasks performed by automation. It does not require a corresponding GitHub issue.
-
-### 7. Open Pull Request
-
-Create a PR into `develop`. The PR must:
-- Reference the issue: `Closes #71` (not required for `agent/` branches)
-- Populate the PR template completely
-- Apply the correct labels (`area:*`, `priority:*`, `type:*`, `status:*`)
-- Be in draft state initially if CI has not yet passed
-
-### 8. GitHub Actions Verification
-
-Wait for all required CI checks to pass. If any check fails:
-- Investigate the failure
-- Fix locally
-- Rerun local verification
-- Push the fix
-- Wait for CI again
-
-### 9. Greptile Review
-
-Greptile auto-reviews when the PR is first created. On subsequent commits, auto-review is disabled — trigger it manually.
-
-Only after CI is fully green:
-- Comment `@greptile-apps review` in the PR
-- Wait for Greptile to complete (5-10 min depending on size)
-- Check the review score (aim for 5/5)
-- If Greptile finds problems:
-  1. Load the `implement` skill with Greptile's findings as the input spec — it will fix, test, code-review, and commit
-  2. Push the fixes
-  4. Wait for CI to complete
-  5. Trigger `@greptile-apps review` again
-  6. Wait for Greptile to re-review
-- Repeat until Greptile gives 5/5 or has no actionable findings
-
-### 10. Address Review Feedback
-
-- Address every comment (either fix or explain why not)
-- If changes were made: rerun local verification, push, wait for CI
-
-### 11. Final CI Verification
-
-After all review feedback is addressed and CI is green again, the PR is ready to merge.
-
-### 12. Guard Pre-report (Phase 3) + Capture Wisdom
-
-Run `guard` Phase 3 before merging. Verifies:
-- CI — all checks green on GitHub
-- PR description — accurate and complete
-- Any deferred items — documented with follow-up issues
-
-Then run `capture-wisdom` to save any lessons learned:
-- A Greptile finding that surprised you
-- A bug that took more than 15 minutes to diagnose
-- A debate/test-audit finding that revealed a real issue
-- The same issue across multiple PRs
-- End-of-session notes
-
-Wisdom is stored in `.agents/wisdom/*.md`.
-
-### 13. Merge
-
-**Only merge when the user explicitly says so.** Never auto-merge.
-
-Merge into `develop` using squash merge. The commit message should reference the issue:
+If the issue body is not available locally, the Spec axis must say "no spec
+available"; it must not guess. Save:
 
 ```
-m1.1: implement Rust Core scaffolding (closes #71)
+.scratch/reviews/<issue-id>/<head-sha>-code-review.md
 ```
 
-### 14. Close Issue
+Fix actionable findings, rerun local checks, then regenerate evidence. Greptile
+findings are claims: verify them in the current code before changing anything.
 
-After the merge is complete, close the GitHub Issue.
+## 9. Guard Phase 2: local pre-Greptile gate
 
----
+Verify all applicable local checks, evidence freshness, and handoff state.
+Evidence filenames must contain the final reviewed `HEAD` SHA. If the code
+changes after review, evidence is stale and must be regenerated.
 
-## Local Verification Policy
+A clean working tree is preferred. If the user explicitly wants an
+uncommitted local handoff, list every uncommitted file and do not call it ready
+to integrate. Never use `git add -A`; stage only named files when committing.
 
-Before pushing any commit intended for review, reproduce locally everything that GitHub Actions will execute, whenever practical.
+## 10. Greptile CLI review
 
-The CI workflow (`.github/workflows/ci.yml`) executes the following. Each must pass locally before pushing:
+Greptile review is now performed locally from the checkout, not by scraping PR
+comments. The CLI may send the committed diff to Greptile's service, but no
+GitHub repo, PR, branch push, or comment is required. The CLI excludes
+uncommitted files, so commit intended files explicitly or report the exact
+uncommitted review boundary; never claim those files were reviewed.
 
-| Check | Command |
-|-------|---------|
-| Contracts build | `pnpm --filter @tuari/contracts build` |
-| TypeScript type check | `pnpm turbo typecheck --filter='!@tuari/desktop'` |
-| Lint | `pnpm turbo lint` |
-| Rust Core tests | `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml` |
-| Rust Core clippy | `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings` |
-| Architecture guardrails | No `tauri::` imports in core modules |
-| API tests | `pnpm --filter @tuari/api test` |
-| Web tests | `pnpm test:web` |
-| Build | `pnpm turbo build --filter='!@tuari/desktop'` |
-
-**If a CI job cannot reasonably be executed locally**, (e.g., platform-specific builds, hosted services, protected secrets), document that limitation in the PR description.
-
----
-
-## Commit Policy
-
-- Small intermediate commits during implementation are acceptable on the feature branch.
-- Do **not** push code that knowingly fails local verification.
-- Before opening a Pull Request, the branch must pass the complete local verification pipeline.
-
----
-
-## Review Policy
-
-```
-Local Verification (step 5)
-    ↓
-Pre-Push Self-Review (step 5.5) — code-review skill, local agent review
-    ↓
-Push Feature Branch (step 6)
-    ↓
-Open Pull Request (step 7)
-    ↓
-GitHub Actions (all required checks green)
-    ↓
-Request Greptile Review (step 9)
-    ↓
-Address comments (step 10)
-    ↓
-GitHub Actions green again (if new commits)
-    ↓
-Ready for merge
-```
-
-### Two-Layer Review
-
-The project uses a **two-layer review system**:
-
-**Layer 1: Pre-Push Self-Review** (`code-review` skill, step 5.5)
-- Runs locally before pushing
-- Uses the `code-review` skill with parallel Standards + Spec sub-agents
-- Can use a different model (depending on available models and their capabilities) — enables model diversity where the reviewer uses a different model than the agent
-- Catches spec drift, smell violations, missing tests, standard breaches
-- Runs on Windows, no WSL required
-
-**Layer 2: Greptile Review** (step 9)
-- Runs in CI after all checks pass
-- Provides automated code review with pre-merge checks
-- Catches pattern-level issues the local review might miss
-
-Greptile should review only after the Pull Request CI is passing. This avoids wasting reviewer time on failures that would have been caught by CI. The local self-review avoids wasting CI and Greptile on issues that could have been caught locally.
-
----
-
-## Solo-Developer Agent Workflow
-
-This section defines the protocol for a **single human developer** working with an **AI agent** (e.g., a coding assistant) and **Greptile** as the only reviewer.
-
-In this workflow, the **agent is the de facto reviewer**. The human sets policy, the agent executes, and Greptile provides the automated code review. The agent MUST NOT merge a PR until all three gates below pass.
-
-### Branch Protection Policy
-
-| Branch | Approval required | Status checks required | Notes |
-|---|---|---|---|
-| `develop` | **No** | **Yes (all 6 CI jobs)** | Agent can merge when checks pass |
-| `main` | **Yes** | Yes | Human approval required; harder to roll back |
-
-The `main` branch is intentionally stricter because releases are harder to revert.
-
-### Pre-Merge Gate (Three-Step)
-
-Before merging any PR into `develop`, the agent MUST verify **all three steps** pass. If any step fails, the agent MUST NOT merge; it must surface the issue to the human.
-
-#### Step 1 — CI Status
-
-All 6 required CI jobs must be `pass`:
-1. Lint
-2. Type Check
-3. Test API
-4. Test Web
-5. Test Rust Core (no tauri:: imports)
-6. Build
-
-If any job is `fail` or `pending` → **fix and re-run, do not merge**.
-
-If any job is `pending` for an extended period (e.g., >10 minutes), investigate via `gh run watch`.
-
-#### Step 2 — Greptile Two-Condition Check
-
-A Greptile review is considered **"done and clean"** when **BOTH** conditions are true:
-
-**Condition 1 — Verbal check**: Greptile's most recent review comment (the one with the Pre-merge checks section) says **"No actionable comments were generated"** OR only contains `⚠️ Warning` checks (advisory only, not blockers).
-
-**Condition 2 — Temporal check**: Does the latest commit change **reviewable code**?
-
-Reviewable code means: Rust, TypeScript, tests, CI config, or any file that *could* produce a new Greptile finding.
-
-Non-reviewable code means: docs (.md), .gitignore, .gitattributes, .coderabbit.yaml, README, scratch files (.scratch/), or any config that doesn't affect the code being reviewed.
-
-- If the latest commit changes **reviewable code** → review IS stale, needs re-trigger
-- If the latest commit changes **only non-reviewable code** → old review is still valid, no re-trigger needed
-
-This avoids unnecessary re-triggers for docs-only or config-only commits.
-
-Use the `gh` CLI to fetch all comments:
+First run `cli-review`:
 
 ```bash
-# Issue-style comments (summary, "Action performed", "Walkthrough")
-gh pr view <num> --comments --json comments
-
-# Inline review comments (file/line level, with "Outdated" badges)
-gh api repos/AmaraNecib/tuari_react_hono/pulls/<num>/comments
-
-# Compare to latest commit
-gh pr view <num> --json headRefOid
+git rev-parse --show-toplevel
+greptile whoami
+greptile review --json --branch <base-branch>
 ```
 
-For **inline review comments marked "Outdated"** (file-level, line-level Nitpicks), the agent MUST:
-1. Note the file and the original concern
-2. Read the current state of that file
-3. Determine: was the concern addressed in a later commit?
-4. If yes → concern is resolved, no action
-5. If no → concern still stands, treat as open finding
+Always pass the pinned base branch/ref. Omitting it can make the CLI compare
+against the repository default branch and review an unrelated, enormous diff.
+If the CLI is missing, ask before installing it. If authentication is missing,
+ask the user to complete `greptile login`. Prefer JSON and preserve the raw
+result. A successful command only means the review ran; inspect its status,
+score, and findings.
 
-**Decision tree for Step 2:**
+When findings are actionable, run `greploop --local`. It may iterate over local
+fixes and re-review the current checkout, up to the skill's maximum iteration
+count. It must not:
 
-| Situation | Action |
-|---|---|
-| Greptile check is `pending` / `in_progress` | ⏳ **Wait** — do not trigger anything |
-| Greptile check is `fail` (actionable findings) | 🔧 **Fix findings locally, push, re-trigger Greptile** |
-| Greptile check is `pass` AND Condition 1 + 2 both pass | ✅ **Proceed to Step 3** |
-| Greptile check is `pass` BUT Condition 2 fails (stale review) | 🔧 **Apply narrow workaround** (see below) |
-| Greptile check is `pass` BUT inline concerns remain unresolved | 🔧 **Fix the concerns, push, re-trigger** |
+- call `gh`, `glab`, or PR/MR APIs;
+- post comments or resolve remote threads;
+- push, shelve, or create a PR;
+- use `git add -A` or silently commit unrelated files;
+- continue from stale review output after a code change.
 
-#### Step 3 — Agent's Own Judgment (Soft Check)
+Store evidence for a ticket as:
 
-Even with green CI and clean Greptile review, the agent MUST also consider:
-
-- Is the architecture impact captured in the PR description?
-- Are there security implications not addressed?
-- Do tests cover the change adequately?
-- Is the diff suspicious (unrelated file changes, large generated files, secrets, etc.)?
-- Does the PR description accurately reflect the changes?
-
-If **all of the above are clean** → ✅ **Merge** (proceed to merge command).
-
-If **any of the above raises a real concern** but Steps 1 + 2 pass → ⚠️ **Merge with flag** (see uncertainty fallback).
-
-### Narrow Workaround (Stale Review Only)
-
-The workaround is a **narrow tool** for one specific situation: Greptile is `pass` but its review doesn't reflect the latest commit.
-
-**When to apply:**
-- We are confident the code is correct
-- Greptile check is `pass` but no fresh review exists (Condition 2 fails)
-- Goal: get a fresh review, NOT bypass a real concern
-
-**Steps:**
-
-1. Delete Greptile's old review summary and acknowledgment comments
-2. Make a small cosmetic commit (e.g., a comment, formatting, whitespace — no behavior change)
-3. Push and wait for CI to pass
-4. Re-trigger Greptile with `gh pr comment <num> --body "@greptile-apps review"`
-5. Wait for the new review
-6. Re-apply the two-condition check
-
-**When NOT to apply:**
-- Greptile has unresolved findings → fix them, don't workaround
-- The agent has its own concerns (Step 3) → surface to human
-- The PR is in any other uncertain state → don't bypass, leave for human
-
-### Uncertainty Fallback — Merge with Flag
-
-When the agent is **uncertain** about merging (e.g., a finding is ambiguous, edge case not covered, but not a hard blocker):
-
-**Do NOT refuse to merge** if dependent PRs may be blocked. Instead:
-
-1. Add the `status:needs-investigation` label to the PR
-2. Merge anyway (the work is done, and downstream PRs may be waiting)
-3. Report clearly to the human:
-   > "I merged PR #X with `status:needs-investigation` because [reason]. Dependent PRs #Y, #Z continue to work. Please review the merged PR when convenient."
-
-The label persists on the merged PR and is searchable via `gh pr list --label status:needs-investigation`.
-
-### Merge Command
-
-When all three steps pass, the agent executes:
-
-```bash
-gh pr merge <num> --squash --subject "M<x.y>: <title> (closes #<issue>)"
+```
+.scratch/reviews/<issue-id>/<head-sha>-greptile-local.json
+.scratch/reviews/<issue-id>/<head-sha>-greptile-local.md
 ```
 
-**No `--delete-branch` flag** — feature branches are kept for reference.
+The gate is clean only when the latest result reports confidence 5/5 with zero
+unresolved/actionable findings, or an equivalent explicit "no actionable
+findings" result. Check the current code before dismissing a false positive.
 
-**Merge commit format:** `M<milestone>: <short description> (closes #<issue>)`
+## 11. Guard Phase 3: local pre-report
 
-Example: `M1.1: implement Rust Core scaffolding and shared crypto module (closes #71)`
+In local-only mode, verify:
 
-### Why This Workflow Exists
+- all applicable local checks are green;
+- test-audit/debate/code-review evidence exists and matches the final code;
+- the latest Greptile CLI result is for the final code and is clean;
+- deferred work is recorded in `docs/local-issue-status.md` or a follow-up
+  design/ticket;
+- the report does not imply CI, PR, merge, or issue closure.
 
-A solo developer cannot approve their own PR. Traditional branch protection (require 1 approval) blocks all merges. This workflow replaces the human-approval gate with an **automated, deterministic agent gate** that:
+There is no "wait for CI" step while GitHub is unavailable.
 
-1. **CI** = "did the build pass?"
-2. **Greptile two-condition check** = "is the review complete and clean?"
-3. **Agent judgment** = "is anything obviously wrong that the tools missed?"
+## 12. Wisdom and report
 
-The agent is accountable for following this gate. The human is accountable for the policy and for reviewing any `status:needs-investigation` PRs after the fact.
+Run `capture-wisdom` when a finding or failure is durable. The report must state:
 
----
+- ticket, branch/worktree, mode, base SHA, and final HEAD SHA;
+- checks and exact results;
+- local review evidence paths;
+- Greptile score/findings and local loop iterations;
+- remaining work and whether it is shipped, local-only, deferred, or unknown;
+- explicit parent decisions for any deferral and any lane/worktree reorder.
 
-## Definition of Done
+## Completion definitions
 
-A feature is complete when:
+### Local-only ready for integration
 
-- [ ] Local verification passes
-- [ ] Pre-Push Self-Review (code-review skill) passes with no actionable findings
-- [ ] Feature branch is pushed
-- [ ] Pull Request exists in GitHub
-- [ ] GitHub Actions are green
-- [ ] Greptile has been requested (unless prevented by permissions)
-- [ ] Greptile feedback has been addressed (if any)
-- [ ] PR has been merged into `develop`
-- [ ] Issue has been closed
+- local verification passes;
+- required local quality reviews pass;
+- current evidence is present;
+- Greptile CLI/Greploop reports no actionable findings;
+- branch and working-tree state is accurately reported.
+
+This is **not** a merge or issue closure.
+
+### Remote-ready (only after restoration and explicit approval)
+
+Rebase/compare against a freshly fetched `develop`, rerun the complete local
+lifecycle, then use the PR/CI lifecycle. Verify the PR base and issue references
+before triggering any hosted review. Never infer issue closure from a title or
+cached state.
+
+## Two-layer review model
+
+1. **Local agent review**: quality skills, test audit, debate where required, and
+   `code-review` against a pinned base.
+2. **Greptile CLI review**: independent automated review of the current local
+   checkout, with `greploop --local` for iterative fixes.
+
+The second layer is not a replacement for tests or the two code-review axes.
+Neither a green command nor a 5/5 score excuses unresolved inline/actionable
+findings.
