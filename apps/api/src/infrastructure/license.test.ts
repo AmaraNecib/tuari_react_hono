@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getLicenseInfo, meetsMinEdition, editionToMinEdition } from "./license";
+import {
+  editionToMinEdition,
+  getLicenseInfo,
+  meetsMinEdition,
+  mutationLicenseRefusalMessage,
+  readLicenseRefusalMessage,
+} from "./license";
 
 describe("getLicenseInfo", () => {
   afterEach(() => {
@@ -97,6 +103,16 @@ describe("getLicenseInfo", () => {
     expect(info.status).toBe("trial");
   });
 
+  it("fails closed to unknown when TUARI_LICENSE_STATUS is an unrecognised value", () => {
+    process.env.TUARI_LICENSE_STATUS = "actve";
+    expect(getLicenseInfo().status).toBe("unknown");
+  });
+
+  it("fails closed to unknown when TUARI_LICENSE_STATUS is an empty string", () => {
+    process.env.TUARI_LICENSE_STATUS = "";
+    expect(getLicenseInfo().status).toBe("unknown");
+  });
+
   it("reads enterprise edition with all features", () => {
     process.env.TUARI_LICENSE_EDITION = "enterprise";
     process.env.TUARI_LICENSE_FEATURES =
@@ -145,5 +161,36 @@ describe("editionToMinEdition", () => {
     expect(editionToMinEdition("multi_site_sync")).toBe("enterprise");
     expect(editionToMinEdition("audit_export")).toBe("enterprise");
     expect(editionToMinEdition("priority_support")).toBe("enterprise");
+  });
+});
+
+describe("mutationLicenseRefusalMessage", () => {
+  it("allows writes for active and the post-install trial", () => {
+    expect(mutationLicenseRefusalMessage("active")).toBeNull();
+    expect(mutationLicenseRefusalMessage("trial")).toBeNull();
+  });
+
+  it("refuses the post-expiry grace window as read-only", () => {
+    expect(mutationLicenseRefusalMessage("grace")).toContain("للقراءة فقط");
+  });
+
+  it("refuses every unusable status with a message", () => {
+    for (const status of ["expired", "inactive", "suspicious", "unknown"] as const) {
+      expect(mutationLicenseRefusalMessage(status)).toEqual(expect.any(String));
+    }
+  });
+});
+
+describe("readLicenseRefusalMessage", () => {
+  it("allows reads during active, trial and the read-only grace window", () => {
+    expect(readLicenseRefusalMessage("active")).toBeNull();
+    expect(readLicenseRefusalMessage("trial")).toBeNull();
+    expect(readLicenseRefusalMessage("grace")).toBeNull();
+  });
+
+  it("refuses reads for every unusable status", () => {
+    for (const status of ["expired", "inactive", "suspicious", "unknown"] as const) {
+      expect(readLicenseRefusalMessage(status)).toEqual(expect.any(String));
+    }
   });
 });

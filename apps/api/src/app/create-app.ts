@@ -8,6 +8,7 @@ import { isLocalHostname, normalizeOrigin } from "../infrastructure/config/url";
 import { bodyLimitMiddleware } from "../middleware/body-limit";
 import { createOriginBlockingMiddleware } from "../middleware/origin-blocking";
 import { resolveClientIp, SlidingWindowRateLimiter } from "../infrastructure/rate-limiter";
+import { getLicenseInfo, mutationLicenseRefusalMessage } from "../infrastructure/license";
 import { AccountServiceError } from "../modules/account/account.service";
 import { InventoryError } from "../modules/inventory/inventory.errors";
 import type { InventoryUploadFile } from "../modules/inventory/inventory.types";
@@ -215,7 +216,7 @@ export function createApp(
       return c.json(result);
     } catch (error) {
       if (error instanceof AccountServiceError) {
-        return c.json({ message: error.message }, { status: error.status as 400 | 401 | 409 });
+        return c.json({ message: error.message }, { status: error.status as 400 | 401 | 403 | 409 });
       }
 
       throw error;
@@ -250,6 +251,16 @@ export function createApp(
         return c.json({ message: "غير مصرح بهذا الإجراء." }, 401)
       }
 
+      // License policy (PR #389 review): this upload route bypasses the RPC
+      // audit wrappers, so the write gate must live here too. It runs AFTER the
+      // session + bootstrap-owner checks so an anonymous caller gets the auth
+      // error first, and it refuses the read-only `grace` window like every
+      // other mutation.
+      const licenseRefusal = mutationLicenseRefusalMessage(getLicenseInfo().status)
+      if (licenseRefusal) {
+        return c.json({ success: false, error: { code: "UPGRADE_REQUIRED", message: licenseRefusal } }, 403)
+      }
+
       const { invoiceGroupId } = c.req.param()
       const formData = await c.req.formData()
       const files = formData.getAll("files").filter((value): value is File => value instanceof File)
@@ -278,7 +289,7 @@ export function createApp(
       return c.json({ success: true, items: attachments })
     } catch (error) {
       if (error instanceof AccountServiceError) {
-        return c.json({ message: error.message }, error.status as 400 | 401 | 409)
+        return c.json({ message: error.message }, error.status as 400 | 401 | 403 | 409)
       }
 
       if (error instanceof InventoryError) {

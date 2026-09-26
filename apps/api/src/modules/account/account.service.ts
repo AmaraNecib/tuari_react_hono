@@ -1,5 +1,6 @@
 import { algerianPhoneSchema } from "@tuari/contracts"
 
+import { getLicenseInfo, mutationLicenseRefusalMessage } from "../../infrastructure/license"
 import type { AccountRepository } from "./account.repository"
 
 type AuthGateway = {
@@ -102,6 +103,16 @@ export class AccountService {
     }
 
     const session = await this.getCurrentSessionUser(headers)
+
+    // License policy (PR #389 review): the profile update has its own HTTP route
+    // that bypasses the RPC audit wrappers, so the write gate must live here too.
+    // It runs AFTER session resolution so an anonymous caller still gets the
+    // auth error first (auth → license precedence). The post-expiry `grace`
+    // window is read-only, so it is refused here like every other mutation.
+    const licenseRefusal = mutationLicenseRefusalMessage(getLicenseInfo().status)
+    if (licenseRefusal) {
+      throw new AccountServiceError(licenseRefusal, 403)
+    }
 
     const timestamp = new Date()
     const transactionId = crypto.randomUUID()

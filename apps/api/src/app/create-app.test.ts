@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 
 import { AccountServiceError } from "../modules/account/account.service";
 import { InventoryError } from "../modules/inventory/inventory.errors";
@@ -551,6 +551,109 @@ describe("createApp RPC wiring", () => {
 
     await expect(response.json()).resolves.toEqual({ message: "يجب تسجيل الدخول أولًا." });
     expect(response.status).toBe(401);
+  });
+});
+
+describe("createApp license gate on non-RPC mutation routes", () => {
+  // Profile updates and invoice-attachment uploads have their own HTTP routes
+  // that bypass the RPC audit wrappers (PR #389 review), so the license write
+  // gate has to be enforced on each one directly. It must run AFTER auth, so an
+  // anonymous caller gets the auth error first.
+
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith("TUARI_LICENSE_")) {
+        delete process.env[key];
+      }
+    }
+  });
+
+  const authenticatedDependencies = () => {
+    const dependencies = createDependencies();
+    dependencies.accountService.getCurrentSessionUser.mockResolvedValue({
+      id: "user-1",
+      name: "Taylor",
+      phoneNumber: "0612345678",
+    });
+    return dependencies;
+  };
+
+  const uploadRequest = () => {
+    const formData = new FormData();
+    formData.append("files", new File([new Uint8Array(8)], "invoice.pdf", { type: "application/pdf" }));
+    return new Request("http://localhost/api/inventory/invoice-groups/group-1/attachments", {
+      method: "POST",
+      headers: { origin: "http://localhost:3000" },
+      body: formData,
+    });
+  };
+
+  it("refuses an invoice-attachment upload when the license is locked", async () => {
+    process.env.TUARI_LICENSE_STATUS = "expired";
+    const dependencies = authenticatedDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(uploadRequest());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: { code: "UPGRADE_REQUIRED", message: expect.any(String) },
+    });
+    expect(dependencies.inventoryService.addInvoiceAttachments).not.toHaveBeenCalled();
+  });
+
+  it("refuses an invoice-attachment upload during the read-only grace window", async () => {
+    process.env.TUARI_LICENSE_STATUS = "grace";
+    const dependencies = authenticatedDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(uploadRequest());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: { code: "UPGRADE_REQUIRED", message: expect.stringContaining("للقراءة فقط") },
+    });
+    expect(dependencies.inventoryService.addInvoiceAttachments).not.toHaveBeenCalled();
+  });
+
+  it("reports the auth error before the license error for an attachment upload", async () => {
+    process.env.TUARI_LICENSE_STATUS = "expired";
+    const dependencies = createDependencies();
+    dependencies.accountService.getCurrentSessionUser.mockRejectedValue(
+      new AccountServiceError("يجب تسجيل الدخول أولًا.", 401),
+    );
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(uploadRequest());
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ message: "يجب تسجيل الدخول أولًا." });
+    expect(dependencies.inventoryService.addInvoiceAttachments).not.toHaveBeenCalled();
+  });
+
+  it("maps the profile-update license refusal to a 403 response", async () => {
+    const dependencies = createDependencies();
+    const licenseMessage = "انتهت صلاحية الترخيص. مساحة العمل للقراءة فقط حتى تجديد الترخيص.";
+    dependencies.accountService.updateCurrentProfile.mockRejectedValue(
+      new AccountServiceError(licenseMessage, 403),
+    );
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/api/auth/profile", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:3000",
+        },
+        body: JSON.stringify({ name: "Taylor" }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ message: licenseMessage });
   });
 });
 

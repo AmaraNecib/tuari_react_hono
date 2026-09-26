@@ -4,7 +4,7 @@ import type { Edition, LicensedFeature } from "@tuari/contracts";
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import type { Permission } from "../modules/rbac/permissions";
 import { SlidingWindowRateLimiter, resolveClientIp } from "../infrastructure/rate-limiter";
-import { getLicenseInfo, meetsMinEdition, editionToMinEdition } from "../infrastructure/license";
+import { getLicenseInfo, meetsMinEdition, editionToMinEdition, mutationLicenseRefusalMessage, readLicenseRefusalMessage, type LicenseInfo } from "../infrastructure/license";
 import { requireCurrentUser, type RpcContext } from "./context";
 
 export type MutationAuditContext = {
@@ -81,41 +81,41 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
   }
 
   /**
-   * Shared check: refuses work when the license is not usable.
+   * Refuses AUDITED MUTATIONS when the license cannot write.
    *
    * The shell reports its status through TUARI_LICENSE_STATUS; this guard is
-   * what makes that status binding for the API, and it runs on EVERY mutation
-   * (see the audit-context creators and the mutation wrappers below), not only
-   * on edition- and feature-gated operations. "trial" (the post-install grace
-   * period), "grace" (post-expiry grace) and "active" are usable; everything
-   * else is refused with a message that tells the operator what to do.
+   * what makes that status binding for the API. Writes require `active` or the
+   * post-install `trial` period. The post-expiry `grace` window is READ-ONLY:
+   * reads and edition/feature gates still pass, but audited mutations are
+   * refused until the license is renewed. Every other status — including an
+   * unrecognised value — is refused, so the check fails closed.
+   *
+   * Callers must authenticate FIRST (see `createMutationAuditContext` and
+   * `createAuditContextForUser`), so an anonymous caller gets the usual auth
+   * error instead of learning the license state.
    */
-  function requireUsableLicense(license: ReturnType<typeof getLicenseInfo>): void {
-    switch (license.status) {
-      case "expired":
-        throw new ORPCError("UPGRADE_REQUIRED", {
-          message: "انتهت صلاحية الترخيص. يرجى تجديد الترخيص للمتابعة.",
-        });
-      case "inactive":
-        throw new ORPCError("UPGRADE_REQUIRED", {
-          message: "الترخيص غير مُفعّل بعد. يرجى تفعيل الترخيص من صفحة الترخيص.",
-        });
-      case "suspicious":
-        throw new ORPCError("UPGRADE_REQUIRED", {
-          message: "تم اكتشاف تغيير في ساعة النظام. صحّح التاريخ وأعد تشغيل التطبيق.",
-        });
-      case "unknown":
-        throw new ORPCError("UPGRADE_REQUIRED", {
-          message: "تعذّر التحقق من الترخيص. يرجى إعادة تفعيل الترخيص.",
-        });
-      default:
-        return;
+  function requireWritableLicense(license: LicenseInfo): void {
+    const message = mutationLicenseRefusalMessage(license.status);
+    if (message) {
+      throw new ORPCError("UPGRADE_REQUIRED", { message });
+    }
+  }
+
+  /**
+   * Read-side gate for edition/feature checks. Same policy as
+   * {@link requireWritableLicense}, except the read-only `grace` window is
+   * allowed through.
+   */
+  function requireUsableLicense(license: LicenseInfo): void {
+    const message = readLicenseRefusalMessage(license.status);
+    if (message) {
+      throw new ORPCError("UPGRADE_REQUIRED", { message });
     }
   }
 
   async function createAuditContextForUser(context: RpcContext): Promise<MutationAuditContext> {
     const currentUser = await requireAuthenticatedUser(context);
-    requireUsableLicense(getLicenseInfo());
+    requireWritableLicense(getLicenseInfo());
     return {
       actorUserId: currentUser.id,
       actorLabel: currentUser.name ?? currentUser.phone,
@@ -125,7 +125,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
 
   async function createMutationAuditContext(context: RpcContext): Promise<MutationAuditContext> {
     const currentUser = await requireWorkspaceAdmin(context);
-    requireUsableLicense(getLicenseInfo());
+    requireWritableLicense(getLicenseInfo());
 
     return {
       actorUserId: currentUser.id,
@@ -164,7 +164,6 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       errorResolver: (error: unknown) => unknown,
     ): (params: { context: RpcContext; input: TInput }) => Promise<unknown> {
       return async ({ context, input }) => {
-        requireUsableLicense(getLicenseInfo());
         const auditContext = await createMutationAuditContext(context);
         try {
           return handler({ context, input, auditContext });
@@ -190,7 +189,6 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
     ): (params: { context: RpcContext; input: TInput }) => Promise<unknown> {
       return async ({ context, input }) => {
         checkRateLimit(context);
-        requireUsableLicense(getLicenseInfo());
         const auditContext = await createMutationAuditContext(context);
         try {
           return handler({ context, input, auditContext });
@@ -218,7 +216,6 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       errorResolver: (error: unknown) => unknown,
     ): (params: { context: RpcContext; input: TInput }) => Promise<unknown> {
       return async ({ context, input }) => {
-        requireUsableLicense(getLicenseInfo());
         const auditContext = await createAuditContextForUser(context);
         try {
           return handler({ context, input, auditContext });

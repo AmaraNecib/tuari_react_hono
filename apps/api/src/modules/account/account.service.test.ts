@@ -1021,3 +1021,81 @@ describe("AccountService transaction lock window (issue #322)", { timeout: 20000
     expect(findCredentialPasswordByUserId).not.toHaveBeenCalled()
   })
 })
+
+describe("AccountService — license enforcement on profile updates", () => {
+  // The profile update has its own HTTP route (POST /api/auth/profile) that
+  // bypasses the RPC audit wrappers (PR #389 review), so the license write gate
+  // lives in the service. It runs AFTER session resolution, so an anonymous
+  // caller gets the auth error before any license information.
+
+  const sessionUser = { id: "user-1", name: "عمارة", phoneNumber: "0612345678" }
+
+  const createService = (currentUser: typeof sessionUser | null) => {
+    const withTransaction = vi.fn()
+    const repository: AccountRepository = {
+      findCredentialPasswordByUserId: vi.fn(),
+      withTransaction,
+    }
+    const service = new AccountService(repository, {
+      $context: Promise.resolve({ password: { verify: vi.fn() } }),
+      api: {
+        getSession: vi.fn().mockResolvedValue(currentUser ? { user: currentUser } : null),
+      },
+    })
+    return { service, withTransaction }
+  }
+
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith("TUARI_LICENSE_")) {
+        delete process.env[key]
+      }
+    }
+  })
+
+  it("refuses a profile update while the license is locked", async () => {
+    process.env.TUARI_LICENSE_STATUS = "expired"
+    const { service, withTransaction } = createService(sessionUser)
+
+    await expect(service.updateCurrentProfile(new Headers(), { name: "بلال" })).rejects.toMatchObject({
+      status: 403,
+    })
+    expect(withTransaction).not.toHaveBeenCalled()
+  })
+
+  it("refuses a profile update during the read-only grace window", async () => {
+    process.env.TUARI_LICENSE_STATUS = "grace"
+    const { service, withTransaction } = createService(sessionUser)
+
+    await expect(service.updateCurrentProfile(new Headers(), { name: "بلال" })).rejects.toMatchObject({
+      status: 403,
+      message: expect.stringContaining("للقراءة فقط"),
+    })
+    expect(withTransaction).not.toHaveBeenCalled()
+  })
+
+  it("reports the auth error before the license error for an anonymous caller", async () => {
+    process.env.TUARI_LICENSE_STATUS = "expired"
+    const { service } = createService(null)
+
+    await expect(service.updateCurrentProfile(new Headers(), { name: "بلال" })).rejects.toMatchObject({
+      status: 401,
+    })
+  })
+
+  it("allows a profile update while the post-install trial is active", async () => {
+    process.env.TUARI_LICENSE_STATUS = "trial"
+    const { service, withTransaction } = createService(sessionUser)
+    withTransaction.mockImplementation(async (callback: (tx: unknown) => unknown) =>
+      callback({
+        createProfileHistory: vi.fn().mockResolvedValue(undefined),
+        findCredentialPasswordByUserId: vi.fn(),
+        findUserIdByPhoneNumber: vi.fn().mockResolvedValue(null),
+        updateUserProfile: vi.fn().mockResolvedValue({ id: "user-1", name: "بلال", phone: "0612345678" }),
+      }),
+    )
+
+    const result = await service.updateCurrentProfile(new Headers(), { name: "بلال" })
+    expect(result.user.name).toBe("بلال")
+  })
+})
