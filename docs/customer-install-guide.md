@@ -5,7 +5,7 @@ This is the guide you hand a customer together with two files:
 | File | Purpose |
 | --- | --- |
 | `tuari-<version>-stable-setup.exe` | Windows installer (NSIS). A local Tauri build names it `Tuari_<version>_x64-setup.exe`; the release uploads it as `tuari-<version>-stable-setup.exe`. |
-| `customer-license.lic` | Their signed license (see `docs/license-issuance.md`) |
+| `customer-license.lic` | Their signed license (see `docs/licensing-architecture.md`) |
 
 ## Requirements
 
@@ -40,6 +40,9 @@ works, and the License screen shows the days remaining.
 2. Open `customer-license.lic` in a text editor and copy its **entire** contents
    (one long line: `<payload>.<signature>`).
 3. Paste it into the license field and activate.
+4. **Restart the app.** The API server reads the license status when it starts,
+   so a new or renewed license takes effect after a restart (the activation
+   message says the same).
 
 The app verifies the signature offline and stores the license locally. You will
 see the edition, the features and the expiry (perpetual licenses show no expiry).
@@ -75,24 +78,27 @@ app's data directory — `%APPDATA%\com.tuari.desktop\Tuari` on a normal install
 
 **Encryption depends on the license.** The app passes a database key to the API
 only when the license carries the `encrypted_db` feature; without it the
-workspace opens unencrypted. When it does, the key lives in the Windows
-Credential Manager, not in that directory. So:
+workspace opens unencrypted and the key advice below does not apply.
 
-- With `encrypted_db`: copying the data directory alone is **not** a restorable
-  backup. On a new Windows profile, or after the credential entry is lost, the
-  app generates a fresh key at startup and cannot open the restored database. A
-  complete backup is the data directory **plus** the credential entry (service
-  `com.tuari.desktop.secrets`, account `app-db.key`, in Windows Credential
-  Manager) — export it, or keep the original Windows profile. Restoring after
-  both are lost is **not supported by the app today** (there is no screen to
-  supply a key before the database opens); contact support.
-- Without `encrypted_db`: the data directory is not encrypted, and the
-  credential-store backup advice does not apply.
+With `encrypted_db`, the key normally lives in the Windows Credential Manager
+(service `com.tuari.desktop.secrets`, account `app-db.key`). When the OS
+credential store is unavailable, the app writes the same key to
+`%APPDATA%\com.tuari.desktop\runtime\secrets\app-db.key` instead — outside the
+`Tuari` data directory. So:
+
+- Copying `Tuari` alone is **not** a restorable backup. On a new Windows profile,
+  or after the key is lost, the app generates a fresh key at startup and cannot
+  open the restored database.
+- A complete backup is the whole `%APPDATA%\com.tuari.desktop` folder (which also
+  holds `runtime\secrets`) **plus** the credential entry when the key is in the
+  Credential Manager — export it, or keep the original Windows profile.
+- Restoring after the key is lost is **not supported by the app today** (there is
+  no screen to supply a key before the database opens); contact support.
 
 **Settings → Security** is not a restore flow. It changes the database key while
 the database is already open (current key → new key) and manages one-time
-recovery keys, which authorize an administrator password reset — neither can
-open a restored database.
+recovery keys; consuming a key is not wired to a password-reset flow yet, so it
+cannot restore administrator access. Neither can open a restored database.
 
 Take backups with the app closed.
 
@@ -106,5 +112,5 @@ version by running its installer over the current one. Your data is preserved.
 Include the app version (Settings → About) and, for license problems, the
 **name and email the license was issued to** plus the edition and the exact
 error message — the License screen shows those. The internal license ID
-(`LCE-...`) is not displayed in the app yet; quote it from your license file if
-you have it.
+(`LCE-...`) is not displayed in the app, and the license file stores a
+base64url-encoded payload, so send that file if support asks for the ID.
