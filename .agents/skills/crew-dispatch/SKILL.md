@@ -227,6 +227,25 @@ REPORT CONTRACT — end your run with:
 One workspace per lane in the session backend, one agent session in each, one
 brief per agent. Verified recipe for Herdr (any OS):
 
+### Pinning a lane's model
+
+`PI_LANE_MODEL` pins the model a lane starts on:
+
+```bash
+PI_LANE_MODEL=opencode-go/deepseek-v4.1-flash node scripts/crew/launch-lane.mjs <label> <worktree> <brief>
+```
+
+Set it when the account's default model is unavailable — an unpinned lane dies
+instantly with `The model <x> does not exist or you do not have access to it`,
+which looks like a lane crash rather than a configuration problem. Leave it
+unset to inherit the operator's pi default: the launcher never invents a model,
+so it stays zero-config in any repo.
+
+The pin applies **at launch only**. Relaunching a label whose agent is already
+running cannot change that agent's model; the launcher says so explicitly
+instead of silently ignoring the pin. Close the workspace and relaunch to apply
+it.
+
 ```bash
 # 1. workspace per lane (returns workspace_id + root_pane_id)
 herdr workspace create --cwd <ABSOLUTE_WORKTREE> --label <slug>
