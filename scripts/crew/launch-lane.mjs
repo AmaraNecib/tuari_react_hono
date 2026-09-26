@@ -204,7 +204,16 @@ try {
     const existingPane = pickPane(workspaceId);
     const existingRoot = normalizePath(existingPane?.cwd);
     const requestedRoot = normalizePath(cwd);
-    if (existingRoot && requestedRoot && existingRoot !== requestedRoot) {
+    // Reuse only when the existing workspace PROVABLY belongs to this worktree.
+    // A label is not an identity: a reused label pointing at another checkout
+    // would deliver the brief to an agent working on the wrong files, and an
+    // unresolvable pane/cwd is exactly that case, not a pass.
+    if (!existingPane || !existingRoot) {
+      fail(
+        `[launch-lane] workspace ${label} exists but its root pane/cwd cannot be resolved; close it or choose another label (refusing to reuse an unverified workspace)`,
+      );
+    }
+    if (existingRoot !== requestedRoot) {
       fail(
         `[launch-lane] workspace ${label} is rooted at ${existingPane.cwd} not ${cwd}; close it or choose another label`,
       );
@@ -242,11 +251,29 @@ try {
   }
   console.log(`[launch-lane] agent ${pane.agent} ready in ${pane.pane_id} (${pane.agent_status})`);
 
-  // 4. Wait until the agent is idle before prompting (so the brief is not lost).
+  // 4. Wait until the agent is idle before prompting, so the brief is not lost.
+  //    Re-resolve the pane on every tick and never prompt a stale pane or
+  //    interrupt a live lane: a vanished pane, or an agent still busy after the
+  //    timeout, is a hard failure the operator can act on.
+  let idle = false;
   for (let i = 0; i < 30; i++) {
-    const p = pickPane(workspaceId);
-    if (!p || p.agent_status === "idle") break;
+    const current = pickPane(workspaceId);
+    if (!current) {
+      fail(
+        `[launch-lane] pane for workspace ${workspaceId} disappeared while waiting for idle — not prompting`,
+      );
+    }
+    pane = current;
+    if (current.agent_status === "idle") {
+      idle = true;
+      break;
+    }
     await sleep(1000);
+  }
+  if (!idle) {
+    fail(
+      `[launch-lane] agent in ${pane.pane_id} is still ${pane.agent_status} after 30s — not prompting (that would interrupt the running lane)`,
+    );
   }
 
   // 5. Prompt with the brief file if provided (routing preamble first, so a

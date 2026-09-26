@@ -82,10 +82,15 @@ Nothing is assumed; detect each of these before launching:
 1. **Issues/tasks.** For each: fetch the issue (`gh issue view <n>` or the
    project's tracker) and paste the essentials into the lane brief. Never make a
    worker guess from a bare number.
-2. **Base branch.** Resolve the project's default branch:
-   `git symbolic-ref --short refs/remotes/origin/HEAD` (falls back to
-   `main`/`master`/whatever `git worktree list` shows the main checkout on).
-   Never hardcode `develop`.
+2. **Base branch.** Resolve the branch the project INTEGRATES into, which is
+   not necessarily `origin/HEAD`. Check in this order: the repo's documented
+   convention (`AGENTS.md`, `docs/*workflow*`), the base of recent merges
+   (`gh pr list --state merged --limit 5 --json baseRefName`), then `develop`
+   when it exists. Only fall back to
+   `git symbolic-ref --short refs/remotes/origin/HEAD` when none of those
+   exist. Put the resolved base in the brief AND pass it explicitly on landing
+   (`gh pr create --base <base>`), so a lane never branches from — or opens a
+   PR against — `main` in a repo that lands on `develop`.
 3. **Package manager + commands.** Detect from the lockfile:
    `pnpm-lock.yaml` → pnpm, `package-lock.json` → npm, `yarn.lock` → yarn,
    `bun.lockb` → bun. Read the root `package.json` scripts and record the
@@ -127,6 +132,11 @@ AUTHORITY BOUNDARY (hard rules):
   run state-changing commands outside it. If you need something from outside,
   stop and list it in your report instead of reaching out.
 - You may commit only inside this worktree, on branch <BRANCH>.
+- COMMIT BEFORE YOU REPORT. The parent reviews `git diff <base>...HEAD`, so
+  uncommitted work is invisible to that review and can be lost. Stage the files
+  you changed (never `git add -A`), commit them, and report the commit SHA. If
+  you genuinely cannot commit, say so explicitly in the report, list the exact
+  uncommitted paths, and include `git status --short` output.
 - Do not push, open PRs, merge, or touch the remote. The parent owns landing.
 - Do not run `git add -A` / `git add .`; stage only the files you changed.
 - At progress, completion, or blockage, call the visible-lane `crew_report`
@@ -185,9 +195,12 @@ REPORT CONTRACT — end your run with:
 ## Launch (visible agents — the default)
 
 > If the repo ships `scripts/crew/launch-lane.mjs` (or an equivalent launch
-> script), it is the ONLY sanctioned launcher for lanes AND reviewers — running
-> it is mandatory. It turns the verified recipe below into one command, so the
-> visible path is never the high-friction path.
+> script), it is the ONLY sanctioned launcher for **visible** lanes AND
+> reviewers — running it is mandatory for that shape. It turns the verified
+> recipe below into one command, so the visible path is never the
+> high-friction path. It does not apply to the headless shape: when the captain
+> explicitly opts into headless ("run headless" / "don't use herdr"), launch
+> through the async workflow below instead and do not run this script.
 
 One workspace per lane in the session backend, one agent session in each, one
 brief per agent. Verified recipe for Herdr (any OS):

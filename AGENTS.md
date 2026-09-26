@@ -52,9 +52,11 @@ opt-in. An explicit captain instruction like "don't use herdr" / "run
 headless" always wins. Never let "run-to-completion" silently become
 "invisible".
 
-**Launching a lane goes through `scripts/crew/launch-lane.mjs`** — it is the
-only sanctioned launcher (workers and reviewers alike). If you are starting a
-lane without it, you are not doing crew dispatch.
+**Launching a visible lane goes through `scripts/crew/launch-lane.mjs`** — for
+that shape it is the only sanctioned launcher (workers and reviewers alike); a
+visible lane started without it is not crew dispatch. The rule is scoped to the
+visible shape: an explicit captain opt-in ("run headless" / "don't use herdr")
+launches through the async workflow instead, and the launcher does not apply.
 
 ### Crew concurrency and landing policy
 
