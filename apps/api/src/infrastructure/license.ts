@@ -18,7 +18,11 @@ export interface LicenseInfo {
   maxUsers: number;
   customer: { name: string; email: string } | null;
   expiresAt: string | null;
-  status: "active" | "trial" | "expired" | "grace";
+  // Mirrors the desktop shell's TUARI_LICENSE_STATUS mapping
+  // (apps/desktop/src-tauri/src/license.rs): Valid|Warning -> active,
+  // ExpiredGrace -> grace, Locked|Expired -> expired, NotYetActive -> inactive,
+  // Tampered -> suspicious, Grace -> trial, Invalid -> unknown.
+  status: "active" | "trial" | "grace" | "expired" | "inactive" | "suspicious" | "unknown";
 }
 
 // ─── Env-var reader ────────────────────────────────────────────

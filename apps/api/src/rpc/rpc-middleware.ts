@@ -81,23 +81,41 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
   }
 
   /**
-   * Shared check: rejects expired licenses.
+   * Shared check: refuses work when the license is not usable.
    *
-   * The Rust shell is the primary gate for expiry (it controls whether the
-   * sidecar starts at all past the locked phase), but this sidecar guard
-   * ensures that even if `TUARI_LICENSE_STATUS` is set to `"expired"` the
-   * API does not serve gated operations.
+   * The shell reports its status through TUARI_LICENSE_STATUS; this guard is
+   * what makes that status binding for the API, and it runs on EVERY mutation
+   * (see the audit-context creators and the mutation wrappers below), not only
+   * on edition- and feature-gated operations. "trial" (the post-install grace
+   * period), "grace" (post-expiry grace) and "active" are usable; everything
+   * else is refused with a message that tells the operator what to do.
    */
-  function requireActiveLicense(license: ReturnType<typeof getLicenseInfo>): void {
-    if (license.status === "expired") {
-      throw new ORPCError("UPGRADE_REQUIRED", {
-        message: "انتهت صلاحية الترخيص. يرجى تجديد الترخيص للوصول إلى هذه الميزة.",
-      });
+  function requireUsableLicense(license: ReturnType<typeof getLicenseInfo>): void {
+    switch (license.status) {
+      case "expired":
+        throw new ORPCError("UPGRADE_REQUIRED", {
+          message: "انتهت صلاحية الترخيص. يرجى تجديد الترخيص للمتابعة.",
+        });
+      case "inactive":
+        throw new ORPCError("UPGRADE_REQUIRED", {
+          message: "الترخيص غير مُفعّل بعد. يرجى تفعيل الترخيص من صفحة الترخيص.",
+        });
+      case "suspicious":
+        throw new ORPCError("UPGRADE_REQUIRED", {
+          message: "تم اكتشاف تغيير في ساعة النظام. صحّح التاريخ وأعد تشغيل التطبيق.",
+        });
+      case "unknown":
+        throw new ORPCError("UPGRADE_REQUIRED", {
+          message: "تعذّر التحقق من الترخيص. يرجى إعادة تفعيل الترخيص.",
+        });
+      default:
+        return;
     }
   }
 
   async function createAuditContextForUser(context: RpcContext): Promise<MutationAuditContext> {
     const currentUser = await requireAuthenticatedUser(context);
+    requireUsableLicense(getLicenseInfo());
     return {
       actorUserId: currentUser.id,
       actorLabel: currentUser.name ?? currentUser.phone,
@@ -107,6 +125,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
 
   async function createMutationAuditContext(context: RpcContext): Promise<MutationAuditContext> {
     const currentUser = await requireWorkspaceAdmin(context);
+    requireUsableLicense(getLicenseInfo());
 
     return {
       actorUserId: currentUser.id,
@@ -145,6 +164,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       errorResolver: (error: unknown) => unknown,
     ): (params: { context: RpcContext; input: TInput }) => Promise<unknown> {
       return async ({ context, input }) => {
+        requireUsableLicense(getLicenseInfo());
         const auditContext = await createMutationAuditContext(context);
         try {
           return handler({ context, input, auditContext });
@@ -170,6 +190,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
     ): (params: { context: RpcContext; input: TInput }) => Promise<unknown> {
       return async ({ context, input }) => {
         checkRateLimit(context);
+        requireUsableLicense(getLicenseInfo());
         const auditContext = await createMutationAuditContext(context);
         try {
           return handler({ context, input, auditContext });
@@ -197,6 +218,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       errorResolver: (error: unknown) => unknown,
     ): (params: { context: RpcContext; input: TInput }) => Promise<unknown> {
       return async ({ context, input }) => {
+        requireUsableLicense(getLicenseInfo());
         const auditContext = await createAuditContextForUser(context);
         try {
           return handler({ context, input, auditContext });
@@ -252,7 +274,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
         await requireAuthenticatedUser(context);
 
         const license = getLicenseInfo();
-        requireActiveLicense(license);
+        requireUsableLicense(license);
 
         if (!meetsMinEdition(license.edition, minEdition)) {
           throw new ORPCError("UPGRADE_REQUIRED", {
@@ -278,7 +300,7 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
         await requireAuthenticatedUser(context);
 
         const license = getLicenseInfo();
-        requireActiveLicense(license);
+        requireUsableLicense(license);
 
         if (!license.features.includes(feature)) {
           const minEdition = editionToMinEdition(feature);

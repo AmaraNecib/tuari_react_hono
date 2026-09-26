@@ -506,6 +506,55 @@ describe("RPC Middleware — license gating", () => {
   });
 });
 
+describe("RPC Middleware — license enforcement on mutations", () => {
+  // Mutations must be refused whenever the license is not usable: the shell
+  // reports the status through TUARI_LICENSE_STATUS, and ordinary audited
+  // mutations used to ignore it entirely (only edition/feature gates checked).
+  let rpcMiddleware: RpcMiddleware;
+  const adminUser = {
+    id: "u1",
+    name: "Test",
+    phone: "0612345678",
+    version: "0.0.0",
+    permissions: [],
+  };
+
+  beforeEach(() => {
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith("TUARI_LICENSE_")) {
+        delete process.env[key];
+      }
+    }
+    rpcMiddleware = createRpcMiddleware({
+      authBootstrapService: { isBootstrapOwner: vi.fn().mockResolvedValue(true) },
+    });
+  });
+
+  const wrapMutation = () =>
+    rpcMiddleware.mutationAudit(
+      () => ({ ok: true }),
+      (error: unknown) => error,
+    );
+
+  for (const status of ["expired", "inactive", "suspicious", "unknown"] as const) {
+    it(`refuses a mutation when the license status is ${status}`, async () => {
+      process.env.TUARI_LICENSE_STATUS = status;
+      await expect(
+        wrapMutation()({ context: createMockContext(adminUser), input: {} }),
+      ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });
+    });
+  }
+
+  for (const status of ["active", "trial", "grace"] as const) {
+    it(`allows a mutation when the license status is ${status}`, async () => {
+      process.env.TUARI_LICENSE_STATUS = status;
+      await expect(
+        wrapMutation()({ context: createMockContext(adminUser), input: {} }),
+      ).resolves.toMatchObject({ ok: true });
+    });
+  }
+});
+
 describe("RPC Middleware — rateLimit helper (unauthenticated base handlers)", () => {
   it("charges the shared per-IP budget and throws TOO_MANY_REQUESTS when exhausted", () => {
     const middleware = createRpcMiddleware({
