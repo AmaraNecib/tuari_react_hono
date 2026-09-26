@@ -15,6 +15,10 @@ it, how to run the smoke test that launches it, and what still needs a human.
 The smoke test closes the gap between "the zip contains an exe" and "the exe
 runs". It does not replace a human looking at the window.
 
+Current status: the smoke test fails on a locally built artifact. See
+"Defects found by the smoke test" at the end for the two blockers and the
+verified fix recipe.
+
 ## Build the artifacts
 
 From the repository root, on Windows:
@@ -169,33 +173,29 @@ manual:
 - Update download, signature verification, and restart.
 - Codesigning and notarisation. The local build is unsigned.
 
-## Defect found by the smoke test (2026-09-26)
+## Defects found by the smoke test (2026-09-26)
 
-The built artifact does not start its API. On a fresh extract, `Tuari.exe`
-spawns the sidecar, the sidecar aborts during Node startup, and the app exits
-with code 101 after its 15 second API wait:
+The built artifact never starts its API. On a fresh extract, `Tuari.exe` spawns
+the sidecar, the sidecar dies during Node startup, and the app exits with code
+101 after its 15 second API wait. There are two independent causes, both in
+`spawn_api_process` (`apps/desktop/src-tauri/src/lib.rs`).
+
+### 1. `env_clear()` drops `SystemRoot`, so Node aborts in its CSPRNG check
+
+The shell spawns the sidecar with `command.env_clear()` and then sets only its
+own allowlist. That drops `SystemRoot`, and the bundled Node 22.23.2 aborts:
 
 ```
 #  <extract>\bin\node.exe[5148]: ... node::InitializeOncePerProcessInternal
 #  Assertion failed: ncrypto::CSPRNG(nullptr, 0)
 ```
 
-The full abort is written to `<root>/data/logs/api-server.log`.
-
-Root cause: the Rust shell spawns the sidecar with `command.env_clear()`
-(`apps/desktop/src-tauri/src/lib.rs`, `spawn_api_process`) and then sets only its
-allowlist of variables. That drops `SystemRoot`, and the bundled Node 22.23.2
-aborts in its OpenSSL CSPRNG check without it.
-
-Reproduction without the app. This starts the bundled sidecar with exactly the
-environment the shell would give it, then adds one variable:
+`scripts/smoke/sidecar-env-repro.ps1` starts the bundled sidecar with exactly the
+shell's allowlist and then adds one variable per round:
 
 ```powershell
-# writes nothing; starts the sidecar and prints either the abort or the bind line
 pwsh -NoProfile -File scripts/smoke/sidecar-env-repro.ps1 -ExtractDir <extracted portable dir>
 ```
-
-The matrix this script reproduces, run against the extracted bundle:
 
 | Variables added to the shell allowlist | Result |
 | --- | --- |
@@ -205,16 +205,52 @@ The matrix this script reproduces, run against the extracted bundle:
 | `PATH=C:\WINDOWS\system32;C:\WINDOWS` | abort |
 | `TEMP=<temp dir>` | abort |
 
-So the fix is narrow: re-add `SystemRoot` for the sidecar child on Windows, for
-example `command.env("SystemRoot", std::env::var("SystemRoot")...)` after
-`env_clear()`. That keeps the clear-and-allowlist intent while giving the Node
-runtime the variable its OpenSSL seeding needs. It is a Rust shell change with
-its own review and test, so it is not part of this lane.
+Fix: re-add `SystemRoot` for the sidecar child on Windows after `env_clear()`.
+That keeps the clear-and-allowlist intent while giving the runtime the one
+variable its OpenSSL seeding needs.
 
-Until that lands, the smoke test fails six checks, all traceable to this one
-defect: no sidecar process, no health response, an unobservable environment, no
-database, no license handoff, and no schema to read. The bundle layout, resource
-presence, installer binary, and cleanup checks pass.
+### 2. The sidecar path keeps the `\\?\` extended-length prefix
+
+Tauri's `resource_dir()` returns a `\\?\`-prefixed path, and the shell passes
+`runtime_dir/dist/index.cjs` straight to `node.exe`. Node's CommonJS main-module
+resolution cannot handle that prefix:
+
+```
+Error: EISDIR: illegal operation on a directory, lstat 'C:'
+    at toRealPath (node:internal/modules/helpers:61:13)
+    at Function._findPath (node:internal/modules/cjs/loader:760:22)
+    at resolveMainPath (node:internal/modules/cjs/loader:39:23)
+```
+
+Reproduction, against the extracted bundle. Same environment, same node binary,
+only the argument differs:
+
+| Main-script argument | Result |
+| --- | --- |
+| `C:\...\bin\api-runtime\dist\index.cjs` | starts, binds the port |
+| `\\?\C:\...\bin\api-runtime\dist\index.cjs` | exits with the `EISDIR` above |
+
+Defect 1 hid this one: the process aborted before module resolution ever ran.
+Fix: strip the `\\?\` prefix before passing the path as the argument.
+
+### Verified fix recipe (not applied here)
+
+Applying both fixes with a temporary local patch and rebuilding makes the smoke
+test pass 22/22 with exit 0: sidecar running, `/health` returning
+`{"status":"ok"}`, `TUARI_LICENSE_STATUS=trial`, a fresh database with 38 tables
+written by this run, and clean shutdown. The patch was not committed, because it
+changes the Rust shell and needs its own review, tests, and a `cargo clippy`
+pass. The recipe is:
+
+1. After `command.env_clear()`, set `SystemRoot` from the parent environment for
+the sidecar child on Windows.
+2. Pass the sidecar entry point as a plain `C:\...` path, without the `\\?\`
+   prefix that `resource_dir()` carries.
+
+Until both land, the smoke test fails six checks, all traceable to the sidecar
+never starting: no sidecar process, no health response, an unobservable
+environment, no database, no license handoff, and no schema to read. The bundle
+layout, declared resources, installer binary, and cleanup checks pass.
 
 ## Other gaps the smoke test surfaced
 

@@ -26,6 +26,27 @@ Windows, `SystemRoot` is load-bearing for the OpenSSL CSPRNG seeding Node runs a
 startup. `env_clear()` is right for not leaking the parent's secrets, but it
 cannot be the whole story for a child runtime.
 
+## Tauri's `resource_dir()` carries the `\\?\` prefix, and Node cannot use it as the main script (🔴 Major)
+
+The same launch hid a second blocker. With `SystemRoot` restored, the sidecar got
+one step further and died in Node's CommonJS main-module resolution:
+
+```
+Error: EISDIR: illegal operation on a directory, lstat 'C:'
+    at toRealPath (node:internal/modules/helpers:61:13)
+    at Function._findPath (node:internal/modules/cjs/loader:760:22)
+```
+
+Tauri's `resource_dir()` returns a `\\?\`-prefixed path on Windows, and the
+shell passed `runtime_dir/dist/index.cjs` through unmodified. The prefix is fine
+for `CreateProcess` (the exe loads) but breaks `path.resolve` + `realpathSync` in
+the loader for the script argument.
+
+**Always**: strip the Windows extended-length prefix (`\\?\`) before handing a
+Tauri path to a child process as a script argument. And when two startup
+blockers stack, fix and re-run rather than declaring victory after the first one:
+the CSPRNG abort in the first defect masked this one entirely.
+
 ## Legacy migration preserves mtime, so a file-existence check proves nothing (🟠 Major)
 
 `ensure_runtime_files` migrates an allowlisted legacy database from
