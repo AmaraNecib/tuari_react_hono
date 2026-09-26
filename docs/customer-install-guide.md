@@ -67,14 +67,15 @@ Troubleshooting:
 | --- | --- |
 | "invalid signature" | The license was edited, truncated, or issued for a different vendor key |
 | "expired" | `--valid-until` has passed; renew the license |
-| "clock tampering" | The system clock moved backwards, or it was previously set far forward and then corrected. Fix the clock, then contact support: the only reset step clears the recorded install time that starts the 30-day trial, so it is not a self-service fix. |
+| "clock tampering" | The system clock moved backwards, or was previously set far forward and then corrected. Fix the clock; to clear the warning, close the app, delete `clock-tracker.json` in the data directory, and start it again. This clears the **warning only**: it does not restart or extend the 30-day trial, and `install-anchor.json` holds the installation time, so leave it in place. If the warning returns after the clock is correct, contact support. |
 | Expected feature not listed on the License screen | The license does not carry it. Editions and features are recorded but not yet enforced by the API. |
 
 ## 4. Your data
 
-The database, attachments, `license.lic` and `clock-tracker.json` live under the
-app's data directory — `%APPDATA%\com.tuari.desktop\Tuari` on a normal install
-(a portable build keeps the same tree in `<install folder>\data`).
+The database, attachments, `license.lic`, `clock-tracker.json` and
+`install-anchor.json` live under the app's data directory —
+`%APPDATA%\com.tuari.desktop\Tuari` on a normal install (a portable build keeps
+the same tree in `<install folder>\data`).
 
 **Encryption depends on the license.** The app passes a database key to the API
 only when the license carries the `encrypted_db` feature; without it the

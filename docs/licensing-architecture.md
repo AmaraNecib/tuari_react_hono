@@ -925,13 +925,13 @@ Rust passes license information to the Node.js sidecar via **structured environm
 | Set clock back before trial expires | Yes (monotonic tracker) | Uses estimated time instead of wall clock |
 | Set clock forward to bypass validFrom | Yes (validFrom check) | N/A — validFrom prevents early access |
 | Pause the system clock entirely | Partially (monotonic clock stops) | We don't detect paused clocks. Accept. |
-| Delete clock-tracker.json | Partially (file can be recreated) | Tracker is recreated with current wall time, losing history |
+| Delete clock-tracker.json | Partially (file can be recreated) | Clears only the clock high-water mark, so the tamper warning goes away. `install-anchor.json` survives with the original install time, the trial window is unchanged, and the tracker is recreated from the anchor — not the current wall time. |
 
 ### 14.4 Grace Period Reset Abuse
 
-A user could delete the `install-timestamp` file to reset the 30-day grace period.
+A user could delete the trial anchor to reset the 30-day grace period.
 
-**Mitigation:** Store the timestamp in `<app_data>/runtime/state/`, which persists across reinstalls. We accept that a determined user can delete the state directory. This is a deliberate trade-off — the grace period is for evaluation, not security.
+**Mitigation:** The install time is held in `install-anchor.json` in the app state directory. It is written once and only ever moved earlier, never advanced, so setting the clock back — or deleting the resettable `clock-tracker.json` (the documented clock-tamper recovery) — clears the warning without restarting or extending the trial. The recovery must not delete `install-anchor.json`. We accept that a determined user can delete the whole state directory. This is a deliberate trade-off — the grace period is for evaluation, not security.
 
 ### 14.5 Operation-Count-Based Trial Hardening (Future Enhancement)
 
