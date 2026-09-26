@@ -304,6 +304,9 @@ describe("RPC Middleware — license gating", () => {
         delete process.env[key];
       }
     }
+    // Edition/feature gates below assume a writable license; the fail-closed
+    // missing-status path is pinned in the enforcement suite and license.test.ts.
+    process.env.TUARI_LICENSE_STATUS = "trial";
     rpcMiddleware = createRpcMiddleware({
       authBootstrapService: { isBootstrapOwner: vi.fn().mockResolvedValue(true) },
     });
@@ -564,6 +567,16 @@ describe("RPC Middleware — license enforcement on mutations", () => {
 
   it("refuses an unrecognised status instead of failing open", async () => {
     process.env.TUARI_LICENSE_STATUS = "actve"; // typo for "active"
+    await expect(
+      wrapMutation()({ context: createMockContext(adminUser), input: {} }),
+    ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });
+  });
+
+  it("refuses a mutation when the status is missing (shell license init failed)", async () => {
+    // The desktop shell skips the license env block when
+    // `LicenseManager::initialize` fails (tampered clock / invalid license) but
+    // still launches the sidecar, so a missing status must refuse writes.
+    delete process.env.TUARI_LICENSE_STATUS;
     await expect(
       wrapMutation()({ context: createMockContext(adminUser), input: {} }),
     ).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });

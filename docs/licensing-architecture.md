@@ -1088,7 +1088,7 @@ interface LicenseInfo {
   maxUsers: number;
   customer: { name: string; email: string } | null;
   expiresAt: string | null;  // ISO 8601 or null for perpetual
-  status: 'active' | 'trial' | 'expired' | 'grace';
+  status: 'active' | 'trial' | 'grace' | 'expired' | 'inactive' | 'suspicious' | 'unknown';
 }
 
 function getLicenseInfo(): LicenseInfo {
@@ -1100,7 +1100,10 @@ function getLicenseInfo(): LicenseInfo {
       ? JSON.parse(process.env.TUARI_LICENSE_CUSTOMER)
       : null,
     expiresAt: process.env.TUARI_LICENSE_EXPIRES_AT || null,
-    status: (process.env.TUARI_LICENSE_STATUS ?? 'trial') as LicenseInfo['status'],
+    // Fail CLOSED: the shell omits the whole license env block when license
+    // initialization fails, so a missing/blank status must NOT be a writable
+    // trial. Unrecognised values are coerced to 'unknown' too.
+    status: parseLicenseStatus(process.env.TUARI_LICENSE_STATUS),
   };
 }
 ```

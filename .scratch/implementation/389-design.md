@@ -65,3 +65,36 @@ Consumers:
   business write, and is outside the named findings).
 - `/api/auth/profile` input validation still runs before session resolution
   (pre-existing behavior); the license gate is after auth regardless.
+
+## Round 3 — missing status must fail closed
+
+Greptile (4/5) found that a **missing** `TUARI_LICENSE_STATUS` was still treated
+as a writable `trial`. Verified against the source:
+
+- `apps/desktop/src-tauri/src/license.rs:112-121` — `LicenseManager::initialize`
+  returns `Err(ClockTampered)` (and other errors) on a tampered clock / invalid
+  `license.lic`.
+- `apps/desktop/src-tauri/src/lib.rs:2052-2059` — the shell only sets the
+  `TUARI_LICENSE_*` env block when `initialize` returns `Ok`, but still spawns
+  the sidecar (`command.env_clear()` first, so no ambient value survives).
+- `apps/api/src/infrastructure/license.ts` therefore saw `undefined` and
+  defaulted to `trial` → mutations allowed. Real fail-open.
+
+Decision: `parseLicenseStatus` maps a missing/blank status to `unknown`
+(refused). The writable `trial` default moves to where it belongs — the
+callers that need it:
+
+- `apps/api/vitest.config.ts` `test.env` → `TUARI_LICENSE_STATUS=trial` for the
+  unit/integration suites (the explicit fail-closed path is pinned in
+  `license.test.ts` and the middleware suite).
+- `playwright.config.ts` `sharedEnv` → `TUARI_LICENSE_STATUS=trial` for E2E,
+  which runs the API without the shell.
+- `apps/api/.env.example` documents `TUARI_LICENSE_STATUS=trial` for a bare
+  `pnpm dev:api`.
+
+Doc `docs/licensing-architecture.md` §15.5 updated to match (`?? 'trial'` →
+`parseLicenseStatus(...)`) so the contract snippet does not drift.
+
+Root cause remains in the shell (it should set `suspicious`/`unknown` on init
+failure); that is a separate change, out of this lane's apps/api scope, and is
+raised with the parent.

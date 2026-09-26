@@ -17,14 +17,15 @@ describe("getLicenseInfo", () => {
     }
   });
 
-  it("defaults to standard edition with trial status when no env vars are set", () => {
+  it("defaults the non-status fields and fails closed on a missing status", () => {
+    delete process.env.TUARI_LICENSE_STATUS;
     const info = getLicenseInfo();
     expect(info.edition).toBe("standard");
     expect(info.features).toEqual([]);
     expect(info.maxUsers).toBe(1);
     expect(info.customer).toBeNull();
     expect(info.expiresAt).toBeNull();
-    expect(info.status).toBe("trial");
+    expect(info.status).toBe("unknown");
   });
 
   it("reads edition from TUARI_LICENSE_EDITION", () => {
@@ -98,9 +99,9 @@ describe("getLicenseInfo", () => {
     expect(info.status).toBe("active");
   });
 
-  it("defaults status to trial when TUARI_LICENSE_STATUS is not set", () => {
-    const info = getLicenseInfo();
-    expect(info.status).toBe("trial");
+  it("fails closed to unknown when TUARI_LICENSE_STATUS is not set", () => {
+    delete process.env.TUARI_LICENSE_STATUS;
+    expect(getLicenseInfo().status).toBe("unknown");
   });
 
   it("fails closed to unknown when TUARI_LICENSE_STATUS is an unrecognised value", () => {
@@ -108,8 +109,8 @@ describe("getLicenseInfo", () => {
     expect(getLicenseInfo().status).toBe("unknown");
   });
 
-  it("fails closed to unknown when TUARI_LICENSE_STATUS is an empty string", () => {
-    process.env.TUARI_LICENSE_STATUS = "";
+  it("fails closed to unknown when TUARI_LICENSE_STATUS is blank", () => {
+    process.env.TUARI_LICENSE_STATUS = "   ";
     expect(getLicenseInfo().status).toBe("unknown");
   });
 

@@ -46,13 +46,19 @@ export type LicenseInfo = {
 /**
  * Validate a raw `TUARI_LICENSE_STATUS` value against the known set.
  *
- * `undefined` (the var is absent) keeps the historic `trial` default so a
- * dev/test process can still boot; any OTHER unrecognised value is a typo or
- * status drift and fails CLOSED as `unknown`.
+ * A missing or blank status FAILS CLOSED as `unknown`. The desktop shell only
+ * sets the license env block when `LicenseManager::initialize` succeeds
+ * (apps/desktop/src-tauri/src/lib.rs); when initialization fails — a tampered
+ * clock or an invalid `license.lic` — it still launches the sidecar with the
+ * status absent. Treating that as a writable `trial` would leave the API fully
+ * writable, which is exactly the state the license check exists to prevent.
+ *
+ * Any unrecognised value is likewise a typo or status drift and becomes
+ * `unknown`.
  */
 function parseLicenseStatus(raw: string | undefined): LicenseStatus {
-  if (raw === undefined) {
-    return "trial";
+  if (raw === undefined || raw.trim() === "") {
+    return "unknown";
   }
 
   return (LICENSE_STATUSES as readonly string[]).includes(raw)
