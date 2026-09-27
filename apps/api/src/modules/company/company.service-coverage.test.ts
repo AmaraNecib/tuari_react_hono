@@ -80,7 +80,7 @@ describe("CompanyService facade delegations", () => {
       salaryAmountDzd: 40000,
       salaryPeriod: "MONTHLY",
     }).item;
-    service.createSalaryPayment({ employeeId: paymentTarget.id, actualAmountDzd: 40000 }, audit());
+    service.createSalaryPayment({ employeeId: paymentTarget.id, actualAmountDzd: 40000, days: 30, projectSplits: [] }, audit());
     expect(service.deleteEmployee(worker.id, audit()).success).toBe(true);
   });
 

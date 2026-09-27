@@ -182,6 +182,7 @@ const schemaStatements = [
     "id" TEXT NOT NULL PRIMARY KEY,
     "employee_id" TEXT NOT NULL,
     "period_type" TEXT NOT NULL,
+    "days" INTEGER NOT NULL DEFAULT 30,
     "expected_amount_dzd" REAL NOT NULL,
     "actual_amount_dzd" REAL NOT NULL,
     "payment_date" DATETIME NOT NULL,
@@ -192,6 +193,15 @@ const schemaStatements = [
     "created_at" DATETIME NOT NULL,
     "updated_at" DATETIME NOT NULL,
     FOREIGN KEY ("employee_id") REFERENCES "employee" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  )`,
+  `CREATE TABLE "employee_salary_payment_split" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "payment_id" TEXT NOT NULL,
+    "project_id" TEXT NOT NULL,
+    "days" INTEGER NOT NULL CHECK ("days" > 0),
+    "created_at" DATETIME NOT NULL,
+    FOREIGN KEY ("payment_id") REFERENCES "employee_salary_payment" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
   )`,
   `CREATE TABLE "external_counterparty" (
     "id" TEXT NOT NULL PRIMARY KEY,

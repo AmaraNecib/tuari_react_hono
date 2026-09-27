@@ -8,6 +8,7 @@ import type {
   EmployeeManagerAssignment,
   EmployeeProjectAssignment,
   EmployeeSalaryPayment,
+  EmployeeSalaryPaymentProjectSplit,
   EmployeeStateHistory,
   EmployeeWarehouseAssignment,
   ExternalCounterparty,
@@ -257,8 +258,10 @@ export type WarehouseAssignmentEndData = {
 export type EmployeeSalaryPaymentCreateData = {
   employeeId: string;
   periodType: "DAILY" | "WEEKLY" | "MONTHLY";
+  days: number;
   expectedAmountDzd: number;
   actualAmountDzd: number;
+  projectSplits: EmployeeSalaryPaymentProjectSplit[];
   paymentDate: string;
   note?: string | null;
 };

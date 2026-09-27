@@ -57,11 +57,24 @@ export function buildEmployeeSalaryCollections({
       salaryAmountDzd: employee.salaryAmountDzd,
       salaryPeriod: employee.salaryPeriod,
       lastPaymentDate: salaryPaymentsByEmployeeId[employee.id]?.[0]?.paymentDate ?? null,
+      // Assignment windows feed the payment form's derived per-project default.
+      projectAssignments: workspace.projectAssignments
+        .filter((assignment) => assignment.employeeId === employee.id)
+        .map((assignment) => ({
+          projectId: assignment.projectId,
+          startDate: assignment.startDate,
+          endDate: assignment.endDate,
+        })),
     }))
+
+  const salaryProjects = workspace.projects
+    .map((project) => ({ id: project.id, name: project.name }))
+    .sort((left, right) => left.name.localeCompare(right.name, "ar"))
 
   return {
     recentSalaryPayments,
     salariedEmployees,
     salaryPaymentsByEmployeeId,
+    salaryProjects,
   }
 }

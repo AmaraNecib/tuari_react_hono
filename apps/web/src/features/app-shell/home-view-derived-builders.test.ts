@@ -280,6 +280,8 @@ const workspace: DemoWorkspace = {
       expectedAmountDzd: 4500,
       actualAmountDzd: 4500,
       periodType: "DAILY",
+      days: 1,
+      projectSplits: [],
       note: null,
       actorUserId: null,
       transactionId: null,

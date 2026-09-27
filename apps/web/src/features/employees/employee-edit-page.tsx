@@ -161,11 +161,15 @@ export function EmployeeEditPage({
     { value: "INACTIVE", label: t("status.inactive") },
     { value: "LEFT", label: t("status.left") },
   ] satisfies Array<{ value: EmployeeTableRow["status"]; label: string }>
-  const salaryPeriodOptions = [
+  // Periods offered: daily and monthly only. WEEKLY stays in the enum and
+  // still renders for legacy employees, but it is not a new selection here.
+  const salaryPeriodOptions: Array<{ value: "DAILY" | "WEEKLY" | "MONTHLY"; label: string }> = [
     { value: "DAILY", label: t("detailPages.salary.daily") },
-    { value: "WEEKLY", label: t("detailPages.salary.weekly") },
     { value: "MONTHLY", label: t("detailPages.salary.monthly") },
-  ] satisfies Array<{ value: "DAILY" | "WEEKLY" | "MONTHLY"; label: string }>
+  ]
+  if (state.salaryPeriod === "WEEKLY") {
+    salaryPeriodOptions.push({ value: "WEEKLY", label: t("detailPages.salary.weekly") })
+  }
   const isSaving = saveEmployeeMutation.isPending
 
   function updateRole(roleId: string) {

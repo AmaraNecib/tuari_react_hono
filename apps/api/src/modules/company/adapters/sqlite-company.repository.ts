@@ -15,7 +15,7 @@
  */
 
 import crypto from "node:crypto";
-import { eq, and, desc, asc, sql, count, like, isNull, type SQL } from "drizzle-orm";
+import { eq, and, desc, asc, sql, count, like, isNull, inArray, type SQL } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import {
@@ -223,9 +223,25 @@ function toDebtEntry(r: typeof schema.debtEntry.$inferSelect): DebtEntryRecord {
   return { id: r.id, debtAccountId: r.debtAccountId, entryType: r.entryType as DebtEntryRecord["entryType"], signedAmountDzd: r.signedAmount, entryDate: r.entryDate, note: r.note ?? null, balanceAfterDzd: r.balanceAfter, reasonCategory: r.reasonCategory as DebtEntryRecord["reasonCategory"], reasonDetail: r.reasonDetail ?? null, paymentMethod: r.paymentMethod as DebtEntryRecord["paymentMethod"], status: r.status as DebtEntryRecord["status"], voidedAt: r.voidedAt ?? null, voidedBy: r.voidedBy ?? null, voidReason: r.voidReason ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
-/** Map Drizzle salary payment row. */
-function toSalaryPayment(r: typeof schema.employeeSalaryPayment.$inferSelect): EmployeeSalaryPaymentRecord {
-  return { id: r.id, employeeId: r.employeeId, periodType: r.periodType as EmployeeSalaryPaymentRecord["periodType"], expectedAmountDzd: r.expectedAmountDzd, actualAmountDzd: r.actualAmountDzd, paymentDate: r.paymentDate, note: r.note ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+/** Map Drizzle salary payment row plus its per-project split lines. */
+function toSalaryPayment(
+  r: typeof schema.employeeSalaryPayment.$inferSelect,
+  projectSplits: EmployeeSalaryPaymentRecord["projectSplits"],
+): EmployeeSalaryPaymentRecord {
+  return { id: r.id, employeeId: r.employeeId, periodType: r.periodType as EmployeeSalaryPaymentRecord["periodType"], days: r.days, expectedAmountDzd: r.expectedAmountDzd, actualAmountDzd: r.actualAmountDzd, projectSplits, paymentDate: r.paymentDate, note: r.note ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+/** Group split rows by payment id (one query for the whole list). */
+function groupSalaryPaymentSplits(
+  rows: Array<typeof schema.employeeSalaryPaymentSplit.$inferSelect>,
+): Map<string, EmployeeSalaryPaymentRecord["projectSplits"]> {
+  const byPayment = new Map<string, EmployeeSalaryPaymentRecord["projectSplits"]>();
+  for (const row of rows) {
+    const splits = byPayment.get(row.paymentId) ?? [];
+    splits.push({ projectId: row.projectId, days: row.days });
+    byPayment.set(row.paymentId, splits);
+  }
+  return byPayment;
 }
 
 /** Map Drizzle user profile history row. */
@@ -857,13 +873,24 @@ export class SqliteCompanyRepository implements CompanyRepository {
     if (filters?.employeeId) conds.push(eq(schema.employeeSalaryPayment.employeeId, filters.employeeId));
     const w = buildWhere(conds);
     const q = this.db.select().from(schema.employeeSalaryPayment);
-    return (w ? q.where(w) : q).orderBy(desc(schema.employeeSalaryPayment.paymentDate), desc(schema.employeeSalaryPayment.createdAt)).all().map(toSalaryPayment);
+    const rows = (w ? q.where(w) : q).orderBy(desc(schema.employeeSalaryPayment.paymentDate), desc(schema.employeeSalaryPayment.createdAt)).all();
+    if (rows.length === 0) return [];
+    const splitRows = this.db
+      .select()
+      .from(schema.employeeSalaryPaymentSplit)
+      .where(inArray(schema.employeeSalaryPaymentSplit.paymentId, rows.map((row) => row.id)))
+      .all();
+    const splitsByPayment = groupSalaryPaymentSplits(splitRows);
+    return rows.map((row) => toSalaryPayment(row, splitsByPayment.get(row.id) ?? []));
   }
 
   createSalaryPayment(data: EmployeeSalaryPaymentCreateData, audit?: MutationAuditContext): EmployeeSalaryPaymentRecord {
     const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
     runSyncTransaction(this.connectionLock, this.raw, () => {
-      this.db.insert(schema.employeeSalaryPayment).values({ id, employeeId: data.employeeId, periodType: data.periodType, expectedAmountDzd: data.expectedAmountDzd, actualAmountDzd: data.actualAmountDzd, paymentDate: data.paymentDate, note: data.note ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+      this.db.insert(schema.employeeSalaryPayment).values({ id, employeeId: data.employeeId, periodType: data.periodType, days: data.days, expectedAmountDzd: data.expectedAmountDzd, actualAmountDzd: data.actualAmountDzd, paymentDate: data.paymentDate, note: data.note ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+      for (const split of data.projectSplits) {
+        this.db.insert(schema.employeeSalaryPaymentSplit).values({ id: crypto.randomUUID(), paymentId: id, projectId: split.projectId, days: split.days, createdAt: ts }).run();
+      }
     });
     return this.listSalaryPayments({ employeeId: data.employeeId }).find((e) => e.id === id)!;
   }

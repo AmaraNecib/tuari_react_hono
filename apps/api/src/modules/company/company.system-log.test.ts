@@ -165,7 +165,7 @@ describe("buildCompanySystemLog coverage", () => {
       status: "ACTIVE",
       startDate: "2026-01-01T00:00:00.000Z",
     });
-    service.createSalaryPayment({ employeeId: worker.id, actualAmountDzd: 40000 }, audit());
+    service.createSalaryPayment({ employeeId: worker.id, actualAmountDzd: 40000, days: 30, projectSplits: [] }, audit());
     service.syncManagedProjects({ employeeId: manager.id, projectIds: [project.id] });
     service.syncManagedWarehouses({ employeeId: whManager.id, warehouseIds: [warehouse.id] });
 
@@ -259,7 +259,7 @@ describe("buildCompanySystemLog coverage", () => {
     service.syncManagedProjects({ employeeId: manager.id, projectIds: [project.id] });
     const whManager = createWarehouseManager("0556000052");
     service.syncManagedWarehouses({ employeeId: whManager.id, warehouseIds: [warehouse.id] });
-    service.createSalaryPayment({ employeeId: worker.id, actualAmountDzd: 40000 }, audit());
+    service.createSalaryPayment({ employeeId: worker.id, actualAmountDzd: 40000, days: 30, projectSplits: [] }, audit());
     const counterparty = service.createExternalCounterparty({
       fullName: "طرف خارجي",
       phoneNumber: "0219999999",

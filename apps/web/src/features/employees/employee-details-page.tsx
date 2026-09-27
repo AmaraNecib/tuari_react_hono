@@ -344,6 +344,9 @@ export function EmployeeDetailsPage({
                     onClick={() =>
                       createSalaryPaymentMutation.mutate({
                         employeeId: employee.id,
+                        // A daily wage is paid per day; a monthly wage covers the
+                        // 30-day month. The amount still overrides the proposal.
+                        days: employee.salaryPeriod === "DAILY" ? 1 : 30,
                         actualAmountDzd: actualAmountValue!,
                         paymentDate: paymentDate ? toAlgeriaDayBoundaryIso(paymentDate, "start") : undefined,
                         note: note.trim() || null,

@@ -8,6 +8,7 @@ import {
   applyDebtAccountDirectionMigration,
   applyPaymentAllocationRestrictMigration,
   applyRbacThreeRoleMigration,
+  ensureDatabaseSchema,
   type DbExecutor,
 } from "./schema";
 import {
@@ -17,6 +18,10 @@ import {
   rbacThreeRoleMigrationKey,
 } from "./schema-definitions";
 import { BetterSqlite3Executor } from "./sqlite-executor";
+import {
+  mapEmployeeSalaryPayment,
+  type SqliteRow,
+} from "../../modules/company/company.repository-mappers";
 
 describe("applyEmployeeUserLinkMigration", () => {
   function createLegacyDb() {
@@ -739,5 +744,47 @@ describe("applyPaymentAllocationRestrictMigration (issue #335)", () => {
     expect(
       (db.prepare('SELECT COUNT(*) AS c FROM "payment_allocation"').get() as { c: number }).c,
     ).toBe(1);
+  });
+});
+
+describe("employee_salary_payment days migration (#412)", () => {
+  it("backfills days=30 on an existing payment row without touching its amounts", async () => {
+    const db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    await ensureDatabaseSchema(asDbExecutor(db));
+
+    // Simulate a pre-#412 database: drop the column, then insert a legacy row.
+    db.exec('ALTER TABLE "employee_salary_payment" DROP COLUMN "days"');
+    db.pragma("foreign_keys = OFF");
+    db.prepare(
+      `INSERT INTO "employee_salary_payment"
+         ("id", "employee_id", "period_type", "expected_amount_dzd", "actual_amount_dzd", "payment_date", "created_at", "updated_at")
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "pay-legacy",
+      "employee-legacy",
+      "MONTHLY",
+      50000,
+      45000,
+      "2026-01-05T00:00:00.000Z",
+      "2026-01-05T00:00:00.000Z",
+      "2026-01-05T00:00:00.000Z",
+    );
+    db.pragma("foreign_keys = ON");
+
+    await ensureDatabaseSchema(asDbExecutor(db));
+
+    const row = db
+      .prepare('SELECT * FROM "employee_salary_payment" WHERE "id" = ?')
+      .get("pay-legacy") as SqliteRow;
+    expect(row.days).toBe(30);
+    expect(row.expected_amount_dzd).toBe(50000);
+    expect(row.actual_amount_dzd).toBe(45000);
+
+    const mapped = mapEmployeeSalaryPayment(row);
+    expect(mapped.days).toBe(30);
+    expect(mapped.expectedAmountDzd).toBe(50000);
+    expect(mapped.actualAmountDzd).toBe(45000);
+    expect(mapped.projectSplits).toEqual([]);
   });
 });

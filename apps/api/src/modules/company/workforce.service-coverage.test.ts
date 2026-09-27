@@ -376,7 +376,7 @@ describe("WorkforceService coverage branches", () => {
         salaryAmountDzd: 45000,
         salaryPeriod: "MONTHLY",
       }).item;
-      service.createSalaryPayment({ employeeId: worker.id, actualAmountDzd: 45000 }, audit());
+      service.createSalaryPayment({ employeeId: worker.id, actualAmountDzd: 45000, days: 30, projectSplits: [] }, audit());
       expect(service.listEmployeeStateHistory().items.length).toBeGreaterThan(0);
       expect(service.listSalaryPayments().items.length).toBeGreaterThan(0);
       expect(service.getEmployee(worker.id).item.id).toBe(worker.id);
@@ -739,7 +739,7 @@ describe("WorkforceService coverage branches", () => {
         status: "ACTIVE",
       }).item;
       expect(() =>
-        service.createSalaryPayment({ employeeId: worker.id, actualAmountDzd: 1000 }, audit()),
+        service.createSalaryPayment({ employeeId: worker.id, actualAmountDzd: 1000, days: 30, projectSplits: [] }, audit()),
       ).toThrowError(CompanyError);
     });
   });
@@ -1136,6 +1136,200 @@ describe("WorkforceService coverage branches", () => {
       // Removing the project while a worker is still assigned must be rejected
       expect(() =>
         service.syncManagedProjects({ employeeId: manager.id, projectIds: [] }),
+      ).toThrowError(CompanyError);
+    });
+  });
+
+  describe("salary payment days and project split (#412)", () => {
+    function createPaidWorker(
+      service: ReturnType<typeof createHarness>["service"],
+      roleIds: ReturnType<typeof createHarness>["roleIds"],
+      options: { phone: string; salaryAmountDzd?: number; salaryPeriod?: "DAILY" | "MONTHLY" },
+    ) {
+      return service.createEmployee({
+        firstName: "عامل",
+        lastName: "أجور",
+        phone: options.phone,
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+        salaryAmountDzd: options.salaryAmountDzd ?? 30000,
+        salaryPeriod: options.salaryPeriod ?? "MONTHLY",
+      }).item;
+    }
+
+    function createProject(service: ReturnType<typeof createHarness>["service"], managerId: string, name: string) {
+      return service.createProject({ name, status: "ACTIVE", managerId }).item;
+    }
+
+    it("prorates a monthly wage at salary/30 and stores the proposed amount", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000201" });
+
+      const full = service.createSalaryPayment({ employeeId: worker.id, days: 30, projectSplits: [] }, audit()).item;
+      expect(full.days).toBe(30);
+      expect(full.expectedAmountDzd).toBe(30000);
+      expect(full.actualAmountDzd).toBe(30000);
+
+      const partial = service.createSalaryPayment({ employeeId: worker.id, days: 27, projectSplits: [] }, audit()).item;
+      expect(partial.expectedAmountDzd).toBe(27000);
+      expect(partial.actualAmountDzd).toBe(27000);
+
+      const half = service.createSalaryPayment({ employeeId: worker.id, days: 15, projectSplits: [] }, audit()).item;
+      expect(half.expectedAmountDzd).toBe(15000);
+    });
+
+    it("multiplies a daily wage by the days", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000202", salaryAmountDzd: 1500, salaryPeriod: "DAILY" });
+      const payment = service.createSalaryPayment({ employeeId: worker.id, days: 12, projectSplits: [] }, audit()).item;
+      expect(payment.expectedAmountDzd).toBe(18000);
+    });
+
+    it("lets the caller override the amount while the proposal is kept as expected", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000203" });
+      const payment = service
+        .createSalaryPayment({ employeeId: worker.id, days: 15, actualAmountDzd: 14000, projectSplits: [] }, audit())
+        .item;
+      expect(payment.expectedAmountDzd).toBe(15000);
+      expect(payment.actualAmountDzd).toBe(14000);
+    });
+
+    it("records an unallocated payment with no project attribution", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000204" });
+      const payment = service.createSalaryPayment({ employeeId: worker.id, days: 30, projectSplits: [] }, audit()).item;
+      expect(payment.projectSplits).toEqual([]);
+      expect(service.listSalaryPayments({ employeeId: worker.id }).items[0]?.projectSplits).toEqual([]);
+    });
+
+    it("stores a per-project split whose days stay within the paid days", () => {
+      const { service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "توزيع",
+        phone: "0554000205",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const projectA = createProject(service, manager.id, "مشروع أ");
+      const projectB = createProject(service, manager.id, "مشروع ب");
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000206" });
+
+      const payment = service
+        .createSalaryPayment(
+          {
+            employeeId: worker.id,
+            days: 30,
+            projectSplits: [
+              { projectId: projectA.id, days: 20 },
+              { projectId: projectB.id, days: 5 },
+            ],
+          },
+          audit(),
+        )
+        .item;
+
+      expect(payment.projectSplits).toEqual([
+        { projectId: projectA.id, days: 20 },
+        { projectId: projectB.id, days: 5 },
+      ]);
+      // The 5 remaining days stay unallocated rather than being forced onto a project.
+      const allocated = payment.projectSplits.reduce((total, split) => total + split.days, 0);
+      expect(allocated).toBeLessThan(payment.days);
+    });
+
+    it("rejects a split whose days exceed the paid days", () => {
+      const { service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "تجاوز",
+        phone: "0554000207",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const project = createProject(service, manager.id, "مشروع تجاوز");
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000208" });
+
+      expect(() =>
+        service.createSalaryPayment(
+          { employeeId: worker.id, days: 10, projectSplits: [{ projectId: project.id, days: 11 }] },
+          audit(),
+        ),
+      ).toThrowError(CompanyError);
+    });
+
+    it("rejects a split line for a project that does not exist", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000209" });
+      expect(() =>
+        service.createSalaryPayment(
+          { employeeId: worker.id, days: 30, projectSplits: [{ projectId: "ghost-project", days: 5 }] },
+          audit(),
+        ),
+      ).toThrowError(CompanyError);
+    });
+
+    it("rejects a duplicated project in the split", () => {
+      const { service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "تكرار",
+        phone: "0554000210",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const project = createProject(service, manager.id, "مشروع تكرار");
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000211" });
+      expect(() =>
+        service.createSalaryPayment(
+          {
+            employeeId: worker.id,
+            days: 30,
+            projectSplits: [
+              { projectId: project.id, days: 5 },
+              { projectId: project.id, days: 5 },
+            ],
+          },
+          audit(),
+        ),
+      ).toThrowError(CompanyError);
+    });
+
+    it("rejects non-positive or fractional days and split days", () => {
+      const { service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "أيام",
+        phone: "0554000212",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const project = createProject(service, manager.id, "مشروع أيام");
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000213" });
+
+      expect(() =>
+        service.createSalaryPayment({ employeeId: worker.id, days: 0, projectSplits: [] }, audit()),
+      ).toThrowError(CompanyError);
+      expect(() =>
+        service.createSalaryPayment({ employeeId: worker.id, days: 2.5, projectSplits: [] }, audit()),
+      ).toThrowError(CompanyError);
+      expect(() =>
+        service.createSalaryPayment(
+          { employeeId: worker.id, days: 30, projectSplits: [{ projectId: project.id, days: 0 }] },
+          audit(),
+        ),
+      ).toThrowError(CompanyError);
+    });
+
+    it("rejects a non-finite overridden amount", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000214" });
+      expect(() =>
+        service.createSalaryPayment(
+          { employeeId: worker.id, days: 30, actualAmountDzd: Number.NaN, projectSplits: [] },
+          audit(),
+        ),
       ).toThrowError(CompanyError);
     });
   });

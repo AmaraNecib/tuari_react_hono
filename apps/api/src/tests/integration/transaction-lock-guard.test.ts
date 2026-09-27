@@ -608,8 +608,10 @@ describe("Plain sync writers tripwire (issue #348)", () => {
     const payment = {
       employeeId: worker.id,
       periodType: "MONTHLY" as const,
+      days: 30,
       expectedAmountDzd: 50000,
       actualAmountDzd: 50000,
+      projectSplits: [],
       paymentDate: "2026-03-01T00:00:00.000Z",
     };
     await expectBusyWhileHeld(() => repo.createSalaryPayment(payment));

@@ -38,6 +38,7 @@ function MoneyCell({ value, currencyLabel }: { value: number; currencyLabel: str
 export function SalariesSection({
   recentPayments,
   workers,
+  projects,
   onEditSalary,
 }: {
   recentPayments: Array<{
@@ -47,8 +48,10 @@ export function SalariesSection({
     employeePhone: string
     employeeRole: string
     paymentDate: string
+    days: number
     expectedAmountDzd: number
     actualAmountDzd: number
+    projectSplits: Array<{ projectId: string; days: number }>
     note: string | null
   }>
   workers: Array<{
@@ -59,23 +62,46 @@ export function SalariesSection({
     salaryAmountDzd: number | null
     salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | null
     lastPaymentDate: string | null
+    projectAssignments: Array<{ projectId: string; startDate: string; endDate: string | null }>
   }>
+  projects: Array<{ id: string; name: string }>
   onEditSalary: (employeeId: string) => void
 }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState("recent")
-  const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
+  const [paymentTarget, setPaymentTarget] = useState<{
+    id: string
+    name: string
+    salaryAmountDzd: number | null
+    salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | null
+    projectAssignments: Array<{ projectId: string; startDate: string; endDate: string | null }>
+  } | null>(null)
   const currencyLabel = t("detailPages.salary.currency")
   const sortedWorkers = useMemo(
     () => [...workers].sort((a, b) => a.employeeName.localeCompare(b.employeeName, "ar")),
     [workers],
   )
 
+  const openPaymentForm = (employeeId: string, employeeName: string) => {
+    const worker = workers.find((candidate) => candidate.employeeId === employeeId)
+    setPaymentTarget({
+      id: employeeId,
+      name: employeeName,
+      salaryAmountDzd: worker?.salaryAmountDzd ?? null,
+      salaryPeriod: worker?.salaryPeriod ?? null,
+      projectAssignments: worker?.projectAssignments ?? [],
+    })
+  }
+
   return (
     <div className="space-y-6">
       <AddSalaryPaymentDialog
         employeeId={paymentTarget?.id ?? null}
         employeeName={paymentTarget?.name}
+        salaryAmountDzd={paymentTarget?.salaryAmountDzd ?? null}
+        salaryPeriod={paymentTarget?.salaryPeriod ?? null}
+        projectAssignments={paymentTarget?.projectAssignments ?? []}
+        projects={projects}
         open={paymentTarget !== null}
         onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
       />
@@ -98,6 +124,7 @@ export function SalariesSection({
               <tr>
                 <AppShellTableHeaderCell>{t("columns.name")}</AppShellTableHeaderCell>
                 <AppShellTableHeaderCell>{t("salaries.paymentDate")}</AppShellTableHeaderCell>
+                <AppShellTableHeaderCell>{t("salaries.days")}</AppShellTableHeaderCell>
                 <AppShellTableHeaderCell>{t("salaries.expectedAmount")}</AppShellTableHeaderCell>
                 <AppShellTableHeaderCell>{t("salaries.actualAmount")}</AppShellTableHeaderCell>
                 <AppShellTableHeaderCell>{t("salaries.notes")}</AppShellTableHeaderCell>
@@ -115,6 +142,9 @@ export function SalariesSection({
                     <td className="px-4 py-3 text-start text-[13px] text-ink-2">
                       {new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}
                     </td>
+                    <td className="px-4 py-3 text-start text-[13px] text-ink-2 font-mono tabular-nums" dir="ltr">
+                      {payment.days}
+                    </td>
                     <td className="px-4 py-3 text-start">
                       <MoneyCell value={payment.expectedAmountDzd} currencyLabel={currencyLabel} />
                     </td>
@@ -126,7 +156,7 @@ export function SalariesSection({
                     </td>
                     <td className="px-4 py-3 text-end">
                       <AppShellActionGroup className="justify-end">
-                        <Button size="xs" onClick={() => setPaymentTarget({ id: payment.employeeId, name: payment.employeeName })}>
+                        <Button size="xs" onClick={() => openPaymentForm(payment.employeeId, payment.employeeName)}>
                           {t("salaries.addPayment")}
                         </Button>
                         <Button size="xs" variant="outline" onClick={() => onEditSalary(payment.employeeId)}>
@@ -137,7 +167,7 @@ export function SalariesSection({
                   </AppShellTableRow>
                 ))
               ) : (
-                <AppShellEmptyStateRow colSpan={6}>{t("salaries.recentEmpty")}</AppShellEmptyStateRow>
+                <AppShellEmptyStateRow colSpan={7}>{t("salaries.recentEmpty")}</AppShellEmptyStateRow>
               )}
             </tbody>
           </table>
@@ -180,7 +210,7 @@ export function SalariesSection({
                     </td>
                     <td className="px-4 py-3 text-end">
                       <AppShellActionGroup className="justify-end">
-                        <Button size="xs" onClick={() => setPaymentTarget({ id: worker.employeeId, name: worker.employeeName })}>
+                        <Button size="xs" onClick={() => openPaymentForm(worker.employeeId, worker.employeeName)}>
                           {t("salaries.addPayment")}
                         </Button>
                         <Button size="xs" variant="outline" onClick={() => onEditSalary(worker.employeeId)}>
