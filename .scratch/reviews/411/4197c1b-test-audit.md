@@ -1,6 +1,6 @@
 # #411 — Test audit evidence
 
-- Audited commit: `bb64cb03d91bd51062bd90453869cc306d5accc0`
+- Audited commit: `4197c1b253c2842cb801867644184b9d57ee8787`
 - Suites: `expenses.module.test.ts` (in-memory), `expenses.module.sqlite.test.ts`
   (real adapter), `router.test.ts` (wire), `expenses-page.test.tsx` (screen),
   `expenses-filters.test.ts` (pure).
