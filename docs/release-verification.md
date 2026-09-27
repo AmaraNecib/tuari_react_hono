@@ -10,10 +10,12 @@ it, how to run the smoke test that launches it, and what still needs a human.
 | --- | --- | --- |
 | `pnpm test:api`, `pnpm test:web`, Rust tests | source behaviour | yes |
 | `scripts/verify-release-assets.mjs` | the portable zip exists and contains `Tuari.exe`, and the signed update manifest verifies | yes, in the release workflow |
-| `scripts/smoke/installer-smoke.mjs` | the built bundle launches, the sidecar starts, `/health` answers, and the app writes a schema-complete SQLite database | yes, at the publish gate (`beta.yml`, `release.yml`, `nightly.yml`) |
+| `scripts/smoke/installer-smoke.mjs` | the packaged **portable** build launches, the sidecar starts, `/health` answers, and the app writes a schema-complete SQLite database. The NSIS setup file is only checked for existence, a PE header and a hash — it is never executed | yes, at the publish gate (`beta.yml`, `release.yml`, `nightly.yml`) |
 
 The smoke test closes the gap between "the zip contains an exe" and "the exe
-runs". It does not replace a human looking at the window.
+runs". It launches the portable layout, which is the same app the installer
+unpacks, but it does not run the installer itself and it does not replace a
+human looking at the window.
 
 Current status: the smoke test passes 22/22 with exit 0 on a locally built
 artifact, and it runs at the publish gate. Two startup blockers it found are
@@ -27,7 +29,7 @@ step extracts the same `tuari-<version>-<channel>-portable.zip` the release will
 upload and passes the staged installer with `--installer`; it never rebuilds.
 `ci.yml` does not run it, because the check needs a full desktop build.
 
-The step fails the job on any non-zero exit, so a build whose installer cannot
+The step fails the job on any non-zero exit, so a build whose packaged app cannot
 start never reaches a release. The failure modes it reports:
 
 - a staged artifact is missing or too small,

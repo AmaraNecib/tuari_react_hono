@@ -97,21 +97,64 @@ test('publish workflows run the installer smoke test after packaging and before 
 
   for (const { name, channel, uploadMarker } of channels) {
     const source = await readRepoFile(path.join('.github/workflows', name));
+    const lines = source.split('\n');
+
+    // Find a real step by name. A commented-out step does not match, because the
+    // regex requires the line to START with `- name:` (a `# - name:` line is a
+    // comment, not a step) — plain text search would happily match the smoke
+    // command inside a comment.
+    const stepStart = (needle) =>
+      lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes(needle));
+    const stepAt = (index) => {
+      const indent = lines[index].match(/^\s*/)[0];
+      let end = lines.length;
+      for (let i = index + 1; i < lines.length; i += 1) {
+        if (lines[i].startsWith(`${indent}- name:`)) {
+          end = i;
+          break;
+        }
+      }
+      return lines.slice(index, end).join('\n');
+    };
+    const stepContaining = (needle) =>
+      lines.findIndex((line, index) =>
+        /^\s*- name:/.test(line) && stepAt(index).includes(needle),
+      );
+
+    const smokeStep = stepStart('Run installer smoke test');
+    assert.ok(smokeStep !== -1, `${name} must have a 'Run installer smoke test' step`);
+    const smokeBlock = stepAt(smokeStep);
 
     // The gate must run the built artifact. An index of -1 means the workflow
     // does not run it at all.
-    const smokeIndex = source.indexOf('scripts/smoke/installer-smoke.mjs');
-    assert.ok(smokeIndex !== -1, `${name} must run scripts/smoke/installer-smoke.mjs`);
+    assert.ok(
+      smokeBlock.includes('scripts/smoke/installer-smoke.mjs'),
+      `${name} must run scripts/smoke/installer-smoke.mjs`,
+    );
+
+    // A disabled step is not a gate: `if: false` (or a false expression) would
+    // keep the command in the file while skipping it at run time.
+    assert.doesNotMatch(
+      smokeBlock,
+      /^\s*if:\s*(false|\$\{\{\s*false\s*\}\})\s*$/m,
+      `${name} must not disable the installer smoke test step`,
+    );
 
     // It must run after packaging (no rebuild) and before the release upload,
     // or a non-starting installer can still be published.
-    const packageIndex = source.indexOf('portable:only');
-    assert.ok(packageIndex !== -1, `${name} should build the portable package`);
-    assert.ok(packageIndex < smokeIndex, `${name} must run the installer smoke test after packaging`);
+    const packageStep = stepContaining('portable:only');
+    assert.ok(packageStep !== -1, `${name} should build the portable package`);
+    assert.ok(
+      packageStep < smokeStep,
+      `${name} must run the installer smoke test after packaging`,
+    );
 
-    const uploadIndex = source.indexOf(uploadMarker);
-    assert.ok(uploadIndex !== -1, `${name} should upload a release`);
-    assert.ok(smokeIndex < uploadIndex, `${name} must run the installer smoke test before the release upload`);
+    const uploadStep = stepContaining(uploadMarker);
+    assert.ok(uploadStep !== -1, `${name} should upload a release`);
+    assert.ok(
+      smokeStep < uploadStep,
+      `${name} must run the installer smoke test before the release upload`,
+    );
 
     // It must point at the staged artifact the release uploads, not at a
     // rebuild in the bundle directory.
