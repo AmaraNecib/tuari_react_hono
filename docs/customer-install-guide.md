@@ -1,0 +1,123 @@
+# Install and activate Tuari (customer guide)
+
+This is the guide you hand a customer together with two files:
+
+| File | Purpose |
+| --- | --- |
+| `tuari-<version>-stable-setup.exe` | Windows installer (NSIS). A local Tauri build names it `Tuari_<version>_x64-setup.exe`; the release uploads it as `tuari-<version>-stable-setup.exe`. |
+| `customer-license.lic` | Their signed license (see `docs/licensing-architecture.md`) |
+
+## Requirements
+
+- Windows 10 or 11, 64-bit.
+- ~300 MB free disk space.
+- Internet access during the first install unless your build embeds the WebView2
+  runtime (the default NSIS build downloads it if it is missing).
+
+## 1. Install
+
+1. Run the installer (`tuari-<version>-stable-setup.exe`).
+2. Windows SmartScreen may warn that the publisher is unknown — the installer is
+   not code-signed yet. Choose **More info → Run anyway**.
+3. Follow the installer, then launch **Tuari** from the Start menu.
+
+## 2. First run — create the administrator
+
+The first launch asks you to create the administrator account (name, phone,
+password). That account owns the workspace: it can create users, projects,
+warehouses, items and invoices. There is no separate setup key on a fresh
+install.
+
+If the app does not offer account creation, a setup key was configured for that
+build — ask the vendor for it.
+
+## 3. Activate the license
+
+The app runs for **30 days** without a license. During that period everything
+works, and the License screen shows the days remaining.
+
+1. Open **Settings → License**.
+2. Open `customer-license.lic` in a text editor and copy its **entire** contents
+   (one long line: `<payload>.<signature>`).
+3. Paste it into the license field and activate.
+4. **Restart the app.** The API server reads the license status when it starts,
+   so a new or renewed license takes effect after a restart (the activation
+   message says the same).
+
+The app verifies the signature offline and stores the license locally. You will
+see the edition, the features and the expiry (perpetual licenses show no expiry).
+
+**After the 30-day trial the app locks: it refuses changes until a valid license
+is activated.** The desktop shell reports the license status to the API, and the
+API refuses every audited mutation while the status is `expired`, `inactive`,
+`suspicious` (clock tampering) or `unknown`, with a message telling you what to
+do. Reading data still works, so you can reach the License screen and activate.
+
+During the post-install trial (`trial`) everything works normally. After the
+license expires, the `grace` window is **read-only** until you renew: reading
+still works, but changes are refused.
+
+Edition and feature lists are recorded in the license and shown on the License
+screen, but the API does not yet restrict any operation by them — the status
+check above is the only license enforcement that applies to everyday changes.
+
+Troubleshooting:
+
+| Symptom | Cause |
+| --- | --- |
+| "invalid signature" | The license was edited, truncated, or issued for a different vendor key |
+| "expired" | `--valid-until` has passed; renew the license |
+| "clock tampering" | The system clock moved backwards, or was previously set far forward and then corrected. Fix the clock; to clear the warning, close the app, delete `clock-tracker.json` in the data directory, and start it again. This clears the **warning only**: it does not restart or extend the 30-day trial, and `install-anchor.json` holds the installation time, so leave it in place. If the warning returns after the clock is correct, contact support. |
+| Expected feature not listed on the License screen | The license does not carry it. Editions and features are recorded but not yet enforced by the API. |
+
+## 4. Your data
+
+The database, attachments, `license.lic`, `clock-tracker.json` and
+`install-anchor.json` live under the app's data directory —
+`%APPDATA%\com.tuari.desktop\Tuari` on a normal install (a portable build keeps
+the same tree in `<install folder>\data`).
+
+**Encryption depends on the license.** The app passes a database key to the API
+only when the license carries the `encrypted_db` feature; without it the
+workspace opens unencrypted and the key advice below does not apply.
+
+With `encrypted_db`, the key normally lives in the Windows Credential Manager
+(service `com.tuari.desktop.secrets`, account `app-db.key`). When the OS
+credential store is unavailable, the app writes the same key to
+`%APPDATA%\com.tuari.desktop\runtime\secrets\app-db.key` instead — outside the
+data directory, and under `%APPDATA%` even for a portable build. So:
+
+- Copying the data directory alone is **not** a restorable backup. On a new
+  Windows profile, or after the key is lost, the app generates a fresh key at
+  startup and cannot open the restored database.
+- A complete backup is the data directory above **plus** the key:
+  - On a **normal install**, back up the whole `%APPDATA%\com.tuari.desktop`
+    folder. It holds both the data (`Tuari`) and the fallback key
+    (`runtime\secrets`).
+  - On a **portable build**, back up `<install folder>\data` **and**
+    `%APPDATA%\com.tuari.desktop\runtime\secrets`, because the data is portable
+    but the fallback key is not.
+  - When the key is in the Credential Manager, export the credential entry (or
+    keep the original Windows profile) instead of relying on the fallback file.
+- Restoring after the key is lost is **not supported by the app today** (there is
+  no screen to supply a key before the database opens); contact support.
+
+**Settings → Security** is not a restore flow. It changes the database key while
+the database is already open (current key → new key) and manages one-time
+recovery keys; consuming a key is not wired to a password-reset flow yet, so it
+cannot restore administrator access. Neither can open a restored database.
+
+Take backups with the app closed.
+
+## 5. Updates
+
+This build does not ship an automatic update channel yet: install the next
+version by running its installer over the current one. Your data is preserved.
+
+## Support
+
+Include the app version (Settings → About) and, for license problems, the
+**name and email the license was issued to** plus the edition and the exact
+error message — the License screen shows those. The internal license ID
+(`LCE-...`) is not displayed in the app, and the license file stores a
+base64url-encoded payload, so send that file if support asks for the ID.

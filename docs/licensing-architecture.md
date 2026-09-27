@@ -526,7 +526,7 @@ Tauri startup
 
 ### 6.2 First-Run & Grace Period UX
 
-#### 6.2.1 First-Run Flow (no license, no install-timestamp)
+#### 6.2.1 First-Run Flow (no license, no install anchor)
 
 ```
 User opens Tuari for the first time
@@ -540,7 +540,7 @@ User opens Tuari for the first time
   │   │   [تخطي]                               │
   │   └─────────────────────────────────────┘
   │
-  ├── "Start trial" → create install-timestamp → grant Standard edition for 30 days
+  ├── "Start trial" → create install-anchor.json → grant Standard edition for 30 days
   ├── "Activate" → show file picker for license.lic
   └── "Skip" → show welcome screen on next startup too
 ```
@@ -548,12 +548,12 @@ User opens Tuari for the first time
 #### 6.2.2 Grace Period (post-install, no license)
 
 ```
-  ├── install-timestamp < 30 days from now
+  ├── install-anchor.json < 30 days from now
   │     → App functions normally with Standard edition features
   │     → Small banner in bottom-right: "النسخة التجريبية — يتبقى N يوم"
   │     → Settings → Licensing shows countdown and upgrade options
   │
-  └── install-timestamp ≥ 30 days from now
+  └── install-anchor.json ≥ 30 days from now
         → Full-screen lock: "انتهت الفترة التجريبية"
         → Buttons: "تفعيل الترخيص" | "شراء النسخة"
         → Existing data remains on disk, accessible after activation
@@ -876,7 +876,7 @@ The current design supports subscriptions via the `licenseType` field:
 |--------------|----------|
 | `perpetual` | No `validUntil` check, or distant future |
 | `subscription` | Must be renewed before `validUntil` |
-| `trial` | 30-day trial (also tracked via install-timestamp) |
+| `trial` | 30-day trial (also tracked via `install-anchor.json`) |
 | `grace` | Post-expiry reduced functionality |
 
 ### 13.2 Subscription Flow (Future)
@@ -929,13 +929,13 @@ Rust passes license information to the Node.js sidecar via **structured environm
 | Set clock back before trial expires | Yes (monotonic tracker) | Uses estimated time instead of wall clock |
 | Set clock forward to bypass validFrom | Yes (validFrom check) | N/A — validFrom prevents early access |
 | Pause the system clock entirely | Partially (monotonic clock stops) | We don't detect paused clocks. Accept. |
-| Delete clock-tracker.json | Partially (file can be recreated) | Tracker is recreated with current wall time, losing history |
+| Delete clock-tracker.json | Partially (file can be recreated) | Clears only the clock high-water mark, so the tamper warning goes away. `install-anchor.json` survives with the original install time, the trial window is unchanged, and the tracker is recreated from the anchor — not the current wall time. |
 
 ### 14.4 Grace Period Reset Abuse
 
-A user could delete the `install-timestamp` file to reset the 30-day grace period.
+A user could delete the trial anchor to reset the 30-day grace period.
 
-**Mitigation:** Store the timestamp in `<app_data>/runtime/state/`, which persists across reinstalls. We accept that a determined user can delete the state directory. This is a deliberate trade-off — the grace period is for evaluation, not security.
+**Mitigation:** The install time is held in `install-anchor.json` in the app state directory. It is written once and only ever moved earlier, never advanced, so setting the clock back — or deleting the resettable `clock-tracker.json` (the documented clock-tamper recovery) — clears the warning without restarting or extending the trial. The recovery must not delete `install-anchor.json`. We accept that a determined user can delete the whole state directory. This is a deliberate trade-off — the grace period is for evaluation, not security.
 
 ### 14.5 Operation-Count-Based Trial Hardening (Future Enhancement)
 
