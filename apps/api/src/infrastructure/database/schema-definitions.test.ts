@@ -296,3 +296,62 @@ describe("payment_allocation schema (#335 restrict FK)", () => {
     );
   });
 });
+
+describe("expense schema (#411)", () => {
+  const definitions = createSchemaDefinitions();
+
+  it("creates the expense table with the money, date and audit columns", () => {
+    const expenseDef = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "expense"'),
+    );
+    expect(expenseDef).toBeDefined();
+    expect(expenseDef).toContain('"amount_dzd" REAL NOT NULL CHECK ("amount_dzd" > 0)');
+    expect(expenseDef).toContain('"expense_date" DATETIME NOT NULL');
+    expect(expenseDef).toContain('"actor_user_id" TEXT');
+    expect(expenseDef).toContain('"transaction_id" TEXT');
+    expect(expenseDef).toContain(
+      'CHECK ("status" IN (\'LIVE\', \'VOIDED\'))',
+    );
+  });
+
+  it("keeps every optional reference nullable and free of foreign keys", () => {
+    const expenseDef = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "expense"'),
+    )!;
+    for (const column of [
+      '"responsible_worker_id" TEXT',
+      '"seller_id" TEXT',
+      '"project_id" TEXT',
+      '"stock_item_id" TEXT',
+    ]) {
+      const line = expenseDef.split("\n").find((entry) => entry.includes(column));
+      expect(line).toBeDefined();
+      expect(line).not.toContain("NOT NULL");
+      expect(line).not.toContain("REFERENCES");
+    }
+  });
+
+  it("creates the expense_revision table linked to expense with a restrict FK", () => {
+    const revisionDef = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "expense_revision"'),
+    );
+    expect(revisionDef).toBeDefined();
+    expect(revisionDef).toContain('"previous_amount_dzd" REAL');
+    expect(revisionDef).toContain('"new_amount_dzd" REAL NOT NULL');
+    expect(revisionDef).toContain('"reason" TEXT');
+    expect(revisionDef).toContain(
+      'FOREIGN KEY ("expense_id") REFERENCES "expense" ("id") ON DELETE RESTRICT',
+    );
+  });
+
+  it("indexes the list filters the expenses screen uses", () => {
+    expect(definitions).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('CREATE INDEX IF NOT EXISTS "expense_expense_date_idx"'),
+        expect.stringContaining('CREATE INDEX IF NOT EXISTS "expense_project_id_idx"'),
+        expect.stringContaining('CREATE INDEX IF NOT EXISTS "expense_responsible_worker_id_idx"'),
+        expect.stringContaining('CREATE INDEX IF NOT EXISTS "expense_revision_expense_id_idx"'),
+      ]),
+    );
+  });
+});

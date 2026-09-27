@@ -22,6 +22,7 @@ const EMPTY_DEBTS_SUMMARY: DebtsSummary = { parties: [], debtAccounts: [] }
 
 const DebtsHubPage = lazy(async () => import("@/features/debts/debts-hub-page").then((module) => ({ default: module.DebtsHubPage })))
 const DebtCreatePage = lazy(async () => import("@/features/debts/debt-create-page").then((module) => ({ default: module.DebtCreatePage })))
+const ExpensesPage = lazy(async () => import("@/features/expenses/expenses-page").then((module) => ({ default: module.ExpensesPage })))
 const ExternalCounterpartyCreatePage = lazy(async () => import("@/features/externals/external-create-page").then((module) => ({ default: module.ExternalCounterpartyCreatePage })))
 const ExternalCounterpartyDetailsPage = lazy(async () => import("@/features/externals/external-details-page").then((module) => ({ default: module.ExternalCounterpartyDetailsPage })))
 const ExternalCounterpartiesPage = lazy(async () => import("@/features/externals/externals-page").then((module) => ({ default: module.ExternalCounterpartiesPage })))
@@ -143,6 +144,15 @@ export function HomeViewPageDetailContent({
           employees={derived.employeeRows}
           externalCounterparties={derived.externalCounterparties}
           navigation={navigation}
+        />,
+      )
+
+    case "expenses":
+      return renderLazy(
+        <ExpensesPage
+          projects={derived.projects.map((project) => ({ id: project.id, label: project.name }))}
+          employees={derived.employeeRows.map((employee) => ({ id: employee.id, label: employee.name }))}
+          sellers={derived.externalCounterparties.map((seller) => ({ id: seller.id, label: seller.fullName }))}
         />,
       )
 

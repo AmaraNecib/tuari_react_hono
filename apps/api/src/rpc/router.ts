@@ -12,6 +12,7 @@ import type { InventoryService } from "../modules/inventory/inventory.service";
 import type { EmployeeModule } from "../modules/workforce/employee.module";
 import type { InvoiceModule } from "../modules/invoice/invoice.module";
 import type { PaymentModule } from "../modules/payment/payment-module.interface";
+import type { ExpensesModule } from "../modules/expenses/expenses-module.interface";
 import { getCurrentUser, type RpcContext } from "./context";
 import { createRpcMiddleware } from "./rpc-middleware";
 import { createWorkforceHandlers } from "./handlers/workforce";
@@ -22,6 +23,7 @@ import { createSystemHandlers } from "./handlers/system";
 import { createReportsHandlers } from "./handlers/reports";
 import { createInvoiceHandlers } from "./handlers/invoice";
 import { createPaymentHandlers } from "./handlers/payment";
+import { createExpensesHandlers } from "./handlers/expenses";
 import { createUpdateHandlers } from "./handlers/update";
 import { createRbacHandlers } from "./handlers/rbac";
 
@@ -42,6 +44,7 @@ type RouterDependencies = {
   employeeModule: EmployeeModule;
   invoiceModule: InvoiceModule;
   paymentModule: PaymentModule;
+  expensesModule: ExpensesModule;
   recoveryKeyService: RecoveryKeyService;
   updateService: UpdateService;
   updateHistoryService: UpdateHistoryService;
@@ -91,6 +94,7 @@ export function createRouter(
     ...createReportsHandlers(os, m, dependencies.financeService, dependencies.inventoryService),
     ...createInvoiceHandlers(os, m, dependencies.invoiceModule),
     ...createPaymentHandlers(os, m, dependencies.paymentModule),
+    ...createExpensesHandlers(os, m, dependencies.expensesModule),
     ...createUpdateHandlers(os, m, dependencies.updateService, dependencies.updateHistoryService),
     ...createRbacHandlers(os, m, dependencies.roleModule),
   };

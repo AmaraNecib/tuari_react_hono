@@ -30,6 +30,7 @@ type WorkspaceSidebarPage =
   | "employee-edit"
   | "debts"
   | "debt-create"
+  | "expenses"
   | "externals"
   | "projects"
   | "salaries"
@@ -63,6 +64,7 @@ type WorkspaceSidebarProps = {
   dashboardLabel: string
   debtsLabel: string
   employeesLabel: string
+  expensesLabel: string
   externalsLabel: string
   expandLabel: string
   projectsLabel: string
@@ -130,6 +132,7 @@ export function WorkspaceSidebar({
   dashboardLabel,
   debtsLabel,
   employeesLabel,
+  expensesLabel,
   externalsLabel,
   inventoryLabel,
   invoicesLabel,
@@ -150,6 +153,7 @@ export function WorkspaceSidebar({
     dashboard:         dashboardLabel,
     debts:             debtsLabel,
     employees:         employeesLabel,
+    expenses:          expensesLabel,
     externals:         externalsLabel,
     inventory:         inventoryLabel,
     invoices:          invoicesLabel,
@@ -183,6 +187,7 @@ export function WorkspaceSidebar({
       items: [
         { key: "invoices",          target: workspaceRoutes.invoices(),          Icon: FileText },
         { key: "debts",             target: workspaceRoutes.debts(),             Icon: HandCoins },
+        { key: "expenses",          target: workspaceRoutes.expenses(),          Icon: ReceiptText },
         { key: "transfer-history",  target: workspaceRoutes.transferHistory(),  Icon: Logs },
         { key: "transactions",      target: workspaceRoutes.transactions(),      Icon: Logs },
       ],

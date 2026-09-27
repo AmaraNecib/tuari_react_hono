@@ -84,6 +84,7 @@ const employeesRoute = createRoute({
 const employeesCreateRoute = createWorkspaceRoute("/employees/create", "employees-create")
 const debtsRoute = createWorkspaceRoute("/debts", "debts")
 const debtCreateRoute = createWorkspaceRoute("/debts/create", "debt-create")
+const expensesRoute = createWorkspaceRoute("/expenses", "expenses")
 const externalsRoute = createWorkspaceRoute("/externals", "externals")
 const externalCreateRoute = createWorkspaceRoute(
   "/externals/create",
@@ -219,6 +220,7 @@ const routeTree = rootRoute.addChildren([
   employeesCreateRoute,
   debtsRoute,
   debtCreateRoute,
+  expensesRoute,
   externalsRoute,
   externalCreateRoute,
   employeeDetailsRoute,

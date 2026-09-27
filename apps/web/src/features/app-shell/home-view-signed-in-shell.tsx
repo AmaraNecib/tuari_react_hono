@@ -360,6 +360,7 @@ export function HomeViewSignedInShell({
         dashboardLabel={copy.sections.dashboard.label}
         debtsLabel={copy.sections.debts.label}
         employeesLabel={copy.sections.employees.label}
+        expensesLabel={t("expenses.title")}
         externalsLabel={copy.sections.externals.label}
         expandLabel={copy.shell.expand}
         inventoryLabel={t("shell.itemsGuide")}

@@ -652,6 +652,48 @@ export const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "payment_counterparty_type_id_idx" ON "payment" ("counterparty_type", "counterparty_id", "payment_date")',
   'CREATE INDEX IF NOT EXISTS "payment_allocation_payment_id_idx" ON "payment_allocation" ("payment_id")',
   'CREATE INDEX IF NOT EXISTS "payment_allocation_invoice_id_idx" ON "payment_allocation" ("invoice_id")',
+  // --- Expenses tables (issue #411) ---
+  // The optional references (responsible_worker_id, seller_id, project_id,
+  // stock_item_id) are plain TEXT with NO foreign key, mirroring
+  // payment.counterparty_id: an expense never writes stock and the soft
+  // cross-domain references must behave identically in the in-memory double.
+  `CREATE TABLE IF NOT EXISTS "expense" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "amount_dzd" REAL NOT NULL CHECK ("amount_dzd" > 0),
+    "expense_date" DATETIME NOT NULL,
+    "what_for" TEXT,
+    "responsible_worker_id" TEXT,
+    "seller_id" TEXT,
+    "project_id" TEXT,
+    "stock_item_id" TEXT,
+    "note" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'LIVE' CHECK ("status" IN ('LIVE', 'VOIDED')),
+    "voided_at" DATETIME,
+    "voided_by" TEXT,
+    "void_reason" TEXT,
+    "actor_user_id" TEXT,
+    "actor_label" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    "updated_at" DATETIME NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS "expense_revision" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "expense_id" TEXT NOT NULL,
+    "previous_amount_dzd" REAL,
+    "new_amount_dzd" REAL NOT NULL,
+    "reason" TEXT,
+    "actor_user_id" TEXT,
+    "actor_label" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    CONSTRAINT "expense_revision_expense_id_fkey"
+      FOREIGN KEY ("expense_id") REFERENCES "expense" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  )`,
+  'CREATE INDEX IF NOT EXISTS "expense_expense_date_idx" ON "expense" ("expense_date")',
+  'CREATE INDEX IF NOT EXISTS "expense_project_id_idx" ON "expense" ("project_id")',
+  'CREATE INDEX IF NOT EXISTS "expense_responsible_worker_id_idx" ON "expense" ("responsible_worker_id")',
+  'CREATE INDEX IF NOT EXISTS "expense_revision_expense_id_idx" ON "expense_revision" ("expense_id")',
   `CREATE TABLE IF NOT EXISTS "recovery_key" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "prefix" TEXT NOT NULL,

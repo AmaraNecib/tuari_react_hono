@@ -101,6 +101,17 @@ describe("RPC router", () => {
       listPaged: async () => ({ items: [], nextCursor: null, totalCount: 0 }),
       delete: async () => undefined,
     } as never;
+    const expensesModule = {
+      create: async () => null,
+      get: async () => null,
+      list: async () => ({
+        items: [],
+        totals: { total: 0, count: 0, taggedToProject: 0, notTaggedToProject: 0, heldByWorkers: 0, workerCount: 0 },
+        groupsByProject: [],
+      }),
+      update: async () => null,
+      void: async () => null,
+    } as never;
     const mutation = new WorkspaceMutationContext(repository);
     const rbacRoleRepository = new InMemoryRoleRepository();
     for (const seed of DEFAULT_ROLE_PERMISSIONS) {
@@ -126,6 +137,7 @@ describe("RPC router", () => {
       employeeModule,
       invoiceModule: {} as never,
       paymentModule,
+      expensesModule,
       roleModule,
       recoveryKeyService: recoveryKeyService as never,
       updateService: {} as never,
@@ -169,6 +181,10 @@ describe("RPC router", () => {
       "payments:read",
       "payments:update",
       "payments:delete",
+      "expenses:create",
+      "expenses:read",
+      "expenses:update",
+      "expenses:delete",
     ],
     version: "0.0.0",
   };
@@ -1131,6 +1147,47 @@ describe("RPC router", () => {
     await expect(client.paymentsList({ limit: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(client.paymentsList({ limit: -1 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(client.paymentsList({ limit: 2.5 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rejects financially invalid expense input at the wire contract (issue #411)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createClient(router, createContext());
+
+    const base = {
+      amount: 5000,
+      expenseDate: "2026-10-03T10:00:00.000Z",
+    };
+
+    // Non-positive and unbounded amounts reuse the payment money rule.
+    await expect(
+      client.expensesCreate({ ...base, amount: 0 }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      client.expensesCreate({ ...base, amount: -1 }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      client.expensesCreate({ ...base, amount: Number.MAX_SAFE_INTEGER + 1 }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // Blank free text is rejected, not stored as an empty string.
+    await expect(
+      client.expensesCreate({ ...base, whatFor: "   " }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // A missing id / non-uuid id on read is a wire rejection.
+    await expect(
+      client.expensesGet({ id: "not-a-uuid" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    // The read path is reachable through auth + permission and returns the
+    // list envelope; an unknown id maps to NOT_FOUND, not a crash.
+    await expect(client.expensesList({})).resolves.toMatchObject({
+      items: [],
+      totals: { total: 0, count: 0 },
+      groupsByProject: [],
+    });
+    await expect(
+      client.expensesGet({ id: "11111111-1111-4111-8111-111111111111" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("rejects out-of-bounds invoice paid values at the wire contract (issue #42)", async () => {

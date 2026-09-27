@@ -12,6 +12,7 @@ export type WorkspaceRouteTarget =
   | { to: "/employees/$employeeId/edit"; params: { employeeId: string } }
   | { to: "/debts" }
   | { to: "/debts/create" }
+  | { to: "/expenses" }
   | { to: "/externals" }
   | { to: "/externals/create" }
   | { to: "/externals/$externalId"; params: { externalId: string } }
@@ -66,6 +67,7 @@ export const workspaceRoutes = {
   }),
   debts: (): WorkspaceRouteTarget => ({ to: "/debts" }),
   debtCreate: (): WorkspaceRouteTarget => ({ to: "/debts/create" }),
+  expenses: (): WorkspaceRouteTarget => ({ to: "/expenses" }),
   externals: (): WorkspaceRouteTarget => ({ to: "/externals" }),
   externalCreate: (): WorkspaceRouteTarget => ({ to: "/externals/create" }),
   externalDetails: (externalId: string): WorkspaceRouteTarget => ({
