@@ -1315,6 +1315,7 @@ export const ar = {
       actions: {
         create: "+ مصروف جديد",
         void: "إلغاء",
+        voidedNoEdit: "لا يمكن تعديل مصروف ملغى",
       },
       kpi: {
         periodTotal: "إجمالي الفترة",
@@ -1364,6 +1365,7 @@ export const ar = {
         responsibleWorker: "المسؤول (من العمال)",
         seller: "المورّد (جهة خارجية)",
         project: "المشروع (اختياري)",
+        stockItem: "قطعة المخزون المرتبطة (اختياري)",
         none: "— بدون —",
         note: "ملاحظات",
         reason: "سبب التعديل (اختياري)",

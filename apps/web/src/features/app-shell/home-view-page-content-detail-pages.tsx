@@ -13,6 +13,7 @@ import {
   useDebtPartyDetailQuery,
   useDebtsSummaryQuery,
 } from "@/features/debts/debts-queries"
+import { useInventoryItemDefinitionsQuery } from "@/features/inventory/inventory-hooks"
 import type { DebtsSummary } from "@tuari/contracts"
 
 import type { HomeViewPageContentProps } from "./home-view-page-content-shared"
@@ -116,6 +117,11 @@ export function HomeViewPageDetailContent({
     { enabled: page === "external-details" && Boolean(selectedCounterparty) },
   )
   const debtsSummary = debtsSummaryQuery.data ?? EMPTY_DEBTS_SUMMARY
+  // Stock items are the expenses form's optional "what does this relate to"
+  // list; only fetch them while the expenses screen is mounted.
+  const inventoryItemDefinitionsQuery = useInventoryItemDefinitionsQuery({
+    enabled: page === "expenses",
+  })
 
   switch (page) {
     case "debts":
@@ -153,6 +159,10 @@ export function HomeViewPageDetailContent({
           projects={derived.projects.map((project) => ({ id: project.id, label: project.name }))}
           employees={derived.employeeRows.map((employee) => ({ id: employee.id, label: employee.name }))}
           sellers={derived.externalCounterparties.map((seller) => ({ id: seller.id, label: seller.fullName }))}
+          stockItems={(inventoryItemDefinitionsQuery.data?.items ?? []).map((item) => ({
+            id: item.id,
+            label: item.name,
+          }))}
         />,
       )
 

@@ -49,6 +49,11 @@ test("record an expense against a project, group it, then void it out of the tot
   await expect(page.getByRole("dialog").getByRole("heading", { name: "مصروف جديد" })).toBeVisible()
 
   const dialog = page.getByRole("dialog")
+  // The date field is prefilled with today's dd/MM/yyyy in the shared
+  // DatePicker's display format, so the placeholder is gone and the initial
+  // date is visibly selected (regression: the form used to feed yyyy-MM-dd).
+  await expect(dialog.getByText("dd/mm/yyyy")).toHaveCount(0)
+  await expect(dialog.getByText(/^\d{2}\/\d{2}\/\d{4}$/)).toBeVisible()
   await dialog.getByPlaceholder("0", { exact: true }).fill("12500")
   await dialog.getByLabel("البيان").fill(whatFor)
   await dialog.getByLabel("المشروع (اختياري)").selectOption({ label: projectName })
@@ -77,11 +82,14 @@ test("record an expense against a project, group it, then void it out of the tot
 
   // Void, never delete: the row stays visible (struck-through + ملغى badge)
   // while the total and the count drop it.
-  await expect(row.getByText("ملغى")).toBeVisible({ timeout: 15_000 })
+  await expect(row.getByText("ملغى", { exact: true })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText("مجموع المعروض · 0 مصروفات")).toBeVisible()
   await expect(page.getByText("0 دج").first()).toBeVisible()
-  // The live void button is gone from the voided row.
+  // The live void button is gone from the voided row, and so is Edit: the
+  // service rejects editing a voided expense, so offering it would only let
+  // the user fill a dialog whose Save fails.
   await expect(row.getByRole("button", { name: "إلغاء" })).toHaveCount(0)
+  await expect(row.getByRole("button", { name: "تعديل" })).toHaveCount(0)
 })
 
 /** Derive a unique valid Algerian mobile number from the per-attempt suffix. */

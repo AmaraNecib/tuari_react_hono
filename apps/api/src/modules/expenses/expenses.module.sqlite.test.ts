@@ -10,7 +10,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 
 import { schemaStatements } from "../../infrastructure/database/schema-definitions";
-import { createFifoLock } from "../../infrastructure/database/fifo-lock";
+import {
+  createFifoLock,
+  FifoLockBusyError,
+} from "../../infrastructure/database/fifo-lock";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
 import { SqliteExpenseRepository } from "./adapters/sqlite-expenses.repository";
 import { createExpensesModule } from "./expenses.module";
@@ -99,7 +102,96 @@ describe("ExpensesModule (sqlite adapter)", () => {
       previousAmount: 50000,
       reason: "تصحيح الفاتورة",
       actorLabel: "سمير",
+      changedFields: ["amount"],
     });
+  });
+
+  it("records the money-moving fields that changed, not only the amount", async () => {
+    await expensesModule.create(
+      {
+        id: "e-1",
+        amount: 50000,
+        expenseDate: "2026-10-03T10:00:00.000Z",
+        projectId: "project-1",
+        responsibleWorkerId: "worker-1",
+        sellerId: "seller-1",
+      },
+      AUDIT,
+    );
+
+    await expensesModule.update(
+      {
+        id: "e-1",
+        projectId: "project-2",
+        expenseDate: "2026-11-01T10:00:00.000Z",
+        responsibleWorkerId: "worker-2",
+        sellerId: "seller-2",
+      },
+      AUDIT,
+    );
+
+    const fetched = await expensesModule.get("e-1");
+    expect(fetched?.revisions).toHaveLength(1);
+    const revision = fetched?.revisions[0];
+    expect(new Set(revision?.changedFields)).toEqual(
+      new Set(["projectId", "expenseDate", "responsibleWorkerId", "sellerId"]),
+    );
+    expect(revision?.changedFields).not.toContain("amount");
+  });
+
+  it("reads the date range as instants, not as the text form of an offset", async () => {
+    // 2026-10-01T00:30+01:00 is 2026-09-30T23:30Z.
+    await expensesModule.create(
+      { id: "e-offset", amount: 100, expenseDate: "2026-10-01T00:30:00+01:00" },
+      AUDIT,
+    );
+    await expensesModule.create(
+      { id: "e-utc", amount: 200, expenseDate: "2026-10-01T00:30:00.000Z" },
+      AUDIT,
+    );
+
+    const result = await expensesModule.list({
+      fromDate: "2026-10-01T00:00:00+01:00", // 2026-09-30T23:00Z
+      toDate: "2026-10-01T01:00:00+01:00", // 2026-10-01T00:00Z
+    });
+
+    // A text comparison would order "2026-10-01T00:30:00+01:00" against the
+    // "2026-10-01T...Z" bound and drop the offset row.
+    expect(result.items.map((item) => item.id)).toEqual(["e-offset"]);
+  });
+
+  it("refuses a write that would join another flow's open transaction", async () => {
+    const { repo } = env;
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+
+    const outer = repo.runInTransaction(async () => {
+      markStarted();
+      await gate;
+      throw new Error("outer transaction fails");
+    });
+    await started;
+
+    // The lock is held and a transaction is open: a raw single-statement write
+    // would be absorbed into it and rolled back with it.
+    await expect(
+      expensesModule.create(
+        { id: "e-lost", amount: 100, expenseDate: "2026-10-03T10:00:00.000Z" },
+        AUDIT,
+      ),
+    ).rejects.toBeInstanceOf(FifoLockBusyError);
+
+    releaseGate();
+    await expect(outer).rejects.toThrow("outer transaction fails");
+
+    // The refused write left no trace once the outer transaction rolled back.
+    await expect(expensesModule.get("e-lost")).resolves.toBeNull();
   });
 
   it("voids without deleting and excludes the row from totals", async () => {

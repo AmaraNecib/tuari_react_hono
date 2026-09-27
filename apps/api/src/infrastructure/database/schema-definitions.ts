@@ -682,6 +682,7 @@ export const schemaStatements = [
     "expense_id" TEXT NOT NULL,
     "previous_amount_dzd" REAL,
     "new_amount_dzd" REAL NOT NULL,
+    "changed_fields" TEXT NOT NULL DEFAULT '[]',
     "reason" TEXT,
     "actor_user_id" TEXT,
     "actor_label" TEXT,
@@ -783,6 +784,9 @@ export const additiveStatements = [
   'ALTER TABLE "debt_entry" ADD COLUMN "voided_by" TEXT',
   'ALTER TABLE "debt_entry" ADD COLUMN "void_reason" TEXT',
   'ALTER TABLE "debt_account" ADD COLUMN "direction" TEXT NOT NULL DEFAULT \'PAYABLE\' CHECK ("direction" IN (\'PAYABLE\', \'RECEIVABLE\'))',
+  // Issue #411: a revision names every editable field that changed, not just
+  // the amount. Existing rows predate the column and default to an empty set.
+  'ALTER TABLE "expense_revision" ADD COLUMN "changed_fields" TEXT NOT NULL DEFAULT \'[]\'',
 ]
 
 export const obsoleteMigrationKey = "drop_todos_table_v1"

@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import type { Expense } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
-import { DatePicker } from "@/components/ui/date-picker"
+import { DatePicker, fromDatePickerValue, toDatePickerValue } from "@/components/ui/date-picker"
 import {
   Dialog,
   DialogContent,
@@ -32,6 +32,7 @@ export type ExpenseFormDialogProps = {
   projects: ExpenseLookupOption[]
   employees: ExpenseLookupOption[]
   sellers: ExpenseLookupOption[]
+  stockItems: ExpenseLookupOption[]
 }
 
 /**
@@ -45,6 +46,7 @@ export function ExpenseFormDialog({
   projects,
   employees,
   sellers,
+  stockItems,
 }: ExpenseFormDialogProps) {
   const { t } = useTranslation()
   const createMutation = useCreateExpenseMutation()
@@ -56,6 +58,7 @@ export function ExpenseFormDialog({
   const [responsibleWorkerId, setResponsibleWorkerId] = useState<string | null>(null)
   const [sellerId, setSellerId] = useState<string | null>(null)
   const [projectId, setProjectId] = useState<string | null>(null)
+  const [stockItemId, setStockItemId] = useState<string | null>(null)
   const [note, setNote] = useState("")
   const [reason, setReason] = useState("")
 
@@ -70,6 +73,7 @@ export function ExpenseFormDialog({
     setResponsibleWorkerId(expense?.responsibleWorkerId ?? null)
     setSellerId(expense?.sellerId ?? null)
     setProjectId(expense?.projectId ?? null)
+    setStockItemId(expense?.stockItemId ?? null)
     setNote(expense?.note ?? "")
     setReason("")
     // `setAmount`/`setDate` are stable state setters from the shared hooks.
@@ -83,6 +87,7 @@ export function ExpenseFormDialog({
     setResponsibleWorkerId(null)
     setSellerId(null)
     setProjectId(null)
+    setStockItemId(null)
     setNote("")
     setReason("")
   }
@@ -104,17 +109,25 @@ export function ExpenseFormDialog({
       responsibleWorkerId,
       sellerId,
       projectId,
+      stockItemId,
       note: note.trim() || null,
     }
 
-    if (expense) {
-      await updateMutation.mutateAsync({
-        id: expense.id,
-        ...base,
-        reason: reason.trim() || null,
-      })
-    } else {
-      await createMutation.mutateAsync(base)
+    try {
+      if (expense) {
+        await updateMutation.mutateAsync({
+          id: expense.id,
+          ...base,
+          reason: reason.trim() || null,
+        })
+      } else {
+        await createMutation.mutateAsync(base)
+      }
+    } catch {
+      // The mutation's onError already surfaced the failure toast. Swallow the
+      // rejection here so the submit path never leaks an unhandled rejection;
+      // the dialog stays open with the user's input intact.
+      return
     }
 
     resetForm()
@@ -140,7 +153,10 @@ export function ExpenseFormDialog({
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium">{t("expenses.form.date")}</span>
-            <DatePicker value={date} onChange={setDate} />
+            <DatePicker
+              value={toDatePickerValue(date)}
+              onChange={(value) => setDate(fromDatePickerValue(value))}
+            />
           </label>
 
           <label className="flex flex-col gap-2">
@@ -200,6 +216,23 @@ export function ExpenseFormDialog({
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.label}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium">{t("expenses.form.stockItem")}</span>
+            <NativeSelect
+              value={stockItemId ?? NO_SELECTION}
+              onChange={(event) =>
+                setStockItemId(event.target.value === NO_SELECTION ? null : event.target.value)
+              }
+            >
+              <option value={NO_SELECTION}>{t("expenses.form.none")}</option>
+              {stockItems.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
                 </option>
               ))}
             </NativeSelect>

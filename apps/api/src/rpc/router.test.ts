@@ -21,6 +21,7 @@ import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-
 import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import { createRouter } from "./router";
 import type { RpcContext } from "./context";
+import { ExpenseNotFoundError } from "../modules/expenses/expenses.types";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
 import { SqliteRoleRepository } from "../modules/workforce/adapters/role.repository";
@@ -88,6 +89,7 @@ describe("RPC router", () => {
     databaseKeyPersister: unknown = {
       persistKey: () => ({ success: true } as const),
     },
+    expensesOverrides: Record<string, unknown> = {},
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -111,6 +113,7 @@ describe("RPC router", () => {
       }),
       update: async () => null,
       void: async () => null,
+      ...expensesOverrides,
     } as never;
     const mutation = new WorkspaceMutationContext(repository);
     const rbacRoleRepository = new InMemoryRoleRepository();
@@ -1187,6 +1190,22 @@ describe("RPC router", () => {
     });
     await expect(
       client.expensesGet({ id: "11111111-1111-4111-8111-111111111111" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("maps a domain error thrown by an async expense handler to its ORPC code", async () => {
+    const harness = createHarness();
+    // The handler is async, so the rejection leaves `withAudit` before its
+    // catch can run; the handler must map its own domain errors.
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {
+      update: async () => {
+        throw new ExpenseNotFoundError("11111111-1111-4111-8111-111111111111");
+      },
+    });
+    const client = createClient(router, createContext());
+
+    await expect(
+      client.expensesUpdate({ id: "11111111-1111-4111-8111-111111111111", amount: 10 }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 

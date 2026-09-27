@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import type { Expense, ExpenseListFilters } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
-import { DatePicker } from "@/components/ui/date-picker"
+import { DatePicker, fromDatePickerValue, toDatePickerValue } from "@/components/ui/date-picker"
 import {
   Dialog,
   DialogContent,
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/table"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
-import { getAlgeriaDateInputValue } from "@/lib/algeria-time"
+import { formatAlgeriaDate, getAlgeriaDateInputValue } from "@/lib/algeria-time"
 
 import { ExpenseFormDialog, type ExpenseLookupOption } from "./expense-form-dialog"
 import { buildExpenseFilters, getDefaultExpenseDateRange } from "./expenses-filters"
@@ -36,17 +36,29 @@ export type ExpensesPageProps = {
   projects: ExpenseLookupOption[]
   employees: ExpenseLookupOption[]
   sellers: ExpenseLookupOption[]
+  stockItems: ExpenseLookupOption[]
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value)
+  // Money is not always whole dinars: `paymentAmountSchema` accepts fractions,
+  // so show up to two decimals instead of rounding every amount to an integer.
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value)
+}
+
+/**
+ * Render a stored instant as the local (Africa/Algiers) calendar day it fell
+ * on. The raw `expenseDate` is UTC; slicing it would show September 30 for an
+ * expense entered for October 1 in Algeria (UTC+1).
+ */
+function formatExpenseDate(iso: string) {
+  return formatAlgeriaDate(new Date(iso))
 }
 
 /**
  * The المصروفات screen (issue #411): KPI cards, a filter bar with a total
  * strip, a dense table and a "group by project" toggle over the same list.
  */
-export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps) {
+export function ExpensesPage({ projects, employees, sellers, stockItems }: ExpensesPageProps) {
   const { t } = useTranslation()
   const [projectId, setProjectId] = useState<string | null>(null)
   const [responsibleWorkerId, setResponsibleWorkerId] = useState<string | null>(null)
@@ -219,12 +231,18 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
 
               <label className="flex min-w-[9rem] flex-col gap-1.5">
                 <span className="text-xs font-medium text-ink-3">{t("expenses.filters.from")}</span>
-                <DatePicker value={fromDate} onChange={setFromDate} />
+                <DatePicker
+                  value={toDatePickerValue(fromDate)}
+                  onChange={(value) => setFromDate(fromDatePickerValue(value))}
+                />
               </label>
 
               <label className="flex min-w-[9rem] flex-col gap-1.5">
                 <span className="text-xs font-medium text-ink-3">{t("expenses.filters.to")}</span>
-                <DatePicker value={toDate} onChange={setToDate} />
+                <DatePicker
+                  value={toDatePickerValue(toDate)}
+                  onChange={(value) => setToDate(fromDatePickerValue(value))}
+                />
               </label>
 
               <Button
@@ -274,7 +292,7 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
                     {(itemsByGroup.get(group.projectId) ?? []).map((item) => (
                       <li key={item.id} className="flex items-center justify-between gap-3 text-sm">
                         <span className="min-w-0 truncate text-ink-2">
-                          <span className="text-ink-4">{item.expenseDate.slice(0, 10)}</span>
+                          <span className="text-ink-4">{formatExpenseDate(item.expenseDate)}</span>
                           {" · "}
                           {item.whatFor ?? t("expenses.noDescription")}
                         </span>
@@ -308,7 +326,7 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
               <TableBody>
                 {items.map((item) => (
                   <TableRow key={item.id} className={item.status === "VOIDED" ? "opacity-60" : undefined}>
-                    <TableCell className="text-ink-3">{item.expenseDate.slice(0, 10)}</TableCell>
+                    <TableCell className="text-ink-3">{formatExpenseDate(item.expenseDate)}</TableCell>
                     <TableCell>
                       <span className={item.status === "VOIDED" ? "line-through" : undefined}>
                         {item.whatFor ?? t("expenses.noDescription")}
@@ -341,14 +359,18 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openEdit(item)}>
-                          {t("common.edit")}
-                        </Button>
                         {item.status === "LIVE" ? (
-                          <Button size="sm" variant="outline" onClick={() => openVoid(item)}>
-                            {t("expenses.actions.void")}
-                          </Button>
-                        ) : null}
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => openEdit(item)}>
+                              {t("common.edit")}
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => openVoid(item)}>
+                              {t("expenses.actions.void")}
+                            </Button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-ink-4">{t("expenses.actions.voidedNoEdit")}</span>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -366,6 +388,7 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
         projects={projects}
         employees={employees}
         sellers={sellers}
+        stockItems={stockItems}
       />
 
       <Dialog open={Boolean(voidingExpense)} onOpenChange={(open) => { if (!open) setVoidingExpense(null) }}>

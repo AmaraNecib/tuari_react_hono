@@ -3,6 +3,7 @@ import { paymentAmountSchema } from "@tuari/contracts";
 
 import type { ExpenseRepository } from "./expenses.repository";
 import type { ExpensesModule } from "./expenses-module.interface";
+import { toUtcInstant } from "./expenses.time";
 import {
   ExpenseAlreadyVoidedError,
   ExpenseInvalidAmountError,
@@ -15,6 +16,7 @@ import type {
   ExpenseListFilters,
   ExpenseListResult,
   ExpenseProjectGroup,
+  ExpenseRevisionField,
   ExpenseTotals,
   ExpenseWithRevisions,
   UpdateExpenseInput,
@@ -99,6 +101,38 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
     });
   }
 
+  /**
+   * The editable fields whose value differs between the locked row and the
+   * requested edit. Computing this from the LOCKED state is what lets a
+   * revision say "the project changed" and not merely "the amount changed".
+   */
+  function collectChangedFields(
+    existing: Expense,
+    next: {
+      amount: number;
+      expenseDate: string;
+      whatFor: string | null;
+      responsibleWorkerId: string | null;
+      sellerId: string | null;
+      projectId: string | null;
+      stockItemId: string | null;
+      note: string | null;
+    },
+  ): ExpenseRevisionField[] {
+    const changed: ExpenseRevisionField[] = [];
+    if (next.amount !== existing.amount) changed.push("amount");
+    if (next.expenseDate !== existing.expenseDate) changed.push("expenseDate");
+    if (next.whatFor !== existing.whatFor) changed.push("whatFor");
+    if (next.responsibleWorkerId !== existing.responsibleWorkerId) {
+      changed.push("responsibleWorkerId");
+    }
+    if (next.sellerId !== existing.sellerId) changed.push("sellerId");
+    if (next.projectId !== existing.projectId) changed.push("projectId");
+    if (next.stockItemId !== existing.stockItemId) changed.push("stockItemId");
+    if (next.note !== existing.note) changed.push("note");
+    return changed;
+  }
+
   async function create(
     input: CreateExpenseInput,
     audit?: ExpenseAudit,
@@ -110,7 +144,7 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
       {
         id: input.id,
         amount: input.amount,
-        expenseDate: input.expenseDate,
+        expenseDate: toUtcInstant(input.expenseDate),
         whatFor: input.whatFor ?? null,
         responsibleWorkerId: input.responsibleWorkerId ?? null,
         sellerId: input.sellerId ?? null,
@@ -148,40 +182,39 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
       assertValidAmount(input.amount);
     }
 
-    const existing = await repo.findById(input.id);
-    if (!existing) throw new ExpenseNotFoundError(input.id);
-    if (existing.status === "VOIDED") throw new ExpenseAlreadyVoidedError(input.id);
-
-    const next = {
-      amount: input.amount ?? existing.amount,
-      expenseDate: input.expenseDate ?? existing.expenseDate,
-      whatFor: input.whatFor === undefined ? existing.whatFor : input.whatFor,
-      responsibleWorkerId:
-        input.responsibleWorkerId === undefined
-          ? existing.responsibleWorkerId
-          : input.responsibleWorkerId,
-      sellerId: input.sellerId === undefined ? existing.sellerId : input.sellerId,
-      projectId: input.projectId === undefined ? existing.projectId : input.projectId,
-      stockItemId:
-        input.stockItemId === undefined ? existing.stockItemId : input.stockItemId,
-      note: input.note === undefined ? existing.note : input.note,
-    };
-
-    const changed =
-      next.amount !== existing.amount ||
-      next.expenseDate !== existing.expenseDate ||
-      next.whatFor !== existing.whatFor ||
-      next.responsibleWorkerId !== existing.responsibleWorkerId ||
-      next.sellerId !== existing.sellerId ||
-      next.projectId !== existing.projectId ||
-      next.stockItemId !== existing.stockItemId ||
-      next.note !== existing.note;
-
-    if (!changed) return existing;
-
-    const now = new Date().toISOString();
-
+    // The read-modify-write runs ENTIRELY inside the locked transaction: a
+    // concurrent edit or void can no longer slip between the read and the
+    // write, so the revision is computed from the state the write will apply
+    // to, and an edit to a row voided in the meantime is rejected instead of
+    // resurrecting it.
     return repo.runInTransaction(async () => {
+      const existing = await repo.findById(input.id);
+      if (!existing) throw new ExpenseNotFoundError(input.id);
+      if (existing.status === "VOIDED") throw new ExpenseAlreadyVoidedError(input.id);
+
+      const next = {
+        amount: input.amount ?? existing.amount,
+        expenseDate:
+          input.expenseDate === undefined
+            ? existing.expenseDate
+            : toUtcInstant(input.expenseDate),
+        whatFor: input.whatFor === undefined ? existing.whatFor : input.whatFor,
+        responsibleWorkerId:
+          input.responsibleWorkerId === undefined
+            ? existing.responsibleWorkerId
+            : input.responsibleWorkerId,
+        sellerId: input.sellerId === undefined ? existing.sellerId : input.sellerId,
+        projectId: input.projectId === undefined ? existing.projectId : input.projectId,
+        stockItemId:
+          input.stockItemId === undefined ? existing.stockItemId : input.stockItemId,
+        note: input.note === undefined ? existing.note : input.note,
+      };
+
+      const changedFields = collectChangedFields(existing, next);
+      if (changedFields.length === 0) return existing;
+
+      const now = new Date().toISOString();
+
       const updated = await repo.update(
         {
           id: input.id,
@@ -198,6 +231,7 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
           expenseId: input.id,
           previousAmount: existing.amount,
           newAmount: next.amount,
+          changedFields,
           reason: input.reason ?? null,
           createdAt: now,
         },
@@ -212,23 +246,28 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
     input: VoidExpenseInput,
     audit?: ExpenseAudit,
   ): Promise<Expense> {
-    const existing = await repo.findById(input.id);
-    if (!existing) throw new ExpenseNotFoundError(input.id);
-    if (existing.status === "VOIDED") throw new ExpenseAlreadyVoidedError(input.id);
+    // Re-read and re-validate under the lock so the void decision is made
+    // against the state the write will see (no TOCTOU with a concurrent edit
+    // or a second void).
+    return repo.runInTransaction(async () => {
+      const existing = await repo.findById(input.id);
+      if (!existing) throw new ExpenseNotFoundError(input.id);
+      if (existing.status === "VOIDED") throw new ExpenseAlreadyVoidedError(input.id);
 
-    const now = new Date().toISOString();
-    const voided = await repo.voidExpense(
-      {
-        id: input.id,
-        voidedAt: now,
-        voidReason: input.reason ?? null,
-        updatedAt: now,
-      },
-      audit,
-    );
-    if (!voided) throw new ExpenseNotFoundError(input.id);
+      const now = new Date().toISOString();
+      const voided = await repo.voidExpense(
+        {
+          id: input.id,
+          voidedAt: now,
+          voidReason: input.reason ?? null,
+          updatedAt: now,
+        },
+        audit,
+      );
+      if (!voided) throw new ExpenseNotFoundError(input.id);
 
-    return voided;
+      return voided;
+    });
   }
 
   return {

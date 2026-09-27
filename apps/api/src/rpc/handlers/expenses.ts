@@ -29,6 +29,22 @@ function mapExpenseError(error: unknown): unknown {
   return error;
 }
 
+/**
+ * `withAudit` returns the handler's promise without awaiting it, so its
+ * `catch` never sees an async rejection and its `errorResolver` cannot map a
+ * domain error thrown inside an `async` handler. Awaiting here — at the
+ * handler that owns the domain errors — maps them before the rejection leaves
+ * this function, without changing the shared middleware for every other
+ * handler.
+ */
+async function withMappedExpenseErrors<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    throw mapExpenseError(error);
+  }
+}
+
 export function createExpensesHandlers(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,
@@ -70,12 +86,14 @@ export function createExpensesHandlers(
             input: unknown;
             auditContext: unknown;
           }) => {
-            return expensesModule.create(
-              {
-                ...(input as Omit<CreateExpenseInput, "id"> & { id?: string }),
-                id: (input as { id?: string }).id ?? crypto.randomUUID(),
-              },
-              auditContext as { actorUserId: string; actorLabel: string; transactionId: string },
+            return withMappedExpenseErrors(() =>
+              expensesModule.create(
+                {
+                  ...(input as Omit<CreateExpenseInput, "id"> & { id?: string }),
+                  id: (input as { id?: string }).id ?? crypto.randomUUID(),
+                },
+                auditContext as { actorUserId: string; actorLabel: string; transactionId: string },
+              ),
             );
           },
           mapExpenseError,
@@ -95,9 +113,11 @@ export function createExpensesHandlers(
             input: unknown;
             auditContext: unknown;
           }) => {
-            return expensesModule.update(
-              input as UpdateExpenseInput,
-              auditContext as { actorUserId: string; actorLabel: string; transactionId: string },
+            return withMappedExpenseErrors(() =>
+              expensesModule.update(
+                input as UpdateExpenseInput,
+                auditContext as { actorUserId: string; actorLabel: string; transactionId: string },
+              ),
             );
           },
           mapExpenseError,
@@ -117,9 +137,11 @@ export function createExpensesHandlers(
             input: unknown;
             auditContext: unknown;
           }) => {
-            return expensesModule.void(
-              input as VoidExpenseInput,
-              auditContext as { actorUserId: string; actorLabel: string; transactionId: string },
+            return withMappedExpenseErrors(() =>
+              expensesModule.void(
+                input as VoidExpenseInput,
+                auditContext as { actorUserId: string; actorLabel: string; transactionId: string },
+              ),
             );
           },
           mapExpenseError,

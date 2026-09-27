@@ -28,6 +28,30 @@ function parseDateAr(value: string): Date | undefined {
   return isValid(date) ? date : undefined
 }
 
+/**
+ * Convert the app's canonical `yyyy-MM-dd` day (what `getAlgeriaDateInputValue`
+ * and the API day boundaries use) into the `dd/MM/yyyy` value this picker
+ * displays. Non-day input is passed through unchanged so an empty value still
+ * renders the placeholder.
+ */
+export function toDatePickerValue(day: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)
+  if (!match) return day
+  const [, year, month, dayOfMonth] = match
+  return `${dayOfMonth}/${month}/${year}`
+}
+
+/**
+ * Convert this picker's `dd/MM/yyyy` value back into the app's canonical
+ * `yyyy-MM-dd` day. Non-matching input is passed through unchanged.
+ */
+export function fromDatePickerValue(value: string): string {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value)
+  if (!match) return value
+  const [, dayOfMonth, month, year] = match
+  return `${year}-${month}-${dayOfMonth}`
+}
+
 type DatePickerProps = {
   value: string
   onChange: (value: string) => void

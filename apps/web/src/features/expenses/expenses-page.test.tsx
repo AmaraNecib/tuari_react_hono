@@ -2,8 +2,10 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+
+import { formatAlgeriaDate } from "@/lib/algeria-time"
 
 import { ExpensesPage } from "./expenses-page"
 
@@ -84,6 +86,7 @@ function renderPage() {
       projects={[{ id: "project-1", label: "فيلا حيدرة" }]}
       employees={[{ id: "worker-1", label: "كريم ب." }]}
       sellers={[{ id: "seller-1", label: "محل الإلكترونيات" }]}
+      stockItems={[{ id: "item-1", label: "خلاطة إسمنت" }]}
     />,
   )
 }
@@ -189,5 +192,61 @@ describe("ExpensesPage", () => {
     renderPage()
 
     expect(screen.getByText("لا توجد مصروفات")).toBeTruthy()
+  })
+
+  it("renders the stored instant on its Algeria calendar day, not its UTC slice", () => {
+    // 2026-09-30T23:00Z is October 1 in Algeria (UTC+1). Slicing the UTC value
+    // would render 2026-09-30.
+    useExpensesListQuery.mockReturnValue({
+      data: {
+        ...DATA,
+        items: [{ ...ITEMS[0], expenseDate: "2026-09-30T23:00:00.000Z" }],
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(
+      screen.getByText(formatAlgeriaDate(new Date("2026-09-30T23:00:00.000Z"))),
+    ).toBeTruthy()
+    expect(screen.queryByText("2026-09-30")).toBeNull()
+  })
+
+  it("shows the fractional part of an amount instead of rounding it away", () => {
+    useExpensesListQuery.mockReturnValue({
+      data: {
+        ...DATA,
+        items: [{ ...ITEMS[0], amount: 0.1 }],
+        totals: { ...DATA.totals, total: 0.1 },
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(screen.getAllByText("0.1 دج").length).toBeGreaterThan(0)
+  })
+
+  it("offers no Edit button on a voided row", () => {
+    useExpensesListQuery.mockReturnValue({
+      data: {
+        ...DATA,
+        items: [{ ...ITEMS[0], id: "e-void", whatFor: "هاتف ملغى", status: "VOIDED" as const }],
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    const row = screen.getByRole("row", { name: /هاتف ملغى/ })
+    expect(within(row).queryByRole("button", { name: "تعديل" })).toBeNull()
+    expect(within(row).getByText("لا يمكن تعديل مصروف ملغى")).toBeTruthy()
   })
 })

@@ -1,6 +1,10 @@
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
-import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
+import {
+  runSyncTransaction,
+  type FifoLock,
+} from "../../../infrastructure/database/fifo-lock";
 import type { ExpenseRepository } from "../expenses.repository";
+import { toUtcInstant } from "../expenses.time";
 import type {
   CreateExpenseRecord,
   CreateExpenseRevisionRecord,
@@ -42,31 +46,36 @@ export class SqliteExpenseRepository implements ExpenseRepository {
 
   async create(data: CreateExpenseRecord, audit?: ExpenseAudit): Promise<Expense> {
     const snapshot = normalizeAudit(audit);
-    this.db
-      .prepare(
-        `INSERT INTO "expense" (
-          id, amount_dzd, expense_date, what_for, responsible_worker_id,
-          seller_id, project_id, stock_item_id, note, status,
-          voided_at, voided_by, void_reason,
-          actor_user_id, actor_label, transaction_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'LIVE', NULL, NULL, NULL, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        data.id,
-        data.amount,
-        data.expenseDate,
-        data.whatFor,
-        data.responsibleWorkerId,
-        data.sellerId,
-        data.projectId,
-        data.stockItemId,
-        data.note,
-        snapshot.actorUserId,
-        snapshot.actorLabel,
-        snapshot.transactionId,
-        data.createdAt,
-        data.updatedAt,
-      );
+    // Single-statement writes still run under the connection-wide lock: a raw
+    // `.run()` while another flow holds an open transaction would be absorbed
+    // into it as a SAVEPOINT and silently rolled back when that flow fails.
+    runSyncTransaction(this.connectionLock, this.db, () => {
+      this.db
+        .prepare(
+          `INSERT INTO "expense" (
+            id, amount_dzd, expense_date, what_for, responsible_worker_id,
+            seller_id, project_id, stock_item_id, note, status,
+            voided_at, voided_by, void_reason,
+            actor_user_id, actor_label, transaction_id, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'LIVE', NULL, NULL, NULL, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          data.id,
+          data.amount,
+          toUtcInstant(data.expenseDate),
+          data.whatFor,
+          data.responsibleWorkerId,
+          data.sellerId,
+          data.projectId,
+          data.stockItemId,
+          data.note,
+          snapshot.actorUserId,
+          snapshot.actorLabel,
+          snapshot.transactionId,
+          data.createdAt,
+          data.updatedAt,
+        );
+    });
 
     return (await this.findById(data.id))!;
   }
@@ -92,11 +101,11 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     }
     if (filters.fromDate !== undefined) {
       conditions.push(`expense_date >= ?`);
-      params.push(filters.fromDate);
+      params.push(toUtcInstant(filters.fromDate));
     }
     if (filters.toDate !== undefined) {
       conditions.push(`expense_date <= ?`);
-      params.push(filters.toDate);
+      params.push(toUtcInstant(filters.toDate));
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -111,55 +120,63 @@ export class SqliteExpenseRepository implements ExpenseRepository {
 
   async update(data: UpdateExpenseRecord, audit?: ExpenseAudit): Promise<Expense | null> {
     const snapshot = normalizeAudit(audit);
-    const result = this.db
-      .prepare(
-        `UPDATE "expense" SET
-          amount_dzd = ?, expense_date = ?, what_for = ?, responsible_worker_id = ?,
-          seller_id = ?, project_id = ?, stock_item_id = ?, note = ?,
-          actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ?
-        WHERE id = ?`,
-      )
-      .run(
-        data.amount,
-        data.expenseDate,
-        data.whatFor,
-        data.responsibleWorkerId,
-        data.sellerId,
-        data.projectId,
-        data.stockItemId,
-        data.note,
-        snapshot.actorUserId,
-        snapshot.actorLabel,
-        snapshot.transactionId,
-        data.updatedAt,
-        data.id,
-      );
+    let changes = 0;
+    runSyncTransaction(this.connectionLock, this.db, () => {
+      const result = this.db
+        .prepare(
+          `UPDATE "expense" SET
+            amount_dzd = ?, expense_date = ?, what_for = ?, responsible_worker_id = ?,
+            seller_id = ?, project_id = ?, stock_item_id = ?, note = ?,
+            actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ?
+          WHERE id = ? AND status = 'LIVE'`,
+        )
+        .run(
+          data.amount,
+          toUtcInstant(data.expenseDate),
+          data.whatFor,
+          data.responsibleWorkerId,
+          data.sellerId,
+          data.projectId,
+          data.stockItemId,
+          data.note,
+          snapshot.actorUserId,
+          snapshot.actorLabel,
+          snapshot.transactionId,
+          data.updatedAt,
+          data.id,
+        );
+      changes = result.changes;
+    });
 
-    if (result.changes === 0) return null;
+    if (changes === 0) return null;
     return this.findById(data.id);
   }
 
   async voidExpense(data: VoidExpenseRecord, audit?: ExpenseAudit): Promise<Expense | null> {
     const snapshot = normalizeAudit(audit);
-    const result = this.db
-      .prepare(
-        `UPDATE "expense" SET
-          status = 'VOIDED', voided_at = ?, void_reason = ?, voided_by = ?,
-          actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ?
-        WHERE id = ? AND status = 'LIVE'`,
-      )
-      .run(
-        data.voidedAt,
-        data.voidReason,
-        snapshot.actorLabel,
-        snapshot.actorUserId,
-        snapshot.actorLabel,
-        snapshot.transactionId,
-        data.updatedAt,
-        data.id,
-      );
+    let changes = 0;
+    runSyncTransaction(this.connectionLock, this.db, () => {
+      const result = this.db
+        .prepare(
+          `UPDATE "expense" SET
+            status = 'VOIDED', voided_at = ?, void_reason = ?, voided_by = ?,
+            actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ?
+          WHERE id = ? AND status = 'LIVE'`,
+        )
+        .run(
+          data.voidedAt,
+          data.voidReason,
+          snapshot.actorLabel,
+          snapshot.actorUserId,
+          snapshot.actorLabel,
+          snapshot.transactionId,
+          data.updatedAt,
+          data.id,
+        );
+      changes = result.changes;
+    });
 
-    if (result.changes === 0) return null;
+    if (changes === 0) return null;
     return this.findById(data.id);
   }
 
@@ -168,30 +185,34 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     audit?: ExpenseAudit,
   ): Promise<ExpenseRevision> {
     const snapshot = normalizeAudit(audit);
-    this.db
-      .prepare(
-        `INSERT INTO "expense_revision" (
-          id, expense_id, previous_amount_dzd, new_amount_dzd, reason,
-          actor_user_id, actor_label, transaction_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        data.id,
-        data.expenseId,
-        data.previousAmount,
-        data.newAmount,
-        data.reason,
-        snapshot.actorUserId,
-        snapshot.actorLabel,
-        snapshot.transactionId,
-        data.createdAt,
-      );
+    runSyncTransaction(this.connectionLock, this.db, () => {
+      this.db
+        .prepare(
+          `INSERT INTO "expense_revision" (
+            id, expense_id, previous_amount_dzd, new_amount_dzd, changed_fields,
+            reason, actor_user_id, actor_label, transaction_id, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          data.id,
+          data.expenseId,
+          data.previousAmount,
+          data.newAmount,
+          JSON.stringify(data.changedFields),
+          data.reason,
+          snapshot.actorUserId,
+          snapshot.actorLabel,
+          snapshot.transactionId,
+          data.createdAt,
+        );
+    });
 
     return {
       id: data.id,
       expenseId: data.expenseId,
       previousAmount: data.previousAmount,
       newAmount: data.newAmount,
+      changedFields: data.changedFields,
       reason: data.reason,
       actorUserId: snapshot.actorUserId,
       actorLabel: snapshot.actorLabel,
@@ -265,10 +286,21 @@ function mapRowToRevision(row: Record<string, unknown>): ExpenseRevision {
     expenseId: row.expense_id as string,
     previousAmount: row.previous_amount_dzd as number | null,
     newAmount: row.new_amount_dzd as number,
+    changedFields: parseChangedFields(row.changed_fields),
     reason: row.reason as string | null,
     actorUserId: row.actor_user_id as string | null,
     actorLabel: row.actor_label as string | null,
     transactionId: row.transaction_id as string | null,
     createdAt: row.created_at as string,
   };
+}
+
+function parseChangedFields(value: unknown): ExpenseRevision["changedFields"] {
+  if (typeof value !== "string" || value.length === 0) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed as ExpenseRevision["changedFields"]) : [];
+  } catch {
+    return [];
+  }
 }

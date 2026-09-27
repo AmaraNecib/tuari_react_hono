@@ -54,15 +54,32 @@ export const expenseSchema = z.object({
 });
 
 /**
- * A recorded value change on an expense (who, when, why). Created for every
- * edit, so the correction history survives even though the row keeps only its
- * current values.
+ * The editable fields a revision can record as changed. A project/date/worker/
+ * seller move is what shifts money between projects, so the revision names the
+ * fields that actually changed instead of only storing the two amounts.
+ */
+export const expenseRevisionFieldSchema = z.enum([
+  "amount",
+  "expenseDate",
+  "whatFor",
+  "responsibleWorkerId",
+  "sellerId",
+  "projectId",
+  "stockItemId",
+  "note",
+]);
+
+/**
+ * A recorded value change on an expense (who, when, what changed, why). Created
+ * for every edit, so the correction history survives even though the row keeps
+ * only its current values.
  */
 export const expenseRevisionSchema = z.object({
   id: entityIdSchema,
   expenseId: entityIdSchema,
   previousAmount: paymentAmountSchema.nullable(),
   newAmount: paymentAmountSchema,
+  changedFields: z.array(expenseRevisionFieldSchema),
   reason: nullableTextSchema,
   actorUserId: auditActorUserIdSchema,
   actorLabel: nullableTextSchema,
@@ -149,6 +166,7 @@ export const expenseListOutputSchema = z.object({
 
 export type ExpenseStatus = z.infer<typeof expenseStatusSchema>;
 export type Expense = z.infer<typeof expenseSchema>;
+export type ExpenseRevisionField = z.infer<typeof expenseRevisionFieldSchema>;
 export type ExpenseRevision = z.infer<typeof expenseRevisionSchema>;
 export type ExpenseWithRevisions = z.infer<typeof expenseWithRevisionsSchema>;
 export type CreateExpenseInput = z.infer<typeof createExpenseInputSchema>;

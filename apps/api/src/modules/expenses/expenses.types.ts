@@ -33,12 +33,26 @@ export interface Expense {
   updatedAt: string;
 }
 
-/** A recorded value change (who, when, optional reason). */
+/** The editable fields a revision can record as changed. */
+export type ExpenseRevisionField =
+  | "amount"
+  | "expenseDate"
+  | "whatFor"
+  | "responsibleWorkerId"
+  | "sellerId"
+  | "projectId"
+  | "stockItemId"
+  | "note";
+
+/** A recorded value change (who, when, what changed, optional reason). */
 export interface ExpenseRevision {
   id: string;
   expenseId: string;
   previousAmount: number | null;
   newAmount: number;
+  /** Which editable fields actually changed, so a project/date/worker/seller
+   * move is visible in the history — not just the amount. */
+  changedFields: ExpenseRevisionField[];
   reason: string | null;
   actorUserId: string | null;
   actorLabel: string | null;
@@ -153,6 +167,7 @@ export interface CreateExpenseRevisionRecord {
   expenseId: string;
   previousAmount: number | null;
   newAmount: number;
+  changedFields: ExpenseRevisionField[];
   reason: string | null;
   createdAt: string;
 }

@@ -262,6 +262,25 @@ describe("ExpensesModule", () => {
       });
     });
 
+    it("records which money-moving fields changed, not only the amount", async () => {
+      await expensesModule.create(
+        makeExpense({ projectId: "project-1", responsibleWorkerId: "worker-1" }),
+        AUDIT,
+      );
+
+      await expensesModule.update(
+        { id: "expense-1", projectId: "project-2" },
+        AUDIT,
+      );
+
+      const fetched = await expensesModule.get("expense-1");
+      expect(fetched?.revisions).toHaveLength(1);
+      const revision = fetched?.revisions[0];
+      expect(revision?.changedFields).toEqual(["projectId"]);
+      expect(revision?.previousAmount).toBe(12500);
+      expect(revision?.newAmount).toBe(12500);
+    });
+
     it("clears an optional field with an explicit null", async () => {
       await expensesModule.create(
         makeExpense({ responsibleWorkerId: "worker-1", projectId: "project-1" }),

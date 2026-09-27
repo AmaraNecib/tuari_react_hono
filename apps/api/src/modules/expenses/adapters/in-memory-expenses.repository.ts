@@ -1,4 +1,5 @@
 import type { ExpenseRepository } from "../expenses.repository";
+import { toUtcInstant } from "../expenses.time";
 import type {
   CreateExpenseRecord,
   CreateExpenseRevisionRecord,
@@ -36,7 +37,7 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
       const expense: Expense = {
         id: data.id,
         amount: data.amount,
-        expenseDate: data.expenseDate,
+        expenseDate: toUtcInstant(data.expenseDate),
         whatFor: data.whatFor,
         responsibleWorkerId: data.responsibleWorkerId,
         sellerId: data.sellerId,
@@ -72,10 +73,10 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
         ) {
           return false;
         }
-        if (filters.fromDate !== undefined && expense.expenseDate < filters.fromDate) {
+        if (filters.fromDate !== undefined && expense.expenseDate < toUtcInstant(filters.fromDate)) {
           return false;
         }
-        if (filters.toDate !== undefined && expense.expenseDate > filters.toDate) {
+        if (filters.toDate !== undefined && expense.expenseDate > toUtcInstant(filters.toDate)) {
           return false;
         }
         return true;
@@ -95,7 +96,7 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
       const updated: Expense = {
         ...existing,
         amount: data.amount,
-        expenseDate: data.expenseDate,
+        expenseDate: toUtcInstant(data.expenseDate),
         whatFor: data.whatFor,
         responsibleWorkerId: data.responsibleWorkerId,
         sellerId: data.sellerId,
@@ -140,6 +141,7 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
         expenseId: data.expenseId,
         previousAmount: data.previousAmount,
         newAmount: data.newAmount,
+        changedFields: data.changedFields,
         reason: data.reason,
         actorUserId: snapshot.actorUserId,
         actorLabel: snapshot.actorLabel,

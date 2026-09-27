@@ -146,3 +146,54 @@ Rules enforced:
   - `sqlite-bootstrap.port.test.ts` (cross-connection write-lock contention) is
     a known pre-existing failure on this Windows host; reproduced on the base
     `develop` checkout.
+
+## Review round — PR #419 (Greptile 0/5, 11 findings)
+
+All 11 findings verified against the code and resolved in this round. The two
+concurrency findings came first.
+
+1. **Write lock (critical).** `create`/`voidExpense`/`update`/`createRevision`
+   now run their statement under `runSyncTransaction(connectionLock, db, …)`,
+   the same guard every company/inventory sync writer uses (#322/#348). A write
+   attempted while another flow holds an open transaction throws
+   `FifoLockBusyError` instead of joining and being rolled back with it.
+2. **Edit TOCTOU (critical).** The whole read-modify-write in
+   `expenses.module.ts` `update` (and `void`) now runs inside
+   `repo.runInTransaction`, so the revision is computed from the locked state,
+   an edit to a row voided meanwhile is rejected, and the SQL update also
+   carries `AND status = 'LIVE'` as defense in depth.
+3. **DatePicker convention.** The form and the filter bar now convert the app's
+   `yyyy-MM-dd` day to/from the shared picker's `dd/MM/yyyy` via
+   `toDatePickerValue`/`fromDatePickerValue` (`date-picker.tsx`), so the initial
+   date renders selected and a chosen date submits a parseable day.
+4. **Local-day display.** Rows render the stored instant through
+   `formatAlgeriaDate` (Africa/Algiers pinned) instead of slicing the UTC text.
+5. **Voided rows.** Edit and void are only offered on LIVE rows; a voided row
+   shows a short "no edit" note.
+6. **Submit rejection.** `handleSubmit` awaits inside a try/catch; the mutation
+   toast still fires, the dialog stays open, and no rejection escapes.
+7. **`stockItemId`.** The form collects and submits the optional stock item; the
+   page receives `stockItems` from `useInventoryItemDefinitionsQuery` in the
+   detail-page composition.
+8. **Revision changed fields.** `expense_revision.changed_fields` (JSON array)
+   records every editable field that actually changed; `expenseRevisionSchema`
+   exposes `changedFields` (`expenseRevisionFieldSchema`). Additive ALTER for
+   existing DBs, default `'[]'`.
+9. **Fractional amounts.** The list formatter shows up to two decimals, matching
+   `paymentAmountSchema`; no integer-only claim.
+10. **Offset-safe range.** `toUtcInstant` normalizes stored dates and filter
+    bounds to UTC `...Z`, so `expense_date` string comparison is instant
+    comparison.
+11. **Async error mapping.** Verified real: `withAudit` returns the handler's
+    promise without awaiting, so its `catch` never sees an async rejection. Fixed
+    at the expenses handler (`withMappedExpenseErrors`) so this PR does not change
+    the shared middleware's behaviour for every other handler. The same latent
+    gap still affects the payment/invoice async handlers that rely on `withAudit`'s
+    resolver; reported to the parent as a separate decision (not silently fixed
+    or deferred here).
+
+Regression tests added: the lock refuses a write that would join an open
+foreign transaction (sqlite), edit-after-void rejection (existing, now under
+lock), local-day display (web), offset range filter (sqlite), revision capturing
+a changed project (in-memory + sqlite), DatePicker adapters, form
+stock-item/date/rejection, and the async-domain-error → ORPC mapping (router).

@@ -40,6 +40,7 @@ export const expenseRevision = sqliteTable("expense_revision", {
     .references(() => expense.id, { onDelete: "restrict" }),
   previousAmountDzd: real("previous_amount_dzd"),
   newAmountDzd: real("new_amount_dzd").notNull(),
+  changedFields: text("changed_fields").notNull().default("[]"),
   reason: text("reason"),
   actorUserId: text("actor_user_id"),
   actorLabel: text("actor_label"),
