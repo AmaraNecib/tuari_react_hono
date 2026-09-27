@@ -142,6 +142,8 @@ export function HomeViewPageSectionContent({
           managerOptions={derived.managerOptions}
           buildEmployeeTableRow={derived.buildEmployeeTableRow}
           roles={derived.roles}
+          projects={derived.salaryProjects}
+          projectAssignmentsByEmployeeId={derived.projectAssignmentsByEmployeeId}
           title={copy.sections.employees.label}
         />,
       )

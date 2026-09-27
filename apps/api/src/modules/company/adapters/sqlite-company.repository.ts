@@ -15,7 +15,7 @@
  */
 
 import crypto from "node:crypto";
-import { eq, and, desc, asc, sql, count, like, isNull, inArray, type SQL } from "drizzle-orm";
+import { eq, and, desc, asc, sql, count, like, isNull, type SQL } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import {
@@ -875,11 +875,19 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const q = this.db.select().from(schema.employeeSalaryPayment);
     const rows = (w ? q.where(w) : q).orderBy(desc(schema.employeeSalaryPayment.paymentDate), desc(schema.employeeSalaryPayment.createdAt)).all();
     if (rows.length === 0) return [];
-    const splitRows = this.db
-      .select()
+    // Read the splits through a join instead of an `IN (…)` list of payment
+    // ids: binding one parameter per payment makes the query's variable count
+    // grow with the window, and a long history (the workspace snapshot and the
+    // system log read every payment) blows SQLite's bound-variable limit even
+    // when none of those payments has a split.
+    const splitQuery = this.db
+      .select({ split: schema.employeeSalaryPaymentSplit })
       .from(schema.employeeSalaryPaymentSplit)
-      .where(inArray(schema.employeeSalaryPaymentSplit.paymentId, rows.map((row) => row.id)))
-      .all();
+      .innerJoin(
+        schema.employeeSalaryPayment,
+        eq(schema.employeeSalaryPaymentSplit.paymentId, schema.employeeSalaryPayment.id),
+      );
+    const splitRows = (w ? splitQuery.where(w) : splitQuery).all().map((row) => row.split);
     const splitsByPayment = groupSalaryPaymentSplits(splitRows);
     return rows.map((row) => toSalaryPayment(row, splitsByPayment.get(row.id) ?? []));
   }

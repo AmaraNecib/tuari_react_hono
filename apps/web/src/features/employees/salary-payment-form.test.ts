@@ -2,7 +2,22 @@ import { describe, expect, it } from "vitest"
 
 import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 
-import { computeUnallocatedDays, resolveSalaryPaymentPeriod } from "./salary-payment-form"
+import { computeUnallocatedDays, parsePositiveInteger, resolveSalaryPaymentPeriod } from "./salary-payment-form"
+
+describe("parsePositiveInteger", () => {
+  it("parses a positive whole-day string", () => {
+    expect(parsePositiveInteger(" 15 ")).toBe(15)
+    expect(parsePositiveInteger("1")).toBe(1)
+  })
+
+  it("rejects zero, non-numeric, fractional, and negative input", () => {
+    expect(parsePositiveInteger("0")).toBeNull()
+    expect(parsePositiveInteger("")).toBeNull()
+    expect(parsePositiveInteger("1.5")).toBeNull()
+    expect(parsePositiveInteger("-3")).toBeNull()
+    expect(parsePositiveInteger("days")).toBeNull()
+  })
+})
 
 describe("resolveSalaryPaymentPeriod", () => {
   it("covers the whole calendar month for a monthly payment", () => {

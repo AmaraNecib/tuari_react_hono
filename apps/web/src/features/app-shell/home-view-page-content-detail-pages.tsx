@@ -201,6 +201,8 @@ export function HomeViewPageDetailContent({
               employee={selectedEmployee}
               managedProjects={derived.managedProjectsByEmployeeId[selectedEmployee.id] ?? []}
               managedWarehouses={derived.managedWarehousesByEmployeeId[selectedEmployee.id] ?? []}
+              projects={derived.salaryProjects}
+              projectAssignments={derived.projectAssignmentsByEmployeeId[selectedEmployee.id] ?? []}
               salaryPayments={derived.salaryPaymentsByEmployeeId[selectedEmployee.id] ?? []}
               workHistory={derived.workHistoryByEmployeeId[selectedEmployee.id] ?? []}
               onTabChange={(tabId) => void navigation.setEmployeeTab(selectedEmployee.id, tabId)}

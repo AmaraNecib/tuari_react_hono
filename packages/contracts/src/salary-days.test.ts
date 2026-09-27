@@ -58,6 +58,23 @@ describe("deriveSalaryProjectDays", () => {
     ).toEqual([{ projectId: "p1", days: 27 }]);
   });
 
+  it("breaks a fractional tie toward the wider coverage", () => {
+    // A 6-day period with a 3-day payment: the 1-day project's exact share is
+    // 0.5 and the 3-day project's is 1.5, so both fractions tie. The leftover
+    // day goes to the wider coverage.
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [
+          { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-01", "end") },
+          { projectId: "b", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-03", "end") },
+        ],
+        periodStart: algeriaDay("2026-03-01", "start"),
+        periodEnd: algeriaDay("2026-03-06", "end"),
+        days: 3,
+      }),
+    ).toEqual([{ projectId: "b", days: 2 }]);
+  });
+
   it("clamps a window that starts before the period and scales its coverage", () => {
     expect(
       deriveSalaryProjectDays({
@@ -149,20 +166,69 @@ describe("deriveSalaryProjectDays", () => {
     ]);
   });
 
-  it("puts a rounding overshoot on the largest line and drops a zero-day line", () => {
-    // A 2-day period, one project per day, a single paid day: each raw line is
-    // 0.5 and rounds to 1 (sum 2), so the largest line gives back one day.
+  it("keeps the split within the paid days when the payment is smaller than the project count", () => {
+    // March coverage split across five non-overlapping projects (7 + 6 + 6 +
+    // 6 + 6 = 31 days) with a 3-day payment. Rounding each line to 1 gave 5
+    // allocated days; the old correction subtracted 2 from the largest line,
+    // drove it negative, dropped it, and left 4 days allocated — which the
+    // dialog then rejected as over-allocated for a perfectly valid payment.
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [
+          { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-07", "end") },
+          { projectId: "b", startDate: algeriaDay("2026-03-08", "start"), endDate: algeriaDay("2026-03-13", "end") },
+          { projectId: "c", startDate: algeriaDay("2026-03-14", "start"), endDate: algeriaDay("2026-03-19", "end") },
+          { projectId: "d", startDate: algeriaDay("2026-03-20", "start"), endDate: algeriaDay("2026-03-25", "end") },
+          { projectId: "e", startDate: algeriaDay("2026-03-26", "start"), endDate: algeriaDay("2026-03-31", "end") },
+        ],
+        ...MARCH_2026,
+        days: 3,
+      }),
+    ).toEqual([
+      { projectId: "a", days: 1 },
+      { projectId: "b", days: 1 },
+      { projectId: "c", days: 1 },
+    ]);
+  });
+
+  it("assigns the leftover days by largest remainder even when every line would round up", () => {
+    // A 3-day period, one project per day, a 2-day payment: every exact share
+    // is 2/3 and would round up to 1 (sum 3). Largest-remainder assigns 2.
     expect(
       deriveSalaryProjectDays({
         assignments: [
           { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-01", "end") },
           { projectId: "b", startDate: algeriaDay("2026-03-02", "start"), endDate: algeriaDay("2026-03-02", "end") },
+          { projectId: "c", startDate: algeriaDay("2026-03-03", "start"), endDate: algeriaDay("2026-03-03", "end") },
         ],
         periodStart: algeriaDay("2026-03-01", "start"),
-        periodEnd: algeriaDay("2026-03-02", "end"),
-        days: 1,
+        periodEnd: algeriaDay("2026-03-03", "end"),
+        days: 2,
       }),
-    ).toEqual([{ projectId: "b", days: 1 }]);
+    ).toEqual([
+      { projectId: "a", days: 1 },
+      { projectId: "b", days: 1 },
+    ]);
+  });
+
+  it("keeps the default within half a day of each project's exact share", () => {
+    // A 2-day period, one project per day, a single paid day: each exact share
+    // is 0.5. The older correction rounded both up to 1 (sum 2) and subtracted
+    // the overshoot from the largest line, leaving a zero-day line behind. The
+    // largest-remainder default keeps the single day on one line.
+    const splits = deriveSalaryProjectDays({
+      assignments: [
+        { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-01", "end") },
+        { projectId: "b", startDate: algeriaDay("2026-03-02", "start"), endDate: algeriaDay("2026-03-02", "end") },
+      ],
+      periodStart: algeriaDay("2026-03-01", "start"),
+      periodEnd: algeriaDay("2026-03-02", "end"),
+      days: 1,
+    });
+
+    expect(splits).toEqual([{ projectId: "a", days: 1 }]);
+    expect(splits.reduce((total, split) => total + split.days, 0)).toBe(1);
+    expect(splits.every((split) => split.days > 0 && split.days <= 1)).toBe(true);
   });
 
   it("omits a window that lies entirely outside the period", () => {

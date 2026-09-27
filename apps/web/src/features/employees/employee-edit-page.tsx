@@ -167,7 +167,7 @@ export function EmployeeEditPage({
     { value: "DAILY", label: t("detailPages.salary.daily") },
     { value: "MONTHLY", label: t("detailPages.salary.monthly") },
   ]
-  if (state.salaryPeriod === "WEEKLY") {
+  if (employee.salaryPeriod === "WEEKLY") {
     salaryPeriodOptions.push({ value: "WEEKLY", label: t("detailPages.salary.weekly") })
   }
   const isSaving = saveEmployeeMutation.isPending

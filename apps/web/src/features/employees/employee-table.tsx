@@ -15,6 +15,7 @@ import {
 } from "@/features/shared/table-primitives"
 import { getArabicStatusLabel, getStatusTone } from "@/features/shared/status-meta"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
+import type { SalaryProjectAssignmentWindow, SalaryProjectOption } from "./add-salary-payment-dialog"
 
 export type EmployeeTableRow = {
   id: string
@@ -66,6 +67,10 @@ type EmployeeTableCopy = {
 type EmployeeTableProps = {
   copy: EmployeeTableCopy
   rows: EmployeeTableRow[]
+  /** Projects the payment dialog can attribute a split to. */
+  projects?: SalaryProjectOption[]
+  /** Per-employee assignment windows feeding the dialog's derived split. */
+  projectAssignmentsByEmployeeId?: Record<string, SalaryProjectAssignmentWindow[]>
   onAdd?: () => void
   onDelete: (row: EmployeeTableRow) => void
   onEdit: (row: EmployeeTableRow) => void
@@ -77,7 +82,17 @@ type EmployeeTableProps = {
 /**
  * @description Component
  */
-export function EmployeeTable({ copy, rows, onAdd, onDelete, onEdit, onLeave, onView }: EmployeeTableProps) {
+export function EmployeeTable({
+  copy,
+  rows,
+  projects,
+  projectAssignmentsByEmployeeId,
+  onAdd,
+  onDelete,
+  onEdit,
+  onLeave,
+  onView,
+}: EmployeeTableProps) {
   const { t } = useTranslation()
   // rows are already paginated by the parent (cursor-based pagination)
   const [paymentTarget, setPaymentTarget] = useState<{
@@ -94,6 +109,10 @@ export function EmployeeTable({ copy, rows, onAdd, onDelete, onEdit, onLeave, on
         employeeName={paymentTarget?.name}
         salaryAmountDzd={paymentTarget?.salaryAmountDzd ?? null}
         salaryPeriod={paymentTarget?.salaryPeriod ?? null}
+        projectAssignments={
+          paymentTarget ? (projectAssignmentsByEmployeeId?.[paymentTarget.id] ?? []) : []
+        }
+        projects={projects ?? []}
         open={paymentTarget !== null}
         onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
       />

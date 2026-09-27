@@ -256,6 +256,44 @@ export function seedProjectAssignment(input: {
   }
 }
 
+/**
+ * Read the salary payments (and their persisted project splits) for an
+ * employee straight from the E2E sqlite database. Proves the wire handler's
+ * insert and the SQLite read path keep the project id and split days, which an
+ * in-memory assertion cannot (issue #412 review).
+ */
+export function readSalaryPaymentSplitsByEmployeeId(employeeId: string): Array<{
+  paymentId: string
+  days: number
+  projectSplits: Array<{ projectId: string; days: number }>
+}> {
+  const db = loadDatabaseConstructor()(findE2eDatabase())
+  try {
+    const payments = db
+      .prepare(
+        `SELECT id, days FROM employee_salary_payment WHERE employee_id = ? ORDER BY created_at DESC`,
+      )
+      .all(employeeId) as Array<{ id: string; days: number }>
+    const splits = db
+      .prepare(
+        `SELECT payment_id AS paymentId, project_id AS projectId, days
+           FROM employee_salary_payment_split
+          WHERE payment_id IN (SELECT id FROM employee_salary_payment WHERE employee_id = ?)`,
+      )
+      .all(employeeId) as Array<{ paymentId: string; projectId: string; days: number }>
+
+    return payments.map((payment) => ({
+      paymentId: payment.id,
+      days: payment.days,
+      projectSplits: splits
+        .filter((split) => split.paymentId === payment.id)
+        .map(({ projectId, days }) => ({ projectId, days })),
+    }))
+  } finally {
+    db.close()
+  }
+}
+
 /** Seed external counterparties for combobox E2E coverage. Returns their ids. */
 export function seedExternalCounterparties(
   counterparties: Array<{ fullName: string; phoneNumber: string }>,

@@ -11,6 +11,16 @@ export type SalaryPaymentPeriodType = "DAILY" | "WEEKLY" | "MONTHLY"
 /** The day the monthly rate treats as a full month (issue #412). */
 export const SALARY_DAYS_PER_MONTH = 30
 
+/** Parse a positive whole-day string, or null when it is not one. */
+export function parsePositiveInteger(value: string): number | null {
+  const trimmed = value.trim()
+  if (!/^\d+$/.test(trimmed)) {
+    return null
+  }
+  const parsed = Number(trimmed)
+  return parsed > 0 ? parsed : null
+}
+
 function pad(value: number): string {
   return String(value).padStart(2, "0")
 }

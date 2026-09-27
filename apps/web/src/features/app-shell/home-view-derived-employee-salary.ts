@@ -47,6 +47,20 @@ export function buildEmployeeSalaryCollections({
     })
     .sort((left, right) => right.paymentDate.localeCompare(left.paymentDate))
 
+  const projectAssignmentsByEmployeeId: Record<string, Array<{ projectId: string; startDate: string; endDate: string | null }>> =
+    Object.fromEntries(
+      workspace.employees.map((employee) => [
+        employee.id,
+        workspace.projectAssignments
+          .filter((assignment) => assignment.employeeId === employee.id)
+          .map((assignment) => ({
+            projectId: assignment.projectId,
+            startDate: assignment.startDate,
+            endDate: assignment.endDate,
+          })),
+      ]),
+    )
+
   const salariedEmployees = employeeRows
     .filter((employee) => employee.salaryAmountDzd !== null && employee.salaryPeriod)
     .map((employee) => ({
@@ -58,13 +72,7 @@ export function buildEmployeeSalaryCollections({
       salaryPeriod: employee.salaryPeriod,
       lastPaymentDate: salaryPaymentsByEmployeeId[employee.id]?.[0]?.paymentDate ?? null,
       // Assignment windows feed the payment form's derived per-project default.
-      projectAssignments: workspace.projectAssignments
-        .filter((assignment) => assignment.employeeId === employee.id)
-        .map((assignment) => ({
-          projectId: assignment.projectId,
-          startDate: assignment.startDate,
-          endDate: assignment.endDate,
-        })),
+      projectAssignments: projectAssignmentsByEmployeeId[employee.id] ?? [],
     }))
 
   const salaryProjects = workspace.projects
@@ -74,6 +82,7 @@ export function buildEmployeeSalaryCollections({
   return {
     recentSalaryPayments,
     salariedEmployees,
+    projectAssignmentsByEmployeeId,
     salaryPaymentsByEmployeeId,
     salaryProjects,
   }

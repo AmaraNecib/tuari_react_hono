@@ -330,4 +330,23 @@ describe("employee edit atomic save (issue #49)", () => {
     await waitFor(() => expect(mockNavigateToWorkspaceRoute).toHaveBeenCalled())
     expect(mockSaveEmployee).toHaveBeenCalledTimes(1)
   })
+
+  it("keeps WEEKLY selectable for a legacy weekly employee after switching the draft period", () => {
+    // A legacy WEEKLY row must be able to go back to WEEKLY. Basing the option
+    // list on the DRAFT period removed the option the moment the user switched
+    // the draft to DAILY, locking them out of their own stored value.
+    renderWorker({ ...workerEmployee, salaryPeriod: "WEEKLY" })
+
+    const periodSelect = screen.getByLabelText("دورية الأجر") as HTMLSelectElement
+    const weeklyOptionCount = () =>
+      Array.from(periodSelect.options).filter((option) => option.value === "WEEKLY").length
+    expect(weeklyOptionCount()).toBe(1)
+
+    fireEvent.change(periodSelect, { target: { value: "DAILY" } })
+    expect(periodSelect.value).toBe("DAILY")
+    expect(weeklyOptionCount()).toBe(1)
+
+    fireEvent.change(periodSelect, { target: { value: "WEEKLY" } })
+    expect(periodSelect.value).toBe("WEEKLY")
+  })
 })

@@ -20,22 +20,14 @@ import { computeProposedSalaryAmount, deriveSalaryProjectDays } from "@tuari/con
 import {
   SALARY_DAYS_PER_MONTH,
   computeUnallocatedDays,
+  parsePositiveInteger,
   resolveSalaryPaymentPeriod,
   type SalaryPaymentPeriodType,
 } from "./salary-payment-form"
 
-type ProjectOption = { id: string; name: string }
-type ProjectAssignmentWindow = { projectId: string; startDate: string; endDate: string | null }
+export type SalaryProjectOption = { id: string; name: string }
+export type SalaryProjectAssignmentWindow = { projectId: string; startDate: string; endDate: string | null }
 type SplitLine = { key: string; projectId: string; days: string }
-
-function parsePositiveInteger(value: string): number | null {
-  const trimmed = value.trim()
-  if (!/^\d+$/.test(trimmed)) {
-    return null
-  }
-  const parsed = Number(trimmed)
-  return parsed > 0 ? parsed : null
-}
 
 /**
  * Dialog for recording a salary payment: days worked, a proposed amount that
@@ -61,9 +53,9 @@ export function AddSalaryPaymentDialog({
   salaryAmountDzd?: number | null
   salaryPeriod?: SalaryPaymentPeriodType | null
   /** Assignment windows feeding the derived per-project default. */
-  projectAssignments?: ProjectAssignmentWindow[]
+  projectAssignments?: SalaryProjectAssignmentWindow[]
   /** Projects the split can be attributed to. */
-  projects?: ProjectOption[]
+  projects?: SalaryProjectOption[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -103,7 +95,7 @@ export function AddSalaryPaymentDialog({
       return [] as Array<{ projectId: string; days: number }>
     }
     return deriveSalaryProjectDays({
-      assignments: JSON.parse(assignmentsKey) as ProjectAssignmentWindow[],
+      assignments: JSON.parse(assignmentsKey) as SalaryProjectAssignmentWindow[],
       periodStart: period.start,
       periodEnd: period.end,
       days,

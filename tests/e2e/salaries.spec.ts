@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test"
 
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 import {
+  readSalaryPaymentSplitsByEmployeeId,
   seedEmployeeByRole,
   seedProjectAssignment,
   seedProjectWithManager,
@@ -25,6 +26,7 @@ test.describe.configure({ mode: "serial" })
 const SALARY_DZD = 30000
 
 let workerName = ""
+let workerId = ""
 let projectId = ""
 
 test.beforeAll(() => {
@@ -46,7 +48,7 @@ test.beforeAll(() => {
     managerId,
   })
   workerName = `عامل الرواتب ${suffix}`
-  const workerId = seedEmployeeByRole({
+  workerId = seedEmployeeByRole({
     firstName: "عامل",
     lastName: `الرواتب ${suffix}`,
     phone: `054${digits.slice(0, 7)}`,
@@ -123,4 +125,11 @@ test("blocks an over-allocated split and records the payment with its days", asy
   const paymentRow = page.getByRole("row").filter({ hasText: workerName })
   await expect(paymentRow).toBeVisible({ timeout: 10_000 })
   await expect(paymentRow.getByRole("cell").nth(2)).toHaveText("12")
+
+  // And the project attribution survives the sqlite insert and read paths —
+  // an in-memory assertion cannot prove the split was persisted (issue #412
+  // review).
+  const persisted = readSalaryPaymentSplitsByEmployeeId(workerId)
+  expect(persisted[0]?.days).toBe(12)
+  expect(persisted[0]?.projectSplits).toEqual([{ projectId, days: 12 }])
 })

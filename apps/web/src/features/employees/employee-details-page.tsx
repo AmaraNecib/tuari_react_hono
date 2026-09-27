@@ -4,10 +4,16 @@ import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
+import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
 import { DatePicker } from "@/components/ui/date-picker"
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashboard"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
+import type {
+  SalaryProjectAssignmentWindow,
+  SalaryProjectOption,
+} from "./add-salary-payment-dialog"
+import { SALARY_DAYS_PER_MONTH, parsePositiveInteger } from "./salary-payment-form"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { classifyWorkforceRole } from "./role-classification"
@@ -22,6 +28,7 @@ import {
 } from "@/features/shared/record-page-frame"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
+import { computeProposedSalaryAmount } from "@tuari/contracts"
 
 import type { EmployeeTableRow } from "./employee-table"
 
@@ -111,6 +118,8 @@ export function EmployeeDetailsPage({
   employee,
   managedProjects,
   managedWarehouses,
+  projectAssignments = [],
+  projects = [],
   onTabChange,
   salaryPayments,
   workHistory,
@@ -121,6 +130,10 @@ export function EmployeeDetailsPage({
   employee: EmployeeTableRow
   managedProjects: string[]
   managedWarehouses: string[]
+  /** Assignment windows feeding the payment dialog's derived split. */
+  projectAssignments?: SalaryProjectAssignmentWindow[]
+  /** Projects the payment dialog can attribute a split to. */
+  projects?: SalaryProjectOption[]
   onTabChange: (tabId: string) => void
   salaryPayments: Array<{
     id: string
@@ -137,6 +150,12 @@ export function EmployeeDetailsPage({
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const createSalaryPaymentMutation = useCreateSalaryPaymentMutation()
   const [paymentDate, setPaymentDate] = useState(() => getAlgeriaDateInputValue())
+  // The quick-payment form captures the days too: a monthly wage paid for 15
+  // of 30 days must not be recorded as a full 30-day month (issue #412 review).
+  const [paymentDays, setPaymentDays] = useState(() =>
+    employee.salaryPeriod === "DAILY" ? "1" : String(SALARY_DAYS_PER_MONTH),
+  )
+  const [paymentAmountTouched, setPaymentAmountTouched] = useState(false)
   const [actualAmount, setActualAmount] = useState(() => (employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : ""))
   const [note, setNote] = useState("")
   const [showPaymentForm, setShowPaymentForm] = useState(false)
@@ -146,7 +165,19 @@ export function EmployeeDetailsPage({
     () => [...salaryPayments].sort((left, right) => right.paymentDate.localeCompare(left.paymentDate)),
     [salaryPayments],
   )
-  const normalizedActualAmount = actualAmount.trim()
+  const parsedPaymentDays = parsePositiveInteger(paymentDays)
+  const proposedPaymentAmount =
+    employee.salaryAmountDzd !== null && employee.salaryPeriod !== null && parsedPaymentDays !== null
+      ? computeProposedSalaryAmount({
+          periodType: employee.salaryPeriod,
+          salaryAmountDzd: employee.salaryAmountDzd,
+          days: parsedPaymentDays,
+        })
+      : null
+  // The amount follows the day-derived proposal until the user edits it.
+  const displayedActualAmount =
+    paymentAmountTouched || proposedPaymentAmount === null ? actualAmount : String(proposedPaymentAmount)
+  const normalizedActualAmount = displayedActualAmount.trim()
   const actualAmountValue = normalizedActualAmount.length > 0 ? Number(normalizedActualAmount) : null
   const hasValidActualAmount = actualAmountValue !== null && Number.isFinite(actualAmountValue) && actualAmountValue >= 0
   const totalExpectedAmount = sortedSalaryPayments.reduce((sum, payment) => sum + payment.expectedAmountDzd, 0)
@@ -168,10 +199,12 @@ export function EmployeeDetailsPage({
 
   useEffect(() => {
     setPaymentDate(getAlgeriaDateInputValue())
+    setPaymentDays(employee.salaryPeriod === "DAILY" ? "1" : String(SALARY_DAYS_PER_MONTH))
+    setPaymentAmountTouched(false)
     setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
     setNote("")
     setShowPaymentForm(false)
-  }, [employee.id, employee.salaryAmountDzd])
+  }, [employee.id, employee.salaryPeriod, employee.salaryAmountDzd])
 
   useEffect(() => {
     if (!createSalaryPaymentMutation.isSuccess) {
@@ -179,10 +212,12 @@ export function EmployeeDetailsPage({
     }
 
     setPaymentDate(getAlgeriaDateInputValue())
+    setPaymentDays(employee.salaryPeriod === "DAILY" ? "1" : String(SALARY_DAYS_PER_MONTH))
+    setPaymentAmountTouched(false)
     setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
     setNote("")
     setShowPaymentForm(false)
-  }, [createSalaryPaymentMutation.isSuccess, employee.salaryAmountDzd])
+  }, [createSalaryPaymentMutation.isSuccess, employee.salaryPeriod, employee.salaryAmountDzd])
 
   return (
     <RecordPageFrame
@@ -200,6 +235,8 @@ export function EmployeeDetailsPage({
               employeeName={employee.name}
               salaryAmountDzd={employee.salaryAmountDzd}
               salaryPeriod={employee.salaryPeriod}
+              projectAssignments={projectAssignments}
+              projects={projects}
               open={paymentDialogOpen}
               onOpenChange={setPaymentDialogOpen}
             />
@@ -314,15 +351,44 @@ export function EmployeeDetailsPage({
                     {t("detailPages.employee.financeFormDescription")}
                   </p>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                   <Field label={t("detailPages.employee.financePaymentDate")}>
                     <DatePicker value={paymentDate} onChange={setPaymentDate} />
                   </Field>
+                  <Field label={t("salaries.days")}>
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      inputMode="numeric"
+                      dir="ltr"
+                      value={paymentDays}
+                      onChange={(event) => setPaymentDays(event.target.value)}
+                    />
+                  </Field>
                   <Field label={t("detailPages.employee.financeExpectedAmount")}>
-                    <CurrencyInput currencyLabel={currencyLabel} readOnly value={employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : t("detailPages.salary.notSpecified")} />
+                    <CurrencyInput
+                      currencyLabel={currencyLabel}
+                      readOnly
+                      value={
+                        proposedPaymentAmount !== null
+                          ? String(proposedPaymentAmount)
+                          : employee.salaryAmountDzd !== null
+                            ? String(employee.salaryAmountDzd)
+                            : t("detailPages.salary.notSpecified")
+                      }
+                    />
                   </Field>
                   <Field label={t("detailPages.employee.financeActualAmount")}>
-                    <CurrencyInput currencyLabel={currencyLabel} placeholder="0" value={actualAmount} onChange={(event) => setActualAmount(event.target.value)} />
+                    <CurrencyInput
+                      currencyLabel={currencyLabel}
+                      placeholder="0"
+                      value={displayedActualAmount}
+                      onChange={(event) => {
+                        setPaymentAmountTouched(true)
+                        setActualAmount(event.target.value)
+                      }}
+                    />
                   </Field>
                   <Field label={t("detailPages.employee.financePeriod")}>
                     <NativeSelect disabled value={employee.salaryPeriod ?? ""}>
@@ -332,7 +398,7 @@ export function EmployeeDetailsPage({
                       <option value="MONTHLY">{t("detailPages.salary.monthly")}</option>
                     </NativeSelect>
                   </Field>
-                  <Field label={t("detailPages.employee.notes")} className="md:col-span-2 xl:col-span-4">
+                  <Field label={t("detailPages.employee.notes")} className="md:col-span-2 xl:col-span-5">
                     <Textarea value={note} onChange={(event) => setNote(event.target.value)} />
                   </Field>
                 </div>
@@ -342,13 +408,13 @@ export function EmployeeDetailsPage({
                   </Button>
                   <Button
                     size="lg"
-                    disabled={employee.salaryAmountDzd === null || !employee.salaryPeriod || !hasValidActualAmount || createSalaryPaymentMutation.isPending}
+                    disabled={employee.salaryAmountDzd === null || !employee.salaryPeriod || parsedPaymentDays === null || !hasValidActualAmount || createSalaryPaymentMutation.isPending}
                     onClick={() =>
                       createSalaryPaymentMutation.mutate({
                         employeeId: employee.id,
-                        // A daily wage is paid per day; a monthly wage covers the
-                        // 30-day month. The amount still overrides the proposal.
-                        days: employee.salaryPeriod === "DAILY" ? 1 : 30,
+                        // The days are captured by the form; the amount still
+                        // overrides the day-derived proposal when edited.
+                        days: parsedPaymentDays ?? (employee.salaryPeriod === "DAILY" ? 1 : SALARY_DAYS_PER_MONTH),
                         actualAmountDzd: actualAmountValue!,
                         paymentDate: paymentDate ? toAlgeriaDayBoundaryIso(paymentDate, "start") : undefined,
                         note: note.trim() || null,

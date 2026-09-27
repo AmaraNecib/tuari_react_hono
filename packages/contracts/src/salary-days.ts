@@ -93,11 +93,14 @@ export function computeProposedSalaryAmount({
  * The covered days are then normalized against the period so the default
  * reconciles with the payment's own day count: a project covering the whole
  * period gets all of `days` (default 30), a project covering 15 of a 30-day
- * period gets 15, and the lines always sum to the scaled coverage. The
- * rounding difference lands on the project with the most covered days, so a
- * fully covered period sums EXACTLY to `days`; a partially covered period
- * leaves the rest unallocated. Overlapping projects (coverage > 100%) can
- * exceed `days` and are surfaced for the person to edit by hand.
+ * period gets 15, and the lines always sum to the scaled coverage. Every line
+ * is floored and the remaining days are handed out by largest fractional part
+ * (largest-remainder/Hamilton), so a fully covered period sums EXACTLY to
+ * `days`, a partially covered period leaves the rest unallocated, and the
+ * rounding correction can never drive a line negative (which used to drop it
+ * and leave the paid days over-allocated). Overlapping projects
+ * (coverage > 100%) can exceed `days` and are surfaced for the person to edit
+ * by hand.
  */
 export function deriveSalaryProjectDays({
   assignments,
@@ -168,28 +171,45 @@ export function deriveSalaryProjectDays({
   }
 
   const periodLengthDays = Math.floor((periodEndMs - periodStartMs) / MS_PER_DAY) + 1;
-  const totalCoveredDays = coveredProjects.reduce((total, entry) => total + entry.coveredDays, 0);
-  const normalizedTotalDays = Math.round((totalCoveredDays / periodLengthDays) * days);
 
-  const normalized = coveredProjects.map((entry) => ({
-    projectId: entry.projectId,
-    coveredDays: entry.coveredDays,
-    days: Math.round((entry.coveredDays / periodLengthDays) * days),
-  }));
+  // Exact scaled share per project. Floor it first (largest-remainder/Hamilton),
+  // then hand back the leftover integer days to the lines with the largest
+  // fractional part. This keeps every line within one day of its exact share,
+  // never lets a correction push a line below zero, and makes the lines sum to
+  // `round(totalScaledDays)` — exactly `days` when the period is fully covered.
+  const lines = coveredProjects.map((entry) => {
+    const exactDays = (entry.coveredDays / periodLengthDays) * days;
+    return {
+      projectId: entry.projectId,
+      coveredDays: entry.coveredDays,
+      exactDays,
+      days: Math.floor(exactDays),
+    };
+  });
 
-  let largestIndex = 0;
-  for (let index = 1; index < normalized.length; index += 1) {
-    if ((normalized[index]?.coveredDays ?? 0) > (normalized[largestIndex]?.coveredDays ?? 0)) {
-      largestIndex = index;
+  const targetTotalDays = Math.round(lines.reduce((total, line) => total + line.exactDays, 0));
+  let remainingDays = targetTotalDays - lines.reduce((total, line) => total + line.days, 0);
+
+  const byRemainder = [...lines].sort((left, right) => {
+    const fractionDifference = right.exactDays - Math.floor(right.exactDays) - (left.exactDays - Math.floor(left.exactDays));
+    if (fractionDifference !== 0) {
+      return fractionDifference;
     }
+    if (right.coveredDays !== left.coveredDays) {
+      return right.coveredDays - left.coveredDays;
+    }
+    return left.projectId.localeCompare(right.projectId);
+  });
+
+  for (const line of byRemainder) {
+    if (remainingDays <= 0) {
+      break;
+    }
+    line.days += 1;
+    remainingDays -= 1;
   }
 
-  const largest = normalized[largestIndex];
-  if (largest) {
-    largest.days += normalizedTotalDays - normalized.reduce((total, entry) => total + entry.days, 0);
-  }
-
-  return normalized
+  return lines
     .map(({ projectId, days: projectDays }) => ({ projectId, days: projectDays }))
     .filter((split) => split.days > 0);
 }
