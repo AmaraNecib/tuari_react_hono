@@ -1,10 +1,11 @@
 # #421 — code review evidence
 
-**HEAD**: `ee779d6` (base `183d222` = `origin/develop`)
+**HEAD**: `ee779d6` (reviewed code; evidence pinned at `0c871c4`, a docs-only
+wisdom commit on top) — base `183d222` = `origin/develop`
 **Tier**: Standard
 **Reviewer**: lane self-review (the crew brief overrides the skill's sub-agent
 review pipeline; Greptile CLI is quota-blocked — see
-`ee779d6-greptile-local.md`)
+`0c871c4-greptile-local.md`)
 
 ## Spec (does it match #421?)
 

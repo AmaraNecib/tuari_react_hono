@@ -1,5 +1,8 @@
 # #421 — Greptile CLI evidence
 
+Evidence pinned at `0c871c4` (docs-only wisdom commit); reviewed code `ee779d6`,
+base `183d222` = `origin/develop`.
+
 ## Run 1 (clean checkout, HEAD `13667cb`, base `origin/develop` `183d222`)
 
 `greptile review --json --branch origin/develop` → exit 0, confidence **4/5**,

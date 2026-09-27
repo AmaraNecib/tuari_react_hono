@@ -1,6 +1,7 @@
 # #421 — test audit evidence
 
-**HEAD**: `ee779d6`
+**HEAD**: `ee779d6` (reviewed code; evidence pinned at `0c871c4`, a docs-only
+wisdom commit on top)
 **Scope**: `apps/api/src/rpc/router.test.ts` (5 new tests), plus the #419
 expenses regression test.
 
