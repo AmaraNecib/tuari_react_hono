@@ -18,7 +18,6 @@ export default defineConfig({
     // honest without taking the machine over; set VITEST_MAX_WORKERS when a
     // machine is dedicated to the run (CI sets it higher).
     maxWorkers: Number(process.env.VITEST_MAX_WORKERS ?? 2),
-    minWorkers: 1,
     // The unit/integration suites exercise the WRITABLE paths, so they run with
     // the post-install trial status. The production default for a missing
     // status is `unknown` (fail closed, see parseLicenseStatus); that path is

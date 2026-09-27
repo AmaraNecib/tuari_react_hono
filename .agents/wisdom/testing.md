@@ -699,16 +699,23 @@ the implementation.
 
 ## Cap the test worker pool: the default takes the whole machine (🟠 Major)
 
-Vitest defaults to `(logical cores - 1)` workers. On a 12-thread laptop that is
-11 worker processes, each running a full API suite slice, so a single `pnpm
-test` saturates the machine: other agent lanes slow to a crawl, suites hit their
-hook timeouts, and the load-flaky failures start firing — which then look like
-real regressions and cost more time than the run saved. `apps/api` and
-`apps/web` therefore pin `maxWorkers: 2` (overridable with `VITEST_MAX_WORKERS`
-for a dedicated machine), Playwright runs `workers: 1`, and `turbo.json` caps
-task concurrency at 2.
+Vitest sizes its worker pool from the CPU count, not from what the work needs.
+In the version this repo pins (4.1.x) the run-mode default is
+`availableParallelism() - 1` — **11 workers on a 12-thread laptop** (watch mode
+uses half). Its own CLI help claims the default is `availableParallelism()`,
+which is wrong; read the code in `node_modules/vitest` before trusting either
+number. Either way the default is the whole machine: one `pnpm test` then
+saturates the CPU, other agent lanes crawl, suites hit their hook timeouts, and
+the load-flaky failures start firing — which cost more time than the extra
+workers ever saved, and look like real regressions.
 
-**Always**: when a test run can spawn a pool, set the pool size explicitly and
-keep it small by default with an env override for CI. "It passes faster with
-more workers" is false on a shared machine — it passes faster with a *quiet*
-machine, and the difference shows up as flaky timeouts rather than as an error.
+So every package that runs vitest pins `maxWorkers: 2` (`apps/api`,
+`apps/web`, `packages/contracts`), overridable with `VITEST_MAX_WORKERS` for a
+dedicated machine or CI; Playwright runs `workers: 1`; and the heavy one-shot
+turbo tasks run with `--concurrency=2`.
+
+**Always**: cap a test pool explicitly and keep the default small with an env
+override. Note where the cap does NOT belong: turbo's `concurrency` key in
+`turbo.json` is global, so setting it there also throttles `turbo dev` and can
+leave persistent dev tasks waiting for a slot — pass it on the one-shot tasks
+(`turbo test --concurrency=2`) instead.
