@@ -48,6 +48,7 @@ const TRANSACTIONAL_TABLES = [
   // bootstrap ownership marker (re-created by the next bootstrap)
   "app_bootstrap_state",
   // workforce
+  "employee_salary_payment_split",
   "employee_salary_payment",
   "employee_state_history",
   "employee_warehouse_assignment",
