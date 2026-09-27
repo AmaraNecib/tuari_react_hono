@@ -55,7 +55,6 @@ export interface ExpenseListFilters {
   responsibleWorkerId?: string;
   fromDate?: string;
   toDate?: string;
-  includeVoided?: boolean;
 }
 
 export interface ExpenseTotals {

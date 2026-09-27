@@ -120,13 +120,11 @@ describe("ExpensesModule (sqlite adapter)", () => {
     });
     expect(voided.voidedAt).not.toBeNull();
 
-    const live = await expensesModule.list();
-    expect(live.items.map((item) => item.id)).toEqual(["e-1"]);
-    expect(live.totals.total).toBe(12500);
-
-    const withVoided = await expensesModule.list({ includeVoided: true });
-    expect(withVoided.items).toHaveLength(2);
-    expect(withVoided.totals.total).toBe(12500);
+    const listed = await expensesModule.list();
+    // The voided row stays visible but is excluded from totals.
+    expect(listed.items).toHaveLength(2);
+    expect(listed.items.find((item) => item.id === "e-2")?.status).toBe("VOIDED");
+    expect(listed.totals.total).toBe(12500);
 
     // The row is still physically present.
     const row = env.rawDb.prepare(`SELECT status FROM "expense" WHERE id = ?`).get("e-2");

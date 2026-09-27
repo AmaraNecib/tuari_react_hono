@@ -390,7 +390,7 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
               disabled={voidMutation.isPending}
               onClick={() => void confirmVoid()}
             >
-              {t("expenses.actions.void")}
+              {t("expenses.void.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

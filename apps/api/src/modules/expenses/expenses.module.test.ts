@@ -384,15 +384,15 @@ describe("ExpensesModule", () => {
       expect(voided.voidedAt).not.toBeNull();
       expect(voided.voidedBy).toBe("أمين");
 
-      const live = await expensesModule.list();
-      expect(live.items.map((item) => item.id)).toEqual(["e-1"]);
-      expect(live.totals.total).toBe(12500);
-      expect(live.totals.count).toBe(1);
-
-      const withVoided = await expensesModule.list({ includeVoided: true });
-      expect(withVoided.items.map((item) => item.id)).toEqual(["e-2", "e-1"]);
-      expect(withVoided.totals.total).toBe(12500);
-      expect(withVoided.totals.count).toBe(1);
+      const listed = await expensesModule.list();
+      // The voided row stays visible (struck-through) but leaves the totals.
+      expect(listed.items.map((item) => item.id)).toEqual(["e-2", "e-1"]);
+      expect(listed.items.find((item) => item.id === "e-2")?.status).toBe("VOIDED");
+      expect(listed.totals.total).toBe(12500);
+      expect(listed.totals.count).toBe(1);
+      expect(listed.groupsByProject).toEqual([
+        { projectId: "project-1", total: 12500, count: 1 },
+      ]);
     });
 
     it("refuses to void twice and rejects an unknown expense", async () => {

@@ -115,7 +115,6 @@ export const expenseListFiltersSchema = z.object({
   responsibleWorkerId: entityIdSchema.optional(),
   fromDate: timestampSchema.optional(),
   toDate: timestampSchema.optional(),
-  includeVoided: z.boolean().optional(),
 });
 
 /**

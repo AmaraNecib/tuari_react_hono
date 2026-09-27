@@ -82,9 +82,6 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     const conditions: string[] = [];
     const params: unknown[] = [];
 
-    if (!filters.includeVoided) {
-      conditions.push(`status = 'LIVE'`);
-    }
     if (filters.projectId !== undefined) {
       conditions.push(`project_id = ?`);
       params.push(filters.projectId);

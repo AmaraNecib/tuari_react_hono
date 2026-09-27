@@ -63,7 +63,6 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
 
     async list(filters: ExpenseListFilters): Promise<Expense[]> {
       const items = [...expenses.values()].filter((expense) => {
-        if (!filters.includeVoided && expense.status !== "LIVE") return false;
         if (filters.projectId !== undefined && expense.projectId !== filters.projectId) {
           return false;
         }

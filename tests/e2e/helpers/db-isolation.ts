@@ -75,6 +75,8 @@ const TRANSACTIONAL_TABLES = [
   // invoices / payments
   "payment_allocation",
   "payment",
+  "expense_revision",
+  "expense",
   "invoice_line_item",
   "invoice",
   // security / release bookkeeping
