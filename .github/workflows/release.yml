@@ -275,6 +275,20 @@ jobs:
             --version "${{ steps.manifest.outputs.version }}" `
             --channel stable
 
+      - name: Run installer smoke test
+        shell: pwsh
+        run: |
+          # Launch the staged portable build the way a customer does: extract
+          # the zip the release will upload, start Tuari.exe, wait for the API
+          # sidecar and /health, and confirm the database was written. This is
+          # the only gate that runs the built artifact. A build whose sidecar
+          # cannot start fails here, before the release exists.
+          $artifactsDir = "${{ steps.manifest.outputs.artifacts_dir }}"
+          $version = "${{ steps.manifest.outputs.version }}"
+          $zipPath = Join-Path $artifactsDir "tuari-$version-stable-portable.zip"
+          $installerPath = Join-Path $artifactsDir "tuari-$version-stable-setup.exe"
+          node scripts/smoke/installer-smoke.mjs --zip "$zipPath" --installer "$installerPath"
+
       # ── List staged artifacts ────────────────────────────
 
       - name: List staged artifacts
@@ -295,3 +309,21 @@ jobs:
           files: |
             ${{ steps.manifest.outputs.artifacts_dir }}/*
           fail_on_unmatched_files: true
+
+      # ── Publish, but only now that the gate has passed ───
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # See the note on RELEASE_TAG safety in release-metadata.yml.
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # This workflow owns publication because it owns the smoke gate: the
+          # release stays a draft until the packaged app has actually been
+          # launched and answered /health. release-metadata.yml deliberately
+          # leaves the draft alone for tag pushes, so a tag can no longer publish
+          # a release whose installer fails to start.
+          if (-not (gh release edit "$env:RELEASE_TAG" --draft=false 2>&1)) {
+            Write-Host "::notice::gh release edit returned non-zero (release may already be published); continuing."
+          }

@@ -88,6 +88,119 @@ test('CI/CD workflow files exist and have correct triggers', async () => {
   assert.match(beta, /Rust Core boundaries/);
 });
 
+test('publish workflows run the installer smoke test after packaging and before the upload', async () => {
+  const channels = [
+    { name: 'beta.yml', channel: 'beta', uploadMarker: 'gh release create' },
+    { name: 'release.yml', channel: 'stable', uploadMarker: 'softprops/action-gh-release' },
+    { name: 'nightly.yml', channel: 'nightly', uploadMarker: 'gh release create' },
+  ];
+
+  for (const { name, channel, uploadMarker } of channels) {
+    const source = await readRepoFile(path.join('.github/workflows', name));
+    const lines = source.split('\n');
+
+    // Find a real step by name. A commented-out step does not match, because the
+    // regex requires the line to START with `- name:` (a `# - name:` line is a
+    // comment, not a step) — plain text search would happily match the smoke
+    // command inside a comment.
+    const stepStart = (needle) =>
+      lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes(needle));
+    const stepAt = (index) => {
+      const indent = lines[index].match(/^\s*/)[0];
+      let end = lines.length;
+      for (let i = index + 1; i < lines.length; i += 1) {
+        if (lines[i].startsWith(`${indent}- name:`)) {
+          end = i;
+          break;
+        }
+      }
+      return lines.slice(index, end).join('\n');
+    };
+    const stepContaining = (needle) =>
+      lines.findIndex((line, index) =>
+        /^\s*- name:/.test(line) && stepAt(index).includes(needle),
+      );
+
+    const smokeStep = stepStart('Run installer smoke test');
+    assert.ok(smokeStep !== -1, `${name} must have a 'Run installer smoke test' step`);
+    const smokeBlock = stepAt(smokeStep);
+
+    // The gate must run the built artifact. An index of -1 means the workflow
+    // does not run it at all.
+    assert.ok(
+      smokeBlock.includes('scripts/smoke/installer-smoke.mjs'),
+      `${name} must run scripts/smoke/installer-smoke.mjs`,
+    );
+
+    // A disabled step is not a gate: `if: false` (or a false expression) would
+    // keep the command in the file while skipping it at run time.
+    assert.doesNotMatch(
+      smokeBlock,
+      /^\s*if:\s*(false|\$\{\{\s*false\s*\}\})\s*$/m,
+      `${name} must not disable the installer smoke test step`,
+    );
+
+    // It must run after packaging (no rebuild) and before the release upload,
+    // or a non-starting installer can still be published.
+    const packageStep = stepContaining('portable:only');
+    assert.ok(packageStep !== -1, `${name} should build the portable package`);
+    assert.ok(
+      packageStep < smokeStep,
+      `${name} must run the installer smoke test after packaging`,
+    );
+
+    const uploadStep = stepContaining(uploadMarker);
+    assert.ok(uploadStep !== -1, `${name} should upload a release`);
+    assert.ok(
+      smokeStep < uploadStep,
+      `${name} must run the installer smoke test before the release upload`,
+    );
+
+    // It must point at the staged artifact the release uploads, not at a
+    // rebuild in the bundle directory. These arguments are asserted INSIDE the
+    // smoke step: searching the whole file would pass if the smoke command lost
+    // its arguments while the same filenames appeared elsewhere in the workflow.
+    assert.match(
+      smokeBlock,
+      new RegExp(`tuari-\\$version-${channel}-portable\\.zip`),
+      `${name} must point the installer smoke test at the staged portable zip`,
+    );
+    assert.match(
+      smokeBlock,
+      /--installer/,
+      `${name} must pass the staged NSIS installer to the smoke test`,
+    );
+  }
+});
+
+test('the gated release workflow owns publication', async () => {
+  // A tag push runs release.yml (with the smoke gate) and release-metadata.yml
+  // at the same time. If metadata publishes the release, a tag can go public
+  // while the gate is still running — or after it failed, because the gate only
+  // stops the binary upload. Publication therefore belongs to the gated
+  // workflow, and metadata must never un-draft a release.
+  const release = await readRepoFile('.github/workflows/release.yml');
+  const metadata = await readRepoFile('.github/workflows/release-metadata.yml');
+
+  const lines = release.split("\n");
+  const smoke = lines.findIndex((l) => /^\s*- name:/.test(l) && l.includes('Run installer smoke test'));
+  const publish = lines.findIndex((l) => /^\s*- name:/.test(l) && l.includes('Publish release'));
+  assert.ok(smoke !== -1, 'release.yml must run the installer smoke test');
+  assert.ok(publish !== -1, 'release.yml must publish the release');
+  assert.ok(smoke < publish, 'release.yml must publish only after the smoke gate');
+  assert.match(
+    lines.slice(publish, publish + 24).join("\n"),
+    /--draft=false/,
+    'release.yml must un-draft the release after the gate passes',
+  );
+
+  assert.doesNotMatch(
+    metadata,
+    /--draft=false/,
+    'release-metadata.yml must not publish the release: release.yml owns publication after the smoke gate',
+  );
+});
+
 test('workflow files do not embed a column-0 PowerShell here-string terminator', async () => {
   const workflowDir = path.join(rootDir, '.github/workflows');
   const entries = await readdir(workflowDir);
