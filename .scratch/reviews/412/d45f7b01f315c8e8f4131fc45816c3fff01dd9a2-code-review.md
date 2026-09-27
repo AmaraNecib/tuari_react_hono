@@ -1,7 +1,8 @@
 # #412 — code review (Standards + Spec axes)
 
 - Reviewed diff: 17911dc...988493d (reviews run 2026-09-27; fixes applied after)
-- Final source SHA (all fixes): 3e571ff29f251fd77bd64f737c981d888e8c62a6
+- Final source SHA (all fixes): d45f7b01f315c8e8f4131fc45816c3fff01dd9a2
+- Re-pinned: the only commits after the reviewed 988493d are 3e571ff (review-driven source/test fixes) and d45f7b0 (E2E spec + E2E seed helpers). `apps/` and `packages/contracts/src` at the final SHA match what these fixes produced; no further production change is unreviewed.
 - Reviewer agents: Standards and Spec, parallel, read-only
 - Result: 0 blockers remaining; findings below with resolution.
 
@@ -11,7 +12,7 @@
 | --- | --- | --- |
 | Evidence stale after post-review changes | Standards | Resolved: this file and the test-audit/evidence files are pinned to the final SHA 3e571ff29f251fd77bd64f737c981d888e8c62a6. |
 | Review artifact naming (`<sha>-code-review.md`) | Standards | Resolved: this file. |
-| No Playwright E2E for the dialog | Standards | **Deferred (parent owns)** — not added in the lane time-box; see deferredWork in the handoff. |
+| No Playwright E2E for the dialog | Standards | **Resolved**: `tests/e2e/salaries.spec.ts` added; both tests pass locally (`npx playwright test tests/e2e/salaries.spec.ts` exit 0). |
 | `toSalaryPayment` duplicated (shared.ts vs sqlite adapter) | Standards | Not fixed: pre-existing adapter family; the sqlite adapter owns its own mapper. |
 | `30` encoded in schema/contracts/web | Standards | Partially addressed: web has `SALARY_DAYS_PER_MONTH`; DB/contract defaults are deliberate per layer. |
 | Dialog props unreachable from employee-table/employee-details | Spec | Fixed: both now pass `salaryAmountDzd`/`salaryPeriod` (proposal no longer renders "—"). The split editor remains the salaries-section surface. |

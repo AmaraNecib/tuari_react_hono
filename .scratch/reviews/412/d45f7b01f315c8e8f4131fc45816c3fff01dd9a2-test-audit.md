@@ -1,7 +1,8 @@
 # #412 — test audit (edge cases, coverage, quality)
 
 - Reviewed diff: 17911dc...988493d (audit run 2026-09-27; fixes applied after)
-- Final source SHA (all fixes): 3e571ff29f251fd77bd64f737c981d888e8c62a6
+- Final source SHA (all fixes): d45f7b01f315c8e8f4131fc45816c3fff01dd9a2
+- Re-pinned: the only commits after the reviewed 988493d are 3e571ff (review-driven source/test fixes) and d45f7b0 (E2E spec + E2E seed helpers). The production source at the final SHA is what these fixes produced.
 - Agents: edge-case hunter, coverage analyst, test quality reviewer (parallel, read-only)
 - Result: grade B → fixes applied; the new dialog test also caught a real reset bug.
 
@@ -23,7 +24,7 @@
 | Dialog has zero tests (reconciliation UX, sliding days) | coverage | Added `add-salary-payment-dialog.test.tsx`: derived prefill, re-derivation until edited, remainder, over-allocation blocks submit, payload on submit. |
 | Exact reconciliation boundary (sum == days) untested | coverage | Added service test. |
 | WEEKLY non-offering at the selector / legacy carve-out untested | coverage | Not added this round; noted. |
-| E2E wiring untested | coverage | Deferred with the E2E item in the handoff. |
+| E2E wiring untested | coverage | **Resolved**: `tests/e2e/salaries.spec.ts` (proposal, split prefill, over-allocation block, recorded days). |
 
 ### Bonus fix from the new dialog test
 

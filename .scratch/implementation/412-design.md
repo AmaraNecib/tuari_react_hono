@@ -87,6 +87,10 @@ split total must not exceed `days` (the remainder stays unallocated).
   with days 30 and unchanged amounts after re-running the schema bootstrap.
 - Web `salary-payment-form.test.ts`: month/day period boundaries, unallocated
   remainder.
+- Playwright `tests/e2e/salaries.spec.ts`: seeds a salaried worker with a
+  project assignment, opens the dialog from the salaries section, asserts the
+  proposed amount (`salary/30 x days`), the prefilled split, the unallocated
+  remainder, the over-allocation block, and the recorded payment's days.
 
 ## Risks / ambiguities
 
