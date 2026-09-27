@@ -75,13 +75,19 @@ pub struct LicenseManager {
 }
 
 /// Embedded Ed25519 public key for verifying license signatures at runtime.
-/// Generated during build; the corresponding private key is held offline.
-/// Current value is a test/development key — replace with a real one before
-/// the first production release.
+///
+/// This is the vendor signing key for the 0.1.x line. The corresponding
+/// private key (`license-signing.pem`) is held OFFLINE and is never committed:
+/// mint licenses with `node scripts/generate-license.mjs --private-key <path>`.
+///
+/// Do not replace this with a test vector or a zeroed placeholder — either one
+/// lets anyone mint an accepted license (the previous value was the public
+/// RFC 8032 test key, whose private half is public knowledge). `embedded_key_is_production`
+/// pins that.
 pub(crate) const EMBEDDED_PUBLIC_KEY: [u8; 32] = [
-    0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x09,
-    0x15, 0x57, 0x52, 0xe5, 0x25, 0x56, 0x5e, 0xbd, 0xb9, 0x2b, 0x8c, 0xdb, 0xf4, 0x4b,
-    0x54, 0x1f, 0x24, 0x3b,
+    0xec, 0xc4, 0x53, 0x6d, 0x47, 0x83, 0x74, 0xbd, 0x65, 0xc0, 0x33, 0x53, 0x2c, 0xe1,
+    0x2d, 0x2c, 0x83, 0xcb, 0x50, 0x2f, 0x72, 0x11, 0xbc, 0x93, 0xe1, 0x41, 0x07, 0xda,
+    0x97, 0xf8, 0x92, 0x8b,
 ];
 
 impl LicenseManager {
@@ -583,6 +589,38 @@ mod tests {
     use ed25519_dalek::{Signer, SigningKey};
     use std::fs;
     use std::path::PathBuf;
+
+    /// RFC 8032 TEST 1 public key. Its private half is published, so trusting it
+    /// (as this crate did before the 0.1.x release) lets anyone mint a license.
+    const RFC8032_TEST_KEY: [u8; 32] = [
+        0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x09,
+        0x15, 0x57, 0x52, 0xe5, 0x25, 0x56, 0x5e, 0xbd, 0xb9, 0x2b, 0x8c, 0xdb, 0xf4, 0x4b,
+        0x54, 0x1f, 0x24, 0x3b,
+    ];
+
+    /// A shippable build must carry a real vendor key: a zeroed placeholder or a
+    /// published test vector makes every license forgeable.
+    #[test]
+    fn embedded_key_is_production() {
+        assert_ne!(
+            EMBEDDED_PUBLIC_KEY, [0u8; 32],
+            "embedded license key is a zeroed placeholder — the app would accept no license"
+        );
+        assert_ne!(
+            EMBEDDED_PUBLIC_KEY, RFC8032_TEST_KEY,
+            "embedded license key is the public RFC 8032 test vector — anyone could mint a license"
+        );
+    }
+
+    #[test]
+    fn root_key_is_production() {
+        let root = crate::trust::root_ca::ROOT_CA_PUBLIC_KEY;
+        assert_ne!(root, [0u8; 32], "root CA key is a zeroed placeholder");
+        assert_ne!(
+            root, RFC8032_TEST_KEY,
+            "root CA key is the public RFC 8032 test vector"
+        );
+    }
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_dir() -> PathBuf {
@@ -659,6 +697,34 @@ mod tests {
         let result = LicenseManager::initialize(&dir);
         assert!(matches!(result, Err(RustCoreError::InvalidFormat)));
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Optional operator check: point `LICENSE_UNDER_TEST` at a freshly minted
+    /// `.lic` file and this verifies it against the anchor compiled into the
+    /// app, exactly as the runtime does. It is skipped when the variable is
+    /// unset (CI has no vendor key); the signer→verifier interop test covers
+    /// that path automatically.
+    #[test]
+    fn verifies_license_under_test_when_provided() {
+        let path = match std::env::var("LICENSE_UNDER_TEST") {
+            Ok(path) if !path.trim().is_empty() => path,
+            _ => {
+                eprintln!(
+                    "LICENSE_UNDER_TEST not set — skipping the vendor-anchor check \
+                     (set it to a minted .lic path to verify a real issuance)"
+                );
+                return;
+            }
+        };
+
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read LICENSE_UNDER_TEST={path}: {e}"));
+        let manager = LicenseManager::with_keys(vec![EMBEDDED_PUBLIC_KEY]);
+        manager.activate(content.trim()).unwrap_or_else(|e| {
+            panic!(
+                "LICENSE_UNDER_TEST={path} does not verify against the embedded anchor: {e:?}"
+            )
+        });
     }
 
     #[test]
