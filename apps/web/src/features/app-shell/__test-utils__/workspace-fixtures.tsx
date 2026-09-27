@@ -538,6 +538,12 @@ vi.mock("@/features/inventory/inventory-hooks", async (importOriginal) => ({
     isError: false,
   }),
   useInventoryAssetQuery: () => ({ data: undefined, isPending: false, isError: false }),
+  // Charge queries go through the shared workspace query helper, which this
+  // fixture's `workspace-queries` partial mock does not provide; keep them
+  // offline too so detail pages render without a real RPC call (#413).
+  useAssetChargeDefaultQuery: () => ({ data: undefined, isPending: false, isError: false }),
+  useAssetChargesByUnitQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+  useProjectChargesQuery: () => ({ data: undefined, isPending: false, isError: false }),
   useInventoryWarehousesQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
   useInventoryProjectsQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
   useInventoryExternalCounterpartiesQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),

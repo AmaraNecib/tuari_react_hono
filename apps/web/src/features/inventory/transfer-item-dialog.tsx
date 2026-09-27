@@ -59,24 +59,40 @@ export function chargePercentFromAmount(amountDzd: number, purchasePriceDzd: num
   return roundMoney(((amountDzd - purchasePriceDzd) / purchasePriceDzd) * 100)
 }
 
-/** The amount implied by a percentage of the purchase price. */
+/** The amount implied by a percentage of the purchase price (never negative). */
 export function chargeAmountFromPercent(percent: number, purchasePriceDzd: number): number {
   if (!Number.isFinite(purchasePriceDzd) || !Number.isFinite(percent)) {
     return 0
   }
 
-  return roundMoney(purchasePriceDzd * (1 + percent / 100))
+  return Math.max(0, roundMoney(purchasePriceDzd * (1 + percent / 100)))
 }
 
-/** Parse the amount field; blank or invalid means a free placement (0). */
-export function parseChargeAmountInput(value: string): number {
+/**
+ * The meaning of the amount field (#413):
+ * - `default` — the field is blank, so the server resolves the unit's default;
+ * - `amount`  — a valid non-negative amount (an explicit `0` is a free placement);
+ * - `invalid` — a non-blank value that is not a valid amount, which must be
+ *   rejected and surfaced, NOT silently coerced into a free placement.
+ */
+export type ChargeAmountInput =
+  | { kind: "default" }
+  | { kind: "amount"; value: number }
+  | { kind: "invalid" }
+
+/** Parse the amount field; see {@link ChargeAmountInput}. */
+export function parseChargeAmountInput(value: string): ChargeAmountInput {
   const trimmed = value.trim()
   if (trimmed.length === 0) {
-    return 0
+    return { kind: "default" }
   }
 
   const parsed = Number(trimmed)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { kind: "invalid" }
+  }
+
+  return { kind: "amount", value: parsed }
 }
 
 /** Dialog for transferring inventory items between locations. */
@@ -106,6 +122,7 @@ export function TransferItemDialog({
   const [quantity, setQuantity] = useState("1")
   const [chargeAmount, setChargeAmount] = useState("")
   const [chargePercent, setChargePercent] = useState("")
+  const [amountTouched, setAmountTouched] = useState(false)
   const [note, setNote] = useState("")
   const [date, setDate] = useState(() => getAlgeriaDateInputValue())
 
@@ -116,19 +133,25 @@ export function TransferItemDialog({
   const purchasePriceDzd = chargeDefault.data?.purchasePriceDzd ?? 0
   const isAsset = target?.type === "ASSET"
   const asksForCharge = isAsset && destType === "PROJECT"
-  const amountValue = parseChargeAmountInput(chargeAmount)
-  const warnsAbovePurchase = purchasePriceDzd > 0 && amountValue > purchasePriceDzd
+  const amountInput = parseChargeAmountInput(chargeAmount)
+  const chargeInvalid = amountInput.kind === "invalid"
+  const warnsAbovePurchase =
+    amountInput.kind === "amount" && purchasePriceDzd > 0 && amountInput.value > purchasePriceDzd
 
   // Prefill from the resolved default (last charge for the unit, else its
-  // purchase price) whenever the dialog opens for an asset.
+  // purchase price) whenever the dialog opens for an asset — but never
+  // clobber an amount the operator has already typed. A refetch while the
+  // dialog is open (a correction landing in another tab) only applies while
+  // the field is still untouched.
   useEffect(() => {
     if (!open || target?.type !== "ASSET") return
+    if (amountTouched) return
     const defaultAmount = chargeDefault.data?.amountDzd
     if (defaultAmount === undefined) return
     setChargeAmount(String(defaultAmount))
     const percent = chargePercentFromAmount(defaultAmount, chargeDefault.data!.purchasePriceDzd)
     setChargePercent(percent === null ? "" : String(percent))
-  }, [open, target, chargeDefault.data])
+  }, [open, target, chargeDefault.data, amountTouched])
 
   const resetForm = () => {
     setDestType("WAREHOUSE")
@@ -136,18 +159,22 @@ export function TransferItemDialog({
     setQuantity("1")
     setChargeAmount("")
     setChargePercent("")
+    setAmountTouched(false)
     setNote("")
     setDate(getAlgeriaDateInputValue())
   }
 
   const handleAmountChange = (value: string) => {
     setChargeAmount(value)
-    const percent = chargePercentFromAmount(parseChargeAmountInput(value), purchasePriceDzd)
+    setAmountTouched(true)
+    const parsed = parseChargeAmountInput(value)
+    const percent = parsed.kind === "amount" ? chargePercentFromAmount(parsed.value, purchasePriceDzd) : null
     setChargePercent(percent === null ? "" : String(percent))
   }
 
   const handlePercentChange = (value: string) => {
     setChargePercent(value)
+    setAmountTouched(true)
     if (value.trim().length === 0) {
       setChargeAmount("")
       return
@@ -167,11 +194,24 @@ export function TransferItemDialog({
     const noteVal = note.trim() || null
 
     if (target.type === "ASSET") {
+      const parsedAmount = parseChargeAmountInput(chargeAmount)
+      // An invalid non-blank amount never silently becomes a free placement:
+      // block the submit and let the rendered error tell the operator. Blank
+      // means "use the server default"; an explicit 0 is a free placement.
+      let chargeAmountDzd: number | null = null
+      if (destType === "PROJECT") {
+        if (parsedAmount.kind === "invalid") {
+          return
+        }
+
+        chargeAmountDzd = parsedAmount.kind === "default" ? null : parsedAmount.value
+      }
+
       await assetMutation.mutateAsync({
         assetUnitId: target.assetUnitId,
         toWarehouseId: destType === "WAREHOUSE" ? destId : null,
         toProjectId: destType === "PROJECT" ? destId : null,
-        chargeAmountDzd: destType === "PROJECT" ? amountValue : null,
+        chargeAmountDzd,
         note: noteVal,
         occurredAt,
       })
@@ -278,6 +318,7 @@ export function TransferItemDialog({
                     step="0.01"
                     inputMode="decimal"
                     aria-label={t("inventory.transfer.chargeAmount")}
+                    aria-invalid={chargeInvalid}
                     value={chargeAmount}
                     onChange={(e) => handleAmountChange(e.target.value)}
                   />
@@ -301,6 +342,12 @@ export function TransferItemDialog({
               <p className="text-xs text-muted-foreground">
                 {t("inventory.transfer.chargeHint", { price: purchasePriceDzd })}
               </p>
+
+              {chargeInvalid ? (
+                <p className="text-xs text-destructive" role="alert" data-testid="charge-error">
+                  {t("inventory.transfer.chargeInvalid")}
+                </p>
+              ) : null}
 
               {warnsAbovePurchase ? (
                 <p className="text-xs text-amber-600" data-testid="charge-warning">

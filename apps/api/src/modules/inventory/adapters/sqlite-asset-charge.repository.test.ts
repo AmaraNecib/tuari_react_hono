@@ -129,4 +129,16 @@ describe("DrizzleAssetChargeRepository (#413)", () => {
     expect(() => env.repository.createCharge({ assetUnitId: "missing", projectId: "project-a", amountDzd: 1 }))
       .toThrowError(/FOREIGN KEY/i)
   })
+
+  it("refuses to delete a project that still has a charge, keeping the record", () => {
+    env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 100_000 })
+
+    expect(() =>
+      env.rawDb.prepare('DELETE FROM "project" WHERE "id" = ?').run("project-a"),
+    ).toThrowError(/FOREIGN KEY/i)
+
+    // The project and its charge are both still there.
+    expect(env.repository.listChargesByProject("project-a")).toHaveLength(1)
+    expect(env.rawDb.prepare('SELECT COUNT(*) AS n FROM "project" WHERE "id" = ?').get("project-a")).toEqual({ n: 1 })
+  })
 })

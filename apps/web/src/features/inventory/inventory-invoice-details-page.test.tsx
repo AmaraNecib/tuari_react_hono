@@ -23,6 +23,15 @@ vi.mock("./inventory-hooks", () => ({
   useInventoryProjectsQuery: () => mocks.projectsQuery(),
   useTransferInventoryAssetMutation: () => mocks.transferAssetMutation,
   useTransferInventoryConsumableMutation: () => mocks.transferConsumableMutation,
+  // The invoice screen routes asset transfers through TransferItemDialog (#413).
+  useAssetChargeDefaultQuery: () => ({
+    data: {
+      assetUnitId: "asset-1",
+      amountDzd: 3000,
+      purchasePriceDzd: 3000,
+      source: "PURCHASE_PRICE",
+    },
+  }),
 }))
 
 vi.mock("./record-invoice-payment-dialog", () => ({
@@ -275,5 +284,16 @@ describe("InventoryInvoiceDetailsPage error surface (issue #34)", () => {
     expect(screen.getAllByText(/شراء - مادة/).length).toBeGreaterThan(0)
     expect(screen.getByText("فاتورة-المورد.pdf")).toBeTruthy()
     expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("routes an asset transfer through the charge-aware dialog (#413)", () => {
+    renderPage(successQuery())
+
+    fireEvent.click(screen.getByRole("button", { name: "تحويل الأصل" }))
+    // Destination defaults to a warehouse; pick a project so the charge fields
+    // appear. The operator must be able to say what to charge from this screen.
+    fireEvent.change(screen.getByLabelText("نوع الوجهة"), { target: { value: "PROJECT" } })
+
+    expect(screen.getByLabelText("مبلغ الاحتساب")).toBeTruthy()
   })
 })

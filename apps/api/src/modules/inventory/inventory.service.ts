@@ -495,7 +495,7 @@ export class InventoryService {
             ...asset,
             inventoryEntryId: createdEntry.id,
           })
-          this.repository.createMovement({
+          const movement = this.repository.createMovement({
             movementType: "PURCHASE",
             itemType: "ASSET",
             inventoryEntryId: createdEntry.id,
@@ -506,6 +506,19 @@ export class InventoryService {
             note: entry.note,
             occurredAt: resolvedInvoiceDate,
           })
+
+          // A unit created directly on a project is a placement too: the same
+          // rule as a transfer charges it in the SAME transaction (its default
+          // is the purchase price, as it has no prior charge). A warehouse
+          // purchase writes no charge.
+          if (entry.projectId && this.assetChargeService) {
+            this.assetChargeService.createPlacementCharge({
+              assetUnitId: createdAsset.id,
+              projectId: entry.projectId,
+              movementId: movement.id,
+              amountDzd: null,
+            }, audit)
+          }
         }
       }
 

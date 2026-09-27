@@ -89,3 +89,62 @@ same `withTransaction`; destination warehouse → movement only.
   so no behavior regression for callers that never knew about charges.
 - Money is REAL like every other DZD column; the schema bound mirrors the
   existing payment rule.
+
+## Review round — PR #422 (10 findings)
+
+Reviewed HEAD was `e74c377`; the fixes below were applied on top of it. Decisions
+that a later reader would otherwise have to reverse-engineer:
+
+1. **A unit created directly on a project is charged.** `createInvoiceGroup`
+   now books the placement charge for an ASSET entry with a project destination
+   in the same transaction as the purchase movement (default = purchase price,
+   because a fresh unit has no prior charge). Warehouse purchases still write
+   none. Pinned by `inventory-transfer-charge.test.ts`.
+2. **One transfer entry point for assets.** The invoice-details screen no longer
+   posts `inventoryAssetsTransfer` directly; it opens `TransferItemDialog`, so
+   the operator can state the charge from every path. (The inline warehouse/
+   project selects on that screen were also permanently disabled by a
+   setter-less `transferSectionExpanded` flag; the shared dialog removes them.)
+3. **Amount entry is three-valued.** `parseChargeAmountInput` distinguishes
+   blank (`default`), a valid amount (`amount`, explicit `0` = free) and a
+   non-blank invalid value (`invalid`). Invalid input is rejected with an
+   inline error and blocks submit; it is never coerced to a free placement.
+   `chargeAmountFromPercent` clamps at 0 so a >100% cut cannot synthesise a
+   negative amount.
+4. **The resolved default is validated.** `resolveDefault` parses its result
+   with `inventoryAssetChargeDefaultSchema`, so a purchase price (or stored
+   amount) above `MAX_MONEY_DZD` fails with a clear error instead of emitting a
+   payload the wire contract rejects.
+5. **A live default refetch never overwrites an edit.** The prefill effect only
+   applies while the amount field is untouched (`amountTouched`); a correction
+   landing in another tab updates only an untouched field.
+6. **Project totals are rounded at the boundary** with the shared
+   `roundMoney` helper (`../company/report.helpers`), the same one the report
+   aggregators use, so `0.1 + 0.2` cannot drift.
+7. **Revisions are inspectable.** `AssetChargeHistory` renders each revision's
+   from → to amount, actor, timestamp and reason, instead of collapsing the
+   whole chain to a "corrected" badge.
+8. **Loading, error and empty are distinct.** The history shows a loading line,
+   an error surface, or the genuine empty state — never an empty list standing
+   in for a pending/failed query.
+9. **The rollback test exercises rollback.** The in-memory transaction double
+   snapshots the charge/revision/movement/location state and restores it on
+   throw; a `failAfterCharge` hook inserts the charge and then fails. The test
+   asserts the charge, revision, movement and location change are all gone. The
+   invalid-amount case is kept as its own (pre-insert) test.
+10. **Money records outlive a project delete.** `inventory_asset_charge.project_id`
+    is `ON DELETE RESTRICT` (was CASCADE). Chosen over `SET NULL` because the
+    column is NOT NULL and the project reference is part of the charge's
+    identity, and over keeping a nulled row because a charge without a project
+    is not a project charge. No project-delete path exists in the app today, so
+    there is no behavior regression; a delete now fails loudly instead of
+    destroying the record. Pinned by a schema-definitions test and a real
+    sqlite FK test.
+
+### Trade-offs / accepted
+
+- `inventory_asset_charge.asset_unit_id` remains `ON DELETE CASCADE`: the chain
+  belongs to the unit, and a charge for a deleted unit has no subject. Only the
+  project FK (the finding) was changed.
+- `purchasePriceDzd` in the default response shares the same contract bound and
+  is validated by the same `inventoryAssetChargeDefaultSchema` parse.

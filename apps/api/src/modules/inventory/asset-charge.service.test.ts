@@ -75,6 +75,21 @@ describe("AssetChargeService — placement defaults (#413)", () => {
     expect(() => service.resolveDefault({ assetUnitId: "missing" })).toThrowError(/الأصل/)
     expect(() => service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "nope" }, AUDIT)).toThrowError(/المشروع/)
   })
+
+  it("fails clearly when the resolved default is above the shared money bound", () => {
+    // A corrupt/oversized purchase price must not reach the wire as an invalid
+    // payload: the resolved default is validated against the contract's bound.
+    const { service } = createHarness(
+      createLookup({
+        getAssetUnitById: (id) => ({ id, purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1 }),
+      }),
+    )
+
+    expect(() => service.resolveDefault({ assetUnitId: "asset-1" })).toThrowError(/خارج النطاق/)
+    expect(() =>
+      service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a" }, AUDIT),
+    ).toThrowError(/خارج النطاق/)
+  })
 })
 
 describe("AssetChargeService — chain, corrections and total (#413)", () => {
@@ -165,6 +180,16 @@ describe("AssetChargeService — chain, corrections and total (#413)", () => {
 
     expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(42_500)
     expect(service.listByProject({ projectId: "project-b" }).totalDzd).toBe(999_000)
+  })
+
+  it("rounds the project total at the money boundary (0.1 + 0.2 = 0.3)", () => {
+    // Without the roundMoney boundary the raw sum leaks float noise
+    // (0.30000000000000004) into the project cost view.
+    const { service } = createHarness()
+    service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 0.1 }, AUDIT)
+    service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 0.2 }, AUDIT)
+
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(0.3)
   })
 
   it("returns a 404 for an unknown project in the cost view", () => {

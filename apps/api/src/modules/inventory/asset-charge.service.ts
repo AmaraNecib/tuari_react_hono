@@ -1,4 +1,5 @@
 import {
+  inventoryAssetChargeDefaultSchema,
   inventoryAssetChargeUpdateInputSchema,
   inventoryAssetChargeVoidInputSchema,
   nonNegativePaymentAmountSchema,
@@ -9,6 +10,7 @@ import {
 } from "@tuari/contracts"
 
 import { createAlgeriaTimestamp } from "../company/company-time"
+import { roundMoney } from "../company/report.helpers"
 import type { MutationAuditContext } from "../company/company.types"
 import { InventoryError } from "./inventory.errors"
 import type { InventoryAssetChargeRepository } from "./asset-charge.repository"
@@ -62,12 +64,23 @@ export class AssetChargeService {
     }
 
     const lastAmount = this.repository.getLastChargeAmount(asset.id)
-    return {
+    // Validate the RESOLVED default against the same money bound the wire
+    // contract uses. A purchase price (or, defensively, a stored last amount)
+    // above `MAX_MONEY_DZD` must fail here with a clear error instead of
+    // reaching the response schema and breaking the payload.
+    const resolved = inventoryAssetChargeDefaultSchema.safeParse({
       assetUnitId: asset.id,
       amountDzd: lastAmount ?? asset.purchasePriceDzd,
       purchasePriceDzd: asset.purchasePriceDzd,
       source: lastAmount === null ? "PURCHASE_PRICE" : "LAST_CHARGE",
+    })
+    if (!resolved.success) {
+      throw new InventoryError("VALIDATION", "المبلغ الافتراضي للاحتساب خارج النطاق المسموح به.", [
+        { field: "amountDzd", message: "المبلغ الافتراضي للاحتساب خارج النطاق المسموح به." },
+      ])
     }
+
+    return resolved.data
   }
 
   /** getDefault — entity result wrapper for the prefill procedure. */
@@ -134,7 +147,9 @@ export class AssetChargeService {
     const charges = this.repository
       .listChargesByProject(input.projectId)
       .filter((charge) => charge.status === "LIVE")
-    const totalDzd = charges.reduce((sum, charge) => sum + charge.amountDzd, 0)
+    // Round at the money boundary (the shared report helper) so float noise
+    // such as `0.1 + 0.2` never leaks into the project total.
+    const totalDzd = roundMoney(charges.reduce((sum, charge) => sum + charge.amountDzd, 0))
 
     return { projectId: input.projectId, totalDzd, charges }
   }

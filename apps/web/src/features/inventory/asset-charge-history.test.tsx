@@ -101,4 +101,67 @@ describe("AssetChargeHistory (#413)", () => {
 
     expect(screen.getByText("لا توجد احتسابات لهذا الأصل بعد.")).toBeTruthy()
   })
+
+  it("shows a loading state instead of the empty list while the query is pending", () => {
+    mocks.charges.mockReturnValue({ isPending: true, data: undefined })
+    render(<AssetChargeHistory assetUnitId="asset-1" />)
+
+    fireEvent.click(screen.getByText("سجل الاحتساب"))
+
+    expect(screen.getByText("جارٍ تحميل سجل الاحتساب...")).toBeTruthy()
+    expect(screen.queryByText("لا توجد احتسابات لهذا الأصل بعد.")).toBeNull()
+  })
+
+  it("shows a load error instead of the empty list when the query fails", () => {
+    mocks.charges.mockReturnValue({ isError: true, data: undefined })
+    render(<AssetChargeHistory assetUnitId="asset-1" />)
+
+    fireEvent.click(screen.getByText("سجل الاحتساب"))
+
+    expect(screen.getByRole("alert")).toBeTruthy()
+    expect(screen.getByText("تعذر تحميل سجل الاحتساب. حاول مرة أخرى.")).toBeTruthy()
+    expect(screen.queryByText("لا توجد احتسابات لهذا الأصل بعد.")).toBeNull()
+  })
+
+  it("shows each correction's from → to amount, actor, time and reason", () => {
+    mocks.charges.mockReturnValue({
+      data: {
+        items: [
+          makeCharge({
+            revisions: [
+              {
+                id: "rev-1",
+                chargeId: "charge-1",
+                previousAmountDzd: 100_000,
+                newAmountDzd: 75_000,
+                reason: "خصم",
+                actorUserId: "user-1",
+                actorLabel: "مدير",
+                createdAt,
+              },
+              {
+                id: "rev-2",
+                chargeId: "charge-1",
+                previousAmountDzd: 75_000,
+                newAmountDzd: null,
+                reason: null,
+                actorUserId: "user-1",
+                actorLabel: "مدير",
+                createdAt,
+              },
+            ],
+          }),
+        ],
+      },
+    })
+    render(<AssetChargeHistory assetUnitId="asset-1" />)
+
+    fireEvent.click(screen.getByText("سجل الاحتساب"))
+
+    expect(screen.getByText(/تصحيح من 100000 إلى 75000/)).toBeTruthy()
+    expect(screen.getByText(/إلغاء من 75000 إلى 0/)).toBeTruthy()
+    // The actor and the reason are not collapsed into a single "corrected" badge.
+    expect(screen.getAllByText(/مدير/).length).toBe(2)
+    expect(screen.getByText(/خصم/)).toBeTruthy()
+  })
 })

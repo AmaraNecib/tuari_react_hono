@@ -27,6 +27,10 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
   const voidMutation = useVoidAssetChargeMutation()
   const charges = query.data?.items ?? []
   const isPending = updateMutation.isPending || voidMutation.isPending
+  // Loading, error and a genuinely empty chain are three different states: an
+  // empty list must never stand in for "still loading" or "the query failed".
+  const isLoading = query.isPending && query.data === undefined
+  const isLoadError = query.isError && query.data === undefined
 
   const startEdit = (chargeId: string, amountDzd: number) => {
     setEditingId(chargeId)
@@ -54,7 +58,13 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
 
       {expanded ? (
         <div className="mt-1 space-y-1" data-testid="asset-charge-history">
-          {charges.length === 0 ? (
+          {isLoading ? (
+            <p className="text-xs text-muted-foreground">{t("inventory.chargeHistory.loading")}</p>
+          ) : isLoadError ? (
+            <p className="text-xs text-destructive" role="alert">
+              {t("inventory.chargeHistory.loadError")}
+            </p>
+          ) : charges.length === 0 ? (
             <p className="text-xs text-muted-foreground">{t("inventory.chargeHistory.empty")}</p>
           ) : null}
           {charges.map((charge) => {
@@ -83,6 +93,26 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
                     )}
                   </span>
                 </div>
+
+                {charge.revisions.length > 0 ? (
+                  <ul className="mt-1 space-y-0.5 border-t border-line/50 pt-1" data-testid="charge-revisions">
+                    {charge.revisions.map((revision) => (
+                      <li key={revision.id} className="text-[11px] leading-4 text-muted-foreground">
+                        <span>
+                          {revision.newAmountDzd === null
+                            ? t("inventory.chargeHistory.revisionVoid", { from: revision.previousAmountDzd })
+                            : t("inventory.chargeHistory.revisionCorrected", {
+                                from: revision.previousAmountDzd,
+                                to: revision.newAmountDzd,
+                              })}
+                        </span>
+                        <span> · {revision.actorLabel ?? t("inventory.chargeHistory.unknownActor")}</span>
+                        <span> · {new Date(revision.createdAt).toLocaleString("ar-DZ")}</span>
+                        {revision.reason ? <span> · {revision.reason}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
 
                 {isEditing ? (
                   <div className="mt-1 flex flex-wrap items-center gap-1">

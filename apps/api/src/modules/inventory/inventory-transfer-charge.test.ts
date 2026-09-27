@@ -13,7 +13,7 @@ import { createInMemoryAssetChargeRepository } from "./adapters/in-memory-asset-
  * "warehouse writes none" and "same placement reference" rules are pinned
  * end-to-end without a database.
  */
-function createHarness() {
+function createHarness(options?: { failAfterCharge?: boolean }) {
   const chargeRepository = createInMemoryAssetChargeRepository()
   const movements: Array<Record<string, unknown>> = []
 
@@ -51,8 +51,42 @@ function createHarness() {
     listMovementsByAssetUnitId: () => movements,
     getEntryById: () => ({ id: "entry-1", invoiceGroupId: "group-1" }),
     getInvoiceGroupById: () => ({ id: "group-1" }),
-    withTransaction: <T,>(callback: () => T) => callback(),
+    // A real transaction double: snapshot the mutable stores and restore them
+    // when the callback throws, so a failure AFTER the charge insert leaves
+    // nothing behind (sqlite's runSyncTransaction does the same).
+    withTransaction: <T,>(callback: () => T): T => {
+      const chargeSnapshot = new Map(chargeRepository._charges)
+      const revisionSnapshot = new Map(chargeRepository._revisions)
+      const movementSnapshot = [...movements]
+      const location = {
+        currentWarehouseId: asset.currentWarehouseId,
+        currentProjectId: asset.currentProjectId,
+      }
+
+      try {
+        return callback()
+      } catch (error) {
+        chargeRepository._charges.clear()
+        for (const [id, charge] of chargeSnapshot) chargeRepository._charges.set(id, charge)
+        chargeRepository._revisions.clear()
+        for (const [id, revision] of revisionSnapshot) chargeRepository._revisions.set(id, revision)
+        movements.splice(0, movements.length, ...movementSnapshot)
+        asset.currentWarehouseId = location.currentWarehouseId
+        asset.currentProjectId = location.currentProjectId
+        throw error
+      }
+    },
   } as unknown as InventoryRepository
+
+  if (options?.failAfterCharge) {
+    // Insert the charge first, then fail — the fee is provably in the store
+    // before the transaction rolls it back.
+    const insertCharge = chargeRepository.createCharge.bind(chargeRepository)
+    chargeRepository.createCharge = (data) => {
+      insertCharge(data)
+      throw new Error("commit failed after the charge insert")
+    }
+  }
 
   const chargeService = new AssetChargeService(chargeRepository, repository)
   const service = new InventoryService(
@@ -63,7 +97,7 @@ function createHarness() {
     chargeService,
   )
 
-  return { service, chargeRepository, movements }
+  return { service, chargeRepository, movements, asset }
 }
 
 const AUDIT = { actorUserId: "user-1", actorLabel: "مدير", transactionId: "tx-1" }
@@ -125,17 +159,128 @@ describe("InventoryService.transferAsset — placement charges (#413)", () => {
     expect(chargeRepository._charges.size).toBe(2)
   })
 
-  it("rolls the charge back with the transfer when the charge is rejected", () => {
+  it("rejects an invalid amount before writing any charge", () => {
     const { service, chargeRepository } = createHarness()
 
     // A non-finite amount passes the wire gate only in a mis-wired caller; the
-    // service must reject it and the transfer transaction must leave no charge.
+    // service must reject it and leave no charge behind.
     expect(() =>
       service.transferAsset(
         { assetUnitId: "asset-1", toProjectId: "project-a", chargeAmountDzd: Number.NaN },
         AUDIT,
       ),
     ).toThrowError(/مبلغ صالح/)
+    expect(chargeRepository._charges.size).toBe(0)
+  })
+
+  it("rolls the charge back with the transfer when a later step fails", () => {
+    const { service, chargeRepository, movements, asset } = createHarness({ failAfterCharge: true })
+
+    // The charge is inserted and THEN the transaction fails; the rollback must
+    // discard the charge, the movement and the location change together.
+    expect(() =>
+      service.transferAsset({ assetUnitId: "asset-1", toProjectId: "project-a" }, AUDIT),
+    ).toThrowError(/commit failed after the charge insert/)
+
+    expect(chargeRepository._charges.size).toBe(0)
+    expect(chargeRepository._revisions.size).toBe(0)
+    expect(movements).toHaveLength(0)
+    expect(asset.currentWarehouseId).toBe("wh-1")
+    expect(asset.currentProjectId).toBeNull()
+  })
+})
+
+describe("InventoryService.createInvoiceGroup — a unit created on a project is charged (#413)", () => {
+  function createInvoiceHarness() {
+    const chargeRepository = createInMemoryAssetChargeRepository()
+    const createdAssets = new Map<string, { id: string; purchasePriceDzd: number; currentProjectId: string | null }>()
+    const movements: Array<Record<string, unknown>> = []
+
+    const repository = {
+      warehouseExists: () => true,
+      projectExists: (id: string) => id.startsWith("project-"),
+      externalCounterpartyExists: () => true,
+      getLatestInvoiceNumber: () => null,
+      getItemDefinitionById: (id: string) =>
+        id === "def-1" ? { id, name: "مثقاب", itemType: "ASSET", unit: null, isActive: true } : null,
+      withTransaction: <T,>(callback: () => T) => callback(),
+      createInvoiceGroup: (data: Record<string, unknown>) => ({ id: "group-1", ...data }),
+      createEntry: (data: Record<string, unknown>) => ({ id: "entry-1", ...data }),
+      createAssetUnit: (data: { id?: string; purchasePriceDzd: number; currentProjectId: string | null }) => {
+        const created = { ...data, id: `asset-${createdAssets.size + 1}` }
+        createdAssets.set(created.id, created)
+        return created
+      },
+      createMovement: (data: Record<string, unknown>) => {
+        const movement = { id: `movement-${movements.length + 1}`, ...data }
+        movements.push(movement)
+        return movement
+      },
+      getAssetUnitById: (id: string) => createdAssets.get(id) ?? null,
+      listEntriesByInvoiceGroupId: () => [],
+      listAttachmentsByInvoiceGroupId: () => [],
+      listMovementsByInvoiceGroupId: () => movements,
+      listConsumableBalancesByInvoiceGroupId: () => [],
+    } as unknown as InventoryRepository
+
+    const chargeService = new AssetChargeService(chargeRepository, repository)
+    const service = new InventoryService(
+      repository,
+      {} as InventoryAttachmentStorage,
+      undefined,
+      undefined,
+      chargeService,
+    )
+
+    return { service, chargeRepository, movements }
+  }
+
+  it("charges the purchase price for an asset created directly on a project", () => {
+    const { service, chargeRepository, movements } = createInvoiceHarness()
+
+    service.createInvoiceGroup(
+      {
+        projectId: "project-a",
+        entries: [
+          {
+            kind: "ASSET",
+            itemDefinitionId: "def-1",
+            projectId: "project-a",
+            assets: [{ assetName: "مثقاب", purchasePriceDzd: 100_000 }],
+          },
+        ],
+      },
+      AUDIT,
+    )
+
+    const charges = [...chargeRepository._charges.values()]
+    expect(charges).toHaveLength(1)
+    expect(charges[0]).toMatchObject({
+      projectId: "project-a",
+      amountDzd: 100_000,
+      status: "LIVE",
+      movementId: (movements[0] as { id: string }).id,
+    })
+  })
+
+  it("writes no charge for an asset created on a warehouse", () => {
+    const { service, chargeRepository } = createInvoiceHarness()
+
+    service.createInvoiceGroup(
+      {
+        warehouseId: "wh-1",
+        entries: [
+          {
+            kind: "ASSET",
+            itemDefinitionId: "def-1",
+            warehouseId: "wh-1",
+            assets: [{ assetName: "مثقاب", purchasePriceDzd: 100_000 }],
+          },
+        ],
+      },
+      AUDIT,
+    )
+
     expect(chargeRepository._charges.size).toBe(0)
   })
 })

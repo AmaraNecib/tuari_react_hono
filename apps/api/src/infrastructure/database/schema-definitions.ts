@@ -481,7 +481,7 @@ export const schemaStatements = [
     CONSTRAINT "inventory_asset_charge_asset_unit_id_fkey"
       FOREIGN KEY ("asset_unit_id") REFERENCES "inventory_asset_unit" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "inventory_asset_charge_project_id_fkey"
-      FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+      FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "inventory_asset_charge_movement_id_fkey"
       FOREIGN KEY ("movement_id") REFERENCES "inventory_movement" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "inventory_asset_charge_amount_check"
