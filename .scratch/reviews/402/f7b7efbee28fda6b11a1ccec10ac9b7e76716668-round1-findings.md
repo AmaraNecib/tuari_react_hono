@@ -2,9 +2,12 @@
 
 - mode: remote (parent owns push/PR; lane does not push or merge)
 - branch: `fix/sqlcipher-fallback`
-- base SHA (merge-base with `develop`): `17911dc14211730bec6982707f518b4c84dafa19`
-- reviewed code SHA: `2dc7032468592f240a88552d770447f437847ed1`
-- previous code SHA (round-1 findings were raised against): `83f3f3ce7a472e7b58cc7e656388096716f4ae3f`
+- base SHA (merge-base with `develop`): `183d2226ec50dab56a45d25fde6f72f319d5a267`
+- reviewed code SHA: `9aea1939db2ab78fa3de46b9d8b1c4e7b61da249`
+- previous code SHA (round-1 findings were raised against): `2d84a28c40d5be764330f898d16d7d534fb7becd`
+- evidence re-pinned to final code SHA: `f7b7efbee28fda6b11a1ccec10ac9b7e76716668`
+  (the only change since is the round-2 staging fix, covered in
+  `f7b7efbee28fda6b11a1ccec10ac9b7e76716668-round2-findings.md`)
 - review tier: High-assurance (licensing/crypto + packaging)
 
 The hosted Greptile review on PR #409 scored 4/5 and raised three build/packaging
@@ -121,7 +124,7 @@ typecheck (ephemeral build).
 
 ## Commit
 
-- `2dc7032468592f240a88552d770447f437847ed1` - 8 files changed:
+- `9aea1939db2ab78fa3de46b9d8b1c4e7b61da249` - 8 files changed:
   `apps/desktop/package.json`, `apps/desktop/src-tauri/tauri.conf.json`,
   `apps/desktop/scripts/build-sidecar.mjs`,
   `apps/desktop/scripts/sqlcipher-availability.mjs`,
