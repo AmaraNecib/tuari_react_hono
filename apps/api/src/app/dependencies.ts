@@ -20,6 +20,8 @@ import { FinanceService } from "../modules/company/finance.service";
 import { AuditService } from "../modules/company/audit.service";
 import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
 import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
+import { createAssetChargeRepository } from "../modules/inventory/adapters/sqlite-asset-charge.repository";
+import { AssetChargeService } from "../modules/inventory/asset-charge.service";
 import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { InvoiceModule } from "../modules/invoice/invoice.module";
@@ -177,6 +179,12 @@ export async function createAppDependencies(
     // adapters are introduced in a follow-up phase.
     const companyRepository = createCompanyRepository(sharedDatabase, appConfig, connectionLock);
     const inventoryRepository = createInventoryRepository(sharedDatabase, connectionLock);
+    // #413: project charges for asset placements. Shares the same connection
+    // lock so a charge write inside the transfer transaction joins it.
+    const assetChargeService = new AssetChargeService(
+      createAssetChargeRepository(sharedDatabase, connectionLock, db),
+      inventoryRepository,
+    );
     const accountRepository = new DrizzleAccountRepository(db, connectionLock);
 
     // Construct each domain service off the same `WorkspaceMutationContext`
@@ -242,6 +250,7 @@ export async function createAppDependencies(
         new InventoryAttachmentStorage(appConfig.attachmentsRootPath),
         companyService,
         companyRepository,
+        assetChargeService,
       ),
       sessionService: new SessionService(auth, permissionResolver),
       recoveryKeyService,

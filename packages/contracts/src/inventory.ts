@@ -9,6 +9,7 @@ import {
   nullableTextSchema,
   timestampSchema,
 } from "./core";
+import { nonNegativePaymentAmountSchema } from "./payment";
 
 /** inventoryItemDefinitionSchema - Item definition schema. */
 export const inventoryItemDefinitionSchema = z.object({
@@ -85,11 +86,65 @@ export const inventoryMovementSchema = z.object({
   createdAt: timestampSchema,
 });
 
+/** inventoryAssetChargeRevisionSchema - A recorded correction or void of a charge. */
+export const inventoryAssetChargeRevisionSchema = z.object({
+  id: entityIdSchema,
+  chargeId: entityIdSchema,
+  previousAmountDzd: nonNegativePaymentAmountSchema,
+  /** `null` records a void; a number records a corrected amount. */
+  newAmountDzd: nonNegativePaymentAmountSchema.nullable(),
+  reason: nullableTextSchema,
+  actorUserId: entityIdSchema.nullable(),
+  actorLabel: nullableTextSchema,
+  createdAt: timestampSchema,
+});
+
+/** inventoryAssetChargeSchema - A charge for a unit's placement on a project. */
+export const inventoryAssetChargeSchema = z.object({
+  id: entityIdSchema,
+  assetUnitId: entityIdSchema,
+  projectId: entityIdSchema,
+  /** Project display name when the adapter can resolve it. */
+  projectName: nullableTextSchema,
+  /** The transfer movement that created this placement (null for legacy rows). */
+  movementId: entityIdSchema.nullable(),
+  amountDzd: nonNegativePaymentAmountSchema,
+  status: z.enum(["LIVE", "VOID"]),
+  voidedAt: timestampSchema.nullable(),
+  voidReason: nullableTextSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+/** inventoryAssetChargeDetailSchema - charge plus its correction history. */
+export const inventoryAssetChargeDetailSchema = inventoryAssetChargeSchema.extend({
+  revisions: z.array(inventoryAssetChargeRevisionSchema),
+});
+
+/** inventoryProjectChargesSchema - a project's live charges plus their total. */
+export const inventoryProjectChargesSchema = z.object({
+  projectId: entityIdSchema,
+  totalDzd: nonNegativePaymentAmountSchema,
+  charges: z.array(inventoryAssetChargeSchema),
+});
+
+/**
+ * inventoryAssetChargeDefaultSchema - the amount a new placement should
+ * prefill: the unit's last charge, else its purchase price.
+ */
+export const inventoryAssetChargeDefaultSchema = z.object({
+  assetUnitId: entityIdSchema,
+  amountDzd: nonNegativePaymentAmountSchema,
+  purchasePriceDzd: nonNegativePaymentAmountSchema,
+  source: z.enum(["LAST_CHARGE", "PURCHASE_PRICE"]),
+});
+
 /** inventoryAssetDetailSchema - Asset detail schema. */
 export const inventoryAssetDetailSchema = z.object({
   asset: inventoryAssetUnitSchema,
   invoiceGroup: z.lazy(() => inventoryInvoiceGroupSchema),
   movements: z.array(inventoryMovementSchema),
+  charges: z.array(inventoryAssetChargeDetailSchema),
 });
 
 /** inventoryLocationContentsSchema - Location contents schema. */
@@ -292,6 +347,12 @@ export const inventoryAssetTransferInputSchema = z.object({
   assetUnitId: entityIdSchema,
   toWarehouseId: entityIdSchema.nullable().optional(),
   toProjectId: entityIdSchema.nullable().optional(),
+  /**
+   * Charge for a project placement. Omitted/null → the server resolves the
+   * default (last charge for the unit, else purchase price). An explicit `0`
+   * is a free placement. Ignored for warehouse destinations, which never charge.
+   */
+  chargeAmountDzd: nonNegativePaymentAmountSchema.nullable().optional(),
   note: z.string().trim().max(1000).nullable().optional(),
   occurredAt: timestampSchema.optional(),
 }).superRefine((input, ctx) => {
@@ -301,6 +362,34 @@ export const inventoryAssetTransferInputSchema = z.object({
   if (hasWarehouse === hasProject) {
     ctx.addIssue({ code: "custom", message: "اختر وجهة واحدة فقط للتحويل.", path: ["toWarehouseId"] })
   }
+});
+
+/** inventoryAssetChargeDefaultInputSchema - Resolve the prefill for a placement. */
+export const inventoryAssetChargeDefaultInputSchema = z.object({
+  assetUnitId: entityIdSchema,
+});
+
+/** inventoryAssetChargesListByUnitInputSchema - List a unit's charge chain. */
+export const inventoryAssetChargesListByUnitInputSchema = z.object({
+  assetUnitId: entityIdSchema,
+});
+
+/** inventoryAssetChargesListByProjectInputSchema - List a project's charges + total. */
+export const inventoryAssetChargesListByProjectInputSchema = z.object({
+  projectId: entityIdSchema,
+});
+
+/** inventoryAssetChargeUpdateInputSchema - Correct a past charge amount. */
+export const inventoryAssetChargeUpdateInputSchema = z.object({
+  chargeId: entityIdSchema,
+  amountDzd: nonNegativePaymentAmountSchema,
+  reason: z.string().trim().max(1000).nullable().optional(),
+});
+
+/** inventoryAssetChargeVoidInputSchema - Void a past charge (keeps history). */
+export const inventoryAssetChargeVoidInputSchema = z.object({
+  chargeId: entityIdSchema,
+  reason: z.string().trim().max(1000).nullable().optional(),
 });
 
 /** inventoryConsumableTransferInputSchema - Consumable transfer input schema. */
@@ -393,6 +482,26 @@ export type InventoryConsumableBalance = z.infer<typeof inventoryConsumableBalan
 export type InventoryMovement = z.infer<typeof inventoryMovementSchema>;
 /** InventoryAssetDetail - Inventory asset detail. */
 export type InventoryAssetDetail = z.infer<typeof inventoryAssetDetailSchema>;
+/** InventoryAssetCharge - A charge for a unit's placement on a project. */
+export type InventoryAssetCharge = z.infer<typeof inventoryAssetChargeSchema>;
+/** InventoryAssetChargeRevision - A recorded correction/void of a charge. */
+export type InventoryAssetChargeRevision = z.infer<typeof inventoryAssetChargeRevisionSchema>;
+/** InventoryAssetChargeDetail - A charge plus its correction history. */
+export type InventoryAssetChargeDetail = z.infer<typeof inventoryAssetChargeDetailSchema>;
+/** InventoryProjectCharges - A project's live charges plus their total. */
+export type InventoryProjectCharges = z.infer<typeof inventoryProjectChargesSchema>;
+/** InventoryAssetChargeDefault - Resolved prefill for a new placement charge. */
+export type InventoryAssetChargeDefault = z.infer<typeof inventoryAssetChargeDefaultSchema>;
+/** InventoryAssetChargeDefaultInput - Input for the default resolution. */
+export type InventoryAssetChargeDefaultInput = z.infer<typeof inventoryAssetChargeDefaultInputSchema>;
+/** InventoryAssetChargesListByUnitInput - Input for listing a unit's charges. */
+export type InventoryAssetChargesListByUnitInput = z.infer<typeof inventoryAssetChargesListByUnitInputSchema>;
+/** InventoryAssetChargesListByProjectInput - Input for listing a project's charges. */
+export type InventoryAssetChargesListByProjectInput = z.infer<typeof inventoryAssetChargesListByProjectInputSchema>;
+/** InventoryAssetChargeUpdateInput - Input for correcting a charge amount. */
+export type InventoryAssetChargeUpdateInput = z.infer<typeof inventoryAssetChargeUpdateInputSchema>;
+/** InventoryAssetChargeVoidInput - Input for voiding a charge. */
+export type InventoryAssetChargeVoidInput = z.infer<typeof inventoryAssetChargeVoidInputSchema>;
 /** InventoryLocationContents - Inventory location contents. */
 export type InventoryLocationContents = z.infer<typeof inventoryLocationContentsSchema>;
 /** InventoryEntry - Inventory entry. */

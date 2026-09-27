@@ -81,6 +81,9 @@ export const workspaceQueryKeys = {
   // ── parameterized detail keys (invalidated directly at mutation sites) ──
   inventoryInvoiceGroup: (userId: UserId, invoiceId: string) => ["phase1", "workspace-domain", "inventory-invoice-groups", userId, invoiceId] as const,
   inventoryAsset: (userId: UserId, assetId: string) => ["phase1", "workspace-domain", "inventory-asset", userId, assetId] as const,
+  inventoryAssetCharges: (userId: UserId, assetUnitId: string) => ["phase1", "workspace-domain", "inventory-asset-charges", userId, assetUnitId] as const,
+  inventoryAssetChargeDefault: (userId: UserId, assetUnitId: string) => ["phase1", "workspace-domain", "inventory-asset-charge-default", userId, assetUnitId] as const,
+  inventoryProjectCharges: (userId: UserId, projectId: string) => ["phase1", "workspace-domain", "inventory-project-charges", userId, projectId] as const,
   inventoryLocationContents: (userId: UserId, input: { warehouseId?: string; projectId?: string }) =>
     ["phase1", "workspace-domain", "inventory-location-contents", userId, input] as const,
   employeeDebtAccount: (userId: UserId, employeeId: string) => ["phase1", "workspace-domain", "employee-debt-account", userId, employeeId] as const,

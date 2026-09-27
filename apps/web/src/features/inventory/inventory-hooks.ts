@@ -1,6 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type {
   AppError,
+  InventoryAssetChargeDefault,
+  InventoryAssetChargeDetail,
+  InventoryAssetChargeUpdateInput,
+  InventoryAssetChargeVoidInput,
   InventoryAssetDetail,
   ExternalCounterparty,
   InventoryLocationContents,
@@ -12,6 +16,7 @@ import type {
   InventoryOutboundTransfer,
   InventoryOutboundTransferCreateInput,
   InventoryInvoiceGroupRecordPaymentInput,
+  InventoryProjectCharges,
   Project,
   Warehouse,
 } from "@tuari/contracts"
@@ -195,11 +200,17 @@ export function useTransferInventoryAssetMutation() {
 
   return useMutation({
     mutationKey: ["inventory", "assets", "transfer"],
-    mutationFn: async (input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }) => requireEntitySuccess(await rpcClient.inventoryAssetsTransfer(input)),
-    onSuccess: async ({ item, message }) => {
+    mutationFn: async (input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; chargeAmountDzd?: number | null; note?: string | null; occurredAt?: string }) => requireEntitySuccess(await rpcClient.inventoryAssetsTransfer(input)),
+    onSuccess: async ({ item, message }, variables) => {
       const userId = getCachedSessionUserId(queryClient)
       await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAsset(uid, item.asset.id))
       await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryInvoiceGroup(uid, item.invoiceGroup.id))
+      // The placement charge changed the unit's chain and the project's total.
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetCharges(uid, item.asset.id))
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetChargeDefault(uid, item.asset.id))
+      if (variables.toProjectId) {
+        await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryProjectCharges(uid, variables.toProjectId!))
+      }
       // Invalidate the current location where asset was transferred
       if (item.asset.currentWarehouseId || item.asset.currentProjectId) {
         await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryLocationContents(uid, { warehouseId: item.asset.currentWarehouseId ?? undefined, projectId: item.asset.currentProjectId ?? undefined }))
@@ -209,6 +220,79 @@ export function useTransferInventoryAssetMutation() {
     },
     onError: (error) => {
       showErrorToast(buildErrorMessage(error, "تعذر تحويل الأصل."))
+    },
+  })
+}
+
+/** Resolves the prefill amount for a project placement (#413). */
+export function useAssetChargeDefaultQuery(assetUnitId: string | undefined) {
+  return useWorkspaceScopedQuery({
+    key: (userId) => workspaceQueryKeys.inventoryAssetChargeDefault(userId, assetUnitId ?? "missing"),
+    enabled: Boolean(assetUnitId),
+    queryFn: async (): Promise<InventoryAssetChargeDefault> => {
+      const result = await rpcClient.inventoryAssetChargeDefault({ assetUnitId: assetUnitId! })
+      return requireEntitySuccess(result).item
+    },
+  })
+}
+
+/** A unit's charge chain, newest first (#413). */
+export function useAssetChargesByUnitQuery(assetUnitId: string | undefined) {
+  return useWorkspaceScopedQuery({
+    key: (userId) => workspaceQueryKeys.inventoryAssetCharges(userId, assetUnitId ?? "missing"),
+    enabled: Boolean(assetUnitId),
+    queryFn: async (): Promise<{ items: InventoryAssetChargeDetail[] }> => rpcClient.inventoryAssetChargesListByUnit({ assetUnitId: assetUnitId! }),
+  })
+}
+
+/** A project's live charges plus their total — consumed by the project cost view (#414). */
+export function useProjectChargesQuery(projectId: string | undefined) {
+  return useWorkspaceScopedQuery({
+    key: (userId) => workspaceQueryKeys.inventoryProjectCharges(userId, projectId ?? "missing"),
+    enabled: Boolean(projectId),
+    queryFn: async (): Promise<InventoryProjectCharges> => {
+      const result = await rpcClient.inventoryAssetChargesListByProject({ projectId: projectId! })
+      return requireEntitySuccess(result).item
+    },
+  })
+}
+
+/** Corrects a past charge; the revision keeps from → to + reason (#413). */
+export function useUpdateAssetChargeMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["inventory", "asset-charges", "update"],
+    mutationFn: async (input: InventoryAssetChargeUpdateInput) => requireEntitySuccess(await rpcClient.inventoryAssetChargesUpdate(input)),
+    onSuccess: async ({ item, message }) => {
+      const userId = getCachedSessionUserId(queryClient)
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetCharges(uid, item.assetUnitId))
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryProjectCharges(uid, item.projectId))
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetChargeDefault(uid, item.assetUnitId))
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(buildErrorMessage(error, "تعذر تصحيح الاحتساب."))
+    },
+  })
+}
+
+/** Voids a past charge while keeping its history (#413). */
+export function useVoidAssetChargeMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["inventory", "asset-charges", "void"],
+    mutationFn: async (input: InventoryAssetChargeVoidInput) => requireEntitySuccess(await rpcClient.inventoryAssetChargesVoid(input)),
+    onSuccess: async ({ item, message }) => {
+      const userId = getCachedSessionUserId(queryClient)
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetCharges(uid, item.assetUnitId))
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryProjectCharges(uid, item.projectId))
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetChargeDefault(uid, item.assetUnitId))
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(buildErrorMessage(error, "تعذر إلغاء الاحتساب."))
     },
   })
 }

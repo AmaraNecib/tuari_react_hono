@@ -134,6 +134,48 @@ export const inventoryMovement = sqliteTable("inventory_movement", {
   createdAt: text("created_at").notNull(),
 });
 
+/** Charges booked to a project when an asset unit is placed there (#413). */
+export const inventoryAssetCharge = sqliteTable("inventory_asset_charge", {
+  id: text("id").primaryKey(),
+  assetUnitId: text("asset_unit_id")
+    .notNull()
+    .references(() => inventoryAssetUnit.id, { onDelete: "cascade" }),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => project.id, { onDelete: "cascade" }),
+  movementId: text("movement_id").references(() => inventoryMovement.id, {
+    onDelete: "set null",
+  }),
+  amountDzd: real("amount_dzd").notNull(),
+  status: text("status").notNull().default("LIVE"),
+  voidedAt: text("voided_at"),
+  voidedBy: text("voided_by"),
+  voidReason: text("void_reason"),
+  actorUserId: text("actor_user_id"),
+  actorLabel: text("actor_label"),
+  transactionId: text("transaction_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/** Correction/void history for a charge: previous → new amount + reason (#413). */
+export const inventoryAssetChargeRevision = sqliteTable(
+  "inventory_asset_charge_revision",
+  {
+    id: text("id").primaryKey(),
+    chargeId: text("charge_id")
+      .notNull()
+      .references(() => inventoryAssetCharge.id, { onDelete: "cascade" }),
+    previousAmountDzd: real("previous_amount_dzd").notNull(),
+    newAmountDzd: real("new_amount_dzd"),
+    reason: text("reason"),
+    actorUserId: text("actor_user_id"),
+    actorLabel: text("actor_label"),
+    transactionId: text("transaction_id"),
+    createdAt: text("created_at").notNull(),
+  },
+);
+
 /** File attachments linked to invoice groups. */
 export const inventoryInvoiceAttachment = sqliteTable(
   "inventory_invoice_attachment",

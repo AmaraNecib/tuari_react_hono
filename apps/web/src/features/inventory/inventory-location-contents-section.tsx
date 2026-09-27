@@ -9,6 +9,7 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 
 import { useInventoryLocationContentsQuery } from "./inventory-hooks"
 import { TransferItemDialog, type TransferTarget } from "./transfer-item-dialog"
+import { AssetChargeHistory } from "./asset-charge-history"
 
 /**
  * @description Component
@@ -37,6 +38,7 @@ export function InventoryLocationContentsSection({ warehouseId, projectId }: { w
               <div className="min-w-0">
                 <div className="font-medium text-foreground">{asset.assetName}</div>
                 <div className="text-muted-foreground">{asset.currentLocationLabel ?? t("common.none")}</div>
+                <AssetChargeHistory assetUnitId={asset.id} />
               </div>
               <Button
                 size="xs"

@@ -4,13 +4,28 @@ import { paymentMethodSchema } from "./core";
 export const counterpartyTypeSchema = z.enum(["EXTERNAL_COUNTERPARTY", "WORKER"]);
 
 /**
+ * Single money magnitude bound shared by every DZD amount schema. `.max(...)`
+ * keeps amounts inside the integer precision range the strict sum checks and
+ * sqlite REAL columns can represent exactly.
+ */
+export const MAX_MONEY_DZD = Number.MAX_SAFE_INTEGER;
+
+/**
  * Shared monetary validity for payment amounts — the wire gate and the API
  * payment module seam enforce the SAME definition so the two cannot drift
  * (issue #289 service-boundary defense-in-depth). `.max(MAX_SAFE_INTEGER)`
  * keeps amounts inside the integer precision range the strict sum check and
  * sqlite REAL columns can represent exactly.
  */
-export const paymentAmountSchema = z.number().positive().max(Number.MAX_SAFE_INTEGER);
+export const paymentAmountSchema = z.number().positive().max(MAX_MONEY_DZD);
+
+/**
+ * Money that explicitly permits zero. Used where "no money moved" is a legal
+ * state — e.g. a stock charge of 0 (a free placement, #413). Same magnitude
+ * bound as {@link paymentAmountSchema} so there is still ONE money rule; only
+ * the sign bound differs.
+ */
+export const nonNegativePaymentAmountSchema = z.number().nonnegative().max(MAX_MONEY_DZD);
 
 /**
  * Shared page-limit validity for payment listing (wire gate + module seam).

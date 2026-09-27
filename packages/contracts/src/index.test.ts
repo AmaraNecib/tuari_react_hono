@@ -34,6 +34,13 @@ import {
   invoiceDirectionSchema,
   invoiceMarkPaidInputSchema,
   invoiceSchema,
+  inventoryAssetChargeDefaultSchema,
+  inventoryAssetChargeRevisionSchema,
+  inventoryAssetChargeSchema,
+  inventoryAssetDetailSchema,
+  inventoryAssetTransferInputSchema,
+  inventoryContract,
+  inventoryProjectChargesSchema,
   managerAssignmentCreateInputSchema,
   phonePasswordSignInSchema,
   projectAssignmentCreateInputSchema,
@@ -43,6 +50,7 @@ import {
   paymentAmountSchema,
   paymentListLimitSchema,
   paymentListInputSchema,
+  nonNegativePaymentAmountSchema,
   revokeRecoveryKeyInputSchema,
   roleCreateInputSchema,
   sessionUserSchema,
@@ -1642,6 +1650,127 @@ describe("contracts", () => {
       expect(() =>
         recurringPatternSchema.parse({ ...input, frequency: "YEARLY" }),
       ).toThrow();
+    });
+  });
+  describe("inventory stock charge contracts (#413)", () => {
+    const charge = {
+      id: "charge-1",
+      assetUnitId: "asset-1",
+      projectId: "project-a",
+      projectName: "مشروع أ",
+      movementId: "movement-1",
+      amountDzd: 100_000,
+      status: "LIVE" as const,
+      voidedAt: null,
+      voidReason: null,
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+    };
+
+    it("nonNegativePaymentAmountSchema allows zero but shares the paymentAmountSchema magnitude bound", () => {
+      for (const bad of [-1, -0.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, 2 ** 53]) {
+        expect(nonNegativePaymentAmountSchema.safeParse(bad).success).toBe(false);
+      }
+      for (const good of [0, 0.5, 1, Number.MAX_SAFE_INTEGER]) {
+        expect(nonNegativePaymentAmountSchema.safeParse(good).success).toBe(true);
+      }
+      // One money rule: the two schemas agree on the magnitude boundary.
+      expect(nonNegativePaymentAmountSchema.safeParse(Number.MAX_SAFE_INTEGER).success).toBe(
+        paymentAmountSchema.safeParse(Number.MAX_SAFE_INTEGER).success,
+      );
+    });
+
+    it("the transfer input accepts an omitted/null/zero charge and rejects a negative one", () => {
+      const base = { assetUnitId: "asset-1", toProjectId: "project-a" };
+      expect(inventoryAssetTransferInputSchema.safeParse(base).success).toBe(true);
+      expect(inventoryAssetTransferInputSchema.safeParse({ ...base, chargeAmountDzd: null }).success).toBe(true);
+      expect(inventoryAssetTransferInputSchema.safeParse({ ...base, chargeAmountDzd: 0 }).success).toBe(true);
+      expect(inventoryAssetTransferInputSchema.safeParse({ ...base, chargeAmountDzd: 80_000 }).success).toBe(true);
+      expect(inventoryAssetTransferInputSchema.safeParse({ ...base, chargeAmountDzd: -1 }).success).toBe(false);
+    });
+
+    it("the charge schema requires a project and a LIVE/VOID status", () => {
+      expect(inventoryAssetChargeSchema.safeParse(charge).success).toBe(true);
+      expect(inventoryAssetChargeSchema.safeParse({ ...charge, status: "ARCHIVED" }).success).toBe(false);
+      expect(inventoryAssetChargeSchema.safeParse({ ...charge, amountDzd: -1 }).success).toBe(false);
+      expect(inventoryAssetChargeSchema.safeParse({ ...charge, projectId: undefined }).success).toBe(false);
+    });
+
+    it("the revision schema records from → to (null on a void)", () => {
+      const revision = {
+        id: "rev-1",
+        chargeId: "charge-1",
+        previousAmountDzd: 100_000,
+        newAmountDzd: 75_000,
+        reason: "خصم",
+        actorUserId: "user-1",
+        actorLabel: "مدير",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      };
+      expect(inventoryAssetChargeRevisionSchema.safeParse(revision).success).toBe(true);
+      expect(inventoryAssetChargeRevisionSchema.safeParse({ ...revision, newAmountDzd: null }).success).toBe(true);
+      expect(inventoryAssetChargeRevisionSchema.safeParse({ ...revision, previousAmountDzd: -1 }).success).toBe(false);
+    });
+
+    it("the default schema carries the resolved amount, purchase price and source", () => {
+      expect(
+        inventoryAssetChargeDefaultSchema.safeParse({
+          assetUnitId: "asset-1",
+          amountDzd: 100_000,
+          purchasePriceDzd: 100_000,
+          source: "PURCHASE_PRICE",
+        }).success,
+      ).toBe(true);
+      expect(
+        inventoryAssetChargeDefaultSchema.safeParse({
+          assetUnitId: "asset-1",
+          amountDzd: 80_000,
+          purchasePriceDzd: 100_000,
+          source: "LAST_CHARGE",
+        }).success,
+      ).toBe(true);
+      expect(
+        inventoryAssetChargeDefaultSchema.safeParse({
+          assetUnitId: "asset-1",
+          amountDzd: 1,
+          purchasePriceDzd: 1,
+          source: "GUESS",
+        }).success,
+      ).toBe(false);
+    });
+
+    it("the project charges schema exposes a non-negative total", () => {
+      expect(
+        inventoryProjectChargesSchema.safeParse({ projectId: "project-a", totalDzd: 0, charges: [] }).success,
+      ).toBe(true);
+      expect(
+        inventoryProjectChargesSchema.safeParse({ projectId: "project-a", totalDzd: -1, charges: [] }).success,
+      ).toBe(false);
+    });
+
+    it("the asset detail requires a charges array", () => {
+      const parsed = inventoryAssetDetailSchema.safeParse({
+        asset: {},
+        invoiceGroup: {},
+        movements: [],
+        charges: [charge],
+      });
+      expect(parsed.success).toBe(false); // asset/invoiceGroup are not empty objects
+      const shape = inventoryAssetDetailSchema.shape;
+      expect(shape.charges).toBeDefined();
+    });
+
+    it("advertises the charge procedures on the inventory contract", () => {
+      for (const key of [
+        "inventoryAssetChargeDefault",
+        "inventoryAssetChargesListByUnit",
+        "inventoryAssetChargesListByProject",
+        "inventoryAssetChargesUpdate",
+        "inventoryAssetChargesVoid",
+      ]) {
+        expect(key in inventoryContract).toBe(true);
+        expect(key in appContract).toBe(true);
+      }
     });
   });
 });

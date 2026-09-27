@@ -1,6 +1,11 @@
 import type {
   DebtAccountCreateInput,
   DebtEntryCreateInput,
+  InventoryAssetChargeDefaultInput,
+  InventoryAssetChargeUpdateInput,
+  InventoryAssetChargeVoidInput,
+  InventoryAssetChargesListByProjectInput,
+  InventoryAssetChargesListByUnitInput,
   InventoryInvoiceGroupCreateInput,
   InventoryItemDefinitionCreateInput,
   InventoryItemDefinitionUpdateInput,
@@ -20,6 +25,7 @@ import type {
 } from "./inventory.types"
 import type { InventoryRepository } from "./inventory.repository"
 import { InventoryAttachmentStorage } from "./inventory.storage"
+import type { AssetChargeService } from "./asset-charge.service"
 
 type DebtService = {
   createDebtAccount(input: DebtAccountCreateInput, auditContext?: MutationAuditContext): { success: true; item: { id: string } }
@@ -136,6 +142,12 @@ export class InventoryService {
     private readonly storage: InventoryAttachmentStorage,
     private readonly debtService?: DebtService,
     private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
+    /**
+     * Project-charge rules for asset placements (#413). Optional so existing
+     * wiring/tests that never move an asset keep working; the transfer path
+     * skips the charge when it is absent.
+     */
+    private readonly assetChargeService?: AssetChargeService,
   ) {}
 
   /** createMutationAuditContext. */
@@ -541,12 +553,13 @@ export class InventoryService {
       asset,
       invoiceGroup: group,
       movements: this.repository.listMovementsByAssetUnitId(asset.id),
+      charges: this.assetChargeService?.listByUnit({ assetUnitId: asset.id }).items ?? [],
     })
   }
 
   /** transferAsset. */
-  transferAsset(input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
-    this.createMutationAuditContext(auditContext)
+  transferAsset(input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; chargeAmountDzd?: number | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
+    const audit = this.createMutationAuditContext(auditContext)
 
     validateSingleDestination(input.toWarehouseId ?? null, input.toProjectId ?? null, "toWarehouseId")
     validateWarehouse(this.repository, input.toWarehouseId ?? null, "toWarehouseId")
@@ -566,7 +579,7 @@ export class InventoryService {
         currentWarehouseId: input.toWarehouseId ?? null,
         currentProjectId: input.toProjectId ?? null,
       })
-      this.repository.createMovement({
+      const movement = this.repository.createMovement({
         movementType: "TRANSFER",
         itemType: "ASSET",
         inventoryEntryId: asset.inventoryEntryId,
@@ -579,9 +592,54 @@ export class InventoryService {
         note: normalizeText(input.note),
         occurredAt: resolveOccurredAt(input.occurredAt),
       })
+
+      // A placement on a project books a charge in the SAME transaction; a
+      // warehouse destination writes none (the charge belongs to the
+      // placement, so a later move starts its own charge).
+      if (input.toProjectId && this.assetChargeService) {
+        this.assetChargeService.createPlacementCharge({
+          assetUnitId: asset.id,
+          projectId: input.toProjectId,
+          movementId: movement.id,
+          amountDzd: input.chargeAmountDzd,
+        }, audit)
+      }
     })
 
     return this.getAsset(asset.id)
+  }
+
+  /** getAssetChargeDefault — resolve the prefill for a placement charge (#413). */
+  getAssetChargeDefault(input: InventoryAssetChargeDefaultInput) {
+    return this.requireAssetChargeService().getDefault(input)
+  }
+
+  /** listAssetChargesByUnit — a unit's charge chain, newest first. */
+  listAssetChargesByUnit(input: InventoryAssetChargesListByUnitInput) {
+    return this.requireAssetChargeService().listByUnit(input)
+  }
+
+  /** getProjectCharges — a project's live charges plus their total. */
+  getProjectCharges(input: InventoryAssetChargesListByProjectInput) {
+    return this.requireAssetChargeService().getProjectCharges(input)
+  }
+
+  /** updateAssetCharge — correct a past charge (records from → to + reason). */
+  updateAssetCharge(input: InventoryAssetChargeUpdateInput, auditContext?: MutationAuditContext) {
+    return this.requireAssetChargeService().updateCharge(input, auditContext)
+  }
+
+  /** voidAssetCharge — void a past charge, keeping its history. */
+  voidAssetCharge(input: InventoryAssetChargeVoidInput, auditContext?: MutationAuditContext) {
+    return this.requireAssetChargeService().voidCharge(input, auditContext)
+  }
+
+  private requireAssetChargeService() {
+    if (!this.assetChargeService) {
+      throw new InventoryError("BUSINESS_RULE", "خدمة احتساب العتاد غير متاحة الآن.")
+    }
+
+    return this.assetChargeService
   }
 
   /** transferConsumable. */

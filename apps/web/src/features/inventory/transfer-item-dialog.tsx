@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import {
@@ -15,6 +15,7 @@ import { formInputClassName } from "@/components/ui/form-controls"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 
 import {
+  useAssetChargeDefaultQuery,
   useTransferInventoryAssetMutation,
   useTransferInventoryConsumableMutation,
   useInventoryWarehousesQuery,
@@ -41,6 +42,43 @@ type TransferConsumableTarget = {
 /** TransferTarget. */
 export type TransferTarget = TransferAssetTarget | TransferConsumableTarget
 
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100
+}
+
+/**
+ * The amount expressed as a percentage of the purchase price (#413):
+ * negative for a cut, positive above it, `null` when the purchase price is 0
+ * (the percentage is undefined).
+ */
+export function chargePercentFromAmount(amountDzd: number, purchasePriceDzd: number): number | null {
+  if (!Number.isFinite(purchasePriceDzd) || purchasePriceDzd <= 0) {
+    return null
+  }
+
+  return roundMoney(((amountDzd - purchasePriceDzd) / purchasePriceDzd) * 100)
+}
+
+/** The amount implied by a percentage of the purchase price. */
+export function chargeAmountFromPercent(percent: number, purchasePriceDzd: number): number {
+  if (!Number.isFinite(purchasePriceDzd) || !Number.isFinite(percent)) {
+    return 0
+  }
+
+  return roundMoney(purchasePriceDzd * (1 + percent / 100))
+}
+
+/** Parse the amount field; blank or invalid means a free placement (0). */
+export function parseChargeAmountInput(value: string): number {
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    return 0
+  }
+
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+}
+
 /** Dialog for transferring inventory items between locations. */
 /**
  * @description Component
@@ -59,10 +97,15 @@ export function TransferItemDialog({
   const consumableMutation = useTransferInventoryConsumableMutation()
   const warehousesQuery = useInventoryWarehousesQuery(open)
   const projectsQuery = useInventoryProjectsQuery(open)
+  const chargeDefault = useAssetChargeDefaultQuery(
+    open && target?.type === "ASSET" ? target.assetUnitId : undefined,
+  )
 
   const [destType, setDestType] = useState<"WAREHOUSE" | "PROJECT">("WAREHOUSE")
   const [destId, setDestId] = useState("")
   const [quantity, setQuantity] = useState("1")
+  const [chargeAmount, setChargeAmount] = useState("")
+  const [chargePercent, setChargePercent] = useState("")
   const [note, setNote] = useState("")
   const [date, setDate] = useState(() => getAlgeriaDateInputValue())
 
@@ -70,12 +113,52 @@ export function TransferItemDialog({
   const projects = projectsQuery.data?.items ?? []
   const isPending = assetMutation.isPending || consumableMutation.isPending
 
+  const purchasePriceDzd = chargeDefault.data?.purchasePriceDzd ?? 0
+  const isAsset = target?.type === "ASSET"
+  const asksForCharge = isAsset && destType === "PROJECT"
+  const amountValue = parseChargeAmountInput(chargeAmount)
+  const warnsAbovePurchase = purchasePriceDzd > 0 && amountValue > purchasePriceDzd
+
+  // Prefill from the resolved default (last charge for the unit, else its
+  // purchase price) whenever the dialog opens for an asset.
+  useEffect(() => {
+    if (!open || target?.type !== "ASSET") return
+    const defaultAmount = chargeDefault.data?.amountDzd
+    if (defaultAmount === undefined) return
+    setChargeAmount(String(defaultAmount))
+    const percent = chargePercentFromAmount(defaultAmount, chargeDefault.data!.purchasePriceDzd)
+    setChargePercent(percent === null ? "" : String(percent))
+  }, [open, target, chargeDefault.data])
+
   const resetForm = () => {
     setDestType("WAREHOUSE")
     setDestId("")
     setQuantity("1")
+    setChargeAmount("")
+    setChargePercent("")
     setNote("")
     setDate(getAlgeriaDateInputValue())
+  }
+
+  const handleAmountChange = (value: string) => {
+    setChargeAmount(value)
+    const percent = chargePercentFromAmount(parseChargeAmountInput(value), purchasePriceDzd)
+    setChargePercent(percent === null ? "" : String(percent))
+  }
+
+  const handlePercentChange = (value: string) => {
+    setChargePercent(value)
+    if (value.trim().length === 0) {
+      setChargeAmount("")
+      return
+    }
+
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) {
+      return
+    }
+
+    setChargeAmount(String(chargeAmountFromPercent(parsed, purchasePriceDzd)))
   }
 
   const handleSubmit = async () => {
@@ -88,6 +171,7 @@ export function TransferItemDialog({
         assetUnitId: target.assetUnitId,
         toWarehouseId: destType === "WAREHOUSE" ? destId : null,
         toProjectId: destType === "PROJECT" ? destId : null,
+        chargeAmountDzd: destType === "PROJECT" ? amountValue : null,
         note: noteVal,
         occurredAt,
       })
@@ -181,6 +265,50 @@ export function TransferItemDialog({
               </NativeSelect>
             </label>
           </div>
+
+          {asksForCharge ? (
+            <div className="space-y-2 rounded-lg border border-line p-3" data-testid="charge-fields">
+              <div className="flex gap-2">
+                <label className="flex flex-1 flex-col gap-2">
+                  <span className="text-sm font-medium">{t("inventory.transfer.chargeAmount")}</span>
+                  <input
+                    className={formInputClassName}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    aria-label={t("inventory.transfer.chargeAmount")}
+                    value={chargeAmount}
+                    onChange={(e) => handleAmountChange(e.target.value)}
+                  />
+                </label>
+
+                <label className="flex flex-1 flex-col gap-2">
+                  <span className="text-sm font-medium">{t("inventory.transfer.chargePercent")}</span>
+                  <input
+                    className={formInputClassName}
+                    type="number"
+                    step="0.01"
+                    inputMode="decimal"
+                    aria-label={t("inventory.transfer.chargePercent")}
+                    disabled={purchasePriceDzd <= 0}
+                    value={chargePercent}
+                    onChange={(e) => handlePercentChange(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                {t("inventory.transfer.chargeHint", { price: purchasePriceDzd })}
+              </p>
+
+              {warnsAbovePurchase ? (
+                <p className="text-xs text-amber-600" data-testid="charge-warning">
+                  {t("inventory.transfer.chargeAboveWarning")}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium">{t("salaries.paymentDate")}</span>

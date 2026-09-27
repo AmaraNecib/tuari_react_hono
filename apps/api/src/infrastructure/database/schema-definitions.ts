@@ -463,6 +463,47 @@ export const schemaStatements = [
     CONSTRAINT "inventory_movement_to_destination_check"
       CHECK (NOT ("to_warehouse_id" IS NOT NULL AND "to_project_id" IS NOT NULL))
   )`,
+  `CREATE TABLE IF NOT EXISTS "inventory_asset_charge" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "asset_unit_id" TEXT NOT NULL,
+    "project_id" TEXT NOT NULL,
+    "movement_id" TEXT,
+    "amount_dzd" REAL NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'LIVE' CHECK ("status" IN ('LIVE', 'VOID')),
+    "voided_at" DATETIME,
+    "voided_by" TEXT,
+    "void_reason" TEXT,
+    "actor_user_id" TEXT,
+    "actor_label" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    "updated_at" DATETIME NOT NULL,
+    CONSTRAINT "inventory_asset_charge_asset_unit_id_fkey"
+      FOREIGN KEY ("asset_unit_id") REFERENCES "inventory_asset_unit" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "inventory_asset_charge_project_id_fkey"
+      FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "inventory_asset_charge_movement_id_fkey"
+      FOREIGN KEY ("movement_id") REFERENCES "inventory_movement" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "inventory_asset_charge_amount_check"
+      CHECK ("amount_dzd" >= 0)
+  )`,
+  `CREATE TABLE IF NOT EXISTS "inventory_asset_charge_revision" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "charge_id" TEXT NOT NULL,
+    "previous_amount_dzd" REAL NOT NULL,
+    "new_amount_dzd" REAL,
+    "reason" TEXT,
+    "actor_user_id" TEXT,
+    "actor_label" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    CONSTRAINT "inventory_asset_charge_revision_charge_id_fkey"
+      FOREIGN KEY ("charge_id") REFERENCES "inventory_asset_charge" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "inventory_asset_charge_revision_previous_amount_check"
+      CHECK ("previous_amount_dzd" >= 0),
+    CONSTRAINT "inventory_asset_charge_revision_new_amount_check"
+      CHECK ("new_amount_dzd" IS NULL OR "new_amount_dzd" >= 0)
+  )`,
   `CREATE TABLE IF NOT EXISTS "inventory_invoice_attachment" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "invoice_group_id" TEXT NOT NULL,
@@ -521,6 +562,10 @@ export const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_project_id_idx" ON "inventory_consumable_balance" ("project_id")',
   'CREATE INDEX IF NOT EXISTS "inventory_movement_inventory_entry_id_idx" ON "inventory_movement" ("inventory_entry_id", "occurred_at")',
   'CREATE INDEX IF NOT EXISTS "inventory_movement_asset_unit_id_idx" ON "inventory_movement" ("asset_unit_id", "occurred_at")',
+  'CREATE INDEX IF NOT EXISTS "inventory_asset_charge_asset_unit_id_idx" ON "inventory_asset_charge" ("asset_unit_id", "created_at")',
+  'CREATE INDEX IF NOT EXISTS "inventory_asset_charge_project_id_idx" ON "inventory_asset_charge" ("project_id", "status")',
+  'CREATE INDEX IF NOT EXISTS "inventory_asset_charge_movement_id_idx" ON "inventory_asset_charge" ("movement_id")',
+  'CREATE INDEX IF NOT EXISTS "inventory_asset_charge_revision_charge_id_idx" ON "inventory_asset_charge_revision" ("charge_id", "created_at")',
   'CREATE INDEX IF NOT EXISTS "inventory_invoice_attachment_invoice_group_id_idx" ON "inventory_invoice_attachment" ("invoice_group_id", "created_at")',
   `CREATE UNIQUE INDEX IF NOT EXISTS "employee_manager_assignment_active_worker_key" ON "employee_manager_assignment" ("worker_id") WHERE "status" = 'ACTIVE'`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "employee_project_assignment_active_employee_key" ON "employee_project_assignment" ("employee_id") WHERE "status" = 'ACTIVE'`,
