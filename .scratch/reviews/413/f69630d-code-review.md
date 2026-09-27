@@ -1,7 +1,8 @@
 # #413 stock charge — code review (Standards + Spec)
 
 - mode: remote
-- base SHA: `17911dc14211730bec6982707f518b4c84dafa19`
+- declared base SHA: `17911dc14211730bec6982707f518b4c84dafa19` (stale local `develop`)
+- effective branch point: `cacefb8d6b20473146ae681f02ef4c4c8f8a6337`
 - reviewed HEAD: `f69630d22271c407b915a43149cc12fa01123848`
 - tier: High-assurance (financial calculation)
 - review performed: self-review by the lane (no independent subagent within the

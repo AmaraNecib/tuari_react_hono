@@ -3,7 +3,11 @@
 mode: remote
 ticket: AmaraNecib/tuari_react_hono#413 (stock charge / عتاد مخصّص)
 target ref: develop
-base SHA: 17911dc14211730bec6982707f518b4c84dafa19
+declared base SHA: 17911dc14211730bec6982707f518b4c84dafa19 (local `develop` ref)
+effective branch point: cacefb8d6b20473146ae681f02ef4c4c8f8a6337 (the worktree HEAD
+at start; local `develop` was stale — `origin/develop` had advanced to c5334cc,
+and the license commits between 17911dc and cacefb8 are pre-existing branch
+context, not part of this lane)
 review tier: High-assurance (financial calculation: money charged to a project)
 
 ## Settled rules (from `.scratch/prototype/NOTES.md` → "Stock charge")
