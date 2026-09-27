@@ -13,6 +13,7 @@ import {
   useDebtPartyDetailQuery,
   useDebtsSummaryQuery,
 } from "@/features/debts/debts-queries"
+import { useInventoryItemDefinitionsQuery } from "@/features/inventory/inventory-hooks"
 import type { DebtsSummary } from "@tuari/contracts"
 
 import type { HomeViewPageContentProps } from "./home-view-page-content-shared"
@@ -22,6 +23,7 @@ const EMPTY_DEBTS_SUMMARY: DebtsSummary = { parties: [], debtAccounts: [] }
 
 const DebtsHubPage = lazy(async () => import("@/features/debts/debts-hub-page").then((module) => ({ default: module.DebtsHubPage })))
 const DebtCreatePage = lazy(async () => import("@/features/debts/debt-create-page").then((module) => ({ default: module.DebtCreatePage })))
+const ExpensesPage = lazy(async () => import("@/features/expenses/expenses-page").then((module) => ({ default: module.ExpensesPage })))
 const ExternalCounterpartyCreatePage = lazy(async () => import("@/features/externals/external-create-page").then((module) => ({ default: module.ExternalCounterpartyCreatePage })))
 const ExternalCounterpartyDetailsPage = lazy(async () => import("@/features/externals/external-details-page").then((module) => ({ default: module.ExternalCounterpartyDetailsPage })))
 const ExternalCounterpartiesPage = lazy(async () => import("@/features/externals/externals-page").then((module) => ({ default: module.ExternalCounterpartiesPage })))
@@ -115,6 +117,11 @@ export function HomeViewPageDetailContent({
     { enabled: page === "external-details" && Boolean(selectedCounterparty) },
   )
   const debtsSummary = debtsSummaryQuery.data ?? EMPTY_DEBTS_SUMMARY
+  // Stock items are the expenses form's optional "what does this relate to"
+  // list; only fetch them while the expenses screen is mounted.
+  const inventoryItemDefinitionsQuery = useInventoryItemDefinitionsQuery({
+    enabled: page === "expenses",
+  })
 
   switch (page) {
     case "debts":
@@ -143,6 +150,19 @@ export function HomeViewPageDetailContent({
           employees={derived.employeeRows}
           externalCounterparties={derived.externalCounterparties}
           navigation={navigation}
+        />,
+      )
+
+    case "expenses":
+      return renderLazy(
+        <ExpensesPage
+          projects={derived.projects.map((project) => ({ id: project.id, label: project.name }))}
+          employees={derived.employeeRows.map((employee) => ({ id: employee.id, label: employee.name }))}
+          sellers={derived.externalCounterparties.map((seller) => ({ id: seller.id, label: seller.fullName }))}
+          stockItems={(inventoryItemDefinitionsQuery.data?.items ?? []).map((item) => ({
+            id: item.id,
+            label: item.name,
+          }))}
         />,
       )
 

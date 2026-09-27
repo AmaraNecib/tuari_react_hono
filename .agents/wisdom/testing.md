@@ -648,3 +648,51 @@ said 1.7.0). Hours went into jsdom event-sequence debugging against 1.2.0 semant
 worktree you will test in, BEFORE believing a failure. First diagnostic for "fails locally, passes
 CI" on a dep-touching change: print the installed version from `node_modules/<pkg>/package.json`
 and compare to the lockfile. Worktrees never share `node_modules` — each needs its own install.
+
+## Adding a new module to the coverage include forces 100% branch work: pin comparator null-arms explicitly (🟠 Major)
+
+On #411, the new `src/modules/expenses/**` module was added to the API vitest
+coverage include (the repo convention for new modules), which turns every
+branch in the module into a gate. Two traps surfaced:
+
+1. A `sort` comparator's `if (a.projectId === null) return 1` arm never fired
+   even though the untagged group existed: the group array is built in
+   expense-date order, so whether the untagged group is compared as `a` or `b`
+   depends on its insertion position. A dedicated "untagged is the oldest row"
+   test pinned the arm; without it the coverage run was red on a line the
+   existing group tests appeared to cover.
+2. One-line ternaries (`input.note === undefined ? existing.note : input.note`)
+   each need BOTH arms exercised; one update test that passes every optional
+   field plus one that omits them is the cheapest complete pin.
+
+**Always**: when adding a module to the coverage include, read the coverage
+report's branch list, not just the line list, and add the discriminating test
+for each arm (ordering arms need an input that puts the special element first).
+
+## Base UI Select renders the raw value/sentinel in jsdom; use NativeSelect for "all/none" filters (🟡 Minor)
+
+On #411 the filter selects used Base UI `Select` with a `__none__` sentinel for
+"all projects"; in jsdom the trigger rendered the literal `__none__` instead of
+the selected item's label, and the option list only exists while the popup is
+open. The repo's `NativeSelect` (a plain `<select>`) renders real labels and
+options, is trivially testable, and is what `system-log-section.tsx` already
+uses for its `"ALL"` sentinel.
+
+**Always**: for optional "all/none" filter dropdowns in this app, use
+`NativeSelect`; reserve Base UI `Select` for value sets that need its popup.
+
+## Unit tests can encode a wrong reading of the spec; the E2E written from the issue's literal wording catches it (🟠 Major)
+
+On #411 the expenses list was implemented with `includeVoided: false` by
+default, so a voided row disappeared from the screen. Every unit test passed
+because they asserted that same invented behaviour. The issue's rule was
+"Void, never delete: the row stays visible, excluded from totals" — the
+mockup hint said the row stays struck-through. Writing the Playwright spec
+straight from that sentence (void, then assert the row is still visible and
+the total dropped) exposed the contradiction before the PR; the fix was to
+always return voided rows and exclude them from totals/groups only.
+
+**Always**: when a spec states an observable UI rule ("stays visible",
+"excluded from totals"), assert it literally in the E2E before trusting a
+green unit suite — a unit test built from the implementation can only confirm
+the implementation.

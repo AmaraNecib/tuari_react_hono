@@ -78,7 +78,7 @@ describe("workspaceQueryKeys", () => {
 
     expect(flatFactoryEntries).toEqual([
       "debtAccounts", "debtsDetail", "debtsSummary", "employeeStateHistory",
-      "employees", "externalCounterparties", "inventoryInvoices",
+      "employees", "expenses", "externalCounterparties", "inventoryInvoices",
       "inventoryItems", "inventoryOutboundTransfers", "managerAssignments",
       "projectAssignments", "projectManagerOwnership", "projects", "roles",
       "salaryPayments", "systemLog", "warehouseAssignments",
@@ -98,6 +98,7 @@ describe("workspaceQueryKeys", () => {
       | "debtsSummary"
       | "employeeStateHistory"
       | "employees"
+      | "expenses"
       | "externalCounterparties"
       | "inventoryInvoices"
       | "inventoryItems"

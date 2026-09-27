@@ -48,6 +48,17 @@ export function formatDateTimeInAlgeria(date: Date, locale = "ar-DZ") {
   }).format(date)
 }
 
+/**
+ * Format a stored instant as the Algeria calendar day it fell on (date only),
+ * pinned to Africa/Algiers so a UTC midnight boundary cannot shift the day.
+ */
+export function formatAlgeriaDate(date: Date, locale = "ar-DZ") {
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeZone: ALGERIA_TIME_ZONE,
+  }).format(date)
+}
+
 export function getAlgeriaTimeZone() {
   return ALGERIA_TIME_ZONE
 }

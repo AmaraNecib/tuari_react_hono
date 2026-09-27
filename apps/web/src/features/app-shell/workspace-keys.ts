@@ -63,6 +63,10 @@ export const workspaceQueryKeys = {
   warehouseAssignments: (userId: UserId = ANONYMOUS) => ["phase1", "workspace-domain", "warehouse-assignments", userId] as const,
   salaryPayments: (userId: UserId = ANONYMOUS) => ["phase1", "workspace-domain", "salary-payments", userId] as const,
   externalCounterparties: (userId: UserId = ANONYMOUS) => ["phase1", "workspace-domain", "external-counterparties", userId] as const,
+  // Expenses are their own feature-scoped RPC (issue #411) — not part of the
+  // workspace snapshot. Flat key so `invalidateWorkspaceDomains({ expenses })`
+  // refreshes every filter variant (the list key is prefixed by this one).
+  expenses: (userId: UserId = ANONYMOUS) => ["phase1", "workspace-domain", "expenses", userId] as const,
   debtAccounts: (userId: UserId = ANONYMOUS) => ["phase1", "workspace-domain", "debt-accounts", userId] as const,
   inventoryItems: (userId: UserId = ANONYMOUS) => ["phase1", "workspace-domain", "inventory-items", userId] as const,
   inventoryInvoices: (userId: UserId = ANONYMOUS) => ["phase1", "workspace-domain", "inventory-invoices", userId] as const,

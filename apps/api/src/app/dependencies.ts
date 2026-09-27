@@ -27,6 +27,9 @@ import { InvoiceRepository } from "../modules/invoice/adapters/invoice.repositor
 import { createPaymentModule } from "../modules/payment/payment.module";
 import type { PaymentModule } from "../modules/payment/payment-module.interface";
 import { PaymentRepositoryImpl } from "../modules/payment/adapters/payment.repository";
+import { createExpensesModule } from "../modules/expenses/expenses.module";
+import type { ExpensesModule } from "../modules/expenses/expenses-module.interface";
+import { SqliteExpenseRepository } from "../modules/expenses/adapters/sqlite-expenses.repository";
 import { SqlitePermissionResolver } from "../modules/rbac/adapters/sqlite-permission-resolver";
 import { RoleModule } from "../modules/rbac/role.module";
 import { SqliteRoleRepository as SqliteRbacRoleRepository } from "../modules/rbac/adapters/sqlite-role.repository";
@@ -94,6 +97,7 @@ export type AppDependencies = {
   employeeModule: EmployeeModule;
   invoiceModule: InvoiceModule;
   paymentModule: PaymentModule;
+  expensesModule: ExpensesModule;
   roleModule: RoleModule;
   /** Close the shared database connection (idempotent; composition-root lifecycle). */
   close: () => void;
@@ -191,6 +195,9 @@ export async function createAppDependencies(
     const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
     const paymentRepository = new PaymentRepositoryImpl(sharedDatabase, connectionLock);
     const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
+    const expensesModule = createExpensesModule(
+      new SqliteExpenseRepository(sharedDatabase, connectionLock),
+    );
     const authBootstrapService = new AuthBootstrapService(
       new SqliteBootstrapPort(db, sharedDatabase, connectionLock),
       auth,
@@ -243,6 +250,7 @@ export async function createAppDependencies(
       employeeModule,
       invoiceModule,
       paymentModule,
+      expensesModule,
       roleModule,
       close,
     } as const;

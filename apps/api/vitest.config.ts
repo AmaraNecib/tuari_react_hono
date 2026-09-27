@@ -44,6 +44,7 @@ export default defineConfig({
         "src/modules/auth/**/*.ts",
         "src/modules/account/**/*.ts",
         "src/modules/payment/**/*.ts",
+        "src/modules/expenses/**/*.ts",
         "src/modules/rbac/**/*.ts",
         "src/modules/company/**/*.ts",
       ],
