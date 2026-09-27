@@ -12,6 +12,12 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
   test: {
+    // Worker cap. Vitest defaults to (logical cores - 1) workers, which on a
+    // 12-thread laptop starts 11 and starves everything else on the machine —
+    // other agent lanes, the editor, the browser. Two workers keeps a suite
+    // honest without taking the machine over; set VITEST_MAX_WORKERS when a
+    // machine is dedicated to the run (CI sets it higher).
+    maxWorkers: Number(process.env.VITEST_MAX_WORKERS ?? 2),
     // The unit/integration suites exercise the WRITABLE paths, so they run with
     // the post-install trial status. The production default for a missing
     // status is `unknown` (fail closed, see parseLicenseStatus); that path is
