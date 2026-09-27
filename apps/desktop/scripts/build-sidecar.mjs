@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyValidatedTree, runPnpmCommand } from "./script-security-utils.mjs";
+import { buildProbeAndPublishRuntime } from "./runtime-staging.mjs";
 import { inspectSqlcipherArtifact, probeSqlcipherBinding } from "./sqlcipher-availability.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,9 +24,15 @@ const desktopPackageJson = path.join(desktopRoot, "package.json");
  * placeholders to exist for tauri-build's resource copy.
  */
 const ephemeral = process.argv.includes("--ephemeral");
+const destinationBinDir = path.resolve(desktopRoot, "src-tauri", "bin");
+// Both modes assemble the runtime in a staging directory first. The
+// non-ephemeral staging directory is a sibling of `src-tauri/bin` (same volume,
+// so the final rename is atomic) and only becomes `src-tauri/bin` after the
+// probe passes; a rejected probe must never destroy a working local runtime
+// (#409).
 const binDir = ephemeral
   ? mkdtempSync(path.join(os.tmpdir(), "tuari-sidecar-"))
-  : path.resolve(desktopRoot, "src-tauri", "bin");
+  : mkdtempSync(path.join(desktopRoot, "src-tauri", ".bin-staging-"));
 const runtimeDir = path.resolve(binDir, "api-runtime");
 const runtimeNodeModules = path.resolve(runtimeDir, "node_modules");
 const nodeBinaryOutput = path.resolve(binDir, "node.exe");
@@ -137,8 +144,8 @@ const resolveSqlcipher = () => {
 // intact rather than deleting it and then aborting.
 const sqlcipher = resolveSqlcipher();
 
-// The gate runs inside the try so an ephemeral build's temp directory is
-// removed even when the gate refuses (the temp dir is created eagerly above).
+// The gate runs inside the build callback, before the staging tree is
+// published, so a refused gate leaves the previous artifact untouched.
 const enforceSqlcipherGate = () => {
   if (sqlcipher.availability.available) return;
 
@@ -171,9 +178,6 @@ const enforceSqlcipherGate = () => {
 };
 
 const buildRuntime = () => {
-  rmSync(runtimeDir, { recursive: true, force: true });
-  rmSync(nodeBinaryOutput, { force: true });
-
   console.log("Building bundled API runtime...");
   runPnpmCommand(["--filter", "@tuari/api", "build"], {
     cwd: workspaceRoot,
@@ -213,32 +217,45 @@ const buildRuntime = () => {
   );
 
   copyFileSync(process.execPath, nodeBinaryOutput);
+};
 
-  if (sqlcipher.availability.available) {
-    // The file check above only proves the addon EXISTS. Load it with the Node
-    // executable that ships beside it and require a cipher version, so an addon
-    // built against another Node ABI fails the build here instead of on a
-    // customer machine (#409). This is the authoritative gate; a version string
-    // would be a heuristic.
-    const cipherVersion = probeSqlcipherBinding({
-      nodeExecPath: nodeBinaryOutput,
-      runtimeDir,
-    });
-    console.log(
-      `Verified the bundled Node runtime loads the SQLCipher binding (cipher_version ${cipherVersion}).`,
-    );
-  }
+/**
+ * Prove the staged runtime loads its copied SQLCipher addon with the Node
+ * executable that ships beside it, before anything replaces the previous
+ * runtime. The existence check only proves the addon is there; an addon built
+ * against another Node ABI must fail here instead of on a customer machine
+ * (#409). This is the authoritative gate; a version string would be a heuristic.
+ */
+const probeStagedRuntime = () => {
+  if (!sqlcipher.availability.available) return;
 
-  console.log(`Local API runtime ready at ${runtimeDir}`);
-  console.log(`Bundled Node runtime ready at ${nodeBinaryOutput}`);
+  const cipherVersion = probeSqlcipherBinding({
+    nodeExecPath: nodeBinaryOutput,
+    runtimeDir,
+  });
+  console.log(
+    `Verified the bundled Node runtime loads the SQLCipher binding (cipher_version ${cipherVersion}).`,
+  );
 };
 
 try {
-  enforceSqlcipherGate();
-  buildRuntime();
+  buildProbeAndPublishRuntime({
+    stagingDir: binDir,
+    destinationDir: destinationBinDir,
+    publish: !ephemeral,
+    build: () => {
+      enforceSqlcipherGate();
+      buildRuntime();
+    },
+    probe: probeStagedRuntime,
+  });
+
+  if (!ephemeral) {
+    console.log(`Local API runtime ready at ${path.resolve(destinationBinDir, "api-runtime")}`);
+    console.log(`Bundled Node runtime ready at ${path.resolve(destinationBinDir, "node.exe")}`);
+  }
 } finally {
   if (ephemeral) {
-    rmSync(binDir, { recursive: true, force: true });
     console.log("Removed the ephemeral sidecar build; nothing was left in src-tauri/bin.");
   }
 }
