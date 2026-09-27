@@ -198,6 +198,8 @@ export function EmployeeDetailsPage({
             <AddSalaryPaymentDialog
               employeeId={employee.id}
               employeeName={employee.name}
+              salaryAmountDzd={employee.salaryAmountDzd}
+              salaryPeriod={employee.salaryPeriod}
               open={paymentDialogOpen}
               onOpenChange={setPaymentDialogOpen}
             />

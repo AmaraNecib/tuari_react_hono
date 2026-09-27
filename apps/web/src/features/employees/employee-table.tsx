@@ -80,13 +80,20 @@ type EmployeeTableProps = {
 export function EmployeeTable({ copy, rows, onAdd, onDelete, onEdit, onLeave, onView }: EmployeeTableProps) {
   const { t } = useTranslation()
   // rows are already paginated by the parent (cursor-based pagination)
-  const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
+  const [paymentTarget, setPaymentTarget] = useState<{
+    id: string
+    name: string
+    salaryAmountDzd: number | null
+    salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | null
+  } | null>(null)
 
   return (
     <>
       <AddSalaryPaymentDialog
         employeeId={paymentTarget?.id ?? null}
         employeeName={paymentTarget?.name}
+        salaryAmountDzd={paymentTarget?.salaryAmountDzd ?? null}
+        salaryPeriod={paymentTarget?.salaryPeriod ?? null}
         open={paymentTarget !== null}
         onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
       />
@@ -141,7 +148,12 @@ export function EmployeeTable({ copy, rows, onAdd, onDelete, onEdit, onLeave, on
                       {row.isWorker && row.status === "ACTIVE" ? (
                         <Button
                           size="xs"
-                          onClick={() => setPaymentTarget({ id: row.id, name: row.name })}
+                          onClick={() => setPaymentTarget({
+                            id: row.id,
+                            name: row.name,
+                            salaryAmountDzd: row.salaryAmountDzd,
+                            salaryPeriod: row.salaryPeriod,
+                          })}
                         >
                           {t("salaries.addPayment")}
                         </Button>

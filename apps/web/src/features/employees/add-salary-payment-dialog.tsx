@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import {
@@ -76,6 +76,10 @@ export function AddSalaryPaymentDialog({
   const [manualAmountTouched, setManualAmountTouched] = useState(false)
   const [splits, setSplits] = useState<SplitLine[]>([])
   const [splitsTouched, setSplitsTouched] = useState(false)
+  // `resetAmount`/`resetDate` are new function identities every render, so the
+  // reset effect below must not depend on their identity to decide whether the
+  // form was already initialized for the currently open employee.
+  const initializedTargetRef = useRef<string | null>(null)
 
   const days = parsePositiveInteger(daysText)
   const proposedAmount =
@@ -108,8 +112,13 @@ export function AddSalaryPaymentDialog({
 
   useEffect(() => {
     if (!open || !employeeId) {
+      initializedTargetRef.current = null
       return
     }
+    if (initializedTargetRef.current === employeeId) {
+      return
+    }
+    initializedTargetRef.current = employeeId
     setDaysText(String(SALARY_DAYS_PER_MONTH))
     resetAmount()
     setManualAmountTouched(false)

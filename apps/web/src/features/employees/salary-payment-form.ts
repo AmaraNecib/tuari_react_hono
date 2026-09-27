@@ -28,7 +28,17 @@ export function resolveSalaryPaymentPeriod(
   const parts = dateValue.split("-").map((part) => Number.parseInt(part, 10))
   const [year, month, day] = [parts[0] ?? Number.NaN, parts[1] ?? Number.NaN, parts[2] ?? Number.NaN]
 
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null
+  }
+
+  // Reject rolled-over dates (`2026-13-15`, `2026-02-31`) instead of silently
+  // producing a different period: only a real calendar date names a pay period.
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return null
+  }
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  if (day > daysInMonth) {
     return null
   }
 

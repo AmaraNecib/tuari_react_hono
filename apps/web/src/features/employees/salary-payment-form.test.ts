@@ -36,6 +36,17 @@ describe("resolveSalaryPaymentPeriod", () => {
   it("returns null for an unparseable date", () => {
     expect(resolveSalaryPaymentPeriod("not-a-date", "MONTHLY")).toBeNull()
   })
+
+  it("rejects rolled-over dates instead of naming a different period", () => {
+    expect(resolveSalaryPaymentPeriod("2026-13-15", "MONTHLY")).toBeNull()
+    expect(resolveSalaryPaymentPeriod("2026-00-10", "MONTHLY")).toBeNull()
+    expect(resolveSalaryPaymentPeriod("2026-02-31", "MONTHLY")).toBeNull()
+    expect(resolveSalaryPaymentPeriod("2026-02-29", "MONTHLY")).toBeNull()
+    expect(resolveSalaryPaymentPeriod("2028-02-29", "MONTHLY")?.start).toBe(
+      toAlgeriaDayBoundaryIso("2028-02-01", "start"),
+    )
+    expect(resolveSalaryPaymentPeriod("2026-03-00", "DAILY")).toBeNull()
+  })
 })
 
 describe("computeUnallocatedDays", () => {

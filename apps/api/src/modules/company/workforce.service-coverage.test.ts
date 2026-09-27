@@ -1236,7 +1236,44 @@ describe("WorkforceService coverage branches", () => {
       ]);
       // The 5 remaining days stay unallocated rather than being forced onto a project.
       const allocated = payment.projectSplits.reduce((total, split) => total + split.days, 0);
-      expect(allocated).toBeLessThan(payment.days);
+      expect(allocated).toBe(25);
+    });
+
+    it("accepts a split whose days exactly equal the paid days", () => {
+      const { service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "تساوي",
+        phone: "0554000215",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const project = createProject(service, manager.id, "مشروع تساوي");
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000216" });
+      const payment = service
+        .createSalaryPayment(
+          { employeeId: worker.id, days: 10, projectSplits: [{ projectId: project.id, days: 10 }] },
+          audit(),
+        )
+        .item;
+      expect(payment.projectSplits).toEqual([{ projectId: project.id, days: 10 }]);
+    });
+
+    it("keeps a legacy weekly wage unprorated (weekly is not offered)", () => {
+      const { service, roleIds } = createHarness();
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "أسبوعي",
+        phone: "0554000217",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+        salaryAmountDzd: 9000,
+        salaryPeriod: "WEEKLY",
+      }).item;
+      const payment = service.createSalaryPayment({ employeeId: worker.id, days: 5, projectSplits: [] }, audit()).item;
+      expect(payment.expectedAmountDzd).toBe(9000);
+      expect(payment.actualAmountDzd).toBe(9000);
+      expect(payment.days).toBe(5);
     });
 
     it("rejects a split whose days exceed the paid days", () => {

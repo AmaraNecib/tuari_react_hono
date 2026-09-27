@@ -33,6 +33,11 @@ describe("computeProposedSalaryAmount", () => {
     expect(computeProposedSalaryAmount({ periodType: "MONTHLY", salaryAmountDzd: 1000, days: 27 })).toBe(900);
     expect(computeProposedSalaryAmount({ periodType: "MONTHLY", salaryAmountDzd: 100, days: 1 })).toBe(3.33);
   });
+
+  it("prorates beyond a calendar month (a day is a 30th in every month)", () => {
+    expect(computeProposedSalaryAmount({ periodType: "MONTHLY", salaryAmountDzd: 30000, days: 31 })).toBe(31000);
+    expect(computeProposedSalaryAmount({ periodType: "MONTHLY", salaryAmountDzd: 30000, days: 1 })).toBe(1000);
+  });
 });
 
 describe("deriveSalaryProjectDays", () => {
@@ -197,9 +202,64 @@ describe("deriveSalaryProjectDays", () => {
         days: 30,
       }),
     ).toEqual([]);
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-01", "start"), endDate: "not-a-date" }],
+        ...MARCH_2026,
+        days: 30,
+      }),
+    ).toEqual([]);
+  });
+
+  it("skips an inverted assignment window", () => {
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-20", "start"), endDate: algeriaDay("2026-03-10", "end") }],
+        ...MARCH_2026,
+        days: 30,
+      }),
+    ).toEqual([]);
+  });
+
+  it("lets two fully overlapping projects exceed the paid days", () => {
+    // The coverage is 200%, so the default over-allocates (60 > 30); the dialog
+    // surfaces that for a hand edit rather than clamping it silently.
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [
+          { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-31", "end") },
+          { projectId: "b", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-31", "end") },
+        ],
+        ...MARCH_2026,
+        days: 30,
+      }),
+    ).toEqual([
+      { projectId: "a", days: 30 },
+      { projectId: "b", days: 30 },
+    ]);
+  });
+
+  it("leaves a line with under half a day out of the default", () => {
+    // One covered day of 31 scaled to a single paid day rounds to zero: the
+    // default is unallocated, and the person can add the line by hand.
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-01", "end") }],
+        ...MARCH_2026,
+        days: 1,
+      }),
+    ).toEqual([]);
   });
 
   it("returns nothing for an inverted period or an invalid day count", () => {
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-01", "start"), endDate: null }],
+        periodStart: "not-a-date",
+        periodEnd: algeriaDay("2026-03-31", "end"),
+        days: 30,
+      }),
+    ).toEqual([]);
     expect(
       deriveSalaryProjectDays({
         assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-01", "start"), endDate: null }],
