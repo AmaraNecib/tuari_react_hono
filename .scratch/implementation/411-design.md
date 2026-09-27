@@ -26,7 +26,9 @@ Rules enforced:
 - The **responsible worker** is the worker the money was handed to (an internal
   role, not a payee); the **seller** reuses the debts module's
   `external_counterparty` (`sellerId`), not a new party type.
-- **Void, never delete** — the row stays visible and is excluded from totals.
+- **Void, never delete** — the row stays visible in the list (struck-through
+  with a `ملغى` badge) and is excluded from totals/groups. The list always
+  returns voided rows; there is no `includeVoided` filter.
 - **Edits record who, when and an optional reason** on an `expense_revision`
   row, so the 50,000 → 45,000 correction survives.
 - Cash the worker never returns is a debt, not an expense (out of scope).
@@ -117,12 +119,18 @@ Rules enforced:
 - `expenses-page.test.tsx` — render, KPI totals, total strip, table, filter
   wiring, group-by-project toggle, empty state.
 - `expenses-filters.test.ts` — date-boundary and default-range logic.
+- `tests/e2e/expenses.spec.ts` — real-browser critical path: seed a project,
+  open المالية → المصروفات, record an expense tagged to the project, assert the
+  row and the total strip, toggle group-by-project and assert the project card,
+  then void and assert the row stays visible while leaving the total. The
+  expense tables are registered in the E2E DB reset helper
+  (`tests/e2e/helpers/db-isolation.ts`).
 - API coverage: `src/modules/expenses/**/*.ts` added to the 100%
   statements/branches/functions/lines include; measured 100%.
 
 ## Base / tier / risks
 
-- Mode: remote; base ref `origin/develop`, base SHA `17911dc14211730bec6982707f518b4c84dafa19`.
+- Mode: remote; base ref `origin/develop`, base SHA `52796e1545fd4b3e69eda793ff70e10ea7e50cb6` (rebased after #388/#408).
 - Review tier: Standard (new module + UI; the money rule is reused, not
   re-derived).
 - Risks / constraints:
@@ -130,8 +138,11 @@ Rules enforced:
     next `ensureDatabaseSchema` run (no data migration needed).
   - `expense_revision` uses `ON DELETE RESTRICT`; expenses are never deleted, so
     this only guards a future hard-delete bug.
-  - No E2E spec was added; the brief's test list is API + web unit tests, and the
-    local E2E ports are shared/flaky in this batch. Flagged to the parent.
+  - E2E runs locally on the default ports (3000/4318) and is green; CI runs the
+    same spec. The full API suite's default-timeout run still hits the known
+    pre-existing `sqlite-bootstrap.port.test.ts` cross-connection write-lock
+    failure on this Windows host (reproduced on base develop); with 30s
+    hook/test timeouts the whole suite is green.
   - `sqlite-bootstrap.port.test.ts` (cross-connection write-lock contention) is
     a known pre-existing failure on this Windows host; reproduced on the base
     `develop` checkout.
