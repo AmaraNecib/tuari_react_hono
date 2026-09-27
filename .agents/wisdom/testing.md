@@ -696,3 +696,19 @@ always return voided rows and exclude them from totals/groups only.
 "excluded from totals"), assert it literally in the E2E before trusting a
 green unit suite — a unit test built from the implementation can only confirm
 the implementation.
+
+## Cap the test worker pool: the default takes the whole machine (🟠 Major)
+
+Vitest defaults to `(logical cores - 1)` workers. On a 12-thread laptop that is
+11 worker processes, each running a full API suite slice, so a single `pnpm
+test` saturates the machine: other agent lanes slow to a crawl, suites hit their
+hook timeouts, and the load-flaky failures start firing — which then look like
+real regressions and cost more time than the run saved. `apps/api` and
+`apps/web` therefore pin `maxWorkers: 2` (overridable with `VITEST_MAX_WORKERS`
+for a dedicated machine), Playwright runs `workers: 1`, and `turbo.json` caps
+task concurrency at 2.
+
+**Always**: when a test run can spawn a pool, set the pool size explicitly and
+keep it small by default with an env override for CI. "It passes faster with
+more workers" is false on a shared machine — it passes faster with a *quiet*
+machine, and the difference shows up as flaky timeouts rather than as an error.
