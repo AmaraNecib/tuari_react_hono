@@ -65,3 +65,24 @@ is months old, so the smoke test can go green while the sidecar never ran.
 **Always**: when proving an app created state, compare the file mtime against the
 run start, not just existence. Same rule for any check that a crashed process
 could satisfy through a repair or migration path.
+
+## A probe that runs after the destructive step is not a gate (🟠 Major)
+
+PR #409 round 1 added a real `cipher_version` load probe to `build-sidecar.mjs`,
+but it ran after `buildRuntime` had already deleted `src-tauri/bin` and copied
+the new tree. When the addon existed but could not load with the bundled Node,
+the build failed with the previous runtime already gone, so a developer who had a
+working local runtime ended the run with a broken one. The gate stopped the
+artifact but destroyed the workspace on the way.
+
+`apps/desktop/scripts/runtime-staging.mjs` fixes the order. The runtime is built
+into a staging directory (`mkdtempSync` beside `src-tauri/bin`, same volume so
+the final rename is atomic), the probe runs against the staged `node.exe` and
+staged `node_modules`, and only then does the directory swap into place. The
+previous tree is renamed aside first and restored if the swap fails, so no path
+leaves a half-copied runtime.
+
+**Always**: a validation step that can reject the new artifact must run BEFORE
+anything replaces the old one. If the check needs the artifact on disk, build it
+in a staging directory and publish on success. "Gate first" applies to the
+destructive step too, not just to the write gate.
