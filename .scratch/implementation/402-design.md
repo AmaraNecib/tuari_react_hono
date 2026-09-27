@@ -125,3 +125,61 @@ No test asserts a log line.
   so typechecking does not require a native toolchain.
 - Already-encrypted database without the capability: now refused up front with a
   clear message (was an opaque first-query failure).
+
+## Round 2 (PR #409 review): the gate must prove the artifact WORKS
+
+The first round proved *availability* (the fork's addon file exists at the
+loader's path). Greptile round 1 (4/5) flagged three gaps in the build and
+packaging path. All three are fixed.
+
+### 1. A stale addon passed the gate (`sqlcipher-availability.mjs`)
+
+The predicate only checked that a file existed, so an addon compiled against a
+different Node ABI was accepted; the sidecar then bundled the current Node with
+an unloadable binary and the failure surfaced on a customer machine.
+
+`probeSqlcipherBinding({ nodeExecPath, runtimeDir, execFile? })` is the new
+proof. After the runtime is copied, `build-sidecar.mjs` runs the copied fork
+with the **copied** Node executable (`node -e`, cwd = sidecar root) and requires
+a non-empty `PRAGMA cipher_version` — the same capability probe the API applies
+at runtime. `execFile` is injected so the wrapper (success, loader stderr,
+empty version) is unit-tested, and one test drives a real synthetic addon that
+exists but cannot load. The load test is authoritative; a recorded Node version
+would be a redundant heuristic, so no ABI marker file is written.
+
+### 2. `typecheck` left a plaintext runtime, and packaging did not re-validate
+
+`typecheck` built `--allow-plaintext` straight into `src-tauri/bin`; a later
+direct `tauri build` could package it without re-running the strict gate.
+
+- `typecheck` now passes `--ephemeral`: the build runs end to end in a
+  `mkdtemp` directory under the OS temp root and the directory is removed in a
+  `finally` (including when the gate refuses). Nothing plaintext is ever written
+  to `src-tauri/bin`. This is safe because `cargo check` only needs the tracked
+  `bin/api-runtime` + `bin/node.exe` placeholders to exist for tauri-build's
+  resource copy, which the build does not touch.
+- `tauri.conf.json` `beforeBuildCommand` now runs the frontend build **and** the
+  strict `sidecar:build`, so `tauri build` (however invoked) can never package a
+  runtime the strict gate would reject; it either rewrites `bin/` with a verified
+  runtime or fails. `build` / `tauri:build` were reduced to `tauri build` so the
+  sidecar build runs once.
+- `--allow-plaintext` remains only on the typecheck path.
+
+### 3. The installer smoke check could pass on plain `better-sqlite3`
+
+`scripts/smoke/installer-smoke.mjs` searched a candidate list that included the
+plain binding at `build/Release` and the fork at `build/Release` (plain's
+layout). Because plain `better-sqlite3` is now always copied, the check could
+pass on an artifact with no encryption support. The check is now three parts:
+plain binding at `build/Release`, the fork independently at its loader path
+`build/better_sqlite3.node`, and a real capability probe (`cipher_version`) run
+with the extracted `bin/node.exe`. `docs/release-verification.md` was updated to
+match the new check list and count.
+
+### Verification bounds (unchanged)
+
+- A real SQLCipher native build needs the Windows SDK; this host has node-gyp
+  but not the fork's toolchain, so the positive load path is exercised with the
+  real plain binding only where it applies, and the refusal path with a
+  synthetic addon. The full `tauri build` packaging run is not claimed.
+

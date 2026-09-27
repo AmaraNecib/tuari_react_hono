@@ -4,14 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "tauri dev",
-    "build": "pnpm run sidecar:build && tauri build",
+    "build": "tauri build",
     "portable": "pnpm run build && node ./scripts/build-portable.mjs",
     "portable:only": "node ./scripts/build-portable.mjs",
     "test:packaging-security": "node --test ./scripts/*.test.mjs",
     "tauri:dev": "tauri dev",
-    "tauri:build": "pnpm run sidecar:build && tauri build",
+    "tauri:build": "tauri build",
     "sidecar:build": "node ./scripts/build-sidecar.mjs",
-    "typecheck": "node ./scripts/build-sidecar.mjs --allow-plaintext && cargo check --manifest-path ./src-tauri/Cargo.toml"
+    "typecheck": "node ./scripts/build-sidecar.mjs --allow-plaintext --ephemeral && cargo check --manifest-path ./src-tauri/Cargo.toml"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.1",

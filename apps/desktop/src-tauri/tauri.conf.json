@@ -7,7 +7,7 @@
     "frontendDist": "../../web/dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm --filter @tuari/web dev",
-    "beforeBuildCommand": "pnpm --filter @tuari/web build"
+    "beforeBuildCommand": "pnpm --filter @tuari/web build && pnpm --filter @tuari/desktop sidecar:build"
   },
   "app": {
     "windows": [

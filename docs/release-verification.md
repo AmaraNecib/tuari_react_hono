@@ -18,7 +18,9 @@ unpacks, but it does not run the installer itself and it does not replace a
 human looking at the window.
 
 Current status: the smoke test passes 22/22 with exit 0 on a locally built
-artifact, and it runs at the publish gate. Two startup blockers it found are
+artifact, and it runs at the publish gate. It now performs 24 checks; the two
+SQLCipher checks added for #402 have not yet run against a full packaging
+build, so treat their result as pending. Two startup blockers it found are
 fixed; the story and the remaining known gaps are at the end of this document.
 
 ## The publish gate
@@ -63,11 +65,13 @@ pnpm --filter @tuari/desktop build
 pnpm --filter @tuari/desktop portable:only
 ```
 
-`@tuari/desktop build` runs `build-sidecar.mjs` first. That script builds the
-API, copies `dist/` plus the `better-sqlite3` (or `better-sqlite3-sqlcipher`)
-native binding into `apps/desktop/src-tauri/bin/api-runtime`, and copies the
-current Node binary to `apps/desktop/src-tauri/bin/node.exe`. Tauri then compiles
-the Rust shell and runs `pnpm --filter @tuari/web build` for the frontend.
+`@tuari/desktop build` runs `tauri build`, whose `beforeBuildCommand` builds the
+web bundle and then runs the strict `sidecar:build`. That script builds the
+API, copies `dist/` plus plain `better-sqlite3` and, when the SQLCipher fork is
+available, `better-sqlite3-sqlcipher`, and copies the current Node binary to
+`apps/desktop/src-tauri/bin/node.exe`. The strict build fails when SQLCipher
+cannot be produced, so `tauri build` never packages a plaintext-only runtime.
+Tauri then compiles the Rust shell.
 
 Outputs:
 
@@ -147,7 +151,10 @@ a normal launch, and never deletes them.
    real PE (`MZ`). Both get a SHA-256 line.
 2. The zip contains `Tuari.exe`, `bin/node.exe`, and
    `bin/api-runtime/dist/index.cjs`.
-3. A bundled SQLite native binding is present in `bin/api-runtime/node_modules`.
+3. The plain `better-sqlite3` binding is present, the `better-sqlite3-sqlcipher`
+   fork is at its loader path (`build/better_sqlite3.node`, not `build/Release`),
+   and the bundled `node.exe` can load the fork and report a non-empty
+   `PRAGMA cipher_version`, so the artifact can genuinely encrypt.
 4. Every entry in `tauri.conf.json` `bundle.resources` exists in the extracted
    bundle.
 5. Port 4318 is free, then `Tuari.exe` starts and a
@@ -306,12 +313,11 @@ written by this run, and clean shutdown. `cargo test` and
 These are real but out of scope for the smoke-test lane. They are reported to the
 parent as separate issues.
 
-- The sidecar build falls back to plain `better-sqlite3` when the
-  `better-sqlite3-sqlcipher` native binding is not present, and it prints a
-  warning rather than failing. The portable artifact then ships without
-  encryption support, so a customer with the `encrypted_db` feature would get
-  `APP_DB_KEY` set and a driver that cannot use it. The build should fail, or at
-  least the packaging step should record which driver was bundled.
+- The sidecar build fell back to plain `better-sqlite3` when the
+  `better-sqlite3-sqlcipher` native binding was not present. Fixed in #402: the
+  strict build now fails unless the operator explicitly asks for a
+  plaintext-only artifact, and the installer smoke check verifies the fork and
+  its `cipher_version` independently of the always-copied plain binding.
 - `cleanup_stale_api_processes` kills any `node.exe` whose command line contains
   `api-runtime` and `index.cjs`, regardless of install path. Launching the
   portable build kills a running installed build's sidecar.

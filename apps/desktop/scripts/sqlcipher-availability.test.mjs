@@ -6,8 +6,10 @@ import path from "node:path";
 
 import {
   SQLCIPHER_ADDON_RELATIVE_PATH,
+  SQLCIPHER_PROBE_SOURCE,
   SQLCIPHER_WINDOWS_DLL_RELATIVE_PATH,
   inspectSqlcipherArtifact,
+  probeSqlcipherBinding,
   requiredSqlcipherFiles,
 } from "./sqlcipher-availability.mjs";
 
@@ -84,4 +86,118 @@ test("a missing package directory reports every required file as missing", () =>
     SQLCIPHER_ADDON_RELATIVE_PATH,
     SQLCIPHER_WINDOWS_DLL_RELATIVE_PATH,
   ]);
+});
+
+test("probeSqlcipherBinding runs the probe with the bundled Node and returns the version", () => {
+  const calls = [];
+  const version = probeSqlcipherBinding({
+    nodeExecPath: path.join("C:", "bundle", "node.exe"),
+    runtimeDir: path.join("C:", "bundle", "api-runtime"),
+    execFile: (file, args, options) => {
+      calls.push({ file, args, options });
+      return "4.5.6 community\n";
+    },
+  });
+
+  assert.equal(version, "4.5.6 community");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].file, path.join("C:", "bundle", "node.exe"));
+  assert.deepEqual(calls[0].args, ["-e", SQLCIPHER_PROBE_SOURCE]);
+  // cwd is how the fork (and its `integer` dependency) resolves from the
+  // sidecar's node_modules, so it is part of the contract, not an accident.
+  assert.equal(calls[0].options.cwd, path.join("C:", "bundle", "api-runtime"));
+  assert.equal(calls[0].options.encoding, "utf8");
+  // The probe must exercise the keyed path and ask for the capability, not
+  // just load the module.
+  assert.match(SQLCIPHER_PROBE_SOURCE, /cipher_version/);
+  assert.match(SQLCIPHER_PROBE_SOURCE, /better-sqlite3-sqlcipher/);
+  assert.match(SQLCIPHER_PROBE_SOURCE, /pragma\("key = /);
+  assert.match(SQLCIPHER_PROBE_SOURCE, /cipher_compatibility = 4/);
+});
+
+test("probeSqlcipherBinding surfaces the loader's stderr when the addon cannot load", () => {
+  const failure = new Error("Command failed: node -e ...");
+  failure.stderr = "Error: The module was compiled against a different Node.js version\n";
+
+  assert.throws(
+    () => probeSqlcipherBinding({
+      nodeExecPath: "node.exe",
+      runtimeDir: "C:/bundle/api-runtime",
+      execFile: () => {
+        throw failure;
+      },
+    }),
+    /compiled against a different Node\.js version/,
+  );
+});
+
+test("probeSqlcipherBinding rejects an empty cipher version even on a clean exit", () => {
+  assert.throws(
+    () => probeSqlcipherBinding({
+      nodeExecPath: "node.exe",
+      runtimeDir: "C:/bundle/api-runtime",
+      execFile: () => "   \n",
+    }),
+    /reported no cipher_version/,
+  );
+});
+
+test("a synthetic addon that exists but cannot load fails the real probe", () => {
+  // End-to-end refusal path: the file check would accept this artifact, but the
+  // bundled Node cannot load it, so the build gate must fail with the loader's
+  // error instead of shipping a broken binding (#409).
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), "tuari-sqlcipher-probe-"));
+  try {
+    const packageDir = path.join(runtimeDir, "node_modules", "better-sqlite3-sqlcipher");
+    const addonPath = path.join(packageDir, "build", "better_sqlite3.node");
+    mkdirSync(path.dirname(addonPath), { recursive: true });
+    writeFileSync(addonPath, "not a real native addon");
+    writeFileSync(
+      path.join(packageDir, "package.json"),
+      JSON.stringify({ name: "better-sqlite3-sqlcipher", version: "0.0.0", main: "index.js" }),
+    );
+    writeFileSync(path.join(packageDir, "index.js"), 'require("./build/better_sqlite3.node");');
+
+    assert.throws(
+      () => probeSqlcipherBinding({ nodeExecPath: process.execPath, runtimeDir }),
+      /could not be loaded/,
+    );
+  } finally {
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});
+
+test("a synthetic binding that reports a cipher version passes the real probe", () => {
+  // Positive control for the same spawned-Node path. A real native SQLCipher
+  // build needs the Windows SDK, so this stands in for it: it proves the probe
+  // succeeds (and returns the version) when the copied package is loadable.
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), "tuari-sqlcipher-probe-"));
+  try {
+    const packageDir = path.join(runtimeDir, "node_modules", "better-sqlite3-sqlcipher");
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(
+      path.join(packageDir, "package.json"),
+      JSON.stringify({ name: "better-sqlite3-sqlcipher", version: "0.0.0", main: "index.js" }),
+    );
+    writeFileSync(
+      path.join(packageDir, "index.js"),
+      [
+        "class FakeDatabase {",
+        "  pragma(source) {",
+        '    if (source === "cipher_version") return "4.5.6 community";',
+        "    return [];",
+        "  }",
+        "  close() {}",
+        "}",
+        "module.exports = FakeDatabase;",
+      ].join("\n"),
+    );
+
+    assert.equal(
+      probeSqlcipherBinding({ nodeExecPath: process.execPath, runtimeDir }),
+      "4.5.6 community",
+    );
+  } finally {
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
 });

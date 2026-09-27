@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyValidatedTree, runPnpmCommand } from "./script-security-utils.mjs";
-import { inspectSqlcipherArtifact } from "./sqlcipher-availability.mjs";
+import { inspectSqlcipherArtifact, probeSqlcipherBinding } from "./sqlcipher-availability.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,7 +13,19 @@ const workspaceRoot = path.resolve(__dirname, "..", "..", "..");
 const apiRoot = path.resolve(workspaceRoot, "apps", "api");
 const desktopRoot = path.resolve(__dirname, "..");
 const desktopPackageJson = path.join(desktopRoot, "package.json");
-const binDir = path.resolve(desktopRoot, "src-tauri", "bin");
+
+/**
+ * `--ephemeral` builds the whole runtime into a throwaway temp directory and
+ * removes it when done. `typecheck` uses it: it needs the build to run (and the
+ * gate to be exercised) but must never leave a plaintext runtime in
+ * `src-tauri/bin`, where a later direct `tauri build` could package it. Safe
+ * because `cargo check` only needs the tracked `bin/api-runtime` + `bin/node.exe`
+ * placeholders to exist for tauri-build's resource copy.
+ */
+const ephemeral = process.argv.includes("--ephemeral");
+const binDir = ephemeral
+  ? mkdtempSync(path.join(os.tmpdir(), "tuari-sidecar-"))
+  : path.resolve(desktopRoot, "src-tauri", "bin");
 const runtimeDir = path.resolve(binDir, "api-runtime");
 const runtimeNodeModules = path.resolve(runtimeDir, "node_modules");
 const nodeBinaryOutput = path.resolve(binDir, "node.exe");
@@ -124,7 +137,11 @@ const resolveSqlcipher = () => {
 // intact rather than deleting it and then aborting.
 const sqlcipher = resolveSqlcipher();
 
-if (!sqlcipher.availability.available) {
+// The gate runs inside the try so an ephemeral build's temp directory is
+// removed even when the gate refuses (the temp dir is created eagerly above).
+const enforceSqlcipherGate = () => {
+  if (sqlcipher.availability.available) return;
+
   const detail = sqlcipher.detail
     ?? (sqlcipher.availability.missing.length > 0
       ? `missing ${sqlcipher.availability.missing.join(", ")}`
@@ -151,50 +168,77 @@ if (!sqlcipher.availability.available) {
       "",
     ].join("\n"),
   );
+};
+
+const buildRuntime = () => {
+  rmSync(runtimeDir, { recursive: true, force: true });
+  rmSync(nodeBinaryOutput, { force: true });
+
+  console.log("Building bundled API runtime...");
+  runPnpmCommand(["--filter", "@tuari/api", "build"], {
+    cwd: workspaceRoot,
+  });
+
+  ensureBetterSqliteBinary();
+
+  copyValidatedTree(apiDistDir, path.resolve(runtimeDir, "dist"));
+
+  // Plain better-sqlite3 is ALWAYS copied: the API bundle statically imports it
+  // for the unencrypted (no-key) path, so the sidecar cannot load without it even
+  // when SQLCipher is present.
+  const betterSqlite3PackageJson = copyPackage("better-sqlite3");
+  const bindingsPackageJson = copyPackage("bindings", betterSqlite3PackageJson);
+  copyPackage("file-uri-to-path", bindingsPackageJson);
+  console.log("Copied better-sqlite3 to runtime.");
+
+  if (sqlcipher.availability.available) {
+    copyValidatedTree(sqlcipher.sqlcipherDir, path.resolve(runtimeNodeModules, "better-sqlite3-sqlcipher"));
+    // The fork's lib/index.js re-exports `require('integer')`. Under pnpm's
+    // isolated layout that dependency is not nested inside the package, so it
+    // has to be copied explicitly or the sidecar cannot require the binding.
+    copyPackage("integer", path.join(sqlcipher.sqlcipherDir, "package.json"));
+    console.log("Copied better-sqlite3-sqlcipher + integer to runtime.");
+  }
+
+  writeFileSync(
+    path.resolve(runtimeDir, "package.json"),
+    JSON.stringify(
+      {
+        name: "tuari-api-runtime",
+        private: true,
+      },
+      null,
+      2,
+    ),
+  );
+
+  copyFileSync(process.execPath, nodeBinaryOutput);
+
+  if (sqlcipher.availability.available) {
+    // The file check above only proves the addon EXISTS. Load it with the Node
+    // executable that ships beside it and require a cipher version, so an addon
+    // built against another Node ABI fails the build here instead of on a
+    // customer machine (#409). This is the authoritative gate; a version string
+    // would be a heuristic.
+    const cipherVersion = probeSqlcipherBinding({
+      nodeExecPath: nodeBinaryOutput,
+      runtimeDir,
+    });
+    console.log(
+      `Verified the bundled Node runtime loads the SQLCipher binding (cipher_version ${cipherVersion}).`,
+    );
+  }
+
+  console.log(`Local API runtime ready at ${runtimeDir}`);
+  console.log(`Bundled Node runtime ready at ${nodeBinaryOutput}`);
+};
+
+try {
+  enforceSqlcipherGate();
+  buildRuntime();
+} finally {
+  if (ephemeral) {
+    rmSync(binDir, { recursive: true, force: true });
+    console.log("Removed the ephemeral sidecar build; nothing was left in src-tauri/bin.");
+  }
 }
-
-rmSync(runtimeDir, { recursive: true, force: true });
-rmSync(nodeBinaryOutput, { force: true });
-
-console.log("Building bundled API runtime...");
-runPnpmCommand(["--filter", "@tuari/api", "build"], {
-  cwd: workspaceRoot,
-});
-
-ensureBetterSqliteBinary();
-
-copyValidatedTree(apiDistDir, path.resolve(runtimeDir, "dist"));
-
-// Plain better-sqlite3 is ALWAYS copied: the API bundle statically imports it
-// for the unencrypted (no-key) path, so the sidecar cannot load without it even
-// when SQLCipher is present.
-const betterSqlite3PackageJson = copyPackage("better-sqlite3");
-const bindingsPackageJson = copyPackage("bindings", betterSqlite3PackageJson);
-copyPackage("file-uri-to-path", bindingsPackageJson);
-console.log("Copied better-sqlite3 to runtime.");
-
-if (sqlcipher.availability.available) {
-  copyValidatedTree(sqlcipher.sqlcipherDir, path.resolve(runtimeNodeModules, "better-sqlite3-sqlcipher"));
-  // The fork's lib/index.js re-exports `require('integer')`. Under pnpm's
-  // isolated layout that dependency is not nested inside the package, so it
-  // has to be copied explicitly or the sidecar cannot require the binding.
-  copyPackage("integer", path.join(sqlcipher.sqlcipherDir, "package.json"));
-  console.log("Copied better-sqlite3-sqlcipher + integer to runtime.");
-}
-
-writeFileSync(
-  path.resolve(runtimeDir, "package.json"),
-  JSON.stringify(
-    {
-      name: "tuari-api-runtime",
-      private: true,
-    },
-    null,
-    2,
-  ),
-);
-
-copyFileSync(process.execPath, nodeBinaryOutput);
-
-console.log(`Local API runtime ready at ${runtimeDir}`);
-console.log(`Bundled Node runtime ready at ${nodeBinaryOutput}`);
