@@ -75,6 +75,7 @@ export function AddSalaryPaymentDialog({
   const [daysText, setDaysText] = useState(String(SALARY_DAYS_PER_MONTH))
   const [manualAmountTouched, setManualAmountTouched] = useState(false)
   const [splits, setSplits] = useState<SplitLine[]>([])
+  const [splitsTouched, setSplitsTouched] = useState(false)
 
   const days = parsePositiveInteger(daysText)
   const proposedAmount =
@@ -94,15 +95,16 @@ export function AddSalaryPaymentDialog({
 
   const assignmentsKey = JSON.stringify(projectAssignments)
   const defaultSplits = useMemo(() => {
-    if (!period) {
+    if (!period || days === null) {
       return [] as Array<{ projectId: string; days: number }>
     }
     return deriveSalaryProjectDays({
       assignments: JSON.parse(assignmentsKey) as ProjectAssignmentWindow[],
       periodStart: period.start,
       periodEnd: period.end,
+      days,
     })
-  }, [assignmentsKey, period])
+  }, [assignmentsKey, days, period])
 
   useEffect(() => {
     if (!open || !employeeId) {
@@ -113,10 +115,11 @@ export function AddSalaryPaymentDialog({
     setManualAmountTouched(false)
     resetDate()
     setNote("")
+    setSplitsTouched(false)
   }, [open, employeeId, resetAmount, resetDate])
 
   useEffect(() => {
-    if (!open || !employeeId) {
+    if (!open || !employeeId || splitsTouched) {
       return
     }
     setSplits(
@@ -126,7 +129,7 @@ export function AddSalaryPaymentDialog({
         days: String(split.days),
       })),
     )
-  }, [open, employeeId, defaultSplits])
+  }, [open, employeeId, defaultSplits, splitsTouched])
 
   const splitDays = splits.map((line) => Number(line.days))
   const splitsValid = splits.every(
@@ -152,9 +155,11 @@ export function AddSalaryPaymentDialog({
     resetDate()
     setNote("")
     setSplits([])
+    setSplitsTouched(false)
   }
 
   const updateSplit = (key: string, patch: Partial<Pick<SplitLine, "projectId" | "days">>) => {
+    setSplitsTouched(true)
     setSplits((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)))
   }
 
@@ -162,6 +167,7 @@ export function AddSalaryPaymentDialog({
     const used = new Set(splits.map((line) => line.projectId))
     const next = projects.find((project) => !used.has(project.id))
     const remaining = unallocatedDays !== null && unallocatedDays > 0 ? unallocatedDays : 1
+    setSplitsTouched(true)
     setSplits((current) => [
       ...current,
       { key: `line-${Date.now()}-${current.length}`, projectId: next?.id ?? "", days: String(remaining) },
@@ -169,6 +175,7 @@ export function AddSalaryPaymentDialog({
   }
 
   const removeSplit = (key: string) => {
+    setSplitsTouched(true)
     setSplits((current) => current.filter((line) => line.key !== key))
   }
 

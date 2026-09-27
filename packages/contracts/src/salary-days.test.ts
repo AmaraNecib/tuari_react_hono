@@ -36,29 +36,39 @@ describe("computeProposedSalaryAmount", () => {
 });
 
 describe("deriveSalaryProjectDays", () => {
-  it("counts a full-period assignment as the period's days", () => {
+  it("normalizes a full-period assignment to the payment's day count", () => {
     expect(
       deriveSalaryProjectDays({
         assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-31", "end") }],
         ...MARCH_2026,
+        days: 30,
       }),
-    ).toEqual([{ projectId: "p1", days: 31 }]);
+    ).toEqual([{ projectId: "p1", days: 30 }]);
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-31", "end") }],
+        ...MARCH_2026,
+        days: 27,
+      }),
+    ).toEqual([{ projectId: "p1", days: 27 }]);
   });
 
-  it("clamps a window that starts before the period", () => {
+  it("clamps a window that starts before the period and scales its coverage", () => {
     expect(
       deriveSalaryProjectDays({
         assignments: [{ projectId: "p1", startDate: algeriaDay("2026-01-15", "start"), endDate: algeriaDay("2026-03-10", "end") }],
         ...MARCH_2026,
+        days: 30,
       }),
     ).toEqual([{ projectId: "p1", days: 10 }]);
   });
 
-  it("clamps a window that ends after the period", () => {
+  it("clamps a window that ends after the period and scales its coverage", () => {
     expect(
       deriveSalaryProjectDays({
         assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-20", "start"), endDate: algeriaDay("2026-06-30", "end") }],
         ...MARCH_2026,
+        days: 30,
       }),
     ).toEqual([{ projectId: "p1", days: 12 }]);
   });
@@ -68,12 +78,13 @@ describe("deriveSalaryProjectDays", () => {
       deriveSalaryProjectDays({
         assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-05", "start"), endDate: null }],
         ...MARCH_2026,
+        days: 30,
       }),
-    ).toEqual([{ projectId: "p1", days: 27 }]);
+    ).toEqual([{ projectId: "p1", days: 26 }]);
   });
 
   it("returns nothing when the worker has no assignments", () => {
-    expect(deriveSalaryProjectDays({ assignments: [], ...MARCH_2026 })).toEqual([]);
+    expect(deriveSalaryProjectDays({ assignments: [], ...MARCH_2026, days: 30 })).toEqual([]);
   });
 
   it("counts overlapping windows on the same project once", () => {
@@ -84,11 +95,12 @@ describe("deriveSalaryProjectDays", () => {
           { projectId: "p1", startDate: algeriaDay("2026-03-10", "start"), endDate: algeriaDay("2026-03-20", "end") },
         ],
         ...MARCH_2026,
+        days: 30,
       }),
-    ).toEqual([{ projectId: "p1", days: 20 }]);
+    ).toEqual([{ projectId: "p1", days: 19 }]);
   });
 
-  it("returns one line per project in deterministic order", () => {
+  it("returns one normalized line per project in deterministic order", () => {
     expect(
       deriveSalaryProjectDays({
         assignments: [
@@ -96,11 +108,56 @@ describe("deriveSalaryProjectDays", () => {
           { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-10", "end") },
         ],
         ...MARCH_2026,
+        days: 30,
       }),
     ).toEqual([
       { projectId: "a", days: 10 },
-      { projectId: "b", days: 31 },
+      { projectId: "b", days: 30 },
     ]);
+  });
+
+  it("keeps a partially covered period unallocated beyond the scaled coverage", () => {
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-15", "end") }],
+        ...MARCH_2026,
+        days: 30,
+      }),
+    ).toEqual([{ projectId: "p1", days: 15 }]);
+  });
+
+  it("makes the lines sum exactly to the scaled coverage despite rounding", () => {
+    // 16 + 15 covered days of a 31-day period, scaled to 30: 15.48 and 14.52
+    // both round to 15, and the target sum (30) matches, so no adjustment.
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [
+          { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-16", "end") },
+          { projectId: "b", startDate: algeriaDay("2026-03-17", "start"), endDate: algeriaDay("2026-03-31", "end") },
+        ],
+        ...MARCH_2026,
+        days: 30,
+      }),
+    ).toEqual([
+      { projectId: "a", days: 15 },
+      { projectId: "b", days: 15 },
+    ]);
+  });
+
+  it("puts a rounding overshoot on the largest line and drops a zero-day line", () => {
+    // A 2-day period, one project per day, a single paid day: each raw line is
+    // 0.5 and rounds to 1 (sum 2), so the largest line gives back one day.
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [
+          { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-01", "end") },
+          { projectId: "b", startDate: algeriaDay("2026-03-02", "start"), endDate: algeriaDay("2026-03-02", "end") },
+        ],
+        periodStart: algeriaDay("2026-03-01", "start"),
+        periodEnd: algeriaDay("2026-03-02", "end"),
+        days: 1,
+      }),
+    ).toEqual([{ projectId: "b", days: 1 }]);
   });
 
   it("omits a window that lies entirely outside the period", () => {
@@ -108,18 +165,28 @@ describe("deriveSalaryProjectDays", () => {
       deriveSalaryProjectDays({
         assignments: [{ projectId: "p1", startDate: algeriaDay("2026-01-01", "start"), endDate: algeriaDay("2026-01-31", "end") }],
         ...MARCH_2026,
+        days: 30,
       }),
     ).toEqual([]);
   });
 
-  it("covers a single-day period", () => {
+  it("normalizes a single-day period to the payment's day count", () => {
     expect(
       deriveSalaryProjectDays({
         assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-05", "start"), endDate: null }],
         periodStart: algeriaDay("2026-03-05", "start"),
         periodEnd: algeriaDay("2026-03-05", "end"),
+        days: 1,
       }),
     ).toEqual([{ projectId: "p1", days: 1 }]);
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-05", "start"), endDate: null }],
+        periodStart: algeriaDay("2026-03-05", "start"),
+        periodEnd: algeriaDay("2026-03-05", "end"),
+        days: 30,
+      }),
+    ).toEqual([{ projectId: "p1", days: 30 }]);
   });
 
   it("skips an unparseable timestamp instead of throwing", () => {
@@ -127,16 +194,32 @@ describe("deriveSalaryProjectDays", () => {
       deriveSalaryProjectDays({
         assignments: [{ projectId: "p1", startDate: "not-a-date", endDate: null }],
         ...MARCH_2026,
+        days: 30,
       }),
     ).toEqual([]);
   });
 
-  it("returns nothing for an inverted period", () => {
+  it("returns nothing for an inverted period or an invalid day count", () => {
     expect(
       deriveSalaryProjectDays({
         assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-01", "start"), endDate: null }],
         periodStart: algeriaDay("2026-03-31", "start"),
         periodEnd: algeriaDay("2026-03-01", "end"),
+        days: 30,
+      }),
+    ).toEqual([]);
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-01", "start"), endDate: null }],
+        ...MARCH_2026,
+        days: 0,
+      }),
+    ).toEqual([]);
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [{ projectId: "p1", startDate: algeriaDay("2026-03-01", "start"), endDate: null }],
+        ...MARCH_2026,
+        days: 2.5,
       }),
     ).toEqual([]);
   });

@@ -25,7 +25,15 @@ review tier: High-assurance (financial calculation)
   - `deriveSalaryProjectDays`: for each project, the distinct Algeria calendar
     days its assignment windows cover inside `[periodStart, periodEnd]`;
     open-ended windows run to the period end; overlapping windows dedupe.
-    Returns project-id-ascending order.
+    The covered days are then normalized against the period length and scaled
+    to the payment's day count (parent decision, #412): a project covering the
+    whole period gets all of `days` (30 by default), a project covering 15 of a
+    30-day period gets 15, and a partially covered period leaves the rest
+    unallocated. Per-project rounding is corrected on the project with the
+    most covered days so a fully covered period sums EXACTLY to `days`; the
+    correction can drop a 0-day line. Order is project-id ascending.
+    (Overlapping projects can exceed `days`; the UI surfaces that for a hand
+    edit.)
 
 ## Data model
 
@@ -41,7 +49,11 @@ review tier: High-assurance (financial calculation)
 
 `expectedAmountDzd` is the proration proposal for the entered `days`;
 `actualAmountDzd` is the caller's override when supplied, otherwise the
-proposal. Validations: integer `days > 0`; `actualAmount > 0`; each split line
+proposal. **Meaning change:** `expectedAmountDzd` used to store the raw
+`salaryAmountDzd`; it is now the prorated proposal. Legacy rows are never
+recomputed — the migration only backfills `days = 30`, and the migration test
+pins that their stored `expected_amount_dzd` / `actual_amount_dzd` read back
+unchanged. Validations: integer `days > 0`; `actualAmount > 0`; each split line
 needs a positive integer and a project that exists; no duplicate project; the
 split total must not exceed `days` (the remainder stays unallocated).
 `WEEKLY` keeps working in code but is not prorated and is no longer offered.
@@ -52,7 +64,10 @@ split total must not exceed `days` (the remainder stays unallocated).
   editable-but-overriding amount, per-project lines prefilled from
   `deriveSalaryProjectDays` for the month (MONTHLY) or day (DAILY) of the
   payment date, plus an explicit unallocated-remainder line and an
-  over-allocation warning that blocks submit.
+  over-allocation warning that blocks submit. While the person has not edited
+  a line, the default re-derives as the days input changes (so the proposal
+  always reconciles); once a line is touched, the hand edit wins and the
+  remainder readout keeps the reconciliation honest.
 - Derived data: `salariedEmployees[].projectAssignments` and
   `derived.salaryProjects` feed the dialog; the history table shows days.
 - Period selectors no longer offer WEEKLY; a legacy WEEKLY employee keeps the
@@ -75,10 +90,15 @@ split total must not exceed `days` (the remainder stays unallocated).
 
 ## Risks / ambiguities
 
-- **Month length vs /30**: the derivation counts real calendar days, so a
-  full-month March assignment suggests 31 days while `days` defaults to 30.
-  The form surfaces the -1 remainder instead of hiding it. Decision record for
-  the parent: whether the derived default should normalize a full period to 30.
+- **Month length vs /30 (settled by parent decision).** The derivation counts
+  real calendar days but normalizes them to the payment's day count, so a
+  full-March assignment suggests 30 days at the default and the lines sum
+  exactly to the day count. A partially covered period stays partly
+  unallocated. The rule is pinned by contract tests (full period, partial
+  coverage, rounding overshoot, single-day period).
+- **`expectedAmountDzd` meaning.** It was the raw wage and is now the prorated
+  proposal; legacy rows are never recomputed and render their stored values
+  (pinned by the migration test).
 - The split is a starting suggestion only; assignments corrected late are fixed
   by hand, per the prototype notes.
 

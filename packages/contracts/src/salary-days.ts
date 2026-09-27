@@ -90,20 +90,30 @@ export function computeProposedSalaryAmount({
  * windows on the same project therefore do not double-count. An open-ended
  * assignment (`endDate === null`) runs up to the period end.
  *
- * The result is only a starting point: the split is typed by hand in the UI
- * because assignments are often corrected a day or two late. Projects with
- * no day inside the period are omitted, and the order is deterministic
- * (project id ascending).
+ * The covered days are then normalized against the period so the default
+ * reconciles with the payment's own day count: a project covering the whole
+ * period gets all of `days` (default 30), a project covering 15 of a 30-day
+ * period gets 15, and the lines always sum to the scaled coverage. The
+ * rounding difference lands on the project with the most covered days, so a
+ * fully covered period sums EXACTLY to `days`; a partially covered period
+ * leaves the rest unallocated. Overlapping projects (coverage > 100%) can
+ * exceed `days` and are surfaced for the person to edit by hand.
  */
 export function deriveSalaryProjectDays({
   assignments,
   periodStart,
   periodEnd,
+  days,
 }: {
   assignments: readonly SalaryProjectAssignmentWindow[];
   periodStart: string;
   periodEnd: string;
+  days: number;
 }): SalaryProjectDaySplit[] {
+  if (!Number.isInteger(days) || days <= 0) {
+    return [];
+  }
+
   const periodStartKey = toAlgeriaDayKey(periodStart);
   const periodEndKey = toAlgeriaDayKey(periodEnd);
 
@@ -148,8 +158,38 @@ export function deriveSalaryProjectDays({
     }
   }
 
-  return Array.from(daysByProject.entries())
-    .map(([projectId, projectDays]) => ({ projectId, days: projectDays.size }))
-    .filter((split) => split.days > 0)
+  const coveredProjects = Array.from(daysByProject.entries())
+    .map(([projectId, projectDays]) => ({ projectId, coveredDays: projectDays.size }))
+    .filter((entry) => entry.coveredDays > 0)
     .sort((left, right) => left.projectId.localeCompare(right.projectId));
+
+  if (coveredProjects.length === 0) {
+    return [];
+  }
+
+  const periodLengthDays = Math.floor((periodEndMs - periodStartMs) / MS_PER_DAY) + 1;
+  const totalCoveredDays = coveredProjects.reduce((total, entry) => total + entry.coveredDays, 0);
+  const normalizedTotalDays = Math.round((totalCoveredDays / periodLengthDays) * days);
+
+  const normalized = coveredProjects.map((entry) => ({
+    projectId: entry.projectId,
+    coveredDays: entry.coveredDays,
+    days: Math.round((entry.coveredDays / periodLengthDays) * days),
+  }));
+
+  let largestIndex = 0;
+  for (let index = 1; index < normalized.length; index += 1) {
+    if ((normalized[index]?.coveredDays ?? 0) > (normalized[largestIndex]?.coveredDays ?? 0)) {
+      largestIndex = index;
+    }
+  }
+
+  const largest = normalized[largestIndex];
+  if (largest) {
+    largest.days += normalizedTotalDays - normalized.reduce((total, entry) => total + entry.days, 0);
+  }
+
+  return normalized
+    .map(({ projectId, days: projectDays }) => ({ projectId, days: projectDays }))
+    .filter((split) => split.days > 0);
 }
