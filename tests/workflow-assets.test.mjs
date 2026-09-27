@@ -157,14 +157,48 @@ test('publish workflows run the installer smoke test after packaging and before 
     );
 
     // It must point at the staged artifact the release uploads, not at a
-    // rebuild in the bundle directory.
+    // rebuild in the bundle directory. These arguments are asserted INSIDE the
+    // smoke step: searching the whole file would pass if the smoke command lost
+    // its arguments while the same filenames appeared elsewhere in the workflow.
     assert.match(
-      source,
+      smokeBlock,
       new RegExp(`tuari-\\$version-${channel}-portable\\.zip`),
       `${name} must point the installer smoke test at the staged portable zip`,
     );
-    assert.match(source, /--installer/, `${name} must pass the staged NSIS installer to the smoke test`);
+    assert.match(
+      smokeBlock,
+      /--installer/,
+      `${name} must pass the staged NSIS installer to the smoke test`,
+    );
   }
+});
+
+test('the gated release workflow owns publication', async () => {
+  // A tag push runs release.yml (with the smoke gate) and release-metadata.yml
+  // at the same time. If metadata publishes the release, a tag can go public
+  // while the gate is still running — or after it failed, because the gate only
+  // stops the binary upload. Publication therefore belongs to the gated
+  // workflow, and metadata must never un-draft a release.
+  const release = await readRepoFile('.github/workflows/release.yml');
+  const metadata = await readRepoFile('.github/workflows/release-metadata.yml');
+
+  const lines = release.split("\n");
+  const smoke = lines.findIndex((l) => /^\s*- name:/.test(l) && l.includes('Run installer smoke test'));
+  const publish = lines.findIndex((l) => /^\s*- name:/.test(l) && l.includes('Publish release'));
+  assert.ok(smoke !== -1, 'release.yml must run the installer smoke test');
+  assert.ok(publish !== -1, 'release.yml must publish the release');
+  assert.ok(smoke < publish, 'release.yml must publish only after the smoke gate');
+  assert.match(
+    lines.slice(publish, publish + 24).join("\n"),
+    /--draft=false/,
+    'release.yml must un-draft the release after the gate passes',
+  );
+
+  assert.doesNotMatch(
+    metadata,
+    /--draft=false/,
+    'release-metadata.yml must not publish the release: release.yml owns publication after the smoke gate',
+  );
 });
 
 test('workflow files do not embed a column-0 PowerShell here-string terminator', async () => {
