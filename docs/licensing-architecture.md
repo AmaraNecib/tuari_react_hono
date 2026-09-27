@@ -508,14 +508,18 @@ Tauri startup
   │
   ├── 4. Cache validated license in Rust memory (Mutex<Option<LicenseInfo>>)
   │
-  ├── 5. Prepare env vars for API sidecar (via LicenseManager.serialize_env())
+  ├── 5. Prepare env vars for API sidecar (via LicenseManager.to_env_map())
   │     • TUARI_LICENSE_EDITION: "professional"
   │     • TUARI_LICENSE_FEATURES: "lan_server,multi_user,advanced_reports,external_api"
   │     • TUARI_LICENSE_MAX_USERS: "10"
   │     • TUARI_LICENSE_CUSTOMER: JSON with customer name + email
   │     • TUARI_LICENSE_EXPIRES_AT: ISO date or empty
+  │     • TUARI_LICENSE_STATUS: "active" / "trial" / "grace" / ... (#399)
   │     • (APP_DB_KEY only if license_manager.has_feature(EncryptedDb))
   │     Note: Raw signed payload is NEVER passed to the sidecar.
+  │     If initialize() fails, the block is still emitted with neutral
+  │     defaults and an explicit status (clock → "suspicious", otherwise
+  │     "unknown") instead of being omitted (#399).
   │
   └── 6. Spawn API sidecar (or show activation screen if locked)
 ```
@@ -1005,7 +1009,7 @@ impl LicenseManager {
 **Design rules:**
 - `LicenseManager` is the **only** Rust struct that touches `license.lic` or `key-rotation-*.json` files.
 - The Tauri commands (`activate_license`, `get_license_status`) delegate to `LicenseManager`.
-- The startup flow creates `LicenseManager`, calls `initialize()`, then calls `to_env_map()` to prepare sidecar env vars.
+- The startup flow creates `LicenseManager`, calls `initialize()`, then calls `to_env_map()` to prepare sidecar env vars. If `initialize()` **fails**, the shell still emits the block via `license_failure_env_map()` with the neutral defaults plus an explicit `TUARI_LICENSE_STATUS` (`suspicious` for a clock inconsistency, `unknown` otherwise) instead of omitting it (#399).
 - No other Rust module imports Ed25519 types or license schemas.
 
 ### 15.2 Component Allocation
@@ -1071,7 +1075,7 @@ Rust exposes license information to the Node.js sidecar through **structured env
 | `TUARI_LICENSE_MAX_USERS` | integer string | `"10"` | `license_manager.max_users().to_string()` |
 | `TUARI_LICENSE_CUSTOMER` | JSON string | `{"name":"Acme","email":"a@b.com"}` | `license_manager.customer_json()` |
 | `TUARI_LICENSE_EXPIRES_AT` | ISO 8601 or empty | `"2027-07-01T00:00:00Z"` or `""` | `license_manager.expires_at()` |
-| `TUARI_LICENSE_STATUS` | string | `"active"`, `"trial"`, `"expired"`, `"grace"` | `license_manager.status().as_str()` |
+| `TUARI_LICENSE_STATUS` | string | `"active"`, `"trial"`, `"expired"`, `"grace"`, `"suspicious"`, `"unknown"` | `license_manager.status().as_str()`; `suspicious`/`unknown` also on init failure (#399) |
 
 **Rules for this interface:**
 1. **Read-only from TypeScript.** The sidecar reads these env vars on startup and caches them. It never writes back.
@@ -1079,6 +1083,7 @@ Rust exposes license information to the Node.js sidecar through **structured env
 3. **Subject to semantic versioning.** Changes to this interface require a major version bump.
 4. **Backward compatibility.** New env vars may be added; existing ones must not be removed or have their semantics changed without a deprecation period.
 5. **Validation on the Hono side.** The sidecar validates that env vars match their expected types/schemas on startup.
+6. **Init-failure path (#399).** When `LicenseManager::initialize` fails, the shell still emits the full block with neutral defaults and an explicit `TUARI_LICENSE_STATUS`: a clock inconsistency becomes `suspicious`, and a malformed/tampered/unreadable `license.lic` (or an IO/crypto failure) becomes `unknown`. The API's fail-closed default (a missing/blank/unrecognised status → `unknown`) is defence in depth and does not depend on the shell being correct.
 
 ```typescript
 // TypeScript side — reads the interface, never touches license.lic or Ed25519
@@ -1100,9 +1105,11 @@ function getLicenseInfo(): LicenseInfo {
       ? JSON.parse(process.env.TUARI_LICENSE_CUSTOMER)
       : null,
     expiresAt: process.env.TUARI_LICENSE_EXPIRES_AT || null,
-    // Fail CLOSED: the shell omits the whole license env block when license
-    // initialization fails, so a missing/blank status must NOT be a writable
-    // trial. Unrecognised values are coerced to 'unknown' too.
+    // Fail CLOSED: a missing or unrecognised status must never be a writable
+    // trial. The shell emits an explicit status even when initialization fails
+    // (clock -> 'suspicious', malformed/unreadable license.lic -> 'unknown',
+    // #399), but the API does not rely on that: a missing/blank/unrecognised
+    // value is coerced to 'unknown' here as defence in depth.
     status: parseLicenseStatus(process.env.TUARI_LICENSE_STATUS),
   };
 }

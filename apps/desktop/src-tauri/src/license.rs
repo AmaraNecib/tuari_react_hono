@@ -876,6 +876,19 @@ mod tests {
         assert_eq!(env.get("TUARI_LICENSE_STATUS").unwrap(), "unknown");
     }
 
+    // #399 guard: the successful no-license path inside the trial window must
+    // stay `trial` — only the init-FAILURE path gained a new explicit status.
+    #[test]
+    fn to_env_map_reports_trial_for_no_license_inside_the_trial_window() {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let manager = LicenseManager::initialize(&dir).unwrap();
+        assert_eq!(manager.status(), LicenseStatus::Grace);
+        let env = manager.to_env_map();
+        assert_eq!(env.get("TUARI_LICENSE_STATUS").unwrap(), "trial");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn status_returns_expired_grace_for_recently_expired() {
         let (signing_key, public_key) = generate_keypair();
