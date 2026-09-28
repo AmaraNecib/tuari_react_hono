@@ -202,7 +202,9 @@ the desktop shell enforces it:
   the desktop build when the SQLCipher native binding is missing, instead of
   silently packaging a plaintext-only runtime (#402). The gate may be waived only
   with an explicit `--allow-plaintext` / `TUARI_ALLOW_PLAINTEXT_DB=1`, which
-  prints a loud banner; release builds never pass it. `pnpm-workspace.yaml`
+  prints a loud banner; release builds never pass it. The waiver covers both a
+  missing addon and one that is present but cannot be loaded by the bundled
+  Node, and the banner states that the runtime cannot encrypt. `pnpm-workspace.yaml`
   leaves `better-sqlite3-sqlcipher` out of `onlyBuiltDependencies` so a plain
   `pnpm install` does not attempt the native build; the sidecar build drives
   `node-gyp` itself via its pinned devDependency.

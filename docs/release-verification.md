@@ -88,6 +88,10 @@ API, copies `dist/` plus plain `better-sqlite3` and, when the SQLCipher fork is
 available, `better-sqlite3-sqlcipher`, and copies the current Node binary to
 `apps/desktop/src-tauri/bin/node.exe`. The strict build fails when SQLCipher
 cannot be produced, so `tauri build` never packages a plaintext-only runtime.
+`--allow-plaintext` / `TUARI_ALLOW_PLAINTEXT_DB=1` is the only opt-out and is
+never passed by release scripts; it downgrades either refusal mode (a missing
+addon, or an addon that is present but cannot load) to a loud plaintext-only
+banner that names what the runtime cannot do.
 Tauri then compiles the Rust shell.
 
 Outputs:

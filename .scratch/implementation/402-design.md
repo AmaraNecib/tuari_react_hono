@@ -217,3 +217,44 @@ the CI job in #410 (native fork build, write with a key, assert the file is not
 `SQLite format 3`, reopen and read), that no local test substitutes for it, and
 the smoke script header and `docs/editions-and-features.md` stop claiming a
 local check proves encryption.
+
+## Round 4 (PR #409 review, 2026-09-28T00:08Z, parent-approved follow-up): waiver coverage + interrupted-swap recovery
+
+The same review round raised two more findings. The lane brief initially
+excluded them; the parent approved picking them up before the next push.
+
+### 1. The plaintext waiver must cover an unloadable addon (`build-sidecar.mjs`)
+
+The waiver (`--allow-plaintext` / `TUARI_ALLOW_PLAINTEXT_DB=1`) only guarded the
+availability gate. An addon that existed at the loader path but could not load
+with the bundled Node passed the gate, then failed the staged probe, so a
+waived build still exited non-zero. A waiver that does not cover the failure it
+exists for looks supported and then blocks the builds that need it.
+
+The banner moved into `printPlaintextOnlyWarning(detail)` and the probe now
+catches the failure: without the waiver it rethrows (unchanged strict
+behaviour), with the waiver it prints the same banner, naming the probe error as
+the reason, and lets the build publish. The banner gained the explicit line
+"The runtime cannot encrypt a database"; the `encrypted_db` refusal and "never
+ship this artifact" text are unchanged. The waiver stays strictly opt-in and
+release scripts still never pass it.
+
+### 2. An interrupted swap must recover its own state (`runtime-staging.mjs`)
+
+A run killed between `rename(destinationDir, backupDir)` and
+`rename(stagingDir, destinationDir)` left no destination plus a
+`destinationDir.previous-<pid>` backup. The next build saw no destination, so it
+published normally but never restored or cleared the stranded backup; the
+recovery depended on the destination already existing.
+
+`swapRuntimeDirectory` now scans the destination's parent for
+`<basename>.previous-*` siblings. When the destination is missing and one
+exists, it restores the backup first (logging what state it found and what it
+did) and then runs the normal swap. Chosen over "publish and clear" because the
+restore also repairs the state when the publish rename fails: the catch now
+restores a runnable runtime instead of leaving nothing. It also consolidates the
+backup naming, so crashes cannot accumulate stranded directories. Any remaining
+backups from earlier interrupted runs are swept after the next successful
+publish, with the same warn-don't-fail policy as the post-publication cleanup.
+The scan (`readdir`) and the recovery log (`log`) are injectable, so the success,
+publish-failure, and sweep paths are unit-tested.

@@ -144,6 +144,26 @@ const resolveSqlcipher = () => {
 // intact rather than deleting it and then aborting.
 const sqlcipher = resolveSqlcipher();
 
+/**
+ * The one banner every plaintext-only path prints, so a waived build states
+ * plainly what the artifact cannot do however the waiver was reached.
+ */
+const printPlaintextOnlyWarning = (detail) => {
+  console.error(
+    [
+      "",
+      "================================================================",
+      "WARNING: building a PLAINTEXT-ONLY desktop artifact.",
+      `Reason: ${detail}`,
+      "The runtime cannot encrypt a database.",
+      "An encrypted_db license will be refused at runtime instead of",
+      "being served by a plaintext database. Never ship this artifact.",
+      "================================================================",
+      "",
+    ].join("\n"),
+  );
+};
+
 // The gate runs inside the build callback, before the staging tree is
 // published, so a refused gate leaves the previous artifact untouched.
 const enforceSqlcipherGate = () => {
@@ -163,18 +183,7 @@ const enforceSqlcipherGate = () => {
     );
   }
 
-  console.error(
-    [
-      "",
-      "================================================================",
-      "WARNING: building a PLAINTEXT-ONLY desktop artifact.",
-      `Reason: ${detail}`,
-      "An encrypted_db license will be refused at runtime instead of",
-      "being served by a plaintext database. Never ship this artifact.",
-      "================================================================",
-      "",
-    ].join("\n"),
-  );
+  printPlaintextOnlyWarning(detail);
 };
 
 const buildRuntime = () => {
@@ -225,14 +234,32 @@ const buildRuntime = () => {
  * runtime. The existence check only proves the addon is there; an addon built
  * against another Node ABI must fail here instead of on a customer machine
  * (#409). This is the authoritative gate; a version string would be a heuristic.
+ *
+ * With `--allow-plaintext` the refusal downgrades to the same loud warning the
+ * missing-addon gate prints. The waiver exists to produce a knowingly
+ * plaintext-only artifact, so it must cover an addon that is present but cannot
+ * load as well as one that is absent; otherwise it looks supported and then
+ * blocks the very builds it exists for.
  */
 const probeStagedRuntime = () => {
   if (!sqlcipher.availability.available) return;
 
-  const cipherVersion = probeSqlcipherBinding({
-    nodeExecPath: nodeBinaryOutput,
-    runtimeDir,
-  });
+  let cipherVersion;
+  try {
+    cipherVersion = probeSqlcipherBinding({
+      nodeExecPath: nodeBinaryOutput,
+      runtimeDir,
+    });
+  } catch (error) {
+    if (!plaintextAllowed) throw error;
+
+    printPlaintextOnlyWarning(
+      "the SQLCipher binding is present but the bundled Node cannot load it "
+      + `(${error instanceof Error ? error.message : String(error)})`,
+    );
+    return;
+  }
+
   console.log(
     `Verified the bundled Node runtime loads the SQLCipher binding (cipher_version ${cipherVersion}).`,
   );

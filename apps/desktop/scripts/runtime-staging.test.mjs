@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -233,6 +233,92 @@ test("a failure clearing a stale backup before the swap still fails the build", 
 
     // The previous runtime is still the live one and was never renamed aside.
     assert.equal(hashTree(destinationDir), previousHash);
+  });
+});
+
+test("a runtime left aside by an interrupted run is restored before the next swap", () => {
+  withLayout(({ root, destinationDir, stagingDir }) => {
+    const strandedBackup = `${destinationDir}.previous-999999`;
+    rmSync(destinationDir, { recursive: true, force: true });
+    writeTree(strandedBackup, { "marker.txt": "runtime from the interrupted run" });
+
+    const logs = [];
+    buildProbeAndPublishRuntime({
+      stagingDir,
+      destinationDir,
+      build: () => {},
+      probe: () => {},
+      log: (message) => logs.push(message),
+    });
+
+    // The staged runtime is live and the interrupted run's tree was consumed.
+    assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
+    assert.equal(existsSync(strandedBackup), false);
+    assert.equal(
+      readdirSync(path.join(root, "src-tauri")).some((name) => name.includes(".previous-")),
+      false,
+    );
+    // The recovery says which state it found and what it did.
+    assert.equal(logs.length, 1);
+    assert.ok(logs[0].includes(strandedBackup));
+    assert.ok(logs[0].includes(destinationDir));
+    assert.match(logs[0], /Restoring/);
+  });
+});
+
+test("a failed publish after recovery leaves the interrupted run's runtime in place", () => {
+  withLayout(({ destinationDir, stagingDir }) => {
+    const strandedBackup = `${destinationDir}.previous-999999`;
+    rmSync(destinationDir, { recursive: true, force: true });
+    writeTree(strandedBackup, { "marker.txt": "runtime from the interrupted run" });
+    const strandedHash = hashTree(strandedBackup);
+
+    let renameCalls = 0;
+    const rename = (from, to) => {
+      renameCalls += 1;
+      // 1: stranded backup -> destination (recovery). 2: destination -> backup.
+      // 3: staging -> destination (fails). 4: backup -> destination (restore).
+      if (renameCalls === 3) {
+        throw new Error("EBUSY: resource busy or locked, rename");
+      }
+      renameSync(from, to);
+    };
+
+    assert.throws(
+      () =>
+        buildProbeAndPublishRuntime({
+          stagingDir,
+          destinationDir,
+          build: () => {},
+          probe: () => {},
+          rename,
+        }),
+      /EBUSY/,
+    );
+
+    assert.equal(renameCalls, 4);
+    assert.equal(hashTree(destinationDir), strandedHash);
+    assert.equal(existsSync(strandedBackup), false);
+  });
+});
+
+test("a backup left by an interrupted run is swept when the next publish succeeds", () => {
+  withLayout(({ destinationDir, stagingDir }) => {
+    const orphan = `${destinationDir}.previous-999999`;
+    writeTree(orphan, { "junk.txt": "runtime left by an interrupted run" });
+
+    const warnings = [];
+    buildProbeAndPublishRuntime({
+      stagingDir,
+      destinationDir,
+      build: () => {},
+      probe: () => {},
+      warn: (message) => warnings.push(message),
+    });
+
+    assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
+    assert.equal(existsSync(orphan), false);
+    assert.equal(warnings.length, 0);
   });
 });
 

@@ -1,4 +1,28 @@
-import { existsSync, renameSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, renameSync, rmSync } from "node:fs";
+import path from "node:path";
+
+/** Infix shared by the tree a swap renames aside and the recovery scan for it. */
+const BACKUP_INFIX = ".previous-";
+
+/**
+ * Every `<destinationDir>.previous-*` sibling left behind by a swap that did
+ * not finish. A clean run removes its own backup, so anything found here is
+ * litter from an interrupted or crashed run.
+ */
+const findPreviousRuntimeBackups = ({ destinationDir, exists, readdir }) => {
+  const parentDir = path.dirname(destinationDir);
+
+  if (!exists(parentDir)) {
+    return [];
+  }
+
+  const prefix = `${path.basename(destinationDir)}${BACKUP_INFIX}`;
+
+  return readdir(parentDir)
+    .filter((name) => name.startsWith(prefix))
+    .sort()
+    .map((name) => path.join(parentDir, name));
+};
 
 /**
  * Move a fully built runtime tree into place, preserving the previous tree if
@@ -8,6 +32,14 @@ import { existsSync, renameSync, rmSync } from "node:fs";
  * failure during the swap restores it instead of leaving a half-copied tree.
  * The staged directory must share a volume with the destination for the rename
  * to be atomic; `build-sidecar.mjs` stages under `src-tauri/` for that reason.
+ *
+ * A run killed between "rename the old tree aside" and "publish the staged
+ * tree" leaves no destination plus a `.previous-<pid>` backup. When that state
+ * is found (destination missing, backup present) the backup is restored first
+ * and `log` reports what was found and what was done, so the next build
+ * recovers on its own and a failed publish still restores a runnable runtime.
+ * Backups left by earlier runs are removed after the next successful publish,
+ * so they never require a human to delete directories.
  *
  * Removing the renamed-aside previous tree happens AFTER the staged tree is
  * live. A failure there does not undo the publish, so it is reported with
@@ -22,13 +54,50 @@ export const swapRuntimeDirectory = ({
   rename = renameSync,
   remove = rmSync,
   exists = existsSync,
+  readdir = readdirSync,
   warn = console.warn,
+  log = console.log,
 }) => {
-  const backupDir = `${destinationDir}.previous-${process.pid}`;
+  const backupDir = `${destinationDir}${BACKUP_INFIX}${process.pid}`;
+  const leftovers = findPreviousRuntimeBackups({ destinationDir, exists, readdir });
+  let recoveredBackup = null;
+
+  if (!exists(destinationDir)) {
+    recoveredBackup = leftovers[0] ?? null;
+
+    if (recoveredBackup) {
+      log(
+        [
+          `Found no published runtime at ${destinationDir}, and an interrupted run left one aside at ${recoveredBackup}.`,
+          `Restoring ${recoveredBackup} before publishing the staged runtime, so a failed publish still leaves a runnable runtime.`,
+        ].join("\n"),
+      );
+      rename(recoveredBackup, destinationDir);
+    }
+  }
+
+  const removeAfterPublish = (target, label) => {
+    try {
+      remove(target, { recursive: true, force: true });
+    } catch (error) {
+      warn(
+        [
+          `Published the staged runtime, but could not remove ${label}.`,
+          `  published (live now): ${destinationDir}`,
+          `  leftover (inactive):  ${target}`,
+          `  cause:                ${error instanceof Error ? error.message : String(error)}`,
+          "The runtime WAS replaced; this is cleanup-only, so the build is not failed.",
+          "Delete the leftover directory once nothing holds it open.",
+        ].join("\n"),
+      );
+    }
+  };
+
   const hadDestination = exists(destinationDir);
 
   if (hadDestination) {
-    // Clear a backup left behind by a crashed run before reusing the name.
+    // Clear this process's backup name before reusing it. A pid can repeat
+    // across reboots, and the rename would fail against a non-empty directory.
     remove(backupDir, { recursive: true, force: true });
     rename(destinationDir, backupDir);
   }
@@ -47,19 +116,14 @@ export const swapRuntimeDirectory = ({
     return;
   }
 
-  try {
-    remove(backupDir, { recursive: true, force: true });
-  } catch (error) {
-    warn(
-      [
-        "Published the staged runtime, but the previous runtime could not be removed.",
-        `  published (live now): ${destinationDir}`,
-        `  leftover (inactive):  ${backupDir}`,
-        `  cause:                ${error instanceof Error ? error.message : String(error)}`,
-        "The runtime WAS replaced; this is cleanup-only, so the build is not failed.",
-        "Delete the leftover directory once nothing holds it open.",
-      ].join("\n"),
-    );
+  removeAfterPublish(backupDir, "the runtime this build replaced");
+
+  for (const leftover of leftovers) {
+    if (leftover === backupDir || leftover === recoveredBackup) {
+      continue;
+    }
+
+    removeAfterPublish(leftover, "a runtime left by an interrupted run");
   }
 };
 
@@ -70,10 +134,11 @@ export const swapRuntimeDirectory = ({
  *
  * The build and probe run BEFORE the swap, and the staging tree is removed on
  * every path, so a failed build or probe leaves the existing runtime
- * byte-for-byte intact rather than deleting it first (#409). Once the swap has
- * published the staged tree, a failure to remove the renamed-aside previous
- * tree is warned about instead of thrown (see `swapRuntimeDirectory`): the new
- * runtime is live either way, and a failure exit there would misreport that.
+ * byte-for-byte intact rather than deleting it first (#409). The swap recovers
+ * a runtime stranded by its own interrupted run, and once it has published, a
+ * cleanup failure is warned about instead of thrown (see
+ * `swapRuntimeDirectory`): the new runtime is live either way, and a failure
+ * exit there would misreport that.
  */
 export const buildProbeAndPublishRuntime = ({
   stagingDir,
@@ -84,14 +149,25 @@ export const buildProbeAndPublishRuntime = ({
   rename = renameSync,
   remove = rmSync,
   exists = existsSync,
+  readdir = readdirSync,
   warn = console.warn,
+  log = console.log,
 }) => {
   try {
     build();
     probe();
 
     if (publish) {
-      swapRuntimeDirectory({ stagingDir, destinationDir, rename, remove, exists, warn });
+      swapRuntimeDirectory({
+        stagingDir,
+        destinationDir,
+        rename,
+        remove,
+        exists,
+        readdir,
+        warn,
+        log,
+      });
     }
   } finally {
     remove(stagingDir, { recursive: true, force: true });
