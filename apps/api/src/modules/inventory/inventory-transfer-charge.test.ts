@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
+import { inventoryLocationContentsSchema } from "@tuari/contracts"
+
 import type { InventoryRepository } from "./inventory.repository"
 import type { InventoryAttachmentStorage } from "./inventory.storage"
 import { InventoryService } from "./inventory.service"
@@ -38,6 +40,8 @@ function createHarness(options?: { failAfterCharge?: boolean }) {
     warehouseExists: (id: string) => id === "wh-1" || id === "wh-2",
     projectExists: (id: string) => id.startsWith("project-"),
     getAssetUnitById: () => ({ ...asset }),
+    listAssetUnitsByLocation: () => [{ ...asset }],
+    listConsumableBalancesByLocation: () => [],
     updateAssetUnitLocation: (_id: string, location: { currentWarehouseId?: string | null; currentProjectId?: string | null }) => {
       asset.currentWarehouseId = location.currentWarehouseId ?? null
       asset.currentProjectId = location.currentProjectId ?? null
@@ -187,6 +191,18 @@ describe("InventoryService.transferAsset — placement charges (#413)", () => {
     expect(movements).toHaveLength(0)
     expect(asset.currentWarehouseId).toBe("wh-1")
     expect(asset.currentProjectId).toBeNull()
+  })
+})
+
+describe("InventoryService read paths tolerate a legacy above-bound price (#413 round 3)", () => {
+  it("reads back a stored asset whose price predates the money bound through the location list", () => {
+    const { service, asset } = createHarness()
+    asset.purchasePriceDzd = Number.MAX_SAFE_INTEGER + 1
+
+    const contents = service.getLocationContents({ warehouseId: "wh-1" })
+
+    expect(inventoryLocationContentsSchema.safeParse(contents.item).success).toBe(true)
+    expect(contents.item.assets[0]?.purchasePriceDzd).toBe(Number.MAX_SAFE_INTEGER + 1)
   })
 })
 

@@ -28,6 +28,24 @@ export const paymentAmountSchema = z.number().positive().max(MAX_MONEY_DZD);
 export const nonNegativePaymentAmountSchema = z.number().nonnegative().max(MAX_MONEY_DZD);
 
 /**
+ * A stored DZD amount as it is READ back, deliberately NOT magnitude-bounded.
+ *
+ * The write gate ({@link nonNegativePaymentAmountSchema}) is the ceiling for
+ * anything the app persists, but the database columns only enforce `>= 0`, and
+ * earlier versions of the app accepted any non-negative REAL. A row written
+ * before the bound existed can therefore sit above `MAX_MONEY_DZD`, and a
+ * response schema that reused the WRITE bound would fail validation on data
+ * the system itself stored — breaking the screen that merely displays it.
+ *
+ * So this is the read shape for a persisted money column: permissive enough to
+ * always read an existing row back. Values the app is about to PERSIST or USE
+ * (a new charge amount, a computed aggregate) keep the write bound, and a read
+ * path may only refuse to USE an unrepresentable value, never to represent it
+ * (#413 round 3).
+ */
+export const storedMoneyDzdSchema = z.number().nonnegative();
+
+/**
  * Shared page-limit validity for payment listing (wire gate + module seam).
  * `.int()` because sqlite `LIMIT ?` throws a datatype mismatch on fractional
  * bounds (issue #289 + test-audit finding).

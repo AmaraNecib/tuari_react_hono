@@ -43,6 +43,8 @@ import {
   inventoryAssetUnitSchema,
   inventoryContract,
   inventoryInvoiceGroupCreateInputSchema,
+  inventoryInvoiceGroupDetailSchema,
+  inventoryLocationContentsSchema,
   inventoryProjectChargesSchema,
   managerAssignmentCreateInputSchema,
   phonePasswordSignInSchema,
@@ -1764,7 +1766,7 @@ describe("contracts", () => {
       ).toBe(false);
     });
 
-    it("bounds the invoice asset purchase price with the same money rule as the charge", () => {
+    it("bounds the invoice asset purchase price INPUT with the same money rule as the charge", () => {
       const assetInput = { assetName: "مثقاب", purchasePriceDzd: Number.MAX_SAFE_INTEGER };
       expect(inventoryAssetUnitCreateInputSchema.safeParse(assetInput).success).toBe(true);
       expect(
@@ -1794,9 +1796,12 @@ describe("contracts", () => {
           ],
         }).success,
       ).toBe(false);
+    });
 
-      // The stored entity shape shares the bound too, so one ceiling governs
-      // the invoice input and its storage (#422 round 2).
+    it("reads back an asset stored above the write bound through the detail and list responses (#413 round 3)", () => {
+      // The DDL only enforces `purchase_price_dzd >= 0`, and the field predates
+      // the MAX_MONEY_DZD gate, so a row above the bound genuinely exists. The
+      // READ schemas must represent it — only the INPUT gate refuses a new one.
       const storedAsset = {
         id: "asset-1",
         inventoryEntryId: "entry-1",
@@ -1805,7 +1810,7 @@ describe("contracts", () => {
         serialNumber: null,
         condition: null,
         purchaseDate: null,
-        purchasePriceDzd: Number.MAX_SAFE_INTEGER,
+        purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1,
         currentWarehouseId: null,
         currentProjectId: "project-a",
         currentLocationLabel: null,
@@ -1813,9 +1818,119 @@ describe("contracts", () => {
         createdAt: "2026-06-01T00:00:00.000Z",
         updatedAt: "2026-06-01T00:00:00.000Z",
       };
+
       expect(inventoryAssetUnitSchema.safeParse(storedAsset).success).toBe(true);
+
+      const invoiceGroup = {
+        id: "group-1",
+        invoiceNumber: null,
+        supplierName: null,
+        invoiceDate: null,
+        warehouseId: null,
+        projectId: "project-a",
+        externalCounterpartyId: null,
+        grossTotalDzd: 0,
+        paidAmountDzd: 0,
+        remainingDebtDzd: 0,
+        debtAccountId: null,
+        note: null,
+        createdAt: "2026-06-01T00:00:00.000Z",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+      };
+      const movement = {
+        id: "movement-1",
+        movementType: "PURCHASE",
+        itemType: "ASSET",
+        inventoryEntryId: "entry-1",
+        assetUnitId: "asset-1",
+        quantity: 1,
+        fromWarehouseId: null,
+        fromProjectId: null,
+        toWarehouseId: null,
+        toProjectId: "project-a",
+        note: null,
+        occurredAt: "2026-06-01T00:00:00.000Z",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      };
+
+      // asset detail (the `asset` field is the same read schema)
       expect(
-        inventoryAssetUnitSchema.safeParse({ ...storedAsset, purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1 }).success,
+        inventoryAssetDetailSchema.safeParse({
+          asset: storedAsset,
+          invoiceGroup,
+          movements: [movement],
+          charges: [{ ...charge, revisions: [] }],
+        }).success,
+      ).toBe(true);
+
+      // invoice detail (entry + asset)
+      expect(
+        inventoryInvoiceGroupDetailSchema.safeParse({
+          group: invoiceGroup,
+          entries: [
+            {
+              id: "entry-1",
+              invoiceGroupId: "group-1",
+              itemDefinitionId: "def-1",
+              warehouseId: null,
+              projectId: "project-a",
+              itemType: "ASSET",
+              itemName: "مثقاب",
+              unit: null,
+              quantity: 1,
+              unitPriceDzd: Number.MAX_SAFE_INTEGER + 1,
+              totalPriceDzd: Number.MAX_SAFE_INTEGER + 1,
+              note: null,
+              createdAt: "2026-06-01T00:00:00.000Z",
+              updatedAt: "2026-06-01T00:00:00.000Z",
+              assets: [storedAsset],
+            },
+          ],
+          attachments: [],
+          movements: [movement],
+          consumableBalances: [],
+        }).success,
+      ).toBe(true);
+
+      // location contents (list path)
+      expect(inventoryLocationContentsSchema.safeParse({ assets: [storedAsset], consumables: [] }).success).toBe(true);
+
+      // a charge row and its revision read back with their stored amounts
+      expect(
+        inventoryAssetChargeSchema.safeParse({ ...charge, amountDzd: Number.MAX_SAFE_INTEGER + 1 }).success,
+      ).toBe(true);
+      expect(
+        inventoryAssetChargeRevisionSchema.safeParse({
+          id: "rev-1",
+          chargeId: "charge-1",
+          previousAmountDzd: Number.MAX_SAFE_INTEGER + 1,
+          newAmountDzd: null,
+          reason: null,
+          actorUserId: null,
+          actorLabel: null,
+          createdAt: "2026-06-01T00:00:00.000Z",
+        }).success,
+      ).toBe(true);
+    });
+
+    it("refuses to USE an unrepresentable default while echoing a legacy above-bound price (#413 round 3)", () => {
+      // The echoed purchase price may be a legacy row, so it reads back; the
+      // amount a placement would USE keeps the write bound.
+      expect(
+        inventoryAssetChargeDefaultSchema.safeParse({
+          assetUnitId: "asset-1",
+          amountDzd: 80_000,
+          purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1,
+          source: "LAST_CHARGE",
+        }).success,
+      ).toBe(true);
+      expect(
+        inventoryAssetChargeDefaultSchema.safeParse({
+          assetUnitId: "asset-1",
+          amountDzd: Number.MAX_SAFE_INTEGER + 1,
+          purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1,
+          source: "PURCHASE_PRICE",
+        }).success,
       ).toBe(false);
     });
 

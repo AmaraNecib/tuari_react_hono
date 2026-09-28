@@ -9,7 +9,7 @@ import {
   nullableTextSchema,
   timestampSchema,
 } from "./core";
-import { nonNegativePaymentAmountSchema } from "./payment";
+import { nonNegativePaymentAmountSchema, storedMoneyDzdSchema } from "./payment";
 
 /** inventoryItemDefinitionSchema - Item definition schema. */
 export const inventoryItemDefinitionSchema = z.object({
@@ -37,7 +37,15 @@ export const inventoryInvoiceAttachmentSchema = z.object({
   createdAt: timestampSchema,
 });
 
-/** inventoryAssetUnitSchema - Asset unit schema. */
+/**
+ * inventoryAssetUnitSchema - Asset unit schema.
+ *
+ * Also a RESPONSE shape (asset detail, invoice detail, location contents,
+ * entry lists). `purchasePriceDzd` therefore uses the permissive stored-money
+ * schema: the invoice INPUT gate caps a new price at `MAX_MONEY_DZD`, but a
+ * row stored before that gate existed can be larger, and reading it back must
+ * not fail (#413 round 3).
+ */
 export const inventoryAssetUnitSchema = z.object({
   id: entityIdSchema,
   inventoryEntryId: entityIdSchema,
@@ -46,7 +54,7 @@ export const inventoryAssetUnitSchema = z.object({
   serialNumber: nullableTextSchema,
   condition: inventoryAssetConditionSchema.nullable(),
   purchaseDate: timestampSchema.nullable(),
-  purchasePriceDzd: nonNegativePaymentAmountSchema,
+  purchasePriceDzd: storedMoneyDzdSchema,
   currentWarehouseId: entityIdSchema.nullable(),
   currentProjectId: entityIdSchema.nullable(),
   currentLocationLabel: nullableTextSchema,
@@ -90,9 +98,9 @@ export const inventoryMovementSchema = z.object({
 export const inventoryAssetChargeRevisionSchema = z.object({
   id: entityIdSchema,
   chargeId: entityIdSchema,
-  previousAmountDzd: nonNegativePaymentAmountSchema,
+  previousAmountDzd: storedMoneyDzdSchema,
   /** `null` records a void; a number records a corrected amount. */
-  newAmountDzd: nonNegativePaymentAmountSchema.nullable(),
+  newAmountDzd: storedMoneyDzdSchema.nullable(),
   reason: nullableTextSchema,
   actorUserId: entityIdSchema.nullable(),
   actorLabel: nullableTextSchema,
@@ -108,7 +116,7 @@ export const inventoryAssetChargeSchema = z.object({
   projectName: nullableTextSchema,
   /** The transfer movement that created this placement (null for legacy rows). */
   movementId: entityIdSchema.nullable(),
-  amountDzd: nonNegativePaymentAmountSchema,
+  amountDzd: storedMoneyDzdSchema,
   status: z.enum(["LIVE", "VOID"]),
   voidedAt: timestampSchema.nullable(),
   voidReason: nullableTextSchema,
@@ -121,7 +129,14 @@ export const inventoryAssetChargeDetailSchema = inventoryAssetChargeSchema.exten
   revisions: z.array(inventoryAssetChargeRevisionSchema),
 });
 
-/** inventoryProjectChargesSchema - a project's live charges plus their total. */
+/**
+ * inventoryProjectChargesSchema - a project's live charges plus their total.
+ *
+ * `totalDzd` is COMPUTED, not stored: it keeps the write bound because the
+ * service refuses to emit a sum it cannot represent, rather than reading a
+ * value that already exists (#422 round 2). The individual charges use the
+ * permissive stored shape, so a stored row still reads back.
+ */
 export const inventoryProjectChargesSchema = z.object({
   projectId: entityIdSchema,
   totalDzd: nonNegativePaymentAmountSchema,
@@ -134,8 +149,10 @@ export const inventoryProjectChargesSchema = z.object({
  */
 export const inventoryAssetChargeDefaultSchema = z.object({
   assetUnitId: entityIdSchema,
+  /** The amount a placement would USE, so it keeps the write bound. */
   amountDzd: nonNegativePaymentAmountSchema,
-  purchasePriceDzd: nonNegativePaymentAmountSchema,
+  /** The echoed stored price, which may predate the bound. */
+  purchasePriceDzd: storedMoneyDzdSchema,
   source: z.enum(["LAST_CHARGE", "PURCHASE_PRICE"]),
 });
 

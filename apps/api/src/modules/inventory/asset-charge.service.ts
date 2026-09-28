@@ -65,10 +65,12 @@ export class AssetChargeService {
     }
 
     const lastAmount = this.repository.getLastChargeAmount(asset.id)
-    // Validate the RESOLVED default against the same money bound the wire
+    // Validate the RESOLVED AMOUNT against the same money bound the charge
     // contract uses. A purchase price (or, defensively, a stored last amount)
-    // above `MAX_MONEY_DZD` must fail here with a clear error instead of
-    // reaching the response schema and breaking the payload.
+    // above `MAX_MONEY_DZD` must fail here instead of being USED as a charge.
+    // The echoed `purchasePriceDzd` uses the permissive stored shape, so a
+    // legacy above-bound price still reads back whenever the amount itself
+    // comes from a valid last charge (#413 round 3).
     const resolved = inventoryAssetChargeDefaultSchema.safeParse({
       assetUnitId: asset.id,
       amountDzd: lastAmount ?? asset.purchasePriceDzd,

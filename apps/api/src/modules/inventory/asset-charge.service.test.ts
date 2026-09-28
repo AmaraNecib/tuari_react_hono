@@ -91,6 +91,24 @@ describe("AssetChargeService — placement defaults (#413)", () => {
       service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a" }, AUDIT),
     ).toThrowError(/خارج النطاق/)
   })
+
+  it("reads back a legacy above-bound purchase price when the amount comes from a last charge", () => {
+    // A row stored before the write gate existed. The echoed price must not
+    // make the default unreadable; only USING it as the amount is refused.
+    const { service } = createHarness(
+      createLookup({
+        getAssetUnitById: (id) => ({ id, purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1 }),
+      }),
+    )
+    service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 80_000 }, AUDIT)
+
+    expect(service.resolveDefault({ assetUnitId: "asset-1" })).toEqual({
+      assetUnitId: "asset-1",
+      amountDzd: 80_000,
+      purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1,
+      source: "LAST_CHARGE",
+    })
+  })
 })
 
 describe("AssetChargeService — chain, corrections and total (#413)", () => {

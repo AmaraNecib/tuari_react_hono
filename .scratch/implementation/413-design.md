@@ -29,7 +29,12 @@ review tier: High-assurance (financial calculation: money charged to a project)
 
 - `nonNegativePaymentAmountSchema` (payment.ts) — shares the single money rule
   constant `MAX_MONEY_DZD = Number.MAX_SAFE_INTEGER` with `paymentAmountSchema`;
-  only the sign bound differs, because a free placement (0) is legal.
+  only the sign bound differs, because a free placement (0) is legal. This is the
+  WRITE gate.
+- `storedMoneyDzdSchema` (payment.ts) — `z.number().nonnegative()`, the READ
+  shape for a persisted DZD column. Deliberately unbounded by magnitude because
+  the DDL only enforces `>= 0` and earlier versions accepted any non-negative
+  REAL, so an existing row can sit above `MAX_MONEY_DZD` (#413 round 3).
 - `inventoryAssetChargeSchema`, `inventoryAssetChargeRevisionSchema`,
   `inventoryAssetChargeDetailSchema`, `inventoryProjectChargesSchema`,
   `inventoryAssetChargeDefaultSchema`.
@@ -147,7 +152,9 @@ that a later reader would otherwise have to reverse-engineer:
   belongs to the unit, and a charge for a deleted unit has no subject. Only the
   project FK (the finding) was changed.
 - `purchasePriceDzd` in the default response shares the same contract bound and
-  is validated by the same `inventoryAssetChargeDefaultSchema` parse.
+  is validated by the same `inventoryAssetChargeDefaultSchema` parse. (Corrected
+  by round 3: the echoed price uses the permissive stored shape; the resolved
+  `amountDzd` keeps the bound.)
 
 ## Review round 2 — PR #422 (money-bound findings)
 
@@ -188,6 +195,44 @@ above-bound row, (b) `MAX_SAFE_INTEGER` is the point past which the stored
 `number` is no longer an exact integer, and (c) the alternative (an unbounded
 read schema next to a bounded write schema) is exactly the two-ceiling bug
 being fixed.
+
+## Review round 3 — PR #422 (read schema was over-tightened)
+
+Round 2 closed the two-ceiling gap, but it bounded `inventoryAssetUnitSchema`
+itself — a schema that is not only an input. Asset-detail, invoice-detail and
+location-contents RESPONSES all embed it, and the database already holds asset
+rows the old (unbounded) input accepted. Any such row would now fail output
+validation and break the screen that merely displays it. The round-2 trade-off
+above was wrong: a read path must never be the thing that fails on data the
+system itself stored.
+
+The fix separates the two concerns instead of picking one ceiling:
+
+- **Write gates keep the bound.** `inventoryAssetUnitCreateInputSchema`,
+  `inventoryAssetTransferInputSchema.chargeAmountDzd`,
+  `inventoryAssetChargeUpdateInputSchema` and the
+  `InventoryService.createInvoiceGroup` module seam all use
+  `nonNegativePaymentAmountSchema`, so no new above-bound value can enter.
+- **Read shapes are permissive.** Every persisted money column is read with
+  `storedMoneyDzdSchema`: `inventoryAssetUnitSchema.purchasePriceDzd`,
+  `inventoryAssetChargeSchema.amountDzd`,
+  `inventoryAssetChargeRevisionSchema.previousAmountDzd`/`newAmountDzd`, and the
+  echoed `inventoryAssetChargeDefaultSchema.purchasePriceDzd`. A legacy row
+  always reads back.
+- **Values the app USES keep the bound.** The resolved
+  `inventoryAssetChargeDefaultSchema.amountDzd` and the computed
+  `inventoryProjectChargesSchema.totalDzd` stay bounded, and the service refuses
+  (`VALIDATION` / `BUSINESS_RULE`) rather than emitting an unrepresentable
+  number. So a legacy above-bound price still reads back, but it can never be
+  booked as a charge or summed into a total.
+
+Tests: `index.test.ts` parses an above-bound stored asset through
+`inventoryAssetUnitSchema`, `inventoryAssetDetailSchema`,
+`inventoryInvoiceGroupDetailSchema` and `inventoryLocationContentsSchema`, keeps
+the write gate refusal, and pins the default's readback-vs-use split;
+`asset-charge.service.test.ts` resolves a default for a legacy above-bound price
+when a valid last charge exists; `inventory-transfer-charge.test.ts` reads an
+above-bound row back through `getLocationContents`.
 
 ## Debate round (high-assurance requirement)
 
