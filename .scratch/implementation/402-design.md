@@ -444,3 +444,28 @@ few synchronous renames (well under the lease), so this window is the crash-to-
 reuse race, not a normal overlap; a `process.kill(pid, 0)` probe and then
 staleness both resolve it, and the machine is never left without a runtime
 permanently.
+
+## Round 5d (review): the initial ownership claim is fatal
+
+**Finding** (`runtime-staging.mjs`, `claimBackupOwnership`). The first
+`writeMarker` call shared the warn-and-continue handler with the later
+heartbeats. If it failed, the swap still ran with no marker on disk, so
+`readOwnerMarker` returned `null`, `isAbandonedBackup(null)` called the tree
+abandoned, and an overlapping build could recover or sweep the backup after this
+build had renamed `bin` aside - leaving this build without its rollback tree.
+
+**Fix.**
+
+- `claimBackupOwnership` writes the marker before returning `beat`; a failed
+  initial write throws instead of warning.
+- `swapRuntimeDirectory` claims inside its `try`, before `remove(backupDir)` and
+  `rename(destinationDir, backupDir)`, so a failed claim aborts with the
+  destination untouched and the `finally` clears any partial marker.
+- A refresh failure after the claim stays non-fatal (the marker ages from its
+  last successful heartbeat and the live pid holds the lease) and warns once per
+  failure run, resetting after a successful beat.
+
+**Tests (3 new; 24 total).** A failed initial write aborts before any rename with
+the destination byte-for-byte intact; a failed boundary heartbeat does not abort
+and the surviving marker is owned to the lease boundary and abandoned past it;
+repeated failures warn once and warn again after a recovery.

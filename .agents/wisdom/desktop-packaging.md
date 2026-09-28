@@ -144,3 +144,25 @@ leaves behind (missing destination plus a backup) and repair it on the next run.
 Recovery that assumes the destination exists is not recovery, and the stranded
 state should be restored before republishing so even a failed retry leaves
 something runnable.
+
+## An ownership claim another process uses to decide whether to steal your work must be fatal if it fails (🔴 Major)
+
+PR #409 round 5d: `claimBackupOwnership` wrote a marker file that tells an
+overlapping build "this backup is mine, do not recover or sweep it". The initial
+write shared a warn-and-continue handler with the later heartbeat refreshes. When
+that first write failed, the swap carried on with no marker on disk, so
+`readOwnerMarker` returned `null`, `isAbandonedBackup(null)` called the tree
+abandoned, and the other build could steal the backup this one had just renamed
+aside - leaving it with nothing to roll back to.
+
+The initial claim now throws before the destination is renamed aside; only
+heartbeat refreshes after the claim may fail (the last successful heartbeat and
+the live pid hold the lease), and those warn once per failure run rather than on
+every beat.
+
+**Always**: if a lock, marker, or lease is the signal other processes use to
+decide whether your work is abandoned, failing to acquire it must abort the
+operation BEFORE you move anything, not degrade to a warning. A warning is fine
+for refreshing an already-acquired claim; it is wrong for acquiring one. Test the
+"cannot claim" path separately from the "claim went stale" path - they have
+opposite correct outcomes.
