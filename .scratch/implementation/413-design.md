@@ -213,18 +213,26 @@ The fix separates the two concerns instead of picking one ceiling:
   `inventoryAssetChargeUpdateInputSchema` and the
   `InventoryService.createInvoiceGroup` module seam all use
   `nonNegativePaymentAmountSchema`, so no new above-bound value can enter.
-- **Read shapes are permissive.** Every persisted money column is read with
-  `storedMoneyDzdSchema`: `inventoryAssetUnitSchema.purchasePriceDzd`,
+- **Read shapes are permissive.** Every persisted money column this change
+  touches is read with `storedMoneyDzdSchema`:
+  `inventoryAssetUnitSchema.purchasePriceDzd`,
   `inventoryAssetChargeSchema.amountDzd`,
   `inventoryAssetChargeRevisionSchema.previousAmountDzd`/`newAmountDzd`, and the
-  echoed `inventoryAssetChargeDefaultSchema.purchasePriceDzd`. A legacy row
-  always reads back.
+  echoed `inventoryAssetChargeDefaultSchema.purchasePriceDzd`. A stored row
+  always reads back. Only `purchasePriceDzd` has genuine legacy rows; the charge
+  and revision tables are new, so there they are defense in depth — the DDL's
+  real domain is `>= 0`, and a read must not depend on the write gate's bound.
+  (Pre-existing bounded reads in other modules - payments, expenses - are out of
+  this branch's scope and still open.)
 - **Values the app USES keep the bound.** The resolved
   `inventoryAssetChargeDefaultSchema.amountDzd` and the computed
   `inventoryProjectChargesSchema.totalDzd` stay bounded, and the service refuses
   (`VALIDATION` / `BUSINESS_RULE`) rather than emitting an unrepresentable
-  number. So a legacy above-bound price still reads back, but it can never be
-  booked as a charge or summed into a total.
+  number. A stored double round-trips losslessly; a SUM above `MAX_MONEY_DZD`
+  does not, which is why only the aggregate is refused (a deliberate round-2
+  choice). A legacy above-bound price still reads back and still reads back in
+  the unit's charge chain; it is refused only where it would be USED as a new
+  charge amount or folded into a total.
 
 Tests: `index.test.ts` parses an above-bound stored asset through
 `inventoryAssetUnitSchema`, `inventoryAssetDetailSchema`,
@@ -265,6 +273,18 @@ read the branch diff. Synthesis and decisions:
   Those fields predate #413, do not feed a charge, and their output contract is
   deliberately unbounded, so this is a pre-existing money-rule gap rather than
   the two-ceiling bug. Proposed as a follow-up.
+- **Round-3 debate (fresh-context critic + defender on `0bc1f41`):** fixed the
+  round-3 section's overclaim that "every persisted money column" uses the read
+  shape (it is every column this change touches), and normalized a rogue
+  `undefined` last-charge amount to `null` so the source label and the fallback
+  cannot disagree. Kept deliberately: (a) the project-total `BUSINESS_RULE`
+  refusal stays in the read service because the aggregate is the value that is
+  not representable, unlike a stored double (the critic wanted the guard moved
+  to the write seam; that would let a legal pair of charges store an
+  unrepresentable total and only fail later); (b) the resolved default still
+  refuses an above-bound purchase price with no prior charge, because the
+  requirement is to refuse to USE an unrepresentable price - the operator can
+  still state an explicit amount.
 - **Accepted minors:** `ON DELETE RESTRICT` also blocks deleting a project whose
   only charges are VOIDED, but no project-delete path exists today; the void UI
   collects no reason unless the row was first opened for edit; `getLastChargeAmount`

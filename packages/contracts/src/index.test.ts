@@ -57,6 +57,7 @@ import {
   paymentListInputSchema,
   nonNegativePaymentAmountSchema,
   revokeRecoveryKeyInputSchema,
+  storedMoneyDzdSchema,
   roleCreateInputSchema,
   sessionUserSchema,
   systemLogEntrySchema,
@@ -1683,6 +1684,16 @@ describe("contracts", () => {
       expect(nonNegativePaymentAmountSchema.safeParse(Number.MAX_SAFE_INTEGER).success).toBe(
         paymentAmountSchema.safeParse(Number.MAX_SAFE_INTEGER).success,
       );
+    });
+
+    it("storedMoneyDzdSchema is a permissive read boundary: it represents an above-bound row, not an invalid one", () => {
+      // The read shape spans the DDL's real domain (`>= 0`), so a legacy row
+      // above MAX_MONEY_DZD must parse; non-finite and negative values must not.
+      expect(storedMoneyDzdSchema.safeParse(Number.MAX_SAFE_INTEGER + 1).success).toBe(true);
+      expect(storedMoneyDzdSchema.safeParse(0).success).toBe(true);
+      for (const bad of [-1, -0.5, NaN, Infinity, -Infinity]) {
+        expect(storedMoneyDzdSchema.safeParse(bad).success).toBe(false);
+      }
     });
 
     it("the transfer input accepts an omitted/null/zero charge and rejects a negative one", () => {

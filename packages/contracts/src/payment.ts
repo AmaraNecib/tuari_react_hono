@@ -42,6 +42,9 @@ export const nonNegativePaymentAmountSchema = z.number().nonnegative().max(MAX_M
  * (a new charge amount, a computed aggregate) keep the write bound, and a read
  * path may only refuse to USE an unrepresentable value, never to represent it
  * (#413 round 3).
+ *
+ * Scoped to the inventory money shapes corrected here; bounded reads in other,
+ * pre-existing modules are a separate cleanup, not an endorsement of them.
  */
 export const storedMoneyDzdSchema = z.number().nonnegative();
 

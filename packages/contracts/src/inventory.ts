@@ -132,10 +132,11 @@ export const inventoryAssetChargeDetailSchema = inventoryAssetChargeSchema.exten
 /**
  * inventoryProjectChargesSchema - a project's live charges plus their total.
  *
- * `totalDzd` is COMPUTED, not stored: it keeps the write bound because the
- * service refuses to emit a sum it cannot represent, rather than reading a
- * value that already exists (#422 round 2). The individual charges use the
- * permissive stored shape, so a stored row still reads back.
+ * `totalDzd` is COMPUTED at read time, so it keeps the write bound: unlike a
+ * single stored double, a sum above `MAX_MONEY_DZD` is no longer exactly
+ * representable, and the service refuses to emit it with a typed error rather
+ * than return a silently wrong financial number (#422 round 2). The individual
+ * charges use the permissive stored shape, so a stored row still reads back.
  */
 export const inventoryProjectChargesSchema = z.object({
   projectId: entityIdSchema,

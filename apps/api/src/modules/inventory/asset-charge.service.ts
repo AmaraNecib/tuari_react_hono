@@ -64,7 +64,9 @@ export class AssetChargeService {
       throw new InventoryError("NOT_FOUND", "تعذر العثور على الأصل المطلوب.")
     }
 
-    const lastAmount = this.repository.getLastChargeAmount(asset.id)
+    // Normalize a rogue `undefined` from an adapter to `null`, so the source
+    // label and the `??` fallback below always agree (#413 round 3 debate F8).
+    const lastAmount = this.repository.getLastChargeAmount(asset.id) ?? null
     // Validate the RESOLVED AMOUNT against the same money bound the charge
     // contract uses. A purchase price (or, defensively, a stored last amount)
     // above `MAX_MONEY_DZD` must fail here instead of being USED as a charge.
