@@ -1,6 +1,7 @@
 # #413 stock charge - PR #422 round-2 test audit
 
-- reviewed HEAD: `c10a3d56670da1885d2c6bed2a78fd09247f776b`
+- reviewed HEAD: `d93bdfebe6bf12e8b851f7971ce4cd64d448fb84` (code head
+  `c10a3d5`; the only later change is a wisdom-only commit, see the delta note)
 - base ref: `develop`; round-1 code head `4f49162`
 - tier: High-assurance
 
@@ -67,3 +68,11 @@ for the two money-bound findings.
   typecheck passed.
 - `inventory.service.ts` scoped coverage stays low because the file is large and
   most of it is outside this change; the two lines this round added are covered.
+
+## Post-evidence delta
+
+After the review above, `d93bdfe` added `.agents/wisdom/architecture.md` (the
+"money bound on a derived default" lesson). No source, test, contract or config
+file changed. `git diff --name-only c10a3d5 d93bdfe` is the wisdom file plus the
+evidence rename, so the reviewed code is unchanged. The checks in the tables
+above still describe the code at `d93bdfe`.

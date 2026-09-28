@@ -4,7 +4,8 @@
 - base ref: `develop`; round-1 code head `4f49162` (the rebased equivalent of
   the dangling `4d99865` the previous evidence was pinned to; the only diff
   between them is the pre-existing worker-cap commit `199798b` in the base)
-- reviewed HEAD: `c10a3d56670da1885d2c6bed2a78fd09247f776b`
+- reviewed HEAD: `d93bdfebe6bf12e8b851f7971ce4cd64d448fb84` (code head
+  `c10a3d5`; the only later change is a wisdom-only commit, see the delta note)
 - tier: High-assurance (financial calculation)
 
 Round 1 is recorded in `f69630d-code-review.md`. This file covers the two
@@ -68,3 +69,11 @@ bounded charge contract would keep the two-ceiling bug alive.
 | `pnpm lint` | pass |
 | `pnpm check:unslop` | PASS (0 errors) |
 | scoped coverage on `asset-charge.service.ts` | 100% statements / branches / functions / lines |
+
+## Post-evidence delta
+
+After the review above, `d93bdfe` added `.agents/wisdom/architecture.md` (the
+"money bound on a derived default" lesson). No source, test, contract or config
+file changed. `git diff --name-only c10a3d5 d93bdfe` is the wisdom file plus the
+evidence rename, so the reviewed code is unchanged. The checks in the tables
+above still describe the code at `d93bdfe`.
