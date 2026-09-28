@@ -205,12 +205,16 @@ parked and must not be sold or advertised. What exists and what does not:
   throws rather than opening an unencrypted database
   (`apps/api/src/infrastructure/database/factory.ts:29`).
 - **What is missing:** the SQLCipher native addon is not built into the shipped
-  artifact. The desktop build refuses to produce an artifact that cannot encrypt
-  unless it is explicitly waived, and the three publish workflows (`beta.yml`,
-  `release.yml`, `nightly.yml`) currently pass `TUARI_ALLOW_PLAINTEXT_DB=1` for
-  exactly that reason. The gate exists so a plaintext release can never happen
-  *by accident*; the waiver is the deliberate statement that it is happening
-  today.
+  artifact, and **nothing prevents that** — the desktop build does not refuse to
+  package a plaintext database. When the addon is unavailable it warns and copies
+  plain `better-sqlite3` (`apps/desktop/scripts/build-sidecar.mjs`). No publish
+  workflow sets a waiver, because there is no gate to waive: an earlier attempt
+  to add one (the build refuses unless explicitly waived, plus the
+  `cipher_version` probe and the factory's refusal to open an encrypted file
+  without a key) is preserved on the **closed #409 branch** for whoever revives
+  the feature. **Adding that gate is a condition for shipping encryption** — a
+  plaintext artifact must be impossible *by accident* before a licence can
+  promise encryption.
 - Nothing has proven a keyed write actually encrypts. Two different checks are
   easy to confuse, so state them separately:
   - **Today**, the release smoke test only asserts that a native SQLite binding
@@ -228,10 +232,10 @@ Without `encrypted_db`, the workspace opens a plain, unencrypted SQLite file,
 regardless of edition. That is the entire practical difference the licence makes
 today.
 
-**Shipping the feature later** means: build the addon in CI, prove the keyed
-write (#410), remove the waiver lines from the three workflows in the same PR,
-and only then add `encrypted_db` to a licence. Until all four happen, the matrix
-says parked.
+**Shipping the feature later** means, in order: build the addon in CI, prove the
+keyed write (#410), add the build gate so a plaintext release cannot happen by
+accident (the closed #409 branch has one), and only then add `encrypted_db` to a
+licence. Until all four happen, the matrix says parked.
 
 The flag is not reversible for an existing workspace. If a database was created
 while the license carried `encrypted_db`, a later launch whose license lacks the
