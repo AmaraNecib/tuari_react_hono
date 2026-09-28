@@ -86,3 +86,23 @@ leaves a half-copied runtime.
 anything replaces the old one. If the check needs the artifact on disk, build it
 in a staging directory and publish on success. "Gate first" applies to the
 destructive step too, not just to the write gate.
+
+## Cleanup after a publish must not invert the publish's exit code (🟠 Major)
+
+PR #409 round 3: `swapRuntimeDirectory` renamed the staged runtime into
+`src-tauri/bin`, then removed the renamed-aside previous tree as its last
+statement. When that removal threw (a locked file on Windows is enough), the
+error propagated and `build-sidecar.mjs` exited non-zero, but the new runtime was
+already live. Anyone reading the exit code concluded the previous runtime was
+still in place, the opposite of what happened.
+
+The post-publish removal now runs in a `try/catch` that warns with the live
+destination, the leftover path and the cause, and the build succeeds. The
+stale-backup removal BEFORE the swap stays fatal: at that point nothing has been
+published and the rename would fail against a non-empty backup.
+
+**Always**: split the failure handling of a publish at the point of no return.
+Before it, a failed step must fail the operation; after it, the operation has
+succeeded and any later failure is a warning that names the resulting state
+(what is live, what is left behind). One code path that treats both the same
+will eventually report the wrong outcome.
