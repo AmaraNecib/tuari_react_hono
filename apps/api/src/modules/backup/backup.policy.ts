@@ -100,8 +100,7 @@ const monthKey = (date: string): string => date.slice(0, 7);
  * Keeps the newest folder unconditionally, then the newest `daily` folders,
  * then the newest folder of each of the newest `weekly` weeks, then the newest
  * folder of each of the newest `monthly` months. Everything else is returned in
- * ascending (oldest-first) order. Callers promote unique attachment files out of
- * a folder before deleting it.
+ * ascending (oldest-first) order; the caller deletes those folders.
  */
 export const selectBackupsToPrune = (
   dates: readonly string[],
