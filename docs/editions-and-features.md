@@ -245,7 +245,7 @@ but no code checks it, so any edition currently gets the capability.
 | More than one user account | Per license (`maxUsers`), not tied to the edition in code | Per license | Per license | Yes. Seats are never counted. |
 | Advanced reports | No | Intended | Intended | Yes. |
 | External API access | No | Intended | Intended | Yes. |
-| Encrypted workspace database | Feature `encrypted_db` only | Feature `encrypted_db` only | Feature `encrypted_db` only | **No, this one is enforced** by the shell (6c). |
+| Encrypted workspace database | Feature `encrypted_db` only | Feature `encrypted_db` only | Feature `encrypted_db` only | **Parked.** The shell checks the flag, but no released build can encrypt yet, so nothing may sell it (6c). |
 | Multi-site sync | No | No | Intended | Yes. No sync code exists. |
 | Audit-log export | No | No | Intended | Yes. The audit log itself is ungated. |
 | Priority support | No | No | Yes | Not code; a support commitment. |
