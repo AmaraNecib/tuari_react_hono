@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
-import { DatePicker } from "@/components/ui/date-picker"
+import { DatePicker, fromDatePickerValue, toDatePickerValue } from "@/components/ui/date-picker"
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/workspace-mutations"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
@@ -229,7 +229,10 @@ export function AddSalaryPaymentDialog({
 
             <label className="flex flex-col gap-2">
               <span className="text-sm font-medium">{t("salaries.paymentDate")}</span>
-              <DatePicker value={date} onChange={setDate} />
+              <DatePicker
+                value={toDatePickerValue(date)}
+                onChange={(value) => setDate(fromDatePickerValue(value))}
+              />
             </label>
 
             <div className="flex flex-col gap-2">

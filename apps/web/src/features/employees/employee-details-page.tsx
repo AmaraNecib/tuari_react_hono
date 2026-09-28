@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
-import { DatePicker } from "@/components/ui/date-picker"
+import { DatePicker, fromDatePickerValue, toDatePickerValue } from "@/components/ui/date-picker"
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashboard"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 import type {
@@ -353,7 +353,10 @@ export function EmployeeDetailsPage({
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                   <Field label={t("detailPages.employee.financePaymentDate")}>
-                    <DatePicker value={paymentDate} onChange={setPaymentDate} />
+                    <DatePicker
+                      value={toDatePickerValue(paymentDate)}
+                      onChange={(value) => setPaymentDate(fromDatePickerValue(value))}
+                    />
                   </Field>
                   <Field label={t("salaries.days")}>
                     <Input

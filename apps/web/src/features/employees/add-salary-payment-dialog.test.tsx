@@ -14,6 +14,28 @@ vi.mock("@/features/app-shell/workspace-mutations", () => ({
   useCreateSalaryPaymentMutation: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
 }))
 
+// The real picker renders and returns `dd/MM/yyyy` (see date-picker.test.ts);
+// expose that contract directly so the dialog's conversion is exercised without
+// driving the calendar popover in jsdom.
+vi.mock("@/components/ui/date-picker", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/ui/date-picker")>()
+  return {
+    ...actual,
+    DatePicker: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
+      <button
+        type="button"
+        data-testid="salary-date-picker"
+        data-value={value}
+        onClick={() => onChange("15/03/2026")}
+      >
+        pick
+      </button>
+    ),
+  }
+})
+
+import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 
 const PROJECT = { id: "project-1", name: "مشروع" }
@@ -89,6 +111,31 @@ describe("AddSalaryPaymentDialog (#412)", () => {
         employeeId: "employee-1",
         days: 5,
         projectSplits: [{ projectId: PROJECT.id, days: 5 }],
+      }),
+    )
+  })
+
+  it("keeps the derived split and submits the canonical day when a payment date is picked", async () => {
+    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
+    const { lineDaysInput } = renderDialog()
+
+    // The dialog hands the picker the display format it expects, not the raw
+    // canonical state (a raw `yyyy-MM-dd` would render as a placeholder and a
+    // picked day would come back as `dd/MM/yyyy` and null the pay period).
+    const picker = screen.getByTestId("salary-date-picker")
+    expect(picker.getAttribute("data-value")).toMatch(/^\d{2}\/\d{2}\/\d{4}$/)
+
+    // Picking a day must not wipe the prefilled per-project split.
+    fireEvent.click(picker)
+    expect(lineDaysInput?.value).toBe("30")
+    expect(screen.getByText("salaries.unallocatedDays:0")).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
+    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
+    expect(mockMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentDate: toAlgeriaDayBoundaryIso("2026-03-15", "start"),
+        projectSplits: [{ projectId: PROJECT.id, days: 30 }],
       }),
     )
   })

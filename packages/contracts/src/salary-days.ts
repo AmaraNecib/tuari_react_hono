@@ -1,9 +1,10 @@
 /**
  * Salary proration and per-project split helpers (issue #412).
  *
- * These are pure functions shared by the API service and the web payment
- * form so the proposed amount and the derived calendar-day default cannot
- * drift between the two.
+ * `computeProposedSalaryAmount` is shared by the API service and the web payment
+ * form so the proposed amount cannot drift between them. `deriveSalaryProjectDays`
+ * is the web form's starting default only: the API accepts an explicit
+ * `projectSplits` payload and never derives or rewrites the split.
  *
  * Conventions:
  * - A "day" is a whole day. The business pays per whole day; half days and

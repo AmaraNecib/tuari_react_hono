@@ -18,20 +18,23 @@ review tier: High-assurance (financial calculation)
     "unallocated" payment.
 - `employeeSalaryPaymentSchema` gains `days` and `projectSplits`; the split is
   exposed on every payment read path (`salaryPaymentsList`, `workspaceSnapshot`).
-- New pure helpers in `packages/contracts/src/salary-days.ts`, shared by the API
-  and the web form so the proposal cannot drift:
-  - `computeProposedSalaryAmount`: MONTHLY `salary/30*days`, DAILY
+- New pure helpers in `packages/contracts/src/salary-days.ts`:
+  - `computeProposedSalaryAmount` (shared by the API and the web form, so the
+    proposal cannot drift): MONTHLY `salary/30*days`, DAILY
     `salary*days`, WEEKLY unchanged (raw salary, not offered).
-  - `deriveSalaryProjectDays`: for each project, the distinct Algeria calendar
-    days its assignment windows cover inside `[periodStart, periodEnd]`;
-    open-ended windows run to the period end; overlapping windows dedupe.
+  - `deriveSalaryProjectDays` (web form default only; the API takes the split
+    as an explicit payload and never derives it): for each project, the distinct
+    Algeria calendar days its assignment windows cover inside
+    `[periodStart, periodEnd]`; open-ended windows run to the period end;
+    overlapping windows dedupe.
     The covered days are then normalized against the period length and scaled
     to the payment's day count (parent decision, #412): a project covering the
     whole period gets all of `days` (30 by default), a project covering 15 of a
     30-day period gets 15, and a partially covered period leaves the rest
-    unallocated. Per-project rounding is corrected on the project with the
-    most covered days so a fully covered period sums EXACTLY to `days`; the
-    correction can drop a 0-day line. Order is project-id ascending.
+    unallocated. Each line is floored and the remaining days are handed out by
+    largest fractional part (largest-remainder/Hamilton), so a fully covered
+    period sums EXACTLY to `days` and a correction can never drive a line
+    negative. Order is project-id ascending.
     (Overlapping projects can exceed `days`; the UI surfaces that for a hand
     edit.)
 
@@ -63,11 +66,14 @@ split total must not exceed `days` (the remainder stays unallocated).
 - `AddSalaryPaymentDialog`: days input (default 30), live proposed amount,
   editable-but-overriding amount, per-project lines prefilled from
   `deriveSalaryProjectDays` for the month (MONTHLY) or day (DAILY) of the
-  payment date, plus an explicit unallocated-remainder line and an
-  over-allocation warning that blocks submit. While the person has not edited
-  a line, the default re-derives as the days input changes (so the proposal
-  always reconciles); once a line is touched, the hand edit wins and the
-  remainder readout keeps the reconciliation honest.
+  payment date, plus a live unallocated-remainder readout and an
+  over-allocation warning that blocks submit. The date the picker shows and
+  returns is `dd/MM/yyyy`; the dialog converts with
+  `toDatePickerValue`/`fromDatePickerValue` so its canonical `yyyy-MM-dd`
+  state (and therefore the derived period and the submitted date) is preserved.
+  While the person has not edited a line, the default re-derives as the days
+  input changes (so the proposal always reconciles); once a line is touched,
+  the hand edit wins and the remainder readout keeps the reconciliation honest.
 - Derived data: `salariedEmployees[].projectAssignments` and
   `derived.salaryProjects` feed the dialog; the history table shows days.
 - Period selectors no longer offer WEEKLY; a legacy WEEKLY employee keeps the

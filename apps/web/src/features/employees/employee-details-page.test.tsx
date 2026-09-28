@@ -37,6 +37,27 @@ vi.mock("@/features/app-shell/workspace-mutations", () => ({
   }),
 }))
 
+// The real picker renders and returns `dd/MM/yyyy`; expose that contract so the
+// quick form's canonical-date conversion is exercised without the popover.
+vi.mock("@/components/ui/date-picker", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/ui/date-picker")>()
+  return {
+    ...actual,
+    DatePicker: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
+      <button
+        type="button"
+        data-testid="salary-date-picker"
+        data-value={value}
+        onClick={() => onChange("15/03/2026")}
+      >
+        pick
+      </button>
+    ),
+  }
+})
+
+import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+
 import { EmployeeDetailsPage } from "./employee-details-page"
 import type { EmployeeTableRow } from "./employee-table"
 
@@ -142,6 +163,23 @@ describe("EmployeeDetailsPage salary payments (#412)", () => {
         employeeId: "worker-1",
         days: 15,
         actualAmountDzd: 15000,
+      }),
+    )
+  })
+
+  it("submits the date picked in the quick payment form as the canonical day boundary", () => {
+    renderDetails()
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
+
+    // The picker returns `dd/MM/yyyy`; the form must convert it back so the
+    // stored paymentDate is the picked day rather than a dropped/now value.
+    fireEvent.click(screen.getByTestId("salary-date-picker"))
+    fireEvent.click(screen.getByRole("button", { name: "حفظ دفعة الراتب" }))
+
+    expect(createSalaryPaymentMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentDate: toAlgeriaDayBoundaryIso("2026-03-15", "start"),
       }),
     )
   })
