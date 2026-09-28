@@ -5,12 +5,11 @@
 - base SHA (merge-base with `develop`): `183d2226ec50dab56a45d25fde6f72f319d5a267`
 - reviewed code SHA: `f7b7efbee28fda6b11a1ccec10ac9b7e76716668`
 - previous code SHA (the round-2 finding was raised against): `9aea1939db2ab78fa3de46b9d8b1c4e7b61da249`
-- evidence re-pinned to final code SHA: `eaf17268d65d053fae0a45fc194c41a4bea4149a`
-  (round 3, covered in
-  `eaf17268d65d053fae0a45fc194c41a4bea4149a-round3-findings.md`, changed the
-  post-publication cleanup reporting in `runtime-staging.mjs` and the probe
-  tests/docs; the build->probe->publish ordering this round introduced is
-  unchanged. The wisdom entry landed after the code commit.)
+- evidence re-pinned to final code SHA: `3c20625eda463febdc7182fe94c03fb81a521fb8`
+  (later changes: round 3's post-publication cleanup reporting in
+  `runtime-staging.mjs` and the probe tests/docs, plus round 4's waiver coverage
+  and interrupted-swap recovery, all covered in the sibling round-3/round-4
+  files. The build->probe->publish ordering this round introduced is unchanged.)
 - review tier: High-assurance (licensing/crypto + packaging)
 
 The branch was rebased onto `origin/develop` (`183d222`) before this round started;

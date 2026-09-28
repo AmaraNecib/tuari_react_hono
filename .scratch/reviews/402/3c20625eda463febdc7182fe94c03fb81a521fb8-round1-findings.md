@@ -5,12 +5,12 @@
 - base SHA (merge-base with `develop`): `183d2226ec50dab56a45d25fde6f72f319d5a267`
 - reviewed code SHA: `9aea1939db2ab78fa3de46b9d8b1c4e7b61da249`
 - previous code SHA (round-1 findings were raised against): `2d84a28c40d5be764330f898d16d7d534fb7becd`
-- evidence re-pinned to final code SHA: `eaf17268d65d053fae0a45fc194c41a4bea4149a`
-  (changes since: the round-2 staging fix, covered in
-  `eaf17268d65d053fae0a45fc194c41a4bea4149a-round2-findings.md`; the round-3
-  cleanup-reporting + test-honesty fixes, covered in
-  `eaf17268d65d053fae0a45fc194c41a4bea4149a-round3-findings.md`; and the wisdom
-  entry that landed after them)
+- evidence re-pinned to final code SHA: `3c20625eda463febdc7182fe94c03fb81a521fb8`
+  (later changes: the round-2 staging fix, the round-3 cleanup-reporting +
+  test-honesty fixes, and the round-4 waiver-coverage + interrupted-swap
+  recovery, covered in the sibling
+  `3c20625eda463febdc7182fe94c03fb81a521fb8-round{2,3,4}-findings.md` files; the
+  wisdom entries landed after each code commit)
 - review tier: High-assurance (licensing/crypto + packaging)
 
 The hosted Greptile review on PR #409 scored 4/5 and raised three build/packaging

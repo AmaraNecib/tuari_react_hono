@@ -5,8 +5,11 @@
 - base SHA (merge-base with `develop`): `183d2226ec50dab56a45d25fde6f72f319d5a267`
 - reviewed code SHA: `cc8684313026a5d2344be5cb698e1808a9335d23`
 - previous code SHA (the round-3 findings were raised against): `848d20f500af5e542ad349a2ab9684edc11de3f4`
-- evidence re-pinned to final code SHA: `eaf17268d65d053fae0a45fc194c41a4bea4149a`
-  (the wisdom entry landed after the code commit; the reviewed code is unchanged)
+- evidence re-pinned to final code SHA: `3c20625eda463febdc7182fe94c03fb81a521fb8`
+  (round 4, covered in
+  `3c20625eda463febdc7182fe94c03fb81a521fb8-round4-findings.md`, changed
+  `build-sidecar.mjs` waiver coverage and `runtime-staging.mjs` interrupted-swap
+  recovery; the two findings this round fixed are unchanged)
 - review tier: High-assurance (licensing/crypto + packaging)
 
 The hosted Greptile review on PR #409 (round 3, 2026-09-28T00:08Z) raised four
