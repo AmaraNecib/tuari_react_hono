@@ -39,7 +39,10 @@ import {
   inventoryAssetChargeSchema,
   inventoryAssetDetailSchema,
   inventoryAssetTransferInputSchema,
+  inventoryAssetUnitCreateInputSchema,
+  inventoryAssetUnitSchema,
   inventoryContract,
+  inventoryInvoiceGroupCreateInputSchema,
   inventoryProjectChargesSchema,
   managerAssignmentCreateInputSchema,
   phonePasswordSignInSchema,
@@ -1744,7 +1747,75 @@ describe("contracts", () => {
         inventoryProjectChargesSchema.safeParse({ projectId: "project-a", totalDzd: 0, charges: [] }).success,
       ).toBe(true);
       expect(
+        inventoryProjectChargesSchema.safeParse({ projectId: "project-a", totalDzd: Number.MAX_SAFE_INTEGER, charges: [] })
+          .success,
+      ).toBe(true);
+      expect(
         inventoryProjectChargesSchema.safeParse({ projectId: "project-a", totalDzd: -1, charges: [] }).success,
+      ).toBe(false);
+      // The aggregate obeys the same magnitude bound as each charge, so a sum
+      // above it cannot be represented and must not be emitted (#422 round 2).
+      expect(
+        inventoryProjectChargesSchema.safeParse({
+          projectId: "project-a",
+          totalDzd: Number.MAX_SAFE_INTEGER + 1,
+          charges: [],
+        }).success,
+      ).toBe(false);
+    });
+
+    it("bounds the invoice asset purchase price with the same money rule as the charge", () => {
+      const assetInput = { assetName: "مثقاب", purchasePriceDzd: Number.MAX_SAFE_INTEGER };
+      expect(inventoryAssetUnitCreateInputSchema.safeParse(assetInput).success).toBe(true);
+      expect(
+        inventoryAssetUnitCreateInputSchema.safeParse({ ...assetInput, purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1 })
+          .success,
+      ).toBe(false);
+
+      const invoiceInput = {
+        entries: [
+          {
+            kind: "ASSET" as const,
+            itemDefinitionId: "def-1",
+            projectId: "project-a",
+            assets: [assetInput],
+          },
+        ],
+      };
+      expect(inventoryInvoiceGroupCreateInputSchema.safeParse(invoiceInput).success).toBe(true);
+      expect(
+        inventoryInvoiceGroupCreateInputSchema.safeParse({
+          ...invoiceInput,
+          entries: [
+            {
+              ...invoiceInput.entries[0],
+              assets: [{ assetName: "مثقاب", purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1 }],
+            },
+          ],
+        }).success,
+      ).toBe(false);
+
+      // The stored entity shape shares the bound too, so one ceiling governs
+      // the invoice input and its storage (#422 round 2).
+      const storedAsset = {
+        id: "asset-1",
+        inventoryEntryId: "entry-1",
+        assetName: "مثقاب",
+        assetTag: null,
+        serialNumber: null,
+        condition: null,
+        purchaseDate: null,
+        purchasePriceDzd: Number.MAX_SAFE_INTEGER,
+        currentWarehouseId: null,
+        currentProjectId: "project-a",
+        currentLocationLabel: null,
+        note: null,
+        createdAt: "2026-06-01T00:00:00.000Z",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+      };
+      expect(inventoryAssetUnitSchema.safeParse(storedAsset).success).toBe(true);
+      expect(
+        inventoryAssetUnitSchema.safeParse({ ...storedAsset, purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1 }).success,
       ).toBe(false);
     });
 

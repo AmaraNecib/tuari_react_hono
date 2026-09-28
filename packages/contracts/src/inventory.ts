@@ -46,7 +46,7 @@ export const inventoryAssetUnitSchema = z.object({
   serialNumber: nullableTextSchema,
   condition: inventoryAssetConditionSchema.nullable(),
   purchaseDate: timestampSchema.nullable(),
-  purchasePriceDzd: z.number().nonnegative(),
+  purchasePriceDzd: nonNegativePaymentAmountSchema,
   currentWarehouseId: entityIdSchema.nullable(),
   currentProjectId: entityIdSchema.nullable(),
   currentLocationLabel: nullableTextSchema,
@@ -262,7 +262,7 @@ export const inventoryAssetUnitCreateInputSchema = z.object({
   serialNumber: z.string().trim().max(160).nullable().optional(),
   condition: inventoryAssetConditionSchema.nullable().optional(),
   purchaseDate: timestampSchema.nullable().optional(),
-  purchasePriceDzd: z.number().nonnegative(),
+  purchasePriceDzd: nonNegativePaymentAmountSchema,
   note: z.string().trim().max(1000).nullable().optional(),
 });
 

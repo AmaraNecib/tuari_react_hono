@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { AssetChargeService } from "./asset-charge.service"
 import { createInMemoryAssetChargeRepository } from "./adapters/in-memory-asset-charge.repository"
+import { InventoryError } from "./inventory.errors"
 import type { InventoryAssetChargeAssetLookup } from "./asset-charge.types"
 
 function createLookup(overrides?: Partial<InventoryAssetChargeAssetLookup>): InventoryAssetChargeAssetLookup {
@@ -180,6 +181,41 @@ describe("AssetChargeService — chain, corrections and total (#413)", () => {
 
     expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(42_500)
     expect(service.listByProject({ projectId: "project-b" }).totalDzd).toBe(999_000)
+  })
+
+  it("refuses a project total above the shared money bound instead of emitting it", () => {
+    // Each charge is legal at the bound, but their sum is not representable by
+    // the `totalDzd` output contract. The cost view must fail with a typed
+    // error, never return an out-of-contract number (#422 round 2).
+    const { service } = createHarness()
+    service.createPlacementCharge(
+      { assetUnitId: "asset-1", projectId: "project-a", amountDzd: Number.MAX_SAFE_INTEGER },
+      AUDIT,
+    )
+    service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 1 }, AUDIT)
+
+    expect(() => service.listByProject({ projectId: "project-a" })).toThrowError(InventoryError)
+
+    let thrown: unknown
+    try {
+      service.getProjectCharges({ projectId: "project-a" })
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(InventoryError)
+    expect((thrown as InventoryError).appError.code).toBe("BUSINESS_RULE")
+    expect((thrown as InventoryError).appError.fieldErrors[0]?.field).toBe("totalDzd")
+  })
+
+  it("returns a project total that lands exactly on the shared money bound", () => {
+    const { service } = createHarness()
+    service.createPlacementCharge(
+      { assetUnitId: "asset-1", projectId: "project-a", amountDzd: Number.MAX_SAFE_INTEGER },
+      AUDIT,
+    )
+    service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 0 }, AUDIT)
+
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(Number.MAX_SAFE_INTEGER)
   })
 
   it("rounds the project total at the money boundary (0.1 + 0.2 = 0.3)", () => {

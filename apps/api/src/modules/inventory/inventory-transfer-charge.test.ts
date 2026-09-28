@@ -283,4 +283,31 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
 
     expect(chargeRepository._charges.size).toBe(0)
   })
+
+  it("refuses an above-bound purchase price before writing anything", () => {
+    // The wire gate rejects this too; this pins the module seam so a direct
+    // caller cannot store money the charge contract cannot represent. One
+    // ceiling, not two (#422 round 2).
+    const { service, chargeRepository, movements } = createInvoiceHarness()
+
+    expect(() =>
+      service.createInvoiceGroup(
+        {
+          projectId: "project-a",
+          entries: [
+            {
+              kind: "ASSET",
+              itemDefinitionId: "def-1",
+              projectId: "project-a",
+              assets: [{ assetName: "مثقاب", purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1 }],
+            },
+          ],
+        },
+        AUDIT,
+      ),
+    ).toThrowError(/خارج النطاق/)
+
+    expect(chargeRepository._charges.size).toBe(0)
+    expect(movements).toHaveLength(0)
+  })
 })

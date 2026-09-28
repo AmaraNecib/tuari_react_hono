@@ -148,3 +148,43 @@ that a later reader would otherwise have to reverse-engineer:
   project FK (the finding) was changed.
 - `purchasePriceDzd` in the default response shares the same contract bound and
   is validated by the same `inventoryAssetChargeDefaultSchema` parse.
+
+## Review round 2 — PR #422 (money-bound findings)
+
+Round 1 (finding 4) validated the *resolved charge default* against
+`MAX_MONEY_DZD` but left the invoice asset input and the asset entity schema on
+an unbounded `z.number().nonnegative()`. That introduced TWO ceilings for the
+same money field: a purchase price the invoice path accepted could make the
+charge default (and therefore a direct-to-project purchase) fail, while the
+same purchase into a warehouse succeeded. Greptile flagged this as "valid
+purchase prices now fail" (P2), plus the symmetric aggregate leak "project
+totals exceed contract bound" (P2).
+
+One bound wins, and it is the contract's `MAX_MONEY_DZD`:
+
+1. **The invoice asset price is bounded at the same ceiling.**
+   `inventoryAssetUnitCreateInputSchema.purchasePriceDzd` and the entity/"storage"
+   shape `inventoryAssetUnitSchema.purchasePriceDzd` both use
+   `nonNegativePaymentAmountSchema` (the same `MAX_MONEY_DZD` rule as the charge
+   contract). `InventoryService.createInvoiceGroup` also parses the price with
+   that schema at the module seam, so the wire gate and the service cannot
+   drift (the #289 defense-in-depth pattern) and a direct service call cannot
+   store above-bound money. There is no evidence the invoice path needs a
+   higher ceiling: `MAX_MONEY_DZD` is a *precision* bound
+   (`Number.MAX_SAFE_INTEGER`), not a business limit, so the only values it
+   rejects are ones whose arithmetic is already undefined.
+2. **The project total has its own aggregate bound.** Individual charges are
+   each allowed to reach `MAX_MONEY_DZD`, so their sum can exceed it and the
+   `inventoryProjectChargesSchema.totalDzd` contract cannot represent it.
+   `listByProject` now sums with an incremental guard and throws a typed
+   `InventoryError("BUSINESS_RULE", …)` before rounding, instead of emitting a
+   number outside the declared shape. A total that lands *exactly* on the bound
+   is still representable and still returned.
+
+Trade-off: bounding `inventoryAssetUnitSchema` means a legacy row whose price
+already exceeds `MAX_SAFE_INTEGER` would no longer serialize. Accepted because
+(a) the invoice input has always fed this path and the new gate stops any new
+above-bound row, (b) `MAX_SAFE_INTEGER` is the point past which the stored
+`number` is no longer an exact integer, and (c) the alternative (an unbounded
+read schema next to a bounded write schema) is exactly the two-ceiling bug
+being fixed.

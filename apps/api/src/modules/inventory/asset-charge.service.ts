@@ -1,4 +1,5 @@
 import {
+  MAX_MONEY_DZD,
   inventoryAssetChargeDefaultSchema,
   inventoryAssetChargeUpdateInputSchema,
   inventoryAssetChargeVoidInputSchema,
@@ -147,9 +148,7 @@ export class AssetChargeService {
     const charges = this.repository
       .listChargesByProject(input.projectId)
       .filter((charge) => charge.status === "LIVE")
-    // Round at the money boundary (the shared report helper) so float noise
-    // such as `0.1 + 0.2` never leaks into the project total.
-    const totalDzd = roundMoney(charges.reduce((sum, charge) => sum + charge.amountDzd, 0))
+    const totalDzd = this.sumLiveCharges(charges)
 
     return { projectId: input.projectId, totalDzd, charges }
   }
@@ -242,6 +241,35 @@ export class AssetChargeService {
 
   private toDetail(charge: InventoryAssetChargeRecord): InventoryAssetChargeDetailRecord {
     return { ...charge, revisions: this.repository.listRevisions(charge.id) }
+  }
+
+  /**
+   * Sum the live charges of a project.
+   *
+   * Each charge may legally reach `MAX_MONEY_DZD`, but `totalDzd` in
+   * `inventoryProjectChargesSchema` shares the same bound, so an overflowing
+   * sum would emit a payload the contract forbids. Amounts are non-negative,
+   * so the running total only grows: checking after each addition catches the
+   * overflow before it can silently lose precision or reach `Infinity`. Round
+   * at the money boundary with the shared report helper so float noise such as
+   * `0.1 + 0.2` never leaks into the project total.
+   */
+  private sumLiveCharges(charges: InventoryAssetChargeRecord[]) {
+    let totalDzd = 0
+
+    for (const charge of charges) {
+      totalDzd += charge.amountDzd
+      if (totalDzd > MAX_MONEY_DZD) {
+        throw this.projectTotalOutOfRange()
+      }
+    }
+
+    return roundMoney(totalDzd)
+  }
+
+  private projectTotalOutOfRange() {
+    const message = "إجمالي احتسابات المشروع يتجاوز الحد الأقصى المسموح به."
+    return new InventoryError("BUSINESS_RULE", message, [{ field: "totalDzd", message }])
   }
 
   private requireLiveCharge(chargeId: string) {

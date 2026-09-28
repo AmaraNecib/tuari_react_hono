@@ -1,3 +1,4 @@
+import { nonNegativePaymentAmountSchema } from "@tuari/contracts"
 import type {
   DebtAccountCreateInput,
   DebtEntryCreateInput,
@@ -67,6 +68,23 @@ function normalizeMoney(value: number, field: string) {
   }
 
   return value
+}
+
+/**
+ * The module seam for money that must also respect the wire contract's
+ * magnitude bound (`MAX_MONEY_DZD`). The wire gate and this seam parse the SAME
+ * schema, so a direct caller cannot store an amount the contract rejects
+ * (issue #289 defense-in-depth). Used for the asset purchase price, whose
+ * stored value is later reused as the charge default (#413).
+ */
+function normalizeMoneyWithinBound(value: number, field: string) {
+  const parsed = nonNegativePaymentAmountSchema.safeParse(value)
+  if (!parsed.success) {
+    const message = "سعر الشراء خارج النطاق المسموح به."
+    throw new InventoryError("VALIDATION", message, [{ field, message }])
+  }
+
+  return parsed.data
 }
 
 function normalizePositive(value: number, field: string) {
@@ -347,7 +365,7 @@ export class InventoryService {
         serialNumber: normalizeText(asset.serialNumber),
         condition: asset.condition ?? null,
         purchaseDate: asset.purchaseDate ?? null,
-        purchasePriceDzd: normalizeMoney(asset.purchasePriceDzd, `entries.${index}.assets.${assetIndex}.purchasePriceDzd`),
+        purchasePriceDzd: normalizeMoneyWithinBound(asset.purchasePriceDzd, `entries.${index}.assets.${assetIndex}.purchasePriceDzd`),
         currentWarehouseId: effectiveWarehouseId,
         currentProjectId: effectiveProjectId,
         note: normalizeText(asset.note),
