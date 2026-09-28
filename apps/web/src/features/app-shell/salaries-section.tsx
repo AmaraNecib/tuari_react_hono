@@ -23,11 +23,20 @@ function getSalaryPeriodLabelKey(value: "DAILY" | "WEEKLY" | "MONTHLY" | null) {
   return "detailPages.salary.notSpecified"
 }
 
-function MoneyCell({ value, currencyLabel }: { value: number; currencyLabel: string }) {
+function MoneyCell({
+  value,
+  currencyLabel,
+  maximumFractionDigits = 0,
+}: {
+  value: number
+  currencyLabel: string
+  /** Split shares carry cents so their sum reconciles with the paid amount. */
+  maximumFractionDigits?: number
+}) {
   return (
     <span className="font-mono tabular-nums text-ink" dir="ltr">
       {currencyLabel}{" "}
-      {new Intl.NumberFormat("en-US", { maximumFractionDigits: 0, useGrouping: true }).format(value)}
+      {new Intl.NumberFormat("en-US", { maximumFractionDigits, useGrouping: true }).format(value)}
     </span>
   )
 }
@@ -131,55 +140,66 @@ export function SalariesSection({
             </AppShellTableHead>
             <tbody>
               {recentPayments.length > 0 ? (
-                recentPayments.map((payment) => (
-                  <AppShellTableRow key={payment.id}>
-                    <td className="px-4 py-3 text-start">
-                      <p className="text-[13px] font-medium text-ink" dir="auto">{payment.employeeName}</p>
-                      <p className="text-[11px] text-ink-3" dir="auto">{payment.employeeRole}</p>
-                    </td>
-                    <td className="px-4 py-3 text-start text-[13px] text-ink-2">
-                      {new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}
-                    </td>
-                    <td className="px-4 py-3 text-start text-[13px] text-ink-2 font-mono tabular-nums" dir="ltr">
-                      {payment.days}
-                      {payment.projectSplits.length > 0 ? (
-                        <ul className="mt-1 space-y-0.5 font-sans text-[11px] text-ink-3" dir="rtl">
-                          {payment.projectSplits.map((split) => (
-                            <li key={split.projectId} className="flex flex-wrap items-center gap-x-1.5">
-                              <span dir="auto">{projectNames.get(split.projectId) ?? split.projectId}</span>
-                              <span className="text-ink-4">·</span>
-                              <span className="font-mono tabular-nums" dir="ltr">{split.days} {t("salaries.daysUnit")}</span>
-                              <span className="text-ink-4">·</span>
-                              <MoneyCell
-                                value={allocateSalaryAmountByDays(payment.actualAmountDzd, split.days, payment.days)}
-                                currencyLabel={currencyLabel}
-                              />
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-start">
-                      <MoneyCell value={payment.expectedAmountDzd} currencyLabel={currencyLabel} />
-                    </td>
-                    <td className="px-4 py-3 text-start">
-                      <MoneyCell value={payment.actualAmountDzd} currencyLabel={currencyLabel} />
-                    </td>
-                    <td className="px-4 py-3 text-start text-[12.5px] text-ink-3">
-                      {payment.note ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-end">
-                      <AppShellActionGroup className="justify-end">
-                        <Button size="xs" onClick={() => openPaymentForm(payment.employeeId, payment.employeeName)}>
-                          {t("salaries.addPayment")}
-                        </Button>
-                        <Button size="xs" variant="outline" onClick={() => onEditSalary(payment.employeeId)}>
-                          {t("salaries.editSalary")}
-                        </Button>
-                      </AppShellActionGroup>
-                    </td>
-                  </AppShellTableRow>
-                ))
+                recentPayments.map((payment) => {
+                  // Allocate across all lines together so the displayed shares
+                  // reconcile: rounding each line separately loses the remainder.
+                  const salaryShares = allocateSalaryAmountByDays(
+                    payment.actualAmountDzd,
+                    payment.projectSplits.map((split) => split.days),
+                    payment.days,
+                  )
+
+                  return (
+                    <AppShellTableRow key={payment.id}>
+                      <td className="px-4 py-3 text-start">
+                        <p className="text-[13px] font-medium text-ink" dir="auto">{payment.employeeName}</p>
+                        <p className="text-[11px] text-ink-3" dir="auto">{payment.employeeRole}</p>
+                      </td>
+                      <td className="px-4 py-3 text-start text-[13px] text-ink-2">
+                        {new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}
+                      </td>
+                      <td className="px-4 py-3 text-start text-[13px] text-ink-2 font-mono tabular-nums" dir="ltr">
+                        {payment.days}
+                        {payment.projectSplits.length > 0 ? (
+                          <ul className="mt-1 space-y-0.5 font-sans text-[11px] text-ink-3" dir="rtl">
+                            {payment.projectSplits.map((split, index) => (
+                              <li key={split.projectId} className="flex flex-wrap items-center gap-x-1.5">
+                                <span dir="auto">{projectNames.get(split.projectId) ?? split.projectId}</span>
+                                <span className="text-ink-4">·</span>
+                                <span className="font-mono tabular-nums" dir="ltr">{split.days} {t("salaries.daysUnit")}</span>
+                                <span className="text-ink-4">·</span>
+                                <MoneyCell
+                                  value={salaryShares[index] ?? 0}
+                                  currencyLabel={currencyLabel}
+                                  maximumFractionDigits={2}
+                                />
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-start">
+                        <MoneyCell value={payment.expectedAmountDzd} currencyLabel={currencyLabel} />
+                      </td>
+                      <td className="px-4 py-3 text-start">
+                        <MoneyCell value={payment.actualAmountDzd} currencyLabel={currencyLabel} />
+                      </td>
+                      <td className="px-4 py-3 text-start text-[12.5px] text-ink-3">
+                        {payment.note ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 text-end">
+                        <AppShellActionGroup className="justify-end">
+                          <Button size="xs" onClick={() => openPaymentForm(payment.employeeId, payment.employeeName)}>
+                            {t("salaries.addPayment")}
+                          </Button>
+                          <Button size="xs" variant="outline" onClick={() => onEditSalary(payment.employeeId)}>
+                            {t("salaries.editSalary")}
+                          </Button>
+                        </AppShellActionGroup>
+                      </td>
+                    </AppShellTableRow>
+                  )
+                })
               ) : (
                 <AppShellEmptyStateRow colSpan={7}>{t("salaries.recentEmpty")}</AppShellEmptyStateRow>
               )}

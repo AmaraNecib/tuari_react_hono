@@ -99,21 +99,39 @@ export function computeUnallocatedDays(
 }
 
 /**
- * The share of a paid amount attributed to one split line.
+ * The share of a paid amount attributed to each split line.
  *
- * A split stores only its days, so the amount is prorated against the whole
- * payment: a line of 15 of 30 paid days carries half the paid amount, and the
- * unallocated remainder's share is deliberately left unattributed. Rounded to
- * two decimals to match the money convention.
+ * A split stores only its days, so each line's amount is prorated against the
+ * whole payment: a line of 15 of 30 paid days carries half the paid amount, and
+ * the unallocated remainder's share is deliberately left unattributed. Allocating
+ * each line independently loses the rounding remainder (three one-day lines of a
+ * 100 DZD payment round to 33.33 each, 99.99 total), so the cents are
+ * distributed by largest remainder (largest-remainder/Hamilton, the same
+ * approach `deriveSalaryProjectDays` uses): every line is floored to whole cents
+ * and the leftover cents go to the lines with the largest fractional part. The
+ * returned amounts therefore sum EXACTLY to the rounded attributed portion of the
+ * payment, which is the whole amount when the split covers every paid day. Ties
+ * are broken by line order so the result is deterministic.
  */
 export function allocateSalaryAmountByDays(
   amountDzd: number,
-  lineDays: number,
+  splitDays: readonly number[],
   totalDays: number,
-): number {
+): number[] {
   if (!Number.isFinite(amountDzd) || totalDays <= 0) {
-    return 0
+    return splitDays.map(() => 0)
   }
 
-  return Math.round(((amountDzd * lineDays) / totalDays) * 100) / 100
+  const allocatedDays = splitDays.reduce((sum, lineDays) => sum + lineDays, 0)
+  const attributedCents = Math.round(((amountDzd * allocatedDays) / totalDays) * 100)
+  const exactCents = splitDays.map((lineDays) => (amountDzd * lineDays * 100) / totalDays)
+  const flooredCents = exactCents.map((cents) => Math.floor(cents))
+  const remainingCents = attributedCents - flooredCents.reduce((sum, cents) => sum + cents, 0)
+
+  const byRemainder = exactCents
+    .map((cents, index) => ({ index, fraction: cents - Math.floor(cents) }))
+    .sort((left, right) => right.fraction - left.fraction || left.index - right.index)
+  const bonusIndices = new Set(byRemainder.slice(0, remainingCents).map((line) => line.index))
+
+  return flooredCents.map((cents, index) => (cents + (bonusIndices.has(index) ? 1 : 0)) / 100)
 }

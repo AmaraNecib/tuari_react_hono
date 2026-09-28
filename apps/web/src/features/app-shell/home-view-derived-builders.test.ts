@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { HomeViewCopy, HomeViewDetailCopy } from "./home-view-copy"
+import { buildEmployeeSalaryCollections } from "./home-view-derived-employee-salary"
 import {
   buildEmployeeRows,
   buildManagerOptions,
@@ -312,6 +313,51 @@ describe("home view derived builders", () => {
         projectOptions: [{ id: "project-1", label: "مبنى الإدارة" }],
       },
     ])
+  })
+
+  it("groups project assignment windows per employee in one pass", () => {
+    const lookups = buildHomeViewDerivedLookups(workspace)
+    const employeeRows = buildEmployeeRows({ copy, lookups, t, workspace })
+    const salary = buildEmployeeSalaryCollections({ detailCopy, employeeRows, lookups, workspace })
+
+    // worker-1's two windows keep snapshot order; everyone gets a key, even
+    // with no assignments.
+    expect(salary.projectAssignmentsByEmployeeId["worker-1"]).toEqual([
+      { projectId: "project-1", startDate: "2026-03-13T10:00:00.000Z", endDate: null },
+      { projectId: "project-2", startDate: "2026-02-13T10:00:00.000Z", endDate: "2026-03-01T10:00:00.000Z" },
+    ])
+    expect(salary.projectAssignmentsByEmployeeId["manager-1"]).toEqual([])
+    expect(salary.projectAssignmentsByEmployeeId["warehouse-manager-1"]).toEqual([])
+    expect(
+      salary.salariedEmployees.find((employee) => employee.employeeId === "worker-1")?.projectAssignments,
+    ).toHaveLength(2)
+
+    // An assignment whose employee is not in the snapshot stays out, as before.
+    const withOrphan = buildEmployeeSalaryCollections({
+      detailCopy,
+      employeeRows,
+      lookups,
+      workspace: {
+        ...workspace,
+        projectAssignments: [
+          ...workspace.projectAssignments,
+          {
+            id: "orphan-1",
+            employeeId: "ghost-1",
+            projectId: "project-1",
+            status: "ACTIVE",
+            startDate: "2026-03-13T10:00:00.000Z",
+            endDate: null,
+            notes: null,
+            actorUserId: null,
+            transactionId: null,
+            createdAt: "2026-03-13T10:00:00.000Z",
+            updatedAt: "2026-03-13T10:00:00.000Z",
+          },
+        ],
+      },
+    })
+    expect(withOrphan.projectAssignmentsByEmployeeId["ghost-1"]).toBeUndefined()
   })
 
   it("uses the warehouse name as the current workplace when a worker is only warehouse-assigned", () => {

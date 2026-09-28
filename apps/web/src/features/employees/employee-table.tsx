@@ -95,20 +95,21 @@ export function EmployeeTable({
 }: EmployeeTableProps) {
   const { t } = useTranslation()
   // rows are already paginated by the parent (cursor-based pagination)
-  const [paymentTarget, setPaymentTarget] = useState<{
-    id: string
-    name: string
-    salaryAmountDzd: number | null
-    salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | null
-  } | null>(null)
+  // Only the target's identity is snapshotted when the dialog opens. The wage,
+  // period, and assignment windows are read from the live props so a workspace
+  // refresh cannot leave a stale proposal or day default in the open dialog.
+  const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
+  const paymentRow = paymentTarget
+    ? rows.find((candidate) => candidate.id === paymentTarget.id) ?? null
+    : null
 
   return (
     <>
       <AddSalaryPaymentDialog
         employeeId={paymentTarget?.id ?? null}
-        employeeName={paymentTarget?.name}
-        salaryAmountDzd={paymentTarget?.salaryAmountDzd ?? null}
-        salaryPeriod={paymentTarget?.salaryPeriod ?? null}
+        employeeName={paymentRow?.name ?? paymentTarget?.name}
+        salaryAmountDzd={paymentRow?.salaryAmountDzd ?? null}
+        salaryPeriod={paymentRow?.salaryPeriod ?? null}
         projectAssignments={
           paymentTarget ? (projectAssignmentsByEmployeeId?.[paymentTarget.id] ?? []) : []
         }
@@ -167,12 +168,7 @@ export function EmployeeTable({
                       {row.isWorker && row.status === "ACTIVE" ? (
                         <Button
                           size="xs"
-                          onClick={() => setPaymentTarget({
-                            id: row.id,
-                            name: row.name,
-                            salaryAmountDzd: row.salaryAmountDzd,
-                            salaryPeriod: row.salaryPeriod,
-                          })}
+                          onClick={() => setPaymentTarget({ id: row.id, name: row.name })}
                         >
                           {t("salaries.addPayment")}
                         </Button>

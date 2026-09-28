@@ -93,24 +93,36 @@ describe("computeUnallocatedDays", () => {
 })
 
 describe("allocateSalaryAmountByDays", () => {
-  it("prorates the paid amount by the line's share of the paid days", () => {
-    expect(allocateSalaryAmountByDays(30000, 15, 30)).toBe(15000)
-    expect(allocateSalaryAmountByDays(30000, 1, 30)).toBe(1000)
+  it("prorates the paid amount by each line's share of the paid days", () => {
+    expect(allocateSalaryAmountByDays(30000, [15, 15], 30)).toEqual([15000, 15000])
+    expect(allocateSalaryAmountByDays(30000, [1, 29], 30)).toEqual([1000, 29000])
   })
 
   it("leaves the unallocated remainder's share unattributed", () => {
-    // 25 of 30 days split between two projects: each line gets only its share,
-    // not the whole amount.
-    expect(allocateSalaryAmountByDays(30000, 15, 30)).toBe(15000)
-    expect(allocateSalaryAmountByDays(30000, 10, 30)).toBe(10000)
+    // 25 of 30 days split between two projects: the lines carry only their
+    // share, not the whole amount, and the unattributed share is not invented.
+    const shares = allocateSalaryAmountByDays(30000, [15, 10], 30)
+    expect(shares).toEqual([15000, 10000])
+    expect(shares.reduce((sum, share) => sum + share, 0)).toBe(25000)
   })
 
-  it("rounds to two decimals", () => {
-    expect(allocateSalaryAmountByDays(100, 1, 3)).toBe(33.33)
+  it("distributes the rounding remainder so the shares sum to the paid amount", () => {
+    // Three one-day lines of a 100 DZD payment: 33.33 each would total 99.99.
+    const shares = allocateSalaryAmountByDays(100, [1, 1, 1], 3)
+    expect(shares).toEqual([33.34, 33.33, 33.33])
+    expect(shares.reduce((sum, share) => sum + share, 0)).toBeCloseTo(100, 2)
   })
 
-  it("returns zero instead of dividing by a non-positive day count", () => {
-    expect(allocateSalaryAmountByDays(30000, 15, 0)).toBe(0)
-    expect(allocateSalaryAmountByDays(Number.NaN, 15, 30)).toBe(0)
+  it("hands the leftover cent to the line with the largest fractional part", () => {
+    // Exact shares are 33.33…, 16.66…, and 50.00: the one leftover cent lands
+    // on the middle line, not the first.
+    const shares = allocateSalaryAmountByDays(100, [2, 1, 3], 6)
+    expect(shares).toEqual([33.33, 16.67, 50])
+    expect(shares.reduce((sum, share) => sum + share, 0)).toBeCloseTo(100, 2)
+  })
+
+  it("returns zero shares instead of dividing by a non-positive day count", () => {
+    expect(allocateSalaryAmountByDays(30000, [15, 15], 0)).toEqual([0, 0])
+    expect(allocateSalaryAmountByDays(Number.NaN, [15, 15], 30)).toEqual([0, 0])
   })
 })

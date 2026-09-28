@@ -107,4 +107,36 @@ describe("SalariesSection (#412)", () => {
     expect(screen.getAllByText("15 يوم").length).toBe(2)
     expect(screen.getAllByText(/15,000/).length).toBe(2)
   })
+
+  it("reconciles the displayed split shares with the paid amount", () => {
+    const payment = {
+      ...PAYMENT,
+      days: 3,
+      expectedAmountDzd: 100,
+      actualAmountDzd: 100,
+      projectSplits: [
+        { projectId: PROJECT.id, days: 1 },
+        { projectId: "project-2", days: 1 },
+        { projectId: "project-3", days: 1 },
+      ],
+    }
+
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[
+          PROJECT,
+          { id: "project-2", name: "مشروع باء" },
+          { id: "project-3", name: "مشروع جيم" },
+        ]}
+        recentPayments={[payment]}
+        workers={[worker(30000)]}
+      />,
+    )
+
+    // Three one-day lines of a 100 DZD payment must sum to 100, not 99.99:
+    // the leftover cent lands on the first line and is shown.
+    expect(screen.getByText(/33\.34/)).toBeTruthy()
+    expect(screen.getAllByText(/33\.33/).length).toBe(2)
+  })
 })

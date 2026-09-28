@@ -265,6 +265,26 @@ describe("EmployeeDetailsPage salary payments (#412)", () => {
     expect(within(dialog).getByText("توزيع الأيام على المشاريع")).toBeTruthy()
   })
 
+  it("clears the quick draft and says the split dialog took over", async () => {
+    renderDetails()
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
+    fireEvent.change(screen.getAllByRole("spinbutton")[0]!, { target: { value: "12" } })
+    expect(screen.getByDisplayValue("12")).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "توزيع الأيام على المشاريع" }))
+    const dialog = await screen.findByRole("dialog")
+
+    // Only the split dialog holds a live draft now: the quick form's old one is
+    // gone, so the same payment cannot be submitted twice, and its notice says
+    // the split dialog owns the payment.
+    expect(within(dialog).getByText("توزيع الأيام على المشاريع")).toBeTruthy()
+    expect(screen.queryByDisplayValue("12")).toBeNull()
+    expect(
+      screen.getByText("تم فتح نافذة توزيع الأيام على المشاريع؛ أكمل تسجيل هذه الدفعة من هناك."),
+    ).toBeTruthy()
+  })
+
   it("submits the date picked in the quick payment form as the canonical day boundary", () => {
     renderDetails()
 

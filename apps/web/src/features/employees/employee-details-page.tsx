@@ -158,6 +158,9 @@ export function EmployeeDetailsPage({
   const [actualAmount, setActualAmount] = useState(() => (employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : ""))
   const [note, setNote] = useState("")
   const [showPaymentForm, setShowPaymentForm] = useState(false)
+  // Once the split dialog is handed the payment, the quick form's draft is
+  // cleared so the two surfaces can never hold a live draft for one payment.
+  const [splitDialogTookOver, setSplitDialogTookOver] = useState(false)
   const availableTabs = isWorker ? ["personal", "history", "finance", "debts"] : ["personal", "history", "finance"]
   const resolvedTab = availableTabs.includes(activeTab) ? activeTab : "personal"
   const sortedSalaryPayments = useMemo(
@@ -195,6 +198,20 @@ export function EmployeeDetailsPage({
   const managedWarehouseNamesLabel = managedWarehouses.length > 0 ? managedWarehouses.join("، ") : t("detailPages.employee.noManagedWarehouseNames")
   const hasExpandedNotes = (employee.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `employee-record-${employee.id}`
+
+  // Hand the payment to the split dialog. The quick form cannot attribute the
+  // payment to projects, so opening the dialog for the same payment would leave
+  // two live drafts; clearing the quick draft removes the double-submit trap.
+  const handOffQuickDraftToSplitDialog = () => {
+    setPaymentDate(getAlgeriaDateInputValue())
+    setPaymentDays(String(defaultSalaryPaymentDays(employee.salaryPeriod)))
+    setPaymentDaysTouched(false)
+    setPaymentAmountTouched(false)
+    setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
+    setNote("")
+    setSplitDialogTookOver(true)
+    setPaymentDialogOpen(true)
+  }
 
   // Distinguish switching to a different employee (full reset) from the same
   // employee's wage being refreshed (monthly→daily): the refresh re-derives the
@@ -256,7 +273,12 @@ export function EmployeeDetailsPage({
               projectAssignments={projectAssignments}
               projects={projects}
               open={paymentDialogOpen}
-              onOpenChange={setPaymentDialogOpen}
+              onOpenChange={(open) => {
+                setPaymentDialogOpen(open)
+                if (!open) {
+                  setSplitDialogTookOver(false)
+                }
+              }}
             />
             <Button size="lg" onClick={() => setPaymentDialogOpen(true)}>
               {t("salaries.addPayment")}
@@ -437,9 +459,11 @@ export function EmployeeDetailsPage({
                 </div>
                 <div className="space-y-2 text-start">
                   <p className="text-xs leading-5 text-muted-foreground">
-                    {t("detailPages.employee.financeUnallocatedNotice")}
+                    {splitDialogTookOver
+                      ? t("detailPages.employee.financeSplitDialogTookOver")
+                      : t("detailPages.employee.financeUnallocatedNotice")}
                   </p>
-                  <Button size="sm" variant="outline" onClick={() => setPaymentDialogOpen(true)}>
+                  <Button size="sm" variant="outline" onClick={handOffQuickDraftToSplitDialog}>
                     {t("detailPages.employee.financeOpenSplitDialog")}
                   </Button>
                 </div>

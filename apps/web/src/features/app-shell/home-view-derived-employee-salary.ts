@@ -47,19 +47,24 @@ export function buildEmployeeSalaryCollections({
     })
     .sort((left, right) => right.paymentDate.localeCompare(left.paymentDate))
 
-  const projectAssignmentsByEmployeeId: Record<string, Array<{ projectId: string; startDate: string; endDate: string | null }>> =
-    Object.fromEntries(
-      workspace.employees.map((employee) => [
-        employee.id,
-        workspace.projectAssignments
-          .filter((assignment) => assignment.employeeId === employee.id)
-          .map((assignment) => ({
-            projectId: assignment.projectId,
-            startDate: assignment.startDate,
-            endDate: assignment.endDate,
-          })),
-      ]),
-    )
+  // Group the assignments by employee in one pass. The previous shape scanned
+  // every assignment once per employee, so a workspace refresh re-did the whole
+  // scan as history grew.
+  const projectAssignmentsByEmployeeId: Record<string, Array<{ projectId: string; startDate: string; endDate: string | null }>> = {}
+  for (const employee of workspace.employees) {
+    projectAssignmentsByEmployeeId[employee.id] = []
+  }
+  for (const assignment of workspace.projectAssignments) {
+    const windows = projectAssignmentsByEmployeeId[assignment.employeeId]
+    if (!windows) {
+      continue
+    }
+    windows.push({
+      projectId: assignment.projectId,
+      startDate: assignment.startDate,
+      endDate: assignment.endDate,
+    })
+  }
 
   const salariedEmployees = employeeRows
     .filter((employee) => employee.salaryAmountDzd !== null && employee.salaryPeriod)

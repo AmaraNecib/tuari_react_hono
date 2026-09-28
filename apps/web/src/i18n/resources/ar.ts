@@ -617,6 +617,7 @@ export const ar = {
         financeFormTitle: "تسجيل دفعة راتب",
         financeFormDescription: "أدخل المبلغ الفعلي المدفوع وتاريخ الدفعة.",
         financeUnallocatedNotice: "تُحفظ هذه الدفعة دون نسبتها إلى أي مشروع، لذا لن تظهر في تكلفة المشاريع.",
+        financeSplitDialogTookOver: "تم فتح نافذة توزيع الأيام على المشاريع؛ أكمل تسجيل هذه الدفعة من هناك.",
         financeOpenSplitDialog: "توزيع الأيام على المشاريع",
         financePaymentDate: "تاريخ الدفعة",
         financeExpectedAmount: "المبلغ المتوقع",

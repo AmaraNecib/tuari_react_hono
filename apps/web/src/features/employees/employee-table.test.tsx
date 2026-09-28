@@ -75,6 +75,31 @@ describe("EmployeeTable salary payment entry point (#412)", () => {
     cleanup()
   })
 
+  function renderTable(overrides: Partial<EmployeeTableRow> = {}) {
+    const element = (next: Partial<EmployeeTableRow>) => (
+      <EmployeeTable
+        copy={copy}
+        rows={[{ ...row, ...next }]}
+        projects={[PROJECT]}
+        projectAssignmentsByEmployeeId={{ [row.id]: [ASSIGNMENT] }}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
+        onLeave={vi.fn()}
+        onView={vi.fn()}
+      />
+    )
+
+    const view = render(element(overrides))
+    return {
+      view,
+      // Simulate a workspace refresh that changes the row underneath the open
+      // dialog.
+      refresh: (next: Partial<EmployeeTableRow>) => {
+        view.rerender(element(next))
+      },
+    }
+  }
+
   it("opens the payment dialog with the project list and assignment windows", () => {
     render(
       <EmployeeTable
@@ -97,5 +122,29 @@ describe("EmployeeTable salary payment entry point (#412)", () => {
     expect(projectSelect.value).toBe(PROJECT.id)
     expect(screen.getByText("salaries.unallocatedDays:0")).toBeTruthy()
     expect(screen.getByRole("button", { name: "salaries.addProjectLine" }).hasAttribute("disabled")).toBe(false)
+  })
+
+  it("re-derives the open dialog's proposal from the live row after a wage refresh", () => {
+    const { refresh } = renderTable({ salaryAmountDzd: 30000, salaryPeriod: "MONTHLY" })
+
+    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
+    expect(screen.getAllByDisplayValue("30000").length).toBeGreaterThan(0)
+
+    // The open dialog snapshotted only the target's identity: the wage must
+    // follow the refreshed row rather than staying on the old proposal.
+    refresh({ salaryAmountDzd: 60000, salaryPeriod: "MONTHLY" })
+    expect(screen.getAllByDisplayValue("60000").length).toBeGreaterThan(0)
+    expect(screen.queryByDisplayValue("30000")).toBeNull()
+  })
+
+  it("follows a refreshed wage period so the untouched day default tracks it", () => {
+    const { refresh } = renderTable({ salaryAmountDzd: 30000, salaryPeriod: "MONTHLY" })
+
+    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("30")
+
+    refresh({ salaryAmountDzd: 1500, salaryPeriod: "DAILY" })
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("1")
+    expect(screen.getAllByDisplayValue("1500").length).toBeGreaterThan(0)
   })
 })
