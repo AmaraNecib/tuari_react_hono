@@ -142,10 +142,16 @@ export class AssetChargeService {
 
   /** listByUnit — the unit's charge chain, newest first, with revisions. */
   listByUnit(input: { assetUnitId: string }) {
+    // One revisions query for the whole chain instead of one per charge (#422
+    // round 5). `toDetail` stays for the single-charge update/void results.
+    const charges = this.repository.listChargesByUnit(input.assetUnitId)
+    const revisionsByChargeId = this.repository.listRevisionsByChargeIds(charges.map((charge) => charge.id))
+
     return {
-      items: this.repository
-        .listChargesByUnit(input.assetUnitId)
-        .map((charge) => this.toDetail(charge)),
+      items: charges.map((charge) => ({
+        ...charge,
+        revisions: revisionsByChargeId.get(charge.id) ?? [],
+      })),
     }
   }
 
@@ -158,7 +164,10 @@ export class AssetChargeService {
     const charges = this.repository
       .listChargesByProject(input.projectId)
       .filter((charge) => charge.status === "LIVE")
-    const totalDzd = this.sumLiveCharges(charges)
+    const totalDzd = this.sumLiveCharges(charges.map((charge) => charge.amountDzd))
+    if (totalDzd > MAX_MONEY_DZD) {
+      throw this.projectTotalOutOfRange(totalDzd)
+    }
 
     return { projectId: input.projectId, totalDzd, charges }
   }
@@ -187,7 +196,7 @@ export class AssetChargeService {
     // database cannot resurrect a voided charge (#422 round 4).
     const updated = this.repository.withTransaction(() => {
       const charge = this.requireLiveCharge(parsed.data.chargeId, "update")
-      this.assertProjectTotalWithinBound(charge.projectId, parsed.data.amountDzd, charge.amountDzd)
+      this.assertProjectTotalWithinBound(charge.projectId, parsed.data.amountDzd, charge.id)
 
       const result = this.repository.updateCharge(
         charge.id,
@@ -261,24 +270,25 @@ export class AssetChargeService {
   }
 
   /**
-   * Sum the live charges of a project.
+   * Sum LIVE amounts in the order given. This is the ONE summation every
+   * project total uses: the read (`listByProject`) and the write gate
+   * (`assertProjectTotalWithinBound`) both pass the read's newest-first order.
    *
-   * Each charge may legally reach `MAX_MONEY_DZD`, but `totalDzd` in
-   * `inventoryProjectChargesSchema` shares the same bound, so an overflowing
-   * sum would emit a payload the contract forbids. Amounts are non-negative,
-   * so the running total only grows: checking after each addition catches the
-   * overflow before it can silently lose precision or reach `Infinity`. Round
-   * at the money boundary with the shared report helper so float noise such as
-   * `0.1 + 0.2` never leaks into the project total.
+   * Floating-point addition is order-dependent, so a different accumulator —
+   * the old SQLite `sum()` ran in rowid order — could accept a write that the
+   * read then refuses, leaving a project whose total can never be read
+   * (#422 round 5). Round at the money boundary with the shared report helper
+   * so float noise such as `0.1 + 0.2` never leaks into the project total.
+   *
+   * The bound is enforced by the CALLER (`> MAX_MONEY_DZD`), because the write
+   * gate needs the current total for its refusal message rather than the
+   * running value at the point of overflow.
    */
-  private sumLiveCharges(charges: InventoryAssetChargeRecord[]) {
+  private sumLiveCharges(amounts: readonly number[]) {
     let totalDzd = 0
 
-    for (const charge of charges) {
-      totalDzd += charge.amountDzd
-      if (totalDzd > MAX_MONEY_DZD) {
-        throw this.projectTotalOutOfRange(totalDzd)
-      }
+    for (const amountDzd of amounts) {
+      totalDzd += amountDzd
     }
 
     return roundMoney(totalDzd)
@@ -297,14 +307,27 @@ export class AssetChargeService {
   /**
    * Refuse a write that would push the project's LIVE total over the shared
    * money bound. Enforced at WRITE time so a project can never be left in a
-   * state whose total cannot be read (#422 round 4). `replacedAmountDzd` is the
-   * amount of the charge being corrected, which the new amount replaces; the
-   * reported current total is the project view's total (all LIVE charges), so
-   * the operator can reconcile the message with the screen.
+   * state whose total cannot be read (#422 round 4).
+   *
+   * The projected list is built in the SAME newest-first order the read uses, so
+   * `sumLiveCharges` computes exactly the total the read will compute after the
+   * write commits (#422 round 5). `replaceChargeId` is the charge a correction
+   * overwrites (it keeps the row's position); a placement passes nothing and
+   * the new charge — the newest row — is prepended. The reported current total
+   * is the project view's total (all LIVE charges), so the operator can
+   * reconcile the message with the screen.
    */
-  private assertProjectTotalWithinBound(projectId: string, nextAmountDzd: number, replacedAmountDzd = 0) {
-    const currentTotalDzd = roundMoney(this.repository.sumLiveChargesByProject(projectId))
-    const attemptedTotalDzd = roundMoney(currentTotalDzd - replacedAmountDzd + nextAmountDzd)
+  private assertProjectTotalWithinBound(projectId: string, nextAmountDzd: number, replaceChargeId?: string) {
+    const liveAmounts = this.repository
+      .listChargesByProject(projectId)
+      .filter((charge) => charge.status === "LIVE")
+      .map((charge) => ({ id: charge.id, amountDzd: charge.amountDzd }))
+
+    const currentTotalDzd = this.sumLiveCharges(liveAmounts.map((charge) => charge.amountDzd))
+    const projectedAmounts = replaceChargeId === undefined
+      ? [nextAmountDzd, ...liveAmounts.map((charge) => charge.amountDzd)]
+      : liveAmounts.map((charge) => (charge.id === replaceChargeId ? nextAmountDzd : charge.amountDzd))
+    const attemptedTotalDzd = this.sumLiveCharges(projectedAmounts)
 
     if (attemptedTotalDzd > MAX_MONEY_DZD) {
       throw this.projectTotalOutOfRange(currentTotalDzd, "amountDzd")

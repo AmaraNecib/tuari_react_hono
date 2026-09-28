@@ -17,6 +17,7 @@ import { createRouter } from "../router";
 import type { RpcContext } from "../context";
 import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor";
 import { ensureDatabaseSchema } from "../../infrastructure/database/schema";
+import { createFifoLock } from "../../infrastructure/database/fifo-lock";
 import { SqliteCompanyRepository } from "../../modules/company/company.repository";
 import { CompanyService } from "../../modules/company/company.service";
 import { FinanceService } from "../../modules/company/finance.service";
@@ -24,6 +25,8 @@ import { WorkforceService } from "../../modules/company/workforce.service";
 import { OperationsService } from "../../modules/company/operations.service";
 import { WorkspaceMutationContext } from "../../modules/company/workspace-mutation-context";
 import { createInventoryRepository } from "../../modules/inventory/adapters/sqlite-inventory.repository";
+import { createAssetChargeRepository } from "../../modules/inventory/adapters/sqlite-asset-charge.repository";
+import { AssetChargeService } from "../../modules/inventory/asset-charge.service";
 import { InventoryService } from "../../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../../modules/inventory/inventory.storage";
 import { EmployeeModule } from "../../modules/workforce/employee.module";
@@ -53,13 +56,19 @@ async function createReportEnvironment() {
   const { raw } = createEnvironment();
   await ensureDatabaseSchema(new BetterSqlite3Executor(raw));
   const companyRepo = new SqliteCompanyRepository(raw);
-  const inventoryRepo = createInventoryRepository(raw);
+  // A project placement now requires the charge service (it must never book an
+  // uncharged placement), so the seeds that create assets on a project wire it
+  // over the SAME connection lock the inventory repo uses (#422 round 5).
+  const connectionLock = createFifoLock();
+  const inventoryRepo = createInventoryRepository(raw, connectionLock);
   const mutation = new WorkspaceMutationContext(companyRepo);
   const financeService = new FinanceService(companyRepo, companyRepo, mutation);
   const inventoryService = new InventoryService(
     inventoryRepo,
     new InventoryAttachmentStorage(join(tmpdir(), "reports-test-attachments")),
     financeService,
+    undefined,
+    new AssetChargeService(createAssetChargeRepository(raw, connectionLock), inventoryRepo),
   );
   const service = new CompanyService(companyRepo);
   const workforceService = new WorkforceService(companyRepo, companyRepo, mutation);

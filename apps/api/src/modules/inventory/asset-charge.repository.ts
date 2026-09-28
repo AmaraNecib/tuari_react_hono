@@ -25,12 +25,6 @@ export interface InventoryAssetChargeRepository {
   listChargesByUnit(assetUnitId: string): InventoryAssetChargeRecord[]
   /** listChargesByProject — LIVE and VOID, newest first. */
   listChargesByProject(projectId: string): InventoryAssetChargeRecord[]
-  /**
-   * sumLiveChargesByProject — the project's LIVE total, optionally excluding
-   * one charge. A single aggregate query so the write-time bound does not scan
-   * and map the whole project once per asset (#422 round 4).
-   */
-  sumLiveChargesByProject(projectId: string, excludeChargeId?: string | null): number
   /** getLastChargeAmount — the most recent LIVE amount for the unit, else null. */
   getLastChargeAmount(assetUnitId: string): number | null
   /**
@@ -57,4 +51,11 @@ export interface InventoryAssetChargeRepository {
   createRevision(data: InventoryAssetChargeRevisionCreateData): InventoryAssetChargeRevisionRecord
   /** listRevisions — oldest first. */
   listRevisions(chargeId: string): InventoryAssetChargeRevisionRecord[]
+  /**
+   * listRevisionsByChargeIds — the revisions of several charges in ONE query,
+   * grouped by charge id (oldest first within each group). Batches the charge
+   * history mapping so a unit with N charges costs one query, not N (#422
+   * round 5). Charges without revisions are absent from the map.
+   */
+  listRevisionsByChargeIds(chargeIds: string[]): Map<string, InventoryAssetChargeRevisionRecord[]>
 }

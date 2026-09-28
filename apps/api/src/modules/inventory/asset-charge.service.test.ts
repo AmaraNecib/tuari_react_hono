@@ -122,6 +122,21 @@ describe("AssetChargeService — chain, corrections and total (#413)", () => {
     expect(amounts).toEqual([60_000, 80_000, 100_000])
   })
 
+  it("attaches each charge's revisions to the unit chain (batched, oldest first)", () => {
+    const { service } = createHarness()
+    const first = service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 100_000 }, AUDIT)
+    service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-b", amountDzd: 80_000 }, AUDIT)
+    service.updateCharge({ chargeId: first.id, amountDzd: 75_000, reason: "خصم" }, AUDIT)
+    service.updateCharge({ chargeId: first.id, amountDzd: 60_000 }, AUDIT)
+
+    const items = service.listByUnit({ assetUnitId: "asset-1" }).items
+
+    // Newest first, and each charge carries its own revision chain in order.
+    expect(items.map((charge) => charge.amountDzd)).toEqual([80_000, 60_000])
+    expect(items[1]!.revisions.map((revision) => revision.newAmountDzd)).toEqual([75_000, 60_000])
+    expect(items[0]!.revisions).toEqual([])
+  })
+
   it("records a correction as from → to with actor and optional reason", () => {
     const { service, repository } = createHarness()
     const charge = service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 100_000 }, AUDIT)
@@ -257,6 +272,33 @@ describe("AssetChargeService — chain, corrections and total (#413)", () => {
     expect(thrown).toBeInstanceOf(InventoryError)
     expect((thrown as InventoryError).appError.code).toBe("BUSINESS_RULE")
     expect((thrown as InventoryError).appError.fieldErrors[0]?.field).toBe("totalDzd")
+  })
+
+  it("keeps the write gate and the read on ONE summation (MAX, 0.01, 0.49)", () => {
+    // The write gate used to sum through SQLite while the read added in JS
+    // newest-first. Each of these three passed the SQL write check, but the
+    // JS read of the resulting project threw — an unreadable project total.
+    // The invariant this pins: after ANY accepted write, reading the project
+    // total must succeed (#422 round 5).
+    const { service } = createHarness()
+    const accepted: number[] = []
+
+    for (const amountDzd of [Number.MAX_SAFE_INTEGER, 0.01, 0.49]) {
+      try {
+        service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd }, AUDIT)
+        accepted.push(amountDzd)
+      } catch (error) {
+        expect(error).toBeInstanceOf(InventoryError)
+        expect((error as InventoryError).appError.code).toBe("BUSINESS_RULE")
+      }
+
+      // Whatever was accepted, the total must still be readable.
+      expect(() => service.listByProject({ projectId: "project-a" })).not.toThrow()
+    }
+
+    // The third charge is the one the divergent sums disagreed about: the read
+    // would have thrown, so the write gate must refuse it up front.
+    expect(accepted).toEqual([Number.MAX_SAFE_INTEGER, 0.01])
   })
 
   it("returns a project total that lands exactly on the shared money bound", () => {

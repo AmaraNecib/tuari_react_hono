@@ -161,9 +161,12 @@ export class InventoryService {
     private readonly debtService?: DebtService,
     private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
     /**
-     * Project-charge rules for asset placements (#413). Optional so existing
-     * wiring/tests that never move an asset keep working; the transfer path
-     * skips the charge when it is absent.
+     * Project-charge rules for asset placements (#413). Optional so
+     * existing wiring/tests that never place a unit on a project keep
+     * working, but ANY path that can place a unit on a project calls
+     * `requireAssetChargeService()` and fails loudly when it is absent: a
+     * silently uncharged placement is exactly the failure this feature
+     * exists to prevent (#422 round 5).
      */
     private readonly assetChargeService?: AssetChargeService,
   ) {}
@@ -528,9 +531,11 @@ export class InventoryService {
           // A unit created directly on a project is a placement too: the same
           // rule as a transfer charges it in the SAME transaction (its default
           // is the purchase price, as it has no prior charge). A warehouse
-          // purchase writes no charge.
-          if (entry.projectId && this.assetChargeService) {
-            this.assetChargeService.createPlacementCharge({
+          // purchase writes no charge. A missing charge service is a wiring
+          // fault: fail loudly rather than book an uncharged placement (#422
+          // round 5).
+          if (entry.projectId) {
+            this.requireAssetChargeService().createPlacementCharge({
               assetUnitId: createdAsset.id,
               projectId: entry.projectId,
               movementId: movement.id,
@@ -626,9 +631,11 @@ export class InventoryService {
 
       // A placement on a project books a charge in the SAME transaction; a
       // warehouse destination writes none (the charge belongs to the
-      // placement, so a later move starts its own charge).
-      if (input.toProjectId && this.assetChargeService) {
-        this.assetChargeService.createPlacementCharge({
+      // placement, so a later move starts its own charge). A missing charge
+      // service is a wiring fault, not a reason to silently book an uncharged
+      // placement (#422 round 5).
+      if (input.toProjectId) {
+        this.requireAssetChargeService().createPlacementCharge({
           assetUnitId: asset.id,
           projectId: input.toProjectId,
           movementId: movement.id,

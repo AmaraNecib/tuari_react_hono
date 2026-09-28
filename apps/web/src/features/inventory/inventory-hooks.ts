@@ -240,6 +240,13 @@ export function useAssetChargeDefaultQuery(assetUnitId: string | undefined) {
   return useWorkspaceScopedQuery({
     key: (userId) => workspaceQueryKeys.inventoryAssetChargeDefault(userId, assetUnitId ?? "missing"),
     enabled: Boolean(assetUnitId),
+    // Revalidate whenever the dialog opens (the query re-enables): another tab
+    // can correct the unit's last charge while this tab's cached default is
+    // still inside the global 30s window, and a stale prefill would book the
+    // wrong amount. `staleTime: 0` makes the disabled→enabled transition
+    // refetch; `refetchOnMount` covers a remount of the observer (#422 round 5).
+    staleTime: 0,
+    refetchOnMount: "always",
     queryFn: async (): Promise<InventoryAssetChargeDefault> => {
       const result = await rpcClient.inventoryAssetChargeDefault({ assetUnitId: assetUnitId! })
       return requireEntitySuccess(result).item

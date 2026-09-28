@@ -86,16 +86,6 @@ export function createInMemoryAssetChargeRepository(): InventoryAssetChargeRepos
       return newestFirst(matching).map((charge) => ({ ...charge }))
     },
 
-    sumLiveChargesByProject(projectId: string, excludeChargeId?: string | null) {
-      let total = 0
-      for (const charge of charges.values()) {
-        if (charge.projectId === projectId && charge.status === "LIVE" && charge.id !== excludeChargeId) {
-          total += charge.amountDzd
-        }
-      }
-      return total
-    },
-
     getLastChargeAmount(assetUnitId: string) {
       const matching = [...charges.values()].filter(
         (charge) => charge.assetUnitId === assetUnitId && charge.status === "LIVE",
@@ -149,6 +139,20 @@ export function createInMemoryAssetChargeRepository(): InventoryAssetChargeRepos
       return [...revisions.values()]
         .filter((revision) => revision.chargeId === chargeId)
         .map((revision) => ({ ...revision }))
+    },
+
+    listRevisionsByChargeIds(chargeIds: string[]) {
+      const wanted = new Set(chargeIds)
+      const grouped = new Map<string, InventoryAssetChargeRevisionRecord[]>()
+      // Map insertion order is the revision write order (oldest first), which
+      // mirrors the sqlite adapter's rowid ASC ordering.
+      for (const revision of revisions.values()) {
+        if (!wanted.has(revision.chargeId)) continue
+        const list = grouped.get(revision.chargeId) ?? []
+        list.push({ ...revision })
+        grouped.set(revision.chargeId, list)
+      }
+      return grouped
     },
   }
 }

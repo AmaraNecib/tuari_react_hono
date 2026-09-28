@@ -52,11 +52,18 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
     }
 
     setEditError(false)
-    await updateMutation.mutateAsync({
-      chargeId: editing.chargeId,
-      amountDzd: amountInput.value,
-      reason: editing.reason.trim() || null,
-    })
+    try {
+      await updateMutation.mutateAsync({
+        chargeId: editing.chargeId,
+        amountDzd: amountInput.value,
+        reason: editing.reason.trim() || null,
+      })
+    } catch {
+      // The mutation's onError already surfaced the failure toast. Swallow the
+      // rejection so the click handler never leaks an unhandled rejection; the
+      // edit form stays open with the operator's input intact (#422 round 5).
+      return
+    }
     setEditing(null)
   }
 
@@ -70,7 +77,13 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
 
   const confirmVoid = async () => {
     if (!voiding) return
-    await voidMutation.mutateAsync({ chargeId: voiding.chargeId, reason: voiding.reason.trim() || null })
+    try {
+      await voidMutation.mutateAsync({ chargeId: voiding.chargeId, reason: voiding.reason.trim() || null })
+    } catch {
+      // Same shape as the correction path: onError toasted, the rejection is
+      // swallowed here so it never escapes the click handler (#422 round 5).
+      return
+    }
     setVoiding(null)
   }
 

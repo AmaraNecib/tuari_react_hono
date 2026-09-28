@@ -72,14 +72,16 @@ export function createInventoryHandlers(
       ({ input, auditContext }) => inventoryService.transferAsset(input as InventoryAssetTransferInput, auditContext),
       toInventoryFailureResult,
     )),
-    inventoryAssetChargeDefault: os.inventoryAssetChargeDefault.handler(m.queryAuth(async ({ input }) =>
-      inventoryService.getAssetChargeDefault(input as InventoryAssetChargeDefaultInput)
+    inventoryAssetChargeDefault: os.inventoryAssetChargeDefault.handler(m.queryAuth(
+      async ({ input }) => inventoryService.getAssetChargeDefault(input as InventoryAssetChargeDefaultInput),
+      toInventoryFailureResult,
     )),
     inventoryAssetChargesListByUnit: os.inventoryAssetChargesListByUnit.handler(m.queryAuth(async ({ input }) =>
       inventoryService.listAssetChargesByUnit(input as InventoryAssetChargesListByUnitInput)
     )),
-    inventoryAssetChargesListByProject: os.inventoryAssetChargesListByProject.handler(m.queryAuth(async ({ input }) =>
-      inventoryService.getProjectCharges(input as InventoryAssetChargesListByProjectInput)
+    inventoryAssetChargesListByProject: os.inventoryAssetChargesListByProject.handler(m.queryAuth(
+      async ({ input }) => inventoryService.getProjectCharges(input as InventoryAssetChargesListByProjectInput),
+      toInventoryFailureResult,
     )),
     inventoryAssetChargesUpdate: os.inventoryAssetChargesUpdate.handler(m.mutationAudit(
       ({ input, auditContext }) => inventoryService.updateAssetCharge(input as InventoryAssetChargeUpdateInput, auditContext),

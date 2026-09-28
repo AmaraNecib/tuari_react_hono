@@ -360,3 +360,59 @@ The critic confirmed all eight findings were closed and raised:
 - **Accepted: `resolveDefault` runs before the write transaction.** With the
   synchronous single better-sqlite3 connection the read cannot interleave; only
   the aggregate check needs the lock, and reading full rows for it does not.
+
+## Review round 5 — PR #422 (21:17Z, seven findings)
+
+1. **One summation for the write gate and the read (correctness).** The gate
+   summed through SQLite (`sum()`, rowid order) while the read added in JS
+   newest-first, so `MAX`, `0.01` and `0.49` each passed the gate and the read
+   then threw. The SQL aggregate is removed: both paths call the one
+   `sumLiveCharges(amounts)` with the read's newest-first order. The write gate
+   builds the exact post-write list (a placement prepends the new amount; a
+   correction swaps the amount at its existing position) and refuses if that
+   sum exceeds the bound — so after any accepted write the read is guaranteed
+   to succeed. `asset-charge.service.test.ts` adds the exact MAX / 0.01 / 0.49
+   sequence and asserts the read succeeds after every accepted write.
+2. **A missing charge dependency fails loudly (correctness).** The invoice and
+   transfer placement paths no longer `&& this.assetChargeService`-skip the
+   charge; they call `requireAssetChargeService()`, so a composition that omits
+   it refuses the placement instead of silently booking an uncharged one.
+   `inventory-transfer-charge.test.ts` pins the refusal and the empty rollback.
+3. **Charge query errors map to the documented envelope (correctness).**
+   `queryAuth` gains an optional `errorResolver` (the `mutationAudit` shape);
+   `inventoryAssetChargeDefault` and `inventoryAssetChargesListByProject` pass
+   `toInventoryFailureResult`, so a missing asset / missing project / unusable
+   stored price returns `{ success: false, error }` — the entity result the web
+   client's `requireEntitySuccess` reads — instead of an unmapped raw error.
+   `router.test.ts` adds one router-level test per error class. The list-by-unit
+   procedure's output contract has no failure branch (it is `{ items }`), so it
+   is deliberately left unmapped; its only reachable error is the missing
+   service, which round 5 makes a wiring fault.
+4. **A charge survives its asset and its invoice (correctness).**
+   `inventory_asset_charge.asset_unit_id` changes `ON DELETE CASCADE` →
+   `ON DELETE RESTRICT` in both the DDL and the Drizzle schema, mirroring the
+   project FK. Deleting the unit (directly or through the invoice → entry
+   cascade) is refused, so the money record and its revisions stay readable.
+   `sqlite-asset-charge.repository.test.ts` pins both the unit delete and the
+   invoice delete.
+5. **The charge default revalidates on reopen (correctness).**
+   `useAssetChargeDefaultQuery` sets `staleTime: 0` and
+   `refetchOnMount: "always"`, so reopening the transfer dialog refetches the
+   default even inside the global 30s window; the untouched-field rule is
+   unchanged, so a value the operator typed is never clobbered.
+   `inventory-hooks.test.tsx` pins the re-enable refetch against a 30s test
+   client.
+6. **N+1 in the charge history removed.** A new
+   `listRevisionsByChargeIds(chargeIds)` port method fetches a unit's whole
+   revision history in one query (both adapters), and `listChargesByUnit`
+   resolves each distinct project name at most once per call.
+7. **Failed corrections/voids no longer leak a rejection.** `saveEdit` and
+   `confirmVoid` in `asset-charge-history.tsx` await `mutateAsync` inside a
+   try/catch that returns on failure (the `expense-form-dialog.tsx` pattern),
+   keeping the draft on screen; `asset-charge-history.test.tsx` pins that no
+   unhandled rejection reaches the process.
+
+Note on the round-4 "reading full rows for the aggregate does not need the
+lock" entry: round 5 deliberately reintroduces a full read in the write gate,
+because correctness (one summation, one order) outranks the single-aggregate
+micro-optimisation. The read still happens inside the same locked transaction.

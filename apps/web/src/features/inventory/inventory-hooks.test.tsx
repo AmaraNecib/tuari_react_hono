@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   createInvoiceGroup: vi.fn(),
   listProjectCharges: vi.fn(),
+  chargeDefault: vi.fn(),
 }))
 
 vi.mock("@/lib/orpc-client", async (importOriginal) => {
@@ -20,6 +21,7 @@ vi.mock("@/lib/orpc-client", async (importOriginal) => {
       inventoryItemDefinitionsCreate: mocks.create,
       inventoryInvoiceGroupsCreate: mocks.createInvoiceGroup,
       inventoryAssetChargesListByProject: mocks.listProjectCharges,
+      inventoryAssetChargeDefault: mocks.chargeDefault,
     },
   }
 })
@@ -29,6 +31,7 @@ vi.mock("@/features/session/use-session-query", () => ({
 }))
 
 import {
+  useAssetChargeDefaultQuery,
   useCreateInventoryInvoiceGroupMutation,
   useCreateInventoryItemDefinitionMutation,
   useInventoryItemDefinitionsQuery,
@@ -37,7 +40,10 @@ import {
 import { orpc } from "@/lib/orpc-client"
 
 function makeQueryClient() {
-  return new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // Mirror the app's production stale window (30s) so a test that relies on
+  // revalidation cannot pass merely because the test client defaults to
+  // `staleTime: 0`.
+  return new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } })
 }
 
 function wrapper(queryClient: QueryClient) {
@@ -194,5 +200,52 @@ describe("inventory project charges — freshness after invoice create", () => {
 
     await waitFor(() => expect(chargesResult.current.data?.totalDzd).toBe(100_000))
     expect(mocks.listProjectCharges).toHaveBeenCalledTimes(2)
+  })
+})
+
+/**
+ * The transfer dialog prefills the charge amount from the unit's resolved
+ * default. Reopening it must revalidate that default: another tab can correct
+ * the last charge while this tab's cached copy is still inside the stale
+ * window, and a stale prefill books the wrong amount (#422 round 5).
+ */
+describe("asset charge default — revalidates when the dialog reopens", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.session.mockReturnValue({ data: { user: { id: "user-1" } } })
+  })
+
+  it("refetches on re-enable even while the cached value is still fresh", async () => {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(orpc.session.queryOptions().queryKey, {
+      user: { id: "user-1", name: "مدير التشغيل", phone: "0612345678", version: "0.0.0" },
+    })
+    mocks.chargeDefault.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { assetUnitId: "asset-1", amountDzd: 100_000, purchasePriceDzd: 100_000, source: "PURCHASE_PRICE" },
+    })
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useAssetChargeDefaultQuery(enabled ? "asset-1" : undefined),
+      { wrapper: wrapper(queryClient), initialProps: { enabled: true } },
+    )
+
+    await waitFor(() => expect(result.current.data?.amountDzd).toBe(100_000))
+    expect(mocks.chargeDefault).toHaveBeenCalledTimes(1)
+
+    // Another tab corrects the unit's last charge.
+    mocks.chargeDefault.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { assetUnitId: "asset-1", amountDzd: 70_000, purchasePriceDzd: 100_000, source: "LAST_CHARGE" },
+    })
+
+    // Close the dialog, then reopen inside the 30s stale window.
+    rerender({ enabled: false })
+    rerender({ enabled: true })
+
+    await waitFor(() => expect(result.current.data?.amountDzd).toBe(70_000))
+    expect(mocks.chargeDefault).toHaveBeenCalledTimes(2)
   })
 })

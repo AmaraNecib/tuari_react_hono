@@ -66,6 +66,13 @@ describe("DrizzleAssetChargeRepository (#413)", () => {
       80_000,
       100_000,
     ])
+    // A unit's chain can span projects; each row carries its own project name
+    // (resolved once per distinct project).
+    expect(env.repository.listChargesByUnit("asset-1").map((charge) => charge.projectName)).toEqual([
+      "مشروع أ",
+      "مشروع ب",
+      "مشروع أ",
+    ])
   })
 
   it("returns the most recent live amount and ignores voided ones", () => {
@@ -108,6 +115,23 @@ describe("DrizzleAssetChargeRepository (#413)", () => {
     })
   })
 
+  it("batches several charges' revisions in one query, oldest first per charge", () => {
+    const first = env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 100_000 })
+    const second = env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-b", amountDzd: 80_000 })
+    env.repository.createRevision({ chargeId: first.id, previousAmountDzd: 100_000, newAmountDzd: 75_000 })
+    env.repository.createRevision({ chargeId: first.id, previousAmountDzd: 75_000, newAmountDzd: 60_000 })
+    env.repository.createRevision({ chargeId: second.id, previousAmountDzd: 80_000, newAmountDzd: 70_000 })
+
+    const grouped = env.repository.listRevisionsByChargeIds([first.id, second.id])
+
+    expect(grouped.get(first.id)?.map((revision) => revision.newAmountDzd)).toEqual([75_000, 60_000])
+    expect(grouped.get(second.id)?.map((revision) => revision.newAmountDzd)).toEqual([70_000])
+    // A charge with no revisions is absent; an empty request is an empty map.
+    const third = env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 1 })
+    expect(env.repository.listRevisionsByChargeIds([third.id]).size).toBe(0)
+    expect(env.repository.listRevisionsByChargeIds([]).size).toBe(0)
+  })
+
   it("refuses to update or append a revision to an already voided charge", () => {
     // `AND status='LIVE'` in the UPDATE: a second process that voided the row
     // after the reader's snapshot must leave it untouched (#422 round 4).
@@ -145,23 +169,24 @@ describe("DrizzleAssetChargeRepository (#413)", () => {
     expect(env.repository.listChargesByProject("project-b")).toHaveLength(0)
   })
 
-  it("sums a project's LIVE charges in one query and can exclude one charge", () => {
+  it("lists a project's LIVE and VOID charges in newest-first order", () => {
     const first = env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 100_000 })
     env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 40_000 })
     env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-b", amountDzd: 999_000 })
 
-    expect(env.repository.sumLiveChargesByProject("project-a")).toBe(140_000)
-    expect(env.repository.sumLiveChargesByProject("project-a", first.id)).toBe(40_000)
-    expect(env.repository.sumLiveChargesByProject("project-b")).toBe(999_000)
-    expect(env.repository.sumLiveChargesByProject("project-missing")).toBe(0)
-
+    // A voided charge stays in the project's list (the read filters LIVE), so
+    // the record of what was charged survives.
     env.repository.updateCharge(
       first.id,
       { status: "VOID", voidedAt: NOW, voidedBy: "مدير", voidReason: null, updatedAt: NOW },
       { chargeId: first.id, previousAmountDzd: 100_000, newAmountDzd: null, actorLabel: "مدير" },
       AUDIT,
     )
-    expect(env.repository.sumLiveChargesByProject("project-a")).toBe(40_000)
+
+    const charges = env.repository.listChargesByProject("project-a")
+    expect(charges.map((charge) => charge.amountDzd)).toEqual([40_000, 100_000])
+    expect(charges.map((charge) => charge.status)).toEqual(["LIVE", "VOID"])
+    expect(env.repository.listChargesByProject("project-missing")).toEqual([])
   })
 
   it("rolls the charge and its revision back together when the outer transaction throws", () => {
@@ -196,5 +221,31 @@ describe("DrizzleAssetChargeRepository (#413)", () => {
     // The project and its charge are both still there.
     expect(env.repository.listChargesByProject("project-a")).toHaveLength(1)
     expect(env.rawDb.prepare('SELECT COUNT(*) AS n FROM "project" WHERE "id" = ?').get("project-a")).toEqual({ n: 1 })
+  })
+
+  it("refuses to delete a charged asset unit, keeping the charge readable", () => {
+    const charge = env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 100_000 })
+
+    expect(() =>
+      env.rawDb.prepare('DELETE FROM "inventory_asset_unit" WHERE "id" = ?').run("asset-1"),
+    ).toThrowError(/FOREIGN KEY/i)
+
+    // The charge survives with its unit reference intact.
+    expect(env.repository.getChargeById(charge.id)).toMatchObject({ assetUnitId: "asset-1", amountDzd: 100_000 })
+    expect(env.rawDb.prepare('SELECT COUNT(*) AS n FROM "inventory_asset_unit" WHERE "id" = ?').get("asset-1")).toEqual({ n: 1 })
+  })
+
+  it("refuses to delete the invoice that placed a charged asset, keeping the charge readable", () => {
+    // Deleting the invoice cascades to its entry and asset unit; the charge's
+    // RESTRICT on the unit stops the cascade, so the record of what the
+    // project was charged survives (#422 round 5).
+    const charge = env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 100_000 })
+
+    expect(() =>
+      env.rawDb.prepare('DELETE FROM "inventory_invoice_group" WHERE "id" = ?').run("group-1"),
+    ).toThrowError(/FOREIGN KEY/i)
+
+    expect(env.repository.getChargeById(charge.id)).toMatchObject({ projectId: "project-a", amountDzd: 100_000 })
+    expect(env.rawDb.prepare('SELECT COUNT(*) AS n FROM "inventory_invoice_group" WHERE "id" = ?').get("group-1")).toEqual({ n: 1 })
   })
 })

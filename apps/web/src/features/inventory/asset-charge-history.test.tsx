@@ -76,6 +76,50 @@ describe("AssetChargeHistory (#413)", () => {
     )
   })
 
+  it("keeps the edit form open and swallows the rejection when a correction fails", async () => {
+    // The mutation's onError already toasted; the click handler must not leak
+    // the rejected promise. Assert no unhandled rejection reaches the process
+    // AND the operator's draft stays on screen (#422 round 5).
+    mocks.update.mutateAsync.mockRejectedValue(new Error("رفض الخادم"))
+    const onUnhandled = vi.fn()
+    process.on("unhandledRejection", onUnhandled)
+    try {
+      render(<AssetChargeHistory assetUnitId="asset-1" />)
+      fireEvent.click(screen.getByText("سجل الاحتساب"))
+      fireEvent.click(screen.getByText("تعديل"))
+      fireEvent.change(screen.getByLabelText("المبلغ الجديد"), { target: { value: "75000" } })
+      fireEvent.click(screen.getByText("حفظ"))
+
+      await waitFor(() => expect(mocks.update.mutateAsync).toHaveBeenCalled())
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      expect(onUnhandled).not.toHaveBeenCalled()
+      expect(screen.getByLabelText("المبلغ الجديد")).toBeTruthy()
+    } finally {
+      process.off("unhandledRejection", onUnhandled)
+    }
+  })
+
+  it("keeps the void form open and swallows the rejection when a void fails", async () => {
+    mocks.voidCharge.mutateAsync.mockRejectedValue(new Error("رفض الخادم"))
+    const onUnhandled = vi.fn()
+    process.on("unhandledRejection", onUnhandled)
+    try {
+      render(<AssetChargeHistory assetUnitId="asset-1" />)
+      fireEvent.click(screen.getByText("سجل الاحتساب"))
+      fireEvent.click(screen.getByTestId("void-charge-1"))
+      fireEvent.click(screen.getByTestId("confirm-void-charge-1"))
+
+      await waitFor(() => expect(mocks.voidCharge.mutateAsync).toHaveBeenCalled())
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      expect(onUnhandled).not.toHaveBeenCalled()
+      expect(screen.getByTestId("confirm-void-charge-1")).toBeTruthy()
+    } finally {
+      process.off("unhandledRejection", onUnhandled)
+    }
+  })
+
   it("refuses a blank correction instead of silently recording a revision to 0", async () => {
     render(<AssetChargeHistory assetUnitId="asset-1" />)
     fireEvent.click(screen.getByText("سجل الاحتساب"))

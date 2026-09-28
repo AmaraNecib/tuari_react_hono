@@ -20,7 +20,7 @@ import { createInventoryRepository } from "./adapters/sqlite-inventory.repositor
  * "warehouse writes none" and "same placement reference" rules are pinned
  * end-to-end without a database.
  */
-function createHarness(options?: { failAfterCharge?: boolean }) {
+function createHarness(options?: { failAfterCharge?: boolean; withoutChargeService?: boolean }) {
   const chargeRepository = createInMemoryAssetChargeRepository()
   const movements: Array<Record<string, unknown>> = []
 
@@ -103,7 +103,7 @@ function createHarness(options?: { failAfterCharge?: boolean }) {
     {} as InventoryAttachmentStorage,
     undefined,
     undefined,
-    chargeService,
+    options?.withoutChargeService ? undefined : chargeService,
   )
 
   return { service, chargeRepository, movements, asset }
@@ -118,6 +118,20 @@ describe("InventoryService.transferAsset — placement charges (#413)", () => {
     service.transferAsset({ assetUnitId: "asset-1", toWarehouseId: "wh-2" }, AUDIT)
 
     expect(chargeRepository._charges.size).toBe(0)
+  })
+
+  it("fails loudly instead of booking an uncharged project placement when the charge service is absent", () => {
+    // A silently uncharged placement is the exact failure #413 exists to
+    // prevent. A composition that forgets the charge dependency must refuse
+    // the transfer, and the transaction must leave no movement behind (#422
+    // round 5).
+    const { service, chargeRepository, movements } = createHarness({ withoutChargeService: true })
+
+    expect(() => service.transferAsset({ assetUnitId: "asset-1", toProjectId: "project-a" }, AUDIT))
+      .toThrowError(/احتساب/)
+
+    expect(chargeRepository._charges.size).toBe(0)
+    expect(movements).toHaveLength(0)
   })
 
   it("charges the purchase price on the first project placement", () => {

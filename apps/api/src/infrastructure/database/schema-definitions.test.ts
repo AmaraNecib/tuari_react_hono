@@ -391,9 +391,16 @@ describe("inventory_asset_charge schema (#413 stock charge)", () => {
     expect(def).toContain("ON DELETE SET NULL");
   });
 
-  it("cascades a charge with its unit", () => {
+  it("refuses to delete a unit that still has a charge, keeping the record", () => {
+    // A charge is a money record: deleting its unit (directly, or through the
+    // invoice → entry cascade) must not take the charge and its revisions with
+    // it. RESTRICT keeps the unit reference NOT NULL and the record intact;
+    // the delete fails instead (#422 round 5).
     const def = getChargeDefinition();
     expect(def).toContain(
+      'FOREIGN KEY ("asset_unit_id") REFERENCES "inventory_asset_unit" ("id") ON DELETE RESTRICT',
+    );
+    expect(def).not.toContain(
       'FOREIGN KEY ("asset_unit_id") REFERENCES "inventory_asset_unit" ("id") ON DELETE CASCADE',
     );
   });

@@ -139,7 +139,7 @@ export const inventoryAssetCharge = sqliteTable("inventory_asset_charge", {
   id: text("id").primaryKey(),
   assetUnitId: text("asset_unit_id")
     .notNull()
-    .references(() => inventoryAssetUnit.id, { onDelete: "cascade" }),
+    .references(() => inventoryAssetUnit.id, { onDelete: "restrict" }),
   projectId: text("project_id")
     .notNull()
     .references(() => project.id, { onDelete: "restrict" }),

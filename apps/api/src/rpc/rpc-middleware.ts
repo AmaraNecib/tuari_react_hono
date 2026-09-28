@@ -172,12 +172,31 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       checkRateLimit(context);
     },
 
+    /**
+     * Authenticated READ wrapper.
+     *
+     * `errorResolver` is optional so the existing read handlers keep their
+     * current behaviour. A handler whose contract output carries a failure
+     * branch (an entity result) passes its module's `toFailureResult`, exactly
+     * like `mutationAudit`: a domain error then becomes the documented
+     * `{ success: false, error }` envelope instead of escaping as an unmapped
+     * raw error (#422 round 5). The `await` is deliberate — the resolver must
+     * see an async rejection, not a floating promise (#421).
+     */
     queryAuth<TInput, TOutput>(
       handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput>,
+      errorResolver?: (error: unknown) => unknown,
     ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
       return async ({ context, input }) => {
         await requireWorkspaceAdmin(context);
-        return handler({ context, input });
+        if (!errorResolver) {
+          return handler({ context, input });
+        }
+        try {
+          return await handler({ context, input });
+        } catch (error) {
+          return settleResolvedError(errorResolver(error)) as TOutput;
+        }
       };
     },
 

@@ -7,7 +7,7 @@
  * open transaction joins it as a SAVEPOINT and commits/rolls back with it —
  * never silently absorbed by another flow (issue #322 / #348 discipline).
  */
-import { eq, and, asc, desc, ne, sql } from "drizzle-orm"
+import { eq, and, asc, desc, inArray, sql } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 
 import type { BetterSqliteDatabase } from "../../../types/sqlite"
@@ -99,12 +99,24 @@ export class DrizzleAssetChargeRepository implements InventoryAssetChargeReposit
     return row ? this.withProjectName(mapCharge(row)) : null
   }
 
-  /** listChargesByUnit — insertion order (rowid), newest first. */
+  /**
+   * listChargesByUnit — insertion order (rowid), newest first. A unit's charges
+   * can span several projects, but each project's name is resolved at most
+   * once per call instead of one query per charge (#422 round 5).
+   */
   listChargesByUnit(assetUnitId: string) {
+    const projectNames = new Map<string, string | null>()
+    const resolveOnce = (projectId: string) => {
+      if (!projectNames.has(projectId)) {
+        projectNames.set(projectId, this.resolveProjectName(projectId))
+      }
+      return projectNames.get(projectId) ?? null
+    }
+
     return this.db.select().from(schema.inventoryAssetCharge)
       .where(eq(schema.inventoryAssetCharge.assetUnitId, assetUnitId))
       .orderBy(desc(sql`rowid`))
-      .all().map(mapCharge).map((charge) => this.withProjectName(charge))
+      .all().map(mapCharge).map((charge) => ({ ...charge, projectName: resolveOnce(charge.projectId) }))
   }
 
   /**
@@ -131,21 +143,6 @@ export class DrizzleAssetChargeRepository implements InventoryAssetChargeReposit
       .orderBy(desc(sql`rowid`))
       .limit(1).all()[0]
     return row ? Number(row.amountDzd ?? 0) : null
-  }
-
-  /** sumLiveChargesByProject — one aggregate query for the write-time bound. */
-  sumLiveChargesByProject(projectId: string, excludeChargeId?: string | null) {
-    const row = this.db.select({
-      total: sql<number>`coalesce(sum(${schema.inventoryAssetCharge.amountDzd}), 0)`,
-    })
-      .from(schema.inventoryAssetCharge)
-      .where(and(
-        eq(schema.inventoryAssetCharge.projectId, projectId),
-        eq(schema.inventoryAssetCharge.status, "LIVE"),
-        excludeChargeId ? ne(schema.inventoryAssetCharge.id, excludeChargeId) : undefined,
-      ))
-      .all()[0]
-    return Number(row?.total ?? 0)
   }
 
   /**
@@ -211,6 +208,26 @@ export class DrizzleAssetChargeRepository implements InventoryAssetChargeReposit
       .where(eq(schema.inventoryAssetChargeRevision.chargeId, chargeId))
       .orderBy(asc(sql`rowid`))
       .all().map(mapRevision)
+  }
+
+  /** listRevisionsByChargeIds — one query, grouped by charge id (oldest first). */
+  listRevisionsByChargeIds(chargeIds: string[]) {
+    const grouped = new Map<string, InventoryAssetChargeRevisionRecord[]>()
+    if (chargeIds.length === 0) {
+      return grouped
+    }
+
+    const rows = this.db.select().from(schema.inventoryAssetChargeRevision)
+      .where(inArray(schema.inventoryAssetChargeRevision.chargeId, chargeIds))
+      .orderBy(asc(sql`rowid`))
+      .all()
+    for (const row of rows) {
+      const revision = mapRevision(row)
+      const list = grouped.get(revision.chargeId) ?? []
+      list.push(revision)
+      grouped.set(revision.chargeId, list)
+    }
+    return grouped
   }
 
   private withProjectName(charge: InventoryAssetChargeRecord): InventoryAssetChargeRecord {

@@ -16,6 +16,8 @@ import { schemaStatements } from "../infrastructure/database/schema-definitions"
 import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
 import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
+import { AssetChargeService } from "../modules/inventory/asset-charge.service";
+import { createInMemoryAssetChargeRepository } from "../modules/inventory/adapters/in-memory-asset-charge.repository";
 import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
@@ -99,7 +101,7 @@ describe("RPC router", () => {
       persistKey: () => ({ success: true } as const),
     },
     expensesOverrides: Record<string, unknown> = {},
-    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown; backupService?: unknown } = {},
+    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown; backupService?: unknown; inventoryService?: unknown } = {},
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -146,7 +148,7 @@ describe("RPC router", () => {
       workforceService: new WorkforceService(repository, repository, mutation),
       operationsService: new OperationsService(repository, repository, mutation),
       financeService: (modules.financeService ?? new FinanceService(repository, repository, mutation)) as never,
-      inventoryService: createEmptyInventoryService(),
+      inventoryService: (modules.inventoryService ?? createEmptyInventoryService()) as never,
       employeeModule,
       invoiceModule: (modules.invoiceModule ?? {}) as never,
       paymentModule,
@@ -1605,6 +1607,72 @@ describe("RPC router", () => {
       await expect(client.paymentsDelete({ id: randomUUID() })).rejects.toMatchObject({
         code: "NOT_FOUND",
       });
+    });
+  });
+
+  // ── #422 round 5: charge QUERY errors must reach the documented envelope ──
+  //
+  // The charge query handlers can throw `InventoryError` (missing asset,
+  // missing project, unusable stored price). `queryAuth` had no resolver, so
+  // the raw error escaped instead of the entity-result failure envelope the
+  // web client's `requireEntitySuccess` reads. These drive the full router so
+  // the mapped envelope is pinned at the wire, not in the helper.
+  const createChargeInventoryService = (lookup: {
+    getAssetUnitById: (id: string) => { id: string; purchasePriceDzd: number } | null;
+    projectExists: (id: string) => boolean;
+  }) =>
+    new InventoryService(
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      new AssetChargeService(createInMemoryAssetChargeRepository(), lookup),
+    );
+
+  it("maps a missing asset in the charge default query to the failure envelope (#422)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      inventoryService: createChargeInventoryService({ getAssetUnitById: () => null, projectExists: () => false }),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(client.inventoryAssetChargeDefault({ assetUnitId: randomUUID() })).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOT_FOUND" },
+    });
+  });
+
+  it("maps an unusable stored price in the charge default query to the failure envelope (#422)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      inventoryService: createChargeInventoryService({
+        getAssetUnitById: (id) => ({ id, purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1 }),
+        projectExists: () => false,
+      }),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(client.inventoryAssetChargeDefault({ assetUnitId: randomUUID() })).resolves.toMatchObject({
+      success: false,
+      error: { code: "VALIDATION" },
+    });
+  });
+
+  it("maps a missing project in the project charges query to the failure envelope (#422)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      inventoryService: createChargeInventoryService({
+        getAssetUnitById: (id) => ({ id, purchasePriceDzd: 100_000 }),
+        projectExists: () => false,
+      }),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(
+      client.inventoryAssetChargesListByProject({ projectId: randomUUID() }),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOT_FOUND" },
     });
   });
 });
