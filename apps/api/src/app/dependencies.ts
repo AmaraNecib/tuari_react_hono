@@ -43,6 +43,8 @@ import { SqliteRecoveryKeyPort } from "../modules/auth/adapters/sqlite-recovery-
 import { UpdateService } from "../modules/update/update.service";
 import { UpdateHistoryService } from "../modules/update/update-history.service";
 import { SqliteUpdateHistoryPort } from "../modules/update/adapters/sqlite-update-history.port";
+import { createBackupService } from "../modules/backup/backup.service";
+import type { BackupService } from "../modules/backup/backup.types";
 
 /**
  * Optional configuration for {@link createAppDependencies}.
@@ -67,6 +69,13 @@ export type CreateAppDependenciesConfig = {
    * connection.
    */
   authInstance?: BetterAuthInstance;
+  /**
+   * Root that holds the daily backup folders (#430). Defaults to
+   * `appConfig.backupsRootPath`.
+   */
+  backupsRootPath?: string;
+  /** Injected clock for the backup service (tests pin "due" without waiting). */
+  now?: () => Date;
 };
 
 /**
@@ -91,6 +100,7 @@ export type AppDependencies = {
   recoveryKeyService: RecoveryKeyService;
   updateService: UpdateService;
   updateHistoryService: UpdateHistoryService;
+  backupService: BackupService;
   databaseKeyManager: DatabaseKeyManager;
   /** Persists a rotated DB key so a restart can still open the database (#265). */
   databaseKeyPersister: DatabaseKeyPersister;
@@ -236,6 +246,11 @@ export async function createAppDependencies(
       recoveryKeyService,
       updateService: new UpdateService(),
       updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase, connectionLock)),
+      backupService: createBackupService({
+        db: sharedDatabase,
+        backupsRootPath: config.backupsRootPath ?? appConfig.backupsRootPath,
+        now: config.now,
+      }),
       databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
       // Persist a rotated key into the user-editable config file so a restart
       // can still open the database (issue #265). The desktop host pins the

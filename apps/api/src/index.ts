@@ -34,6 +34,14 @@ async function main() {
     },
   );
 
+  // Daily local backup (#430): run AFTER the server is bound so a slow backup
+  // cannot prevent the sidecar from answering /health. `runDueBackup` is
+  // synchronous and never throws, so it cannot race an open transaction and a
+  // failure only shows up on the `backupStatus` read (the app stays usable).
+  void appDependencies.backupService
+    .runDueBackup()
+    .catch((error) => console.error("[backup] unexpected failure", error));
+
   // Graceful shutdown (issue #265): stop accepting requests (dropping idle
   // keep-alive connections so close() does not hang on them), then close the
   // shared database connection (better-sqlite3 checkpoints the WAL on

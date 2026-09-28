@@ -52,6 +52,7 @@ export default defineConfig({
         "src/modules/payment/**/*.ts",
         "src/modules/expenses/**/*.ts",
         "src/modules/rbac/**/*.ts",
+        "src/modules/backup/**/*.ts",
         "src/modules/company/**/*.ts",
       ],
       exclude: [
