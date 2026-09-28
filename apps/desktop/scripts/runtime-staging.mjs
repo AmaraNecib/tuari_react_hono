@@ -10,32 +10,74 @@ const BACKUP_INFIX = ".previous-";
  * The epoch millisecond is the recency signal recovery sorts by. A pid alone
  * is not one — pids are reused and wrap — which is why the old name-only sort
  * could restore an older runtime than the one an interrupted run had just
- * built (#409). The pid keeps two builds that start in the same millisecond
- * distinct.
+ * built (#409). The pid is also the ownership key: recovery and the sweep only
+ * touch a backup whose owning process is gone (see `isAbandonedBackup`).
  */
 const backupDirName = (destinationDir, { now, pid }) =>
   `${destinationDir}${BACKUP_INFIX}${now()}-${pid}`;
 
 /**
- * Recency key for a backup name. New names carry an epoch-millisecond prefix
- * (`<epoch>-<pid>`); legacy pid-only names parse as their own number and so
- * sort before every timestamped backup, which is the right order because they
- * predate this build.
+ * Parse a backup's recency and owner. New names are `<epoch>-<pid>`; legacy
+ * pid-only names parse as `<pid>` for both, so they still sort before every
+ * timestamped backup (correct: they predate this build). An unparseable owner
+ * becomes `null`, which `isAbandonedBackup` treats as live.
  */
-const backupRecency = (name, prefix) => {
-  const [leading] = name.slice(prefix.length).split("-");
-  const value = Number(leading);
+const parseBackupName = (name, prefix) => {
+  const parts = name.slice(prefix.length).split("-");
+  const recency = Number(parts[0]);
+  const ownerCandidate = parts.length > 1 ? Number(parts[parts.length - 1]) : Number(parts[0]);
 
-  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+  return {
+    name,
+    recency: Number.isFinite(recency) ? recency : Number.NEGATIVE_INFINITY,
+    ownerPid: Number.isInteger(ownerCandidate) && ownerCandidate > 0 ? ownerCandidate : null,
+  };
 };
 
 /**
- * Every `<destinationDir>.previous-*` sibling left behind by a swap that did
- * not finish, newest first. A clean run removes its own backup, so anything
- * found here is litter from an interrupted or crashed run; callers take the
- * first entry as the most recent runtime to recover.
+ * Default liveness probe: signal 0 tests for a process without signalling it.
+ * `ESRCH` means gone; `EPERM` means it exists but may not be signalled, which
+ * is still alive.
  */
-const findPreviousRuntimeBackups = ({ destinationDir, exists, readdir }) => {
+const isProcessAlive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+};
+
+/**
+ * True only when no other live process can still own the backup, so recovery
+ * and the sweep may move or delete it.
+ *
+ * Two builds can run at once: one renames the destination aside to
+ * `<dest>.previous-<epoch>-<pid>` before publishing. The other must not treat
+ * that in-flight backup as litter, or the first build loses the tree it needs
+ * to roll back (#409). So a backup is abandoned only when its owner is gone.
+ *
+ * A backup whose pid is OUR OWN cannot belong to a concurrent build (a pid
+ * names one live process), so it is litter from an earlier incarnation of this
+ * process and is recoverable. Any other pid is abandoned only when that
+ * process is gone. An unparseable owner is never abandoned: a backup we cannot
+ * prove is dead must stay.
+ */
+const isAbandonedBackup = (ownerPid, { isAlive, pid }) => {
+  if (ownerPid === null) return false;
+  if (ownerPid === pid) return true;
+
+  return !isAlive(ownerPid);
+};
+
+/**
+ * Every ABANDONED `<destinationDir>.previous-*` sibling, newest first. A clean
+ * run removes its own backup, so anything found here is litter from an
+ * interrupted or crashed run; callers take the first entry as the most recent
+ * runtime to recover. A backup owned by a still-running build is skipped
+ * entirely, so it can neither be restored nor swept.
+ */
+const findAbandonedRuntimeBackups = ({ destinationDir, exists, readdir, isAlive, pid }) => {
   const parentDir = path.dirname(destinationDir);
 
   if (!exists(parentDir)) {
@@ -46,8 +88,10 @@ const findPreviousRuntimeBackups = ({ destinationDir, exists, readdir }) => {
 
   return readdir(parentDir)
     .filter((name) => name.startsWith(prefix))
-    .sort((a, b) => backupRecency(b, prefix) - backupRecency(a, prefix))
-    .map((name) => path.join(parentDir, name));
+    .map((name) => parseBackupName(name, prefix))
+    .filter((backup) => isAbandonedBackup(backup.ownerPid, { isAlive, pid }))
+    .sort((a, b) => b.recency - a.recency)
+    .map((backup) => path.join(parentDir, backup.name));
 };
 
 /**
@@ -61,11 +105,17 @@ const findPreviousRuntimeBackups = ({ destinationDir, exists, readdir }) => {
  *
  * A run killed between "rename the old tree aside" and "publish the staged
  * tree" leaves no destination plus a `.previous-<epoch>-<pid>` backup. When
- * that state is found (destination missing, backups present) the NEWEST backup
- * is restored first and `log` reports what was found and what was done, so the
- * next build recovers on its own and a failed publish still restores a runnable
- * runtime. Backups left by earlier runs are removed after the next successful
- * publish, so they never require a human to delete directories.
+ * that state is found (destination missing, ABANDONED backups present) the
+ * NEWEST abandoned backup is restored first and `log` reports what was found
+ * and what was done, so the next build recovers on its own and a failed publish
+ * still restores a runnable runtime. Backups left by earlier runs are removed
+ * after the next successful publish, so they never require a human to delete
+ * directories.
+ *
+ * Recovery and the sweep only ever touch a backup whose owning process is gone
+ * (`isAbandonedBackup`): two builds can overlap, and one must not steal or
+ * delete the runtime the other has renamed aside mid-publish. A backup owned by
+ * a live process is left exactly where it is.
  *
  * Removing the renamed-aside previous tree happens AFTER the staged tree is
  * live. A failure there does not undo the publish, so it is reported with
@@ -85,9 +135,10 @@ export const swapRuntimeDirectory = ({
   log = console.log,
   now = Date.now,
   pid = process.pid,
+  isAlive = isProcessAlive,
 }) => {
   const backupDir = backupDirName(destinationDir, { now, pid });
-  const leftovers = findPreviousRuntimeBackups({ destinationDir, exists, readdir });
+  const leftovers = findAbandonedRuntimeBackups({ destinationDir, exists, readdir, isAlive, pid });
   let recoveredBackup = null;
 
   if (!exists(destinationDir)) {
@@ -183,6 +234,7 @@ export const buildProbeAndPublishRuntime = ({
   log = console.log,
   now = Date.now,
   pid = process.pid,
+  isAlive = isProcessAlive,
 }) => {
   try {
     build();
@@ -200,6 +252,7 @@ export const buildProbeAndPublishRuntime = ({
         log,
         now,
         pid,
+        isAlive,
       });
     }
   } finally {

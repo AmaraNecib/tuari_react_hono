@@ -250,6 +250,7 @@ test("a runtime left aside by an interrupted run is restored before the next swa
       destinationDir,
       build: () => {},
       probe: () => {},
+      isAlive: () => false,
       log: (message) => logs.push(message),
     });
 
@@ -294,6 +295,7 @@ test("a failed publish after recovery leaves the interrupted run's runtime in pl
           build: () => {},
           probe: () => {},
           rename,
+          isAlive: () => false,
         }),
       /EBUSY/,
     );
@@ -335,6 +337,7 @@ test("recovery restores the newest backup, not the alphabetically first", () => 
           build: () => {},
           probe: () => {},
           rename,
+          isAlive: () => false,
         }),
       /EBUSY/,
     );
@@ -359,6 +362,7 @@ test("a backup left by an interrupted run is swept when the next publish succeed
       destinationDir,
       build: () => {},
       probe: () => {},
+      isAlive: () => false,
       warn: (message) => warnings.push(message),
     });
 
@@ -399,5 +403,161 @@ test("a backup directory left by a crashed run is cleared before the next swap",
 
     assert.equal(readdirSync(path.join(root, "src-tauri")).some((name) => name.includes(".previous-")), false);
     assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
+  });
+});
+
+test("a backup owned by a live process is not restored when the destination is missing", () => {
+  // Two builds overlap: build A renamed `bin` aside and is mid-publish with
+  // pid 777. Build B sees no destination and must NOT treat A's in-flight
+  // backup as stranded, or A loses the tree it needs for rollback (#409).
+  withLayout(({ root, destinationDir, stagingDir }) => {
+    rmSync(destinationDir, { recursive: true, force: true });
+    const activeBackup = `${destinationDir}.previous-1700000000000-777`;
+    writeTree(activeBackup, { "marker.txt": "runtime a concurrent build is publishing" });
+
+    const logs = [];
+    buildProbeAndPublishRuntime({
+      stagingDir,
+      destinationDir,
+      build: () => {},
+      probe: () => {},
+      isAlive: (ownerPid) => ownerPid === 777,
+      log: (message) => logs.push(message),
+    });
+
+    // B published its staged runtime and left A's backup exactly where it was.
+    assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
+    assert.equal(
+      readFileSync(path.join(activeBackup, "marker.txt"), "utf8"),
+      "runtime a concurrent build is publishing",
+    );
+    assert.equal(logs.length, 0);
+  });
+});
+
+test("a backup owned by a live process is not swept when the destination exists", () => {
+  withLayout(({ destinationDir, stagingDir }) => {
+    const activeBackup = `${destinationDir}.previous-1700000001000-777`;
+    const abandonedBackup = `${destinationDir}.previous-1700000000000-888`;
+    writeTree(activeBackup, { "marker.txt": "runtime a concurrent build is publishing" });
+    writeTree(abandonedBackup, { "marker.txt": "runtime from a dead build" });
+
+    buildProbeAndPublishRuntime({
+      stagingDir,
+      destinationDir,
+      build: () => {},
+      probe: () => {},
+      isAlive: (ownerPid) => ownerPid === 777,
+    });
+
+    assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
+    // The live build's backup survives the sweep...
+    assert.equal(
+      readFileSync(path.join(activeBackup, "marker.txt"), "utf8"),
+      "runtime a concurrent build is publishing",
+    );
+    // ...while the dead one is still cleaned up.
+    assert.equal(existsSync(abandonedBackup), false);
+  });
+});
+
+test("recovery skips a live-pid backup and restores the newest abandoned one", () => {
+  withLayout(({ destinationDir, stagingDir }) => {
+    rmSync(destinationDir, { recursive: true, force: true });
+    // Newer, but owned by a live build: recovery must not take it.
+    const activeBackup = `${destinationDir}.previous-1700000001000-777`;
+    // Older, owner gone: the newest backup recovery may actually take.
+    const abandonedBackup = `${destinationDir}.previous-1700000000000-888`;
+    writeTree(activeBackup, { "marker.txt": "still publishing" });
+    writeTree(abandonedBackup, { "marker.txt": "abandoned runtime" });
+
+    let renameCalls = 0;
+    const rename = (from, to) => {
+      renameCalls += 1;
+      // 1: abandoned backup -> destination. 2: destination -> backup.
+      // 3: staging -> destination (fails). 4: backup -> destination (restore).
+      if (renameCalls === 3) {
+        throw new Error("EBUSY: resource busy or locked, rename");
+      }
+      renameSync(from, to);
+    };
+
+    assert.throws(
+      () =>
+        buildProbeAndPublishRuntime({
+          stagingDir,
+          destinationDir,
+          build: () => {},
+          probe: () => {},
+          rename,
+          isAlive: (ownerPid) => ownerPid === 777,
+        }),
+      /EBUSY/,
+    );
+
+    assert.equal(renameCalls, 4);
+    assert.equal(readFileSync(path.join(destinationDir, "marker.txt"), "utf8"), "abandoned runtime");
+    assert.equal(existsSync(activeBackup), true);
+    assert.equal(existsSync(abandonedBackup), false);
+  });
+});
+
+test("a backup named with this process's own pid is recoverable", () => {
+  // A pid names one live process, so a backup carrying OUR pid cannot belong to
+  // a concurrent build: it is litter from an earlier incarnation (a crash, or a
+  // pid reused after a reboot) and recovery may take it even though the pid is
+  // "alive" — it is alive because it is us.
+  withLayout(({ destinationDir, stagingDir }) => {
+    rmSync(destinationDir, { recursive: true, force: true });
+    const samePidBackup = `${destinationDir}.previous-1700000000000-4242`;
+    writeTree(samePidBackup, { "marker.txt": "runtime from a prior incarnation" });
+
+    buildProbeAndPublishRuntime({
+      stagingDir,
+      destinationDir,
+      build: () => {},
+      probe: () => {},
+      pid: 4242,
+      isAlive: () => true,
+    });
+
+    assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
+    assert.equal(existsSync(samePidBackup), false);
+  });
+});
+
+test("a legacy pid-only backup is recovered when its owner is gone", () => {
+  withLayout(({ destinationDir, stagingDir }) => {
+    rmSync(destinationDir, { recursive: true, force: true });
+    const legacyBackup = `${destinationDir}.previous-999`;
+    writeTree(legacyBackup, { "marker.txt": "legacy runtime" });
+
+    let renameCalls = 0;
+    const rename = (from, to) => {
+      renameCalls += 1;
+      // 1: legacy backup -> destination (recovery). 2: destination -> backup.
+      // 3: staging -> destination (fails). 4: backup -> destination (restore).
+      if (renameCalls === 3) {
+        throw new Error("EBUSY: resource busy or locked, rename");
+      }
+      renameSync(from, to);
+    };
+
+    assert.throws(
+      () =>
+        buildProbeAndPublishRuntime({
+          stagingDir,
+          destinationDir,
+          build: () => {},
+          probe: () => {},
+          rename,
+          isAlive: () => false,
+        }),
+      /EBUSY/,
+    );
+
+    assert.equal(renameCalls, 4);
+    assert.equal(readFileSync(path.join(destinationDir, "marker.txt"), "utf8"), "legacy runtime");
+    assert.equal(existsSync(legacyBackup), false);
   });
 });

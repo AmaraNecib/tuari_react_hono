@@ -338,3 +338,51 @@ encrypts", and point at #410 for the end-to-end proof.
 `docs/release-verification.md` and `docs/editions-and-features.md` already state
 the same bound; `docs/release-verification.md` §"Real encryption is proven only
 by CI (#410)" is the canonical statement.
+
+## Round 5b (parent decision, same review): overlapping builds must not steal an active backup
+
+The round-5 review also kept an earlier P2 alive (`runtime-staging.mjs:65-75`,
+"overlapping builds steal active backups"): two builds running at once could
+treat each other's in-flight `bin.previous-*` as stranded and move or delete it,
+so one build could lose the runtime the other was still publishing. The parent
+asked for it to be fixed before the next push so the review does not re-raise it.
+
+### Rule: a backup is touched only when its owning process is provably gone
+
+The backup name already carries the owner pid (`<dest>.previous-<epoch>-<pid>`).
+`isAbandonedBackup(ownerPid, { isAlive, pid })` is the ownership gate:
+
+- `ownerPid === our pid` -> **abandoned**. A pid names one live process, so a
+  backup with OUR pid cannot belong to a concurrent build; it is litter from an
+  earlier incarnation (a crash, or the pid reused after a reboot) and recovery
+  may take it even though the pid is "alive" because it is us.
+- any other pid -> abandoned only when `isAlive(ownerPid)` is false. The default
+  probe is `process.kill(pid, 0)` (`ESRCH` = gone, `EPERM` = exists but not
+  signallable, still alive).
+- unparseable owner -> never abandoned. A tree we cannot prove is dead stays, or
+  a concurrent publishing build would lose its rollback backup.
+
+`findAbandonedRuntimeBackups` filters by this gate BEFORE sorting by recency, so
+recovery restores the newest ABANDONED backup and the post-publish sweep removes
+only abandoned ones. `isAlive` is injectable on both `swapRuntimeDirectory` and
+`buildProbeAndPublishRuntime` so the rule is tested without spawning processes.
+
+### Tests
+
+- `a backup owned by a live process is not restored when the destination is
+  missing` - the live build's backup stays put, no recovery log, the staged
+  runtime is published.
+- `a backup owned by a live process is not swept when the destination exists` -
+  the live backup survives the sweep while a dead-pid sibling alongside it is
+  cleaned up.
+- `recovery skips a live-pid backup and restores the newest abandoned one` -
+  a newer live-pid backup is ignored in favour of an older dead-pid one.
+- `a backup named with this process's own pid is recoverable` - own-pid litter
+  from a prior incarnation is still recovered.
+- `a legacy pid-only backup is recovered when its owner is gone` - the legacy
+  name format still parses and recovers.
+
+What this does NOT solve: two builds can still race to publish the same
+destination (the losing one fails its rename and restores its own backup), and a
+pid reused by an unrelated live process blocks that backup's recovery/sweep
+(conservative: left rather than stolen). Both are out of scope for this finding.
