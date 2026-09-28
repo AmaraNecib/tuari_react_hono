@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 
-import { computeUnallocatedDays, defaultSalaryPaymentDays, parsePositiveInteger, resolveSalaryPaymentPeriod } from "./salary-payment-form"
+import { allocateSalaryAmountByDays, computeUnallocatedDays, defaultSalaryPaymentDays, parsePositiveInteger, resolveSalaryPaymentPeriod } from "./salary-payment-form"
 
 describe("defaultSalaryPaymentDays", () => {
   it("defaults a full month for monthly and legacy weekly, and a single day for daily", () => {
@@ -89,5 +89,28 @@ describe("computeUnallocatedDays", () => {
 
   it("returns null when the paid days are unknown", () => {
     expect(computeUnallocatedDays(null, [5])).toBeNull()
+  })
+})
+
+describe("allocateSalaryAmountByDays", () => {
+  it("prorates the paid amount by the line's share of the paid days", () => {
+    expect(allocateSalaryAmountByDays(30000, 15, 30)).toBe(15000)
+    expect(allocateSalaryAmountByDays(30000, 1, 30)).toBe(1000)
+  })
+
+  it("leaves the unallocated remainder's share unattributed", () => {
+    // 25 of 30 days split between two projects: each line gets only its share,
+    // not the whole amount.
+    expect(allocateSalaryAmountByDays(30000, 15, 30)).toBe(15000)
+    expect(allocateSalaryAmountByDays(30000, 10, 30)).toBe(10000)
+  })
+
+  it("rounds to two decimals", () => {
+    expect(allocateSalaryAmountByDays(100, 1, 3)).toBe(33.33)
+  })
+
+  it("returns zero instead of dividing by a non-positive day count", () => {
+    expect(allocateSalaryAmountByDays(30000, 15, 0)).toBe(0)
+    expect(allocateSalaryAmountByDays(Number.NaN, 15, 30)).toBe(0)
   })
 })

@@ -97,3 +97,23 @@ export function computeUnallocatedDays(
 
   return splitDays.reduce((remaining, lineDays) => remaining - lineDays, days)
 }
+
+/**
+ * The share of a paid amount attributed to one split line.
+ *
+ * A split stores only its days, so the amount is prorated against the whole
+ * payment: a line of 15 of 30 paid days carries half the paid amount, and the
+ * unallocated remainder's share is deliberately left unattributed. Rounded to
+ * two decimals to match the money convention.
+ */
+export function allocateSalaryAmountByDays(
+  amountDzd: number,
+  lineDays: number,
+  totalDays: number,
+): number {
+  if (!Number.isFinite(amountDzd) || totalDays <= 0) {
+    return 0
+  }
+
+  return Math.round(((amountDzd * lineDays) / totalDays) * 100) / 100
+}

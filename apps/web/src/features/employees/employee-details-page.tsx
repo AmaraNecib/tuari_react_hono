@@ -349,7 +349,16 @@ export function EmployeeDetailsPage({
                 disabled={employee.salaryAmountDzd === null || !employee.salaryPeriod}
                 size="lg"
                 variant={showPaymentForm ? "outline" : "default"}
-                onClick={() => setShowPaymentForm((currentValue) => !currentValue)}
+                onClick={() => {
+                  // A prior payment's success flag persists on the mutation.
+                  // Clear it when a new draft is opened so a later workspace
+                  // refresh cannot re-run the success reset and wipe the new
+                  // unsaved payment.
+                  if (!showPaymentForm) {
+                    createSalaryPaymentMutation.reset()
+                  }
+                  setShowPaymentForm((currentValue) => !currentValue)
+                }}
               >
                 {showPaymentForm ? t("detailPages.employee.financeToggleHide") : t("detailPages.employee.financeToggleShow")}
               </Button>

@@ -7,9 +7,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
-const { createSalaryPaymentMutate } = vi.hoisted(() => ({
-  createSalaryPaymentMutate: vi.fn(),
-}))
+const { createSalaryPaymentMutate, mutationState, resetSalaryPaymentMutation } = vi.hoisted(() => {
+  const state = { isSuccess: false }
+  return {
+    createSalaryPaymentMutate: vi.fn(),
+    mutationState: state,
+    resetSalaryPaymentMutation: vi.fn(() => {
+      state.isSuccess = false
+    }),
+  }
+})
 
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router")
@@ -23,17 +30,19 @@ vi.mock("@tanstack/react-router", async () => {
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
   useCreateSalaryPaymentMutation: () => ({
     isPending: false,
-    isSuccess: false,
+    isSuccess: mutationState.isSuccess,
     mutate: createSalaryPaymentMutate,
+    reset: resetSalaryPaymentMutation,
   }),
 }))
 
 vi.mock("@/features/app-shell/workspace-mutations", () => ({
   useCreateSalaryPaymentMutation: () => ({
     isPending: false,
-    isSuccess: false,
+    isSuccess: mutationState.isSuccess,
     mutate: createSalaryPaymentMutate,
     mutateAsync: vi.fn(),
+    reset: resetSalaryPaymentMutation,
   }),
 }))
 
@@ -133,6 +142,8 @@ function renderDetails(employee: EmployeeTableRow = monthlyWorker()) {
 describe("EmployeeDetailsPage salary payments (#412)", () => {
   beforeEach(() => {
     createSalaryPaymentMutate.mockReset()
+    resetSalaryPaymentMutation.mockClear()
+    mutationState.isSuccess = false
   })
 
   afterEach(() => {
@@ -209,6 +220,27 @@ describe("EmployeeDetailsPage salary payments (#412)", () => {
     rerenderEmployee(monthlyWorker({ salaryPeriod: "DAILY", salaryAmountDzd: 1500 }))
 
     // A refresh must not discard the edit (nor collapse the form under it).
+    expect(screen.getByRole("button", { name: "حفظ دفعة الراتب" })).toBeTruthy()
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("12")
+  })
+
+  it("keeps a new draft when the form is reopened after a previous payment succeeded", () => {
+    const { rerenderEmployee } = renderDetails()
+
+    // A quick-form payment just succeeded; the mutation's success flag is still
+    // set when the operator returns for the next one.
+    mutationState.isSuccess = true
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
+    // Reopening must clear the stale success flag.
+    expect(resetSalaryPaymentMutation).toHaveBeenCalled()
+
+    fireEvent.change(screen.getAllByRole("spinbutton")[0]!, { target: { value: "12" } })
+
+    // A workspace refresh changes the wage while the new draft is open: the
+    // old success effect must not run again, wipe the draft, or close the form.
+    rerenderEmployee(monthlyWorker({ salaryPeriod: "DAILY", salaryAmountDzd: 1500 }))
+
     expect(screen.getByRole("button", { name: "حفظ دفعة الراتب" })).toBeTruthy()
     expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("12")
   })

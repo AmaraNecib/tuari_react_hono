@@ -127,6 +127,21 @@ function asDbExecutor(database: Database.Database): DbExecutor {
   return makeDb(database);
 }
 
+/** sqlite_master helpers for asserting what an upgrade did (or did not) create. */
+function getObjectNames(db: Database.Database, type: "table" | "index"): string[] {
+  return (
+    db
+      .prepare('SELECT "name" FROM "sqlite_master" WHERE "type" = ?')
+      .all(type) as Array<{ name: string }>
+  ).map((row) => row.name);
+}
+
+function getTableColumnNames(db: Database.Database, table: string): string[] {
+  return (
+    db.prepare(`PRAGMA table_info("${table}")`).all() as Array<{ name: string }>
+  ).map((row) => row.name);
+}
+
 /**
  * Issue #21: rename `debt_account.current_balance_dzd` → `current_balance`.
  *
@@ -747,14 +762,25 @@ describe("applyPaymentAllocationRestrictMigration (issue #335)", () => {
   });
 });
 
-describe("employee_salary_payment days migration (#412)", () => {
-  it("backfills days=30 on an existing payment row without touching its amounts", async () => {
+describe("employee_salary_payment days + split migration (#412)", () => {
+  it("upgrades a pre-#412 database by adding the days column and the split table, preserving stored amounts", async () => {
     const db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
     await ensureDatabaseSchema(asDbExecutor(db));
 
-    // Simulate a pre-#412 database: drop the column, then insert a legacy row.
+    // A genuinely pre-#412 database predates BOTH the `days` column and the
+    // per-project split table (and its indexes). Dropping only `days` would
+    // leave the current schema's split table in place, so the test could never
+    // catch a failure to create it on the real upgrade path.
+    db.exec('DROP TABLE IF EXISTS "employee_salary_payment_split"');
     db.exec('ALTER TABLE "employee_salary_payment" DROP COLUMN "days"');
+
+    // Prove the pre-#412 state before the upgrade runs.
+    expect(getTableColumnNames(db, "employee_salary_payment")).not.toContain("days");
+    expect(getObjectNames(db, "table")).not.toContain("employee_salary_payment_split");
+    expect(getObjectNames(db, "index")).not.toContain("employee_salary_payment_split_payment_id_idx");
+    expect(getObjectNames(db, "index")).not.toContain("employee_salary_payment_split_project_id_idx");
+
     db.pragma("foreign_keys = OFF");
     db.prepare(
       `INSERT INTO "employee_salary_payment"
@@ -786,5 +812,13 @@ describe("employee_salary_payment days migration (#412)", () => {
     expect(mapped.expectedAmountDzd).toBe(50000);
     expect(mapped.actualAmountDzd).toBe(45000);
     expect(mapped.projectSplits).toEqual([]);
+
+    // The same upgrade created the per-project split table and both indexes.
+    expect(getObjectNames(db, "table")).toContain("employee_salary_payment_split");
+    expect(getTableColumnNames(db, "employee_salary_payment_split")).toEqual(
+      expect.arrayContaining(["id", "payment_id", "project_id", "days", "created_at"]),
+    );
+    expect(getObjectNames(db, "index")).toContain("employee_salary_payment_split_payment_id_idx");
+    expect(getObjectNames(db, "index")).toContain("employee_salary_payment_split_project_id_idx");
   });
 });

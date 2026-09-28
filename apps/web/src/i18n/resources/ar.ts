@@ -456,6 +456,7 @@ export const ar = {
       workersEmpty: "لا يوجد عاملون بإعدادات راتب جاهزة حاليًا.",
       paymentDate: "تاريخ الدفع",
       days: "الأيام",
+      daysUnit: "يوم",
       proposedAmount: "المبلغ المقترح",
       projectSplit: "توزيع الأيام على المشاريع",
       addProjectLine: "إضافة مشروع",

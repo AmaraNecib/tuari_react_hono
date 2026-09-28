@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/features/shared/page-primitives"
 import { RecordTabs } from "@/features/shared/record-page-frame"
 import { AddSalaryPaymentDialog } from "@/features/employees/add-salary-payment-dialog"
+import { allocateSalaryAmountByDays } from "@/features/employees/salary-payment-form"
 
 import {
   AppShellActionGroup,
@@ -69,38 +70,35 @@ export function SalariesSection({
 }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState("recent")
-  const [paymentTarget, setPaymentTarget] = useState<{
-    id: string
-    name: string
-    salaryAmountDzd: number | null
-    salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | null
-    projectAssignments: Array<{ projectId: string; startDate: string; endDate: string | null }>
-  } | null>(null)
+  // Only the identity is snapshotted when the dialog opens; the wage, period,
+  // and assignment windows are read from the live query data below so a
+  // workspace refresh cannot leave a stale proposal or day default behind.
+  const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
   const currencyLabel = t("detailPages.salary.currency")
   const sortedWorkers = useMemo(
     () => [...workers].sort((a, b) => a.employeeName.localeCompare(b.employeeName, "ar")),
     [workers],
   )
+  const projectNames = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  )
+  const paymentWorker = paymentTarget
+    ? workers.find((worker) => worker.employeeId === paymentTarget.id) ?? null
+    : null
 
   const openPaymentForm = (employeeId: string, employeeName: string) => {
-    const worker = workers.find((candidate) => candidate.employeeId === employeeId)
-    setPaymentTarget({
-      id: employeeId,
-      name: employeeName,
-      salaryAmountDzd: worker?.salaryAmountDzd ?? null,
-      salaryPeriod: worker?.salaryPeriod ?? null,
-      projectAssignments: worker?.projectAssignments ?? [],
-    })
+    setPaymentTarget({ id: employeeId, name: employeeName })
   }
 
   return (
     <div className="space-y-6">
       <AddSalaryPaymentDialog
         employeeId={paymentTarget?.id ?? null}
-        employeeName={paymentTarget?.name}
-        salaryAmountDzd={paymentTarget?.salaryAmountDzd ?? null}
-        salaryPeriod={paymentTarget?.salaryPeriod ?? null}
-        projectAssignments={paymentTarget?.projectAssignments ?? []}
+        employeeName={paymentWorker?.employeeName ?? paymentTarget?.name}
+        salaryAmountDzd={paymentWorker?.salaryAmountDzd ?? null}
+        salaryPeriod={paymentWorker?.salaryPeriod ?? null}
+        projectAssignments={paymentWorker?.projectAssignments ?? []}
         projects={projects}
         open={paymentTarget !== null}
         onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
@@ -144,6 +142,22 @@ export function SalariesSection({
                     </td>
                     <td className="px-4 py-3 text-start text-[13px] text-ink-2 font-mono tabular-nums" dir="ltr">
                       {payment.days}
+                      {payment.projectSplits.length > 0 ? (
+                        <ul className="mt-1 space-y-0.5 font-sans text-[11px] text-ink-3" dir="rtl">
+                          {payment.projectSplits.map((split) => (
+                            <li key={split.projectId} className="flex flex-wrap items-center gap-x-1.5">
+                              <span dir="auto">{projectNames.get(split.projectId) ?? split.projectId}</span>
+                              <span className="text-ink-4">·</span>
+                              <span className="font-mono tabular-nums" dir="ltr">{split.days} {t("salaries.daysUnit")}</span>
+                              <span className="text-ink-4">·</span>
+                              <MoneyCell
+                                value={allocateSalaryAmountByDays(payment.actualAmountDzd, split.days, payment.days)}
+                                currencyLabel={currencyLabel}
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-start">
                       <MoneyCell value={payment.expectedAmountDzd} currencyLabel={currencyLabel} />

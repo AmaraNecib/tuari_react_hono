@@ -13,7 +13,7 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/features/app-shell/workspace-mutations", () => ({
-  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn(), reset: vi.fn() }),
 }))
 
 import { EmployeeTable, type EmployeeTableRow } from "./employee-table"

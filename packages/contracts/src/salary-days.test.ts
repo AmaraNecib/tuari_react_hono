@@ -61,12 +61,13 @@ describe("deriveSalaryProjectDays", () => {
   it("breaks a fractional tie toward the wider coverage", () => {
     // A 6-day period with a 3-day payment: the 1-day project's exact share is
     // 0.5 and the 3-day project's is 1.5, so both fractions tie. The leftover
-    // day goes to the wider coverage.
+    // day goes to the wider coverage. The windows do not overlap, so the day
+    // itself is not in dispute.
     expect(
       deriveSalaryProjectDays({
         assignments: [
           { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-01", "end") },
-          { projectId: "b", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-03", "end") },
+          { projectId: "b", startDate: algeriaDay("2026-03-02", "start"), endDate: algeriaDay("2026-03-04", "end") },
         ],
         periodStart: algeriaDay("2026-03-01", "start"),
         periodEnd: algeriaDay("2026-03-06", "end"),
@@ -123,6 +124,10 @@ describe("deriveSalaryProjectDays", () => {
   });
 
   it("returns one normalized line per project in deterministic order", () => {
+    // The windows overlap on March 1-10, so project `a` (first in project-id
+    // order) claims those days and project `b` keeps the remaining 21. The
+    // lines are normalized to the 30 paid days and returned in project-id
+    // order.
     expect(
       deriveSalaryProjectDays({
         assignments: [
@@ -134,7 +139,7 @@ describe("deriveSalaryProjectDays", () => {
       }),
     ).toEqual([
       { projectId: "a", days: 10 },
-      { projectId: "b", days: 30 },
+      { projectId: "b", days: 20 },
     ]);
   });
 
@@ -287,22 +292,40 @@ describe("deriveSalaryProjectDays", () => {
     ).toEqual([]);
   });
 
-  it("lets two fully overlapping projects exceed the paid days", () => {
-    // The coverage is 200%, so the default over-allocates (60 > 30); the dialog
-    // surfaces that for a hand edit rather than clamping it silently.
-    expect(
-      deriveSalaryProjectDays({
-        assignments: [
-          { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-31", "end") },
-          { projectId: "b", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-31", "end") },
-        ],
-        ...MARCH_2026,
-        days: 30,
-      }),
-    ).toEqual([
-      { projectId: "a", days: 30 },
-      { projectId: "b", days: 30 },
-    ]);
+  it("attributes the handoff day to exactly one project", () => {
+    // A worker moves from project A to project B at the same instant. The
+    // half-open windows must not count that calendar day for both projects:
+    // the suggested split has to sum to the 30 days being paid, not 31.
+    const handoff = algeriaDay("2026-03-16", "start");
+    const splits = deriveSalaryProjectDays({
+      assignments: [
+        { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: handoff },
+        { projectId: "b", startDate: handoff, endDate: algeriaDay("2026-03-31", "end") },
+      ],
+      ...MARCH_2026,
+      days: 30,
+    });
+
+    expect(splits.reduce((total, split) => total + split.days, 0)).toBe(30);
+    expect(splits.map((split) => split.projectId)).toEqual(["a", "b"]);
+  });
+
+  it("de-duplicates a day two overlapping projects both claim", () => {
+    // Overlapping assignment windows cannot credit the same worked day to two
+    // projects, so the fully covered period still sums to the paid days.
+    const splits = deriveSalaryProjectDays({
+      assignments: [
+        { projectId: "a", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-31", "end") },
+        { projectId: "b", startDate: algeriaDay("2026-03-01", "start"), endDate: algeriaDay("2026-03-31", "end") },
+      ],
+      ...MARCH_2026,
+      days: 30,
+    });
+
+    // Every March day was claimed by project `a` (the first in project-id
+    // order), so project `b` has no unclaimed day left to be credited.
+    expect(splits).toEqual([{ projectId: "a", days: 30 }]);
+    expect(splits.reduce((total, split) => total + split.days, 0)).toBe(30);
   });
 
   it("leaves a line with under half a day out of the default", () => {

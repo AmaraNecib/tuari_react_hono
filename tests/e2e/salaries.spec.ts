@@ -28,6 +28,7 @@ const SALARY_DZD = 30000
 let workerName = ""
 let workerId = ""
 let projectId = ""
+let projectName = ""
 
 test.beforeAll(() => {
   resetE2eDatabase()
@@ -43,8 +44,9 @@ test.beforeAll(() => {
     roleKey: "project_manager",
     status: "ACTIVE",
   })
+  projectName = `مشروع الرواتب ${suffix}`
   projectId = seedProjectWithManager({
-    name: `مشروع الرواتب ${suffix}`,
+    name: projectName,
     managerId,
   })
   workerName = `عامل الرواتب ${suffix}`
@@ -120,11 +122,18 @@ test("blocks an over-allocated split and records the payment with its days", asy
   await submit.click()
   await expect(dialog).toBeHidden()
 
-  // The payment appears in the history with the days that were paid.
+  // The payment appears in the history with the days that were paid, and the
+  // row now spells out which project received them and its share of the
+  // amount (issue #412 review: the split must be readable without the API).
   await page.getByRole("tab", { name: "آخر دفعات الرواتب" }).click()
   const paymentRow = page.getByRole("row").filter({ hasText: workerName })
   await expect(paymentRow).toBeVisible({ timeout: 10_000 })
-  await expect(paymentRow.getByRole("cell").nth(2)).toHaveText("12")
+  const daysCell = paymentRow.getByRole("cell").nth(2)
+  await expect(daysCell).toContainText("12")
+  await expect(daysCell).toContainText(projectName)
+  await expect(daysCell).toContainText("12 يوم")
+  // 30000 / 30 x 12 days, all attributed to the one project.
+  await expect(daysCell).toContainText("12,000")
 
   // And the project attribution survives the sqlite insert and read paths —
   // an in-memory assertion cannot prove the split was persisted (issue #412

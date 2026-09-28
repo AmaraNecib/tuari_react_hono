@@ -60,7 +60,7 @@ vi.mock("@/features/app-shell/mock-dashboard", () => ({
     isPending: false,
     mutateAsync: createCounterpartyMutateAsync,
   }),
-  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutate: createSalaryPaymentMutate }),
+  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutate: createSalaryPaymentMutate, reset: vi.fn() }),
   useRecordDebtPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }))

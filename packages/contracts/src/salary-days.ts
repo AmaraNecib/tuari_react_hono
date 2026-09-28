@@ -48,12 +48,22 @@ function toAlgeriaDayKey(iso: string): string | null {
     return null;
   }
 
-  return new Date(parsed.getTime() + ALGERIA_OFFSET_MS).toISOString().slice(0, 10);
+  return instantToAlgeriaDayKey(parsed.getTime());
+}
+
+/** Algeria calendar day for a known-valid epoch-millisecond instant. */
+function instantToAlgeriaDayKey(ms: number): string {
+  return new Date(ms + ALGERIA_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 function dayKeyToUtcMs(dayKey: string): number {
   const [year = 0, month = 1, day = 1] = dayKey.split("-").map((part) => Number.parseInt(part, 10));
   return Date.UTC(year, month - 1, day);
+}
+
+/** The calendar day `count` days after `dayKey` (negative counts go back). */
+function addDays(dayKey: string, count: number): string {
+  return new Date(dayKeyToUtcMs(dayKey) + count * MS_PER_DAY).toISOString().slice(0, 10);
 }
 
 /**
@@ -87,9 +97,15 @@ export function computeProposedSalaryAmount({
  * `projectAssignment` windows.
  *
  * Each window is clamped to `[periodStart, periodEnd]` and every distinct
- * calendar day it covers is counted once for its project. Overlapping
- * windows on the same project therefore do not double-count. An open-ended
- * assignment (`endDate === null`) runs up to the period end.
+ * calendar day it covers is counted once. A day belongs to exactly one
+ * project: an assignment window is half-open (`[startDate, endDate)`), so the
+ * instant that ends one project's assignment and starts the next leaves the
+ * handoff day to the new project rather than counting it twice, and any day
+ * two still-overlapping windows dispute is claimed by the first project in
+ * project-id order. Overlapping windows on the same project therefore do not
+ * double-count, and a worker whose assignments cover the whole period can
+ * never be credited more days than were paid. An open-ended assignment
+ * (`endDate === null`) runs up to the period end.
  *
  * The covered days are then normalized against the period so the default
  * reconciles with the payment's own day count: a project covering the whole
@@ -99,9 +115,8 @@ export function computeProposedSalaryAmount({
  * (largest-remainder/Hamilton), so a fully covered period sums EXACTLY to
  * `days`, a partially covered period leaves the rest unallocated, and the
  * rounding correction can never drive a line negative (which used to drop it
- * and leave the paid days over-allocated). Overlapping projects
- * (coverage > 100%) can exceed `days` and are surfaced for the person to edit
- * by hand.
+ * and leave the paid days over-allocated). A fully covered period therefore
+ * sums to `days` even through a project handoff, never to `days + 1`.
  */
 export function deriveSalaryProjectDays({
   assignments,
@@ -133,21 +148,42 @@ export function deriveSalaryProjectDays({
   }
 
   const daysByProject = new Map<string, Set<string>>();
+  // A calendar day may be claimed by only one project. Project-id order is the
+  // deterministic priority for the rare day two windows still dispute after
+  // the half-open boundary is applied.
+  const claimedDays = new Set<string>();
+  const orderedAssignments = [...assignments].sort((left, right) =>
+    left.projectId.localeCompare(right.projectId),
+  );
 
-  for (const assignment of assignments) {
+  for (const assignment of orderedAssignments) {
     const windowStartKey = toAlgeriaDayKey(assignment.startDate);
     if (!windowStartKey) {
       continue;
     }
 
-    const windowEndKey = assignment.endDate ? toAlgeriaDayKey(assignment.endDate) : periodEndKey;
-    if (!windowEndKey) {
-      continue;
+    // Half-open `[start, end)`: the exclusive end day is the day AFTER the one
+    // the end instant falls on, so an assignment ending at the start of day D
+    // leaves D to the next assignment, while one ending at the end of (or
+    // during) day D still covers D. An open-ended window runs to period end.
+    let windowEndExclusiveKey: string;
+    if (assignment.endDate) {
+      const endMs = new Date(assignment.endDate).getTime();
+      if (Number.isNaN(endMs)) {
+        continue;
+      }
+      const lastCoveredDayKey = instantToAlgeriaDayKey(endMs - 1);
+      windowEndExclusiveKey = addDays(lastCoveredDayKey, 1);
+    } else {
+      windowEndExclusiveKey = addDays(periodEndKey, 1);
     }
 
     const windowStartMs = Math.max(dayKeyToUtcMs(windowStartKey), periodStartMs);
-    const windowEndMs = Math.min(dayKeyToUtcMs(windowEndKey), periodEndMs);
-    if (windowStartMs > windowEndMs) {
+    const windowEndExclusiveMs = Math.min(
+      dayKeyToUtcMs(windowEndExclusiveKey),
+      periodEndMs + MS_PER_DAY,
+    );
+    if (windowStartMs >= windowEndExclusiveMs) {
       continue;
     }
 
@@ -157,8 +193,13 @@ export function deriveSalaryProjectDays({
       daysByProject.set(assignment.projectId, projectDays);
     }
 
-    for (let ms = windowStartMs; ms <= windowEndMs; ms += MS_PER_DAY) {
-      projectDays.add(new Date(ms).toISOString().slice(0, 10));
+    for (let ms = windowStartMs; ms < windowEndExclusiveMs; ms += MS_PER_DAY) {
+      const dayKey = new Date(ms).toISOString().slice(0, 10);
+      if (claimedDays.has(dayKey)) {
+        continue;
+      }
+      claimedDays.add(dayKey);
+      projectDays.add(dayKey);
     }
   }
 
