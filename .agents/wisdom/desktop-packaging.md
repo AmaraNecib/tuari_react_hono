@@ -166,3 +166,33 @@ operation BEFORE you move anything, not degrade to a warning. A warning is fine
 for refreshing an already-acquired claim; it is wrong for acquiring one. Test the
 "cannot claim" path separately from the "claim went stale" path - they have
 opposite correct outcomes.
+
+## Ownership needs a pid AND a start time; neither a pid nor a heartbeat alone is enough (🟠 Major)
+
+PR #409 rounds 5b-5e: a build renames the live runtime directory aside before
+publishing a new one, and overlapping builds must not steal a tree another build
+still needs for rollback. Three ownership tests were tried and each failed on its
+own:
+
+- a pid alone cannot establish ownership, because pids are reused - an unrelated
+  process that inherited a dead build's pid kept its intact backup frozen
+  forever (5b);
+- a heartbeat alone cannot establish death, because the writer can stall - a
+  live build stuck on a locked file past the 30s lease had its backup restored
+  or swept out from under it (5e);
+- a marker file that is not written is not a claim at all, so a failed initial
+  write let the other build steal the tree (5d).
+
+The signal that settles it is the owner's process start time. A process is the
+owner exactly when a process with the marker's pid exists AND its start time is
+not later than the marker's `startedAt`; a later start time means the pid was
+reused, so the writer is gone. Only when the start time cannot be read (an
+unsupported platform or a permission failure) does the heartbeat lease decide.
+
+**Always**: when deciding whether another process's work is abandoned, ask
+"is it the SAME process", not "does a process with that name exist" and not "did
+it check in recently". Identity needs pid + start time (Windows process creation
+time; `/proc/<pid>/stat` or `ps -o lstart=` on POSIX). Keep the timeout as an
+explicit fallback for platforms that cannot report identity, and comment which
+signal won - otherwise the next fix trades one failure mode for the other, as
+this one did twice.

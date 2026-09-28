@@ -469,3 +469,63 @@ build had renamed `bin` aside - leaving this build without its rollback tree.
 the destination byte-for-byte intact; a failed boundary heartbeat does not abort
 and the surviving marker is owned to the lease boundary and abandoned past it;
 repeated failures warn once and warn again after a recovery.
+
+## Round 5e (review): a live-but-stalled owner is not abandoned
+
+**Finding** (`runtime-staging.mjs:124`, `isAbandonedBackup`). The lease was the
+primary abandonment signal: once `now() - heartbeatAt > markerLeaseMs` the
+backup was abandoned without checking whether the owner process was still alive.
+A build that renamed `bin` aside and then stalled on a locked file for longer
+than the 30s lease was treated as dead, so an overlapping build could restore or
+sweep the tree it still needed for rollback; if the stalled build's publish then
+failed, it had nothing to restore. This is the third pass over the same tension:
+round 5b used pid liveness alone (a reused pid blocked recovery forever), round
+5c used the heartbeat alone (a stalled live owner lost its tree).
+
+**Fix - combine the marker with the owner's process start time.**
+
+- New `readProcessStartTime(pid)` reads the owner's start time in epoch ms and
+  returns `null` when it cannot (unsupported platform or a permission failure):
+  - Linux: `/proc/<pid>/stat` field 22 (clock ticks since boot) plus
+    `/proc/stat` `btime`; `USER_HZ` is 100.
+  - Other POSIX: `ps -o lstart= -p <pid>` (second resolution).
+  - Windows: PowerShell `(Get-Process -Id <pid>).StartTime` converted to Unix
+    ms, because Node has no portable API and `wmic` is being removed.
+- New `probeProcess(pid)` reports `{ alive, startTime }`. `alive: false` means
+  the process is gone; `alive: true, startTime: null` means it exists but the
+  start time is unreadable, which is a distinct state from "gone".
+- `isAbandonedBackup(marker, { now, markerLeaseMs, probeOwner })`:
+  - no marker / no readable heartbeat -> abandoned
+  - heartbeat within the lease -> owned, unless the pid is proven gone (the
+    existing tiebreaker that recovers a just-crashed owner before the lease)
+  - heartbeat past the lease -> the start time decides:
+    - process gone -> abandoned
+    - `startTime <= marker.startedAt` -> the same build is alive but stalled ->
+      **owned; never stolen**
+    - `startTime > marker.startedAt` -> the pid was reused -> abandoned
+    - `startTime` unreadable -> the lease is the only signal left and it has
+      elapsed -> abandoned
+- `isAlive` is replaced by the injectable `probeOwner` on both
+  `swapRuntimeDirectory` and `buildProbeAndPublishRuntime`; the platform probe is
+  the default. Tests state existence and start time explicitly, so the decision
+  is deterministic and never shells out.
+
+**Invariants tested (5 new; 29 total in `runtime-staging.test.mjs`).**
+
+- (a) a live owner that stalled past the lease keeps its backup (integration:
+  nothing restored, marker intact, no recovery log) - the reported finding;
+- (b) a reused pid still does not block recovery (the previous finding);
+- (c) a stale marker whose owner is gone is recovered (and the fresh-heartbeat
+  tiebreaker still recovers a just-crashed owner early);
+- (d) an unreadable start time falls back to the lease (stale -> abandoned,
+  fresh -> owned);
+- plus a decision-matrix unit test for all four and a real-host check that
+  `readProcessStartTime(process.pid)` and `probeProcess(process.pid)` read the
+  live process without throwing.
+
+**What could not be tested here.** This host is Windows, so the PowerShell path
+is exercised for real (the platform tests above spawn it). The Linux `/proc`
+parse and the `ps -o lstart=` parse are implemented but not run on this host;
+they are covered only by the deterministic injected-probe tests, not by a real
+probe. The `USER_HZ = 100` assumption is standard on Linux but is an assumption.
+
