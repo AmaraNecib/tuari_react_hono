@@ -108,7 +108,9 @@ export function createInMemoryAssetChargeRepository(): InventoryAssetChargeRepos
       _auditContext?: MutationAuditContext,
     ) {
       const current = charges.get(id)
-      if (!current) {
+      // Mirror the sqlite adapter's `AND status='LIVE'` guard: a correction or
+      // void only applies to a live row and appends no revision otherwise.
+      if (!current || current.status !== "LIVE") {
         return null
       }
 

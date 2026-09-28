@@ -139,6 +139,11 @@ export function TransferItemDialog({
   const isPending = assetMutation.isPending || consumableMutation.isPending
 
   const purchasePriceDzd = chargeDefault.data?.purchasePriceDzd ?? 0
+  // A failed default query must not be mistaken for a zero purchase price:
+  // that silently disables percentage entry and drops the above-price warning,
+  // so an operator could submit an over-bound amount un-warned (#422 round 4).
+  const chargeDefaultUnavailable = chargeDefault.isError === true && chargeDefault.data === undefined
+  const hasPurchasePrice = Number.isFinite(purchasePriceDzd) && purchasePriceDzd > 0
   const isAsset = target?.type === "ASSET"
   const asksForCharge = isAsset && destType === "PROJECT"
   const amountInput = parseChargeAmountInput(chargeAmount)
@@ -340,16 +345,26 @@ export function TransferItemDialog({
                     step="0.01"
                     inputMode="decimal"
                     aria-label={t("inventory.transfer.chargePercent")}
-                    disabled={purchasePriceDzd <= 0}
+                    disabled={!hasPurchasePrice || chargeDefaultUnavailable}
                     value={chargePercent}
                     onChange={(e) => handlePercentChange(e.target.value)}
                   />
                 </label>
               </div>
 
-              <p className="text-xs text-muted-foreground">
-                {t("inventory.transfer.chargeHint", { price: purchasePriceDzd })}
-              </p>
+              {chargeDefaultUnavailable ? (
+                <p
+                  className="text-xs text-amber-600"
+                  role="alert"
+                  data-testid="charge-default-error"
+                >
+                  {t("inventory.transfer.chargePriceUnavailable")}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t("inventory.transfer.chargeHint", { price: purchasePriceDzd })}
+                </p>
+              )}
 
               {chargeInvalid ? (
                 <p className="text-xs text-destructive" role="alert" data-testid="charge-error">

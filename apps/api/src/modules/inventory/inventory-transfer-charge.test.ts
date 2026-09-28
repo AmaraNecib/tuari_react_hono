@@ -1,12 +1,17 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import Database from "better-sqlite3"
 
 import { inventoryLocationContentsSchema } from "@tuari/contracts"
 
+import { schemaStatements } from "../../infrastructure/database/schema-definitions"
+import { createFifoLock } from "../../infrastructure/database/fifo-lock"
 import type { InventoryRepository } from "./inventory.repository"
 import type { InventoryAttachmentStorage } from "./inventory.storage"
 import { InventoryService } from "./inventory.service"
 import { AssetChargeService } from "./asset-charge.service"
 import { createInMemoryAssetChargeRepository } from "./adapters/in-memory-asset-charge.repository"
+import { createAssetChargeRepository } from "./adapters/sqlite-asset-charge.repository"
+import { createInventoryRepository } from "./adapters/sqlite-inventory.repository"
 
 /**
  * Transfer ↔ charge integration (#413): the transfer path is the only place a
@@ -325,5 +330,78 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
 
     expect(chargeRepository._charges.size).toBe(0)
     expect(movements).toHaveLength(0)
+  })
+})
+
+/**
+ * The in-memory harness above restores its own snapshot on throw; this suite
+ * drives the REAL sqlite adapters over one shared connection + lock, so the
+ * rollback is proven by the actual better-sqlite3 savepoint machinery (#422
+ * round 4).
+ */
+describe("InventoryService.transferAsset ↔ charge rollback on real sqlite (#422 round 4)", () => {
+  let db: Database.Database
+
+  function createSeedDb() {
+    const raw = new Database(":memory:")
+    raw.pragma("foreign_keys = ON")
+    for (const statement of schemaStatements) {
+      raw.exec(statement)
+    }
+
+    const now = "2026-06-01T00:00:00.000Z"
+    raw.prepare(`INSERT INTO "warehouse" ("id", "name", "status", "created_at", "updated_at") VALUES ('wh-1', 'رئيسي', 'ACTIVE', ?, ?)`).run(now, now)
+    raw.prepare(`INSERT INTO "warehouse" ("id", "name", "status", "created_at", "updated_at") VALUES ('wh-2', 'فرعي', 'ACTIVE', ?, ?)`).run(now, now)
+    raw.prepare(`INSERT INTO "project" ("id", "name", "status", "created_at", "updated_at") VALUES ('project-a', 'مشروع أ', 'ACTIVE', ?, ?)`).run(now, now)
+    raw.prepare(`INSERT INTO "inventory_item_definition" ("id", "name", "item_type", "is_active", "created_at", "updated_at") VALUES ('def-1', 'مثقاب', 'ASSET', 1, ?, ?)`).run(now, now)
+    raw.prepare(`INSERT INTO "inventory_invoice_group" ("id", "supplier_name", "created_at", "updated_at") VALUES ('group-1', 'مورد', ?, ?)`).run(now, now)
+    raw.prepare(`INSERT INTO "inventory_entry" ("id", "invoice_group_id", "item_definition_id", "item_type", "item_name", "quantity", "total_price_dzd", "created_at", "updated_at") VALUES ('entry-1', 'group-1', 'def-1', 'ASSET', 'مثقاب', 1, 100000, ?, ?)`).run(now, now)
+    raw.prepare(`INSERT INTO "inventory_asset_unit" ("id", "inventory_entry_id", "asset_name", "purchase_price_dzd", "current_warehouse_id", "created_at", "updated_at") VALUES ('asset-1', 'entry-1', 'مثقاب', 100000, 'wh-1', ?, ?)`).run(now, now)
+    return raw
+  }
+
+  function createRealHarness() {
+    db = createSeedDb()
+    // ONE lock, as the composition root wires it: the transfer and its charge
+    // are two writers on the same shared connection.
+    const lock = createFifoLock()
+    const inventoryRepository = createInventoryRepository(db, lock)
+    const chargeRepository = createAssetChargeRepository(db, lock)
+    const service = new InventoryService(
+      inventoryRepository,
+      {} as InventoryAttachmentStorage,
+      undefined,
+      undefined,
+      new AssetChargeService(chargeRepository, inventoryRepository),
+    )
+    return { service, inventoryRepository, chargeRepository }
+  }
+
+  it("rolls the transfer and its charge back together when a later step fails", () => {
+    const { service, inventoryRepository, chargeRepository } = createRealHarness()
+
+    // Insert the real charge, then fail while the transfer transaction is
+    // still open — the charge row provably exists before the rollback.
+    const insertCharge = chargeRepository.createCharge.bind(chargeRepository)
+    chargeRepository.createCharge = (data) => {
+      insertCharge(data)
+      throw new Error("commit failed after the charge insert")
+    }
+
+    expect(() =>
+      service.transferAsset({ assetUnitId: "asset-1", toProjectId: "project-a" }, AUDIT),
+    ).toThrowError(/commit failed after the charge insert/)
+
+    expect(chargeRepository.listChargesByUnit("asset-1")).toHaveLength(0)
+    expect(chargeRepository.listChargesByProject("project-a")).toHaveLength(0)
+    expect(inventoryRepository.listMovementsByAssetUnitId("asset-1")).toHaveLength(0)
+
+    const asset = inventoryRepository.getAssetUnitById("asset-1")
+    expect(asset?.currentWarehouseId).toBe("wh-1")
+    expect(asset?.currentProjectId).toBeNull()
+  })
+
+  afterEach(() => {
+    db.close()
   })
 })

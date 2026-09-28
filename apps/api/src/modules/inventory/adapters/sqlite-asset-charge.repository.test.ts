@@ -108,6 +108,43 @@ describe("DrizzleAssetChargeRepository (#413)", () => {
     })
   })
 
+  it("refuses to update or append a revision to an already voided charge", () => {
+    // `AND status='LIVE'` in the UPDATE: a second process that voided the row
+    // after the reader's snapshot must leave it untouched (#422 round 4).
+    const charge = env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 100_000 })
+    env.repository.updateCharge(
+      charge.id,
+      { status: "VOID", voidedAt: NOW, voidedBy: "مدير", voidReason: null, updatedAt: NOW },
+      { chargeId: charge.id, previousAmountDzd: 100_000, newAmountDzd: null, actorLabel: "مدير" },
+      AUDIT,
+    )
+
+    const stale = env.repository.updateCharge(
+      charge.id,
+      { amountDzd: 7, updatedAt: NOW },
+      { chargeId: charge.id, previousAmountDzd: 100_000, newAmountDzd: 7 },
+      AUDIT,
+    )
+
+    expect(stale).toBeNull()
+    expect(env.repository.getChargeById(charge.id)?.status).toBe("VOID")
+    expect(env.repository.getChargeById(charge.id)?.amountDzd).toBe(100_000)
+    // Only the void revision exists — the stale write appended nothing.
+    expect(env.repository.listRevisions(charge.id)).toHaveLength(1)
+  })
+
+  it("resolves the project name once and attaches it to every row of the project", () => {
+    env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 100_000 })
+    env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 80_000 })
+
+    const charges = env.repository.listChargesByProject("project-a")
+
+    expect(charges).toHaveLength(2)
+    expect(charges.every((charge) => charge.projectName === "مشروع أ")).toBe(true)
+    // A different project's charge is not leaked into the list.
+    expect(env.repository.listChargesByProject("project-b")).toHaveLength(0)
+  })
+
   it("rolls the charge and its revision back together when the outer transaction throws", () => {
     expect(() =>
       env.repository.withTransaction(() => {

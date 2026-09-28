@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   session: vi.fn(),
   list: vi.fn(),
   create: vi.fn(),
+  createInvoiceGroup: vi.fn(),
+  listProjectCharges: vi.fn(),
 }))
 
 vi.mock("@/lib/orpc-client", async (importOriginal) => {
@@ -16,6 +18,8 @@ vi.mock("@/lib/orpc-client", async (importOriginal) => {
     rpcClient: {
       inventoryItemDefinitionsList: mocks.list,
       inventoryItemDefinitionsCreate: mocks.create,
+      inventoryInvoiceGroupsCreate: mocks.createInvoiceGroup,
+      inventoryAssetChargesListByProject: mocks.listProjectCharges,
     },
   }
 })
@@ -25,8 +29,10 @@ vi.mock("@/features/session/use-session-query", () => ({
 }))
 
 import {
+  useCreateInventoryInvoiceGroupMutation,
   useCreateInventoryItemDefinitionMutation,
   useInventoryItemDefinitionsQuery,
+  useProjectChargesQuery,
 } from "./inventory-hooks"
 import { orpc } from "@/lib/orpc-client"
 
@@ -127,5 +133,66 @@ describe("inventory item definitions — list freshness after create", () => {
     })
 
     await waitFor(() => expect(listResult.current.data?.items).toEqual([CREATED_ITEM]))
+  })
+})
+
+/**
+ * Invoice creation books a placement charge for ASSETs placed directly on a
+ * project, so the project's charges cache must refetch (#422 round 4).
+ */
+describe("inventory project charges — freshness after invoice create", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.session.mockReturnValue({ data: { user: { id: "user-1" } } })
+    mocks.createInvoiceGroup.mockResolvedValue({
+      success: true,
+      message: "تم إنشاء الفاتورة.",
+      item: { group: { id: "group-1" } },
+    })
+  })
+
+  it("refetches the affected project's charges after an invoice places assets on it", async () => {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(orpc.session.queryOptions().queryKey, {
+      user: { id: "user-1", name: "مدير التشغيل", phone: "0612345678", version: "0.0.0" },
+    })
+    mocks.listProjectCharges.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { projectId: "project-a", totalDzd: 0, charges: [] },
+    })
+
+    const { result: chargesResult } = renderHook(() => useProjectChargesQuery("project-a"), {
+      wrapper: wrapper(queryClient),
+    })
+    const { result: mutationResult } = renderHook(() => useCreateInventoryInvoiceGroupMutation(), {
+      wrapper: wrapper(queryClient),
+    })
+
+    await waitFor(() => expect(chargesResult.current.data?.totalDzd).toBe(0))
+
+    // The server books the charge during the create; the next read sees it.
+    mocks.listProjectCharges.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { projectId: "project-a", totalDzd: 100_000, charges: [] },
+    })
+
+    await act(async () => {
+      await mutationResult.current.mutateAsync({
+        projectId: "project-a",
+        entries: [
+          {
+            kind: "ASSET",
+            itemDefinitionId: "def-1",
+            projectId: "project-a",
+            assets: [{ assetName: "مثقاب", purchasePriceDzd: 100_000 }],
+          },
+        ],
+      })
+    })
+
+    await waitFor(() => expect(chargesResult.current.data?.totalDzd).toBe(100_000))
+    expect(mocks.listProjectCharges).toHaveBeenCalledTimes(2)
   })
 })

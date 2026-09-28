@@ -116,10 +116,33 @@ describe("AssetChargeHistory (#413)", () => {
     expect(screen.getByText("ملغى")).toBeTruthy()
     expect(screen.getAllByText("إلغاء")).toHaveLength(1)
 
-    fireEvent.click(screen.getByText("إلغاء"))
+    fireEvent.click(screen.getByTestId("void-charge-1"))
+    fireEvent.click(screen.getByTestId("confirm-void-charge-1"))
     await waitFor(() =>
       expect(mocks.voidCharge.mutateAsync).toHaveBeenCalledWith({ chargeId: "charge-1", reason: null }),
     )
+  })
+
+  it("records a void reason on the charge being voided, not another charge's correction reason", async () => {
+    // Two live charges: a reason typed while correcting charge A must never be
+    // recorded when the operator voids charge B (#422 round 4).
+    mocks.charges.mockReturnValue({
+      data: { items: [makeCharge(), makeCharge({ id: "charge-2", projectName: "مشروع ب" })] },
+    })
+    render(<AssetChargeHistory assetUnitId="asset-1" />)
+    fireEvent.click(screen.getByText("سجل الاحتساب"))
+
+    fireEvent.click(screen.getAllByText("تعديل")[0]!)
+    fireEvent.change(screen.getByLabelText("السبب (اختياري)"), { target: { value: "سبب التصحيح" } })
+
+    fireEvent.click(screen.getByTestId("void-charge-2"))
+    fireEvent.change(screen.getByLabelText("سبب الإلغاء (اختياري)"), { target: { value: "سبب الإلغاء" } })
+    fireEvent.click(screen.getByTestId("confirm-void-charge-2"))
+
+    await waitFor(() =>
+      expect(mocks.voidCharge.mutateAsync).toHaveBeenCalledWith({ chargeId: "charge-2", reason: "سبب الإلغاء" }),
+    )
+    expect(mocks.voidCharge.mutateAsync).not.toHaveBeenCalledWith(expect.objectContaining({ reason: "سبب التصحيح" }))
   })
 
   it("shows an empty state when the unit has never been charged", () => {

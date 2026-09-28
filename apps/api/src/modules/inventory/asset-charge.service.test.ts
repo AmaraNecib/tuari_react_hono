@@ -201,16 +201,50 @@ describe("AssetChargeService — chain, corrections and total (#413)", () => {
     expect(service.listByProject({ projectId: "project-b" }).totalDzd).toBe(999_000)
   })
 
-  it("refuses a project total above the shared money bound instead of emitting it", () => {
+  it("refuses a placement that would push the live project total above the bound", () => {
     // Each charge is legal at the bound, but their sum is not representable by
-    // the `totalDzd` output contract. The cost view must fail with a typed
-    // error, never return an out-of-contract number (#422 round 2).
-    const { service } = createHarness()
+    // the `totalDzd` output contract. The write is refused up front so the
+    // project can never be left in a state whose total cannot be read (#422
+    // round 4).
+    const { service, repository } = createHarness()
     service.createPlacementCharge(
       { assetUnitId: "asset-1", projectId: "project-a", amountDzd: Number.MAX_SAFE_INTEGER },
       AUDIT,
     )
-    service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 1 }, AUDIT)
+
+    let thrown: unknown
+    try {
+      service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 1 }, AUDIT)
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(InventoryError)
+    expect((thrown as InventoryError).appError.code).toBe("BUSINESS_RULE")
+    // The typed error names the limit and the current total.
+    expect((thrown as InventoryError).appError.message).toContain(String(Number.MAX_SAFE_INTEGER))
+    // Nothing was written, so the total stays readable.
+    expect(repository._charges.size).toBe(1)
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(Number.MAX_SAFE_INTEGER)
+  })
+
+  it("refuses a correction that would push the live project total above the bound", () => {
+    const { service, repository } = createHarness()
+    // Seed two charges that together sit exactly on the bound, then try to
+    // raise one of them past it.
+    repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: Number.MAX_SAFE_INTEGER - 1 })
+    const second = repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 1 })
+
+    expect(() => service.updateCharge({ chargeId: second.id, amountDzd: 2 }, AUDIT)).toThrowError(/الحد الأقصى/)
+    // The rejected correction left the charge and the total unchanged.
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(Number.MAX_SAFE_INTEGER)
+  })
+
+  it("refuses to emit a legacy project total above the shared money bound instead of returning it", () => {
+    // A state written before the write-time gate existed (or by a foreign
+    // writer): the read path still refuses to emit an out-of-contract number.
+    const { service, repository } = createHarness()
+    repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: Number.MAX_SAFE_INTEGER })
+    repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 1 })
 
     expect(() => service.listByProject({ projectId: "project-a" })).toThrowError(InventoryError)
 
@@ -234,6 +268,18 @@ describe("AssetChargeService — chain, corrections and total (#413)", () => {
     service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 0 }, AUDIT)
 
     expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(Number.MAX_SAFE_INTEGER)
+  })
+
+  it("treats a write that matched no live row as refused instead of resurrecting the charge", () => {
+    // `updateCharge` on the repository carries `AND status='LIVE'`; when it
+    // changes nothing the service must throw rather than report success.
+    const { repository, service } = createHarness()
+    const charge = service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 1_000 }, AUDIT)
+    const staleRepository = { ...repository, updateCharge: () => null }
+    const staleService = new AssetChargeService(staleRepository, createLookup())
+
+    expect(() => staleService.updateCharge({ chargeId: charge.id, amountDzd: 5 }, AUDIT)).toThrowError(/ملغى/)
+    expect(() => staleService.voidCharge({ chargeId: charge.id }, AUDIT)).toThrowError(/ملغى/)
   })
 
   it("keeps a near-bound project total exact instead of folding it through a lossy multiply", () => {

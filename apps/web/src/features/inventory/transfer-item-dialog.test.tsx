@@ -5,19 +5,13 @@ import "@/i18n"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const { transferAssetMutateAsync } = vi.hoisted(() => ({
+const { transferAssetMutateAsync, chargeDefault } = vi.hoisted(() => ({
   transferAssetMutateAsync: vi.fn(async () => ({})),
+  chargeDefault: vi.fn(),
 }))
 
 vi.mock("./inventory-hooks", () => ({
-  useAssetChargeDefaultQuery: () => ({
-    data: {
-      assetUnitId: "asset-1",
-      amountDzd: 100_000,
-      purchasePriceDzd: 100_000,
-      source: "PURCHASE_PRICE",
-    },
-  }),
+  useAssetChargeDefaultQuery: () => chargeDefault(),
   useTransferInventoryAssetMutation: () => ({ isPending: false, mutateAsync: transferAssetMutateAsync }),
   useTransferInventoryConsumableMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useInventoryWarehousesQuery: () => ({ data: { items: [{ id: "wh-1", name: "رئيسي" }] } }),
@@ -86,6 +80,14 @@ describe("placement charge amount ↔ percentage", () => {
 describe("TransferItemDialog charge validation (#413)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    chargeDefault.mockReturnValue({
+      data: {
+        assetUnitId: "asset-1",
+        amountDzd: 100_000,
+        purchasePriceDzd: 100_000,
+        source: "PURCHASE_PRICE",
+      },
+    })
   })
 
   afterEach(cleanup)
@@ -152,6 +154,29 @@ describe("TransferItemDialog charge validation (#413)", () => {
     await waitFor(() =>
       expect(transferAssetMutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({ assetUnitId: "asset-1", toProjectId: "project-a", chargeAmountDzd: null }),
+      ),
+    )
+  })
+
+  it("says the price is unavailable and still accepts a plain amount when the default query fails", async () => {
+    // A legacy above-bound price makes the default query fail. Substituting 0
+    // would disable percentage entry and silently drop the above-price
+    // warning, so the dialog states the failure instead (#422 round 4).
+    chargeDefault.mockReturnValue({ isError: true, data: undefined })
+    renderDialog()
+    chooseProjectDestination()
+
+    expect((screen.getByLabelText("النسبة من سعر الشراء") as HTMLInputElement).disabled).toBe(true)
+    expect(screen.getByTestId("charge-default-error")).toBeTruthy()
+    // No fake "سعر الشراء: 0" hint.
+    expect(screen.queryByText(/سعر الشراء: 0/)).toBeNull()
+
+    fireEvent.change(screen.getByLabelText("مبلغ الاحتساب"), { target: { value: "50000" } })
+    fireEvent.click(screen.getByRole("button", { name: "تأكيد التحويل" }))
+
+    await waitFor(() =>
+      expect(transferAssetMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ assetUnitId: "asset-1", toProjectId: "project-a", chargeAmountDzd: 50_000 }),
       ),
     )
   })

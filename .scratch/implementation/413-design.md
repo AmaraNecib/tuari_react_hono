@@ -291,3 +291,41 @@ read the branch diff. Synthesis and decisions:
   orders by insertion (rowid), not the movement's `occurredAt`; the in-memory
   adapter does not persist `voidedBy`; the correction/void pre-read sits outside
   the write transaction, which is unreachable with synchronous better-sqlite3.
+
+## Review round 4 — PR #422 (19:27Z, eight findings)
+
+1. **Write-time aggregate bound.** Two individually valid charges could sum
+   above `MAX_MONEY_DZD`, after which every project-total read threw. The
+   aggregate is now enforced at WRITE time: `createPlacementCharge` and
+   `updateCharge` sum the project's other LIVE charges inside the same locked
+   transaction and refuse a write that would exceed the bound with a typed
+   `BUSINESS_RULE` error naming the limit and the current total. The read-path
+   guard stays as a backstop for a state written before this gate.
+2. **Read-check-write under the lock + `AND status='LIVE'`.** Corrections and
+   voids now read the charge inside `repository.withTransaction` (the
+   `expenses.module.ts` pattern), and the adapter's UPDATE carries
+   `AND status='LIVE'` so a second process sharing the database cannot make the
+   revision record a stale "from" amount or overwrite a just-voided row.
+3. **Failed charge default in the transfer dialog.** A legacy above-bound price
+   makes the default query fail; the dialog no longer substitutes 0. It states
+   the price is unavailable, keeps the amount field usable for a plain amount,
+   and disables percentage entry.
+4. **Correction/void reason scoping.** The reason is now tied to the charge
+   being acted on: corrections edit a charge-keyed draft, and voids collect
+   their own reason before confirm, so A's reason can never be recorded on B.
+5. **Invoice-create invalidation.** `useCreateInventoryInvoiceGroupMutation`
+   now invalidates the charges query for every project the invoice places
+   assets on (the group default plus each entry's project).
+6. **N+1 removed.** `listChargesByProject` resolves the project name once and
+   attaches it to every row instead of one name query per charge.
+7. **Real-SQLite rollback test.** `inventory-transfer-charge.test.ts` drives the
+   real adapters over one shared connection + lock, fails after the charge
+   insert, and asserts the charge, movement and location change all rolled
+   back — the in-memory harness only proved its own snapshot/restore.
+8. **No historical backfill (parent decision).** Assets placed on a project
+   before #413 have no charge row, so project totals omit them. We do NOT
+   invent charges for placements that were never priced — that would fabricate
+   project costs. Documented in the `inventory_asset_charge` DDL comment
+   (`schema-definitions.ts`) and here: a project charge total covers charges
+   recorded from #413 onward. No UI shows the project total yet (#414), so it
+   is documented rather than surfaced in-render.

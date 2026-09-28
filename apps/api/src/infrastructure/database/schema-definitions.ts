@@ -463,6 +463,12 @@ export const schemaStatements = [
     CONSTRAINT "inventory_movement_to_destination_check"
       CHECK (NOT ("to_warehouse_id" IS NOT NULL AND "to_project_id" IS NOT NULL))
   )`,
+  // NOTE (#413, no backfill): project charges BEGIN from this feature's
+  // introduction. Assets placed on a project before it have no charge row and
+  // are therefore absent from a project's charge total. We deliberately do NOT
+  // backfill: inventing a charge for a placement that was never priced would
+  // fabricate a project cost, which is worse than an explicit gap. A project
+  // charge total therefore covers charges recorded from #413 onward.
   `CREATE TABLE IF NOT EXISTS "inventory_asset_charge" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "asset_unit_id" TEXT NOT NULL,

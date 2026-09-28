@@ -29,7 +29,10 @@ export interface InventoryAssetChargeRepository {
   getLastChargeAmount(assetUnitId: string): number | null
   /**
    * updateCharge — update the mutable charge fields and, when `revision` is
-   * present, append the from → to history row in the same transaction.
+   * present, append the from → to history row in the same transaction. The
+   * UPDATE carries `AND status='LIVE'`, so a correction/void that races a
+   * concurrent void changes no row and returns null instead of resurrecting
+   * or overwriting the voided charge (#422 round 4).
    */
   updateCharge(
     id: string,

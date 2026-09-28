@@ -107,12 +107,17 @@ export class DrizzleAssetChargeRepository implements InventoryAssetChargeReposit
       .all().map(mapCharge).map((charge) => this.withProjectName(charge))
   }
 
-  /** listChargesByProject — insertion order (rowid), newest first. */
+  /**
+   * listChargesByProject — insertion order (rowid), newest first. The project
+   * name is the SAME for every row, so it is resolved once instead of one
+   * query per charge (#422 round 4).
+   */
   listChargesByProject(projectId: string) {
+    const projectName = this.resolveProjectName(projectId)
     return this.db.select().from(schema.inventoryAssetCharge)
       .where(eq(schema.inventoryAssetCharge.projectId, projectId))
       .orderBy(desc(sql`rowid`))
-      .all().map(mapCharge).map((charge) => this.withProjectName(charge))
+      .all().map(mapCharge).map((charge) => ({ ...charge, projectName }))
   }
 
   /** getLastChargeAmount. */
@@ -128,7 +133,14 @@ export class DrizzleAssetChargeRepository implements InventoryAssetChargeReposit
     return row ? Number(row.amountDzd ?? 0) : null
   }
 
-  /** updateCharge — charge update + optional revision in one transaction. */
+  /**
+   * updateCharge — charge update + optional revision in one transaction.
+   *
+   * The WHERE carries `AND status='LIVE'`: a second process sharing the
+   * database can void the row between the service's locked read and this
+   * write, and this update must then change nothing (and append no revision)
+   * rather than resurrect or overwrite the voided charge (#422 round 4).
+   */
   updateCharge(
     id: string,
     fields: {
@@ -142,22 +154,27 @@ export class DrizzleAssetChargeRepository implements InventoryAssetChargeReposit
     revision?: InventoryAssetChargeRevisionCreateData,
     _auditContext?: MutationAuditContext,
   ) {
+    let changed = false
     runSyncTransaction(this.connectionLock, this.raw, () => {
-      this.db.update(schema.inventoryAssetCharge).set({
+      const result = this.db.update(schema.inventoryAssetCharge).set({
         amountDzd: fields.amountDzd,
         status: fields.status,
         voidedAt: fields.voidedAt,
         voidedBy: fields.voidedBy,
         voidReason: fields.voidReason,
         updatedAt: fields.updatedAt,
-      }).where(eq(schema.inventoryAssetCharge.id, id)).run()
+      }).where(and(
+        eq(schema.inventoryAssetCharge.id, id),
+        eq(schema.inventoryAssetCharge.status, "LIVE"),
+      )).run()
 
-      if (revision) {
+      changed = result.changes > 0
+      if (changed && revision) {
         this.insertRevision(revision)
       }
     })
 
-    return this.getChargeById(id)
+    return changed ? this.getChargeById(id) : null
   }
 
   /** createRevision. */

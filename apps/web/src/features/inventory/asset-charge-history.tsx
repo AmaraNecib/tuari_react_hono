@@ -20,9 +20,8 @@ import { parseChargeAmountInput } from "./transfer-item-dialog"
 export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [draftAmount, setDraftAmount] = useState("")
-  const [draftReason, setDraftReason] = useState("")
+  const [editing, setEditing] = useState<{ chargeId: string; amount: string; reason: string } | null>(null)
+  const [voiding, setVoiding] = useState<{ chargeId: string; reason: string } | null>(null)
   const [editError, setEditError] = useState(false)
   const query = useAssetChargesByUnitQuery(expanded ? assetUnitId : undefined)
   const updateMutation = useUpdateAssetChargeMutation()
@@ -35,31 +34,44 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
   const isLoadError = query.isError && query.data === undefined
 
   const startEdit = (chargeId: string, amountDzd: number) => {
-    setEditingId(chargeId)
-    setDraftAmount(String(amountDzd))
-    setDraftReason("")
+    setEditing({ chargeId, amount: String(amountDzd), reason: "" })
+    setVoiding(null)
     setEditError(false)
   }
 
-  const saveEdit = async (chargeId: string) => {
+  const saveEdit = async () => {
+    if (!editing) return
     // A correction has no "default": blank is not a valid new amount, and a
     // non-numeric draft must not be coerced to 0 by `Number("")`. Route it
     // through the same three-valued parser the transfer dialog uses, accept
     // only an explicit amount (0 is a free placement), and surface an error.
-    const amountInput = parseChargeAmountInput(draftAmount)
+    const amountInput = parseChargeAmountInput(editing.amount)
     if (amountInput.kind !== "amount") {
       setEditError(true)
       return
     }
 
     setEditError(false)
-    await updateMutation.mutateAsync({ chargeId, amountDzd: amountInput.value, reason: draftReason.trim() || null })
-    setEditingId(null)
+    await updateMutation.mutateAsync({
+      chargeId: editing.chargeId,
+      amountDzd: amountInput.value,
+      reason: editing.reason.trim() || null,
+    })
+    setEditing(null)
   }
 
-  const voidCharge = async (chargeId: string) => {
-    await voidMutation.mutateAsync({ chargeId, reason: draftReason.trim() || null })
-    setEditingId(null)
+  const startVoid = (chargeId: string) => {
+    // The void reason lives in its own draft, keyed to the charge being voided:
+    // a reason typed while correcting charge A can never be recorded on B.
+    setEditing(null)
+    setEditError(false)
+    setVoiding({ chargeId, reason: "" })
+  }
+
+  const confirmVoid = async () => {
+    if (!voiding) return
+    await voidMutation.mutateAsync({ chargeId: voiding.chargeId, reason: voiding.reason.trim() || null })
+    setVoiding(null)
   }
 
   return (
@@ -80,7 +92,8 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
             <p className="text-xs text-muted-foreground">{t("inventory.chargeHistory.empty")}</p>
           ) : null}
           {charges.map((charge) => {
-            const isEditing = editingId === charge.id
+            const isEditing = editing?.chargeId === charge.id
+            const isVoiding = voiding?.chargeId === charge.id
             return (
               <div key={charge.id} className="rounded-md border border-line/60 px-2 py-1 text-xs">
                 <div className="flex items-center justify-between gap-2">
@@ -96,7 +109,7 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
                         <Button size="xs" variant="ghost" className="h-5 px-1 text-xs" onClick={() => startEdit(charge.id, charge.amountDzd)}>
                           {t("inventory.chargeHistory.edit")}
                         </Button>
-                        <Button size="xs" variant="ghost" className="h-5 px-1 text-xs" disabled={isPending} onClick={() => void voidCharge(charge.id)}>
+                        <Button size="xs" variant="ghost" className="h-5 px-1 text-xs" disabled={isPending} data-testid={`void-${charge.id}`} onClick={() => startVoid(charge.id)}>
                           {t("inventory.chargeHistory.void")}
                         </Button>
                       </>
@@ -134,21 +147,21 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
                       min="0"
                       step="0.01"
                       aria-label={t("inventory.chargeHistory.newAmount")}
-                      value={draftAmount}
-                      onChange={(event) => setDraftAmount(event.target.value)}
+                      value={editing.amount}
+                      onChange={(event) => setEditing((current) => (current ? { ...current, amount: event.target.value } : current))}
                     />
                     <input
                       className={formInputClassName}
                       type="text"
                       aria-label={t("inventory.chargeHistory.reason")}
                       placeholder={t("inventory.chargeHistory.reason")}
-                      value={draftReason}
-                      onChange={(event) => setDraftReason(event.target.value)}
+                      value={editing.reason}
+                      onChange={(event) => setEditing((current) => (current ? { ...current, reason: event.target.value } : current))}
                     />
-                    <Button size="xs" disabled={isPending} onClick={() => void saveEdit(charge.id)}>
+                    <Button size="xs" disabled={isPending} onClick={() => void saveEdit()}>
                       {t("inventory.chargeHistory.save")}
                     </Button>
-                    <Button size="xs" variant="ghost" onClick={() => { setEditingId(null); setEditError(false) }}>
+                    <Button size="xs" variant="ghost" onClick={() => { setEditing(null); setEditError(false) }}>
                       {t("common.cancel")}
                     </Button>
                     {editError ? (
@@ -156,6 +169,25 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
                         {t("inventory.chargeHistory.invalidAmount")}
                       </p>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {isVoiding ? (
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <input
+                      className={formInputClassName}
+                      type="text"
+                      aria-label={t("inventory.chargeHistory.voidReason")}
+                      placeholder={t("inventory.chargeHistory.reason")}
+                      value={voiding.reason}
+                      onChange={(event) => setVoiding((current) => (current ? { ...current, reason: event.target.value } : current))}
+                    />
+                    <Button size="xs" variant="destructive" disabled={isPending} data-testid={`confirm-void-${charge.id}`} onClick={() => void confirmVoid()}>
+                      {t("inventory.chargeHistory.confirmVoid")}
+                    </Button>
+                    <Button size="xs" variant="ghost" onClick={() => setVoiding(null)}>
+                      {t("common.cancel")}
+                    </Button>
                   </div>
                 ) : null}
               </div>

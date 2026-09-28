@@ -179,10 +179,21 @@ export function useCreateInventoryInvoiceGroupMutation() {
   return useMutation({
     mutationKey: ["inventory", "invoice-groups", "create"],
     mutationFn: async (input: InventoryInvoiceGroupCreateInput) => requireEntitySuccess(await rpcClient.inventoryInvoiceGroupsCreate(input)),
-    onSuccess: async ({ item, message }) => {
+    onSuccess: async ({ item, message }, variables) => {
       const userId = getCachedSessionUserId(queryClient)
       await invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryInvoices)
       await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryInvoiceGroup(uid, item.group.id))
+      // A purchase of ASSETs placed directly on a project books a placement
+      // charge in the same transaction, so every affected project's charges
+      // query must refetch or the cached total stays stale (#422 round 4).
+      const affectedProjectIds = new Set<string>()
+      if (variables.projectId) affectedProjectIds.add(variables.projectId)
+      for (const entry of variables.entries) {
+        if (entry.projectId) affectedProjectIds.add(entry.projectId)
+      }
+      for (const projectId of affectedProjectIds) {
+        await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryProjectCharges(uid, projectId))
+      }
       showSuccessToast(message)
     },
     onError: (error) => {
