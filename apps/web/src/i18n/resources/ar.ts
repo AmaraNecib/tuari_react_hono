@@ -616,6 +616,8 @@ export const ar = {
         financeMissingSalary: "لم يتم تحديد أجر لهذا العامل. راجع البيانات الشخصية.",
         financeFormTitle: "تسجيل دفعة راتب",
         financeFormDescription: "أدخل المبلغ الفعلي المدفوع وتاريخ الدفعة.",
+        financeUnallocatedNotice: "تُحفظ هذه الدفعة دون نسبتها إلى أي مشروع، لذا لن تظهر في تكلفة المشاريع.",
+        financeOpenSplitDialog: "توزيع الأيام على المشاريع",
         financePaymentDate: "تاريخ الدفعة",
         financeExpectedAmount: "المبلغ المتوقع",
         financeActualAmount: "المبلغ الفعلي",

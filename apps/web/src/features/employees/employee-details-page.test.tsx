@@ -2,7 +2,7 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -243,6 +243,26 @@ describe("EmployeeDetailsPage salary payments (#412)", () => {
 
     expect(screen.getByRole("button", { name: "حفظ دفعة الراتب" })).toBeTruthy()
     expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("12")
+  })
+
+  it("states that a quick payment is unallocated and offers the split dialog", async () => {
+    renderDetails()
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
+
+    // The quick form says the outcome explicitly instead of silently saving an
+    // unallocated payment.
+    expect(
+      screen.getByText("تُحفظ هذه الدفعة دون نسبتها إلى أي مشروع، لذا لن تظهر في تكلفة المشاريع."),
+    ).toBeTruthy()
+
+    // And the operator who wants attribution is one click from the
+    // split-capable dialog for the same employee.
+    fireEvent.click(screen.getByRole("button", { name: "توزيع الأيام على المشاريع" }))
+
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText("عامل الرواتب")).toBeTruthy()
+    expect(within(dialog).getByText("توزيع الأيام على المشاريع")).toBeTruthy()
   })
 
   it("submits the date picked in the quick payment form as the canonical day boundary", () => {

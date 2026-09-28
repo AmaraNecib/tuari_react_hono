@@ -435,6 +435,14 @@ export function EmployeeDetailsPage({
                     <Textarea value={note} onChange={(event) => setNote(event.target.value)} />
                   </Field>
                 </div>
+                <div className="space-y-2 text-start">
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    {t("detailPages.employee.financeUnallocatedNotice")}
+                  </p>
+                  <Button size="sm" variant="outline" onClick={() => setPaymentDialogOpen(true)}>
+                    {t("detailPages.employee.financeOpenSplitDialog")}
+                  </Button>
+                </div>
                 <div className="flex justify-start gap-3" dir="rtl">
                   <Button size="lg" variant="outline" onClick={() => setShowPaymentForm(false)}>
                     {t("common.cancel")}
