@@ -10,7 +10,9 @@ import {
   claimBackupOwnership,
   isAbandonedBackup,
   ownerMarkerPath,
+  probeProcess,
   readOwnerMarker,
+  readProcessStartTime,
   writeOwnerMarker,
 } from "./runtime-staging.mjs";
 
@@ -44,6 +46,13 @@ const writeTree = (root, files) => {
     writeFileSync(target, contents);
   }
 };
+
+/**
+ * A process probe for tests: existence and start time are stated, not read, so
+ * the ownership decision is deterministic. `startTime: null` is the documented
+ * "start time unreadable" case that falls back to the heartbeat lease.
+ */
+const ownerProbe = ({ alive = true, startTime = null } = {}) => () => ({ alive, startTime });
 
 /** A destination with a "previous working runtime" plus a fresh staging tree. */
 const withLayout = (run) => {
@@ -257,7 +266,7 @@ test("a runtime left aside by an interrupted run is restored before the next swa
       destinationDir,
       build: () => {},
       probe: () => {},
-      isAlive: () => false,
+      probeOwner: ownerProbe({ alive: false }),
       log: (message) => logs.push(message),
     });
 
@@ -302,7 +311,7 @@ test("a failed publish after recovery leaves the interrupted run's runtime in pl
           build: () => {},
           probe: () => {},
           rename,
-          isAlive: () => false,
+          probeOwner: ownerProbe({ alive: false }),
         }),
       /EBUSY/,
     );
@@ -344,7 +353,7 @@ test("recovery restores the newest backup, not the alphabetically first", () => 
           build: () => {},
           probe: () => {},
           rename,
-          isAlive: () => false,
+          probeOwner: ownerProbe({ alive: false }),
         }),
       /EBUSY/,
     );
@@ -369,7 +378,7 @@ test("a backup left by an interrupted run is swept when the next publish succeed
       destinationDir,
       build: () => {},
       probe: () => {},
-      isAlive: () => false,
+      probeOwner: ownerProbe({ alive: false }),
       warn: (message) => warnings.push(message),
     });
 
@@ -442,7 +451,7 @@ test("a backup with a fresh ownership marker is not restored when the destinatio
           rename,
           now: () => 1700000000001,
           // A DIFFERENT process holds pid 777, but the marker says it is the owner.
-          isAlive: () => true,
+          probeOwner: ownerProbe({ alive: true }),
           log: (message) => logs.push(message),
         }),
       /EBUSY/,
@@ -473,7 +482,7 @@ test("a backup with a fresh ownership marker is not swept when the destination e
       build: () => {},
       probe: () => {},
       now: () => 1700000001001,
-      isAlive: () => true,
+      probeOwner: ownerProbe({ alive: true }),
     });
 
     assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
@@ -519,7 +528,7 @@ test("recovery skips a backup with a fresh marker and restores the newest abando
           probe: () => {},
           rename,
           now: () => 1700000001001,
-          isAlive: () => true,
+          probeOwner: ownerProbe({ alive: true }),
         }),
       /EBUSY/,
     );
@@ -562,8 +571,10 @@ test("a reused pid does not block recovery of a stale backup", () => {
           build: () => {},
           probe: () => {},
           rename,
-          // A DIFFERENT, still-running process now holds pid 777.
-          isAlive: (ownerPid) => ownerPid === 777,
+          // A DIFFERENT, still-running process now holds pid 777, and it
+          // started AFTER the marker was written: the pid was reused, so the
+          // writer is gone and the backup is recoverable.
+          probeOwner: () => ({ alive: true, startTime: 1700000000000 + 5_000 }),
           now: () => 1700000000000 + 60_000,
         }),
       /EBUSY/,
@@ -602,7 +613,7 @@ test("a backup with no ownership marker is recovered", () => {
           build: () => {},
           probe: () => {},
           rename,
-          isAlive: () => true,
+          probeOwner: ownerProbe({ alive: true }),
         }),
       /EBUSY/,
     );
@@ -638,7 +649,7 @@ test("a fresh marker whose owner pid is gone is abandoned", () => {
           build: () => {},
           probe: () => {},
           rename,
-          isAlive: () => false,
+          probeOwner: ownerProbe({ alive: false }),
           now: () => 1700000000001,
         }),
       /EBUSY/,
@@ -650,7 +661,11 @@ test("a fresh marker whose owner pid is gone is abandoned", () => {
   });
 });
 
-test("a stale marker does not block recovery forever", () => {
+test("a stale marker with an unreadable owner start time does not block recovery forever (lease fallback)", () => {
+  // When the platform cannot report the owner's start time (unsupported OS, or
+  // a permission failure) nothing can tell a stalled owner from a reused pid,
+  // so the lease is the fallback: stale means abandoned, and the machine is
+  // never left without a runtime.
   withLayout(({ destinationDir, stagingDir }) => {
     rmSync(destinationDir, { recursive: true, force: true });
     const backup = `${destinationDir}.previous-1700000000000-777`;
@@ -674,7 +689,7 @@ test("a stale marker does not block recovery forever", () => {
           build: () => {},
           probe: () => {},
           rename: forcePublishFailure,
-          isAlive: () => true,
+          probeOwner: ownerProbe({ alive: true, startTime: null }),
           now: () => 1700000000000 + 1_000,
         }),
       /EBUSY/,
@@ -688,18 +703,102 @@ test("a stale marker does not block recovery forever", () => {
       [path.join("api-runtime", "package.json")]: '{"name":"staged"}',
     });
 
-    // Later build: the heartbeat stopped, so the SAME backup is now abandoned
-    // and recovered instead of leaving the machine with no runtime.
+    // Later build: the heartbeat stopped and the start time is unreadable, so
+    // the lease decides - the SAME backup is now abandoned and recovered
+    // instead of leaving the machine with no runtime.
     buildProbeAndPublishRuntime({
       stagingDir,
       destinationDir,
       build: () => {},
       probe: () => {},
-      isAlive: () => true,
+      probeOwner: ownerProbe({ alive: true, startTime: null }),
       now: () => 1700000000000 + 60_000,
     });
 
     assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
+    assert.equal(existsSync(backup), false);
+  });
+});
+
+test("a live owner that stalled past the lease keeps its backup", () => {
+  // The reported finding: build A renamed `bin` aside and is stuck on a locked
+  // file, so its heartbeat is older than the 30s lease, but the process that
+  // wrote the marker is still alive (same pid, started no later than the
+  // marker). A still owns the tree, so build B must neither restore it nor
+  // sweep it - if A's publish then fails it needs the tree to roll back to.
+  withLayout(({ destinationDir, stagingDir }) => {
+    rmSync(destinationDir, { recursive: true, force: true });
+    const stalledBackup = `${destinationDir}.previous-1700000000000-777`;
+    writeTree(stalledBackup, { "marker.txt": "runtime a stalled build still owns" });
+    writeOwnerMarker(stalledBackup, { pid: 777, startedAt: 1700000000000, heartbeatAt: 1700000000000 });
+
+    const logs = [];
+    const rename = (from, to) => {
+      // The publish rename is reached only because recovery left A's tree alone.
+      if (from === stagingDir) {
+        throw new Error("EBUSY: resource busy or locked, rename");
+      }
+      renameSync(from, to);
+    };
+
+    assert.throws(
+      () =>
+        buildProbeAndPublishRuntime({
+          stagingDir,
+          destinationDir,
+          build: () => {},
+          probe: () => {},
+          rename,
+          // Stale heartbeat, but pid 777 is still the SAME process: it started
+          // before the marker was written.
+          probeOwner: () => ({ alive: true, startTime: 1700000000000 - 500 }),
+          now: () => 1700000000000 + 60_000,
+          log: (message) => logs.push(message),
+        }),
+      /EBUSY/,
+    );
+
+    // The stalled build's backup and marker are untouched; nothing was restored.
+    assert.equal(
+      readFileSync(path.join(stalledBackup, "marker.txt"), "utf8"),
+      "runtime a stalled build still owns",
+    );
+    assert.equal(existsSync(ownerMarkerPath(stalledBackup)), true);
+    assert.equal(existsSync(destinationDir), false);
+    assert.equal(logs.length, 0);
+  });
+});
+
+test("a stale marker whose owner is gone is recovered", () => {
+  withLayout(({ destinationDir, stagingDir }) => {
+    rmSync(destinationDir, { recursive: true, force: true });
+    const backup = `${destinationDir}.previous-1700000000000-777`;
+    writeTree(backup, { "marker.txt": "runtime from a build that died" });
+    writeOwnerMarker(backup, { pid: 777, startedAt: 1700000000000, heartbeatAt: 1700000000000 });
+
+    const rename = (from, to) => {
+      if (from === stagingDir) {
+        throw new Error("EBUSY: resource busy or locked, rename");
+      }
+      renameSync(from, to);
+    };
+
+    assert.throws(
+      () =>
+        buildProbeAndPublishRuntime({
+          stagingDir,
+          destinationDir,
+          build: () => {},
+          probe: () => {},
+          rename,
+          probeOwner: ownerProbe({ alive: false }),
+          now: () => 1700000000000 + 60_000,
+        }),
+      /EBUSY/,
+    );
+
+    // Recovery took it: the dead build's runtime is the live destination again.
+    assert.equal(readFileSync(path.join(destinationDir, "marker.txt"), "utf8"), "runtime from a build that died");
     assert.equal(existsSync(backup), false);
   });
 });
@@ -730,7 +829,7 @@ test("a corrupt marker is owned while fresh and abandoned once its mtime ages", 
           build: () => {},
           probe: () => {},
           rename: forcePublishFailure,
-          isAlive: () => true,
+          probeOwner: ownerProbe({ alive: true }),
         }),
       /EBUSY/,
     );
@@ -749,7 +848,7 @@ test("a corrupt marker is owned while fresh and abandoned once its mtime ages", 
       destinationDir,
       build: () => {},
       probe: () => {},
-      isAlive: () => true,
+      probeOwner: ownerProbe({ alive: true }),
     });
 
     assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
@@ -862,7 +961,7 @@ test("a heartbeat failure mid-swap does not abort and the marker still protects 
       isAbandonedBackup(markerAtFailure, {
         now: () => 1700000000000 + 30_000,
         markerLeaseMs: 30_000,
-        isAlive: () => true,
+        probeOwner: ownerProbe({ alive: true }),
       }),
       false,
     );
@@ -870,7 +969,7 @@ test("a heartbeat failure mid-swap does not abort and the marker still protects 
       isAbandonedBackup(markerAtFailure, {
         now: () => 1700000000000 + 30_001,
         markerLeaseMs: 30_000,
-        isAlive: () => true,
+        probeOwner: ownerProbe({ alive: true }),
       }),
       true,
     );
@@ -911,4 +1010,96 @@ test("repeated heartbeat failures warn once per run and warn again after a recov
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("isAbandonedBackup settles ownership with the owner's start time, then the lease", () => {
+  const marker = { pid: 777, startedAt: 1_700_000_000_000, heartbeatAt: 1_700_000_000_000 };
+  const stale = { now: () => 1_700_000_000_000 + 60_000, markerLeaseMs: 30_000 };
+  const fresh = { now: () => 1_700_000_000_000 + 1_000, markerLeaseMs: 30_000 };
+
+  // (a) A live owner that stalled past the lease is NOT abandoned: the process
+  // with pid 777 started no later than the marker, so it is still the writer.
+  assert.equal(
+    isAbandonedBackup(marker, { ...stale, probeOwner: () => ({ alive: true, startTime: marker.startedAt - 1 }) }),
+    false,
+  );
+  assert.equal(
+    isAbandonedBackup(marker, { ...stale, probeOwner: () => ({ alive: true, startTime: marker.startedAt }) }),
+    false,
+  );
+
+  // (b) A pid reused by a process that started AFTER the marker is not the
+  // writer, so the backup is recoverable even though pid 777 exists.
+  assert.equal(
+    isAbandonedBackup(marker, { ...stale, probeOwner: () => ({ alive: true, startTime: marker.startedAt + 1 }) }),
+    true,
+  );
+
+  // (c) A dead owner is recovered.
+  assert.equal(
+    isAbandonedBackup(marker, { ...stale, probeOwner: () => ({ alive: false, startTime: null }) }),
+    true,
+  );
+
+  // (d) When the start time cannot be read (unsupported platform or a
+  // permission failure) the elapsed lease is the fallback: stale -> abandoned,
+  // fresh -> owned.
+  assert.equal(
+    isAbandonedBackup(marker, { ...stale, probeOwner: () => ({ alive: true, startTime: null }) }),
+    true,
+  );
+  assert.equal(
+    isAbandonedBackup(marker, { ...fresh, probeOwner: () => ({ alive: true, startTime: null }) }),
+    false,
+  );
+
+  // The fresh-heartbeat tiebreaker still recovers a just-crashed owner early,
+  // and a marker with no pid cannot be proven live once stale.
+  assert.equal(
+    isAbandonedBackup(marker, { ...fresh, probeOwner: () => ({ alive: false, startTime: null }) }),
+    true,
+  );
+  assert.equal(
+    isAbandonedBackup(
+      { ...marker, pid: null },
+      { ...stale, probeOwner: () => ({ alive: true, startTime: null }) },
+    ),
+    true,
+  );
+});
+
+test("readProcessStartTime reads a real process start time without throwing", () => {
+  const startedAt = readProcessStartTime(process.pid);
+
+  // `null` means this host cannot report it (unsupported platform, or no
+  // permission); that is the documented lease fallback, not a test failure.
+  if (startedAt !== null) {
+    assert.ok(Number.isFinite(startedAt), "a readable start time is a finite number");
+    assert.ok(startedAt <= Date.now(), "a process cannot start in the future");
+  }
+});
+
+test("probeProcess finds this live process and reports a gone pid as gone", () => {
+  const self = probeProcess(process.pid);
+
+  assert.equal(self.alive, true);
+  if (self.startTime !== null) {
+    assert.ok(Number.isFinite(self.startTime));
+    assert.ok(self.startTime <= Date.now());
+  }
+
+  // A pid that cannot exist must short-circuit to `alive: false` without
+  // invoking the platform probe.
+  assert.deepEqual(probeProcess(2_147_483_000), { alive: false, startTime: null });
+
+  // A live process whose start time cannot be read (or reads as 0) is the
+  // documented "unreadable" state, not a 1970 start time.
+  assert.deepEqual(
+    probeProcess(777, { isAlive: () => true, readStartTime: () => 0 }),
+    { alive: true, startTime: null },
+  );
+  assert.deepEqual(
+    probeProcess(777, { isAlive: () => true, readStartTime: () => null }),
+    { alive: true, startTime: null },
+  );
 });
