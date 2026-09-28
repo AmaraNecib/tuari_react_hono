@@ -116,6 +116,15 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          # Encryption at rest is PARKED for now (see docs/editions-and-features.md
+          # section 6c): the MVP ships a plaintext database and the licence does
+          # not sell `encrypted_db`, so the release build explicitly waives the
+          # SQLCipher requirement. The waiver is what keeps the strict gate
+          # honest: without this line a build that cannot encrypt fails, and with
+          # it the build proceeds knowing it cannot encrypt. Remove this line in
+          # the same PR that ships the feature, so a release can never be
+          # plaintext by accident again.
+          TUARI_ALLOW_PLAINTEXT_DB: "1"
 
       - name: Create portable package
         run: pnpm --filter @tuari/desktop portable:only
