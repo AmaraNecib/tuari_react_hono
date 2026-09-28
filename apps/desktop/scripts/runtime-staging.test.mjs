@@ -5,7 +5,14 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSy
 import os from "node:os";
 import path from "node:path";
 
-import { buildProbeAndPublishRuntime, ownerMarkerPath, writeOwnerMarker } from "./runtime-staging.mjs";
+import {
+  buildProbeAndPublishRuntime,
+  claimBackupOwnership,
+  isAbandonedBackup,
+  ownerMarkerPath,
+  readOwnerMarker,
+  writeOwnerMarker,
+} from "./runtime-staging.mjs";
 
 /** Hash every file in a tree so "byte-for-byte intact" is a single compare. */
 const hashTree = (dir) => {
@@ -765,4 +772,143 @@ test("a successful publish removes this build's ownership marker", () => {
       false,
     );
   });
+});
+
+test("a failed initial ownership-marker write aborts before the destination is renamed aside", () => {
+  // Without a marker on disk an overlapping build reads this build's backup as
+  // abandoned and could steal it mid-publish, so the initial claim is fatal and
+  // must land BEFORE the rename. Nothing may be moved when it fails (#409
+  // round 5d).
+  withLayout(({ root, destinationDir, stagingDir, previousHash }) => {
+    const warnings = [];
+    const renames = [];
+    let writeCalls = 0;
+    const writeMarker = () => {
+      writeCalls += 1;
+      throw new Error("EACCES: could not write the ownership marker");
+    };
+    const rename = (from, to) => {
+      renames.push([from, to]);
+      renameSync(from, to);
+    };
+
+    assert.throws(
+      () =>
+        buildProbeAndPublishRuntime({
+          stagingDir,
+          destinationDir,
+          build: () => {},
+          probe: () => {},
+          writeMarker,
+          rename,
+          warn: (message) => warnings.push(message),
+        }),
+      /Could not claim ownership of the runtime backup/,
+    );
+
+    // Exactly one write was attempted, and no rename ran: the swap never began.
+    assert.equal(writeCalls, 1);
+    assert.deepEqual(renames, []);
+    // The previous runtime is byte-for-byte intact and no backup was created.
+    assert.equal(hashTree(destinationDir), previousHash);
+    assert.equal(
+      readdirSync(path.join(root, "src-tauri")).some((name) => name.includes(".previous-")),
+      false,
+    );
+    // A failed claim is thrown, not downgraded to a warning.
+    assert.equal(warnings.length, 0);
+  });
+});
+
+test("a heartbeat failure mid-swap does not abort and the marker still protects the tree until the lease expires", () => {
+  withLayout(({ destinationDir, stagingDir }) => {
+    const warnings = [];
+    let writeCalls = 0;
+    let markerAtFailure = null;
+    const writeMarker = (backupDir, marker, options) => {
+      writeCalls += 1;
+      // 1: the initial claim. 2: the boundary heartbeat, which fails here.
+      if (writeCalls === 2) {
+        // Capture what is on disk: a failed refresh must not erase the marker
+        // that already owns the tree.
+        markerAtFailure = readOwnerMarker(backupDir);
+        throw new Error("EACCES: could not refresh the ownership marker");
+      }
+      writeOwnerMarker(backupDir, marker, options);
+    };
+
+    assert.doesNotThrow(() =>
+      buildProbeAndPublishRuntime({
+        stagingDir,
+        destinationDir,
+        build: () => {},
+        probe: () => {},
+        now: () => 1700000000000,
+        pid: 4242,
+        writeMarker,
+        warn: (message) => warnings.push(message),
+      }),
+    );
+
+    // The publish completed despite the failed refresh...
+    assert.equal(writeCalls, 2);
+    assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
+    // ...with exactly one warning for the failure.
+    assert.equal(warnings.length, 1);
+    // The surviving marker still carries the initial heartbeat, so the tree is
+    // owned (never stolen) up to the lease and only then abandoned.
+    assert.equal(markerAtFailure.heartbeatAt, 1700000000000);
+    assert.equal(
+      isAbandonedBackup(markerAtFailure, {
+        now: () => 1700000000000 + 30_000,
+        markerLeaseMs: 30_000,
+        isAlive: () => true,
+      }),
+      false,
+    );
+    assert.equal(
+      isAbandonedBackup(markerAtFailure, {
+        now: () => 1700000000000 + 30_001,
+        markerLeaseMs: 30_000,
+        isAlive: () => true,
+      }),
+      true,
+    );
+  });
+});
+
+test("repeated heartbeat failures warn once per run and warn again after a recovery", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "tuari-runtime-staging-"));
+  const backupDir = path.join(root, "bin.previous-1700000000000-4242");
+  const warnings = [];
+  let failNext = false;
+  const writeMarker = (target, marker, options) => {
+    if (failNext) throw new Error("EACCES: could not refresh the ownership marker");
+    writeOwnerMarker(target, marker, options);
+  };
+
+  try {
+    const beat = claimBackupOwnership({
+      backupDir,
+      pid: 4242,
+      now: () => 1700000000000,
+      writeMarker,
+      warn: (message) => warnings.push(message),
+    });
+
+    failNext = true;
+    beat(1700000001000);
+    beat(1700000002000);
+    // A persistent failure warns once, not on every beat.
+    assert.equal(warnings.length, 1);
+
+    // A successful refresh clears the failure state, so a later failure warns again.
+    failNext = false;
+    beat(1700000003000);
+    failNext = true;
+    beat(1700000004000);
+    assert.equal(warnings.length, 2);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

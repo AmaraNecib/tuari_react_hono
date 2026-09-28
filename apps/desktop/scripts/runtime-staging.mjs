@@ -168,26 +168,46 @@ const findAbandonedRuntimeBackups = ({
  * The marker is the primary ownership signal; the pid it carries is only a
  * tiebreaker. A live build can beat, a dead one cannot, so a reused pid cannot
  * keep an abandoned backup frozen.
+ *
+ * The INITIAL write is FATAL and must land before the destination is renamed
+ * aside. With no marker on disk an overlapping build reads the backup as
+ * abandoned and may restore or sweep the tree this build just set aside,
+ * leaving it without the runtime it needs for rollback. A build that cannot
+ * claim ownership therefore must not start the swap.
+ *
+ * A refresh failure AFTER that is not fatal: the swap has already begun, the
+ * marker written here ages from its last successful heartbeat, and the live
+ * owner's pid keeps protecting the tree until the lease expires. Only the first
+ * failure in a run warns, so a persistently failing refresh stays visible
+ * without warning on every beat.
  */
-const claimBackupOwnership = ({ backupDir, pid, now, writeMarker, warn }) => {
+export const claimBackupOwnership = ({ backupDir, pid, now, writeMarker, warn }) => {
   const startedAt = now();
 
-  const beat = (heartbeatAt = now()) => {
+  try {
+    writeMarker(backupDir, { pid, startedAt, heartbeatAt: startedAt });
+  } catch (error) {
+    throw new Error(
+      `Could not claim ownership of the runtime backup at ${ownerMarkerPath(backupDir)}: `
+      + (error instanceof Error ? error.message : String(error)),
+    );
+  }
+
+  let refreshFailed = false;
+
+  return (heartbeatAt = now()) => {
     try {
       writeMarker(backupDir, { pid, startedAt, heartbeatAt });
+      refreshFailed = false;
     } catch (error) {
-      // A failed refresh only shortens the marker's lease; the live process's
-      // pid still protects its own backup, so never fail the swap for it.
+      if (refreshFailed) return;
+      refreshFailed = true;
       warn(
         `Could not refresh the runtime backup ownership marker at ${ownerMarkerPath(backupDir)}: `
         + (error instanceof Error ? error.message : String(error)),
       );
     }
   };
-
-  beat(startedAt);
-
-  return beat;
 };
 
 /** Remove a backup's ownership marker; cleanup-only, so a failure only warns. */
@@ -224,6 +244,10 @@ const removeOwnerMarker = (backupDir, { remove, warn }) => {
  * absent (`isAbandonedBackup`): two builds can overlap, and one must not steal
  * or delete the runtime the other has renamed aside mid-publish. A backup with
  * a fresh marker is left exactly where it is, even if its pid is not alive.
+ *
+ * Because that protection depends on the marker existing, claiming ownership is
+ * fatal: a build that cannot write the marker throws BEFORE the destination is
+ * renamed aside, leaving the previous runtime untouched.
  *
  * Removing the renamed-aside previous tree happens AFTER the staged tree is
  * live. A failure there does not undo the publish, so it is reported with
@@ -299,9 +323,12 @@ export const swapRuntimeDirectory = ({
     return;
   }
 
-  const beat = claimBackupOwnership({ backupDir, pid, now, writeMarker, warn });
-
   try {
+    // Claim ownership BEFORE renaming the destination aside: a build that
+    // cannot write the marker must not start the swap, or an overlapping build
+    // could treat its backup as abandoned and steal it mid-publish.
+    const beat = claimBackupOwnership({ backupDir, pid, now, writeMarker, warn });
+
     // A re-run in the same millisecond with the same pid reuses this backup
     // name; clear it first so the rename cannot fail against a non-empty
     // directory.
