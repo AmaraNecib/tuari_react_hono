@@ -211,11 +211,18 @@ parked and must not be sold or advertised. What exists and what does not:
   exactly that reason. The gate exists so a plaintext release can never happen
   *by accident*; the waiver is the deliberate statement that it is happening
   today.
-- Nothing has proven a keyed write actually encrypts. The release check only
-  proves the binding *loads* and reports a `cipher_version`, which rules out
-  plain better-sqlite3 but not a binding that lies. The proof would be a CI job
-  that builds the native fork, writes with a key, asserts the file is not
-  `SQLite format 3`, and reads it back — tracked as #410.
+- Nothing has proven a keyed write actually encrypts. Two different checks are
+  easy to confuse, so state them separately:
+  - **Today**, the release smoke test only asserts that a native SQLite binding
+    is *present* in the bundle (either the plain one or the SQLCipher fork). It
+    does not load it and does not query `cipher_version`.
+  - **After #409 lands**, the build gate loads the copied addon with the copied
+    Node and requires a non-empty `PRAGMA cipher_version`, which rules out plain
+    better-sqlite3 but still does not prove a keyed write encrypts — a binding
+    that reports a version while failing to encrypt would pass.
+  - The only real proof would be a CI job that builds the native fork, writes
+    with a key, asserts the file is not `SQLite format 3`, and reads it back:
+    tracked as #410 and deliberately parked with the rest of the feature.
 
 Without `encrypted_db`, the workspace opens a plain, unencrypted SQLite file,
 regardless of edition. That is the entire practical difference the licence makes
