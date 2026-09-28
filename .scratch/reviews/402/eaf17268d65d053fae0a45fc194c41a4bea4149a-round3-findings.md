@@ -5,6 +5,8 @@
 - base SHA (merge-base with `develop`): `183d2226ec50dab56a45d25fde6f72f319d5a267`
 - reviewed code SHA: `cc8684313026a5d2344be5cb698e1808a9335d23`
 - previous code SHA (the round-3 findings were raised against): `848d20f500af5e542ad349a2ab9684edc11de3f4`
+- evidence re-pinned to final code SHA: `eaf17268d65d053fae0a45fc194c41a4bea4149a`
+  (the wisdom entry landed after the code commit; the reviewed code is unchanged)
 - review tier: High-assurance (licensing/crypto + packaging)
 
 The hosted Greptile review on PR #409 (round 3, 2026-09-28T00:08Z) raised four
@@ -168,3 +170,5 @@ statement is also now in `docs/release-verification.md`.
   `scripts/smoke/installer-smoke.mjs` (header comment),
   `docs/editions-and-features.md`, `docs/release-verification.md`,
   `.scratch/implementation/402-design.md` (round-3 decision record).
+- `eaf17268d65d053fae0a45fc194c41a4bea4149a` - the wisdom entry only
+  (`.agents/wisdom/desktop-packaging.md`).
