@@ -170,3 +170,10 @@ HEAD per the evidence re-pin rule; no source, test, or config changed after
 Re-pin note: the reviewed source for round 4 is `49c324b510076a7ed89facfc363a31b95392b53c`. Commit `c05c9593821e9853002a5cd7ccf249a26d146fd5` only appends
 `.agents/wisdom/architecture.md` (the round-4 lessons), so no source, test, or
 config changed after `49c324b510076a7ed89facfc363a31b95392b53c`. Files are named for HEAD per the evidence re-pin rule.
+
+## Round 4b re-pin note
+
+The outside-diff P2 fix (`4da54bba`) adds a notice and a navigation button; it
+does not touch the proration, rounding, split distribution, or wire validation
+this critique reviewed. A fresh debate was not run for this narrow UI delta; the
+parent can request one.

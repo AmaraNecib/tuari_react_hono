@@ -2,11 +2,11 @@
 
 - branch: `feat/412-salary-days`
 - base: `develop` @ `199798ba3d8300ab1a67da1d5591b2d4e5fd9aa8`
-- final source SHA (reviewed HEAD): `49c324b510076a7ed89facfc363a31b95392b53c`
-  (round-4 re-pin; earlier reviewed sources were `1cf295b…`, `e0da5e2…`,
-  and `c9268e2…`)
-- evidence pinned to HEAD: `c05c9593821e9853002a5cd7ccf249a26d146fd5` (only a
-  `.agents/wisdom/architecture.md` append after the reviewed source)
+- final source SHA (reviewed HEAD): `4da54bbab95b3de18ed39b64b65cd2068bb6b415`
+  (round-4b re-pin; earlier reviewed sources were `49c324b…`, `1cf295b…`,
+  `e0da5e2…`, and `c9268e2…`)
+- evidence pinned to HEAD: `4da54bbab95b3de18ed39b64b65cd2068bb6b415` (the
+  evidence-only re-pin commit follows)
 - tier: High-assurance (financial calculation)
 - mode: remote, lane does not push / open PR
 
@@ -266,3 +266,43 @@ follow-up issue, but the parent decides.
 Re-pin note: the reviewed source for round 4 is `49c324b510076a7ed89facfc363a31b95392b53c`. Commit `c05c9593821e9853002a5cd7ccf249a26d146fd5` only appends
 `.agents/wisdom/architecture.md` (the round-4 lessons), so no source, test, or
 config changed after `49c324b510076a7ed89facfc363a31b95392b53c`. Files are named for HEAD per the evidence re-pin rule.
+
+## Round 4b (PR #420 outside-diff P2, parent decision) — reviewed source `4da54bba`
+
+The 19:27Z review's outside-diff P2: the employee-details quick form records
+days and an amount but sends no `projectSplits`, so a payment made there is
+saved unallocated. The parent decided to fix it minimally in this PR rather
+than defer, because a payment path that silently produces unallocated records
+undermines the point of the feature.
+
+Minimal fix (no split editor rebuilt):
+
+- The quick form now states the outcome before saving:
+  `financeUnallocatedNotice` — the payment is saved without project
+  attribution, so it will not appear in any project's cost.
+- A `financeOpenSplitDialog` button opens the existing
+  `AddSalaryPaymentDialog` for the same employee, so attribution is one click
+  away.
+- The quick form still saves an unallocated payment (unchanged behaviour) — it
+  is now explicit, not silent.
+
+Commands on `4da54bba`:
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `npx vitest run src/features/employees/employee-details-page.test.tsx --maxWorkers=2` | 0 | 1 file, 8 passed (new notice + dialog-open test included) |
+| `pnpm --filter @tuari/web test` (full web, `maxWorkers: 2`) | 0 | 82 files, 682 passed |
+| `pnpm typecheck` (turbo) | 0 | 4/4 tasks |
+| `pnpm lint` | 0 | 2/2 tasks; unslop PASS |
+| scoped coverage `apps/web/.../employee-details-page.tsx` | 0 | 81.8% stmts / 83.5% lines (pre-existing gaps only; both new branches exercised) |
+| `npx playwright test tests/e2e/salaries.spec.ts --workers=1` | 0 | 2/2 passed |
+
+Negative verification: the new test ("states that a quick payment is
+unallocated and offers the split dialog") fails on the pre-fix page at the
+notice assertion and passes after. Ports 3000/4318 were free with no orphan
+dev-server processes for this worktree.
+
+Scope note: the quick form's own split editor was deliberately not built; the
+one-click route to `AddSalaryPaymentDialog` is the intended path, per the
+parent decision. The sixth summary finding (project wage-cost shares) remains
+the known `#414` deferral.

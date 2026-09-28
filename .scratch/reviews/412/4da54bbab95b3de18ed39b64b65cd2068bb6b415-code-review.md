@@ -236,3 +236,15 @@ HEAD per the evidence re-pin rule; no source, test, or config changed after
 Re-pin note: the reviewed source for round 4 is `49c324b510076a7ed89facfc363a31b95392b53c`. Commit `c05c9593821e9853002a5cd7ccf249a26d146fd5` only appends
 `.agents/wisdom/architecture.md` (the round-4 lessons), so no source, test, or
 config changed after `49c324b510076a7ed89facfc363a31b95392b53c`. Files are named for HEAD per the evidence re-pin rule.
+
+## Round 4b delta (outside-diff P2, parent decision)
+
+- Finding: the employee-details quick form saved payments without
+  `projectSplits`, silently producing unallocated records.
+- Resolution at `4da54bba`: an explicit unallocated notice plus a button that
+  opens the existing split-capable dialog for the same employee. The quick
+  form keeps its compact shape; no split editor was duplicated.
+- Standards: reuses the existing `AddSalaryPaymentDialog` seam and the i18n
+  resource; no new derivation logic was introduced.
+- Spec: the operator can now see the unallocated outcome and reach attribution
+  in one click, so a quick payment is never silently unattributed.

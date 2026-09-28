@@ -243,3 +243,13 @@ HEAD per the evidence re-pin rule; no source, test, or config changed after
 Re-pin note: the reviewed source for round 4 is `49c324b510076a7ed89facfc363a31b95392b53c`. Commit `c05c9593821e9853002a5cd7ccf249a26d146fd5` only appends
 `.agents/wisdom/architecture.md` (the round-4 lessons), so no source, test, or
 config changed after `49c324b510076a7ed89facfc363a31b95392b53c`. Files are named for HEAD per the evidence re-pin rule.
+
+## Round 4b delta (outside-diff P2, parent decision)
+
+- New coverage: the quick form renders the unallocated notice, and its button
+  opens the split dialog for the same employee (asserted on the dialog's
+  employee name and split section).
+- The assertion was confirmed to fail against the pre-fix page and pass after.
+- Coverage boundary: the E2E spec drives the split-capable dialog and its
+  recorded split; it does not click the quick form's new notice button, which
+  is covered by the unit test. Noted, not deferred.
