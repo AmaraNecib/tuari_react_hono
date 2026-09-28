@@ -23,6 +23,23 @@ SQLCipher checks added for #402 have not yet run against a full packaging
 build, so treat their result as pending. Two startup blockers it found are
 fixed; the story and the remaining known gaps are at the end of this document.
 
+### Real encryption is proven only by CI (#410)
+
+Everything in this repository proves the *plumbing*: the fork's addon is at the
+path its loader expects, the bundled Node can load it, and `PRAGMA
+cipher_version` is non-empty. No local test writes a keyed database and reads it
+back. The unit tests in
+`apps/desktop/scripts/sqlcipher-availability.test.mjs` use a JavaScript stand-in
+that cannot encrypt, and the smoke check opens no keyed database either.
+
+Real encryption is proven only by the CI job tracked in
+[#410](https://github.com/AmaraNecib/tuari_react_hono/issues/410): it builds the
+real SQLCipher fork, opens a database with `PRAGMA key`, writes a row, asserts
+the file does not start with `SQLite format 3`, then reopens it with the key and
+reads the row back. Until that job is green against a built artifact, the sold
+`encrypted_db` guarantee is unverified end to end, and no local or unit test
+substitutes for it.
+
 ## The publish gate
 
 `beta.yml`, `release.yml`, and `nightly.yml` run this script automatically after
@@ -154,7 +171,9 @@ a normal launch, and never deletes them.
 3. The plain `better-sqlite3` binding is present, the `better-sqlite3-sqlcipher`
    fork is at its loader path (`build/better_sqlite3.node`, not `build/Release`),
    and the bundled `node.exe` can load the fork and report a non-empty
-   `PRAGMA cipher_version`, so the artifact can genuinely encrypt.
+   `PRAGMA cipher_version`. That proves the shipped binding is real SQLCipher
+   and loadable; it does not prove that a keyed write encrypts the file. No
+   local check does (see "Real encryption is proven only by CI (#410)").
 4. Every entry in `tauri.conf.json` `bundle.resources` exists in the extracted
    bundle.
 5. Port 4318 is free, then `Tuari.exe` starts and a
@@ -229,8 +248,10 @@ manual:
   a test should do unattended.
 - The desktop IPC bridge (`desktop_api_request`, `activate_license`,
   `check_for_updates`). These need the webview.
-- The encrypted-database path. It needs a license with `encrypted_db` and a
-  build that includes the `better-sqlite3-sqlcipher` native binding.
+- The encrypted-database path. The smoke check proves the fork is present and
+  loadable (check 3), but it never opens a keyed database; the write/read-back
+  proof is the #410 CI job above. Exercising the path through the shipped shell
+  would also need a licence with `encrypted_db`.
 - Update download, signature verification, and restart.
 - Codesigning and notarisation. The local build is unsigned.
 

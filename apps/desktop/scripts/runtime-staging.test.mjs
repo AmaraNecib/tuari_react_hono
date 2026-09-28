@@ -159,6 +159,83 @@ test("a failure while swapping in the staged tree restores the previous runtime"
   });
 });
 
+test("a failed cleanup after publication warns instead of failing the build", () => {
+  withLayout(({ root, destinationDir, stagingDir }) => {
+    const backupDir = `${destinationDir}.previous-${process.pid}`;
+    const warnings = [];
+    let removeCalls = 0;
+    const remove = (target, options) => {
+      removeCalls += 1;
+      // 1: clear a stale backup before the swap. 2: the post-publication
+      // cleanup of the previous runtime, which is the failing call here.
+      // 3: the caller's staging-tree cleanup.
+      if (removeCalls === 2) {
+        throw new Error("EBUSY: resource busy or locked, rm");
+      }
+      rmSync(target, options);
+    };
+
+    assert.doesNotThrow(() =>
+      buildProbeAndPublishRuntime({
+        stagingDir,
+        destinationDir,
+        build: () => {},
+        probe: () => {},
+        remove,
+        warn: (message) => warnings.push(message),
+      }),
+    );
+
+    // The staged runtime is live: that is what a zero exit now means.
+    assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
+    // The old runtime could not be removed, so it is still on disk...
+    assert.equal(
+      readFileSync(path.join(backupDir, "marker.txt"), "utf8"),
+      "previous-working-runtime",
+    );
+    // ...and one warning names both states, so the outcome cannot be misread.
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes(destinationDir));
+    assert.ok(warnings[0].includes(backupDir));
+    assert.match(warnings[0], /runtime WAS replaced/i);
+    assert.match(warnings[0], /cleanup-only/i);
+    assert.equal(
+      readdirSync(path.join(root, "src-tauri")).some((name) => name.startsWith(".bin-staging")),
+      false,
+    );
+  });
+});
+
+test("a failure clearing a stale backup before the swap still fails the build", () => {
+  withLayout(({ destinationDir, stagingDir, previousHash }) => {
+    let removeCalls = 0;
+    const remove = (target, options) => {
+      removeCalls += 1;
+      // Nothing has been published yet, so this must stay fatal.
+      if (removeCalls === 1) {
+        throw new Error("EPERM: operation not permitted, rm");
+      }
+      rmSync(target, options);
+    };
+
+    assert.throws(
+      () =>
+        buildProbeAndPublishRuntime({
+          stagingDir,
+          destinationDir,
+          build: () => {},
+          probe: () => {},
+          remove,
+          warn: () => assert.fail("a pre-publication failure must not warn"),
+        }),
+      /EPERM/,
+    );
+
+    // The previous runtime is still the live one and was never renamed aside.
+    assert.equal(hashTree(destinationDir), previousHash);
+  });
+});
+
 test("an ephemeral build probes and discards without touching the destination", () => {
   withLayout(({ root, destinationDir, stagingDir, previousHash }) => {
     buildProbeAndPublishRuntime({

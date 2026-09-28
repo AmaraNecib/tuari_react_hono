@@ -183,3 +183,37 @@ match the new check list and count.
   real plain binding only where it applies, and the refusal path with a
   synthetic addon. The full `tauri build` packaging run is not claimed.
 
+
+## Round 3 (PR #409 review, 2026-09-28T00:08Z): cleanup reporting + encryption honesty
+
+Two further P2 findings. Both fixed.
+
+### 1. A post-publication cleanup failure must not look like a failed publish
+
+`swapRuntimeDirectory` removed the renamed-aside previous tree AFTER the staged
+tree was live, and that removal was the last statement of the function: if it
+threw, `buildProbeAndPublishRuntime` propagated it, so `build-sidecar.mjs`
+exited non-zero even though `src-tauri/bin` had already been replaced. Whoever
+read the exit code would conclude the previous runtime was still in place.
+
+Decision: warn and succeed, not a distinct failure. The exit code's meaning is
+"was the runtime published?"; after the swap the answer is yes, and a failure
+exit would keep the exact misreading the finding describes. The leftover
+directory is inert (the new runtime is live) and the warning names both the live
+destination and the leftover path, plus the cause. A failure clearing a stale
+backup BEFORE the swap stays fatal: nothing has been published at that point.
+The warning is injectable (`warn`) so both sides of that line are tested.
+
+### 2. The probe tests prove plumbing, not encryption
+
+The positive control in `sqlcipher-availability.test.mjs` uses a JavaScript
+stand-in that returns a version string without encrypting anything. It is
+renamed to say so ("proves the probe's plumbing, not encryption"), the file
+gained a module-level coverage-boundary comment, and a new test drives the real
+spawned Node against a synthetic binding whose `cipher_version` comes back empty
+(the probe source's own `process.exit(3)` refusal path).
+`docs/release-verification.md` now states that real encryption is proven only by
+the CI job in #410 (native fork build, write with a key, assert the file is not
+`SQLite format 3`, reopen and read), that no local test substitutes for it, and
+the smoke script header and `docs/editions-and-features.md` stop claiming a
+local check proves encryption.

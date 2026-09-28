@@ -208,9 +208,11 @@ the desktop shell enforces it:
   `node-gyp` itself via its pinned devDependency.
 - The factory does not trust `require()`: after keying it requires a non-empty
   `PRAGMA cipher_version`. Plain `better-sqlite3` accepts the SQLCipher PRAGMAs
-  as no-ops, so this is what actually proves the binding encrypts. A key with a
-  non-encrypting binding is refused (connection closed, clear error), never
-  ignored.
+  as no-ops, so this proves the loaded binding is SQLCipher rather than plain
+  `better-sqlite3`. A key with a non-encrypting binding is refused (connection
+  closed, clear error), never ignored. The write-with-key end-to-end proof (the
+  file does not start with `SQLite format 3`, and reopens with a read) is the CI
+  job tracked in #410.
 
 Without `encrypted_db`, the workspace opens a plain, unencrypted SQLite file,
 regardless of edition. That is the entire practical difference the license makes

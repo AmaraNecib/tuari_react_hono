@@ -14,7 +14,9 @@
  *      api-runtime sidecar entry the Rust shell spawns.
  *   3. Every `bundle.resources` entry from tauri.conf.json is present.
  *   4. The SQLCipher fork is at its loader path and the bundled Node can load it
- *      and report a `cipher_version` (the artifact can genuinely encrypt).
+ *      and report a `cipher_version`. That proves the binding is loadable, not
+ *      that a keyed write encrypts the file; the write/read-back proof is the
+ *      #410 CI job (see docs/release-verification.md).
  *   5. Tuari.exe starts and leaves a `node.exe ... api-runtime/dist/index.cjs`
  *      child process alive.
  *   6. The sidecar received the runtime env the shell sets (API_HOST,

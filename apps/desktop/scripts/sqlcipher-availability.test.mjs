@@ -13,6 +13,20 @@ import {
   requiredSqlcipherFiles,
 } from "./sqlcipher-availability.mjs";
 
+/**
+ * Coverage boundary: every test here proves the PLUMBING around the SQLCipher
+ * binding — the loader path the fork expects, the files its package must carry,
+ * and the probe's refusal paths (missing, unloadable, and non-reporting
+ * bindings). None of them proves the binding encrypts: a real fork build needs
+ * the Windows SDK, and the JavaScript stand-ins below cannot encrypt anything.
+ *
+ * Real encryption is proven only by the CI job tracked in #410 — build the
+ * native fork, write a row through a keyed connection, assert the file does not
+ * start with `SQLite format 3`, then reopen it with the key and read the row
+ * back. No test in this file substitutes for that job, and none should be
+ * described as proving the artifact encrypts.
+ */
+
 /** Create a temp package dir, run `populate(dir)`, then inspect it. */
 const withTempPackage = (populate, platform = process.platform) => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tuari-sqlcipher-"));
@@ -167,10 +181,12 @@ test("a synthetic addon that exists but cannot load fails the real probe", () =>
   }
 });
 
-test("a synthetic binding that reports a cipher version passes the real probe", () => {
-  // Positive control for the same spawned-Node path. A real native SQLCipher
-  // build needs the Windows SDK, so this stands in for it: it proves the probe
-  // succeeds (and returns the version) when the copied package is loadable.
+test("a synthetic binding that reports a cipher version proves the probe's plumbing, not encryption", () => {
+  // Positive control for the spawned-Node path: proves the probe spawns, loads
+  // the copied package, reads the version, and returns it. It does NOT prove
+  // encryption — the stand-in never writes or encrypts a database. The
+  // end-to-end proof (real fork, write with a key, assert the file is not
+  // `SQLite format 3`, reopen and read) is the CI job tracked in #410.
   const runtimeDir = mkdtempSync(path.join(os.tmpdir(), "tuari-sqlcipher-probe-"));
   try {
     const packageDir = path.join(runtimeDir, "node_modules", "better-sqlite3-sqlcipher");
@@ -196,6 +212,41 @@ test("a synthetic binding that reports a cipher version passes the real probe", 
     assert.equal(
       probeSqlcipherBinding({ nodeExecPath: process.execPath, runtimeDir }),
       "4.5.6 community",
+    );
+  } finally {
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});
+
+test("a synthetic binding whose cipher_version comes back empty fails the real probe", () => {
+  // Distinct from the injected-`execFile` test above: this drives the real
+  // spawned Node and the probe source's own empty-version check (`process.exit(3)`),
+  // so a binding that loads but reports no cipher version is refused.
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), "tuari-sqlcipher-probe-"));
+  try {
+    const packageDir = path.join(runtimeDir, "node_modules", "better-sqlite3-sqlcipher");
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(
+      path.join(packageDir, "package.json"),
+      JSON.stringify({ name: "better-sqlite3-sqlcipher", version: "0.0.0", main: "index.js" }),
+    );
+    writeFileSync(
+      path.join(packageDir, "index.js"),
+      [
+        "class FakeDatabase {",
+        "  pragma(source) {",
+        '    if (source === "cipher_version") return "";',
+        "    return [];",
+        "  }",
+        "  close() {}",
+        "}",
+        "module.exports = FakeDatabase;",
+      ].join("\n"),
+    );
+
+    assert.throws(
+      () => probeSqlcipherBinding({ nodeExecPath: process.execPath, runtimeDir }),
+      /PRAGMA cipher_version returned no version/,
     );
   } finally {
     rmSync(runtimeDir, { recursive: true, force: true });
