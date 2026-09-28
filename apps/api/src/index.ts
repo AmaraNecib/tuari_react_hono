@@ -4,6 +4,7 @@ import { createApp } from "./app/create-app";
 import { createAppDependencies } from "./app/dependencies";
 import { installShutdownHook } from "./app/shutdown";
 import { createAppConfig } from "./config";
+import { createStartupBackup } from "./modules/backup/backup.scheduler";
 
 async function main() {
   // Single validated config — env + optional TUARI_CONFIG_FILE merge. Every
@@ -23,24 +24,34 @@ async function main() {
     authRateLimitMaxRequests: config.authRateLimitMaxRequests,
   });
 
+  // Daily local backup (#430): a synchronous `VACUUM INTO` can outlast the
+  // desktop's 15s `/health` wait, so it is NOT on the startup path and NOT run
+  // before `/health` has been answered. `createStartupBackup` defers it to a
+  // later turn, gated on the first ready probe. It never throws, so a failure
+  // only shows up on the `backupStatus` read and the app stays usable.
+  const startupBackup = createStartupBackup(appDependencies.backupService);
+
   const server = serve(
     {
-      fetch: app.fetch,
+      // The health probe is the desktop shell's readiness gate. Detect it here
+      // so the daily backup can be gated on the app proving readiness (see
+      // below) — the snapshot must never run on the path that answers it.
+      fetch: (request, env) => {
+        const response = app.fetch(request, env);
+        if (new URL(request.url).pathname === "/health") {
+          startupBackup.onHealthServed();
+        }
+        return response;
+      },
       port: config.port,
       hostname: config.host,
     },
     (info) => {
       console.log(`API listening on http://${info.address}:${info.port}`);
+      // Fallback so a deployment nobody probes still takes its daily backup.
+      startupBackup.onServerListening();
     },
   );
-
-  // Daily local backup (#430): run AFTER the server is bound so a slow backup
-  // cannot prevent the sidecar from answering /health. `runDueBackup` is
-  // synchronous and never throws, so it cannot race an open transaction and a
-  // failure only shows up on the `backupStatus` read (the app stays usable).
-  void appDependencies.backupService
-    .runDueBackup()
-    .catch((error) => console.error("[backup] unexpected failure", error));
 
   // Graceful shutdown (issue #265): stop accepting requests (dropping idle
   // keep-alive connections so close() does not hang on them), then close the

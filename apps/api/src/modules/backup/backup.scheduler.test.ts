@@ -1,0 +1,184 @@
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { createStartupBackup } from "./backup.scheduler";
+import type { BackupService } from "./backup.types";
+
+type StartupService = Pick<BackupService, "runDueBackup">;
+
+const resolveNotDue = () => Promise.resolve({ status: "not-due" as const });
+
+describe("createStartupBackup", () => {
+  it("never runs the snapshot synchronously with the default scheduler", async () => {
+    const runDueBackup = vi.fn(resolveNotDue);
+    const startup = createStartupBackup({ runDueBackup });
+
+    startup.onHealthServed();
+
+    // The whole point: the (synchronous) snapshot is deferred off the turn that
+    // answered the readiness probe.
+    expect(runDueBackup).not.toHaveBeenCalled();
+    expect(startup.hasScheduled()).toBe(true);
+    await vi.waitFor(() => expect(runDueBackup).toHaveBeenCalledTimes(1));
+  });
+
+  it("runs once when health is served repeatedly and the fallback also fires", () => {
+    const runDueBackup = vi.fn(resolveNotDue);
+    let fallback: (() => void) | undefined;
+    const startup = createStartupBackup(
+      { runDueBackup },
+      {
+        schedule: (run) => run(),
+        setTimer: (run) => {
+          fallback = run;
+          return {};
+        },
+      },
+    );
+
+    startup.onHealthServed();
+    startup.onHealthServed();
+    fallback?.();
+
+    expect(runDueBackup).toHaveBeenCalledTimes(1);
+  });
+
+  it("arms the fallback so an unprobed install still backs up", () => {
+    const runDueBackup = vi.fn(resolveNotDue);
+    let fallback: (() => void) | undefined;
+    const setTimer = vi.fn((run: () => void) => {
+      fallback = run;
+      return {};
+    });
+    const startup = createStartupBackup(
+      { runDueBackup },
+      { schedule: (run) => run(), setTimer, fallbackDelayMs: 1234 },
+    );
+
+    startup.onServerListening();
+
+    expect(setTimer).toHaveBeenCalledWith(expect.any(Function), 1234);
+    expect(runDueBackup).not.toHaveBeenCalled();
+    fallback?.();
+    expect(runDueBackup).toHaveBeenCalledTimes(1);
+  });
+
+  it("defaults the fallback delay to 30s", () => {
+    const setTimer = vi.fn(() => ({}));
+    const startup = createStartupBackup(
+      { runDueBackup: vi.fn(resolveNotDue) },
+      { setTimer },
+    );
+
+    startup.onServerListening();
+
+    expect(setTimer).toHaveBeenCalledWith(expect.any(Function), 30_000);
+  });
+
+  it("defaults the timer and scheduler and unrefs the fallback", async () => {
+    const runDueBackup = vi.fn(resolveNotDue);
+    const startup = createStartupBackup({ runDueBackup }, { fallbackDelayMs: 1 });
+
+    startup.onServerListening();
+
+    await vi.waitFor(() => expect(runDueBackup).toHaveBeenCalledTimes(1));
+  });
+
+  it("logs a rejected run with the default logger without throwing", async () => {
+    const error = new Error("snapshot blew up");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const startup = createStartupBackup({
+      runDueBackup: () => Promise.reject(error),
+    });
+
+    startup.onHealthServed();
+
+    await vi.waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith(
+        "[backup] unexpected failure",
+        error,
+      ),
+    );
+    consoleError.mockRestore();
+  });
+
+  it("uses the injected logger for a rejected run", async () => {
+    const log = vi.fn();
+    const startup = createStartupBackup(
+      { runDueBackup: () => Promise.reject(new Error("boom")) },
+      { log },
+    );
+
+    startup.onHealthServed();
+
+    await vi.waitFor(() => expect(log).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("startup backup readiness gate", () => {
+  let closeServer: (() => void) | undefined;
+
+  afterEach(() => {
+    closeServer?.();
+    closeServer = undefined;
+  });
+
+  it("answers /health while the blocking snapshot is still only scheduled", async () => {
+    let scheduled: (() => void) | undefined;
+    let snapshotRan = false;
+    const startup = createStartupBackup(
+      {
+        runDueBackup: () => {
+          snapshotRan = true;
+          const deadline = Date.now() + 200;
+          while (Date.now() < deadline) {
+            // A synchronous, event-loop-blocking snapshot — the `VACUUM INTO`
+            // shape that can outlast the desktop shell's 15s `/health` wait.
+          }
+          return resolveNotDue();
+        },
+      },
+      {
+        schedule: (run) => {
+          scheduled = run;
+        },
+        setTimer: () => ({}),
+      },
+    );
+
+    const app = new Hono();
+    app.get("/health", (c) => c.json({ status: "ok" }));
+
+    const server = serve(
+      {
+        fetch: (request, env) => {
+          const response = app.fetch(request, env);
+          if (new URL(request.url).pathname === "/health") {
+            startup.onHealthServed();
+          }
+          return response;
+        },
+        port: 0,
+        hostname: "127.0.0.1",
+      },
+      () => startup.onServerListening(),
+    );
+    closeServer = () => server.close();
+    await once(server, "listening");
+    const { port } = server.address() as AddressInfo;
+
+    const response = await fetch(`http://127.0.0.1:${port}/health`);
+
+    // Readiness is not delayed: the health response landed while the blocking
+    // snapshot had not started yet. Only then is the run released.
+    expect(response.status).toBe(200);
+    expect(snapshotRan).toBe(false);
+    expect(startup.hasScheduled()).toBe(true);
+
+    scheduled?.();
+    expect(snapshotRan).toBe(true);
+  });
+});

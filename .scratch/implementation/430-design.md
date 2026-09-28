@@ -61,10 +61,14 @@ formatBackupDate(previousDay(now))`. On a due run the target folder is
 opened-today flow). The calendar-day comparison means at most one backup per
 day; the clock is injected (`now`) so no test waits a day.
 
-`index.ts` fires `runDueBackup()` **after** `serve()` without awaiting it. The
-Rust shell waits ~15s for `/health`, so a large backup cannot prevent binding.
-`runDueBackup` is synchronous and never throws, so it cannot race an open
-transaction and cannot fail startup.
+`index.ts` does **not** run the backup on the startup path. It scans for
+`/health` and hands control to `backup.scheduler.ts`, which defers the run to a
+later event-loop turn and gates it on the first ready probe (with a 30s fallback
+for an install nobody polls). `runDueBackup` is synchronous and never throws, so
+once it starts it cannot race an open transaction; the gate is what keeps it
+from delaying the `/health` response the Rust shell waits ~15s for. A large
+snapshot still blocks the event loop while it runs, but only *after* readiness
+has been proven.
 
 ## Failure handling and status
 
@@ -112,7 +116,8 @@ constant.
 - `apps/api/src/modules/backup/{backup.types,backup.policy,backup.service}.ts`
 - `apps/api/src/rpc/handlers/backup.ts`, wired in `rpc/router.ts`
 - `apps/api/src/app/dependencies.ts` — construct + expose `backupService`
-- `apps/api/src/index.ts` — fire the due run after `serve`
+- `apps/api/src/index.ts` — detect `/health`, start the scheduler on listening
+- `apps/api/src/modules/backup/backup.scheduler.ts` — readiness-gated timing
 - `apps/api/vitest.config.ts` — add `src/modules/backup/**` to the coverage
   include (repo convention for new modules)
 - `docs/backups.md`
@@ -123,7 +128,8 @@ constant.
 same-day re-start, multi-day gap, future), retention selection exactness and
 never-newest, ISO-week/month bucketing, default-policy count (14+8+6).
 
-`backup.service.test.ts` (real temp dirs + real better-sqlite3):
+`backup.service.test.ts` (real temp dirs + real better-sqlite3, plain SQLite
+only — the encrypted path is recorded as a skipped test):
 1. due backup is taken — dated folder has a readable `tuari.sqlite`;
 2. a not-due start takes none;
 3. a snapshot taken while another connection holds a write is readable — open
@@ -132,8 +138,19 @@ never-newest, ISO-week/month bucketing, default-policy count (14+8+6).
 5. a failed backup (throwing `exec` with a previous backup present; and an
    unwritable root) leaves previous backups intact and reports the reason;
 6. a non-Error throw is reported as a string;
-7. stale staging dirs are removed; status is seeded from disk; empty status when
+7. a correctly named folder with no snapshot (or a zero-byte one) is not
+   counted, so it neither suppresses the run nor holds a retention slot;
+8. an unlistable backups root degrades to a recorded failure at construction
+   instead of aborting the boot, and a preflight cleanup throw is recorded
+   inside the guarded region (status never reads healthy after a failure);
+9. stale staging dirs are removed; status is seeded from disk; empty status when
    there are no backups; default clock/logger seams work.
+
+`backup.scheduler.test.ts`: the run never fires synchronously with the default
+scheduler, is idempotent across health+fallback, defaults the fallback delay and
+unrefs the timer, logs a rejection without throwing, and an integration test
+asserts `/health` is answered while a blocking fake snapshot is still only
+scheduled.
 
 No Playwright spec: this change ships no UI. The status RPC is the surface for
 a later UI; the contract + router wiring pin it.

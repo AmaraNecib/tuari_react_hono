@@ -7,7 +7,7 @@ app bug that loses a week of entered data.
 ## What is backed up
 
 **The database only**, as a full copy. In this version attachments (invoice
-files) are **not** backed up — see [Limitations](#limitations).
+files) are **not** backed up (see [Limitations](#limitations)).
 
 ## Where
 
@@ -18,17 +18,22 @@ files) are **not** backed up — see [Limitations](#limitations).
 The folder is named for the period the backup covers (the day that just ended),
 so the backup taken on the morning of 2026-01-15 covers 2026-01-14.
 
-The backups root defaults to a sibling of the database's directory — **not**
-inside it — so deleting the project data directory does not delete the backups:
+The backups root defaults to a sibling of the database's directory, **not**
+inside it, so deleting the project data directory does not delete the backups:
 
 | Deployment | Database | Backups root |
 | --- | --- | --- |
 | Desktop (Windows) | `<Tuari>/projects/default/tuari.sqlite` | `<Tuari>/projects/backups/` |
 | Dev (`pnpm dev:api`) | `<repo>/data/tuari.sqlite` | `<repo>/backups/` |
 
-Set `APP_BACKUPS_ROOT` to an absolute path to move the backups root (for
-example to a second drive). The value is read from the environment, the same
-surface as `APP_DB_PATH` and `APP_ATTACHMENTS_ROOT`.
+The root defaults to the sibling shown above. An absolute `APP_BACKUPS_ROOT`
+moves it (for example to a second drive). This is an **API-side environment
+variable**: it is useful for development and for a manual (sidecar) install.
+The desktop shell clears the sidecar environment and forwards only a fixed
+allowlist that does **not** include `APP_BACKUPS_ROOT`, and its user-editable
+`config.json` has no backups setting, so **on the desktop the root is always
+the default sibling** and this variable has no effect. Exposing it as a desktop
+setting is tracked as a follow-up.
 
 ## When
 
@@ -51,7 +56,7 @@ is written to a staging folder first and renamed into place, so a crashed or
 failed run never leaves a half-written dated folder behind.
 
 If the database is encrypted (SQLCipher), the backup is encrypted with the same
-key.
+key: the key in force at the moment the copy is taken.
 
 ## How to restore
 
@@ -69,9 +74,18 @@ nothing to reassemble.
      replayed against the restored one.
 4. Start the app.
 
-If the database is encrypted, the backup carries the same encryption key. A
-restore onto a **fresh install with a different key** will not open; keep the
-key that was in use when the backup was taken.
+If the database is encrypted, the backup carries the encryption key that was
+**in force when the snapshot was taken**. A restore onto a **fresh install with
+a different key** will not open. In particular, a snapshot taken **before a key
+rotation** can only be opened with the **pre-rotation key**: the snapshot's
+usability depends on the key at the time it was written, not the current one.
+Keep the key that was in use when the backup was taken.
+
+Encryption and key rotation are **parked** in this version: the encrypted
+SQLCipher build is not proven yet (#410), so no rotation can happen today. If a
+rotation flow is added later, it must retain the key each snapshot was created
+with (or state the trade-off explicitly). Rotation handling is deliberately out
+of scope here, alongside the attachment coverage follow-up (#433).
 
 ## Retention
 
@@ -113,8 +127,9 @@ backups are left untouched.
 - **Same disk means the backups do not protect against hardware failure or
   theft.** A dead disk or a stolen laptop takes the live database and its
   backups together. This feature protects against mistakes and app bugs, which
-  is exactly what it claims to do. For off-site protection, point
-  `APP_BACKUPS_ROOT` at a synced or external location, or copy the backups root
-  off the machine.
+  is exactly what it claims to do. For a manual/API install, point
+  `APP_BACKUPS_ROOT` at a synced or external location (the desktop does not
+  expose that variable yet); on the desktop, copy the backups root off the
+  machine instead.
 - A backup is only as good as it has been tested. Restore one into a scratch
   copy occasionally.

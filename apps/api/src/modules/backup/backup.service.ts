@@ -67,13 +67,29 @@ const isDirectory = (path: string): boolean => {
   }
 };
 
-/** Existing dated backup folders, ascending (oldest first). */
+/**
+ * True only for a dated folder that holds a usable snapshot: the database file
+ * exists and is non-empty. A correctly named folder without `tuari.sqlite` (a
+ * hand-made directory, or an interrupted run that never renamed its staging
+ * folder into place) is NOT a backup — it must not suppress the next due copy
+ * or hold a retention slot.
+ */
+const hasSnapshotDatabase = (directory: string): boolean => {
+  try {
+    return statSync(join(directory, BACKUP_DB_FILE_NAME)).size > 0;
+  } catch {
+    return false;
+  }
+};
+
+/** Existing complete dated backup folders, ascending (oldest first). */
 export const listBackupDates = (backupsRootPath: string): string[] => {
   if (!isDirectory(backupsRootPath)) return [];
 
   return readdirSync(backupsRootPath, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && isBackupDirectory(entry.name))
     .map((entry) => entry.name)
+    .filter((name) => hasSnapshotDatabase(join(backupsRootPath, name)))
     .sort();
 };
 
@@ -125,17 +141,42 @@ export const pruneBackups = (
  */
 const seedStatusFromDisk = (
   backupsRootPath: string,
-): { lastBackupPath: string | null; lastSuccessAt: string | null } => {
-  const dates = listBackupDates(backupsRootPath);
-  if (dates.length === 0) {
-    return { lastBackupPath: null, lastSuccessAt: null };
-  }
+  at: Date,
+  logger: BackupLogger,
+): {
+  lastBackupPath: string | null;
+  lastSuccessAt: string | null;
+  lastFailure: BackupFailure | null;
+} => {
+  try {
+    const dates = listBackupDates(backupsRootPath);
+    if (dates.length === 0) {
+      return { lastBackupPath: null, lastSuccessAt: null, lastFailure: null };
+    }
 
-  const newest = join(backupsRootPath, dates[dates.length - 1]!);
-  return {
-    lastBackupPath: newest,
-    lastSuccessAt: statSync(newest).mtime.toISOString(),
-  };
+    const newest = join(backupsRootPath, dates[dates.length - 1]!);
+    return {
+      lastBackupPath: newest,
+      lastSuccessAt: statSync(newest).mtime.toISOString(),
+      lastFailure: null,
+    };
+  } catch (error) {
+    // `isDirectory` can succeed while `readdirSync`/`statSync` still throw
+    // (permission denied, a transient lock). This read runs while the service
+    // is being constructed, so an escaping throw is a failed boot — the exact
+    // thing the feature forbids. Degrade to "no backups, with a recorded
+    // failure" instead.
+    const reason = error instanceof Error ? error.message : String(error);
+    logger.error(
+      `[backup] cannot read backups root ${backupsRootPath}: ${reason}`,
+      error,
+    );
+    return {
+      lastBackupPath: null,
+      lastSuccessAt: null,
+      lastFailure: { at: at.toISOString(), reason },
+    };
+  }
 };
 
 export const createBackupService = (
@@ -148,26 +189,37 @@ export const createBackupService = (
     error: (message, cause) => console.error(message, cause),
   };
 
-  const seeded = seedStatusFromDisk(deps.backupsRootPath);
+  const seeded = seedStatusFromDisk(deps.backupsRootPath, now(), logger);
   let lastBackupPath = seeded.lastBackupPath;
   let lastSuccessAt = seeded.lastSuccessAt;
-  let lastFailure: BackupFailure | null = null;
+  let lastFailure: BackupFailure | null = seeded.lastFailure;
 
   const runDueBackup = async (): Promise<BackupRunResult> => {
     const runAt = now();
-    removeStaleStagingEntries(deps.backupsRootPath);
-
-    const existingDates = listBackupDates(deps.backupsRootPath);
-    const newest =
-      existingDates.length > 0 ? existingDates[existingDates.length - 1]! : null;
-    if (!isBackupDue(newest, runAt)) return { status: "not-due" };
-
     const date = formatBackupDate(previousDay(runAt));
-    const targetDirectory = join(deps.backupsRootPath, date);
 
     let stagingDirectory: string | null = null;
     try {
+      // Preflight (stale-staging cleanup, listing, the due check) lives INSIDE
+      // the guarded region: a throw here must record a failure, not escape the
+      // service while `lastFailure` stays null and the status reads healthy.
+      removeStaleStagingEntries(deps.backupsRootPath);
+
+      const existingDates = listBackupDates(deps.backupsRootPath);
+      const newest =
+        existingDates.length > 0
+          ? existingDates[existingDates.length - 1]!
+          : null;
+      if (!isBackupDue(newest, runAt)) return { status: "not-due" };
+
+      const targetDirectory = join(deps.backupsRootPath, date);
       mkdirSync(deps.backupsRootPath, { recursive: true });
+
+      // `isBackupDue` proved there is no usable snapshot for `date`, so any
+      // folder already there is not a backup (e.g. an empty hand-made one).
+      // Clear it: renaming onto an existing directory fails on Windows.
+      rmSync(targetDirectory, { recursive: true, force: true });
+
       stagingDirectory = mkdtempSync(
         join(deps.backupsRootPath, BACKUP_STAGING_PREFIX),
       );
