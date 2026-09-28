@@ -1,8 +1,8 @@
 # #430 verification evidence
 
-- final non-scratch HEAD: `46a75b3` (`docs(wisdom): composition-root reads must fail soft (from #430)`)
+- final non-scratch HEAD: `79af0333` (`docs(backup): drop stale promotion comment after scope cut`)
 - reviewed code HEAD: `979e66a` (`feat(backup): daily local database backup on startup (part of #430)`)
-- code→evidence delta: `46a75b3` adds only `.agents/wisdom/architecture.md` (docs; no executable change)
+- code→evidence delta: `46a75b3` adds only `.agents/wisdom/architecture.md` (docs); `79af0333` drops one stale comment in `backup.policy.ts` (no behavior change)
 - base: `origin/develop` @ `1dc6191`
 - worktree: `worktrees/feat-daily-backups`
 

@@ -1,8 +1,8 @@
 # #430 code review (lane self-review)
 
-- final non-scratch HEAD: `46a75b3`
+- final non-scratch HEAD: `79af0333`
 - reviewed code HEAD: `979e66a` (`feat(backup): daily local database backup on startup (part of #430)`)
-- code→evidence delta: `46a75b3` adds only `.agents/wisdom/architecture.md` (the fail-soft lesson from finding 3); no executable change
+- code→evidence delta: `46a75b3` adds only `.agents/wisdom/architecture.md` (the fail-soft lesson from finding 3); `79af0333` drops one stale `selectBackupsToPrune` comment left by the scope cut (no behavior change)
 - base: `origin/develop` @ `1dc6191`
 - tier: Standard
 - scope: `apps/api/src/modules/backup/**`, `packages/contracts/src/backup*`,
