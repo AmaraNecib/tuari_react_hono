@@ -86,6 +86,16 @@ export function createInMemoryAssetChargeRepository(): InventoryAssetChargeRepos
       return newestFirst(matching).map((charge) => ({ ...charge }))
     },
 
+    sumLiveChargesByProject(projectId: string, excludeChargeId?: string | null) {
+      let total = 0
+      for (const charge of charges.values()) {
+        if (charge.projectId === projectId && charge.status === "LIVE" && charge.id !== excludeChargeId) {
+          total += charge.amountDzd
+        }
+      }
+      return total
+    },
+
     getLastChargeAmount(assetUnitId: string) {
       const matching = [...charges.values()].filter(
         (charge) => charge.assetUnitId === assetUnitId && charge.status === "LIVE",

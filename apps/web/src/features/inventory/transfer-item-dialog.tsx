@@ -143,11 +143,18 @@ export function TransferItemDialog({
   // that silently disables percentage entry and drops the above-price warning,
   // so an operator could submit an over-bound amount un-warned (#422 round 4).
   const chargeDefaultUnavailable = chargeDefault.isError === true && chargeDefault.data === undefined
+  // A pending query has no price either; showing "سعر الشراء: 0" then is the
+  // same false zero for a beat, so say it is loading instead.
+  const chargePricePending = chargeDefault.isPending === true && chargeDefault.data === undefined
   const hasPurchasePrice = Number.isFinite(purchasePriceDzd) && purchasePriceDzd > 0
   const isAsset = target?.type === "ASSET"
   const asksForCharge = isAsset && destType === "PROJECT"
   const amountInput = parseChargeAmountInput(chargeAmount)
   const chargeInvalid = amountInput.kind === "invalid"
+  // With no resolvable price, a blank amount cannot fall back to the server
+  // default (that is the read that just failed), so require an explicit amount
+  // rather than submitting a request the server must reject (#422 round 4).
+  const chargeRequired = chargeDefaultUnavailable && asksForCharge && amountInput.kind === "default"
   const warnsAbovePurchase =
     amountInput.kind === "amount" && purchasePriceDzd > 0 && amountInput.value > purchasePriceDzd
 
@@ -360,6 +367,10 @@ export function TransferItemDialog({
                 >
                   {t("inventory.transfer.chargePriceUnavailable")}
                 </p>
+              ) : chargePricePending ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("inventory.transfer.chargePriceLoading")}
+                </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
                   {t("inventory.transfer.chargeHint", { price: purchasePriceDzd })}
@@ -405,7 +416,7 @@ export function TransferItemDialog({
           >
             {t("common.cancel")}
           </Button>
-          <Button disabled={!destId || isPending} onClick={handleSubmit}>
+          <Button disabled={!destId || isPending || chargeRequired} onClick={handleSubmit}>
             {t("inventory.transfer.confirm")}
           </Button>
         </DialogFooter>

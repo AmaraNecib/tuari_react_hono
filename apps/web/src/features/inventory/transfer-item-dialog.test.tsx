@@ -180,4 +180,27 @@ describe("TransferItemDialog charge validation (#413)", () => {
       ),
     )
   })
+
+  it("blocks submit while the price is unavailable and no amount is entered", () => {
+    // A blank amount would fall back to the server default - exactly the read
+    // that failed - so the operator must state the amount.
+    chargeDefault.mockReturnValue({ isError: true, data: undefined })
+    renderDialog()
+    chooseProjectDestination()
+
+    expect((screen.getByRole("button", { name: "تأكيد التحويل" }) as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.change(screen.getByLabelText("مبلغ الاحتساب"), { target: { value: "50000" } })
+    expect((screen.getByRole("button", { name: "تأكيد التحويل" }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("shows a loading hint instead of a zero price while the default is in flight", () => {
+    chargeDefault.mockReturnValue({ isPending: true, data: undefined })
+    renderDialog()
+    chooseProjectDestination()
+
+    expect(screen.getByText("جارٍ تحميل سعر الشراء...")).toBeTruthy()
+    expect(screen.queryByText(/سعر الشراء: 0/)).toBeNull()
+    expect((screen.getByLabelText("النسبة من سعر الشراء") as HTMLInputElement).disabled).toBe(true)
+  })
 })

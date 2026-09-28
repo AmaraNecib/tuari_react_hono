@@ -340,7 +340,7 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
  * round 4).
  */
 describe("InventoryService.transferAsset ↔ charge rollback on real sqlite (#422 round 4)", () => {
-  let db: Database.Database
+  let db: Database.Database | undefined
 
   function createSeedDb() {
     const raw = new Database(":memory:")
@@ -402,6 +402,6 @@ describe("InventoryService.transferAsset ↔ charge rollback on real sqlite (#42
   })
 
   afterEach(() => {
-    db.close()
+    db?.close()
   })
 })

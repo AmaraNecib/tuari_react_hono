@@ -25,6 +25,12 @@ export interface InventoryAssetChargeRepository {
   listChargesByUnit(assetUnitId: string): InventoryAssetChargeRecord[]
   /** listChargesByProject — LIVE and VOID, newest first. */
   listChargesByProject(projectId: string): InventoryAssetChargeRecord[]
+  /**
+   * sumLiveChargesByProject — the project's LIVE total, optionally excluding
+   * one charge. A single aggregate query so the write-time bound does not scan
+   * and map the whole project once per asset (#422 round 4).
+   */
+  sumLiveChargesByProject(projectId: string, excludeChargeId?: string | null): number
   /** getLastChargeAmount — the most recent LIVE amount for the unit, else null. */
   getLastChargeAmount(assetUnitId: string): number | null
   /**

@@ -7,7 +7,7 @@
  * open transaction joins it as a SAVEPOINT and commits/rolls back with it —
  * never silently absorbed by another flow (issue #322 / #348 discipline).
  */
-import { eq, and, asc, desc, sql } from "drizzle-orm"
+import { eq, and, asc, desc, ne, sql } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 
 import type { BetterSqliteDatabase } from "../../../types/sqlite"
@@ -131,6 +131,21 @@ export class DrizzleAssetChargeRepository implements InventoryAssetChargeReposit
       .orderBy(desc(sql`rowid`))
       .limit(1).all()[0]
     return row ? Number(row.amountDzd ?? 0) : null
+  }
+
+  /** sumLiveChargesByProject — one aggregate query for the write-time bound. */
+  sumLiveChargesByProject(projectId: string, excludeChargeId?: string | null) {
+    const row = this.db.select({
+      total: sql<number>`coalesce(sum(${schema.inventoryAssetCharge.amountDzd}), 0)`,
+    })
+      .from(schema.inventoryAssetCharge)
+      .where(and(
+        eq(schema.inventoryAssetCharge.projectId, projectId),
+        eq(schema.inventoryAssetCharge.status, "LIVE"),
+        excludeChargeId ? ne(schema.inventoryAssetCharge.id, excludeChargeId) : undefined,
+      ))
+      .all()[0]
+    return Number(row?.total ?? 0)
   }
 
   /**

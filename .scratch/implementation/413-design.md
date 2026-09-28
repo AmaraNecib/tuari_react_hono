@@ -329,3 +329,34 @@ read the branch diff. Synthesis and decisions:
    (`schema-definitions.ts`) and here: a project charge total covers charges
    recorded from #413 onward. No UI shows the project total yet (#414), so it
    is documented rather than surfaced in-render.
+
+### Round-4 debate (fresh-context critic + defender)
+
+The critic confirmed all eight findings were closed and raised:
+
+- **Fixed: the write-time gate scanned the whole project (and resolved its name)
+  once per asset in a bulk invoice.** Added `sumLiveChargesByProject` as a
+  single aggregate query on the port; the gate now uses it.
+- **Fixed: the correction error reported a "current total" that excluded the
+  corrected charge**, so it could not be reconciled with the project view. The
+  helper now reports the full LIVE total and subtracts the replaced amount only
+  for the overflow test; the write gate and the read backstop share one message
+  builder that names the limit and the current total.
+- **Fixed: the dialog showed a false `0` price while the default query was still
+  pending**, not only when it failed. A pending query now renders a loading
+  hint, and a blank amount while the price is unavailable is blocked at submit
+  (the server default is exactly the read that failed).
+- **Fixed: voiding an already-voided charge used the correction wording.**
+  `requireLiveCharge` now takes the action so each path reports its own message.
+- **Dismissed: the critic's claim that `getAsset` runs `listByUnit` once per
+  asset on the location-contents screen.** `getAsset` is a single-unit detail
+  read; the location-contents screen does not call it per asset. `listByUnit`
+  still resolves one name per charge, which is correct because a unit's chain
+  can span projects, and that path is out of this finding's scope.
+- **Accepted, documented: an already-over-bound legacy project cannot be
+  corrected downward if the other LIVE charges alone exceed the bound; voiding
+  is the escape hatch.** `voidCharge` deliberately skips the aggregate gate, so
+  an over-bound project can always be brought back into range.
+- **Accepted: `resolveDefault` runs before the write transaction.** With the
+  synchronous single better-sqlite3 connection the read cannot interleave; only
+  the aggregate check needs the lock, and reading full rows for it does not.

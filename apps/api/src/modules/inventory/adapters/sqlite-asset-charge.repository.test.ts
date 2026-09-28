@@ -145,6 +145,25 @@ describe("DrizzleAssetChargeRepository (#413)", () => {
     expect(env.repository.listChargesByProject("project-b")).toHaveLength(0)
   })
 
+  it("sums a project's LIVE charges in one query and can exclude one charge", () => {
+    const first = env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 100_000 })
+    env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 40_000 })
+    env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-b", amountDzd: 999_000 })
+
+    expect(env.repository.sumLiveChargesByProject("project-a")).toBe(140_000)
+    expect(env.repository.sumLiveChargesByProject("project-a", first.id)).toBe(40_000)
+    expect(env.repository.sumLiveChargesByProject("project-b")).toBe(999_000)
+    expect(env.repository.sumLiveChargesByProject("project-missing")).toBe(0)
+
+    env.repository.updateCharge(
+      first.id,
+      { status: "VOID", voidedAt: NOW, voidedBy: "مدير", voidReason: null, updatedAt: NOW },
+      { chargeId: first.id, previousAmountDzd: 100_000, newAmountDzd: null, actorLabel: "مدير" },
+      AUDIT,
+    )
+    expect(env.repository.sumLiveChargesByProject("project-a")).toBe(40_000)
+  })
+
   it("rolls the charge and its revision back together when the outer transaction throws", () => {
     expect(() =>
       env.repository.withTransaction(() => {

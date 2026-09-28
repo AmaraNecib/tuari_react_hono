@@ -186,8 +186,8 @@ export class AssetChargeService {
     // itself also carries `AND status='LIVE'`, so a second process sharing the
     // database cannot resurrect a voided charge (#422 round 4).
     const updated = this.repository.withTransaction(() => {
-      const charge = this.requireLiveCharge(parsed.data.chargeId)
-      this.assertProjectTotalWithinBound(charge.projectId, parsed.data.amountDzd, charge.id)
+      const charge = this.requireLiveCharge(parsed.data.chargeId, "update")
+      this.assertProjectTotalWithinBound(charge.projectId, parsed.data.amountDzd, charge.amountDzd)
 
       const result = this.repository.updateCharge(
         charge.id,
@@ -226,7 +226,7 @@ export class AssetChargeService {
     // Read-check-write under the connection lock, with `AND status='LIVE'` in
     // the UPDATE: a concurrent void cannot be overwritten from a stale read.
     const updated = this.repository.withTransaction(() => {
-      const charge = this.requireLiveCharge(parsed.data.chargeId)
+      const charge = this.requireLiveCharge(parsed.data.chargeId, "void")
       const result = this.repository.updateCharge(
         charge.id,
         {
@@ -277,48 +277,49 @@ export class AssetChargeService {
     for (const charge of charges) {
       totalDzd += charge.amountDzd
       if (totalDzd > MAX_MONEY_DZD) {
-        throw this.projectTotalOutOfRange()
+        throw this.projectTotalOutOfRange(totalDzd)
       }
     }
 
     return roundMoney(totalDzd)
   }
 
-  private projectTotalOutOfRange() {
-    const message = "إجمالي احتسابات المشروع يتجاوز الحد الأقصى المسموح به."
-    return new InventoryError("BUSINESS_RULE", message, [{ field: "totalDzd", message }])
+  /**
+   * One refusal for one problem, whatever the path: names the shared limit and
+   * the current total. The read backstop reports it on `totalDzd`; the write
+   * gate reports it on `amountDzd`, the field the caller acted on.
+   */
+  private projectTotalOutOfRange(currentTotalDzd: number, field = "totalDzd") {
+    const message = `إجمالي احتسابات المشروع يتجاوز الحد الأقصى المسموح به (${MAX_MONEY_DZD}). الإجمالي الحالي: ${currentTotalDzd}.`
+    return new InventoryError("BUSINESS_RULE", message, [{ field, message }])
   }
 
   /**
    * Refuse a write that would push the project's LIVE total over the shared
-   * money bound, naming the limit and the current total. Enforced at WRITE
-   * time so a project can never be left in a state whose total cannot be read
-   * (#422 round 4). `excludeChargeId` drops the charge being corrected from
-   * the current total, since its amount is about to be replaced.
+   * money bound. Enforced at WRITE time so a project can never be left in a
+   * state whose total cannot be read (#422 round 4). `replacedAmountDzd` is the
+   * amount of the charge being corrected, which the new amount replaces; the
+   * reported current total is the project view's total (all LIVE charges), so
+   * the operator can reconcile the message with the screen.
    */
-  private assertProjectTotalWithinBound(projectId: string, addedAmountDzd: number, excludeChargeId?: string) {
-    const currentTotalDzd = roundMoney(
-      this.repository
-        .listChargesByProject(projectId)
-        .filter((charge) => charge.status === "LIVE" && charge.id !== excludeChargeId)
-        .reduce((sum, charge) => sum + charge.amountDzd, 0),
-    )
-    const attemptedTotalDzd = roundMoney(currentTotalDzd + addedAmountDzd)
+  private assertProjectTotalWithinBound(projectId: string, nextAmountDzd: number, replacedAmountDzd = 0) {
+    const currentTotalDzd = roundMoney(this.repository.sumLiveChargesByProject(projectId))
+    const attemptedTotalDzd = roundMoney(currentTotalDzd - replacedAmountDzd + nextAmountDzd)
 
     if (attemptedTotalDzd > MAX_MONEY_DZD) {
-      const message = `إجمالي احتسابات المشروع يتجاوز الحد الأقصى المسموح به (${MAX_MONEY_DZD}). الإجمالي الحالي: ${currentTotalDzd}.`
-      throw new InventoryError("BUSINESS_RULE", message, [{ field: "amountDzd", message }])
+      throw this.projectTotalOutOfRange(currentTotalDzd, "amountDzd")
     }
   }
 
-  private requireLiveCharge(chargeId: string) {
+  private requireLiveCharge(chargeId: string, action: "update" | "void" = "update") {
     const charge = this.repository.getChargeById(chargeId)
     if (!charge) {
       throw new InventoryError("NOT_FOUND", "تعذر العثور على الاحتساب المطلوب.")
     }
 
     if (charge.status !== "LIVE") {
-      throw new InventoryError("BUSINESS_RULE", "لا يمكن تعديل احتساب ملغى.")
+      const message = action === "void" ? "لا يمكن إلغاء احتساب ملغى." : "لا يمكن تعديل احتساب ملغى."
+      throw new InventoryError("BUSINESS_RULE", message)
     }
 
     return charge
