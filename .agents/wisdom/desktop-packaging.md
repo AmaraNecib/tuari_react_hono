@@ -106,3 +106,41 @@ Before it, a failed step must fail the operation; after it, the operation has
 succeeded and any later failure is a warning that names the resulting state
 (what is live, what is left behind). One code path that treats both the same
 will eventually report the wrong outcome.
+
+## An escape hatch must cover every failure mode it exists for (🟠 Major)
+
+PR #409 round 4: `--allow-plaintext` only guarded the build-sidecar availability
+gate (the addon file missing). An addon that existed at the loader path but could
+not load with the bundled Node passed the gate and then failed the staged probe,
+so a waived build (including the `--ephemeral` typecheck path) still exited
+non-zero. The waiver looked supported and then blocked the builds it existed for.
+
+The staged probe now catches the load failure: without the waiver it rethrows,
+with it the same loud plaintext-only banner prints, naming the probe error and
+the fact that the runtime cannot encrypt, and the build publishes.
+
+**Always**: when adding an opt-out, enumerate every refusal the code path can
+produce and decide explicitly which ones it covers. Test the matrix
+(failure mode × waiver on/off); an escape hatch that covers one of two failure
+modes is a trap.
+
+## A swap that renames the old tree aside must recover its own interrupted run (🟠 Major)
+
+PR #409 round 4: `swapRuntimeDirectory` renamed `src-tauri/bin` aside, then
+renamed the staged tree into place. A run killed between those two renames left
+no `bin` and a `bin.previous-<pid>` backup. The next build found no destination,
+so it published normally but never restored or cleared the backup: recovery
+depended on the destination already existing, and only a human deleting
+directories could clean it up.
+
+The swap now scans for `<dir>.previous-*` siblings. If the destination is missing
+and one exists, it restores it first (logging the state it found and what it
+did) and then runs the normal swap. Restoring before publishing is what makes
+the publish-failure path safe: the catch restores a runnable runtime instead of
+leaving nothing. Older backups are swept after the next successful publish.
+
+**Always**: a multi-rename publish must recognize the state its own crash window
+leaves behind (missing destination plus a backup) and repair it on the next run.
+Recovery that assumes the destination exists is not recovery, and the stranded
+state should be restored before republishing so even a failed retry leaves
+something runnable.
