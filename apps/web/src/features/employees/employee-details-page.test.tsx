@@ -167,6 +167,17 @@ describe("EmployeeDetailsPage salary payments (#412)", () => {
     )
   })
 
+  it("defaults a daily worker's quick form to one day, not a month", () => {
+    renderDetails(monthlyWorker({ salaryPeriod: "DAILY", salaryAmountDzd: 1500 }))
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
+    const [daysInput] = screen.getAllByRole("spinbutton") as HTMLInputElement[]
+
+    expect(daysInput?.value).toBe("1")
+    // One day's wage, not thirty.
+    expect(screen.getAllByDisplayValue("1500").length).toBeGreaterThan(0)
+  })
+
   it("submits the date picked in the quick payment form as the canonical day boundary", () => {
     renderDetails()
 

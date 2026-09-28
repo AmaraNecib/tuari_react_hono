@@ -13,7 +13,7 @@ import type {
   SalaryProjectAssignmentWindow,
   SalaryProjectOption,
 } from "./add-salary-payment-dialog"
-import { SALARY_DAYS_PER_MONTH, parsePositiveInteger } from "./salary-payment-form"
+import { defaultSalaryPaymentDays, parsePositiveInteger } from "./salary-payment-form"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { classifyWorkforceRole } from "./role-classification"
@@ -152,9 +152,7 @@ export function EmployeeDetailsPage({
   const [paymentDate, setPaymentDate] = useState(() => getAlgeriaDateInputValue())
   // The quick-payment form captures the days too: a monthly wage paid for 15
   // of 30 days must not be recorded as a full 30-day month (issue #412 review).
-  const [paymentDays, setPaymentDays] = useState(() =>
-    employee.salaryPeriod === "DAILY" ? "1" : String(SALARY_DAYS_PER_MONTH),
-  )
+  const [paymentDays, setPaymentDays] = useState(() => String(defaultSalaryPaymentDays(employee.salaryPeriod)))
   const [paymentAmountTouched, setPaymentAmountTouched] = useState(false)
   const [actualAmount, setActualAmount] = useState(() => (employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : ""))
   const [note, setNote] = useState("")
@@ -199,7 +197,7 @@ export function EmployeeDetailsPage({
 
   useEffect(() => {
     setPaymentDate(getAlgeriaDateInputValue())
-    setPaymentDays(employee.salaryPeriod === "DAILY" ? "1" : String(SALARY_DAYS_PER_MONTH))
+    setPaymentDays(String(defaultSalaryPaymentDays(employee.salaryPeriod)))
     setPaymentAmountTouched(false)
     setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
     setNote("")
@@ -212,7 +210,7 @@ export function EmployeeDetailsPage({
     }
 
     setPaymentDate(getAlgeriaDateInputValue())
-    setPaymentDays(employee.salaryPeriod === "DAILY" ? "1" : String(SALARY_DAYS_PER_MONTH))
+    setPaymentDays(String(defaultSalaryPaymentDays(employee.salaryPeriod)))
     setPaymentAmountTouched(false)
     setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
     setNote("")
@@ -417,7 +415,7 @@ export function EmployeeDetailsPage({
                         employeeId: employee.id,
                         // The days are captured by the form; the amount still
                         // overrides the day-derived proposal when edited.
-                        days: parsedPaymentDays ?? (employee.salaryPeriod === "DAILY" ? 1 : SALARY_DAYS_PER_MONTH),
+                        days: parsedPaymentDays ?? defaultSalaryPaymentDays(employee.salaryPeriod),
                         actualAmountDzd: actualAmountValue!,
                         paymentDate: paymentDate ? toAlgeriaDayBoundaryIso(paymentDate, "start") : undefined,
                         note: note.trim() || null,

@@ -2,7 +2,19 @@ import { describe, expect, it } from "vitest"
 
 import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 
-import { computeUnallocatedDays, parsePositiveInteger, resolveSalaryPaymentPeriod } from "./salary-payment-form"
+import { computeUnallocatedDays, defaultSalaryPaymentDays, parsePositiveInteger, resolveSalaryPaymentPeriod } from "./salary-payment-form"
+
+describe("defaultSalaryPaymentDays", () => {
+  it("defaults a full month for monthly and legacy weekly, and a single day for daily", () => {
+    expect(defaultSalaryPaymentDays("MONTHLY")).toBe(30)
+    expect(defaultSalaryPaymentDays("WEEKLY")).toBe(30)
+    expect(defaultSalaryPaymentDays("DAILY")).toBe(1)
+  })
+
+  it("falls back to the month when the period is unknown", () => {
+    expect(defaultSalaryPaymentDays(null)).toBe(30)
+  })
+})
 
 describe("parsePositiveInteger", () => {
   it("parses a positive whole-day string", () => {

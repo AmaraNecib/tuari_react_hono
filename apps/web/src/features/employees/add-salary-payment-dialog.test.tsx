@@ -43,14 +43,14 @@ const PROJECT = { id: "project-1", name: "مشروع" }
 // always full coverage of the dialog's period, whatever today's date is.
 const ASSIGNMENT = { projectId: PROJECT.id, startDate: "2000-01-01T00:00:00+01:00", endDate: null }
 
-function renderDialog() {
+function renderDialog(salaryPeriod: "MONTHLY" | "DAILY" = "MONTHLY") {
   const onOpenChange = vi.fn()
   render(
     <AddSalaryPaymentDialog
       employeeId="employee-1"
       employeeName="عامل"
-      salaryAmountDzd={30000}
-      salaryPeriod="MONTHLY"
+      salaryAmountDzd={salaryPeriod === "DAILY" ? 1500 : 30000}
+      salaryPeriod={salaryPeriod}
       projectAssignments={[ASSIGNMENT]}
       projects={[PROJECT]}
       open
@@ -62,6 +62,22 @@ function renderDialog() {
 }
 
 describe("AddSalaryPaymentDialog (#412)", () => {
+  it("defaults a monthly worker to a full 30-day month", () => {
+    mockMutateAsync.mockReset()
+    const { daysInput } = renderDialog("MONTHLY")
+
+    expect(daysInput?.value).toBe("30")
+  })
+
+  it("defaults a daily worker to one day, not a 30-day month", () => {
+    mockMutateAsync.mockReset()
+    const { daysInput } = renderDialog("DAILY")
+
+    // A daily wage paid for "30 days" would propose 30x the day's pay.
+    expect(daysInput?.value).toBe("1")
+    expect(screen.getAllByDisplayValue("1500").length).toBeGreaterThan(0)
+  })
+
   it("prefills the split from the derived default and tracks the days input until a line is edited", () => {
     mockMutateAsync.mockReset()
     const { daysInput, lineDaysInput } = renderDialog()

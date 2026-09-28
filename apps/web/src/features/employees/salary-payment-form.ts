@@ -11,6 +11,19 @@ export type SalaryPaymentPeriodType = "DAILY" | "WEEKLY" | "MONTHLY"
 /** The day the monthly rate treats as a full month (issue #412). */
 export const SALARY_DAYS_PER_MONTH = 30
 
+/**
+ * The default day count for a new payment.
+ *
+ * MONTHLY and legacy WEEKLY default to a full 30-day month; DAILY defaults to a
+ * single day. A daily wage is paid per day, so defaulting it to a 30-day month
+ * would propose a month's pay for one day's work. Both payment surfaces (the
+ * salaries dialog and the employee-details quick form) must agree, so they
+ * share this helper. A null period (unknown) falls back to the month.
+ */
+export function defaultSalaryPaymentDays(periodType: SalaryPaymentPeriodType | null): number {
+  return periodType === "DAILY" ? 1 : SALARY_DAYS_PER_MONTH
+}
+
 /** Parse a positive whole-day string, or null when it is not one. */
 export function parsePositiveInteger(value: string): number | null {
   const trimmed = value.trim()

@@ -18,8 +18,8 @@ import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 import { computeProposedSalaryAmount, deriveSalaryProjectDays } from "@tuari/contracts"
 
 import {
-  SALARY_DAYS_PER_MONTH,
   computeUnallocatedDays,
+  defaultSalaryPaymentDays,
   parsePositiveInteger,
   resolveSalaryPaymentPeriod,
   type SalaryPaymentPeriodType,
@@ -64,7 +64,7 @@ export function AddSalaryPaymentDialog({
   const { amount: manualAmount, setAmount: setManualAmount, value: manualAmountValue, reset: resetAmount } = useFormAmount()
   const { date, setDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
   const [note, setNote] = useState("")
-  const [daysText, setDaysText] = useState(String(SALARY_DAYS_PER_MONTH))
+  const [daysText, setDaysText] = useState(() => String(defaultSalaryPaymentDays(salaryPeriod)))
   const [manualAmountTouched, setManualAmountTouched] = useState(false)
   const [splits, setSplits] = useState<SplitLine[]>([])
   const [splitsTouched, setSplitsTouched] = useState(false)
@@ -111,13 +111,13 @@ export function AddSalaryPaymentDialog({
       return
     }
     initializedTargetRef.current = employeeId
-    setDaysText(String(SALARY_DAYS_PER_MONTH))
+    setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
     resetAmount()
     setManualAmountTouched(false)
     resetDate()
     setNote("")
     setSplitsTouched(false)
-  }, [open, employeeId, resetAmount, resetDate])
+  }, [open, employeeId, salaryPeriod, resetAmount, resetDate])
 
   useEffect(() => {
     if (!open || !employeeId || splitsTouched) {
@@ -150,7 +150,7 @@ export function AddSalaryPaymentDialog({
     !mutation.isPending
 
   const resetForm = () => {
-    setDaysText(String(SALARY_DAYS_PER_MONTH))
+    setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
     resetAmount()
     setManualAmountTouched(false)
     resetDate()
