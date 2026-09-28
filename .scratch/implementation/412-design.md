@@ -25,18 +25,22 @@ review tier: High-assurance (financial calculation)
   - `deriveSalaryProjectDays` (web form default only; the API takes the split
     as an explicit payload and never derives it): for each project, the distinct
     Algeria calendar days its assignment windows cover inside
-    `[periodStart, periodEnd]`; open-ended windows run to the period end;
-    overlapping windows dedupe.
+    `[periodStart, periodEnd]`; open-ended windows run to the period end. A day
+    belongs to exactly one project: assignment windows are half-open
+    (`[startDate, endDate)`), so the instant that ends one project's assignment
+    and starts the next leaves the handoff day to the new project, and any day
+    two still-overlapping windows dispute goes to the first project in
+    project-id order (round-4 review). Overlapping windows on the same project
+    dedupe.
     The covered days are then normalized against the period length and scaled
     to the payment's day count (parent decision, #412): a project covering the
     whole period gets all of `days` (30 by default), a project covering 15 of a
     30-day period gets 15, and a partially covered period leaves the rest
     unallocated. Each line is floored and the remaining days are handed out by
     largest fractional part (largest-remainder/Hamilton), so a fully covered
-    period sums EXACTLY to `days` and a correction can never drive a line
-    negative. Order is project-id ascending.
-    (Overlapping projects can exceed `days`; the UI surfaces that for a hand
-    edit.)
+    period sums EXACTLY to `days` (never `days + 1`, even through a handoff) and
+    a correction can never drive a line negative. Order is project-id
+    ascending.
 
 ## Data model
 
