@@ -188,3 +188,41 @@ above-bound row, (b) `MAX_SAFE_INTEGER` is the point past which the stored
 `number` is no longer an exact integer, and (c) the alternative (an unbounded
 read schema next to a bounded write schema) is exactly the two-ceiling bug
 being fixed.
+
+## Debate round (high-assurance requirement)
+
+The tier requires a debate and the PR had none. Two fresh-context reviewers (a
+critic hunting wrong or unrepresentable numbers, a defender arguing the design)
+read the branch diff. Synthesis and decisions:
+
+- **Fixed: `roundMoney` corrupted totals above ~9.007e13.** `value * 100`
+  overflows IEEE-754 integer precision, so the helper returned
+  `MAX_SAFE_INTEGER - 2` for an input of `MAX_SAFE_INTEGER - 1`. The shared
+  helper now returns large magnitudes unchanged, because at that magnitude the
+  value has no representable cents. Pinned by `report.helpers.test.ts` and a
+  near-bound project-total test. The same guard was added to the web copy used
+  by the percentage linkage.
+- **Fixed: a blank correction amount silently recorded a revision to 0.** The
+  history editor used `Number(draftAmount)` and `Number("")` is 0. It now routes
+  through the transfer dialog's three-valued `parseChargeAmountInput`, accepts
+  only an explicit amount (0 is a free placement), and shows an inline error.
+  Pinned by `asset-charge-history.test.tsx`.
+- **Fixed: the client amount parser accepted over-bound values.** An amount
+  above `MAX_MONEY_DZD`, including one derived from a huge percentage, now
+  parses as invalid and blocks submit instead of failing at the wire. Pinned by
+  `transfer-item-dialog.test.tsx`.
+- **Dismissed: duplicate charge on a same-project re-placement.** `transferAsset`
+  already refuses a transfer to the unit's current location with
+  `BUSINESS_RULE` ("الأصل موجود بالفعل في هذا الموقع."). The critic missed the
+  guard.
+- **Reported to the parent, not fixed here: the invoice path still leaves
+  consumable `unitPriceDzd`, `grossTotalDzd` and `paidAmountDzd` unbounded.**
+  Those fields predate #413, do not feed a charge, and their output contract is
+  deliberately unbounded, so this is a pre-existing money-rule gap rather than
+  the two-ceiling bug. Proposed as a follow-up.
+- **Accepted minors:** `ON DELETE RESTRICT` also blocks deleting a project whose
+  only charges are VOIDED, but no project-delete path exists today; the void UI
+  collects no reason unless the row was first opened for edit; `getLastChargeAmount`
+  orders by insertion (rowid), not the movement's `occurredAt`; the in-memory
+  adapter does not persist `voidedBy`; the correction/void pre-read sits outside
+  the write transaction, which is unreachable with synchronous better-sqlite3.

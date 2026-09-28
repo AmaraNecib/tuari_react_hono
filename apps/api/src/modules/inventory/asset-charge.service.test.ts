@@ -218,6 +218,18 @@ describe("AssetChargeService — chain, corrections and total (#413)", () => {
     expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(Number.MAX_SAFE_INTEGER)
   })
 
+  it("keeps a near-bound project total exact instead of folding it through a lossy multiply", () => {
+    // The shared roundMoney must not run `value * 100` at this magnitude (the
+    // old helper returned MAX - 2 for an input of MAX - 1).
+    const { service } = createHarness()
+    service.createPlacementCharge(
+      { assetUnitId: "asset-1", projectId: "project-a", amountDzd: Number.MAX_SAFE_INTEGER - 1 },
+      AUDIT,
+    )
+
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(Number.MAX_SAFE_INTEGER - 1)
+  })
+
   it("rounds the project total at the money boundary (0.1 + 0.2 = 0.3)", () => {
     // Without the roundMoney boundary the raw sum leaks float noise
     // (0.30000000000000004) into the project cost view.

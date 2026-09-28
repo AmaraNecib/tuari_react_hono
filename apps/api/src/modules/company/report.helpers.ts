@@ -6,8 +6,22 @@
 
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/** Round a monetary sum to 2 decimals so float noise never reaches the report UI. */
+/**
+ * Round a monetary sum to 2 decimals so float noise never reaches the report UI.
+ *
+ * `value * 100` is exact only while `|value| <= MAX_SAFE_INTEGER / 100`
+ * (~9.007e13). Past that the multiply overflows IEEE-754 integer precision and
+ * the round-trip corrupts the value: the old helper returned `9007199254740989`
+ * (MAX_SAFE_INTEGER - 2) for an input of `9007199254740990`
+ * (MAX_SAFE_INTEGER - 1). At that magnitude the value has no representable
+ * cents anyway, so it is returned unchanged rather than rounded through a
+ * lossy multiply.
+ */
 export function roundMoney(value: number) {
+  if (Math.abs(value) * 100 > Number.MAX_SAFE_INTEGER) {
+    return value;
+  }
+
   return Math.round(value * 100) / 100;
 }
 

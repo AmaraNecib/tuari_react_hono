@@ -73,6 +73,13 @@ describe("placement charge amount ↔ percentage", () => {
     // A non-blank invalid entry must NOT silently become a free placement.
     expect(parseChargeAmountInput("abc")).toEqual({ kind: "invalid" })
     expect(parseChargeAmountInput("-5")).toEqual({ kind: "invalid" })
+    // The shared money bound is enforced client-side too, so an over-bound
+    // amount is refused before the wire gate rather than after submit.
+    expect(parseChargeAmountInput(String(Number.MAX_SAFE_INTEGER))).toEqual({
+      kind: "amount",
+      value: Number.MAX_SAFE_INTEGER,
+    })
+    expect(parseChargeAmountInput(String(Number.MAX_SAFE_INTEGER + 1))).toEqual({ kind: "invalid" })
   })
 })
 

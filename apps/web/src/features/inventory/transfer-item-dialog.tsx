@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import { MAX_MONEY_DZD } from "@tuari/contracts"
+
 import {
   Dialog,
   DialogContent,
@@ -43,6 +45,12 @@ type TransferConsumableTarget = {
 export type TransferTarget = TransferAssetTarget | TransferConsumableTarget
 
 function roundMoney(value: number) {
+  // Mirror the API helper's overflow guard: `value * 100` corrupts large
+  // magnitudes, so return those unchanged instead of losing precision.
+  if (Math.abs(value) * 100 > Number.MAX_SAFE_INTEGER) {
+    return value
+  }
+
   return Math.round(value * 100) / 100
 }
 
@@ -88,7 +96,7 @@ export function parseChargeAmountInput(value: string): ChargeAmountInput {
   }
 
   const parsed = Number(trimmed)
-  if (!Number.isFinite(parsed) || parsed < 0) {
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > MAX_MONEY_DZD) {
     return { kind: "invalid" }
   }
 

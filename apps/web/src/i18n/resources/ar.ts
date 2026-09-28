@@ -919,6 +919,7 @@ export const ar = {
         newAmount: "المبلغ الجديد",
         reason: "السبب (اختياري)",
         save: "حفظ",
+        invalidAmount: "أدخل مبلغًا صحيحًا (صفر أو أكثر). لا يمكن ترك الحقل فارغًا عند التصحيح.",
       },
       transferHistory: {
         locationTitle: "سجل التحويلات",

@@ -76,6 +76,35 @@ describe("AssetChargeHistory (#413)", () => {
     )
   })
 
+  it("refuses a blank correction instead of silently recording a revision to 0", async () => {
+    render(<AssetChargeHistory assetUnitId="asset-1" />)
+    fireEvent.click(screen.getByText("سجل الاحتساب"))
+
+    fireEvent.click(screen.getByText("تعديل"))
+    fireEvent.change(screen.getByLabelText("المبلغ الجديد"), { target: { value: "   " } })
+    fireEvent.click(screen.getByText("حفظ"))
+
+    expect(screen.getByTestId("charge-edit-error")).toBeTruthy()
+    expect(mocks.update.mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it("accepts an explicit zero correction (a free placement) and refuses a non-numeric one", async () => {
+    render(<AssetChargeHistory assetUnitId="asset-1" />)
+    fireEvent.click(screen.getByText("سجل الاحتساب"))
+
+    fireEvent.click(screen.getByText("تعديل"))
+    fireEvent.change(screen.getByLabelText("المبلغ الجديد"), { target: { value: "abc" } })
+    fireEvent.click(screen.getByText("حفظ"))
+    expect(screen.getByTestId("charge-edit-error")).toBeTruthy()
+    expect(mocks.update.mutateAsync).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("المبلغ الجديد"), { target: { value: "0" } })
+    fireEvent.click(screen.getByText("حفظ"))
+    await waitFor(() =>
+      expect(mocks.update.mutateAsync).toHaveBeenCalledWith({ chargeId: "charge-1", amountDzd: 0, reason: null }),
+    )
+  })
+
   it("voids a live charge and marks a voided one", async () => {
     mocks.charges.mockReturnValue({
       data: { items: [makeCharge(), makeCharge({ id: "charge-2", status: "VOID", projectName: "مشروع ب" })] },

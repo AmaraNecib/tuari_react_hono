@@ -9,6 +9,7 @@ import {
   useUpdateAssetChargeMutation,
   useVoidAssetChargeMutation,
 } from "./inventory-hooks"
+import { parseChargeAmountInput } from "./transfer-item-dialog"
 
 /**
  * The unit's charge chain (#413): project placements, newest first, with
@@ -22,6 +23,7 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draftAmount, setDraftAmount] = useState("")
   const [draftReason, setDraftReason] = useState("")
+  const [editError, setEditError] = useState(false)
   const query = useAssetChargesByUnitQuery(expanded ? assetUnitId : undefined)
   const updateMutation = useUpdateAssetChargeMutation()
   const voidMutation = useVoidAssetChargeMutation()
@@ -36,12 +38,22 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
     setEditingId(chargeId)
     setDraftAmount(String(amountDzd))
     setDraftReason("")
+    setEditError(false)
   }
 
   const saveEdit = async (chargeId: string) => {
-    const amountDzd = Number(draftAmount)
-    if (!Number.isFinite(amountDzd) || amountDzd < 0) return
-    await updateMutation.mutateAsync({ chargeId, amountDzd, reason: draftReason.trim() || null })
+    // A correction has no "default": blank is not a valid new amount, and a
+    // non-numeric draft must not be coerced to 0 by `Number("")`. Route it
+    // through the same three-valued parser the transfer dialog uses, accept
+    // only an explicit amount (0 is a free placement), and surface an error.
+    const amountInput = parseChargeAmountInput(draftAmount)
+    if (amountInput.kind !== "amount") {
+      setEditError(true)
+      return
+    }
+
+    setEditError(false)
+    await updateMutation.mutateAsync({ chargeId, amountDzd: amountInput.value, reason: draftReason.trim() || null })
     setEditingId(null)
   }
 
@@ -136,9 +148,14 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
                     <Button size="xs" disabled={isPending} onClick={() => void saveEdit(charge.id)}>
                       {t("inventory.chargeHistory.save")}
                     </Button>
-                    <Button size="xs" variant="ghost" onClick={() => setEditingId(null)}>
+                    <Button size="xs" variant="ghost" onClick={() => { setEditingId(null); setEditError(false) }}>
                       {t("common.cancel")}
                     </Button>
+                    {editError ? (
+                      <p className="w-full text-xs text-destructive" role="alert" data-testid="charge-edit-error">
+                        {t("inventory.chargeHistory.invalidAmount")}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
