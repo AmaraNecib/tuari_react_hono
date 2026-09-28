@@ -5,9 +5,35 @@ import path from "node:path";
 const BACKUP_INFIX = ".previous-";
 
 /**
+ * Name this run's backup `<destination>.previous-<epochMs>-<pid>`.
+ *
+ * The epoch millisecond is the recency signal recovery sorts by. A pid alone
+ * is not one — pids are reused and wrap — which is why the old name-only sort
+ * could restore an older runtime than the one an interrupted run had just
+ * built (#409). The pid keeps two builds that start in the same millisecond
+ * distinct.
+ */
+const backupDirName = (destinationDir, { now, pid }) =>
+  `${destinationDir}${BACKUP_INFIX}${now()}-${pid}`;
+
+/**
+ * Recency key for a backup name. New names carry an epoch-millisecond prefix
+ * (`<epoch>-<pid>`); legacy pid-only names parse as their own number and so
+ * sort before every timestamped backup, which is the right order because they
+ * predate this build.
+ */
+const backupRecency = (name, prefix) => {
+  const [leading] = name.slice(prefix.length).split("-");
+  const value = Number(leading);
+
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+};
+
+/**
  * Every `<destinationDir>.previous-*` sibling left behind by a swap that did
- * not finish. A clean run removes its own backup, so anything found here is
- * litter from an interrupted or crashed run.
+ * not finish, newest first. A clean run removes its own backup, so anything
+ * found here is litter from an interrupted or crashed run; callers take the
+ * first entry as the most recent runtime to recover.
  */
 const findPreviousRuntimeBackups = ({ destinationDir, exists, readdir }) => {
   const parentDir = path.dirname(destinationDir);
@@ -20,7 +46,7 @@ const findPreviousRuntimeBackups = ({ destinationDir, exists, readdir }) => {
 
   return readdir(parentDir)
     .filter((name) => name.startsWith(prefix))
-    .sort()
+    .sort((a, b) => backupRecency(b, prefix) - backupRecency(a, prefix))
     .map((name) => path.join(parentDir, name));
 };
 
@@ -34,12 +60,12 @@ const findPreviousRuntimeBackups = ({ destinationDir, exists, readdir }) => {
  * to be atomic; `build-sidecar.mjs` stages under `src-tauri/` for that reason.
  *
  * A run killed between "rename the old tree aside" and "publish the staged
- * tree" leaves no destination plus a `.previous-<pid>` backup. When that state
- * is found (destination missing, backup present) the backup is restored first
- * and `log` reports what was found and what was done, so the next build
- * recovers on its own and a failed publish still restores a runnable runtime.
- * Backups left by earlier runs are removed after the next successful publish,
- * so they never require a human to delete directories.
+ * tree" leaves no destination plus a `.previous-<epoch>-<pid>` backup. When
+ * that state is found (destination missing, backups present) the NEWEST backup
+ * is restored first and `log` reports what was found and what was done, so the
+ * next build recovers on its own and a failed publish still restores a runnable
+ * runtime. Backups left by earlier runs are removed after the next successful
+ * publish, so they never require a human to delete directories.
  *
  * Removing the renamed-aside previous tree happens AFTER the staged tree is
  * live. A failure there does not undo the publish, so it is reported with
@@ -57,8 +83,10 @@ export const swapRuntimeDirectory = ({
   readdir = readdirSync,
   warn = console.warn,
   log = console.log,
+  now = Date.now,
+  pid = process.pid,
 }) => {
-  const backupDir = `${destinationDir}${BACKUP_INFIX}${process.pid}`;
+  const backupDir = backupDirName(destinationDir, { now, pid });
   const leftovers = findPreviousRuntimeBackups({ destinationDir, exists, readdir });
   let recoveredBackup = null;
 
@@ -96,8 +124,9 @@ export const swapRuntimeDirectory = ({
   const hadDestination = exists(destinationDir);
 
   if (hadDestination) {
-    // Clear this process's backup name before reusing it. A pid can repeat
-    // across reboots, and the rename would fail against a non-empty directory.
+    // A re-run in the same millisecond with the same pid reuses this backup
+    // name; clear it first so the rename cannot fail against a non-empty
+    // directory.
     remove(backupDir, { recursive: true, force: true });
     rename(destinationDir, backupDir);
   }
@@ -152,6 +181,8 @@ export const buildProbeAndPublishRuntime = ({
   readdir = readdirSync,
   warn = console.warn,
   log = console.log,
+  now = Date.now,
+  pid = process.pid,
 }) => {
   try {
     build();
@@ -167,6 +198,8 @@ export const buildProbeAndPublishRuntime = ({
         readdir,
         warn,
         log,
+        now,
+        pid,
       });
     }
   } finally {

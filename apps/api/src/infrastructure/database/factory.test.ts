@@ -112,13 +112,30 @@ describe("assertBindingEncrypts", () => {
 describe("assertNotEncryptedWithoutKey", () => {
   const plaintextHeader = "SQLite format 3\0";
 
-  it("refuses a non-SQLite file (an encrypted workspace) with a clear message", () => {
+  it("refuses a non-SQLite file with a message that does not assert encryption", () => {
     const dbPath = tempDbPath();
     writeFileSync(dbPath, Buffer.from("not a plaintext sqlite database at all"));
 
     expect(() => assertNotEncryptedWithoutKey(dbPath, null)).toThrowError(
       /SQLCipher-encrypted.*encrypted_db.*#402/s,
     );
+    // A truncated or corrupt plaintext database takes the same path, so the
+    // message must keep encryption as a possibility WITHOUT asserting it, offer
+    // damage as the alternative, and say what to check (#409).
+    const message = () => {
+      try {
+        assertNotEncryptedWithoutKey(dbPath, null);
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+      return "";
+    };
+
+    expect(message()).not.toMatch(/almost certainly/);
+    expect(message()).toMatch(/cannot tell those apart/);
+    expect(message()).toMatch(/damaged/);
+    expect(message()).toMatch(/truncated or corrupt/);
+    expect(message()).toMatch(/inspect or restore it/);
   });
 
   it("accepts a plaintext SQLite header", () => {

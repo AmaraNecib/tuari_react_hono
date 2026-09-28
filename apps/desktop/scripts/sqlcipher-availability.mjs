@@ -53,11 +53,79 @@ export const inspectSqlcipherArtifact = ({
 };
 
 /**
- * The probe that proves a SQLCipher addon actually works. Existence is not
- * proof: an addon built against a different Node ABI cannot be loaded by the
- * bundled Node, and plain better-sqlite3 accepts `PRAGMA key` as a no-op. Only
- * a real load plus a non-empty `PRAGMA cipher_version` shows the binding
- * encrypts (the same probe the API applies at runtime, #402/#409).
+ * Resolve the SQLCipher package's availability, attempting the native build
+ * once when the binding is missing.
+ *
+ * The build is skipped for a waived ephemeral run (`--allow-plaintext
+ * --ephemeral`, i.e. `typecheck`): that path never publishes a runtime and the
+ * waiver already covers a missing binding, so driving node-gyp there makes
+ * every desktop typecheck pay for a native build it does not need (#409). A
+ * waived *publishing* run still attempts the build, so a plaintext artifact is
+ * only produced after the binding genuinely could not be built.
+ *
+ * `buildNative` and `exists` are injected so the decision — including that the
+ * build callback is never invoked on the skipped path — is unit-testable
+ * without a C++ toolchain.
+ *
+ * @param {object} options
+ * @param {string} options.packageDir - Resolved `better-sqlite3-sqlcipher` root.
+ * @param {NodeJS.Platform} [options.platform]
+ * @param {boolean} [options.plaintextAllowed] - The waiver is active.
+ * @param {boolean} [options.ephemeral] - This run publishes nothing.
+ * @param {(candidate: string) => boolean} [options.exists]
+ * @param {() => void} options.buildNative - Drives node-gyp for the fork.
+ * @param {(message: string) => void} [options.log]
+ * @returns {{ availability: object, attemptedBuild: boolean, detail: string | undefined }}
+ */
+export const resolveSqlcipherArtifact = ({
+  packageDir,
+  platform = process.platform,
+  plaintextAllowed = false,
+  ephemeral = false,
+  exists = existsSync,
+  buildNative,
+  log = console.log,
+}) => {
+  const inspect = () => inspectSqlcipherArtifact({ packageDir, platform, exists });
+  let availability = inspect();
+
+  if (availability.available) {
+    log(`better-sqlite3-sqlcipher native binding found at ${availability.binaryPath}.`);
+    return { availability, attemptedBuild: false, detail: undefined };
+  }
+
+  const missing = availability.missing.join(", ");
+
+  if (plaintextAllowed && ephemeral) {
+    log(
+      `better-sqlite3-sqlcipher native binding missing (${missing}); skipping the native `
+      + "build for the waived ephemeral run, which never publishes a runtime.",
+    );
+    return { availability, attemptedBuild: false, detail: undefined };
+  }
+
+  log(`better-sqlite3-sqlcipher native binding missing (${missing}); attempting to build it.`);
+
+  let detail;
+  try {
+    buildNative();
+  } catch (error) {
+    detail = error instanceof Error ? error.message : String(error);
+  }
+
+  return { availability: inspect(), attemptedBuild: true, detail };
+};
+
+/**
+ * The probe that proves the addon is a *loadable* SQLCipher build. Existence is
+ * not proof: an addon built against a different Node ABI cannot be loaded by
+ * the bundled Node, and plain better-sqlite3 accepts `PRAGMA key` as a no-op
+ * and reports no cipher version. A real load plus a non-empty
+ * `PRAGMA cipher_version` therefore shows the binding is real SQLCipher rather
+ * than a no-op — it does NOT prove that a keyed write actually encrypts the
+ * file. That is proven only by the #410 CI job (native fork build, keyed write,
+ * assert the file is not `SQLite format 3`, reopen and read). This is the same
+ * capability probe the API applies at runtime (#402/#409).
  *
  * Run with `node -e`, so `require("better-sqlite3-sqlcipher")` resolves from
  * the sidecar root's `node_modules` via the process working directory.

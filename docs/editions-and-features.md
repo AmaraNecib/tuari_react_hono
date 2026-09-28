@@ -223,8 +223,9 @@ today.
 The flag is not reversible for an existing workspace. If a database was created
 while the license carried `encrypted_db`, a later launch whose license lacks the
 feature drops `APP_DB_KEY`. The factory reads the file header before opening it
-and refuses a non-`SQLite format 3` file with a message naming the cause (the
-workspace is encrypted and `encrypted_db`/`APP_DB_KEY` is not active), rather
+and refuses a non-`SQLite format 3` file with a message that names both
+possibilities — the workspace is encrypted and `encrypted_db`/`APP_DB_KEY` is
+not active, or the plaintext file is damaged — without asserting which, rather
 than failing at the first query with an opaque `file is not a database` (#402).
 The same applies on the failed-init path in section 4, where the shell sets no
 license vars at all.
@@ -259,8 +260,9 @@ Caveats for sales:
    Enterprise license without the feature opens a plain database, and a
    Professional license that carries it enables encryption. The flag is not
    reversible for an existing workspace: the file stays encrypted while the key
-   is no longer passed, so it is refused with a clear "encrypted workspace, no
-   key" message instead of being opened as plaintext (section 6c, #402).
+   is no longer passed, so it is refused with a clear "encrypted or damaged
+   workspace, no key" message instead of being opened as plaintext (section 6c,
+   #402).
 3. The `grace` window is read-only, shipped in `develop` at this base
    (section 6a).
 4. The seat counts in the architecture doc's matrix (1 / 10 / unlimited at

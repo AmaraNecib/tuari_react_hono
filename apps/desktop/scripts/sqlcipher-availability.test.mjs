@@ -11,6 +11,7 @@ import {
   inspectSqlcipherArtifact,
   probeSqlcipherBinding,
   requiredSqlcipherFiles,
+  resolveSqlcipherArtifact,
 } from "./sqlcipher-availability.mjs";
 
 /**
@@ -251,4 +252,106 @@ test("a synthetic binding whose cipher_version comes back empty fails the real p
   } finally {
     rmSync(runtimeDir, { recursive: true, force: true });
   }
+});
+
+test("a waived ephemeral run does not attempt the SQLCipher native build", () => {
+  // The #409 finding: `typecheck` runs `--allow-plaintext --ephemeral`, and a
+  // missing addon used to trigger `node-gyp rebuild` in the real dependency
+  // tree before the waiver took effect. The build callback must never run.
+  let buildCalls = 0;
+  const logs = [];
+
+  const result = resolveSqlcipherArtifact({
+    packageDir: "C:/packages/better-sqlite3-sqlcipher",
+    platform: "linux",
+    plaintextAllowed: true,
+    ephemeral: true,
+    exists: () => false,
+    buildNative: () => {
+      buildCalls += 1;
+    },
+    log: (message) => logs.push(message),
+  });
+
+  assert.equal(buildCalls, 0);
+  assert.equal(result.attemptedBuild, false);
+  assert.equal(result.availability.available, false);
+  assert.match(logs.join("\n"), /skipping the native build/i);
+});
+
+test("a waived publishing run still attempts the SQLCipher native build", () => {
+  // The waiver is not a blanket "never build": a real artifact is only produced
+  // plaintext when the binding genuinely cannot be built.
+  let buildCalls = 0;
+
+  const result = resolveSqlcipherArtifact({
+    packageDir: "C:/packages/better-sqlite3-sqlcipher",
+    platform: "linux",
+    plaintextAllowed: true,
+    ephemeral: false,
+    exists: () => false,
+    buildNative: () => {
+      buildCalls += 1;
+    },
+    log: () => {},
+  });
+
+  assert.equal(buildCalls, 1);
+  assert.equal(result.attemptedBuild, true);
+});
+
+test("without the waiver the SQLCipher native build is always attempted", () => {
+  let buildCalls = 0;
+
+  resolveSqlcipherArtifact({
+    packageDir: "C:/packages/better-sqlite3-sqlcipher",
+    platform: "linux",
+    plaintextAllowed: false,
+    ephemeral: true,
+    exists: () => false,
+    buildNative: () => {
+      buildCalls += 1;
+    },
+    log: () => {},
+  });
+
+  assert.equal(buildCalls, 1);
+});
+
+test("an available binding never triggers a native build", () => {
+  let buildCalls = 0;
+
+  const result = resolveSqlcipherArtifact({
+    packageDir: "C:/packages/better-sqlite3-sqlcipher",
+    platform: "linux",
+    plaintextAllowed: false,
+    ephemeral: false,
+    exists: () => true,
+    buildNative: () => {
+      buildCalls += 1;
+    },
+    log: () => {},
+  });
+
+  assert.equal(buildCalls, 0);
+  assert.equal(result.availability.available, true);
+  assert.equal(result.attemptedBuild, false);
+});
+
+test("a failed native build is reported in detail instead of thrown", () => {
+  const result = resolveSqlcipherArtifact({
+    packageDir: "C:/packages/better-sqlite3-sqlcipher",
+    platform: "linux",
+    plaintextAllowed: false,
+    ephemeral: false,
+    exists: () => false,
+    buildNative: () => {
+      throw new Error("node-gyp rebuild failed: no C++ toolchain");
+    },
+    log: () => {},
+  });
+
+  assert.equal(result.attemptedBuild, true);
+  assert.equal(result.availability.available, false);
+  assert.match(result.detail, /node-gyp rebuild failed/);
 });

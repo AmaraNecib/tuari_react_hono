@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyValidatedTree, runPnpmCommand } from "./script-security-utils.mjs";
 import { buildProbeAndPublishRuntime } from "./runtime-staging.mjs";
-import { inspectSqlcipherArtifact, probeSqlcipherBinding } from "./sqlcipher-availability.mjs";
+import { probeSqlcipherBinding, resolveSqlcipherArtifact } from "./sqlcipher-availability.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -111,7 +111,9 @@ const buildSqlcipherNative = (sqlcipherDir) => {
 
 /**
  * Resolve the SQLCipher package and make sure it carries a loadable native
- * binding, building it once if necessary.
+ * binding, building it once if necessary. The native build is skipped for the
+ * waived ephemeral path (`typecheck`), which publishes nothing and does not
+ * need a toolchain (#409).
  */
 const resolveSqlcipher = () => {
   let sqlcipherDir;
@@ -121,23 +123,15 @@ const resolveSqlcipher = () => {
     return { sqlcipherDir: null, availability: { available: false, binaryPath: null, missing: [] }, detail: error.message };
   }
 
-  let availability = inspectSqlcipherArtifact({ packageDir: sqlcipherDir });
-  if (availability.available) {
-    console.log(`better-sqlite3-sqlcipher native binding found at ${availability.binaryPath}.`);
-    return { sqlcipherDir, availability };
-  }
-
-  console.log(`better-sqlite3-sqlcipher native binding missing (${availability.missing.join(", ")}); attempting to build it.`);
-
-  let buildDetail;
-  try {
-    buildSqlcipherNative(sqlcipherDir);
-  } catch (error) {
-    buildDetail = error.message;
-  }
-
-  availability = inspectSqlcipherArtifact({ packageDir: sqlcipherDir });
-  return { sqlcipherDir, availability, detail: buildDetail };
+  return {
+    sqlcipherDir,
+    ...resolveSqlcipherArtifact({
+      packageDir: sqlcipherDir,
+      plaintextAllowed,
+      ephemeral,
+      buildNative: () => buildSqlcipherNative(sqlcipherDir),
+    }),
+  };
 };
 
 // Gate BEFORE touching bin/: a failed gate must leave any previous artifact
@@ -233,7 +227,9 @@ const buildRuntime = () => {
  * executable that ships beside it, before anything replaces the previous
  * runtime. The existence check only proves the addon is there; an addon built
  * against another Node ABI must fail here instead of on a customer machine
- * (#409). This is the authoritative gate; a version string would be a heuristic.
+ * (#409). This is the strongest gate available without a native build
+ * toolchain: it proves the binding loads and reports a cipher version, not that
+ * a keyed write encrypts the file (that is the #410 CI job).
  *
  * With `--allow-plaintext` the refusal downgrades to the same loud warning the
  * missing-addon gate prints. The waiver exists to produce a knowingly

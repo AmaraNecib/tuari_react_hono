@@ -161,7 +161,7 @@ test("a failure while swapping in the staged tree restores the previous runtime"
 
 test("a failed cleanup after publication warns instead of failing the build", () => {
   withLayout(({ root, destinationDir, stagingDir }) => {
-    const backupDir = `${destinationDir}.previous-${process.pid}`;
+    const backupDir = `${destinationDir}.previous-1700000000000-4242`;
     const warnings = [];
     let removeCalls = 0;
     const remove = (target, options) => {
@@ -182,6 +182,8 @@ test("a failed cleanup after publication warns instead of failing the build", ()
         build: () => {},
         probe: () => {},
         remove,
+        now: () => 1700000000000,
+        pid: 4242,
         warn: (message) => warnings.push(message),
       }),
     );
@@ -238,7 +240,7 @@ test("a failure clearing a stale backup before the swap still fails the build", 
 
 test("a runtime left aside by an interrupted run is restored before the next swap", () => {
   withLayout(({ root, destinationDir, stagingDir }) => {
-    const strandedBackup = `${destinationDir}.previous-999999`;
+    const strandedBackup = `${destinationDir}.previous-1700000000000-999999`;
     rmSync(destinationDir, { recursive: true, force: true });
     writeTree(strandedBackup, { "marker.txt": "runtime from the interrupted run" });
 
@@ -268,7 +270,7 @@ test("a runtime left aside by an interrupted run is restored before the next swa
 
 test("a failed publish after recovery leaves the interrupted run's runtime in place", () => {
   withLayout(({ destinationDir, stagingDir }) => {
-    const strandedBackup = `${destinationDir}.previous-999999`;
+    const strandedBackup = `${destinationDir}.previous-1700000000000-999999`;
     rmSync(destinationDir, { recursive: true, force: true });
     writeTree(strandedBackup, { "marker.txt": "runtime from the interrupted run" });
     const strandedHash = hashTree(strandedBackup);
@@ -302,9 +304,53 @@ test("a failed publish after recovery leaves the interrupted run's runtime in pl
   });
 });
 
+test("recovery restores the newest backup, not the alphabetically first", () => {
+  withLayout(({ destinationDir, stagingDir }) => {
+    rmSync(destinationDir, { recursive: true, force: true });
+    // Equal digit counts, so an ascending name sort puts the OLDEST first and
+    // `leftovers[0]` would restore the older runtime. The reviewer's
+    // `previous-1000` / `previous-999` example is the same defect: a filename
+    // sort is not a recency order (#409).
+    const olderBackup = `${destinationDir}.previous-1700000000000-111`;
+    const newerBackup = `${destinationDir}.previous-1700000001000-222`;
+    writeTree(olderBackup, { "marker.txt": "older runtime" });
+    writeTree(newerBackup, { "marker.txt": "newer runtime" });
+
+    let renameCalls = 0;
+    const rename = (from, to) => {
+      renameCalls += 1;
+      // 1: newest backup -> destination (recovery). 2: destination -> backup.
+      // 3: staging -> destination (fails). 4: backup -> destination (restore).
+      if (renameCalls === 3) {
+        throw new Error("EBUSY: resource busy or locked, rename");
+      }
+      renameSync(from, to);
+    };
+
+    assert.throws(
+      () =>
+        buildProbeAndPublishRuntime({
+          stagingDir,
+          destinationDir,
+          build: () => {},
+          probe: () => {},
+          rename,
+        }),
+      /EBUSY/,
+    );
+
+    assert.equal(renameCalls, 4);
+    // The newest backup was the one recovered, so it is what survived the
+    // failed publish. A name-order pick would have left "older runtime" live.
+    assert.equal(readFileSync(path.join(destinationDir, "marker.txt"), "utf8"), "newer runtime");
+    assert.equal(existsSync(newerBackup), false);
+    assert.equal(existsSync(olderBackup), true);
+  });
+});
+
 test("a backup left by an interrupted run is swept when the next publish succeeds", () => {
   withLayout(({ destinationDir, stagingDir }) => {
-    const orphan = `${destinationDir}.previous-999999`;
+    const orphan = `${destinationDir}.previous-1700000000000-999999`;
     writeTree(orphan, { "junk.txt": "runtime left by an interrupted run" });
 
     const warnings = [];
@@ -339,7 +385,7 @@ test("an ephemeral build probes and discards without touching the destination", 
 
 test("a backup directory left by a crashed run is cleared before the next swap", () => {
   withLayout(({ root, destinationDir, stagingDir }) => {
-    const staleBackup = `${destinationDir}.previous-${process.pid}`;
+    const staleBackup = `${destinationDir}.previous-1700000000000-4242`;
     writeTree(staleBackup, { "junk.txt": "half-copied tree from a crashed run" });
 
     buildProbeAndPublishRuntime({
@@ -347,6 +393,8 @@ test("a backup directory left by a crashed run is cleared before the next swap",
       destinationDir,
       build: () => {},
       probe: () => {},
+      now: () => 1700000000000,
+      pid: 4242,
     });
 
     assert.equal(readdirSync(path.join(root, "src-tauri")).some((name) => name.includes(".previous-")), false);

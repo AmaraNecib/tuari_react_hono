@@ -69,9 +69,10 @@ const readLeadingBytes = (databasePath: string): string | null => {
 /**
  * A SQLCipher-encrypted file is indistinguishable from noise to a plaintext
  * reader, so without a key it only fails at the first query with an opaque
- * `file is not a database`. Refuse it up front with a message that names the
- * cause: the workspace is encrypted but the `encrypted_db` capability is not
- * active (licensing architecture §8.3 / #402).
+ * `file is not a database`. Refuse it up front with a message that names both
+ * possibilities — an encrypted workspace whose `encrypted_db` capability is not
+ * active, or a damaged plaintext file — without asserting which one it is
+ * (licensing architecture §8.3 / #402).
  */
 export function assertNotEncryptedWithoutKey(databasePath: string, key: string | null): void {
   if (key || databasePath === ":memory:") return
@@ -80,11 +81,12 @@ export function assertNotEncryptedWithoutKey(databasePath: string, key: string |
   if (header === null || header === "" || header === SQLITE_HEADER) return
 
   throw new Error(
-    `Refusing to open ${databasePath}: it does not look like a plaintext SQLite database, `
-    + "so it is almost certainly SQLCipher-encrypted, but no database key is active. "
-    + "The license's encrypted_db feature is missing or APP_DB_KEY was not provided; the "
-    + "encrypted workspace cannot be read as plaintext (#402). Restore the license/key, or "
-    + "migrate the workspace with the key present."
+    `Refusing to open ${databasePath}: its first bytes are not the SQLite header, so it is `
+    + "either SQLCipher-encrypted (expected when no database key is active) or damaged. This "
+    + "build cannot tell those apart. Check the license's encrypted_db feature and APP_DB_KEY: "
+    + "if the workspace should be encrypted, provide the key or restore the license; if it "
+    + "should be plaintext, the file may be truncated or corrupt, so inspect or restore it "
+    + "before retrying (#402)."
   )
 }
 
@@ -101,10 +103,12 @@ export type EncryptionCapabilityProbe = Pick<BetterSqliteDatabase, "pragma"> & {
 }
 
 /**
- * Prove the binding really encrypts. Plain better-sqlite3 accepts `PRAGMA key`
- * as a no-op, so a successful `require()` is not enough: the binding must report
- * a cipher version. On failure the connection is closed before throwing, so no
- * handle (and no plaintext file) is left behind.
+ * Prove the loaded binding is real SQLCipher rather than plain better-sqlite3.
+ * Plain better-sqlite3 accepts `PRAGMA key` as a no-op and reports no cipher
+ * version, so a successful `require()` is not enough. This proves the binding
+ * can encrypt; it does not prove that a keyed write lands ciphertext on disk —
+ * the #410 CI job covers that end to end. On failure the connection is closed
+ * before throwing, so no handle (and no plaintext file) is left behind.
  */
 export function assertBindingEncrypts(sqlite: EncryptionCapabilityProbe): void {
   let cipherVersion: unknown

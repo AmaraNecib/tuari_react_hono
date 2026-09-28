@@ -691,8 +691,10 @@ On next startup:
 4. If encrypted database was in use and new license doesn't include it:
    - App starts but cannot read the encrypted DB.
    - `[shipped]` The API factory refuses up front: a non-`SQLite format 3` file
-     opened with no key throws "it is almost certainly SQLCipher-encrypted, but
-     no database key is active" rather than failing at the first query (#402).
+     opened with no key throws a message that names both possibilities —
+     SQLCipher-encrypted (expected when no key is active) or a damaged plaintext
+     file — and says what to check, rather than failing at the first query
+     (#402).
    - Intended UI error: "قاعدة البيانات مشفرة وتتطلب نسخة انتربرايز."
    - User must purchase Enterprise or migrate data to an unencrypted database.
 5. Locked features become unavailable at API level.

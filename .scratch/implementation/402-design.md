@@ -51,7 +51,9 @@ Option (b) (runtime refusal only) was rejected as the *primary* mechanism: it
 still ships a binary that cannot encrypt, and it converts a lost guarantee into a
 broken workspace. It is retained as **defense in depth** (see below) — the API
 already refuses a keyed open without the binding, and this change makes that
-refusal prove the binding actually encrypts.
+refusal prove the binding is real SQLCipher (it reports a cipher version) rather
+than plain better-sqlite3. That is a capability proof, not proof that a keyed
+write lands ciphertext; see Round 5 for the exact bound.
 
 The build requires SQLCipher by default. An explicit, documented opt-out
 (`--allow-plaintext`, or `TUARI_ALLOW_PLAINTEXT_DB=1`) lets a developer produce a
@@ -89,8 +91,9 @@ single predicate that decides "SQLCipher available" for the build.
   clearer error, underlying error preserved.
 - `assertBindingEncrypts(sqlite, ...)` — after `PRAGMA key`, require a non-empty
   `PRAGMA cipher_version`; otherwise close and throw. A plain binding treats the
-  SQLCipher PRAGMAs as no-ops, so this is what actually proves the binding
-  encrypts rather than trusting `require()`.
+  SQLCipher PRAGMAs as no-ops, so this proves the binding is real SQLCipher
+  rather than plain `better-sqlite3` — it does not prove a keyed write encrypts
+  (see Round 5).
 - `assertNotEncryptedWithoutKey(path, key)` — when no key is configured and an
   existing, non-empty database file does not start with `SQLite format 3\0`,
   throw a clear "this database is encrypted but the encryption capability is not
@@ -258,3 +261,80 @@ backups from earlier interrupted runs are swept after the next successful
 publish, with the same warn-don't-fail policy as the post-publication cleanup.
 The scan (`readdir`) and the recovery log (`log`) are injectable, so the success,
 publish-failure, and sweep paths are unit-tested.
+
+## Round 5 (PR #409 review, 2026-09-28T19:30Z): three fixes + one answered gap
+
+The hosted review on `e534c9a` raised four findings. Three are fixed here; the
+fourth is a known, documented gap that the release gate does not close on a host
+without the native toolchain, and it is answered rather than papered over.
+
+### 1. Recovery must restore the NEWEST backup (`runtime-staging.mjs`)
+
+`findPreviousRuntimeBackups` sorted by filename and recovery took `leftovers[0]`,
+i.e. the alphabetically first remaining `.previous-*` directory. Filename order
+is not recency order — the reviewer's `previous-1000` / `previous-999` pair is
+one shape of the defect — so an interrupted run could come back as an older
+runtime than the one it had just built.
+
+Backups are now named `<destination>.previous-<epochMs>-<pid>`. The epoch is the
+recency signal recovery sorts by (descending, newest first); the pid keeps two
+builds that start in the same millisecond distinct. `swapRuntimeDirectory` and
+`buildProbeAndPublishRuntime` take an injectable `now`/`pid` so the name is
+deterministic in tests. Legacy pid-only names parse as their own number and sort
+before every timestamped backup, which is correct (they predate this build).
+The new test seeds two backups whose alphabetical order is the reverse of their
+recency and forces the publish to fail, so the live runtime is provably the
+newer tree.
+
+### 2. A waived ephemeral run must not attempt the native build (`build-sidecar.mjs`)
+
+`typecheck` runs `--allow-plaintext --ephemeral` precisely so it can run without
+a native toolchain, but `resolveSqlcipher` attempted `node-gyp rebuild` before
+the waiver was consulted, so a clean checkout paid for a native build it does not
+need.
+
+The availability decision moved into a pure, injectable
+`resolveSqlcipherArtifact({ packageDir, platform, plaintextAllowed, ephemeral,
+exists, buildNative, log })` in `sqlcipher-availability.mjs`. It skips the build
+when the waiver is active AND the run is ephemeral, and still attempts it for a
+waived publishing run (a real artifact is produced plaintext only when the
+binding genuinely cannot be built) and whenever no waiver is active. `buildNative`
+is the real `node-gyp` driver in production and a spy in the tests, so the tests
+assert the callback is never invoked on the skipped path — not merely that a
+predicate returned false. The banner is unchanged on every plaintext path.
+
+### 3. An unrecognised file header must not be diagnosed as encrypted (`factory.ts`)
+
+`assertNotEncryptedWithoutKey` reported any non-empty file without the exact
+`SQLite format 3\0` header as "almost certainly SQLCipher-encrypted", so a
+truncated or corrupt plaintext database sent its operator to the license/key
+instead of to the damaged data.
+
+The message now names both possibilities without asserting either: the file is
+either SQLCipher-encrypted (expected when no key is active) or damaged, the
+build cannot tell them apart, and it says what to check in each case — key and
+`encrypted_db` for the encrypted case, truncation/corruption for the plaintext
+case. The test pins the absence of "almost certainly" and the presence of the
+damage and "cannot tell those apart" wording. `docs/licensing-architecture.md`
+and `docs/editions-and-features.md` are updated to match.
+
+### 4. "Encryption remains untested" — answered, not fixed
+
+The finding is correct and the gap is already documented: the release check
+proves the copied addon loads with the bundled Node and reports a non-empty
+`PRAGMA cipher_version`. That distinguishes real SQLCipher from plain
+better-sqlite3, whose PRAGMAs are no-ops. It does not prove a keyed write
+encrypts. Real encryption is proven only by the CI job tracked in #410 (native
+fork build, `PRAGMA key`, write a row, assert the file is not `SQLite format 3`,
+reopen with the key and read the row). This host has no Windows SDK, so no local
+or unit test can substitute, and none is claimed.
+
+Because a probe that reports a version while failing to encrypt would pass the
+release gate, the code and docs must not describe `cipher_version` as proving
+encryption. The probe's doc comment in `sqlcipher-availability.mjs`, the staged
+probe comment in `build-sidecar.mjs`, and `assertBindingEncrypts`' doc comment in
+`factory.ts` now say "real SQLCipher, not a no-op — not proof that a keyed write
+encrypts", and point at #410 for the end-to-end proof.
+`docs/release-verification.md` and `docs/editions-and-features.md` already state
+the same bound; `docs/release-verification.md` §"Real encryption is proven only
+by CI (#410)" is the canonical statement.
