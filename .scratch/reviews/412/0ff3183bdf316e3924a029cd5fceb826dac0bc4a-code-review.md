@@ -1,10 +1,10 @@
 # #412 — code review (Standards + Spec axes)
 
 - Reviewed diff: 199798b...988493d (axes run 2026-09-27; fixes applied after)
-- Final source SHA (all fixes): 25094b0d01bb748a5db8508046f816fe6511e92e
+- Final source SHA (all fixes): 0ff3183bdf316e3924a029cd5fceb826dac0bc4a
 - Re-pinned: the axes were run against `988493d`; later commits are `3e571ff`,
   `d45f7b0` (E2E), `c9268e2` (round-1 review fixes), `246f541` (post-rebase test
-  repair), and `25094b0` (round-2 debate fix: date-picker conversion + doc
+  repair), and `0ff3183` (round-2 debate fix: date-picker conversion + doc
   corrections). The round-1 and round-2 deltas below record what changed.
 - Reviewer agents: Standards and Spec, parallel, read-only
 - Result: 0 blockers remaining; findings below with resolution.
@@ -170,7 +170,7 @@ sliding days and no-attribution come from the design record and diff stat only.
 ## Round 2 delta (High-assurance debate, PR #420 00:11Z)
 
 The hosted review required the debate the evidence had recorded as skipped. The
-debate (`25094b0...-debate.md`) confirmed the money math (proration, 2-dp
+debate (`0ff3183...-debate.md`) confirmed the money math (proration, 2-dp
 rounding, floor + largest-remainder split, remainder, assignment windows, legacy
 backfill) and found one real exposed point: the salary payment dialog and the
 employee-details quick form passed canonical `yyyy-MM-dd` state into the shared

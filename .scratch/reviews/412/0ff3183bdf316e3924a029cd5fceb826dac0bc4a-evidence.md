@@ -2,27 +2,29 @@
 
 - branch: `feat/412-salary-days`
 - base: `develop` @ `199798ba3d8300ab1a67da1d5591b2d4e5fd9aa8`
-- final source SHA (reviewed HEAD): `25094b0d01bb748a5db8508046f816fe6511e92e`
+- final source SHA (reviewed HEAD): `0ff3183bdf316e3924a029cd5fceb826dac0bc4a`
 - tier: High-assurance (financial calculation)
 - mode: remote, lane does not push / open PR
 
 ## Review-tier record
 
 - `debate` (High-assurance, PR #420 00:11Z requirement):
-  `25094b0…-debate.md`. Critic + defender, parallel read-only. The money math
+  `0ff3183…-debate.md`. Critic + defender, parallel read-only. The money math
   held; the one real finding (canonical date vs `dd/MM/yyyy` picker) was fixed.
-- `code-review` (Standards + Spec): `25094b0…-code-review.md` (axes run against
+- `code-review` (Standards + Spec): `0ff3183…-code-review.md` (axes run against
   `988493d`; round-1 and round-2 deltas appended).
-- `test-audit` (edge/coverage/quality): `25094b0…-test-audit.md` (round-1 and
+- `test-audit` (edge/coverage/quality): `0ff3183…-test-audit.md` (round-1 and
   round-2 deltas appended).
 - Local Greptile CLI: skipped by parent decision (trial quota exhausted); the
   hosted PR review is the independent gate.
 
-## Round 2 (debate fix, source 25094b0)
+## Round 2 (debate fix, source 0ff3183)
 
-Re-pinned from the round-1 evidence (`c9268e2`) after the rebase (`246f541`) and
-the debate fix. Commands on the reviewed source, `--maxWorkers=2` where
-applicable:
+Re-pinned from the round-1 evidence (`c9268e2`) after the rebase (`246f541`),
+the debate fix (`25094b0`), and the wisdom capture (`0ff3183`, doc-only). The
+code and test changes are in `25094b0`; `0ff3183` only adds
+`.agents/wisdom/testing.md`. Commands on the reviewed source, `--maxWorkers=2`
+where applicable:
 
 | Command | Exit | Result |
 | --- | --- | --- |

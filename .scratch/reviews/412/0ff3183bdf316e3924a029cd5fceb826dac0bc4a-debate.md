@@ -4,7 +4,9 @@
 - tier: High-assurance (monthly day rate, proration, per-project money split)
 - base (merge-base of `develop` and HEAD): `199798ba3d8300ab1a67da1d5591b2d4e5fd9aa8`
 - head debated: `246f54177a94f7f72125ddf2575dc9f4f52a4c5c`
-- reviewed source SHA after the debate fixes: `25094b0d01bb748a5db8508046f816fe6511e92e`
+- reviewed source SHA after the debate fixes: `0ff3183bdf316e3924a029cd5fceb826dac0bc4a`
+  (the code fixes are commit `25094b0`; `0ff3183` adds only the durable
+  `.agents/wisdom/testing.md` entry, so the reviewed source SHA is `0ff3183`)
 - agents: one harsh critic, one charitable defender (parallel, read-only, fresh context)
 - artifact named for the source commit; the only commit after it is an evidence
   commit under `.scratch/reviews/412/`, so the guard's docs-only SHA exemption
@@ -123,7 +125,7 @@ point"; the critic ranked it Blocker S8. It is fixed in `25094b0`.
 
 ## Evidence commit
 
-The artifact is named for `25094b0` (the reviewed source). The commit that
+The artifact is named for `0ff3183` (the reviewed source). The commit that
 adds/updates this file and the re-pinned code-review/test-audit/evidence files
 touches `.scratch/` only, so the guard's evidence-SHA check accepts it without
 regenerating the review.

@@ -1,10 +1,10 @@
 # #412 — test audit (edge cases, coverage, quality)
 
 - Reviewed diff: 199798b...988493d (audit run 2026-09-27; fixes applied after)
-- Final source SHA (all fixes): 25094b0d01bb748a5db8508046f816fe6511e92e
+- Final source SHA (all fixes): 0ff3183bdf316e3924a029cd5fceb826dac0bc4a
 - Re-pinned: the audit ran against `988493d`; later commits are `3e571ff`,
   `d45f7b0` (E2E), `c9268e2` (round-1 review fixes), `246f541` (post-rebase test
-  repair), and `25094b0` (round-2 debate fix). The round-1 and round-2 deltas
+  repair), and `0ff3183` (round-2 debate fix). The round-1 and round-2 deltas
   below record the tests added after the audit.
 - Agents: edge-case hunter, coverage analyst, test quality reviewer (parallel, read-only)
 - Result: grade B → fixes applied; the new dialog test also caught a real reset bug.
