@@ -1,8 +1,27 @@
-import { existsSync, readdirSync, renameSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 /** Infix shared by the tree a swap renames aside and the recovery scan for it. */
 const BACKUP_INFIX = ".previous-";
+
+/** Sibling file that records which build owns a backup tree. */
+export const OWNER_MARKER_SUFFIX = ".owner";
+
+/**
+ * How long an ownership marker stays fresh without a heartbeat. One swap is a
+ * handful of synchronous renames, far inside this, so the lease only elapses
+ * when the owning build died or stalled; at that point the next build may
+ * recover the tree.
+ */
+const DEFAULT_MARKER_LEASE_MS = 30_000;
 
 /**
  * Name this run's backup `<destination>.previous-<epochMs>-<pid>`.
@@ -10,27 +29,62 @@ const BACKUP_INFIX = ".previous-";
  * The epoch millisecond is the recency signal recovery sorts by. A pid alone
  * is not one — pids are reused and wrap — which is why the old name-only sort
  * could restore an older runtime than the one an interrupted run had just
- * built (#409). The pid is also the ownership key: recovery and the sweep only
- * touch a backup whose owning process is gone (see `isAbandonedBackup`).
+ * built (#409).
  */
 const backupDirName = (destinationDir, { now, pid }) =>
   `${destinationDir}${BACKUP_INFIX}${now()}-${pid}`;
 
+/** Recency key for a backup name `<prefix><epochMs>-<pid>` (or legacy `<pid>`). */
+const backupRecency = (name, prefix) => {
+  const [leading] = name.slice(prefix.length).split("-");
+  const value = Number(leading);
+
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+};
+
+/** Sibling ownership-marker path for a backup tree. */
+export const ownerMarkerPath = (backupDir) => `${backupDir}${OWNER_MARKER_SUFFIX}`;
+
 /**
- * Parse a backup's recency and owner. New names are `<epoch>-<pid>`; legacy
- * pid-only names parse as `<pid>` for both, so they still sort before every
- * timestamped backup (correct: they predate this build). An unparseable owner
- * becomes `null`, which `isAbandonedBackup` treats as live.
+ * Write (or refresh) a backup's ownership marker: the owning build's pid and
+ * start time plus the heartbeat the staleness check reads.
  */
-const parseBackupName = (name, prefix) => {
-  const parts = name.slice(prefix.length).split("-");
-  const recency = Number(parts[0]);
-  const ownerCandidate = parts.length > 1 ? Number(parts[parts.length - 1]) : Number(parts[0]);
+export const writeOwnerMarker = (backupDir, marker, { write = writeFileSync } = {}) => {
+  write(ownerMarkerPath(backupDir), JSON.stringify(marker), "utf8");
+};
+
+/**
+ * Read a backup's ownership marker, or `null` when there is none.
+ *
+ * Freshness is the heartbeat written into the file, with the file's mtime as a
+ * fallback: a reader that catches a partial write still sees the refreshed
+ * mtime, so a live owner is never mistaken for a dead one. Identity (the pid)
+ * is best-effort; an unparseable marker yields `pid: null`, which the
+ * abandonment test keeps while it is fresh.
+ */
+export const readOwnerMarker = (backupDir, { read = readFileSync, stat = statSync } = {}) => {
+  const markerPath = ownerMarkerPath(backupDir);
+  let markerStat;
+
+  try {
+    markerStat = stat(markerPath);
+  } catch {
+    return null;
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(read(markerPath, "utf8"));
+  } catch {
+    // Fall back to the mtime as the heartbeat.
+  }
+
+  const contentHeartbeat = Number.isFinite(parsed?.heartbeatAt) ? Number(parsed.heartbeatAt) : null;
 
   return {
-    name,
-    recency: Number.isFinite(recency) ? recency : Number.NEGATIVE_INFINITY,
-    ownerPid: Number.isInteger(ownerCandidate) && ownerCandidate > 0 ? ownerCandidate : null,
+    pid: Number.isInteger(parsed?.pid) && parsed.pid > 0 ? parsed.pid : null,
+    startedAt: Number.isFinite(parsed?.startedAt) ? Number(parsed.startedAt) : null,
+    heartbeatAt: contentHeartbeat ?? markerStat.mtimeMs,
   };
 };
 
@@ -49,35 +103,46 @@ const isProcessAlive = (pid) => {
 };
 
 /**
- * True only when no other live process can still own the backup, so recovery
- * and the sweep may move or delete it.
+ * True only when no live build can still own the backup, so recovery and the
+ * sweep may move or delete it.
  *
- * Two builds can run at once: one renames the destination aside to
- * `<dest>.previous-<epoch>-<pid>` before publishing. The other must not treat
- * that in-flight backup as litter, or the first build loses the tree it needs
- * to roll back (#409). So a backup is abandoned only when its owner is gone.
+ * The ownership signal is the MARKER, not the pid: a pid is reused, so a live
+ * process that merely inherited a dead build's pid must not keep an abandoned
+ * backup frozen, or recovery can be blocked and the machine left with no
+ * runtime (#409). A build refreshes its marker as it swaps; if it dies the
+ * heartbeat stops and the marker goes stale.
  *
- * A backup whose pid is OUR OWN cannot belong to a concurrent build (a pid
- * names one live process), so it is litter from an earlier incarnation of this
- * process and is recoverable. Any other pid is abandoned only when that
- * process is gone. An unparseable owner is never abandoned: a backup we cannot
- * prove is dead must stay.
+ * - no marker (or a corrupt one) -> abandoned
+ * - heartbeat older than the lease -> abandoned (the primary signal)
+ * - fresh but the owner pid is gone -> abandoned (the pid probe is a tiebreaker
+ *   that recovers a crashed owner before the lease even elapses)
+ * - fresh with an unknown or a live owner -> owned; never steal it
  */
-const isAbandonedBackup = (ownerPid, { isAlive, pid }) => {
-  if (ownerPid === null) return false;
-  if (ownerPid === pid) return true;
+export const isAbandonedBackup = (marker, { now, markerLeaseMs, isAlive }) => {
+  if (marker === null) return true;
+  if (!Number.isFinite(marker.heartbeatAt)) return true;
+  if (now() - marker.heartbeatAt > markerLeaseMs) return true;
+  if (marker.pid === null) return false;
 
-  return !isAlive(ownerPid);
+  return !isAlive(marker.pid);
 };
 
 /**
  * Every ABANDONED `<destinationDir>.previous-*` sibling, newest first. A clean
  * run removes its own backup, so anything found here is litter from an
  * interrupted or crashed run; callers take the first entry as the most recent
- * runtime to recover. A backup owned by a still-running build is skipped
- * entirely, so it can neither be restored nor swept.
+ * runtime to recover. A backup whose marker is still fresh belongs to a running
+ * build and is skipped entirely, so it can be neither restored nor swept.
  */
-const findAbandonedRuntimeBackups = ({ destinationDir, exists, readdir, isAlive, pid }) => {
+const findAbandonedRuntimeBackups = ({
+  destinationDir,
+  exists,
+  readdir,
+  readMarker,
+  now,
+  markerLeaseMs,
+  isAlive,
+}) => {
   const parentDir = path.dirname(destinationDir);
 
   if (!exists(parentDir)) {
@@ -87,11 +152,54 @@ const findAbandonedRuntimeBackups = ({ destinationDir, exists, readdir, isAlive,
   const prefix = `${path.basename(destinationDir)}${BACKUP_INFIX}`;
 
   return readdir(parentDir)
-    .filter((name) => name.startsWith(prefix))
-    .map((name) => parseBackupName(name, prefix))
-    .filter((backup) => isAbandonedBackup(backup.ownerPid, { isAlive, pid }))
+    .filter((name) => name.startsWith(prefix) && !name.endsWith(OWNER_MARKER_SUFFIX))
+    .map((name) => ({ name, recency: backupRecency(name, prefix) }))
+    .filter((backup) =>
+      isAbandonedBackup(readMarker(path.join(parentDir, backup.name)), { now, markerLeaseMs, isAlive }),
+    )
     .sort((a, b) => b.recency - a.recency)
     .map((backup) => path.join(parentDir, backup.name));
+};
+
+/**
+ * Claim a backup for this build by writing its ownership marker, and return a
+ * `beat` that refreshes the marker as the swap progresses.
+ *
+ * The marker is the primary ownership signal; the pid it carries is only a
+ * tiebreaker. A live build can beat, a dead one cannot, so a reused pid cannot
+ * keep an abandoned backup frozen.
+ */
+const claimBackupOwnership = ({ backupDir, pid, now, writeMarker, warn }) => {
+  const startedAt = now();
+
+  const beat = (heartbeatAt = now()) => {
+    try {
+      writeMarker(backupDir, { pid, startedAt, heartbeatAt });
+    } catch (error) {
+      // A failed refresh only shortens the marker's lease; the live process's
+      // pid still protects its own backup, so never fail the swap for it.
+      warn(
+        `Could not refresh the runtime backup ownership marker at ${ownerMarkerPath(backupDir)}: `
+        + (error instanceof Error ? error.message : String(error)),
+      );
+    }
+  };
+
+  beat(startedAt);
+
+  return beat;
+};
+
+/** Remove a backup's ownership marker; cleanup-only, so a failure only warns. */
+const removeOwnerMarker = (backupDir, { remove, warn }) => {
+  try {
+    remove(ownerMarkerPath(backupDir), { force: true });
+  } catch (error) {
+    warn(
+      `Could not remove the runtime backup ownership marker at ${ownerMarkerPath(backupDir)}: `
+      + (error instanceof Error ? error.message : String(error)),
+    );
+  }
 };
 
 /**
@@ -104,18 +212,18 @@ const findAbandonedRuntimeBackups = ({ destinationDir, exists, readdir, isAlive,
  * to be atomic; `build-sidecar.mjs` stages under `src-tauri/` for that reason.
  *
  * A run killed between "rename the old tree aside" and "publish the staged
- * tree" leaves no destination plus a `.previous-<epoch>-<pid>` backup. When
- * that state is found (destination missing, ABANDONED backups present) the
- * NEWEST abandoned backup is restored first and `log` reports what was found
- * and what was done, so the next build recovers on its own and a failed publish
- * still restores a runnable runtime. Backups left by earlier runs are removed
- * after the next successful publish, so they never require a human to delete
- * directories.
+ * tree" leaves no destination plus a `.previous-<epoch>-<pid>` backup carrying
+ * its ownership marker. When that state is found (destination missing, an
+ * ABANDONED backup present) the NEWEST abandoned backup is restored first and
+ * `log` reports what was found and what was done, so the next build recovers on
+ * its own and a failed publish still restores a runnable runtime. Backups left
+ * by earlier runs are removed after the next successful publish, so they never
+ * require a human to delete directories.
  *
- * Recovery and the sweep only ever touch a backup whose owning process is gone
- * (`isAbandonedBackup`): two builds can overlap, and one must not steal or
- * delete the runtime the other has renamed aside mid-publish. A backup owned by
- * a live process is left exactly where it is.
+ * Recovery and the sweep only ever touch a backup whose marker is stale or
+ * absent (`isAbandonedBackup`): two builds can overlap, and one must not steal
+ * or delete the runtime the other has renamed aside mid-publish. A backup with
+ * a fresh marker is left exactly where it is, even if its pid is not alive.
  *
  * Removing the renamed-aside previous tree happens AFTER the staged tree is
  * live. A failure there does not undo the publish, so it is reported with
@@ -136,9 +244,20 @@ export const swapRuntimeDirectory = ({
   now = Date.now,
   pid = process.pid,
   isAlive = isProcessAlive,
+  readMarker = readOwnerMarker,
+  writeMarker = writeOwnerMarker,
+  markerLeaseMs = DEFAULT_MARKER_LEASE_MS,
 }) => {
   const backupDir = backupDirName(destinationDir, { now, pid });
-  const leftovers = findAbandonedRuntimeBackups({ destinationDir, exists, readdir, isAlive, pid });
+  const leftovers = findAbandonedRuntimeBackups({
+    destinationDir,
+    exists,
+    readdir,
+    readMarker,
+    now,
+    markerLeaseMs,
+    isAlive,
+  });
   let recoveredBackup = null;
 
   if (!exists(destinationDir)) {
@@ -152,6 +271,7 @@ export const swapRuntimeDirectory = ({
         ].join("\n"),
       );
       rename(recoveredBackup, destinationDir);
+      removeOwnerMarker(recoveredBackup, { remove, warn });
     }
   }
 
@@ -174,29 +294,34 @@ export const swapRuntimeDirectory = ({
 
   const hadDestination = exists(destinationDir);
 
-  if (hadDestination) {
+  if (!hadDestination) {
+    rename(stagingDir, destinationDir);
+    return;
+  }
+
+  const beat = claimBackupOwnership({ backupDir, pid, now, writeMarker, warn });
+
+  try {
     // A re-run in the same millisecond with the same pid reuses this backup
     // name; clear it first so the rename cannot fail against a non-empty
     // directory.
     remove(backupDir, { recursive: true, force: true });
     rename(destinationDir, backupDir);
-  }
+    // Refresh the lease at the boundary that matters: the publish rename is the
+    // step that can block on a locked file.
+    beat();
 
-  try {
-    rename(stagingDir, destinationDir);
-  } catch (error) {
-    if (hadDestination) {
+    try {
+      rename(stagingDir, destinationDir);
+    } catch (error) {
       rename(backupDir, destinationDir);
+      throw error;
     }
 
-    throw error;
+    removeAfterPublish(backupDir, "the runtime this build replaced");
+  } finally {
+    removeOwnerMarker(backupDir, { remove, warn });
   }
-
-  if (!hadDestination) {
-    return;
-  }
-
-  removeAfterPublish(backupDir, "the runtime this build replaced");
 
   for (const leftover of leftovers) {
     if (leftover === backupDir || leftover === recoveredBackup) {
@@ -204,6 +329,7 @@ export const swapRuntimeDirectory = ({
     }
 
     removeAfterPublish(leftover, "a runtime left by an interrupted run");
+    removeOwnerMarker(leftover, { remove, warn });
   }
 };
 
@@ -235,6 +361,9 @@ export const buildProbeAndPublishRuntime = ({
   now = Date.now,
   pid = process.pid,
   isAlive = isProcessAlive,
+  readMarker = readOwnerMarker,
+  writeMarker = writeOwnerMarker,
+  markerLeaseMs = DEFAULT_MARKER_LEASE_MS,
 }) => {
   try {
     build();
@@ -253,6 +382,9 @@ export const buildProbeAndPublishRuntime = ({
         now,
         pid,
         isAlive,
+        readMarker,
+        writeMarker,
+        markerLeaseMs,
       });
     }
   } finally {

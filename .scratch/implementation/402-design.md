@@ -386,3 +386,61 @@ What this does NOT solve: two builds can still race to publish the same
 destination (the losing one fails its rename and restores its own backup), and a
 pid reused by an unrelated live process blocks that backup's recovery/sweep
 (conservative: left rather than stolen). Both are out of scope for this finding.
+
+## Round 5c (parent decision, review 2026-09-28T19:57Z): ownership markers, not pid liveness
+
+**Finding** (`runtime-staging.mjs:70`, "Reused PID blocks recovery"). The
+round-5b rule called a backup abandoned when its pid was gone. If a build stopped
+after moving `bin` aside and an unrelated process later received that pid, the
+intact backup looked owned: recovery was skipped, and if the next staged publish
+then failed, `bin` stayed missing even though a working runtime sat in the
+backup. PID liveness cannot establish ownership.
+
+**Fix.** Ownership is now a marker file written next to the backup,
+`<backup>.previous-<epoch>-<pid>.owner`, containing
+`{ pid, startedAt, heartbeatAt }`.
+
+- The owning build writes the marker BEFORE renaming `bin` aside and refreshes
+  the heartbeat at the boundary that can block (right before the publish
+  rename); it removes the marker when it releases the backup. So a live build
+  keeps the marker fresh and a dead one cannot.
+- `isAbandonedBackup(marker, { now, markerLeaseMs, isAlive })`:
+  - no marker, or a corrupt one whose file mtime has also aged -> abandoned
+  - heartbeat older than the lease (30s) -> abandoned (the PRIMARY signal)
+  - fresh but the owner pid is gone -> abandoned (the pid probe is only a
+    tiebreaker, used to recover a just-crashed owner before the lease elapses)
+  - fresh with an unknown or a live owner -> owned; never steal it
+- `readOwnerMarker` takes freshness from the file's `heartbeatAt`, falling back
+  to the file mtime when the content is unparseable: a reader that catches a
+  partial write still sees a fresh mtime, so a live owner is never mistaken for
+  a dead one.
+- Recovery and the sweep call `findAbandonedRuntimeBackups`, which filters by
+  the marker before the recency sort; both remove the marker of a tree they
+  consume.
+
+**Why the marker is not just the pid.** A pid is reused. The heartbeat is the
+thing only the real owner can produce; when it stops, the marker ages and the
+backup becomes recoverable regardless of who now holds the pid. The pid probe is
+kept only to shorten the wait when the owner is provably gone.
+
+**Tests (9, all in `runtime-staging.test.mjs`).**
+- fresh marker -> not restored when the destination is missing (a)
+- fresh marker -> not swept when the destination exists (a)
+- recovery skips a fresh-marker backup and takes the newest abandoned one
+- **a reused pid does not block recovery of a stale backup** (b: an injected
+  `isAlive` says pid 777 is alive, but the marker is stale -> recovered)
+- a backup with no marker is recovered
+- a fresh marker whose owner pid is gone is abandoned (tiebreaker)
+- **a stale marker does not block recovery forever** (c: fresh -> owned, then
+  the same backup past the lease -> recovered)
+- a corrupt marker is owned while its mtime is fresh and abandoned once it ages
+  (the partial-write fallback)
+- a successful publish removes this build's ownership marker
+
+**Residual window, stated rather than hidden.** A marker is fresh for up to the
+30s lease. If a build crashes and an unrelated process receives its pid within
+that window, the backup still looks owned until the lease elapses. The swap is a
+few synchronous renames (well under the lease), so this window is the crash-to-
+reuse race, not a normal overlap; a `process.kill(pid, 0)` probe and then
+staleness both resolve it, and the machine is never left without a runtime
+permanently.
