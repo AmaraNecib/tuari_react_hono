@@ -30,12 +30,14 @@ function mapExpenseError(error: unknown): unknown {
 }
 
 /**
- * `withAudit` returns the handler's promise without awaiting it, so its
- * `catch` never sees an async rejection and its `errorResolver` cannot map a
- * domain error thrown inside an `async` handler. Awaiting here — at the
- * handler that owns the domain errors — maps them before the rejection leaves
- * this function, without changing the shared middleware for every other
- * handler.
+ * Maps this module's domain errors to their wire codes before the rejection
+ * leaves the handler.
+ *
+ * `withAudit` used to return the handler's promise without awaiting it, so its
+ * `catch` never saw an async rejection and its `errorResolver` could not map a
+ * domain error thrown inside an `async` handler (#421). The shared middleware
+ * now awaits, so this is defense-in-depth rather than the only mapping: the
+ * handler keeps ownership of its own domain errors.
  */
 async function withMappedExpenseErrors<T>(operation: () => Promise<T>): Promise<T> {
   try {

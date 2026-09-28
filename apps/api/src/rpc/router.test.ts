@@ -3,13 +3,15 @@
    type is not derived from the router), hence @ts-nocheck below. */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-import { createRouterClient } from "@orpc/server";
+import { createRouterClient, implement, ORPCError } from "@orpc/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 
 import { createInMemoryCompanyHarness } from "../modules/company/company.test-helpers";
+import { CompanyError } from "../modules/company/company.errors";
 import { schemaStatements } from "../infrastructure/database/schema-definitions";
 import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
 import { InventoryService } from "../modules/inventory/inventory.service";
@@ -20,6 +22,7 @@ import { FinanceService } from "../modules/company/finance.service";
 import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
 import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import { createRouter } from "./router";
+import { createRpcMiddleware } from "./rpc-middleware";
 import type { RpcContext } from "./context";
 import { ExpenseNotFoundError } from "../modules/expenses/expenses.types";
 import { EmployeeModule } from "../modules/workforce/employee.module";
@@ -28,6 +31,12 @@ import { SqliteRoleRepository } from "../modules/workforce/adapters/role.reposit
 import { RoleModule } from "../modules/rbac/role.module";
 import { InMemoryRoleRepository } from "../modules/rbac/adapters/in-memory-role.repository";
 import { DEFAULT_ROLE_PERMISSIONS } from "../modules/rbac/role-seeds";
+import { createPaymentModule } from "../modules/payment/payment.module";
+import { createInMemoryPaymentRepository } from "../modules/payment/adapters/in-memory-payment.repository";
+import { PaymentNotFoundError } from "../modules/payment/payment.types";
+import { InvoiceModule } from "../modules/invoice/invoice.module";
+import { createInMemoryInvoiceRepository } from "../modules/invoice/adapters/in-memory-invoice.repository";
+import { paymentContract } from "@tuari/contracts";
 
 function expectSuccess<T extends { success: boolean }>(result: T): Extract<T, { success: true }> {
   expect(result.success).toBe(true);
@@ -90,6 +99,7 @@ describe("RPC router", () => {
       persistKey: () => ({ success: true } as const),
     },
     expensesOverrides: Record<string, unknown> = {},
+    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown } = {},
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -97,12 +107,12 @@ describe("RPC router", () => {
     const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
     const invoiceRepository = {} as never;
     const invoiceDebtPort = {} as never;
-    const paymentModule = {
+    const paymentModule = (modules.paymentModule ?? {
       create: async () => ({ id: "", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: "", paymentDate: "", paymentMethod: "CASH", totalAmount: 0, notes: null, actorUserId: null, actorLabel: null, transactionId: null, createdAt: "", updatedAt: "", allocations: [] }),
       findById: async () => null,
       listPaged: async () => ({ items: [], nextCursor: null, totalCount: 0 }),
       delete: async () => undefined,
-    } as never;
+    }) as never;
     const expensesModule = {
       create: async () => null,
       get: async () => null,
@@ -135,10 +145,10 @@ describe("RPC router", () => {
       companyService: service,
       workforceService: new WorkforceService(repository, repository, mutation),
       operationsService: new OperationsService(repository, repository, mutation),
-      financeService: new FinanceService(repository, repository, mutation),
+      financeService: (modules.financeService ?? new FinanceService(repository, repository, mutation)) as never,
       inventoryService: createEmptyInventoryService(),
       employeeModule,
-      invoiceModule: {} as never,
+      invoiceModule: (modules.invoiceModule ?? {}) as never,
       paymentModule,
       expensesModule,
       roleModule,
@@ -1447,6 +1457,126 @@ describe("RPC router", () => {
     await expect(client.reportsGenerate({ type: "MOVEMENT" })).resolves.toMatchObject({
       type: "MOVEMENT",
       summary: { totalMovements: 0 },
+    });
+  });
+
+  // ── #421: audit wrappers must map ASYNC rejections ────────────────────
+  //
+  // `mutationAudit`, `mutationAuditRateLimited` and `withAudit` all ran the
+  // handler inside a try/catch and `return`ed its promise without awaiting, so
+  // an async handler's rejection escaped the catch and the `errorResolver`
+  // never ran. These tests drive the wrappers through a real ORPC router
+  // (input gate → wrapper → output validation) so they pin the mapped code
+  // reaching the wire, not the helper in isolation.
+  it("maps a missing payment delete to NOT_FOUND through withAudit (#421)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      paymentModule: createPaymentModule(
+        createInMemoryPaymentRepository(),
+        {} as never,
+        {} as never,
+      ),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    const missingId = randomUUID();
+    await expect(client.paymentsDelete({ id: missingId })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: `Payment ${missingId} not found`,
+    });
+  });
+
+  it("maps a missing invoice delete to NOT_FOUND through withAudit (#421)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      invoiceModule: new InvoiceModule(createInMemoryInvoiceRepository(), {} as never),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    const missingId = randomUUID();
+    await expect(client.invoicesDelete({ id: missingId })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: `Invoice ${missingId} not found`,
+    });
+  });
+
+  it("returns the failure output for an async rejection through mutationAudit (#421)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      financeService: {
+        createDebtAccount: async () => {
+          throw new CompanyError("BUSINESS_RULE", "async probe");
+        },
+      },
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    // `toFailureResult` RETURNS a `{ success: false, error }` output that the
+    // procedure's discriminated-union schema accepts, so the wrapper must
+    // return it (not throw) and the production failure path keeps its envelope.
+    await expect(
+      client.debtAccountsCreate({
+        partyType: "INTERNAL_WORKER",
+        workerId: randomUUID(),
+        openingBalanceDzd: 1000,
+      }),
+    ).resolves.toEqual({
+      success: false,
+      error: { code: "BUSINESS_RULE", message: "async probe", fieldErrors: [] },
+    });
+  });
+
+  // `mutationAudit` / `mutationAuditRateLimited` have no production procedure
+  // paired with an ORPCError resolver (their app procedures use
+  // `toFailureResult`, which returns a failure output — covered above). A
+  // minimal real ORPC router over `paymentContract` still proves each wrapper
+  // settles an async rejection inside its catch and throws the resolver's
+  // ORPCError.
+  describe("audit wrappers settle async rejections inside the catch (#421)", () => {
+    const makeMiddleware = () =>
+      createRpcMiddleware({ authBootstrapService: { isBootstrapOwner: async () => true } });
+
+    const probeClient = (wrap) => {
+      const os = implement({ paymentsDelete: paymentContract.paymentsDelete });
+      const router = os.router({
+        paymentsDelete: os.paymentsDelete.handler(
+          wrap(
+            async () => {
+              throw new PaymentNotFoundError("probe");
+            },
+            (error) => {
+              if (error instanceof PaymentNotFoundError) {
+                return new ORPCError("NOT_FOUND", { message: error.message });
+              }
+              throw error;
+            },
+          ),
+        ),
+      });
+      return createRouterClient(router, {
+        context: {
+          headers: new Headers({ cookie: "session=token" }),
+          resolveCurrentUser: vi.fn().mockResolvedValue(currentUser),
+        } as never,
+      });
+    };
+
+    it("mutationAudit maps an async rejection to the resolver's code", async () => {
+      const m = makeMiddleware();
+      const client = probeClient((handler, resolver) => m.mutationAudit(handler, resolver));
+      await expect(client.paymentsDelete({ id: randomUUID() })).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
+    });
+
+    it("mutationAuditRateLimited maps an async rejection to the resolver's code", async () => {
+      const m = makeMiddleware();
+      const client = probeClient((handler, resolver) =>
+        m.mutationAuditRateLimited(handler, resolver),
+      );
+      await expect(client.paymentsDelete({ id: randomUUID() })).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
     });
   });
 });
