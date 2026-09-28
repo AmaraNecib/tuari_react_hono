@@ -45,20 +45,27 @@ const ASSIGNMENT = { projectId: PROJECT.id, startDate: "2000-01-01T00:00:00+01:0
 
 function renderDialog(salaryPeriod: "MONTHLY" | "DAILY" = "MONTHLY") {
   const onOpenChange = vi.fn()
-  render(
+  const renderDialogElement = (period: "MONTHLY" | "DAILY") => (
     <AddSalaryPaymentDialog
       employeeId="employee-1"
       employeeName="عامل"
-      salaryAmountDzd={salaryPeriod === "DAILY" ? 1500 : 30000}
-      salaryPeriod={salaryPeriod}
+      salaryAmountDzd={period === "DAILY" ? 1500 : 30000}
+      salaryPeriod={period}
       projectAssignments={[ASSIGNMENT]}
       projects={[PROJECT]}
       open
       onOpenChange={onOpenChange}
-    />,
+    />
   )
+  const view = render(renderDialogElement(salaryPeriod))
   const [daysInput, lineDaysInput] = screen.getAllByRole("spinbutton") as HTMLInputElement[]
-  return { daysInput, lineDaysInput }
+  return {
+    daysInput,
+    lineDaysInput,
+    // Simulate a workspace refresh that changes the worker's wage period while
+    // the dialog stays open.
+    rerenderPeriod: (period: "MONTHLY" | "DAILY") => view.rerender(renderDialogElement(period)),
+  }
 }
 
 describe("AddSalaryPaymentDialog (#412)", () => {
@@ -76,6 +83,39 @@ describe("AddSalaryPaymentDialog (#412)", () => {
     // A daily wage paid for "30 days" would propose 30x the day's pay.
     expect(daysInput?.value).toBe("1")
     expect(screen.getAllByDisplayValue("1500").length).toBeGreaterThan(0)
+  })
+
+  it("re-applies the daily default when the wage period changes while the dialog is open", () => {
+    mockMutateAsync.mockReset()
+    const { rerenderPeriod } = renderDialog("MONTHLY")
+
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("30")
+
+    // A refresh that reclassifies the worker as daily must not leave the stale
+    // 30-day default behind: accepting it would record 30 days of daily pay.
+    rerenderPeriod("DAILY")
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("1")
+    expect(screen.getAllByDisplayValue("1500").length).toBeGreaterThan(0)
+  })
+
+  it("keeps an edited day count when the wage period changes", () => {
+    mockMutateAsync.mockReset()
+    const { daysInput, rerenderPeriod } = renderDialog("MONTHLY")
+
+    fireEvent.change(daysInput!, { target: { value: "20" } })
+
+    rerenderPeriod("DAILY")
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("20")
+  })
+
+  it("re-derives the split default from the new period when the day count was untouched", () => {
+    mockMutateAsync.mockReset()
+    const { rerenderPeriod } = renderDialog("MONTHLY")
+
+    expect((screen.getAllByRole("spinbutton")[1] as HTMLInputElement).value).toBe("30")
+
+    rerenderPeriod("DAILY")
+    expect((screen.getAllByRole("spinbutton")[1] as HTMLInputElement).value).toBe("1")
   })
 
   it("prefills the split from the derived default and tracks the days input until a line is edited", () => {

@@ -104,13 +104,13 @@ function renderDetails(employee: EmployeeTableRow = monthlyWorker()) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  render(
+  const renderPage = (nextEmployee: EmployeeTableRow) => (
     <QueryClientProvider client={queryClient}>
       <EmployeeDetailsPage
         activeTab="finance"
         debtAccounts={[]}
         debtEntriesByAccountId={{}}
-        employee={employee}
+        employee={nextEmployee}
         managedProjects={[]}
         managedWarehouses={[]}
         projects={[PROJECT]}
@@ -119,8 +119,15 @@ function renderDetails(employee: EmployeeTableRow = monthlyWorker()) {
         workHistory={[]}
         onTabChange={vi.fn()}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  const view = render(renderPage(employee))
+  return {
+    view,
+    // Simulate a workspace refresh that changes the worker's wage while the
+    // quick form stays open.
+    rerenderEmployee: (nextEmployee: EmployeeTableRow) => view.rerender(renderPage(nextEmployee)),
+  }
 }
 
 describe("EmployeeDetailsPage salary payments (#412)", () => {
@@ -176,6 +183,34 @@ describe("EmployeeDetailsPage salary payments (#412)", () => {
     expect(daysInput?.value).toBe("1")
     // One day's wage, not thirty.
     expect(screen.getAllByDisplayValue("1500").length).toBeGreaterThan(0)
+  })
+
+  it("re-applies the daily default when the wage period refreshes while the quick form is open", () => {
+    const { rerenderEmployee } = renderDetails()
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("30")
+
+    rerenderEmployee(monthlyWorker({ salaryPeriod: "DAILY", salaryAmountDzd: 1500 }))
+
+    // The form must stay open, with the refreshed one-day default rather than
+    // the stale 30-day month.
+    expect(screen.getByRole("button", { name: "حفظ دفعة الراتب" })).toBeTruthy()
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("1")
+    expect(screen.getAllByDisplayValue("1500").length).toBeGreaterThan(0)
+  })
+
+  it("keeps an edited day count when the wage period refreshes while the quick form is open", () => {
+    const { rerenderEmployee } = renderDetails()
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
+    fireEvent.change(screen.getAllByRole("spinbutton")[0]!, { target: { value: "12" } })
+
+    rerenderEmployee(monthlyWorker({ salaryPeriod: "DAILY", salaryAmountDzd: 1500 }))
+
+    // A refresh must not discard the edit (nor collapse the form under it).
+    expect(screen.getByRole("button", { name: "حفظ دفعة الراتب" })).toBeTruthy()
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("12")
   })
 
   it("submits the date picked in the quick payment form as the canonical day boundary", () => {

@@ -65,13 +65,17 @@ export function AddSalaryPaymentDialog({
   const { date, setDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
   const [note, setNote] = useState("")
   const [daysText, setDaysText] = useState(() => String(defaultSalaryPaymentDays(salaryPeriod)))
+  const [daysTouched, setDaysTouched] = useState(false)
   const [manualAmountTouched, setManualAmountTouched] = useState(false)
   const [splits, setSplits] = useState<SplitLine[]>([])
   const [splitsTouched, setSplitsTouched] = useState(false)
   // `resetAmount`/`resetDate` are new function identities every render, so the
   // reset effect below must not depend on their identity to decide whether the
-  // form was already initialized for the currently open employee.
-  const initializedTargetRef = useRef<string | null>(null)
+  // form was already initialized. It keys on what the defaults actually depend
+  // on — the employee and the wage period — so a workspace refresh that
+  // reclassifies the worker (monthly→daily) re-applies the day default while
+  // the dialog stays open, without discarding an operator edit.
+  const initializedTargetRef = useRef<{ employeeId: string; period: SalaryPaymentPeriodType | null } | null>(null)
 
   const days = parsePositiveInteger(daysText)
   const proposedAmount =
@@ -107,17 +111,30 @@ export function AddSalaryPaymentDialog({
       initializedTargetRef.current = null
       return
     }
-    if (initializedTargetRef.current === employeeId) {
+    const previous = initializedTargetRef.current
+    const employeeChanged = previous?.employeeId !== employeeId
+    const periodChanged = previous?.period !== salaryPeriod
+    if (!employeeChanged && !periodChanged) {
       return
     }
-    initializedTargetRef.current = employeeId
-    setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
-    resetAmount()
-    setManualAmountTouched(false)
-    resetDate()
-    setNote("")
-    setSplitsTouched(false)
-  }, [open, employeeId, salaryPeriod, resetAmount, resetDate])
+    initializedTargetRef.current = { employeeId, period: salaryPeriod }
+    // The day default depends only on the wage period, so an amount-only
+    // refresh leaves the field alone. Re-apply it for a new employee or a new
+    // period unless the operator edited the count; an edited count survives.
+    if (employeeChanged || !daysTouched) {
+      setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
+      setDaysTouched(false)
+    }
+    // A new employee is a different record: reset everything, including an
+    // amount the operator had typed for the previous worker.
+    if (employeeChanged) {
+      resetAmount()
+      setManualAmountTouched(false)
+      resetDate()
+      setNote("")
+      setSplitsTouched(false)
+    }
+  }, [open, employeeId, salaryPeriod, daysTouched, resetAmount, resetDate])
 
   useEffect(() => {
     if (!open || !employeeId || splitsTouched) {
@@ -151,6 +168,7 @@ export function AddSalaryPaymentDialog({
 
   const resetForm = () => {
     setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
+    setDaysTouched(false)
     resetAmount()
     setManualAmountTouched(false)
     resetDate()
@@ -223,7 +241,10 @@ export function AddSalaryPaymentDialog({
                 inputMode="numeric"
                 dir="ltr"
                 value={daysText}
-                onChange={(event) => setDaysText(event.target.value)}
+                onChange={(event) => {
+                  setDaysTouched(true)
+                  setDaysText(event.target.value)
+                }}
               />
             </label>
 

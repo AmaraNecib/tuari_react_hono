@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
@@ -153,6 +153,7 @@ export function EmployeeDetailsPage({
   // The quick-payment form captures the days too: a monthly wage paid for 15
   // of 30 days must not be recorded as a full 30-day month (issue #412 review).
   const [paymentDays, setPaymentDays] = useState(() => String(defaultSalaryPaymentDays(employee.salaryPeriod)))
+  const [paymentDaysTouched, setPaymentDaysTouched] = useState(false)
   const [paymentAmountTouched, setPaymentAmountTouched] = useState(false)
   const [actualAmount, setActualAmount] = useState(() => (employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : ""))
   const [note, setNote] = useState("")
@@ -195,14 +196,32 @@ export function EmployeeDetailsPage({
   const hasExpandedNotes = (employee.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `employee-record-${employee.id}`
 
+  // Distinguish switching to a different employee (full reset) from the same
+  // employee's wage being refreshed (monthly→daily): the refresh re-derives the
+  // day default but keeps what the operator already edited.
+  const quickFormEmployeeRef = useRef<string | null>(null)
+
   useEffect(() => {
+    const employeeChanged = quickFormEmployeeRef.current !== employee.id
+    quickFormEmployeeRef.current = employee.id
+
+    // The day default depends only on the wage period. Re-apply it on a new
+    // employee or a wage refresh unless the operator edited the count.
+    if (employeeChanged || !paymentDaysTouched) {
+      setPaymentDays(String(defaultSalaryPaymentDays(employee.salaryPeriod)))
+      setPaymentDaysTouched(false)
+    }
+
+    if (!employeeChanged) {
+      return
+    }
+
     setPaymentDate(getAlgeriaDateInputValue())
-    setPaymentDays(String(defaultSalaryPaymentDays(employee.salaryPeriod)))
     setPaymentAmountTouched(false)
     setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
     setNote("")
     setShowPaymentForm(false)
-  }, [employee.id, employee.salaryPeriod, employee.salaryAmountDzd])
+  }, [employee.id, employee.salaryPeriod, employee.salaryAmountDzd, paymentDaysTouched])
 
   useEffect(() => {
     if (!createSalaryPaymentMutation.isSuccess) {
@@ -211,6 +230,7 @@ export function EmployeeDetailsPage({
 
     setPaymentDate(getAlgeriaDateInputValue())
     setPaymentDays(String(defaultSalaryPaymentDays(employee.salaryPeriod)))
+    setPaymentDaysTouched(false)
     setPaymentAmountTouched(false)
     setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
     setNote("")
@@ -364,7 +384,10 @@ export function EmployeeDetailsPage({
                       inputMode="numeric"
                       dir="ltr"
                       value={paymentDays}
-                      onChange={(event) => setPaymentDays(event.target.value)}
+                      onChange={(event) => {
+                        setPaymentDaysTouched(true)
+                        setPaymentDays(event.target.value)
+                      }}
                     />
                   </Field>
                   <Field label={t("detailPages.employee.financeExpectedAmount")}>
