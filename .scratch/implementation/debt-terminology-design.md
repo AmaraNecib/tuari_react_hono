@@ -76,21 +76,19 @@ Web (`features/debts/debt-utils.ts`):
 
 ```ts
 getDebtBalanceDisplay(input) -> {
-  state, phraseKey: `debts.terminology.states.${state}`,
-  amount: number, amountLabel: string,
-  textClassName, badgeClassName, description,
+  state, phraseKey: `debts.terminology.states.${state}`, phrase,
+  amount: number, textClassName, badgeClassName, description,
 }
 formatDebtAmount(value) -> positive, grouped
 getDebtDirectionLabel(direction) -> مستحقات علينا | مستحقات لنا
+getConsolidationRemainder(input) -> { description, label } | null
+debtDirectionFromAlias(alias) -> PAYABLE | RECEIVABLE
 ```
 
-`getDebtBalanceMeta` stays for the signed movement tone used by the ledger
-amount column, the consolidation entries and the void dialog; its
-`shortLabel` now carries the new phrase. `getDebtAccountBalanceMeta` was
-deleted: every direction-aware balance render site moved to
-the display helper, so it had no remaining caller. Old Arabic literals
-`لنا عنده` / `علينا له` are removed from the codebase except as negative test
-assertions.
+`getDebtAccountBalanceMeta` was deleted: every direction-aware balance render
+site moved to the display helper, so it had no remaining caller. Old Arabic
+literals `لنا عنده` / `علينا له` are removed from the codebase except as
+negative test assertions.
 
 ## i18n
 
