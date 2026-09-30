@@ -233,3 +233,11 @@ once in code (`netMaterialCost`), once as the wire shape, and once in the
 decision record. The double count is removed structurally (the parked
 consumables field no longer exists), not by convention. Findings 2-4 are
 documented follow-ups, not correctness gaps. Nothing found that blocks this PR.
+
+### Re-pin after the parent's negative-net decision
+
+The passing checks in this addendum were re-run on the show-and-warn change at
+tested HEAD `94d5a202a9d49f9a1a704f2dd992b9699e4e7bad`. The sibling lifecycle evidence
+(`d06ffee0184ef5cdb4d87bc63e50a00eb3839490-{debate,test-audit,code-review}.md`)
+still predates both fix commits and is pending the parent's review pass, which
+the parent owns. Nothing here claims those reviews ran on this head.
