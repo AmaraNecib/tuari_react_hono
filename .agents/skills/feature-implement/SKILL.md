@@ -136,7 +136,18 @@ prove it on the base and document the waiver rather than hiding it.
 
 ### 5. Quality check
 
-Load only the skills relevant to the change:
+**First, the design pass — mandatory on the finished diff, and it is a merge
+gate.** Run `domain-modeling`, `codebase-design` and
+`improve-codebase-architecture` against the diff you just wrote, not only the new
+modules in it: does it use the domain's vocabulary and state new rules once, is
+anything it added shallow (deletion test), is a seam real or hypothetical, and
+what friction did it create? Fix what is in scope here; file the rest as issues
+with the finding. Write the outcome to `.scratch/reviews/<issue-id>/design-pass.md`
+— including "nothing found", because silence is not evidence that it ran.
+A PR that would leave the codebase harder to change does not merge "and get
+cleaned up later": the mess compounds. See `docs/engineering-workflow.md` §5.
+
+Then load only the skills relevant to the change:
 
 | Change | Skill |
 | --- | --- |

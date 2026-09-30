@@ -42,6 +42,16 @@ git commit -m "..."
 Follow `docs/engineering-workflow.md` and the `feature-implement` skill for all code changes.
 Read `.agents/wisdom/*.md` before starting a session.
 
+**Design pass is a merge gate.** Before a PR is considered done, run
+`domain-modeling`, `codebase-design` and `improve-codebase-architecture` against
+its own finished diff — not only the new modules in it. Fix what the diff made
+worse inside the PR; file the rest as issues with the finding; record the outcome
+in `.scratch/reviews/<issue-id>/design-pass.md` (including "nothing found").
+Do not merge a PR that leaves the codebase harder to change on the promise of
+cleaning it up later — that is how the mess compounds. Periodically, run
+`improve-codebase-architecture` over the whole codebase and retire the debt that
+accumulated before this rule existed.
+
 ## Crew dispatch shape (parallel lanes)
 
 When running parallel agent lanes (the crew-dispatch skill), the default shape
