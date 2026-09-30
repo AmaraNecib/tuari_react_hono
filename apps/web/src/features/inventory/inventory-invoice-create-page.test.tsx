@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { showErrorToast } from "@/lib/toast"
-import { getAlgeriaDateInputValue } from "@/lib/algeria-time"
+import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { InventoryInvoiceCreatePage } from "./inventory-invoice-create-page"
 
 const mocks = vi.hoisted(() => ({
@@ -161,12 +161,12 @@ function pickCalendarDate(isoDay: string, index = 0) {
 }
 
 /**
- * The page seeds its date fields with the UTC today; pick a different day in
- * that same month so the assertion proves the pick changed the value, even on
- * a run dated the 15th.
+ * The page seeds its date fields with the Algeria business day; pick a
+ * different day in that same month so the assertion proves the pick changed
+ * the value, even on a run dated the 15th.
  */
 function nonDefaultPickedDay() {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getAlgeriaDateInputValue()
   return `${today.slice(0, 7)}-${today.endsWith("-15") ? "16" : "15"}`
 }
 
@@ -658,24 +658,21 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
 describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)", () => {
   beforeEach(() => mockQueries())
 
-  it("submits the picked invoice date on the picked Algeria day", async () => {
-    // The page seeds the picker with the UTC today, so pick inside that month.
+  it("submits the picked invoice date as the picked Algeria day's start instant", async () => {
     const pickedDay = nonDefaultPickedDay()
-    expect(pickedDay).not.toBe(new Date().toISOString().slice(0, 10))
+    expect(pickedDay).not.toBe(getAlgeriaDateInputValue())
     renderPage()
     fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
 
     pickCalendarDate(pickedDay)
 
     const payload = await submitInvoice()
-    // Convention-agnostic: the submitted instant must land on the picked
-    // Algeria day. The page converts via UTC today; #440 aligns it with the
-    // Algeria business day. Both land on the same Algeria day, so this holds
-    // either way and does not pin the UTC string.
-    expect(getAlgeriaDateInputValue(new Date(payload.invoiceDate))).toBe(pickedDay)
+    // #440: the page must convert a picked canonical day to the Algeria
+    // business day, so late-evening records are not dated yesterday.
+    expect(payload.invoiceDate).toBe(toAlgeriaDayBoundaryIso(pickedDay, "start"))
   })
 
-  it("submits the picked asset purchase date on the picked Algeria day", async () => {
+  it("submits the picked asset purchase date as the picked Algeria day's start instant", async () => {
     const pickedDay = nonDefaultPickedDay()
     renderPage()
 
@@ -692,8 +689,42 @@ describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)",
     )
     const purchaseDate = assetLine?.assets?.[0]?.purchaseDate
     expect(purchaseDate).toBeTruthy()
-    // See the invoice-date case: assert the Algeria day, not the UTC string,
-    // so #440 can change the conversion without rewriting this test.
-    expect(getAlgeriaDateInputValue(new Date(purchaseDate as string))).toBe(pickedDay)
+    // #440: the asset purchase day gets the same Algeria start-of-day
+    // conversion as the invoice date.
+    expect(purchaseDate).toBe(toAlgeriaDayBoundaryIso(pickedDay, "start"))
+  })
+})
+
+describe("InventoryInvoiceCreatePage date defaults (#440)", () => {
+  beforeEach(() => mockQueries())
+  afterEach(() => vi.useRealTimers())
+
+  /** The display text of the invoice date picker (picker #0). */
+  function invoiceDateText() {
+    const trigger = document.querySelectorAll<HTMLElement>('[data-slot="popover-trigger"]')[0]
+    expect(trigger, "invoice date picker not found").toBeTruthy()
+    return trigger!.textContent ?? ""
+  }
+
+  it("opens on the Algeria business day, not the UTC day, late in the evening", () => {
+    // 23:30 UTC is already 00:30 the NEXT day in Africa/Algiers (UTC+1); the
+    // old UTC seed (`toISOString().slice(0, 10)`) would show yesterday.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-11T23:30:00.000Z"))
+
+    renderPage()
+
+    expect(invoiceDateText()).toContain("12/06/2026")
+  })
+
+  it("keeps the invoice date editable after the default is applied", () => {
+    const pickedDay = nonDefaultPickedDay()
+    renderPage()
+
+    pickCalendarDate(pickedDay)
+
+    // The picked day replaces the seeded default: a default is a starting
+    // point, never a constraint.
+    expect(invoiceDateText()).toContain(pickedDay.split("-").reverse().join("/"))
   })
 })

@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { Expense } from "@tuari/contracts"
 
+import { getAlgeriaDateInputValue } from "@/lib/algeria-time"
+
 import { ExpenseFormDialog } from "./expense-form-dialog"
 
 const { createMutateAsync, updateMutateAsync } = vi.hoisted(() => ({
@@ -68,6 +70,25 @@ describe("ExpenseFormDialog", () => {
     // The picker displays the stored instant's Algeria day (2026-10-01) as
     // dd/MM/yyyy; the DatePicker value contract is canonical yyyy-MM-dd.
     expect(screen.getByText("01/10/2026")).toBeTruthy()
+  })
+
+  it("opens a new expense on today's Algeria day, and stays editable", () => {
+    const today = getAlgeriaDateInputValue()
+    const todayDisplay = today.split("-").reverse().join("/")
+    const pickedDay = `${today.slice(0, 7)}-${today.endsWith("-15") ? "16" : "15"}`
+    const pickedDisplay = pickedDay.split("-").reverse().join("/")
+    renderDialog()
+
+    // A new expense must not open with an empty date: the operator records
+    // today's spending in almost every case.
+    expect(screen.getByText(todayDisplay)).toBeTruthy()
+
+    // Editable: the seeded day is a starting point, not a locked constraint.
+    fireEvent.click(screen.getByText(todayDisplay))
+    const cell = document.querySelector(`[data-day="${pickedDay}"]`)
+    expect(cell, `day ${pickedDay} not found`).toBeTruthy()
+    fireEvent.click(cell!.querySelector("button") ?? cell!)
+    expect(screen.getByText(pickedDisplay)).toBeTruthy()
   })
 
   it("submits the optional stock item the user selected", async () => {

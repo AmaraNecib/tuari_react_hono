@@ -53,7 +53,7 @@ export function ExpenseFormDialog({
   const updateMutation = useUpdateExpenseMutation()
   const { amount, setAmount, value: amountValue, isValid: hasValidAmount, reset: resetAmount } =
     useFormAmount()
-  const { date, setDate, reset: resetDate } = useDateField()
+  const { date, setDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
   const [whatFor, setWhatFor] = useState("")
   const [responsibleWorkerId, setResponsibleWorkerId] = useState<string | null>(null)
   const [sellerId, setSellerId] = useState<string | null>(null)

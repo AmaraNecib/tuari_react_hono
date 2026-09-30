@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { constants } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,21 @@ function resolveRepoPath(relativePath) {
 
 async function readRepoFile(relativePath) {
   return readFile(resolveRepoPath(relativePath), 'utf8');
+}
+
+/** Every `.ts`/`.tsx` file under a repo-relative directory, recursively. */
+async function listSourceFiles(relativeDir) {
+  const entries = await readdir(resolveRepoPath(relativeDir), { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const child = `${relativeDir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      files.push(...(await listSourceFiles(child)));
+    } else if (/\.tsx?$/.test(entry.name)) {
+      files.push(child);
+    }
+  }
+  return files;
 }
 
 test('web README documents the current Vite and Tauri-connected app', async () => {
@@ -118,4 +133,38 @@ test('fonts are self-hosted: every family the design tokens reference is declare
         `(via @fontsource/${fontsourcePackage} import or an inline @font-face)`,
     );
   }
+});
+
+test('today has exactly one definition: the shared Algeria day helper (#440)', async () => {
+  const files = await listSourceFiles('apps/web/src');
+  const offenders = [];
+  for (const file of files) {
+    // Tests may pin a fixed day; the rule is about production source.
+    if (/\.test\.tsx?$/.test(file)) continue;
+    const source = await readRepoFile(file);
+    if (/function\s+getTodayDateValue\b/.test(source)) {
+      offenders.push(`${file}: private getTodayDateValue`);
+    }
+    if (/new Date\(\)\.toISOString\(\)\.slice\(0,\s*10\)/.test(source)) {
+      offenders.push(`${file}: UTC today fabrication`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `"today" must come from the single shared helper, not a copy (${offenders.join(', ')})`,
+  );
+
+  const helper = await readRepoFile('apps/web/src/lib/algeria-time.ts');
+  assert.match(helper, /export function getAlgeriaDateInputValue/);
+
+  // The invoice create page used to carry a private UTC copy; it must now
+  // reuse the shared helper and convert a picked day with the shared boundary.
+  const page = await readRepoFile(
+    'apps/web/src/features/inventory/inventory-invoice-create-page.tsx',
+  );
+  assert.match(page, /getAlgeriaDateInputValue/);
+  assert.match(page, /toAlgeriaDayBoundaryIso/);
+  // No submit-time conversion of a bare day to a UTC midnight instant.
+  assert.doesNotMatch(page, /new Date\([^)]*\)\.toISOString\(\)/);
 });

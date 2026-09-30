@@ -278,3 +278,95 @@ describe("DebtCreatePage submits the picked day as the opening entry date (#428)
     )
   })
 })
+
+/**
+ * #440 rule: a create/record form opens with the sensible default already
+ * filled in. The date is the app's canonical Algeria business day, so the
+ * operator never has to type today's date. The existing tests above already
+ * prove each of these pickers STAYS editable (they pick a non-default day and
+ * submit it); these tests pin the DEFAULT they start from.
+ */
+describe("create/payment forms open on today's Algeria day (#440)", () => {
+  const TODAY_DISPLAY = getAlgeriaDateInputValue().split("-").reverse().join("/")
+
+  function expectFirstDatePickerIsToday() {
+    const trigger = document.querySelectorAll<HTMLElement>('[data-slot="popover-trigger"]')[0]
+    expect(trigger, "date picker not found").toBeTruthy()
+    expect(trigger!.textContent).toContain(TODAY_DISPLAY)
+  }
+
+  it("DebtCreatePage opens its opening-entry date on today", () => {
+    render(
+      <DebtCreatePage
+        employees={[]}
+        externalCounterparties={[]}
+        navigation={
+          {
+            goToDebts: vi.fn(),
+            goToEmployeeDebts: vi.fn(),
+            goToExternalDetails: vi.fn(),
+          } as never
+        }
+        preselectedWorkerId="worker-1"
+      />,
+    )
+
+    expectFirstDatePickerIsToday()
+  })
+
+  it("RecordPaymentDialog opens its payment date on today", () => {
+    render(<RecordPaymentDialog debtAccount={ACCOUNT} open onOpenChange={vi.fn()} />)
+
+    expectFirstDatePickerIsToday()
+  })
+
+  it("EmployeeDebtPanel opens its entry date on today", () => {
+    render(<EmployeeDebtPanel employeeId="employee-1" />)
+
+    expectFirstDatePickerIsToday()
+  })
+
+  it("DebtLedgerPanel opens its entry date on today", () => {
+    render(<DebtLedgerPanel debtAccount={ACCOUNT} debtEntries={[]} title="حساب" />)
+
+    expectFirstDatePickerIsToday()
+  })
+
+  it("DebtCasesPanel opens its opening-entry date on today", () => {
+    render(
+      <DebtCasesPanel
+        accounts={[]}
+        debtEntriesByAccountId={{}}
+        externalCounterpartyId="external-1"
+        title="طرف"
+      />,
+    )
+
+    expectFirstDatePickerIsToday()
+  })
+
+  it("TransferItemDialog opens its transfer date on today", () => {
+    render(
+      <TransferItemDialog
+        open
+        target={{ type: "ASSET", assetUnitId: "asset-1", assetName: "خلاطة" }}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expectFirstDatePickerIsToday()
+  })
+
+  it("AddSalaryPaymentDialog opens its payment date on today", () => {
+    render(
+      <AddSalaryPaymentDialog
+        employeeId="employee-1"
+        employeeName="عامل"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expectFirstDatePickerIsToday()
+  })
+})

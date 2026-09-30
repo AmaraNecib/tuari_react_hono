@@ -8,6 +8,7 @@ import { FileInput, NativeSelect } from "@/components/ui/form-controls"
 import { CreateableSelect } from "@/components/ui/createable-select"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { showErrorToast } from "@/lib/toast"
 
 import {
@@ -66,23 +67,18 @@ function FieldLabel({ label, required = false }: { label: string; required?: boo
   )
 }
 
-/** getTodayDateValue - helper function. */
-function getTodayDateValue() {
-  return new Date().toISOString().slice(0, 10)
-}
-
 /** createConsumableLine - helper function. */
 function createConsumableLine(): ConsumableLine {
   return { kind: "CONSUMABLE", itemDefinitionId: "", warehouseId: "", projectId: "", quantity: "1", unitPriceDzd: "0", totalPriceDzd: "0", note: "" }
 }
 
 /** createAssetRow - helper function. */
-function createAssetRow(defaultName = "", purchaseDate = getTodayDateValue()): AssetRow {
+function createAssetRow(defaultName = "", purchaseDate = getAlgeriaDateInputValue()): AssetRow {
   return { assetName: defaultName, assetTag: "", serialNumber: "", condition: "NEW", purchaseDate, purchasePriceDzd: "0", note: "" }
 }
 
 /** createAssetLine - helper function. */
-function createAssetLine(defaultName = "", purchaseDate = getTodayDateValue()): AssetLine {
+function createAssetLine(defaultName = "", purchaseDate = getAlgeriaDateInputValue()): AssetLine {
   return { kind: "ASSET", itemDefinitionId: "", warehouseId: "", projectId: "", note: "", assets: [createAssetRow(defaultName, purchaseDate)] }
 }
 
@@ -102,7 +98,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   const { t } = useTranslation()
   const [invoiceNumber, setInvoiceNumber] = useState("")
   const [supplierName, setSupplierName] = useState("")
-  const [invoiceDate, setInvoiceDate] = useState(getTodayDateValue())
+  const [invoiceDate, setInvoiceDate] = useState(() => getAlgeriaDateInputValue())
   const [warehouseId, setWarehouseId] = useState<string>("")
   const [projectId, setProjectId] = useState<string>("")
   const [externalCounterpartyId, setExternalCounterpartyId] = useState<string>("")
@@ -205,7 +201,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       const result = await createMutation.mutateAsync({
         invoiceNumber: invoiceNumber || null,
         supplierName: (selectedCounterparty?.fullName ?? supplierName) || null,
-        invoiceDate: invoiceDate ? new Date(invoiceDate).toISOString() : null,
+        invoiceDate: invoiceDate ? toAlgeriaDayBoundaryIso(invoiceDate, "start") ?? null : null,
         warehouseId: warehouseId || null,
         projectId: projectId || null,
         externalCounterpartyId: externalCounterpartyId || null,
@@ -244,7 +240,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
               assetTag: asset.assetTag || null,
               serialNumber: asset.serialNumber || null,
               condition: asset.condition,
-              purchaseDate: asset.purchaseDate ? new Date(asset.purchaseDate).toISOString() : null,
+              purchaseDate: asset.purchaseDate ? toAlgeriaDayBoundaryIso(asset.purchaseDate, "start") ?? null : null,
               purchasePriceDzd: Number(asset.purchasePriceDzd),
               note: asset.note || null,
             })),
@@ -496,7 +492,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                   <NativeSelect value={line.itemDefinitionId} onChange={(event) => {
                     const nextDefinition = selectedDefinitions.get(event.target.value)
                     if (nextDefinition?.itemType === "ASSET") {
-                      updateLine(index, { kind: "ASSET", itemDefinitionId: event.target.value, warehouseId: line.warehouseId, projectId: line.projectId, note: line.note, assets: line.kind === "ASSET" ? line.assets.map((asset) => ({ ...asset, assetName: asset.assetName || nextDefinition.name })) : [createAssetRow(nextDefinition.name, invoiceDate || getTodayDateValue())] })
+                      updateLine(index, { kind: "ASSET", itemDefinitionId: event.target.value, warehouseId: line.warehouseId, projectId: line.projectId, note: line.note, assets: line.kind === "ASSET" ? line.assets.map((asset) => ({ ...asset, assetName: asset.assetName || nextDefinition.name })) : [createAssetRow(nextDefinition.name, invoiceDate || getAlgeriaDateInputValue())] })
                       return
                     }
                     updateLine(index, { kind: "CONSUMABLE", itemDefinitionId: event.target.value, warehouseId: line.warehouseId, projectId: line.projectId, quantity: line.kind === "CONSUMABLE" ? line.quantity : "1", unitPriceDzd: line.kind === "CONSUMABLE" ? line.unitPriceDzd : "0", totalPriceDzd: line.kind === "CONSUMABLE" ? line.totalPriceDzd : "0", note: line.note })
@@ -587,7 +583,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                       </label>
                     </div>
                   ))}
-                  <Button variant="outline" size="sm" onClick={() => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: [...currentLine.assets, createAssetRow(selectedDefinitions.get(currentLine.itemDefinitionId)?.name ?? "", invoiceDate || getTodayDateValue())] }))}>إضافة أصل آخر</Button>
+                  <Button variant="outline" size="sm" onClick={() => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: [...currentLine.assets, createAssetRow(selectedDefinitions.get(currentLine.itemDefinitionId)?.name ?? "", invoiceDate || getAlgeriaDateInputValue())] }))}>إضافة أصل آخر</Button>
                 </div>
               )}
             </PageSurfaceContent>
