@@ -484,6 +484,5 @@ describe("employee_salary_payment schema (#412 days + split)", () => {
         d.includes('employee_salary_payment_split_project_id_idx'),
       ),
     ).toBe(true);
->>>>>>> 303ec54e (feat(salaries): days worked and per-project split of a payment (#412))
   });
 });
