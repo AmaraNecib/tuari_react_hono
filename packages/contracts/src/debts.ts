@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { debtBalanceLabelSchema } from "./debt-helpers";
 import {
   algerianPhoneSchema,
   auditActorUserIdSchema,
@@ -75,7 +76,7 @@ export const debtPartySummaryItemSchema = z.object({
   displayName: z.string().trim().min(1).max(160),
   phoneNumber: algerianPhoneSchema.nullable(),
   totalBalanceDzd: z.number(),
-  balanceLabel: z.enum(["لنا عنده", "علينا له", "مغلق"]),
+  balanceLabel: debtBalanceLabelSchema,
   openDebtCasesCount: z.number().int().nonnegative(),
   settledDebtCasesCount: z.number().int().nonnegative(),
   latestActivityAt: timestampSchema,
@@ -89,7 +90,7 @@ export const debtPartyDetailSchema = z.object({
   phoneNumber: algerianPhoneSchema.nullable(),
   note: nullableTextSchema,
   totalBalanceDzd: z.number(),
-  balanceLabel: z.enum(["لنا عنده", "علينا له", "مغلق"]),
+  balanceLabel: debtBalanceLabelSchema,
   debtAccounts: z.array(debtAccountSchema),
 });
 
@@ -103,7 +104,7 @@ export const debtSummaryItemSchema = z.object({
   status: debtAccountStatusSchema,
   direction: debtAccountDirectionSchema,
   currentBalance: z.number(),
-  balanceLabel: z.enum(["لنا عنده", "علينا له", "مغلق"]),
+  balanceLabel: debtBalanceLabelSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });

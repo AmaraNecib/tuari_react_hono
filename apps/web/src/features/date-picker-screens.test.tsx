@@ -10,6 +10,7 @@ import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { DebtCreatePage } from "@/features/debts/debt-create-page"
+import { getDebtBalanceDisplay } from "@/features/debts/debt-utils"
 import { DebtLedgerPanel } from "@/features/debts/debt-ledger-panel"
 import { EmployeeDebtPanel } from "@/features/debts/employee-debt-panel"
 import { RecordPaymentDialog } from "@/features/debts/record-payment-dialog"
@@ -27,7 +28,7 @@ import { TransferItemDialog } from "@/features/inventory/transfer-item-dialog"
 const mocks = vi.hoisted(() => ({
   createDebtEntry: vi.fn(async () => ({})),
   settleDebtAccount: vi.fn(async () => ({})),
-  createDebtAccount: vi.fn(async () => ({})),
+  createDebtAccount: vi.fn<(...args: unknown[]) => Promise<Record<string, never>>>(async () => ({})),
   createSalaryPayment: vi.fn(async () => ({})),
   transferAsset: vi.fn(async () => ({})),
   transferConsumable: vi.fn(async () => ({})),
@@ -220,7 +221,7 @@ describe("DebtLedgerPanel submits the picked day for a ledger entry (#428)", () 
       target: { value: "100" },
     })
     pickDate()
-    fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفعة" }))
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دفعة" }))
 
     await waitFor(() => expect(mocks.createDebtEntry).toHaveBeenCalledTimes(1))
     expect(mocks.createDebtEntry).toHaveBeenCalledWith(
@@ -240,11 +241,11 @@ describe("DebtCasesPanel submits the picked day as the opening entry date (#428)
       />,
     )
 
-    fireEvent.change(screen.getByPlaceholderText("0 أو 2500 أو -2500"), {
+    fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), {
       target: { value: "500" },
     })
     pickDate()
-    fireEvent.click(screen.getByRole("button", { name: "إنشاء الحساب" }))
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
 
     await waitFor(() => expect(mocks.createDebtAccount).toHaveBeenCalledTimes(1))
     expect(mocks.createDebtAccount).toHaveBeenCalledWith(
@@ -270,11 +271,79 @@ describe("DebtCreatePage submits the picked day as the opening entry date (#428)
 
     fireEvent.change(screen.getByPlaceholderText("0"), { target: { value: "500" } })
     pickDate()
-    fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفعة على الحساب" }))
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
 
     await waitFor(() => expect(mocks.createDebtAccount).toHaveBeenCalledTimes(1))
     expect(mocks.createDebtAccount).toHaveBeenCalledWith(
       expect.objectContaining({ openingEntryDate: PICKED_ISO }),
     )
+  })
+})
+
+describe("DebtCreatePage sends the chosen direction with a positive opening amount", () => {
+  const renderCreatePage = () =>
+    render(
+      <DebtCreatePage
+        employees={[]}
+        externalCounterparties={[]}
+        navigation={{
+          goToDebts: vi.fn(),
+          goToEmployeeDebts: vi.fn(),
+          goToExternalDetails: vi.fn(),
+        } as never}
+        preselectedWorkerId="worker-1"
+      />,
+    )
+
+  // OTHER is the unconstrained category, so the direction buttons render.
+  const chooseOtherCategory = () => {
+    fireEvent.click(screen.getByRole("button", { name: /أخرى/ }))
+    fireEvent.change(screen.getByPlaceholderText("اذكر تفاصيل السبب"), {
+      target: { value: "تفصيل السبب" },
+    })
+  }
+
+  const submit = async () => {
+    fireEvent.change(screen.getByPlaceholderText("0"), { target: { value: "500" } })
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
+    await waitFor(() => expect(mocks.createDebtAccount).toHaveBeenCalledTimes(1))
+    return mocks.createDebtAccount.mock.calls[0]![0] as {
+      direction?: "PAYABLE" | "RECEIVABLE"
+      openingBalanceDzd?: number
+    }
+  }
+
+  it("owed-to-us sends RECEIVABLE with a positive amount, labelled مستحق لنا", async () => {
+    renderCreatePage()
+    chooseOtherCategory()
+    fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
+    const args = await submit()
+
+    expect(args.direction).toBe("RECEIVABLE")
+    expect(args.openingBalanceDzd).toBe(500)
+    // The server stores the sent direction (default PAYABLE when omitted), so
+    // this is the phrase the resulting account renders.
+    expect(
+      getDebtBalanceDisplay({
+        currentBalance: args.openingBalanceDzd ?? 0,
+        direction: args.direction ?? "PAYABLE",
+      }).phrase,
+    ).toBe("مستحق لنا")
+  })
+
+  it("owed-by-us sends PAYABLE with a positive amount, labelled مستحق علينا", async () => {
+    renderCreatePage()
+    chooseOtherCategory()
+    fireEvent.click(screen.getByRole("button", { name: "مستحقات علينا" }))
+    const args = await submit()
+
+    expect(args.direction).toBe("PAYABLE")
+    expect(args.openingBalanceDzd).toBe(500)
+    expect(
+      getDebtBalanceDisplay({
+        currentBalance: args.openingBalanceDzd ?? 0,
+        direction: args.direction ?? "PAYABLE",
+      }).phrase,
+    ).toBe("مستحق علينا")
   })
 })

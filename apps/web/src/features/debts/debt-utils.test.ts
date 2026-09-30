@@ -1,85 +1,178 @@
 import { describe, expect, it } from "vitest"
+import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts"
 
+import { ar } from "@/i18n/resources/ar"
 import {
+  debtDirectionFromAlias,
+  formatDebtAmount,
   formatDebtMoney,
+  getConsolidationRemainder,
   getDebtAccountBalance,
-  getDebtAccountBalanceMeta,
-  getDebtBalanceMeta,
+  getDebtBalanceDisplay,
   getDebtDirectionLabel,
   sortDebtAccounts,
 } from "./debt-utils"
 
-describe("getDebtBalanceMeta (sign-only, for aggregated net)", () => {
-  it("positive balance is a receivable (emerald)", () => {
-    const meta = getDebtBalanceMeta(500)
-    expect(meta.shortLabel).toBe("لنا عنده")
-    expect(meta.textClassName).toContain("emerald")
+const ARABIC_STATES = {
+  owedToUs: "مستحق لنا",
+  owedByUs: "مستحق علينا",
+  creditWithUs: "رصيد مستحق لنا",
+  creditWithThem: "رصيد مستحق لهم",
+  settled: "مسوّى",
+} as const
+
+describe("getDebtBalanceDisplay (the single balance display helper)", () => {
+  it("shows a positive PAYABLE balance as 'مستحق علينا' with a positive amount", () => {
+    const display = getDebtBalanceDisplay({ currentBalance: 600, direction: "PAYABLE" })
+    expect(display.state).toBe("owedByUs")
+    expect(display.phrase).toBe(ARABIC_STATES.owedByUs)
+    expect(display.amount).toBe(600)
+    expect(formatDebtAmount(display.amount)).toBe("600")
+    expect(display.amount).toBeGreaterThan(0)
   })
 
-  it("negative balance is a payable (rose)", () => {
-    const meta = getDebtBalanceMeta(-500)
-    expect(meta.shortLabel).toBe("علينا له")
-    expect(meta.textClassName).toContain("rose")
+  it("shows an overpaid PAYABLE balance as 'رصيد مستحق لنا' with the magnitude", () => {
+    const display = getDebtBalanceDisplay({ currentBalance: -50_000, direction: "PAYABLE" })
+    expect(display.state).toBe("creditWithUs")
+    expect(display.phrase).toBe(ARABIC_STATES.creditWithUs)
+    expect(display.amount).toBe(50_000)
+    expect(formatDebtAmount(display.amount)).toBe("50,000")
   })
 
-  it("zero balance is closed (muted)", () => {
-    const meta = getDebtBalanceMeta(0)
-    expect(meta.shortLabel).toBe("مغلق")
-    expect(meta.textClassName).toContain("muted")
+  it("shows a positive RECEIVABLE balance as 'مستحق لنا' with a positive amount", () => {
+    const display = getDebtBalanceDisplay({ currentBalance: 600, direction: "RECEIVABLE" })
+    expect(display.state).toBe("owedToUs")
+    expect(display.phrase).toBe(ARABIC_STATES.owedToUs)
+    expect(display.amount).toBe(600)
+  })
+
+  it("shows an overpaid RECEIVABLE balance as 'رصيد مستحق لهم' with the magnitude", () => {
+    const display = getDebtBalanceDisplay({ currentBalance: -600, direction: "RECEIVABLE" })
+    expect(display.state).toBe("creditWithThem")
+    expect(display.phrase).toBe(ARABIC_STATES.creditWithThem)
+    expect(display.amount).toBe(600)
+  })
+
+  it("shows zero as the settled phrase, never 'مستحق علينا 0'", () => {
+    const display = getDebtBalanceDisplay({ currentBalance: 0, direction: "PAYABLE" })
+    expect(display.state).toBe("settled")
+    expect(display.phrase).toBe(ARABIC_STATES.settled)
+    expect(display.amount).toBe(0)
+    expect(display.phrase).not.toContain("0")
+  })
+
+  it("falls back to sign-only phrasing for a netted party balance", () => {
+    expect(getDebtBalanceDisplay({ currentBalance: 2500 }).phrase).toBe(ARABIC_STATES.owedToUs)
+    expect(getDebtBalanceDisplay({ currentBalance: -1500 }).phrase).toBe(ARABIC_STATES.owedByUs)
   })
 })
 
-describe("getDebtAccountBalanceMeta (direction-aware)", () => {
-  it("positive balance on a PAYABLE account means we owe them (rose)", () => {
-    // Issue #22: the sign convention is balance-based. A positive
-    // balance on a PAYABLE ledger is the amount the counterparty is
-    // owed — we owe them.
-    const meta = getDebtAccountBalanceMeta({ currentBalance: 1500, direction: "PAYABLE" })
-    expect(meta.shortLabel).toBe("علينا له")
-    expect(meta.textClassName).toContain("rose")
+describe("getConsolidationRemainder", () => {
+  const base = {
+    payableDirection: "PAYABLE" as const,
+    receivableDirection: "RECEIVABLE" as const,
+  }
+
+  it("phrases a payable remainder as owed by us, never owed to us", () => {
+    const preview = getConsolidationRemainder({
+      ...base,
+      payableAmount: 5000,
+      receivableAmount: 2000,
+    })
+    expect(preview?.label).toBe("يبقى مستحق علينا 3,000 دج")
+    expect(preview?.description).not.toContain("مستحق لنا")
   })
 
-  it("positive balance on a RECEIVABLE account means they owe us (emerald)", () => {
-    const meta = getDebtAccountBalanceMeta({ currentBalance: 500, direction: "RECEIVABLE" })
-    expect(meta.shortLabel).toBe("لنا عنده")
-    expect(meta.textClassName).toContain("emerald")
+  it("phrases a receivable remainder as owed to us, never owed by us", () => {
+    const preview = getConsolidationRemainder({
+      ...base,
+      payableAmount: 2000,
+      receivableAmount: 5000,
+    })
+    expect(preview?.label).toBe("يبقى مستحق لنا 3,000 دج")
+    expect(preview?.description).not.toContain("مستحق علينا")
   })
 
-  it("negative balance on a PAYABLE account flips the meaning (emerald)", () => {
-    // We overpaid: the supplier now owes us.
-    const meta = getDebtAccountBalanceMeta({ currentBalance: -300, direction: "PAYABLE" })
-    expect(meta.shortLabel).toBe("لنا عنده")
-    expect(meta.textClassName).toContain("emerald")
+  it("returns the full-cancel preview when the openings are equal", () => {
+    expect(
+      getConsolidationRemainder({ ...base, payableAmount: 3000, receivableAmount: 3000 }),
+    ).toEqual({
+      description: "سيتم إلغاء الحركتين بالكامل. لا يبقى رصيد.",
+      label: "إلغاء تام",
+    })
   })
 
-  it("negative balance on a RECEIVABLE account flips the meaning (rose)", () => {
-    // The customer overpaid us: we now owe them.
-    const meta = getDebtAccountBalanceMeta({ currentBalance: -200, direction: "RECEIVABLE" })
-    expect(meta.shortLabel).toBe("علينا له")
-    expect(meta.textClassName).toContain("rose")
+  it("returns null until both sides are selected", () => {
+    expect(
+      getConsolidationRemainder({ ...base, payableAmount: null, receivableAmount: 2000 }),
+    ).toBeNull()
+    expect(
+      getConsolidationRemainder({ ...base, payableAmount: 2000, receivableAmount: null }),
+    ).toBeNull()
+  })
+})
+
+describe("movement tone follows the account direction", () => {
+  it("a positive PAYABLE movement reads as a debt increase (rose)", () => {
+    expect(
+      getDebtBalanceDisplay({ currentBalance: 5000, direction: "PAYABLE" }).textClassName,
+    ).toContain("rose")
   })
 
-  it("zero balance is closed regardless of direction", () => {
-    expect(getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" }).shortLabel).toBe("مغلق")
-    expect(getDebtAccountBalanceMeta({ currentBalance: 0, direction: "RECEIVABLE" }).shortLabel).toBe("مغلق")
+  it("a positive RECEIVABLE movement reads as an increase for them (emerald)", () => {
+    expect(
+      getDebtBalanceDisplay({ currentBalance: 5000, direction: "RECEIVABLE" }).textClassName,
+    ).toContain("emerald")
+  })
+})
+
+describe("debtDirectionFromAlias", () => {
+  it("maps the UI alias to the domain direction", () => {
+    expect(debtDirectionFromAlias("owed-to-us")).toBe("RECEIVABLE")
+    expect(debtDirectionFromAlias("owed-by-us")).toBe("PAYABLE")
   })
 })
 
 describe("getDebtDirectionLabel", () => {
-  it("returns the Arabic label for PAYABLE", () => {
-    expect(getDebtDirectionLabel("PAYABLE")).toBe("علينا له")
+  it("returns the direction phrase for PAYABLE", () => {
+    expect(getDebtDirectionLabel("PAYABLE")).toBe("مستحقات علينا")
   })
 
-  it("returns the Arabic label for RECEIVABLE", () => {
-    expect(getDebtDirectionLabel("RECEIVABLE")).toBe("لنا عنده")
+  it("returns the direction phrase for RECEIVABLE", () => {
+    expect(getDebtDirectionLabel("RECEIVABLE")).toBe("مستحقات لنا")
+  })
+
+  it("keeps the i18n state copy identical to the shared contract phrases", () => {
+    expect(ar.translation.debts.terminology.states).toEqual(DEBT_BALANCE_STATE_PHRASE)
+  })
+
+  it("keeps the i18n direction and button copy aligned with the shared terms", () => {
+    const directions = ar.translation.debts.terminology.directions
+    expect(directions.payable).toBe(getDebtDirectionLabel("PAYABLE"))
+    expect(directions.receivable).toBe(getDebtDirectionLabel("RECEIVABLE"))
+    expect(ar.translation.debts.terminology.buttons.recordPayment).toBe("تسجيل دفعة")
+    expect(ar.translation.debts.terminology.buttons.recordDebt).toBe("تسجيل دين")
   })
 })
 
-describe("formatDebtMoney", () => {
-  it("formats integers with explicit sign (useGrouping is disabled)", () => {
-    // The formatter is intentionally configured without grouping
-    // separators so the number stays compact in tables and side-by-side
-    // comparisons. Test that the sign is always present.
+describe("formatDebtAmount", () => {
+  it("never renders a sign and groups thousands", () => {
+    expect(formatDebtAmount(1500)).toBe("1,500")
+    expect(formatDebtAmount(-50_000)).toBe("50,000")
+    expect(formatDebtAmount(0)).toBe("0")
+    expect(formatDebtAmount(-300)).not.toContain("-")
+  })
+
+  it("keeps a nonzero sub-dinar balance from rounding to a bare zero", () => {
+    // roundMoney() works in centimes, so 0.4 DZD is a real balance. Rounding it
+    // to "0" would pair a direction phrase with a zero amount.
+    expect(formatDebtAmount(0.4)).toBe("0.4")
+    expect(formatDebtAmount(-0.4)).toBe("0.4")
+  })
+})
+
+describe("formatDebtMoney (signed movement formatter)", () => {
+  it("formats entry deltas with an explicit sign (useGrouping is disabled)", () => {
     expect(formatDebtMoney(1500)).toBe("+1500")
     expect(formatDebtMoney(-300)).toBe("-300")
     expect(formatDebtMoney(0)).toBe("+0")

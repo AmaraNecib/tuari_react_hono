@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { getDebtAccountNetContribution, getNetDebtBalance } from "./debt-helpers";
+import {
+  DEBT_BALANCE_STATE_PHRASE,
+  debtBalanceLabelSchema,
+  getDebtAccountNetContribution,
+  getDebtBalanceAmount,
+  getDebtBalancePhrase,
+  getDebtBalanceState,
+  getNetDebtBalance,
+} from "./debt-helpers";
 
 /**
  * Locks the debt sign convention (issue #22, single source since #277):
@@ -125,5 +133,68 @@ describe("debt sign convention (PAYABLE-negates)", () => {
         ]),
       ).toBe(-300);
     });
+  });
+});
+
+/**
+ * The display state machine is the single source of the new debt wording:
+ * a signed balance never reaches the UI alone, it is always paired with the
+ * phrase that states the direction (issue: unambiguous debt terminology).
+ */
+describe("getDebtBalanceState (direction + signed balance -> phrase state)", () => {
+  it("maps a positive PAYABLE balance to owedByUs (we owe them, unpaid)", () => {
+    expect(getDebtBalanceState({ currentBalance: 600, direction: "PAYABLE" })).toBe("owedByUs");
+  });
+
+  it("maps a negative PAYABLE balance to creditWithUs (we paid them too much)", () => {
+    expect(getDebtBalanceState({ currentBalance: -50_000, direction: "PAYABLE" })).toBe("creditWithUs");
+  });
+
+  it("maps a positive RECEIVABLE balance to owedToUs (they owe us, unpaid)", () => {
+    expect(getDebtBalanceState({ currentBalance: 600, direction: "RECEIVABLE" })).toBe("owedToUs");
+  });
+
+  it("maps a negative RECEIVABLE balance to creditWithThem (they paid us too much)", () => {
+    expect(getDebtBalanceState({ currentBalance: -600, direction: "RECEIVABLE" })).toBe("creditWithThem");
+  });
+
+  it("maps zero to settled for every direction", () => {
+    expect(getDebtBalanceState({ currentBalance: 0, direction: "PAYABLE" })).toBe("settled");
+    expect(getDebtBalanceState({ currentBalance: 0, direction: "RECEIVABLE" })).toBe("settled");
+    expect(getDebtBalanceState({ currentBalance: 0 })).toBe("settled");
+  });
+
+  it("maps a direction-less net figure by sign", () => {
+    expect(getDebtBalanceState({ currentBalance: 2500 })).toBe("owedToUs");
+    expect(getDebtBalanceState({ currentBalance: -1500 })).toBe("owedByUs");
+  });
+});
+
+describe("getDebtBalanceAmount", () => {
+  it("returns the magnitude so a signed balance is never rendered negative", () => {
+    expect(getDebtBalanceAmount(-50_000)).toBe(50_000);
+    expect(getDebtBalanceAmount(50_000)).toBe(50_000);
+    expect(getDebtBalanceAmount(0)).toBe(0);
+  });
+});
+
+describe("getDebtBalancePhrase", () => {
+  it("uses the authoritative Arabic phrase for each of the five states", () => {
+    expect(getDebtBalancePhrase({ currentBalance: 600, direction: "PAYABLE" })).toBe("مستحق علينا");
+    expect(getDebtBalancePhrase({ currentBalance: 600, direction: "RECEIVABLE" })).toBe("مستحق لنا");
+    expect(getDebtBalancePhrase({ currentBalance: -600, direction: "PAYABLE" })).toBe("رصيد مستحق لنا");
+    expect(getDebtBalancePhrase({ currentBalance: -600, direction: "RECEIVABLE" })).toBe("رصيد مستحق لهم");
+    expect(getDebtBalancePhrase({ currentBalance: 0, direction: "PAYABLE" })).toBe("مسوّى");
+  });
+});
+
+describe("debtBalanceLabelSchema", () => {
+  it("accepts exactly the five phrases and rejects the retired labels", () => {
+    for (const phrase of Object.values(DEBT_BALANCE_STATE_PHRASE)) {
+      expect(debtBalanceLabelSchema.safeParse(phrase).success).toBe(true);
+    }
+    expect(debtBalanceLabelSchema.safeParse("لنا عنده").success).toBe(false);
+    expect(debtBalanceLabelSchema.safeParse("علينا له").success).toBe(false);
+    expect(debtBalanceLabelSchema.safeParse("مغلق").success).toBe(false);
   });
 });

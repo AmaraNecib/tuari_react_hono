@@ -81,4 +81,26 @@ describe("ReportBuilder range boundary", () => {
     // run at ~5.2s). The assertions, not the timeout, are the guard.
     15000,
   )
+
+  it("does not stamp a direction phrase on the gross outstanding/overdue totals", async () => {
+    reportsGenerate.mockResolvedValue({
+      type: "DEBT",
+      generatedAt: "2026-10-15T00:00:00.000Z",
+      summary: { totalOutstandingDzd: 5000, totalSettledDzd: 1000, overdueDzd: 2000, partyCount: 2 },
+      agingBreakdown: [],
+      byParty: [],
+      topDebtors: [],
+    })
+
+    renderPage()
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "DEBT" } })
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء التقرير" }))
+
+    await waitFor(() => expect(screen.getByText("الديون المتبقية")).toBeTruthy())
+    // totalOutstandingDzd/overdueDzd aggregate BOTH PAYABLE and RECEIVABLE
+    // directions (gross exposure), so a single direction phrase is a false
+    // claim. The settled bucket stays labelled.
+    expect(screen.queryByText("مستحق لنا")).toBeNull()
+    expect(screen.getByText("مسوّى")).toBeTruthy()
+  }, 15000)
 })

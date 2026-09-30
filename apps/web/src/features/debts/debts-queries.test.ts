@@ -65,7 +65,7 @@ const workerParty: DebtPartySummaryItem = {
   displayName: "علي بن حميد",
   phoneNumber: "0555200120",
   totalBalanceDzd: 1500,
-  balanceLabel: "لنا عنده",
+  balanceLabel: "مستحق لنا",
   openDebtCasesCount: 1,
   settledDebtCasesCount: 0,
   latestActivityAt: "2026-03-28T10:00:00.000Z",
@@ -78,7 +78,7 @@ const externalParty: DebtPartySummaryItem = {
   displayName: "شركة المورد",
   phoneNumber: "0555000000",
   totalBalanceDzd: -700,
-  balanceLabel: "علينا له",
+  balanceLabel: "مستحق علينا",
   openDebtCasesCount: 1,
   settledDebtCasesCount: 1,
   latestActivityAt: "2026-03-28T10:00:00.000Z",
@@ -401,7 +401,7 @@ describe("useDebtPartyDetailQuery", () => {
       phoneNumber: "0555200120",
       note: null,
       totalBalanceDzd: 1500,
-      balanceLabel: "لنا عنده",
+      balanceLabel: "مستحق لنا",
       debtAccounts: [],
     }
     mocks.debtPartyDetail.mockResolvedValue({ success: true, message: "ok", item })
@@ -424,7 +424,7 @@ describe("useDebtPartyDetailQuery", () => {
       phoneNumber: "0555000000",
       note: null,
       totalBalanceDzd: -700,
-      balanceLabel: "علينا له",
+      balanceLabel: "مستحق علينا",
       debtAccounts: [],
     }
     mocks.debtPartyDetail.mockResolvedValue({ success: true, message: "ok", item })
@@ -447,7 +447,7 @@ describe("useDebtPartyDetailQuery", () => {
       phoneNumber: "0555000000",
       note: null,
       totalBalanceDzd: -700,
-      balanceLabel: "علينا له",
+      balanceLabel: "مستحق علينا",
       debtAccounts: [
         { id: "debt-1", currentBalance: -700 },
         { id: "debt-2", currentBalance: 0 },
@@ -490,7 +490,7 @@ describe("useDebtPartyDetailQuery", () => {
       phoneNumber: "0555000000",
       note: null,
       totalBalanceDzd: -700,
-      balanceLabel: "علينا له",
+      balanceLabel: "مستحق علينا",
       debtAccounts: [{ id: "debt-1", currentBalance: -700 }],
     }
     mocks.debtPartyDetail.mockResolvedValue({ success: true, message: "ok", item })
@@ -562,7 +562,7 @@ describe("useDebtPartyDetailQuery", () => {
       phoneNumber: "0555000000",
       note: null,
       totalBalanceDzd: -700,
-      balanceLabel: "علينا له",
+      balanceLabel: "مستحق علينا",
       debtAccounts: [{ id: "debt-1", currentBalance: -700 }],
     }
     const error = new Error("entries boom")

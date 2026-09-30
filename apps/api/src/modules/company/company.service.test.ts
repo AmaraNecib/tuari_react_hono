@@ -1213,7 +1213,7 @@ describe("CompanyService", () => {
         expect.objectContaining({
           externalCounterpartyId: counterparty.id,
           totalBalanceDzd: 500,
-          balanceLabel: "لنا عنده",
+          balanceLabel: "مستحق لنا",
           openDebtCasesCount: 1,
         }),
       ]),
@@ -1224,7 +1224,7 @@ describe("CompanyService", () => {
       externalCounterpartyId: counterparty.id,
     }).item
     expect(detail.totalBalanceDzd).toBe(500)
-    expect(detail.balanceLabel).toBe("لنا عنده")
+    expect(detail.balanceLabel).toBe("مستحق لنا")
     expect(detail.debtAccounts).toHaveLength(1)
   })
 
@@ -1319,28 +1319,28 @@ describe("CompanyService", () => {
     // Net = receivable(500) - payable(2000) = -1500 (we still owe them)
     expect(detail.debtAccounts).toHaveLength(2)
     expect(detail.totalBalanceDzd).toBe(-1500)
-    expect(detail.balanceLabel).toBe("علينا له")
+    expect(detail.balanceLabel).toBe("مستحق علينا")
 
     const summary = service.listDebtsSummary()
     const partyRow = summary.parties.find(
       (party) => party.externalCounterpartyId === counterparty.id,
     )
     expect(partyRow?.totalBalanceDzd).toBe(-1500)
-    expect(partyRow?.balanceLabel).toBe("علينا له")
+    expect(partyRow?.balanceLabel).toBe("مستحق علينا")
     expect(partyRow?.openDebtCasesCount).toBe(2)
 
     // Per-account balanceLabel must respect the direction sign
-    // convention (Greptile 3/5 → 5/5 fix). A positive PAYABLE
-    // balance is "علينا له" (we owe them), not "لنا عنده".
+    // convention. A positive PAYABLE balance is "مستحق علينا" (we owe
+    // them), not "مستحق لنا".
     const payableAccount = summary.debtAccounts.find(
       (row) => row.accountId === detail.debtAccounts.find((a) => a.direction === "PAYABLE")?.id,
     )
     const receivableAccount = summary.debtAccounts.find(
       (row) => row.accountId === detail.debtAccounts.find((a) => a.direction === "RECEIVABLE")?.id,
     )
-    expect(payableAccount?.balanceLabel).toBe("علينا له")
+    expect(payableAccount?.balanceLabel).toBe("مستحق علينا")
     expect(payableAccount?.currentBalance).toBe(2000)
-    expect(receivableAccount?.balanceLabel).toBe("لنا عنده")
+    expect(receivableAccount?.balanceLabel).toBe("مستحق لنا")
     expect(receivableAccount?.currentBalance).toBe(500)
   })
 
@@ -1378,7 +1378,7 @@ describe("CompanyService", () => {
 
     // Net = 3000 - 500 = +2500 (they owe us net 2 500)
     expect(detail.totalBalanceDzd).toBe(2500)
-    expect(detail.balanceLabel).toBe("لنا عنده")
+    expect(detail.balanceLabel).toBe("مستحق لنا")
   })
 
   it("splits a counterparty's debt into independent payable and receivable ledgers (issue #22)", () => {

@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next"
 import { getNetDebtBalance } from "@tuari/contracts"
 import type { DebtAccount } from "@tuari/contracts"
 import { Surface } from "@/features/shared/page-primitives"
-import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
+import { formatDebtAmount, getDebtBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
 /**
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 export function DebtPartySummaryCard({ accounts, personName }: { accounts: DebtAccount[]; personName: string }) {
   const { t } = useTranslation()
   const combinedBalance = getNetDebtBalance(accounts)
-  const balanceMeta = getDebtBalanceMeta(combinedBalance)
+  const balance = getDebtBalanceDisplay({ currentBalance: combinedBalance })
   const openCount = accounts.filter((a) => a.status === "OPEN").length
   const settledCount = accounts.filter((a) => a.status === "SETTLED").length
 
@@ -24,8 +24,11 @@ export function DebtPartySummaryCard({ accounts, personName }: { accounts: DebtA
       <div className="space-y-4">
         <div>
           <p className="text-sm text-muted-foreground">{t("detailPages.debt.partySummaryCard.balanceLabel", { personName })}</p>
-          <p className={cn("mt-2 font-mono text-3xl font-bold", balanceMeta.textClassName)} dir="ltr">
-            {t("detailPages.debt.currency")} {formatDebtMoney(combinedBalance)}
+          <p className={cn("mt-2 font-mono text-3xl font-bold", balance.textClassName)} dir="ltr">
+            {t("detailPages.debt.currency")} {formatDebtAmount(balance.amount)}
+          </p>
+          <p className={cn("mt-1 text-sm font-medium", balance.textClassName)}>
+            {t(balance.phraseKey)}
           </p>
         </div>
 
@@ -41,8 +44,8 @@ export function DebtPartySummaryCard({ accounts, personName }: { accounts: DebtA
         </div>
 
         <div className="flex items-center gap-2 rounded-full border px-3 py-1 w-fit">
-          <span className={cn("rounded-full w-2 h-2", balanceMeta.badgeClassName?.split(" ")[1]?.match(/text-\w+/) ? "bg-current" : "")}></span>
-          <span className={cn("text-xs font-medium", balanceMeta.textClassName)}>{balanceMeta.description}</span>
+          <span className={cn("rounded-full w-2 h-2", balance.badgeClassName?.split(" ")[1]?.match(/text-\w+/) ? "bg-current" : "")}></span>
+          <span className={cn("text-xs font-medium", balance.textClassName)}>{balance.description}</span>
         </div>
       </div>
     </Surface>

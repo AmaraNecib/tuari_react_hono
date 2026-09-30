@@ -3,6 +3,7 @@
  * Displays all debt entries with filtering and sorting.
  */
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
@@ -16,15 +17,16 @@ import {
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 
-import { formatDebtMoney, getDebtAccountBalance, getDebtAccountBalanceMeta, getDebtBalanceMeta, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
+import { formatDebtAmount, formatDebtMoney, getDebtAccountBalance, getDebtBalanceDisplay, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
 import { RecordEntryPaymentDialog } from "./record-entry-payment-dialog"
 import { VoidEntryDialog } from "./void-entry-dialog"
 
-function DebtStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+function DebtStatCard({ label, value, valueClassName, phrase }: { label: string; value: string; valueClassName?: string; phrase?: string }) {
   return (
     <Surface className="rounded-xl px-5 py-4" variant="card">
       <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={cn("mt-2 font-mono text-xl font-semibold", valueClassName)} dir="ltr">
+      {phrase ? <p className={cn("mt-2 text-sm font-semibold", valueClassName)}>{phrase}</p> : null}
+      <p className={cn("mt-1 font-mono text-xl font-semibold", valueClassName)} dir="ltr">
         {value}
       </p>
     </Surface>
@@ -45,6 +47,7 @@ export function DebtLedgerPanel({
 }) {
   const createDebtEntryMutation = useCreateDebtEntryMutation()
   const settleDebtAccountMutation = useSettleDebtAccountMutation()
+  const { t } = useTranslation()
   const [paymentTargetEntry, setPaymentTargetEntry] = useState<DebtEntry | null>(null)
   const [voidTargetEntry, setVoidTargetEntry] = useState<DebtEntry | null>(null)
   const [entryDate, setEntryDate] = useState(() => getAlgeriaDateInputValue())
@@ -52,14 +55,14 @@ export function DebtLedgerPanel({
   const [signedAmount, setSignedAmount] = useState("")
   const sortedEntries = useMemo(() => sortDebtEntries(debtEntries), [debtEntries])
   const balanceDzd = getDebtAccountBalance(debtAccount)
-  // Issue #22: the running balance is per-account, so its color and
-  // Arabic label must respect the account's direction. The
-  // direction-agnostic `getDebtBalanceMeta` would label a positive
-  // PAYABLE balance as "لنا عنده" when it actually means "we owe
-  // them" (علينا له).
-  const balanceMeta = debtAccount
-    ? getDebtAccountBalanceMeta(debtAccount)
-    : getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" })
+  // Issue #22: the running balance is per-account, so its phrase and color
+  // must respect the account's direction. The display helper flips a signed
+  // balance into a positive amount plus a phrase, so a negative balance can
+  // never contradict the direction words.
+  const balance = getDebtBalanceDisplay({
+    currentBalance: balanceDzd,
+    direction: debtAccount?.direction,
+  })
   const normalizedAmount = signedAmount.trim()
   const signedAmountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : null
   const hasValidAmount = signedAmountValue !== null && Number.isFinite(signedAmountValue) && signedAmountValue !== 0
@@ -75,10 +78,11 @@ export function DebtLedgerPanel({
       <div className="grid gap-4 md:grid-cols-3">
         <DebtStatCard
           label={debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
-          value={`دج ${formatDebtMoney(balanceDzd)}`}
-          valueClassName={balanceMeta.textClassName}
+          phrase={t(balance.phraseKey)}
+          value={`دج ${formatDebtAmount(balance.amount)}`}
+          valueClassName={balance.textClassName}
         />
-        <DebtStatCard label="الحالة" value={balanceMeta.shortLabel} valueClassName={balanceMeta.textClassName} />
+        <DebtStatCard label="الحالة" value={t(balance.phraseKey)} valueClassName={balance.textClassName} />
         <DebtStatCard label="عدد القيود" value={String(sortedEntries.length)} />
       </div>
 
@@ -122,7 +126,7 @@ export function DebtLedgerPanel({
                 : undefined
             }
           >
-            تسجيل الدفعة
+            {t("debts.terminology.buttons.recordPayment")}
           </Button>
         </div>
       </Surface>
@@ -132,14 +136,14 @@ export function DebtLedgerPanel({
           description={
             balanceDzd === 0
               ? "الرصيد مغلق بالفعل."
-              : `سيتم إنشاء حركة تسوية بقيمة ${formatDebtMoney(-balanceDzd)} دج لإرجاع الرصيد إلى صفر.`
+              : `سيتم إنشاء حركة تسوية بقيمة ${formatDebtAmount(balanceDzd)} دج لإرجاع الرصيد إلى صفر.`
           }
           title="تسوية الرصيد"
         />
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <span className={cn("rounded-full border px-3 py-1 text-sm font-medium", balanceMeta.badgeClassName)}>
-            {balanceMeta.description}
+          <span className={cn("rounded-full border px-3 py-1 text-sm font-medium", balance.badgeClassName)}>
+            {balance.description}
           </span>
           <Button
             disabled={!debtAccount || balanceDzd === 0 || settleDebtAccountMutation.isPending}
@@ -176,16 +180,18 @@ export function DebtLedgerPanel({
             <tbody>
               {sortedEntries.length > 0 ? (
                 sortedEntries.map((entry) => {
-                  const amountMeta = getDebtBalanceMeta(entry.signedAmountDzd)
+                  // Movement tone follows the account direction: a positive
+                  // movement on a PAYABLE account increases what we owe.
+                  const amountDisplay = getDebtBalanceDisplay({
+                    currentBalance: entry.signedAmountDzd,
+                    direction: debtAccount?.direction,
+                  })
                   // balanceAfterDzd is the per-account running balance,
-                  // so its color follows the account direction (same
-                  // convention as the stat card above).
-                  const balanceAfterMeta = debtAccount
-                    ? getDebtAccountBalanceMeta({
-                        currentBalance: entry.balanceAfterDzd,
-                        direction: debtAccount.direction,
-                      })
-                    : getDebtBalanceMeta(entry.balanceAfterDzd)
+                  // so its phrase and color follow the account direction.
+                  const balanceAfter = getDebtBalanceDisplay({
+                    currentBalance: entry.balanceAfterDzd,
+                    direction: debtAccount?.direction,
+                  })
 
                   const isLive = entry.status === "LIVE"
 
@@ -197,11 +203,12 @@ export function DebtLedgerPanel({
                       <td className="px-4 py-4 text-start text-muted-foreground">
                         {getDebtEntryTypeLabel(entry.entryType)}
                       </td>
-                      <td className={cn("px-4 py-4 text-start font-mono", amountMeta.textClassName)} dir="ltr">
+                      <td className={cn("px-4 py-4 text-start font-mono", amountDisplay.textClassName)} dir="ltr">
                         دج {formatDebtMoney(entry.signedAmountDzd)}
                       </td>
-                      <td className={cn("px-4 py-4 text-start font-mono", balanceAfterMeta.textClassName)} dir="ltr">
-                        دج {formatDebtMoney(entry.balanceAfterDzd)}
+                      <td className={cn("px-4 py-4 text-start font-mono", balanceAfter.textClassName)}>
+                        <span className="block text-xs font-medium">{t(balanceAfter.phraseKey)}</span>
+                        <span dir="ltr">دج {formatDebtAmount(balanceAfter.amount)}</span>
                       </td>
                       <td className="px-4 py-4 text-start">
                         {isLive ? (
@@ -258,11 +265,13 @@ export function DebtLedgerPanel({
       <RecordEntryPaymentDialog
         entry={paymentTargetEntry}
         accountCurrentBalance={debtAccount?.currentBalance ?? 0}
+        accountDirection={debtAccount?.direction}
         open={paymentTargetEntry !== null}
         onOpenChange={() => setPaymentTargetEntry(null)}
       />
       <VoidEntryDialog
         entry={voidTargetEntry}
+        accountDirection={debtAccount?.direction}
         livePaymentEntries={sortedEntries.filter(e => e.entryType === "PAYMENT" && e.status === "LIVE")}
         open={voidTargetEntry !== null}
         onOpenChange={() => setVoidTargetEntry(null)}
