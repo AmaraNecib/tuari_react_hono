@@ -53,24 +53,14 @@ function requireEntitySuccess<T>(result: { success: boolean; message?: string; i
 /**
  * Fetches item definitions for the inventory.
  *
- * An optional `itemType` filter is applied by the SERVER (`inventoryItemDefinitionsList`
- * takes it), not by trimming a full list in the browser: the invoice line's item picker
- * can then offer only the definitions valid for that row, and stays correct as the
- * catalog grows. Filtered variants key under the same `inventoryItems` prefix, so the
- * existing workspace invalidation still reaches them.
+ * This is the UNPAGED catalog read. Pickers that must page a usage-scoped set
+ * use {@link useItemDefinitionOptionsQuery} instead.
  */
-export function useInventoryItemDefinitionsQuery({
-  enabled = true,
-  itemType,
-}: { enabled?: boolean; itemType?: InventoryItemDefinition["itemType"] } = {}) {
+export function useInventoryItemDefinitionsQuery({ enabled = true }: { enabled?: boolean } = {}) {
   return useWorkspaceScopedQuery({
-    key: (userId) =>
-      itemType
-        ? ([...workspaceQueryKeys.inventoryItems(userId), itemType] as const)
-        : workspaceQueryKeys.inventoryItems(userId),
+    key: workspaceQueryKeys.inventoryItems,
     enabled,
-    queryFn: async (): Promise<{ items: InventoryItemDefinition[] }> =>
-      rpcClient.inventoryItemDefinitionsList(itemType ? { itemType } : undefined),
+    queryFn: async (): Promise<{ items: InventoryItemDefinition[] }> => rpcClient.inventoryItemDefinitionsList(undefined),
   })
 }
 

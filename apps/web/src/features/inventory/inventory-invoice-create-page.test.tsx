@@ -864,6 +864,34 @@ describe("InventoryInvoiceCreatePage row type (items 13 + 12)", () => {
     expect(lineDefinitionSelect(0).value).toBe("")
   })
 
+  it("clears the per-row item search when the row type changes", () => {
+    renderPage()
+
+    setLineType(0, "CONSUMABLE")
+    const search = screen.getByLabelText("ابحث عن عنصر...") as HTMLInputElement
+    fireEvent.change(search, { target: { value: "إسمنت" } })
+    expect(search.value).toBe("إسمنت")
+
+    // A search typed for the consumable kind must not follow the row into the
+    // asset kind — it would hide every asset option behind a stale term.
+    setLineType(0, "ASSET")
+    expect((screen.getByLabelText("ابحث عن عنصر...") as HTMLInputElement).value).toBe("")
+  })
+
+  it("does not rewrite the row type from the picked item", async () => {
+    renderPage()
+
+    setLineType(0, "CONSUMABLE")
+    selectLineDefinition(0, "def-1")
+
+    // The kind is the row's own intent; a pick must not derive it back from the
+    // definition (the inversion the item-offer seam removed).
+    expect(lineTypeSelect(0).value).toBe("CONSUMABLE")
+    const payload = await submitInvoice()
+    expect(payload.entries[0].kind).toBe("CONSUMABLE")
+    expect(payload.entries[0].itemDefinitionId).toBe("def-1")
+  })
+
   it("places the add action after the line rows in the DOM order", () => {
     renderPage()
 

@@ -22,6 +22,7 @@ import {
   encodeCursor as encodeCursorToken,
   decodeCursor as decodeCursorToken,
 } from "../../shared/cursor";
+import { escapeLikePattern } from "../../shared/sql-search";
 import * as schema from "../../../schema";
 import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzle";
 import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock";
@@ -102,16 +103,6 @@ function normalizeAudit(ctx?: MutationAuditContext) {
 }
 
 type WhereCond = SQL;
-
-/**
- * Escape SQL LIKE wildcards (`%`, `_`, and the `\` escape char itself) so a
- * search term matches literally, mirroring the frontend's old `includes()`
- * semantics instead of interpreting wildcards. SQLite LIKE has no default
- * escape char — the caller must pair this with `ESCAPE '\'`.
- */
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-}
 
 /**
  * Build the employee search WHERE clause: case-insensitive (ASCII) substring

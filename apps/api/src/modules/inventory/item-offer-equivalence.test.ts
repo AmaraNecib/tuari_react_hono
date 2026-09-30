@@ -22,6 +22,7 @@ import {
   type InventoryItemUsage,
 } from "@tuari/contracts"
 
+import { encodeCursor } from "../shared/cursor"
 import { schemaStatements } from "../../infrastructure/database/schema-definitions"
 import { createInventoryRepository } from "./adapters/sqlite-inventory.repository"
 import type { InventoryRepository } from "./inventory.repository"
@@ -216,6 +217,147 @@ describe("item-offer rule: SQL path equals JS path", () => {
     expect(
       service.updateItemDefinition({ id: "a-active", itemType: "CONSUMABLE", unit: "قطعة" }, audit).success,
     ).toBe(true)
+  })
+
+  it("matches a non-prefix substring, proving the pattern is %term%", () => {
+    const env = createEnv()
+    envs.push(env)
+
+    // "منت" is inside "إسمنت" (إس + منت) but is not a prefix: a `term%`
+    // regression would return nothing here.
+    expect(
+      env.repository
+        .listItemDefinitionsPaged({
+          filter: resolveItemOffer({ surface: "STOCK_REFERENCE" }),
+          search: "منت",
+          limit: 10,
+        })
+        .items.map((item) => item.id),
+    ).toEqual(["c-active"])
+  })
+
+  it("trims the search term before matching", () => {
+    const env = createEnv()
+    envs.push(env)
+
+    const page = env.repository.listItemDefinitionsPaged({
+      filter: resolveItemOffer({ surface: "STOCK_REFERENCE" }),
+      search: "  إسمنت  ",
+      limit: 10,
+    })
+    expect(page.items.map((item) => item.id)).toEqual(["c-active"])
+  })
+
+  it("scopes the page, total and next cursor to the search term", () => {
+    const env = createEnv()
+    envs.push(env)
+
+    const page = env.repository.listItemDefinitionsPaged({
+      filter: resolveItemOffer({ surface: "STOCK_REFERENCE" }),
+      search: "إسمنت",
+      limit: 10,
+    })
+
+    expect(page.items.map((item) => item.id)).toEqual(["c-active"])
+    expect(page.total).toBe(1)
+    expect(page.nextCursor).toBeNull()
+  })
+
+  it("matches LIKE wildcards in the search literally, not as patterns", () => {
+    const env = createEnv()
+    envs.push(env)
+
+    for (const wildcard of ["%", "_"]) {
+      const page = env.repository.listItemDefinitionsPaged({
+        filter: resolveItemOffer({ surface: "STOCK_REFERENCE" }),
+        search: wildcard,
+        limit: 10,
+      })
+      // No fixture name contains a literal % or _; an unescaped wildcard would
+      // match every definition (and inflate the total).
+      expect(page.items, `search "${wildcard}"`).toEqual([])
+      expect(page.total, `search "${wildcard}"`).toBe(0)
+    }
+  })
+
+  it("pages every search match across the cursor chain", () => {
+    const env = createEnv()
+    envs.push(env)
+    const insert = env.db.prepare(
+      `INSERT INTO "inventory_item_definition" ("id", "name", "item_type", "unit", "is_active", "created_at", "updated_at") VALUES (?, ?, 'CONSUMABLE', 'قطعة', 1, ?, ?)`,
+    )
+    insert.run("cement-white", "إسمنت أبيض", NOW, NOW)
+    insert.run("cement-black", "إسمنت أسود", NOW, NOW)
+
+    const seen: string[] = []
+    let cursor: string | undefined
+    do {
+      const page = env.repository.listItemDefinitionsPaged({
+        filter: resolveItemOffer({ surface: "STOCK_REFERENCE" }),
+        search: "إسمنت",
+        cursor,
+        limit: 1,
+      })
+      seen.push(...page.items.map((item) => item.id))
+      cursor = page.nextCursor ?? undefined
+    } while (cursor)
+
+    // Fixture c-active is also "إسمنت", so the search spans three rows.
+    expect(seen).toEqual(["c-active", "cement-white", "cement-black"])
+  })
+
+  it("resets a cursor produced for a different usage instead of skipping options", () => {
+    const env = createEnv()
+    envs.push(env)
+
+    // Page 1 of the two-type stock reference holds a cursor for that filter.
+    const first = env.repository.listItemDefinitionsPaged({
+      filter: resolveItemOffer({ surface: "STOCK_REFERENCE" }),
+      limit: 1,
+    })
+    expect(first.nextCursor).not.toBeNull()
+
+    // Reusing it for the asset-only usage must restart, not resume a position
+    // that has no meaning for the new filter.
+    const second = env.repository.listItemDefinitionsPaged({
+      filter: resolveItemOffer(invoiceLineUsage("ASSET")),
+      cursor: first.nextCursor ?? undefined,
+      limit: 1,
+    })
+    expect(second.cursorReset).toBe(true)
+    expect(second.items.map((item) => item.id)).toEqual(["a-active"])
+  })
+
+  it("resets an undecodable cursor instead of throwing", () => {
+    const env = createEnv()
+    envs.push(env)
+
+    const page = env.repository.listItemDefinitionsPaged({
+      filter: resolveItemOffer({ surface: "STOCK_REFERENCE" }),
+      cursor: "!!!not-a-valid-cursor",
+      limit: 1,
+    })
+    expect(page.cursorReset).toBe(true)
+    expect(page.items.map((item) => item.id)).toEqual(["c-active"])
+  })
+
+  it("resets a scope-less cursor from another source instead of trusting its position", () => {
+    const env = createEnv()
+    envs.push(env)
+
+    // A cursor from an endpoint that does not fingerprint its query carries no
+    // scope. Trusting its (sortKey, id) here would silently skip options for a
+    // query the cursor was never produced for.
+    const foreignCursor = encodeCursor({ sortKey: "إسمنت", id: "c-active" })
+
+    const page = env.repository.listItemDefinitionsPaged({
+      filter: resolveItemOffer({ surface: "STOCK_REFERENCE" }),
+      cursor: foreignCursor,
+      limit: 1,
+    })
+
+    expect(page.cursorReset).toBe(true)
+    expect(page.items.map((item) => item.id)).toEqual(["c-active"])
   })
 
   it("resets a cursor produced for a different search instead of returning a wrong page", () => {

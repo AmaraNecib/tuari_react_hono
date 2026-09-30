@@ -14,6 +14,7 @@ import * as schema from "../../../schema"
 import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzle"
 import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock"
 import { decodeCursor as decodeCursorToken, encodeCursor as encodeCursorToken } from "../../shared/cursor"
+import { escapeLikePattern } from "../../shared/sql-search"
 import { normalizeAuditContext } from "../../company/company.repository-mappers"
 import { createAlgeriaTimestamp } from "../../company/company-time"
 import type { MutationAuditContext } from "../../company/company.types"
@@ -41,11 +42,6 @@ import type {
   InventoryOutboundTransferCreateData,
   InventoryOutboundTransferRecord,
 } from "../inventory.types"
-
-/** Escapes LIKE metacharacters so a search term is matched literally. */
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, (match) => `\\${match}`)
-}
 
 // ---------------------------------------------------------------------------
 // Mapper functions — raw Drizzle row → domain record
@@ -287,7 +283,10 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     if (query.cursor) {
       try {
         const decoded = decodeCursorToken(query.cursor)
-        if (decoded.scope !== undefined && decoded.scope !== scope) {
+        // A cursor is only usable for the exact query that produced it. A
+        // missing scope means the token came from elsewhere (another endpoint,
+        // or a pre-scope client), so it is not trusted here either.
+        if (decoded.scope !== scope) {
           cursorReset = true
         } else {
           cursor = { sortKey: decoded.sortKey, id: decoded.id }

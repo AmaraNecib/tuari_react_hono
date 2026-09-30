@@ -605,6 +605,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                 <div className="space-y-1.5 text-sm">
                   <FieldLabel label="تعريف العنصر" required />
                   <ItemOptionPicker
+                    key={line.kind}
                     label="تعريف العنصر"
                     usage={invoiceLineUsage(line.kind === "ASSET" ? "ASSET" : "CONSUMABLE")}
                     value={line.itemOption}
