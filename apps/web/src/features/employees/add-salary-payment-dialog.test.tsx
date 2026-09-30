@@ -330,6 +330,12 @@ describe("AddSalaryPaymentDialog (#412)", () => {
     const amountInput = screen.getByLabelText(/salaries.actualAmount/) as HTMLInputElement
     expect(amountInput.value).toBe("30000")
 
+    // A known period means no missing-setting reason and a live save control.
+    expect(screen.queryByText("salaries.missingPeriodReason")).toBeNull()
+    expect(
+      screen.getByRole("button", { name: "salaries.addPayment" }).hasAttribute("disabled"),
+    ).toBe(false)
+
     // A partial payment is legitimate: a hand edit wins and is what is stored.
     fireEvent.change(amountInput, { target: { value: "12000" } })
     expect(amountInput.value).toBe("12000")
@@ -361,6 +367,13 @@ describe("AddSalaryPaymentDialog (#412)", () => {
     // The day default already treats an unknown period as a month, so the
     // amount default follows the same convention rather than inventing one.
     expect((screen.getByLabelText(/salaries.days/) as HTMLInputElement).value).toBe("30")
+
+    // The API still requires a period, so the save control is visibly blocked
+    // with the reason and the fix instead of refusing silently after the
+    // operator types the amount.
+    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
+    expect(submit.hasAttribute("disabled")).toBe(true)
+    expect(screen.getByText("salaries.missingPeriodReason")).toBeTruthy()
   })
 
   it("records a second payment for the same worker in the same month (owner item 6, decision C)", async () => {

@@ -488,6 +488,7 @@ export const ar = {
       allWorkers: "كل العمال",
       allProjects: "كل المشاريع",
       allPeriods: "كل الدوريات",
+      missingPeriodReason: "لا يمكن تسجيل الدفعة: دورية أجر العامل غير محددة. حدّدها من ملف العامل أولاً.",
       noPaymentsYet: "لا توجد دفعات بعد",
     },
     toasts: {

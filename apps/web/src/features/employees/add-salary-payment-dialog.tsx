@@ -227,6 +227,12 @@ export function AddSalaryPaymentDialog({
     !overAllocated &&
     !mutation.isPending
 
+  // The API refuses a payment when the worker has no wage period. The
+  // full-salary default now fills the amount, so the refusal would otherwise be
+  // a silent dead end at save time; name the missing setting and what to do
+  // next to the save control (the invoice save-reason pattern).
+  const missingPeriodReason = salaryPeriod === null ? t("salaries.missingPeriodReason") : null
+
   const resetForm = () => {
     setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
     setDaysTouched(false)
@@ -412,6 +418,12 @@ export function AddSalaryPaymentDialog({
           </label>
         </div>
 
+        {missingPeriodReason ? (
+          <p role="status" aria-live="polite" className="text-sm text-destructive">
+            {missingPeriodReason}
+          </p>
+        ) : null}
+
         <DialogFooter>
           <Button
             variant="outline"
@@ -422,7 +434,7 @@ export function AddSalaryPaymentDialog({
           >
             {t("common.cancel")}
           </Button>
-          <Button disabled={!canSubmit} onClick={handleSubmit}>
+          <Button disabled={!canSubmit || missingPeriodReason !== null} onClick={handleSubmit}>
             {t("salaries.addPayment")}
           </Button>
         </DialogFooter>
