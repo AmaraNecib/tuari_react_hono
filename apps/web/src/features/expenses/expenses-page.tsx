@@ -62,10 +62,10 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
   const { t } = useTranslation()
   const [projectId, setProjectId] = useState<string | null>(null)
   const [responsibleWorkerId, setResponsibleWorkerId] = useState<string | null>(null)
-  const [fromDate, setFromDate] = useState(
-    () => getDefaultExpenseDateRange(getAlgeriaDateInputValue()).fromDate,
-  )
-  const [toDate, setToDate] = useState(getAlgeriaDateInputValue)
+  // A filter opens EMPTY: empty means "everything". A seeded range silently hid
+  // every expense older than it, which is the opposite of what a filter is for.
+  const [fromDate, setFromDate] = useState("")
+  const [toDate, setToDate] = useState("")
   const [groupByProject, setGroupByProject] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
