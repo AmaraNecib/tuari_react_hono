@@ -4,7 +4,8 @@
 - worktree: `worktrees/fix-debt-terminology`
 - branch: `fix/debt-terminology`
 - base ref: `develop`
-- base SHA: `fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36`
+- base SHA: `5d0629be768a75689c081249843af4a79d045230`
+- base note: originally recorded against `fdb5dda6`; the branch was later rebased onto `5d0629be`, which is the real base
 - mode: remote (parent owns push/PR/merge)
 - review tier: Standard (UI + API + shared contracts + i18n)
 
@@ -107,7 +108,8 @@ duplicated.
 - `debt-party-summary-card.tsx` — net party balance.
 - `employee-debt-panel.tsx` — employee balance.
 - `debt-ledger-panel.tsx` — current-balance card, running-balance column.
-- `debt-cases-panel.tsx` — stat card + consolidation preview.
+- `debt-cases-panel.tsx` — stat card + consolidation preview + direction-aware
+  opening form (direction + always-positive amount).
 - `externals-page.tsx` — counterparty total.
 - `record-payment-dialog.tsx` — current balance.
 - `record-entry-payment-dialog.tsx` — opening balance + max payment
@@ -147,7 +149,7 @@ duplicated.
 `pnpm lint`, `pnpm check:unslop`, scoped coverage, plus targeted
 `@tuari/contracts` and `@tuari/api` test runs.
 
-## Post-review amendments (fix `6159fbdc`)
+## Post-review amendments (fix `fb4cfd09`)
 
 An aggressive local review (debate + code-review + test-audit) changed three
 decisions above:
@@ -166,6 +168,10 @@ decisions above:
 - The void dialog's entry amount also stays signed (`formatDebtMoney`); the
   OPENING case keeps its direction-aware state phrase.
 
-The `debt-create-page.tsx` direction label is correct, but the page never
-passes `direction` to `createDebtAccount` (defaults to PAYABLE) — a pre-existing
-accounting bug outside this PR's diff, raised to the parent.
+The `debt-create-page.tsx` direction half now sends the chosen direction and an
+always-positive opening (`debtDirectionFromAlias`, fix `a78f9eb5`). The same
+fix was applied to the `debt-cases-panel.tsx` opening form in this PR's
+verification pass: it now offers the direction and sends a positive magnitude. The cases panel's
+separate "record payment creates a new account instead of an entry" bug is a
+product decision, filed separately and owned by the debt-writers lane — not
+changed here.

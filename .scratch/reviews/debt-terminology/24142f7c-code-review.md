@@ -1,8 +1,9 @@
 # Debt terminology — two-axis code review
 
 - lane: fix-debt-terminology
-- base SHA: `fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36`
-- reviewed HEAD: `2be128f042b30d5cde82488080cc7424d36842db`
+- base SHA: `5d0629be768a75689c081249843af4a79d045230`
+- reviewed HEAD: `24142f7c56e04560e3f9a15429f11c46d048b5c5`
+- rename: pre-rebase `2be128f0` → pushed `24142f7c` (branch rebased onto `5d0629be`); content unchanged
 - reviewers: independent Standards + Spec sub-agents (read-only), parent synthesis
 
 ## Standards

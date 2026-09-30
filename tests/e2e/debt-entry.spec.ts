@@ -42,9 +42,9 @@ test.describe("debt entry — critical path", () => {
     await page.getByRole("button", { name: /حفظ الطرف الخارجي/ }).first().click()
 
     // Land on the counterparty details page and record an opening debt balance
-    // (positive signed amount on a PAYABLE account = we owe them).
+    // (PAYABLE direction + positive amount = we owe them).
     await expect(page.getByRole("heading", { name: counterpartyName })).toBeVisible({ timeout: 10_000 })
-    await page.getByPlaceholder("0 أو 2500 أو -2500").fill("5000")
+    await page.getByPlaceholder("0 أو 2500").fill("5000")
     await page.getByRole("button", { name: "تسجيل دين" }).click()
 
     // The account is reflected once the feature-scoped useDebtPartyDetailQuery

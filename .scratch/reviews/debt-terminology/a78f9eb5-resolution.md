@@ -1,10 +1,11 @@
 # Debt terminology — parent fixes + design pass resolution
 
 - lane: fix-debt-terminology
-- base SHA: `fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36`
-- code fix SHA: `e622080bb6bfea812d9e9cdd34b36abfda99e25d`
-- evidence HEAD: `265ddbda7c60485204126e73cc9088955a317f0d` (docs only)
-- earlier code SHAs: `6159fbdc` (consolidation/void/gross), `d6f677d4` (void delta)
+- base SHA: `5d0629be768a75689c081249843af4a79d045230`
+- code fix SHA: `a78f9eb54b3cd1af8af11a89a791bfe408fc35b2`
+- evidence HEAD: `d4bd3349f52756fcb773013aad95886e17639666` (docs only)
+- earlier code SHAs: `fb4cfd09` (consolidation/void/gross), `ea1e103d` (void delta)
+- rename: pre-rebase `e622080b`/`265ddbda`/`6159fbdc`/`d6f677d4` → pushed `a78f9eb5`/`d4bd3349`/`fb4cfd09`/`ea1e103d` (branch rebased onto `5d0629be`); content unchanged
 
 ## Parent ask 1 — the E2E spec
 
@@ -47,7 +48,7 @@ See `design-pass.md`. In-scope fixes: deleted the shallow `getDebtBalanceMeta`
 removed the dead `amountLabel`, added `debtDirectionFromAlias`. Follow-ups are
 listed there.
 
-## Commands (final code HEAD `e622080b`)
+## Commands (final code HEAD `a78f9eb5`)
 
 | Command | Exit | Result |
 | --- | --- | --- |

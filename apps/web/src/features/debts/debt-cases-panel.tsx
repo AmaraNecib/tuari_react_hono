@@ -10,14 +10,17 @@ import { Field } from "@/components/ui/field"
 import { useCreateDebtAccountMutation } from "@/features/app-shell/mock-dashboard"
 import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { cn } from "@/lib/utils"
 
 import { ConsolidationDialog } from "./consolidation-dialog"
 import { DebtLedgerPanel } from "./debt-ledger-panel"
 import {
+  debtDirectionFromAlias,
   formatDebtAmount,
   getDebtBalanceDisplay,
   getDebtDirectionLabel,
   sortDebtAccounts,
+  type DebtDirectionAlias,
 } from "./debt-utils"
 
 function CasesStatCard({ label, value, valueClassName, phrase }: { label: string; value: string; valueClassName?: string; phrase?: string }) {
@@ -53,12 +56,16 @@ export function DebtCasesPanel({
   const [createDate, setCreateDate] = useState(() => getAlgeriaDateInputValue())
   const [openingBalance, setOpeningBalance] = useState("")
   const [note, setNote] = useState("")
+  const [direction, setDirection] = useState<DebtDirectionAlias>("owed-by-us")
   const [consolidationDialogOpen, setConsolidationDialogOpen] = useState(false)
   const sortedAccounts = useMemo(() => sortDebtAccounts(accounts), [accounts])
   const debtAccount = sortedAccounts[0] ?? null
   const normalizedOpeningBalance = openingBalance.trim()
   const openingBalanceValue = normalizedOpeningBalance.length > 0 ? Number(normalizedOpeningBalance) : 0
   const hasValidOpeningBalance = Number.isFinite(openingBalanceValue)
+  // The direction carries the meaning; the opening amount is always a positive
+  // magnitude (a signed balance is never stored or shown).
+  const accountDirection = debtDirectionFromAlias(direction)
 
   // Aggregate stats across all accounts
   const totalEntryCount = useMemo(
@@ -163,12 +170,46 @@ export function DebtCasesPanel({
           title={debtAccount ? t("debts.cases.recordPayment") : t("debts.cases.createAccount")}
         />
 
+        <div className="mt-5 space-y-2">
+          <label className="text-sm font-medium text-foreground">{t("detailPages.debt.chooseDirection")}</label>
+          <div className="grid gap-3 md:grid-cols-2">
+            <button
+              className={cn(
+                "rounded-xl border p-3 transition-all",
+                direction === "owed-to-us"
+                  ? "border-emerald-500/30 bg-primary/8"
+                  : "border-border/60 hover:bg-muted/40",
+              )}
+              type="button"
+              onClick={() => setDirection("owed-to-us")}
+            >
+              <p className="font-semibold text-emerald-700 dark:text-emerald-300">
+                {t("detailPages.debt.direction.owedToUs")}
+              </p>
+            </button>
+            <button
+              className={cn(
+                "rounded-xl border p-3 transition-all",
+                direction === "owed-by-us"
+                  ? "border-rose-500/30 bg-primary/8"
+                  : "border-border/60 hover:bg-muted/40",
+              )}
+              type="button"
+              onClick={() => setDirection("owed-by-us")}
+            >
+              <p className="font-semibold text-rose-700 dark:text-rose-300">
+                {t("detailPages.debt.direction.owedByUs")}
+              </p>
+            </button>
+          </div>
+        </div>
+
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label={t("common.createDate", "التاريخ")}>
             <DatePicker value={createDate} onChange={setCreateDate} />
           </Field>
           <Field label={t("debts.cases.amount")}>
-            <CurrencyInput placeholder="0 أو 2500 أو -2500" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} />
+            <CurrencyInput placeholder="0 أو 2500" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} />
           </Field>
           <Field label={t("debts.cases.note")} className="md:col-span-2">
             <Textarea placeholder="مثال: دين جديد، دفعة وصلت، دفعة خرجت" value={note} onChange={(event) => setNote(event.target.value)} />
@@ -182,7 +223,8 @@ export function DebtCasesPanel({
               await createDebtAccountMutation.mutateAsync({
                 externalCounterpartyId: externalCounterpartyId ?? null,
                 note: note.trim() || null,
-                openingBalanceDzd: openingBalanceValue,
+                direction: accountDirection,
+                openingBalanceDzd: Math.abs(openingBalanceValue),
                 openingEntryDate: createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined,
                 openingEntryNote: note.trim() || null,
                 partyType: workerId ? "INTERNAL_WORKER" : "EXTERNAL_COUNTERPARTY",

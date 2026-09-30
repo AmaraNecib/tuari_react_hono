@@ -1,7 +1,8 @@
 # Debt terminology — design pass
 
 - lane: fix-debt-terminology
-- base SHA: `fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36`
+- base SHA: `5d0629be768a75689c081249843af4a79d045230`
+- base note: originally recorded against `fdb5dda6`; the branch was later rebased onto `5d0629be`, which is the real base
 - scope: the whole debt-terminology PR diff plus this lane's fixes
 - lenses: `domain-modeling`, `codebase-design`, `improve-codebase-architecture`
 - method: three independent reviewer sub-agents (read-only) + parent synthesis

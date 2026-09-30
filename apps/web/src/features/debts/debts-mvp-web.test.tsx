@@ -9,6 +9,7 @@ import type { ReactNode } from "react"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { ConsolidationDialog } from "@/features/debts/consolidation-dialog"
+import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { DebtsHubPage } from "@/features/debts/debts-hub-page"
 import { DebtLedgerPanel } from "@/features/debts/debt-ledger-panel"
 import { DebtPartySummaryCard } from "@/features/debts/debt-party-summary-card"
@@ -198,14 +199,56 @@ describe("debts MVP web UI", () => {
       expect.objectContaining({ debtAccountId: "debt-2" }),
     )
 
-    fireEvent.change(screen.getByPlaceholderText("0 أو 2500 أو -2500"), { target: { value: "-1200" } })
+    fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "-1200" } })
     fireEvent.change(screen.getByPlaceholderText("مثال: دين جديد، دفعة وصلت، دفعة خرجت"), { target: { value: "دفعة شراء جديدة" } })
     fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
 
     await waitFor(() => {
       expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ externalCounterpartyId: "external-1", openingBalanceDzd: -1200 }),
+        expect.objectContaining({
+          externalCounterpartyId: "external-1",
+          direction: "PAYABLE",
+          openingBalanceDzd: 1200,
+        }),
       )
+    })
+  })
+
+  describe("DebtCasesPanel sends the chosen direction with a positive opening", () => {
+    const renderCasesPanel = () => {
+      createDebtAccountMutateAsync.mockClear()
+      return renderWithProviders(
+        <DebtCasesPanel
+          accounts={[]}
+          debtEntriesByAccountId={{}}
+          externalCounterpartyId="external-1"
+          title="طرف"
+        />,
+      )
+    }
+
+    const submitOpening = async (
+      amount: string,
+      expected: { direction: "PAYABLE" | "RECEIVABLE"; openingBalanceDzd: number },
+    ) => {
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: amount } })
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
+      await waitFor(() =>
+        expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(expect.objectContaining(expected)),
+      )
+    }
+
+    it("owed-to-us sends RECEIVABLE with a positive amount", async () => {
+      renderCasesPanel()
+      fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
+      // A typed minus is normalized to a magnitude; the direction carries the meaning.
+      await submitOpening("-500", { direction: "RECEIVABLE", openingBalanceDzd: 500 })
+    })
+
+    it("owed-by-us sends PAYABLE with a positive amount", async () => {
+      renderCasesPanel()
+      fireEvent.click(screen.getByRole("button", { name: "مستحقات علينا" }))
+      await submitOpening("500", { direction: "PAYABLE", openingBalanceDzd: 500 })
     })
   })
 

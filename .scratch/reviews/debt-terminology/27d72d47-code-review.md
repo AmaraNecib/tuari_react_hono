@@ -2,13 +2,14 @@
 
 - lane: fix-debt-terminology
 - branch: `fix/debt-terminology`
-- base SHA: `fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36`
-- reviewed HEAD: `b9bbe57835e9a7e2bf1bded5bfd5201cc0c76ec0`
+- base SHA: `5d0629be768a75689c081249843af4a79d045230`
+- reviewed HEAD: `27d72d474f41509c097784de49b992ae472b4ede`
+- rename: pre-rebase `b9bbe578` → pushed `27d72d47` (branch rebased onto `5d0629be`); content unchanged
 - evidence commit follows the reviewed HEAD (metadata only)
 
 ## Scope reviewed
 
-`git diff fdb5dda6...b9bbe578`: shared debt state helper + wire enum, web
+`git diff 5d0629be...27d72d47`: shared debt state helper + wire enum, web
 display helper, all balance render sites, i18n copy, API labels, tests.
 
 ## Standards review

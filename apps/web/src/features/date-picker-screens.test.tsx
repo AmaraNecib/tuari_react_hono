@@ -241,7 +241,7 @@ describe("DebtCasesPanel submits the picked day as the opening entry date (#428)
       />,
     )
 
-    fireEvent.change(screen.getByPlaceholderText("0 أو 2500 أو -2500"), {
+    fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), {
       target: { value: "500" },
     })
     pickDate()
