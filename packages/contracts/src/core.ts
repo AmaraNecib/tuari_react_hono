@@ -174,6 +174,7 @@ export const assignmentStatusSchema = z.enum(["ACTIVE", "ENDED", "ARCHIVED"]);
 export const inventoryItemTypeSchema = z.enum(["CONSUMABLE", "ASSET"]);
 export const inventoryAssetConditionSchema = z.enum(["NEW", "USED", "MAINTENANCE", "DAMAGED"]);
 export const inventoryMovementTypeSchema = z.enum(["PURCHASE", "TRANSFER", "OUTBOUND_SALE"]);
+export type InventoryMovementType = z.infer<typeof inventoryMovementTypeSchema>;
 export const inventoryLocationTypeSchema = z.enum(["WAREHOUSE", "PROJECT"]);
 export const inventoryPaymentInputTypeSchema = z.enum(["AMOUNT", "PERCENT"]);
 export const employeeBatchLimit = 24;

@@ -27,6 +27,8 @@ import { createRouter } from "./router";
 import { createRpcMiddleware } from "./rpc-middleware";
 import type { RpcContext } from "./context";
 import { ExpenseNotFoundError } from "../modules/expenses/expenses.types";
+import { ProjectCostError } from "../modules/project-cost/project-cost.errors";
+import { ProjectCostService } from "../modules/project-cost/project-cost.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
 import { SqliteRoleRepository } from "../modules/workforce/adapters/role.repository";
@@ -101,7 +103,7 @@ describe("RPC router", () => {
       persistKey: () => ({ success: true } as const),
     },
     expensesOverrides: Record<string, unknown> = {},
-    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown; backupService?: unknown; inventoryService?: unknown } = {},
+    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown; backupService?: unknown; inventoryService?: unknown; projectCostService?: unknown } = {},
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -163,6 +165,22 @@ describe("RPC router", () => {
       invoiceModule: (modules.invoiceModule ?? {}) as never,
       paymentModule,
       expensesModule,
+      projectCostService: (modules.projectCostService ?? {
+        getProjectCost: () => ({
+          success: true,
+          message: "ok",
+          item: {
+            projectId: "p-1",
+            totalDzd: 0,
+            parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, consumablesDzd: 0 },
+            expenses: [],
+            salaries: [],
+            stock: [],
+            consumables: [],
+            parkedInventory: { totalDzd: 0, assets: [], consumables: [] },
+          },
+        }),
+      }) as never,
       roleModule,
       recoveryKeyService: recoveryKeyService as never,
       updateService: {} as never,
@@ -1257,6 +1275,50 @@ describe("RPC router", () => {
     await expect(
       client.expensesUpdate({ id: "11111111-1111-4111-8111-111111111111", amount: 10 }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("serves the project cost through the wire contract and maps a missing project (issue #414)", async () => {
+    const harness = createHarness();
+    const projectCostService = new ProjectCostService({
+      getProject: (id: string) => ({ id, name: "مشروع" }),
+      listProjectExpenses: () => [
+        {
+          id: "e-1",
+          expenseDate: "2026-05-10T00:00:00.000Z",
+          whatFor: "وقود",
+          amountDzd: 12_500,
+          responsibleWorkerId: null,
+          responsibleWorkerName: null,
+          sellerId: null,
+          sellerName: null,
+        },
+      ],
+      listProjectSalarySplits: () => [],
+      listProjectStockCharges: () => [],
+      listProjectConsumableIssues: () => [],
+      getProjectParkedInventory: () => ({ assets: [], consumables: [] }),
+    });
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, { projectCostService });
+    const client = createClient(router, createContext());
+
+    await expect(
+      client.projectCostGet({ projectId: "11111111-1111-4111-8111-111111111111" }),
+    ).resolves.toMatchObject({
+      success: true,
+      item: { totalDzd: 12_500, parts: { expensesDzd: 12_500 } },
+    });
+
+    const missingRouter = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      projectCostService: {
+        getProjectCost: () => {
+          throw new ProjectCostError("NOT_FOUND", "تعذر العثور على المشروع المطلوب.");
+        },
+      },
+    });
+    const missingClient = createClient(missingRouter, createContext());
+    await expect(
+      missingClient.projectCostGet({ projectId: "11111111-1111-4111-8111-111111111111" }),
+    ).resolves.toMatchObject({ success: false, error: { code: "NOT_FOUND" } });
   });
 
   it("rejects out-of-bounds invoice paid values at the wire contract (issue #42)", async () => {

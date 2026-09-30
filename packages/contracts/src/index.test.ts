@@ -50,6 +50,8 @@ import {
   phonePasswordSignInSchema,
   projectAssignmentCreateInputSchema,
   projectSchema,
+  projectCostInputSchema,
+  projectCostSchema,
   recurringPatternSchema,
   reportFilterInputSchema,
   paymentAmountSchema,
@@ -1984,6 +1986,36 @@ describe("contracts", () => {
         expect(key in inventoryContract).toBe(true);
         expect(key in appContract).toBe(true);
       }
+    });
+  });
+
+  describe("project cost contract (issue #414)", () => {
+    it("requires a project id and refuses a negative computed total", () => {
+      expect(projectCostInputSchema.safeParse({ projectId: "" }).success).toBe(false);
+      expect(projectCostInputSchema.safeParse({ projectId: "11111111-1111-4111-8111-111111111111" }).success).toBe(true);
+
+      const base = {
+        projectId: "11111111-1111-4111-8111-111111111111",
+        totalDzd: 0,
+        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, consumablesDzd: 0 },
+        expenses: [],
+        salaries: [],
+        stock: [],
+        consumables: [],
+        parkedInventory: { totalDzd: 0, assets: [], consumables: [] },
+      };
+      expect(projectCostSchema.safeParse(base).success).toBe(true);
+      expect(projectCostSchema.safeParse({ ...base, totalDzd: -1 }).success).toBe(false);
+      expect(
+        projectCostSchema.safeParse({
+          ...base,
+          parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0 },
+        }).success,
+      ).toBe(false);
+    });
+
+    it("advertises projectCostGet on the app contract", () => {
+      expect("projectCostGet" in appContract).toBe(true);
     });
   });
 });

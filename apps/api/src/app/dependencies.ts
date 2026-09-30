@@ -32,6 +32,8 @@ import { PaymentRepositoryImpl } from "../modules/payment/adapters/payment.repos
 import { createExpensesModule } from "../modules/expenses/expenses.module";
 import type { ExpensesModule } from "../modules/expenses/expenses-module.interface";
 import { SqliteExpenseRepository } from "../modules/expenses/adapters/sqlite-expenses.repository";
+import { createProjectCostRepository } from "../modules/project-cost/adapters/sqlite-project-cost.repository";
+import { ProjectCostService } from "../modules/project-cost/project-cost.service";
 import { SqlitePermissionResolver } from "../modules/rbac/adapters/sqlite-permission-resolver";
 import { RoleModule } from "../modules/rbac/role.module";
 import { SqliteRoleRepository as SqliteRbacRoleRepository } from "../modules/rbac/adapters/sqlite-role.repository";
@@ -111,6 +113,7 @@ export type AppDependencies = {
   invoiceModule: InvoiceModule;
   paymentModule: PaymentModule;
   expensesModule: ExpensesModule;
+  projectCostService: ProjectCostService;
   roleModule: RoleModule;
   /** Close the shared database connection (idempotent; composition-root lifecycle). */
   close: () => void;
@@ -217,6 +220,11 @@ export async function createAppDependencies(
     const expensesModule = createExpensesModule(
       new SqliteExpenseRepository(sharedDatabase, connectionLock),
     );
+    // #414: the project page's cost total. Read-only aggregation over the
+    // tables the expenses, workforce and inventory modules already write.
+    const projectCostService = new ProjectCostService(
+      createProjectCostRepository(sharedDatabase),
+    );
     const authBootstrapService = new AuthBootstrapService(
       new SqliteBootstrapPort(db, sharedDatabase, connectionLock),
       auth,
@@ -279,6 +287,7 @@ export async function createAppDependencies(
       invoiceModule,
       paymentModule,
       expensesModule,
+      projectCostService,
       roleModule,
       close,
     } as const;
