@@ -1178,6 +1178,42 @@ describe("WorkforceService coverage branches", () => {
       expect(half.expectedAmountDzd).toBe(15000);
     });
 
+    it("records a second payment for the same worker in the same month (owner item 6, decision C)", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000220" });
+
+      // Two payments inside one calendar month. There is no monthly guard and
+      // no per-month uniqueness, so both must persist untouched (the owner
+      // chose free payments; a month balance stays derivable from date +
+      // amount + the stored monthly wage).
+      const first = service.createSalaryPayment(
+        {
+          employeeId: worker.id,
+          days: 30,
+          actualAmountDzd: 30000,
+          paymentDate: "2026-03-05T00:00:00.000Z",
+          projectSplits: [],
+        },
+        audit(),
+      ).item;
+      const second = service.createSalaryPayment(
+        {
+          employeeId: worker.id,
+          days: 15,
+          actualAmountDzd: 15000,
+          paymentDate: "2026-03-25T00:00:00.000Z",
+          projectSplits: [],
+        },
+        audit(),
+      ).item;
+
+      expect(second.id).not.toBe(first.id);
+      const stored = service.listSalaryPayments({ employeeId: worker.id }).items;
+      expect(stored.map((payment) => payment.id)).toEqual(
+        expect.arrayContaining([first.id, second.id]),
+      );
+    });
+
     it("multiplies a daily wage by the days", () => {
       const { service, roleIds } = createHarness();
       const worker = createPaidWorker(service, roleIds, { phone: "0554000202", salaryAmountDzd: 1500, salaryPeriod: "DAILY" });

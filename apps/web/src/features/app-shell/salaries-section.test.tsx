@@ -2,7 +2,7 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const { mutateAsync } = vi.hoisted(() => ({ mutateAsync: vi.fn() }))
@@ -101,11 +101,13 @@ describe("SalariesSection (#412)", () => {
     renderSection()
 
     // The row is not enough on its own: the operator must see which projects
-    // received the days and how the paid amount was shared.
-    expect(screen.getByText("مشروع ألف")).toBeTruthy()
-    expect(screen.getByText("مشروع باء")).toBeTruthy()
-    expect(screen.getAllByText("15 يوم").length).toBe(2)
-    expect(screen.getAllByText(/15,000/).length).toBe(2)
+    // received the days and how the paid amount was shared. Scoped to the table
+    // because the project filter options repeat the same names.
+    const table = within(screen.getByRole("table"))
+    expect(table.getByText("مشروع ألف")).toBeTruthy()
+    expect(table.getByText("مشروع باء")).toBeTruthy()
+    expect(table.getAllByText("15 يوم").length).toBe(2)
+    expect(table.getAllByText(/15,000/).length).toBe(2)
   })
 
   it("reconciles the displayed split shares with the paid amount", () => {
@@ -222,5 +224,250 @@ describe("SalariesSection (#412)", () => {
     fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
 
     expect(screen.getByText("لا يوجد عاملون بإعدادات راتب جاهزة حاليًا.")).toBeTruthy()
+  })
+})
+
+/**
+ * Owner item 7: the salary tables must window through the shared
+ * `usePaginatedRows` + `TablePaginationControls` primitives, and search/filters
+ * must operate on the rows the tables actually display.
+ */
+function makePayments(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `payment-${String(index + 1).padStart(2, "0")}`,
+    employeeId: `worker-${String(index + 1).padStart(2, "0")}`,
+    employeeName: `عامل ${String(index + 1).padStart(2, "0")}`,
+    employeePhone: `055500${String(index + 1).padStart(4, "0")}`,
+    employeeRole: "عامل",
+    paymentDate: "2026-03-31T00:00:00.000Z",
+    days: 30,
+    expectedAmountDzd: 30000,
+    actualAmountDzd: 30000,
+    periodType: "MONTHLY" as const,
+    projectSplits: [],
+    note: null,
+  }))
+}
+
+function makeWorkers(count: number, period: "MONTHLY" | "DAILY", idOffset = 0) {
+  return Array.from({ length: count }, (_, index) => {
+    const number = index + 1 + idOffset
+    return {
+      employeeId: `worker-${String(number).padStart(2, "0")}`,
+      employeeName: `عامل ${String(number).padStart(2, "0")}`,
+      employeePhone: `055500${String(number).padStart(4, "0")}`,
+      employeeRole: "عامل",
+      salaryAmountDzd: 30000,
+      salaryPeriod: period,
+      lastPaymentDate: null,
+      projectAssignments: [],
+    }
+  })
+}
+
+/** The page-size select is the control with the 10/25/50/100 presets. */
+function getPageSizeSelect(): HTMLSelectElement | undefined {
+  return (screen.getAllByRole("combobox") as HTMLSelectElement[]).find(
+    (select) => Array.from(select.options).map((option) => option.value).join(",") === "10,25,50,100",
+  )
+}
+
+describe("SalariesSection table controls (owner items 6 and 7)", () => {
+  beforeEach(() => {
+    mutateAsync.mockReset()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  // The history table repeats project/worker names in the filter option lists,
+  // so row assertions are scoped to the table itself.
+  const historyTable = () => within(screen.getByRole("table"))
+
+  it("shows every payment and no next page when the history is exactly one page", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={makePayments(10)}
+        workers={[]}
+      />,
+    )
+
+    // Exactly one page: all ten rows, a disabled Next, and the page-size
+    // control still reachable so the operator can change the window.
+    expect(screen.getByText("1-10 من 10")).toBeTruthy()
+    expect(screen.getByText("1 / 1")).toBeTruthy()
+    expect((screen.getByRole("button", { name: "التالي" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(getPageSizeSelect()).toBeTruthy()
+  })
+
+  it("windows the payment history through the shared pagination controls", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={makePayments(23)}
+        workers={[]}
+      />,
+    )
+
+    expect(historyTable().getByText("عامل 01")).toBeTruthy()
+    expect(historyTable().queryByText("عامل 11")).toBeNull()
+    expect(screen.getByText("1-10 من 23")).toBeTruthy()
+    expect(screen.getByText("1 / 3")).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(historyTable().getByText("عامل 11")).toBeTruthy()
+    expect(historyTable().queryByText("عامل 01")).toBeNull()
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+  })
+
+  it("clamps the payment page on the first render after the history shrinks across a boundary", () => {
+    const { rerender } = render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={makePayments(23)}
+        workers={[]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("3 / 3")).toBeTruthy()
+
+    rerender(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={makePayments(12)}
+        workers={[]}
+      />,
+    )
+
+    // The shared hook clamps synchronously, so the first render after the
+    // shrink already shows page 2 with its rows rather than an empty page 3.
+    expect(screen.getByText("2 / 2")).toBeTruthy()
+    expect(screen.getByText("11-12 من 12")).toBeTruthy()
+    expect(historyTable().getByText("عامل 11")).toBeTruthy()
+    expect(historyTable().getByText("عامل 12")).toBeTruthy()
+  })
+
+  it("resets the payment page to 1 when the search changes", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={makePayments(23)}
+        workers={[]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), { target: { value: "عامل 05" } })
+
+    // Filtering to one row must land on page 1, not stay on the now-empty
+    // page 2.
+    expect(screen.getByText("1 / 1")).toBeTruthy()
+    expect(screen.getByText("1-1 من 1")).toBeTruthy()
+    expect(historyTable().getByText("عامل 05")).toBeTruthy()
+    expect(historyTable().queryByText("عامل 01")).toBeNull()
+  })
+
+  it("filters the payment history by project and resets to page 1", () => {
+    const payments = makePayments(23).map((payment, index) => ({
+      ...payment,
+      projectSplits: [{ projectId: index % 2 === 0 ? "project-1" : "project-2", days: 30 }],
+    }))
+
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[
+          { id: "project-1", name: "مشروع ألف" },
+          { id: "project-2", name: "مشروع باء" },
+        ]}
+        recentPayments={payments}
+        workers={[]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/المشروع/), { target: { value: "project-2" } })
+
+    // 11 of the 23 payments belong to project-2; the page resets to 1.
+    expect(screen.getByText("1 / 2")).toBeTruthy()
+    expect(screen.getByText("1-10 من 11")).toBeTruthy()
+    expect(historyTable().getByText("عامل 02")).toBeTruthy()
+    expect(historyTable().queryByText("عامل 01")).toBeNull()
+  })
+
+  it("filters the workers by period and resets to page 1", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={[]}
+        workers={[...makeWorkers(15, "MONTHLY"), ...makeWorkers(12, "DAILY", 15)]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/الدورية/), { target: { value: "DAILY" } })
+
+    expect(screen.getByText("1 / 2")).toBeTruthy()
+    expect(screen.getByText("1-10 من 12")).toBeTruthy()
+    expect(within(screen.getByRole("table")).getByText("عامل 16")).toBeTruthy()
+    expect(within(screen.getByRole("table")).queryByText("عامل 01")).toBeNull()
+  })
+
+  it("shows a no-results message instead of dead controls when a filter matches nothing", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={makePayments(3)}
+        workers={[]}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), { target: { value: "لا يوجد" } })
+
+    expect(screen.getByText("لا توجد نتائج")).toBeTruthy()
+    expect(historyTable().queryByText("عامل 01")).toBeNull()
+  })
+
+  it("does not render a remaining or paid-vs-salary balance (owner item 6, decision C)", () => {
+    const payment = {
+      ...makePayments(1)[0]!,
+      employeeId: "worker-01",
+      expectedAmountDzd: 30000,
+      actualAmountDzd: 12000,
+    }
+
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={[payment]}
+        workers={[makeWorkers(1, "MONTHLY")[0]!]}
+      />,
+    )
+
+    // The payment's own figures render (expected 30000, paid 12000), but no
+    // derived "remaining 18000" / balance figure is computed on the screen.
+    expect(historyTable().getByText(/30,000/)).toBeTruthy()
+    expect(historyTable().getByText(/12,000/)).toBeTruthy()
+    expect(screen.queryByText(/18,000|18000/)).toBeNull()
+    expect(screen.queryByText(/المتبقي|متبق|الرصيد|رصيد/)).toBeNull()
   })
 })

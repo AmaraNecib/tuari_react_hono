@@ -103,9 +103,17 @@ export function AddSalaryPaymentDialog({
   const appliedDraftRef = useRef<SalaryPaymentDraft | null>(null)
 
   const days = parsePositiveInteger(daysText)
+  // An unknown wage period still has a known wage. The day default already
+  // treats a null period as a month (see `defaultSalaryPaymentDays`), so the
+  // amount default follows the same convention instead of leaving the field
+  // empty and forcing the operator to retype the wage the app already knows.
   const proposedAmount =
-    salaryAmountDzd !== null && salaryPeriod !== null && days !== null
-      ? computeProposedSalaryAmount({ periodType: salaryPeriod, salaryAmountDzd, days })
+    salaryAmountDzd !== null && days !== null
+      ? computeProposedSalaryAmount({
+          periodType: salaryPeriod ?? "MONTHLY",
+          salaryAmountDzd,
+          days,
+        })
       : null
 
   // The amount follows the proposal until the user edits it; then their value wins.

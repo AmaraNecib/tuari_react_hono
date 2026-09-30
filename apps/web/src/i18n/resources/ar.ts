@@ -481,6 +481,13 @@ export const ar = {
       lastPaymentDate: "آخر دفعة",
       addPayment: "إضافة دفعة",
       editSalary: "تعديل الأجر",
+      searchPlaceholder: "بحث باسم العامل...",
+      workerFilter: "العامل",
+      projectFilter: "المشروع",
+      periodFilter: "الدورية",
+      allWorkers: "كل العمال",
+      allProjects: "كل المشاريع",
+      allPeriods: "كل الدوريات",
       noPaymentsYet: "لا توجد دفعات بعد",
     },
     toasts: {

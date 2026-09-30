@@ -320,4 +320,65 @@ describe("AddSalaryPaymentDialog (#412)", () => {
     fireEvent.change(selects[1]!, { target: { value: PROJECT.id } })
     expect(submit.hasAttribute("disabled")).toBe(true)
   })
+
+  it("defaults the amount to the worker's full salary and keeps it editable", async () => {
+    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
+    renderDialog("MONTHLY")
+
+    // The field starts on the figure the app already knows, not empty: a full
+    // 30-day month is the worker's whole 30000 DZD wage.
+    const amountInput = screen.getByLabelText(/salaries.actualAmount/) as HTMLInputElement
+    expect(amountInput.value).toBe("30000")
+
+    // A partial payment is legitimate: a hand edit wins and is what is stored.
+    fireEvent.change(amountInput, { target: { value: "12000" } })
+    expect(amountInput.value).toBe("12000")
+
+    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
+    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
+    expect(mockMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ days: 30, actualAmountDzd: 12000 }),
+    )
+  })
+
+  it("defaults the amount to the known wage when the wage period is unknown", () => {
+    mockMutateAsync.mockReset()
+    render(
+      <AddSalaryPaymentDialog
+        employeeId="employee-1"
+        employeeName="عامل"
+        salaryAmountDzd={30000}
+        salaryPeriod={null}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    // The app knows the wage even without a period; the field must not fall
+    // back to empty and force the operator to retype it.
+    const amountInput = screen.getByLabelText(/salaries.actualAmount/) as HTMLInputElement
+    expect(amountInput.value).toBe("30000")
+    // The day default already treats an unknown period as a month, so the
+    // amount default follows the same convention rather than inventing one.
+    expect((screen.getByLabelText(/salaries.days/) as HTMLInputElement).value).toBe("30")
+  })
+
+  it("records a second payment for the same worker in the same month (owner item 6, decision C)", async () => {
+    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
+    renderDialog("MONTHLY")
+
+    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
+    fireEvent.click(submit)
+    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
+
+    // The dialog closes (onOpenChange) but a controlled parent keeps it open;
+    // nothing in the form refuses a second payment for the same worker/month.
+    // Owner decision C: free payments, no monthly balance or guard.
+    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
+    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(2))
+
+    const [firstCall, secondCall] = mockMutateAsync.mock.calls
+    expect(firstCall![0]).toMatchObject({ employeeId: "employee-1", days: 30 })
+    expect(secondCall![0]).toMatchObject({ employeeId: "employee-1", days: 30 })
+  })
 })
