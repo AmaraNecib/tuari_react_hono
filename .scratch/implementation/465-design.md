@@ -4,18 +4,19 @@
 needs an availability rule.
 **Lane**: `fix-outbound-selector` (worktree `worktrees/fix-outbound-selector`)
 **Branch**: `fix/outbound-selector`
-**Base**: `fix/invoice-create` @ `651df4eb13579d12a2a922ee580225dc1d11b863` (#463, still open).
+**Base**: `origin/develop` @ `551948e4` (#463 merged). Originally stacked on `fix/invoice-create` @ `651df4eb` while #463 was open; rebased onto develop after the merge.
 **Mode**: remote (parent owns push/PR; this lane never merges).
 **Tier**: Standard.
 
-## Why the base is stacked, not `develop`
+## Base history
 
 The item-offer seam this issue extends — `packages/contracts/src/inventory-item-usage.ts`,
 the usage-scoped `inventoryItemDefinitionOptions` read, and the SQL/JS equivalence test —
-exists only on `fix/invoice-create` (#463), which is still an open PR. `origin/develop`
-does not contain it. The lane therefore branched from `fix/invoice-create`'s head so the
-diff is exactly this issue's change; the parent decides the final base/order when #463
-lands. Reviewed diff vs `fix/invoice-create` @ `651df4eb`.
+inhabited `fix/invoice-create` (#463) while that PR was open, so the lane first branched
+from its head. #463 has since squash-merged to `develop` (`551948e4`); this branch was
+rebased onto `origin/develop` and the diff is now exactly this issue's change (12 files).
+
+Rebased fix commit: `dfdaad48`.
 
 ## Problem
 
@@ -133,9 +134,9 @@ implementation temporarily reverted; the ones that fail are listed in the handof
 
 ## Risk / decision to surface to the parent
 
-- **Pre-existing mismatch, not fixed here.** `createOutboundTransfer`'s own availability
-  check looks up a consumable balance by `inventoryEntryId: item.itemId` (a definition
-  id) and lists asset units by location without filtering by definition. That is a
-  separate defect in the write path, out of this issue's scope; the picker rule is the
-  read. Proposed follow-up: align the outbound write gate with the availability rule
-  (or fix its lookups) in its own ticket. Not deferred silently.
+- **Write-gate mismatch is deferred to issue #450** (parent decision, after this lane's
+design pass surfaced it): `createOutboundTransfer` passes an item definition id where an
+inventory entry id is expected and lists asset units without a definition filter. The fix
+belongs with the read rule — one shared "where does definition X hold stock?" read, routed
+through by both the picker and the write gate — and is explicitly out of this issue's
+scope. Not fixed here.

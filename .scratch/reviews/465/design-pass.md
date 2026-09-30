@@ -1,8 +1,9 @@
 # Design pass — outbound item picker availability (#465)
 
-Design pass over this lane's finished diff (`fix/invoice-create` @ `651df4eb` → working
-tree), as required by `docs/engineering-workflow.md` §5 and AGENTS.md. Reviewed through
-`domain-modeling`, `codebase-design`, and `improve-codebase-architecture`.
+Design pass over this lane's finished diff (`origin/develop` @ `551948e4` → `dfdaad48`;
+originally reviewed against the pre-rebase `fix/invoice-create` base), as required by
+`docs/engineering-workflow.md` §5 and AGENTS.md. Reviewed through `domain-modeling`,
+`codebase-design`, and `improve-codebase-architecture`.
 
 ## 1. domain-modeling
 
@@ -17,12 +18,12 @@ tree), as required by `docs/engineering-workflow.md` §5 and AGENTS.md. Reviewed
 - `CONTEXT.md` in this repo is scoped to diagnostics/telemetry and has no inventory
   vocabulary (same finding as the #463 design pass), so no glossary edit is warranted
   here. The module doc-comment carries the terms.
-- **Cross-reference finding (surface, not fix):** `createOutboundTransfer` does not read
-  this rule. Its consumable check looks up a balance by `inventoryEntryId: item.itemId`
-  (a _definition_ id) and its asset check lists units by location without filtering by
-  definition, so the write path and the offer rule disagree about what "in stock" means.
-  That is a pre-existing defect in the write path, outside this issue's scope; the diff
-  does not make it worse. Follow-up proposed (see §3).
+- **Cross-reference finding (surfaced, deferred to #450).** `createOutboundTransfer` does
+  not read this rule. Its consumable check passes an item definition id where an
+  `inventoryEntryId` is expected, and its asset check lists units by location without
+  filtering by definition, so the write path and the offer rule disagree about what "in
+  stock" means. Parent decision: defer to **#450**, which fixes both halves with one
+  shared read. Not fixed here, and the diff does not make it worse.
 
 ## 2. codebase-design
 
@@ -58,11 +59,10 @@ tree), as required by `docs/engineering-workflow.md` §5 and AGENTS.md. Reviewed
 
 - **Friction this PR inherits (main finding).** The offer rule now expresses availability,
   but the outbound write gate keeps its own, different stock check (see §1). Two
-  statements of one domain rule is the drift the seam exists to remove. Fixing it is a
-  behaviour change to a write path with its own bugs and its own tests, so it is **not**
-  in this PR's scope. **Proposed follow-up issue:** route `createOutboundTransfer`'s
-  availability check through the same rule — which first needs a shared "stock locations
-  for a definition" read so the JS candidate can be built without a fourth query shape.
+  statements of one domain rule is the drift the seam exists to remove. Parent decision:
+  **deferred to #450** — one shared "where does definition X hold stock?" read, routed
+  through by the picker and the write gate, with a test proving the two agree. Explicitly
+  out of this PR's scope.
 - **Deepening opportunity (recorded, not built).** The availability SQL is written inline
   in `listItemDefinitionsPaged`. The shared read above ("where does definition X hold
   stock?") is the natural deep module once the write gate wants it too; building it now
@@ -81,6 +81,6 @@ tree), as required by `docs/engineering-workflow.md` §5 and AGENTS.md. Reviewed
 - Fixed in this PR: the `itemUsageKey` cache-key collision for `OUTBOUND_PICK`.
 - Kept with rationale: `outboundPickUsage`, `isInStockAt`, the closed source union, the
   optional `inStockAt` field, the two-table SQL predicate.
-- Deferred, with a proposed follow-up (parent decision required): align the outbound
-  write gate's availability check with the offer rule.
+- Deferred to **#450** (parent decision): align the outbound write gate's availability
+  check with the offer rule.
 - Nothing else found.
