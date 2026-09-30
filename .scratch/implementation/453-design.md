@@ -119,3 +119,14 @@ to prove the new tests have teeth rather than passing vacuously.
 - Dead code from the move (the two inline pipelines, the local `MoneyCell`, the
   inline period helpers) is deleted, not left behind.
 - Design pass recorded in `.scratch/reviews/453/design-pass.md`.
+
+## Addendum — parent decision (fold in the period-label consolidation)
+
+The parent folded one item into this PR: `employee-details-page.tsx` must stop
+carrying its own `getSalaryPeriodLabelKey` and import the shared one from
+`salary-table-primitives.tsx`, with a test pinning the label for each period
+value. Rationale: this PR creates the shared module, so its second consumer
+should use it now rather than in a follow-up that only deletes the copy this PR
+replaced. Implemented here: the local function is deleted, the import is added,
+and `salary-table-primitives.test.ts` pins DAILY/WEEKLY/MONTHLY/null and the
+filter option list. No behaviour change.
