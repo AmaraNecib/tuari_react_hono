@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
 import { DebtsHubPage } from "@/features/debts/debts-hub-page"
+import { DebtLedgerPanel } from "@/features/debts/debt-ledger-panel"
+import { DebtPartySummaryCard } from "@/features/debts/debt-party-summary-card"
 import { ExternalCounterpartyCreatePage } from "@/features/externals/external-create-page"
 import { ExternalCounterpartyDetailsPage } from "@/features/externals/external-details-page"
 import { EmployeeDetailsPage } from "@/features/employees/employee-details-page"
@@ -113,10 +115,13 @@ describe("debts MVP web UI", () => {
     )
 
     expect(screen.getByRole("heading", { name: "مركز الديون" })).toBeTruthy()
-    expect(screen.getAllByText("لنا عنده").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("علينا له").length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/\+1500/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/-700/).length).toBeGreaterThan(0)
+    // Positive net (1500) reads "مستحق لنا"; negative net (-700) reads
+    // "مستحق علينا". Both amounts render positive.
+    expect(screen.getAllByText("مستحق لنا").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("مستحق علينا").length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/1,500/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/700/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/-700/)).toBeNull()
   })
 
   it("submits external counterparty creation from dedicated page", async () => {
@@ -172,8 +177,12 @@ describe("debts MVP web UI", () => {
       />,
     )
 
+    // PAYABLE -700 means we overpaid, so the credit is ours.
+    expect(screen.getAllByText("رصيد مستحق لنا").length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/700/).length).toBeGreaterThan(0)
+
     fireEvent.change(screen.getByPlaceholderText("مثال: 2500 أو -2500"), { target: { value: "500" } })
-    fireEvent.click(screen.getAllByRole("button", { name: "تسجيل الدفعة" })[1]!)
+    fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[1]!)
 
     expect(createDebtEntryMutate).toHaveBeenCalledWith(
       expect.objectContaining({ debtAccountId: "debt-2", signedAmountDzd: 500 }),
@@ -187,7 +196,7 @@ describe("debts MVP web UI", () => {
 
     fireEvent.change(screen.getByPlaceholderText("0 أو 2500 أو -2500"), { target: { value: "-1200" } })
     fireEvent.change(screen.getByPlaceholderText("مثال: دين جديد، دفعة وصلت، دفعة خرجت"), { target: { value: "دفعة شراء جديدة" } })
-    fireEvent.click(screen.getAllByRole("button", { name: "تسجيل الدفعة" })[0]!)
+    fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
 
     await waitFor(() => {
       expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(
@@ -283,7 +292,9 @@ describe("debts MVP web UI", () => {
 
     expect(screen.getByText(/ديون العامل/)).toBeTruthy()
     expect(screen.getAllByText("رصيد افتتاحي").length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/\+300/).length).toBeGreaterThan(0)
+    // A positive PAYABLE account reads "مستحق علينا" with a positive amount.
+    expect(screen.getAllByText("مستحق علينا").length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/300/).length).toBeGreaterThan(0)
   })
 
   it("submits a picked payment date (not the form default) as a canonical ISO instant on the employee finance tab (#428)", async () => {
@@ -354,5 +365,76 @@ describe("debts MVP web UI", () => {
     expect(createSalaryPaymentMutate).toHaveBeenCalledWith(
       expect.objectContaining({ paymentDate: expectedIso }),
     )
+  })
+
+  describe("debt balance terminology", () => {
+    const makeAccount = (currentBalance: number, direction: "PAYABLE" | "RECEIVABLE") => ({
+      actorLabel: null,
+      actorUserId: null,
+      createdAt: "2026-03-27T10:00:00.000Z",
+      currentBalance,
+      direction,
+      externalCounterpartyId: "external-1",
+      id: `debt-${direction}-${currentBalance}`,
+      note: null,
+      partyType: "EXTERNAL_COUNTERPARTY" as const,
+      settledAt: null,
+      status: "OPEN" as const,
+      transactionId: null,
+      updatedAt: "2026-03-27T10:00:00.000Z",
+      workerId: null,
+    })
+
+    const renderLedger = (currentBalance: number, direction: "PAYABLE" | "RECEIVABLE") =>
+      renderWithProviders(
+        <DebtLedgerPanel debtAccount={makeAccount(currentBalance, direction)} debtEntries={[]} title="حساب" />,
+      )
+
+    it("states what we owe with a positive amount (PAYABLE +600)", () => {
+      const { container } = renderLedger(600, "PAYABLE")
+      expect(screen.getAllByText("مستحق علينا").length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/600/).length).toBeGreaterThan(0)
+      expect(container.textContent).not.toContain("-600")
+    })
+
+    it("states our credit when we overpaid with a positive amount (PAYABLE -50,000)", () => {
+      const { container } = renderLedger(-50_000, "PAYABLE")
+      expect(screen.getAllByText("رصيد مستحق لنا").length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/50,000/).length).toBeGreaterThan(0)
+      expect(container.textContent).not.toContain("-50,000")
+      expect(container.textContent).not.toContain("-50000")
+    })
+
+    it("states what they owe with a positive amount (RECEIVABLE +600)", () => {
+      const { container } = renderLedger(600, "RECEIVABLE")
+      expect(screen.getAllByText("مستحق لنا").length).toBeGreaterThan(0)
+      expect(container.textContent).not.toContain("-600")
+    })
+
+    it("states their credit when they overpaid with a positive amount (RECEIVABLE -600)", () => {
+      const { container } = renderLedger(-600, "RECEIVABLE")
+      expect(screen.getAllByText("رصيد مستحق لهم").length).toBeGreaterThan(0)
+      expect(container.textContent).not.toContain("-600")
+    })
+
+    it("shows the settled phrase for a zero balance, not 'مستحق علينا 0'", () => {
+      renderLedger(0, "PAYABLE")
+      expect(screen.getAllByText("مسوّى").length).toBeGreaterThan(0)
+      expect(screen.queryByText(/مستحق علينا 0/)).toBeNull()
+    })
+
+    it("labels a netted party balance without a signed number", () => {
+      const { container } = renderWithProviders(
+        <DebtPartySummaryCard
+          accounts={[makeAccount(2000, "PAYABLE"), makeAccount(500, "RECEIVABLE")]}
+          personName="شركة المورد"
+        />,
+      )
+      // Net = 500 - 2000 = -1500: we owe them.
+      expect(screen.getAllByText("مستحق علينا").length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/1,500/).length).toBeGreaterThan(0)
+      expect(container.textContent).not.toContain("-1,500")
+      expect(container.textContent).not.toContain("-1500")
+    })
   })
 })

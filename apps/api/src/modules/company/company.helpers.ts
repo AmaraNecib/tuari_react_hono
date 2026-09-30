@@ -1,4 +1,4 @@
-import { getDebtAccountNetContribution } from "@tuari/contracts";
+import { getDebtBalancePhrase } from "@tuari/contracts";
 import { CompanyError } from "./company.errors";
 import type { DebtAccountRecord, MutationAuditContext } from "./company.types";
 
@@ -53,29 +53,21 @@ export function getDebtAccountStatus(balance: number) {
 }
 
 /**
- * Direction-aware label for a single debt account. Mirrors the
- * per-account sign convention: +PAYABLE = "علينا له", +RECEIVABLE =
- * "لنا عنده". Use this for per-account UIs; use
- * `getDebtBalanceLabel(getNetDebtBalance(...))` for party aggregates.
+ * Direction-aware label for a single debt account: +PAYABLE = "مستحق علينا",
+ * +RECEIVABLE = "مستحق لنا", and the overpayment states get their own
+ * phrases. Use this for per-account UIs; use `getDebtBalanceLabel(net)` for
+ * party aggregates.
  */
 export function getDebtAccountBalanceLabel(account: { currentBalance: number; direction: "PAYABLE" | "RECEIVABLE" }) {
-  // Reuse the existing direction-agnostic helper by sign-flipping
-  // PAYABLE balances into the unified "net perspective" so positive
-  // maps to "لنا عنده" and negative maps to "علينا له".
-  const net = getDebtAccountNetContribution(account)
-  return getDebtBalanceLabel(net)
+  return getDebtBalancePhrase(account);
 }
 
+/**
+ * Sign-only label for a netted balance: positive = they owe us
+ * ("مستحق لنا"), negative = we owe them ("مستحق علينا"), zero = "مسوّى".
+ */
 export function getDebtBalanceLabel(balance: number) {
-  if (balance > 0) {
-    return "لنا عنده" as const
-  }
-
-  if (balance < 0) {
-    return "علينا له" as const
-  }
-
-  return "مغلق" as const
+  return getDebtBalancePhrase({ currentBalance: balance });
 }
 
 export function buildDebtPartyKey(account: Pick<DebtAccountRecord, "partyType" | "workerId" | "externalCounterpartyId">) {

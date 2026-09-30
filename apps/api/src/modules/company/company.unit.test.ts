@@ -116,18 +116,20 @@ describe("company.helpers", () => {
     expect(getNetDebtBalance([])).toBe(0);
   });
 
-  it("getDebtAccountBalanceLabel delegates through the net-perspective label", () => {
-    expect(getDebtAccountBalanceLabel({ currentBalance: 10, direction: "RECEIVABLE" })).toBe("لنا عنده");
-    expect(getDebtAccountBalanceLabel({ currentBalance: 10, direction: "PAYABLE" })).toBe("علينا له");
-    // An overpaid PAYABLE account (negative balance) nets to a positive
-    // position, i.e. "they owe us".
-    expect(getDebtAccountBalanceLabel({ currentBalance: -5, direction: "PAYABLE" })).toBe("لنا عنده");
+  it("getDebtAccountBalanceLabel names all four direction/sign states", () => {
+    expect(getDebtAccountBalanceLabel({ currentBalance: 10, direction: "RECEIVABLE" })).toBe("مستحق لنا");
+    expect(getDebtAccountBalanceLabel({ currentBalance: 10, direction: "PAYABLE" })).toBe("مستحق علينا");
+    // An overpaid PAYABLE account (negative balance) leaves a credit with us.
+    expect(getDebtAccountBalanceLabel({ currentBalance: -5, direction: "PAYABLE" })).toBe("رصيد مستحق لنا");
+    // An overpaid RECEIVABLE account leaves a credit with them.
+    expect(getDebtAccountBalanceLabel({ currentBalance: -5, direction: "RECEIVABLE" })).toBe("رصيد مستحق لهم");
+    expect(getDebtAccountBalanceLabel({ currentBalance: 0, direction: "PAYABLE" })).toBe("مسوّى");
   });
 
   it("getDebtBalanceLabel covers positive, negative and zero", () => {
-    expect(getDebtBalanceLabel(5)).toBe("لنا عنده");
-    expect(getDebtBalanceLabel(-5)).toBe("علينا له");
-    expect(getDebtBalanceLabel(0)).toBe("مغلق");
+    expect(getDebtBalanceLabel(5)).toBe("مستحق لنا");
+    expect(getDebtBalanceLabel(-5)).toBe("مستحق علينا");
+    expect(getDebtBalanceLabel(0)).toBe("مسوّى");
   });
 
   it("buildDebtPartyKey builds worker and counterparty keys", () => {

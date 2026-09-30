@@ -525,7 +525,7 @@ export const ar = {
     detailPages: {
       debt: {
         createTitle: "إنشاء دين",
-        createButton: "تسجيل الدفعة على الحساب",
+        createButton: "تسجيل دين",
         partyType: {
           label: "نوع الطرف",
           internal: "عميل داخلي",
@@ -541,8 +541,8 @@ export const ar = {
         },
         reasonCategory: "سبب الدين",
         direction: {
-          owedToUs: "لنا عنده",
-          owedByUs: "علينا له",
+          owedToUs: "مستحقات لنا",
+          owedByUs: "مستحقات علينا",
         },
         directionDerived: "الاتجاه محدد حسب نوع السبب",
         chooseDirection: "اختر الاتجاه",
@@ -1071,6 +1071,10 @@ export const ar = {
     debtsHub: {
       emptyAll: "لا توجد حسابات ديون بعد.",
       emptyFiltered: "لا توجد نتائج للفلتر المحدد.",
+      filters: {
+        all: "الكل",
+        settled: "مسوّى",
+      },
     },
     debtLedger: {
       empty: "لا توجد حركات دين بعد.",
@@ -1176,8 +1180,8 @@ export const ar = {
         goToSalaries: "الذهاب إلى الرواتب",
       },
       unknownParty: "طرف غير معروف",
-      payable: "واجب الدفع",
-      receivable: "قابل للتحصيل",
+      payable: "مستحقات علينا",
+      receivable: "مستحقات لنا",
       currency: "دج",
     },
     license: {
@@ -1261,6 +1265,23 @@ export const ar = {
     },
     debts: {
       loadError: "تعذر تحميل بيانات الديون. حاول مرة أخرى.",
+      terminology: {
+        directions: {
+          payable: "مستحقات علينا",
+          receivable: "مستحقات لنا",
+        },
+        states: {
+          owedToUs: "مستحق لنا",
+          owedByUs: "مستحق علينا",
+          creditWithUs: "رصيد مستحق لنا",
+          creditWithThem: "رصيد مستحق لهم",
+          settled: "مسوّى",
+        },
+        buttons: {
+          recordPayment: "تسجيل دفعة",
+          recordDebt: "تسجيل دين",
+        },
+      },
       consolidation: {
         noOpenings: "لا توجد حركات افتتاحية نشطة.",
       },
@@ -1277,8 +1298,8 @@ export const ar = {
         createAccount: "إنشاء الحساب",
         amount: "المبلغ الموقّع",
         note: "ملاحظة الدفعة",
-        recordPaymentButton: "تسجيل الدفعة",
-        createAccountButton: "إنشاء الحساب",
+        recordPaymentButton: "تسجيل دفعة",
+        createAccountButton: "تسجيل دين",
       },
       employee: {
         addEntry: "إضافة حركة دين",

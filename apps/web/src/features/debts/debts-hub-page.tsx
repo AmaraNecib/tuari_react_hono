@@ -13,7 +13,7 @@ import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { Surface } from "@/features/shared/page-primitives"
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
-import { getDebtBalanceMeta, formatDebtMoney } from "./debt-utils"
+import { formatDebtAmount, getDebtBalanceDisplay } from "./debt-utils"
 
 type FilterOption = "all" | "owed-to-us" | "owed-by-us" | "settled"
 
@@ -28,11 +28,11 @@ function HubStatCard({ label, value, valueClassName }: { label: string; value: s
   )
 }
 
-const FILTER_OPTIONS: Array<{ id: FilterOption; label: string }> = [
-  { id: "all", label: "الكل" },
-  { id: "owed-to-us", label: "لنا عنده" },
-  { id: "owed-by-us", label: "علينا له" },
-  { id: "settled", label: "مغلقة" },
+const FILTER_OPTIONS: Array<{ id: FilterOption; labelKey: string }> = [
+  { id: "all", labelKey: "debtsHub.filters.all" },
+  { id: "owed-to-us", labelKey: "debts.terminology.states.owedToUs" },
+  { id: "owed-by-us", labelKey: "debts.terminology.states.owedByUs" },
+  { id: "settled", labelKey: "debtsHub.filters.settled" },
 ]
 
 const DEFAULT_PAGE_SIZE = 25
@@ -108,16 +108,16 @@ export function DebtsHubPage({
     <RecordPageFrame
       action={
         <div className="flex gap-2">
-          <Button size="lg" onClick={onCreateDebt}>إضافة رصيد دين</Button>
+          <Button size="lg" onClick={onCreateDebt}>{t("debts.terminology.buttons.recordDebt")}</Button>
         </div>
       }
       title="مركز الديون"
-      description="ملخص سريع لحساب دين واحد لكل عامل أو طرف خارجي. الأخضر يعني أنهم مدينون لنا، والأحمر يعني أننا مدينون لهم."
+      description="ملخص سريع لحساب دين واحد لكل عامل أو طرف خارجي. الأخضر يعني مستحق لنا، والأحمر يعني مستحق علينا."
     >
       <div className="grid gap-4 md:grid-cols-4">
         <HubStatCard label="عدد الأرصدة المفتوحة" value={String(filter === "all" ? totals.openCount : filteredOpenCount)} />
-        <HubStatCard label="لنا عندهم" value={`دج ${formatDebtMoney(totals.owedToUsDzd)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
-        <HubStatCard label="علينا لهم" value={`دج ${formatDebtMoney(-totals.owedByUsDzd)}`} valueClassName="text-rose-700 dark:text-rose-300" />
+        <HubStatCard label={t("debts.terminology.states.owedToUs")} value={`دج ${formatDebtAmount(totals.owedToUsDzd)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
+        <HubStatCard label={t("debts.terminology.states.owedByUs")} value={`دج ${formatDebtAmount(totals.owedByUsDzd)}`} valueClassName="text-rose-700 dark:text-rose-300" />
         <HubStatCard label="عدد الحسابات" value={String(rows.length)} />
       </div>
 
@@ -137,7 +137,7 @@ export function DebtsHubPage({
             }}
             type="button"
           >
-            {option.label}
+            {t(option.labelKey)}
           </button>
         ))}
       </div>
@@ -159,14 +159,13 @@ export function DebtsHubPage({
               <TableHead>الهاتف</TableHead>
               <TableHead>عدد الحسابات</TableHead>
               <TableHead>الرصيد</TableHead>
-              <TableHead>الدلالة</TableHead>
               <TableHead>الإجراء</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {pagedRows.length > 0 ? (
               pagedRows.map((row) => {
-                const balanceMeta = getDebtBalanceMeta(row.balanceDzd)
+                const balance = getDebtBalanceDisplay({ currentBalance: row.balanceDzd })
 
                 return (
                   <TableRow
@@ -182,13 +181,15 @@ export function DebtsHubPage({
                     <TableCell className="text-muted-foreground">{row.type === "worker" ? "عامل داخلي" : "طرف خارجي"}</TableCell>
                     <TableCell><bdi dir="ltr">{row.phone}</bdi></TableCell>
                     <TableCell>{row.caseCount}</TableCell>
-                    <TableCell className={balanceMeta.textClassName} dir="ltr">
-                      دج {formatDebtMoney(row.balanceDzd)}
-                    </TableCell>
                     <TableCell>
-                      <span className={`rounded-full border px-3 py-1 text-xs font-medium ${balanceMeta.badgeClassName}`.trim()}>
-                        {balanceMeta.shortLabel}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`w-fit rounded-full border px-3 py-1 text-xs font-medium ${balance.badgeClassName}`.trim()}>
+                          {t(balance.phraseKey)}
+                        </span>
+                        <span className={`font-mono text-sm ${balance.textClassName}`.trim()} dir="ltr">
+                          دج {formatDebtAmount(balance.amount)}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button
@@ -211,7 +212,7 @@ export function DebtsHubPage({
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                   {filter === "all" && !normalizedQuery
                     ? t("debtsHub.emptyAll")
                     : t("debtsHub.emptyFiltered")}

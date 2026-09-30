@@ -1,85 +1,110 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  formatDebtAmount,
   formatDebtMoney,
   getDebtAccountBalance,
-  getDebtAccountBalanceMeta,
+  getDebtBalanceDisplay,
   getDebtBalanceMeta,
   getDebtDirectionLabel,
   sortDebtAccounts,
 } from "./debt-utils"
 
+const ARABIC_STATES = {
+  owedToUs: "مستحق لنا",
+  owedByUs: "مستحق علينا",
+  creditWithUs: "رصيد مستحق لنا",
+  creditWithThem: "رصيد مستحق لهم",
+  settled: "مسوّى",
+} as const
+
+describe("getDebtBalanceDisplay (the single balance display helper)", () => {
+  it("shows a positive PAYABLE balance as 'مستحق علينا' with a positive amount", () => {
+    const display = getDebtBalanceDisplay({ currentBalance: 600, direction: "PAYABLE" })
+    expect(display.state).toBe("owedByUs")
+    expect(display.phrase).toBe(ARABIC_STATES.owedByUs)
+    expect(display.amount).toBe(600)
+    expect(display.amountLabel).toBe("600 دج")
+    expect(display.amount).toBeGreaterThan(0)
+  })
+
+  it("shows an overpaid PAYABLE balance as 'رصيد مستحق لنا' with the magnitude", () => {
+    const display = getDebtBalanceDisplay({ currentBalance: -50_000, direction: "PAYABLE" })
+    expect(display.state).toBe("creditWithUs")
+    expect(display.phrase).toBe(ARABIC_STATES.creditWithUs)
+    expect(display.amount).toBe(50_000)
+    expect(display.amountLabel).toBe("50,000 دج")
+  })
+
+  it("shows a positive RECEIVABLE balance as 'مستحق لنا' with a positive amount", () => {
+    const display = getDebtBalanceDisplay({ currentBalance: 600, direction: "RECEIVABLE" })
+    expect(display.state).toBe("owedToUs")
+    expect(display.phrase).toBe(ARABIC_STATES.owedToUs)
+    expect(display.amount).toBe(600)
+  })
+
+  it("shows an overpaid RECEIVABLE balance as 'رصيد مستحق لهم' with the magnitude", () => {
+    const display = getDebtBalanceDisplay({ currentBalance: -600, direction: "RECEIVABLE" })
+    expect(display.state).toBe("creditWithThem")
+    expect(display.phrase).toBe(ARABIC_STATES.creditWithThem)
+    expect(display.amount).toBe(600)
+  })
+
+  it("shows zero as the settled phrase, never 'مستحق علينا 0'", () => {
+    const display = getDebtBalanceDisplay({ currentBalance: 0, direction: "PAYABLE" })
+    expect(display.state).toBe("settled")
+    expect(display.phrase).toBe(ARABIC_STATES.settled)
+    expect(display.amount).toBe(0)
+    expect(display.phrase).not.toContain("0")
+  })
+
+  it("falls back to sign-only phrasing for a netted party balance", () => {
+    expect(getDebtBalanceDisplay({ currentBalance: 2500 }).phrase).toBe(ARABIC_STATES.owedToUs)
+    expect(getDebtBalanceDisplay({ currentBalance: -1500 }).phrase).toBe(ARABIC_STATES.owedByUs)
+  })
+})
+
 describe("getDebtBalanceMeta (sign-only, for aggregated net)", () => {
-  it("positive balance is a receivable (emerald)", () => {
+  it("positive balance is owed to us (emerald)", () => {
     const meta = getDebtBalanceMeta(500)
-    expect(meta.shortLabel).toBe("لنا عنده")
+    expect(meta.shortLabel).toBe(ARABIC_STATES.owedToUs)
     expect(meta.textClassName).toContain("emerald")
   })
 
-  it("negative balance is a payable (rose)", () => {
+  it("negative balance is owed by us (rose)", () => {
     const meta = getDebtBalanceMeta(-500)
-    expect(meta.shortLabel).toBe("علينا له")
+    expect(meta.shortLabel).toBe(ARABIC_STATES.owedByUs)
     expect(meta.textClassName).toContain("rose")
   })
 
-  it("zero balance is closed (muted)", () => {
+  it("zero balance is settled (muted)", () => {
     const meta = getDebtBalanceMeta(0)
-    expect(meta.shortLabel).toBe("مغلق")
+    expect(meta.shortLabel).toBe(ARABIC_STATES.settled)
     expect(meta.textClassName).toContain("muted")
   })
 })
 
-describe("getDebtAccountBalanceMeta (direction-aware)", () => {
-  it("positive balance on a PAYABLE account means we owe them (rose)", () => {
-    // Issue #22: the sign convention is balance-based. A positive
-    // balance on a PAYABLE ledger is the amount the counterparty is
-    // owed — we owe them.
-    const meta = getDebtAccountBalanceMeta({ currentBalance: 1500, direction: "PAYABLE" })
-    expect(meta.shortLabel).toBe("علينا له")
-    expect(meta.textClassName).toContain("rose")
-  })
-
-  it("positive balance on a RECEIVABLE account means they owe us (emerald)", () => {
-    const meta = getDebtAccountBalanceMeta({ currentBalance: 500, direction: "RECEIVABLE" })
-    expect(meta.shortLabel).toBe("لنا عنده")
-    expect(meta.textClassName).toContain("emerald")
-  })
-
-  it("negative balance on a PAYABLE account flips the meaning (emerald)", () => {
-    // We overpaid: the supplier now owes us.
-    const meta = getDebtAccountBalanceMeta({ currentBalance: -300, direction: "PAYABLE" })
-    expect(meta.shortLabel).toBe("لنا عنده")
-    expect(meta.textClassName).toContain("emerald")
-  })
-
-  it("negative balance on a RECEIVABLE account flips the meaning (rose)", () => {
-    // The customer overpaid us: we now owe them.
-    const meta = getDebtAccountBalanceMeta({ currentBalance: -200, direction: "RECEIVABLE" })
-    expect(meta.shortLabel).toBe("علينا له")
-    expect(meta.textClassName).toContain("rose")
-  })
-
-  it("zero balance is closed regardless of direction", () => {
-    expect(getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" }).shortLabel).toBe("مغلق")
-    expect(getDebtAccountBalanceMeta({ currentBalance: 0, direction: "RECEIVABLE" }).shortLabel).toBe("مغلق")
-  })
-})
-
 describe("getDebtDirectionLabel", () => {
-  it("returns the Arabic label for PAYABLE", () => {
-    expect(getDebtDirectionLabel("PAYABLE")).toBe("علينا له")
+  it("returns the direction phrase for PAYABLE", () => {
+    expect(getDebtDirectionLabel("PAYABLE")).toBe("مستحقات علينا")
   })
 
-  it("returns the Arabic label for RECEIVABLE", () => {
-    expect(getDebtDirectionLabel("RECEIVABLE")).toBe("لنا عنده")
+  it("returns the direction phrase for RECEIVABLE", () => {
+    expect(getDebtDirectionLabel("RECEIVABLE")).toBe("مستحقات لنا")
   })
 })
 
-describe("formatDebtMoney", () => {
-  it("formats integers with explicit sign (useGrouping is disabled)", () => {
-    // The formatter is intentionally configured without grouping
-    // separators so the number stays compact in tables and side-by-side
-    // comparisons. Test that the sign is always present.
+describe("formatDebtAmount", () => {
+  it("never renders a sign and groups thousands", () => {
+    expect(formatDebtAmount(1500)).toBe("1,500")
+    expect(formatDebtAmount(-50_000)).toBe("50,000")
+    expect(formatDebtAmount(0)).toBe("0")
+    expect(formatDebtAmount(-300)).not.toContain("-")
+  })
+})
+
+describe("formatDebtMoney (signed movement formatter)", () => {
+  it("formats entry deltas with an explicit sign (useGrouping is disabled)", () => {
     expect(formatDebtMoney(1500)).toBe("+1500")
     expect(formatDebtMoney(-300)).toBe("-300")
     expect(formatDebtMoney(0)).toBe("+0")

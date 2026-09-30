@@ -1,9 +1,12 @@
+import { z } from "zod";
+
 import type { DebtAccount } from "./debts";
 
 /**
  * The slice of a debt account the sign convention applies to.
- * `currentBalance` is always stored positive with `direction` carrying
- * the ledger orientation; the net-perspective helpers below re-sign it.
+ * `currentBalance` is the account's signed running balance; `direction`
+ * carries the ledger orientation (a positive PAYABLE balance means we owe
+ * them, a positive RECEIVABLE balance means they owe us).
  */
 export type DebtBalanceAccount = Pick<DebtAccount, "currentBalance" | "direction">;
 
@@ -37,4 +40,89 @@ export function getDebtAccountNetContribution(account: DebtBalanceAccount) {
  */
 export function getNetDebtBalance(accounts: DebtBalanceAccount[]) {
   return accounts.reduce((net, account) => net + getDebtAccountNetContribution(account), 0);
+}
+
+/**
+ * The five display states of a debt balance. The state is what the UI
+ * translates; the signed number never reaches the screen.
+ *
+ *  - owedToUs:       they owe us (unpaid receivable / positive net)
+ *  - owedByUs:       we owe them (unpaid payable / negative net)
+ *  - creditWithUs:   we overpaid a PAYABLE ledger — the credit is ours
+ *  - creditWithThem: they overpaid a RECEIVABLE ledger — the credit is theirs
+ *  - settled:        the balance is zero
+ */
+export const DEBT_BALANCE_STATES = [
+  "owedToUs",
+  "owedByUs",
+  "creditWithUs",
+  "creditWithThem",
+  "settled",
+] as const;
+
+export type DebtBalanceState = (typeof DEBT_BALANCE_STATES)[number];
+
+/**
+ * Canonical Arabic phrase per state. The wire `balanceLabel` and the web
+ * i18n copy both derive from this table so the API and the UI cannot
+ * disagree about the words.
+ */
+export const DEBT_BALANCE_STATE_PHRASE = {
+  owedToUs: "مستحق لنا",
+  owedByUs: "مستحق علينا",
+  creditWithUs: "رصيد مستحق لنا",
+  creditWithThem: "رصيد مستحق لهم",
+  settled: "مسوّى",
+} as const;
+
+export type DebtBalanceLabel = (typeof DEBT_BALANCE_STATE_PHRASE)[DebtBalanceState];
+
+export const debtBalanceLabelSchema = z.enum([
+  DEBT_BALANCE_STATE_PHRASE.owedToUs,
+  DEBT_BALANCE_STATE_PHRASE.owedByUs,
+  DEBT_BALANCE_STATE_PHRASE.creditWithUs,
+  DEBT_BALANCE_STATE_PHRASE.creditWithThem,
+  DEBT_BALANCE_STATE_PHRASE.settled,
+]);
+
+/**
+ * Maps `(direction, signed balance)` to a display state. Omit `direction`
+ * for an already-netted figure: positive means they owe us, negative means
+ * we owe them. Zero is always `settled`, regardless of direction.
+ */
+export function getDebtBalanceState(input: {
+  currentBalance: number;
+  direction?: DebtAccount["direction"] | null;
+}): DebtBalanceState {
+  const { currentBalance, direction } = input;
+
+  if (currentBalance === 0) {
+    return "settled";
+  }
+
+  if (!direction) {
+    return currentBalance > 0 ? "owedToUs" : "owedByUs";
+  }
+
+  if (direction === "RECEIVABLE") {
+    return currentBalance > 0 ? "owedToUs" : "creditWithThem";
+  }
+
+  return currentBalance > 0 ? "owedByUs" : "creditWithUs";
+}
+
+/**
+ * The magnitude that pairs with the phrase. Always nonnegative so a signed
+ * balance can never render as a negative number.
+ */
+export function getDebtBalanceAmount(currentBalance: number) {
+  return Math.abs(currentBalance);
+}
+
+/** The canonical Arabic phrase for a `(direction, signed balance)` pair. */
+export function getDebtBalancePhrase(input: {
+  currentBalance: number;
+  direction?: DebtAccount["direction"] | null;
+}): DebtBalanceLabel {
+  return DEBT_BALANCE_STATE_PHRASE[getDebtBalanceState(input)];
 }

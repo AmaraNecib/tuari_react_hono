@@ -9,7 +9,7 @@ import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria
 import { cn } from "@/lib/utils"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 import { useEmployeeDebtAccountQuery, useCreateEmployeeDebtEntryMutation } from "./employee-debt-hooks"
-import { formatDebtMoney, getDebtAccountBalanceMeta, getDebtDirectionLabel } from "./debt-utils"
+import { formatDebtAmount, getDebtBalanceDisplay, getDebtDirectionLabel } from "./debt-utils"
 
 /** Employee debt panel with balance and entry history. */
 /**
@@ -26,9 +26,10 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
   const { date: entryDate, setDate: setEntryDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
 
   const debtAccount = debtAccountQuery.data
-  const balanceMeta = debtAccount
-    ? getDebtAccountBalanceMeta(debtAccount)
-    : getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" })
+  const balance = getDebtBalanceDisplay({
+    currentBalance: debtAccount?.currentBalance ?? 0,
+    direction: debtAccount?.direction,
+  })
 
   const handleSubmit = async () => {
     if (!hasValidAmount) return
@@ -58,10 +59,13 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
           <p className="text-sm text-muted-foreground">
             {debtAccount ? `${t("debts.cases.currentBalance")} — ${getDebtDirectionLabel(debtAccount.direction)}` : t("debts.cases.currentBalance")}
           </p>
-          <p className={cn("mt-2 font-mono text-2xl font-semibold", balanceMeta.textClassName)} dir="ltr">
-            دج {formatDebtMoney(debtAccount?.currentBalance ?? 0)}
+          <p className={cn("mt-2 text-lg font-semibold", balance.textClassName)}>
+            {t(balance.phraseKey)}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">{balanceMeta.description}</p>
+          <p className={cn("mt-1 font-mono text-2xl font-semibold", balance.textClassName)} dir="ltr">
+            دج {formatDebtAmount(balance.amount)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{balance.description}</p>
         </Surface>
       </div>
 

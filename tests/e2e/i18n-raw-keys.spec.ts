@@ -47,7 +47,7 @@ test("debts hub record-payment dialog renders Arabic, no raw keys", async ({ pag
   await page.getByRole("button", { name: /حفظ الطرف الخارجي/ }).first().click()
   await expect(page.getByRole("heading", { name: counterpartyName })).toBeVisible({ timeout: 10_000 })
   await page.getByPlaceholder("0 أو 2500 أو -2500").fill("5000")
-  await page.getByRole("button", { name: "إنشاء الحساب" }).click()
+  await page.getByRole("button", { name: "تسجيل دين" }).click()
   await expect(page.getByRole("heading", { name: "تسجيل دفعة على الحساب" })).toBeVisible({ timeout: 15_000 })
 
   // The debts hub renders translated panel copy — no raw keys.

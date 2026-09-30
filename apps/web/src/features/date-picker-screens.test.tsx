@@ -220,7 +220,7 @@ describe("DebtLedgerPanel submits the picked day for a ledger entry (#428)", () 
       target: { value: "100" },
     })
     pickDate()
-    fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفعة" }))
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دفعة" }))
 
     await waitFor(() => expect(mocks.createDebtEntry).toHaveBeenCalledTimes(1))
     expect(mocks.createDebtEntry).toHaveBeenCalledWith(
@@ -244,7 +244,7 @@ describe("DebtCasesPanel submits the picked day as the opening entry date (#428)
       target: { value: "500" },
     })
     pickDate()
-    fireEvent.click(screen.getByRole("button", { name: "إنشاء الحساب" }))
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
 
     await waitFor(() => expect(mocks.createDebtAccount).toHaveBeenCalledTimes(1))
     expect(mocks.createDebtAccount).toHaveBeenCalledWith(
@@ -270,7 +270,7 @@ describe("DebtCreatePage submits the picked day as the opening entry date (#428)
 
     fireEvent.change(screen.getByPlaceholderText("0"), { target: { value: "500" } })
     pickDate()
-    fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفعة على الحساب" }))
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
 
     await waitFor(() => expect(mocks.createDebtAccount).toHaveBeenCalledTimes(1))
     expect(mocks.createDebtAccount).toHaveBeenCalledWith(

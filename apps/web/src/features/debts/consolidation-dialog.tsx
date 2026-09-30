@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button"
 import {
   useDebtEntriesConsolidateMutation,
 } from "@/features/app-shell/mock-dashboard"
-import { formatDebtMoney, getDebtBalanceMeta, getDebtDirectionLabel } from "./debt-utils"
+import { formatDebtAmount, getDebtBalanceMeta, getDebtDirectionLabel } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
 /**
@@ -117,15 +117,17 @@ export function ConsolidationDialog({
     }
 
     if (netAmount > 0) {
+      const remaining = getDebtBalanceMeta(netAmount).shortLabel
       return {
-        description: `يبقى رصيد ${formatDebtMoney(netAmount)} دج على حساب ${getDebtDirectionLabel(payableAccount.direction)}.`,
-        label: `يبقى ${formatDebtMoney(netAmount)} دج`,
+        description: `يبقى رصيد ${formatDebtAmount(netAmount)} دج على حساب ${getDebtDirectionLabel(payableAccount.direction)} (${remaining}).`,
+        label: `يبقى ${remaining} ${formatDebtAmount(netAmount)} دج`,
       }
     }
 
+    const remaining = getDebtBalanceMeta(netAmount).shortLabel
     return {
-      description: `يبقى رصيد ${formatDebtMoney(-netAmount)} دج على حساب ${getDebtDirectionLabel(receivableAccount.direction)}.`,
-      label: `يبقى ${formatDebtMoney(-netAmount)} دج`,
+      description: `يبقى رصيد ${formatDebtAmount(-netAmount)} دج على حساب ${getDebtDirectionLabel(receivableAccount.direction)} (${remaining}).`,
+      label: `يبقى ${remaining} ${formatDebtAmount(-netAmount)} دج`,
     }
   }, [selectedPayable, selectedReceivable, payableAmount, receivableAmount, netAmount, payableAccount.direction, receivableAccount.direction])
 
@@ -161,7 +163,7 @@ export function ConsolidationDialog({
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
               {getDebtDirectionLabel(payableAccount.direction)} — رصيد الحساب: دج{" "}
-              {formatDebtMoney(payableAccount.currentBalance)}
+              {formatDebtAmount(payableAccount.currentBalance)}
             </h4>
             {livePayableOpenings.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings")}</p>
@@ -193,7 +195,7 @@ export function ConsolidationDialog({
                         )}
                       </div>
                       <span className={cn("font-mono text-base font-semibold", amountMeta.textClassName)} dir="ltr">
-                        دج {formatDebtMoney(entry.signedAmountDzd)}
+                        دج {formatDebtAmount(entry.signedAmountDzd)}
                       </span>
                     </button>
                   )
@@ -206,7 +208,7 @@ export function ConsolidationDialog({
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
               {getDebtDirectionLabel(receivableAccount.direction)} — رصيد الحساب: دج{" "}
-              {formatDebtMoney(receivableAccount.currentBalance)}
+              {formatDebtAmount(receivableAccount.currentBalance)}
             </h4>
             {liveReceivableOpenings.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings")}</p>
@@ -237,7 +239,7 @@ export function ConsolidationDialog({
                         )}
                       </div>
                       <span className={cn("font-mono text-base font-semibold", amountMeta.textClassName)} dir="ltr">
-                        دج {formatDebtMoney(entry.signedAmountDzd)}
+                        دج {formatDebtAmount(entry.signedAmountDzd)}
                       </span>
                     </button>
                   )
@@ -254,7 +256,7 @@ export function ConsolidationDialog({
                   {consolidationPreview?.label ?? ""}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {formatDebtMoney(payableAmount)} دج ← {formatDebtMoney(receivableAmount)} دج
+                  {formatDebtAmount(payableAmount)} دج ← {formatDebtAmount(receivableAmount)} دج
                 </span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">

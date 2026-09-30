@@ -15,7 +15,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import { useCreateDebtEntryMutation, useSettleDebtAccountMutation } from "@/features/app-shell/mock-dashboard"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
-import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
+import { formatDebtAmount, getDebtBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 
@@ -43,7 +43,7 @@ export function RecordPaymentDialog({
   const [showSettlePrompt, setShowSettlePrompt] = useState(false)
 
   const balance = debtAccount?.currentBalance ?? 0
-  const balanceMeta = getDebtBalanceMeta(balance)
+  const balanceDisplay = getDebtBalanceDisplay({ currentBalance: balance, direction: debtAccount?.direction })
 
   const handlePayFull = () => {
     setAmount(String(Math.abs(balance)))
@@ -111,10 +111,13 @@ export function RecordPaymentDialog({
           <div className="space-y-4">
             <div className="rounded-xl border border-border/60 bg-surface p-4">
               <p className="text-sm text-muted-foreground">{t("detailPages.debt.payment.currentBalance")}</p>
-              <p className={cn("mt-2 font-mono text-2xl font-semibold", balanceMeta.textClassName)} dir="ltr">
-                {t("detailPages.debt.currency")} {formatDebtMoney(balance)}
+              <p className={cn("mt-2 text-sm font-semibold", balanceDisplay.textClassName)}>
+                {t(balanceDisplay.phraseKey)}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">{balanceMeta.description}</p>
+              <p className={cn("mt-1 font-mono text-2xl font-semibold", balanceDisplay.textClassName)} dir="ltr">
+                {t("detailPages.debt.currency")} {formatDebtAmount(balanceDisplay.amount)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{balanceDisplay.description}</p>
             </div>
 
             <label className="flex flex-col gap-2">

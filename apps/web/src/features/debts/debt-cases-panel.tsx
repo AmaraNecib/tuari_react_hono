@@ -14,18 +14,18 @@ import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria
 import { ConsolidationDialog } from "./consolidation-dialog"
 import { DebtLedgerPanel } from "./debt-ledger-panel"
 import {
-  formatDebtMoney,
-  getDebtAccountBalanceMeta,
-  getDebtBalanceMeta,
+  formatDebtAmount,
+  getDebtBalanceDisplay,
   getDebtDirectionLabel,
   sortDebtAccounts,
 } from "./debt-utils"
 
-function CasesStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+function CasesStatCard({ label, value, valueClassName, phrase }: { label: string; value: string; valueClassName?: string; phrase?: string }) {
   return (
     <Surface className="rounded-xl px-5 py-4" variant="card">
       <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={`mt-2 font-mono text-xl font-semibold ${valueClassName ?? ""}`.trim()} dir="ltr">
+      {phrase ? <p className={`mt-2 text-sm font-semibold ${valueClassName ?? ""}`.trim()}>{phrase}</p> : null}
+      <p className={`mt-1 font-mono text-xl font-semibold ${valueClassName ?? ""}`.trim()} dir="ltr">
         {value}
       </p>
     </Surface>
@@ -76,13 +76,14 @@ export function DebtCasesPanel({
   const hasPayable = sortedAccounts.some((a) => a.direction === "PAYABLE")
   const hasReceivable = sortedAccounts.some((a) => a.direction === "RECEIVABLE")
   const isBidirectional = hasPayable && hasReceivable
-  const balanceMeta = useMemo(
+  const balance = useMemo(
     () =>
       isBidirectional
-        ? getDebtBalanceMeta(totalBalanceDzd)
-        : debtAccount
-          ? getDebtAccountBalanceMeta(debtAccount)
-          : getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" }),
+        ? getDebtBalanceDisplay({ currentBalance: totalBalanceDzd })
+        : getDebtBalanceDisplay({
+            currentBalance: debtAccount?.currentBalance ?? 0,
+            direction: debtAccount?.direction,
+          }),
     [isBidirectional, totalBalanceDzd, debtAccount],
   )
 
@@ -102,14 +103,24 @@ export function DebtCasesPanel({
     payableEntries.some((e) => e.status === "LIVE" && e.entryType === "OPENING") &&
     receivableEntries.some((e) => e.status === "LIVE" && e.entryType === "OPENING")
 
+  const payableBalance = useMemo(
+    () => (payableAccount ? getDebtBalanceDisplay(payableAccount) : null),
+    [payableAccount],
+  )
+  const receivableBalance = useMemo(
+    () => (receivableAccount ? getDebtBalanceDisplay(receivableAccount) : null),
+    [receivableAccount],
+  )
+
   const { t } = useTranslation()
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <CasesStatCard
           label={isBidirectional ? t("debts.cases.netBalance") : debtAccount ? `${t("debts.cases.currentBalance")} — ${getDebtDirectionLabel(debtAccount.direction)}` : t("debts.cases.currentBalance")}
-          value={`دج ${formatDebtMoney(isBidirectional ? totalBalanceDzd : (debtAccount?.currentBalance ?? 0))}`}
-          valueClassName={balanceMeta.textClassName}
+          phrase={t(balance.phraseKey)}
+          value={`دج ${formatDebtAmount(balance.amount)}`}
+          valueClassName={balance.textClassName}
         />
         <CasesStatCard label={t("debts.cases.accountCount")} value={String(sortedAccounts.length)} />
         <CasesStatCard label={t("debts.cases.entryCount")} value={String(totalEntryCount)} />
@@ -125,11 +136,9 @@ export function DebtCasesPanel({
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-0.5">
               <p className="text-sm text-muted-foreground">
-                {getDebtDirectionLabel(payableAccount!.direction)}{` `}
-                دج {formatDebtMoney(payableAccount!.currentBalance)}
-                {` - `}
-                {getDebtDirectionLabel(receivableAccount!.direction)}{` `}
-                دج {formatDebtMoney(receivableAccount!.currentBalance)}
+                {getDebtDirectionLabel(payableAccount!.direction)} · {t(payableBalance!.phraseKey)} دج {formatDebtAmount(payableBalance!.amount)}
+                {` — `}
+                {getDebtDirectionLabel(receivableAccount!.direction)} · {t(receivableBalance!.phraseKey)} دج {formatDebtAmount(receivableBalance!.amount)}
               </p>
               <p className="text-xs text-muted-foreground">
                 {hasConsolidatableOpenings

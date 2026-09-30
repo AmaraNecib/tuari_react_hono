@@ -61,6 +61,9 @@ export function DashboardOverview() {
                   <p className="text-2xl font-bold">
                     {debtData.summary.totalOutstandingDzd.toLocaleString()} د.ج
                   </p>
+                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                    {t("debts.terminology.states.owedToUs")}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {t("dashboardPage.overdue")}: {debtData.summary.overdueDzd.toLocaleString()} د.ج
                   </p>
@@ -108,7 +111,7 @@ export function DashboardOverview() {
                     {debtData.topDebtors[0].partyName}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {debtData.topDebtors[0].amountDzd.toLocaleString()} د.ج
+                    {t("debts.terminology.states.owedToUs")} {debtData.topDebtors[0].amountDzd.toLocaleString()} د.ج
                   </p>
                 </>
               ) : (

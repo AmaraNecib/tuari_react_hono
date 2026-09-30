@@ -854,7 +854,7 @@ describe("RPC router", () => {
         expect.objectContaining({ workerId: worker.item.id, openDebtCasesCount: 0, settledDebtCasesCount: 1 }),
       ]),
       debtAccounts: expect.arrayContaining([
-        expect.objectContaining({ accountId: internalAccount.item.id, balanceLabel: "مغلق" }),
+        expect.objectContaining({ accountId: internalAccount.item.id, balanceLabel: "مسوّى" }),
         expect.objectContaining({ accountId: externalAccount.item.id, displayName: "مقاول خارجي" }),
       ]),
     })
