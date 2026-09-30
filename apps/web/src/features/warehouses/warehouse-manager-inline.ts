@@ -28,20 +28,20 @@ export function useWarehouseManagerInlineCreateSelection({
     fields: [
       {
         key: "firstName",
-        label: t("detailPages.debt.employeeFields.firstName"),
-        placeholder: t("detailPages.debt.employeeFields.firstNamePlaceholder"),
+        label: t("common.employeeFields.firstName"),
+        placeholder: t("common.employeeFields.firstNamePlaceholder"),
         required: true,
       },
       {
         key: "lastName",
-        label: t("detailPages.debt.employeeFields.lastName"),
-        placeholder: t("detailPages.debt.employeeFields.lastNamePlaceholder"),
+        label: t("common.employeeFields.lastName"),
+        placeholder: t("common.employeeFields.lastNamePlaceholder"),
         required: true,
       },
       {
         key: "phone",
-        label: t("detailPages.debt.employeeFields.phone"),
-        placeholder: t("detailPages.debt.employeeFields.phonePlaceholder"),
+        label: t("common.employeeFields.phone"),
+        placeholder: t("common.employeeFields.phonePlaceholder"),
         required: true,
       },
     ],
