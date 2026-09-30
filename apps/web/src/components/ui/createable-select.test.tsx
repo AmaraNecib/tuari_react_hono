@@ -205,6 +205,9 @@ describe("CreateableSelect clear + create dialog contract", () => {
     resolveCreate({ id: "emp-new-1", name: "سعيد بلقاسم" })
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith("emp-new-1"))
+  })
+})
+
 describe("CreateableSelect popup styling follows Base UI state attributes", () => {
   function classTokens(element: Element): string[] {
     return (element.getAttribute("class") ?? "").split(/\s+/).filter(Boolean)
