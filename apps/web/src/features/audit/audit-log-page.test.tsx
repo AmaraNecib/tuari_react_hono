@@ -7,7 +7,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { SystemLogEntry } from "@tuari/contracts"
 
-import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { format } from "date-fns"
+
+import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { AuditLogPage } from "./audit-log-page"
 
 const { systemLogList } = vi.hoisted(() => ({ systemLogList: vi.fn() }))
@@ -51,8 +53,10 @@ afterEach(() => {
  */
 describe("AuditLogPage end-of-day range boundary", () => {
   it("includes a log written at 23:59 on the picked end date and excludes the next day", async () => {
-    const today = getAlgeriaDateInputValue()
-    const endDay = `${today.slice(0, 7)}-15`
+    // The end picker starts empty, so its calendar opens on the SYSTEM month.
+    // Anchor the target day to the system clock, not the Algeria day: near a
+    // month boundary the two months differ and the cell would not render.
+    const endDay = format(new Date(), "yyyy-MM-dd")
     const lastMillisecond = toAlgeriaDayBoundaryIso(endDay, "end")!
     const dayAfter = new Date(Date.parse(lastMillisecond) + 1).toISOString()
 

@@ -123,7 +123,7 @@ invisible in the display layer:
   prop string: none exists (no caller passes `name`). The hidden input now
   always carries canonical.
 - `audit-log-page` compares `new Date(startDate)`, which parses canonical as UTC
-  midnight; unchanged semantics beyond the format fix.
+  midnight; superseded by Round 2 below, which makes the end day inclusive.
 
 ## Verification
 
@@ -149,7 +149,7 @@ every range consumer uses it.
 
 | Consumer | Before | After |
 | --- | --- | --- |
-| `audit-log-page` (client filter) | `new Date(endDate)` (UTC midnight → drops the day) | `isInstantWithinDayRange` |
+| `audit-log-page` (client filter) | `new Date(endDate)` (UTC midnight → drops the day) | `isInstantWithinBounds` over one resolved bound pair |
 | `workspace-queries` system log (wire) | already `toAlgeriaDayBoundaryIso(…, "end")` | same rule via `resolveDayRangeBounds` |
 | `hooks/use-report-queries` (wire) | bare day, rejected by the datetime contract | `resolveDayRangeBounds` |
 | `features/expenses/expenses-filters` (wire) | already end-of-day | same rule via `resolveDayRangeBounds` |

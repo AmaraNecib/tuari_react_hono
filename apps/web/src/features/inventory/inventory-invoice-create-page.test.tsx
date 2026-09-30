@@ -159,6 +159,16 @@ function pickCalendarDate(isoDay: string, index = 0) {
   fireEvent.click(cell.querySelector("button") ?? (cell as HTMLElement))
 }
 
+/**
+ * The page seeds its date fields with the UTC today; pick a different day in
+ * that same month so the assertion proves the pick changed the value, even on
+ * a run dated the 15th.
+ */
+function nonDefaultPickedDay() {
+  const today = new Date().toISOString().slice(0, 10)
+  return `${today.slice(0, 7)}-${today.endsWith("-15") ? "16" : "15"}`
+}
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -649,7 +659,8 @@ describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)",
 
   it("submits the picked invoice date as the canonical ISO instant", async () => {
     // The page seeds the picker with the UTC today, so pick inside that month.
-    const pickedDay = `${new Date().toISOString().slice(0, 7)}-15`
+    const pickedDay = nonDefaultPickedDay()
+    expect(pickedDay).not.toBe(new Date().toISOString().slice(0, 10))
     renderPage()
     fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
 
@@ -660,7 +671,7 @@ describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)",
   })
 
   it("submits the picked asset purchase date as the canonical ISO instant", async () => {
-    const pickedDay = `${new Date().toISOString().slice(0, 7)}-15`
+    const pickedDay = nonDefaultPickedDay()
     renderPage()
 
     fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })

@@ -83,8 +83,16 @@ vi.mock("@/features/inventory/inventory-hooks", async (importActual) => ({
 }))
 
 const TODAY_DAY = getAlgeriaDateInputValue()
-const PICKED_DAY = `${TODAY_DAY.slice(0, 7)}-15`
+// Pick a day that is never the form default (today), so the assertion proves
+// the pick actually changed the submitted value on every run date.
+const PICKED_DAY = `${TODAY_DAY.slice(0, 7)}-${TODAY_DAY.endsWith("-15") ? "16" : "15"}`
 const PICKED_ISO = toAlgeriaDayBoundaryIso(PICKED_DAY, "start")
+
+describe("date-picker screen fixtures (#428)", () => {
+  it("picks a day that differs from the form default so a no-op pick cannot pass", () => {
+    expect(PICKED_DAY).not.toBe(TODAY_DAY)
+  })
+})
 
 const ACCOUNT: DebtAccount = {
   id: "debt-account-1",

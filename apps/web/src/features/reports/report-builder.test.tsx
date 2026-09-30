@@ -6,7 +6,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { format } from "date-fns"
+
+import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { ReportBuilder } from "./report-builder"
 
 const { reportsGenerate } = vi.hoisted(() => ({ reportsGenerate: vi.fn() }))
@@ -39,33 +41,44 @@ afterEach(() => {
  * (#428 round 2): the contract wants ISO-8601 datetimes, and the picked end day
  * must include everything written on it (end-of-day), not a bare day that
  * parses as UTC midnight.
+ *
+ * Both pickers start empty, so the calendar opens on the SYSTEM month; the
+ * target days are anchored to it, not the Algeria day (which can differ by one
+ * month near a month boundary).
  */
 describe("ReportBuilder range boundary", () => {
-  it("sends the picked range as inclusive start/end-of-day instants", async () => {
-    reportsGenerate.mockResolvedValue({
-      type: "INVENTORY",
-      generatedAt: "2026-10-15T00:00:00.000Z",
-      summary: { totalAssetsDzd: 100, totalConsumablesDzd: 50, totalValueDzd: 150 },
-      byLocation: [],
-      byItemType: [],
-      agingAnalysis: [],
-    })
+  it(
+    "sends the picked range as inclusive start/end-of-day instants",
+    async () => {
+      reportsGenerate.mockResolvedValue({
+        type: "INVENTORY",
+        generatedAt: "2026-10-15T00:00:00.000Z",
+        summary: { totalAssetsDzd: 100, totalConsumablesDzd: 50, totalValueDzd: 150 },
+        byLocation: [],
+        byItemType: [],
+        agingAnalysis: [],
+      })
 
-    const month = getAlgeriaDateInputValue().slice(0, 7)
-    const fromDay = `${month}-10`
-    const toDay = `${month}-15`
+      const month = format(new Date(), "yyyy-MM")
+      const fromDay = `${month}-10`
+      const toDay = `${month}-15`
 
-    renderPage()
+      renderPage()
 
-    pickDay(0, fromDay)
-    pickDay(1, toDay)
-    fireEvent.click(screen.getByRole("button", { name: "إنشاء التقرير" }))
+      pickDay(0, fromDay)
+      pickDay(1, toDay)
+      fireEvent.click(screen.getByRole("button", { name: "إنشاء التقرير" }))
 
-    await waitFor(() => expect(reportsGenerate).toHaveBeenCalledTimes(1))
-    expect(reportsGenerate).toHaveBeenCalledWith({
-      type: "INVENTORY",
-      startDate: toAlgeriaDayBoundaryIso(fromDay, "start"),
-      endDate: toAlgeriaDayBoundaryIso(toDay, "end"),
-    })
-  })
+      await waitFor(() => expect(reportsGenerate).toHaveBeenCalledTimes(1))
+      expect(reportsGenerate).toHaveBeenCalledWith({
+        type: "INVENTORY",
+        startDate: toAlgeriaDayBoundaryIso(fromDay, "start"),
+        endDate: toAlgeriaDayBoundaryIso(toDay, "end"),
+      })
+    },
+    // Full-page mount plus two calendar interactions is heavy; the 5s default
+    // times out when the shared machine is loaded (observed in a full-suite
+    // run at ~5.2s). The assertions, not the timeout, are the guard.
+    15000,
+  )
 })
