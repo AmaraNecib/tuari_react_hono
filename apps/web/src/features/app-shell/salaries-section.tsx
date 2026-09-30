@@ -66,23 +66,28 @@ export function SalariesSection({
         onChange={setActiveTab}
       />
 
-      {activeTab === "recent" ? (
+      {/* Both tables stay mounted and the inactive one is hidden, so each tab
+          keeps its own query, filters and page across a tab switch — the same
+          state the pre-extraction shell held for both pipelines. Hidden content
+          leaves the accessibility tree, so role/label queries still see one
+          table at a time. */}
+      <div hidden={activeTab !== "recent"}>
         <SalaryPaymentsTable
           payments={recentPayments}
           projects={projects}
           onAddPayment={openPaymentForm}
           onEditSalary={onEditSalary}
         />
-      ) : null}
+      </div>
 
-      {activeTab === "workers" ? (
+      <div hidden={activeTab !== "workers"}>
         <SalariedWorkersTable
           workers={workers}
           projects={projects}
           onAddPayment={openPaymentForm}
           onEditSalary={onEditSalary}
         />
-      ) : null}
+      </div>
     </div>
   )
 }

@@ -431,6 +431,37 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
     expect(within(screen.getByRole("table")).queryByText("عامل 01")).toBeNull()
   })
 
+  it("keeps each tab's page and filter when the operator switches tabs", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={makePayments(23)}
+        workers={makeWorkers(3, "MONTHLY")}
+      />,
+    )
+
+    // Leave the history tab on page 2, then visit the workers tab and return.
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+    fireEvent.click(screen.getByRole("tab", { name: "آخر دفعات الرواتب" }))
+
+    // The page survives the round trip rather than resetting to 1.
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    // And the search value does too: each tab keeps its own filter state.
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "عامل 12" } })
+    expect(screen.getByText("1-1 من 1")).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+    fireEvent.click(screen.getByRole("tab", { name: "آخر دفعات الرواتب" }))
+
+    expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("عامل 12")
+    expect(screen.getByText("1-1 من 1")).toBeTruthy()
+  })
+
   it("shows a no-results message instead of dead controls when a filter matches nothing", () => {
     render(
       <SalariesSection
