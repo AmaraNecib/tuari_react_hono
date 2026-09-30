@@ -26,6 +26,7 @@ import {
   employeeBatchCreateRowInputSchema,
   employeeBatchLimit,
   employeeCreateInputSchema,
+  employeeDebtEntryCreateInputSchema,
   employeeProjectAssignmentSchema,
   employeeSalaryPaymentCreateInputSchema,
   employeeUpdateInputSchema,
@@ -592,6 +593,48 @@ describe("contracts", () => {
         workerId: "worker-1",
         direction: "RECEIVABLE",
         reasonCategory: "SALARY_ADVANCE",
+      }).direction,
+    ).toBe("RECEIVABLE")
+
+    // An explicit direction with no reason category is accepted (the debt
+    // cases panel shape); the lock only applies when a category is present.
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "PAYABLE",
+      }).direction,
+    ).toBe("PAYABLE")
+  })
+
+  it("rejects an employee debt entry whose direction contradicts its reason category (D2)", () => {
+    expect(() =>
+      employeeDebtEntryCreateInputSchema.parse({
+        employeeId: "worker-1",
+        entryType: "OPENING",
+        amountDzd: 500,
+        direction: "PAYABLE",
+        reasonCategory: "SALARY_ADVANCE",
+      }),
+    ).toThrowError()
+  })
+
+  it("rejects an employee ADVANCE sent as PAYABLE (D1a)", () => {
+    expect(() =>
+      employeeDebtEntryCreateInputSchema.parse({
+        employeeId: "worker-1",
+        entryType: "ADVANCE",
+        amountDzd: 500,
+        direction: "PAYABLE",
+      }),
+    ).toThrowError()
+
+    expect(
+      employeeDebtEntryCreateInputSchema.parse({
+        employeeId: "worker-1",
+        entryType: "ADVANCE",
+        amountDzd: 500,
+        direction: "RECEIVABLE",
       }).direction,
     ).toBe("RECEIVABLE")
   })

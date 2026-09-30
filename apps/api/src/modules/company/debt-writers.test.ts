@@ -79,7 +79,7 @@ describe("Debt writers (D2/D3/D7)", () => {
           openingBalanceDzd: 100,
           reasonCategory: "SALARY_ADVANCE",
         }),
-      ).toThrowError(CompanyError);
+      ).toThrowError("اتجاه الحساب محدد حسب سبب الدين.");
     });
 
     it("accepts a matching direction and keeps the unconstrained default", () => {
@@ -307,6 +307,117 @@ describe("Debt writers (D2/D3/D7)", () => {
 
       expect(payment.entryType).toBe("PAYMENT");
       expect(service.getDebtAccount(opening.debtAccountId).item.currentBalance).toBe(1070);
+    });
+  });
+
+  describe("D1a/D2 — an employee entry obeys the category and advance laws", () => {
+    it("derives RECEIVABLE for an OPENING whose reason category is SALARY_ADVANCE", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createWorker(service, roleIds, "تصنيف", "0551090030");
+
+      const entry = service.finance.createEmployeeDebtEntry({
+        employeeId: worker.id,
+        entryType: "OPENING",
+        amountDzd: 5000,
+        reasonCategory: "SALARY_ADVANCE",
+      });
+
+      // The category locks the direction even though the entry type is OPENING.
+      const account = service.getDebtAccount(entry.debtAccountId).item;
+      expect(account.direction).toBe("RECEIVABLE");
+      expect(account.currentBalance).toBe(5000);
+    });
+
+    it("accepts an explicit direction that matches the reason category", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createWorker(service, roleIds, "مطابق3", "0551090031");
+
+      const entry = service.finance.createEmployeeDebtEntry({
+        employeeId: worker.id,
+        entryType: "OPENING",
+        amountDzd: 500,
+        direction: "RECEIVABLE",
+        reasonCategory: "SALARY_ADVANCE",
+      });
+
+      expect(service.getDebtAccount(entry.debtAccountId).item.direction).toBe("RECEIVABLE");
+    });
+
+    it("rejects an explicit direction that contradicts the reason category", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createWorker(service, roleIds, "تناقض3", "0551090032");
+
+      expect(() =>
+        service.finance.createEmployeeDebtEntry({
+          employeeId: worker.id,
+          entryType: "OPENING",
+          amountDzd: 500,
+          direction: "PAYABLE",
+          reasonCategory: "SALARY_ADVANCE",
+        }),
+      ).toThrowError("اتجاه الحساب محدد حسب سبب الدين.");
+
+      expect(service.listDebtAccounts({ workerId: worker.id }).items).toHaveLength(0);
+    });
+
+    it("rejects an ADVANCE explicitly sent as PAYABLE (D1a: the worker owes us)", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createWorker(service, roleIds, "سلفة3", "0551090033");
+
+      expect(() =>
+        service.finance.createEmployeeDebtEntry({
+          employeeId: worker.id,
+          entryType: "ADVANCE",
+          amountDzd: 500,
+          direction: "PAYABLE",
+        }),
+      ).toThrowError(CompanyError);
+
+      expect(service.listDebtAccounts({ workerId: worker.id }).items).toHaveLength(0);
+    });
+
+    it("rejects an ADVANCE whose reason category locks it to PAYABLE", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createWorker(service, roleIds, "سلفة4", "0551090034");
+
+      expect(() =>
+        service.finance.createEmployeeDebtEntry({
+          employeeId: worker.id,
+          entryType: "ADVANCE",
+          amountDzd: 500,
+          reasonCategory: "REIMBURSEMENT",
+        }),
+      ).toThrowError("السلفة تجعل العامل مديناً لنا، فلا يمكن تسجيلها كدين علينا.");
+    });
+
+    it("accepts an ADVANCE explicitly sent as RECEIVABLE", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createWorker(service, roleIds, "سلفة5", "0551090035");
+
+      const entry = service.finance.createEmployeeDebtEntry({
+        employeeId: worker.id,
+        entryType: "ADVANCE",
+        amountDzd: 700,
+        direction: "RECEIVABLE",
+      });
+
+      expect(entry.signedAmountDzd).toBe(700);
+      expect(service.getDebtAccount(entry.debtAccountId).item.direction).toBe("RECEIVABLE");
+    });
+
+    it("accepts an ADVANCE whose salary-advance category matches RECEIVABLE", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createWorker(service, roleIds, "سلفة6", "0551090036");
+
+      const entry = service.finance.createEmployeeDebtEntry({
+        employeeId: worker.id,
+        entryType: "ADVANCE",
+        amountDzd: 900,
+        reasonCategory: "SALARY_ADVANCE",
+      });
+
+      expect(entry.signedAmountDzd).toBe(900);
+      expect(service.getDebtAccount(entry.debtAccountId).item.direction).toBe("RECEIVABLE");
     });
   });
 });

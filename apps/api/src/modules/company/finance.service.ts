@@ -24,6 +24,8 @@ import {
   type DebtReport,
   type DebtSettlementInput,
   type ExternalCounterpartyCreateInput,
+  DEBT_ADVANCE_DIRECTION_MESSAGE,
+  DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE,
   getDebtAccountNetContribution,
   getLockedDirectionForCategory,
   getNetDebtBalance,
@@ -100,6 +102,7 @@ export class FinanceService {
       input.employeeId,
       input.entryType,
       input.direction,
+      input.reasonCategory,
     );
 
     const account = this.createDebtAccount(
@@ -132,21 +135,43 @@ export class FinanceService {
   }
 
   /**
-   * Resolve which worker ledger an employee-debt entry targets. An ADVANCE is a
-   * worker receivable (D1a); a PAYMENT follows the ledger that still has a
-   * balance so a repayment offsets the advance instead of opening a second
-   * account; everything else lands on the PAYABLE ledger.
+   * Resolve which worker ledger an employee-debt entry targets.
+   *
+   * The reason category locks the direction (D2) and an ADVANCE is always a
+   * worker receivable (D1a); a supplied direction that contradicts either is
+   * rejected rather than silently stored backwards. With no lock, a PAYMENT
+   * follows the ledger that still has a balance so a repayment offsets the
+   * advance instead of opening a second account; everything else lands on the
+   * PAYABLE ledger.
    */
   private resolveEmployeeEntryDirection(
     workerId: string,
     entryType: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE",
     explicit?: DebtAccountCreateInput["direction"],
+    reasonCategory?: DebtEntry["reasonCategory"],
   ): "PAYABLE" | "RECEIVABLE" {
-    if (explicit) {
-      return explicit;
+    const lockedDirection = reasonCategory
+      ? getLockedDirectionForCategory(reasonCategory)
+      : null;
+    if (lockedDirection && explicit && explicit !== lockedDirection) {
+      throw new CompanyError("VALIDATION", DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE, [
+        { field: "direction", message: DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE },
+      ]);
     }
     if (entryType === "ADVANCE") {
+      const advanceDirection = lockedDirection ?? explicit ?? "RECEIVABLE";
+      if (advanceDirection !== "RECEIVABLE") {
+        throw new CompanyError("VALIDATION", DEBT_ADVANCE_DIRECTION_MESSAGE, [
+          { field: "direction", message: DEBT_ADVANCE_DIRECTION_MESSAGE },
+        ]);
+      }
       return "RECEIVABLE";
+    }
+    if (lockedDirection) {
+      return lockedDirection;
+    }
+    if (explicit) {
+      return explicit;
     }
     if (entryType === "PAYMENT") {
       const receivable = this.repository.getDebtAccountByWorkerIdAndDirection(workerId, "RECEIVABLE");
@@ -258,8 +283,8 @@ export class FinanceService {
     if (lockedDirection && input.direction && input.direction !== lockedDirection) {
       throw new CompanyError(
         "VALIDATION",
-        `اتجاه الحساب محدد حسب سبب الدين (${lockedDirection}).`,
-        [{ field: "direction", message: "اتجاه الحساب لا يطابق سبب الدين المحدد." }],
+        DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE,
+        [{ field: "direction", message: DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE }],
       );
     }
     const direction = lockedDirection ?? input.direction ?? "PAYABLE";

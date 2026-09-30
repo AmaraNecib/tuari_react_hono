@@ -470,8 +470,11 @@ export const inventoryOutboundTransferCreateInputSchema = z.object({
   transferType: z.enum(["SALE", "GIFT", "RETURN"]),
   items: z.array(outboundTransferItemInputSchema).min(1),
   /**
-   * The amount carried as debt (the invoice/transfer value minus any first
-   * payment already collected). Optional; omitted when nothing is on credit.
+   * The FULL transfer value carried as the debt's OPENING balance. Any amount
+   * already collected at transfer time is passed separately as
+   * `firstPaymentAmountDzd` and posted as a real PAYMENT, so the running
+   * balance is the amount still on credit. Optional; omitted when nothing is
+   * on credit.
    */
   debtAmountDzd: z.number().nonnegative().optional(),
   /**

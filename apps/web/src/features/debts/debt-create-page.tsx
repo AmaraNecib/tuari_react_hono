@@ -13,7 +13,7 @@ import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria
 import { debtDirectionFromAlias, type DebtDirectionAlias } from "./debt-utils"
 import { cn } from "@/lib/utils"
 import type { useHomeViewNavigation } from "@/features/app-shell/home-view-navigation"
-import type { ExternalCounterparty } from "@tuari/contracts"
+import { getLockedDirectionForCategory, type ExternalCounterparty } from "@tuari/contracts"
 
 /**
  * Reason category → direction mapping.
@@ -24,7 +24,6 @@ const DEBT_CATEGORIES: Array<{
   value: ReasonCategory
   labelAr: string
   labelEn: string
-  impliedDirection: "PAYABLE" | "RECEIVABLE" | "UNCONSTRAINED"
   descriptionAr: string
   descriptionEn: string
 }> = [
@@ -32,7 +31,6 @@ const DEBT_CATEGORIES: Array<{
     value: "SALARY_ADVANCE",
     labelAr: "سلفة راتب",
     labelEn: "Salary Advance",
-    impliedDirection: "RECEIVABLE",
     descriptionAr: "صرفنا للعامل مال قبل استحقاقه",
     descriptionEn: "We gave the worker money before they earned it",
   },
@@ -40,7 +38,6 @@ const DEBT_CATEGORIES: Array<{
     value: "REIMBURSEMENT",
     labelAr: "تعويض مصاريف",
     labelEn: "Reimbursement",
-    impliedDirection: "PAYABLE",
     descriptionAr: "العامل دفع شيء نيابة عنا (ماء، مواد، نقل)",
     descriptionEn: "Worker paid something on our behalf",
   },
@@ -48,7 +45,6 @@ const DEBT_CATEGORIES: Array<{
     value: "CASH_TAKE",
     labelAr: "أخذ كاش",
     labelEn: "Cash Take",
-    impliedDirection: "RECEIVABLE",
     descriptionAr: "العامل أخذ كاش من الصندوق",
     descriptionEn: "Worker took cash from the till",
   },
@@ -56,7 +52,6 @@ const DEBT_CATEGORIES: Array<{
     value: "EQUIPMENT_DAMAGE",
     labelAr: "تلف معدات",
     labelEn: "Equipment Damage",
-    impliedDirection: "RECEIVABLE",
     descriptionAr: "العامل مدين لنا بسبب تلف معدات",
     descriptionEn: "Worker owes us for damaged equipment",
   },
@@ -64,7 +59,6 @@ const DEBT_CATEGORIES: Array<{
     value: "PERSONAL_LOAN",
     labelAr: "قرض شخصي",
     labelEn: "Personal Loan",
-    impliedDirection: "RECEIVABLE",
     descriptionAr: "أعطينا العامل قرض نقدي ليرجعه",
     descriptionEn: "We gave the worker a cash loan to be repaid",
   },
@@ -72,7 +66,6 @@ const DEBT_CATEGORIES: Array<{
     value: "DIRECT_LOAN_GIVEN",
     labelAr: "قرض مباشر (أعطينا)",
     labelEn: "Direct Loan (Given)",
-    impliedDirection: "RECEIVABLE",
     descriptionAr: "أعطينا الطرف الخارجي قرض",
     descriptionEn: "We gave an external counterparty a loan",
   },
@@ -80,7 +73,6 @@ const DEBT_CATEGORIES: Array<{
     value: "DIRECT_LOAN_TAKEN",
     labelAr: "قرض مباشر (أخذنا)",
     labelEn: "Direct Loan (Taken)",
-    impliedDirection: "PAYABLE",
     descriptionAr: "طرف خارجي أقرضنا مال",
     descriptionEn: "An external counterparty lent us money",
   },
@@ -88,7 +80,6 @@ const DEBT_CATEGORIES: Array<{
     value: "OTHER",
     labelAr: "أخرى",
     labelEn: "Other",
-    impliedDirection: "UNCONSTRAINED",
     descriptionAr: "سبب آخر — يرجى تقديم تفصيل",
     descriptionEn: "Other — please provide details",
   },
@@ -134,19 +125,23 @@ export function DebtCreatePage({
   const [createDate, setCreateDate] = useState(() => getAlgeriaDateInputValue())
 
   const selectedCategory = DEBT_CATEGORIES.find((c) => c.value === reasonCategory)
-  const isCategoryDirectionLocked = selectedCategory?.impliedDirection !== "UNCONSTRAINED"
+  // One derivation: the category's locked direction comes from the contracts
+  // helper, never a second hand-copied map. `null` means unconstrained (OTHER).
+  const impliedDirection = selectedCategory
+    ? getLockedDirectionForCategory(selectedCategory.value)
+    : null
+  const isCategoryDirectionLocked = impliedDirection !== null
 
   // When category locks direction, sync the direction state
   const resolvedDirection = useMemo(() => {
-    if (!selectedCategory) return direction
-    if (selectedCategory.impliedDirection === "PAYABLE") return "owed-by-us"
-    if (selectedCategory.impliedDirection === "RECEIVABLE") return "owed-to-us"
+    if (impliedDirection === "PAYABLE") return "owed-by-us"
+    if (impliedDirection === "RECEIVABLE") return "owed-to-us"
     return direction
-  }, [selectedCategory, direction])
+  }, [impliedDirection, direction])
 
   // Update direction when category changes
   if (isCategoryDirectionLocked) {
-    const implied = selectedCategory!.impliedDirection === "PAYABLE" ? "owed-by-us" : "owed-to-us"
+    const implied = impliedDirection === "PAYABLE" ? "owed-by-us" : "owed-to-us"
     if (direction !== implied) {
       setDirection(implied)
     }

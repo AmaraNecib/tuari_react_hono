@@ -111,9 +111,14 @@ describe("Inventory debt signs (D4/D8)", () => {
 
       expect(env.company.getDebtAccount(accountId).item.currentBalance).toBe(1000);
 
+      let expectedRemaining = 1000;
       for (const amount of [200, 300, 500]) {
         env.service.recordInvoicePayment({ invoiceGroupId: created.id, amountDzd: amount }, AUDIT);
+        expectedRemaining -= amount;
         const invoice = env.inventoryRepo.getInvoiceGroupById(created.id)!;
+        // Absolute expectation, so a bug that dropped the payment from both the
+        // ledger and the invoice counter in lockstep cannot pass this test.
+        expect(invoice.remainingDebtDzd).toBe(expectedRemaining);
         expect(env.company.getDebtAccount(accountId).item.currentBalance).toBe(invoice.remainingDebtDzd);
       }
       expect(env.company.getDebtAccount(accountId).item.currentBalance).toBe(0);
