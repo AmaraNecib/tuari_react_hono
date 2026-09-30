@@ -1,7 +1,7 @@
-# #428 / PR #438 — test-audit evidence (`db016406`)
+# #428 / PR #438 — test-audit evidence (`0a70d5d7`)
 
 Edge-case, coverage and quality review of the tests in
-`git diff edf1e5b3...db016406`.
+`git diff edf1e5b3...0a70d5d7`.
 
 ## Edge cases (hunter)
 
@@ -9,7 +9,7 @@ Edge-case, coverage and quality review of the tests in
   calendar day: `2026-02-30` rolled to `2026-03-02` (verified empirically), and
   a `dd/MM/yyyy`/instant bound became an open range. Medium — not UI-reachable
   (the picker rejects these via date-fns `isValid`) but the shared helper is
-  trusted by four consumers. Fixed in `db016406` (tests below).
+  trusted by four consumers. Fixed in `0a70d5d7` (tests below).
 - Double-expansion silently shifted the start bound one day; no idempotency
   guard existed. Fixed (throws).
 - No test covered an invalid *range* day (only an unparsable instant). Added.
@@ -56,7 +56,7 @@ Missing-await / detached-DOM / sleep problems: none found.
 | `workspace-queries.test.ts` system-log bounds | no (pins a boundary; pre-fix already end-of-day) |
 | `date-range.test.ts` | n/a (new module) |
 
-## Red→green proofs for the `db016406` fixes
+## Red→green proofs for the `0a70d5d7` fixes
 
 1. **Range-seam validation** — added 5 tests first; `vitest run
    src/lib/date-range.test.ts` failed 5/14 (`toThrow` received a value for the
@@ -75,6 +75,11 @@ Missing-await / detached-DOM / sleep problems: none found.
 4. **Report-builder load timeout** — full suite hit the 5s default at 5.2s
    under `--maxWorkers=2`; isolated runs are 1.6–3.4s. Explicit 15s timeout
    added; assertions unchanged. Final full suite 680/680.
+5. **#440 convention-agnostic inventory assertion** — with `DatePicker` mutated
+   back to emitting `dd/MM/yyyy`, the two inventory tests **failed**
+   (2 failed / 23 skipped). With the correct picker, 25/25 pass. The assertion
+   is now "the submitted instant's Algeria day == the picked day", so it no
+   longer pins the page's UTC conversion.
 
 Coverage: `src/lib/date-range.ts` 100% stmts/branch/funcs/lines (scoped v8).
 `src/features/audit/audit-log-page.tsx` remains a pre-existing large file at

@@ -1,6 +1,6 @@
-# #428 / PR #438 — debate evidence (`db016406`)
+# #428 / PR #438 — debate evidence (`0a70d5d7`)
 
-Adversarial pass on `git diff edf1e5b3...db016406` (BASE `develop` @ `edf1e5b3`).
+Adversarial pass on `git diff edf1e5b3...0a70d5d7` (BASE `develop` @ `edf1e5b3`).
 Ran as a 7-child review workflow (critic, defender, standards, spec, edge-case,
 coverage, quality) with a fresh-context model at high thinking. The critic and
 defender disagreed on severity, not on facts; the edge hunter found the
@@ -38,14 +38,14 @@ timezone-fragile tests the critic called "latent".
 
 | # | Finding | Sev | Verdict |
 |---|---|---|---|
-| D1 | range seam silently mis-bounds non-canonical/invalid/double-expanded input | Med | Fixed `db016406` |
+| D1 | range seam silently mis-bounds non-canonical/invalid/double-expanded input | Med | Fixed `0a70d5d7` |
 | D2 | `DayRangeSelection` type reused for instant bounds | Low | Fixed (`DayRangeInstantBounds`) |
 | D3 | per-row bound re-resolution in the audit filter | Low | Fixed (`isInstantWithinBounds`, resolve once) |
 | D4 | audit/report tests timezone-fragile at month boundary | Med | Fixed (system-month anchor) |
 | D5 | screens/inventory tests vacuous on the 15th | Med | Fixed (non-default day + guard test) |
 | D6 | stale expense-form test comment (deleted bridge) | Low | Fixed |
 | D7 | design doc round-1 risk contradicts round-2 | Low | Fixed (doc pointer) |
-| D9 | invoice UTC-vs-Algeria seed/conversion | Pre-existing 3/10 | Reported to parent, not fixed |
+| D9 | invoice UTC-vs-Algeria seed/conversion | Pre-existing 3/10 | Filed by parent as #440; PR tests made convention-agnostic |
 | D12 | `workspace-queries.test` passes on pre-fix | Info | Dismissed — boundary pinned; round-1 regression covered by `table-primitives.test` + screen tests |
 | D13 | round-2 range semantics beyond issue #428 | Info | Accepted — documented in design + wisdom; fixes real end-day drop + wire rejection |
 | D14 | browser-local vs Algeria picker day | Info | Dismissed — round-trips exactly, no day shift |

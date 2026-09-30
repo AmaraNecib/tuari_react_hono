@@ -1,6 +1,6 @@
-# #428 / PR #438 — code review evidence (`db016406`)
+# #428 / PR #438 — code review evidence (`0a70d5d7`)
 
-Two-axis review of `git diff edf1e5b3...db016406` against the BASE `develop`
+Two-axis review of `git diff edf1e5b3...0a70d5d7` against the BASE `develop`
 (`edf1e5b3`) and issue #428 / `.scratch/implementation/428-design.md`.
 
 ## Standards axis (fresh-context reviewer)
@@ -13,7 +13,7 @@ Two-axis review of `git diff edf1e5b3...db016406` against the BASE `develop`
 - Wisdom entry is the durable, agent-facing record; staging is explicit.
 - Smells flagged as judgement calls: `DayRangeSelection` holding instants
   (Mysterious Name / Primitive Obsession), and per-row bound re-resolution
-  (Duplicated/wasted compute). Both fixed in `db016406`.
+  (Duplicated/wasted compute). Both fixed in `0a70d5d7`.
 - **Dismissed**: "orphaned malformed JSDoc introduced in `use-report-queries.ts`".
   Factually wrong: `git show edf1e5b3:apps/web/src/hooks/use-report-queries.ts`
   already contains the `useInventoryReport(startDate? component.` fragments. The
@@ -35,7 +35,7 @@ Two-axis review of `git diff edf1e5b3...db016406` against the BASE `develop`
   design doc and `.agents/wisdom/testing.md`, so the review record is explicit.
 - No requirement was missing or partially implemented.
 
-## Fixes in `db016406`
+## Fixes in `0a70d5d7`
 
 - `resolveDayRangeBounds` validates canonical days (round-trips through
   `Date.UTC`), throws on a non-blank invalid bound, and refuses its own output.
