@@ -3,7 +3,8 @@
 **Issue**: owner items 11 (invoice creation fails silently) and 10 (invoice attachments)
 **Lane**: `fix-invoice-create` (worktree `worktrees/fix-invoice-create`)
 **Branch**: `fix/invoice-create`
-**Base**: `develop` @ `22495413b7d792e20afcce24a94d6c84c61dd523` (merge-base == HEAD at start)
+**Base**: `develop` @ `fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36` (rebased; started from
+`22495413`, then develop advanced with #441, which fixed the transfer-dialog test)
 **Mode**: remote (parent owns push/PR; no merges from this lane)
 **Tier**: Standard
 
@@ -91,9 +92,3 @@ Norm: exactly one line for a rejected mutation, zero for a success.
 - "Unhandled error" messages are taken from the client interceptor (the real error); a
   decode/encode failure that never reaches a procedure client is logged by the request
   interceptor with status 500, though the wire envelope may be a 400.
-- **Pre-existing red test (waiver):** `apps/web/src/features/date-picker-screens.test.tsx`
-  > "passes the canonical picked day as occurredAt" fails on the pinned base with
-  `No QueryClient set, use QueryClientProvider to set one` (the transfer dialog mounts
-  `useAssetChargeDefaultQuery` un-mocked). Reproduced with all lane changes stashed; the
-  full web suite is 735 passed / 1 failed on this branch, and that one is the base's.
-  Out of scope for this lane; the parent decides whether to fix it separately.
