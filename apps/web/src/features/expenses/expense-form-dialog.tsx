@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import type { Expense } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
-import { DatePicker, fromDatePickerValue, toDatePickerValue } from "@/components/ui/date-picker"
+import { DatePicker } from "@/components/ui/date-picker"
 import {
   Dialog,
   DialogContent,
@@ -154,8 +154,8 @@ export function ExpenseFormDialog({
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium">{t("expenses.form.date")}</span>
             <DatePicker
-              value={toDatePickerValue(date)}
-              onChange={(value) => setDate(fromDatePickerValue(value))}
+              value={date}
+              onChange={setDate}
             />
           </label>
 

@@ -11,12 +11,14 @@ import { DebtsHubPage } from "@/features/debts/debts-hub-page"
 import { ExternalCounterpartyCreatePage } from "@/features/externals/external-create-page"
 import { ExternalCounterpartyDetailsPage } from "@/features/externals/external-details-page"
 import { EmployeeDetailsPage } from "@/features/employees/employee-details-page"
+import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 
 const {
   createDebtAccountMutateAsync,
   createDebtEntryMutate,
   createCounterpartyMutateAsync,
   settleDebtAccountMutate,
+  createSalaryPaymentMutate,
 } = vi.hoisted(() => ({
   createDebtAccountMutateAsync: vi.fn(async () => ({
     item: {
@@ -38,6 +40,7 @@ const {
   createCounterpartyMutateAsync: vi.fn(async () => ({ item: { id: "external-2" } })),
   createDebtEntryMutate: vi.fn(),
   settleDebtAccountMutate: vi.fn(),
+  createSalaryPaymentMutate: vi.fn(),
 }))
 
 vi.mock("@tanstack/react-router", async () => {
@@ -57,7 +60,7 @@ vi.mock("@/features/app-shell/mock-dashboard", () => ({
     isPending: false,
     mutateAsync: createCounterpartyMutateAsync,
   }),
-  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutate: vi.fn() }),
+  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutate: createSalaryPaymentMutate }),
   useRecordDebtPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }))
@@ -281,5 +284,75 @@ describe("debts MVP web UI", () => {
     expect(screen.getByText(/ديون العامل/)).toBeTruthy()
     expect(screen.getAllByText("رصيد افتتاحي").length).toBeGreaterThan(0)
     expect(screen.getAllByText(/\+300/).length).toBeGreaterThan(0)
+  })
+
+  it("submits a picked payment date (not the form default) as a canonical ISO instant on the employee finance tab (#428)", async () => {
+    // Pick a day that is NOT the form's default (today) so the assertion
+    // proves the pick changed the submitted value, instead of matching the
+    // default that was already in state (round-2 review finding).
+    const today = getAlgeriaDateInputValue()
+    const pickedDay = `${today.slice(0, 7)}-${today.endsWith("-15") ? "16" : "15"}`
+    const expectedIso = toAlgeriaDayBoundaryIso(pickedDay, "start")
+    expect(expectedIso).not.toBe(toAlgeriaDayBoundaryIso(today, "start"))
+
+    renderWithProviders(
+      <EmployeeDetailsPage
+        activeTab="finance"
+        debtAccounts={[]}
+        debtEntriesByAccountId={{}}
+        employee={{
+          canDelete: false,
+          canLeave: false,
+          createdAt: "2026-03-27T10:00:00.000Z",
+          currentManagerId: "manager-1",
+          currentProjectAssignmentId: null,
+          currentProjectId: null,
+          currentWarehouseAssignmentId: null,
+          currentWarehouseId: null,
+          currentWorkplace: "بدون مشروع نشط",
+          deleteDisabledReason: null,
+          firstName: "علي",
+          id: "worker-1",
+          isWorker: true,
+          lastName: "بن حميد",
+          leaveDisabledReason: null,
+          managerAssignmentId: "manager-assignment-1",
+          managerName: "أحمد بلخير",
+          name: "علي بن حميد",
+          notes: null,
+          occupation: "عامل بناء",
+          phone: "0555200120",
+          role: "عامل",
+          roleId: "role-worker",
+          roleKey: "worker",
+          salaryAmountDzd: 4500,
+          salaryPeriod: "DAILY",
+          status: "ACTIVE",
+          updatedAt: "2026-03-27T10:00:00.000Z",
+        }}
+        managedProjects={[]}
+        managedWarehouses={[]}
+        onTabChange={vi.fn()}
+        salaryPayments={[]}
+        workHistory={[]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
+    fireEvent.change(screen.getByPlaceholderText("0"), { target: { value: "4500" } })
+
+    const trigger = document.querySelector<HTMLElement>('[data-slot="popover-trigger"]')
+    expect(trigger).not.toBeNull()
+    fireEvent.click(trigger!)
+    const cell = document.querySelector(`[data-day="${pickedDay}"]`)
+    expect(cell).not.toBeNull()
+    fireEvent.click(cell!.querySelector("button")!)
+
+    fireEvent.click(screen.getByRole("button", { name: "حفظ دفعة الراتب" }))
+
+    await waitFor(() => expect(createSalaryPaymentMutate).toHaveBeenCalledTimes(1))
+    expect(createSalaryPaymentMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentDate: expectedIso }),
+    )
   })
 })

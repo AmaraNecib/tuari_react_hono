@@ -284,6 +284,30 @@ describe("DateRangeFilter", () => {
     // Two DatePicker trigger buttons (placeholders render inside them).
     expect(screen.getAllByRole("button")).toHaveLength(2)
   })
+
+  it("emits the picked day as canonical yyyy-MM-dd, not the dd/MM/yyyy display (#428)", () => {
+    const onFrom = vi.fn()
+
+    render(
+      <DateRangeFilter
+        fromLabel="من تاريخ"
+        toLabel="إلى تاريخ"
+        fromDate="2026-10-01"
+        toDate=""
+        onFromDateChange={onFrom}
+        onToDateChange={vi.fn()}
+      />,
+    )
+
+    const trigger = document.querySelector<HTMLElement>('[data-slot="popover-trigger"]')
+    expect(trigger).not.toBeNull()
+    fireEvent.click(trigger!)
+    const cell = document.querySelector('[data-day="2026-10-15"]')
+    expect(cell).not.toBeNull()
+    fireEvent.click(cell!.querySelector("button")!)
+
+    expect(onFrom).toHaveBeenCalledWith("2026-10-15")
+  })
 })
 
 /* ─── action buttons ─── */

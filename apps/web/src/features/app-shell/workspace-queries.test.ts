@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   rolesList: vi.fn(),
   workspaceSnapshot: vi.fn(),
   employeesListPaged: vi.fn(),
+  systemLogList: vi.fn(),
 }))
 
 vi.mock("@tanstack/react-query", async () => ({
@@ -25,6 +26,7 @@ vi.mock("@/lib/orpc-client", () => ({
     rolesList: mocks.rolesList,
     workspaceSnapshot: mocks.workspaceSnapshot,
     employeesListPaged: mocks.employeesListPaged,
+    systemLogList: mocks.systemLogList,
   },
   // workspace-keys evaluates `sessionQueryKey` at module load from
   // `orpc.session.queryOptions().queryKey` — mirror the mounted key shape.
@@ -41,6 +43,7 @@ import {
   useCompositeWorkspaceQuery,
   useEmployeesPagedQuery,
   useRolesQuery,
+  useSystemLogQuery,
   useWorkspaceScopedQuery,
 } from "./workspace-queries"
 import { workspaceQueryKeys } from "./workspace-keys"
@@ -258,5 +261,39 @@ describe("useWorkspaceScopedQuery session gate", () => {
 
     const options = mocks.useQuery.mock.calls[0]?.[0]
     expect(options.placeholderData).toBe(keepPreviousData)
+  })
+})
+
+describe("useSystemLogQuery date range (#428 round 2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.useSessionQuery.mockReturnValue({ data: { user: { id: "user-1" } } })
+    mocks.useQuery.mockImplementation((options) => options)
+  })
+
+  it("expands the picked days to inclusive Algeria bounds on the wire", async () => {
+    useSystemLogQuery({ filters: { fromDate: "2026-10-01", toDate: "2026-10-15" } })
+
+    const options = mocks.useQuery.mock.calls[0]?.[0] as { queryFn: () => Promise<unknown> }
+    await options.queryFn()
+
+    expect(mocks.systemLogList).toHaveBeenCalledWith({
+      actionType: undefined,
+      actorUserId: undefined,
+      entityType: undefined,
+      // 00:00 Africa/Algiers on the picked start day.…
+      fromDate: "2026-09-30T23:00:00.000Z",
+      // …and 23:59:59.999 on the picked end day, so the whole day is in range.
+      toDate: "2026-10-15T22:59:59.999Z",
+    })
+  })
+
+  it("sends no filter object when no filters are given", async () => {
+    useSystemLogQuery()
+
+    const options = mocks.useQuery.mock.calls[0]?.[0] as { queryFn: () => Promise<unknown> }
+    await options.queryFn()
+
+    expect(mocks.systemLogList).toHaveBeenCalledWith(undefined)
   })
 })

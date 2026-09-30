@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import type { Expense, ExpenseListFilters } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
-import { DatePicker, fromDatePickerValue, toDatePickerValue } from "@/components/ui/date-picker"
+import { DatePicker } from "@/components/ui/date-picker"
 import {
   Dialog,
   DialogContent,
@@ -232,16 +232,16 @@ export function ExpensesPage({ projects, employees, sellers, stockItems }: Expen
               <label className="flex min-w-[9rem] flex-col gap-1.5">
                 <span className="text-xs font-medium text-ink-3">{t("expenses.filters.from")}</span>
                 <DatePicker
-                  value={toDatePickerValue(fromDate)}
-                  onChange={(value) => setFromDate(fromDatePickerValue(value))}
+                  value={fromDate}
+                  onChange={setFromDate}
                 />
               </label>
 
               <label className="flex min-w-[9rem] flex-col gap-1.5">
                 <span className="text-xs font-medium text-ink-3">{t("expenses.filters.to")}</span>
                 <DatePicker
-                  value={toDatePickerValue(toDate)}
-                  onChange={(value) => setToDate(fromDatePickerValue(value))}
+                  value={toDate}
+                  onChange={setToDate}
                 />
               </label>
 

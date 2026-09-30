@@ -12,48 +12,51 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 
+const DISPLAY_DATE_FORMAT = "dd/MM/yyyy"
+const CANONICAL_DAY_FORMAT = "yyyy-MM-dd"
+
+const CANONICAL_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const DISPLAY_DAY_PATTERN = /^\d{2}\/\d{2}\/\d{4}$/
+
 /**
  * Format a Date as DD/MM/YYYY for Arabic RTL display.
  */
 function formatDateAr(date: Date): string {
-  return format(date, "dd/MM/yyyy")
+  return format(date, DISPLAY_DATE_FORMAT)
 }
 
 /**
- * Parse a DD/MM/YYYY string back to a Date.
+ * Parse a picker value into a Date.
+ *
+ * The app's canonical day is `yyyy-MM-dd` (what `getAlgeriaDateInputValue`
+ * produces and `toAlgeriaDayBoundaryIso` consumes), so that is the contract.
+ * The `dd/MM/yyyy` display format is still accepted defensively and normalized
+ * to the same day, so a stray caller cannot silently blank the field.
  */
-function parseDateAr(value: string): Date | undefined {
+function parsePickerValue(value: string): Date | undefined {
   if (!value) return undefined
-  const date = parse(value, "dd/MM/yyyy", new Date())
+  const pattern = CANONICAL_DAY_PATTERN.test(value)
+    ? CANONICAL_DAY_FORMAT
+    : DISPLAY_DAY_PATTERN.test(value)
+      ? DISPLAY_DATE_FORMAT
+      : null
+  if (!pattern) return undefined
+  const date = parse(value, pattern, new Date())
   return isValid(date) ? date : undefined
 }
 
 /**
- * Convert the app's canonical `yyyy-MM-dd` day (what `getAlgeriaDateInputValue`
- * and the API day boundaries use) into the `dd/MM/yyyy` value this picker
- * displays. Non-day input is passed through unchanged so an empty value still
- * renders the placeholder.
+ * The canonical `yyyy-MM-dd` day the app stores, sends to the API and feeds to
+ * `toAlgeriaDayBoundaryIso`. The picker always reports this format.
  */
-export function toDatePickerValue(day: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)
-  if (!match) return day
-  const [, year, month, dayOfMonth] = match
-  return `${dayOfMonth}/${month}/${year}`
-}
-
-/**
- * Convert this picker's `dd/MM/yyyy` value back into the app's canonical
- * `yyyy-MM-dd` day. Non-matching input is passed through unchanged.
- */
-export function fromDatePickerValue(value: string): string {
-  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value)
-  if (!match) return value
-  const [, dayOfMonth, month, year] = match
-  return `${year}-${month}-${dayOfMonth}`
+function toCanonicalDay(date: Date): string {
+  return format(date, CANONICAL_DAY_FORMAT)
 }
 
 type DatePickerProps = {
+  /** The app's canonical `yyyy-MM-dd` day (a `dd/MM/yyyy` string is normalized). */
   value: string
+  /** Receives the picked day as canonical `yyyy-MM-dd`. */
   onChange: (value: string) => void
   placeholder?: string
   disabled?: boolean
@@ -62,7 +65,10 @@ type DatePickerProps = {
   id?: string
 }
 
-/** Date picker with Arabic locale support. Uses DD/MM/YYYY format. */
+/**
+ * Date picker with Arabic locale support. Displays `dd/MM/yyyy`; its value
+ * contract is the app's canonical `yyyy-MM-dd` day in and out.
+ */
 /**
  * @description Component
  */
@@ -76,11 +82,11 @@ export function DatePicker({
   id,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
-  const selectedDate = value ? parseDateAr(value) : undefined
+  const selectedDate = value ? parsePickerValue(value) : undefined
 
   function handleSelect(date: Date | undefined) {
     if (date) {
-      onChange(formatDateAr(date))
+      onChange(toCanonicalDay(date))
     }
     setOpen(false)
   }
@@ -88,7 +94,13 @@ export function DatePicker({
   return (
     <div className={cn("relative", className)}>
       {/* Hidden input for form submission */}
-      {name && <input type="hidden" name={name} value={value} />}
+      {name && (
+        <input
+          type="hidden"
+          name={name}
+          value={selectedDate ? toCanonicalDay(selectedDate) : ""}
+        />
+      )}
 
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger

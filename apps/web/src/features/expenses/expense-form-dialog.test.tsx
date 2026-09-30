@@ -65,8 +65,8 @@ describe("ExpenseFormDialog", () => {
   it("prefills an existing expense's date in the picker's dd/MM/yyyy format", () => {
     renderDialog(EXPENSE)
 
-    // The adapter turns the stored instant's Algeria day (2026-10-01) into the
-    // value the shared DatePicker displays and round-trips.
+    // The picker displays the stored instant's Algeria day (2026-10-01) as
+    // dd/MM/yyyy; the DatePicker value contract is canonical yyyy-MM-dd.
     expect(screen.getByText("01/10/2026")).toBeTruthy()
   })
 

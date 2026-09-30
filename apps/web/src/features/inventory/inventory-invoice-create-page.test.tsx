@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { showErrorToast } from "@/lib/toast"
+import { getAlgeriaDateInputValue } from "@/lib/algeria-time"
 import { InventoryInvoiceCreatePage } from "./inventory-invoice-create-page"
 
 const mocks = vi.hoisted(() => ({
@@ -53,6 +54,7 @@ const PROJECTS = [
 
 const DEFINITIONS = [
   { id: "def-1", name: "مادة استهلاكية 1", itemType: "CONSUMABLE", unit: "قطعة", key: "consumable_1" },
+  { id: "def-asset", name: "أصل ثابت 1", itemType: "ASSET", unit: "قطعة", key: "asset_1" },
 ]
 
 /** Progressive disclosure section titles (from the ar resource). */
@@ -106,6 +108,17 @@ function nativeSelectWithOption(text: string): HTMLSelectElement {
   return select
 }
 
+/** Finds the LAST native <select> whose options contain the given text (line selects share options). */
+function lastNativeSelectWithOption(text: string): HTMLSelectElement {
+  const select = screen
+    .getAllByRole("combobox")
+    .filter((el): el is HTMLSelectElement => el instanceof HTMLSelectElement)
+    .filter((el) => Array.from(el.options).some((o) => o.textContent?.includes(text)))
+    .at(-1)
+  if (!select) throw new Error(`no native <select> with option "${text}"`)
+  return select
+}
+
 /**
  * Selects an option in a header CreateableSelect (Base UI).
  * Base UI only commits a click when the option is highlighted (activeIndex set
@@ -134,6 +147,27 @@ async function submitInvoice() {
   })
   const call = mocks.createInvoiceMutation.mutateAsync.mock.calls.at(-1)
   return call![0]
+}
+
+/** Opens the nth DatePicker on the page and selects the given canonical day. */
+function pickCalendarDate(isoDay: string, index = 0) {
+  const triggers = document.querySelectorAll<HTMLElement>('[data-slot="popover-trigger"]')
+  const trigger = triggers[index]
+  if (!trigger) throw new Error(`no date picker trigger #${index}`)
+  fireEvent.click(trigger)
+  const cell = document.querySelector(`[data-day="${isoDay}"]`)
+  if (!cell) throw new Error(`day ${isoDay} not found`)
+  fireEvent.click(cell.querySelector("button") ?? (cell as HTMLElement))
+}
+
+/**
+ * The page seeds its date fields with the UTC today; pick a different day in
+ * that same month so the assertion proves the pick changed the value, even on
+ * a run dated the 15th.
+ */
+function nonDefaultPickedDay() {
+  const today = new Date().toISOString().slice(0, 10)
+  return `${today.slice(0, 7)}-${today.endsWith("-15") ? "16" : "15"}`
 }
 
 afterEach(() => {
@@ -618,5 +652,48 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
     // Let the rejected mutateAsync settle through handleSubmit's catch.
     await act(async () => {})
     expect(onCreated).not.toHaveBeenCalled()
+  })
+})
+
+describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)", () => {
+  beforeEach(() => mockQueries())
+
+  it("submits the picked invoice date on the picked Algeria day", async () => {
+    // The page seeds the picker with the UTC today, so pick inside that month.
+    const pickedDay = nonDefaultPickedDay()
+    expect(pickedDay).not.toBe(new Date().toISOString().slice(0, 10))
+    renderPage()
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+
+    pickCalendarDate(pickedDay)
+
+    const payload = await submitInvoice()
+    // Convention-agnostic: the submitted instant must land on the picked
+    // Algeria day. The page converts via UTC today; #440 aligns it with the
+    // Algeria business day. Both land on the same Algeria day, so this holds
+    // either way and does not pin the UTC string.
+    expect(getAlgeriaDateInputValue(new Date(payload.invoiceDate))).toBe(pickedDay)
+  })
+
+  it("submits the picked asset purchase date on the picked Algeria day", async () => {
+    const pickedDay = nonDefaultPickedDay()
+    renderPage()
+
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fireEvent.click(screen.getByRole("button", { name: "إضافة أصل" }))
+    fireEvent.change(lastNativeSelectWithOption("أصل ثابت 1"), { target: { value: "def-asset" } })
+
+    // Picker #1 is the asset's purchase date; picker #0 is the invoice date.
+    pickCalendarDate(pickedDay, 1)
+
+    const payload = await submitInvoice()
+    const assetLine = (payload.entries as Array<{ kind: string; assets?: Array<{ purchaseDate: string | null }> }>).find(
+      (entry) => entry.kind === "ASSET",
+    )
+    const purchaseDate = assetLine?.assets?.[0]?.purchaseDate
+    expect(purchaseDate).toBeTruthy()
+    // See the invoice-date case: assert the Algeria day, not the UTC string,
+    // so #440 can change the conversion without rewriting this test.
+    expect(getAlgeriaDateInputValue(new Date(purchaseDate as string))).toBe(pickedDay)
   })
 })

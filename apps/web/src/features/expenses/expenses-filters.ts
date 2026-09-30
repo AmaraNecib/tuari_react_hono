@@ -1,6 +1,6 @@
 import type { ExpenseListFilters } from "@tuari/contracts"
 
-import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { resolveDayRangeBounds } from "@/lib/date-range"
 
 export type ExpenseFilterState = {
   projectId: string | null
@@ -29,10 +29,9 @@ export function buildExpenseFilters(state: ExpenseFilterState): ExpenseListFilte
   if (state.projectId) filters.projectId = state.projectId
   if (state.responsibleWorkerId) filters.responsibleWorkerId = state.responsibleWorkerId
 
-  const from = toAlgeriaDayBoundaryIso(state.fromDate, "start")
-  const to = toAlgeriaDayBoundaryIso(state.toDate, "end")
-  if (from) filters.fromDate = from
-  if (to) filters.toDate = to
+  const { fromDate, toDate } = resolveDayRangeBounds(state)
+  if (fromDate) filters.fromDate = fromDate
+  if (toDate) filters.toDate = toDate
 
   return filters
 }
