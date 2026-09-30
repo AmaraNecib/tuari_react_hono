@@ -3,13 +3,29 @@ import type { BackupFailure, BackupStatus } from "@tuari/contracts";
 import type { BackupRetentionPolicy } from "./backup.policy";
 
 /**
- * Narrow database port the backup service needs: one `exec` for
- * `VACUUM INTO`. Keeping it this small means the failure path is testable by
- * injecting a throwing `exec`, with no real disk-full/permission dependency.
+ * Result of one successful snapshot.
+ *
+ * `schemaVersion` is the live database's `PRAGMA user_version` (0 when unset)
+ * and `encrypted` records whether a SQLCipher key was applied. Both are stored
+ * in the snapshot marker so a later listing can tell a Tuari snapshot from an
+ * unrelated folder that merely happens to sit in the backups root.
  */
-export type BackupDatabase = {
-  exec: (sql: string) => unknown;
+export type BackupSnapshotResult = {
+  schemaVersion: number;
+  encrypted: boolean;
 };
+
+/**
+ * Take a consistent snapshot of the live database into `outputPath`.
+ *
+ * The default implementation (`backup.snapshot.ts`) runs `VACUUM INTO` on a
+ * dedicated connection inside a worker thread. The narrow port keeps the
+ * service testable without a real database: a test injects a function that
+ * resolves or rejects, and the copy itself is exercised separately.
+ */
+export type BackupSnapshotter = (
+  outputPath: string,
+) => Promise<BackupSnapshotResult>;
 
 /** Outcome of one `runDueBackup()` call. */
 export type BackupRunResult =
@@ -35,7 +51,8 @@ export type BackupService = {
 };
 
 export type BackupServiceDeps = {
-  db: BackupDatabase;
+  /** Snapshot writer; production passes the worker-backed implementation. */
+  snapshot: BackupSnapshotter;
   /** Root that holds the dated backup folders. */
   backupsRootPath: string;
   /** Retention policy; defaults to `BACKUP_RETENTION`. */

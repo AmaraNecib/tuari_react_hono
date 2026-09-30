@@ -52,9 +52,17 @@ export const previousDay = (date: Date): Date =>
  * when the newest existing folder is older than yesterday — first run, or the
  * first start on a day after at least one uncovered day. Comparing calendar
  * days (not elapsed hours) means at most one backup per day and no DST trap.
+ *
+ * A folder dated in the FUTURE is not credible (a laptop clock that was set
+ * years ahead, a hand-made directory). Treating it as "newer than yesterday"
+ * would suppress every backup until that date arrives, so it counts as no
+ * usable snapshot and a fresh one is taken now.
  */
-export const isBackupDue = (newestDate: string | null, now: Date): boolean =>
-  newestDate === null || newestDate < formatBackupDate(previousDay(now));
+export const isBackupDue = (newestDate: string | null, now: Date): boolean => {
+  if (newestDate === null) return true;
+  if (newestDate > formatBackupDate(now)) return true;
+  return newestDate < formatBackupDate(previousDay(now));
+};
 
 /** Keep the newest folder per bucket key, newest bucket first, up to `limit`. */
 const pickNewestPerBucket = (

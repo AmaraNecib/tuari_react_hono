@@ -126,27 +126,15 @@ describe("startup backup readiness gate", () => {
     closeServer = undefined;
   });
 
-  it("answers /health while the blocking snapshot is still only scheduled", async () => {
-    let scheduled: (() => void) | undefined;
-    let snapshotRan = false;
+  it("hands the run to the REAL scheduler after /health is served", async () => {
+    // No `schedule` override and no captured callback: this drives the default
+    // `setImmediate` scheduler through a real HTTP probe. The previous version
+    // captured the callback and invoked it by hand, which never exercised the
+    // scheduling it claimed to test.
+    const runDueBackup = vi.fn(resolveNotDue);
     const startup = createStartupBackup(
-      {
-        runDueBackup: () => {
-          snapshotRan = true;
-          const deadline = Date.now() + 200;
-          while (Date.now() < deadline) {
-            // A synchronous, event-loop-blocking snapshot — the `VACUUM INTO`
-            // shape that can outlast the desktop shell's 15s `/health` wait.
-          }
-          return resolveNotDue();
-        },
-      },
-      {
-        schedule: (run) => {
-          scheduled = run;
-        },
-        setTimer: () => ({}),
-      },
+      { runDueBackup },
+      { setTimer: () => ({}) },
     );
 
     const app = new Hono();
@@ -172,13 +160,10 @@ describe("startup backup readiness gate", () => {
 
     const response = await fetch(`http://127.0.0.1:${port}/health`);
 
-    // Readiness is not delayed: the health response landed while the blocking
-    // snapshot had not started yet. Only then is the run released.
     expect(response.status).toBe(200);
-    expect(snapshotRan).toBe(false);
     expect(startup.hasScheduled()).toBe(true);
-
-    scheduled?.();
-    expect(snapshotRan).toBe(true);
+    // Readiness was the gate; the run lands on a later event-loop turn (the
+    // real scheduler), not inside the handler that answered the probe.
+    await vi.waitFor(() => expect(runDueBackup).toHaveBeenCalledTimes(1));
   });
 });

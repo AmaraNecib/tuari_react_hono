@@ -20,6 +20,13 @@ WAL is active can produce a corrupt backup. The Rust shell still only starts the
 sidecar; no Rust change is needed because the backups root is derived from
 `APP_DB_PATH` and overridable with `APP_BACKUPS_ROOT`.
 
+`VACUUM INTO` is synchronous, so it does NOT run on the API's shared connection:
+it runs on a DEDICATED connection inside a worker thread (`backup.snapshot.ts`).
+That keeps the event loop answering (a timer keeps firing during the copy) and
+means the snapshot never interleaves with a transaction on the shared
+connection. The worker runs `PRAGMA integrity_check` on the copy before
+reporting success.
+
 ## Where backups live
 
 `backupsRootPath` resolves from `APP_BACKUPS_ROOT` when set, otherwise
@@ -36,13 +43,20 @@ in `docs/backups.md`.
 ## Layout of one backup
 
 ```
-<backupsRoot>/<YYYY-MM-DD>/tuari.sqlite   # full VACUUM INTO copy (encrypted when the live DB is)
+<backupsRoot>/<YYYY-MM-DD>/tuari.sqlite    # full VACUUM INTO copy (encrypted when the live DB is)
+<backupsRoot>/<YYYY-MM-DD>/snapshot.json   # marker: app + format + schema version
 ```
 
-The daily folder is written to a `.staging-*` sibling first, then renamed into
-place, so a crashed/failed run never leaves a dated folder that looks complete.
-Stale `.staging-*` entries from a crashed run are removed at the start of the
-next run.
+The marker is what makes a folder OURS. Listing, pruning and deletion all
+require it, so a backups root pointed at a shared directory can never have an
+unrelated same-named folder treated as a backup or deleted. The daily folder is
+written to a `.staging-*` sibling first, the marker is written while it is still
+staged, then it is renamed into place, so a crashed/failed run never leaves a
+dated folder that looks complete. Stale `.staging-*` entries from a crashed run
+are removed at the start of the next run. A plaintext snapshot must also start
+with the SQLite file magic; a non-empty file alone is not a usable database. If
+a folder already sits at the target name and is not one of ours, the run refuses
+to overwrite it and records the failure rather than deleting unrelated data.
 
 ## Scope cut
 
@@ -55,27 +69,32 @@ removed on the parent's instruction, not left half-wired.
 
 ## Trigger and clock
 
-`isBackupDue(newestDate, now)` is `newestDate === null || newestDate <
-formatBackupDate(previousDay(now))`. On a due run the target folder is
-`previousDay(now)` ("the period that just ended", the closed-yesterday /
+`isBackupDue(newestDate, now)` is `newestDate === null || newestDate > today ||
+newestDate < formatBackupDate(previousDay(now))`. On a due run the target folder
+is `previousDay(now)` ("the period that just ended", the closed-yesterday /
 opened-today flow). The calendar-day comparison means at most one backup per
-day; the clock is injected (`now`) so no test waits a day.
+day; the clock is injected (`now`) so no test waits a day. A folder dated in the
+FUTURE is not credible (a clock set ahead): it is excluded from the listing and
+forced due, so it can neither suppress backups until its date arrives nor hold
+the newest retention slot against the fresh copy.
 
 `index.ts` does **not** run the backup on the startup path. It scans for
 `/health` and hands control to `backup.scheduler.ts`, which defers the run to a
 later event-loop turn and gates it on the first ready probe (with a 30s fallback
-for an install nobody polls). `runDueBackup` is synchronous and never throws, so
-once it starts it cannot race an open transaction; the gate is what keeps it
-from delaying the `/health` response the Rust shell waits ~15s for. A large
-snapshot still blocks the event loop while it runs, but only *after* readiness
-has been proven.
+for an install nobody polls). The copy itself now runs off-thread, so it does
+not block the event loop; the gate is still what keeps it from competing with
+boot, and the run is still deferred so the readiness probe is answered first.
 
 ## Failure handling and status
 
 `runDueBackup()` never throws: on failure it removes the staging dir, records
 `lastFailure { at, reason }`, logs the reason (injectable `{ info, error }`
 logger, defaulting to `console.log` / `console.error`), and returns a `failed`
-result. The app keeps running.
+result. The app keeps running. If removing the staging dir ALSO fails, that
+cleanup error is logged and the ORIGINAL backup reason stays on the status and
+the returned result. A prune the filesystem refused is surfaced on
+`lastFailure` too, not swallowed in a log line — a disk that cannot be pruned is
+a real problem.
 
 Status is exposed by the `backupStatus` read RPC behind the same `m.queryAuth`
 admin gate every other read uses:
@@ -113,7 +132,9 @@ constant.
   `index.ts`, spread into `app-contract.ts`.
 - `apps/api/src/infrastructure/config/database-env.ts` — `resolveBackupsRootPath`
 - `apps/api/src/config/index.ts` — `backupsRootPath` on `AppConfig`
-- `apps/api/src/modules/backup/{backup.types,backup.policy,backup.service}.ts`
+- `apps/api/src/modules/backup/{backup.types,backup.policy,backup.service,backup.snapshot}.ts`
+- `apps/api/src/modules/backup/backup.snapshot.ts` — the worker-backed, dedicated-connection copy
+- `apps/api/tsup.config.ts` — silence the expected `empty-import-meta` warning for the CJS-only `import.meta.url` guard in `backup.snapshot.ts`
 - `apps/api/src/rpc/handlers/backup.ts`, wired in `rpc/router.ts`
 - `apps/api/src/app/dependencies.ts` — construct + expose `backupService`
 - `apps/api/src/index.ts` — detect `/health`, start the scheduler on listening
@@ -125,32 +146,48 @@ constant.
 ## Tests (all injected clock, no waiting)
 
 `backup.policy.test.ts`: date helpers, due/not-due boundaries (first-ever run,
-same-day re-start, multi-day gap, future), retention selection exactness and
-never-newest, ISO-week/month bucketing, default-policy count (14+8+6).
+same-day re-start, multi-day gap, future-dated snapshot), retention selection
+exactness and never-newest, ISO-week/month bucketing, default-policy count
+(14+8+6).
+
+`backup.snapshot.test.ts` (real temp dirs + real better-sqlite3, plain SQLite
+only): the worker produces an integrity-checked copy of a real database; a
+timer keeps firing while the copy runs (the event loop is not blocked); a bad
+source rejects; the keyed branch resolves the SQLCipher driver and reports a
+rejection (NOT an encryption test — the binding is not built, #410).
 
 `backup.service.test.ts` (real temp dirs + real better-sqlite3, plain SQLite
 only — the encrypted path is recorded as a skipped test):
-1. due backup is taken — dated folder has a readable `tuari.sqlite`;
+1. due backup is taken — dated folder has a readable copy AND a marker;
 2. a not-due start takes none;
 3. a snapshot taken while another connection holds a write is readable — open
    it, `PRAGMA integrity_check` = ok, committed row present, uncommitted absent;
 4. retention prunes exactly the policy set and never the newest;
-5. a failed backup (throwing `exec` with a previous backup present; and an
-   unwritable root) leaves previous backups intact and reports the reason;
+5. a failed backup (throwing snapshot with a previous backup present) leaves
+   previous backups byte-for-byte intact and reports the reason;
 6. a non-Error throw is reported as a string;
-7. a correctly named folder with no snapshot (or a zero-byte one) is not
-   counted, so it neither suppresses the run nor holds a retention slot;
-8. an unlistable backups root degrades to a recorded failure at construction
-   instead of aborting the boot, and a preflight cleanup throw is recorded
-   inside the guarded region (status never reads healthy after a failure);
-9. stale staging dirs are removed; status is seeded from disk; empty status when
-   there are no backups; default clock/logger seams work.
+7. a same-named folder we did not create is never counted, never overwritten,
+   and never deleted — the run records the refusal;
+8. a future-dated snapshot does not suppress the run;
+9. a folder with no marker, a malformed marker, an empty copy, a truncated
+   copy, a non-SQLite copy, or a copy that cannot be opened is not a snapshot;
+10. an encrypted marker is accepted without the plaintext file magic;
+11. the snapshot failure survives a staging-cleanup failure, and a refused
+    prune is surfaced on the status;
+12. an unlistable backups root degrades to a recorded failure at construction,
+    and a preflight cleanup throw is recorded inside the guarded region;
+13. stale staging dirs are removed; status is seeded from disk; empty status
+    when there are no backups; default clock/logger seams work.
+
+`pruneBackups` (direct): never deletes a markerless folder, records a non-Error
+prune failure as a string, and `listBackupDates` without a clock keeps future
+dates.
 
 `backup.scheduler.test.ts`: the run never fires synchronously with the default
 scheduler, is idempotent across health+fallback, defaults the fallback delay and
 unrefs the timer, logs a rejection without throwing, and an integration test
-asserts `/health` is answered while a blocking fake snapshot is still only
-scheduled.
+drives the REAL `setImmediate` scheduler through a real `/health` probe (no
+captured callback).
 
 No Playwright spec: this change ships no UI. The status RPC is the surface for
 a later UI; the contract + router wiring pin it.
@@ -159,6 +196,11 @@ a later UI; the contract + router wiring pin it.
 
 - New env var `APP_BACKUPS_ROOT` (optional). No schema/migration change.
 - SQLCipher is not built in this worktree, so encrypted-copy behavior is not
-  exercised; `VACUUM INTO` is the documented cross-mode primitive and produces
-  an encrypted output when the source is encrypted.
+exercised; `VACUUM INTO` is the documented cross-mode primitive and produces an
+encrypted output when the source is encrypted, and the worker runs the copy on a
+dedicated connection with the same key.
+- The worker body is an inline string so it loads from both the ESM dev server
+and the bundled CJS output without a second build artifact; the sole CJS-only
+`import.meta.url` reference is guarded by `__filename` (see
+`backup.snapshot.ts`).
 - Coverage include growth: `src/modules/backup/**` stays at 100%.

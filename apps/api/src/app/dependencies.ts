@@ -44,6 +44,7 @@ import { UpdateService } from "../modules/update/update.service";
 import { UpdateHistoryService } from "../modules/update/update-history.service";
 import { SqliteUpdateHistoryPort } from "../modules/update/adapters/sqlite-update-history.port";
 import { createBackupService } from "../modules/backup/backup.service";
+import { createWorkerSnapshotter } from "../modules/backup/backup.snapshot";
 import type { BackupService } from "../modules/backup/backup.types";
 
 /**
@@ -247,7 +248,10 @@ export async function createAppDependencies(
       updateService: new UpdateService(),
       updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase, connectionLock)),
       backupService: createBackupService({
-        db: sharedDatabase,
+        snapshot: createWorkerSnapshotter({
+          databasePath,
+          databaseKey: resolvedDatabaseKey,
+        }),
         backupsRootPath: config.backupsRootPath ?? appConfig.backupsRootPath,
         now: config.now,
       }),

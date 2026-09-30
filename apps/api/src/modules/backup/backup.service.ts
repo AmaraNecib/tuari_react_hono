@@ -2,13 +2,20 @@
  * Daily local backup service (#430).
  *
  * Runs at startup: when the newest backup is older than yesterday, it writes a
- * dated folder holding a full, consistent copy of the database, then prunes the
- * folder set according to `BACKUP_RETENTION`.
+ * dated folder holding a full, consistent copy of the database plus a
+ * `snapshot.json` marker, then prunes the folder set according to
+ * `BACKUP_RETENTION`.
  *
- * The copy goes through `VACUUM INTO` because a plain file copy while WAL is
- * active can produce a corrupt backup, which is worse than none. `VACUUM INTO`
- * is a single statement, is consistent while other writers are active, and
- * works the same under SQLCipher (the output is encrypted with the same key).
+ * The copy goes through `VACUUM INTO` (see `backup.snapshot.ts`) because a
+ * plain file copy while WAL is active can produce a corrupt backup, which is
+ * worse than none. `VACUUM INTO` is a single statement, is consistent while
+ * other writers are active, and works the same under SQLCipher (the output is
+ * encrypted with the same key).
+ *
+ * Every snapshot folder carries a `snapshot.json` marker naming the app and the
+ * snapshot format. The marker is what makes a folder OURS: listing, pruning and
+ * deletion all require it, so a backups root pointed at a shared directory can
+ * never have an unrelated same-named folder treated as a backup (or deleted).
  *
  * Attachments are NOT backed up in this version (deliberate MVP cut; see
  * docs/backups.md). A restored database may therefore reference attachment
@@ -20,16 +27,22 @@
  * only when complete.
  */
 import {
+  closeSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
+  readFileSync,
   readdirSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 
-import { escapeSqliteString } from "../../infrastructure/database/factory";
 import {
   BACKUP_DIRECTORY_NAME_PATTERN,
   BACKUP_RETENTION,
@@ -51,6 +64,31 @@ import type {
 /** Name of the database file inside a backup folder. */
 export const BACKUP_DB_FILE_NAME = "tuari.sqlite";
 
+/** Name of the marker that identifies a folder as a Tuari snapshot. */
+export const BACKUP_MARKER_FILE_NAME = "snapshot.json";
+
+const BACKUP_MARKER_APP = "tuari";
+const BACKUP_MARKER_FORMAT = 1;
+
+/** The 16-byte SQLite file magic every plaintext database starts with. */
+const SQLITE_HEADER_MAGIC = Buffer.from("SQLite format 3\u0000", "latin1");
+
+/**
+ * Marker stored inside every snapshot folder. The app + format pair is what a
+ * listing trusts; `schemaVersion`/`encrypted`/`takenAt` are informational (the
+ * schema version is the live DB's `PRAGMA user_version`, 0 when unset).
+ */
+const snapshotMarkerSchema = z.object({
+  app: z.literal(BACKUP_MARKER_APP),
+  format: z.literal(BACKUP_MARKER_FORMAT),
+  schemaVersion: z.number().int().nonnegative(),
+  databaseFile: z.literal(BACKUP_DB_FILE_NAME),
+  encrypted: z.boolean(),
+  takenAt: z.string().min(1),
+});
+
+type SnapshotMarker = z.infer<typeof snapshotMarkerSchema>;
+
 const isBackupDirectory = (name: string): boolean =>
   BACKUP_DIRECTORY_NAME_PATTERN.test(name);
 
@@ -67,13 +105,26 @@ const isDirectory = (path: string): boolean => {
   }
 };
 
-/**
- * True only for a dated folder that holds a usable snapshot: the database file
- * exists and is non-empty. A correctly named folder without `tuari.sqlite` (a
- * hand-made directory, or an interrupted run that never renamed its staging
- * folder into place) is NOT a backup — it must not suppress the next due copy
- * or hold a retention slot.
- */
+/** Parse a marker file's bytes; any malformed content means "not ours". */
+export const parseSnapshotMarker = (raw: string): SnapshotMarker | null => {
+  try {
+    const parsed = snapshotMarkerSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+};
+
+const readSnapshotMarker = (directory: string): SnapshotMarker | null => {
+  try {
+    return parseSnapshotMarker(
+      readFileSync(join(directory, BACKUP_MARKER_FILE_NAME), "utf8"),
+    );
+  } catch {
+    return null;
+  }
+};
+
 const hasSnapshotDatabase = (directory: string): boolean => {
   try {
     return statSync(join(directory, BACKUP_DB_FILE_NAME)).size > 0;
@@ -82,14 +133,60 @@ const hasSnapshotDatabase = (directory: string): boolean => {
   }
 };
 
-/** Existing complete dated backup folders, ascending (oldest first). */
-export const listBackupDates = (backupsRootPath: string): string[] => {
+/** Read the 16-byte file magic without loading the whole database. */
+const hasSqliteHeader = (databasePath: string): boolean => {
+  try {
+    const fd = openSync(databasePath, "r");
+    try {
+      const header = Buffer.alloc(SQLITE_HEADER_MAGIC.length);
+      const read = readSync(fd, header, 0, header.length, 0);
+      return read === header.length && header.equals(SQLITE_HEADER_MAGIC);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * True only for a dated folder this feature created: it must carry a valid
+ * marker AND a non-empty database file. A plaintext snapshot must also start
+ * with the SQLite magic, so a marker next to a junk/truncated file is rejected
+ * (a positive size alone does not make a usable database). An encrypted copy's
+ * header is SQLCipher's, so there the marker is the validity signal — and the
+ * worker ran `PRAGMA integrity_check` on the copy when it was written.
+ */
+export const isUsableSnapshot = (directory: string): boolean => {
+  if (!hasSnapshotDatabase(directory)) return false;
+  const marker = readSnapshotMarker(directory);
+  if (marker === null) return false;
+  if (!marker.encrypted && !hasSqliteHeader(join(directory, BACKUP_DB_FILE_NAME))) {
+    return false;
+  }
+  return true;
+};
+
+/**
+ * Existing complete dated backup folders, ascending (oldest first).
+ *
+ * `now` (when given) drops folders dated in the future: a snapshot written
+ * under a clock that was set ahead must not count as the newest (it would
+ * suppress every backup until its date arrived, and it would hold the newest
+ * retention slot against the fresh copy).
+ */
+export const listBackupDates = (
+  backupsRootPath: string,
+  now?: Date,
+): string[] => {
   if (!isDirectory(backupsRootPath)) return [];
 
+  const ceiling = now === undefined ? null : formatBackupDate(now);
   return readdirSync(backupsRootPath, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && isBackupDirectory(entry.name))
     .map((entry) => entry.name)
-    .filter((name) => hasSnapshotDatabase(join(backupsRootPath, name)))
+    .filter((name) => ceiling === null || name <= ceiling)
+    .filter((name) => isUsableSnapshot(join(backupsRootPath, name)))
     .sort();
 };
 
@@ -104,34 +201,47 @@ const removeStaleStagingEntries = (backupsRootPath: string): void => {
   }
 };
 
+export type BackupPruneResult = {
+  /** Folders that were actually removed, oldest-first. */
+  pruned: string[];
+  /** Folders the policy selected but the filesystem refused to remove. */
+  failures: BackupFailure[];
+};
+
 /**
  * Delete the folders the policy rejects, oldest-first.
  *
  * A dated folder is a full copy, so removing it can never orphan a file a
- * surviving snapshot needs.
+ * surviving snapshot needs. Only folders carrying a valid marker are touched:
+ * a name match alone is not enough to delete someone else's directory.
  */
 export const pruneBackups = (
   backupsRootPath: string,
   dates: readonly string[],
   policy: BackupRetentionPolicy,
   logger: BackupLogger,
-): string[] => {
+  at: Date,
+): BackupPruneResult => {
   const toPrune = selectBackupsToPrune(dates, policy);
-  if (toPrune.length === 0) return [];
-
   const pruned: string[] = [];
+  const failures: BackupFailure[] = [];
+
   for (const date of toPrune) {
     const directory = join(backupsRootPath, date);
+    // Defense in depth: the caller lists only usable snapshots, but deletion
+    // must never depend on a name having matched.
+    if (!isUsableSnapshot(directory)) continue;
+
     try {
       rmSync(directory, { recursive: true, force: true });
       pruned.push(date);
     } catch (error) {
-      /* v8 ignore start -- platform-dependent: a locked directory (Windows sharing violation) is kept, not deleted */
+      const reason = error instanceof Error ? error.message : String(error);
       logger.error(`[backup] could not prune ${directory}; keeping it`, error);
-      /* v8 ignore stop */
+      failures.push({ at: at.toISOString(), reason: `could not prune ${date}: ${reason}` });
     }
   }
-  return pruned;
+  return { pruned, failures };
 };
 
 /**
@@ -149,7 +259,7 @@ const seedStatusFromDisk = (
   lastFailure: BackupFailure | null;
 } => {
   try {
-    const dates = listBackupDates(backupsRootPath);
+    const dates = listBackupDates(backupsRootPath, at);
     if (dates.length === 0) {
       return { lastBackupPath: null, lastSuccessAt: null, lastFailure: null };
     }
@@ -205,7 +315,7 @@ export const createBackupService = (
       // service while `lastFailure` stays null and the status reads healthy.
       removeStaleStagingEntries(deps.backupsRootPath);
 
-      const existingDates = listBackupDates(deps.backupsRootPath);
+      const existingDates = listBackupDates(deps.backupsRootPath, runAt);
       const newest =
         existingDates.length > 0
           ? existingDates[existingDates.length - 1]!
@@ -215,17 +325,38 @@ export const createBackupService = (
       const targetDirectory = join(deps.backupsRootPath, date);
       mkdirSync(deps.backupsRootPath, { recursive: true });
 
-      // `isBackupDue` proved there is no usable snapshot for `date`, so any
-      // folder already there is not a backup (e.g. an empty hand-made one).
-      // Clear it: renaming onto an existing directory fails on Windows.
-      rmSync(targetDirectory, { recursive: true, force: true });
+      // A folder already sitting at the target name is NOT necessarily an
+      // incomplete snapshot of ours: the root can be a shared directory, and
+      // this feature only ever touches folders it created. Never delete it;
+      // renaming onto it is impossible, so fail loudly with the reason on the
+      // status instead of clobbering someone else's data.
+      if (existsSync(targetDirectory)) {
+        throw new Error(
+          `refusing to overwrite ${targetDirectory}: it is not a Tuari snapshot`,
+        );
+      }
 
       stagingDirectory = mkdtempSync(
         join(deps.backupsRootPath, BACKUP_STAGING_PREFIX),
       );
 
-      deps.db.exec(
-        `VACUUM INTO '${escapeSqliteString(join(stagingDirectory, BACKUP_DB_FILE_NAME))}'`,
+      const snapshot = await deps.snapshot(
+        join(stagingDirectory, BACKUP_DB_FILE_NAME),
+      );
+
+      // The marker is written while the copy is still in staging, so a dated
+      // folder that exists is always complete AND identified as ours.
+      const marker: SnapshotMarker = {
+        app: BACKUP_MARKER_APP,
+        format: BACKUP_MARKER_FORMAT,
+        schemaVersion: snapshot.schemaVersion,
+        databaseFile: BACKUP_DB_FILE_NAME,
+        encrypted: snapshot.encrypted,
+        takenAt: runAt.toISOString(),
+      };
+      writeFileSync(
+        join(stagingDirectory, BACKUP_MARKER_FILE_NAME),
+        JSON.stringify(marker),
       );
 
       renameSync(stagingDirectory, targetDirectory);
@@ -236,18 +367,36 @@ export const createBackupService = (
       lastFailure = null;
       logger.info(`[backup] created ${targetDirectory} for ${date}`);
 
-      pruneBackups(
+      const prune = pruneBackups(
         deps.backupsRootPath,
         [...existingDates, date],
         policy,
         logger,
+        runAt,
       );
+      // A prune the filesystem refused is a real problem (the disk is filling
+      // up), so it is surfaced on the SAME failure field the snapshot uses —
+      // it must not be swallowed by a log line only.
+      if (prune.failures.length > 0) lastFailure = prune.failures[0]!;
+
       return { status: "created", date, path: targetDirectory };
     } catch (error) {
-      if (stagingDirectory !== null) {
-        rmSync(stagingDirectory, { recursive: true, force: true });
-      }
       const reason = error instanceof Error ? error.message : String(error);
+
+      // Cleanup must never replace the real failure. If removing the staging
+      // dir also fails, that is logged, and the ORIGINAL reason stays on the
+      // status and the returned result.
+      if (stagingDirectory !== null) {
+        try {
+          rmSync(stagingDirectory, { recursive: true, force: true });
+        } catch (cleanupError) {
+          logger.error(
+            `[backup] could not remove staging ${stagingDirectory}`,
+            cleanupError,
+          );
+        }
+      }
+
       lastFailure = { at: runAt.toISOString(), reason };
       logger.error(`[backup] failed for ${date}: ${reason}`, error);
       return { status: "failed", date, reason };

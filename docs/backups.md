@@ -52,8 +52,18 @@ The database is copied with `VACUUM INTO`, not with a file copy. `VACUUM INTO`
 is a single statement that produces a consistent snapshot of a live database
 (even while the app is writing); copying the `.sqlite` file directly while WAL
 is active can produce a corrupt backup, which is worse than no backup. The copy
-is written to a staging folder first and renamed into place, so a crashed or
-failed run never leaves a half-written dated folder behind.
+runs on a dedicated connection in a worker thread, so it never blocks the API's
+event loop, and it is written to a staging folder first and renamed into place,
+so a crashed or failed run never leaves a half-written dated folder behind.
+
+Every snapshot folder also holds a small `snapshot.json` marker naming the app
+and the snapshot format. The marker is what identifies a folder as **ours**:
+listing, pruning and deletion only ever touch marked folders, so pointing
+`APP_BACKUPS_ROOT` at a shared directory can never have an unrelated same-named
+folder treated as a backup or removed. Before a folder is accepted as a
+snapshot, its copy must pass `PRAGMA integrity_check`, and a plaintext copy must
+start with the SQLite file magic; a non-empty file is not automatically a
+usable database.
 
 If the database is encrypted (SQLCipher), the backup is encrypted with the same
 key: the key in force at the moment the copy is taken.
@@ -82,10 +92,15 @@ usability depends on the key at the time it was written, not the current one.
 Keep the key that was in use when the backup was taken.
 
 Encryption and key rotation are **parked** in this version: the encrypted
-SQLCipher build is not proven yet (#410), so no rotation can happen today. If a
-rotation flow is added later, it must retain the key each snapshot was created
-with (or state the trade-off explicitly). Rotation handling is deliberately out
-of scope here, alongside the attachment coverage follow-up (#433).
+SQLCipher build is not proven yet (#410) and encryption at rest is not available
+(#435). Rotation itself exists elsewhere in the app (the database-key change
+flow), but it only re-encrypts the live database. It does **not** re-encrypt
+existing backups. A snapshot stays encrypted with the key that was in force when
+it was taken, so a snapshot taken **before** a rotation opens only with the
+pre-rotation key. Keep that key for as long as you may need to restore that
+snapshot, and note the rotation point when restoring an older one. Handling
+rotated keys for backups is deliberately out of scope here, alongside the
+attachment coverage follow-up (#433).
 
 ## Retention
 

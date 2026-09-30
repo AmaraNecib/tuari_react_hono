@@ -39,6 +39,13 @@ describe("isBackupDue", () => {
   it("is not due when the newest backup is newer than yesterday", () => {
     expect(isBackupDue("2026-01-15", now)).toBe(false);
   });
+
+  it("is due when the newest backup is dated in the future", () => {
+    // A clock accidentally set years ahead wrote a folder in the future; it
+    // must not suppress the backup until that date arrives.
+    expect(isBackupDue("2099-01-01", now)).toBe(true);
+    expect(isBackupDue("2026-01-16", now)).toBe(true);
+  });
 });
 
 describe("selectBackupsToPrune", () => {

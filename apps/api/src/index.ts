@@ -24,11 +24,12 @@ async function main() {
     authRateLimitMaxRequests: config.authRateLimitMaxRequests,
   });
 
-  // Daily local backup (#430): a synchronous `VACUUM INTO` can outlast the
-  // desktop's 15s `/health` wait, so it is NOT on the startup path and NOT run
-  // before `/health` has been answered. `createStartupBackup` defers it to a
-  // later turn, gated on the first ready probe. It never throws, so a failure
-  // only shows up on the `backupStatus` read and the app stays usable.
+  // Daily local backup (#430): the snapshot copies the whole database on a
+  // dedicated connection in a worker thread, so it never blocks the event loop
+  // or the readiness probe. It is still deferred to a later turn and gated on
+  // the first `/health` response so the copy never competes with boot.
+  // `createStartupBackup` owns that timing. It never throws, so a failure only
+  // shows up on the `backupStatus` read and the app stays usable.
   const startupBackup = createStartupBackup(appDependencies.backupService);
 
   const server = serve(

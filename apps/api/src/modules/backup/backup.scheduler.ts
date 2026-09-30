@@ -1,16 +1,14 @@
 /**
  * Startup scheduling for the daily backup (#430).
  *
- * The snapshot is a synchronous `VACUUM INTO`. On a large database it can take
- * longer than the desktop shell's 15s `/health` wait, so running it on the
- * synchronous startup path — or before the server has answered a probe — lets a
- * safety feature cause the exact boot failure it exists to prevent: the shell
- * times out, kills the sidecar, and the app never launches.
- *
- * So the run is deferred to a later event-loop turn and gated on readiness:
- * the first `/health` response proves the desktop can proceed, and a fallback
- * timer covers a deployment nobody probes. `runDueBackup` itself is left as the
- * single run path; this module only decides WHEN it is allowed to start.
+ * The snapshot copies the whole database, so it is real work that should not
+ * compete with the boot path. The copy itself now runs on a dedicated
+ * connection in a worker thread (`backup.snapshot.ts`) and does not block the
+ * event loop, but the run is still deferred to a later turn and gated on
+ * readiness: the first `/health` response proves the desktop can proceed, and a
+ * fallback timer covers a deployment nobody probes. `runDueBackup` itself is
+ * left as the single run path; this module only decides WHEN it is allowed to
+ * start.
  */
 import type { BackupService } from "./backup.types";
 
