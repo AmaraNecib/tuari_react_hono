@@ -69,7 +69,22 @@ export const ITEM_DEFINITION_OPTIONS_PAGE_SIZE = 20
 
 /** A stable query-key fingerprint for a usage. */
 function itemUsageKey(usage: InventoryItemUsage): string {
-  return usage.surface === "INVOICE_LINE" ? `INVOICE_LINE:${usage.kind}` : "STOCK_REFERENCE"
+  switch (usage.surface) {
+    case "INVOICE_LINE":
+      return `INVOICE_LINE:${usage.kind}`
+    case "STOCK_REFERENCE":
+      return "STOCK_REFERENCE"
+    case "OUTBOUND_PICK":
+      // The source is part of the rule, so it must be part of the cache key;
+      // without it two different sources would share one page chain.
+      return usage.source.locationType === "WAREHOUSE"
+        ? `OUTBOUND_PICK:WAREHOUSE:${usage.source.warehouseId}`
+        : `OUTBOUND_PICK:PROJECT:${usage.source.projectId}`
+    default: {
+      const exhaustive: never = usage
+      return exhaustive
+    }
+  }
 }
 
 /** Debounces a rapidly changing value (the picker's search box). */

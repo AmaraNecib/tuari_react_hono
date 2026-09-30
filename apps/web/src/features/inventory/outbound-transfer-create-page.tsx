@@ -4,12 +4,14 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import { outboundPickUsage } from "@tuari/contracts"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { showErrorToast } from "@/lib/toast"
 import { ItemListEditor, type ItemEditorRow } from "./item-list-editor"
-import { useCreateOutboundTransferMutation, useInventoryExternalCounterpartiesQuery, useInventoryWarehousesQuery, useInventoryProjectsQuery, useInventoryItemDefinitionsQuery } from "./inventory-hooks"
+import { useCreateOutboundTransferMutation, useInventoryExternalCounterpartiesQuery, useInventoryWarehousesQuery, useInventoryProjectsQuery } from "./inventory-hooks"
 
 /**
  * @description Component
@@ -19,7 +21,6 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
   const counterpartiesQuery = useInventoryExternalCounterpartiesQuery()
   const warehousesQuery = useInventoryWarehousesQuery()
   const projectsQuery = useInventoryProjectsQuery()
-  const itemsQuery = useInventoryItemDefinitionsQuery()
   const createTransferMutation = useCreateOutboundTransferMutation()
 
   const [fromType, setFromType] = useState<"WAREHOUSE" | "PROJECT">("WAREHOUSE")
@@ -33,30 +34,29 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
   const counterparties = counterpartiesQuery.data?.items ?? []
   const warehouses = warehousesQuery.data?.items ?? []
   const projects = projectsQuery.data?.items ?? []
-  const itemDefinitions = itemsQuery.data?.items ?? []
 
   const locations = fromType === "WAREHOUSE" ? warehouses : projects
 
+  // The offer rule needs a source: an item is offerable only when it holds
+  // stock where it is leaving from. No source chosen means no options yet.
+  const sourceUsage = fromId
+    ? outboundPickUsage(
+        fromType === "WAREHOUSE"
+          ? { locationType: "WAREHOUSE", warehouseId: fromId }
+          : { locationType: "PROJECT", projectId: fromId },
+      )
+    : null
+
   const addItem = () => {
-    setItems([...items, { itemId: "", quantity: "", unitPrice: "" } as const])
+    setItems([...items, { itemOption: null, quantity: "", unitPrice: "" }])
   }
 
   const removeItem = (index: number) => {
     setItems(items.filter((_, i) => i !== index))
   }
 
-  const updateItem = (index: number, field: string, value: string) => {
-    if (!items[index]) return
-    const newItems = [...items]
-    const currentItem = newItems[index]!
-    if (field === "itemId") {
-      newItems[index] = { itemId: value, quantity: currentItem.quantity, unitPrice: currentItem.unitPrice }
-    } else if (field === "quantity") {
-      newItems[index] = { itemId: currentItem.itemId, quantity: value, unitPrice: currentItem.unitPrice }
-    } else if (field === "unitPrice") {
-      newItems[index] = { itemId: currentItem.itemId, quantity: currentItem.quantity, unitPrice: value }
-    }
-    setItems(newItems)
+  const updateItem = (index: number, patch: Partial<ItemEditorRow>) => {
+    setItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)))
   }
 
   const handleSubmit = async () => {
@@ -73,12 +73,8 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
     // Validate items
     const validationErrors: string[] = []
     const validatedItems = items.map((item, idx) => {
-      if (!item.itemId) {
+      if (!item.itemOption) {
         validationErrors.push(`العنصر ${idx + 1}: يجب تحديد العنصر`)
-        return null
-      }
-      if (!itemDefinitions.some((def) => def.id === item.itemId)) {
-        validationErrors.push(`العنصر ${idx + 1}: العنصر المحدد غير موجود`)
         return null
       }
       const quantity = Number(item.quantity)
@@ -91,7 +87,7 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
         return null
       }
       return {
-        itemId: item.itemId,
+        itemId: item.itemOption.id,
         quantity,
         ...(item.unitPrice ? { unitPriceDzd: Number(item.unitPrice) } : {}),
       }
@@ -191,7 +187,11 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
       <Surface variant="panel">
         <PageSurfaceContent>
           <SurfaceHeader title="العناصر المحولة" />
-          <ItemListEditor items={items} itemDefinitions={itemDefinitions} onAdd={addItem} onRemove={removeItem} onUpdate={updateItem} />
+          {sourceUsage ? (
+            <ItemListEditor items={items} usage={sourceUsage} onAdd={addItem} onRemove={removeItem} onUpdate={updateItem} />
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("inventory.transfer.chooseSourceFirst")}</p>
+          )}
         </PageSurfaceContent>
       </Surface>
 
