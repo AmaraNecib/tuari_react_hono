@@ -42,5 +42,6 @@
 | `debts-mvp-web.test.tsx` "phrases the remaining receivable balance as owed to us" | preview showed `مستحق علينا` |
 | `debts-mvp-web.test.tsx` "states the overpayment phrase for an overpaid payable header" | header had no state phrase |
 | `debts-mvp-web.test.tsx` "keeps opening-entry movement deltas signed" | entry showed `5,000` |
+| `debts-mvp-web.test.tsx` "keeps a voided payment movement delta signed" | void amount showed `300` |
 | `report-builder.test.tsx` "does not stamp a direction phrase on the gross totals" | two `مستحق لنا` cards rendered |
 | `debt-utils.test.ts` "keeps a nonzero sub-dinar balance from rounding to a bare zero" | `formatDebtAmount(0.4)` was `"0"` |

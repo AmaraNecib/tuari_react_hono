@@ -4,8 +4,10 @@
 - branch: `fix/debt-terminology`
 - base SHA: `fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36`
 - reviewed HEAD: `2be128f042b30d5cde82488080cc7424d36842db`
-- fix SHA: `6159fbdcf2b626046a331200c7a5969ab2cd39cd`
-- fix commit: `fix(debts): phrase the consolidation remainder by direction, not sign`
+- fix SHAs: `6159fbdcf2b626046a331200c7a5969ab2cd39cd` (terminology fixes),
+  `d6f677d4aca85949924f540ec893b2c59b2fa657` (void-dialog signed delta)
+- fix commits: `fix(debts): phrase the consolidation remainder by direction, not sign`,
+  `fix(debts): keep the void-dialog movement delta signed`
 
 ## Findings and verdicts
 
@@ -14,6 +16,7 @@
 | 1 | High | `consolidation-dialog.tsx` preview derived the remaining-balance phrase from the sign of a side magnitude: a positive payable remainder read `مستحق لنا` (owed to us) instead of `مستحق علينا`. | Fixed — `getDebtBalanceDisplay({ currentBalance, direction: payableAccount.direction })`; receivable branch mirrors it. | 2 new tests failed before the fix (ran with source stashed) |
 | 2 | High | `consolidation-dialog.tsx` account headers showed direction label + absolute amount with no state phrase: an overpaid PAYABLE (`-50,000`) read "we owe 50,000". | Fixed — headers render `t(payableDisplay.phraseKey)` / `t(receivableDisplay.phraseKey)`. | New header test failed before the fix |
 | 3 | Medium | `consolidation-dialog.tsx` opening-entry deltas used `formatDebtAmount` (absolute) though the design says movement deltas stay signed. | Fixed — `formatDebtMoney(entry.signedAmountDzd)`. | New signed-delta test failed before the fix |
+| 3b | Medium | `void-entry-dialog.tsx` rendered the entry amount with `formatDebtAmount`, so a voided payment delta lost its sign. | Fixed — `formatDebtMoney(entry.signedAmountDzd)`; the OPENING case keeps its direction-aware state phrase. | New void test failed before the fix (source stashed) |
 | 4 | Medium | `dashboard-overview.tsx` + `report-builder.tsx` stamped `owedToUs` on `totalOutstandingDzd`/`overdueDzd`, which aggregate BOTH directions (gross exposure per `finance.service.ts`). No single direction phrase is true. | Fixed — removed the direction phrases; `totalSettledDzd` keeps `مسوّى`. | New report-builder test failed before the fix |
 | 5 | Low | `formatDebtAmount` rounded `0.4` DZD to `"0"`, pairing a direction phrase with a zero amount. | Fixed — `maximumFractionDigits: 2`. | New sub-dinar test failed before the fix |
 | 6 | Low | `getDebtBalanceMeta` used on movement sites (tone only). | Dismissed — design sanctions the sign-based movement tone; only `textClassName` is read. | n/a |
@@ -52,6 +55,7 @@ whether to fold it into this PR or open a follow-up issue.
 | `pnpm --filter @tuari/contracts test -- src/debt-helpers.test.ts --coverage` | 0 — 25 passed, 100% stmts/branch/funcs/lines |
 | `@tuari/api` company.unit + company.service + rpc/router (isolated, `--maxWorkers=2`) | 0 — 148 passed |
 | `@tuari/web` debt/report files (targeted) | 0 — 35 passed |
+| `@tuari/web` `debts-mvp-web.test.tsx` after the void-dialog fix | 0 — 16 passed |
 
 ## Could not verify
 
