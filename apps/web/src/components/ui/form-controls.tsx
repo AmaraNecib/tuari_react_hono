@@ -6,13 +6,23 @@ import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
+ * Placeholder ink shared by every control that renders a placeholder.
+ *
+ * Light keeps the muted token at 80% opacity. Dark overrides it to the
+ * full-opacity token: the /80 composite over the dark input surface lands at
+ * roughly 5:1, while the full token reaches roughly 7:1, so the override is
+ * what keeps a dark placeholder comfortably above AA.
+ */
+export const placeholderContrastClassName = "placeholder:text-muted-foreground/80 dark:placeholder:text-muted-foreground"
+
+/**
  * formControlClassName = component.
  */
 export const formControlClassName =
 /**
  * formTextareaClassName = cn(formControlClassName, "min-h-24 py-3") component.
  */
-  "w-full rounded-xl border border-border/75 bg-background/82 px-4 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.48)_inset] outline-none transition-[color,background-color,border-color,box-shadow] duration-200 placeholder:text-muted-foreground/80 focus-visible:border-primary/45 focus-visible:ring-4 focus-visible:ring-primary/10 aria-invalid:border-destructive/60 aria-invalid:ring-4 aria-invalid:ring-destructive/15 aria-invalid:animate-shake dark:bg-background dark:[color-scheme:dark] dark:shadow-none dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
+  "w-full rounded-xl border border-border/75 bg-background/82 px-4 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.48)_inset] outline-none transition-[color,background-color,border-color,box-shadow] duration-200 " + placeholderContrastClassName + " focus-visible:border-primary/45 focus-visible:ring-4 focus-visible:ring-primary/10 aria-invalid:border-destructive/60 aria-invalid:ring-4 aria-invalid:ring-destructive/15 aria-invalid:animate-shake dark:bg-background dark:[color-scheme:dark] dark:shadow-none dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
 
 export const formInputClassName = cn(formControlClassName, "h-10")
 export const formTextareaClassName = cn(formControlClassName, "min-h-24 py-3")
@@ -75,7 +85,7 @@ function CurrencyInput({
         {currencyLabel ?? "دج"}
       </span>
       <input
-        className={cn("h-10 min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/80", inputClassName)}
+        className={cn("h-10 min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none", placeholderContrastClassName, inputClassName)}
         dir="ltr"
         inputMode="decimal"
         {...props}

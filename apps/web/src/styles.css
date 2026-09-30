@@ -356,11 +356,21 @@
   input[type="password"]::-ms-reveal,
   input[type="password"]::-ms-clear { display: none; }
 
-  select, select option { color: var(--foreground); background-color: var(--background); }
+  /* Native <select>: theme the closed control, but leave the popup list to the
+     platform. Setting color/background-color on <option> overrides the OS
+     highlight's own text colour, so in dark mode a hovered option rendered
+     light text on the (light) system highlight. `color-scheme` is the
+     supported way to darken the native dropdown, so pin it per theme instead. */
+  select { color: var(--foreground); background-color: var(--background); color-scheme: light; }
   .dark select { color-scheme: dark; }
 
+  /* Selection must stay readable in BOTH themes. The old rule mixed with an
+     unconditional `white`, so dark mode got a near-white highlight under
+     light `--foreground` text (invisible). `--surface` is white in the light
+     theme and the dark card in the dark theme, so the exact light-mode
+     highlight is preserved while dark mode now follows its own tokens. */
   ::selection {
-    background: color-mix(in oklab, var(--primary) 24%, white);
+    background: color-mix(in oklab, var(--primary) 24%, var(--surface));
     color: var(--foreground);
   }
 

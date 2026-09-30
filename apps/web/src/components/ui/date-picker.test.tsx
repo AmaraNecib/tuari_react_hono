@@ -105,3 +105,48 @@ describe("DatePicker value contract", () => {
     expect(screen.getByRole("button").textContent).toContain("dd/mm/yyyy")
   })
 })
+
+describe("DatePicker month navigation is theme-aware", () => {
+  afterEach(cleanup)
+
+  it("paints the nav chevrons with the inherited ink token instead of the black default", () => {
+    render(<DatePicker value="2026-10-01" onChange={vi.fn()} />)
+    openPicker()
+
+    // react-day-picker ships a <polygon> with no fill, so the SVG default
+    // (black) painted it in both themes. `fill-current` makes every nav
+    // chevron follow the button's `text-ink-3` (light in dark mode).
+    const chevrons = document.querySelectorAll("nav svg")
+    expect(chevrons.length).toBeGreaterThan(0)
+    for (const chevron of chevrons) {
+      expect(chevron.getAttribute("class") ?? "").toContain("fill-current")
+    }
+  })
+
+  it("gives both nav buttons hover, focus and aria-disabled states", () => {
+    render(<DatePicker value="2026-10-01" onChange={vi.fn()} />)
+    openPicker()
+
+    const buttons = Array.from(document.querySelectorAll("nav button"))
+    // The picker renders a previous and a next button, so a fix applied to
+    // only one of the two class strings must fail here.
+    expect(buttons.length).toBe(2)
+    for (const button of buttons) {
+      const className = button.getAttribute("class") ?? ""
+      const tokens = className.split(/\s+/).filter(Boolean)
+      expect(className).toContain("text-ink-3")
+      expect(className).toContain("hover:text-ink")
+      // react-day-picker marks an unavailable month with `aria-disabled` and
+      // `tabIndex={-1}`; it never sets the native `disabled` attribute, so a
+      // `disabled:` variant would be dead CSS.
+      expect(className).toContain("aria-disabled:cursor-not-allowed")
+      expect(className).toContain("aria-disabled:opacity-40")
+      expect(className).toContain("aria-disabled:hover:bg-transparent")
+      expect(className).toContain("aria-disabled:hover:text-ink-3")
+      expect(className).toContain("focus-visible:outline-2")
+      expect(className).toContain("focus-visible:outline-primary")
+      expect(className).toContain("focus-visible:outline-offset-1")
+      expect(tokens.some((token) => token.startsWith("disabled:"))).toBe(false)
+    }
+  })
+})

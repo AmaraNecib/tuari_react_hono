@@ -23,7 +23,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
-import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
+import { Surface } from "@/features/shared/page-primitives"
+import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { formatAlgeriaDate, getAlgeriaDateInputValue } from "@/lib/algeria-time"
 
 import { ExpenseFormDialog, type ExpenseLookupOption } from "./expense-form-dialog"
@@ -142,14 +143,11 @@ export function ExpensesPage({ projects, employees, sellers, stockItems }: Expen
   }
 
   return (
-    <PageSurfaceContent>
-      <PageHeader
-        title={t("expenses.title")}
-        description={t("expenses.description")}
-        action={
-          <Button onClick={openCreate}>{t("expenses.actions.create")}</Button>
-        }
-      />
+    <RecordPageFrame
+      title={t("expenses.title")}
+      description={t("expenses.description")}
+      action={<Button onClick={openCreate}>{t("expenses.actions.create")}</Button>}
+    >
 
       {query.isPending ? (
         <Surface variant="panel" className="p-6">
@@ -418,6 +416,6 @@ export function ExpensesPage({ projects, employees, sellers, stockItems }: Expen
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PageSurfaceContent>
+    </RecordPageFrame>
   )
 }
