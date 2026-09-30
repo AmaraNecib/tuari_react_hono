@@ -19,7 +19,7 @@ import type {
 
 import { useSessionQuery } from "@/features/session/use-session-query"
 import { rpcClient } from "@/lib/orpc-client"
-import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { resolveDayRangeBounds } from "@/lib/date-range"
 import { workspaceQueryKeys } from "./workspace-keys"
 
 export type DemoWorkspace = WorkspaceSnapshot
@@ -256,18 +256,22 @@ export function useSystemLogQuery({
   return useWorkspaceScopedQuery({
     key: (userId) => [...workspaceQueryKeys.systemLog(userId), filters],
     enabled,
-    queryFn: async (): Promise<{ items: SystemLogEntry[] }> =>
-      rpcClient.systemLogList(
-        filters
-          ? {
-              actionType: filters.actionType,
-              actorUserId: filters.actorUserId,
-              entityType: filters.entityType,
-              fromDate: filters.fromDate ? toAlgeriaDayBoundaryIso(filters.fromDate, "start") : undefined,
-              toDate: filters.toDate ? toAlgeriaDayBoundaryIso(filters.toDate, "end") : undefined,
-            }
-          : undefined,
-      ),
+    queryFn: async (): Promise<{ items: SystemLogEntry[] }> => {
+      if (!filters) {
+        return rpcClient.systemLogList(undefined)
+      }
+
+      // Expand the picked days to inclusive Algeria bounds so a log written at
+      // 23:59 on the picked end date is inside the range.
+      const { fromDate, toDate } = resolveDayRangeBounds(filters)
+      return rpcClient.systemLogList({
+        actionType: filters.actionType,
+        actorUserId: filters.actorUserId,
+        entityType: filters.entityType,
+        fromDate,
+        toDate,
+      })
+    },
   })
 }
 

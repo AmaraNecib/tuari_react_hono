@@ -286,9 +286,14 @@ describe("debts MVP web UI", () => {
     expect(screen.getAllByText(/\+300/).length).toBeGreaterThan(0)
   })
 
-  it("submits the picked payment date as a canonical ISO instant on the employee finance tab (#428)", async () => {
-    const pickedDay = getAlgeriaDateInputValue()
+  it("submits a picked payment date (not the form default) as a canonical ISO instant on the employee finance tab (#428)", async () => {
+    // Pick a day that is NOT the form's default (today) so the assertion
+    // proves the pick changed the submitted value, instead of matching the
+    // default that was already in state (round-2 review finding).
+    const today = getAlgeriaDateInputValue()
+    const pickedDay = `${today.slice(0, 7)}-${today.endsWith("-15") ? "16" : "15"}`
     const expectedIso = toAlgeriaDayBoundaryIso(pickedDay, "start")
+    expect(expectedIso).not.toBe(toAlgeriaDayBoundaryIso(today, "start"))
 
     renderWithProviders(
       <EmployeeDetailsPage

@@ -133,3 +133,35 @@ invisible in the display layer:
   `pnpm check:unslop` — green.
 - Scoped v8 coverage over `date-picker.tsx` — 100% lines, ~85% branches.
 - Exact commands and results are in `.scratch/reviews/428/`.
+
+## Round 2 — range boundaries (batched review finding)
+
+The inversion made `DatePicker` emit canonical `yyyy-MM-dd`. That fixed the
+single-day consumers, but a bare day is *not* a range bound:
+`new Date("2026-10-15")` is UTC midnight, so a range that ends on a picked day
+dropped everything written after 00:00 on that day.
+
+Decision: a range's end day includes the **whole** day — end-of-day in
+Africa/Algiers (`…T22:59:59.999Z`) — and its start day is the day's start
+(`…T23:00:00.000Z` the previous UTC day). The rule lives once in
+`lib/date-range.ts` (`resolveDayRangeBounds` / `isInstantWithinDayRange`), and
+every range consumer uses it.
+
+| Consumer | Before | After |
+| --- | --- | --- |
+| `audit-log-page` (client filter) | `new Date(endDate)` (UTC midnight → drops the day) | `isInstantWithinDayRange` |
+| `workspace-queries` system log (wire) | already `toAlgeriaDayBoundaryIso(…, "end")` | same rule via `resolveDayRangeBounds` |
+| `hooks/use-report-queries` (wire) | bare day, rejected by the datetime contract | `resolveDayRangeBounds` |
+| `features/expenses/expenses-filters` (wire) | already end-of-day | same rule via `resolveDayRangeBounds` |
+| `DateRangeFilter` | pass-through days | doc states consumers must expand to bounds |
+
+The other range consumer audited is the API side: `resolveReportWindow`
+(`<= endMs`) and `listSystemLog` (`compareTimestampsDesc`) both treat the upper
+bound as inclusive, and the client now hands them end-of-day instants.
+`debts-mvp-web.test.tsx` now picks a day that is **not** the form default, so
+the assertion proves the pick changed the submitted value.
+
+Round-2 verification: `pnpm --filter @tuari/web test --maxWorkers=2` — 81 files,
+672 tests green; root `pnpm typecheck`, `pnpm lint`, `pnpm check:unslop` green;
+scoped v8 coverage: `date-range.ts` 100% (stmts/branches/funcs/lines),
+`expenses-filters.ts` 100%.

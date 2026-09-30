@@ -159,6 +159,11 @@ export function AppShellFilterShell({ children, className }: { children: ReactNo
  * Pairs two date inputs (from / to) on a single row so they always stay
  * together and never split across lines.  Labels use i18n keys for Arabic
  * RTL display: "من تاريخ" and "إلى تاريخ".
+ *
+ * Emits canonical `yyyy-MM-dd` days only. Every consumer must expand them to
+ * inclusive day bounds with `resolveDayRangeBounds` before querying, so the
+ * picked end day includes everything written on it (a bare day parses as UTC
+ * midnight and would drop the rest of that day).
  */
 /**
  * @description Component

@@ -8,6 +8,7 @@ import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
 import { AppShellFilterShell, DateRangeFilter, usePaginatedRows } from "@/features/shared/table-primitives";
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls";
+import { isInstantWithinDayRange } from "@/lib/date-range";
 import { rpcClient } from "@/lib/orpc-client";
 
 interface AuditLog {
@@ -77,12 +78,16 @@ export function AuditLogPage() {
       result = result.filter((log: AuditLog) => log.action === action);
     }
 
-    if (startDate) {
-      result = result.filter((log: AuditLog) => new Date(log.timestamp) >= new Date(startDate));
-    }
-
-    if (endDate) {
-      result = result.filter((log: AuditLog) => new Date(log.timestamp) <= new Date(endDate));
+    if (startDate || endDate) {
+      // Expand the picked days to inclusive Algeria bounds so a log written at
+      // 23:59 on the picked end date is inside the range, not dropped by a
+      // bare `yyyy-MM-dd` parsing as UTC midnight.
+      result = result.filter((log: AuditLog) =>
+        isInstantWithinDayRange(log.timestamp, {
+          fromDate: startDate || undefined,
+          toDate: endDate || undefined,
+        }),
+      );
     }
 
     return result.sort((a: AuditLog, b: AuditLog) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());

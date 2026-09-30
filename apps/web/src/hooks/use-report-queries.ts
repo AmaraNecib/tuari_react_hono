@@ -4,21 +4,35 @@
 import { useQuery } from "@tanstack/react-query";
 import type { DebtReport, InventoryReport, MovementReport, Report, ReportType } from "@tuari/contracts";
 import { rpcClient } from "@/lib/orpc-client";
+import { resolveDayRangeBounds } from "@/lib/date-range";
 
 interface GenerateReportInput {
   type: ReportType;
+  /** Canonical `yyyy-MM-dd` day from the date pickers; expanded to inclusive bounds below. */
   startDate?: string;
+  /** Canonical `yyyy-MM-dd` day from the date pickers; expanded to inclusive bounds below. */
   endDate?: string;
 }
 
 /**
- * useReportQuery(input component.
+ * @description Component
  */
 export function useReportQuery(input: GenerateReportInput, enabled = true) {
+  // The wire contract wants ISO-8601 instants, so expand the picked days to
+  // start/end-of-day bounds here (the wire seam) rather than at every caller.
+  const { fromDate, toDate } = resolveDayRangeBounds({
+    fromDate: input.startDate,
+    toDate: input.endDate,
+  })
+
   return useQuery({
     queryKey: ["reports", input.type, input.startDate, input.endDate],
     queryFn: async () => {
-      const result = await rpcClient.reportsGenerate(input);
+      const result = await rpcClient.reportsGenerate({
+        type: input.type,
+        startDate: fromDate,
+        endDate: toDate,
+      });
       if (!result) throw new Error("Failed to generate report");
       return result;
     },
