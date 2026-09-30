@@ -73,3 +73,33 @@ one caller (deleting it would only move the rule back inline); the lower-level
 in-memory); and the schema test that inserts a duplicate row directly is
 deliberately crossing the service interface to pin the DB constraint, which is
 the interface's guarantee.
+
+## Review addendum (`ed4ac123`, adversarial review)
+
+The aggressive local review on the finished diff re-ran the same three lenses
+along the money-direction axis. Outcome:
+
+- **Finding 1 above is now fixed, not deferred.**
+  `debt-create-page.tsx` derives `impliedDirection` from
+  `getLockedDirectionForCategory(value)`; the hand-copied map is gone, so the
+  one-derivation rule holds across server and client.
+- **A deeper version of Finding 3 was found on the employee writer.**
+  `createEmployeeDebtEntry` returned an explicit `direction` before consulting
+  the reason category or the entry type, so an ADVANCE could land PAYABLE and an
+  OPENING with `SALARY_ADVANCE` was stored PAYABLE. The category now flows into
+  `resolveEmployeeEntryDirection`; a contradicting direction is rejected at the
+  service and at the wire; ADVANCE is locked to RECEIVABLE. This was a real
+  money-direction inversion, not just a shallow interface.
+- **Finding 3 remains deferred.** `getEmployeeDebtAccount` still returns
+  `accounts[0]` over a two-ledger worker. It has no live caller
+  (`EmployeeDebtPanel` is unreferenced; `DebtCasesPanel` takes the list), and
+  fixing it changes the `employeeDebtAccountGet` contract shape — a D9/UI
+  decision, proposed as a parent follow-up.
+- **Findings 2 and 4 remain deferred** (purchase-invariant owner; multi-source
+  outbound debt multiplication) — both bigger than a sign fix.
+- **Finding 5 remains deferred** to the terminology/PRD work.
+
+No new shallow additions: the shared mismatch message constants are plain
+domain copy in `@tuari/contracts`; the extended `resolveEmployeeEntryDirection`
+stays a named domain rule with one caller.
+
