@@ -26,6 +26,8 @@ import {
   type ManagerAssignmentEndInput,
   type RoleCreateInput,
   type RoleUpdateInput,
+  computeProposedSalaryAmount,
+  roundMoneyToCents,
 } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
@@ -619,10 +621,10 @@ export class WorkforceService {
       const audit = this.mutation.createMutationAuditContext(auditContext);
 
       const employee = requireEmployee(this.repository, input.employeeId);
-      const expectedAmount = employee.salaryAmountDzd ?? null;
+      const salaryAmount = employee.salaryAmountDzd ?? null;
       const periodType = employee.salaryPeriod ?? null;
 
-      if (expectedAmount === null || periodType === null) {
+      if (salaryAmount === null || periodType === null) {
         throw new CompanyError(
           "BUSINESS_RULE",
           "يجب تحديد أجر العامل الحالي قبل تسجيل دفعة راتب.",
@@ -635,18 +637,79 @@ export class WorkforceService {
         );
       }
 
-      if (!Number.isFinite(input.actualAmountDzd) || input.actualAmountDzd <= 0) {
+      const { days, projectSplits } = input;
+
+      if (!Number.isSafeInteger(days) || days <= 0) {
+        throw new CompanyError("VALIDATION", "يجب إدخال عدد أيام صحيح أكبر من صفر.", [
+          { field: "days", message: "يجب إدخال عدد أيام صحيح أكبر من صفر." },
+        ]);
+      }
+
+      // The proposed amount is prorated (monthly ÷ 30, daily × days); the
+      // caller may override it, and the override is what gets stored.
+      const proposedAmount = computeProposedSalaryAmount({
+        periodType,
+        salaryAmountDzd: salaryAmount,
+        days,
+      });
+      // The override is stored at the currency's precision: a value with more
+      // than two decimals would make the stored amount disagree with the
+      // whole-cent shares the split display attributes.
+      const actualAmount = roundMoneyToCents(input.actualAmountDzd ?? proposedAmount);
+
+      if (!Number.isFinite(actualAmount) || actualAmount <= 0) {
         throw new CompanyError("VALIDATION", "يجب إدخال مبلغ راتب أكبر من صفر.", [
           { field: "actualAmountDzd", message: "يجب إدخال مبلغ راتب أكبر من صفر." },
         ]);
+      }
+
+      const splitProjectIds = new Set<string>();
+      let allocatedDays = 0;
+
+      for (const split of projectSplits) {
+        if (!Number.isSafeInteger(split.days) || split.days <= 0) {
+          throw new CompanyError("VALIDATION", "يجب إدخال عدد أيام صحيح أكبر من صفر لكل مشروع.", [
+            { field: "projectSplits", message: "يجب إدخال عدد أيام صحيح أكبر من صفر لكل مشروع." },
+          ]);
+        }
+
+        if (splitProjectIds.has(split.projectId)) {
+          throw new CompanyError("VALIDATION", "لا يمكن تكرار المشروع في توزيع الأجر.", [
+            { field: "projectSplits", message: "لا يمكن تكرار المشروع في توزيع الأجر." },
+          ]);
+        }
+
+        if (!this.operationsRepo.getProjectById(split.projectId)) {
+          throw new CompanyError("NOT_FOUND", "تعذر العثور على المشروع المطلوب.", [
+            { field: "projectSplits", message: "تعذر العثور على المشروع المطلوب." },
+          ]);
+        }
+
+        splitProjectIds.add(split.projectId);
+        allocatedDays += split.days;
+      }
+
+      if (allocatedDays > days) {
+        throw new CompanyError(
+          "BUSINESS_RULE",
+          "مجموع أيام توزيع المشاريع يتجاوز عدد أيام الدفعة. الأيام غير الموزعة تبقى غير مخصصة.",
+          [
+            {
+              field: "projectSplits",
+              message: "مجموع أيام توزيع المشاريع يتجاوز عدد أيام الدفعة.",
+            },
+          ],
+        );
       }
 
       const payment = this.repository.createSalaryPayment(
         {
           employeeId: input.employeeId,
           periodType,
-          expectedAmountDzd: expectedAmount,
-          actualAmountDzd: input.actualAmountDzd,
+          days,
+          expectedAmountDzd: proposedAmount,
+          actualAmountDzd: actualAmount,
+          projectSplits,
           paymentDate: normalizeAlgeriaTimestamp(input.paymentDate),
           note: normalizeText(input.note),
         },

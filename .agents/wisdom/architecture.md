@@ -502,3 +502,87 @@ shares a bound with N input values, the aggregate of those values needs its own
 explicit check. Prefer the shared contract schema (here
 `nonNegativePaymentAmountSchema`) at both the wire gate and the module seam, the
 #289 pattern, so the two cannot drift.
+## Reset effects must key on every input their defaults depend on, and track edits per field (🟠 Major)
+
+On #412 round 3, `AddSalaryPaymentDialog`'s reset effect guarded on the employee
+id alone. A workspace refresh that changed the worker's wage period
+(monthly→daily) while the dialog was open re-ran the effect but returned early,
+leaving an untouched days field at 30 while the daily proposal used the new
+wage; accepting it recorded 30 days of daily pay. The employee-details quick
+form had the mirror gap: it re-applied the default but also reset touched fields
+and collapsed the form on any wage refresh.
+
+**Always**: an "initialize this form for this record" effect must key on
+*everything the default derives from* — the entity id AND the fields that feed
+the default — not the entity id alone. Pair it with per-field touched flags so a
+same-entity refresh re-applies defaults to untouched fields but never clobbers
+an operator edit, and split "different entity" (full reset) from "same entity
+refreshed" (partial re-derive). A shared default helper
+(`defaultSalaryPaymentDays`) is not enough if the effect that applies it is keyed
+wrongly.
+
+**Testing**: re-query the live DOM after the simulated refresh, don't hold the
+pre-refresh node. A reset that unmounts/collapses the form leaves the detached
+node's old value intact, so a captured-reference assertion passes on the buggy
+code; asserting the form is still open (its submit button present) plus a fresh
+`getAllByRole` query is what actually catches the clobber.
+
+## A shared calendar day must be attributed once: half-open windows plus per-key de-dup (🟠 Major)
+
+On #412 round 4, `deriveSalaryProjectDays` built each project's day set with an
+inclusive loop (`for ms = start; ms <= end`). Moving a worker from project A to
+project B ends one assignment and starts the other at the same instant, so that
+calendar day was counted for both windows. For a 30-day March payment the scaled
+split then summed to 31 days, which the dialog rejected as over-allocated until
+someone corrected it by hand. Note the shape of the bug: the per-project sets
+were individually correct; the failure was a *coverage total larger than the
+period*, which inflated the scale factor applied to every line.
+
+**Always**: when several windows can cover the same key (day, slot, seat),
+decide the boundary semantics explicitly AND de-dup the keys. Prefer half-open
+`[start, end)`: the exclusive end day is the day after the instant the window
+closes, so an assignment ending at the start of day D leaves D to the successor,
+while an end during or at the end of day D still covers D. Claim each key at
+most once in a deterministic order (project-id here) for any residual overlap.
+Then assert the invariant directly — "windows covering the whole period sum to
+the paid days, never more" — with a dedicated handoff test and an overlap test;
+a full-period test with disjoint windows passes on the inclusive code and cannot
+catch it.
+
+## Dialogs snapshot identity, not derived data; reset a mutation's terminal state per draft (🟠 Major)
+
+Two related round-4 #412 findings. (1) `SalariesSection` copied the worker's
+wage, period, and assignment windows into state when the dialog opened, so a
+workspace refresh after a wage change left the open dialog proposing the old
+amount while the server would compute from the new wage. (2) The employee quick
+form's create-payment mutation kept `isSuccess` after a successful save, so
+reopening the form and then receiving a workspace refresh re-ran the success
+effect, wiping the new draft and collapsing the form.
+
+**Always**: a dialog opened from a list stores only the target's identity in
+state; read the wage, period, windows, and everything else from the live query
+data on each render (the dialog's own prop-change reset handles re-derivation).
+And a mutation's terminal flag (`isSuccess`/`isError`) is per-mutation-instance,
+not per-draft — call `reset()` when a new draft is opened (or guard the success
+effect with a ref), otherwise a later refresh replays an old success. Test both
+by mutating the mocked mutation state and re-rendering, and confirm the
+assertion fails on the pre-fix component.
+
+## Money split shares must reconcile: allocate across lines, never per line (🟠 Major)
+
+On #412 round 5, `allocateSalaryAmountByDays` prorated each split line on its own
+and rounded to two decimals. A 100 DZD payment over three one-day lines produced
+33.33 three times — 99.99, visibly short of the amount paid. This is the money
+twin of the day-split reconciliation bug: per-line rounding cannot make the lines
+sum to the total they were derived from.
+
+**Always**: when a paid total is distributed across lines, compute every line's
+exact share, floor it to the smallest money unit, then hand the leftover units to
+the lines with the largest fractional part (largest-remainder/Hamilton) — the
+same shape `deriveSalaryProjectDays` already uses for whole days. The shares then
+sum to the rounded attributed total by construction (the whole amount when the
+split covers every paid day), and ties break deterministically by line order.
+Floor-then-distribute, not round-each: rounding each line can overshoot the total
+as easily as undershoot. Test the divide-evenly case (100 into 3) and a case
+where the leftover unit lands on a different line; a 50/50 split never rounds, so
+it passes on the buggy code and proves nothing.

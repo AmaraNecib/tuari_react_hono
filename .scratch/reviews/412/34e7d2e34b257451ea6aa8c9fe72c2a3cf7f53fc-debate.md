@@ -1,0 +1,202 @@
+# #412 — debate (critic + defender), High-assurance financial calculation
+
+- mode: remote
+- tier: High-assurance (monthly day rate, proration, per-project money split)
+- base (merge-base of `develop` and HEAD): `199798ba3d8300ab1a67da1d5591b2d4e5fd9aa8`
+- head debated: `246f54177a94f7f72125ddf2575dc9f4f52a4c5c`
+- reviewed source SHA after the debate fixes: `e0da5e20f72f9a78cc12a4161c7d51243894b2c4`
+  (`25094b0` is the date-picker code fix, `0ff3183` adds the durable
+  `.agents/wisdom/testing.md` entry, and `e0da5e2` is the parent-decided
+  shared `defaultSalaryPaymentDays` change; the reviewed source is `e0da5e2`)
+- agents: one harsh critic, one charitable defender (parallel, read-only, fresh context)
+- artifact named for the source commit; the only commit after it is an evidence
+  commit under `.scratch/reviews/412/`, so the guard's docs-only SHA exemption
+  applies (see "Evidence commit" at the end).
+
+This debate was the missing High-assurance gate the hosted review flagged
+(PR #420, 00:11Z): the evidence recorded the debate as skipped. It was run
+against the diff and full files, not the PR text.
+
+## Verdict
+
+The money math survived adversarial review. Both agents independently agreed the
+proration, the 2-dp rounding, the floor + largest-remainder split, the
+unallocated remainder, the assignment-window semantics, and the legacy backfill
+are correct; the defender could not break them and the critic could not construct
+an over-allocation for coverage <= 100% or an off-by-one at any month length.
+
+The exposed point was **not** the arithmetic — it was the web date flow. The
+salary payment dialog passed its canonical `yyyy-MM-dd` state into the shared
+`DatePicker`, whose contract is `dd/MM/yyyy`. Picking a date nulled the pay
+period, which silently replaced an untouched derived split with an empty one and
+made the submitted `paymentDate` an invalid string (the server then stored
+`now()`). The defender called this "the implementation's one genuinely exposed
+point"; the critic ranked it Blocker S8. It is fixed in `25094b0`.
+
+## Resolution of the critic's ranked findings
+
+| # | Finding (severity) | In scope? | Decision | Evidence |
+| --- | --- | --- | --- | --- |
+| 1 | Salary dialog: canonical date vs `dd/MM/yyyy` picker erases an untouched split and drops the submitted date (S8) | Yes | **Fixed** | `add-salary-payment-dialog.tsx` now uses `toDatePickerValue`/`fromDatePickerValue`; new regression test asserts the split survives a pick and submits `toAlgeriaDayBoundaryIso("2026-03-15")`. Also confirmed by the hosted review P1. |
+| 2 | Employee-details quick form: same date mismatch (S7) | Yes (same feature, same diff) | **Fixed** | `employee-details-page.tsx` same bridge; new test asserts the picked day is submitted as the canonical boundary. |
+| 3 | DAILY default days inconsistent (dialog 30, quick form 1) (S6) | Yes | **Fixed per parent decision in `e0da5e2`** | Added `defaultSalaryPaymentDays(periodType)` (30 for MONTHLY/WEEKLY, 1 for DAILY) in `salary-payment-form.ts`, used by both surfaces; tested per period and at both call sites (daily proposes one day's wage). |
+| 4 | Overlapping assignments make the derived default exceed `days` (S5) | Yes, by design | **Dismissed as designed** (surfaced, not hidden) | `deriveSalaryProjectDays` intentionally lets coverage > 100% exceed `days`; the dialog shows `salaries.overAllocatedDays` and blocks submit, and the service rejects `allocatedDays > days`. The design record states this is a hand-edit case. Kept as-is. |
+| 4b | `addSplit` pre-fills `1` while over-allocated (nit inside #4) | Yes | **Dismissed** | Submit is already blocked; the added line is an editable default. No money can be saved in the over-allocated state. |
+| 5 | Header/design claim `deriveSalaryProjectDays` is shared with the API (S4) | Yes | **Fixed** | Only `computeProposedSalaryAmount` is shared; the API takes `projectSplits` as an explicit payload. Header and `412-design.md` corrected. |
+| 6 | `expectedAmountDzd` meaning change leaks into the details-page total (S3) | Accepted meaning change | **Dismissed / documented** | The parent decided legacy rows keep stored amounts and are never recomputed; the label is a generic "إجمالي المتوقع" (total expected) sum, not a month KPI. Recorded here and in the design risks. |
+| 7 | Sum invariant is service-only; no `UNIQUE(payment_id, project_id)`, no `days` upper bound (S3) | Low risk | **Deferred** — needs parent decision | The service is the only writer and rejects duplicates/over-allocation; the schema comment documents the invariant. A `UNIQUE` index is a schema change, out of this round. See Handoff. |
+| 8 | `mapEmployeeSalaryPayment` fabricates `projectSplits: []` (suspicion) | No | **Dismissed with evidence** | `mapEmployeeSalaryPayment` has no production caller (`grep` finds only `company.repository-mappers.test.ts` and `schema-migrations.test.ts`); the real read path is `toSalaryPayment` in `sqlite-company.repository.ts`, which hydrates splits via `groupSalaryPaymentSplits`. |
+| 9 | Falsy `endDate: ""` treated as open-ended (suspicion) | No | **Dismissed** | An empty end date most naturally means "no end", the same as `null`; that is the open-ended semantic the field already carries. No producer of `""` was found. |
+| 10 | Override `actualAmountDzd` is not rounded/bounded (S3) | Minor | **Dismissed as minor, noted** | Proposal is 2-dp; an RPC caller could store > 2 dp. Not reachable through the standard form flow; recorded as a residual. |
+| — | `roundAmount` / `/30` across 28/29/30/31-day months | — | **Verified correct** | Divisor is the constant 30 by spec; February is deliberately not special-cased. Pinned by contract tests. |
+| — | Largest-remainder never negative, sums exactly when fully covered | — | **Verified correct** | No subtraction in the function; `remaining = round(Sum exact) - Sum floor` with `0 <= remaining <= n`. |
+
+## Critic — key findings (full report retained in the subagent artifact)
+
+- **Correct (verified good):** `/30` proration with `roundAmount` on every branch;
+  largest-remainder soundness proof (no negative lines, exact full-coverage sum,
+  every line within one day of its exact share, float-noise self-correction);
+  clamping/dedupe/open-ended/inverted-window handling; Algeria `+1h` day-key
+  arithmetic; remainder non-negative in storage (two independent gates);
+  web/API amount parity via the shared helper; atomic payment+split insert;
+  service validation coverage; unallocated remainder as a first-class state.
+- **Blocker 1 (S8):** the dialog's date round-trip. Detailed code-path proof of
+  both consequences (split wiped while untouched; `paymentDate` dropped to
+  `now()`); root cause is `parseDateAr`/`formatDateAr` in `date-picker.tsx` and
+  the expenses feature being the only correct caller.
+- **Blocker 2 (S7):** the same mismatch in the employee-details quick form.
+- **Finding 3 (S6):** DAILY default divergence, 30x proposed-amount difference
+  between the two entry points for the same worker.
+- **Finding 4 (S5):** overlapping assignments produce a default that is invalid
+  out of the box; recovery ("delete a line") drops attribution. Noted, but the
+  design explicitly surfaces over-allocation rather than guessing an allocation.
+- **Findings 5–10 and nits:** doc drift (fixed), schema hardening (deferred),
+  legacy DAILY rows display `days = 30` (cosmetic), invalid-split readout shows a
+  number (cosmetic), `expectedAmountDzd` total (documented).
+- The critic did not run the suites (tool budget); its arithmetic claims are
+  code-path proofs and were re-checked by the defender, who did run the contracts
+  and web tests.
+
+## Defender — key defenses
+
+- `/30` rate and 2-dp rounding: **SOLID (9)**. Pre-rounding the rate would lose
+  money (100 000 DZD -> 99 999.90); February not being special is the spec.
+- Floor + largest-remainder: **SOLID (9)**. No subtraction anywhere; `target`
+  uses `Math.round` so the default tracks nearest-day scaling; deterministic
+  total tie-break (fraction, coverage, project id).
+- Unallocated remainder and over-allocation block: **SOLID (8)**. Service is the
+  only writer; empty split is legal end-to-end; over-allocation is rare because
+  the schema allows at most one ACTIVE assignment per employee.
+- Assignment-window semantics: **SOLID (9)**. Inclusive counting on both sides,
+  clamp/dedupe/null-end/offset all verified.
+- Web form reconciliation: **SOLID (8)**. Derived-until-hand-edited is a one-way
+  latch; the gate number and the readout are the same computation.
+- Legacy compatibility: **SOLID (8)**. Additive column + table, no amount
+  rewrite, belt-and-braces `days` fallback, split hydration scales with one
+  grouped query.
+- Date flow: **SPLIT VERDICT** — the "one canonical state drives period and
+  submission" half is airtight; the picker round-trip half is **WEAK** and was
+  the exposed point.
+
+## What changed in `25094b0` / `e0da5e2` because of this debate
+
+- `apps/web/src/features/employees/add-salary-payment-dialog.tsx` — the date
+  picker now converts both directions.
+- `apps/web/src/features/employees/employee-details-page.tsx` — same.
+- `apps/web/src/features/employees/add-salary-payment-dialog.test.tsx` — new test:
+  the picker is handed `dd/MM/yyyy`, picking a date keeps the prefilled split,
+  and the submitted `paymentDate` is the canonical boundary.
+- `apps/web/src/features/employees/employee-details-page.test.tsx` — new test:
+  the quick form submits the picked day as the canonical boundary.
+- `packages/contracts/src/salary-days.ts` — header corrected (only the amount is
+  shared with the API).
+- `.scratch/implementation/412-design.md` — largest-remainder wording and the
+  picker-conversion note; removed the "shared derivation" and "explicit
+  unallocated-remainder line" drift.
+- `apps/web/src/features/employees/salary-payment-form.ts` — added the shared
+  `defaultSalaryPaymentDays` helper (`e0da5e2`, parent decision): 30 for
+  MONTHLY/WEEKLY, 1 for DAILY.
+- The dialog and the quick form now both use that helper; `salary-payment-form.test.ts`,
+  `add-salary-payment-dialog.test.tsx` and `employee-details-page.test.tsx` pin
+  it per period and at both call sites (a daily worker proposes one day's wage).
+
+## Residual risks / not verified
+
+- The critic's findings were code-path proofs, not executed tests, except where
+  the defender ran the suites. The fixed date flow is now pinned by unit tests;
+  it is still not exercised by Playwright (the E2E does not open the calendar).
+- The schema-hardening items (split-table `UNIQUE`, `days` upper bound) and the
+  > 2-dp override are deliberately deferred to a parent-filed follow-up; the
+  daily default was resolved in `e0da5e2`.
+- The split is not converted to DZD anywhere in this PR; that is the separate
+  project-cost-screen issue #414.
+
+## Evidence commit
+
+The artifact is named for `e0da5e2` (the reviewed source). The commit that
+adds/updates this file and the re-pinned code-review/test-audit/evidence files
+touches `.scratch/` only, so the guard's evidence-SHA check accepts it without
+regenerating the review.
+
+## Round 3 re-pin note
+
+The round-3 fix (`1cf295b`) changes when the day default is re-applied after a
+wage-period refresh; it does not touch the proration, rounding, or
+largest-remainder split this debate reviewed, so the critic/defender verdict for
+the money math still stands. The reset-timing change is covered by the
+failing-on-base regression tests recorded in `…-evidence.md` (Round 3) and
+`…-test-audit.md` (Round 3 delta). A fresh debate was not run for this narrow
+delta (the round-3 brief asked for a re-pin); the parent can request one.
+
+Re-pin note: the reviewed source is `1cf295b`; the only later commit is
+`8206d04`, a `.agents/wisdom/architecture.md` doc append. Files are named for
+HEAD per the evidence re-pin rule; no source, test, or config changed after
+`1cf295b`.
+
+## Round 4 re-pin note
+
+- The round-4 fixes (half-open assignment windows + per-worker day de-dup, live
+  dialog props, reopen-time mutation reset, history split lines, migration test)
+  do not touch the `salary / 30` rate, the 2-dp rounding, the largest-remainder
+  distribution, or the wire validation this critique reviewed.
+- The de-dup does change one previously reviewed claim: two fully overlapping
+  projects no longer produce two full-period lines (the old artifact described
+  the "can exceed `days`" behaviour). A worked day cannot be worked twice, so
+  the day now belongs to one project; the derivation's stated invariant (a
+  fully covered period sums exactly to `days`) is stronger, not weaker.
+- A fresh critic/defender debate was not run for this delta (the brief asked
+  for a re-pin); the parent can request one.
+
+Re-pin note: the reviewed source for round 4 is `49c324b510076a7ed89facfc363a31b95392b53c`. Commit `c05c9593821e9853002a5cd7ccf249a26d146fd5` only appends
+`.agents/wisdom/architecture.md` (the round-4 lessons), so no source, test, or
+config changed after `49c324b510076a7ed89facfc363a31b95392b53c`. Files are named for HEAD per the evidence re-pin rule.
+
+## Round 4b re-pin note
+
+The outside-diff P2 fix (`4da54bba`) adds a notice and a navigation button; it
+does not touch the proration, rounding, split distribution, or wire validation
+this critique reviewed. A fresh debate was not run for this narrow UI delta; the
+parent can request one.
+
+## Round 5 re-pin note
+
+The four round-5 fixes (`384b177f`) are UI state hygiene (live dialog props, a
+single live draft), a rounding correction inside `allocateSalaryAmountByDays`
+(largest-remainder distribution, mirroring `deriveSalaryProjectDays`), and a
+one-pass grouping in the derived salary collections. None changes the proration
+contract, the wire schema, or the server-side reconciliation, which is the
+subject this critique reviewed. A fresh debate was not run for this narrow fix
+round; the parent can request one.
+
+Re-pin note: the only change after the code fix `384b177f` is the round-5
+wisdom entry in `.agents/wisdom/architecture.md` (`859c5d76`), a docs-only
+file; the reviewed source is unchanged.
+
+## Round 6 re-pin note
+
+The round-6 fixes (`34e7d2e3`) change money normalisation (integer-cent monthly
+rate, whole-cent override), the quick-form/dialog draft handoff, and the
+archived-assignment filter. The money changes preserve the proration contract
+and round half up; the wire schema still accepts the same inputs and the server
+still owns the split validation that this critique reviewed. A fresh debate was
+not run for this fix round; the parent can request one.

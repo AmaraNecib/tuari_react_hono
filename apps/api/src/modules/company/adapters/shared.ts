@@ -201,10 +201,12 @@ export function toDebtEntry(r: typeof schema.debtEntry.$inferSelect): DebtEntryR
 
 export function toSalaryPayment(
   r: typeof schema.employeeSalaryPayment.$inferSelect,
+  projectSplits: EmployeeSalaryPaymentRecord["projectSplits"] = [],
 ): EmployeeSalaryPaymentRecord {
   return {
     id: r.id, employeeId: r.employeeId,
     periodType: r.periodType as EmployeeSalaryPaymentRecord["periodType"],
+    days: r.days, projectSplits,
     expectedAmountDzd: r.expectedAmountDzd, actualAmountDzd: r.actualAmountDzd,
     paymentDate: r.paymentDate, note: r.note ?? null,
     actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null,

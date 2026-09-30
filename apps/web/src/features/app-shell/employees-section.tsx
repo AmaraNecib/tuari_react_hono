@@ -18,6 +18,10 @@ import {
   EmployeeTable,
   type EmployeeTableRow,
 } from "@/features/employees/employee-table"
+import type {
+  SalaryProjectAssignmentWindow,
+  SalaryProjectOption,
+} from "@/features/employees/add-salary-payment-dialog"
 import type { EmployeeManagerOption } from "@/features/employees/employee-batch-row-card"
 import { cn } from "@/lib/utils"
 import type { Employee, Role } from "@tuari/contracts"
@@ -41,6 +45,9 @@ type EmployeesSectionProps = {
   /** Seam-supplied row builder (HomeViewDerived.buildEmployeeTableRow). */
   buildEmployeeTableRow: (employee: Employee) => EmployeeTableRow
   roles: Role[]
+  /** Projects and assignment windows for the in-table payment dialog. */
+  projects?: SalaryProjectOption[]
+  projectAssignmentsByEmployeeId?: Record<string, SalaryProjectAssignmentWindow[]>
   title: string
   addWorkerLabel: string
   columns: {
@@ -81,6 +88,8 @@ export function EmployeesSection({
   managerOptions,
   buildEmployeeTableRow,
   roles,
+  projects,
+  projectAssignmentsByEmployeeId,
   title,
   addWorkerLabel,
   columns,
@@ -168,6 +177,8 @@ export function EmployeesSection({
               delete: actionLabels.delete,
             }}
             rows={rows}
+            projects={projects}
+            projectAssignmentsByEmployeeId={projectAssignmentsByEmployeeId}
             onAdd={() => void navigation.goToEmployeeCreate()}
             onDelete={(row) => setPendingAction({ type: "delete", employee: row })}
             onEdit={(row) => void navigation.goToEmployeeEdit(row.id)}

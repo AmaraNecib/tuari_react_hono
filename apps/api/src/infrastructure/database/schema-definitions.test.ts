@@ -122,7 +122,7 @@ describe("rolePermissionSeeds", () => {
     const seeds = rolePermissionSeeds();
     const roleKeys = [...new Set(seeds.map((s) => s.roleId))];
     // Only admin has permissions, so only admin emits a seed row. The
-    // workforce labels carry no permissions → no rows; manager/viewer removed.
+    // workforce labels carry no permissions â†’ no rows; manager/viewer removed.
     expect(roleKeys).toEqual(["admin"]);
     for (const key of ["manager", "viewer", "project_manager", "warehouse_manager", "worker"]) {
       expect(seeds.some((s) => s.roleId === key)).toBe(false);
@@ -393,7 +393,7 @@ describe("inventory_asset_charge schema (#413 stock charge)", () => {
 
   it("refuses to delete a unit that still has a charge, keeping the record", () => {
     // A charge is a money record: deleting its unit (directly, or through the
-    // invoice → entry cascade) must not take the charge and its revisions with
+    // invoice â†’ entry cascade) must not take the charge and its revisions with
     // it. RESTRICT keeps the unit reference NOT NULL and the record intact;
     // the delete fails instead (#422 round 5).
     const def = getChargeDefinition();
@@ -418,7 +418,7 @@ describe("inventory_asset_charge schema (#413 stock charge)", () => {
     );
   });
 
-  it("creates the revision table that records from → to + reason", () => {
+  it("creates the revision table that records from â†’ to + reason", () => {
     const def = definitions.find((d) =>
       d.includes('CREATE TABLE IF NOT EXISTS "inventory_asset_charge_revision"'),
     );
@@ -441,5 +441,48 @@ describe("inventory_asset_charge schema (#413 stock charge)", () => {
         expect.stringContaining('ON "inventory_asset_charge" ("project_id", "status")'),
       ]),
     );
+  });
+});
+
+describe("employee_salary_payment schema (#412 days + split)", () => {
+  const definitions = createSchemaDefinitions();
+
+  it("adds an idempotent `days` column defaulting to 30 on the payment table", () => {
+    const paymentDef = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "employee_salary_payment"'),
+    );
+    expect(paymentDef).toContain('"days" INTEGER NOT NULL DEFAULT 30');
+
+    const additive = additiveStatements.find((statement) =>
+      statement.includes('ALTER TABLE "employee_salary_payment" ADD COLUMN "days"'),
+    );
+    expect(additive).toContain("INTEGER NOT NULL DEFAULT 30");
+  });
+
+  it("creates a per-project split table keyed to the payment and project", () => {
+    const splitDef = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "employee_salary_payment_split"'),
+    );
+    expect(splitDef).toBeDefined();
+    expect(splitDef).toContain('"days" INTEGER NOT NULL CHECK ("days" > 0)');
+    expect(splitDef).toContain(
+      'FOREIGN KEY ("payment_id") REFERENCES "employee_salary_payment" ("id") ON DELETE CASCADE',
+    );
+    expect(splitDef).toContain(
+      'FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT',
+    );
+  });
+
+  it("indexes the split table by payment and project", () => {
+    expect(
+      definitions.some((d) =>
+        d.includes('employee_salary_payment_split_payment_id_idx'),
+      ),
+    ).toBe(true);
+    expect(
+      definitions.some((d) =>
+        d.includes('employee_salary_payment_split_project_id_idx'),
+      ),
+    ).toBe(true);
   });
 });

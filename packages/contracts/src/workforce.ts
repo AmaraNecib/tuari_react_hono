@@ -14,6 +14,7 @@ import {
   salaryPeriodSchema,
   timestampSchema,
 } from "./core";
+import { SALARY_DAYS_PER_MONTH } from "./salary-days";
 
 export const roleSchema = z.object({
   id: entityIdSchema,
@@ -99,12 +100,25 @@ export const employeeStateHistorySchema = z.object({
   updatedAt: timestampSchema,
 });
 
+export const employeeSalaryPaymentProjectSplitSchema = z.object({
+  projectId: entityIdSchema,
+  days: z.number().int().positive(),
+});
+
 export const employeeSalaryPaymentSchema = z.object({
   id: entityIdSchema,
   employeeId: entityIdSchema,
   periodType: salaryPeriodSchema,
+  /**
+   * Whole days the payment covers (default 30 on create). A monthly wage is
+   * prorated at `salaryAmountDzd / 30`; a daily wage is multiplied by days.
+   */
+  days: z.number().int().positive(),
   expectedAmountDzd: z.number().nonnegative(),
+  /** The amount actually paid. Authoritative: a hand edit overrides the proposal. */
   actualAmountDzd: z.number().nonnegative(),
+  /** Per-project day attribution. Empty when the payment stays unallocated. */
+  projectSplits: z.array(employeeSalaryPaymentProjectSplitSchema),
   paymentDate: timestampSchema,
   note: nullableTextSchema,
   actorUserId: auditActorUserIdSchema,
@@ -319,9 +333,14 @@ export const employeeStateHistoryListInputSchema = z
 
 export const employeeSalaryPaymentCreateInputSchema = z.object({
   employeeId: entityIdSchema,
-  actualAmountDzd: z.number().nonnegative(),
+  /** Whole days paid. Defaults to a full 30-day month. */
+  days: z.number().int().positive().default(SALARY_DAYS_PER_MONTH),
+  /** Overridable paid amount. Omitted → the server stores the proposed amount. */
+  actualAmountDzd: z.number().nonnegative().optional(),
   paymentDate: timestampSchema.optional(),
   note: z.string().trim().max(1000).nullable().optional(),
+  /** Per-project day attribution. Empty/omitted → the payment stays unallocated. */
+  projectSplits: z.array(employeeSalaryPaymentProjectSplitSchema).default([]),
 });
 
 export const employeeSalaryPaymentListInputSchema = z
@@ -335,6 +354,7 @@ export type EmployeeProjectAssignment = z.infer<typeof employeeProjectAssignment
 export type EmployeeWarehouseAssignment = z.infer<typeof employeeWarehouseAssignmentSchema>;
 export type EmployeeStateHistory = z.infer<typeof employeeStateHistorySchema>;
 export type EmployeeSalaryPayment = z.infer<typeof employeeSalaryPaymentSchema>;
+export type EmployeeSalaryPaymentProjectSplit = z.infer<typeof employeeSalaryPaymentProjectSplitSchema>;
 export type RoleCreateInput = z.infer<typeof roleCreateInputSchema>;
 export type RoleUpdateInput = z.infer<typeof roleUpdateInputSchema>;
 export type EmployeeCreateInput = z.infer<typeof employeeCreateInputSchema>;

@@ -604,7 +604,9 @@ export function useCreateSalaryPaymentMutation() {
     mutationKey: ["phase1", "workspace", "salary-payments", "create"],
     mutationFn: async (input: {
       employeeId: string
-      actualAmountDzd: number
+      days?: number
+      actualAmountDzd?: number
+      projectSplits?: Array<{ projectId: string; days: number }>
       paymentDate?: string
       note?: string | null
     }) => {

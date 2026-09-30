@@ -47,6 +47,31 @@ export function buildEmployeeSalaryCollections({
     })
     .sort((left, right) => right.paymentDate.localeCompare(left.paymentDate))
 
+  // Group the assignments by employee in one pass. The previous shape scanned
+  // every assignment once per employee, so a workspace refresh re-did the whole
+  // scan as history grew.
+  const projectAssignmentsByEmployeeId: Record<string, Array<{ projectId: string; startDate: string; endDate: string | null }>> = {}
+  for (const employee of workspace.employees) {
+    projectAssignmentsByEmployeeId[employee.id] = []
+  }
+  for (const assignment of workspace.projectAssignments) {
+    const windows = projectAssignmentsByEmployeeId[assignment.employeeId]
+    if (!windows) {
+      continue
+    }
+    // An archived assignment is history, not a wage-period window: an archived
+    // row with no end date would otherwise cover the whole payment period and
+    // suggest a month of days to a project the worker no longer works on.
+    if (assignment.status === "ARCHIVED") {
+      continue
+    }
+    windows.push({
+      projectId: assignment.projectId,
+      startDate: assignment.startDate,
+      endDate: assignment.endDate,
+    })
+  }
+
   const salariedEmployees = employeeRows
     .filter((employee) => employee.salaryAmountDzd !== null && employee.salaryPeriod)
     .map((employee) => ({
@@ -57,11 +82,19 @@ export function buildEmployeeSalaryCollections({
       salaryAmountDzd: employee.salaryAmountDzd,
       salaryPeriod: employee.salaryPeriod,
       lastPaymentDate: salaryPaymentsByEmployeeId[employee.id]?.[0]?.paymentDate ?? null,
+      // Assignment windows feed the payment form's derived per-project default.
+      projectAssignments: projectAssignmentsByEmployeeId[employee.id] ?? [],
     }))
+
+  const salaryProjects = workspace.projects
+    .map((project) => ({ id: project.id, name: project.name }))
+    .sort((left, right) => left.name.localeCompare(right.name, "ar"))
 
   return {
     recentSalaryPayments,
     salariedEmployees,
+    projectAssignmentsByEmployeeId,
     salaryPaymentsByEmployeeId,
+    salaryProjects,
   }
 }

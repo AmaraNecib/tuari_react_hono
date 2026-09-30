@@ -1,0 +1,303 @@
+# #412 — test audit (edge cases, coverage, quality)
+
+- Reviewed diff: 199798b...988493d (audit run 2026-09-27; fixes applied after)
+- Final source SHA (all fixes): 1cf295b51671b37b61675940fa4234b74320292f (round-3 re-pin; round-2
+  source was e0da5e2)
+- Re-pinned: the audit ran against `988493d`; later commits are `3e571ff`,
+  `d45f7b0` (E2E), `c9268e2` (round-1 review fixes), `246f541` (post-rebase test
+  repair), and `e0da5e2` (round-2 debate fix). The round-1 and round-2 deltas
+  below record the tests added after the audit.
+- Agents: edge-case hunter, coverage analyst, test quality reviewer (parallel, read-only)
+- Result: grade B → fixes applied; the new dialog test also caught a real reset bug.
+
+## Resolutions
+
+| Finding | Severity | Resolution |
+| --- | --- | --- |
+| Overlapping projects > 100% coverage untested | red | Added contract test asserting both projects get 30. |
+| WEEKLY legacy create path untested | red | Added service test: WEEKLY keeps the raw wage (9000) while `days` is stored. |
+| Zero/near-zero coverage collapses to [] | orange | Added test pinning the intended behavior; docstring states it. |
+| MONTHLY days 31 unprorated boundary unpinned | orange | Added `30/31/1` contract tests. |
+| Rolled-over dates name a wrong period (`2026-13-15`) | orange | Fixed `resolveSalaryPaymentPeriod` (integer + calendar validation) + tests for 13, 00, Feb 31, non-leap Feb 29. |
+| `computeUnallocatedDays(NaN)` unpinned | orange | Not reachable from the dialog (invalid days → null); left as is. |
+| Inverted assignment window skip untested | orange | Added contract test. |
+| Invalid `periodStart` untested | orange | Added contract test. |
+
+## Round 1 delta (PR #420 review)
+
+Tests added with the round-1 fixes:
+
+- contracts: five-project/three-paid-day case, an all-lines-round-up case, a
+  fractional-tie case, and a payment-smaller-than-project-count assertion; the
+  invariant is that the split sums to the paid days with no negative line.
+- api sqlite: split round-trip through insert/read, and a window of
+  `MAX_VARIABLE_NUMBER + 2` payments read with their splits, which fails on the
+  old per-payment bind list.
+- web: `employee-table.test.tsx` and `employee-details-page.test.tsx` pin the
+  entry-point project/assignment wiring; the details test also pins the captured
+  day count and derived amount; `parsePositiveInteger` unit tests close the new
+  helper's branches.
+- e2e: the salaries spec now reads the persisted split back from the SQLite
+  database after submit.
+| Invalid `endDate` branch untested | yellow | Added contract test. |
+| Tautological `toBeLessThan(payment.days)` | quality | Changed to exact `toBe(25)`. |
+| Over-promising schema test name | quality | Renamed to "declares the `days` column and its additive migration". |
+| Dialog has zero tests (reconciliation UX, sliding days) | coverage | Added `add-salary-payment-dialog.test.tsx`: derived prefill, re-derivation until edited, remainder, over-allocation blocks submit, payload on submit. |
+| Exact reconciliation boundary (sum == days) untested | coverage | Added service test. |
+| WEEKLY non-offering at the selector / legacy carve-out untested | coverage | Not added this round; noted. |
+| E2E wiring untested | coverage | **Resolved**: `tests/e2e/salaries.spec.ts` (proposal, split prefill, over-allocation block, recorded days). |
+
+### Bonus fix from the new dialog test
+
+The reset effect listed `resetAmount`/`resetDate` (new identities every render)
+as dependencies, so it re-ran on every render and reset the days input, amount,
+date and note on each keystroke. Fixed with a target ref guard; the test now
+drives days + split edits and would fail on regression.
+
+## Edge case hunter (raw)
+
+# #412 edge-case audit — missing tests (READ-ONLY, no files edited)
+
+Evidence: `packages/contracts/src/salary-days.ts`, `.../salary-days.test.ts`, `apps/api/src/modules/company/workforce.service.ts:626-720`, `workforce.service-coverage.test.ts`, `apps/web/src/features/employees/salary-payment-form.ts` + `.test.ts`.
+
+## Red (would break)
+1. **Overlapping projects > 100% coverage** — `deriveSalaryProjectDays` doc (salary-days.ts:100-107) promises "overlapping projects can exceed `days`", and the dialog's over-allocation warning depends on it. No test: two projects each covering all of March must both get 30 (sum 60). Untested branch = free regression.
+   `it("lets overlapping projects exceed the paid days", () => expect(deriveSalaryProjectDays({assignments:[a 03-01..03-31, b 03-01..03-31], ...MARCH_2026, days:30})).toEqual([{a,30},{b,30}]))`
+2. **WEEKLY legacy create path** — service has no WEEKLY test (grep of coverage file: none). WEEKLY keeps the raw salary while `days` defaults 30, so `expectedAmountDzd` is full pay regardless of days; a legacy WEEKLY employee paid 5 days proposes a full month. Pin it: `WEEKLY, salary 9000, days 5 → expected=9000, and split total ≤ days still enforced`.
+
+## Orange (subtle bug)
+3. **Zero/near-zero coverage collapses to `[]`** — 1 covered day in a 31-day period with `days:1`: `normalizedTotalDays=round(1/31)=0`, line `round(1/31)=0` → filtered out, so a real assignment silently yields no split. Test the boundary: `days:1`, one project covering 1 of 31 days → expect `[]` *documented*, or `[{p1,1}]` if intended.
+4. **Days > month length in MONTHLY** — `computeProposedSalaryAmount({MONTHLY, 30000, days:31})` = 31000; only 30/27/15 pinned. Also February at /30 (parent decision) is unpinned in *contracts* (only web month-length is tested) — a future "fix" to 28 would pass all contract tests.
+5. **Invalid/rolled-over month-day in `resolveSalaryPaymentPeriod`** — `"2026-13-15"`: `Date.UTC(2026,13,0)` → Jan 31 2027, so `lastDay=31`, and `toAlgeriaDayBoundaryIso("2026-13-31")` happily ISO-normalizes to 2027 — a wrong period, not null. Also `"2026-02-31"`. Test `"2026-13-15"`, `"2026-00-10"` → expect null.
+6. **Naive/empty days in the form** — empty input → `NaN`; `computeUnallocatedDays(NaN,[5])` → `NaN`, not the "unknown" null; no test. `computeUnallocatedDays(0,[0])` also unpinned.
+7. **Inverted assignment window** — `startDate: 2026-03-20, endDate: 2026-03-10` inside the period: clamped loop skips (salary-days.ts:158), but no test asserts the skip (only inverted *period* is tested).
+8. **Invalid period input** — only `assignment.startDate` bad-string is tested; `periodStart:"not-a-date"` → `[]` unpinned.
+
+## Yellow (cosmetic)
+9. `computeProposedSalaryAmount` has no guard for `days<=0`/non-integer (asymmetric with `deriveSalaryProjectDays` which returns `[]`); DAILY `days:0` → 0. Add a symmetry test or a guard note.
+10. `salaryAmountDzd: 0` MONTHLY → 0, then service rejects with "amount > 0"; a 0-salary worker is unpayable — untested intent.
+11. Rounding half-cent boundary (e.g. `salary/30*days` ending in `.005`) and Web parity: `resolveSalaryPaymentPeriod` + `deriveSalaryProjectDays` agree only by duplicate fixtures, no shared parity test.
+
+## Coverage analyst (raw)
+
+# #412 Coverage audit (read-only)
+
+Evidence: 5 changed test files, 184 tests in worktree all pass (`vitest run`); targeted contract run 21/21.
+
+## 1. Acceptance-criterion coverage
+| Criterion | Test | Verdict |
+|---|---|---|
+| Proration 30/27/15 | salary-days.test `prorates...salary/30`; service `prorates a monthly wage` | ✅ |
+| Daily proration | both files | ✅ |
+| Amount override | service `lets the caller override`; contract `accepts omitted amount` | ⚠️ service-only; no UI override test |
+| Derived default (assignment windows ∩ period) | 10 `deriveSalaryProjectDays` cases: full-period, before/after clamp, null end, no windows, same-project overlap, two projects, outside window, single-day, bad ts, inverted | ✅ strong |
+| Derived-default normalization (full/partial/rounding/single-day) | full-period→30, partial→15, rounding overshoot→drop 0-day, single-day→1/30 | ✅ |
+| Sliding days between projects | none | ❌ |
+| Reconciliation sum ≤ days | service 20+5<30 allocated<days; >days rejects | ✅ (exact-equal accepted not tested) |
+| No-split payment clean | service `records an unallocated payment`; contract default `[]` | ✅ |
+| Legacy row read-back untouched | schema-migrations `backfills days=30 ... without touching amounts` + `mapEmployeeSalaryPayment` | ✅ |
+| WEEKLY not offered | salary-days `leaves weekly unprorated`; web `resolveSalaryPaymentPeriod(...WEEKLY)→null` | ⚠️ helper-only; no selector/dialog assertion |
+
+## 2. Pattern diversity
+Good. Pure-unit (contracts), service-level (in-memory harness), schema-string/SQL-shape, real SQLite migration integration (`better-sqlite3`), web pure helpers. Not one pattern.
+
+## 3. Duplicate coverage
+- Proration asserted at 3 layers (contract / service / web) — intentional layering, not harmful.
+- "unallocated" asserted in service and contract (defaults) — minor overlap.
+- `computeUnallocatedDays` (web) re-expresses service `allocatedDays > days` rule — parallel logic, untested against service.
+
+## 4. Missing
+1. **AddSalaryPaymentDialog** (~257 lines changed) has ZERO tests: over-allocation warning that blocks submit, live re-derivation of line defaults until a line is hand-edited, explicit unallocated-remainder line. This is the largest untested surface and holds the reconciliation UX mandated by the issue.
+2. **Sliding days** scenario (late assignment correction moving days p1→p2) — no test at any layer.
+3. **Exact reconciliation boundary** (split sum == days) accepted by the service — only `<` and `>` tested.
+4. **WEEKLY non-offering at the UI selector**, and the "legacy WEEKLY employee keeps the option" carve-out — only the pure `resolveSalaryPaymentPeriod` guard is exercised.
+5. End-to-end wiring of `deriveSalaryProjectDays` + `computeProposedSalaryAmount` into the form/dialog (proposal cannot drift claim) — untested.
+
+## Residual risk
+Highest risk is #4.1: financial reconciliation and over-allocation blocking live entirely in untested dialog code. Next is the sliding-days rule, which is core to the issue's motivation.
+
+## Test quality reviewer (raw)
+
+# Test quality review — #412 (salary days + per-project split)
+
+Scope: the 5 changed test files at `e07939a` + `988493d`. READ-ONLY review; no file edited.
+
+## Grade: B (high B, borderline A)
+
+Reasons: assertions are overwhelmingly exact-value, negative paths are real and
+numerous, and the API/migration tests exercise a genuine harness rather than
+mocks — but one assertion is tautological, one test name over-promises, and two
+documented/error branches are unverified.
+
+## Correct (strengths)
+
+- `packages/contracts/src/salary-days.test.ts` — no `toBeTruthy`/loose matchers;
+  every case pins a concrete number (`toBe(27000)`, `toBe(3.33)`). Negative paths
+  are genuinely adversarial: unparseable timestamp, inverted period, `days: 0`,
+  `days: 2.5`, window entirely outside the period, all-zero line dropped, rounding
+  overshoot assigned to the largest line, deterministic ordering (`a` before `b`).
+  The `#412` contract block asserts schema defaults AND wire rejection.
+- `apps/web/.../salary-payment-form.test.ts` — exact `.toEqual` on period
+  boundaries, plus negative paths (WEEKLY → null, unknown period, bad date,
+  over-allocation → `-1`, unknown days → null). Feb 2028 leap case included.
+- `apps/api/.../workforce.service-coverage.test.ts` — real `createHarness`
+  service; error cases assert `toThrowError(CompanyError)` for over-allocation,
+  ghost project, duplicate project, non-positive/fractional days, `NaN` amount.
+- `schema-migrations.test.ts` — the strongest test here: drops the column,
+  inserts a legacy row, re-runs `ensureDatabaseSchema`, then checks backfilled
+  `days === 30` alongside untouched amounts and `mapEmployeeSalaryPayment`.
+  It cannot pass vacuously; `await` handling is correct (no floating promises).
+- Isolation is sound: `createCompanyHarnessTracker()` closes DBs in `afterEach`;
+  each new case uses a distinct phone (`055400020x`), so no cross-test leakage.
+
+## Notes (not blockers)
+
+1. `workforce.service-coverage.test.ts:~1240` — `expect(allocated).toBeLessThan(payment.days)`
+   is tautological after the exact `toEqual` above (20+5=25 < 30 by construction).
+   Prefer `expect(allocated).toBe(25)` / `computeUnallocatedDays`-style exact value.
+2. `schema-definitions.test.ts` — `expect(splitDef).toBeDefined()` is redundant
+   before the `toContain` calls, and the two index checks via `.some(...)` →
+   `toBe(true)` report no offending value; matching the specific definition would
+   fail with better output. The name "adds an idempotent `days` column" claims
+   idempotence that this file does not exercise (it is exercised in the migration
+   test), so the name over-promises locally.
+3. Unverified documented behaviour: the `deriveSalaryProjectDays` doc says
+   "overlapping projects (coverage > 100%) can exceed `days`" — no test drives two
+   *different* projects whose coverage sums above the period; only same-project
+   overlap is covered. Also only an invalid `startDate` is tested; the invalid
+   `endDate` branch (`if (!windowEndKey) continue`) is uncovered.
+4. `apps/api/.../schema-migrations.test.ts` asserts the split table only via
+   schema strings; the `days > 0` CHECK and `ON DELETE CASCADE` are never
+   exercised at runtime.
+5. Fixture duplication: contracts re-implements web's `toAlgeriaDayBoundaryIso` as
+   a local `algeriaDay` mirror. I verified it matches (`start` = 23:00Z prev day,
+   `end` = 22:59:59.999Z); still a silent-drift risk if web's helper changes.
+6. `workforce.service-coverage.test.ts` is 1336 lines with per-test inline
+   employee/project setup; the new local `createPaidWorker`/`createProject`
+   helpers help, but a shared factory (as in `company.test-helpers.ts`) would cut
+   the repetition further.
+
+No blockers. Tests were not executed in this pass (review budget).
+
+## Round 2 delta (date-picker regression coverage)
+
+The round-2 debate found the payment dialog and the employee-details quick form
+handed canonical `yyyy-MM-dd` state into the shared `dd/MM/yyyy` `DatePicker`.
+Two regression tests were added (both would fail on the pre-fix wiring):
+
+- `apps/web/src/features/employees/add-salary-payment-dialog.test.tsx`: the
+  picker receives a `dd/MM/yyyy` value; picking a date keeps the prefilled
+  project split; the submit payload carries the canonical
+  `toAlgeriaDayBoundaryIso("2026-03-15", "start")` and the 30-day split.
+- `apps/web/src/features/employees/employee-details-page.test.tsx`: the quick
+  form submits the picked day as the canonical boundary (previously it submitted
+  `undefined`, so the server stored `now()`).
+
+The tests stub the shared `DatePicker` to return its real `dd/MM/yyyy` contract,
+so the conversion wiring is pinned without driving the calendar popover in
+jsdom. The `toDatePickerValue`/`fromDatePickerValue` round-trip itself is already
+covered by `apps/web/src/components/ui/date-picker.test.ts`.
+
+The parent decision in `e0da5e2` added `defaultSalaryPaymentDays` coverage too:
+`salary-payment-form.test.ts` pins the helper per period (MONTHLY/WEEKLY 30,
+DAILY 1, null 30), and the dialog/quick-form tests pin the daily default at each
+call site (one day, one day's wage). These would fail on the previous
+`DAILY ? 1 : 30` split between the two surfaces.
+
+## Round 3 delta (PR #420 round-3 finding)
+
+- New coverage for the wage-period-refresh reset path:
+  - dialog: untouched field re-applies the daily default; an edited day count
+    survives; the derived split re-derives from the new period.
+  - quick form: the form stays open and re-applies the daily default; an edited
+    day count survives and the form does not collapse.
+- All four bug-catching assertions were confirmed to fail against the pre-fix
+  source and pass after (`git stash` of the two source files, tests kept).
+- Coverage boundary: the refresh is simulated with `rerender` (the unit seam);
+  the E2E spec exercises the recorded payment but not a mid-dialog period
+  change, which needs a workspace mutation the spec does not drive. Noted, not
+  deferred.
+
+Re-pin note: the reviewed source is `1cf295b`; the only later commit is
+`8206d04`, a `.agents/wisdom/architecture.md` doc append. Files are named for
+HEAD per the evidence re-pin rule; no source, test, or config changed after
+`1cf295b`.
+
+## Round 4 delta (PR #420 19:27Z review)
+
+- New edge coverage:
+  - contract: a handoff at the same instant credits the day once and the split
+    sums to `days`; fully overlapping projects de-duplicate to a single line.
+  - web: the salaries dialog re-derives its proposal after a wage refresh; the
+    history row renders each split line with project, days, and prorated amount;
+    the quick form keeps a new draft when reopened after a successful payment.
+  - api: the legacy migration test starts from a schema with neither the `days`
+    column nor the split table/indexes and asserts the upgrade creates both.
+- Every new assertion was confirmed to fail against the pre-fix source (or, for
+  the migration test, against a schema whose split `CREATE` is absent).
+- Coverage boundary: the handoff case is pinned at the pure-helper seam; the
+  E2E spec exercises the recorded split end to end but seeds a single
+  open-ended assignment, so no Playwright test drives a two-project handoff.
+  Noted, not deferred.
+
+Re-pin note: the reviewed source for round 4 is `49c324b510076a7ed89facfc363a31b95392b53c`. Commit `c05c9593821e9853002a5cd7ccf249a26d146fd5` only appends
+`.agents/wisdom/architecture.md` (the round-4 lessons), so no source, test, or
+config changed after `49c324b510076a7ed89facfc363a31b95392b53c`. Files are named for HEAD per the evidence re-pin rule.
+
+## Round 4b delta (outside-diff P2, parent decision)
+
+- New coverage: the quick form renders the unallocated notice, and its button
+  opens the split dialog for the same employee (asserted on the dialog's
+  employee name and split section).
+- The assertion was confirmed to fail against the pre-fix page and pass after.
+- Coverage boundary: the E2E spec drives the split-capable dialog and its
+  recorded split; it does not click the quick form's new notice button, which
+  is covered by the unit test. Noted, not deferred.
+
+## Round 5 delta
+
+New tests at `384b177f`:
+
+- `salary-payment-form.test.ts`: three one-day lines of 100 DZD sum to 100
+  (`[33.34, 33.33, 33.33]`); the leftover cent lands on the largest fractional
+  part in a different line (`100` split `[2, 1, 3]` of `6` days →
+  `[33.33, 16.67, 50]`); the partial split (`[15, 10]` of `30`) still leaves the
+  unallocated share unattributed; the non-positive/NaN guards return zero shares.
+- `employee-table.test.tsx`: a rerender changes the row's wage/period while the
+  dialog is open and the proposal and untouched day default follow the live row.
+- `employee-details-page.test.tsx`: clicking the split-dialog button clears the
+  quick draft (the old `12`-day value is gone) and shows the handoff notice.
+- `salaries-section.test.tsx`: a 100 DZD payment over three one-day lines renders
+  `33.34` and `33.33` shares — the visible sum reconciles with the paid amount.
+- `home-view-derived-builders.test.ts`: per-employee assignment grouping keeps
+  snapshot order, gives every employee a key (empty when unassigned), and drops
+  an assignment whose employee is not in the snapshot.
+
+Coverage boundary: the E2E spec still drives the split-capable dialog and its
+recorded split; the new quick-form handoff notice and the live-proposal refresh
+are unit-covered rather than E2E-covered. Noted, not deferred.
+
+Re-pin note: the only change after the code fix `384b177f` is the round-5
+wisdom entry in `.agents/wisdom/architecture.md` (`859c5d76`), a docs-only
+file; the reviewed source is unchanged.
+
+## Round 6 delta (PR #420 head `34e7d2e3`)
+
+New pins for the round-6 findings:
+
+- `packages/contracts/src/salary-days.test.ts`: the integer-cent monthly rate
+  (`30010.05` at 1 day → `1000.34`, at 30 → `30010.05`) and
+  `roundMoneyToCents` (`100.005` → `100.01`).
+- `salary-payment-form.test.ts`: an over-precise amount (`100.005`) allocates
+  to whole-cent shares summing to `100.01`.
+- `workforce.service-coverage.test.ts`: the service stores an over-precise
+  override as `100.01` and the monthly day rate as `1000.34`.
+- `home-view-derived-builders.test.ts`: an archived open-ended assignment
+  contributes no window.
+- `salaries-section.test.tsx`: a `100.5` payment renders its expected and paid
+  cells at cent precision beside `50.25` shares.
+- `employee-details-page.test.tsx`: the handoff carries the `12`-day/`12345`
+  draft into the dialog, clears the quick form, and the history shows the
+  recorded day count.
+- `add-salary-payment-dialog.test.tsx`: a carried draft opens the dialog with
+  the typed days/amount and normalises the override on submit.

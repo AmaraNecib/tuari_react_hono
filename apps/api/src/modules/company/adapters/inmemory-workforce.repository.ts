@@ -280,7 +280,7 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
   }
   createSalaryPayment(data: EmployeeSalaryPaymentCreateData, audit?: MutationAuditContext): EmployeeSalaryPaymentRecord {
     const id = newId(); const ts = now(); const a = normalizeAudit(audit);
-    const record: EmployeeSalaryPaymentRecord = { id, employeeId: data.employeeId, periodType: data.periodType, expectedAmountDzd: data.expectedAmountDzd, actualAmountDzd: data.actualAmountDzd, paymentDate: data.paymentDate, note: data.note ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts };
+    const record: EmployeeSalaryPaymentRecord = { id, employeeId: data.employeeId, periodType: data.periodType, days: data.days, expectedAmountDzd: data.expectedAmountDzd, actualAmountDzd: data.actualAmountDzd, projectSplits: data.projectSplits.map((split) => ({ ...split })), paymentDate: data.paymentDate, note: data.note ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts };
     this.store.salaryPayments.set(id, record);
     return record;
   }

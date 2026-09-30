@@ -166,6 +166,8 @@ export function seedEmployeeByRole(input: {
   phone: string
   roleKey: string
   status?: "ACTIVE" | "INACTIVE" | "LEFT"
+  salaryAmountDzd?: number | null
+  salaryPeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null
 }): string {
   const db = loadDatabaseConstructor()(findE2eDatabase())
   try {
@@ -181,8 +183,19 @@ export function seedEmployeeByRole(input: {
       `INSERT INTO employee
          (id, first_name, last_name, phone, user_id, role_id, status,
           salary_amount_dzd, salary_period, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, NULL, NULL, ?, ?)`,
-    ).run(id, input.firstName, input.lastName, input.phone, roleRow.id, input.status ?? "ACTIVE", ts, ts)
+       VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?)`,
+    ).run(
+      id,
+      input.firstName,
+      input.lastName,
+      input.phone,
+      roleRow.id,
+      input.status ?? "ACTIVE",
+      input.salaryAmountDzd ?? null,
+      input.salaryPeriod ?? null,
+      ts,
+      ts,
+    )
     return id
   } finally {
     db.close()
@@ -204,6 +217,78 @@ export function seedProjectWithManager(input: {
        VALUES (?, ?, NULL, ?, 'ACTIVE', NULL, ?, ?)`,
     ).run(id, input.name, input.managerId, ts, ts)
     return id
+  } finally {
+    db.close()
+  }
+}
+
+/**
+ * Assign an employee to a project for the E2E salary-split fixture. The
+ * window feeds the dialog's derived default; an omitted end date stays open.
+ */
+export function seedProjectAssignment(input: {
+  employeeId: string
+  projectId: string
+  startDate?: string
+  endDate?: string | null
+}): string {
+  const db = loadDatabaseConstructor()(findE2eDatabase())
+  try {
+    const id = randomUUID()
+    const ts = new Date().toISOString()
+    db.prepare(
+      `INSERT INTO employee_project_assignment
+         (id, employee_id, project_id, status, start_date, end_date, notes,
+          actor_user_id, actor_label, transaction_id, created_at, updated_at)
+       VALUES (?, ?, ?, 'ACTIVE', ?, ?, NULL, NULL, NULL, NULL, ?, ?)`,
+    ).run(
+      id,
+      input.employeeId,
+      input.projectId,
+      input.startDate ?? new Date(Date.UTC(2000, 0, 1)).toISOString(),
+      input.endDate ?? null,
+      ts,
+      ts,
+    )
+    return id
+  } finally {
+    db.close()
+  }
+}
+
+/**
+ * Read the salary payments (and their persisted project splits) for an
+ * employee straight from the E2E sqlite database. Proves the wire handler's
+ * insert and the SQLite read path keep the project id and split days, which an
+ * in-memory assertion cannot (issue #412 review).
+ */
+export function readSalaryPaymentSplitsByEmployeeId(employeeId: string): Array<{
+  paymentId: string
+  days: number
+  projectSplits: Array<{ projectId: string; days: number }>
+}> {
+  const db = loadDatabaseConstructor()(findE2eDatabase())
+  try {
+    const payments = db
+      .prepare(
+        `SELECT id, days FROM employee_salary_payment WHERE employee_id = ? ORDER BY created_at DESC`,
+      )
+      .all(employeeId) as Array<{ id: string; days: number }>
+    const splits = db
+      .prepare(
+        `SELECT payment_id AS paymentId, project_id AS projectId, days
+           FROM employee_salary_payment_split
+          WHERE payment_id IN (SELECT id FROM employee_salary_payment WHERE employee_id = ?)`,
+      )
+      .all(employeeId) as Array<{ paymentId: string; projectId: string; days: number }>
+
+    return payments.map((payment) => ({
+      paymentId: payment.id,
+      days: payment.days,
+      projectSplits: splits
+        .filter((split) => split.paymentId === payment.id)
+        .map(({ projectId, days }) => ({ projectId, days })),
+    }))
   } finally {
     db.close()
   }

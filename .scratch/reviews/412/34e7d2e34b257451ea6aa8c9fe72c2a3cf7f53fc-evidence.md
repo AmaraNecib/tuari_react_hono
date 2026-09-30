@@ -1,0 +1,408 @@
+# #412 — verification evidence (final)
+
+- branch: `feat/412-salary-days`
+- base: `develop` @ `199798ba3d8300ab1a67da1d5591b2d4e5fd9aa8`
+- final source SHA (reviewed HEAD): `4da54bbab95b3de18ed39b64b65cd2068bb6b415`
+  (round-4b re-pin; earlier reviewed sources were `49c324b…`, `1cf295b…`,
+  `e0da5e2…`, and `c9268e2…`)
+- evidence pinned to HEAD: `4da54bbab95b3de18ed39b64b65cd2068bb6b415` (the
+  evidence-only re-pin commit follows)
+- tier: High-assurance (financial calculation)
+- mode: remote, lane does not push / open PR
+
+## Review-tier record
+
+- `debate` (High-assurance, PR #420 00:11Z requirement):
+  `e0da5e2…-debate.md`. Critic + defender, parallel read-only. The money math
+  held; the one real finding (canonical date vs `dd/MM/yyyy` picker) was fixed.
+- `code-review` (Standards + Spec): `e0da5e2…-code-review.md` (axes run against
+  `988493d`; round-1 and round-2 deltas appended).
+- `test-audit` (edge/coverage/quality): `e0da5e2…-test-audit.md` (round-1 and
+  round-2 deltas appended).
+- Local Greptile CLI: skipped by parent decision (trial quota exhausted); the
+  hosted PR review is the independent gate.
+
+## Round 2 (debate fix + parent decision, source e0da5e2)
+
+Re-pinned from the round-1 evidence (`c9268e2`) after the rebase (`246f541`),
+the debate fix (`25094b0`), the wisdom capture (`0ff3183`, doc-only), and the
+parent-decided daily-default change (`e0da5e2`). So `25094b0` fixes the date
+picker, `0ff3183` adds `.agents/wisdom/testing.md`, and `e0da5e2` adds the
+shared `defaultSalaryPaymentDays` helper and its tests. Commands on the
+reviewed source, `--maxWorkers=2` where applicable:
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `pnpm --filter @tuari/contracts build` | 0 | ESM + DTS success |
+| `npx vitest run --maxWorkers=2` (contracts) | 0 | 5 files, 191 passed |
+| `npx vitest run --maxWorkers=2` (web, full) | 0 | 81 files, 669 passed |
+| `npx vitest run src/modules/company src/infrastructure/database --maxWorkers=2` (api) | 0 | 19 files, 480 passed, 1 skipped |
+| `npx vitest run --maxWorkers=2` (api, full) | 0 | 74 files, 1370 passed, 1 skipped |
+| `pnpm typecheck` (turbo) | 0 | 4/4 tasks |
+| `pnpm lint` | 0 | 2/2 tasks; unslop PASS (0 errors, 1649 warns) |
+| `npx playwright test tests/e2e/salaries.spec.ts --reporter=line --workers=1` | 0 | 2/2 passed (25.0s) |
+
+The round-2 regression tests
+(`add-salary-payment-dialog.test.tsx`, `employee-details-page.test.tsx`) plus the
+`defaultSalaryPaymentDays` pins (`salary-payment-form.test.ts` and both call
+sites) are included in the web run above. Ports 3000/4318 were free before the
+E2E run, so it ran locally rather than deferring to CI.
+
+The full API suite was also run at the capped `--maxWorkers=2` and was green:
+the documented load-flaky files (`app/dependencies.test.ts`,
+`modules/auth/adapters/sqlite-bootstrap.port.test.ts`, and the web
+`app-shell/home-view.test.tsx`) did not fire this run.
+
+## Round 1 review delta (PR #420)
+
+This round fixes the six findings from the PR #420 review:
+
+1. `deriveSalaryProjectDays` now floors each line and distributes the
+   remaining days by largest fractional part (largest-remainder/Hamilton)
+   instead of rounding and correcting the largest line. A correction can no
+   longer drive a line negative/dropped and leave the paid days
+   over-allocated. New tests: five projects / 3 paid days, all-round-up, and
+   fractional-tie cases.
+2. `listSalaryPayments` reads splits through an inner join on
+   `employee_salary_payment` instead of an `IN (…)` list of payment ids, so the
+   query's bound-variable count no longer grows with the window. New SQLite
+   tests: split round-trip, and a window of `MAX_VARIABLE_NUMBER + 2` payments.
+3. The employee table and the employee details page now pass the project list
+   and the per-employee assignment windows into the payment dialog, so a
+   payment started from an employee view can be allocated.
+4. The employee-details quick-payment form captures the day count and derives
+   the expected/paid proposal from it instead of always storing 30 (MONTHLY)
+   or 1 (DAILY).
+5. The WEEKLY salary-period option is keyed on the stored period, not the
+   draft, so a legacy weekly employee can be set back to WEEKLY.
+6. The saved split is asserted against the SQLite-backed path in the API test
+   and read back from the E2E database after submit.
+
+## Round 1 commands
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `npx playwright test tests/e2e/salaries.spec.ts --reporter=line --workers=1` | 0 | 2/2 passed (39s) |
+| `pnpm --filter @tuari/contracts test` | 0 | 191 passed |
+| `pnpm --filter @tuari/contracts build` | 0 | ESM + DTS success |
+| `pnpm typecheck` (turbo) | 0 | 4/4 tasks |
+| `pnpm lint` | 0 | 2/2 tasks (incl. i18n keys, hygiene, unslop) |
+| `pnpm check:unslop` | 0 | PASS (0 errors) |
+| `npx vitest run src/modules/company --maxWorkers=2` (api) | 0 | 12 files, 356 passed |
+| `npx vitest run src/modules/company/sqlite-company.repository.test.ts` (api) | 0 | 33 passed (includes the split/bound-limit tests) |
+| `pnpm --filter @tuari/web test` | 0 | 77 files, 641 passed, 0 failed |
+| scoped coverage `packages/contracts/src/salary-days.ts` | 0 | 100% stmts/branches/funcs/lines |
+| scoped coverage `apps/web/.../salary-payment-form.ts` | 0 | 100% stmts/lines/funcs; branches 86.48% (pre-existing `resolveSalaryPaymentPeriod` gaps) |
+
+The full API suite at vitest's default 11 workers failed 12 tests across 4
+pre-existing load-flaky auth/update files (timeouts). Re-running
+`src/modules/auth src/modules/update` scoped with `--maxWorkers=2` leaves only
+the documented `sqlite-bootstrap.port.test.ts` cross-connection write-lock
+contention test (5s timeout, #196/#212/#259) still timing out on this host. The
+touched `src/modules/company` suite is green.
+
+## E2E round 1 (`tests/e2e/salaries.spec.ts`, commit c9268e2)
+
+- Test 1: seeds a monthly worker (30 000 DZD) with an open-ended project
+  assignment, opens the payment dialog, asserts the proposal equals
+  `salary/30 x days` (30 000 at 30 days, 27 000 at 27), the split line is
+  prefilled from the assignment, and the unallocated remainder is 0.
+- Test 2: hand-edits the split, shrinks the paid days so the split
+  over-allocates, asserts the warning and a disabled submit, slides the days
+  back, submits, asserts the payment appears in the history with 12 days, and
+  then reads the persisted split back from the SQLite database
+  (`readSalaryPaymentSplitsByEmployeeId`) to prove the project id and 12 split
+  days survive the insert and read paths.
+
+## Review-tier record (round 1, superseded by the round-2 record above)
+
+- `code-review` (Standards + Spec): `c9268e2…-code-review.md` (axes run against
+  `988493d`; round-1 delta appended).
+- `test-audit` (edge/coverage/quality): `c9268e2…-test-audit.md` (round-1 delta
+  appended).
+- `debate`: skipped by parent decision (spec settled with the user).
+- Local Greptile CLI: skipped by parent decision (trial quota exhausted); the
+  hosted PR review is the independent gate.
+
+## Not verified / known boundaries
+
+- `salary-payment-form.ts` keeps pre-existing uncovered branches in
+  `resolveSalaryPaymentPeriod`; the new `parsePositiveInteger` helper is fully
+  covered.
+- The full API suite's auth/update timeout flakes are pre-existing and are not
+  a coverage or correctness signal for this change.
+- The E2E suite ran on a free-port host; CI may retry it once for the known
+  load flakes.
+
+## Meaning change confirmed (parent note 3)
+
+`expectedAmountDzd` used to store the raw `salaryAmountDzd`; it now stores the
+prorated proposal for the entered `days`. Legacy rows are never recomputed: the
+migration only backfills `days = 30`, and
+`apps/api/src/infrastructure/database/schema-migrations.test.ts` proves a legacy
+row reads back with unchanged `expected_amount_dzd` / `actual_amount_dzd` and
+`days = 30`. `actualAmountDzd` remains the authoritative paid amount.
+
+## Round 3 (PR #420 round-3 finding: stale default after a period change)
+
+The round-3 review found that the dialog's reset effect keyed on the employee id
+alone (`.scratch/reviews/412/…-code-review.md` line 120 hit). A workspace
+refresh that changed the wage period (monthly→daily) while the dialog was open
+re-ran the effect but returned early, so an untouched days field stayed at 30
+while the proposal used the daily wage; accepting it recorded 30 days of daily
+pay. Fixed in `add-salary-payment-dialog.tsx`: the reset now keys on the
+employee AND the wage period and tracks whether the day count was edited, so the
+default re-applies while untouched and an operator edit survives. The
+employee-details quick form had the mirror gap — it re-applied the default but
+also reset touched fields and collapsed the form on any wage refresh — and is
+fixed the same way in `employee-details-page.tsx`.
+
+Verification on source `1cf295b51671b37b61675940fa4234b74320292f`:
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `npx vitest run src/features/employees/add-salary-payment-dialog.test.tsx src/features/employees/employee-details-page.test.tsx --maxWorkers=2` | 0 | 2 files, 15 passed |
+| `pnpm --filter @tuari/web test` (full web; vitest config pins `maxWorkers: 2`) | 0 | 81 files, 674 passed |
+| `pnpm typecheck` (turbo) | 0 | 4/4 tasks |
+| `pnpm lint` | 0 | 2/2 tasks; unslop PASS |
+| `pnpm check:unslop` | 0 | PASS (0 errors) |
+| `npx playwright test tests/e2e/salaries.spec.ts --workers=1` | 0 | 2/2 passed |
+
+The four new assertions that catch the bug were verified to FAIL against the
+pre-fix source (`git stash` of the two source files, tests kept): the dialog
+untouched-default and split-default tests, and both quick-form tests. Ports
+3000/4318 were free, so the E2E spec ran locally.
+
+Review method for round 3: the delta is a reset-timing bug fix, not a change to
+the money math. The prior Standards/Spec axes and the critic+defender debate
+remain the review of record for the calculation; the round-3 change is covered
+by the failing-on-base regression tests above and the lane's focused self-review
+of the two touched components. The round-3 brief asked for a re-pin, not a fresh
+axes/debate run; the parent can request one if it wants the fix independently
+re-reviewed.
+
+## Re-pin note (evidence 1cf295b → 8206d04)
+
+The reviewed source for round 3 is `1cf295b51671b37b61675940fa4234b74320292f`
+(the fix commit). The only commit after it is `8206d04`, which appends the
+durable lesson to `.agents/wisdom/architecture.md`; the guard's re-pin rule
+requires the evidence to track HEAD, so these files are named for `8206d04`.
+No source, test, or config changed after `1cf295b`.
+
+## Round 4 (PR #420 19:27Z review, five findings) — reviewed source `49c324b`
+
+The 19:27Z Greptile review raised six findings. Five are fixed here; the sixth
+(project wage-cost display) is the known `#414` scope decision recorded in
+round 2.
+
+1. **Handoff day counted twice** (`packages/contracts/src/salary-days.ts`).
+   `deriveSalaryProjectDays` now treats each assignment as a half-open
+   `[startDate, endDate)` window and de-duplicates claimed calendar days per
+   worker (project-id order for any residual dispute). The day an assignment
+   handoff ends one project and starts the next is credited once; a fully
+   covered period can no longer suggest `days + 1`. New contract tests
+   (`attributes the handoff day to exactly one project`,
+   `de-duplicates a day two overlapping projects both claim`) plus updated
+   overlap expectations.
+2. **Open dialog keeps a stale wage** (`salaries-section.tsx`). The section now
+   snapshots only the target's identity; `salaryAmountDzd`, `salaryPeriod`, and
+   `projectAssignments` come from the live `workers` query data, so a workspace
+   refresh re-derives the open dialog's proposal and untouched day default.
+   New `salaries-section.test.tsx` asserts a wage refresh moves the proposal.
+3. **Prior success erases a new draft** (`employee-details-page.tsx`). Reopening
+   the quick form calls `createSalaryPaymentMutation.reset()`, clearing the
+   stale `isSuccess` so a later wage refresh cannot re-run the success reset and
+   wipe the new draft. New regression test in `employee-details-page.test.tsx`.
+4. **History hides project splits** (`salaries-section.tsx`). Each history row
+   now lists its split lines (project name, days, and the line's prorated share
+   of the paid amount via the new `allocateSalaryAmountByDays` helper), so the
+   attribution is readable without the API. New test plus an updated E2E
+   assertion.
+5. **Legacy split migration untested** (`schema-migrations.test.ts`). The test
+   now builds a genuine pre-#412 schema (drops the `days` column AND the split
+   table/indexes), proves that state, then asserts the upgrade restores the
+   column and creates the split table with both indexes while preserving the
+   stored amounts.
+
+Commands on the reviewed source (HEAD `49c324b`):
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `pnpm --filter @tuari/contracts build` | 0 | ESM + DTS success |
+| `npx vitest run --maxWorkers=2` (contracts) | 0 | 5 files, 192 passed |
+| `npx vitest run ... schema-migrations schema-definitions modules/company --maxWorkers=2` (api) | 0 | 14 files, 411 passed |
+| `pnpm test` (full: contracts + api + web, turbo `--concurrency=2`) | 0 | contracts 192 · api 74 files / 1370 passed, 1 skipped · web 82 files / 681 passed |
+| `pnpm typecheck` (turbo) | 0 | 4/4 tasks |
+| `pnpm lint` | 0 | 2/2 tasks; unslop PASS |
+| `pnpm check:unslop` | 0 | PASS (0 errors) |
+| scoped coverage `packages/contracts/src/salary-days.ts` | 0 | 100% stmts/branches/funcs/lines |
+| scoped coverage `apps/web/.../salary-payment-form.ts` | 0 | 100% stmts/lines/funcs; branches 88.37% (pre-existing `resolveSalaryPaymentPeriod` gaps) |
+| scoped coverage `salaries-section.tsx` / `employee-details-page.tsx` | 0 | 62.5% stmts / 69.2% lines and 89.8% stmts / 90% lines (pre-existing uncovered worker-table rows); the new split/reset lines are covered |
+| `npx playwright test tests/e2e/salaries.spec.ts --workers=1` | 0 | 2/2 passed |
+
+Bug-catching verification: each new assertion was run against the pre-fix
+source and failed there — the three contract tests (3 failed), the
+`salaries-section` tests (2 failed), the `employee-details-page` reopen test
+(1 failed), and the migration test when the split `CREATE` was renamed away
+(1 failed). Ports 3000/4318 were free and no orphan dev-server processes for
+this worktree were present, so the E2E spec ran locally.
+
+Round-4 method: the fixes are a boundary/de-dup rule in the derivation, two
+component-timing fixes, one display addition, and one test strengthening. The
+prior Standards/Spec axes, critic+defender debate, and test-audit remain the
+review of record for the calculation and data model; the deltas are covered by
+the failing-on-base regression tests above and the lane's focused self-review.
+The round-4 brief asked for a re-pin, not fresh axes; the parent can request a
+new review if it wants the delta independently re-reviewed.
+
+Open item needing a parent decision (not a silent deferral): the same review's
+outside-diff P2 says the employee-details quick form records days and an amount
+but sends no `projectSplits`, so a payment made there stays unallocated. That
+is a UX decision (route through the split dialog, or make the unallocated
+outcome explicit) beyond the five enumerated fixes; proposed destination is a
+follow-up issue, but the parent decides.
+
+
+Re-pin note: the reviewed source for round 4 is `49c324b510076a7ed89facfc363a31b95392b53c`. Commit `c05c9593821e9853002a5cd7ccf249a26d146fd5` only appends
+`.agents/wisdom/architecture.md` (the round-4 lessons), so no source, test, or
+config changed after `49c324b510076a7ed89facfc363a31b95392b53c`. Files are named for HEAD per the evidence re-pin rule.
+
+## Round 4b (PR #420 outside-diff P2, parent decision) — reviewed source `4da54bba`
+
+The 19:27Z review's outside-diff P2: the employee-details quick form records
+days and an amount but sends no `projectSplits`, so a payment made there is
+saved unallocated. The parent decided to fix it minimally in this PR rather
+than defer, because a payment path that silently produces unallocated records
+undermines the point of the feature.
+
+Minimal fix (no split editor rebuilt):
+
+- The quick form now states the outcome before saving:
+  `financeUnallocatedNotice` — the payment is saved without project
+  attribution, so it will not appear in any project's cost.
+- A `financeOpenSplitDialog` button opens the existing
+  `AddSalaryPaymentDialog` for the same employee, so attribution is one click
+  away.
+- The quick form still saves an unallocated payment (unchanged behaviour) — it
+  is now explicit, not silent.
+
+Commands on `4da54bba`:
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `npx vitest run src/features/employees/employee-details-page.test.tsx --maxWorkers=2` | 0 | 1 file, 8 passed (new notice + dialog-open test included) |
+| `pnpm --filter @tuari/web test` (full web, `maxWorkers: 2`) | 0 | 82 files, 682 passed |
+| `pnpm typecheck` (turbo) | 0 | 4/4 tasks |
+| `pnpm lint` | 0 | 2/2 tasks; unslop PASS |
+| scoped coverage `apps/web/.../employee-details-page.tsx` | 0 | 81.8% stmts / 83.5% lines (pre-existing gaps only; both new branches exercised) |
+| `npx playwright test tests/e2e/salaries.spec.ts --workers=1` | 0 | 2/2 passed |
+
+Negative verification: the new test ("states that a quick payment is
+unallocated and offers the split dialog") fails on the pre-fix page at the
+notice assertion and passes after. Ports 3000/4318 were free with no orphan
+dev-server processes for this worktree.
+
+Scope note: the quick form's own split editor was deliberately not built; the
+one-click route to `AddSalaryPaymentDialog` is the intended path, per the
+parent decision. The sixth summary finding (project wage-cost shares) remains
+the known `#414` deferral.
+
+## Round 5 delta (PR #420 head `384b177f`)
+
+Base: `develop` (fetched `origin/develop` = `edf1e5b3`; merge-base
+`1dc619110a4806b28c54d8f01aef419ce54ff8ed`). `origin/develop` advanced with the
+#435 license-docs merge, which touches no salary/employee file.
+
+Four findings from the round-5 review fixed:
+
+1. `employee-table.tsx` payment dialog reads live wage/period/assignments.
+2. `employee-details-page.tsx` quick form clears its draft and says the split
+   dialog took over.
+3. `salary-payment-form.ts` `allocateSalaryAmountByDays` distributes the
+   rounding remainder by largest remainder and returns per-line shares;
+   `salaries-section.tsx` renders them with cents.
+4. `home-view-derived-employee-salary.ts` groups assignments in one pass.
+
+Commands at `384b177f` (`--maxWorkers=2`, shared machine):
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `pnpm typecheck` | 0 | 4/4 tasks |
+| `pnpm lint` | 0 | 0 errors (pre-existing warnings only) |
+| `pnpm check:unslop` | 0 | PASS |
+| `pnpm test:api` | 0 | 74 files, 1375 passed, 1 skipped |
+| web full suite (`npx vitest run --maxWorkers=2`) | 0 | 82 files, 688 passed |
+| scoped coverage (touched files) | 0 | see below |
+| `npx playwright test tests/e2e/salaries.spec.ts --workers=1` | 0 | 2/2 passed |
+
+Scoped coverage: `salary-payment-form.ts` 100% stmts/funcs/lines and 89.36%
+branches (pre-existing `resolveSalaryPaymentPeriod` gaps only; no new uncovered
+line); the new grouping lines in `home-view-derived-employee-salary.ts` are
+covered, including the unknown-employee skip. `employee-table.tsx` /
+`salaries-section.tsx` / `employee-details-page.tsx` keep their pre-existing
+uncovered table/callback rows; every new line is exercised by the new tests.
+
+`playwright-report/index.html` was restored to HEAD after the E2E run. This is a
+self-verified fix round; the parent owns the hosted re-review (no CLI Greptile
+review was requested — account cooldown).
+
+Re-pin note: the only change after the code fix `384b177f` is the round-5
+wisdom entry in `.agents/wisdom/architecture.md` (`859c5d76`), a docs-only
+file; the reviewed source is unchanged.
+
+## Round 6 delta (PR #420 head `34e7d2e3`)
+
+Base: `develop` @ `9949146208d276915b31f28ba9a95788a6e113f5` (merge-base).
+
+Seven findings from the batched round-6 review fixed; two were consequences of
+the round-5 fixes:
+
+1. `employee-details-page.tsx` / `add-salary-payment-dialog.tsx` — the split
+   handoff now carries the quick draft (days, amount, date, note) into the
+   dialog and clears the quick form in the same action, so the typed payment is
+   not discarded and the dialog no longer opens on its own 30-day default.
+2. `salary-payment-form.ts` / `workforce.service.ts` — money is normalised to
+   two decimals (whole cents, round half up) at the write boundary and in the
+   form. `allocateSalaryAmountByDays` computes in whole cents, so a raw
+   `100.005` reconciles to `100.01` instead of allocating 300 DZD.
+3. `salary-days.ts` — `computeProposedSalaryAmount` runs the monthly day rate in
+   integer cents: `30010.05 / 30` proposes `1000.34`, not `1000.33`.
+4. `home-view-derived-employee-salary.ts` — archived assignments with no end
+   date are excluded from the wage-day windows.
+5. `salaries-section.tsx` — the expected and paid cells render at cent
+   precision like the split shares.
+6. `employee-details-page.tsx` — the quick-payment history has a days column.
+7. `schema-definitions.test.ts` — the round-5 repair commit (`5aae1b55`)
+   rewrote the file with LF endings and re-encoded `→` as `â†’`. Restored the
+   CRLF endings and the arrow; the diff vs `develop` is now only the 43 new
+   #412 assertion lines.
+
+Commands on `34e7d2e3` (`--maxWorkers=2`, shared machine):
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `pnpm --filter @tuari/contracts build` | 0 | ESM + DTS success |
+| `pnpm typecheck` | 0 | 4/4 tasks |
+| `pnpm lint` | 0 | 0 errors |
+| `pnpm check:unslop` | 0 | PASS |
+| touched contracts suite | 0 | 31 passed |
+| touched web suites (5 files) | 0 | 51 passed |
+| touched api suites (2 files) | 0 | 95 passed |
+| scoped coverage `salary-days.ts` | 0 | 100% stmts/branches/funcs/lines |
+| scoped coverage `workforce.service.ts` (company suite) | 0 | 100% stmts/branches/funcs/lines |
+| scoped coverage web touched files | 0 | `salary-payment-form.ts` 100% stmts/lines/funcs, 89.36% branches (pre-existing gaps) |
+| `npx playwright test tests/e2e/salaries.spec.ts --workers=1` | 0 | 2/2 passed |
+
+Full `pnpm test` at the end: contracts and web green; the API suite hit the
+documented load-flake class (8 timeouts across `recovery-key.service.test.ts`,
+`update-history.service.test.ts`, and the `sqlite-bootstrap.port.test.ts`
+cross-connection write-lock test). All three files pass standalone; no touched
+file failed. `playwright-report/index.html` was restored to HEAD after the E2E
+run.
+
+Negative verification: the contract case (`30010.05` at 1 day → `1000.34`), the
+override case (`100.005` → `100.01`), the archived-assignment case, and the
+carried-draft case each fail on the pre-fix source and pass after.
+
+Self-verified fix round; the parent owns the hosted re-review. No CLI Greptile
+review was requested (lane instruction).

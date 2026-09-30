@@ -15,6 +15,7 @@ import {
 } from "@/features/shared/table-primitives"
 import { getArabicStatusLabel, getStatusTone } from "@/features/shared/status-meta"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
+import type { SalaryProjectAssignmentWindow, SalaryProjectOption } from "./add-salary-payment-dialog"
 
 export type EmployeeTableRow = {
   id: string
@@ -66,6 +67,10 @@ type EmployeeTableCopy = {
 type EmployeeTableProps = {
   copy: EmployeeTableCopy
   rows: EmployeeTableRow[]
+  /** Projects the payment dialog can attribute a split to. */
+  projects?: SalaryProjectOption[]
+  /** Per-employee assignment windows feeding the dialog's derived split. */
+  projectAssignmentsByEmployeeId?: Record<string, SalaryProjectAssignmentWindow[]>
   onAdd?: () => void
   onDelete: (row: EmployeeTableRow) => void
   onEdit: (row: EmployeeTableRow) => void
@@ -77,16 +82,38 @@ type EmployeeTableProps = {
 /**
  * @description Component
  */
-export function EmployeeTable({ copy, rows, onAdd, onDelete, onEdit, onLeave, onView }: EmployeeTableProps) {
+export function EmployeeTable({
+  copy,
+  rows,
+  projects,
+  projectAssignmentsByEmployeeId,
+  onAdd,
+  onDelete,
+  onEdit,
+  onLeave,
+  onView,
+}: EmployeeTableProps) {
   const { t } = useTranslation()
   // rows are already paginated by the parent (cursor-based pagination)
+  // Only the target's identity is snapshotted when the dialog opens. The wage,
+  // period, and assignment windows are read from the live props so a workspace
+  // refresh cannot leave a stale proposal or day default in the open dialog.
   const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
+  const paymentRow = paymentTarget
+    ? rows.find((candidate) => candidate.id === paymentTarget.id) ?? null
+    : null
 
   return (
     <>
       <AddSalaryPaymentDialog
         employeeId={paymentTarget?.id ?? null}
-        employeeName={paymentTarget?.name}
+        employeeName={paymentRow?.name ?? paymentTarget?.name}
+        salaryAmountDzd={paymentRow?.salaryAmountDzd ?? null}
+        salaryPeriod={paymentRow?.salaryPeriod ?? null}
+        projectAssignments={
+          paymentTarget ? (projectAssignmentsByEmployeeId?.[paymentTarget.id] ?? []) : []
+        }
+        projects={projects ?? []}
         open={paymentTarget !== null}
         onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
       />

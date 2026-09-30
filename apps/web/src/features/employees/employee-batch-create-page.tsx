@@ -168,7 +168,6 @@ export function EmployeeBatchCreatePage({
     notesPlaceholder: t("employeeForm.notesPlaceholder"),
     salaryPeriodOptions: [
       { value: "DAILY" as const, label: t("detailPages.salary.daily") },
-      { value: "WEEKLY" as const, label: t("detailPages.salary.weekly") },
       { value: "MONTHLY" as const, label: t("detailPages.salary.monthly") },
     ],
     validation: {

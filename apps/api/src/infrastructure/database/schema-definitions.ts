@@ -246,6 +246,7 @@ export const schemaStatements = [
     "id" TEXT NOT NULL PRIMARY KEY,
     "employee_id" TEXT NOT NULL,
     "period_type" TEXT NOT NULL,
+    "days" INTEGER NOT NULL DEFAULT 30,
     "expected_amount_dzd" REAL NOT NULL,
     "actual_amount_dzd" REAL NOT NULL,
     "payment_date" DATETIME NOT NULL,
@@ -257,6 +258,20 @@ export const schemaStatements = [
     "updated_at" DATETIME NOT NULL,
     CONSTRAINT "employee_salary_payment_employee_id_fkey"
       FOREIGN KEY ("employee_id") REFERENCES "employee" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  )`,
+  // Issue #412: per-project day attribution for a salary payment. A payment
+  // may have no lines (unallocated); the sum of `days` never exceeds the
+  // payment's `days` (enforced in the service).
+  `CREATE TABLE IF NOT EXISTS "employee_salary_payment_split" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "payment_id" TEXT NOT NULL,
+    "project_id" TEXT NOT NULL,
+    "days" INTEGER NOT NULL CHECK ("days" > 0),
+    "created_at" DATETIME NOT NULL,
+    CONSTRAINT "employee_salary_payment_split_payment_id_fkey"
+      FOREIGN KEY ("payment_id") REFERENCES "employee_salary_payment" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "employee_salary_payment_split_project_id_fkey"
+      FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
   )`,
   `CREATE TABLE IF NOT EXISTS "external_counterparty" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -545,6 +560,8 @@ export const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "warehouse_manager_ownership_history_warehouse_id_idx" ON "warehouse_manager_ownership_history" ("warehouse_id", "start_date")',
   'CREATE INDEX IF NOT EXISTS "warehouse_manager_ownership_history_manager_id_idx" ON "warehouse_manager_ownership_history" ("manager_id", "start_date")',
   'CREATE INDEX IF NOT EXISTS "employee_salary_payment_employee_id_idx" ON "employee_salary_payment" ("employee_id", "payment_date")',
+  'CREATE INDEX IF NOT EXISTS "employee_salary_payment_split_payment_id_idx" ON "employee_salary_payment_split" ("payment_id")',
+  'CREATE INDEX IF NOT EXISTS "employee_salary_payment_split_project_id_idx" ON "employee_salary_payment_split" ("project_id")',
   'CREATE INDEX IF NOT EXISTS "external_counterparty_full_name_idx" ON "external_counterparty" ("full_name")',
   'CREATE INDEX IF NOT EXISTS "debt_account_worker_id_idx" ON "debt_account" ("worker_id")',
   'CREATE INDEX IF NOT EXISTS "debt_account_external_counterparty_id_idx" ON "debt_account" ("external_counterparty_id")',
@@ -803,6 +820,9 @@ export const additiveStatements = [
   'ALTER TABLE "employee_salary_payment" ADD COLUMN "actor_user_id" TEXT',
   'ALTER TABLE "employee_salary_payment" ADD COLUMN "actor_label" TEXT',
   'ALTER TABLE "employee_salary_payment" ADD COLUMN "transaction_id" TEXT',
+  // Issue #412: whole days a salary payment covers. Existing rows backfill to
+  // 30, which is the full-month default; their stored amounts are untouched.
+  'ALTER TABLE "employee_salary_payment" ADD COLUMN "days" INTEGER NOT NULL DEFAULT 30',
   'ALTER TABLE "user_profile_history" ADD COLUMN "previous_name" TEXT',
   'ALTER TABLE "user_profile_history" ADD COLUMN "previous_phone" TEXT',
   'ALTER TABLE "user_profile_history" ADD COLUMN "password_changed" INTEGER NOT NULL DEFAULT 0',
@@ -882,6 +902,8 @@ export const companyIndexStatements = [
   'CREATE INDEX IF NOT EXISTS "warehouse_manager_ownership_history_warehouse_id_idx" ON "warehouse_manager_ownership_history" ("warehouse_id", "start_date")',
   'CREATE INDEX IF NOT EXISTS "warehouse_manager_ownership_history_manager_id_idx" ON "warehouse_manager_ownership_history" ("manager_id", "start_date")',
   'CREATE INDEX IF NOT EXISTS "employee_salary_payment_employee_id_idx" ON "employee_salary_payment" ("employee_id", "payment_date")',
+  'CREATE INDEX IF NOT EXISTS "employee_salary_payment_split_payment_id_idx" ON "employee_salary_payment_split" ("payment_id")',
+  'CREATE INDEX IF NOT EXISTS "employee_salary_payment_split_project_id_idx" ON "employee_salary_payment_split" ("project_id")',
   `CREATE UNIQUE INDEX IF NOT EXISTS "employee_manager_assignment_active_worker_key" ON "employee_manager_assignment" ("worker_id") WHERE "status" = 'ACTIVE'`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "employee_project_assignment_active_employee_key" ON "employee_project_assignment" ("employee_id") WHERE "status" = 'ACTIVE'`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "employee_warehouse_assignment_active_employee_key" ON "employee_warehouse_assignment" ("employee_id") WHERE "status" = 'ACTIVE'`,

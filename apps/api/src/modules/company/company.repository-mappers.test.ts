@@ -52,6 +52,7 @@ const baseRow: SqliteRow = {
   warehouse_id: "warehouse-1",
   event_type: "CREATED",
   period_type: "MONTHLY",
+  days: 27,
   expected_amount_dzd: 50000,
   actual_amount_dzd: 45000,
   payment_date: "2026-01-05T00:00:00.000Z",
@@ -232,10 +233,19 @@ describe("repository mappers", () => {
     const payment = mapEmployeeSalaryPayment(baseRow);
     expect(payment.employeeId).toBe("employee-1");
     expect(payment.periodType).toBe("MONTHLY");
+    expect(payment.days).toBe(27);
     expect(payment.expectedAmountDzd).toBe(50000);
     expect(payment.actualAmountDzd).toBe(45000);
     expect(payment.paymentDate).toBe("2026-01-05T00:00:00.000Z");
     expect(payment.note).toBe("دفعة");
+    expect(payment.projectSplits).toEqual([]);
+  });
+
+  it("mapEmployeeSalaryPayment defaults legacy rows without a days column to 30", () => {
+    const withoutDays: SqliteRow = { ...baseRow };
+    delete withoutDays.days;
+    expect(mapEmployeeSalaryPayment(withoutDays).days).toBe(30);
+    expect(mapEmployeeSalaryPayment({ ...baseRow, days: null }).days).toBe(30);
   });
 
   it("mapExternalCounterparty maps fields", () => {

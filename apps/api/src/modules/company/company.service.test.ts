@@ -550,6 +550,8 @@ describe("CompanyService", () => {
       {
         employeeId: worker.id,
         actualAmountDzd: 6200,
+        days: 1,
+        projectSplits: [],
       },
       audit,
     ).item;
@@ -575,6 +577,8 @@ describe("CompanyService", () => {
         service.createSalaryPayment({
           employeeId: worker.id,
           actualAmountDzd: amount,
+          days: 1,
+          projectSplits: [],
         }),
       ).toThrowError(CompanyError)
     }

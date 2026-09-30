@@ -1,6 +1,7 @@
 export * from "./core";
 export * from "./auth";
 export * from "./workforce";
+export * from "./salary-days";
 export * from "./projects";
 export * from "./warehouses";
 export * from "./debts";

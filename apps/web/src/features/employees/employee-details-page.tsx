@@ -1,13 +1,20 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
+import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
 import { DatePicker } from "@/components/ui/date-picker"
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashboard"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
+import type {
+  SalaryPaymentDraft,
+  SalaryProjectAssignmentWindow,
+  SalaryProjectOption,
+} from "./add-salary-payment-dialog"
+import { defaultSalaryPaymentDays, parsePositiveInteger, roundMoneyToCents } from "./salary-payment-form"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { classifyWorkforceRole } from "./role-classification"
@@ -22,6 +29,7 @@ import {
 } from "@/features/shared/record-page-frame"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
+import { computeProposedSalaryAmount } from "@tuari/contracts"
 
 import type { EmployeeTableRow } from "./employee-table"
 
@@ -111,6 +119,8 @@ export function EmployeeDetailsPage({
   employee,
   managedProjects,
   managedWarehouses,
+  projectAssignments = [],
+  projects = [],
   onTabChange,
   salaryPayments,
   workHistory,
@@ -121,10 +131,15 @@ export function EmployeeDetailsPage({
   employee: EmployeeTableRow
   managedProjects: string[]
   managedWarehouses: string[]
+  /** Assignment windows feeding the payment dialog's derived split. */
+  projectAssignments?: SalaryProjectAssignmentWindow[]
+  /** Projects the payment dialog can attribute a split to. */
+  projects?: SalaryProjectOption[]
   onTabChange: (tabId: string) => void
   salaryPayments: Array<{
     id: string
     paymentDate: string
+    days: number
     expectedAmountDzd: number
     actualAmountDzd: number
     periodType: "DAILY" | "WEEKLY" | "MONTHLY"
@@ -137,18 +152,41 @@ export function EmployeeDetailsPage({
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const createSalaryPaymentMutation = useCreateSalaryPaymentMutation()
   const [paymentDate, setPaymentDate] = useState(() => getAlgeriaDateInputValue())
+  // The quick-payment form captures the days too: a monthly wage paid for 15
+  // of 30 days must not be recorded as a full 30-day month (issue #412 review).
+  const [paymentDays, setPaymentDays] = useState(() => String(defaultSalaryPaymentDays(employee.salaryPeriod)))
+  const [paymentDaysTouched, setPaymentDaysTouched] = useState(false)
+  const [paymentAmountTouched, setPaymentAmountTouched] = useState(false)
   const [actualAmount, setActualAmount] = useState(() => (employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : ""))
   const [note, setNote] = useState("")
   const [showPaymentForm, setShowPaymentForm] = useState(false)
+  // Once the split dialog is handed the payment, the quick form's draft is
+  // cleared so the two surfaces can never hold a live draft for one payment.
+  const [splitDialogTookOver, setSplitDialogTookOver] = useState(false)
+  // The quick draft is carried into the split dialog before the quick form is
+  // cleared: the operator's days, amount, date, and note are not lost.
+  const [splitDraft, setSplitDraft] = useState<SalaryPaymentDraft | null>(null)
   const availableTabs = isWorker ? ["personal", "history", "finance", "debts"] : ["personal", "history", "finance"]
   const resolvedTab = availableTabs.includes(activeTab) ? activeTab : "personal"
   const sortedSalaryPayments = useMemo(
     () => [...salaryPayments].sort((left, right) => right.paymentDate.localeCompare(left.paymentDate)),
     [salaryPayments],
   )
-  const normalizedActualAmount = actualAmount.trim()
+  const parsedPaymentDays = parsePositiveInteger(paymentDays)
+  const proposedPaymentAmount =
+    employee.salaryAmountDzd !== null && employee.salaryPeriod !== null && parsedPaymentDays !== null
+      ? computeProposedSalaryAmount({
+          periodType: employee.salaryPeriod,
+          salaryAmountDzd: employee.salaryAmountDzd,
+          days: parsedPaymentDays,
+        })
+      : null
+  // The amount follows the day-derived proposal until the user edits it.
+  const displayedActualAmount =
+    paymentAmountTouched || proposedPaymentAmount === null ? actualAmount : String(proposedPaymentAmount)
+  const normalizedActualAmount = displayedActualAmount.trim()
   const actualAmountValue = normalizedActualAmount.length > 0 ? Number(normalizedActualAmount) : null
-  const hasValidActualAmount = actualAmountValue !== null && Number.isFinite(actualAmountValue) && actualAmountValue >= 0
+  const hasValidActualAmount = actualAmountValue !== null && Number.isFinite(actualAmountValue) && actualAmountValue > 0
   const totalExpectedAmount = sortedSalaryPayments.reduce((sum, payment) => sum + payment.expectedAmountDzd, 0)
   const totalActualAmount = sortedSalaryPayments.reduce((sum, payment) => sum + payment.actualAmountDzd, 0)
   const totalDifferenceMeta = getSalaryDifferenceMeta(totalExpectedAmount, totalActualAmount)
@@ -166,12 +204,56 @@ export function EmployeeDetailsPage({
   const hasExpandedNotes = (employee.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `employee-record-${employee.id}`
 
-  useEffect(() => {
+  // Hand the payment to the split dialog. The quick form cannot attribute the
+  // payment to projects, so opening the dialog for the same payment would leave
+  // two live drafts; the draft moves to the dialog and the quick form clears
+  // in the same action, so nothing typed is discarded and there is still one
+  // live draft for the payment.
+  const handOffQuickDraftToSplitDialog = () => {
+    setSplitDraft({
+      days: parsedPaymentDays ?? defaultSalaryPaymentDays(employee.salaryPeriod),
+      daysTouched: paymentDaysTouched,
+      amount: hasValidActualAmount ? actualAmountValue : null,
+      amountTouched: paymentAmountTouched,
+      date: paymentDate,
+      note,
+    })
     setPaymentDate(getAlgeriaDateInputValue())
+    setPaymentDays(String(defaultSalaryPaymentDays(employee.salaryPeriod)))
+    setPaymentDaysTouched(false)
+    setPaymentAmountTouched(false)
+    setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
+    setNote("")
+    setSplitDialogTookOver(true)
+    setPaymentDialogOpen(true)
+  }
+
+  // Distinguish switching to a different employee (full reset) from the same
+  // employee's wage being refreshed (monthly→daily): the refresh re-derives the
+  // day default but keeps what the operator already edited.
+  const quickFormEmployeeRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const employeeChanged = quickFormEmployeeRef.current !== employee.id
+    quickFormEmployeeRef.current = employee.id
+
+    // The day default depends only on the wage period. Re-apply it on a new
+    // employee or a wage refresh unless the operator edited the count.
+    if (employeeChanged || !paymentDaysTouched) {
+      setPaymentDays(String(defaultSalaryPaymentDays(employee.salaryPeriod)))
+      setPaymentDaysTouched(false)
+    }
+
+    if (!employeeChanged) {
+      return
+    }
+
+    setPaymentDate(getAlgeriaDateInputValue())
+    setPaymentAmountTouched(false)
     setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
     setNote("")
     setShowPaymentForm(false)
-  }, [employee.id, employee.salaryAmountDzd])
+  }, [employee.id, employee.salaryPeriod, employee.salaryAmountDzd, paymentDaysTouched])
 
   useEffect(() => {
     if (!createSalaryPaymentMutation.isSuccess) {
@@ -179,10 +261,13 @@ export function EmployeeDetailsPage({
     }
 
     setPaymentDate(getAlgeriaDateInputValue())
+    setPaymentDays(String(defaultSalaryPaymentDays(employee.salaryPeriod)))
+    setPaymentDaysTouched(false)
+    setPaymentAmountTouched(false)
     setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
     setNote("")
     setShowPaymentForm(false)
-  }, [createSalaryPaymentMutation.isSuccess, employee.salaryAmountDzd])
+  }, [createSalaryPaymentMutation.isSuccess, employee.salaryPeriod, employee.salaryAmountDzd])
 
   return (
     <RecordPageFrame
@@ -198,8 +283,19 @@ export function EmployeeDetailsPage({
             <AddSalaryPaymentDialog
               employeeId={employee.id}
               employeeName={employee.name}
+              salaryAmountDzd={employee.salaryAmountDzd}
+              salaryPeriod={employee.salaryPeriod}
+              projectAssignments={projectAssignments}
+              projects={projects}
+              initialDraft={splitDraft}
               open={paymentDialogOpen}
-              onOpenChange={setPaymentDialogOpen}
+              onOpenChange={(open) => {
+                setPaymentDialogOpen(open)
+                if (!open) {
+                  setSplitDialogTookOver(false)
+                  setSplitDraft(null)
+                }
+              }}
             />
             <Button size="lg" onClick={() => setPaymentDialogOpen(true)}>
               {t("salaries.addPayment")}
@@ -292,7 +388,16 @@ export function EmployeeDetailsPage({
                 disabled={employee.salaryAmountDzd === null || !employee.salaryPeriod}
                 size="lg"
                 variant={showPaymentForm ? "outline" : "default"}
-                onClick={() => setShowPaymentForm((currentValue) => !currentValue)}
+                onClick={() => {
+                  // A prior payment's success flag persists on the mutation.
+                  // Clear it when a new draft is opened so a later workspace
+                  // refresh cannot re-run the success reset and wipe the new
+                  // unsaved payment.
+                  if (!showPaymentForm) {
+                    createSalaryPaymentMutation.reset()
+                  }
+                  setShowPaymentForm((currentValue) => !currentValue)
+                }}
               >
                 {showPaymentForm ? t("detailPages.employee.financeToggleHide") : t("detailPages.employee.financeToggleShow")}
               </Button>
@@ -312,15 +417,50 @@ export function EmployeeDetailsPage({
                     {t("detailPages.employee.financeFormDescription")}
                   </p>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                   <Field label={t("detailPages.employee.financePaymentDate")}>
-                    <DatePicker value={paymentDate} onChange={setPaymentDate} />
+                    <DatePicker
+                      value={paymentDate}
+                      onChange={setPaymentDate}
+                    />
+                  </Field>
+                  <Field label={t("salaries.days")}>
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      inputMode="numeric"
+                      dir="ltr"
+                      value={paymentDays}
+                      onChange={(event) => {
+                        setPaymentDaysTouched(true)
+                        setPaymentDays(event.target.value)
+                      }}
+                    />
                   </Field>
                   <Field label={t("detailPages.employee.financeExpectedAmount")}>
-                    <CurrencyInput currencyLabel={currencyLabel} readOnly value={employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : t("detailPages.salary.notSpecified")} />
+                    <CurrencyInput
+                      currencyLabel={currencyLabel}
+                      readOnly
+                      value={
+                        proposedPaymentAmount !== null
+                          ? String(proposedPaymentAmount)
+                          : employee.salaryAmountDzd !== null
+                            ? String(employee.salaryAmountDzd)
+                            : t("detailPages.salary.notSpecified")
+                      }
+                    />
                   </Field>
                   <Field label={t("detailPages.employee.financeActualAmount")}>
-                    <CurrencyInput currencyLabel={currencyLabel} placeholder="0" value={actualAmount} onChange={(event) => setActualAmount(event.target.value)} />
+                    <CurrencyInput
+                      currencyLabel={currencyLabel}
+                      placeholder="0"
+                      value={displayedActualAmount}
+                      onChange={(event) => {
+                        setPaymentAmountTouched(true)
+                        setActualAmount(event.target.value)
+                      }}
+                    />
                   </Field>
                   <Field label={t("detailPages.employee.financePeriod")}>
                     <NativeSelect disabled value={employee.salaryPeriod ?? ""}>
@@ -330,9 +470,19 @@ export function EmployeeDetailsPage({
                       <option value="MONTHLY">{t("detailPages.salary.monthly")}</option>
                     </NativeSelect>
                   </Field>
-                  <Field label={t("detailPages.employee.notes")} className="md:col-span-2 xl:col-span-4">
+                  <Field label={t("detailPages.employee.notes")} className="md:col-span-2 xl:col-span-5">
                     <Textarea value={note} onChange={(event) => setNote(event.target.value)} />
                   </Field>
+                </div>
+                <div className="space-y-2 text-start">
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    {splitDialogTookOver
+                      ? t("detailPages.employee.financeSplitDialogTookOver")
+                      : t("detailPages.employee.financeUnallocatedNotice")}
+                  </p>
+                  <Button size="sm" variant="outline" onClick={handOffQuickDraftToSplitDialog}>
+                    {t("detailPages.employee.financeOpenSplitDialog")}
+                  </Button>
                 </div>
                 <div className="flex justify-start gap-3" dir="rtl">
                   <Button size="lg" variant="outline" onClick={() => setShowPaymentForm(false)}>
@@ -340,11 +490,14 @@ export function EmployeeDetailsPage({
                   </Button>
                   <Button
                     size="lg"
-                    disabled={employee.salaryAmountDzd === null || !employee.salaryPeriod || !hasValidActualAmount || createSalaryPaymentMutation.isPending}
+                    disabled={employee.salaryAmountDzd === null || !employee.salaryPeriod || parsedPaymentDays === null || !hasValidActualAmount || createSalaryPaymentMutation.isPending}
                     onClick={() =>
                       createSalaryPaymentMutation.mutate({
                         employeeId: employee.id,
-                        actualAmountDzd: actualAmountValue!,
+                        // The days are captured by the form; the amount still
+                        // overrides the day-derived proposal when edited.
+                        days: parsedPaymentDays ?? defaultSalaryPaymentDays(employee.salaryPeriod),
+                        actualAmountDzd: roundMoneyToCents(actualAmountValue!),
                         paymentDate: paymentDate ? toAlgeriaDayBoundaryIso(paymentDate, "start") : undefined,
                         note: note.trim() || null,
                       })
@@ -363,6 +516,7 @@ export function EmployeeDetailsPage({
                 <thead className="bg-muted/40 text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDate")}</th>
+                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDays")}</th>
                     <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableExpected")}</th>
                     <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableActual")}</th>
                     <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDifference")}</th>
@@ -377,6 +531,7 @@ export function EmployeeDetailsPage({
                       return (
                         <tr key={payment.id} className="border-t border-border/60 bg-sidebar dark:bg-background">
                           <td className="px-4 py-4 text-start text-foreground">{new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}</td>
+                          <td className="px-4 py-4 text-start font-mono tabular-nums text-foreground" dir="ltr">{payment.days}</td>
                           <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.expectedAmountDzd, currencyLabel)}</td>
                           <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.actualAmountDzd, currencyLabel)}</td>
                           <td className="px-4 py-4 text-start font-medium">
@@ -392,7 +547,7 @@ export function EmployeeDetailsPage({
                     })
                   ) : (
                     <tr>
-                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
+                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={6}>
                         {t("detailPages.employee.financeEmpty")}
                       </td>
                     </tr>

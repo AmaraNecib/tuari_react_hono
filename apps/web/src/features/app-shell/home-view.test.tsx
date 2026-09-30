@@ -422,6 +422,8 @@ describe("HomeView workspace shell", () => {
       expectedAmountDzd: 4500,
       actualAmountDzd: 4500,
       periodType: "DAILY" as const,
+      days: 1,
+      projectSplits: [],
       note: null,
       actorUserId: null,
       transactionId: null,
@@ -453,6 +455,7 @@ describe("HomeView workspace shell", () => {
 
     expect(mocks.createSalaryPaymentMutate).toHaveBeenCalledWith({
       employeeId: "employee-worker-1",
+      days: 1,
       actualAmountDzd: 5000,
       paymentDate: expect.any(String),
       note: "دفعة مع زيادة",

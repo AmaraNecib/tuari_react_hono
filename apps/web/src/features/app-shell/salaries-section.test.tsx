@@ -1,0 +1,226 @@
+// @vitest-environment jsdom
+
+import "@/i18n"
+
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
+const { mutateAsync } = vi.hoisted(() => ({ mutateAsync: vi.fn() }))
+
+vi.mock("@/features/app-shell/workspace-mutations", () => ({
+  useCreateSalaryPaymentMutation: () => ({ mutateAsync, isPending: false, isSuccess: false, reset: vi.fn() }),
+}))
+
+import { SalariesSection } from "./salaries-section"
+
+const PROJECT = { id: "project-1", name: "مشروع ألف" }
+
+function worker(salaryAmountDzd: number) {
+  return {
+    employeeId: "worker-1",
+    employeeName: "عامل الرواتب",
+    employeePhone: "0555000001",
+    employeeRole: "عامل",
+    salaryAmountDzd,
+    salaryPeriod: "MONTHLY" as const,
+    lastPaymentDate: null,
+    // An open-ended window far wider than any payment month: the derived
+    // default always covers the dialog's period.
+    projectAssignments: [{ projectId: PROJECT.id, startDate: "2000-01-01T00:00:00+01:00", endDate: null }],
+  }
+}
+
+const PAYMENT = {
+  id: "payment-1",
+  employeeId: "worker-1",
+  employeeName: "عامل الرواتب",
+  employeePhone: "0555000001",
+  employeeRole: "عامل",
+  paymentDate: "2026-03-31T00:00:00.000Z",
+  days: 30,
+  expectedAmountDzd: 30000,
+  actualAmountDzd: 30000,
+  projectSplits: [
+    { projectId: PROJECT.id, days: 15 },
+    { projectId: "project-2", days: 15 },
+  ],
+  note: null,
+}
+
+function renderSection() {
+  const view = render(
+    <SalariesSection
+      onEditSalary={vi.fn()}
+      projects={[PROJECT, { id: "project-2", name: "مشروع باء" }]}
+      recentPayments={[PAYMENT]}
+      workers={[worker(30000)]}
+    />,
+  )
+
+  return {
+    view,
+    // Simulate a workspace refresh that changes the worker's wage while the
+    // payment dialog stays open.
+    refreshWage: (salaryAmountDzd: number) =>
+      view.rerender(
+        <SalariesSection
+          onEditSalary={vi.fn()}
+          projects={[PROJECT, { id: "project-2", name: "مشروع باء" }]}
+          recentPayments={[PAYMENT]}
+          workers={[worker(salaryAmountDzd)]}
+        />,
+      ),
+  }
+}
+
+describe("SalariesSection (#412)", () => {
+  beforeEach(() => {
+    mutateAsync.mockReset()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it("re-derives the open dialog's proposal from live query data after a wage refresh", () => {
+    const { refreshWage } = renderSection()
+
+    fireEvent.click(screen.getAllByRole("button", { name: "إضافة دفعة" })[0]!)
+
+    // The dialog proposed salary / 30 x 30 days.
+    expect(screen.getAllByDisplayValue("30000").length).toBeGreaterThan(0)
+
+    // A workspace refresh changes the wage underneath the open dialog: the
+    // proposal must follow rather than staying on the snapshotted value.
+    refreshWage(60000)
+    expect(screen.getAllByDisplayValue("60000").length).toBeGreaterThan(0)
+    expect(screen.queryByDisplayValue("30000")).toBeNull()
+  })
+
+  it("shows each project's days and prorated amount in the payment history row", () => {
+    renderSection()
+
+    // The row is not enough on its own: the operator must see which projects
+    // received the days and how the paid amount was shared.
+    expect(screen.getByText("مشروع ألف")).toBeTruthy()
+    expect(screen.getByText("مشروع باء")).toBeTruthy()
+    expect(screen.getAllByText("15 يوم").length).toBe(2)
+    expect(screen.getAllByText(/15,000/).length).toBe(2)
+  })
+
+  it("reconciles the displayed split shares with the paid amount", () => {
+    const payment = {
+      ...PAYMENT,
+      days: 3,
+      expectedAmountDzd: 100,
+      actualAmountDzd: 100,
+      projectSplits: [
+        { projectId: PROJECT.id, days: 1 },
+        { projectId: "project-2", days: 1 },
+        { projectId: "project-3", days: 1 },
+      ],
+    }
+
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[
+          PROJECT,
+          { id: "project-2", name: "مشروع باء" },
+          { id: "project-3", name: "مشروع جيم" },
+        ]}
+        recentPayments={[payment]}
+        workers={[worker(30000)]}
+      />,
+    )
+
+    // Three one-day lines of a 100 DZD payment must sum to 100, not 99.99:
+    // the leftover cent lands on the first line and is shown.
+    expect(screen.getByText(/33\.34/)).toBeTruthy()
+    expect(screen.getAllByText(/33\.33/).length).toBe(2)
+  })
+
+  it("renders the paid and expected amounts with the shares' precision", () => {
+    const payment = {
+      ...PAYMENT,
+      days: 2,
+      expectedAmountDzd: 100.5,
+      actualAmountDzd: 100.5,
+      projectSplits: [
+        { projectId: PROJECT.id, days: 1 },
+        { projectId: "project-2", days: 1 },
+      ],
+    }
+
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[PROJECT, { id: "project-2", name: "مشروع باء" }]}
+        recentPayments={[payment]}
+        workers={[worker(30000)]}
+      />,
+    )
+
+    // Whole-dinar rounding would show 101 paid beside 50.25 shares; the row
+    // must render both at cent precision so they visibly reconcile.
+    expect(screen.getAllByText(/100\.5/).length).toBe(2)
+    expect(screen.queryByText(/101/)).toBeNull()
+    expect(screen.getAllByText(/50\.25/).length).toBe(2)
+  })
+
+  it("lists the salaried workers with their wage, period, and last payment on the workers tab", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[PROJECT, { id: "project-2", name: "مشروع باء" }]}
+        recentPayments={[PAYMENT]}
+        workers={[
+          {
+            ...worker(30000),
+            employeeId: "w-monthly",
+            employeeName: "عامل شهري",
+            salaryPeriod: "MONTHLY" as const,
+            lastPaymentDate: "2026-03-31T00:00:00.000Z",
+          },
+          {
+            ...worker(1500),
+            employeeId: "w-daily",
+            employeeName: "عامل يومي",
+            salaryPeriod: "DAILY" as const,
+          },
+          {
+            ...worker(0),
+            employeeId: "w-none",
+            employeeName: "عامل بلا أجر",
+            salaryAmountDzd: null,
+            salaryPeriod: null,
+          },
+        ]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+
+    expect(screen.getByText("عامل شهري")).toBeTruthy()
+    expect(screen.getByText("عامل يومي")).toBeTruthy()
+    // Each worker's wage carries its own period label.
+    expect(screen.getByText("/ شهري")).toBeTruthy()
+    expect(screen.getByText("/ يومي")).toBeTruthy()
+    // A worker without a wage renders the placeholder rather than a zero wage.
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0)
+
+    // The row's action opens the payment dialog for that worker.
+    fireEvent.click(screen.getAllByRole("button", { name: "إضافة دفعة" })[0]!)
+    expect(screen.getByRole("dialog")).toBeTruthy()
+  })
+
+  it("shows the workers empty state when no worker has a wage", () => {
+    render(
+      <SalariesSection onEditSalary={vi.fn()} projects={[]} recentPayments={[]} workers={[]} />,
+    )
+
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+
+    expect(screen.getByText("لا يوجد عاملون بإعدادات راتب جاهزة حاليًا.")).toBeTruthy()
+  })
+})

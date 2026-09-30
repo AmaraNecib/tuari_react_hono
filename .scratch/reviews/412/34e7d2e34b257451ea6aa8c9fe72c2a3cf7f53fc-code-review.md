@@ -1,0 +1,308 @@
+# #412 — code review (Standards + Spec axes)
+
+- Reviewed diff: 199798b...988493d (axes run 2026-09-27; fixes applied after)
+- Final source SHA (all fixes): 1cf295b51671b37b61675940fa4234b74320292f (round-3 re-pin; round-2
+  source was e0da5e2)
+- Re-pinned: the axes were run against `988493d`; later commits are `3e571ff`,
+  `d45f7b0` (E2E), `c9268e2` (round-1 review fixes), `246f541` (post-rebase test
+  repair), and `e0da5e2` (round-2 debate fix: date-picker conversion + doc
+  corrections). The round-1 and round-2 deltas below record what changed.
+- Reviewer agents: Standards and Spec, parallel, read-only
+- Result: 0 blockers remaining; findings below with resolution.
+
+## Resolutions
+
+| Finding | Axis | Resolution |
+| --- | --- | --- |
+| Evidence stale after post-review changes | Standards | Resolved: this file and the test-audit/evidence files are pinned to the final SHA 3e571ff29f251fd77bd64f737c981d888e8c62a6. |
+| Review artifact naming (`<sha>-code-review.md`) | Standards | Resolved: this file. |
+| No Playwright E2E for the dialog | Standards | **Resolved**: `tests/e2e/salaries.spec.ts` added; both tests pass locally (`npx playwright test tests/e2e/salaries.spec.ts` exit 0). |
+| `toSalaryPayment` duplicated (shared.ts vs sqlite adapter) | Standards | Not fixed: pre-existing adapter family; the sqlite adapter owns its own mapper. |
+| `30` encoded in schema/contracts/web | Standards | Partially addressed: web has `SALARY_DAYS_PER_MONTH`; DB/contract defaults are deliberate per layer. |
+| Dialog props unreachable from employee-table/employee-details | Spec | Fixed: both now pass `salaryAmountDzd`/`salaryPeriod` (proposal no longer renders "—"). The split editor remains the salaries-section surface. |
+| Details-page inline quick form bypasses the split | Spec | Not fixed: deliberate boundary (quick single payment outside the salaries feature); it sends `days: DAILY ? 1 : 30`. |
+| DAILY default days differs (dialog 30, inline 1) | Spec | Not changed: the brief pins the dialog default at 30; the inline form pays one day. Noted for the parent. |
+| Reconciliation only enforced server-side | Spec | Accepted: the service is the enforcement point; the contract is a transport shape. |
+
+## Round 1 delta (PR #420 review)
+
+Findings from the hosted review, and their resolution at `c9268e2`:
+
+- `deriveSalaryProjectDays` could allocate more days than paid (round, then
+  correct the largest line, which could go negative and be dropped). Fixed with
+  largest-remainder/Hamilton flooring; the split now sums to the paid days and
+  never drops a line. Tests added.
+- `listSalaryPayments` bound one SQLite parameter per payment, so a long window
+  could exceed the variable limit. Fixed with a join; the bound-variable count
+  is now constant.
+- Payments started from the employee table / employee details page could not be
+  allocated. Both entry points now pass the project list and assignment windows.
+- The employee-details quick-payment form stored a fixed 30/1 day count. It now
+  captures the days and derives the proposal.
+- A legacy WEEKLY employee could not be re-set to WEEKLY because the option was
+  keyed on the draft. It is now keyed on the stored period.
+- The saved split had no SQLite round-trip coverage. Added to the API sqlite
+  tests and the E2E spec.
+- Self-review of the round-1 diff found no new standards or spec blockers.
+
+## Standards (raw report)
+
+# #412 — Standards axis (read-only review)
+
+Base `17911dc`, HEAD `988493d`. Tooling-enforced items (typecheck/lint/i18n) excluded.
+
+## Hard violations (documented standards)
+
+1. **Stale evidence pin** — `.scratch/reviews/412/e07939af056e59d4db3b12d2d0cee3d761411d76-evidence.md`
+   is pinned to `e07939a`, but HEAD `988493d` changed three reviewable files
+   (`add-salary-payment-dialog.tsx`, `packages/contracts/src/salary-days.ts`,
+   `salary-days.test.ts`). `docs/engineering-workflow.md` §9 ("Evidence filenames
+   must contain the final reviewed HEAD SHA. If the code changes after review,
+   evidence is stale and must be regenerated") + `.agents/wisdom` "Evidence files
+   must be re-pinned to the final HEAD after any reviewable change".
+2. **No E2E test** — §3: "Every user-facing feature includes a Playwright test in
+   `tests/e2e/`." This diff adds a user-facing dialog (days input, proposed
+   amount, project-split lines) and `git diff --stat` shows zero `tests/e2e/` change.
+3. **Naming of review artifact** — §8 requires `.scratch/reviews/<id>/<head-sha>-code-review.md`;
+   only `<sha>-evidence.md` exists.
+
+## Baseline smells
+
+- **Duplicated Code / Shotgun Surgery** — `toSalaryPayment` exists twice and the
+  diff had to edit **both**: `adapters/shared.ts:203` and the private
+  `sqlite-company.repository.ts:228` (`/** Map Drizzle salary payment row plus its
+  per-project split lines. */`), plus a third mapper `company.repository-mappers.ts:200`.
+  Wisdom already tracks this family ("both copies must be edited in lockstep").
+- **Duplicated Code / Primitive Obsession — `30` in five places** —
+  `workforce.ts` `.default(30)`, `company.ts` `.default(30)`,
+  `schema-definitions.ts` ADD COLUMN `DEFAULT 30`, mapper `?? 30`, and web
+  `SALARY_DAYS_PER_MONTH = 30`. The design claims helpers are shared "so the
+  proposal cannot drift", yet `employee-details-page.tsx:347` inlines
+  `days: employee.salaryPeriod === "DAILY" ? 1 : 30` instead of the shared constant/helper.
+- **Repeated Switches** — the period-type switch repeats: `computeProposedSalaryAmount`
+  (contracts), `resolveSalaryPaymentPeriod` (web), `employee-details-page` ternary.
+  Judgement call, but three encodings of "what a period means".
+- **Data Clumps / inline structural types** — `{projectId, days}` and
+  `{projectId, startDate, endDate}` are re-declared structurally instead of
+  imported: `salaries-section.tsx` (`projectSplits: Array<{ projectId: string; days: number }>`,
+  `projectAssignments: Array<{ projectId: string; startDate: string; endDate: string | null }>`),
+  `SplitLine`, `ProjectAssignmentWindow`, `SalaryProjectDaySplit`.
+- **Speculative Generality / inconsistent default** — `toSalaryPayment(r, projectSplits = [])`
+  in `shared.ts` silently defaults while the sqlite twin requires the arg; the
+  default can mask a caller that forgets splits. Judgement call.
+- **Middle Man** — `SalariesSection.openPaymentForm` looks up five worker fields
+  by id and forwards them; the dialog could take the worker record. Judgement call.
+- **Divergent mapper** — `mapEmployeeSalaryPayment` hardcodes `projectSplits: []`
+  (`company.repository-mappers.ts:207`); raw-SQL reads can never expose splits.
+  Note/risk, not a blocker.
+
+## Correct
+
+- New multi-statement writer `createSalaryPayment` wraps inserts in
+  `runSyncTransaction(this.connectionLock, this.raw, …)` — matches the repo's
+  write-reservation discipline; no plain `db.transaction(async …)`.
+- Barrel export added in `packages/contracts/src/index.ts` (the #206 lesson).
+- Output/input schema split honoured: `days: int().positive()` with `.default(30)`
+  on input; `refine`-free validators; no transforms on output schemas.
+
+## Spec (raw report)
+
+# #412 — SPEC review (read-only)
+
+Axis: spec conformance (missing / partial / unrequested / looks-done-but-wrong).
+Diff: `17911dc...988493d`. Design: `.scratch/implementation/412-design.md`. Issue #412 read via `gh`.
+
+## (a) Requirements missing or partial
+
+1. **Partial — derived default + proposal unreachable from two of three dialog entry points.**
+   `apps/web/src/features/employees/employee-details-page.tsx:198` and `employee-table.tsx:87` render
+   `<AddSalaryPaymentDialog>` with only `employeeId`/`employeeName`/`open`/`onOpenChange`. The new props
+   (`salaryAmountDzd`, `salaryPeriod`, `projectAssignments`, `projects`) are omitted, so in that dialog
+   `proposedAmount` is `null` ("—"), `resolveSalaryPaymentPeriod` is not fed a period in the section, and
+   `addSplit` is `disabled={projects.length === 0}` — per-project lines cannot be added at all.
+   Spec: *"Contract, service, repository and UI: days input, proposed amount, editable amount, per-project
+   day lines with the derived default."* Only `SalariesSection`
+   (`salaries-section.tsx:98-104`) satisfies this.
+
+2. **Partial — second create path bypasses the split entirely.**
+   The employee finance inline form (`employee-details-page.tsx:345`) posts `days` + `actualAmountDzd` and no
+   `projectSplits`, and exposes no days input (days is hard-coded `DAILY ? 1 : 30`). So a payment created
+   from the employee page is always unallocated, and "per-project day lines with the derived default" is
+   user-visible only on the salaries screen. Spec: *"the derived default … no assignments falls back to
+   unallocated"* — reachable, but the feature is half-wired.
+
+3. **Note — reconciliation enforced only server-side.** `employeeSalaryPaymentCreateInputSchema`
+   (`packages/contracts/src/workforce.ts:332-343`) does not bound `sum(projectSplits.days) <= days` nor
+   reject duplicate `projectId`; that lives in `workforce.service.ts` (rejects over-allocation and
+   duplicates). Contract-only consumers can send an over-allocated or duplicate split and only the API
+   rejects it. Spec: *"Reconciliation: the split's days must match the days paid."*
+
+## (b) Behaviour in the diff not asked for (scope creep)
+
+- None material. WEEKLY removal from `employee-batch-create-page.tsx` and the legacy-value keep-alive in
+  `employee-edit-page.tsx:164-172` are exactly parent decision (2)/issue *"WEEKLY stays in the enum and the
+  code but is not offered in the UI"*. `expectedAmountDzd` re-meaning is parent decision (3).
+- Minor extra: `salaryProjects` sorted by Arabic name in `home-view-derived-employee-salary.ts:72` and
+  `SalariesSection` gaining a `days` column — supporting UI, not requested, low risk.
+
+## (c) Implemented but looks wrong
+
+- **DAILY default days is inconsistent.** The shared dialog defaults `daysText` to
+  `SALARY_DAYS_PER_MONTH` (30) for every period (`add-salary-payment-dialog.tsx:63`), while the details
+  inline form uses `DAILY ? 1 : 30` (`employee-details-page.tsx:347`). A daily worker opened from
+  `SalariesSection` therefore sees a 30-day proposal. Spec says only *"default 30, so a full month is
+  unchanged"* — monthly-scoped; the daily default is unspecified, but the two paths disagree.
+- **employee-table dialog** inherits the same 30-day default with no wage/period context
+  (`employee-table.tsx:87-92`); the proposal reads "—" and days must be hand-corrected.
+
+## Correct (verified)
+
+- Normalization to the payment's day count with remainder on the largest line, 0-day drop, overlap can
+  exceed `days` (`salary-days.ts:150-195`) — matches parent decision (1).
+- No assignments → `[]` → unallocated; periods off `[periodStart, periodEnd]` clamped; open-ended windows
+  to period end (`salary-days.ts:100-148`).
+- `days` int>0 default 30 in contract; service rejects bad days, unknown/duplicate project, and
+  `allocatedDays > days` (`workforce.service.ts:639-700`).
+- Additive column + cascade split table; legacy rows keep stored amounts (schema/migration diffs).
+
+**Residual risk:** test-file bodies were not re-read line-by-line; coverage claims for 30/27/15, override,
+sliding days and no-attribution come from the design record and diff stat only.
+
+## Round 2 delta (High-assurance debate, PR #420 00:11Z)
+
+The hosted review required the debate the evidence had recorded as skipped. The
+debate (`e0da5e2...-debate.md`) confirmed the money math (proration, 2-dp
+rounding, floor + largest-remainder split, remainder, assignment windows, legacy
+backfill) and found one real exposed point: the salary payment dialog and the
+employee-details quick form passed canonical `yyyy-MM-dd` state into the shared
+`dd/MM/yyyy` `DatePicker`, so picking a date nulled the pay period (wiping an
+untouched derived split) and dropped the submitted `paymentDate`.
+
+Standards axis: fixed with `toDatePickerValue`/`fromDatePickerValue` in both
+files (`add-salary-payment-dialog.tsx`, `employee-details-page.tsx`), matching
+`expense-form-dialog.tsx`.
+
+Spec axis: the DAILY default divergence (dialog 30 vs quick form 1) is resolved
+by the parent decision in `e0da5e2`: a shared `defaultSalaryPaymentDays(periodType)`
+(30 for MONTHLY/WEEKLY, 1 for DAILY) is used by both surfaces, with tests per
+period and at both call sites. The remaining findings (schema hardening,
+> 2-dp override, `expectedAmountDzd` total) are dismissed or deferred in the
+debate artifact.
+
+Doc drift fixed: the `salary-days.ts` header and `412-design.md` no longer claim
+the split derivation is shared with the API, and describe the largest-remainder
+rule instead of the superseded largest-line correction.
+
+## Round 3 delta (PR #420 round-3 finding)
+
+- Finding: `.scratch` review line 120 — the dialog reset effect guarded on the
+  employee id alone, so a wage-period change during a workspace refresh left a
+  stale day default (untouched field stayed at 30 for a daily worker while the
+  proposal used the daily wage).
+- Resolution at `1cf295b`: the effect now compares `{ employeeId, period }` and
+  re-applies the day default unless the operator edited the count; a new
+  employee still triggers the full reset. The employee-details quick form's
+  reset had the mirror gap (it discarded touched day counts/amounts and
+  collapsed the form on a wage refresh) and now re-derives on a new employee or
+  period while keeping the edit and staying open.
+- Regression tests: `add-salary-payment-dialog.test.tsx` (untouched default,
+  surviving edit, re-derived split) and `employee-details-page.test.tsx` (both),
+  all verified to fail against the pre-fix source and pass after.
+- No new Standards or Spec findings from the lane's focused self-review of the
+  two touched components. The prior axes' findings and resolutions are
+  unchanged.
+
+Re-pin note: the reviewed source is `1cf295b`; the only later commit is
+`8206d04`, a `.agents/wisdom/architecture.md` doc append. Files are named for
+HEAD per the evidence re-pin rule; no source, test, or config changed after
+`1cf295b`.
+
+## Round 4 delta (PR #420 19:27Z review)
+
+- Findings and resolutions: see the Round 4 section of `…-evidence.md`
+  (handoff-day de-dup in `deriveSalaryProjectDays`; live wage/period/assignment
+  props in `SalariesSection`; reopen-time mutation reset in
+  `EmployeeDetailsPage`; split lines in the salaries history row; a genuinely
+  pre-#412 legacy-migration test).
+- Standards: no new findings from the lane's focused self-review of the touched
+  files. `packages/contracts/src/salary-days.ts` stays a pure derivation with a
+  documented boundary rule; the web changes keep the existing component seams
+  and add one pure helper (`allocateSalaryAmountByDays`) with its own tests.
+- Spec: the fix restores the #412 invariant the review named — for a worker
+  whose assignments cover the period, the suggested split sums to the days
+  being paid, never more — without changing the proration or largest-remainder
+  rule the prior axes reviewed.
+
+Re-pin note: the reviewed source for round 4 is `49c324b510076a7ed89facfc363a31b95392b53c`. Commit `c05c9593821e9853002a5cd7ccf249a26d146fd5` only appends
+`.agents/wisdom/architecture.md` (the round-4 lessons), so no source, test, or
+config changed after `49c324b510076a7ed89facfc363a31b95392b53c`. Files are named for HEAD per the evidence re-pin rule.
+
+## Round 4b delta (outside-diff P2, parent decision)
+
+- Finding: the employee-details quick form saved payments without
+  `projectSplits`, silently producing unallocated records.
+- Resolution at `4da54bba`: an explicit unallocated notice plus a button that
+  opens the existing split-capable dialog for the same employee. The quick
+  form keeps its compact shape; no split editor was duplicated.
+- Standards: reuses the existing `AddSalaryPaymentDialog` seam and the i18n
+  resource; no new derivation logic was introduced.
+- Spec: the operator can now see the unallocated outcome and reach attribution
+  in one click, so a quick payment is never silently unattributed.
+
+## Round 5 delta (PR #420 head `384b177f`)
+
+Base: `develop` (fetched `origin/develop` = `edf1e5b3`; merge-base
+`1dc619110a4806b28c54d8f01aef419ce54ff8ed`). `origin/develop` advanced with the
+#435 license-docs merge, which touches no salary/employee file, so the PR diff is
+unaffected.
+
+Four round-5 findings fixed at `384b177f`:
+
+1. `employee-table.tsx` — **stale salary preview**. The dialog snapshots only
+   the target's identity; the wage, period, and assignment windows come from the
+   live props, so a workspace refresh re-derives the open proposal and untouched
+   day default (the same shape already used by `salaries-section.tsx`). The
+   "never clobber an operator-edited field" rule is unchanged.
+2. `employee-details-page.tsx` — **two live drafts**. Handing the quick draft to
+   the split dialog now clears the quick form (days, amount, date, note) and
+   swaps its notice to say the split dialog took over, so one payment cannot be
+   submitted from two surfaces.
+3. `salary-payment-form.ts` — **unreconciled shares**. `allocateSalaryAmountByDays`
+   allocates across every line and distributes the leftover cents by largest
+   remainder, so the shares sum exactly to the paid amount (100 into three
+   one-day lines is 33.34 + 33.33 + 33.33). `salaries-section.tsx` renders the
+   shares with cents so the reconciliation is visible.
+4. `home-view-derived-employee-salary.ts` — **repeated scans**. Assignments are
+   grouped by employee in a single pass instead of one filter scan per employee.
+
+Standards: the fixes reuse existing seams (live props, the dialog's public
+props, the contract's largest-remainder approach) and add no new dependency.
+Spec: the split's days still reconcile with the paid days and the shares now
+reconcile with the paid amount; the quick-payment handoff keeps a single draft.
+
+Evidence: this is a self-verified fix round (tests, typecheck, lint, E2E); the
+parent owns the hosted re-review. Greptile CLI was not run (account cooldown,
+per the parent instruction).
+
+Re-pin note: the only change after the code fix `384b177f` is the round-5
+wisdom entry in `.agents/wisdom/architecture.md` (`859c5d76`), a docs-only
+file; the reviewed source is unchanged.
+
+## Round 6 delta (PR #420 head `34e7d2e3`)
+
+Seven findings fixed; two were consequences of the round-5 fixes.
+
+Standards: the money normalisation is one shared contract helper
+(`roundMoneyToCents`) used by the service and both payment forms; the monthly
+day arithmetic runs in whole cents; the draft handoff extends the dialog's
+existing public prop surface with one optional `initialDraft`; no new
+dependency. The corrupted test file was restored to its original encoding and
+line endings.
+
+Spec: the split handoff keeps one live draft and loses no input; the monthly day
+rate and the money override are stored at the currency's precision so the
+displayed shares reconcile; archived assignments no longer suggest wage days;
+the history shows the recorded day count.
+
+Evidence: self-verified fix round (tests, typecheck, lint, scoped coverage,
+E2E); the parent owns the hosted re-review.
