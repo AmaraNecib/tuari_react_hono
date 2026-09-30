@@ -6,6 +6,11 @@ import { PageHeader } from "@/features/shared/page-primitives"
 import { RecordTabs } from "@/features/shared/record-page-frame"
 import { AddSalaryPaymentDialog } from "@/features/employees/add-salary-payment-dialog"
 import { allocateSalaryAmountByDays } from "@/features/employees/salary-payment-form"
+import type {
+  SalaryPeriodType,
+  SalaryProjectAssignmentWindow,
+  SalaryProjectDaySplit,
+} from "@tuari/contracts"
 
 import {
   AppShellActionGroup,
@@ -16,7 +21,7 @@ import {
   AppShellTableRow,
 } from "@/features/shared/table-primitives"
 
-function getSalaryPeriodLabelKey(value: "DAILY" | "WEEKLY" | "MONTHLY" | null) {
+function getSalaryPeriodLabelKey(value: SalaryPeriodType | null) {
   if (value === "DAILY") return "detailPages.salary.daily"
   if (value === "WEEKLY") return "detailPages.salary.weekly"
   if (value === "MONTHLY") return "detailPages.salary.monthly"
@@ -61,7 +66,7 @@ export function SalariesSection({
     days: number
     expectedAmountDzd: number
     actualAmountDzd: number
-    projectSplits: Array<{ projectId: string; days: number }>
+    projectSplits: SalaryProjectDaySplit[]
     note: string | null
   }>
   workers: Array<{
@@ -70,9 +75,9 @@ export function SalariesSection({
     employeePhone: string
     employeeRole: string
     salaryAmountDzd: number | null
-    salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | null
+    salaryPeriod: SalaryPeriodType | null
     lastPaymentDate: string | null
-    projectAssignments: Array<{ projectId: string; startDate: string; endDate: string | null }>
+    projectAssignments: SalaryProjectAssignmentWindow[]
   }>
   projects: Array<{ id: string; name: string }>
   onEditSalary: (employeeId: string) => void

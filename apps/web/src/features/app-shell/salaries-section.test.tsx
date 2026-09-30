@@ -167,4 +167,60 @@ describe("SalariesSection (#412)", () => {
     expect(screen.queryByText(/101/)).toBeNull()
     expect(screen.getAllByText(/50\.25/).length).toBe(2)
   })
+
+  it("lists the salaried workers with their wage, period, and last payment on the workers tab", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[PROJECT, { id: "project-2", name: "مشروع باء" }]}
+        recentPayments={[PAYMENT]}
+        workers={[
+          {
+            ...worker(30000),
+            employeeId: "w-monthly",
+            employeeName: "عامل شهري",
+            salaryPeriod: "MONTHLY" as const,
+            lastPaymentDate: "2026-03-31T00:00:00.000Z",
+          },
+          {
+            ...worker(1500),
+            employeeId: "w-daily",
+            employeeName: "عامل يومي",
+            salaryPeriod: "DAILY" as const,
+          },
+          {
+            ...worker(0),
+            employeeId: "w-none",
+            employeeName: "عامل بلا أجر",
+            salaryAmountDzd: null,
+            salaryPeriod: null,
+          },
+        ]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+
+    expect(screen.getByText("عامل شهري")).toBeTruthy()
+    expect(screen.getByText("عامل يومي")).toBeTruthy()
+    // Each worker's wage carries its own period label.
+    expect(screen.getByText("/ شهري")).toBeTruthy()
+    expect(screen.getByText("/ يومي")).toBeTruthy()
+    // A worker without a wage renders the placeholder rather than a zero wage.
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0)
+
+    // The row's action opens the payment dialog for that worker.
+    fireEvent.click(screen.getAllByRole("button", { name: "إضافة دفعة" })[0]!)
+    expect(screen.getByRole("dialog")).toBeTruthy()
+  })
+
+  it("shows the workers empty state when no worker has a wage", () => {
+    render(
+      <SalariesSection onEditSalary={vi.fn()} projects={[]} recentPayments={[]} workers={[]} />,
+    )
+
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+
+    expect(screen.getByText("لا يوجد عاملون بإعدادات راتب جاهزة حاليًا.")).toBeTruthy()
+  })
 })

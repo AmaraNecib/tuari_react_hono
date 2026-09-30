@@ -16,17 +16,21 @@ import { useCreateSalaryPaymentMutation } from "@/features/app-shell/workspace-m
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 import { computeProposedSalaryAmount, deriveSalaryProjectDays, roundMoneyToCents } from "@tuari/contracts"
+import type { SalaryPeriodType, SalaryProjectAssignmentWindow } from "@tuari/contracts"
 
 import {
   computeUnallocatedDays,
   defaultSalaryPaymentDays,
   parsePositiveInteger,
   resolveSalaryPaymentPeriod,
-  type SalaryPaymentPeriodType,
 } from "./salary-payment-form"
 
+// Re-exported so the surrounding sections/tables keep one import site while the
+// window shape stays owned by the contract.
+export type { SalaryProjectAssignmentWindow } from "@tuari/contracts"
+
+/** UI projection of a project for the split picker: id plus display name only. */
 export type SalaryProjectOption = { id: string; name: string }
-export type SalaryProjectAssignmentWindow = { projectId: string; startDate: string; endDate: string | null }
 
 /**
  * A quick-form draft handed to the split dialog. The dialog owns the payment
@@ -67,7 +71,7 @@ export function AddSalaryPaymentDialog({
   employeeName?: string | null
   /** The worker's configured wage, used to propose the amount. */
   salaryAmountDzd?: number | null
-  salaryPeriod?: SalaryPaymentPeriodType | null
+  salaryPeriod?: SalaryPeriodType | null
   /** Assignment windows feeding the derived per-project default. */
   projectAssignments?: SalaryProjectAssignmentWindow[]
   /** Projects the split can be attributed to. */
@@ -93,7 +97,7 @@ export function AddSalaryPaymentDialog({
   // on — the employee and the wage period — so a workspace refresh that
   // reclassifies the worker (monthly→daily) re-applies the day default while
   // the dialog stays open, without discarding an operator edit.
-  const initializedTargetRef = useRef<{ employeeId: string; period: SalaryPaymentPeriodType | null } | null>(null)
+  const initializedTargetRef = useRef<{ employeeId: string; period: SalaryPeriodType | null } | null>(null)
   // A handoff draft is adopted once per object identity, so a parent re-render
   // cannot replay it over an edit the operator made inside the dialog.
   const appliedDraftRef = useRef<SalaryPaymentDraft | null>(null)

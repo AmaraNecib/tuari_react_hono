@@ -18,6 +18,13 @@
 
 export type SalaryPeriodType = "DAILY" | "WEEKLY" | "MONTHLY";
 
+/**
+ * The day a monthly wage treats as a full month (issue #412). Also the default
+ * day count. Shared with the payment forms so the default cannot drift from
+ * the proration rate.
+ */
+export const SALARY_DAYS_PER_MONTH = 30;
+
 export type SalaryProjectAssignmentWindow = {
   projectId: string;
   startDate: string;
@@ -111,7 +118,7 @@ export function computeProposedSalaryAmount({
   const salaryCents = Math.round(salaryAmountDzd * 100);
 
   if (periodType === "MONTHLY") {
-    return Math.round((salaryCents * days) / 30) / 100;
+    return Math.round((salaryCents * days) / SALARY_DAYS_PER_MONTH) / 100;
   }
 
   if (periodType === "DAILY") {

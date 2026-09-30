@@ -14,6 +14,7 @@ import {
   salaryPeriodSchema,
   timestampSchema,
 } from "./core";
+import { SALARY_DAYS_PER_MONTH } from "./salary-days";
 
 export const roleSchema = z.object({
   id: entityIdSchema,
@@ -333,7 +334,7 @@ export const employeeStateHistoryListInputSchema = z
 export const employeeSalaryPaymentCreateInputSchema = z.object({
   employeeId: entityIdSchema,
   /** Whole days paid. Defaults to a full 30-day month. */
-  days: z.number().int().positive().default(30),
+  days: z.number().int().positive().default(SALARY_DAYS_PER_MONTH),
   /** Overridable paid amount. Omitted → the server stores the proposed amount. */
   actualAmountDzd: z.number().nonnegative().optional(),
   paymentDate: timestampSchema.optional(),

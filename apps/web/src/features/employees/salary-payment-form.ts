@@ -4,16 +4,12 @@
  * Kept out of the component so the pay-period boundaries and the unallocated
  * remainder can be unit-tested without rendering.
  */
-import { roundMoneyToCents } from "@tuari/contracts"
+import { roundMoneyToCents, SALARY_DAYS_PER_MONTH } from "@tuari/contracts"
+import type { SalaryPeriodType } from "@tuari/contracts"
 
 import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 
-export { roundMoneyToCents }
-
-export type SalaryPaymentPeriodType = "DAILY" | "WEEKLY" | "MONTHLY"
-
-/** The day the monthly rate treats as a full month (issue #412). */
-export const SALARY_DAYS_PER_MONTH = 30
+export { roundMoneyToCents, SALARY_DAYS_PER_MONTH }
 
 /**
  * The default day count for a new payment.
@@ -24,7 +20,7 @@ export const SALARY_DAYS_PER_MONTH = 30
  * salaries dialog and the employee-details quick form) must agree, so they
  * share this helper. A null period (unknown) falls back to the month.
  */
-export function defaultSalaryPaymentDays(periodType: SalaryPaymentPeriodType | null): number {
+export function defaultSalaryPaymentDays(periodType: SalaryPeriodType | null): number {
   return periodType === "DAILY" ? 1 : SALARY_DAYS_PER_MONTH
 }
 
@@ -52,7 +48,7 @@ function pad(value: number): string {
  */
 export function resolveSalaryPaymentPeriod(
   dateValue: string,
-  periodType: SalaryPaymentPeriodType | null,
+  periodType: SalaryPeriodType | null,
 ): { start: string; end: string } | null {
   const parts = dateValue.split("-").map((part) => Number.parseInt(part, 10))
   const [year, month, day] = [parts[0] ?? Number.NaN, parts[1] ?? Number.NaN, parts[2] ?? Number.NaN]

@@ -39,6 +39,7 @@ import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 
 const PROJECT = { id: "project-1", name: "مشروع" }
+const PROJECT_TWO = { id: "project-2", name: "مشروع ب" }
 // Open-ended window far wider than any payment month: the derived default is
 // always full coverage of the dialog's period, whatever today's date is.
 const ASSIGNMENT = { projectId: PROJECT.id, startDate: "2000-01-01T00:00:00+01:00", endDate: null }
@@ -268,5 +269,56 @@ describe("AddSalaryPaymentDialog (#412)", () => {
     // the carried value.
     view.rerender(element)
     expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("7")
+  })
+
+  it("adds a second hand-built project line and removes it again", () => {
+    mockMutateAsync.mockReset()
+    render(
+      <AddSalaryPaymentDialog
+        employeeId="employee-1"
+        employeeName="عامل"
+        salaryAmountDzd={30000}
+        salaryPeriod="MONTHLY"
+        projectAssignments={[ASSIGNMENT]}
+        projects={[PROJECT, PROJECT_TWO]}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    // Slide half the month off the prefilled line first.
+    fireEvent.change(screen.getAllByRole("spinbutton")[1]!, { target: { value: "15" } })
+    expect(screen.getByText("salaries.unallocatedDays:15")).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "salaries.addProjectLine" }))
+    // The new line takes the next unused project and the remaining days.
+    const selects = screen.getAllByLabelText("salaries.project") as HTMLSelectElement[]
+    expect(selects).toHaveLength(2)
+    expect(selects[1]!.value).toBe(PROJECT_TWO.id)
+    expect((screen.getAllByRole("spinbutton")[2] as HTMLInputElement).value).toBe("15")
+    expect(screen.getByText("salaries.unallocatedDays:0")).toBeTruthy()
+
+    // Removing the hand-built line returns to the prefilled single line.
+    fireEvent.click(screen.getAllByRole("button", { name: "salaries.removeProjectLine" })[1]!)
+    expect(screen.getAllByRole("spinbutton")).toHaveLength(2)
+    expect(screen.getByText("salaries.unallocatedDays:15")).toBeTruthy()
+  })
+
+  it("keeps submit blocked while a hand-added line is unassigned or duplicates a project", () => {
+    mockMutateAsync.mockReset()
+    renderDialog()
+
+    fireEvent.click(screen.getByRole("button", { name: "salaries.addProjectLine" }))
+    const selects = screen.getAllByLabelText("salaries.project") as HTMLSelectElement[]
+    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
+
+    // The only project is already used, so the new line starts unassigned and
+    // cannot be submitted.
+    expect(selects[1]!.value).toBe("")
+    expect(submit.hasAttribute("disabled")).toBe(true)
+
+    // Pointing it at the already-used project is a duplicate and stays blocked.
+    fireEvent.change(selects[1]!, { target: { value: PROJECT.id } })
+    expect(submit.hasAttribute("disabled")).toBe(true)
   })
 })
