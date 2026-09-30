@@ -58,6 +58,12 @@ export class AppMutationError extends Error {
 
 export type EmployeeBatchCreateResult = {
   createdCount: number
+  /**
+   * The created rows, with their real ids. Inline-create callers (project
+   * manager, warehouse manager, debt party) need the id to select the person
+   * they just created; a fabricated id would not exist on the server.
+   */
+  employees: Employee[]
 }
 
 /**
@@ -279,6 +285,7 @@ export function useCreateEmployeesBatchMutation() {
 
       return {
         createdCount: success.item.employees.length,
+        employees: success.item.employees,
       }
     },
     onSuccess: async ({ createdCount }) => {

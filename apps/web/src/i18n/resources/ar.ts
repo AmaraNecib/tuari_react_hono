@@ -703,11 +703,13 @@ export const ar = {
         name: "اسم المشروع",
         location: "الموقع",
         manager: "المدير المسؤول",
+        createManager: "إضافة مدير مشروع",
         status: "الحالة",
         notes: "ملاحظات",
         saveChanges: "حفظ التغييرات",
         validation: {
           nameRequired: "اسم المشروع مطلوب.",
+          managerCreateError: "تعذر إنشاء المدير الآن. تحقق من البيانات وحاول مرة أخرى.",
         },
         workersCount: "{{count}} عامل مرتبط",
         workerCount: "عدد العمال",

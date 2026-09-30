@@ -36,6 +36,7 @@ vi.mock("@/router/navigation", () => ({
 
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
   useSaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockSaveEmployee }),
+  useCreateEmployeesBatchMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useUpdateEmployeeMutation: () => ({ isPending: false, mutateAsync: mockUpdateEmployee }),
   useUpdateEmployeeWorkplaceMutation: () => ({ isPending: false, mutateAsync: mockUpdateEmployeeWorkplace }),
   useSyncManagedProjectsMutation: () => ({ isPending: false, mutateAsync: mockSyncManagedProjects }),
@@ -207,7 +208,7 @@ describe("edit pages resync when record props change", () => {
     } as const
 
     const { rerender } = render(
-      <ProjectEditPage managerOptions={[{ id: "mgr-1", label: "مدير 1" }]} project={project} />,
+      <ProjectEditPage managerOptions={[{ id: "mgr-1", label: "مدير 1" }]} project={project} projectManagerRoleId="role-pm" />,
     )
 
     fireEvent.change(screen.getByDisplayValue("مشروع أول"), { target: { value: "اسم معدل" } })
@@ -216,6 +217,7 @@ describe("edit pages resync when record props change", () => {
       <ProjectEditPage
         managerOptions={[{ id: "mgr-1", label: "مدير 1" }]}
         project={{ ...project, notes: "ملاحظات أولى" }}
+        projectManagerRoleId="role-pm"
       />,
     )
 
@@ -236,6 +238,7 @@ describe("edit pages resync when record props change", () => {
           status: "ACTIVE",
           notes: "ملاحظات أولى",
         }}
+        projectManagerRoleId="role-pm"
       />,
     )
 
@@ -254,6 +257,7 @@ describe("edit pages resync when record props change", () => {
           status: "STOPPED",
           notes: "ملاحظات ثانية",
         }}
+        projectManagerRoleId="role-pm"
       />,
     )
 

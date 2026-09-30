@@ -66,4 +66,55 @@ test.describe("projects — critical path", () => {
     await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText("مكتمل", { exact: true })).toBeVisible()
   })
+
+  test("admin creates a project manager inline from the project form without losing the form", async ({ page }) => {
+    await bootstrapOrSignIn(page)
+
+    await page.getByRole("link", { name: "المشاريع" }).first().click()
+    await expect(page.getByRole("heading", { name: "المشاريع" })).toBeVisible()
+
+    await page.getByRole("button", { name: "إضافة مشروع" }).first().click()
+    await expect(page.getByRole("heading", { name: /إضافة مشروع/ })).toBeVisible()
+
+    const suffix = uniqueSuffix()
+    const projectName = `مشروع المدراء ${suffix}`
+    const location = "وهران"
+    const managerFirstName = `منير-${suffix}`
+    const managerLastName = "بلحاج"
+    const phoneSalt = Array.from(suffix).reduce(
+      (hash, character) => (hash * 31 + character.charCodeAt(0)) % 90_000_000,
+      0,
+    )
+    const phone = `06${String(phoneSalt).padStart(8, "0")}`
+    const managerName = `${managerFirstName} ${managerLastName}`
+
+    // Fill the rest of the form first: the inline create must not reset it.
+    await page.getByLabel("اسم المشروع").first().fill(projectName)
+    await page.getByLabel(/الموقع/).fill(location)
+
+    // The manager is now a createable select — the status field is also a
+    // combobox, so scope by the manager field's label.
+    const managerSelect = page.getByRole("combobox", { name: /المدير المسؤول/ })
+    await managerSelect.click()
+    await page.getByRole("option", { name: /إضافة مدير مشروع/ }).click()
+
+    const dialog = page.getByRole("dialog")
+    await expect(dialog.getByRole("heading", { name: "إضافة مدير مشروع" })).toBeVisible()
+    await dialog.getByPlaceholder("اسم الموظف...").fill(managerFirstName)
+    await dialog.getByPlaceholder("لقب الموظف...").fill(managerLastName)
+    await dialog.getByPlaceholder("0612345678").fill(phone)
+    await dialog.getByRole("button", { name: "إنشاء" }).click()
+
+    // No reload: the dialog closes, the created manager is selected, and every
+    // other field kept its value.
+    await expect(dialog).toBeHidden()
+    await expect(managerSelect).toContainText(managerName, { timeout: 10_000 })
+    await expect(page.getByLabel("اسم المشروع").first()).toHaveValue(projectName)
+    await expect(page.getByLabel(/الموقع/)).toHaveValue(location)
+
+    await page.getByRole("button", { name: "حفظ المشروع" }).click()
+
+    await expect(page.getByRole("heading", { name: projectName })).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText(managerName)).toBeVisible()
+  })
 })

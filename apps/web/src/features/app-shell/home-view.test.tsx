@@ -538,9 +538,14 @@ describe("HomeView workspace shell", () => {
     fireEvent.change(screen.getByLabelText("الموقع"), {
       target: { value: "وهران" },
     })
-    fireEvent.change(screen.getByLabelText("المدير المسؤول"), {
-      target: { value: "employee-manager-1" },
-    })
+    // The manager field is a CreateableSelect (Base UI), not a native select:
+    // open the popup and pick the seeded project_manager option. The status
+    // field is also a combobox, so scope by the manager field's label.
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /المدير المسؤول/ }))
+    const managerListbox = await screen.findByRole("listbox")
+    const managerOption = await within(managerListbox).findByRole("option", { name: /أحمد بلخير/ })
+    fireEvent.pointerDown(managerOption, { button: 0, pointerId: 1, pointerType: "mouse" })
+    fireEvent.click(managerOption)
     fireEvent.change(screen.getByLabelText("ملاحظات"), {
       target: { value: "مرحلة أولى" },
     })
