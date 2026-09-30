@@ -12,9 +12,9 @@ export const SALARY_PERIOD_FILTER_VALUES: SalaryPeriodType[] = ["DAILY", "WEEKLY
 export type SalaryPeriodFilterValue = "ALL" | SalaryPeriodType
 
 /**
- * The i18n key for a salary period, with the shared "unknown means a month"
- * default. Both salary tables render the same period vocabulary, so it is
- * stated once here rather than copied per table.
+ * The i18n key for a salary period; a null period reads as "not specified".
+ * Both salary tables render the same period vocabulary, so it is stated once
+ * here rather than copied per table.
  */
 export function getSalaryPeriodLabelKey(value: SalaryPeriodType | null): string {
   if (value === "DAILY") return "detailPages.salary.daily"

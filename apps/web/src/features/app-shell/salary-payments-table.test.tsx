@@ -5,7 +5,7 @@ import "@/i18n"
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { SalaryPaymentsTable } from "./salary-payments-table"
+import { SalaryPaymentsTable, type SalaryPaymentRow } from "./salary-payments-table"
 
 const PROJECT = { id: "project-1", name: "مشروع ألف" }
 
@@ -26,7 +26,7 @@ function makePayments(count: number) {
   }))
 }
 
-function renderTable(payments: ReturnType<typeof makePayments>) {
+function renderTable(payments: SalaryPaymentRow[]) {
   return render(
     <SalaryPaymentsTable
       payments={payments}
@@ -76,7 +76,12 @@ describe("SalaryPaymentsTable (#453)", () => {
     fireEvent.click(screen.getByRole("button", { name: "التالي" }))
     expect(screen.getByText("2 / 3")).toBeTruthy()
 
-    // Filtering to one row must land on page 1, not stay on the empty page 2.
+    // A search matching the same 23 rows keeps the page count, so the reset is
+    // observable: without it the table would stay on page 2.
+    fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), { target: { value: "عامل " } })
+    expect(screen.getByText("1 / 3")).toBeTruthy()
+
+    // Filtering to one row must land on page 1, not stay on the now-empty page 2.
     fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), { target: { value: "عامل 05" } })
     expect(screen.getByText("1 / 1")).toBeTruthy()
     expect(screen.getByText("1-1 من 1")).toBeTruthy()
@@ -101,6 +106,55 @@ describe("SalaryPaymentsTable (#453)", () => {
     expect(screen.getByText("1-10 من 11")).toBeTruthy()
     expect(within(screen.getByRole("table")).getByText("عامل 02")).toBeTruthy()
     expect(within(screen.getByRole("table")).queryByText("عامل 01")).toBeNull()
+  })
+
+  it("filters by worker and resets to page 1", () => {
+    // Give one worker enough rows that the filtered result still spans two
+    // pages: a single-row result would be clamped to page 1 even without a
+    // reset, which is exactly the toothless assertion to avoid.
+    const payments: SalaryPaymentRow[] = makePayments(23).map((payment, index) => ({
+      ...payment,
+      employeeId: index < 15 ? "worker-01" : payment.employeeId,
+      employeeName: index < 15 ? "عامل موحد" : payment.employeeName,
+    }))
+    renderTable(payments)
+
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText("العامل"), { target: { value: "worker-01" } })
+
+    // 15 rows for that worker is two pages; the page resets to 1 rather than
+    // staying on page 2 (which the clamp would otherwise accept).
+    expect(screen.getByText("1 / 2")).toBeTruthy()
+    expect(screen.getByText("1-10 من 15")).toBeTruthy()
+    expect(within(screen.getByRole("table")).getAllByText("عامل موحد").length).toBeGreaterThan(0)
+  })
+
+  it("filters by period and resets to page 1", () => {
+    const payments: SalaryPaymentRow[] = makePayments(23).map((payment, index) => ({
+      ...payment,
+      periodType: index % 2 === 0 ? "MONTHLY" : "DAILY",
+    }))
+    renderTable(payments)
+
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/الدورية/), { target: { value: "DAILY" } })
+
+    // 11 of the 23 payments are DAILY; the page resets to 1.
+    expect(screen.getByText("1 / 2")).toBeTruthy()
+    expect(screen.getByText("1-10 من 11")).toBeTruthy()
+  })
+
+  it("excludes a payment with no period when a period filter is set", () => {
+    renderTable(makePayments(2).map((payment) => ({ ...payment, periodType: null })))
+
+    fireEvent.change(screen.getByLabelText(/الدورية/), { target: { value: "MONTHLY" } })
+
+    expect(screen.getByText("لا توجد نتائج")).toBeTruthy()
+    expect(screen.queryByText("0-0 من 0")).toBeNull()
   })
 
   it("shows the no-results empty state without a dead pagination bar", () => {

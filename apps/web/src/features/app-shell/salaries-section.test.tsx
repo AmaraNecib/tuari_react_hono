@@ -460,7 +460,16 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
 
     expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("عامل 12")
     expect(screen.getByText("1-1 من 1")).toBeTruthy()
-  })
+
+    // The chosen page size is part of the tab's state too.
+    fireEvent.change(getPageSizeSelect()!, { target: { value: "25" } })
+    expect(getPageSizeSelect()?.value).toBe("25")
+
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+    fireEvent.click(screen.getByRole("tab", { name: "آخر دفعات الرواتب" }))
+
+    expect(getPageSizeSelect()?.value).toBe("25")
+  }, 15000) // Instrumented coverage runs this multi-render test past the 5s default; the assertions are the guard.
 
   it("shows a no-results message instead of dead controls when a filter matches nothing", () => {
     render(

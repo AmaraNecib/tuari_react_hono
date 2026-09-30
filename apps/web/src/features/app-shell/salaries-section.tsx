@@ -13,9 +13,6 @@ import { SalariedWorkersTable, type SalariedWorkerRow } from "./salaried-workers
  * table and the salaried-workers table, and owns the one shared payment dialog.
  * Each table owns its own filters, query, pagination and empty state.
  */
-/**
- * @description Component
- */
 export function SalariesSection({
   recentPayments,
   workers,

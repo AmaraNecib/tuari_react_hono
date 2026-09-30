@@ -71,8 +71,36 @@ describe("SalariedWorkersTable (#453)", () => {
     // Each wage carries the worker's own period label, not a global default.
     expect(screen.getByText("/ شهري")).toBeTruthy()
     expect(screen.getByText("/ يومي")).toBeTruthy()
+    // The last payment date renders for the worker who has one, not only a dash.
+    const monthlyRow = screen.getByText("عامل شهري").closest("tr")!
+    expect(within(monthlyRow).getByText(/2026/)).toBeTruthy()
     // A worker without a wage renders the placeholder rather than a zero wage.
-    expect(screen.getAllByText("—").length).toBeGreaterThan(0)
+    // Scope to that worker's row: every row has a dash in the last-payment
+    // column, so an unscoped dash check would pass even if the wage rendered 0.
+    const noWageRow = screen.getByText("عامل بلا أجر").closest("tr")!
+    expect(within(noWageRow).getAllByText("—").length).toBeGreaterThan(0)
+    expect(within(noWageRow).queryByText(/[0-9]/)).toBeNull()
+  })
+
+  it("filters by search and resets to page 1", () => {
+    renderTable(makeWorkers(23, "MONTHLY"))
+
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    // "عامل" matches every worker, so the page count is unchanged and the reset
+    // is observable: without it the table would stay on page 2.
+    fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), { target: { value: "عامل" } })
+    expect(screen.getByText("1 / 3")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), { target: { value: "عامل 05" } })
+    expect(screen.getByText("1-1 من 1")).toBeTruthy()
+    expect(within(screen.getByRole("table")).getByText("عامل 05")).toBeTruthy()
+    expect(within(screen.getByRole("table")).queryByText("عامل 01")).toBeNull()
+
+    // A search that matches nothing shows the no-results empty state.
+    fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), { target: { value: "لا يوجد" } })
+    expect(screen.getByText("لا توجد نتائج")).toBeTruthy()
   })
 
   it("filters by period and resets to page 1", () => {
@@ -89,23 +117,30 @@ describe("SalariedWorkersTable (#453)", () => {
     expect(within(screen.getByRole("table")).queryByText("عامل 01")).toBeNull()
   })
 
-  it("filters by project assignment", () => {
-    renderTable(
-      [
-        {
-          ...makeWorkers(1, "MONTHLY")[0]!,
-          projectAssignments: [{ projectId: "project-2", startDate: "2000-01-01T00:00:00+01:00", endDate: null }],
-        },
-      ],
-      [PROJECT, { id: "project-2", name: "مشروع باء" }],
-    )
+  it("filters by project assignment and resets to page 1", () => {
+    // 15 workers assigned to project-2 so the filtered result has two pages and
+    // the reset is observable rather than masked by the page clamp.
+    const workers: SalariedWorkerRow[] = makeWorkers(23, "MONTHLY").map((worker, index) => ({
+      ...worker,
+      projectAssignments:
+        index < 15
+          ? [{ projectId: "project-2", startDate: "2000-01-01T00:00:00+01:00", endDate: null }]
+          : [],
+    }))
+    renderTable(workers, [PROJECT, { id: "project-2", name: "مشروع باء" }])
 
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/المشروع/), { target: { value: "project-2" } })
+
+    expect(screen.getByText("1 / 2")).toBeTruthy()
+    expect(screen.getByText("1-10 من 15")).toBeTruthy()
+
+    // The unassigned project still yields the no-results empty state.
     fireEvent.change(screen.getByLabelText(/المشروع/), { target: { value: "project-1" } })
     expect(screen.getByText("لا توجد نتائج")).toBeTruthy()
     expect(screen.queryByText("0-0 من 0")).toBeNull()
-
-    fireEvent.change(screen.getByLabelText(/المشروع/), { target: { value: "project-2" } })
-    expect(within(screen.getByRole("table")).getByText("عامل 01")).toBeTruthy()
   })
 
   it("opens the payment dialog target through onAddPayment", () => {
@@ -121,6 +156,21 @@ describe("SalariedWorkersTable (#453)", () => {
 
     fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "إضافة دفعة" }))
     expect(onAddPayment).toHaveBeenCalledWith("worker-01", "عامل 01")
+  })
+
+  it("routes the edit action through onEditSalary", () => {
+    const onEditSalary = vi.fn()
+    render(
+      <SalariedWorkersTable
+        workers={makeWorkers(1, "MONTHLY")}
+        projects={[PROJECT]}
+        onAddPayment={vi.fn()}
+        onEditSalary={onEditSalary}
+      />,
+    )
+
+    fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "تعديل الأجر" }))
+    expect(onEditSalary).toHaveBeenCalledWith("worker-01")
   })
 
   it("shows the workers empty state when there is no worker", () => {
