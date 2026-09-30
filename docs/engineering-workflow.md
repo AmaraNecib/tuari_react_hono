@@ -13,7 +13,14 @@ when the GitHub repository is genuinely unreachable or the user asks for it.
 
 Selecting local-only mode is not a downgrade in code quality. It removes the
 GitHub transport dependency while retaining the local tests, two-axis review,
-test audit, adversarial debate where required, and Greptile review.
+test audit, and adversarial debate where required.
+
+**Greptile is not part of the gate.** The CLI is unavailable on this machine
+(`access_denied`) and the hosted review is out of quota, so no step may depend on
+it and a reviewer must not report its absence as unfinished work. The gate is the
+local review skills: **`debate`** (critic + defender, then synthesis),
+**`code-review`** (Standards + Spec), and **`test-audit`**. Run them on the pushed
+head; a verdict on an earlier commit does not count.
 
 ## Local ticket storage
 
@@ -122,7 +129,7 @@ Choose one tier:
 | Tier | Applies to | Required lifecycle |
 | --- | --- | --- |
 | Lightweight | Truly non-reviewable files only (`.gitignore`, `.gitattributes`, `LICENSE`, scratch) | Guard 1 → relevant quality check → report |
-| Standard | Code, tests, CI, workflow, config, skills, UI, API | Guard 1 → quality check → test audit → code review → Guard 2 → CLI Greptile → Guard 3 |
+| Standard | Code, tests, CI, workflow, config, skills, UI, API | Guard 1 → quality check → design pass → test audit → code review → debate → Guard 2 → Guard 3 |
 | High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard plus debate |
 
 Workflow files and skills are Standard because they change future engineering
@@ -283,7 +290,14 @@ A clean working tree is preferred. If the user explicitly wants an
 uncommitted local handoff, list every uncommitted file and do not call it ready
 to integrate. Never use `git add -A`; stage only named files when committing.
 
-## 10. Greptile CLI review
+## 10. Local review on the pushed head (the Greptile step, replaced)
+
+Greptile is unavailable (`access_denied` locally, quota exhausted on the host), so
+this step is the local review skills against the pushed head — see the note at the
+top of this document. Run `debate`, `code-review` and `test-audit` in fresh
+context, fix every high and medium finding (and the lows unless provably wrong),
+and prove each behaviour fix with a test that fails on the pre-fix code. A verdict
+on an earlier commit does not count as a review of the pushed head.
 
 Greptile review is now performed locally from the checkout, not by scraping PR
 comments. The CLI may send the committed diff to Greptile's service, but no

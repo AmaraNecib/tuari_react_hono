@@ -206,7 +206,24 @@ not claim the work is ready to integrate.
 Evidence filenames must contain the final reviewed `HEAD` SHA; evidence-only
 follow-up commits require a freshness check and a post-evidence note.
 
-### 10. Greptile review: CLI locally, hosted on the PR
+### 10. Local review on the pushed head (Greptile replaced)
+
+**Greptile is not part of the gate.** The CLI is unavailable (`access_denied`) and
+the hosted review is out of quota, so nothing may depend on it and its absence is
+not a gap to report. This step is the local review skills instead:
+
+- **`debate`** — critic and defender in fresh context, then synthesize. Run it on
+  every PR whose diff changes behaviour, not only the high-assurance tier.
+- **`code-review`** — Standards (does it follow the repo's rules?) and Spec (does
+  it do what the issue asked?), in parallel fresh contexts.
+- **`test-audit`** — do the tests prove the behaviour, and would they fail if the
+  fix were reverted?
+
+Fix every high and medium finding, and the lows unless provably wrong; a dismissal
+must cite the code path or test that disproves it. Prove each behaviour fix with a
+test that fails on the pre-fix code. **A verdict on an earlier commit does not
+count** — the review must be on the pushed head, because that is the commit the
+merge would ship.
 
 Use both, in this order:
 
