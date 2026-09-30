@@ -57,10 +57,11 @@ and tells each lane exactly which skills to load.
   Visible lanes launched by `launch-lane.mjs` also receive the `crew_report`
   tool, which writes a handoff artifact and sends a completion/blocker message
   directly to the parent pane. Verified recipe (Herdr, any OS): see Launch.
-  Project policy defaults to **five** concurrent mutation lanes, and **six is the
-  hard ceiling** — never more, even when the queue is long. The captain may lower
-  the cap for a batch; only the captain may allow six. When the queue exceeds the
-  cap, the work waits for a lane to be closed, not for the cap to move.
+  Project policy is **three** concurrent lanes. Never start a new lane while more
+  than three are open: the work waits for a lane to finish and be closed, it does
+  not push the cap. Only the captain may raise it, and the raise is per batch.
+  Track the waiting work outside git (`.scratch/queue.md`, which is gitignored) —
+  a queue is not a commit.
 - **Headless children require explicit captain opt-in.** Cheaper, disposable,
   not visible as live terminals. Allowed ONLY for cheap scouts, read-only
   probes, when the captain is not watching — or when the captain explicitly
