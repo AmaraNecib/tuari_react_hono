@@ -126,12 +126,29 @@ export function useItemDefinitionOptionsQuery({
     [query.data],
   )
 
-  // Note: there is deliberately no `resolve(id)` here yet. The caller (the
-  // invoice row) holds the picked OPTION in its state, so a selection that is
-  // not on the current page is rendered from that object, not re-fetched. An
-  // id-only hydration path (editing an existing invoice) would add `resolve`
-  // here then — not speculatively now.
+  // Note: there is deliberately no `resolve(id)` here yet for the invoice row.
+  // The invoice row holds the picked OPTION in its state, so a selection that
+  // is not on the current page is rendered from that object, not re-fetched.
   return { ...query, options, debouncedSearch }
+}
+
+/**
+ * Fetch one item definition by id.
+ *
+ * The id-only hydration path for a consumer that stores a reference, not an
+ * option: the expense dialog holds `stockItemId` on the server record, so it
+ * must resolve that id back to a definition (including an archived one) to show
+ * the current selection rather than a blank select.
+ */
+export function useInventoryItemDefinitionQuery(id: string | undefined) {
+  return useWorkspaceScopedQuery({
+    key: (userId) => [...workspaceQueryKeys.inventoryItems(userId), "detail", id ?? "missing"] as const,
+    enabled: Boolean(id),
+    queryFn: async (): Promise<InventoryItemDefinition> => {
+      const result = await rpcClient.inventoryItemDefinitionsGet({ id: id! })
+      return requireEntitySuccess(result).item
+    },
+  })
 }
 
 /**

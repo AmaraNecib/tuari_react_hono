@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import type { Expense } from "@tuari/contracts"
+import type { Expense, InventoryItemDefinition } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -16,6 +16,8 @@ import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-cont
 import { Input } from "@/components/ui/input"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { useDateField, useFormAmount } from "@/features/shared/use-form-amount"
+import { ItemOptionPicker } from "@/features/inventory/item-option-picker"
+import { useInventoryItemDefinitionQuery } from "@/features/inventory/inventory-hooks"
 
 import { useCreateExpenseMutation, useUpdateExpenseMutation } from "./expenses-queries"
 
@@ -32,7 +34,6 @@ export type ExpenseFormDialogProps = {
   projects: ExpenseLookupOption[]
   employees: ExpenseLookupOption[]
   sellers: ExpenseLookupOption[]
-  stockItems: ExpenseLookupOption[]
 }
 
 /**
@@ -46,7 +47,6 @@ export function ExpenseFormDialog({
   projects,
   employees,
   sellers,
-  stockItems,
 }: ExpenseFormDialogProps) {
   const { t } = useTranslation()
   const createMutation = useCreateExpenseMutation()
@@ -58,12 +58,17 @@ export function ExpenseFormDialog({
   const [responsibleWorkerId, setResponsibleWorkerId] = useState<string | null>(null)
   const [sellerId, setSellerId] = useState<string | null>(null)
   const [projectId, setProjectId] = useState<string | null>(null)
-  const [stockItemId, setStockItemId] = useState<string | null>(null)
+  const [stockItem, setStockItem] = useState<InventoryItemDefinition | null>(null)
   const [note, setNote] = useState("")
   const [reason, setReason] = useState("")
 
   const isEdit = Boolean(expense)
   const pending = createMutation.isPending || updateMutation.isPending
+
+  // An edit stores only the stock item id; resolve it so the current selection
+  // (including an archived one) still renders instead of a blank select.
+  const editingStockItemId = open && expense?.stockItemId ? expense.stockItemId : undefined
+  const resolvedStockItem = useInventoryItemDefinitionQuery(editingStockItemId)
 
   useEffect(() => {
     if (!open) return
@@ -73,12 +78,17 @@ export function ExpenseFormDialog({
     setResponsibleWorkerId(expense?.responsibleWorkerId ?? null)
     setSellerId(expense?.sellerId ?? null)
     setProjectId(expense?.projectId ?? null)
-    setStockItemId(expense?.stockItemId ?? null)
+    setStockItem(null)
     setNote(expense?.note ?? "")
     setReason("")
     // `setAmount`/`setDate` are stable state setters from the shared hooks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, expense])
+
+  useEffect(() => {
+    if (!open) return
+    setStockItem(resolvedStockItem.data ?? null)
+  }, [open, resolvedStockItem.data])
 
   const resetForm = () => {
     resetAmount()
@@ -87,7 +97,7 @@ export function ExpenseFormDialog({
     setResponsibleWorkerId(null)
     setSellerId(null)
     setProjectId(null)
-    setStockItemId(null)
+    setStockItem(null)
     setNote("")
     setReason("")
   }
@@ -109,7 +119,7 @@ export function ExpenseFormDialog({
       responsibleWorkerId,
       sellerId,
       projectId,
-      stockItemId,
+      stockItemId: stockItem?.id ?? null,
       note: note.trim() || null,
     }
 
@@ -221,22 +231,16 @@ export function ExpenseFormDialog({
             </NativeSelect>
           </label>
 
-          <label className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2">
             <span className="text-sm font-medium">{t("expenses.form.stockItem")}</span>
-            <NativeSelect
-              value={stockItemId ?? NO_SELECTION}
-              onChange={(event) =>
-                setStockItemId(event.target.value === NO_SELECTION ? null : event.target.value)
-              }
-            >
-              <option value={NO_SELECTION}>{t("expenses.form.none")}</option>
-              {stockItems.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
+            <ItemOptionPicker
+              label={t("expenses.form.stockItem")}
+              usage={{ surface: "STOCK_REFERENCE" }}
+              value={stockItem}
+              onChange={setStockItem}
+              emptyLabel={t("expenses.form.none")}
+            />
+          </div>
 
           {projectId ? (
             <p className="rounded-xl border border-primary/25 bg-primary/5 p-3 text-xs text-ink-2">

@@ -9,14 +9,25 @@ import type { Expense } from "@tuari/contracts"
 
 import { ExpenseFormDialog } from "./expense-form-dialog"
 
-const { createMutateAsync, updateMutateAsync } = vi.hoisted(() => ({
+const { createMutateAsync, updateMutateAsync, optionsResult, definitionResult, optionsUsages } = vi.hoisted(() => ({
   createMutateAsync: vi.fn(async () => ({})),
   updateMutateAsync: vi.fn(async () => ({})),
+  optionsResult: vi.fn(() => [] as Array<Record<string, unknown>>),
+  definitionResult: vi.fn(() => ({ data: undefined }) as { data: unknown }),
+  optionsUsages: [] as unknown[],
 }))
 
 vi.mock("./expenses-queries", () => ({
   useCreateExpenseMutation: () => ({ isPending: false, mutateAsync: createMutateAsync }),
   useUpdateExpenseMutation: () => ({ isPending: false, mutateAsync: updateMutateAsync }),
+}))
+
+vi.mock("@/features/inventory/inventory-hooks", () => ({
+  useItemDefinitionOptionsQuery: (input: { usage: unknown }) => {
+    optionsUsages.push(input.usage)
+    return { options: optionsResult(), fetchNextPage: vi.fn(), hasNextPage: false, isFetchingNextPage: false }
+  },
+  useInventoryItemDefinitionQuery: () => definitionResult(),
 }))
 
 const EXPENSE: Expense = {
@@ -50,16 +61,25 @@ function renderDialog(expense: Expense | null = null) {
       projects={[]}
       employees={[]}
       sellers={[]}
-      stockItems={[{ id: "item-1", label: "خلاطة إسمنت" }]}
     />,
   )
 }
+
+/** Item definitions the mocked STOCK_REFERENCE read can return. */
+const ACTIVE_CONSUMABLE = { id: "def-consumable", name: "إسمنت", itemType: "CONSUMABLE", unit: "قطعة", description: null, isActive: true, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
+const ACTIVE_ASSET = { id: "def-asset", name: "مثقاب", itemType: "ASSET", unit: null, description: null, isActive: true, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
+const ARCHIVED_ASSET = { id: "def-archived", name: "خلاطة قديمة", itemType: "ASSET", unit: null, description: null, isActive: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
 
 describe("ExpenseFormDialog", () => {
   afterEach(() => {
     cleanup()
     createMutateAsync.mockClear()
     updateMutateAsync.mockClear()
+    optionsResult.mockReset()
+    optionsResult.mockReturnValue([])
+    definitionResult.mockReset()
+    definitionResult.mockReturnValue({ data: undefined })
+    optionsUsages.length = 0
   })
 
   it("prefills an existing expense's date in the picker's dd/MM/yyyy format", () => {
@@ -71,6 +91,7 @@ describe("ExpenseFormDialog", () => {
   })
 
   it("submits the optional stock item the user selected", async () => {
+    optionsResult.mockReturnValue([{ id: "item-1", name: "خلاطة إسمنت", itemType: "ASSET", unit: null, description: null, isActive: true, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }])
     renderDialog()
 
     fireEvent.change(screen.getByPlaceholderText("0"), { target: { value: "100" } })
@@ -85,6 +106,35 @@ describe("ExpenseFormDialog", () => {
         amount: 100,
         stockItemId: "item-1",
       }),
+    )
+  })
+
+  it("feeds the stock-item picker from the active-only STOCK_REFERENCE seam", () => {
+    // The STOCK_REFERENCE usage is kind-agnostic but active-only: both kinds are
+    // offerable, an archived definition is not. The server-side exclusion is
+    // pinned by the API equivalence test; this pins the web wiring to that seam
+    // instead of the old unpaged mapping that leaked archived definitions.
+    optionsResult.mockReturnValue([ACTIVE_CONSUMABLE, ACTIVE_ASSET])
+    renderDialog()
+
+    const select = screen.getByLabelText("قطعة المخزون المرتبطة (اختياري)") as HTMLSelectElement
+    const optionTexts = Array.from(select.options).map((option) => option.textContent)
+    expect(optionTexts).toContain("إسمنت")
+    expect(optionTexts).toContain("مثقاب")
+    expect(optionTexts).not.toContain(ARCHIVED_ASSET.name)
+    expect(optionsUsages).toContainEqual({ surface: "STOCK_REFERENCE" })
+  })
+
+  it("still displays an archived stock item the edited expense already references", async () => {
+    definitionResult.mockReturnValue({ data: ARCHIVED_ASSET })
+    renderDialog({ ...EXPENSE, stockItemId: ARCHIVED_ASSET.id })
+
+    // The archived definition must not be OFFERED, but an existing reference
+    // must not silently render blank either.
+    await waitFor(() =>
+      expect(screen.getByLabelText("قطعة المخزون المرتبطة (اختياري)").textContent).toContain(
+        ARCHIVED_ASSET.name,
+      ),
     )
   })
 
@@ -113,7 +163,6 @@ describe("ExpenseFormDialog", () => {
         projects={[]}
         employees={[]}
         sellers={[]}
-        stockItems={[]}
       />,
     )
 

@@ -37,7 +37,6 @@ export type ExpensesPageProps = {
   projects: ExpenseLookupOption[]
   employees: ExpenseLookupOption[]
   sellers: ExpenseLookupOption[]
-  stockItems: ExpenseLookupOption[]
 }
 
 function formatNumber(value: number) {
@@ -59,7 +58,7 @@ function formatExpenseDate(iso: string) {
  * The المصروفات screen (issue #411): KPI cards, a filter bar with a total
  * strip, a dense table and a "group by project" toggle over the same list.
  */
-export function ExpensesPage({ projects, employees, sellers, stockItems }: ExpensesPageProps) {
+export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps) {
   const { t } = useTranslation()
   const [projectId, setProjectId] = useState<string | null>(null)
   const [responsibleWorkerId, setResponsibleWorkerId] = useState<string | null>(null)
@@ -386,7 +385,6 @@ export function ExpensesPage({ projects, employees, sellers, stockItems }: Expen
         projects={projects}
         employees={employees}
         sellers={sellers}
-        stockItems={stockItems}
       />
 
       <Dialog open={Boolean(voidingExpense)} onOpenChange={(open) => { if (!open) setVoidingExpense(null) }}>

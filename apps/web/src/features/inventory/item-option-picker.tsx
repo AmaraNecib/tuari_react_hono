@@ -23,12 +23,15 @@ export function ItemOptionPicker({
   value,
   onChange,
   disabled = false,
+  emptyLabel,
 }: {
   label: string
   usage: InventoryItemUsage
   value: InventoryItemDefinition | null
   onChange: (option: InventoryItemDefinition | null) => void
   disabled?: boolean
+  /** Label for the clear/no-selection option; defaults to "choose item". */
+  emptyLabel?: string
 }) {
   const { t } = useTranslation()
   const [search, setSearch] = useState("")
@@ -64,7 +67,7 @@ export function ItemOptionPicker({
             ? t("inventory.invoiceCreate.chooseLineTypeFirst")
             : selectable.length === 0
               ? t("inventory.invoiceCreate.noItemOptions")
-              : t("inventory.invoiceCreate.chooseItem")}
+              : emptyLabel ?? t("inventory.invoiceCreate.chooseItem")}
         </option>
         {selectable.map((option) => (
           <option key={option.id} value={option.id}>{option.name}</option>
