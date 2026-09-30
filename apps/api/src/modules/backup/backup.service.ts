@@ -386,6 +386,12 @@ export const createBackupService = (
   let lastBackupPath = seeded.lastBackupPath;
   let lastSuccessAt = seeded.lastSuccessAt;
   let lastFailure: BackupFailure | null = seeded.lastFailure;
+  // A failure recorded while the service was being constructed (the root was
+  // unreadable at boot) is not a backup run. It is cleared as soon as the root
+  // proves readable again, so a recoverable boot problem does not pin a
+  // permanent failure on the status. A failure from an actual run is never
+  // seeded and is left intact.
+  let lastFailureIsSeeded = seeded.lastFailure !== null;
 
   const runDueBackup = async (): Promise<BackupRunResult> => {
     const runAt = now();
@@ -399,6 +405,14 @@ export const createBackupService = (
       removeStaleStagingEntries(deps.backupsRootPath);
 
       const existingDates = listBackupDates(deps.backupsRootPath, runAt);
+      // The root proved readable, so a failure seeded at construction is
+      // stale. Clear it before the due check — a not-due start must still be
+      // able to report a clean status. A real run failure is not seeded, so
+      // this leaves it alone.
+      if (lastFailureIsSeeded) {
+        lastFailure = null;
+        lastFailureIsSeeded = false;
+      }
       const newest =
         existingDates.length > 0
           ? existingDates[existingDates.length - 1]!
@@ -488,6 +502,7 @@ export const createBackupService = (
       }
 
       lastFailure = { at: runAt.toISOString(), reason };
+      lastFailureIsSeeded = false;
       logger.error(`[backup] failed for ${date}: ${reason}`, error);
       return { status: "failed", date, reason };
     }

@@ -799,6 +799,50 @@ describe("createBackupService", () => {
     });
   });
 
+  it("clears a construction-time root failure once the root can be listed", async () => {
+    // Yesterday's backup exists, so the run is not due.
+    createSnapshotFixture(DATE);
+    fsControl.failReaddir = true;
+    const service = createBackupService({
+      snapshot: stubSnapshotter(),
+      backupsRootPath: backupsRoot,
+      now,
+      logger: noopLogger,
+    });
+    fsControl.failReaddir = false;
+
+    // Boot could not read the root, so the status records that...
+    expect(service.getStatus().lastFailure?.reason).toBe(
+      "EACCES: permission denied",
+    );
+
+    // ...but the root is fine now. A not-due start lists it successfully, so
+    // the stale boot failure must not survive.
+    expect(await service.runDueBackup()).toEqual({ status: "not-due" });
+    expect(service.getStatus().lastFailure).toBeNull();
+  });
+
+  it("keeps a real run failure across a later not-due start", async () => {
+    createSnapshotFixture("2026-01-13", "older");
+    const service = createBackupService({
+      snapshot: async () => {
+        throw new Error("disk full");
+      },
+      backupsRootPath: backupsRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    expect((await service.runDueBackup()).status).toBe("failed");
+    expect(service.getStatus().lastFailure?.reason).toBe("disk full");
+
+    // Yesterday's folder now exists, so the next start is not due. A real
+    // failure must survive the successful listing.
+    createSnapshotFixture(DATE);
+    expect(await service.runDueBackup()).toEqual({ status: "not-due" });
+    expect(service.getStatus().lastFailure?.reason).toBe("disk full");
+  });
+
   it("degrades to a string failure when the root read throws a non-Error", () => {
     mkdirSync(backupsRoot, { recursive: true });
     fsControl.failReaddir = true;
@@ -921,6 +965,12 @@ describe("createBackupService", () => {
       "could not prune 2026-01-01",
     );
     expect(existsSync(join(backupsRoot, "2026-01-01"))).toBe(true);
+
+    // A real run failure survives a later not-due start (it is not seeded).
+    expect(await service.runDueBackup()).toEqual({ status: "not-due" });
+    expect(service.getStatus().lastFailure?.reason).toContain(
+      "could not prune 2026-01-01",
+    );
   });
 
   // NOT COVERED — skipped on purpose, not a passing test.
