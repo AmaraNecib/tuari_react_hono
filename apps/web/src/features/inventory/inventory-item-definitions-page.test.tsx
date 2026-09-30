@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { InventoryItemDefinitionsPage } from "./inventory-item-definitions-page"
@@ -33,20 +33,25 @@ function makeItems(count: number) {
 const FIXTURE = makeItems(34)
 
 /** The page-size select is the control with the 10/25/50/100 presets. */
-function getPageSizeSelect() {
+function getPageSizeSelect(): HTMLSelectElement | undefined {
   return (screen.getAllByRole("combobox") as HTMLSelectElement[]).find(
     (select) => Array.from(select.options).map((option) => option.value).join(",") === "10,25,50,100",
-  )!
+  )
+}
+
+function goToLastPage() {
+  for (let step = 0; step < 3; step += 1) {
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+  }
 }
 
 beforeEach(() => {
   mocks.itemDefinitionsQuery.mockReturnValue({ data: { items: FIXTURE } })
-  mocks.createMutation.mutateAsync.mockReset()
 })
 
 afterEach(() => {
   cleanup()
-  vi.clearAllMocks()
+  vi.resetAllMocks()
 })
 
 /**
@@ -63,6 +68,9 @@ describe("InventoryItemDefinitionsPage pagination", () => {
     expect(screen.queryByText("عنصر 11")).toBeNull()
     expect(screen.getByText("1-10 من 34")).toBeTruthy()
     expect(screen.getByText("1 / 4")).toBeTruthy()
+    // Header row + exactly the 10 windowed body rows: an off-by-one that leaked
+    // rows from the next page would slip past the name assertions.
+    expect(screen.getAllByRole("row")).toHaveLength(11)
   })
 
   it("navigates forward and back between pages", () => {
@@ -84,9 +92,7 @@ describe("InventoryItemDefinitionsPage pagination", () => {
 
     expect((screen.getByRole("button", { name: "السابق" }) as HTMLButtonElement).disabled).toBe(true)
 
-    for (let step = 0; step < 3; step += 1) {
-      fireEvent.click(screen.getByRole("button", { name: "التالي" }))
-    }
+    goToLastPage()
 
     expect(screen.getByText("31-34 من 34")).toBeTruthy()
     expect(screen.getByText("4 / 4")).toBeTruthy()
@@ -99,7 +105,7 @@ describe("InventoryItemDefinitionsPage pagination", () => {
     fireEvent.click(screen.getByRole("button", { name: "التالي" }))
     expect(screen.getByText("2 / 4")).toBeTruthy()
 
-    fireEvent.change(getPageSizeSelect(), { target: { value: "25" } })
+    fireEvent.change(getPageSizeSelect()!, { target: { value: "25" } })
 
     expect(screen.getByText("1 / 2")).toBeTruthy()
     expect(screen.getByText("1-25 من 34")).toBeTruthy()
@@ -107,12 +113,37 @@ describe("InventoryItemDefinitionsPage pagination", () => {
     expect(screen.queryByText("عنصر 26")).toBeNull()
   })
 
+  it("keeps the page-size selector reachable after a size collapses the catalog to one page", () => {
+    render(<InventoryItemDefinitionsPage />)
+
+    // 50 >= 34: the size control lives inside the bar, so hiding the bar at
+    // one page would strand the operator at 50 rows with no way back to 10.
+    fireEvent.change(getPageSizeSelect()!, { target: { value: "50" } })
+
+    expect(getPageSizeSelect()?.value).toBe("50")
+    expect(screen.getByText("1-34 من 34")).toBeTruthy()
+    expect(screen.getByText("1 / 1")).toBeTruthy()
+    expect((screen.getByRole("button", { name: "التالي" }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole("button", { name: "السابق" }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it("shows every row and no navigation when the catalog is exactly one page", () => {
+    mocks.itemDefinitionsQuery.mockReturnValue({ data: { items: makeItems(10) } })
+
+    render(<InventoryItemDefinitionsPage />)
+
+    expect(screen.getByText("عنصر 01")).toBeTruthy()
+    expect(screen.getByText("عنصر 10")).toBeTruthy()
+    expect(screen.getAllByRole("row")).toHaveLength(11)
+    expect(screen.getByText("1-10 من 10")).toBeTruthy()
+    expect((screen.getByRole("button", { name: "التالي" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(getPageSizeSelect()).toBeTruthy()
+  })
+
   it("clamps the page when the underlying list shrinks under the user", () => {
     const { rerender } = render(<InventoryItemDefinitionsPage />)
 
-    for (let step = 0; step < 3; step += 1) {
-      fireEvent.click(screen.getByRole("button", { name: "التالي" }))
-    }
+    goToLastPage()
     expect(screen.getByText("4 / 4")).toBeTruthy()
 
     mocks.itemDefinitionsQuery.mockReturnValue({ data: { items: makeItems(12) } })
@@ -121,6 +152,43 @@ describe("InventoryItemDefinitionsPage pagination", () => {
     expect(screen.getByText("2 / 2")).toBeTruthy()
     expect(screen.getByText("11-12 من 12")).toBeTruthy()
     expect(screen.getByText("عنصر 11")).toBeTruthy()
+  })
+
+  it("clamps to the first page when the list shrinks below a single page", () => {
+    const { rerender } = render(<InventoryItemDefinitionsPage />)
+
+    goToLastPage()
+    expect(screen.getByText("4 / 4")).toBeTruthy()
+
+    mocks.itemDefinitionsQuery.mockReturnValue({ data: { items: makeItems(3) } })
+    rerender(<InventoryItemDefinitionsPage />)
+
+    expect(screen.getByText("1 / 1")).toBeTruthy()
+    expect(screen.getByText("1-3 من 3")).toBeTruthy()
+    expect(screen.getByText("عنصر 01")).toBeTruthy()
+  })
+
+  it("follows a newly created definition to the page it lands on", async () => {
+    const created = { ...makeItems(1)[0], id: "def-new", name: "أ عنصر جديد" }
+    mocks.createMutation.mutateAsync.mockResolvedValue({ item: created, message: "تم" })
+
+    const { rerender } = render(<InventoryItemDefinitionsPage />)
+
+    goToLastPage()
+    expect(screen.getByText("4 / 4")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/اسم العنصر/), { target: { value: created.name } })
+    fireEvent.change(screen.getByLabelText(/وحدة القياس/), { target: { value: "قطعة" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "إنشاء التعريف" }))
+    })
+
+    // The refetch inserts the new row in name order, at the top of page 1.
+    mocks.itemDefinitionsQuery.mockReturnValue({ data: { items: [created, ...FIXTURE] } })
+    rerender(<InventoryItemDefinitionsPage />)
+
+    await waitFor(() => expect(screen.getByText("أ عنصر جديد")).toBeTruthy())
+    expect(screen.getByText("1 / 4")).toBeTruthy()
   })
 
   it("keeps the empty state and hides pagination when there are no items", () => {

@@ -52,25 +52,40 @@ separate paged endpoint (not a behavior change to this one).
 - `InventoryItemDefinitionsPage` gains `usePaginatedRows({ rows: items })`
   (default page size 10, matching the shared control).
 - The table body maps `pagedRows` instead of `items`.
-- `TablePaginationControls` renders below the table when `items.length >
-  pageSize`, matching the invoices page's "only show the bar when there is
-  more than one page" rule.
+- `TablePaginationControls` renders whenever `items.length > 0` (see the
+  review note below on the page-size trap), matching the
+  `warehouses-section.tsx` consumers that keep the bar visible on a single
+  page. The empty state still hides it.
+- After a successful create, an effect follows the new row to the page it
+  lands on. The catalog is ordered by `name`, so the created row can insert on
+  any page; without this the operator stays on an unchanged page and the only
+  evidence the create worked is the toast.
 - No new i18n keys: the control reuses `tables.range`, `tables.rowsPerPage`,
   `tables.previous`, `tables.next`.
 - No search/sort/filter on this page today, so none can be broken by paging.
   `usePaginatedRows`'s clamp-on-shrink effect still handles the derived case
-  where the underlying list changes under the user (page resets/clamps).
+  where the underlying list changes under the user.
 
 ## Tests
 
 `apps/web/src/features/inventory/inventory-item-definitions-page.test.tsx`
 (jsdom, mocked `./inventory-hooks`, seeded fixture of 34 items):
 
-- only the first page of rows renders; range copy matches the fixture;
+- only the first page of rows renders; exact row count (header + 10) and the
+  range copy match the fixture;
 - Next/Previous navigate and update the visible rows;
 - page-size control switches to 25 and the range/rows update;
-- page clamps when the underlying list shrinks (the filter-analog path);
+- page-size control stays reachable when the chosen size collapses the list to
+  one page (the review F1 fix);
+- the bar renders with disabled navigation at exactly one page (10 items);
+- page clamps when the underlying list shrinks to a later page (34 → 12);
+- page clamps to page 1 when the list shrinks below one page (34 → 3);
+- a created definition that sorts to the top of page 1 is followed there after
+  the refetch (the review F2 fix);
 - empty state still renders when the list is empty (and no pagination bar).
+
+F1 and F2 tests were verified to fail on the pre-fix production file (10/10
+pass with the fix; 4 fail with only the production file reverted).
 
 ## Risks / migration
 
@@ -84,12 +99,12 @@ cross-package typecheck had its declarations.
 
 | Command | Result |
 | --- | --- |
-| `pnpm --filter @tuari/web test --maxWorkers=2 inventory-item-definitions-page` | 6/6 pass |
-| `pnpm --filter @tuari/web test --maxWorkers=2` | 729/730 pass; the one failure is pre-existing |
+| `pnpm --filter @tuari/web test --maxWorkers=2 inventory-item-definitions-page` | 10/10 pass |
+| `pnpm --filter @tuari/web test --maxWorkers=2` | full suite; see `.scratch/reviews/442/` |
 | `pnpm typecheck` | pass (4/4 packages) |
 | `pnpm lint` | pass (all repo checks + turbo lint) |
 | `pnpm check:unslop` | PASS |
-| scoped coverage (`--coverage.include` page + control) | page 54% overall (create form paths pre-date this change); `table-pagination-controls.tsx` 100% stmts |
+| scoped coverage (`--coverage.include` page + control) | page + control; see report |
 
 **Pre-existing failure waiver**: `date-picker-screens.test.tsx > TransferItemDialog
 submits the picked day for a transfer (#428) > passes the canonical picked day as
@@ -97,8 +112,26 @@ occurredAt` fails with "No QueryClient set". Proven on the base by
 `git stash push -u`, re-running the file, and confirming the identical failure at
 base SHA `22495413`; it is unrelated to this change (the file is untouched here).
 
-**Test-audit / code-review**: the lane brief specified the command checklist
-above and prohibited hosted review; a local self-review of `git diff` covered the
-edge cases (empty list, list shrink after navigation, page-size reset to page 1,
-last-page Next disabled) and found no actionable issue.
+## Review findings (aggressive local review, PR #442)
+
+Full reports: `.scratch/reviews/442/<HEAD>-debate.md`,
+`<HEAD>-code-review.md`, `<HEAD>-test-audit.md`.
+
+| # | Finding | Severity | Verdict |
+| --- | --- | --- | --- |
+| F1 | `items.length > pageSize` gate hid the whole control, so picking 50 (with 34 items) stranded the operator at 50 rows/page with no way back | Major | **Fixed** (gate now `items.length > 0`); test fails pre-fix |
+| F2 | A created definition inserts in name order, so it could land off-page; the operator saw an unchanged page and only a toast as proof | Major | **Fixed** (follow the new row to its page); test fails pre-fix |
+| F3 | `usePaginatedRows` clamps in a `useEffect`, so a cross-page shrink paints one empty control-less frame | Minor | **Filed** (shared-hook paint timing; parent decision) |
+| F4 | No `resetPageDeps`; a future filter would land on the clamped last page instead of page 1 | Minor | **Dismissed** — filtering would happen before `rows` reaches the hook; no filter exists (critic score 2/10) |
+| F5 | Page-size `NativeSelect` has no `aria-label` | Minor | **Filed** — shared control, pre-existing, not introduced here |
+| F6 | Test isolation used `clearAllMocks` (kept implementations across tests) | Minor | **Fixed** (`resetAllMocks` + seed in `beforeEach`) |
+| F7 | Bar-gate boundary at exactly `pageSize` untested | Minor | **Fixed** (exactly-one-page test) |
+| F8 | Shrink below one page untested | Minor | **Fixed** (34 → 3 test) |
+| F9 | No exact rendered-row-count assertion | Minor | **Fixed** (header + 10 rows) |
+| F10 | Loading/`isError` renders the empty state | Minor | **Filed** — pre-existing (`data?.items ?? []` unchanged by this PR), repo-wide convention |
+| F11 | Duplicated `onPageSizeChange` reset closure across consumers | Minor | **Dismissed** — matches the reference consumer; the architecture standard governs the primitives, not the closure |
+| F12 | Design-doc filename has no issue id | Cosmetic | **Dismissed** — local owner item has no issue number |
+
+Client-side paging and reuse of the shared pair were both endorsed (no fork, no
+new keys, honest trade-off); the only wrong-row/data-loss class found was F2.
 
