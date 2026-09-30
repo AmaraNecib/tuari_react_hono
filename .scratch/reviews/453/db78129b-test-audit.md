@@ -70,8 +70,10 @@ salary test files.
 | --- | --- | --- | --- | --- |
 | salary-table-primitives.tsx | 100 | 100 | 100 | 100 |
 | salary-payments-table.tsx | 97.82 | 94.11 | 94.44 | 97.61 |
-| salaried-workers-table.tsx | 90 | 100 | 81.81 | 88.88 |
-| total | 95.91 | 96.92 | 92.68 | 95.4 |
+| salaried-workers-table.tsx | 93.33 | 100 | 90.9 | 92.59 |
+| total | 96.93 | 96.92 | 95.12 | 96.55 |
+
+37 tests across the four salary files, all passing.
 
 ## Quality
 
@@ -79,3 +81,20 @@ Grade B before this round, improving after. No vacuous assertion remains; every
 reset dependency and every filter predicate now has a failing mutation behind
 it. Duplicate fixtures across the three files are deliberate isolation, not a
 defect.
+
+## Commands (exit codes)
+
+| command | result |
+| --- | --- |
+| `VITEST_MAX_WORKERS=2 pnpm --filter @tuari/web test` | 100 files / 927 tests passed, exit 0 (final tree) |
+| `npx vitest run <4 salary files>` | 37 passed, exit 0 |
+| 9 single-line mutations (reset deps, predicates, label key) | each failed exactly its own test, then reverted |
+| `pnpm typecheck` | exit 0 |
+| `pnpm lint` | exit 0 (0 errors) |
+| `pnpm check:unslop` | PASS, exit 0 |
+| scoped coverage (3 extracted modules) | 96.93% stmts / 96.92% branch / 95.12% funcs / 96.55% lines |
+
+Playwright was not run: the brief noted another lane may hold the ports and the
+PR body already records that the E2E was not run. `tests/e2e/salaries.spec.ts`
+role and column selectors were checked by inspection; `getByRole` excludes the
+`hidden` inactive table, so the always-mounted change does not affect them.
