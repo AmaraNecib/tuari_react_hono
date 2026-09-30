@@ -206,6 +206,10 @@ describe("CreateableSelect clear + create dialog contract", () => {
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith("emp-new-1"))
 describe("CreateableSelect popup styling follows Base UI state attributes", () => {
+  function classTokens(element: Element): string[] {
+    return (element.getAttribute("class") ?? "").split(/\s+/).filter(Boolean)
+  }
+
   it("styles the popup surface and the highlighted/selected item with theme tokens", async () => {
     const trigger = renderSelect({ value: "wh-1" }).trigger
     fireEvent.mouseDown(trigger)
@@ -213,26 +217,73 @@ describe("CreateableSelect popup styling follows Base UI state attributes", () =
     const popup = listbox.closest('[data-slot="select-content"]') as HTMLElement | null
     expect(popup).not.toBeNull()
 
-    // Popup surface uses the semantic popover tokens (same values as --surface),
-    // so it stays legible in both themes without a colour literal.
-    expect(popup!.className).toContain("bg-popover")
-    expect(popup!.className).toContain("text-popover-foreground")
+    // `bg-card` and `bg-popover` both resolve to --surface today, so this is a
+    // semantic rename rather than a colour change; it is pinned so a future
+    // edit cannot silently pick a surface token that diverges per theme.
+    expect(classTokens(popup!)).toContain("bg-popover")
+    expect(classTokens(popup!)).toContain("text-popover-foreground")
 
     const option = await within(listbox).findByRole("option", { name: "المستودع المركزي" })
-    const optionClass = option.getAttribute("class") ?? ""
+    const optionTokens = classTokens(option)
     // Base UI marks hover/keyboard highlight with `data-highlighted` and the
     // chosen row with `data-selected`; styling those (not bare `:focus`)
     // keeps the highlight following the pointer and the text dark-mode safe.
-    expect(optionClass).toContain("data-[highlighted]:bg-accent")
+    expect(optionTokens).toContain("data-[highlighted]:bg-accent")
     // Light mode keeps the paired --accent-foreground token; only dark mode
-    // strengthens it to the full --foreground ink (light-on-dark surface).
-    expect(optionClass).toContain("data-[highlighted]:text-accent-foreground")
-    expect(optionClass).toContain("dark:data-[highlighted]:text-foreground")
-    expect(optionClass).toContain("data-[selected]:font-medium")
+    // strengthens it to the full --foreground ink.
+    expect(optionTokens).toContain("data-[highlighted]:text-accent-foreground")
+    expect(optionTokens).toContain("dark:data-[highlighted]:text-foreground")
+    expect(optionTokens).toContain("data-[selected]:font-medium")
+    // The repo's `data-selected` custom variant matches `[data-selected="true"]`,
+    // which Base UI never emits (it emits a bare attribute), so the arbitrary
+    // `data-[selected]:` form is required. A switch to the custom variant would
+    // compile to dead CSS, so pin the distinction.
+    expect(optionTokens.some((token) => token.startsWith("data-selected:"))).toBe(false)
+  })
+
+  it("emits the real Base UI state attributes the highlight styling keys on", async () => {
+    const trigger = renderSelect({
+      value: "wh-1",
+      options: [
+        { id: "wh-1", name: "المستودع المركزي" },
+        { id: "wh-2", name: "مستودع المبيعات" },
+      ],
+    }).trigger
+    fireEvent.mouseDown(trigger)
+    const listbox = await screen.findByRole("listbox")
+    const selected = await within(listbox).findByRole("option", { name: "المستودع المركزي" })
+
+    // A class-string assertion would pass even if these attribute names were
+    // wrong and the generated CSS never matched. Assert the rendered DOM.
+    expect(selected.getAttribute("data-selected")).toBe("")
+    expect(selected.getAttribute("data-highlighted")).toBe("")
+
+    // Keyboard navigation must move the highlight to a different row.
+    fireEvent.keyDown(listbox, { key: "ArrowDown" })
+    await waitFor(() => {
+      const highlighted = listbox.querySelectorAll('[role="option"][data-highlighted]')
+      expect(highlighted.length).toBe(1)
+      expect(highlighted[0]).not.toBe(selected)
+    })
+  })
+
+  it("keeps the trigger's placeholder readable in dark mode", () => {
+    // A value-less select renders the empty label through SelectValue, which
+    // makes Base UI mark the trigger with `data-placeholder`.
+    renderSelect({ value: "" })
+    const trigger = screen.getByRole("combobox")
+    expect(trigger.getAttribute("data-placeholder")).toBe("")
+
+    const tokens = classTokens(trigger)
+    expect(tokens).toContain("data-placeholder:text-muted-foreground/80")
+    expect(tokens).toContain("dark:data-placeholder:text-muted-foreground")
+    // The /80 substring must not stand in for the full-opacity dark override.
+    expect(tokens).not.toContain("dark:data-placeholder:text-muted-foreground/80")
   })
 })
 
 /**
+ * Simulate a real browser mouse pick. Since Base UI 1.5+ (#4699 hardening), an
  * item click only commits when the press started on the item itself
  * (`allowMouseSelectionRef`, set by pointerdown) — bare synthetic clicks are
  * treated as drag/ghost clicks and ignored. Playwright fires the full real

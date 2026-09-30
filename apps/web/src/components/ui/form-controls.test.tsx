@@ -8,11 +8,16 @@ import { CurrencyInput, NativeSelect, Textarea } from "./form-controls"
 
 /**
  * The form controls share `formControlClassName`, so a placeholder-contrast
- * regression in one place hits every input. In dark mode the token at /80
- * opacity composites to a low-contrast grey, so the shared class carries a
- * full-opacity `dark:placeholder:*` override. These tests pin the token class
+ * regression in one place hits every input. Dark mode carries a separate
+ * full-opacity `dark:placeholder:*` override because the /80 composite lands at
+ * roughly 5:1 on the dark input surface. These tests pin the token classes
  * (not a colour literal) on each control that renders a placeholder.
  */
+
+/** Exact className tokens, so `…-muted-foreground/80` cannot satisfy `…-muted-foreground`. */
+function classTokens(element: Element): string[] {
+  return (element.getAttribute("class") ?? "").split(/\s+/).filter(Boolean)
+}
 
 afterEach(cleanup)
 
@@ -20,9 +25,10 @@ describe("form control placeholder contrast", () => {
   it("bumps the placeholder to the full-opacity muted token in dark mode", () => {
     render(<Input placeholder="اسم" />)
 
-    const input = screen.getByPlaceholderText("اسم")
-    expect(input.className).toContain("placeholder:text-muted-foreground/80")
-    expect(input.className).toContain("dark:placeholder:text-muted-foreground")
+    const tokens = classTokens(screen.getByPlaceholderText("اسم"))
+    expect(tokens).toContain("placeholder:text-muted-foreground/80")
+    expect(tokens).toContain("dark:placeholder:text-muted-foreground")
+    expect(tokens).not.toContain("dark:placeholder:text-muted-foreground/80")
   })
 
   it("carries the dark placeholder override on textarea and currency input", () => {
@@ -35,8 +41,11 @@ describe("form control placeholder contrast", () => {
 
     const textarea = screen.getByPlaceholderText("ملاحظة")
     const currency = container.querySelector('input[placeholder="0"]') as HTMLInputElement
-    expect(textarea.className).toContain("dark:placeholder:text-muted-foreground")
-    expect(currency.className).toContain("dark:placeholder:text-muted-foreground")
+    for (const element of [textarea, currency]) {
+      const tokens = classTokens(element)
+      expect(tokens).toContain("dark:placeholder:text-muted-foreground")
+      expect(tokens).not.toContain("dark:placeholder:text-muted-foreground/80")
+    }
   })
 
   it("keeps the native select on the shared control class", () => {
@@ -46,8 +55,12 @@ describe("form control placeholder contrast", () => {
       </NativeSelect>,
     )
 
-    const select = screen.getByLabelText("filter")
-    expect(select.className).toContain("text-foreground")
-    expect(select.className).toContain("dark:[color-scheme:dark]")
+    // The native popup is themed by `color-scheme` in styles.css; the control
+    // itself must keep the shared class so the global `select` rule and the
+    // dark placeholder override stay on one definition.
+    const tokens = classTokens(screen.getByLabelText("filter"))
+    expect(tokens).toContain("text-foreground")
+    expect(tokens).toContain("dark:[color-scheme:dark]")
+    expect(tokens).toContain("dark:placeholder:text-muted-foreground")
   })
 })

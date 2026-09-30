@@ -77,16 +77,20 @@ keeps the theme tokens through `formControlClassName`. Light mode keeps a light
   Light mode keeps the paired `--accent-foreground` text exactly as before; a
   dark-only `dark:data-[highlighted]:text-foreground` strengthens the dark
   highlight text to the full `--foreground` ink on the dark `--accent-soft`
-  surface (measured 9:1 vs the previous 5.9:1).
+  surface (measured 12.8:1 vs the previous 8.6:1 — that pair already cleared AA,
+  so this is polish, not a fix). Base UI 1.7.0 emits `data-highlighted=""` and
+  `data-selected=""` (bare attributes, verified against `node_modules` and
+  asserted in the jsdom test).
 
 ### 4. Input placeholders (item 2) — `apps/web/src/components/ui/form-controls.tsx`
 
 Added `dark:placeholder:text-muted-foreground` alongside the existing
-`placeholder:text-muted-foreground/80`. The `/80` opacity drops the dark
-placeholder to a low-contrast composite; at full opacity it uses the `--ink-3`
-token (already tuned for AA in `.dark`). The shared class covers `Input`,
-`Textarea`, `CurrencyInput`, `NativeSelect` and every call site; the one bespoke
-textarea in `employee-batch-row-card.tsx` got the same token append. Input text
+`placeholder:text-muted-foreground/80`. The dark `/80` composite over the dark
+input surface measures ~5.0:1; the full token measures ~7.2:1, so the override
+buys headroom above AA. Light `/80` stays untouched at ~4.3:1 — the owner's
+reference theme. The pair is now one exported `placeholderContrastClassName`,
+used by `formControlClassName`, the `CurrencyInput` inner input and the bespoke
+`employee-batch-row-card.tsx` textarea, so the token is defined once. Input text
 was already `--foreground` (≈15:1 in dark) and is unchanged.
 
 ### 5. Date-picker arrows (item 3) — `apps/web/src/components/ui/date-picker.tsx`
@@ -94,38 +98,52 @@ was already `--foreground` (≈15:1 in dark) and is unchanged.
 `chevron: "size-4 fill-current"`. react-day-picker's default chevron is a
 `<polygon>` with no `fill` (SVG initial fill = black), so it was black in both
 themes; `fill-current` makes it inherit the button's `text-ink-3`
-(`#595959` light / `#a8a298` dark). The nav buttons also gained
-`focus-visible:outline-*` and `disabled:cursor-not-allowed disabled:opacity-40
-disabled:hover:bg-transparent disabled:hover:text-ink-3` so disabled and hover
-states stay readable.
+(`#595959` light / `#a8a298` dark, ~6.7:1 on the dark popover). The nav buttons
+also gained `focus-visible:outline-*` and `aria-disabled:cursor-not-allowed
+aria-disabled:opacity-40 aria-disabled:hover:*`. react-day-picker marks an
+unavailable month with `aria-disabled` and `tabIndex={-1}`, never the native
+`disabled` attribute, so these must be `aria-disabled:` variants — the earlier
+`disabled:` classes were dead CSS. This DatePicker passes no `fromDate`/`toDate`,
+so the disabled state is currently unreachable here; the variants match the
+library contract if a range limit is ever added.
 
 ### 6. Expenses header alignment (item 9) — `apps/web/src/features/expenses/expenses-page.tsx`
 
 The page wrapped everything in `PageSurfaceContent` (`space-y-6 p-6 xl:p-7`),
-adding 24–28px of top padding under the shell's `py-8`. Pages the owner
-considers correct (employees, projects, roles, settings) render through
-`RecordPageFrame`, whose root is a bare `space-y-6`. The expenses root is now the
-same bare `space-y-6` wrapper (import of `PageSurfaceContent` dropped). The
-inventory pages also add `p-6`, so employees is the shared reference used.
+adding 24–28px of top padding under the shell's `py-8`. The expenses root now
+renders through `RecordPageFrame`, the same component the employees list uses
+(its root is a bare `space-y-6`), so the frame is shared rather than copied. The
+inventory pages add `p-6` inside their own panel, so employees is the reference
+used.
 
 ## Tests
 
 - `apps/web/src/components/ui/createable-select.test.tsx` — popup uses
   `bg-popover`/`text-popover-foreground`; item carries
   `data-[highlighted]:bg-accent`, `data-[highlighted]:text-accent-foreground`,
-  `dark:data-[highlighted]:text-foreground`, `data-[selected]:font-medium`.
-- `apps/web/src/components/ui/date-picker.test.tsx` — nav chevron has
-  `fill-current`; nav button has `text-ink-3`, `hover:text-ink`,
-  `disabled:opacity-40`, `focus-visible:outline-primary`.
+  `dark:data-[highlighted]:text-foreground`, `data-[selected]:font-medium`; the
+  rendered option really carries `data-highlighted`/`data-selected` and keyboard
+  navigation moves the highlight; the trigger's dark placeholder override is
+  pinned by exact token.
+- `apps/web/src/components/ui/date-picker.test.tsx` — every nav chevron has
+  `fill-current`; both nav buttons carry `text-ink-3`, `hover:text-ink`, the four
+  `aria-disabled:*` states and `focus-visible:outline-*`, and no `disabled:`
+  token.
 - `apps/web/src/components/ui/form-controls.test.tsx` (new) — Input, Textarea,
-  CurrencyInput carry `dark:placeholder:text-muted-foreground`; NativeSelect
-  keeps `dark:[color-scheme:dark]`.
+  CurrencyInput carry `dark:placeholder:text-muted-foreground` (exact-token, so
+  the `/80` substring cannot satisfy it); NativeSelect keeps the shared control
+  class.
 - `apps/web/src/features/employees/employee-batch-row-card.test.tsx` (new) —
   bespoke notes textarea carries the same dark placeholder token.
 - `apps/web/src/features/expenses/expenses-page.test.tsx` — page root is
   `space-y-6` with no `p-6`/`xl:p-7`.
+- `apps/web/src/web-hygiene/theme-contrast.test.ts` (new) — reads `styles.css`
+  and pins the `::selection` surface mix, the per-theme `color-scheme` on
+  `select`, the absence of a `select option` override, and the single definition
+  of the placeholder token pair. No jsdom test can evaluate those rules.
 
-Assertions target class/token names, not colour literals.
+Assertions target class/token names, not colour literals. Each production change
+was reverted to the base SHA and the matching test was confirmed to fail.
 
 ## Visual check (manual)
 

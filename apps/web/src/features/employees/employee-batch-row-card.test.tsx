@@ -10,7 +10,8 @@ import { EmployeeBatchRowCard } from "./employee-batch-row-card"
  * The notes textarea on the batch card carries a bespoke class list (it does
  * not use the shared `formTextareaClassName`), so its dark-mode placeholder
  * override can drift from the shared control without any other test noticing.
- * This pins the token class, not a colour literal.
+ * The card reuses `placeholderContrastClassName` and this pins the rendered
+ * token classes, not a colour literal.
  */
 
 const copy = {
@@ -61,7 +62,9 @@ describe("EmployeeBatchRowCard dark-mode placeholder", () => {
     )
 
     const notes = screen.getByPlaceholderText("ملاحظة")
-    expect(notes.className).toContain("placeholder:text-muted-foreground/80")
-    expect(notes.className).toContain("dark:placeholder:text-muted-foreground")
+    const tokens = (notes.getAttribute("class") ?? "").split(/\s+/).filter(Boolean)
+    expect(tokens).toContain("placeholder:text-muted-foreground/80")
+    expect(tokens).toContain("dark:placeholder:text-muted-foreground")
+    expect(tokens).not.toContain("dark:placeholder:text-muted-foreground/80")
   })
 })

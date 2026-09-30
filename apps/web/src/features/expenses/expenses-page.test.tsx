@@ -138,10 +138,9 @@ describe("ExpensesPage", () => {
 
     renderPage()
 
-    // Other list pages render their header through `RecordPageFrame`
-    // (`<div className="space-y-6">`). A local `PageSurfaceContent` wrapper
-    // added p-6/xl:p-7 and pushed this header down; the frame must stay the
-    // bare `space-y-6` wrapper with no padding of its own.
+    // The page renders through `RecordPageFrame`, whose root is the bare
+    // `space-y-6` wrapper used by every list page. A local `PageSurfaceContent`
+    // wrapper previously added p-6/xl:p-7 and pushed this header down.
     const heading = screen.getByRole("heading", { level: 1 })
     const frame = heading.closest("header")?.parentElement
     expect(frame).not.toBeNull()
