@@ -15,8 +15,8 @@ import type {
   InventoryInvoiceGroupCreateInput,
   InventoryItemDefinitionCreateInput,
   InventoryItemDefinitionUpdateInput,
-InventoryOutboundTransferCreateInput,
-InventoryItemUsage,
+  InventoryOutboundTransferCreateInput,
+  InventoryItemUsage,
   InventoryReport,
   MovementReport,
 } from "@tuari/contracts"
