@@ -197,6 +197,7 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     // Party A: opened 2026-01-01 with 50k, paid 20k on 2026-02-01 → 30k OPEN.
     const accountA = financeService.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterpartyA.id,
         openingBalanceDzd: 50000,
@@ -218,6 +219,7 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     // Party B: opened 2025-03-15 with 200k, settled 2026-05-20 → SETTLED.
     const accountB = financeService.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterpartyB.id,
         openingBalanceDzd: 200000,
@@ -233,6 +235,7 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     // Worker W1: opened 2026-04-10 with 80k → OPEN.
     const accountW = financeService.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: employee.id,
         openingBalanceDzd: 80000,
@@ -314,6 +317,7 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     ).item;
     const account = env.financeService.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: cp.id,
         openingBalanceDzd: 1000,
@@ -385,6 +389,7 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     ).item;
     env.financeService.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: cp.id,
         openingBalanceDzd: 90000,

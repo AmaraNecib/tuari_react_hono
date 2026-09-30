@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE,
   DEBT_BALANCE_STATE_PHRASE,
   debtBalanceLabelSchema,
+  getDebtAccountBalancePhrase,
+  getDebtAccountBalanceState,
   getDebtAccountNetContribution,
   getDebtBalanceAmount,
-  getDebtBalancePhrase,
-  getDebtBalanceState,
   getNetDebtBalance,
+  getNetDebtBalancePhrase,
+  getNetDebtBalanceState,
+  type DebtBalanceAccount,
 } from "./debt-helpers";
 
 /**
@@ -46,6 +50,14 @@ describe("debt sign convention (PAYABLE-negates)", () => {
       // Overpayment inverts the meaning: -200 RECEIVABLE means the customer
       // paid us 200 more than they owed, so we owe them — contribution -200.
       expect(getDebtAccountNetContribution({ currentBalance: -200, direction: "RECEIVABLE" })).toBe(-200);
+    });
+
+    it("refuses an account with no ledger direction (no implicit PAYABLE)", () => {
+      // The net contribution interprets the sign by the direction, so the same
+      // no-silent-fallback rule as getDebtAccountBalanceState applies here.
+      expect(() =>
+        getDebtAccountNetContribution({ currentBalance: 100 } as unknown as DebtBalanceAccount),
+      ).toThrowError(DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE);
     });
   });
 
@@ -140,33 +152,58 @@ describe("debt sign convention (PAYABLE-negates)", () => {
  * The display state machine is the single source of the new debt wording:
  * a signed balance never reaches the UI alone, it is always paired with the
  * phrase that states the direction (issue: unambiguous debt terminology).
+ *
+ * The split (issue #458) removes the optional-direction overload: the
+ * account-aware half requires a direction, the net half is sign-only.
  */
-describe("getDebtBalanceState (direction + signed balance -> phrase state)", () => {
+describe("getDebtAccountBalanceState (direction + signed balance -> phrase state)", () => {
   it("maps a positive PAYABLE balance to owedByUs (we owe them, unpaid)", () => {
-    expect(getDebtBalanceState({ currentBalance: 600, direction: "PAYABLE" })).toBe("owedByUs");
+    expect(getDebtAccountBalanceState({ currentBalance: 600, direction: "PAYABLE" })).toBe("owedByUs");
   });
 
   it("maps a negative PAYABLE balance to creditWithUs (we paid them too much)", () => {
-    expect(getDebtBalanceState({ currentBalance: -50_000, direction: "PAYABLE" })).toBe("creditWithUs");
+    expect(getDebtAccountBalanceState({ currentBalance: -50_000, direction: "PAYABLE" })).toBe("creditWithUs");
   });
 
   it("maps a positive RECEIVABLE balance to owedToUs (they owe us, unpaid)", () => {
-    expect(getDebtBalanceState({ currentBalance: 600, direction: "RECEIVABLE" })).toBe("owedToUs");
+    expect(getDebtAccountBalanceState({ currentBalance: 600, direction: "RECEIVABLE" })).toBe("owedToUs");
   });
 
   it("maps a negative RECEIVABLE balance to creditWithThem (they paid us too much)", () => {
-    expect(getDebtBalanceState({ currentBalance: -600, direction: "RECEIVABLE" })).toBe("creditWithThem");
+    expect(getDebtAccountBalanceState({ currentBalance: -600, direction: "RECEIVABLE" })).toBe("creditWithThem");
   });
 
   it("maps zero to settled for every direction", () => {
-    expect(getDebtBalanceState({ currentBalance: 0, direction: "PAYABLE" })).toBe("settled");
-    expect(getDebtBalanceState({ currentBalance: 0, direction: "RECEIVABLE" })).toBe("settled");
-    expect(getDebtBalanceState({ currentBalance: 0 })).toBe("settled");
+    expect(getDebtAccountBalanceState({ currentBalance: 0, direction: "PAYABLE" })).toBe("settled");
+    expect(getDebtAccountBalanceState({ currentBalance: 0, direction: "RECEIVABLE" })).toBe("settled");
   });
 
-  it("maps a direction-less net figure by sign", () => {
-    expect(getDebtBalanceState({ currentBalance: 2500 })).toBe("owedToUs");
-    expect(getDebtBalanceState({ currentBalance: -1500 })).toBe("owedByUs");
+  it("refuses a direction-less figure instead of falling back to the sign (removed overload)", () => {
+    // Before #458 the overload silently returned "owedToUs" here. The
+    // direction-aware half must never phrase a figure that has no direction.
+    expect(() =>
+      getDebtAccountBalanceState({ currentBalance: 600 } as unknown as DebtBalanceAccount),
+    ).toThrowError(DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE);
+  });
+
+  it("refuses a null direction too", () => {
+    expect(() =>
+      getDebtAccountBalanceState({ currentBalance: 600, direction: null } as unknown as DebtBalanceAccount),
+    ).toThrowError(DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE);
+  });
+});
+
+describe("getNetDebtBalanceState (sign-only net figure -> phrase state)", () => {
+  it("maps a positive net to owedToUs", () => {
+    expect(getNetDebtBalanceState(2500)).toBe("owedToUs");
+  });
+
+  it("maps a negative net to owedByUs", () => {
+    expect(getNetDebtBalanceState(-1500)).toBe("owedByUs");
+  });
+
+  it("maps zero to settled", () => {
+    expect(getNetDebtBalanceState(0)).toBe("settled");
   });
 });
 
@@ -178,13 +215,21 @@ describe("getDebtBalanceAmount", () => {
   });
 });
 
-describe("getDebtBalancePhrase", () => {
+describe("getDebtAccountBalancePhrase", () => {
   it("uses the authoritative Arabic phrase for each of the five states", () => {
-    expect(getDebtBalancePhrase({ currentBalance: 600, direction: "PAYABLE" })).toBe("مستحق علينا");
-    expect(getDebtBalancePhrase({ currentBalance: 600, direction: "RECEIVABLE" })).toBe("مستحق لنا");
-    expect(getDebtBalancePhrase({ currentBalance: -600, direction: "PAYABLE" })).toBe("رصيد مستحق لنا");
-    expect(getDebtBalancePhrase({ currentBalance: -600, direction: "RECEIVABLE" })).toBe("رصيد مستحق لهم");
-    expect(getDebtBalancePhrase({ currentBalance: 0, direction: "PAYABLE" })).toBe("مسوّى");
+    expect(getDebtAccountBalancePhrase({ currentBalance: 600, direction: "PAYABLE" })).toBe("مستحق علينا");
+    expect(getDebtAccountBalancePhrase({ currentBalance: 600, direction: "RECEIVABLE" })).toBe("مستحق لنا");
+    expect(getDebtAccountBalancePhrase({ currentBalance: -600, direction: "PAYABLE" })).toBe("رصيد مستحق لنا");
+    expect(getDebtAccountBalancePhrase({ currentBalance: -600, direction: "RECEIVABLE" })).toBe("رصيد مستحق لهم");
+    expect(getDebtAccountBalancePhrase({ currentBalance: 0, direction: "PAYABLE" })).toBe("مسوّى");
+  });
+});
+
+describe("getNetDebtBalancePhrase", () => {
+  it("phrases a net by sign without a direction", () => {
+    expect(getNetDebtBalancePhrase(600)).toBe("مستحق لنا");
+    expect(getNetDebtBalancePhrase(-600)).toBe("مستحق علينا");
+    expect(getNetDebtBalancePhrase(0)).toBe("مسوّى");
   });
 });
 

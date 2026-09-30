@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -13,9 +14,14 @@ import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { Surface } from "@/features/shared/page-primitives"
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
-import { formatDebtAmount, getDebtBalanceDisplay } from "./debt-utils"
+import {
+  formatDebtAmount,
+  getNetDebtBalanceDisplay,
+  matchesDebtHubFilter,
+  type DebtHubFilter,
+} from "./debt-utils"
 
-type FilterOption = "all" | "owed-to-us" | "owed-by-us" | "settled"
+type FilterOption = DebtHubFilter
 
 function HubStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
@@ -27,13 +33,6 @@ function HubStatCard({ label, value, valueClassName }: { label: string; value: s
     </div>
   )
 }
-
-const FILTER_OPTIONS: Array<{ id: FilterOption; labelKey: string }> = [
-  { id: "all", labelKey: "debtsHub.filters.all" },
-  { id: "owed-to-us", labelKey: "debts.terminology.states.owedToUs" },
-  { id: "owed-by-us", labelKey: "debts.terminology.states.owedByUs" },
-  { id: "settled", labelKey: "debtsHub.filters.settled" },
-]
 
 const DEFAULT_PAGE_SIZE = 25
 
@@ -71,21 +70,19 @@ export function DebtsHubPage({
 
   const normalizedQuery = query.trim().toLowerCase()
 
+  const filterOptions = useMemo<Array<{ id: FilterOption; label: string }>>(
+    () => [
+      { id: "all", label: t("debtsHub.filters.all") },
+      { id: "owed-to-us", label: DEBT_BALANCE_STATE_PHRASE.owedToUs },
+      { id: "owed-by-us", label: DEBT_BALANCE_STATE_PHRASE.owedByUs },
+      { id: "settled", label: DEBT_BALANCE_STATE_PHRASE.settled },
+    ],
+    [t],
+  )
+
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
-      switch (filter) {
-        case "owed-to-us":
-          if (!(row.status === "OPEN" && row.balanceDzd > 0)) return false
-          break
-        case "owed-by-us":
-          if (!(row.status === "OPEN" && row.balanceDzd < 0)) return false
-          break
-        case "settled":
-          if (row.status !== "SETTLED") return false
-          break
-        default:
-          break
-      }
+      if (!matchesDebtHubFilter(row, filter)) return false
       if (normalizedQuery) {
         const haystack = `${row.name} ${row.phone}`.toLowerCase()
         if (!haystack.includes(normalizedQuery)) return false
@@ -116,14 +113,14 @@ export function DebtsHubPage({
     >
       <div className="grid gap-4 md:grid-cols-4">
         <HubStatCard label="عدد الأرصدة المفتوحة" value={String(filter === "all" ? totals.openCount : filteredOpenCount)} />
-        <HubStatCard label={t("debts.terminology.states.owedToUs")} value={`دج ${formatDebtAmount(totals.owedToUsDzd)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
-        <HubStatCard label={t("debts.terminology.states.owedByUs")} value={`دج ${formatDebtAmount(totals.owedByUsDzd)}`} valueClassName="text-rose-700 dark:text-rose-300" />
+        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedToUs} value={`دج ${formatDebtAmount(totals.owedToUsDzd)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
+        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedByUs} value={`دج ${formatDebtAmount(totals.owedByUsDzd)}`} valueClassName="text-rose-700 dark:text-rose-300" />
         <HubStatCard label="عدد الحسابات" value={String(rows.length)} />
       </div>
 
       {/* Filter bar */}
       <div className="flex flex-wrap gap-2">
-        {FILTER_OPTIONS.map((option) => (
+        {filterOptions.map((option) => (
           <button
             key={option.id}
             className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
@@ -137,7 +134,7 @@ export function DebtsHubPage({
             }}
             type="button"
           >
-            {t(option.labelKey)}
+            {option.label}
           </button>
         ))}
       </div>
@@ -165,7 +162,7 @@ export function DebtsHubPage({
           <TableBody>
             {pagedRows.length > 0 ? (
               pagedRows.map((row) => {
-                const balance = getDebtBalanceDisplay({ currentBalance: row.balanceDzd })
+                const balance = getNetDebtBalanceDisplay(row.balanceDzd)
 
                 return (
                   <TableRow
@@ -184,7 +181,7 @@ export function DebtsHubPage({
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`w-fit rounded-full border px-3 py-1 text-xs font-medium ${balance.badgeClassName}`.trim()}>
-                          {t(balance.phraseKey)}
+                          {balance.phrase}
                         </span>
                         <span className={`font-mono text-sm ${balance.textClassName}`.trim()} dir="ltr">
                           دج {formatDebtAmount(balance.amount)}

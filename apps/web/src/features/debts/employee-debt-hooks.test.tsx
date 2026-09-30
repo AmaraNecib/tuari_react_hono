@@ -87,7 +87,7 @@ describe("employee debt account — freshness after entry create", () => {
       user: { id: "user-1", name: "مدير التشغيل", phone: "0612345678", version: "0.0.0" },
     })
 
-    const { result: accountResult } = renderHook(() => useEmployeeDebtAccountQuery("employee-1"), {
+    const { result: accountResult } = renderHook(() => useEmployeeDebtAccountQuery("employee-1", "PAYABLE"), {
       wrapper: wrapper(queryClient),
     })
     const { result: mutationResult } = renderHook(() => useCreateEmployeeDebtEntryMutation(), {

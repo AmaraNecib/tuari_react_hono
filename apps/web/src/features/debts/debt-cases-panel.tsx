@@ -17,8 +17,9 @@ import { DebtLedgerPanel } from "./debt-ledger-panel"
 import {
   debtDirectionFromAlias,
   formatDebtAmount,
-  getDebtBalanceDisplay,
+  getDebtAccountBalanceDisplay,
   getDebtDirectionLabel,
+  getNetDebtBalanceDisplay,
   sortDebtAccounts,
   type DebtDirectionAlias,
 } from "./debt-utils"
@@ -85,12 +86,9 @@ export function DebtCasesPanel({
   const isBidirectional = hasPayable && hasReceivable
   const balance = useMemo(
     () =>
-      isBidirectional
-        ? getDebtBalanceDisplay({ currentBalance: totalBalanceDzd })
-        : getDebtBalanceDisplay({
-            currentBalance: debtAccount?.currentBalance ?? 0,
-            direction: debtAccount?.direction,
-          }),
+      isBidirectional || !debtAccount
+        ? getNetDebtBalanceDisplay(totalBalanceDzd)
+        : getDebtAccountBalanceDisplay(debtAccount),
     [isBidirectional, totalBalanceDzd, debtAccount],
   )
 
@@ -111,11 +109,11 @@ export function DebtCasesPanel({
     receivableEntries.some((e) => e.status === "LIVE" && e.entryType === "OPENING")
 
   const payableBalance = useMemo(
-    () => (payableAccount ? getDebtBalanceDisplay(payableAccount) : null),
+    () => (payableAccount ? getDebtAccountBalanceDisplay(payableAccount) : null),
     [payableAccount],
   )
   const receivableBalance = useMemo(
-    () => (receivableAccount ? getDebtBalanceDisplay(receivableAccount) : null),
+    () => (receivableAccount ? getDebtAccountBalanceDisplay(receivableAccount) : null),
     [receivableAccount],
   )
 
@@ -125,7 +123,7 @@ export function DebtCasesPanel({
       <div className="grid gap-4 md:grid-cols-3">
         <CasesStatCard
           label={isBidirectional ? t("debts.cases.netBalance") : debtAccount ? `${t("debts.cases.currentBalance")} — ${getDebtDirectionLabel(debtAccount.direction)}` : t("debts.cases.currentBalance")}
-          phrase={t(balance.phraseKey)}
+          phrase={balance.phrase}
           value={`دج ${formatDebtAmount(balance.amount)}`}
           valueClassName={balance.textClassName}
         />
@@ -143,9 +141,9 @@ export function DebtCasesPanel({
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-0.5">
               <p className="text-sm text-muted-foreground">
-                {getDebtDirectionLabel(payableAccount!.direction)} · {t(payableBalance!.phraseKey)} دج {formatDebtAmount(payableBalance!.amount)}
+                {getDebtDirectionLabel(payableAccount!.direction)} · {payableBalance!.phrase} دج {formatDebtAmount(payableBalance!.amount)}
                 {` — `}
-                {getDebtDirectionLabel(receivableAccount!.direction)} · {t(receivableBalance!.phraseKey)} دج {formatDebtAmount(receivableBalance!.amount)}
+                {getDebtDirectionLabel(receivableAccount!.direction)} · {receivableBalance!.phrase} دج {formatDebtAmount(receivableBalance!.amount)}
               </p>
               <p className="text-xs text-muted-foreground">
                 {hasConsolidatableOpenings
@@ -224,7 +222,7 @@ export function DebtCasesPanel({
                 externalCounterpartyId: externalCounterpartyId ?? null,
                 note: note.trim() || null,
                 direction: accountDirection,
-                openingBalanceDzd: Math.abs(openingBalanceValue),
+                openingBalanceDzd: openingBalanceValue === 0 ? undefined : Math.abs(openingBalanceValue),
                 openingEntryDate: createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined,
                 openingEntryNote: note.trim() || null,
                 partyType: workerId ? "INTERNAL_WORKER" : "EXTERNAL_COUNTERPARTY",

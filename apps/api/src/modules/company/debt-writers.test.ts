@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { DebtAccountCreateInput } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
 import {
@@ -35,16 +36,19 @@ describe("Debt writers (D2/D3/D7)", () => {
   }
 
   describe("D2 — the reason category locks the direction", () => {
-    it("derives RECEIVABLE for a salary advance even when no direction is sent", () => {
+    it("still derives RECEIVABLE from a locked salary advance for a non-wire caller", () => {
       const { service, roleIds } = createHarness();
       const worker = createWorker(service, roleIds, "سلفة", "0551090001");
 
+      // The wire contract now requires `direction`; this pins that the service's
+      // category derivation (#464) still holds for a direct/JS caller that
+      // omits it. A missing direction with no lock is a validation error.
       const account = service.createDebtAccount({
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 5000,
         reasonCategory: "SALARY_ADVANCE",
-      }).item;
+      } as unknown as DebtAccountCreateInput).item;
 
       // D1a: the worker owes us the advance.
       expect(account.direction).toBe("RECEIVABLE");
@@ -52,11 +56,12 @@ describe("Debt writers (D2/D3/D7)", () => {
       expect(account.workerId).toBe(worker.id);
     });
 
-    it("derives PAYABLE for a reimbursement", () => {
+    it("accepts the PAYABLE direction a reimbursement locks", () => {
       const { service, roleIds } = createHarness();
       const worker = createWorker(service, roleIds, "تعويض", "0551090002");
 
       const account = service.createDebtAccount({
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 2000,
@@ -82,7 +87,7 @@ describe("Debt writers (D2/D3/D7)", () => {
       ).toThrowError("اتجاه الحساب محدد حسب سبب الدين.");
     });
 
-    it("accepts a matching direction and keeps the unconstrained default", () => {
+    it("accepts a matching direction and honours an explicit unconstrained direction", () => {
       const { service, roleIds } = createHarness();
       const worker = createWorker(service, roleIds, "مطابق", "0551090004");
 
@@ -145,12 +150,14 @@ describe("Debt writers (D2/D3/D7)", () => {
       const worker = createWorker(service, roleIds, "حسابان", "0551090010");
 
       const advance = service.createDebtAccount({
+        direction: "RECEIVABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 5000,
         reasonCategory: "SALARY_ADVANCE",
       }).item;
       const reimbursement = service.createDebtAccount({
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 3000,
@@ -175,18 +182,21 @@ describe("Debt writers (D2/D3/D7)", () => {
       const worker = createWorker(service, roleIds, "إعادة", "0551090011");
 
       const first = service.createDebtAccount({
+        direction: "RECEIVABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 5000,
         reasonCategory: "SALARY_ADVANCE",
       }).item;
       service.createDebtAccount({
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 3000,
         reasonCategory: "REIMBURSEMENT",
       });
       const secondAdvance = service.createDebtAccount({
+        direction: "RECEIVABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 1000,
@@ -210,8 +220,8 @@ describe("Debt writers (D2/D3/D7)", () => {
       });
 
       expect(entry.signedAmountDzd).toBe(500);
-      expect(service.finance.getEmployeeDebtAccount(worker.id)?.direction).toBe("RECEIVABLE");
-      expect(service.finance.getEmployeeDebtAccount(worker.id)?.currentBalance).toBe(500);
+      expect(service.finance.getEmployeeDebtAccount(worker.id, "RECEIVABLE")?.direction).toBe("RECEIVABLE");
+      expect(service.finance.getEmployeeDebtAccount(worker.id, "RECEIVABLE")?.currentBalance).toBe(500);
     });
 
     it("records a PAYMENT as negative and offsets the open receivable", () => {
@@ -226,7 +236,7 @@ describe("Debt writers (D2/D3/D7)", () => {
       });
 
       expect(payment.signedAmountDzd).toBe(-200);
-      expect(service.finance.getEmployeeDebtAccount(worker.id)?.currentBalance).toBe(300);
+      expect(service.finance.getEmployeeDebtAccount(worker.id, "RECEIVABLE")?.currentBalance).toBe(300);
     });
 
     it("signs a PAYMENT negative on the PAYABLE ledger when no receivable is open", () => {
@@ -241,8 +251,8 @@ describe("Debt writers (D2/D3/D7)", () => {
       });
 
       expect(payment.signedAmountDzd).toBe(-300);
-      expect(service.finance.getEmployeeDebtAccount(worker.id)?.direction).toBe("PAYABLE");
-      expect(service.finance.getEmployeeDebtAccount(worker.id)?.currentBalance).toBe(700);
+      expect(service.finance.getEmployeeDebtAccount(worker.id, "PAYABLE")?.direction).toBe("PAYABLE");
+      expect(service.finance.getEmployeeDebtAccount(worker.id, "PAYABLE")?.currentBalance).toBe(700);
     });
 
     it("falls back to PAYABLE for a payment when the open receivable is already zero", () => {
@@ -250,6 +260,7 @@ describe("Debt writers (D2/D3/D7)", () => {
       const worker = createWorker(service, roleIds, "صفر", "0551090023");
 
       service.createDebtAccount({
+        direction: "RECEIVABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 0,

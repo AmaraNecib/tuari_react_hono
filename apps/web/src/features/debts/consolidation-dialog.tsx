@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button"
 import {
   useDebtEntriesConsolidateMutation,
 } from "@/features/app-shell/mock-dashboard"
-import { formatDebtAmount, formatDebtMoney, getConsolidationRemainder, getDebtBalanceDisplay, getDebtDirectionLabel } from "./debt-utils"
+import { formatDebtAmount, formatDebtMoney, getConsolidationRemainder, getDebtAccountBalanceDisplay, getDebtDirectionLabel } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
 /**
@@ -135,8 +135,8 @@ export function ConsolidationDialog({
 
   // Direction-aware displays for the two account headers: an overpaid account
   // (-50,000) must read its state phrase, not "we owe 50,000".
-  const payableDisplay = getDebtBalanceDisplay(payableAccount)
-  const receivableDisplay = getDebtBalanceDisplay(receivableAccount)
+  const payableDisplay = getDebtAccountBalanceDisplay(payableAccount)
+  const receivableDisplay = getDebtAccountBalanceDisplay(receivableAccount)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -153,7 +153,7 @@ export function ConsolidationDialog({
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
               {getDebtDirectionLabel(payableAccount.direction)} — رصيد الحساب: دج{" "}
-              {formatDebtAmount(payableDisplay.amount)} ({t(payableDisplay.phraseKey)})
+              {formatDebtAmount(payableDisplay.amount)} ({payableDisplay.phrase})
             </h4>
             {livePayableOpenings.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings")}</p>
@@ -162,7 +162,7 @@ export function ConsolidationDialog({
                 {livePayableOpenings.map((entry) => {
                   // Direction-aware tone: a positive movement on a PAYABLE
                   // account increases what we owe (rose), not a receivable.
-                  const entryBalance = getDebtBalanceDisplay({
+                  const entryBalance = getDebtAccountBalanceDisplay({
                     currentBalance: entry.signedAmountDzd,
                     direction: payableAccount.direction,
                   })
@@ -203,14 +203,14 @@ export function ConsolidationDialog({
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
               {getDebtDirectionLabel(receivableAccount.direction)} — رصيد الحساب: دج{" "}
-              {formatDebtAmount(receivableDisplay.amount)} ({t(receivableDisplay.phraseKey)})
+              {formatDebtAmount(receivableDisplay.amount)} ({receivableDisplay.phrase})
             </h4>
             {liveReceivableOpenings.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings")}</p>
             ) : (
               <div className="space-y-2">
                 {liveReceivableOpenings.map((entry) => {
-                  const entryBalance = getDebtBalanceDisplay({
+                  const entryBalance = getDebtAccountBalanceDisplay({
                     currentBalance: entry.signedAmountDzd,
                     direction: receivableAccount.direction,
                   })

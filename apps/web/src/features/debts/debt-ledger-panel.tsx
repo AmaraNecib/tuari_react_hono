@@ -17,7 +17,7 @@ import {
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 
-import { formatDebtAmount, formatDebtMoney, getDebtAccountBalance, getDebtBalanceDisplay, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
+import { formatDebtAmount, formatDebtMoney, getDebtAccountBalanceDisplay, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
 import { RecordEntryPaymentDialog } from "./record-entry-payment-dialog"
 import { VoidEntryDialog } from "./void-entry-dialog"
 
@@ -41,7 +41,7 @@ export function DebtLedgerPanel({
   debtEntries,
   title,
 }: {
-  debtAccount: DebtAccount | null
+  debtAccount: DebtAccount
   debtEntries: DebtEntry[]
   title: string
 }) {
@@ -54,15 +54,12 @@ export function DebtLedgerPanel({
   const [note, setNote] = useState("")
   const [signedAmount, setSignedAmount] = useState("")
   const sortedEntries = useMemo(() => sortDebtEntries(debtEntries), [debtEntries])
-  const balanceDzd = getDebtAccountBalance(debtAccount)
+  const balanceDzd = debtAccount.currentBalance
   // Issue #22: the running balance is per-account, so its phrase and color
   // must respect the account's direction. The display helper flips a signed
   // balance into a positive amount plus a phrase, so a negative balance can
   // never contradict the direction words.
-  const balance = getDebtBalanceDisplay({
-    currentBalance: balanceDzd,
-    direction: debtAccount?.direction,
-  })
+  const balance = getDebtAccountBalanceDisplay(debtAccount)
   const normalizedAmount = signedAmount.trim()
   const signedAmountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : null
   const hasValidAmount = signedAmountValue !== null && Number.isFinite(signedAmountValue) && signedAmountValue !== 0
@@ -71,27 +68,25 @@ export function DebtLedgerPanel({
     setEntryDate(getAlgeriaDateInputValue())
     setNote("")
     setSignedAmount("")
-  }, [debtAccount?.id])
+  }, [debtAccount.id])
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <DebtStatCard
-          label={debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
-          phrase={t(balance.phraseKey)}
+          label={`الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}`}
+          phrase={balance.phrase}
           value={`دج ${formatDebtAmount(balance.amount)}`}
           valueClassName={balance.textClassName}
         />
-        <DebtStatCard label="الحالة" value={t(balance.phraseKey)} valueClassName={balance.textClassName} />
+        <DebtStatCard label="الحالة" value={balance.phrase} valueClassName={balance.textClassName} />
         <DebtStatCard label="عدد القيود" value={String(sortedEntries.length)} />
       </div>
 
       <Surface className="p-5" variant="card">
         <SurfaceHeader
           description={
-            debtAccount
-              ? "أدخل مبلغًا موجبًا إذا زاد ما لنا عند الطرف، وأدخل مبلغًا سالبًا إذا نزل الرصيد. مثال: +5000 دين جديد، -2000 دفعة وصلت إلينا، +2000 دفعة دفعناها لطرف كنا مدينين له."
-              : "أنشئ الحساب أولًا قبل إضافة الحركات."
+            "أدخل مبلغًا موجبًا إذا زاد ما لنا عند الطرف، وأدخل مبلغًا سالبًا إذا نزل الرصيد. مثال: +5000 دين جديد، -2000 دفعة وصلت إلينا، +2000 دفعة دفعناها لطرف كنا مدينين له."
           }
           title={title}
         />
@@ -114,16 +109,14 @@ export function DebtLedgerPanel({
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">المبلغ يغيّر الرصيد مباشرة: موجب يرفع الرصيد، وسالب يخفضه.</p>
           <Button
-            disabled={!debtAccount || !hasValidAmount || createDebtEntryMutation.isPending}
+            disabled={!hasValidAmount || createDebtEntryMutation.isPending}
             onClick={() =>
-              debtAccount
-                ? createDebtEntryMutation.mutate({
-                    debtAccountId: debtAccount.id,
-                    entryDate: entryDate ? toAlgeriaDayBoundaryIso(entryDate, "start") : undefined,
-                    note: note.trim() || null,
-                    signedAmountDzd: signedAmountValue!,
-                  })
-                : undefined
+              createDebtEntryMutation.mutate({
+                debtAccountId: debtAccount.id,
+                entryDate: entryDate ? toAlgeriaDayBoundaryIso(entryDate, "start") : undefined,
+                note: note.trim() || null,
+                signedAmountDzd: signedAmountValue!,
+              })
             }
           >
             {t("debts.terminology.buttons.recordPayment")}
@@ -146,16 +139,14 @@ export function DebtLedgerPanel({
             {balance.description}
           </span>
           <Button
-            disabled={!debtAccount || balanceDzd === 0 || settleDebtAccountMutation.isPending}
+            disabled={balanceDzd === 0 || settleDebtAccountMutation.isPending}
             variant="outline"
             onClick={() =>
-              debtAccount
-                ? settleDebtAccountMutation.mutate({
-                    debtAccountId: debtAccount.id,
-                    entryDate: entryDate ? toAlgeriaDayBoundaryIso(entryDate, "start") : undefined,
-                    note: note.trim() || null,
-                  })
-                : undefined
+              settleDebtAccountMutation.mutate({
+                debtAccountId: debtAccount.id,
+                entryDate: entryDate ? toAlgeriaDayBoundaryIso(entryDate, "start") : undefined,
+                note: note.trim() || null,
+              })
             }
           >
             تسوية إلى صفر
@@ -182,15 +173,15 @@ export function DebtLedgerPanel({
                 sortedEntries.map((entry) => {
                   // Movement tone follows the account direction: a positive
                   // movement on a PAYABLE account increases what we owe.
-                  const amountDisplay = getDebtBalanceDisplay({
+                  const amountDisplay = getDebtAccountBalanceDisplay({
                     currentBalance: entry.signedAmountDzd,
-                    direction: debtAccount?.direction,
+                    direction: debtAccount.direction,
                   })
                   // balanceAfterDzd is the per-account running balance,
                   // so its phrase and color follow the account direction.
-                  const balanceAfter = getDebtBalanceDisplay({
+                  const balanceAfter = getDebtAccountBalanceDisplay({
                     currentBalance: entry.balanceAfterDzd,
-                    direction: debtAccount?.direction,
+                    direction: debtAccount.direction,
                   })
 
                   const isLive = entry.status === "LIVE"
@@ -207,7 +198,7 @@ export function DebtLedgerPanel({
                         دج {formatDebtMoney(entry.signedAmountDzd)}
                       </td>
                       <td className={cn("px-4 py-4 text-start font-mono", balanceAfter.textClassName)}>
-                        <span className="block text-xs font-medium">{t(balanceAfter.phraseKey)}</span>
+                        <span className="block text-xs font-medium">{balanceAfter.phrase}</span>
                         <span dir="ltr">دج {formatDebtAmount(balanceAfter.amount)}</span>
                       </td>
                       <td className="px-4 py-4 text-start">
@@ -264,14 +255,14 @@ export function DebtLedgerPanel({
 
       <RecordEntryPaymentDialog
         entry={paymentTargetEntry}
-        accountCurrentBalance={debtAccount?.currentBalance ?? 0}
-        accountDirection={debtAccount?.direction}
+        accountCurrentBalance={debtAccount.currentBalance}
+        accountDirection={debtAccount.direction}
         open={paymentTargetEntry !== null}
         onOpenChange={() => setPaymentTargetEntry(null)}
       />
       <VoidEntryDialog
         entry={voidTargetEntry}
-        accountDirection={debtAccount?.direction}
+        accountDirection={debtAccount.direction}
         livePaymentEntries={sortedEntries.filter(e => e.entryType === "PAYMENT" && e.status === "LIVE")}
         open={voidTargetEntry !== null}
         onOpenChange={() => setVoidTargetEntry(null)}

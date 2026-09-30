@@ -257,7 +257,8 @@ describe("Inventory debt signs (D4/D8)", () => {
       ).item;
 
       env.company.createDebtAccount(
-        { partyType: "INTERNAL_WORKER", workerId: worker.id, openingBalanceDzd: 100, reasonCategory: "SALARY_ADVANCE" },
+        {
+        direction: "RECEIVABLE", partyType: "INTERNAL_WORKER", workerId: worker.id, openingBalanceDzd: 100, reasonCategory: "SALARY_ADVANCE" },
         AUDIT,
       );
 

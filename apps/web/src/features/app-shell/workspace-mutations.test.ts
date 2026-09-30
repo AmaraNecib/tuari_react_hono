@@ -5,14 +5,20 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { createElement, type ReactNode } from "react"
 
-import { AppMutationError, useCreateEmployeesBatchMutation, useResetWorkspaceMutation } from "./workspace-mutations"
+import { AppMutationError, useCreateDebtAccountMutation, useCreateEmployeesBatchMutation, useResetWorkspaceMutation } from "./workspace-mutations"
 import { workspaceDomainQueryPrefix, workspaceQueryPrefix } from "./workspace-keys"
 
-const rpcMocks = vi.hoisted(() => ({ employeesBatchCreate: vi.fn() }))
+const rpcMocks = vi.hoisted(() => ({ employeesBatchCreate: vi.fn(), debtAccountsCreate: vi.fn() }))
 
 vi.mock("@/lib/orpc-client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/orpc-client")>("@/lib/orpc-client")
-  return { ...actual, rpcClient: { employeesBatchCreate: rpcMocks.employeesBatchCreate } }
+  return {
+    ...actual,
+    rpcClient: {
+      employeesBatchCreate: rpcMocks.employeesBatchCreate,
+      debtAccountsCreate: rpcMocks.debtAccountsCreate,
+    },
+  }
 })
 
 describe("useResetWorkspaceMutation — snapshot-aware reset (issue #276)", () => {
@@ -43,6 +49,42 @@ describe("useResetWorkspaceMutation — snapshot-aware reset (issue #276)", () =
     // PR #304).
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceDomainQueryPrefix })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryPrefix })
+  })
+})
+
+describe("useCreateDebtAccountMutation — no silent direction or opening default (issue #458)", () => {
+  function wrapper(queryClient: QueryClient) {
+    return function Wrapper({ children }: { children: ReactNode }) {
+      return createElement(QueryClientProvider, { client: queryClient }, children)
+    }
+  }
+
+  it("passes the chosen direction and leaves an absent opening balance absent", async () => {
+    rpcMocks.debtAccountsCreate.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { id: "acc-1" },
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const { result } = renderHook(() => useCreateDebtAccountMutation(), {
+      wrapper: wrapper(queryClient),
+    })
+
+    await result.current.mutateAsync({
+      partyType: "INTERNAL_WORKER",
+      workerId: "w-1",
+      direction: "RECEIVABLE",
+    })
+
+    // A missing opening must stay absent: the wire rejects a supplied 0, so a
+    // mutation that coerces `undefined ?? 0` would break empty-account creation.
+    expect(rpcMocks.debtAccountsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        direction: "RECEIVABLE",
+        openingBalanceDzd: undefined,
+      }),
+    )
   })
 })
 

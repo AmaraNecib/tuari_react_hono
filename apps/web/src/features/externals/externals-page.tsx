@@ -17,7 +17,7 @@ import {
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
 
-import { formatDebtAmount, getDebtBalanceDisplay } from "@/features/debts/debt-utils"
+import { formatDebtAmount, getNetDebtBalanceDisplay } from "@/features/debts/debt-utils"
 
 const DEFAULT_PAGE_SIZE = 25
 
@@ -68,7 +68,7 @@ export function ExternalCounterpartiesPage({
           <TableBody>
             {pagedCounterparties.length > 0 ? (
               pagedCounterparties.map((counterparty) => {
-                const balance = getDebtBalanceDisplay({ currentBalance: counterparty.totalBalanceDzd })
+                const balance = getNetDebtBalanceDisplay(counterparty.totalBalanceDzd)
 
                 return (
                   <TableRow key={counterparty.id}>
@@ -77,7 +77,7 @@ export function ExternalCounterpartiesPage({
                       <bdi dir="ltr">{counterparty.phone}</bdi>
                     </TableCell>
                     <TableCell className={balance.textClassName}>
-                      <span className="block text-xs font-medium">{t(balance.phraseKey)}</span>
+                      <span className="block text-xs font-medium">{balance.phrase}</span>
                       <span className="font-mono" dir="ltr">دج {formatDebtAmount(balance.amount)}</span>
                     </TableCell>
                     <TableCell>

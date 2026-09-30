@@ -13,7 +13,7 @@ import {
   deleteResult,
   getDebtAccountBalanceLabel,
   getDebtAccountStatus,
-  getDebtBalanceLabel,
+  getNetDebtBalanceLabel,
   normalizeMutationAuditContext,
   normalizeSalaryAmount,
   normalizeSignedMoneyAmount,
@@ -126,10 +126,10 @@ describe("company.helpers", () => {
     expect(getDebtAccountBalanceLabel({ currentBalance: 0, direction: "PAYABLE" })).toBe("مسوّى");
   });
 
-  it("getDebtBalanceLabel covers positive, negative and zero", () => {
-    expect(getDebtBalanceLabel(5)).toBe("مستحق لنا");
-    expect(getDebtBalanceLabel(-5)).toBe("مستحق علينا");
-    expect(getDebtBalanceLabel(0)).toBe("مسوّى");
+  it("getNetDebtBalanceLabel covers positive, negative and zero", () => {
+    expect(getNetDebtBalanceLabel(5)).toBe("مستحق لنا");
+    expect(getNetDebtBalanceLabel(-5)).toBe("مستحق علينا");
+    expect(getNetDebtBalanceLabel(0)).toBe("مسوّى");
   });
 
   it("buildDebtPartyKey builds worker and counterparty keys", () => {

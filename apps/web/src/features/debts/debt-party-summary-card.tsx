@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next"
 import { getNetDebtBalance } from "@tuari/contracts"
 import type { DebtAccount } from "@tuari/contracts"
 import { Surface } from "@/features/shared/page-primitives"
-import { formatDebtAmount, getDebtBalanceDisplay } from "./debt-utils"
+import { formatDebtAmount, getNetDebtBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
 /**
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 export function DebtPartySummaryCard({ accounts, personName }: { accounts: DebtAccount[]; personName: string }) {
   const { t } = useTranslation()
   const combinedBalance = getNetDebtBalance(accounts)
-  const balance = getDebtBalanceDisplay({ currentBalance: combinedBalance })
+  const balance = getNetDebtBalanceDisplay(combinedBalance)
   const openCount = accounts.filter((a) => a.status === "OPEN").length
   const settledCount = accounts.filter((a) => a.status === "SETTLED").length
 
@@ -28,7 +28,7 @@ export function DebtPartySummaryCard({ accounts, personName }: { accounts: DebtA
             {t("detailPages.debt.currency")} {formatDebtAmount(balance.amount)}
           </p>
           <p className={cn("mt-1 text-sm font-medium", balance.textClassName)}>
-            {t(balance.phraseKey)}
+            {balance.phrase}
           </p>
         </div>
 

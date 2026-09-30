@@ -1,9 +1,10 @@
 import {
   DEBT_BALANCE_STATE_PHRASE,
+  getDebtAccountBalanceState,
   getDebtBalanceAmount,
-  getDebtBalanceState,
+  getNetDebtBalanceState,
 } from "@tuari/contracts"
-import type { DebtAccount, DebtBalanceState, DebtEntry } from "@tuari/contracts"
+import type { DebtAccount, DebtBalanceAccount, DebtBalanceState, DebtEntry } from "@tuari/contracts"
 
 /**
  * Signed movement/amount formatter (entry deltas, settlement amounts).
@@ -66,28 +67,38 @@ const DEBT_BALANCE_STATE_TONE: Record<DebtBalanceState, DebtBalanceTone> = {
   },
 }
 
-type DebtBalanceInput = {
-  currentBalance: number
-  direction?: DebtAccount["direction"] | null
-}
-
-/**
- * The one display helper for a debt balance: `(direction, signed balance)`
- * → `(phrase key, absolute amount)`. Every screen that renders a balance
- * goes through this so a signed number can never reach the UI on its own.
- */
-export function getDebtBalanceDisplay(input: DebtBalanceInput) {
-  const state = getDebtBalanceState(input)
-  const amount = getDebtBalanceAmount(input.currentBalance)
+function buildDebtBalanceDisplay(state: DebtBalanceState, currentBalance: number) {
   const tone = DEBT_BALANCE_STATE_TONE[state]
 
   return {
     state,
-    phraseKey: `debts.terminology.states.${state}` as const,
+    // The shared contract table is the single source of the wording; the UI
+    // does not keep a second i18n copy that a test has to hold in sync.
     phrase: DEBT_BALANCE_STATE_PHRASE[state],
-    amount,
+    amount: getDebtBalanceAmount(currentBalance),
     ...tone,
   }
+}
+
+/**
+ * The display helper for a figure that **has** a direction (an account
+ * balance or a per-account entry). The direction is required, so a signed
+ * number can never reach the UI on its own and a direction phrase can never
+ * be rendered on a figure that has no direction.
+ */
+export function getDebtAccountBalanceDisplay(account: DebtBalanceAccount) {
+  return buildDebtBalanceDisplay(
+    getDebtAccountBalanceState(account),
+    account.currentBalance,
+  )
+}
+
+/**
+ * The display helper for a **net** figure (a party aggregate): the sign
+ * alone carries the meaning, so it is phrased without a direction.
+ */
+export function getNetDebtBalanceDisplay(netBalance: number) {
+  return buildDebtBalanceDisplay(getNetDebtBalanceState(netBalance), netBalance)
 }
 
 /**
@@ -116,14 +127,14 @@ export function getConsolidationRemainder(input: {
   }
 
   if (netAmount > 0) {
-    const remaining = getDebtBalanceDisplay({ currentBalance: netAmount, direction: payableDirection })
+    const remaining = getDebtAccountBalanceDisplay({ currentBalance: netAmount, direction: payableDirection })
     return {
       description: `يبقى رصيد ${formatDebtAmount(netAmount)} دج على حساب ${getDebtDirectionLabel(payableDirection)} (${remaining.phrase}).`,
       label: `يبقى ${remaining.phrase} ${formatDebtAmount(netAmount)} دج`,
     }
   }
 
-  const remaining = getDebtBalanceDisplay({ currentBalance: -netAmount, direction: receivableDirection })
+  const remaining = getDebtAccountBalanceDisplay({ currentBalance: -netAmount, direction: receivableDirection })
   return {
     description: `يبقى رصيد ${formatDebtAmount(-netAmount)} دج على حساب ${getDebtDirectionLabel(receivableDirection)} (${remaining.phrase}).`,
     label: `يبقى ${remaining.phrase} ${formatDebtAmount(-netAmount)} دج`,
@@ -149,8 +160,31 @@ export function getDebtDirectionLabel(direction: DebtAccount["direction"]) {
   return direction === "PAYABLE" ? "مستحقات علينا" : "مستحقات لنا"
 }
 
-export function getDebtAccountBalance(account: DebtAccount | null | undefined) {
-  return account?.currentBalance ?? 0
+/**
+ * The hub's row filter, extracted from the render so the rule is testable
+ * through its interface. It is the net state (the row balance has no ledger
+ * direction) plus the row status.
+ */
+export type DebtHubFilter = "all" | "owed-to-us" | "owed-by-us" | "settled"
+
+export function matchesDebtHubFilter(
+  row: { status: "OPEN" | "SETTLED"; balanceDzd: number },
+  filter: DebtHubFilter,
+) {
+  if (filter === "all") {
+    return true
+  }
+
+  if (filter === "settled") {
+    return row.status === "SETTLED"
+  }
+
+  if (row.status !== "OPEN") {
+    return false
+  }
+
+  const state = getNetDebtBalanceState(row.balanceDzd)
+  return state === (filter === "owed-to-us" ? "owedToUs" : "owedByUs")
 }
 
 export function sortDebtAccounts(accounts: DebtAccount[]) {

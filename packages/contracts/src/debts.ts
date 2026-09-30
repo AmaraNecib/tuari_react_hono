@@ -157,9 +157,19 @@ export const debtAccountCreateInputSchema = z
     partyType: debtPartyTypeSchema,
     workerId: entityIdSchema.nullable().optional(),
     externalCounterpartyId: entityIdSchema.nullable().optional(),
-    direction: debtAccountDirectionSchema.optional(),
+    /**
+     * Which ledger the account is. Required: the direction carries the
+     * meaning of the balance, so there is no implicit PAYABLE default. A
+     * missing direction is a validation error.
+     */
+    direction: debtAccountDirectionSchema,
     note: z.string().trim().max(1000).nullable().optional(),
-    openingBalanceDzd: z.number().finite().optional(),
+    /**
+     * The opening magnitude. Optional (absent means no opening balance), but
+     * never negative: the direction carries the sign, so a signed opening is
+     * rejected rather than silently stored.
+     */
+    openingBalanceDzd: z.number().finite().positive().optional(),
     openingEntryDate: timestampSchema.optional(),
     openingEntryNote: z.string().trim().max(1000).nullable().optional(),
     reasonCategory: debtReasonCategorySchema.optional(),
@@ -371,6 +381,11 @@ export const employeeDebtEntryCreateInputSchema = z
 
 export const employeeDebtAccountGetInputSchema = z.object({
   employeeId: entityIdSchema,
+  /**
+   * The worker holds one ledger per direction (D3), so the single-account
+   * read must say which one it means. No `accounts[0]` fallback.
+   */
+  direction: debtAccountDirectionSchema,
 });
 
 export type ExternalCounterparty = z.infer<typeof externalCounterpartySchema>;

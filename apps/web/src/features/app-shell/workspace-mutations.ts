@@ -662,7 +662,7 @@ export function useCreateDebtAccountMutation() {
       partyType: "INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY"
       workerId?: string | null
       externalCounterpartyId?: string | null
-      direction?: "PAYABLE" | "RECEIVABLE"
+      direction: "PAYABLE" | "RECEIVABLE"
       note?: string | null
       openingBalanceDzd?: number
       openingEntryDate?: string
@@ -672,12 +672,13 @@ export function useCreateDebtAccountMutation() {
     }) => {
       const result = await rpcClient.debtAccountsCreate({
         externalCounterpartyId: input.externalCounterpartyId ?? null,
-        // Issue #22: backward-compatible default — purchase-ledger
-        // (PAYABLE) accounts keep their pre-#22 behavior. Sale-ledger
-        // (RECEIVABLE) accounts will be wired by Issue #26.
-        direction: input.direction ?? "PAYABLE",
+        // The direction is required on the wire (no implicit PAYABLE default),
+        // so the mutation passes what the caller chose rather than defaulting.
+        direction: input.direction,
         note: input.note ?? null,
-        openingBalanceDzd: input.openingBalanceDzd ?? 0,
+        // Omitted means "no opening balance"; the wire rejects a supplied 0 or
+        // negative, so absence must stay absent.
+        openingBalanceDzd: input.openingBalanceDzd,
         openingEntryDate: input.openingEntryDate,
         openingEntryNote: input.openingEntryNote ?? null,
         reasonCategory: input.reasonCategory as "INVOICE_DRIVEN" | "SALARY_ADVANCE" | "REIMBURSEMENT" | "CASH_TAKE" | "EQUIPMENT_DAMAGE" | "PERSONAL_LOAN" | "DIRECT_LOAN_GIVEN" | "DIRECT_LOAN_TAKEN" | "OTHER" | undefined,

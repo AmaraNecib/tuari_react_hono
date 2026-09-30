@@ -3,6 +3,7 @@
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
@@ -138,7 +139,7 @@ export function ReportBuilder() {
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المسددة</p>
                   <p className="text-2xl font-bold">{data.summary.totalSettledDzd.toLocaleString("ar-DZ")} د.ج</p>
-                  <p className="text-xs font-medium text-muted-foreground">{t("debts.terminology.states.settled")}</p>
+                  <p className="text-xs font-medium text-muted-foreground">{DEBT_BALANCE_STATE_PHRASE.settled}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المتأخرة</p>

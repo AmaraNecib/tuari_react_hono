@@ -265,6 +265,7 @@ describe("buildCompanySystemLog coverage", () => {
       phoneNumber: "0219999999",
     }).item;
     const account = service.createDebtAccount({
+        direction: "PAYABLE",
       partyType: "EXTERNAL_COUNTERPARTY",
       externalCounterpartyId: counterparty.id,
       openingBalanceDzd: 300,

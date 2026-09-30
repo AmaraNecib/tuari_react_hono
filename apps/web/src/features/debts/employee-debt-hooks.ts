@@ -32,19 +32,22 @@ function requireEntitySuccess<T>(result: { success: boolean; message?: string; i
 }
 
 /**
- * useEmployeeDebtAccountQuery(employeeId component.
+ * The direction-scoped worker debt account. A worker holds one ledger per
+ * direction (D3), so the caller must say which ledger it means; this query
+ * caches the two ledgers under separate keys.
  */
-export function useEmployeeDebtAccountQuery(employeeId: string | undefined) {
+export function useEmployeeDebtAccountQuery(
+  employeeId: string | undefined,
+  direction: DebtAccount["direction"],
+) {
   return useWorkspaceScopedQuery({
-    key: (userId) => workspaceQueryKeys.employeeDebtAccount(userId, employeeId ?? "missing"),
+    key: (userId) =>
+      [...workspaceQueryKeys.employeeDebtAccount(userId, employeeId ?? "missing"), direction] as const,
     enabled: Boolean(employeeId),
     queryFn: async (): Promise<DebtAccount | null> => {
-      const result = await rpcClient.employeeDebtAccountGet({ employeeId: employeeId! })
+      const result = await rpcClient.employeeDebtAccountGet({ employeeId: employeeId!, direction })
       return requireEntitySuccess(result).item
     },
-/**
- * useCreateEmployeeDebtEntryMutation() component.
- */
   })
 }
 
