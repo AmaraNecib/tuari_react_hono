@@ -569,8 +569,8 @@ export class SqliteCompanyRepository implements CompanyRepository {
     return this.db.select().from(schema.debtAccount).where(eq(schema.debtAccount.id, id)).limit(1).all().map(toDebtAccount)[0] ?? null;
   }
 
-  getDebtAccountByWorkerId(workerId: string): DebtAccountRecord | null {
-    return this.db.select().from(schema.debtAccount).where(eq(schema.debtAccount.workerId, workerId)).orderBy(desc(schema.debtAccount.updatedAt), desc(schema.debtAccount.createdAt)).limit(1).all().map(toDebtAccount)[0] ?? null;
+  getDebtAccountByWorkerIdAndDirection(workerId: string, direction: DebtAccountRecord["direction"]): DebtAccountRecord | null {
+    return this.db.select().from(schema.debtAccount).where(and(eq(schema.debtAccount.workerId, workerId), eq(schema.debtAccount.direction, direction))).orderBy(desc(schema.debtAccount.updatedAt), desc(schema.debtAccount.createdAt)).limit(1).all().map(toDebtAccount)[0] ?? null;
   }
 
   getDebtAccountByExternalCounterpartyId(ecId: string): DebtAccountRecord | null {

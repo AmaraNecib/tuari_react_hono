@@ -81,15 +81,16 @@ describe("Cross-domain: Employee lifecycle", () => {
     const employeeId = employee.id;
 
     // ---- 2. Create debt account for the worker ----
+    // D1a: a salary advance is a worker receivable (the worker owes us).
     const accountResult = service.createDebtAccount(
       {
         partyType: "INTERNAL_WORKER",
         workerId: employeeId,
-        direction: "PAYABLE",
-        note: "Worker salary account",
+        direction: "RECEIVABLE",
+        note: "Worker salary advance account",
         openingBalanceDzd: 50000,
         openingEntryDate: "2026-02-01T00:00:00.000Z",
-        openingEntryNote: "February 2026 salary",
+        openingEntryNote: "February 2026 salary advance",
         reasonCategory: "SALARY_ADVANCE",
       },
       AUDIT,
@@ -102,7 +103,7 @@ describe("Cross-domain: Employee lifecycle", () => {
     const workerAccount = accounts.find((a) => a.workerId === employeeId);
     expect(workerAccount).toBeDefined();
     expect(workerAccount!.currentBalance).toBe(50000);
-    expect(workerAccount!.direction).toBe("PAYABLE");
+    expect(workerAccount!.direction).toBe("RECEIVABLE");
     expect(workerAccount!.partyType).toBe("INTERNAL_WORKER");
 
     // ---- 4. Verify the OPENING entry exists ----
@@ -151,13 +152,13 @@ describe("Cross-domain: Employee lifecycle", () => {
       AUDIT,
     );
 
-    // Create debt accounts
+    // Create debt accounts (salary advances: D1a → worker receivables).
     service.createDebtAccount(
-      { partyType: "INTERNAL_WORKER", workerId: emp1.id, direction: "PAYABLE", openingBalanceDzd: 30000, openingEntryDate: "2026-01-01T00:00:00.000Z", reasonCategory: "SALARY_ADVANCE" },
+      { partyType: "INTERNAL_WORKER", workerId: emp1.id, direction: "RECEIVABLE", openingBalanceDzd: 30000, openingEntryDate: "2026-01-01T00:00:00.000Z", reasonCategory: "SALARY_ADVANCE" },
       AUDIT,
     );
     service.createDebtAccount(
-      { partyType: "INTERNAL_WORKER", workerId: emp2.id, direction: "PAYABLE", openingBalanceDzd: 45000, openingEntryDate: "2026-01-01T00:00:00.000Z", reasonCategory: "SALARY_ADVANCE" },
+      { partyType: "INTERNAL_WORKER", workerId: emp2.id, direction: "RECEIVABLE", openingBalanceDzd: 45000, openingEntryDate: "2026-01-01T00:00:00.000Z", reasonCategory: "SALARY_ADVANCE" },
       AUDIT,
     );
 

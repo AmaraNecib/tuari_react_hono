@@ -16,6 +16,7 @@ import {
   debtConsolidationInputSchema,
   debtEntryVoidInputSchema,
   debtReasonCategoryDirectionMap,
+  getLockedDirectionForCategory,
   debtSummaryItemSchema,
   debtsSummarySchema,
   directDebtEntryCreateInputSchema,
@@ -25,6 +26,7 @@ import {
   employeeBatchCreateRowInputSchema,
   employeeBatchLimit,
   employeeCreateInputSchema,
+  employeeDebtEntryCreateInputSchema,
   employeeProjectAssignmentSchema,
   employeeSalaryPaymentCreateInputSchema,
   employeeUpdateInputSchema,
@@ -579,6 +581,69 @@ describe("contracts", () => {
     ).toThrowError()
   })
 
+  it("rejects a debt account whose direction contradicts its reason category (D2)", () => {
+    expect(() =>
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "PAYABLE",
+        reasonCategory: "SALARY_ADVANCE",
+      }),
+    ).toThrowError()
+
+    // A matching direction (or none) is accepted; the category locks it.
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+        reasonCategory: "SALARY_ADVANCE",
+      }).direction,
+    ).toBe("RECEIVABLE")
+
+    // An explicit direction with no reason category is accepted (the debt
+    // cases panel shape); the lock only applies when a category is present.
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "PAYABLE",
+      }).direction,
+    ).toBe("PAYABLE")
+  })
+
+  it("rejects an employee debt entry whose direction contradicts its reason category (D2)", () => {
+    expect(() =>
+      employeeDebtEntryCreateInputSchema.parse({
+        employeeId: "worker-1",
+        entryType: "OPENING",
+        amountDzd: 500,
+        direction: "PAYABLE",
+        reasonCategory: "SALARY_ADVANCE",
+      }),
+    ).toThrowError()
+  })
+
+  it("rejects an employee ADVANCE sent as PAYABLE (D1a)", () => {
+    expect(() =>
+      employeeDebtEntryCreateInputSchema.parse({
+        employeeId: "worker-1",
+        entryType: "ADVANCE",
+        amountDzd: 500,
+        direction: "PAYABLE",
+      }),
+    ).toThrowError()
+
+    expect(
+      employeeDebtEntryCreateInputSchema.parse({
+        employeeId: "worker-1",
+        entryType: "ADVANCE",
+        amountDzd: 500,
+        direction: "RECEIVABLE",
+      }).direction,
+    ).toBe("RECEIVABLE")
+  })
+
   it("accepts debt entities in the shared contract", () => {
     expect(
       externalCounterpartySchema.parse({
@@ -732,8 +797,10 @@ describe("contracts", () => {
   })
 
   it("derives direction from reason category (category locks direction)", () => {
-    // SALARY_ADVANCE and REIMBURSEMENT are PAYABLE
-    expect(debtReasonCategoryDirectionMap.SALARY_ADVANCE).toBe("PAYABLE");
+    // SALARY_ADVANCE is RECEIVABLE: paying a worker ahead of earned work makes
+    // the worker the debtor (owner decision D1a).
+    expect(debtReasonCategoryDirectionMap.SALARY_ADVANCE).toBe("RECEIVABLE");
+    // REIMBURSEMENT and DIRECT_LOAN_TAKEN stay PAYABLE.
     expect(debtReasonCategoryDirectionMap.REIMBURSEMENT).toBe("PAYABLE");
     expect(debtReasonCategoryDirectionMap.DIRECT_LOAN_TAKEN).toBe("PAYABLE");
 
@@ -748,6 +815,10 @@ describe("contracts", () => {
 
     // INVOICE_DRIVEN is unconstrained (derived from invoice direction)
     expect(debtReasonCategoryDirectionMap.INVOICE_DRIVEN).toBe("UNCONSTRAINED");
+
+    // getLockedDirectionForCategory returns null for unconstrained categories
+    expect(getLockedDirectionForCategory("OTHER")).toBeNull();
+    expect(getLockedDirectionForCategory("SALARY_ADVANCE")).toBe("RECEIVABLE");
   });
 
   it("validates reason category on debt entry create input", () => {

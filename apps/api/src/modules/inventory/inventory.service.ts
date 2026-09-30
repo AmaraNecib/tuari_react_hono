@@ -10,6 +10,7 @@ import type {
   InventoryInvoiceGroupCreateInput,
   InventoryItemDefinitionCreateInput,
   InventoryItemDefinitionUpdateInput,
+  InventoryOutboundTransferCreateInput,
   InventoryReport,
   MovementReport,
 } from "@tuari/contracts"
@@ -419,7 +420,8 @@ export class InventoryService {
           const debtResult = this.debtService.createDebtAccount({
             partyType: "EXTERNAL_COUNTERPARTY",
             externalCounterpartyId: input.externalCounterpartyId,
-            openingBalanceDzd: -grossTotalDzd,
+            direction: "PAYABLE",
+            openingBalanceDzd: grossTotalDzd,
             openingEntryDate: resolvedInvoiceDate,
             openingEntryNote: `إجمالي فاتورة شراء ${resolvedInvoiceNumber}`,
             note: normalizeText(input.note),
@@ -431,7 +433,7 @@ export class InventoryService {
             this.debtService.createDebtEntry({
               debtAccountId,
               entryType: "PAYMENT",
-              signedAmountDzd: paidAmountDzd,
+              signedAmountDzd: -paidAmountDzd,
               entryDate: resolvedInvoiceDate,
               note: `دفعة عند تسجيل الفاتورة ${resolvedInvoiceNumber}`,
             }, audit)
@@ -906,7 +908,7 @@ export class InventoryService {
   }
 
 /** Create an outbound transfer. */
-  createOutboundTransfer(input: { fromType: "WAREHOUSE" | "PROJECT"; fromId: string; counterpartyId: string; transferType: "SALE" | "GIFT" | "RETURN"; items: Array<{ itemId: string; quantity: number; unitPriceDzd?: number }>; debtAmountDzd?: number; notes?: string | null }, auditContext?: MutationAuditContext) {
+  createOutboundTransfer(input: InventoryOutboundTransferCreateInput, auditContext?: MutationAuditContext) {
     if (!this.debtService) {
       throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
     }
@@ -925,18 +927,46 @@ export class InventoryService {
 
     return this.repository.withTransaction(() => {
       let associatedDebtAccountId: string | undefined
+      const debtAmountDzd = input.debtAmountDzd ?? 0
+      const firstPaymentAmountDzd = input.firstPaymentAmountDzd ?? 0
 
-      if (input.debtAmountDzd && input.debtAmountDzd > 0) {
+      if (firstPaymentAmountDzd > debtAmountDzd) {
+        throw new InventoryError("VALIDATION", "الدفعة الأولى تتجاوز مبلغ الدين.", [
+          { field: "firstPaymentAmountDzd", message: "لا يمكن أن تتجاوز الدفعة الأولى مبلغ الدين." },
+        ])
+      }
+
+      if (debtAmountDzd > 0) {
+        // D8: the counterparty received goods, so the debt is a receivable
+        // (they owe us). `debtAmountDzd` is the full transfer value; the ledger
+        // keeps it as the OPENING and posts the collected first payment as a
+        // real PAYMENT, so the running balance is the amount still on credit.
+        const occurredAt = createAlgeriaTimestamp()
         const debtResult = this.debtService!.createDebtAccount(
           {
             partyType: "EXTERNAL_COUNTERPARTY",
             externalCounterpartyId: input.counterpartyId,
-            openingBalanceDzd: input.debtAmountDzd,
+            direction: "RECEIVABLE",
+            openingBalanceDzd: debtAmountDzd,
+            openingEntryDate: occurredAt,
             openingEntryNote: `دين من تحويل إلى ${input.counterpartyId}`,
           },
           auditContext,
         )
         associatedDebtAccountId = debtResult.item.id
+
+        if (firstPaymentAmountDzd > 0) {
+          this.debtService!.createDebtEntry(
+            {
+              debtAccountId: associatedDebtAccountId,
+              entryType: "PAYMENT",
+              signedAmountDzd: -firstPaymentAmountDzd,
+              entryDate: occurredAt,
+              note: `الدفعة الأولى عند التحويل إلى ${input.counterpartyId}`,
+            },
+            auditContext,
+          )
+        }
       }
 
       for (const item of input.items) {

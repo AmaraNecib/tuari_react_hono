@@ -2,6 +2,8 @@
 
 import "@/i18n"
 
+import { i18n } from "@/i18n"
+
 import type { ReactNode } from "react"
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -59,6 +61,26 @@ async function openPartySelect() {
 
 afterEach(() => {
   cleanup()
+})
+
+describe("DebtCreatePage — category direction", () => {
+  it("derives the owed-to-us direction for a salary advance (D1a)", () => {
+    // SALARY_ADVANCE is the default category. The client must derive RECEIVABLE
+    // for it so the direction it sends matches the server's locked direction;
+    // before D1a the page showed owed-by-us and stored a negative payable.
+    renderPage()
+
+    expect(screen.getByText(i18n.t("detailPages.debt.direction.owedToUs"))).toBeTruthy()
+    expect(screen.queryByText(i18n.t("detailPages.debt.direction.owedByUs"))).toBeNull()
+  })
+
+  it("keeps owed-by-us for a reimbursement (we owe the worker)", () => {
+    renderPage()
+
+    fireEvent.click(screen.getByRole("button", { name: /تعويض مصاريف/ }))
+
+    expect(screen.getByText(i18n.t("detailPages.debt.direction.owedByUs"))).toBeTruthy()
+  })
 })
 
 describe("DebtCreatePage — party inline create", () => {

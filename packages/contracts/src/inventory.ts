@@ -469,7 +469,19 @@ export const inventoryOutboundTransferCreateInputSchema = z.object({
   counterpartyId: entityIdSchema,
   transferType: z.enum(["SALE", "GIFT", "RETURN"]),
   items: z.array(outboundTransferItemInputSchema).min(1),
+  /**
+   * The FULL transfer value carried as the debt's OPENING balance. Any amount
+   * already collected at transfer time is passed separately as
+   * `firstPaymentAmountDzd` and posted as a real PAYMENT, so the running
+   * balance is the amount still on credit. Optional; omitted when nothing is
+   * on credit.
+   */
   debtAmountDzd: z.number().nonnegative().optional(),
+  /**
+   * The portion paid at transfer time. Posted as a real `PAYMENT` entry so the
+   * ledger shows the first payment instead of dropping it (D8). Defaults to 0.
+   */
+  firstPaymentAmountDzd: z.number().nonnegative().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
 });
 

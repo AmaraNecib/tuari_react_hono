@@ -7,6 +7,7 @@ import {
   companyStatusConstraintChecks,
   debtAccountBalanceRenameMigrationKey,
   debtAccountDirectionMigrationKey,
+  debtAccountWorkerDirectionMigrationKey,
   debtEntryReasonCategoryMigrationKey,
   debtSingleAccountMigrationKey,
   invoiceDebtLinkageMigrationKey,
@@ -1365,6 +1366,48 @@ async function runDebtAccountDirectionMigration(db: DbExecutor) {
   await applyDebtAccountDirectionMigration(db);
 }
 
+// D3: a worker gets one ledger per direction. An advance is a worker
+// receivable (D1a), so the legacy single-column `debt_account_worker_unique`
+// index must become the composite `(worker_id, direction)` index, mirroring
+// `debt_account_external_counterparty_direction_unique`.
+//
+// Idempotent:
+//   - skips if `app_schema_state` already has the migration key
+//   - drops the legacy single-column index `IF EXISTS`
+//   - creates the composite index `IF NOT EXISTS`
+//   - wraps all DDL + the state insert in a transaction
+export async function applyDebtAccountWorkerDirectionMigration(db: DbExecutor): Promise<void> {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    debtAccountWorkerDirectionMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(
+      'DROP INDEX IF EXISTS "debt_account_worker_unique"',
+    );
+
+    await tx.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "debt_account_worker_direction_unique" ON "debt_account" ("worker_id", "direction") WHERE "worker_id" IS NOT NULL',
+    );
+
+    await tx.$executeRawUnsafe(
+      'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+      debtAccountWorkerDirectionMigrationKey,
+      new Date().toISOString(),
+    );
+  });
+}
+
+ /** Swap the worker unique index for the (worker_id, direction) composite. */
+async function runDebtAccountWorkerDirectionMigration(db: DbExecutor) {
+  await applyDebtAccountWorkerDirectionMigration(db);
+}
+
 // Issue #335: payment_allocation.payment_id FK must be ON DELETE RESTRICT so a
 // raw DELETE FROM "payment" on an allocated payment fails loudly instead of
 // silently cascade-deleting allocations (invoice stays PAID, debt entry stays
@@ -1681,6 +1724,7 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   await runDebtEntryConstraintsMigration(db);
   await runDebtAccountBalanceRenameMigration(db);
   await runDebtAccountDirectionMigration(db);
+  await runDebtAccountWorkerDirectionMigration(db);
   await runPaymentAllocationRestrictMigration(db);
 
   await syncLegacyTimestampColumns(db);

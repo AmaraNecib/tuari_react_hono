@@ -342,8 +342,8 @@ describe("FinanceService coverage branches", () => {
       expect(first.debtAccountId).toBe(second.debtAccountId);
       const accounts = service.finance.listDebtAccounts({ workerId: worker.id }).items;
       expect(accounts).toHaveLength(1);
-      // createEmployeeDebtEntry records signed amounts as given (the RPC negates separately)
-      expect(accounts[0]?.currentBalance).toBe(1300);
+      // D7: a PAYMENT reduces the outstanding balance (1000 - 300).
+      expect(accounts[0]?.currentBalance).toBe(700);
     });
 
     it("rejects entries for a missing employee", () => {
@@ -513,7 +513,7 @@ describe("FinanceService coverage branches", () => {
       ).toThrowError(CompanyError);
     });
 
-    it("rejects paying a non-OPENING entry", () => {
+    it("accepts a payment against any LIVE entry, not only an OPENING (D7)", () => {
       const { service, roleIds } = createHarness();
       const worker = service.createEmployee({
         firstName: "عامل",
@@ -531,9 +531,14 @@ describe("FinanceService coverage branches", () => {
         { debtEntryId: opening.id, amountDzd: 200, paymentMethod: "CASH" },
         audit(),
       ).item;
-      expect(() =>
-        service.recordDebtPayment({ debtEntryId: payment.id, amountDzd: 50, paymentMethod: "CASH" }, audit()),
-      ).toThrowError(CompanyError);
+      // The first payment is itself a live entry; paying against it now works
+      // and still reduces the account balance.
+      const second = service.recordDebtPayment(
+        { debtEntryId: payment.id, amountDzd: 50, paymentMethod: "CASH" },
+        audit(),
+      ).item;
+      expect(second.entryType).toBe("PAYMENT");
+      expect(service.getDebtAccount(opening.debtAccountId).item.currentBalance).toBe(750);
     });
 
     it("rejects an amount that exceeds the account balance", () => {
