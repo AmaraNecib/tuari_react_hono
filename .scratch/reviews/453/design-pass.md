@@ -1,16 +1,17 @@
 # Design pass — #453 (extract the per-tab salary table modules)
 
-Reviewed diff: `e526acec...94929bcd` (the whole change, not just the new files).
+Reviewed diff: `551948e4...db78129b` (the whole change, not just the new files).
 Lenses applied: `domain-modeling`, `codebase-design`, and
 `improve-codebase-architecture` (friction + deepening opportunities). Base SHA
-`e526acec` == `origin/develop` at lane start.
+`551948e4` == `origin/develop`; the branch was rebased here from the earlier
+`e526acec` base.
 
 Files in the diff: `salaries-section.tsx` (rewritten as a ~95-line shell),
 `salary-payments-table.tsx`, `salaried-workers-table.tsx`,
 `salary-table-primitives.tsx`, the two new module tests, the new
 `salary-table-primitives.test.ts`, `employee-details-page.tsx` (the local period
-label copy deleted, the shared helper imported), and the unchanged
-`salaries-section.test.tsx`.
+label copy deleted, the shared helper imported), and `salaries-section.test.tsx`
+(every pre-existing assertion kept, plus the tab-state round-trip test).
 
 ## domain-modeling
 
@@ -48,13 +49,21 @@ label copy deleted, the shared helper imported), and the unchanged
 - **The interface is the test surface.** The new `salary-payments-table.test.tsx`
   and `salaried-workers-table.test.tsx` drive the modules through their props and
   the rendered DOM; `salary-table-primitives.test.ts` pins the shared period
-  vocabulary through the exported function; the unchanged
-  `salaries-section.test.tsx` crosses the shell's seam.
-- **Red/green teeth.** Both module tests fail pre-fix (module absent). Dropping
-  the filter from each `resetPageDeps` failed exactly the two
-  "filters … and resets to page 1" tests. Changing the `WEEKLY` label key to the
-  `DAILY` key failed exactly the two mapping tests in
-  `salary-table-primitives.test.ts`. None of the new tests are decorative.
+  vocabulary through the exported function; `salaries-section.test.tsx` crosses
+  the shell's seam and pins the tab-state round trip.
+- **Red/green teeth.** Both module tests fail pre-fix (module absent). Changing
+  the `WEEKLY` label key to the `DAILY` key failed exactly the two mapping tests
+  in `salary-table-primitives.test.ts`. The original claim that dropping a filter
+  from each `resetPageDeps` failed exactly its reset test was **wrong for two
+  cases**: the payment search and worker worker-filter tests filtered to a
+  single row, which the page clamp masked, so a deleted reset dep stayed green.
+  The aggressive review round rebuilt those fixtures to span two pages and
+  re-ran every dep mutation; each now fails exactly its own test (see
+  `db78129b-test-audit.md`).
+- **State preservation is part of equivalence.** The extraction moved filter and
+  pagination state into conditionally-rendered children, which reset each tab on
+  a switch; the base held it in the shell. `a489b24c` keeps both tables mounted
+  with the inactive one `hidden`, and the new shell test pins the round trip.
 - **Pagination is still the shared implementation**, not a second one: both
   tables call `usePaginatedRows` + `TablePaginationControls`.
 
@@ -96,6 +105,20 @@ Friction the diff created, and the opportunities it reveals:
 | A6 | pagination-bar conditional + page-size reset repeated per table | justified as-is — shared primitives carry paging; matches sibling tables |
 | A7 | salary area has no `CONTEXT.md` | pre-existing (old A4); follow-up if the domain grows |
 | A8 | `features/employees` imports a helper from `features/app-shell` | accepted — existing cross-feature norm, no new UI weight; promote to `features/shared` at a third consumer |
+| A9 | tab switch reset each tab's query/filters/page (state moved into unmounted children) | **fixed** (`a489b24c`) — both tables stay mounted, inactive one `hidden`; shell test pins it |
+| A10 | payment worker/period filters and worker search/project reset deps had no failing mutation (page clamp masked two of them) | **fixed** (`db78129b`) — fixtures rebuilt, every dep mutation-verified |
 
 Nothing was left silent: the pass ran on the full diff and the items above are
-the complete result. No in-scope finding remains unfixed.
+the complete result. No in-scope finding remains unfixed except A9/A10, which the
+aggressive review round fixed and this pass now records.
+
+## Aggressive review round (HEAD `db78129b`)
+
+The parent ran the debate, Standards+Spec code review and test audit on
+`551948e4...db78129b`. The one behaviour regression (A9) and the toothless
+resets (A10) were fixed; the stale design-doc claims about "conditionally
+rendered" tabs and an "unchanged" shell test were corrected. Dismissed, with the
+reason recorded: extracting a `SalaryPaginationControls` wrapper for the shared
+12-line pagination block (A6 stands) and removing the unused `employeePhone`
+field (pre-existing, out of scope). Evidence:
+`.scratch/reviews/453/db78129b-{debate,code-review,test-audit}.md`.

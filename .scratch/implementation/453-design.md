@@ -4,9 +4,9 @@ Mode: **remote** (`AmaraNecib/tuari_react_hono`); lane does not push/PR.
 Ticket: GitHub issue #453 (was auto-closed by PR #456, which only shipped the
 salary screen; the extraction itself is the follow-up it filed).
 Target ref: `origin/develop`.
-Base SHA (pinned): `e526acec` (== `origin/develop` == lane HEAD at start; the
-local `develop` ref is stale at `fdb5dda6`, so `origin/develop` is the pinned
-base).
+Base SHA (pinned): `551948e4` (the local `develop` ref is stale at `fdb5dda6`,
+so `origin/develop` is the pinned base; the parent rebased this branch from the
+earlier `e526acec` base onto `551948e4`).
 Review tier: **Standard** (UI/refactor, no authz/finance logic).
 
 ## Problem
@@ -37,7 +37,7 @@ filed #453.
 | --- | --- |
 | `apps/web/src/features/app-shell/salary-payments-table.tsx` | payment-history filters (search, worker, project, period), filter predicate, `usePaginatedRows`, empty state, pagination bar |
 | `apps/web/src/features/app-shell/salaried-workers-table.tsx` | worker-list filters (search, project, period), filter predicate, `usePaginatedRows`, empty state, pagination bar |
-| `apps/web/src/features/app-shell/salary-table-primitives.tsx` | the display bits both tables share: `MoneyCell`, the period vocabulary (`SALARY_PERIOD_FILTER_VALUES`, `getSalaryPeriodLabelKey`), and the identical filter fields (search / project / period) |
+| `apps/web/src/features/app-shell/salary-table-primitives.tsx` | the display bits both tables share: `MoneyCell`, the period vocabulary (`SALARY_PERIOD_FILTER_VALUES`, `getSalaryPeriodLabelKey`), the identical filter fields (search / project / period), and `sortProjectsByName` (the same `localeCompare(..., "ar")` sort both tables used inline) |
 
 Public interfaces (the test surface):
 
@@ -93,8 +93,11 @@ export function SalariedWorkersTable(props: {
   empty state. Red pre-fix (module absent); green after extraction.
 - `salaried-workers-table.test.tsx` — new; module-level. Owns: wage + period
   label rendering, period filter + page reset, empty state, `onAddPayment`.
-- `salaries-section.test.tsx` — **unchanged**; the tab shell must keep the same
-  observable surface (this is the refactor's equivalence check).
+- `salaries-section.test.tsx` — keeps every pre-existing assertion (the
+  refactor's equivalence check) and gains one test: each tab keeps its query,
+  filters and page across a tab switch. The extraction commit moved the state
+  out of the shell, so conditional rendering would have reset it; the shell now
+  keeps both tables mounted and hides the inactive one.
 
 Red/green evidence: each new module test is run before the module exists to
 record the red, then after the extraction to record the green; a targeted
@@ -104,8 +107,12 @@ to prove the new tests have teeth rather than passing vacuously.
 ## Risks
 
 - The shell test's `getAllByRole("combobox")`/`getByRole("table")` queries only
-  ever see one table at a time (tabs are conditionally rendered), so extraction
-  does not change what they match.
+  ever see one table at a time (the inactive table is `hidden`, which removes it
+  from the accessibility tree), so extraction does not change what they match.
+- Both tables stay mounted so each tab's state survives; hidden content still
+  exists in the DOM, so an unscoped `getByText` can see a name both tables
+  render. Tests scope row assertions with `within(getByRole("table"))`; that is
+  the accepted cost of module-owned state.
 - `home-view-page-content-sections.tsx` lazy-imports `SalariesSection` by name;
   the shell export stays identical, so no consumer changes.
 - E2E `tests/e2e/salaries.spec.ts` depends on column order and row roles; the
@@ -115,10 +122,29 @@ to prove the new tests have teeth rather than passing vacuously.
 
 - `pnpm typecheck`, `pnpm lint`, and the web suite pass with
   `VITEST_MAX_WORKERS=2`.
-- `salaries-section.test.tsx` passes unchanged; one new test file per module.
+- `salaries-section.test.tsx` passes with every pre-existing assertion intact;
+  one new test file per module.
 - Dead code from the move (the two inline pipelines, the local `MoneyCell`, the
   inline period helpers) is deleted, not left behind.
 - Design pass recorded in `.scratch/reviews/453/design-pass.md`.
+
+## Addendum — aggressive review round (HEAD `db78129b`)
+
+The debate, code-review and test-audit passes found one behaviour regression and
+a set of toothless resets:
+
+- **Fixed (`a489b24c`):** switching tabs reset each tab's query, filters and
+  page. The base held that state in the shell; the extraction moved it into
+  conditionally-rendered children. Both tables now stay mounted and the inactive
+  one is `hidden`. The new shell test fails at the extraction head and passes
+  here.
+- **Fixed (`db78129b`):** the payment worker/period filters and the worker
+  search/project reset deps had no test the mutation could fail; the payment
+  search and worker filter reset tests were masked by the page clamp. Also
+  corrected the period-helper comment and removed stale JSDoc boilerplate.
+- **Dismissed:** extracting a `SalaryPaginationControls` wrapper for the shared
+  12-line pagination block (A6 stands) and removing the unused `employeePhone`
+  field (pre-existing, out of scope).
 
 ## Addendum — parent decision (fold in the period-label consolidation)
 
