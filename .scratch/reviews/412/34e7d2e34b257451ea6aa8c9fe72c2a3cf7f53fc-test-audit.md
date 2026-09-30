@@ -280,3 +280,24 @@ are unit-covered rather than E2E-covered. Noted, not deferred.
 Re-pin note: the only change after the code fix `384b177f` is the round-5
 wisdom entry in `.agents/wisdom/architecture.md` (`859c5d76`), a docs-only
 file; the reviewed source is unchanged.
+
+## Round 6 delta (PR #420 head `34e7d2e3`)
+
+New pins for the round-6 findings:
+
+- `packages/contracts/src/salary-days.test.ts`: the integer-cent monthly rate
+  (`30010.05` at 1 day → `1000.34`, at 30 → `30010.05`) and
+  `roundMoneyToCents` (`100.005` → `100.01`).
+- `salary-payment-form.test.ts`: an over-precise amount (`100.005`) allocates
+  to whole-cent shares summing to `100.01`.
+- `workforce.service-coverage.test.ts`: the service stores an over-precise
+  override as `100.01` and the monthly day rate as `1000.34`.
+- `home-view-derived-builders.test.ts`: an archived open-ended assignment
+  contributes no window.
+- `salaries-section.test.tsx`: a `100.5` payment renders its expected and paid
+  cells at cent precision beside `50.25` shares.
+- `employee-details-page.test.tsx`: the handoff carries the `12`-day/`12345`
+  draft into the dialog, clears the quick form, and the history shows the
+  recorded day count.
+- `add-salary-payment-dialog.test.tsx`: a carried draft opens the dialog with
+  the typed days/amount and normalises the override on submit.

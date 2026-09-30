@@ -191,3 +191,12 @@ round; the parent can request one.
 Re-pin note: the only change after the code fix `384b177f` is the round-5
 wisdom entry in `.agents/wisdom/architecture.md` (`859c5d76`), a docs-only
 file; the reviewed source is unchanged.
+
+## Round 6 re-pin note
+
+The round-6 fixes (`34e7d2e3`) change money normalisation (integer-cent monthly
+rate, whole-cent override), the quick-form/dialog draft handoff, and the
+archived-assignment filter. The money changes preserve the proration contract
+and round half up; the wire schema still accepts the same inputs and the server
+still owns the split validation that this critique reviewed. A fresh debate was
+not run for this fix round; the parent can request one.

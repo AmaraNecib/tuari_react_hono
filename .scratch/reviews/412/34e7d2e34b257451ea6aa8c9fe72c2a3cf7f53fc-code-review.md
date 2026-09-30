@@ -287,3 +287,22 @@ per the parent instruction).
 Re-pin note: the only change after the code fix `384b177f` is the round-5
 wisdom entry in `.agents/wisdom/architecture.md` (`859c5d76`), a docs-only
 file; the reviewed source is unchanged.
+
+## Round 6 delta (PR #420 head `34e7d2e3`)
+
+Seven findings fixed; two were consequences of the round-5 fixes.
+
+Standards: the money normalisation is one shared contract helper
+(`roundMoneyToCents`) used by the service and both payment forms; the monthly
+day arithmetic runs in whole cents; the draft handoff extends the dialog's
+existing public prop surface with one optional `initialDraft`; no new
+dependency. The corrupted test file was restored to its original encoding and
+line endings.
+
+Spec: the split handoff keeps one live draft and loses no input; the monthly day
+rate and the money override are stored at the currency's precision so the
+displayed shares reconcile; archived assignments no longer suggest wage days;
+the history shows the recorded day count.
+
+Evidence: self-verified fix round (tests, typecheck, lint, scoped coverage,
+E2E); the parent owns the hosted re-review.

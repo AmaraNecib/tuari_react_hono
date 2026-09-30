@@ -349,3 +349,60 @@ review was requested — account cooldown).
 Re-pin note: the only change after the code fix `384b177f` is the round-5
 wisdom entry in `.agents/wisdom/architecture.md` (`859c5d76`), a docs-only
 file; the reviewed source is unchanged.
+
+## Round 6 delta (PR #420 head `34e7d2e3`)
+
+Base: `develop` @ `9949146208d276915b31f28ba9a95788a6e113f5` (merge-base).
+
+Seven findings from the batched round-6 review fixed; two were consequences of
+the round-5 fixes:
+
+1. `employee-details-page.tsx` / `add-salary-payment-dialog.tsx` — the split
+   handoff now carries the quick draft (days, amount, date, note) into the
+   dialog and clears the quick form in the same action, so the typed payment is
+   not discarded and the dialog no longer opens on its own 30-day default.
+2. `salary-payment-form.ts` / `workforce.service.ts` — money is normalised to
+   two decimals (whole cents, round half up) at the write boundary and in the
+   form. `allocateSalaryAmountByDays` computes in whole cents, so a raw
+   `100.005` reconciles to `100.01` instead of allocating 300 DZD.
+3. `salary-days.ts` — `computeProposedSalaryAmount` runs the monthly day rate in
+   integer cents: `30010.05 / 30` proposes `1000.34`, not `1000.33`.
+4. `home-view-derived-employee-salary.ts` — archived assignments with no end
+   date are excluded from the wage-day windows.
+5. `salaries-section.tsx` — the expected and paid cells render at cent
+   precision like the split shares.
+6. `employee-details-page.tsx` — the quick-payment history has a days column.
+7. `schema-definitions.test.ts` — the round-5 repair commit (`5aae1b55`)
+   rewrote the file with LF endings and re-encoded `→` as `â†’`. Restored the
+   CRLF endings and the arrow; the diff vs `develop` is now only the 43 new
+   #412 assertion lines.
+
+Commands on `34e7d2e3` (`--maxWorkers=2`, shared machine):
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `pnpm --filter @tuari/contracts build` | 0 | ESM + DTS success |
+| `pnpm typecheck` | 0 | 4/4 tasks |
+| `pnpm lint` | 0 | 0 errors |
+| `pnpm check:unslop` | 0 | PASS |
+| touched contracts suite | 0 | 31 passed |
+| touched web suites (5 files) | 0 | 51 passed |
+| touched api suites (2 files) | 0 | 95 passed |
+| scoped coverage `salary-days.ts` | 0 | 100% stmts/branches/funcs/lines |
+| scoped coverage `workforce.service.ts` (company suite) | 0 | 100% stmts/branches/funcs/lines |
+| scoped coverage web touched files | 0 | `salary-payment-form.ts` 100% stmts/lines/funcs, 89.36% branches (pre-existing gaps) |
+| `npx playwright test tests/e2e/salaries.spec.ts --workers=1` | 0 | 2/2 passed |
+
+Full `pnpm test` at the end: contracts and web green; the API suite hit the
+documented load-flake class (8 timeouts across `recovery-key.service.test.ts`,
+`update-history.service.test.ts`, and the `sqlite-bootstrap.port.test.ts`
+cross-connection write-lock test). All three files pass standalone; no touched
+file failed. `playwright-report/index.html` was restored to HEAD after the E2E
+run.
+
+Negative verification: the contract case (`30010.05` at 1 day → `1000.34`), the
+override case (`100.005` → `100.01`), the archived-assignment case, and the
+carried-draft case each fail on the pre-fix source and pass after.
+
+Self-verified fix round; the parent owns the hosted re-review. No CLI Greptile
+review was requested (lane instruction).
