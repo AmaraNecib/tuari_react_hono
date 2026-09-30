@@ -84,3 +84,55 @@ Friction the diff creates or reveals, in the shared vocabulary:
   — follow-up, cross-lane; (b) day-vocabulary glossary entry — follow-up when
   `CONTEXT.md` is created; (c) record-payment amount default and the expenses
   filter range default — owner decisions (see the lane report).
+
+---
+
+## Round 2 — design pass on the parent-decision diff
+
+Second diff adds: `shared/use-form-amount.ts` (`useDateField` defaults to the
+shared Algeria today), four call sites dropping the argument,
+`expenses-page.tsx` filter opening empty, `expenses-filters.ts` losing the dead
+`getDefaultExpenseDateRange`, plus tests and a hygiene scan.
+
+Re-ran the three skills against this diff.
+
+### domain-modeling
+- The rule "a date field starts today" moved from caller discipline into the
+  hook's interface (`useDateField(initialValue = getAlgeriaDateInputValue())`).
+  That is one statement of the rule where there were four. Good.
+- "Filter" vs "form" is now explicit in the design doc: a filter's empty state
+  means "everything", a form's empty date is a bug. That distinction was the
+  source of the brief's mis-classification; recording it here so it is not
+  re-litigated.
+- Still no `CONTEXT.md`; nothing to add beyond the day-vocabulary note from
+  round 1.
+
+### codebase-design
+- **Deletion test on `getDefaultExpenseDateRange` passes:** deleting it removed
+  a rule ("default to the current month") that only existed to feed one call
+  site, and no complexity reappeared. Correct deletion, not a lost seam.
+- **Deletion test on `useDateField`'s parameter:** the parameter still exists,
+  but only tests use it now. It is not shallow because it is the hook's seam and
+  the tests cross it directly; keeping it lets tests pin the reset/empty arms
+  without reaching into state.
+- **Second copy of a rule:** the "starts today" default is now single-sourced.
+  The hygiene scan fails if a form passes an explicit date, which is the
+  enforcement seam for the new rule.
+- **Shallow additions:** none in production. One brittle-assertion risk was
+  avoided in the hygiene regex by excluding the hook's own definition file
+  explicitly rather than by a pattern that could silently stop matching.
+
+### improve-codebase-architecture
+- Friction created: none new. The `useDateField` deepening removes the
+  cross-form duplication the round-1 pass identified.
+- Friction remaining (reported, not fixed): `useFormAmount` still has no shared
+  way to say "the amount starts at the full expected figure" the way
+  `useDateField` now says it for dates. That is the salary/transfer-payment
+  family, it is money behaviour, and the owner has explicitly deferred it (Q1).
+  No action.
+- Filter-vs-form is now a documented convention rather than tribal knowledge;
+  the expenses filter is the reference implementation of "empty means
+  everything".
+
+Outcome: no new findings requiring a fix in this PR. The only deferred item
+(`useFormAmount` full-figure default) is owner-deferred money behaviour.

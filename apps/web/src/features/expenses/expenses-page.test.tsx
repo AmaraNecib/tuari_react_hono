@@ -149,7 +149,7 @@ describe("ExpensesPage", () => {
     expect(frame!.className).not.toContain("xl:p-7")
   })
 
-  it("passes the filter bar's date range to the list query", () => {
+  it("opens with no date filter applied — an empty filter means everything", () => {
     useExpensesListQuery.mockReturnValue({
       data: DATA,
       isPending: false,
@@ -161,11 +161,12 @@ describe("ExpensesPage", () => {
 
     expect(useExpensesListQuery).toHaveBeenCalled()
     const [filters] = useExpensesListQuery.mock.calls.at(-1)!
-    expect(filters).toEqual({
-      fromDate: expect.any(String),
-      toDate: expect.any(String),
-    })
-    expect(filters.fromDate).toMatch(/T23:00:00\.000Z$/)
+    // Neither a from date nor a to date is applied on first render: the list
+    // is not silently hiding expenses older than a seeded range.
+    expect(filters).toEqual({})
+
+    // Both date fields show the picker's placeholder, not a day.
+    expect(screen.getAllByText("dd/mm/yyyy")).toHaveLength(2)
   })
 
   it("switches the same list into project-grouped cards", () => {

@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import { useCreateDebtEntryMutation, useSettleDebtAccountMutation } from "@/features/app-shell/mock-dashboard"
-import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
 import { cn } from "@/lib/utils"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
@@ -38,7 +38,7 @@ export function RecordPaymentDialog({
   const createDebtEntryMutation = useCreateDebtEntryMutation()
   const settleDebtAccountMutation = useSettleDebtAccountMutation()
   const { amount, setAmount, value: amountValue, isValid: hasValidAmount, reset: resetAmount } = useFormAmount()
-  const { date: paymentDate, setDate: setPaymentDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
+  const { date: paymentDate, setDate: setPaymentDate, reset: resetDate } = useDateField()
   const [note, setNote] = useState("")
   const [showSettlePrompt, setShowSettlePrompt] = useState(false)
 

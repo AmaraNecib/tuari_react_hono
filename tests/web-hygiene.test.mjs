@@ -168,3 +168,23 @@ test('today has exactly one definition: the shared Algeria day helper (#440)', a
   // No submit-time conversion of a bare day to a UTC midnight instant.
   assert.doesNotMatch(page, /new Date\([^)]*\)\.toISOString\(\)/);
 });
+
+test('date fields rely on the shared today default: no create form passes a date to useDateField (#440)', async () => {
+  const files = await listSourceFiles('apps/web/src');
+  const offenders = [];
+  for (const file of files) {
+    // Tests may pass a fixed date to exercise the hook's parameter.
+    if (/\.test\.tsx?$/.test(file)) continue;
+    // The hook declares the parameter; that is the one place it is allowed.
+    if (file.endsWith('/features/shared/use-form-amount.ts')) continue;
+    const source = await readRepoFile(file);
+    if (/useDateField\(\s*[^)\s]/.test(source)) {
+      offenders.push(file);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `useDateField must use its shared Algeria-today default (${offenders.join(', ')})`,
+  );
+});

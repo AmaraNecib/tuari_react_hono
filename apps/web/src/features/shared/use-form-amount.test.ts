@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { renderHook, act } from "@testing-library/react"
 import { useFormAmount, useDateField } from "./use-form-amount"
+import { getAlgeriaDateInputValue } from "@/lib/algeria-time"
 
 describe("useFormAmount", () => {
   it("should initialize with empty string", () => {
@@ -108,10 +109,10 @@ describe("useFormAmount", () => {
 })
 
 describe("useDateField", () => {
-  it("should initialize with empty string", () => {
+  it("starts on today's Algeria business day, not empty", () => {
     const { result } = renderHook(() => useDateField())
-    expect(result.current.date).toBe("")
-    expect(result.current.isEmpty).toBe(true)
+    expect(result.current.date).toBe(getAlgeriaDateInputValue())
+    expect(result.current.isEmpty).toBe(false)
   })
 
   it("should initialize with default value", () => {

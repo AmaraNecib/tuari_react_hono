@@ -22,14 +22,14 @@ create/record forms already seed their date from the app's canonical helper
 | --- | --- | --- |
 | `debts/debt-create-page.tsx` | `getAlgeriaDateInputValue()` | already today |
 | `debts/record-payment-dialog.tsx` | `getAlgeriaDateInputValue()` | already today |
-| `expenses/expense-form-dialog.tsx` | empty state + effect sets today on open | **fixed here** (seed on first render) |
+| `expenses/expense-form-dialog.tsx` | hook + effect set today on open | hook now supplies today |
 | `inventory/transfer-item-dialog.tsx` | `getAlgeriaDateInputValue()` | already today |
 | `inventory/inventory-invoice-create-page.tsx` | private UTC `getTodayDateValue()` | **fixed here** (#440) |
-| `employees/add-salary-payment-dialog.tsx` | `getAlgeriaDateInputValue()` + full-salary proposal | already today; owned by another lane |
+| `employees/add-salary-payment-dialog.tsx` | `getAlgeriaDateInputValue()` + full-salary proposal | already today |
 | `employees/employee-details-page.tsx` | `getAlgeriaDateInputValue()` + full-salary amount, #420 follow | already today |
 
-The one genuine defect is #440: the invoice create page seeded and submitted a
-UTC day, not the Algeria business day. Between 23:00–24:00 UTC that is one
+The one genuine date defect is #440: the invoice create page seeded and submitted
+a UTC day, not the Algeria business day. Between 23:00–24:00 UTC that is one
 calendar day behind.
 
 ## Single definition of "today"
@@ -38,7 +38,7 @@ calendar day behind.
 already IS the app's canonical `yyyy-MM-dd` today (39 call sites). The brief asked
 to put the extracted helper in `apps/web/src/lib/date-range.ts`; doing that as a
 second `getTodayDateValue` would create exactly the second copy of one rule that
-we must not have. Decision: keep the single definition in `algeria-time.ts`
+we must not have. Owner decision: keep the single definition in `algeria-time.ts`
 (the timezone-aware home for a day) and delete the private UTC copy. `date-range.ts`
 stays about *ranges* (inclusive instant bounds), not about *today*.
 
@@ -47,8 +47,22 @@ stays about *ranges* (inclusive instant bounds), not about *today*.
 - `inventory-invoice-create-page.tsx`: delete private `getTodayDateValue`; seed
   the invoice date and asset purchase dates with `getAlgeriaDateInputValue()`;
   submit with `toAlgeriaDayBoundaryIso(day, "start")`.
-- `expense-form-dialog.tsx`: `useDateField(getAlgeriaDateInputValue())` so a new
-  expense is filled on the first render instead of empty-then-effect.
+- `shared/use-form-amount.ts`: `useDateField` defaults its initial value to
+  `getAlgeriaDateInputValue()`, so "a date field starts today" is stated once, in
+  the type, instead of in every caller. Every call site (`employee-debt-panel`,
+  `record-payment-dialog`, `add-salary-payment-dialog`, `expense-form-dialog`)
+  drops the explicit argument. `add-salary-payment-dialog`'s full-salary amount
+  proposal is untouched.
+- `expenses-page.tsx`: the date filter opens EMPTY (`""`/`""`); an empty filter
+  means "everything" and must not silently hide expenses older than a seeded
+  range. `getDefaultExpenseDateRange` is deleted as dead code.
+
+### Q1 decision (recorded, not implemented)
+
+The debt payment amount stays EMPTY. The one-click "pay full" action is the only
+explicit path to the full balance. Owner: "for now it's empty. Maybe in the
+future we change it, if the owner of the app asks me." Do not prefill it, add a
+hidden default, or add a setting.
 
 ## Tests (red/green)
 
@@ -56,23 +70,20 @@ stays about *ranges* (inclusive instant bounds), not about *today*.
   the UTC day); picked invoice/purchase days submit the exact
   `toAlgeriaDayBoundaryIso(day, "start")` instant (red on base: bare UTC midnight);
   default stays editable.
+- `useDateField`: `useDateField()` starts on today's Algeria day, not empty
+  (red before the hook change).
+- `expenses-page`: first render applies no date filter (`filters` is `{}`, both
+  pickers show the placeholder) — red before the filter change (it seeded a
+  current-month range).
 - Single definition: `tests/web-hygiene.test.mjs` scans all non-test web source
-  and fails if any file defines a private today helper or fabricates a UTC day.
+  and fails if any file defines a private today helper, fabricates a UTC day, or
+  passes an explicit date to `useDateField`.
 - Regression: `date-picker-screens.test.tsx` and `expense-form-dialog.test.tsx`
   assert each listed create/record form opens on today.
 
-## Candidates deliberately NOT implemented (owner decision)
+## Filters left empty
 
-- `debts/record-payment-dialog.tsx` amount: default to the full outstanding
-  balance? It already has a one-click "pay full" action; defaulting the value
-  could silently change a partial-payment workflow.
-- `expenses/expenses-page.tsx` date filter: currently seeds a default range, but
-  rule #2 says a filter stays empty ("everything"). Needs a product call.
-
-## Filters deliberately left empty / alone
-
-`audit/audit-log-page.tsx` starts `startDate=""`/`endDate=""` (correct).
+`audit/audit-log-page.tsx` and `expenses/expenses-page.tsx` both start empty.
 `debts/debt-cases-panel.tsx`, `debts/debt-ledger-panel.tsx`,
-`debts/employee-debt-panel.tsx` are **create/record forms**, not filters; all
-already default to today. `expenses/expenses-page.tsx` is a filter but seeds a
-range (see above).
+`debts/employee-debt-panel.tsx` are create/record forms, not filters, and all
+default to today.

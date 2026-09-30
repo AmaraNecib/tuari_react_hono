@@ -25,10 +25,10 @@ import {
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { Surface } from "@/features/shared/page-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
-import { formatAlgeriaDate, getAlgeriaDateInputValue } from "@/lib/algeria-time"
+import { formatAlgeriaDate } from "@/lib/algeria-time"
 
 import { ExpenseFormDialog, type ExpenseLookupOption } from "./expense-form-dialog"
-import { buildExpenseFilters, getDefaultExpenseDateRange } from "./expenses-filters"
+import { buildExpenseFilters } from "./expenses-filters"
 import { useExpensesListQuery, useVoidExpenseMutation } from "./expenses-queries"
 
 const NO_SELECTION = "ALL"
@@ -63,10 +63,8 @@ export function ExpensesPage({ projects, employees, sellers, stockItems }: Expen
   const { t } = useTranslation()
   const [projectId, setProjectId] = useState<string | null>(null)
   const [responsibleWorkerId, setResponsibleWorkerId] = useState<string | null>(null)
-  const [fromDate, setFromDate] = useState(
-    () => getDefaultExpenseDateRange(getAlgeriaDateInputValue()).fromDate,
-  )
-  const [toDate, setToDate] = useState(getAlgeriaDateInputValue)
+  const [fromDate, setFromDate] = useState("")
+  const [toDate, setToDate] = useState("")
   const [groupByProject, setGroupByProject] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)

@@ -84,7 +84,7 @@ export function AddSalaryPaymentDialog({
   const { t } = useTranslation()
   const mutation = useCreateSalaryPaymentMutation()
   const { amount: manualAmount, setAmount: setManualAmount, value: manualAmountValue, reset: resetAmount } = useFormAmount()
-  const { date, setDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
+  const { date, setDate, reset: resetDate } = useDateField()
   const [note, setNote] = useState("")
   const [daysText, setDaysText] = useState(() => String(defaultSalaryPaymentDays(salaryPeriod)))
   const [daysTouched, setDaysTouched] = useState(false)

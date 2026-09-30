@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput } from "@/components/ui/form-controls"
 import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 import { useEmployeeDebtAccountQuery, useCreateEmployeeDebtEntryMutation } from "./employee-debt-hooks"
@@ -23,7 +23,7 @@ export function EmployeeDebtPanel({ employeeId }: { employeeId: string }) {
   const [entryType, setEntryType] = useState<"OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE">("OPENING")
   const { amount, setAmount, value: amountValue, isValid: hasValidAmount, reset: resetAmount } = useFormAmount()
   const [note, setNote] = useState("")
-  const { date: entryDate, setDate: setEntryDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
+  const { date: entryDate, setDate: setEntryDate, reset: resetDate } = useDateField()
 
   const debtAccount = debtAccountQuery.data
   const balanceMeta = debtAccount
