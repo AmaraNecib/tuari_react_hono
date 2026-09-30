@@ -84,3 +84,29 @@ originally reviewed against the pre-rebase `fix/invoice-create` base), as requir
 - Deferred to **#450** (parent decision): align the outbound write gate's availability
   check with the offer rule.
 - Nothing else found.
+
+## Addendum — aggressive local review of the finished diff (`918290aa`)
+
+Re-ran the pass over the review fixes. Design outcomes:
+
+- **The seam is now genuinely two-sided in tests.** `candidateOf` projects the
+  JS candidate from the seeded `inventory_consumable_balance` /
+  `inventory_asset_unit` rows instead of the fixture literal, so the equivalence
+  suite compares the SQL predicate against a read of the same evidence rather
+  than against a written expectation. Still no production builder — that is
+  #450's shared read, and building it here for a test-only caller would be a
+  hypothetical seam.
+- **The page's source-change rule moved into the domain.** A pick is evidence
+  about one source; the page now clears picks when the source changes, so the
+  UI cannot present an out-of-stock item as chosen. This is the same invariant
+  the offer rule states, applied to the selection the UI holds.
+- **The write-gate claim was corrected, not remade.** `inventory-item-usage.ts`
+  now says `OUTBOUND_PICK` availability is read-side only until #450 lands. The
+  design doc says the same.
+- **Kept after the schema check:** the one-column `EXISTS` and the `quantity > 0`
+  clause. A zero/negative balance and a both-set location are both blocked by
+  CHECK constraints, so the extra guards are defence-in-depth, not a parallel
+  rule.
+- **Accepted friction:** the `${locationType}:${id}` scope/key formatting is
+  duplicated in the web hook and the repository; they serve different layers
+  (React Query key vs server cursor scope) and cannot share a module cleanly.
