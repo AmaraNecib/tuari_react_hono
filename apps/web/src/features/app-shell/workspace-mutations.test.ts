@@ -5,8 +5,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { createElement, type ReactNode } from "react"
 
-import { AppMutationError, useResetWorkspaceMutation } from "./workspace-mutations"
+import { AppMutationError, useCreateEmployeesBatchMutation, useResetWorkspaceMutation } from "./workspace-mutations"
 import { workspaceDomainQueryPrefix, workspaceQueryPrefix } from "./workspace-keys"
+
+const rpcMocks = vi.hoisted(() => ({ employeesBatchCreate: vi.fn() }))
+
+vi.mock("@/lib/orpc-client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/orpc-client")>("@/lib/orpc-client")
+  return { ...actual, rpcClient: { employeesBatchCreate: rpcMocks.employeesBatchCreate } }
+})
 
 describe("useResetWorkspaceMutation — snapshot-aware reset (issue #276)", () => {
   function wrapper(queryClient: QueryClient) {
@@ -223,5 +230,49 @@ describe("mutation result validation", () => {
       expect(result.error).toBeDefined()
       expect(result.error.message).toBeDefined()
     }
+  })
+})
+
+describe("useCreateEmployeesBatchMutation — created ids reach the caller", () => {
+  function wrapper(queryClient: QueryClient) {
+    return function Wrapper({ children }: { children: ReactNode }) {
+      return createElement(QueryClientProvider, { client: queryClient }, children)
+    }
+  }
+
+  it("returns the created employees with their real ids, not only a count", async () => {
+    const employee = { id: "emp-new-1", firstName: "سعيد", lastName: "بلقاسم" }
+    rpcMocks.employeesBatchCreate.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { employees: [employee], managerAssignments: [], projectAssignments: [] },
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const { result } = renderHook(() => useCreateEmployeesBatchMutation(), {
+      wrapper: wrapper(queryClient),
+    })
+
+    const output = await result.current.mutateAsync({
+      employees: [
+        {
+          firstName: "سعيد",
+          lastName: "بلقاسم",
+          phone: "0661112233",
+          roleId: "role-project-manager",
+          status: "ACTIVE",
+          managerId: null,
+          salaryAmountDzd: null,
+          salaryPeriod: null,
+          notes: null,
+        },
+      ],
+    })
+
+    // Inline-create callers select `employees[0].id`; a regression to
+    // `{ id: "new" }` would be invisible without this pin.
+    expect(output.createdCount).toBe(1)
+    expect(output.employees).toEqual([employee])
+    expect(rpcMocks.employeesBatchCreate).toHaveBeenCalledTimes(1)
   })
 })

@@ -18,6 +18,7 @@ import {
   type WarehouseFormErrors,
   type WarehouseFormState,
 } from "./warehouse-form"
+import { useWarehouseManagerInlineCreateSelection } from "./warehouse-manager-inline"
 
 /**
  * @description Component
@@ -25,15 +26,21 @@ import {
 export function WarehouseEditPage({
   managerOptions,
   warehouse,
+  warehouseManagerRoleId,
 }: {
   managerOptions: Array<{ id: string; label: string }>
   warehouse: WarehousePageRecord
+  warehouseManagerRoleId: string
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const updateWarehouseMutation = useUpdateWarehouseMutation()
   const [state, setState] = useState<WarehouseFormState>(() => createWarehouseFormState(warehouse))
   const [errors, setErrors] = useState<WarehouseFormErrors>({})
+  const { createConfig: managerCreate, selectedDisplayValue: managerDisplayValue } = useWarehouseManagerInlineCreateSelection({
+    warehouseManagerRoleId,
+    selectedManagerId: state.managerId,
+  })
   const previousWarehouseIdRef = useRef(warehouse.id)
   const statusOptions = useMemo(
     () => [
@@ -112,6 +119,8 @@ export function WarehouseEditPage({
             notes: t("detailPages.warehouse.notes"),
             noManager: t("shell.noManager"),
           }}
+          managerCreate={managerCreate}
+          managerDisplayValue={managerDisplayValue}
           managerOptions={managerOptions}
           state={state}
           statusOptions={statusOptions}

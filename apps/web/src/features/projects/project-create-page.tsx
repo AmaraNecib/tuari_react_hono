@@ -12,6 +12,7 @@ import { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, Sur
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import { createProjectFormState, ProjectFormFields, type ProjectFormErrors } from "./project-form"
+import { useProjectManagerInlineCreateSelection } from "./project-manager-inline"
 
 function mapServerErrors(error: AppMutationError): ProjectFormErrors {
   const errors: ProjectFormErrors = {}
@@ -44,12 +45,22 @@ function mapServerErrors(error: AppMutationError): ProjectFormErrors {
 /**
  * @description Component
  */
-export function ProjectCreatePage({ managerOptions }: { managerOptions: Array<{ id: string; label: string }> }) {
+export function ProjectCreatePage({
+  managerOptions,
+  projectManagerRoleId,
+}: {
+  managerOptions: Array<{ id: string; label: string }>
+  projectManagerRoleId: string
+}) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const createProjectMutation = useCreateProjectMutation()
   const [state, setState] = useState(() => createProjectFormState())
   const [errors, setErrors] = useState<ProjectFormErrors>({})
+  const { createConfig: managerCreate, selectedDisplayValue: managerDisplayValue } = useProjectManagerInlineCreateSelection({
+    projectManagerRoleId,
+    selectedManagerId: state.managerId,
+  })
   const statusOptions = useMemo(
     () => [
       { value: "ACTIVE" as const, label: t("status.active") },
@@ -119,6 +130,8 @@ export function ProjectCreatePage({ managerOptions }: { managerOptions: Array<{ 
               notes: t("detailPages.project.notes"),
               noManager: t("shell.noManager"),
             }}
+            managerCreate={managerCreate}
+            managerDisplayValue={managerDisplayValue}
             managerOptions={managerOptions}
             state={state}
             statusOptions={statusOptions}

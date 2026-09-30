@@ -137,6 +137,77 @@ describe("CreateableSelect popup positioning/animation (issue #28)", () => {
   })
 })
 
+describe("CreateableSelect clear + create dialog contract", () => {
+  it("offers a row that clears the value back to empty when clearable", async () => {
+    const onChange = vi.fn()
+    render(
+      <label>
+        المدير المسؤول
+        <CreateableSelect
+          value="wh-1"
+          onChange={onChange}
+          options={[{ id: "wh-1", name: "المستودع المركزي" }]}
+          emptyLabel="بدون مستودع"
+          clearable
+        />
+      </label>,
+    )
+
+    fireEvent.mouseDown(screen.getByRole("combobox"))
+    const listbox = await screen.findByRole("listbox")
+    const clearOption = await within(listbox).findByRole("option", { name: "بدون مستودع" })
+    pickOption(clearOption)
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(""))
+  })
+
+  it("cannot be dismissed while a create is in flight, so a late result still selects", async () => {
+    let resolveCreate: (value: { id: string; name: string }) => void = () => {}
+    const onCreate = vi.fn(
+      () =>
+        new Promise<{ id: string; name: string }>((resolve) => {
+          resolveCreate = resolve
+        }),
+    )
+    const onChange = vi.fn()
+
+    render(
+      <label>
+        المدير المسؤول
+        <CreateableSelect
+          value=""
+          onChange={onChange}
+          options={[{ id: "wh-1", name: "المستودع المركزي" }]}
+          emptyLabel="بدون مدير"
+          createLabel="إضافة مدير"
+          createFields={[{ key: "firstName", label: "الاسم", required: true }]}
+          onCreate={onCreate}
+        />
+      </label>,
+    )
+
+    fireEvent.mouseDown(screen.getByRole("combobox"))
+    const listbox = await screen.findByRole("listbox")
+    const createOption = await within(listbox).findByRole("option", { name: /إضافة مدير/ })
+    pickOption(createOption)
+
+    const dialog = await screen.findByRole("dialog")
+    fireEvent.change(within(dialog).getByLabelText(/الاسم/), { target: { value: "سعيد" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "إنشاء" }))
+
+    // Cancel must be disabled while pending, and clicking it must not dismiss
+    // the dialog — the in-flight create cannot be cancelled.
+    const cancel = within(dialog).getByRole("button", { name: "إلغاء" }) as HTMLButtonElement
+    expect(cancel.disabled).toBe(true)
+    fireEvent.click(cancel)
+    expect(screen.getByRole("dialog")).toBeTruthy()
+
+    resolveCreate({ id: "emp-new-1", name: "سعيد بلقاسم" })
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith("emp-new-1"))
+  })
+})
+
 /**
  * Simulate a real browser mouse pick. Since Base UI 1.5+ (#4699 hardening), an
  * item click only commits when the press started on the item itself

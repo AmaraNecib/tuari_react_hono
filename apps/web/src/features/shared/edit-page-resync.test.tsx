@@ -2,7 +2,7 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { EmployeeEditPage } from "@/features/employees/employee-edit-page"
@@ -36,6 +36,7 @@ vi.mock("@/router/navigation", () => ({
 
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
   useSaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockSaveEmployee }),
+  useCreateEmployeesBatchMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useUpdateEmployeeMutation: () => ({ isPending: false, mutateAsync: mockUpdateEmployee }),
   useUpdateEmployeeWorkplaceMutation: () => ({ isPending: false, mutateAsync: mockUpdateEmployeeWorkplace }),
   useSyncManagedProjectsMutation: () => ({ isPending: false, mutateAsync: mockSyncManagedProjects }),
@@ -207,7 +208,7 @@ describe("edit pages resync when record props change", () => {
     } as const
 
     const { rerender } = render(
-      <ProjectEditPage managerOptions={[{ id: "mgr-1", label: "مدير 1" }]} project={project} />,
+      <ProjectEditPage managerOptions={[{ id: "mgr-1", label: "مدير 1" }]} project={project} projectManagerRoleId="role-pm" />,
     )
 
     fireEvent.change(screen.getByDisplayValue("مشروع أول"), { target: { value: "اسم معدل" } })
@@ -216,6 +217,7 @@ describe("edit pages resync when record props change", () => {
       <ProjectEditPage
         managerOptions={[{ id: "mgr-1", label: "مدير 1" }]}
         project={{ ...project, notes: "ملاحظات أولى" }}
+        projectManagerRoleId="role-pm"
       />,
     )
 
@@ -236,6 +238,7 @@ describe("edit pages resync when record props change", () => {
           status: "ACTIVE",
           notes: "ملاحظات أولى",
         }}
+        projectManagerRoleId="role-pm"
       />,
     )
 
@@ -254,6 +257,7 @@ describe("edit pages resync when record props change", () => {
           status: "STOPPED",
           notes: "ملاحظات ثانية",
         }}
+        projectManagerRoleId="role-pm"
       />,
     )
 
@@ -274,7 +278,7 @@ describe("edit pages resync when record props change", () => {
     } as const
 
     const { rerender } = render(
-      <WarehouseEditPage managerOptions={[{ id: "mgr-1", label: "مدير 1" }]} warehouse={warehouse} />,
+      <WarehouseEditPage managerOptions={[{ id: "mgr-1", label: "مدير 1" }]} warehouse={warehouse} warehouseManagerRoleId="role-whm" />,
     )
 
     fireEvent.change(screen.getByDisplayValue("مستودع أول"), { target: { value: "اسم معدل" } })
@@ -283,6 +287,7 @@ describe("edit pages resync when record props change", () => {
       <WarehouseEditPage
         managerOptions={[{ id: "mgr-1", label: "مدير 1" }]}
         warehouse={{ ...warehouse, notes: "ملاحظات أولى" }}
+        warehouseManagerRoleId="role-whm"
       />,
     )
 
@@ -302,6 +307,7 @@ describe("edit pages resync when record props change", () => {
           status: "ACTIVE",
           notes: "ملاحظات أولى",
         }}
+        warehouseManagerRoleId="role-whm"
       />,
     )
 
@@ -319,6 +325,7 @@ describe("edit pages resync when record props change", () => {
           status: "INACTIVE",
           notes: "ملاحظات ثانية",
         }}
+        warehouseManagerRoleId="role-whm"
       />,
     )
 
@@ -393,5 +400,66 @@ describe("edit pages resync when record props change", () => {
 
     expect(screen.getByText("المهنة يجب ألا تتجاوز 120 حرفًا.")).toBeTruthy()
     expect(mockSaveEmployee).not.toHaveBeenCalled()
+  })
+
+  it("clears the project manager back to none and submits null", async () => {
+    render(
+      <ProjectEditPage
+        managerOptions={[{ id: "mgr-1", label: "مدير 1" }]}
+        project={{
+          id: "project-1",
+          name: "مشروع أول",
+          location: "الجزائر",
+          managerId: "mgr-1",
+          managerName: "مدير 1",
+          activeWorkers: 4,
+          status: "ACTIVE",
+          notes: "ملاحظات أولى",
+        }}
+        projectManagerRoleId="role-pm"
+      />,
+    )
+
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /المدير المسؤول/ }))
+    const listbox = await screen.findByRole("listbox")
+    const noneOption = await within(listbox).findByRole("option", { name: "غير محدد" })
+    fireEvent.pointerDown(noneOption, { button: 0, pointerId: 1, pointerType: "mouse" })
+    fireEvent.click(noneOption)
+
+    fireEvent.click(screen.getByRole("button", { name: "حفظ التغييرات" }))
+
+    await waitFor(() => {
+      expect(mockUpdateProject).toHaveBeenCalledWith(expect.objectContaining({ managerId: null }))
+    })
+  })
+
+  it("clears the warehouse manager back to none and submits null", async () => {
+    render(
+      <WarehouseEditPage
+        managerOptions={[{ id: "mgr-1", label: "مدير 1" }]}
+        warehouse={{
+          id: "warehouse-1",
+          name: "مستودع أول",
+          address: "الرويبة",
+          managerId: "mgr-1",
+          managerName: "مدير 1",
+          status: "ACTIVE",
+          notes: "ملاحظات أولى",
+        }}
+        warehouseManagerRoleId="role-whm"
+      />,
+    )
+
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /المدير المسؤول/ }))
+    const listbox = await screen.findByRole("listbox")
+    const noneOption = await within(listbox).findByRole("option", { name: "غير محدد" })
+    fireEvent.pointerDown(noneOption, { button: 0, pointerId: 1, pointerType: "mouse" })
+    fireEvent.click(noneOption)
+
+    fireEvent.click(screen.getByRole("button", { name: "حفظ التغييرات" }))
+
+    await waitFor(() => {
+      expect(mockUpdateWarehouse).toHaveBeenCalledWith(expect.objectContaining({ managerId: null }))
+    })
   })
 })

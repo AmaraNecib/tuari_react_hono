@@ -100,6 +100,12 @@ export function HomeViewPageDetailContent({
 }) {
   const detailCopy = copy.detailPages
 
+  // The inline "create a manager" flow needs the real project_manager role id
+  // (the create contract requires a role, and the API only accepts system
+  // workforce labels). The role list already rides the workspace snapshot.
+  const projectManagerRoleId = derived.roles.find((role) => role.key === "project_manager")?.id ?? ""
+  const warehouseManagerRoleId = derived.roles.find((role) => role.key === "warehouse_manager")?.id ?? ""
+
   // Debts-domain queries are feature-scoped (@/features/debts/debts-queries)
   // so the hub/detail pages stay fresh under the debts mutations' key
   // invalidation instead of the stale composite snapshot (issue #177 Phase 4).
@@ -322,11 +328,19 @@ export function HomeViewPageDetailContent({
           )
 
     case "project-create":
-      return renderLazy(<ProjectCreatePage managerOptions={selectedProjectManagerOptions} />)
+      return renderLazy(
+        <ProjectCreatePage managerOptions={selectedProjectManagerOptions} projectManagerRoleId={projectManagerRoleId} />,
+      )
 
     case "project-edit":
       return selectedProject
-        ? renderLazy(<ProjectEditPage managerOptions={selectedProjectManagerOptions} project={selectedProject} />)
+        ? renderLazy(
+            <ProjectEditPage
+              managerOptions={selectedProjectManagerOptions}
+              project={selectedProject}
+              projectManagerRoleId={projectManagerRoleId}
+            />,
+          )
         : (
             <MissingRecordState
               backLabel={detailCopy.shared.back}
@@ -359,11 +373,19 @@ export function HomeViewPageDetailContent({
           )
 
     case "warehouse-create":
-      return renderLazy(<WarehouseCreatePage managerOptions={selectedWarehouseManagerOptions} />)
+      return renderLazy(
+        <WarehouseCreatePage managerOptions={selectedWarehouseManagerOptions} warehouseManagerRoleId={warehouseManagerRoleId} />,
+      )
 
     case "warehouse-edit":
       return selectedWarehouse
-        ? renderLazy(<WarehouseEditPage managerOptions={selectedWarehouseManagerOptions} warehouse={selectedWarehouse} />)
+        ? renderLazy(
+            <WarehouseEditPage
+              managerOptions={selectedWarehouseManagerOptions}
+              warehouse={selectedWarehouse}
+              warehouseManagerRoleId={warehouseManagerRoleId}
+            />,
+          )
         : (
             <MissingRecordState
               backLabel={detailCopy.shared.back}
