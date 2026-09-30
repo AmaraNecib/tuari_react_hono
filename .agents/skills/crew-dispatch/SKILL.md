@@ -57,8 +57,10 @@ and tells each lane exactly which skills to load.
   Visible lanes launched by `launch-lane.mjs` also receive the `crew_report`
   tool, which writes a handoff artifact and sends a completion/blocker message
   directly to the parent pane. Verified recipe (Herdr, any OS): see Launch.
-  Project policy defaults to six concurrent mutation lanes; the captain may
-  explicitly choose another positive cap for a batch.
+  Project policy defaults to **five** concurrent mutation lanes, and **six is the
+  hard ceiling** — never more, even when the queue is long. The captain may lower
+  the cap for a batch; only the captain may allow six. When the queue exceeds the
+  cap, the work waits for a lane to be closed, not for the cap to move.
 - **Headless children require explicit captain opt-in.** Cheaper, disposable,
   not visible as live terminals. Allowed ONLY for cheap scouts, read-only
   probes, when the captain is not watching — or when the captain explicitly
@@ -344,10 +346,14 @@ When the captain says "run the lanes for real", follow this order:
    worktree) with the review evidence linked, wait for CI green, and hand the
    captain full PR URLs. A 5/5 review is the stop condition, not merge
    permission: crew automation must NEVER merge. After the parent receives the
-   handoff and creates/updates the PR, close the Herdr workspace only if the
-   lane is terminal and no follow-up is expected. Keep reusable lanes alive;
-   when closing, preserve the workspace/pane/session identifiers so the parent
-   can reopen or resume the lane if needed.
+   handoff and creates/updates the PR, **close the Herdr workspace**. A lane whose
+   deliverable exists — a pushed branch, an opened PR, a reported review — is done
+   with that view: keeping it idle costs a lane slot out of six and leaves the
+   fleet ambiguous about what is still in flight. If more work is needed on the
+   same worktree, launch a fresh lane on it (the worktree and branch persist;
+   `launch-lane.mjs` will create a new workspace) rather than re-prompting a
+   finished one. Preserve the workspace/pane/session identifiers in the handoff so
+   the context can be reopened if it is genuinely needed.
 8. **Lessons (parent-owned, serialized — lanes never write shared state).**
    If the project keeps lessons (capture-wisdom / docs/lessons/ / AGENTS.md
    convention), the parent files per-lane technical lessons after each PR lands
