@@ -224,22 +224,31 @@ export function usePaginatedRows<T>({
 }) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(initialPageSize)
-  const pagedRows = useMemo(() => rows.slice((page - 1) * pageSize, page * pageSize), [page, pageSize, rows])
+  const maxPage = Math.max(1, Math.ceil(rows.length / pageSize))
+  // Clamp synchronously for slicing and display. The effect below syncs the
+  // stored state, but it runs after paint, so deriving the effective page here
+  // is what keeps a shrink from painting an empty, control-less frame.
+  const effectivePage = Math.min(page, maxPage)
+  const pagedRows = useMemo(
+    () => rows.slice((effectivePage - 1) * pageSize, effectivePage * pageSize),
+    [effectivePage, pageSize, rows],
+  )
   const resetKey = JSON.stringify(resetPageDeps)
 
   useEffect(() => {
     setPage(1)
   }, [resetKey])
 
+  // Keep the stored page in range too: without this, a list that grows back
+  // after a shrink would silently show the stale page again.
   useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(rows.length / pageSize))
     if (page > maxPage) {
       setPage(maxPage)
     }
-  }, [page, pageSize, rows.length])
+  }, [page, maxPage])
 
   return {
-    page,
+    page: effectivePage,
     pageSize,
     pagedRows,
     setPage,

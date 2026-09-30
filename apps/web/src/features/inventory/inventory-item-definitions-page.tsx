@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { AppShellEmptyHint } from "@/features/shared/table-primitives"
+import { AppShellEmptyHint, usePaginatedRows } from "@/features/shared/table-primitives"
+import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
 import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 
 import { useCreateInventoryItemDefinitionMutation, useInventoryItemDefinitionsQuery } from "./inventory-hooks"
@@ -30,9 +31,10 @@ export function InventoryItemDefinitionsPage() {
   const [itemType, setItemType] = useState<"CONSUMABLE" | "ASSET">("CONSUMABLE")
   const [unit, setUnit] = useState("")
   const [description, setDescription] = useState("")
+  const [pendingCreatedId, setPendingCreatedId] = useState<string | null>(null)
 
   async function handleCreate() {
-    await createMutation.mutateAsync({
+    const { item } = await createMutation.mutateAsync({
       name,
       itemType,
       unit: itemType === "CONSUMABLE" ? unit || null : null,
@@ -43,9 +45,24 @@ export function InventoryItemDefinitionsPage() {
     setUnit("")
     setDescription("")
     setItemType("CONSUMABLE")
+    setPendingCreatedId(item.id)
   }
 
-  const items = listQuery.data?.items ?? []
+  const items = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items])
+  const { page, pageSize, pagedRows, setPage, setPageSize } = usePaginatedRows({ rows: items })
+
+  // The catalog is ordered by name, and a created definition is inserted in
+  // name order, so it can land on any page. Follow it to the page that now
+  // holds it; otherwise the operator stays on an unchanged page that looks
+  // like a failed create. Set after `mutateAsync` resolves (the hook awaits
+  // its `onSuccess` refetch), so `items` normally already contains the row.
+  useEffect(() => {
+    if (!pendingCreatedId) return
+    const createdIndex = items.findIndex((item) => item.id === pendingCreatedId)
+    if (createdIndex === -1) return
+    setPage(Math.floor(createdIndex / pageSize) + 1)
+    setPendingCreatedId(null)
+  }, [items, pageSize, pendingCreatedId, setPage])
 
   return (
     <div className="space-y-6">
@@ -94,7 +111,7 @@ export function InventoryItemDefinitionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => (
+                {pagedRows.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell>
@@ -119,6 +136,19 @@ export function InventoryItemDefinitionsPage() {
                 {t("inventoryPage.itemDefinitions.createButton")}
               </Button>
             </div>
+          )}
+
+          {items.length > 0 && (
+            <TablePaginationControls
+              page={page}
+              pageSize={pageSize}
+              totalCount={items.length}
+              onPageChange={setPage}
+              onPageSizeChange={(nextPageSize: number) => {
+                setPage(1)
+                setPageSize(nextPageSize)
+              }}
+            />
           )}
         </PageSurfaceContent>
       </Surface>
