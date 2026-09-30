@@ -104,6 +104,7 @@ export function HomeViewPageDetailContent({
   // (the create contract requires a role, and the API only accepts system
   // workforce labels). The role list already rides the workspace snapshot.
   const projectManagerRoleId = derived.roles.find((role) => role.key === "project_manager")?.id ?? ""
+  const warehouseManagerRoleId = derived.roles.find((role) => role.key === "warehouse_manager")?.id ?? ""
 
   // Debts-domain queries are feature-scoped (@/features/debts/debts-queries)
   // so the hub/detail pages stay fresh under the debts mutations' key
@@ -370,11 +371,19 @@ export function HomeViewPageDetailContent({
           )
 
     case "warehouse-create":
-      return renderLazy(<WarehouseCreatePage managerOptions={selectedWarehouseManagerOptions} />)
+      return renderLazy(
+        <WarehouseCreatePage managerOptions={selectedWarehouseManagerOptions} warehouseManagerRoleId={warehouseManagerRoleId} />,
+      )
 
     case "warehouse-edit":
       return selectedWarehouse
-        ? renderLazy(<WarehouseEditPage managerOptions={selectedWarehouseManagerOptions} warehouse={selectedWarehouse} />)
+        ? renderLazy(
+            <WarehouseEditPage
+              managerOptions={selectedWarehouseManagerOptions}
+              warehouse={selectedWarehouse}
+              warehouseManagerRoleId={warehouseManagerRoleId}
+            />,
+          )
         : (
             <MissingRecordState
               backLabel={detailCopy.shared.back}

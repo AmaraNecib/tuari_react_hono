@@ -12,7 +12,7 @@ import { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, Sur
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import { createProjectFormState, ProjectFormFields, type ProjectFormErrors } from "./project-form"
-import { useManagerInlineCreateSelection } from "./manager-inline-create"
+import { useProjectManagerInlineCreateSelection } from "./project-manager-inline"
 
 function mapServerErrors(error: AppMutationError): ProjectFormErrors {
   const errors: ProjectFormErrors = {}
@@ -57,7 +57,7 @@ export function ProjectCreatePage({
   const createProjectMutation = useCreateProjectMutation()
   const [state, setState] = useState(() => createProjectFormState())
   const [errors, setErrors] = useState<ProjectFormErrors>({})
-  const { managerCreate, managerDisplayValue } = useManagerInlineCreateSelection({
+  const { createConfig: managerCreate, selectedDisplayValue: managerDisplayValue } = useProjectManagerInlineCreateSelection({
     projectManagerRoleId,
     selectedManagerId: state.managerId,
   })

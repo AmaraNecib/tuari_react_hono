@@ -2,6 +2,7 @@ import { FieldSection, NativeSelect, Textarea } from "@/components/ui/form-contr
 import { Field } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { CreateableSelect } from "@/components/ui/createable-select"
+import type { EmployeeInlineCreateConfig } from "@/features/employees/use-employee-inline-create"
 
 import type { WarehousePageRecord } from "./warehouse-details-page"
 
@@ -35,14 +36,14 @@ export function createWarehouseFormState(warehouse?: WarehousePageRecord | null)
 export function WarehouseFormFields({
   errors,
   labels,
+  managerCreate,
+  managerDisplayValue,
   managerOptions,
-  onCreateManager,
   state,
   statusOptions,
   title,
   description,
   onChange,
-  translations,
 }: {
   errors: WarehouseFormErrors
   labels: {
@@ -53,17 +54,9 @@ export function WarehouseFormFields({
     notes: string
     noManager: string
   }
+  managerCreate?: EmployeeInlineCreateConfig
+  managerDisplayValue?: string
   managerOptions: Array<{ id: string; label: string }>
-  onCreateManager?: (data: Record<string, string>) => Promise<{ id: string; name: string }>
-  translations?: {
-    firstName: string
-    firstNamePlaceholder: string
-    lastName: string
-    lastNamePlaceholder: string
-    phone: string
-    phonePlaceholder: string
-    createManager: string
-  }
   state: WarehouseFormState
   statusOptions: Array<{ value: WarehouseFormState["status"]; label: string }>
   title: string
@@ -85,16 +78,10 @@ export function WarehouseFormFields({
             onChange={(value) => onChange({ ...state, managerId: value })}
             options={managerOptions.map((m) => ({ id: m.id, name: m.label }))}
             emptyLabel={labels.noManager}
-            createLabel={translations?.createManager ?? "إضافة موظف"}
-            createFields={[
-              { key: "firstName", label: translations?.firstName ?? "الاسم", placeholder: translations?.firstNamePlaceholder ?? "اسم الموظف...", required: true },
-              { key: "lastName", label: translations?.lastName ?? "اللقب", placeholder: translations?.lastNamePlaceholder ?? "لقب الموظف...", required: true },
-              { key: "phone", label: translations?.phone ?? "رقم الهاتف", placeholder: translations?.phonePlaceholder ?? "0612345678" },
-            ]}
-            onCreate={onCreateManager ? async (data) => {
-              const result = await onCreateManager(data)
-              return result
-            } : undefined}
+            displayValue={managerDisplayValue}
+            createLabel={managerCreate?.createLabel}
+            createFields={managerCreate?.fields}
+            onCreate={managerCreate?.onCreate}
           />
         </Field>
         <Field label={labels.status} error={errors.status}>

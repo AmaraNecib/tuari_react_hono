@@ -6,8 +6,8 @@ import type { ReactNode } from "react"
 import { CreateableSelect } from "@/components/ui/createable-select"
 import { FieldSection, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
+import type { EmployeeInlineCreateConfig } from "@/features/employees/use-employee-inline-create"
 
-import type { ManagerInlineCreateConfig } from "./manager-inline-create"
 import type { ProjectPageRecord } from "./project-details-page"
 
 export type ProjectFormState = {
@@ -60,7 +60,7 @@ export function ProjectFormFields({
     notes: string
     noManager: string
   }
-  managerCreate?: ManagerInlineCreateConfig
+  managerCreate?: EmployeeInlineCreateConfig
   managerDisplayValue?: string
   managerOptions: Array<{ id: string; label: string }>
   state: ProjectFormState

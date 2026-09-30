@@ -13,7 +13,7 @@ import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import type { ProjectPageRecord } from "./project-details-page"
 import { createProjectFormState, ProjectFormFields, type ProjectFormErrors, type ProjectFormState } from "./project-form"
-import { useManagerInlineCreateSelection } from "./manager-inline-create"
+import { useProjectManagerInlineCreateSelection } from "./project-manager-inline"
 
 /**
  * @description Component
@@ -32,7 +32,7 @@ export function ProjectEditPage({
   const updateProjectMutation = useUpdateProjectMutation()
   const [state, setState] = useState<ProjectFormState>(() => createProjectFormState(project))
   const [errors, setErrors] = useState<ProjectFormErrors>({})
-  const { managerCreate, managerDisplayValue } = useManagerInlineCreateSelection({
+  const { createConfig: managerCreate, selectedDisplayValue: managerDisplayValue } = useProjectManagerInlineCreateSelection({
     projectManagerRoleId,
     selectedManagerId: state.managerId,
   })

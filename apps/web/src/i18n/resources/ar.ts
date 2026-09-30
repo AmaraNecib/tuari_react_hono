@@ -513,7 +513,6 @@ export const ar = {
           external: "طرف خارجي",
         },
         partySelect: "اختر الطرف",
-        createEmployee: "إضافة موظف",
         createExternal: "إضافة طرف خارجي",
         employeeFields: {
           firstName: "الاسم",
@@ -756,6 +755,7 @@ export const ar = {
         saveChanges: "حفظ التغييرات",
         validation: {
           nameRequired: "اسم المستودع مطلوب.",
+          managerCreateError: "تعذر إنشاء المدير الآن. تحقق من البيانات وحاول مرة أخرى.",
         },
         createBreadcrumb: "إضافة مستودع",
         editBreadcrumb: "تعديل مستودع",

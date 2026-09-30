@@ -8,7 +8,7 @@ import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import { Field } from "@/components/ui/field"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { Surface } from "@/features/shared/page-primitives"
-import { useCreateDebtAccountMutation, useCreateExternalCounterpartyMutation, useCreateEmployeesBatchMutation } from "@/features/app-shell/mock-dashboard"
+import { useCreateDebtAccountMutation, useCreateExternalCounterpartyMutation } from "@/features/app-shell/mock-dashboard"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 import type { useHomeViewNavigation } from "@/features/app-shell/home-view-navigation"
@@ -119,7 +119,6 @@ export function DebtCreatePage({
   const { t } = useTranslation()
   const createDebtAccountMutation = useCreateDebtAccountMutation()
   const createExternalMutation = useCreateExternalCounterpartyMutation()
-  const createEmployeeMutation = useCreateEmployeesBatchMutation()
 
   // Form state
   const [partyType, setPartyType] = useState<"INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY">(
@@ -231,6 +230,13 @@ export function DebtCreatePage({
 
           {/* Party Selection */}
           <Field label={t("detailPages.debt.partySelect")}>
+            {/*
+             * Inline create is offered for external counterparties only. The
+             * internal-worker create could never succeed: the API rejects an
+             * ACTIVE worker that has no project and no direct manager, and this
+             * text-only dialog cannot collect either. Creating a worker belongs
+             * in the employees form, which collects the workplace.
+             */}
             <CreateableSelect
               value={selectedPartyId}
               onChange={setSelectedPartyId}
@@ -240,46 +246,23 @@ export function DebtCreatePage({
                   : externalCounterparties.map((p) => ({ id: p.id, name: p.fullName }))
               }
               emptyLabel={t("detailPages.debt.partySelect")}
-              createLabel={partyType === "INTERNAL_WORKER" ? t("detailPages.debt.createEmployee") : t("detailPages.debt.createExternal")}
+              createLabel={partyType === "EXTERNAL_COUNTERPARTY" ? t("detailPages.debt.createExternal") : undefined}
               createFields={
-                partyType === "INTERNAL_WORKER"
+                partyType === "EXTERNAL_COUNTERPARTY"
                   ? [
-                      { key: "firstName", label: t("detailPages.debt.employeeFields.firstName"), placeholder: t("detailPages.debt.employeeFields.firstNamePlaceholder"), required: true },
-                      { key: "lastName", label: t("detailPages.debt.employeeFields.lastName"), placeholder: t("detailPages.debt.employeeFields.lastNamePlaceholder"), required: true },
-                      { key: "phone", label: t("detailPages.debt.employeeFields.phone"), placeholder: t("detailPages.debt.employeeFields.phonePlaceholder") },
-                    ]
-                  : [
                       { key: "fullName", label: t("detailPages.debt.externalFields.fullName"), placeholder: t("detailPages.debt.externalFields.fullNamePlaceholder"), required: true },
-                      { key: "phone", label: t("detailPages.debt.externalFields.phone"), placeholder: t("detailPages.debt.externalFields.phonePlaceholder") },
+                      { key: "phone", label: t("detailPages.debt.externalFields.phone"), placeholder: t("detailPages.debt.externalFields.phonePlaceholder"), required: true },
                     ]
+                  : undefined
               }
-              onCreate={async (data) => {
-                if (partyType === "INTERNAL_WORKER") {
-                  const result = await createEmployeeMutation.mutateAsync({
-                    employees: [{
-                      firstName: data.firstName ?? "",
-                      lastName: data.lastName ?? "",
-                      phone: data.phone || "",
-                      roleId: "",
-                      status: "ACTIVE",
-                      managerId: null,
-                      salaryAmountDzd: null,
-                      salaryPeriod: null,
-                      notes: null,
-                    }],
-                  })
-                  return result.createdCount > 0
-                    ? { id: "new", name: `${data.firstName} ${data.lastName}` }
-                    : { id: "", name: "" }
-                } else {
-                  const result = await createExternalMutation.mutateAsync({
-                    fullName: data.fullName ?? "",
-                    phoneNumber: data.phone || "",
-                    note: null,
-                  })
-                  return { id: result.item.id, name: data.fullName ?? "" }
-                }
-              }}
+              onCreate={partyType === "EXTERNAL_COUNTERPARTY" ? async (data) => {
+                const result = await createExternalMutation.mutateAsync({
+                  fullName: data.fullName ?? "",
+                  phoneNumber: data.phone || "",
+                  note: null,
+                })
+                return { id: result.item.id, name: data.fullName ?? "" }
+              } : undefined}
             />
           </Field>
 

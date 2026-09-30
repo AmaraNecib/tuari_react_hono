@@ -278,7 +278,7 @@ describe("edit pages resync when record props change", () => {
     } as const
 
     const { rerender } = render(
-      <WarehouseEditPage managerOptions={[{ id: "mgr-1", label: "مدير 1" }]} warehouse={warehouse} />,
+      <WarehouseEditPage managerOptions={[{ id: "mgr-1", label: "مدير 1" }]} warehouse={warehouse} warehouseManagerRoleId="role-whm" />,
     )
 
     fireEvent.change(screen.getByDisplayValue("مستودع أول"), { target: { value: "اسم معدل" } })
@@ -287,6 +287,7 @@ describe("edit pages resync when record props change", () => {
       <WarehouseEditPage
         managerOptions={[{ id: "mgr-1", label: "مدير 1" }]}
         warehouse={{ ...warehouse, notes: "ملاحظات أولى" }}
+        warehouseManagerRoleId="role-whm"
       />,
     )
 
@@ -306,6 +307,7 @@ describe("edit pages resync when record props change", () => {
           status: "ACTIVE",
           notes: "ملاحظات أولى",
         }}
+        warehouseManagerRoleId="role-whm"
       />,
     )
 
@@ -323,6 +325,7 @@ describe("edit pages resync when record props change", () => {
           status: "INACTIVE",
           notes: "ملاحظات ثانية",
         }}
+        warehouseManagerRoleId="role-whm"
       />,
     )
 

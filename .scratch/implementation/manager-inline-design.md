@@ -1,8 +1,9 @@
-# Create a project manager inline from the project form
+# Inline create from a form (project / warehouse managers; debt worker removed)
 
-- **Ticket:** owner item 1 of the `feat-manager-inline` lane (no GitHub number issued)
-- **Mode:** remote (repo works against `AmaraNecib/tuari_react_hono`); this lane
-  does not push or open a PR — the parent owns that.
+- **Ticket:** owner item 1 of the `feat-manager-inline` lane (no GitHub number issued),
+  expanded by parent decision to cover every caller of the shared inline-create pattern.
+- **Mode:** remote (repo works against `AmaraNecib/tuari_react_hono`); this lane does
+  not push or open a PR — the parent owns that.
 - **Branch/worktree:** `feat/manager-inline` at `worktrees/feat-manager-inline`
 - **Base:** `develop`
 - **Base SHA (fixed):** `22495413b7d792e20afcce24a94d6c84c61dd523`
@@ -10,60 +11,83 @@
 
 ## Problem
 
-The project form's manager selector is a `NativeSelect` whose options are
-`derived.projectManagerOptions` — active employees who already hold the
-`project_manager` role. An admin who wants a brand-new manager must leave the
-form, go to the employees page, create the person with the `project_manager`
-role, then come back and lose the rest of the form. The warehouse form already
-shows a `CreateableSelect` next to a "create" dialog; this lane reuses that
-pattern for the project manager instead of inventing a second one.
+The project form's manager selector was a plain select of employees who already
+hold the `project_manager` role, so creating a manager meant leaving the form and
+losing its state. The warehouse and debt forms already used `CreateableSelect`,
+but their inline creates were broken:
 
-## What the reused pattern lacked (and why it was extended)
+- both sent `roleId: ""`, which the wire schema (`entityIdSchema` = `z.string().min(1)`)
+  rejects before the handler runs, so the create **always failed** with a raw
+  English "Input validation failed";
+- both then selected a fabricated `{ id: "new" }` / `{ id: "" }`, an id that does
+  not exist on the server.
 
-The `CreateableSelect` component itself needed **no** change: its `onCreate`
-contract already returns `{ id, name }` and it already renders
-`error.message` in the dialog. Two gaps lived outside it:
+## Decision
 
-1. **The batch-create mutation discarded the new row's id.**
-   `useCreateEmployeesBatchMutation` collapsed the API's
-   `employeeBatchCreateResult` (which contains the created `employees[]`) into
-   `{ createdCount }`. Both the warehouse and debt inline-create callers work
-   around this with a hard-coded `{ id: "new" }`, so their "selection" is a
-   non-existent id. The hook is extended to return `employees: Employee[]`
-   (keeping `createdCount`, so existing callers do not change).
-2. **The create row had no role.** `employeeCreateInputSchema.roleId` is
-   `z.string().min(1)` and `requireAssignableEmployeeRole` rejects an empty /
-   non-system role. The inline manager create therefore has to send the real
-   `project_manager` role id; the pages already have it in
-   `derived.roles` (the `project_manager` system role is seeded by
-   `roleSeeds`), so it is passed down as a `projectManagerRoleId` prop.
+One shared inline-employee-create implementation, used by every form that creates
+a person, with the real role id and the real returned employee id. The parent
+decided to fix all callers in this PR rather than leave two broken copies next to
+a working one.
 
-The `CreateableSelect` dialog also needs a stable accepted phone because
-`algerianPhoneSchema` is `^(05|06|07)\d{8}$`; the phone field is marked
-required so the dialog's own localized validation fires before the wire.
+`useEmployeeInlineCreate` (`apps/web/src/features/employees/use-employee-inline-create.ts`)
+owns the mutation, the row shape, and the failure contract. Callers own only the
+labels and the role id. `useEmployeeInlineCreateSelection` adds the
+"remember the created person and show their name until the snapshot refetches"
+bookkeeping.
+
+## Roles per caller (seeded system roles)
+
+| Form | Role | Why |
+| --- | --- | --- |
+| Project create/edit manager | `project_manager` | No required relations; shown in manager options by design. |
+| Warehouse create/edit manager | `warehouse_manager` | No required relations; shown in warehouse-manager options by design. |
+| Debt party (internal worker) | — | **Removed.** See below. |
+
+**Why the debt internal-worker create was removed, not wired to `worker`.**
+`WorkforceService.createEmployeesBatch` rejects an ACTIVE `worker` that has no
+`projectId` and no `managerId`
+(`"اختيار المدير المباشر مطلوب للعامل النشط."` /
+`"اختيار المشروع مطلوب للعامل النشط."`). The debt dialog collects name + phone
+only, and `CreateableSelect` fields are text inputs, so it cannot supply the two
+required relations. Assigning `project_manager`/`warehouse_manager` instead would
+mislabel the person and inject them into the manager dropdowns. So the correct
+fix is to stop offering an internal-worker create there; creating a worker stays
+in the employees form, which collects the workplace. The external-counterparty
+inline create is untouched.
 
 ## Public interfaces / changed contracts
 
-New module `apps/web/src/features/projects/manager-inline-create.ts`:
+`apps/web/src/features/employees/use-employee-inline-create.ts` (new):
 
 ```ts
-export type ManagerInlineCreateConfig = {
+export type EmployeeInlineCreateField = { key: string; label: string; placeholder?: string; required?: boolean }
+export type EmployeeInlineCreateConfig = {
   createLabel: string
-  fields: Array<{ key: string; label: string; placeholder?: string; required?: boolean }>
+  fields: EmployeeInlineCreateField[]
   onCreate: (data: Record<string, string>) => Promise<{ id: string; name: string }>
 }
 
-export function useProjectManagerInlineCreate(
-  projectManagerRoleId: string,
-): ManagerInlineCreateConfig | undefined
+export function useEmployeeInlineCreate(args: {
+  roleId: string
+  createLabel: string
+  fields: EmployeeInlineCreateField[]
+  errorMessage: string
+}): EmployeeInlineCreateConfig | undefined
+
+export function useEmployeeInlineCreateSelection(args: {
+  roleId: string
+  createLabel: string
+  fields: EmployeeInlineCreateField[]
+  errorMessage: string
+  selectedEmployeeId: string
+}): { createConfig: EmployeeInlineCreateConfig | undefined; selectedDisplayValue: string | undefined }
 ```
 
-- Returns `undefined` when no `project_manager` role id is available, so the
-  form hides the create option instead of offering a create that cannot work.
-- `onCreate` maps a thrown `AppMutationError` straight through (server messages
-  are already Arabic) and wraps anything else (wire-validation / network) in a
-  localized `detailPages.project.validation.managerCreateError` message, so the
-  dialog always shows localized text.
+- Returns `undefined` when `roleId` is empty, hiding the create option.
+- Throws the localized `errorMessage` when the API returns no row or no id — no
+  fabricated id, and a missing id fails loudly.
+- Wraps every non-`AppMutationError` failure (wire validation, network) in the
+  localized `errorMessage`, so no English text reaches the dialog.
 
 `apps/web/src/features/app-shell/workspace-mutations.ts`:
 
@@ -74,68 +98,58 @@ export type EmployeeBatchCreateResult = {
 }
 ```
 
-`apps/web/src/features/projects/project-form.tsx`:
+`ProjectFormFields` and `WarehouseFormFields` both take
+`managerCreate?: EmployeeInlineCreateConfig` and `managerDisplayValue?: string`,
+and render the manager field with `CreateableSelect`. The warehouse form's old
+`onCreateManager` / `translations` props (with hard-coded Arabic fallbacks) are
+gone.
 
-```ts
-ProjectFormFields({
-  ...
-  managerCreate?: ManagerInlineCreateConfig
-  managerDisplayValue?: string
-})
-```
+Feature wrappers keep the per-form labels in one place:
+`projects/project-manager-inline.ts`, `warehouses/warehouse-manager-inline.ts`.
 
-- The manager `NativeSelect` becomes `CreateableSelect`.
-- `managerCreate` supplies `createLabel` / `createFields` / `onCreate`.
-- `managerDisplayValue` is the "not yet in options" label for a freshly created
-  manager, so the trigger never flashes the raw UUID while the workspace
-  snapshot refetches.
+`ProjectCreatePage` / `ProjectEditPage` take `projectManagerRoleId`;
+`WarehouseCreatePage` / `WarehouseEditPage` take `warehouseManagerRoleId`.
+`HomeViewPageDetailContent` derives both from `derived.roles`
+(`project_manager` / `warehouse_manager`).
 
-`ProjectCreatePage` / `ProjectEditPage` gain `projectManagerRoleId: string`.
-`HomeViewPageDetailContent` derives it once from `derived.roles`
-(`key === "project_manager"`) and passes it to both pages.
+## Tests
 
-## Why the selection survives without a reload
+Unit:
 
-- The form state lives in the page (`useState`); the create dialog is a sibling
-  rendered inside `CreateableSelect`, so creating a manager only calls the
-  manager field's `onChange(newId)` — every other field is untouched.
-- `useCreateEmployeesBatchMutation` invalidates the `employees` (and snapshot)
-  domains, so `derived.projectManagerOptions` refetches and now contains the
-  new `project_manager`, giving the trigger the real name rather than the raw id.
-- The page also remembers the created `{ id, name }` and passes
-  `managerDisplayValue` while that id is selected, covering the refetch window.
+- `projects/project-create-page.test.tsx` — create ends with the real id
+  selected, `project_manager` role sent, other fields survive, localized
+  fallback + server message + missing-row failures, create hidden without a role.
+- `warehouses/warehouse-create-page.test.tsx` — same for `warehouse_manager`,
+  asserting the real returned id drives the selection.
+- `features/debts/debt-create-page.test.tsx` — pins that the internal-worker
+  branch offers **no** create option and the external branch still does.
+- `app-shell/workspace-mutations.test.ts` — pins that the hook returns
+  `employees[]` with real ids, so a regression to `{ id: "new" }` is visible.
 
-## Planned tests
+E2E (Playwright):
 
-Unit (`apps/web/src/features/projects/project-create-page.test.tsx`, jsdom):
-
-1. Inline create ends with the new manager selected: open the create option,
-   fill the fields, submit, assert `onCreate` was called with the real
-   `project_manager` role id and the trigger shows the created name.
-2. The form's other fields survive the create (name / location / notes stay).
-3. A rejected create shows a visible localized error in the dialog and the
-   dialog stays open.
-
-Unit (`apps/web/src/features/app-shell/workspace-mutations.test.ts` or a focused
-test) — pin that the batch-create hook surfaces the created employee ids, so a
-regression to `{ id: "new" }` cannot silently return.
-
-Playwright (`tests/e2e/projects.spec.ts`): create a project, inline-create the
-manager from the form, assert the manager is selected and the saved project
-shows that manager. Added because the flow is user-facing; run only when the
-local e2e infra (ports/DB fixtures) is free.
+- `projects.spec.ts` — inline-create a manager and save the project.
+- `warehouses.spec.ts` — inline-create a warehouse manager and save the warehouse.
 
 ## Risks / migration
 
-- The `project_manager` role must be seeded; it is (`DEFAULT_ROLE_PERMISSIONS`).
-  When it is absent the create option simply does not render.
-- `EmployeeBatchCreateResult` is a web-local type that shadows the identically
-  named contract type; the added field mirrors the contract output, no wire
-  change. No API or contract change in this lane.
-- Out of scope but observed: the warehouse and debt inline-create callers still
-  send `roleId: ""` and return the hard-coded `{ id: "new" }`, so they remain
-  broken. Reported to the parent as a deferred finding, not silently fixed.
+- `EmployeeBatchCreateResult` is a web-local type shadowing the identically named
+  contract type; the added field mirrors the contract output. No API/contract change.
+- The `project_manager` / `warehouse_manager` roles must be seeded; they are
+  (`DEFAULT_ROLE_PERMISSIONS`). When absent the create option is simply hidden.
+- The debt form loses its internal-worker inline create. That is intentional and
+  documented above; restoring it needs either relation pickers in the dialog or a
+  relaxed worker invariant — both out of scope.
 
 ## Base SHA
 
 `22495413b7d792e20afcce24a94d6c84c61dd523` (`git merge-base develop HEAD`).
+
+## Suggested PR subject/body (parent owns the PR)
+
+Subject: `feat(web): inline create from a form — project + warehouse managers (real ids, real roles)`.
+Body: state that it is the shared "inline create from a form" pattern across the
+forms that use it, that warehouse/debt previously always failed at the wire gate
+with a fabricated id, that the debt internal-worker create was removed because
+the API requires an active worker to have a project + direct manager, and list
+the verification evidence.

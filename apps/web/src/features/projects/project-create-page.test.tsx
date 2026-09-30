@@ -114,6 +114,7 @@ describe("ProjectCreatePage — inline manager creation", () => {
       createdCount: 1,
       employees: [{ id: "emp-new-1", firstName: "سعيد", lastName: "بلقاسم" }],
     })
+    mocks.createProjectMutate.mockResolvedValue({ item: { id: "project-9" } })
 
     renderCreatePage()
 
@@ -154,7 +155,14 @@ describe("ProjectCreatePage — inline manager creation", () => {
     expect((screen.getByLabelText("اسم المشروع") as HTMLInputElement).value).toBe("مشروع تجريبي")
     expect((screen.getByLabelText("الموقع") as HTMLInputElement).value).toBe("الجزائر العاصمة")
     expect((screen.getByLabelText("ملاحظات") as HTMLTextAreaElement).value).toBe("ملاحظة تبقى بعد الإنشاء")
-    expect(mocks.createProjectMutate).not.toHaveBeenCalled()
+
+    // The submitted managerId is the REAL id the mutation returned, not a
+    // placeholder like "new".
+    fireEvent.click(screen.getByRole("button", { name: "حفظ المشروع" }))
+    await waitFor(() => expect(mocks.createProjectMutate).toHaveBeenCalledTimes(1))
+    expect(mocks.createProjectMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ managerId: "emp-new-1", name: "مشروع تجريبي" }),
+    )
   })
 
   it("shows a localized error and keeps the dialog open when the create is rejected", async () => {
