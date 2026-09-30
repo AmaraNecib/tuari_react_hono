@@ -274,40 +274,9 @@ describe("FinanceService coverage branches", () => {
     });
   });
 
-  describe("getEmployeeDebtAccount / createEmployeeDebtEntry", () => {
-    it("returns null when the employee has no debt account yet", () => {
-      const { service, roleIds } = createHarness();
-      const worker = service.createEmployee({
-        firstName: "عامل",
-        lastName: "أول",
-        phone: "0551000001",
-        roleId: roleIds.worker,
-        status: "ACTIVE",
-      }).item;
-      expect(service.finance.getEmployeeDebtAccount(worker.id, "PAYABLE")).toBeNull();
-    });
-
-    it("returns the existing worker debt account", () => {
-      const { service, roleIds } = createHarness();
-      const worker = service.createEmployee({
-        firstName: "عامل",
-        lastName: "ثان",
-        phone: "0551000002",
-        roleId: roleIds.worker,
-        status: "ACTIVE",
-      }).item;
-      service.finance.createEmployeeDebtEntry({
-        employeeId: worker.id,
-        entryType: "OPENING",
-        amountDzd: 2000,
-      });
-      const account = service.finance.getEmployeeDebtAccount(worker.id, "PAYABLE");
-      expect(account?.workerId).toBe(worker.id);
-      expect(account?.currentBalance).toBe(2000);
-    });
-
+  describe("createEmployeeDebtEntry", () => {
     it("creates the account on first entry and records ADVANCE entries", () => {
-      const { service, roleIds } = createHarness();
+      const { service, repository, roleIds } = createHarness();
       const worker = service.createEmployee({
         firstName: "عامل",
         lastName: "ثالث",
@@ -323,7 +292,7 @@ describe("FinanceService coverage branches", () => {
       });
       expect(entry.entryType).toBe("ADVANCE");
       expect(entry.signedAmountDzd).toBe(500);
-      const account = service.finance.getEmployeeDebtAccount(worker.id, "RECEIVABLE");
+      const account = repository.getDebtAccountByWorkerIdAndDirection(worker.id, "RECEIVABLE");
       expect(account?.currentBalance).toBe(500);
     });
 
@@ -364,8 +333,8 @@ describe("FinanceService coverage branches", () => {
       ).toThrowError(CompanyError);
     });
 
-    it("reads the ledger the caller names when the worker holds two (D3)", () => {
-      const { service, roleIds } = createHarness();
+    it("keeps one ledger per direction when the worker holds two (D3)", () => {
+      const { service, repository, roleIds } = createHarness();
       const worker = service.createEmployee({
         firstName: "عامل",
         lastName: "مزدوج",
@@ -377,10 +346,12 @@ describe("FinanceService coverage branches", () => {
       service.finance.createEmployeeDebtEntry({ employeeId: worker.id, entryType: "ADVANCE", amountDzd: 500 });
       service.finance.createEmployeeDebtEntry({ employeeId: worker.id, entryType: "OPENING", amountDzd: 1000 });
 
-      expect(service.finance.getEmployeeDebtAccount(worker.id, "RECEIVABLE")?.currentBalance).toBe(500);
-      expect(service.finance.getEmployeeDebtAccount(worker.id, "PAYABLE")?.currentBalance).toBe(1000);
-      expect(service.finance.getEmployeeDebtAccount(worker.id, "RECEIVABLE")?.direction).toBe("RECEIVABLE");
-      expect(service.finance.getEmployeeDebtAccount(worker.id, "PAYABLE")?.direction).toBe("PAYABLE");
+      const receivable = repository.getDebtAccountByWorkerIdAndDirection(worker.id, "RECEIVABLE");
+      const payable = repository.getDebtAccountByWorkerIdAndDirection(worker.id, "PAYABLE");
+      expect(receivable?.currentBalance).toBe(500);
+      expect(payable?.currentBalance).toBe(1000);
+      expect(receivable?.direction).toBe("RECEIVABLE");
+      expect(payable?.direction).toBe("PAYABLE");
     });
 
     it("rejects createDebtAccount with no direction instead of defaulting to PAYABLE", () => {

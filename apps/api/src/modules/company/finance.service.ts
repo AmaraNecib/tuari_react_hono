@@ -80,13 +80,6 @@ export class FinanceService {
   // callers that prefer the cross-domain coordinator.
   // ---------------------------------------------------------------------------
 
-  getEmployeeDebtAccount(employeeId: string, direction: DebtAccountCreateInput["direction"]) {
-    requireEmployee(this.workforceRepo, employeeId);
-    // A worker holds one ledger per direction (D3), so this read must name the
-    // ledger it means. Returning `accounts[0]` was direction-blind.
-    return this.repository.getDebtAccountByWorkerIdAndDirection(employeeId, direction) ?? null;
-  }
-
   createEmployeeDebtEntry(
     input: {
       employeeId: string;

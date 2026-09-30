@@ -1,11 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, renderHook } from "@testing-library/react"
 import type { ReactNode } from "react"
 
 const mocks = vi.hoisted(() => ({
   session: vi.fn(),
-  accountGet: vi.fn(),
   entryCreate: vi.fn(),
 }))
 
@@ -14,7 +13,6 @@ vi.mock("@/lib/orpc-client", async (importOriginal) => {
   return {
     ...actual,
     rpcClient: {
-      employeeDebtAccountGet: mocks.accountGet,
       employeeDebtEntryCreate: mocks.entryCreate,
     },
   }
@@ -24,11 +22,9 @@ vi.mock("@/features/session/use-session-query", () => ({
   useSessionQuery: mocks.session,
 }))
 
-import {
-  useCreateEmployeeDebtEntryMutation,
-  useEmployeeDebtAccountQuery,
-} from "./employee-debt-hooks"
+import { useCreateEmployeeDebtEntryMutation } from "./employee-debt-hooks"
 import { orpc } from "@/lib/orpc-client"
+import { workspaceQueryKeys } from "@/features/app-shell/workspace-keys"
 
 function makeQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -40,40 +36,17 @@ function wrapper(queryClient: QueryClient) {
   }
 }
 
-const ACCOUNT_BEFORE = {
-  id: "debt-account-1",
-  partyType: "INTERNAL_WORKER",
-  workerId: "employee-1",
-  externalCounterpartyId: null,
-  status: "OPEN",
-  direction: "PAYABLE",
-  currentBalance: 300,
-  note: null,
-  settledAt: null,
-  actorUserId: "user-1",
-  actorLabel: "مدير التشغيل",
-  transactionId: "tx-1",
-  createdAt: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z",
-} as const
-
-const ACCOUNT_AFTER = {
-  ...ACCOUNT_BEFORE,
-  currentBalance: 500,
-  updatedAt: "2026-01-02T00:00:00.000Z",
-} as const
-
 /**
- * Integration test across the query-key seam (issue #236): the employee debt
- * account query (user-scoped `employeeDebtAccount` key) must refetch after
- * the create-entry mutation's null-safe invalidation, so a new entry's
- * balance is reflected without a manual refresh.
+ * The employee-debt write is a consumerless hook today, but its cache
+ * invalidation is the seam the debts views depend on: creating an entry
+ * changes the worker's ledger and the debts summary/detail. The single-account
+ * read key it used to target was deleted with the dead EmployeeDebtPanel, so
+ * this pins the domains it invalidates instead.
  */
-describe("employee debt account — freshness after entry create", () => {
+describe("employee debt entry mutation — invalidation", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.session.mockReturnValue({ data: { user: { id: "user-1" } } })
-    mocks.accountGet.mockResolvedValue({ success: true, message: "ok", item: ACCOUNT_BEFORE })
     mocks.entryCreate.mockResolvedValue({
       success: true,
       message: "تم تسجيل العملية.",
@@ -81,26 +54,19 @@ describe("employee debt account — freshness after entry create", () => {
     })
   })
 
-  it("shows the updated account after the create-entry mutation resolves", async () => {
+  it("invalidates the debts summary/detail and employees keys with the session user", async () => {
     const queryClient = makeQueryClient()
     queryClient.setQueryData(orpc.session.queryOptions().queryKey, {
       user: { id: "user-1", name: "مدير التشغيل", phone: "0612345678", version: "0.0.0" },
     })
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
 
-    const { result: accountResult } = renderHook(() => useEmployeeDebtAccountQuery("employee-1", "PAYABLE"), {
+    const { result } = renderHook(() => useCreateEmployeeDebtEntryMutation(), {
       wrapper: wrapper(queryClient),
     })
-    const { result: mutationResult } = renderHook(() => useCreateEmployeeDebtEntryMutation(), {
-      wrapper: wrapper(queryClient),
-    })
-
-    await waitFor(() => expect(accountResult.current.data?.currentBalance).toBe(300))
-
-    // Simulate the server-side update: the next fetch returns the new balance.
-    mocks.accountGet.mockResolvedValue({ success: true, message: "ok", item: ACCOUNT_AFTER })
 
     await act(async () => {
-      await mutationResult.current.mutateAsync({
+      await result.current.mutateAsync({
         employeeId: "employee-1",
         entryType: "ADVANCE",
         amountDzd: 200,
@@ -109,7 +75,9 @@ describe("employee debt account — freshness after entry create", () => {
       })
     })
 
-    await waitFor(() => expect(accountResult.current.data?.currentBalance).toBe(500))
-    expect(accountResult.current.data?.id).toBe("debt-account-1")
+    const invalidatedKeys = invalidateQueries.mock.calls.map(([arg]) => arg?.queryKey)
+    expect(invalidatedKeys).toContainEqual(workspaceQueryKeys.debtsSummary("user-1"))
+    expect(invalidatedKeys).toContainEqual(workspaceQueryKeys.debtsDetail("user-1"))
+    expect(invalidatedKeys).toContainEqual(workspaceQueryKeys.employees("user-1"))
   })
 })

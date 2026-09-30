@@ -58,7 +58,8 @@ Delete the overloads. Replace with two pairs, no optional direction anywhere:
   Absent means "no opening" (0). A supplied 0 or negative is rejected.
 - keep the D2 mismatch rejection; the category is a **consistency constraint**, not a
   direction source.
-- `employeeDebtAccountGetInputSchema`: add required `direction`.
+- `employeeDebtAccountGetInputSchema`: add required `direction`. (The whole endpoint was
+  deleted in lane 2 — see the out-of-scope note below.)
 
 ### `apps/api/src/modules/company/finance.service.ts`
 
@@ -80,7 +81,7 @@ Delete the overloads. Replace with two pairs, no optional direction anywhere:
 ### `apps/web/src/features/debts/employee-debt-hooks.ts`
 
 - `useEmployeeDebtAccountQuery(employeeId, direction)`; the direction is part of the query
-  key and the RPC input.
+  key and the RPC input. (Deleted in lane 2 — no production consumer.)
 
 ### `apps/web/src/features/debts/employee-debt-panel.tsx`
 
@@ -142,8 +143,10 @@ proven above.
 
 ## Out of scope (filed / deferred)
 
-- The endpoint envelope for `employeeDebtAccountGet` (`createEntityResultSchema` vs the raw
-  account the service returns) is a pre-existing inconsistency; no production consumer
-  remains after the panel is deleted. Recorded in the design pass.
+- The `employeeDebtAccountGet` endpoint envelope mismatch and its consumerless read path were
+  **deleted end-to-end** in the lane-2 follow-up on this branch (parent decision): the endpoint,
+  contract entry, handler, `FinanceService.getEmployeeDebtAccount`, the web hook and the
+  `employeeDebtAccount` query key are gone, so the envelope is moot. See
+  `.scratch/reviews/458/design-pass.md` (lane 2).
 - The pnpm/npm-based `debts.terminology.buttons` duplicates are left, as the issue names
   states and directions.

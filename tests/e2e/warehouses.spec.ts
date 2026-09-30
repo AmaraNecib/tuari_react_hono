@@ -41,8 +41,8 @@ test("a warehouse created in the workspace appears in the inventory transfer sel
   // query key / endpoint the workspace page wrote to — one source of truth
   // for warehouse data across both features (issue #236). The fresh boot
   // proves the shared key/endpoint coupling; the create-mutation invalidation
-  // seam itself is pinned by the unit integration tests (inventory-hooks /
-  // employee-debt-hooks) and the typed invalidation helper tests. Options
+  // seam itself is pinned by the unit integration tests (inventory-hooks) and
+  // the typed invalidation helper tests. Options
   // inside a collapsed native <select> are never "visible", so assert
   // presence (count) instead.
   await page.goto("/outbound-transfers/create")

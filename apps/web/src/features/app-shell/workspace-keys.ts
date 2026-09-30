@@ -87,7 +87,6 @@ export const workspaceQueryKeys = {
   projectCost: (userId: UserId, projectId: string) => ["phase1", "workspace-domain", "project-cost", userId, projectId] as const,
   inventoryLocationContents: (userId: UserId, input: { warehouseId?: string; projectId?: string }) =>
     ["phase1", "workspace-domain", "inventory-location-contents", userId, input] as const,
-  employeeDebtAccount: (userId: UserId, employeeId: string) => ["phase1", "workspace-domain", "employee-debt-account", userId, employeeId] as const,
 } as const
 
 /**
@@ -123,7 +122,7 @@ export function getCachedSessionUserId(queryClient: Pick<QueryClient, "getQueryD
  * `invalidateWorkspaceDomains` refreshes the snapshot whenever a mutation
  * touches one of these: the shell composite no longer mounts the per-domain
  * queries — the snapshot is its only workspace data source. Feature-scoped
- * keys (debtsSummary/debtsDetail/employeeDebtAccount, inventory keys,
+ * keys (debtsSummary/debtsDetail, inventory keys,
  * systemLog) are deliberately excluded so a debts-only mutation does not
  * drag the whole snapshot through the wire again.
  *
@@ -198,7 +197,7 @@ export async function invalidateWorkspaceDomains(
  * Null-safe invalidation of a single user-scoped key, flat or parameterized.
  *
  * Used by mutations that refresh one precise cache entry (e.g. an invoice
- * group detail, an asset, a location's contents, an employee debt account).
+ * group detail, an asset, a location's contents).
  * When the userId is unknown it falls back to prefix-wide invalidation, so a
  * pre-session mutation can never leave a stale entry behind.
  */

@@ -26,7 +26,6 @@ import {
   employeeBatchCreateRowInputSchema,
   employeeBatchLimit,
   employeeCreateInputSchema,
-  employeeDebtAccountGetInputSchema,
   employeeDebtEntryCreateInputSchema,
   employeeProjectAssignmentSchema,
   employeeSalaryPaymentCreateInputSchema,
@@ -650,13 +649,6 @@ describe("contracts", () => {
         direction: "RECEIVABLE",
       }).openingBalanceDzd,
     ).toBeUndefined()
-  })
-
-  it("requires a direction on the single employee debt account read (D3)", () => {
-    expect(() => employeeDebtAccountGetInputSchema.parse({ employeeId: "worker-1" })).toThrowError()
-    expect(
-      employeeDebtAccountGetInputSchema.parse({ employeeId: "worker-1", direction: "RECEIVABLE" }).direction,
-    ).toBe("RECEIVABLE")
   })
 
   it("rejects a debt account whose direction contradicts its reason category (D2)", () => {

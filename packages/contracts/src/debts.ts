@@ -379,15 +379,6 @@ export const employeeDebtEntryCreateInputSchema = z
     }
   });
 
-export const employeeDebtAccountGetInputSchema = z.object({
-  employeeId: entityIdSchema,
-  /**
-   * The worker holds one ledger per direction (D3), so the single-account
-   * read must say which one it means. No `accounts[0]` fallback.
-   */
-  direction: debtAccountDirectionSchema,
-});
-
 export type ExternalCounterparty = z.infer<typeof externalCounterpartySchema>;
 export type DebtAccount = z.infer<typeof debtAccountSchema>;
 export type DebtEntry = z.infer<typeof debtEntrySchema>;
@@ -404,5 +395,4 @@ export type DirectDebtEntryCreateInput = z.infer<typeof directDebtEntryCreateInp
 export type DebtSettlementInput = z.infer<typeof debtSettlementInputSchema>;
 export type DebtPartyDetailInput = z.infer<typeof debtPartyDetailInputSchema>;
 export type EmployeeDebtEntryCreateInput = z.infer<typeof employeeDebtEntryCreateInputSchema>;
-export type EmployeeDebtAccountGetInput = z.infer<typeof employeeDebtAccountGetInputSchema>;
 export type DebtConsolidationInput = z.infer<typeof debtConsolidationInputSchema>;

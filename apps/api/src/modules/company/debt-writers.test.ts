@@ -210,7 +210,7 @@ describe("Debt writers (D2/D3/D7)", () => {
 
   describe("D7 — sign by entry type and one payment path", () => {
     it("records an ADVANCE as a positive worker receivable", () => {
-      const { service, roleIds } = createHarness();
+      const { service, repository, roleIds } = createHarness();
       const worker = createWorker(service, roleIds, "سلفة2", "0551090020");
 
       const entry = service.finance.createEmployeeDebtEntry({
@@ -220,12 +220,13 @@ describe("Debt writers (D2/D3/D7)", () => {
       });
 
       expect(entry.signedAmountDzd).toBe(500);
-      expect(service.finance.getEmployeeDebtAccount(worker.id, "RECEIVABLE")?.direction).toBe("RECEIVABLE");
-      expect(service.finance.getEmployeeDebtAccount(worker.id, "RECEIVABLE")?.currentBalance).toBe(500);
+      const receivable = repository.getDebtAccountByWorkerIdAndDirection(worker.id, "RECEIVABLE");
+      expect(receivable?.direction).toBe("RECEIVABLE");
+      expect(receivable?.currentBalance).toBe(500);
     });
 
     it("records a PAYMENT as negative and offsets the open receivable", () => {
-      const { service, roleIds } = createHarness();
+      const { service, repository, roleIds } = createHarness();
       const worker = createWorker(service, roleIds, "تسديد", "0551090021");
 
       service.finance.createEmployeeDebtEntry({ employeeId: worker.id, entryType: "ADVANCE", amountDzd: 500 });
@@ -236,11 +237,12 @@ describe("Debt writers (D2/D3/D7)", () => {
       });
 
       expect(payment.signedAmountDzd).toBe(-200);
-      expect(service.finance.getEmployeeDebtAccount(worker.id, "RECEIVABLE")?.currentBalance).toBe(300);
+      const receivable = repository.getDebtAccountByWorkerIdAndDirection(worker.id, "RECEIVABLE");
+      expect(receivable?.currentBalance).toBe(300);
     });
 
     it("signs a PAYMENT negative on the PAYABLE ledger when no receivable is open", () => {
-      const { service, roleIds } = createHarness();
+      const { service, repository, roleIds } = createHarness();
       const worker = createWorker(service, roleIds, "دفع", "0551090022");
 
       service.finance.createEmployeeDebtEntry({ employeeId: worker.id, entryType: "OPENING", amountDzd: 1000 });
@@ -251,8 +253,9 @@ describe("Debt writers (D2/D3/D7)", () => {
       });
 
       expect(payment.signedAmountDzd).toBe(-300);
-      expect(service.finance.getEmployeeDebtAccount(worker.id, "PAYABLE")?.direction).toBe("PAYABLE");
-      expect(service.finance.getEmployeeDebtAccount(worker.id, "PAYABLE")?.currentBalance).toBe(700);
+      const payable = repository.getDebtAccountByWorkerIdAndDirection(worker.id, "PAYABLE");
+      expect(payable?.direction).toBe("PAYABLE");
+      expect(payable?.currentBalance).toBe(700);
     });
 
     it("falls back to PAYABLE for a payment when the open receivable is already zero", () => {

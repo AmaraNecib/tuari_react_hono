@@ -133,9 +133,6 @@ describe("workspaceQueryKeys", () => {
     expect(workspaceQueryKeys.inventoryOutboundTransfers(userId)).toEqual([
       "phase1", "workspace-domain", "inventory-outbound-transfers", userId,
     ])
-    expect(workspaceQueryKeys.employeeDebtAccount(userId, "employee-1")).toEqual([
-      "phase1", "workspace-domain", "employee-debt-account", userId, "employee-1",
-    ])
   })
 })
 
