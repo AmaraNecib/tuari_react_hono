@@ -1,8 +1,8 @@
 # Findings report — PR "inline create from a form"
 
 - **Branch:** `feat/manager-inline`
-- **Fix SHA:** `310c325f8a5b745a1b72a5895e12cd80d58b4f14`
-- **Reviewed range:** `fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36...310c325f` (three commits)
+- **Fix SHAs:** `310c325f8a5b745a1b72a5895e12cd80d58b4f14` (F1–F3, F12), `493390a78c28e611ad26d975e02c6d3c11f68197` (F9)
+- **Reviewed range:** `fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36...493390a78c28e611ad26d975e02c6d3c11f68197` (four commits)
 - **Parent owns push/PR. This lane never merges.**
 
 ## Findings
@@ -17,7 +17,7 @@
 | F6 | Low (3) | Missing-row path could orphan a committed employee. | **Dismissed** — `employeeBatchCreateResultSchema` + `entityIdSchema` make a row without an id unreachable on a successful parse. |
 | F7 | Low (2) | `displayValue` goes stale vs the option label. | **Dismissed (intentional, pinned test).** |
 | F8 | Low (2) | Duplicated 3-field array in the two wrapper modules. | **Dismissed (intended seam)** — `fields` is caller-owned by design. |
-| F9 | Low (2) | Manager wrappers read `detailPages.debt.employeeFields.*`. | **Deferred** — see decision request. |
+| F9 | Low (2) | Manager wrappers read `detailPages.debt.employeeFields.*`. | **Fixed** after parent decision — `common.employeeFields.*` added, both wrappers repointed, dead debt block removed. |
 | F10 | Low (1) | Warehouse create label "إضافة موظف" is generic. | **Dismissed (pre-existing on develop).** |
 | F11 | Low (1) | Web-local `EmployeeBatchCreateResult` duplicates the contract shape. | **Dismissed (pre-existing, design-acknowledged).** |
 | F12 | Test gaps | No warehouse missing-row/`AppMutationError` tests; no role-derivation pin; redundant re-wrap. | **Fixed** — added tests + removed the dead re-wrap. |
@@ -34,6 +34,16 @@
 | `vitest run --maxWorkers=2 --coverage <touched files>` | **0** — 4 files / 29 passed; 85.26% stmts / 83.16% branch over touched files |
 | `vitest run --maxWorkers=2` (full web) | **0** — 86 files / 743 passed |
 | `playwright test tests/e2e/projects.spec.ts tests/e2e/warehouses.spec.ts` | **0** — 6 passed (1.5m) |
+
+Post-review F9 change (`493390a7`, i18n move):
+
+| Command | Result |
+| --- | --- |
+| `pnpm check:i18n-keys` | **0** — 2 passed |
+| `vitest run --maxWorkers=2` (6 touched suites) | **0** — 49 passed |
+| `vitest run --maxWorkers=2 home-view.test.tsx` | **0** — 55 passed |
+| `pnpm typecheck` | **0** |
+| `pnpm lint` (includes `check:unslop`) | **0** |
 
 ### Pre-fix failure proof
 
@@ -62,14 +72,21 @@ Stash popped afterwards; re-ran green.
 - The full E2E suite (only the two named specs were run; ports 3000/4318/1420
   were free).
 
-## Deferred work (needs parent decision)
+## Deferred work
 
-- **i18n namespace move (F9).** The manager-create field labels read
-  `detailPages.debt.employeeFields.*`. Moving them to `common.employeeFields.*`
-  would touch three forms plus `ar.ts`. Not required for correctness.
-  Proposed follow-up: `refactor(web): move shared employee field labels to a
-  common i18n namespace`.
+None. F9 was fixed in this PR on the parent's decision. The only remaining note:
+
 - **`createable-select.tsx` is outside the original diff.** F1 is a
   pre-existing shared-component defect; it was fixed here because the PR's
-  inline-create contract depends on it. Parent may prefer to call it out
-  separately in the PR body.
+  inline-create contract depends on it. The parent is calling this out in the
+  PR body.
+
+## Post-review addendum
+
+After the review handoff the parent decided F9 should ship in this PR rather
+than a follow-up: `common.employeeFields.*` was added, both manager wrappers
+repointed, and the unreferenced `detailPages.debt.employeeFields` block removed
+(`debt-create-page.tsx` itself no longer used those keys once its
+internal-worker create was deleted in `fa3f3784`). The locale values are
+unchanged, so behaviour and tests are unaffected; the i18n gate and the touched
+suites were re-run green.
