@@ -4,8 +4,10 @@
 - **Branch**: `fix/invoice-create`
 - **Base**: `develop` @ `fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36` (rebased; started from
   `22495413`, then develop advanced with #441)
-- **Reviewable HEAD**: `b2da6560b979cfe74944143d549bb2e4d285f21f` (the 400/500 status fix)
-- **Earlier code commit**: `9833e3a108b87e03753115184f7e3c2aa815911b` (the feature)
+- **Reviewable HEAD**: `dea639251d84f5c37b038b1235b0d35bc8d0b0b3` (the wisdom correction; the
+  last source change was `b2da6560b979cfe74944143d549bb2e4d285f21f`)
+- **Code commits**: `9833e3a108b87e03753115184f7e3c2aa815911b` (feature) then
+  `b2da6560b979cfe74944143d549bb2e4d285f21f` (400/500 status fix)
 - **Mode**: local verification only (no push, no PR, no hosted review per the lane brief)
 - **Tier**: Standard
 
