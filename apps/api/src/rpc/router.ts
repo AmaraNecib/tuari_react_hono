@@ -37,6 +37,7 @@ import type { RoleModule } from "../modules/rbac/role.module";
 import type { DatabaseKeyManager } from "../infrastructure/database/database-key-manager";
 import type { DatabaseKeyPersister } from "../infrastructure/database/database-key-persister";
 import type { BackupService } from "../modules/backup/backup.types";
+import type { BackupFolderPersister } from "../infrastructure/config/backup-folder-persister";
 
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
@@ -57,6 +58,7 @@ type RouterDependencies = {
   databaseKeyManager: DatabaseKeyManager;
   databaseKeyPersister: DatabaseKeyPersister;
   backupService: BackupService;
+  backupFolderPersister: BackupFolderPersister;
 };
 
 export function createRouter(
@@ -103,7 +105,7 @@ export function createRouter(
     ...createExpensesHandlers(os, m, dependencies.expensesModule),
     ...createProjectCostHandlers(os, m, dependencies.projectCostService),
     ...createUpdateHandlers(os, m, dependencies.updateService, dependencies.updateHistoryService),
-    ...createBackupHandlers(os, m, dependencies.backupService),
+    ...createBackupHandlers(os, m, dependencies.backupService, dependencies.backupFolderPersister),
     ...createRbacHandlers(os, m, dependencies.roleModule),
   };
 

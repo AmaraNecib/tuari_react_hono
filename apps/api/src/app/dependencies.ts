@@ -50,6 +50,10 @@ import { SqliteUpdateHistoryPort } from "../modules/update/adapters/sqlite-updat
 import { createBackupService } from "../modules/backup/backup.service";
 import { createWorkerSnapshotter } from "../modules/backup/backup.snapshot";
 import type { BackupService } from "../modules/backup/backup.types";
+import {
+  createConfigFileBackupFolderPersister,
+  type BackupFolderPersister,
+} from "../infrastructure/config/backup-folder-persister";
 
 /**
  * Optional configuration for {@link createAppDependencies}.
@@ -106,6 +110,8 @@ export type AppDependencies = {
   updateService: UpdateService;
   updateHistoryService: UpdateHistoryService;
   backupService: BackupService;
+  /** Persists the chosen backup root into the user-editable config (#436). */
+  backupFolderPersister: BackupFolderPersister;
   databaseKeyManager: DatabaseKeyManager;
   /** Persists a rotated DB key so a restart can still open the database (#265). */
   databaseKeyPersister: DatabaseKeyPersister;
@@ -272,6 +278,12 @@ export async function createAppDependencies(
         backupsRootPath: config.backupsRootPath ?? appConfig.backupsRootPath,
         now: config.now,
       }),
+      // The desktop shell points the sidecar at `<tuari>/config.json`, so the
+      // chosen backup root persists where the next sidecar run reads it. A
+      // deployment with no config file gets a session-only choice (#436).
+      backupFolderPersister: createConfigFileBackupFolderPersister(
+        process.env.TUARI_CONFIG_FILE?.trim() || null,
+      ),
       databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
       // Persist a rotated key into the user-editable config file so a restart
       // can still open the database (issue #265). The desktop host pins the

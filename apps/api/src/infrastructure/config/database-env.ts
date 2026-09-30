@@ -16,10 +16,9 @@ const resolveAttachmentsRootPath = (source: NodeJS.ProcessEnv, databasePath: str
  * Defaults to a sibling of the database's directory (`../backups`), NOT a
  * directory inside it: the data dir is the thing an operator resets when they
  * want to start over, and that reset must not delete the backups. When
- * `APP_BACKUPS_ROOT` is set it wins. This is an API-side variable: the desktop
- * shell clears the sidecar environment and does not forward it (and its
- * config.json has no backups field), so the desktop always uses the default
- * sibling — see docs/backups.md.
+ * `APP_BACKUPS_ROOT` is set it wins. On the desktop the shell does not forward
+ * this variable; instead the backup-folder setting (#436) writes `backups_root`
+ * into the config file the sidecar reads, which resolves here as well.
  */
 export const resolveBackupsRootPath = (
   source: NodeJS.ProcessEnv,

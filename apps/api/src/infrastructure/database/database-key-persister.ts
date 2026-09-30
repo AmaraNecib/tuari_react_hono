@@ -1,23 +1,5 @@
-import {
-  closeSync,
-  existsSync,
-  fsyncSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  unlinkSync,
-  writeSync,
-} from "node:fs";
-import { configFileSchema } from "../../config/loader";
 import type { DatabaseKeyChangeResult } from "./database-key-manager";
-
-/**
- * Restrictive mode for the key-bearing replacement file: owner read/write
- * only. Mirrors the desktop secret-file writer's `0o600` convention — a
- * permissive umask must never leave the persisted `db_key` readable by
- * other local users.
- */
-const KEY_FILE_MODE = 0o600;
+import { updateConfigFile } from "../config/config-file-writer";
 
 /**
  * Persists a newly rotated database encryption key so a process restart can
@@ -58,63 +40,16 @@ export function createConfigFileKeyPersister(
         return { success: true };
       }
 
-      try {
-        // Read-modify-write: preserve every existing field, add/refresh
-        // `db_key`. An unreadable/invalid file — or a non-object document
-        // (e.g. a bare array) whose fields cannot be preserved — is an honest
-        // failure, never a silent content wipe.
-        let config: Record<string, unknown> = {};
-        if (existsSync(configFilePath)) {
-          const parsed: unknown = JSON.parse(readFileSync(configFilePath, "utf8"));
-          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-            throw new Error("config file is not a JSON object");
-          }
-          config = parsed as Record<string, unknown>;
-        }
+      const result = updateConfigFile(configFilePath, (config) => {
         config.db_key = newKey;
+      });
 
-        // The loader is the reader of this file — a merged document it would
-        // reject (e.g. a user-edited field that broke its type) must fail
-        // HERE, honestly, instead of writing a config that a restart ignores
-        // (stale-key startup → DB loss). The rekey wire schema guarantees
-        // newKey is ≥ 8 chars, so a valid pre-existing config always merges.
-        if (!configFileSchema.safeParse(config).success) {
-          throw new Error("merged config would be rejected by the loader");
-        }
-
-        // Atomic + durable write: a unique temp file is written (with fsync
-        // so the bytes reach disk), then renamed over the target — a crash
-        // can never leave a partially-written config file behind, and a
-        // concurrent writer cannot collide on the temp name. The temp file
-        // is opened with an explicit restrictive mode (owner rw only) so a
-        // permissive umask can never widen the key-bearing replacement's
-        // permissions before the rename (rename preserves the temp file's
-        // mode over the target).
-        const tmpPath = `${configFilePath}.${process.pid}.tmp`;
-        const fd = openSync(tmpPath, "w", KEY_FILE_MODE);
-        try {
-          writeSync(fd, JSON.stringify(config, null, 2));
-          fsyncSync(fd);
-        } finally {
-          closeSync(fd);
-        }
-        renameSync(tmpPath, configFilePath);
-
-        return { success: true };
-      } catch {
-        // Best-effort cleanup: a failed write/rename must not leave a stale
-        // temp file behind (the failure itself is reported honestly below).
-        try {
-          unlinkSync(`${configFilePath}.${process.pid}.tmp`);
-        } catch {
-          // Ignore — the tmp may not exist; the honest failure is what
-          // matters.
-        }
-        return {
-          success: false,
-          error: "Failed to persist database encryption key",
-        };
-      }
+      return result.success
+        ? { success: true }
+        : {
+            success: false,
+            error: "Failed to persist database encryption key",
+          };
     },
   };
 }

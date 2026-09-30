@@ -1,4 +1,4 @@
-import type { BackupFailure, BackupStatus } from "@tuari/contracts";
+import type { BackupFailure, BackupRetention, BackupStatus } from "@tuari/contracts";
 
 import type { BackupRetentionPolicy } from "./backup.policy";
 
@@ -48,6 +48,12 @@ export type BackupService = {
   runDueBackup: () => Promise<BackupRunResult>;
   /** Current status (seeded from disk at construction, updated by runs). */
   getStatus: () => BackupStatus;
+  /**
+   * Point subsequent runs and the status at a new root (#436). Re-seeds the
+   * status from that root so the screen never describes the old folder. The
+   * caller validates/persists the path first.
+   */
+  setBackupsRoot: (path: string) => void;
 };
 
 export type BackupServiceDeps = {
@@ -62,4 +68,4 @@ export type BackupServiceDeps = {
   logger?: BackupLogger;
 };
 
-export type { BackupFailure, BackupStatus };
+export type { BackupFailure, BackupRetention, BackupStatus };

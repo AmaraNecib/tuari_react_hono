@@ -382,7 +382,10 @@ export const createBackupService = (
     error: (message, cause) => console.error(message, cause),
   };
 
-  const seeded = seedStatusFromDisk(deps.backupsRootPath, now(), logger);
+  // The root is mutable so the owner can point the next run at another disk
+  // (#436). Every read below goes through this variable, never `deps`.
+  let backupsRootPath = deps.backupsRootPath;
+  const seeded = seedStatusFromDisk(backupsRootPath, now(), logger);
   let lastBackupPath = seeded.lastBackupPath;
   let lastSuccessAt = seeded.lastSuccessAt;
   let lastFailure: BackupFailure | null = seeded.lastFailure;
@@ -402,9 +405,9 @@ export const createBackupService = (
       // Preflight (stale-staging cleanup, listing, the due check) lives INSIDE
       // the guarded region: a throw here must record a failure, not escape the
       // service while `lastFailure` stays null and the status reads healthy.
-      removeStaleStagingEntries(deps.backupsRootPath);
+      removeStaleStagingEntries(backupsRootPath);
 
-      const existingDates = listBackupDates(deps.backupsRootPath, runAt);
+      const existingDates = listBackupDates(backupsRootPath, runAt);
       // The root proved readable, so a failure seeded at construction is
       // stale. Clear it before the due check — a not-due start must still be
       // able to report a clean status. A real run failure is not seeded, so
@@ -419,8 +422,8 @@ export const createBackupService = (
           : null;
       if (!isBackupDue(newest, runAt)) return { status: "not-due" };
 
-      const targetDirectory = join(deps.backupsRootPath, date);
-      mkdirSync(deps.backupsRootPath, { recursive: true });
+      const targetDirectory = join(backupsRootPath, date);
+      mkdirSync(backupsRootPath, { recursive: true });
 
       // A folder already sitting at the target name is NOT necessarily an
       // incomplete snapshot of ours: the root can be a shared directory, and
@@ -441,7 +444,7 @@ export const createBackupService = (
       }
 
       stagingDirectory = mkdtempSync(
-        join(deps.backupsRootPath, BACKUP_STAGING_PREFIX),
+        join(backupsRootPath, BACKUP_STAGING_PREFIX),
       );
 
       const snapshot = await deps.snapshot(
@@ -472,7 +475,7 @@ export const createBackupService = (
       logger.info(`[backup] created ${targetDirectory} for ${date}`);
 
       const prune = pruneBackups(
-        deps.backupsRootPath,
+        backupsRootPath,
         [...existingDates, date],
         policy,
         logger,
@@ -508,8 +511,30 @@ export const createBackupService = (
     }
   };
 
+  /**
+   * Repoint subsequent runs and the status at `path`. The caller has already
+   * validated and persisted it; re-seeding from the new root makes the screen
+   * describe what is actually there (usually "no backups yet") rather than the
+   * folder the owner just navigated away from.
+   */
+  const setBackupsRoot = (path: string): void => {
+    backupsRootPath = path;
+    const next = seedStatusFromDisk(backupsRootPath, now(), logger);
+    lastBackupPath = next.lastBackupPath;
+    lastSuccessAt = next.lastSuccessAt;
+    lastFailure = next.lastFailure;
+    lastFailureIsSeeded = next.lastFailure !== null;
+  };
+
   return {
     runDueBackup,
-    getStatus: () => ({ lastBackupPath, lastSuccessAt, lastFailure }),
+    setBackupsRoot,
+    getStatus: () => ({
+      lastBackupPath,
+      lastSuccessAt,
+      lastFailure,
+      backupsRootPath,
+      retention: { ...policy },
+    }),
   };
 };

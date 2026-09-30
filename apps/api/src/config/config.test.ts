@@ -97,6 +97,43 @@ describe("createAppConfig", () => {
     expect(config.backupsRootPath).toMatch(/[\\/]private[\\/]backups$/);
   });
 
+  it("resolves the config file's backups_root into the backups path when env is unset", () => {
+    // This is the desktop forwarding path (#436): the shell points the sidecar
+    // at config.json, and the chosen folder rides in as backups_root.
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ backups_root: "./usb/backups" }),
+      "utf8",
+    );
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+      TUARI_CONFIG_FILE: configPath,
+    });
+
+    expect(config.backupsRootPath).toMatch(/[\\/]usb[\\/]backups$/);
+  });
+
+  it("env APP_BACKUPS_ROOT wins over the config file's backups_root", () => {
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ backups_root: "./usb/backups" }),
+      "utf8",
+    );
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+      TUARI_CONFIG_FILE: configPath,
+      APP_BACKUPS_ROOT: "./env/backups",
+    });
+
+    expect(config.backupsRootPath).toMatch(/[\\/]env[\\/]backups$/);
+  });
+
   it("derives database path from DATABASE_URL when set", () => {
     const config = createAppConfig({
       ...requiredAuth,

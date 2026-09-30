@@ -93,9 +93,9 @@ export const appConfigSchema = z.object({
   /** Root directory for file attachments (invoices, etc.). */
   attachmentsRootPath: z.string(),
   /**
-   * Root directory for daily backups (#430). A sibling of the database's
-   * directory, overridable with `APP_BACKUPS_ROOT`. API-side only: the desktop
-   * shell does not forward that variable yet (see docs/backups.md).
+   * Root directory for daily backups (#430, #436). A sibling of the database's
+   * directory, overridable with the user-editable config's `backups_root` or
+   * the `APP_BACKUPS_ROOT` environment variable (env wins).
    */
   backupsRootPath: z.string(),
 

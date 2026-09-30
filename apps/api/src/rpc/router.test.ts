@@ -102,7 +102,7 @@ describe("RPC router", () => {
       persistKey: () => ({ success: true } as const),
     },
     expensesOverrides: Record<string, unknown> = {},
-    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown; backupService?: unknown; inventoryService?: unknown; projectCostService?: unknown } = {},
+    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown; backupService?: unknown; backupFolderPersister?: unknown; inventoryService?: unknown; projectCostService?: unknown } = {},
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -150,16 +150,6 @@ describe("RPC router", () => {
       operationsService: new OperationsService(repository, repository, mutation),
       financeService: (modules.financeService ?? new FinanceService(repository, repository, mutation)) as never,
       inventoryService: (modules.inventoryService ?? createEmptyInventoryService()) as never,
-      // backupService arrived with the daily-backup feature (#430); the router
-      // reads it unconditionally, so the harness must provide it the way the
-      // composition root does. A minimal stub is enough for routing tests.
-      backupService: (modules.backupService ?? {
-        getStatus: async () => ({
-          lastSuccessAt: null,
-          lastBackupPath: null,
-          lastFailure: null,
-        }),
-      }) as never,
       employeeModule,
       invoiceModule: (modules.invoiceModule ?? {}) as never,
       paymentModule,
@@ -191,8 +181,14 @@ describe("RPC router", () => {
           lastSuccessAt: "2026-01-14T08:00:00.000Z",
           lastBackupPath: "/backups/2026-01-14",
           lastFailure: null,
+          backupsRootPath: join(tmpdir(), "tuari-backups"),
+          retention: { daily: 14, weekly: 8, monthly: 6 },
         }),
         runDueBackup: async () => ({ status: "not-due" }),
+        setBackupsRoot: () => {},
+      }) as never,
+      backupFolderPersister: (modules.backupFolderPersister ?? {
+        persistBackupsRoot: () => ({ success: true, persisted: true }),
       }) as never,
     } as never);
   }
@@ -306,6 +302,8 @@ describe("RPC router", () => {
       lastSuccessAt: "2026-01-14T08:00:00.000Z",
       lastBackupPath: "/backups/2026-01-14",
       lastFailure: null,
+      backupsRootPath: join(tmpdir(), "tuari-backups"),
+      retention: { daily: 14, weekly: 8, monthly: 6 },
     });
   });
 
@@ -315,6 +313,37 @@ describe("RPC router", () => {
     const client = createRouterClient(router, { context: createContext(null) as never });
 
     await expect(client.backupStatus()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("saves a valid backup folder and reports it", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    const result = await client.setBackupsRoot({ path: tmpdir() });
+
+    expect(result).toEqual({ success: true, path: tmpdir(), persisted: true });
+  });
+
+  it("rejects a backup folder that is a file, naming the problem", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    const result = await client.setBackupsRoot({ path: join(process.cwd(), "package.json") });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not a folder");
+  });
+
+  it("rejects the backup folder without a session", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext(null) as never });
+
+    await expect(client.setBackupsRoot({ path: tmpdir() })).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
   });
 
   it("allows non-admin users with RBAC permission to create employees", async () => {
