@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 
 import { AccountServiceError } from "../modules/account/account.service";
 import { InventoryError } from "../modules/inventory/inventory.errors";
@@ -32,6 +32,7 @@ const createDependencies = () => ({
   inventoryService: {
     addInvoiceAttachments: vi.fn(),
     getAttachmentDownload: vi.fn(),
+    createItemDefinition: vi.fn(),
   },
   sessionService: {
     getCurrentUser: vi.fn(),
@@ -734,6 +735,182 @@ describe("createApp body-limit guard", () => {
 
     expect(response.status).toBe(200);
     expect(dependencies.accountService.updateCurrentProfile).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createApp request-failure logging", () => {
+  beforeEach(() => {
+    // The license gate refuses audited mutations unless the status is
+    // explicitly writable; the license describe above deletes the env key.
+    process.env.TUARI_LICENSE_STATUS = "trial";
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const adminDependencies = () => {
+    const dependencies = createDependencies();
+    dependencies.sessionService.getCurrentUser.mockResolvedValue({
+      id: "user-1",
+      name: "Taylor",
+      phone: "0612345678",
+      version: "0.0.0",
+    });
+    return dependencies;
+  };
+
+  const mutationRequest = () =>
+    new Request("http://localhost/rpc/inventoryItemDefinitionsCreate", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost:3000",
+      },
+      body: JSON.stringify({
+        json: { name: "صنف", itemType: "CONSUMABLE", unit: "قطعة" },
+        meta: [],
+      }),
+    });
+
+  const capturedLogLines = (spies: ReturnType<typeof vi.spyOn>[]) =>
+    spies.flatMap((spy) => spy.mock.calls.map((call: unknown[]) => String(call[0])));
+
+  it("logs exactly one line with the error message for a rejected mutation, and nothing for a success", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const dependencies = adminDependencies();
+    dependencies.inventoryService.createItemDefinition.mockRejectedValue(
+      new InventoryError("VALIDATION", "اسم العنصر مستخدم بالفعل."),
+    );
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const rejected = await app.request(mutationRequest());
+
+    // The domain failure is a 200 `{ success: false }` envelope, not a throw.
+    expect(rejected.status).toBe(200);
+    await expect(rejected.json()).resolves.toMatchObject({
+      json: { success: false, error: { message: "اسم العنصر مستخدم بالفعل." } },
+    });
+
+    const failureLines = capturedLogLines([errorSpy, warnSpy, logSpy]);
+    expect(failureLines).toHaveLength(1);
+    expect(failureLines[0]).toContain("اسم العنصر مستخدم بالفعل.");
+    expect(failureLines[0]).toContain("inventoryItemDefinitionsCreate");
+
+    errorSpy.mockClear();
+    warnSpy.mockClear();
+    logSpy.mockClear();
+
+    dependencies.inventoryService.createItemDefinition.mockResolvedValue({
+      success: true,
+      message: "تم إنشاء الصنف.",
+      item: {
+        id: "item-1",
+        name: "صنف",
+        itemType: "CONSUMABLE",
+        unit: "قطعة",
+        description: null,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    });
+
+    const accepted = await app.request(mutationRequest());
+    expect(accepted.status).toBe(200);
+    await expect(accepted.json()).resolves.toMatchObject({ json: { success: true } });
+    expect(capturedLogLines([errorSpy, warnSpy, logSpy])).toHaveLength(0);
+  });
+
+  it("logs a thrown procedure error once with its real message and status", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dependencies = adminDependencies();
+    dependencies.inventoryService.createItemDefinition.mockRejectedValue(
+      new Error("boom: زراعة فشلت"),
+    );
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(mutationRequest());
+
+    expect(response.status).toBe(500);
+    const failureLines = capturedLogLines([errorSpy]);
+    expect(failureLines).toHaveLength(1);
+    expect(failureLines[0]).toContain("boom: زراعة فشلت");
+    expect(failureLines[0]).toContain("inventoryItemDefinitionsCreate");
+  });
+
+  it("logs a transport-level failure once from its response body", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dependencies = createDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/api/auth/profile", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://evil.example",
+        },
+        body: JSON.stringify({ name: "Taylor" }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    const failureLines = capturedLogLines([errorSpy]);
+    expect(failureLines).toHaveLength(1);
+    expect(failureLines[0]).toContain("Blocked origin.");
+    expect(failureLines[0]).toContain("403");
+  });
+
+  it("logs a malformed request body as a 400 client failure, once", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dependencies = adminDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/rpc/inventoryItemDefinitionsCreate", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:3000",
+        },
+        body: "{not json",
+      }),
+    );
+
+    // ORPC maps a body it cannot decode to BAD_REQUEST: the client's fault.
+    expect(response.status).toBe(400);
+    const failureLines = capturedLogLines([errorSpy]);
+    expect(failureLines).toHaveLength(1);
+    expect(failureLines[0]).toContain("\"status\":400");
+    expect(failureLines[0]).toContain("Malformed request");
+    // A malformed request is the client's fault, not an encode failure.
+    expect(failureLines[0]).not.toContain("encodeFailed");
+    expect(dependencies.inventoryService.createItemDefinition).not.toHaveBeenCalled();
+  });
+
+  it("logs a server-side output failure as a 500, distinguishable from a malformed request", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dependencies = adminDependencies();
+    // The handler resolves, but the output cannot satisfy the contract's
+    // output schema: a server-side failure, not the client's fault.
+    dependencies.inventoryService.createItemDefinition.mockResolvedValue({
+      success: true,
+      message: "تم",
+      item: null,
+    });
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(mutationRequest());
+
+    expect(response.status).toBe(500);
+    const failureLines = capturedLogLines([errorSpy]);
+    expect(failureLines).toHaveLength(1);
+    expect(failureLines[0]).toContain("\"status\":500");
+    expect(failureLines[0]).not.toContain("\"status\":400");
   });
 });
 

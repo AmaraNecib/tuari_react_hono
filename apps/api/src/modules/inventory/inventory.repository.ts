@@ -15,6 +15,8 @@ import type {
   InventoryInvoiceGroupRecord,
   InventoryItemDefinitionCreateData,
   InventoryItemDefinitionListFilters,
+  InventoryItemDefinitionPage,
+  InventoryItemDefinitionPageQuery,
   InventoryItemDefinitionRecord,
   InventoryItemDefinitionUpdateData,
   InventoryOutboundTransferCreateData,
@@ -38,6 +40,14 @@ export interface InventoryRepository {
   withTransaction<T>(callback: () => T): T
   /** listItemDefinitions. */
   listItemDefinitions(filters?: InventoryItemDefinitionListFilters): InventoryItemDefinitionRecord[]
+  /**
+   * Usage-scoped, keyset-paged item definitions, ordered by
+   * `(name COLLATE NOCASE, id)`. The offer filter is compiled to SQL so the
+   * picker pages the filtered set, never the whole catalog.
+   */
+  listItemDefinitionsPaged(query: InventoryItemDefinitionPageQuery): InventoryItemDefinitionPage
+  /** countEntriesByItemDefinitionId — how many inventory entries reference a definition. */
+  countEntriesByItemDefinitionId(itemDefinitionId: string): number
   /** getItemDefinitionById. */
   getItemDefinitionById(id: string): InventoryItemDefinitionRecord | null
   /** createItemDefinition. */

@@ -1,11 +1,15 @@
 import { oc } from "@orpc/contract"
+import { z } from "zod"
 
 import {
   createDeleteResultSchema,
   createEntityResultSchema,
   createListSchema,
+  cursorPaginationInputSchema,
   idInputSchema,
+  paginatedResultSchema,
 } from "./core"
+import { inventoryItemUsageSchema } from "./inventory-item-usage"
 import {
   inventoryAssetChargeDefaultInputSchema,
   inventoryAssetChargeDefaultSchema,
@@ -25,6 +29,7 @@ import {
   inventoryInvoiceGroupRecordPaymentInputSchema,
   inventoryItemDefinitionCreateInputSchema,
   inventoryItemDefinitionListInputSchema,
+  inventoryItemDefinitionOptionSchema,
   inventoryItemDefinitionSchema,
   inventoryItemDefinitionUpdateInputSchema,
   inventoryLocationContentsInputSchema,
@@ -46,6 +51,22 @@ export const inventoryContract = {
   inventoryItemDefinitionsGet: oc
     .input(idInputSchema)
     .output(createEntityResultSchema(inventoryItemDefinitionSchema)),
+  /**
+   * inventoryItemDefinitionOptions procedure.
+   *
+   * The paged, usage-scoped read for pickers. Separate from
+   * `inventoryItemDefinitionsList` (unpaged) because the catalog page, the
+   * global search index and the home-view expense selector all depend on the
+   * full unpaged read.
+   */
+  inventoryItemDefinitionOptions: oc
+    .input(
+      cursorPaginationInputSchema.extend({
+        usage: inventoryItemUsageSchema,
+        search: z.string().trim().max(160).optional(),
+      }),
+    )
+    .output(paginatedResultSchema(inventoryItemDefinitionOptionSchema)),
   /** inventoryItemDefinitionsCreate procedure. */
   inventoryItemDefinitionsCreate: oc
     .input(inventoryItemDefinitionCreateInputSchema)

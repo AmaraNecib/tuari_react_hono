@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test"
 
 import { resetE2eDatabase } from "./helpers/db-isolation"
+import { selectInvoiceLineItem } from "./helpers/invoice-line"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
@@ -77,14 +78,9 @@ test.describe("inventory transfer — critical path", () => {
     await expect(page.getByRole("heading", { name: /إضافة مخزون بالفاتورة/ })).toBeVisible()
 
     // Line 1: the item created in the first test, received into warehouse A.
-    // Select it by its value (resolved from the option whose text contains the
-    // created name), not by index — the option list can shift.
-    const itemSelect = page.getByLabel("تعريف العنصر*")
-    const itemValue = await itemSelect
-      .locator("option")
-      .filter({ hasText: createdItemName })
-      .getAttribute("value")
-    await itemSelect.selectOption(itemValue ?? "")
+    // Variant C: choose the CONSUMABLE kind first, then pick the item by its
+    // unique name through the picker's search (options are kind-filtered).
+    await selectInvoiceLineItem(page, { kind: "CONSUMABLE", itemName: createdItemName })
     // The line's warehouse select's accessible name concatenates its options
     // (no space after the label), which distinguishes it from the top
     // "المستودع الافتراضي" combobox.

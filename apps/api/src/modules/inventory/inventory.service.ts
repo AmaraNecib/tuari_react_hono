@@ -1,4 +1,9 @@
-import { nonNegativePaymentAmountSchema } from "@tuari/contracts"
+import {
+  invoiceLineUsage,
+  matchesItemOfferFilter,
+  nonNegativePaymentAmountSchema,
+  resolveItemOffer,
+} from "@tuari/contracts"
 import type {
   DebtAccountCreateInput,
   DebtEntryCreateInput,
@@ -11,17 +16,21 @@ import type {
   InventoryItemDefinitionCreateInput,
   InventoryItemDefinitionUpdateInput,
   InventoryOutboundTransferCreateInput,
+  InventoryItemUsage,
   InventoryReport,
   MovementReport,
 } from "@tuari/contracts"
 
 import { InventoryError } from "./inventory.errors"
+import { normalizePageSize } from "../shared/cursor"
+import { StructuredLogger } from "../../infrastructure/observability/logger"
 import { CompanyError } from "../company/company.errors"
 import { createAlgeriaTimestamp } from "../company/company-time"
 import { ageInDays, resolveReportWindow, roundMoney } from "../company/report.helpers"
 import type { MutationAuditContext } from "../company/company.types"
 import type {
   InventoryAssetUnitCreateData,
+  InventoryItemDefinitionRecord,
   InventoryUploadFile,
   InventoryStoredUpload,
 } from "./inventory.types"
@@ -192,6 +201,42 @@ export class InventoryService {
     return { items: this.repository.listItemDefinitions(filters) }
   }
 
+  /**
+   * Usage-scoped, paged item options for a picker.
+   *
+   * The offer rule is resolved once here and handed to the repository as data,
+   * so the read and the write gate (`createInvoiceGroup`) cannot drift.
+   */
+  listItemDefinitionOptions(input: {
+    usage: InventoryItemUsage
+    search?: string
+    cursor?: string
+    limit?: number
+  }): { items: InventoryItemDefinitionRecord[]; total: number; nextCursor: string | null; hasMore: boolean } {
+    const page = this.repository.listItemDefinitionsPaged({
+      filter: resolveItemOffer(input.usage),
+      search: input.search,
+      cursor: input.cursor,
+      limit: normalizePageSize(input.limit),
+    })
+
+    if (page.cursorReset) {
+      // A cursor from a different filter/search is not an error the picker can
+      // act on; restart at the first page and leave a trace for operators.
+      StructuredLogger.warn("Item-options cursor reset", {
+        surface: input.usage.surface,
+        search: input.search ?? null,
+      })
+    }
+
+    return {
+      items: page.items,
+      total: page.total,
+      nextCursor: page.nextCursor,
+      hasMore: page.nextCursor !== null,
+    }
+  }
+
   /** getItemDefinition. */
   getItemDefinition(id: string) {
     const item = this.repository.getItemDefinitionById(id)
@@ -234,6 +279,15 @@ export class InventoryService {
 
     if (nextItemType === "CONSUMABLE" && !nextUnit) {
       throw new InventoryError("VALIDATION", "يجب إدخال وحدة قياس للمواد الاستهلاكية.", [{ field: "unit", message: "يجب إدخال وحدة قياس للمواد الاستهلاكية." }])
+    }
+
+    // Close the retroactive bypass: a definition's type is a fact the offer
+    // rule reads, so flipping it while entries reference it would make the rule
+    // a lie for existing rows. This is a behaviour change to an admin action.
+    if (nextItemType !== current.itemType && this.repository.countEntriesByItemDefinitionId(input.id) > 0) {
+      throw new InventoryError("CONFLICT", "لا يمكن تغيير نوع عنصر مستخدم في فواتير قائمة.", [
+        { field: "itemType", message: "لا يمكن تغيير نوع عنصر مستخدم في فواتير قائمة." },
+      ])
     }
 
     const item = this.repository.updateItemDefinition({
@@ -334,7 +388,9 @@ export class InventoryService {
       validateProject(this.repository, effectiveProjectId, `entries.${index}.projectId`)
 
       if (entry.kind === "CONSUMABLE") {
-        if (definition.itemType !== "CONSUMABLE") {
+        // The same rule that offered the option accepts it here; the module
+        // owns both so they cannot drift.
+        if (!matchesItemOfferFilter(resolveItemOffer(invoiceLineUsage("CONSUMABLE")), definition)) {
           throw new InventoryError("VALIDATION", "تعريف العنصر لا يطابق نوع إدخال المواد الاستهلاكية.", [{ field: `entries.${index}.itemDefinitionId`, message: "تعريف العنصر لا يطابق نوع إدخال المواد الاستهلاكية." }])
         }
 
@@ -358,7 +414,7 @@ export class InventoryService {
         continue
       }
 
-      if (definition.itemType !== "ASSET") {
+      if (!matchesItemOfferFilter(resolveItemOffer(invoiceLineUsage("ASSET")), definition)) {
         throw new InventoryError("VALIDATION", "تعريف العنصر لا يطابق نوع إدخال الأصول.", [{ field: `entries.${index}.itemDefinitionId`, message: "تعريف العنصر لا يطابق نوع إدخال الأصول." }])
       }
 

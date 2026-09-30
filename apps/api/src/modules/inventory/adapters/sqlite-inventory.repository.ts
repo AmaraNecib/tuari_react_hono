@@ -7,12 +7,14 @@
  * Architecture: Drizzle queries + raw better-sqlite3 handle for transactions
  * (same pattern as CompanyRepository).
  */
-import { eq, and, asc, desc, sql, inArray } from "drizzle-orm"
+import { eq, and, asc, desc, sql, inArray, count } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import type { BetterSqliteDatabase } from "../../../types/sqlite"
 import * as schema from "../../../schema"
 import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzle"
 import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock"
+import { decodeCursor as decodeCursorToken, encodeCursor as encodeCursorToken } from "../../shared/cursor"
+import { escapeLikePattern } from "../../shared/sql-search"
 import { normalizeAuditContext } from "../../company/company.repository-mappers"
 import { createAlgeriaTimestamp } from "../../company/company-time"
 import type { MutationAuditContext } from "../../company/company.types"
@@ -33,6 +35,8 @@ import type {
   InventoryInvoiceGroupRecord,
   InventoryItemDefinitionCreateData,
   InventoryItemDefinitionListFilters,
+  InventoryItemDefinitionPage,
+  InventoryItemDefinitionPageQuery,
   InventoryItemDefinitionRecord,
   InventoryItemDefinitionUpdateData,
   InventoryOutboundTransferCreateData,
@@ -249,6 +253,84 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       .orderBy(asc(schema.inventoryItemDefinition.name), asc(schema.inventoryItemDefinition.createdAt))
       .all()
     return rows.map(mapItemDefinition)
+  }
+
+  /**
+   * compiles the offer filter to SQL. Its verdict must equal
+   * `matchesItemOfferFilter` for the same definition; the SQL/JS equivalence
+   * test pins that.
+   */
+  listItemDefinitionsPaged(query: InventoryItemDefinitionPageQuery): InventoryItemDefinitionPage {
+    const conditions = [inArray(schema.inventoryItemDefinition.itemType, [...query.filter.itemTypes])]
+    if (query.filter.activeOnly) {
+      conditions.push(eq(schema.inventoryItemDefinition.isActive, 1))
+    }
+
+    const search = query.search?.trim()
+    if (search) {
+      conditions.push(sql`${schema.inventoryItemDefinition.name} LIKE ${`%${escapeLikePattern(search)}%`} ESCAPE '\\'`)
+    }
+
+    // The cursor is only meaningful for the query that produced it.
+    const scope = JSON.stringify({
+      itemTypes: [...query.filter.itemTypes],
+      activeOnly: query.filter.activeOnly,
+      search: search ?? "",
+    })
+
+    let cursorReset = false
+    let cursor: { sortKey: string; id: string } | null = null
+    if (query.cursor) {
+      try {
+        const decoded = decodeCursorToken(query.cursor)
+        // A cursor is only usable for the exact query that produced it. A
+        // missing scope means the token came from elsewhere (another endpoint,
+        // or a pre-scope client), so it is not trusted here either.
+        if (decoded.scope !== scope) {
+          cursorReset = true
+        } else {
+          cursor = { sortKey: decoded.sortKey, id: decoded.id }
+        }
+      } catch {
+        cursorReset = true
+      }
+    }
+
+    const total = Number(
+      this.db.select({ value: count() }).from(schema.inventoryItemDefinition)
+        .where(and(...conditions)).all()[0]?.value ?? 0,
+    )
+
+    const pageConditions = [...conditions]
+    if (cursor) {
+      pageConditions.push(sql`(${schema.inventoryItemDefinition.name} COLLATE NOCASE > ${cursor.sortKey} OR (${schema.inventoryItemDefinition.name} COLLATE NOCASE = ${cursor.sortKey} AND ${schema.inventoryItemDefinition.id} > ${cursor.id}))`)
+    }
+
+    const rows = this.db.select().from(schema.inventoryItemDefinition)
+      .where(and(...pageConditions))
+      .orderBy(sql`${schema.inventoryItemDefinition.name} COLLATE NOCASE ASC`, asc(schema.inventoryItemDefinition.id))
+      .limit(query.limit + 1)
+      .all()
+      .map(mapItemDefinition)
+
+    const hasMore = rows.length > query.limit
+    const items = rows.slice(0, query.limit)
+    const last = items[items.length - 1]
+
+    return {
+      items,
+      total,
+      nextCursor: hasMore && last ? encodeCursorToken({ sortKey: last.name, id: last.id, scope }) : null,
+      cursorReset,
+    }
+  }
+
+  /** countEntriesByItemDefinitionId. */
+  countEntriesByItemDefinitionId(itemDefinitionId: string) {
+    return Number(
+      this.db.select({ value: count() }).from(schema.inventoryEntry)
+        .where(eq(schema.inventoryEntry.itemDefinitionId, itemDefinitionId)).all()[0]?.value ?? 0,
+    )
   }
 
   /** getItemDefinitionById. */

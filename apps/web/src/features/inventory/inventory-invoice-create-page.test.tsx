@@ -12,6 +12,8 @@ import { InventoryInvoiceCreatePage } from "./inventory-invoice-create-page"
 
 const mocks = vi.hoisted(() => ({
   itemDefinitionsQuery: vi.fn(),
+  /** Every `useItemDefinitionOptionsQuery` call's usage, in render order. */
+  itemDefinitionsQueryOptions: [] as Array<{ surface: string; kind?: "CONSUMABLE" | "ASSET" }>,
   warehousesQuery: vi.fn(),
   projectsQuery: vi.fn(),
   counterpartiesQuery: vi.fn(),
@@ -28,7 +30,17 @@ vi.mock("@/lib/toast", () => ({
 }))
 
 vi.mock("./inventory-hooks", () => ({
-  useInventoryItemDefinitionsQuery: () => mocks.itemDefinitionsQuery(),
+  // Mirror the usage-scoped offer filter so the test proves the page asks for
+  // the right options AND renders only what is valid for the row type.
+  useItemDefinitionOptionsQuery: (options: { usage: { surface: string; kind?: "CONSUMABLE" | "ASSET" } }) => {
+    mocks.itemDefinitionsQueryOptions.push(options.usage)
+    const items = mocks.itemDefinitionsQuery()?.data?.items ?? []
+    const offered =
+      options.usage.surface === "INVOICE_LINE"
+        ? items.filter((item: { itemType?: string }) => item.itemType === options.usage.kind)
+        : items
+    return { options: offered, fetchNextPage: vi.fn(), hasNextPage: false, isFetchingNextPage: false }
+  },
   useInventoryWarehousesQuery: () => mocks.warehousesQuery(),
   useInventoryProjectsQuery: () => mocks.projectsQuery(),
   useInventoryExternalCounterpartiesQuery: () => mocks.counterpartiesQuery(),
@@ -108,17 +120,6 @@ function nativeSelectWithOption(text: string): HTMLSelectElement {
   return select
 }
 
-/** Finds the LAST native <select> whose options contain the given text (line selects share options). */
-function lastNativeSelectWithOption(text: string): HTMLSelectElement {
-  const select = screen
-    .getAllByRole("combobox")
-    .filter((el): el is HTMLSelectElement => el instanceof HTMLSelectElement)
-    .filter((el) => Array.from(el.options).some((o) => o.textContent?.includes(text)))
-    .at(-1)
-  if (!select) throw new Error(`no native <select> with option "${text}"`)
-  return select
-}
-
 /**
  * Selects an option in a header CreateableSelect (Base UI).
  * Base UI only commits a click when the option is highlighted (activeIndex set
@@ -149,6 +150,42 @@ async function submitInvoice() {
   return call![0]
 }
 
+/** The nth row's type <select> (variant C puts the type first in the row). */
+function lineTypeSelect(index = 0): HTMLSelectElement {
+  return screen.getAllByLabelText("النوع", { exact: false })[index] as HTMLSelectElement
+}
+
+/** The nth row's item-definition <select>. */
+function lineDefinitionSelect(index = 0): HTMLSelectElement {
+  return screen.getAllByLabelText("تعريف العنصر", { exact: false })[index] as HTMLSelectElement
+}
+
+/** Sets the nth row's type. */
+function setLineType(index: number, kind: "CONSUMABLE" | "ASSET") {
+  fireEvent.change(lineTypeSelect(index), { target: { value: kind } })
+}
+
+/** Picks an item in the nth row. */
+function selectLineDefinition(index: number, definitionId: string) {
+  fireEvent.change(lineDefinitionSelect(index), { target: { value: definitionId } })
+}
+
+/** Types the nth row and picks one of its items (variant C: type first). */
+function fillLine(index: number, kind: "CONSUMABLE" | "ASSET", definitionId: string) {
+  setLineType(index, kind)
+  selectLineDefinition(index, definitionId)
+}
+
+/** The option texts the nth row's item picker currently offers. */
+function lineOptionTexts(index = 0): string[] {
+  return Array.from(lineDefinitionSelect(index).options).map((option) => option.textContent ?? "")
+}
+
+/** Clicks the single add-line action. */
+function addLine() {
+  fireEvent.click(screen.getByRole("button", { name: "إضافة سطر" }))
+}
+
 /** Opens the nth DatePicker on the page and selects the given canonical day. */
 function pickCalendarDate(isoDay: string, index = 0) {
   const triggers = document.querySelectorAll<HTMLElement>('[data-slot="popover-trigger"]')
@@ -173,6 +210,7 @@ function nonDefaultPickedDay() {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  mocks.itemDefinitionsQueryOptions.length = 0
 })
 
 /** Shared query/mutation mock values for both describe blocks. */
@@ -217,7 +255,7 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
     // inside the act scope — otherwise the trailing flush can exceed the
     // per-test timeout under parallel load (same fix as the project sibling).
     await act(async () => {
-      fireEvent.click(screen.getByText("إضافة مادة"))
+      addLine()
     })
     await waitFor(() => {
       expect(headerCombobox("المستودع الافتراضي").textContent).toContain("المستودع المركزي")
@@ -239,7 +277,7 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
     // otherwise the trailing act-warning flush can exceed the per-test timeout
     // in slower CI environments.
     await act(async () => {
-      fireEvent.click(screen.getByText("إضافة أصل"))
+      addLine()
     })
     await waitFor(() => {
       expect(headerCombobox("المشروع الافتراضي").textContent).toContain("مشروع التوسعة")
@@ -255,7 +293,7 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
 
     // Fill the first (consumable) line: choose an item definition; leave its
     // warehouse/project on "default" so the header default must seed it.
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fillLine(0, "CONSUMABLE", "def-1")
 
     const payload = await submitInvoice()
     expect(payload.warehouseId).toBe("wh-1")
@@ -270,7 +308,7 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
     openSection(DEFAULTS_SECTION)
     await selectHeaderComboboxOption("المستودع الافتراضي", "المستودع المركزي")
 
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fillLine(0, "CONSUMABLE", "def-1")
     // The line's warehouse select is the native select listing warehouses.
     fireEvent.change(nativeSelectWithOption("مستودع المبيعات"), { target: { value: "wh-2" } })
 
@@ -287,7 +325,7 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
     openSection(DEFAULTS_SECTION)
     await selectHeaderComboboxOption("المستودع الافتراضي", "المستودع المركزي")
 
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fillLine(0, "CONSUMABLE", "def-1")
     // Line picks its own project → must NOT inherit the header warehouse.
     fireEvent.change(nativeSelectWithOption("مشروع التوسعة"), { target: { value: "prj-1" } })
 
@@ -305,7 +343,7 @@ describe("InventoryInvoiceCreatePage header-level default warehouse/project", ()
 
     // Fill the first (consumable) line: choose an item definition; leave its
     // warehouse/project on "default" so the header project must seed it.
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fillLine(0, "CONSUMABLE", "def-1")
 
     const payload = await submitInvoice()
     expect(payload.projectId).toBe("prj-1")
@@ -450,7 +488,7 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
 
     // A re-render (adding a line) must not collapse any open section.
     await act(async () => {
-      fireEvent.click(screen.getByText("إضافة مادة"))
+      addLine()
     })
 
     expect(screen.getByRole("button", { name: DEBT_SECTION }).getAttribute("aria-expanded")).toBe("true")
@@ -476,7 +514,7 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
     fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
     fireEvent.change(screen.getByLabelText("المدفوع الآن"), { target: { value: "1500.5" } })
 
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fillLine(0, "CONSUMABLE", "def-1")
 
     const payload = await submitInvoice()
     expect(payload.createDebt).toBe(true)
@@ -493,6 +531,9 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
   it("blocks submitting a negative paid amount (issue #42)", () => {
     renderPage()
 
+    // The line must be complete: an incomplete line now disables Save (it has
+    // its own reason), which would stop the submit-path assertion below.
+    fillLine(0, "CONSUMABLE", "def-1")
     openSection(DEBT_SECTION)
     fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
     fireEvent.change(screen.getByLabelText("المدفوع الآن"), { target: { value: "-5" } })
@@ -506,6 +547,7 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
   it("blocks submitting a paid percent above 100 (issue #42)", () => {
     renderPage()
 
+    fillLine(0, "CONSUMABLE", "def-1")
     openSection(DEBT_SECTION)
     fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
     fireEvent.change(screen.getByLabelText("طريقة الدفع", { exact: false }), { target: { value: "PERCENT" } })
@@ -520,6 +562,7 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
   it("blocks submitting a negative paid percent (issue #42)", () => {
     renderPage()
 
+    fillLine(0, "CONSUMABLE", "def-1")
     openSection(DEBT_SECTION)
     fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
     fireEvent.change(screen.getByLabelText("طريقة الدفع", { exact: false }), { target: { value: "PERCENT" } })
@@ -537,7 +580,7 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
     openSection(DEBT_SECTION)
     fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
     fireEvent.change(screen.getByLabelText("المدفوع الآن"), { target: { value: "0" } })
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fillLine(0, "CONSUMABLE", "def-1")
 
     const amountPayload = await submitInvoice()
     expect(amountPayload.paidAmountDzd).toBe(0)
@@ -564,13 +607,15 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
     fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
       target: { files: [new File(["bytes"], "facture.pdf", { type: "application/pdf" })] },
     })
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fillLine(0, "CONSUMABLE", "def-1")
 
     fireEvent.click(screen.getByText("حفظ الفاتورة"))
 
     await waitFor(() => {
       expect(mocks.createInvoiceMutation.mutateAsync).toHaveBeenCalledTimes(1)
-      expect(showErrorToast).toHaveBeenCalledWith("تم حفظ الفاتورة لكن تعذر رفع ملفات المرفقات.")
+      // The upload error's own message is surfaced (in production the server
+      // message names the offending file), not a fixed generic string.
+      expect(showErrorToast).toHaveBeenCalledWith("تعذر رفع ملفات الفاتورة.")
     })
     expect(onCreated).not.toHaveBeenCalled()
     // Save is gone; only the retry action can be used from now on.
@@ -588,7 +633,7 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
     fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
       target: { files: [attachment] },
     })
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fillLine(0, "CONSUMABLE", "def-1")
 
     // First save: invoice created, upload fails.
     fireEvent.click(screen.getByText("حفظ الفاتورة"))
@@ -619,7 +664,7 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
     fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
       target: { files: [new File(["bytes"], "facture.pdf", { type: "application/pdf" })] },
     })
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fillLine(0, "CONSUMABLE", "def-1")
 
     fireEvent.click(screen.getByText("حفظ الفاتورة"))
     await waitFor(() => {
@@ -642,7 +687,7 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
     const { onCreated } = renderPage()
 
     mocks.createInvoiceMutation.mutateAsync.mockRejectedValue(new Error("تعذر إنشاء الفاتورة."))
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fillLine(0, "CONSUMABLE", "def-1")
 
     fireEvent.click(screen.getByText("حفظ الفاتورة"))
 
@@ -655,6 +700,208 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
   })
 })
 
+describe("InventoryInvoiceCreatePage save reason and attachment validation", () => {
+  beforeEach(() => mockQueries())
+
+  it("explains why Save is disabled for an incomplete line and for no lines", () => {
+    renderPage()
+
+    const saveButton = () => screen.getByRole("button", { name: "حفظ الفاتورة" }) as HTMLButtonElement
+
+    // Default single empty row: Save is dead and names the missing type.
+    expect(saveButton().disabled).toBe(true)
+    expect(screen.getByText("اختر نوع السطر 1.")).not.toBeNull()
+
+    // Choosing a type moves the reason to the item.
+    setLineType(0, "CONSUMABLE")
+    expect(screen.queryByText("اختر نوع السطر 1.")).toBeNull()
+    expect(screen.getByText("اختر تعريف العنصر في السطر 1.")).not.toBeNull()
+
+    fillLine(0, "CONSUMABLE", "def-1")
+    expect(saveButton().disabled).toBe(false)
+    expect(screen.queryByText("اختر تعريف العنصر في السطر 1.")).toBeNull()
+
+    // Delete every line: the reason becomes the no-lines one.
+    fireEvent.click(screen.getAllByText("حذف")[0]!)
+    expect(saveButton().disabled).toBe(true)
+    expect(screen.getByText("أضف سطرًا واحدًا على الأقل قبل الحفظ.")).not.toBeNull()
+  })
+
+  it("names the second incomplete line in the disabled reason", () => {
+    renderPage()
+
+    fillLine(0, "CONSUMABLE", "def-1")
+    addLine()
+
+    // The new row is untyped first, then its item is the incomplete field.
+    expect(screen.getByText("اختر نوع السطر 2.")).not.toBeNull()
+    setLineType(1, "CONSUMABLE")
+
+    expect((screen.getByRole("button", { name: "حفظ الفاتورة" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText("اختر تعريف العنصر في السطر 2.")).not.toBeNull()
+  })
+
+  it("rejects an unsupported attachment by name before creating the invoice", async () => {
+    const { onCreated } = renderPage()
+
+    fillLine(0, "CONSUMABLE", "def-1")
+    openSection(NOTES_SECTION)
+    fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
+      target: { files: [new File(["hello"], "notes.txt", { type: "text/plain" })] },
+    })
+
+    const alert = screen.getByRole("alert")
+    expect(alert.textContent).toContain("notes.txt")
+    expect(alert.textContent).toContain("غير مدعوم")
+
+    fireEvent.click(screen.getByText("حفظ الفاتورة"))
+
+    await waitFor(() => {
+      expect(showErrorToast).toHaveBeenCalledWith(expect.stringContaining("notes.txt"))
+    })
+    expect(mocks.createInvoiceMutation.mutateAsync).not.toHaveBeenCalled()
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
+  it("rejects an oversized attachment by name", () => {
+    renderPage()
+
+    openSection(NOTES_SECTION)
+    fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
+      target: {
+        files: [new File([new Uint8Array(5 * 1024 * 1024 + 1)], "big.pdf", { type: "application/pdf" })],
+      },
+    })
+
+    const alert = screen.getByRole("alert")
+    expect(alert.textContent).toContain("big.pdf")
+    expect(alert.textContent).toContain("5")
+  })
+
+  it("surfaces the server upload rejection that names the file", async () => {
+    const { onCreated } = renderPage()
+
+    mocks.uploadInvoiceAttachments.mockRejectedValue(new Error("حجم الملف كبير جدًا: facture.pdf"))
+
+    fillLine(0, "CONSUMABLE", "def-1")
+    openSection(NOTES_SECTION)
+    fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
+      target: { files: [new File(["bytes"], "facture.pdf", { type: "application/pdf" })] },
+    })
+
+    fireEvent.click(screen.getByText("حفظ الفاتورة"))
+
+    await waitFor(() => {
+      expect(showErrorToast).toHaveBeenCalledWith("حجم الملف كبير جدًا: facture.pdf")
+    })
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+})
+
+describe("InventoryInvoiceCreatePage row type (items 13 + 12)", () => {
+  beforeEach(() => mockQueries())
+
+  it("offers exactly one add action; the two old buttons are gone", () => {
+    renderPage()
+
+    expect(screen.getAllByRole("button", { name: "إضافة سطر" })).toHaveLength(1)
+    expect(screen.queryByRole("button", { name: "إضافة مادة" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "إضافة أصل" })).toBeNull()
+  })
+
+  it("starts a new row with a type control and blocks save without a type", () => {
+    renderPage()
+
+    // The row starts untyped, and the item picker is disabled with a reason
+    // rather than silently offering everything.
+    expect(lineTypeSelect(0).value).toBe("")
+    expect(lineDefinitionSelect(0).disabled).toBe(true)
+    expect(lineDefinitionSelect(0).options[0]?.textContent).toBe("اختر النوع أولًا")
+
+    expect((screen.getByRole("button", { name: "حفظ الفاتورة" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText("اختر نوع السطر 1.")).not.toBeNull()
+
+    // Choosing a type enables the picker and moves the reason to the item.
+    setLineType(0, "CONSUMABLE")
+    expect(lineDefinitionSelect(0).disabled).toBe(false)
+    expect(screen.getByText("اختر تعريف العنصر في السطر 1.")).not.toBeNull()
+  })
+
+  it("filters the item options by the row type, requesting the server-side filter", () => {
+    renderPage()
+
+    setLineType(0, "CONSUMABLE")
+    expect(lineOptionTexts(0)).toContain("مادة استهلاكية 1")
+    expect(lineOptionTexts(0)).not.toContain("أصل ثابت 1")
+
+    setLineType(0, "ASSET")
+    expect(lineOptionTexts(0)).toContain("أصل ثابت 1")
+    expect(lineOptionTexts(0)).not.toContain("مادة استهلاكية 1")
+
+    // The usage (which the hook turns into a server-side offer filter) is what
+    // the page asks for; it never filters a full list in the browser.
+    expect(mocks.itemDefinitionsQueryOptions).toEqual(
+      expect.arrayContaining([
+        { surface: "INVOICE_LINE", kind: "CONSUMABLE" },
+        { surface: "INVOICE_LINE", kind: "ASSET" },
+      ]),
+    )
+  })
+
+  it("clears the chosen item when the row type changes", () => {
+    renderPage()
+
+    setLineType(0, "CONSUMABLE")
+    selectLineDefinition(0, "def-1")
+    expect(lineDefinitionSelect(0).value).toBe("def-1")
+
+    setLineType(0, "ASSET")
+    expect(lineDefinitionSelect(0).value).toBe("")
+
+    selectLineDefinition(0, "def-asset")
+    expect(lineDefinitionSelect(0).value).toBe("def-asset")
+    setLineType(0, "CONSUMABLE")
+    expect(lineDefinitionSelect(0).value).toBe("")
+  })
+
+  it("clears the per-row item search when the row type changes", () => {
+    renderPage()
+
+    setLineType(0, "CONSUMABLE")
+    const search = screen.getByLabelText("ابحث عن عنصر...") as HTMLInputElement
+    fireEvent.change(search, { target: { value: "إسمنت" } })
+    expect(search.value).toBe("إسمنت")
+
+    // A search typed for the consumable kind must not follow the row into the
+    // asset kind — it would hide every asset option behind a stale term.
+    setLineType(0, "ASSET")
+    expect((screen.getByLabelText("ابحث عن عنصر...") as HTMLInputElement).value).toBe("")
+  })
+
+  it("does not rewrite the row type from the picked item", async () => {
+    renderPage()
+
+    setLineType(0, "CONSUMABLE")
+    selectLineDefinition(0, "def-1")
+
+    // The kind is the row's own intent; a pick must not derive it back from the
+    // definition (the inversion the item-offer seam removed).
+    expect(lineTypeSelect(0).value).toBe("CONSUMABLE")
+    const payload = await submitInvoice()
+    expect(payload.entries[0].kind).toBe("CONSUMABLE")
+    expect(payload.entries[0].itemDefinitionId).toBe("def-1")
+  })
+
+  it("places the add action after the line rows in the DOM order", () => {
+    renderPage()
+
+    const firstRow = screen.getByText("العنصر 1")
+    const addAction = screen.getByRole("button", { name: "إضافة سطر" })
+
+    expect(firstRow.compareDocumentPosition(addAction) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
 describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)", () => {
   beforeEach(() => mockQueries())
 
@@ -663,7 +910,7 @@ describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)",
     const pickedDay = nonDefaultPickedDay()
     expect(pickedDay).not.toBe(new Date().toISOString().slice(0, 10))
     renderPage()
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fillLine(0, "CONSUMABLE", "def-1")
 
     pickCalendarDate(pickedDay)
 
@@ -679,9 +926,9 @@ describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)",
     const pickedDay = nonDefaultPickedDay()
     renderPage()
 
-    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
-    fireEvent.click(screen.getByRole("button", { name: "إضافة أصل" }))
-    fireEvent.change(lastNativeSelectWithOption("أصل ثابت 1"), { target: { value: "def-asset" } })
+    fillLine(0, "CONSUMABLE", "def-1")
+    addLine()
+    fillLine(1, "ASSET", "def-asset")
 
     // Picker #1 is the asset's purchase date; picker #0 is the invoice date.
     pickCalendarDate(pickedDay, 1)

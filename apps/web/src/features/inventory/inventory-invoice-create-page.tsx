@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next"
-import { useMemo, useState } from "react"
+import { useState } from "react"
+
+import { invoiceLineUsage, type InventoryItemDefinition } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -7,33 +9,29 @@ import { Input } from "@/components/ui/input"
 import { FileInput, NativeSelect } from "@/components/ui/form-controls"
 import { CreateableSelect } from "@/components/ui/createable-select"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
-import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { showErrorToast } from "@/lib/toast"
 
 import {
   uploadInvoiceAttachments,
   useCreateInventoryInvoiceGroupMutation,
   useInventoryExternalCounterpartiesQuery,
-  useInventoryItemDefinitionsQuery,
   useInventoryProjectsQuery,
   useInventoryWarehousesQuery,
 } from "./inventory-hooks"
+import { ItemOptionPicker } from "./item-option-picker"
+import {
+  INVOICE_ATTACHMENT_ACCEPT,
+  validateInvoiceAttachmentFiles,
+  type InvoiceAttachmentMessages,
+} from "./invoice-attachment-rules"
 import {
   useCreateWarehouseMutation,
   useCreateProjectMutation,
   useCreateExternalCounterpartyMutation,
 } from "@/features/app-shell/workspace-mutations"
 
-type ConsumableLine = {
-  kind: "CONSUMABLE"
-  itemDefinitionId: string
-  warehouseId: string
-  projectId: string
-  quantity: string
-  unitPriceDzd: string
-  totalPriceDzd: string
-  note: string
-}
+type LineKind = "" | "CONSUMABLE" | "ASSET"
 
 type AssetRow = {
   assetName: string
@@ -45,16 +43,28 @@ type AssetRow = {
   note: string
 }
 
-type AssetLine = {
-  kind: "ASSET"
-  itemDefinitionId: string
+/**
+ * One flat line shape for all three states: an untyped draft (`kind === ""`),
+ * a consumable line, or an asset line. The type is a control on the row itself
+ * (owner decision: prototype variant C), so a row can exist before its type is
+ * chosen and `validateLines` can name that as the incomplete field.
+ */
+type LineState = {
+  kind: LineKind
+  /**
+   * The picked option, not just its id: with server paging the definition is no
+   * longer derivable from an in-memory catalog, and the row needs its `unit`
+   * and `name`.
+   */
+  itemOption: InventoryItemDefinition | null
   warehouseId: string
   projectId: string
   note: string
+  quantity: string
+  unitPriceDzd: string
+  totalPriceDzd: string
   assets: AssetRow[]
 }
-
-type LineState = ConsumableLine | AssetLine
 
 /** FieldLabel - helper function. */
 function FieldLabel({ label, required = false }: { label: string; required?: boolean }) {
@@ -71,9 +81,19 @@ function getTodayDateValue() {
   return new Date().toISOString().slice(0, 10)
 }
 
-/** createConsumableLine - helper function. */
-function createConsumableLine(): ConsumableLine {
-  return { kind: "CONSUMABLE", itemDefinitionId: "", warehouseId: "", projectId: "", quantity: "1", unitPriceDzd: "0", totalPriceDzd: "0", note: "" }
+/** createLine - a new row, untyped until the operator picks its type. */
+function createLine(kind: LineKind = ""): LineState {
+  return {
+    kind,
+    itemOption: null,
+    warehouseId: "",
+    projectId: "",
+    note: "",
+    quantity: "1",
+    unitPriceDzd: "0",
+    totalPriceDzd: "0",
+    assets: kind === "ASSET" ? [createAssetRow()] : [],
+  }
 }
 
 /** createAssetRow - helper function. */
@@ -81,17 +101,11 @@ function createAssetRow(defaultName = "", purchaseDate = getTodayDateValue()): A
   return { assetName: defaultName, assetTag: "", serialNumber: "", condition: "NEW", purchaseDate, purchasePriceDzd: "0", note: "" }
 }
 
-/** createAssetLine - helper function. */
-function createAssetLine(defaultName = "", purchaseDate = getTodayDateValue()): AssetLine {
-  return { kind: "ASSET", itemDefinitionId: "", warehouseId: "", projectId: "", note: "", assets: [createAssetRow(defaultName, purchaseDate)] }
-}
-
 /** Invoice creation page with line items and file attachments. */
 /**
  * @description Component
  */
 export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceId: string) => void }) {
-  const definitionsQuery = useInventoryItemDefinitionsQuery()
   const warehousesQuery = useInventoryWarehousesQuery()
   const projectsQuery = useInventoryProjectsQuery()
   const counterpartiesQuery = useInventoryExternalCounterpartiesQuery()
@@ -111,7 +125,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   const [paidValue, setPaidValue] = useState("0")
   const [note, setNote] = useState("")
   const [files, setFiles] = useState<File[]>([])
-  const [lines, setLines] = useState<LineState[]>([createConsumableLine()])
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [lines, setLines] = useState<LineState[]>([createLine()])
   const [formError, setFormError] = useState<string | null>(null)
   // Set once the invoice is created: the attachment upload targets THIS id,
   // so a retry after an upload failure can never re-run the creation mutation
@@ -119,12 +134,9 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   const [createdInvoiceGroupId, setCreatedInvoiceGroupId] = useState<string | null>(null)
   const [uploadingAttachments, setUploadingAttachments] = useState(false)
 
-  const definitionItems = definitionsQuery.data?.items
-  const definitions = useMemo(() => definitionItems ?? [], [definitionItems])
   const warehouses = warehousesQuery.data?.items ?? []
   const projects = projectsQuery.data?.items ?? []
   const counterparties = counterpartiesQuery.data?.items ?? []
-  const selectedDefinitions = useMemo(() => new Map(definitions.map((item) => [item.id, item])), [definitions])
   const selectedCounterparty = counterparties.find((counterparty) => counterparty.id === externalCounterpartyId) ?? null
 
 /** updateLine - helper function. */
@@ -132,29 +144,56 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     setLines((current) => current.map((line, lineIndex) => (lineIndex === index ? next : line)))
   }
 
-/** validateForm - helper function. */
-  function validateForm() {
-    if (warehouseId && projectId) {
-      return "اختر مستودعًا أو مشروعًا واحدًا فقط كوجهة افتراضية."
-    }
+  /**
+   * Changes a row's type. The previously chosen item is CLEARED, because a
+   * consumable kept under "أصل" (or the reverse) would be an incompatible pair;
+   * the row's location/note are kept because they are type-independent.
+   */
+  function changeLineKind(index: number, kind: LineKind) {
+    setLines((current) =>
+      current.map((line, lineIndex) =>
+        lineIndex === index
+          ? { ...createLine(kind), warehouseId: line.warehouseId, projectId: line.projectId, note: line.note }
+          : line,
+      ),
+    )
+  }
 
-    // The wire contract bounds the paid fields (amount >= 0, percent 0-100);
-    // mirror both bounds here so invalid values never leave the client.
-    if (createDebt && paymentInputType === "PERCENT") {
-      const percent = Number(paidValue)
-      if (percent < 0 || percent > 100) {
-        return t("inventory.invoiceCreate.invalidPaidPercent", "النسبة المدفوعة يجب أن تكون بين 0 و 100.")
+  /** Picks the row's item. The option already satisfies the row's offer rule. */
+  function changeLineDefinition(index: number, option: InventoryItemDefinition | null) {
+    setLines((current) =>
+      current.map((line, lineIndex) => {
+        if (lineIndex !== index) return line
+        if (line.kind !== "ASSET") {
+          return { ...line, itemOption: option }
+        }
+        const assets = line.assets.length > 0 ? line.assets : [createAssetRow()]
+        return {
+          ...line,
+          itemOption: option,
+          assets: assets.map((asset) => ({
+            ...asset,
+            assetName: asset.assetName || option?.name || "",
+          })),
+        }
+      }),
+    )
+  }
+
+  /**
+   * Validates the line items and returns the first localized message, or
+   * `null`. Extracted from `validateForm` so the disabled-save reason and the
+   * submit gate share exactly one message set.
+   */
+  function validateLines(linesToValidate: LineState[]) {
+    for (const [index, line] of linesToValidate.entries()) {
+      // The type is a field on the row now, so a row without it is incomplete
+      // exactly like a row without its item.
+      if (line.kind === "") {
+        return `اختر نوع السطر ${index + 1}.`
       }
-    }
 
-    if (createDebt && paymentInputType === "AMOUNT") {
-      if (Number(paidValue) < 0) {
-        return t("inventory.invoiceCreate.invalidPaidAmount", "المبلغ المدفوع يجب أن يكون صفرًا أو أكثر.")
-      }
-    }
-
-    for (const [index, line] of lines.entries()) {
-      if (!line.itemDefinitionId) {
+      if (!line.itemOption) {
         return `اختر تعريف العنصر في السطر ${index + 1}.`
       }
 
@@ -188,6 +227,50 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     return null
   }
 
+  /** validateForm - helper function. */
+  function validateForm() {
+    if (warehouseId && projectId) {
+      return "اختر مستودعًا أو مشروعًا واحدًا فقط كوجهة افتراضية."
+    }
+
+    // The wire contract bounds the paid fields (amount >= 0, percent 0-100);
+    // mirror both bounds here so invalid values never leave the client.
+    if (createDebt && paymentInputType === "PERCENT") {
+      const percent = Number(paidValue)
+      if (percent < 0 || percent > 100) {
+        return t("inventory.invoiceCreate.invalidPaidPercent", "النسبة المدفوعة يجب أن تكون بين 0 و 100.")
+      }
+    }
+
+    if (createDebt && paymentInputType === "AMOUNT") {
+      if (Number(paidValue) < 0) {
+        return t("inventory.invoiceCreate.invalidPaidAmount", "المبلغ المدفوع يجب أن يكون صفرًا أو أكثر.")
+      }
+    }
+
+    return validateLines(lines)
+  }
+
+  const attachmentMessages: InvoiceAttachmentMessages = {
+    tooMany: (max) => t("inventory.invoiceCreate.attachmentTooMany", { max }),
+    tooLarge: (fileName, maxMb) => t("inventory.invoiceCreate.attachmentTooLarge", { fileName, maxMb }),
+    totalTooLarge: (maxMb) => t("inventory.invoiceCreate.attachmentTotalTooLarge", { maxMb }),
+    unsupportedType: (fileName) => t("inventory.invoiceCreate.attachmentUnsupportedType", { fileName }),
+  }
+
+  // The reason the save control is dead, shown next to it — "no lines yet",
+  // or the exact line/item the reusable validator complains about.
+  const saveDisabledReason = lines.length === 0
+    ? t("inventory.invoiceCreate.noLines")
+    : validateLines(lines)
+
+  /** Upload failures name the file/reason when the server provided one. */
+  function resolveUploadError(error: unknown) {
+    return error instanceof Error && error.message.trim().length > 0
+      ? error.message
+      : t("inventory.invoiceCreate.attachmentsUploadFailed")
+  }
+
   async function handleSubmit() {
     const validationMessage = validateForm()
     if (validationMessage) {
@@ -198,7 +281,17 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       return
     }
 
+    // Reject invalid attachments BEFORE creating: the create-first/upload-
+    // after shape would otherwise leave a half-saved invoice behind.
+    const attachmentValidationMessage = validateInvoiceAttachmentFiles(files, attachmentMessages)
+    if (attachmentValidationMessage) {
+      setAttachmentError(attachmentValidationMessage)
+      showErrorToast(attachmentValidationMessage)
+      return
+    }
+
     setFormError(null)
+    setAttachmentError(null)
 
     let groupId: string
     try {
@@ -223,7 +316,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
           if (line.kind === "CONSUMABLE") {
             return {
               kind: "CONSUMABLE" as const,
-              itemDefinitionId: line.itemDefinitionId,
+              itemDefinitionId: line.itemOption?.id ?? "",
               warehouseId: lineWarehouseId,
               projectId: lineProjectId,
               quantity: Number(line.quantity),
@@ -235,7 +328,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
 
           return {
             kind: "ASSET" as const,
-            itemDefinitionId: line.itemDefinitionId,
+            itemDefinitionId: line.itemOption?.id ?? "",
             warehouseId: lineWarehouseId,
             projectId: lineProjectId,
             note: line.note || null,
@@ -269,12 +362,13 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       setUploadingAttachments(true)
       try {
         await uploadInvoiceAttachments(groupId, files)
-      } catch {
+      } catch (error) {
         // The invoice was already saved — surface the failed upload (the
         // creation mutation's onError does NOT cover this separate step) and
         // stay on the page in the retry state: the user must see the partial
         // save and be able to retry the upload against the same invoice id.
-        showErrorToast("تم حفظ الفاتورة لكن تعذر رفع ملفات المرفقات.")
+        // The server message already names the offending file.
+        showErrorToast(resolveUploadError(error))
         return
       } finally {
         setUploadingAttachments(false)
@@ -300,8 +394,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     setUploadingAttachments(true)
     try {
       await uploadInvoiceAttachments(createdInvoiceGroupId, files)
-    } catch {
-      showErrorToast("تم حفظ الفاتورة لكن تعذر رفع ملفات المرفقات.")
+    } catch (error) {
+      showErrorToast(resolveUploadError(error))
       return
     } finally {
       setUploadingAttachments(false)
@@ -317,12 +411,6 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
           <PageHeader
             title={t("inventory.invoiceCreate.title")}
             description="أنشئ فاتورة واحدة، أرفق ملفاتها، ثم أضف كل العناصر المرتبطة بها دفعة واحدة."
-            action={
-              <PageActionGroup>
-                <Button variant="outline" onClick={() => setLines((current) => [...current, createConsumableLine()])}>{t("inventory.invoiceCreate.addConsumable")}</Button>
-                <Button variant="outline" onClick={() => setLines((current) => [...current, createAssetLine()])}>{t("inventory.invoiceCreate.addAsset")}</Button>
-              </PageActionGroup>
-            }
           />
           {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
 
@@ -472,7 +560,20 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                 </label>
                 <label className="space-y-1.5 text-sm">
                   <FieldLabel label="ملفات الفاتورة" />
-                  <FileInput multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+                  <FileInput
+                    multiple
+                    accept={INVOICE_ATTACHMENT_ACCEPT}
+                    onChange={(event) => {
+                      const nextFiles = Array.from(event.target.files ?? [])
+                      setFiles(nextFiles)
+                      setAttachmentError(validateInvoiceAttachmentFiles(nextFiles, attachmentMessages))
+                    }}
+                  />
+                  {attachmentError ? (
+                    <span role="alert" className="block text-sm text-destructive">
+                      {attachmentError}
+                    </span>
+                  ) : null}
                 </label>
               </div>
             </CollapsibleSection>
@@ -481,40 +582,47 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       </Surface>
 
       {lines.map((line, index) => {
-        const definition = line.itemDefinitionId ? selectedDefinitions.get(line.itemDefinitionId) : null
+        const definition = line.itemOption
         return (
           <Surface key={index} variant="panel">
             <PageSurfaceContent>
               <SurfaceHeader
                 title={`العنصر ${index + 1}`}
-                description={line.kind === "CONSUMABLE" ? t("inventory.invoiceCreate.consumable") : t("inventory.invoiceCreate.asset")}
+                description={line.kind === "CONSUMABLE" ? t("inventory.invoiceCreate.consumable") : line.kind === "ASSET" ? t("inventory.invoiceCreate.asset") : t("inventory.invoiceCreate.chooseLineType")}
                 action={<Button variant="outline" size="sm" onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}>{t("common.delete")}</Button>}
               />
-              <div className="grid gap-3 md:grid-cols-3">
+              {/* Variant C: the type is the FIRST control of the row, and it filters
+                  the item options to only what is valid for that type. */}
+              <div className="grid gap-3 md:grid-cols-4">
                 <label className="space-y-1.5 text-sm">
-                  <FieldLabel label="تعريف العنصر" required />
-                  <NativeSelect value={line.itemDefinitionId} onChange={(event) => {
-                    const nextDefinition = selectedDefinitions.get(event.target.value)
-                    if (nextDefinition?.itemType === "ASSET") {
-                      updateLine(index, { kind: "ASSET", itemDefinitionId: event.target.value, warehouseId: line.warehouseId, projectId: line.projectId, note: line.note, assets: line.kind === "ASSET" ? line.assets.map((asset) => ({ ...asset, assetName: asset.assetName || nextDefinition.name })) : [createAssetRow(nextDefinition.name, invoiceDate || getTodayDateValue())] })
-                      return
-                    }
-                    updateLine(index, { kind: "CONSUMABLE", itemDefinitionId: event.target.value, warehouseId: line.warehouseId, projectId: line.projectId, quantity: line.kind === "CONSUMABLE" ? line.quantity : "1", unitPriceDzd: line.kind === "CONSUMABLE" ? line.unitPriceDzd : "0", totalPriceDzd: line.kind === "CONSUMABLE" ? line.totalPriceDzd : "0", note: line.note })
-                  }}>
-                    <option value="">اختر العنصر</option>
-                    {definitions.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.itemType === "CONSUMABLE" ? t("inventory.invoiceCreate.consumableType") : t("inventory.invoiceCreate.assetType")}</option>)}
+                  <FieldLabel label={t("inventory.invoiceCreate.lineType")} required />
+                  <NativeSelect value={line.kind} onChange={(event) => changeLineKind(index, event.target.value as LineKind)}>
+                    <option value="">{t("inventory.invoiceCreate.chooseLineType")}</option>
+                    <option value="CONSUMABLE">{t("inventory.invoiceCreate.lineTypeConsumable")}</option>
+                    <option value="ASSET">{t("inventory.invoiceCreate.lineTypeAsset")}</option>
                   </NativeSelect>
                 </label>
+                <div className="space-y-1.5 text-sm">
+                  <FieldLabel label="تعريف العنصر" required />
+                  <ItemOptionPicker
+                    key={line.kind}
+                    label="تعريف العنصر"
+                    usage={invoiceLineUsage(line.kind === "ASSET" ? "ASSET" : "CONSUMABLE")}
+                    value={line.itemOption}
+                    onChange={(option) => changeLineDefinition(index, option)}
+                    disabled={line.kind === ""}
+                  />
+                </div>
                 <label className="space-y-1.5 text-sm">
                   <FieldLabel label={t("inventory.invoiceCreate.warehouse")} />
-                  <NativeSelect value={line.warehouseId} onChange={(event) => updateLine(index, { ...line, warehouseId: event.target.value, projectId: event.target.value ? "" : line.projectId } as LineState)}>
+                  <NativeSelect value={line.warehouseId} onChange={(event) => updateLine(index, { ...line, warehouseId: event.target.value, projectId: event.target.value ? "" : line.projectId })}>
                     <option value="">{t("common.default")}</option>
                     {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
                   </NativeSelect>
                 </label>
                 <label className="space-y-1.5 text-sm">
                   <FieldLabel label={t("inventory.invoiceCreate.project")} />
-                  <NativeSelect value={line.projectId} onChange={(event) => updateLine(index, { ...line, projectId: event.target.value, warehouseId: event.target.value ? "" : line.warehouseId } as LineState)}>
+                  <NativeSelect value={line.projectId} onChange={(event) => updateLine(index, { ...line, projectId: event.target.value, warehouseId: event.target.value ? "" : line.warehouseId })}>
                     <option value="">{t("common.default")}</option>
                     {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                   </NativeSelect>
@@ -549,7 +657,9 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                     }} />
                   </label>
                 </div>
-              ) : (
+              ) : null}
+
+              {line.kind === "ASSET" ? (
                 <div className="space-y-3">
                   {line.assets.map((asset, assetIndex) => (
                     <div key={assetIndex} className="grid gap-3 rounded-xl border border-border p-3 md:grid-cols-3">
@@ -587,15 +697,27 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                       </label>
                     </div>
                   ))}
-                  <Button variant="outline" size="sm" onClick={() => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: [...currentLine.assets, createAssetRow(selectedDefinitions.get(currentLine.itemDefinitionId)?.name ?? "", invoiceDate || getTodayDateValue())] }))}>إضافة أصل آخر</Button>
+                  <Button variant="outline" size="sm" onClick={() => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: [...currentLine.assets, createAssetRow(currentLine.itemOption?.name ?? "", invoiceDate || getTodayDateValue())] }))}>إضافة أصل آخر</Button>
                 </div>
-              )}
+              ) : null}
             </PageSurfaceContent>
           </Surface>
         )
       })}
 
+      {/* Item 12: the add action sits at the bottom of the list, after the rows. */}
+      <div className="flex justify-start">
+        <Button variant="outline" onClick={() => setLines((current) => [...current, createLine()])}>
+          {t("inventory.invoiceCreate.addLine")}
+        </Button>
+      </div>
+
       <div className="flex items-center justify-end gap-3">
+        {!createdInvoiceGroupId && saveDisabledReason ? (
+          <p role="status" aria-live="polite" className="text-sm text-destructive">
+            {saveDisabledReason}
+          </p>
+        ) : null}
         {createdInvoiceGroupId ? (
           <Button disabled={uploadingAttachments} onClick={() => {
             void handleRetryAttachmentUpload().catch(() => {
@@ -605,13 +727,13 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
             {t("inventory.invoiceCreate.retryAttachments")}
           </Button>
         ) : (
-          <Button disabled={createMutation.isPending || lines.length === 0} onClick={() => {
+          <Button disabled={createMutation.isPending || saveDisabledReason !== null} onClick={() => {
             void handleSubmit().catch(() => {
               // Every known failure path (validation, mutation, attachment
               // upload) is handled inside handleSubmit with a field error or
               // toast. This catch only covers unexpected errors — surface them
               // and never let an unhandled rejection reach dev/CI logs.
-              showErrorToast("تعذر حفظ الفاتورة.")
+              showErrorToast(t("inventory.invoiceCreate.attachmentsSaveFailed"))
             })
           }}>
             {createMutation.isPending ? t("common.saving") : t("inventory.invoiceCreate.save")}

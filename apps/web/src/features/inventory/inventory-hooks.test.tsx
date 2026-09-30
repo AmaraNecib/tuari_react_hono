@@ -6,6 +6,7 @@ import type { ReactNode } from "react"
 const mocks = vi.hoisted(() => ({
   session: vi.fn(),
   list: vi.fn(),
+  options: vi.fn(),
   create: vi.fn(),
   createInvoiceGroup: vi.fn(),
   listProjectCharges: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("@/lib/orpc-client", async (importOriginal) => {
     ...actual,
     rpcClient: {
       inventoryItemDefinitionsList: mocks.list,
+      inventoryItemDefinitionOptions: mocks.options,
       inventoryItemDefinitionsCreate: mocks.create,
       inventoryInvoiceGroupsCreate: mocks.createInvoiceGroup,
       inventoryAssetChargesListByProject: mocks.listProjectCharges,
@@ -31,10 +33,12 @@ vi.mock("@/features/session/use-session-query", () => ({
 }))
 
 import {
+  ITEM_DEFINITION_OPTIONS_PAGE_SIZE,
   useAssetChargeDefaultQuery,
   useCreateInventoryInvoiceGroupMutation,
   useCreateInventoryItemDefinitionMutation,
   useInventoryItemDefinitionsQuery,
+  useItemDefinitionOptionsQuery,
   useProjectChargesQuery,
 } from "./inventory-hooks"
 import { orpc } from "@/lib/orpc-client"
@@ -247,5 +251,105 @@ describe("asset charge default — revalidates when the dialog reopens", () => {
 
     await waitFor(() => expect(result.current.data?.amountDzd).toBe(70_000))
     expect(mocks.chargeDefault).toHaveBeenCalledTimes(2)
+  })
+})
+
+/**
+ * The paged, usage-scoped picker read. The invoice page test mocks this hook
+ * away, so this suite is the only coverage of the filter mapping, the debounce
+ * and the cursor chain that the hook owns.
+ */
+describe("item-definition options — the usage-scoped paged picker read", () => {
+  const CONSUMABLE_USAGE = { surface: "INVOICE_LINE", kind: "CONSUMABLE" } as const
+  const OPTION_A = { id: "def-1", name: "إسمنت", itemType: "CONSUMABLE", unit: "قطعة" }
+  const OPTION_B = { id: "def-2", name: "جير", itemType: "CONSUMABLE", unit: "قطعة" }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.session.mockReturnValue({ data: { user: { id: "user-1" } } })
+  })
+
+  it("pages the usage-scoped options by cursor and accumulates the pages", async () => {
+    mocks.options.mockImplementation((input: { cursor?: string }) =>
+      input.cursor
+        ? Promise.resolve({ items: [OPTION_B], total: 2, nextCursor: null, hasMore: false })
+        : Promise.resolve({ items: [OPTION_A], total: 2, nextCursor: "cursor-1", hasMore: true }),
+    )
+    const queryClient = makeQueryClient()
+    const { result } = renderHook(() => useItemDefinitionOptionsQuery({ usage: CONSUMABLE_USAGE }), {
+      wrapper: wrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.options).toEqual([OPTION_A]))
+    expect(mocks.options).toHaveBeenCalledWith({
+      usage: CONSUMABLE_USAGE,
+      search: undefined,
+      cursor: undefined,
+      limit: ITEM_DEFINITION_OPTIONS_PAGE_SIZE,
+    })
+
+    await act(async () => {
+      await result.current.fetchNextPage()
+    })
+    await waitFor(() => expect(result.current.options).toEqual([OPTION_A, OPTION_B]))
+    expect(mocks.options).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "cursor-1" }))
+  })
+
+  it("debounces the search and starts a fresh cursor chain when it changes", async () => {
+    mocks.options.mockResolvedValue({ items: [OPTION_A], total: 3, nextCursor: "cursor-1", hasMore: true })
+    const queryClient = makeQueryClient()
+    const { result, rerender } = renderHook(
+      ({ search }: { search: string }) => useItemDefinitionOptionsQuery({ usage: CONSUMABLE_USAGE, search }),
+      { wrapper: wrapper(queryClient), initialProps: { search: "إسمنت" } },
+    )
+
+    await waitFor(() => expect(result.current.options).toEqual([OPTION_A]))
+    // Load a second page so a cursor is held for the first search.
+    await act(async () => {
+      await result.current.fetchNextPage()
+    })
+    await waitFor(() => expect(mocks.options).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "cursor-1" })))
+
+    rerender({ search: "إسمن" })
+    rerender({ search: "إسمنت أبيض" })
+
+    // The changed search is a new query key: its first request must carry no
+    // cursor, or it would resume the previous search's position and skip rows.
+    await waitFor(() =>
+      expect(mocks.options).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: "إسمنت أبيض", cursor: undefined }),
+      ),
+    )
+    // The intermediate keystroke was debounced away entirely.
+    expect(mocks.options.mock.calls.some(([input]) => input.search === "إسمن")).toBe(false)
+  })
+
+  it("maps an asset usage to its own request instead of reusing the consumable read", async () => {
+    mocks.options.mockResolvedValue({ items: [], total: 0, nextCursor: null, hasMore: false })
+    const queryClient = makeQueryClient()
+    const { rerender } = renderHook(
+      ({ kind }: { kind: "CONSUMABLE" | "ASSET" }) =>
+        useItemDefinitionOptionsQuery({ usage: { surface: "INVOICE_LINE", kind } }),
+      { wrapper: wrapper(queryClient), initialProps: { kind: "CONSUMABLE" } },
+    )
+
+    await waitFor(() =>
+      expect(mocks.options).toHaveBeenCalledWith(expect.objectContaining({ usage: { surface: "INVOICE_LINE", kind: "CONSUMABLE" } })),
+    )
+    rerender({ kind: "ASSET" })
+    await waitFor(() =>
+      expect(mocks.options).toHaveBeenLastCalledWith(
+        expect.objectContaining({ usage: { surface: "INVOICE_LINE", kind: "ASSET" } }),
+      ),
+    )
+  })
+
+  it("does not fetch while disabled", async () => {
+    const queryClient = makeQueryClient()
+    renderHook(() => useItemDefinitionOptionsQuery({ usage: { surface: "STOCK_REFERENCE" }, enabled: false }), {
+      wrapper: wrapper(queryClient),
+    })
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    expect(mocks.options).not.toHaveBeenCalled()
   })
 })

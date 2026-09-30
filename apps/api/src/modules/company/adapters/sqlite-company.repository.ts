@@ -22,6 +22,7 @@ import {
   encodeCursor as encodeCursorToken,
   decodeCursor as decodeCursorToken,
 } from "../../shared/cursor";
+import { escapeLikePattern } from "../../shared/sql-search";
 import * as schema from "../../../schema";
 import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzle";
 import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock";
@@ -102,16 +103,6 @@ function normalizeAudit(ctx?: MutationAuditContext) {
 }
 
 type WhereCond = SQL;
-
-/**
- * Escape SQL LIKE wildcards (`%`, `_`, and the `\` escape char itself) so a
- * search term matches literally, mirroring the frontend's old `includes()`
- * semantics instead of interpreting wildcards. SQLite LIKE has no default
- * escape char — the caller must pair this with `ESCAPE '\'`.
- */
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-}
 
 /**
  * Build the employee search WHERE clause: case-insensitive (ASCII) substring
@@ -448,7 +439,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const ac = [...fc];
     if (query.cursor) {
       const d = decodeCursorToken(query.cursor);
-      ac.push(sql`(${schema.employee.createdAt} < ${d.createdAt} OR (${schema.employee.createdAt} = ${d.createdAt} AND ${schema.employee.id} < ${d.id}))`);
+      ac.push(sql`(${schema.employee.createdAt} < ${d.sortKey} OR (${schema.employee.createdAt} = ${d.sortKey} AND ${schema.employee.id} < ${d.id}))`);
     }
     const w = buildWhere(ac);
     const q = this.db.select().from(schema.employee);
@@ -456,7 +447,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const hasMore = rows.length > query.limit;
     const items = rows.slice(0, query.limit);
     const last = items[items.length - 1];
-    return { items, total, nextCursor: hasMore && last ? encodeCursorToken({ createdAt: last.createdAt, id: last.id }) : null };
+    return { items, total, nextCursor: hasMore && last ? encodeCursorToken({ sortKey: last.createdAt, id: last.id }) : null };
   }
 
   upsertEmployee(data: EmployeeCreateData | (EmployeeUpdateData & { id: string })): EmployeeRecord {

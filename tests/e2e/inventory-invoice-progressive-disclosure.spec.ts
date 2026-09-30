@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test"
 
 import { resetE2eDatabase } from "./helpers/db-isolation"
 import { findE2eDatabase, loadDatabaseConstructor } from "./helpers/db-seed"
+import { selectInvoiceLineItem } from "./helpers/invoice-line"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
@@ -121,9 +122,10 @@ test.describe("inventory invoice create — progressive disclosure", () => {
     await page.locator('div[role="option"]', { hasText: warehouseName }).first().click()
     await expect(warehouseTrigger).toContainText(warehouseName, { timeout: 10_000 })
 
-    // 4) Re-render by adding a line item: every opened section stays open and
-    // the debt state survives.
-    await page.getByRole("button", { name: "إضافة مادة" }).click()
+    // 4) Re-render by adding a line item (owner item 13 replaced the two old
+    // per-type add buttons with one add action): every opened section stays
+    // open and the debt state survives.
+    await page.getByRole("button", { name: "إضافة سطر" }).click()
     await expect(debtSection).toHaveAttribute("aria-expanded", "true")
     await expect(cpSection).toHaveAttribute("aria-expanded", "true")
     await expect(defaultsSection).toHaveAttribute("aria-expanded", "true")
@@ -144,10 +146,10 @@ test.describe("inventory invoice create — progressive disclosure", () => {
     })
 
     // 6) Fill both lines (definition + quantity + unit price above the paid
-    // amount so the remaining debt stays positive) and save.
-    const definitionSelects = page.getByLabel("تعريف العنصر")
-    await definitionSelects.first().selectOption({ index: 1 })
-    await definitionSelects.last().selectOption({ index: 1 })
+    // amount so the remaining debt stays positive) and save. Variant C:
+    // choose each row's type first; the committed item name is CONSUMABLE.
+    await selectInvoiceLineItem(page, { index: 0, kind: "CONSUMABLE", itemName })
+    await selectInvoiceLineItem(page, { index: 1, kind: "CONSUMABLE", itemName })
     const quantityInputs = page.getByLabel(/^الكمية/)
     await quantityInputs.first().fill("10")
     await quantityInputs.last().fill("10")

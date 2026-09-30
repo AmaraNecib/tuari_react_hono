@@ -21,6 +21,18 @@ vi.mock("./expenses-queries", () => ({
   useVoidExpenseMutation: () => ({ isPending: false, mutateAsync: voidMutateAsync }),
 }))
 
+// The expense dialog now owns its stock-item picker (active-only usage seam);
+// this suite does not exercise it, so stub the hooks without a QueryClient.
+vi.mock("@/features/inventory/inventory-hooks", () => ({
+  useItemDefinitionOptionsQuery: () => ({
+    options: [],
+    fetchNextPage: vi.fn(),
+    hasNextPage: false,
+    isFetchingNextPage: false,
+  }),
+  useInventoryItemDefinitionQuery: () => ({ data: undefined }),
+}))
+
 const ITEMS = [
   {
     id: "e-1",
@@ -86,7 +98,6 @@ function renderPage() {
       projects={[{ id: "project-1", label: "فيلا حيدرة" }]}
       employees={[{ id: "worker-1", label: "كريم ب." }]}
       sellers={[{ id: "seller-1", label: "محل الإلكترونيات" }]}
-      stockItems={[{ id: "item-1", label: "خلاطة إسمنت" }]}
     />,
   )
 }

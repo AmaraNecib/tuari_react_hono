@@ -24,6 +24,7 @@ import type {
   InventoryConsumableTransferInput,
   InventoryInvoiceGroupListInput,
   InventoryItemDefinitionListInput,
+  InventoryItemDefinitionOptionsInput,
   InventoryLocationContentsInput,
 } from "./handler-inputs";
 
@@ -36,6 +37,9 @@ export function createInventoryHandlers(
   return {
     inventoryItemDefinitionsList: os.inventoryItemDefinitionsList.handler(m.queryAuth(async ({ input }) =>
       inventoryService.listItemDefinitions(input as InventoryItemDefinitionListInput)
+    )),
+    inventoryItemDefinitionOptions: os.inventoryItemDefinitionOptions.handler(m.queryAuth(async ({ input }) =>
+      inventoryService.listItemDefinitionOptions(input as InventoryItemDefinitionOptionsInput)
     )),
     inventoryItemDefinitionsGet: os.inventoryItemDefinitionsGet.handler(m.queryAuth(async ({ input }) =>
       inventoryService.getItemDefinition((input as IdInput).id)
