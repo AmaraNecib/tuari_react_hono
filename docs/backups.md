@@ -131,7 +131,9 @@ logged, and the status is available to the UI through the authenticated
 {
   lastSuccessAt: string | null,   // when the last backup succeeded
   lastBackupPath: string | null,  // the newest backup folder on disk
-  lastFailure: { at, reason } | null
+  lastFailure: { at, reason } | null,
+  backupsRootPath: string,        // the configured root (present before any backup)
+  retention: { daily, weekly, monthly }  // the active policy
 }
 ```
 
@@ -157,7 +159,8 @@ backups are left untouched.
   do. Point the root at a second drive or a USB disk (desktop: Settings →
   System → backup folder; manual/API install: `APP_BACKUPS_ROOT`) to also
   survive a disk failure. Changing the root does not move existing snapshots:
-  the old snapshots stay where they were until they are pruned or deleted by
-  hand, and the new folder starts empty.
+  the old snapshots stay where they were, are no longer pruned automatically
+  (retention applies to the folder currently in use), and the new folder starts
+  empty. Delete the old folder by hand when you no longer need it.
 - A backup is only as good as it has been tested. Restore one into a scratch
   copy occasionally.

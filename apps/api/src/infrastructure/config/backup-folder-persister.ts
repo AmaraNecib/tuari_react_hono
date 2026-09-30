@@ -47,7 +47,10 @@ export function createConfigFileBackupFolderPersister(
 
       return result.success
         ? { success: true, persisted: true }
-        : { success: false, error: "Failed to persist the backup folder" };
+        : {
+            success: false,
+            error: `Failed to persist the backup folder: ${result.error}`,
+          };
     },
   };
 }

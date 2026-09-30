@@ -20,6 +20,12 @@ vi.mock("./backup-hooks", () => ({
   pickBackupFolder: () => mockPickBackupFolder(),
 }));
 
+// Force the desktop runtime so the "Choose folder" control (and its failure
+// path) is reachable; jsdom is never a Tauri origin.
+vi.mock("@/lib/desktop-auth-session", () => ({
+  isDesktopRuntime: () => true,
+}));
+
 // ─── Mock useTranslation with real Arabic strings ──────────────
 
 vi.mock("react-i18next", () => ({
@@ -51,9 +57,10 @@ vi.mock("react-i18next", () => ({
 
 function renderWithQuery(ui: React.ReactElement) {
   const queryClient = createAppQueryClient();
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
   );
+  return { ...result, queryClient };
 }
 
 const ROOT = "/mnt/usb/tuari-backups";
@@ -113,9 +120,11 @@ describe("BackupSettings", () => {
     expect(panel.getAttribute("data-state")).toBe("never-run");
     expect(screen.queryByText("لا توجد نسخة احتياطية بعد")).toBeTruthy();
     // The empty state must not overstate what a backup protects.
+    expect(screen.queryByText(/قاعدة البيانات فقط/)).toBeTruthy();
     expect(
-      screen.queryByText(/لا تحمي من تعطل القرص/),
+      screen.queryByText(/إذا كان هذا المجلد على القرص نفسه/),
     ).toBeTruthy();
+    expect(screen.queryByText(/لا تحمي من تعطل القرص/)).toBeTruthy();
   });
 
   it("renders the last success time and folder path", () => {
@@ -149,6 +158,38 @@ describe("BackupSettings", () => {
     const panel = screen.getByTestId("backup-status");
     expect(panel.getAttribute("data-state")).toBe("overdue");
     expect(screen.queryByText("آخر نسخة احتياطية قديمة")).toBeTruthy();
+  });
+
+  it("does not flag a success that is still inside the startup window", () => {
+    loaded(
+      createStatus({
+        lastSuccessAt: new Date(Date.now() - 47 * 60 * 60 * 1000).toISOString(),
+        lastBackupPath: "/mnt/usb/tuari-backups/2026-01-14",
+      }),
+    );
+    mutationResolving({ success: true, path: ROOT, persisted: true });
+
+    renderWithQuery(<BackupSettings />);
+
+    expect(screen.getByTestId("backup-status").getAttribute("data-state")).toBe(
+      "success",
+    );
+  });
+
+  it("flags overdue once the startup window is clearly missed", () => {
+    loaded(
+      createStatus({
+        lastSuccessAt: new Date(Date.now() - 49 * 60 * 60 * 1000).toISOString(),
+        lastBackupPath: "/mnt/usb/tuari-backups/2026-01-14",
+      }),
+    );
+    mutationResolving({ success: true, path: ROOT, persisted: true });
+
+    renderWithQuery(<BackupSettings />);
+
+    expect(screen.getByTestId("backup-status").getAttribute("data-state")).toBe(
+      "overdue",
+    );
   });
 
   it("renders a recorded failure loudly with its reason", () => {
@@ -234,6 +275,120 @@ describe("BackupSettings", () => {
 
     await waitFor(() => {
       expect(screen.queryByText(/هذه الجلسة فقط/)).toBeTruthy();
+    });
+  });
+
+  it("does not call a session-only save a permanent save", async () => {
+    loaded(createStatus());
+    mutationResolving({ success: true, path: ROOT, persisted: false });
+
+    renderWithQuery(<BackupSettings />);
+
+    fireEvent.click(screen.getByRole("button", { name: "حفظ المسار" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("تم تطبيق مجلد النسخ الاحتياطي على هذه الجلسة فقط."),
+      ).toBeTruthy();
+    });
+    expect(screen.queryByText("تم حفظ مجلد النسخ الاحتياطي.")).toBeNull();
+  });
+
+  it("shows an error when the save request itself fails", async () => {
+    loaded(createStatus());
+    mockUseSetBackupsRootMutation.mockReturnValue({
+      mutateAsync: vi.fn().mockRejectedValue(new Error("network down")),
+      isPending: false,
+    });
+
+    renderWithQuery(<BackupSettings />);
+
+    fireEvent.click(screen.getByRole("button", { name: "حفظ المسار" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("network down")).toBeTruthy();
+    });
+  });
+
+  it("shows the last successful backup even when the last attempt failed", () => {
+    loaded(
+      createStatus({
+        lastSuccessAt: "2026-01-14T08:00:00.000Z",
+        lastBackupPath: "/mnt/usb/tuari-backups/2026-01-13",
+        lastFailure: {
+          at: "2026-01-15T08:00:00.000Z",
+          reason: "could not prune 2025-11-03: EBUSY",
+        },
+      }),
+    );
+    mutationResolving({ success: true, path: ROOT, persisted: true });
+
+    renderWithQuery(<BackupSettings />);
+
+    const panel = screen.getByTestId("backup-status");
+    expect(panel.getAttribute("data-state")).toBe("failed");
+    expect(screen.queryByText("فشلت آخر محاولة نسخ احتياطي")).toBeTruthy();
+    // A cleanup failure must not hide a snapshot that did succeed.
+    expect(screen.queryByText("آخر نسخة احتياطية ناجحة")).toBeTruthy();
+    expect(screen.queryByText("/mnt/usb/tuari-backups/2026-01-13")).toBeTruthy();
+  });
+
+  it("flags a snapshot timestamp that is in the future", () => {
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    loaded(createStatus({ lastSuccessAt: future, lastBackupPath: ROOT + "/2030-01-01" }));
+    mutationResolving({ success: true, path: ROOT, persisted: true });
+
+    renderWithQuery(<BackupSettings />);
+
+    expect(screen.queryByText("تاريخ النسخة في المستقبل")).toBeTruthy();
+  });
+
+  it("says changing the folder does not move existing snapshots", () => {
+    loaded(createStatus());
+    mutationResolving({ success: true, path: ROOT, persisted: true });
+
+    renderWithQuery(<BackupSettings />);
+
+    expect(screen.queryByText(/لا ينقل النسخ الموجودة/)).toBeTruthy();
+  });
+
+  it("shows an error when the desktop folder picker fails", async () => {
+    loaded(createStatus());
+    mutationResolving({ success: true, path: ROOT, persisted: true });
+    mockPickBackupFolder.mockRejectedValue(new Error("dialog unavailable"));
+
+    renderWithQuery(<BackupSettings />);
+
+    fireEvent.click(screen.getByRole("button", { name: "اختيار مجلد..." }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("تعذر فتح منتقي المجلدات.")).toBeTruthy();
+    });
+  });
+
+  it("adopts the server-normalized path after a save", () => {
+    let status = createStatus({ backupsRootPath: "/old/root" });
+    mockUseBackupStatusQuery.mockImplementation(() => ({
+      isLoading: false,
+      isError: false,
+      data: status,
+    }));
+    mutationResolving({ success: true, path: "/new/root", persisted: true });
+
+    const { rerender, queryClient } = renderWithQuery(<BackupSettings />);
+    expect(screen.getByDisplayValue("/old/root")).toBeTruthy();
+
+    // The mutation invalidates the status, so the refetch returns the
+    // normalized root and the field must follow it.
+    status = createStatus({ backupsRootPath: "/new/root" });
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <BackupSettings />
+      </QueryClientProvider>,
+    );
+
+    return waitFor(() => {
+      expect(screen.getByDisplayValue("/new/root")).toBeTruthy();
     });
   });
 });

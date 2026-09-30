@@ -41,6 +41,17 @@ function isBackupOverdue(lastSuccessAt: string | null): boolean {
   return Number.isFinite(takenAt) && Date.now() - takenAt > OVERDUE_AFTER_MS
 }
 
+/**
+ * A snapshot dated in the future is not credible (a clock that was set ahead).
+ * The engine ignores such folders when deciding whether a run is due, and the
+ * screen must not present the timestamp as an ordinary success.
+ */
+function isBackupFutureDated(lastSuccessAt: string | null): boolean {
+  if (!lastSuccessAt) return false
+  const takenAt = Date.parse(lastSuccessAt)
+  return Number.isFinite(takenAt) && takenAt > Date.now()
+}
+
 type SaveMessage = {
   kind: "success" | "error"
   text: string
@@ -86,8 +97,9 @@ export function BackupSettings() {
 
   const failure = status.lastFailure
   const hasFailure = failure !== null
-  const hasSuccess = status.lastSuccessAt !== null && failure === null
+  const hasSuccess = status.lastSuccessAt !== null
   const overdue = hasSuccess && isBackupOverdue(status.lastSuccessAt)
+  const futureDated = hasSuccess && isBackupFutureDated(status.lastSuccessAt)
   const retention = status.retention
 
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
@@ -100,23 +112,42 @@ export function BackupSettings() {
       return
     }
 
-    const result = await setRoot.mutateAsync(trimmed)
-    if (result.success) {
+    try {
+      const result = await setRoot.mutateAsync(trimmed)
+      if (result.success) {
+        setSaveMessage({
+          kind: "success",
+          text: result.persisted
+            ? t("settings.backups.saveSuccess")
+            : t("settings.backups.saveSessionOnly"),
+          sessionOnly: !result.persisted,
+        })
+        return
+      }
+      setSaveMessage({ kind: "error", text: result.error })
+    } catch (error) {
+      // A transport/RPC failure (offline, 401, output-validation) is not the
+      // documented `{ success: false }` envelope, so without this the click
+      // would silently do nothing and the mutation would reject unhandled.
       setSaveMessage({
-        kind: "success",
-        text: t("settings.backups.saveSuccess"),
-        sessionOnly: !result.persisted,
+        kind: "error",
+        text:
+          error instanceof Error && error.message
+            ? error.message
+            : t("settings.backups.saveFailed"),
       })
-      return
     }
-    setSaveMessage({ kind: "error", text: result.error })
   }
 
   const handlePick = async () => {
-    const selected = await pickBackupFolder()
-    if (selected) {
-      setPath(selected)
-      setSaveMessage(null)
+    try {
+      const selected = await pickBackupFolder()
+      if (selected) {
+        setPath(selected)
+        setSaveMessage(null)
+      }
+    } catch {
+      setSaveMessage({ kind: "error", text: t("settings.backups.pickerFailed") })
     }
   }
 
@@ -126,7 +157,9 @@ export function BackupSettings() {
         className={
           hasFailure
             ? "p-5 border border-destructive/40 rounded-xl bg-destructive/5"
-            : "p-5 border border-line rounded-xl"
+            : overdue
+              ? "p-5 border border-destructive/40 rounded-xl"
+              : "p-5 border border-line rounded-xl"
         }
         data-testid="backup-status"
         data-state={hasFailure ? "failed" : overdue ? "overdue" : hasSuccess ? "success" : "never-run"}
@@ -177,6 +210,16 @@ export function BackupSettings() {
                 </p>
               </div>
             )}
+            {futureDated && (
+              <div className="mt-2 space-y-1 text-start" dir="rtl">
+                <p className="text-sm font-semibold text-destructive">
+                  {t("settings.backups.futureLabel")}
+                </p>
+                <p className="text-sm leading-6 text-destructive">
+                  {t("settings.backups.futureDescription")}
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -213,6 +256,9 @@ export function BackupSettings() {
           <h3 className="text-lg font-semibold text-foreground">{t("settings.backups.folderTitle")}</h3>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {t("settings.backups.folderDescription")}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            {t("settings.backups.folderChangeNote")}
           </p>
         </div>
 

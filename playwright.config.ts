@@ -1,3 +1,6 @@
+import { mkdirSync } from "node:fs"
+import { dirname, resolve } from "node:path"
+
 import { defineConfig, devices } from "@playwright/test"
 
 import { BOOTSTRAP_SETUP_KEY } from "./tests/e2e/helpers/session"
@@ -50,6 +53,21 @@ const e2eDbPath =
 // API consumes this, so an external run never advertises a local file.
 if (startOwnWeb) process.env.APP_DB_PATH = e2eDbPath
 
+// #436: the backup-folder setting writes the user-editable config.json. Point
+// the E2E API at a throwaway file so the durability assertion has a real
+// config to write, and keep it out of the repo (apps/api/data is gitignored).
+// Playwright re-evaluates this config in every worker, so the path is derived
+// once and propagated through E2E_TUARI_CONFIG_FILE; a developer's own
+// TUARI_CONFIG_FILE is never written.
+const e2eConfigPath =
+  process.env.E2E_TUARI_CONFIG_FILE ??
+  resolve(process.cwd(), "apps/api/data", `tuari.e2e.${Date.now()}.config.json`)
+if (startOwnWeb) {
+  mkdirSync(dirname(e2eConfigPath), { recursive: true })
+  process.env.E2E_TUARI_CONFIG_FILE = e2eConfigPath
+  process.env.TUARI_CONFIG_FILE = e2eConfigPath
+}
+
 const sharedEnv = {
   ...process.env,
   API_HOST: "127.0.0.1",
@@ -67,6 +85,7 @@ const sharedEnv = {
   BETTER_AUTH_SECRET: "tuari-foundation-secret-1234567890",
   BETTER_AUTH_URL: apiUrl,
   APP_DB_PATH: e2eDbPath,
+  TUARI_CONFIG_FILE: e2eConfigPath,
   BOOTSTRAP_SETUP_KEY,
   // The E2E suite drives the API without the desktop shell, so it must opt in
   // to a writable license explicitly: the API fails CLOSED (status `unknown`)

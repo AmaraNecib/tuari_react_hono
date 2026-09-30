@@ -44,11 +44,9 @@ export async function pickBackupFolder(): Promise<string | null> {
     return null;
   }
 
-  try {
-    const { open } = await import("@tauri-apps/plugin-dialog");
-    const selected = await open({ directory: true, multiple: false });
-    return typeof selected === "string" ? selected : null;
-  } catch {
-    return null;
-  }
+  // Let a dialog/IPC failure propagate: the caller shows an error instead of
+  // treating it exactly like the owner pressing Cancel.
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({ directory: true, multiple: false });
+  return typeof selected === "string" ? selected : null;
 }

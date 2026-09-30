@@ -94,10 +94,15 @@ describe("createConfigFileBackupFolderPersister", () => {
     writeFileSync(configPath, "[]");
 
     const persister = createConfigFileBackupFolderPersister(configPath);
-    expect(persister.persistBackupsRoot("/mnt/usb/backups")).toEqual({
-      success: false,
-      error: "Failed to persist the backup folder",
-    });
+    const result = persister.persistBackupsRoot("/mnt/usb/backups");
+    expect(result.success).toBe(false);
+    expect(result.success === false && result.error).toContain(
+      "Failed to persist the backup folder",
+    );
+    // The reason is surfaced, not collapsed into an opaque message.
+    expect(result.success === false && result.error).toContain(
+      "not a JSON object",
+    );
     expect(readFileSync(configPath, "utf8")).toBe("[]");
   });
 

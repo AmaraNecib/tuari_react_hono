@@ -28,7 +28,7 @@ const CONFIG_FILE_MODE = 0o600;
 
 export type ConfigFileWriteResult =
   | { success: true }
-  | { success: false };
+  | { success: false; error: string };
 
 /**
  * Read the config file, apply `mutate`, and atomically replace it.
@@ -81,7 +81,7 @@ export function updateConfigFile(
     renameSync(tmpPath, configFilePath);
 
     return { success: true };
-  } catch {
+  } catch (error) {
     // Best-effort cleanup: a failed write/rename must not leave a stale temp
     // file behind.
     try {
@@ -89,6 +89,12 @@ export function updateConfigFile(
     } catch {
       // Ignore — the temp may not exist; the honest failure is what matters.
     }
-    return { success: false };
+    return {
+      success: false,
+      error:
+        error instanceof Error && error.message.length > 0
+          ? error.message
+          : "the config file could not be written",
+    };
   }
 }

@@ -8,8 +8,8 @@
  * failure instead of blocking startup (see `backup.service.ts`), so this
  * validator never has to be the thing that keeps the app alive.
  */
-import { accessSync, constants, mkdirSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 export type BackupsRootValidation =
   | { success: true; path: string }
@@ -49,7 +49,21 @@ export function validateBackupsRootPath(
     if (existing === undefined) {
       mkdirSync(path, { recursive: true });
     }
-    accessSync(path, constants.W_OK);
+    // Prove the folder can be written, not just stat'd. `accessSync(W_OK)` is
+    // blind to a Windows ACL that denies writes to an existing directory, so a
+    // path could pass validation and then fail the 3am snapshot. Writing and
+    // removing a throwaway file is the check that matches what the engine does.
+    const probePath = join(path, `.tuari-write-probe-${process.pid}-${Date.now()}`);
+    try {
+      writeFileSync(probePath, "");
+    } finally {
+      try {
+        unlinkSync(probePath);
+      } catch {
+        // The write itself is the finding; a probe that was never created has
+        // nothing to clean up.
+      }
+    }
     return { success: true, path };
   } catch (error) {
     return {

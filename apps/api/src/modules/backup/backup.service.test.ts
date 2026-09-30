@@ -1156,4 +1156,66 @@ describe("createBackupService.setBackupsRoot (#436)", () => {
     expect(result.status).toBe("failed");
     expect(service.getStatus().lastFailure?.reason).toEqual(expect.any(String));
   });
+
+  it("does not adopt a run that finishes after the owner changed the root", async () => {
+    // `deps.snapshot` awaits, so the owner can repoint the root mid-run. The
+    // completed snapshot lives in the old root; the status must keep
+    // describing the new one (the screen must never describe the old folder).
+    let releaseSnapshot: () => void = () => {};
+    const gate = new Promise<void>((resolveGate) => {
+      releaseSnapshot = resolveGate;
+    });
+    const slowSnapshot: BackupSnapshotter = async (outputPath) => {
+      await gate;
+      writeFileSync(outputPath, "SQLite format 3\u0000");
+      return { schemaVersion: 0, encrypted: false };
+    };
+    const service = createBackupService({
+      snapshot: slowSnapshot,
+      backupsRootPath: firstRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    const pending = service.runDueBackup();
+    service.setBackupsRoot(secondRoot);
+    releaseSnapshot();
+    const result = await pending;
+
+    expect(result.status).toBe("created");
+    const status = service.getStatus();
+    expect(status.backupsRootPath).toBe(secondRoot);
+    // Re-seeded for the new (empty) root; the old run must not overwrite it.
+    expect(status.lastSuccessAt).toBeNull();
+    expect(status.lastBackupPath).toBeNull();
+  });
+
+  it("does not pin an in-flight failure on the root the owner moved to", async () => {
+    // The mirror of the success case: if the run fails after the root changed,
+    // the failure belongs to the old root, not the folder now on screen.
+    let releaseSnapshot: () => void = () => {};
+    const gate = new Promise<void>((resolveGate) => {
+      releaseSnapshot = resolveGate;
+    });
+    const failingSnapshot: BackupSnapshotter = async () => {
+      await gate;
+      throw new Error("disk removed");
+    };
+    const service = createBackupService({
+      snapshot: failingSnapshot,
+      backupsRootPath: firstRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    const pending = service.runDueBackup();
+    service.setBackupsRoot(secondRoot);
+    releaseSnapshot();
+    const result = await pending;
+
+    expect(result.status).toBe("failed");
+    const status = service.getStatus();
+    expect(status.backupsRootPath).toBe(secondRoot);
+    expect(status.lastFailure).toBeNull();
+  });
 });
