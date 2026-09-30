@@ -7,6 +7,7 @@ import {
 } from "./core";
 import {
   nonNegativePaymentAmountSchema,
+  signedPaymentAmountSchema,
   storedMoneyDzdSchema,
 } from "./payment";
 
@@ -109,18 +110,21 @@ export const projectCostParkedAssetSchema = z.object({
 
 /**
  * The four disjoint cost parts. `totalDzd` is their rounded sum; it never
- * includes `parkedInventory`.
+ * includes `parkedInventory`. The charged-material net may be negative (more
+ * material left the project than entered it), and the total is the plain
+ * arithmetic sum, so both are signed-but-bounded; the screen warns rather than
+ * refusing when the material net is negative.
  */
 export const projectCostPartsSchema = z.object({
   expensesDzd: nonNegativePaymentAmountSchema,
   salariesDzd: nonNegativePaymentAmountSchema,
   stockDzd: nonNegativePaymentAmountSchema,
-  chargedMaterialsDzd: nonNegativePaymentAmountSchema,
+  chargedMaterialsDzd: signedPaymentAmountSchema,
 });
 
 export const projectCostSchema = z.object({
   projectId: entityIdSchema,
-  totalDzd: nonNegativePaymentAmountSchema,
+  totalDzd: signedPaymentAmountSchema,
   parts: projectCostPartsSchema,
   expenses: z.array(projectCostExpenseRowSchema),
   salaries: z.array(projectCostSalaryRowSchema),

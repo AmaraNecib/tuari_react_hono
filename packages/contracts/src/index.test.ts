@@ -2008,7 +2008,20 @@ describe("contracts", () => {
         parkedInventory: { totalDzd: 0, assets: [] },
       };
       expect(projectCostSchema.safeParse(base).success).toBe(true);
-      expect(projectCostSchema.safeParse({ ...base, totalDzd: -1 }).success).toBe(false);
+      // A negative total is a legal computed value (a negative material net can
+      // outweigh the positive parts). It must not lock the operator out of the
+      // screen; the UI warns instead.
+      expect(projectCostSchema.safeParse({ ...base, totalDzd: -1 }).success).toBe(true);
+      // ... but leaving the representable range on either side is refused.
+      expect(
+        projectCostSchema.safeParse({ ...base, totalDzd: -(Number.MAX_SAFE_INTEGER + 1) }).success,
+      ).toBe(false);
+      expect(
+        projectCostSchema.safeParse({
+          ...base,
+          parts: { ...base.parts, chargedMaterialsDzd: -1 },
+        }).success,
+      ).toBe(true);
       expect(
         projectCostSchema.safeParse({
           ...base,

@@ -25,9 +25,11 @@ import type {
  *    a warehouse → project transfer) adds `quantity × the linked entry's unit
  *    price`, a movement OUT (project → warehouse, project → another project)
  *    subtracts it. Cost follows the material, not the physical consumption
- *    event; the product has no "consumed" event and needs none. A project
- *    cannot have returned more material than it received, so a negative net is
- *    refused rather than shown.
+ *    event; the product has no "consumed" event and needs none. The net may be
+ *    negative when more material left than entered (a real correction, or a
+ *    transfer out recorded without its matching in): the figure is shown as
+ *    computed and the screen warns, rather than refusing the whole screen or
+ *    clamping the anomaly away.
  *  - `parkedInventory` (what is physically at the project now, ASSETS ONLY) is
  *    reported separately and is NEVER added to the total: parked stock is
  *    inventory value, not money the project spent. A consumable at a project
@@ -135,33 +137,24 @@ function valueMaterialMovement(row: ProjectCostMaterialMovementRecord) {
 
 /**
  * The project's material cost: sum the movements IN and subtract the movements
- * OUT. A negative net means the ledger returned more material than it recorded
- * entering the project (movements predating this feature, or bad data); that is
- * not a cost, so refuse it instead of emitting a negative part.
+ * OUT. The result is shown as computed even when negative — a negative net is
+ * an anomaly the operator must see, not one to hide or refuse.
  */
 function netMaterialCost(rows: Array<{ direction: ProjectCostMaterialDirection; valueDzd: number }>): number {
-  const net = sumMoney(rows.map((row) => (row.direction === "IN" ? row.valueDzd : -row.valueDzd)));
-  if (net < 0) {
-    throw new ProjectCostError(
-      "BUSINESS_RULE",
-      "قيمة المواد الخارجة من المشروع تتجاوز المواد الداخلة إليه؛ تعذّر احتساب التكلفة.",
-    );
-  }
-
-  return net;
+  return sumMoney(rows.map((row) => (row.direction === "IN" ? row.valueDzd : -row.valueDzd)));
 }
 
 /**
- * Sum money and refuse a result that is non-finite or outside `MAX_MONEY_DZD`.
- * Individual stored rows may predate the bound (they are read permissively),
- * but a computed aggregate must stay representable; refusing beats emitting a
- * wrong number (#413 round 2).
+ * Sum money and refuse a result that is non-finite or leaves `MAX_MONEY_DZD` in
+ * EITHER direction. Individual stored rows may predate the bound (they are read
+ * permissively), but a computed aggregate must stay representable; refusing
+ * beats emitting a wrong number (#413 round 2).
  */
 function sumMoney(values: number[]): number {
   let total = 0;
   for (const value of values) {
     total = roundMoney(total + value);
-    if (!Number.isFinite(total) || total > MAX_MONEY_DZD) {
+    if (!Number.isFinite(total) || Math.abs(total) > MAX_MONEY_DZD) {
       throw new ProjectCostError(
         "BUSINESS_RULE",
         "إجمالي تكلفة المشروع يتجاوز الحد الأقصى المسموح به.",

@@ -28,6 +28,16 @@ export const paymentAmountSchema = z.number().positive().max(MAX_MONEY_DZD);
 export const nonNegativePaymentAmountSchema = z.number().nonnegative().max(MAX_MONEY_DZD);
 
 /**
+ * A COMPUTED aggregate that may legitimately be negative, bounded on both sides
+ * by `MAX_MONEY_DZD` so it always stays representable. The one consumer today
+ * is a project's charged-material net (#414): more material can leave a project
+ * than entered it, which is a real correction or a data anomaly, not a reason
+ * to refuse the whole screen. Read shapes that merely display a persisted
+ * non-negative column keep {@link nonNegativePaymentAmountSchema}.
+ */
+export const signedPaymentAmountSchema = z.number().min(-MAX_MONEY_DZD).max(MAX_MONEY_DZD);
+
+/**
  * A stored DZD amount as it is READ back, deliberately NOT magnitude-bounded.
  *
  * The write gate ({@link nonNegativePaymentAmountSchema}) is the ceiling for

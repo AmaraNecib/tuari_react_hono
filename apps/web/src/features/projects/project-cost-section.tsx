@@ -62,7 +62,7 @@ export function ProjectCostSection({
 
   const data: ProjectCost = query.data
   const total = data.totalDzd
-  const percentOf = (value: number) => (total > 0 ? Math.round((value / total) * 100) : 0)
+  const percentOf = (value: number) => (total > 0 ? Math.max(0, Math.round((value / total) * 100)) : 0)
 
   const sources = [
     { key: "expenses", label: t("detailPages.project.cost.sources.expenses"), value: data.parts.expensesDzd, bar: "bg-chart-1" },
@@ -71,7 +71,10 @@ export function ProjectCostSection({
     { key: "materials", label: t("detailPages.project.cost.sources.chargedMaterials"), value: data.parts.chargedMaterialsDzd, bar: "bg-chart-4" },
   ]
 
-  const hasCost = total > 0
+  // A total of zero can still hide real activity (a negative material net
+  // cancelling an expense), so show the breakdown whenever any part is nonzero.
+  const hasCost = total !== 0 || sources.some((source) => source.value !== 0)
+  const materialNetIsNegative = data.parts.chargedMaterialsDzd < 0
   const hasParked = data.parkedInventory.assets.length > 0
 
   return (
@@ -104,6 +107,12 @@ export function ProjectCostSection({
               </li>
             )
           })}
+          {materialNetIsNegative ? (
+            <li className="flex items-start gap-2 rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn">
+              <span aria-hidden="true">⚠</span>
+              <span>{t("detailPages.project.cost.materials.negative")}</span>
+            </li>
+          ) : null}
         </ul>
       </Surface>
 

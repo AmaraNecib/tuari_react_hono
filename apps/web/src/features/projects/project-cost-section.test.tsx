@@ -168,6 +168,52 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText((content) => content.includes("−") && content.includes("2,500"))).toBeTruthy()
   })
 
+  it("shows a negative material net with a warning instead of refusing the screen", () => {
+    prime(
+      cost({
+        // The arithmetic sum: 10,000 + 0 + 0 + (-1,500) = 8,500.
+        totalDzd: 8_500,
+        parts: { expensesDzd: 10_000, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: -1_500 },
+        expenses: [
+          {
+            id: "e-1",
+            expenseDate: "2026-05-10T00:00:00.000Z",
+            whatFor: "وقود",
+            amountDzd: 10_000,
+            responsibleWorkerId: null,
+            responsibleWorkerName: null,
+            sellerId: null,
+            sellerName: null,
+          },
+        ],
+        salaries: [],
+        stock: [],
+        materialMovements: [
+          {
+            id: "m-out",
+            itemDefinitionId: "def-1",
+            itemName: "إسمنت",
+            unit: "كيس",
+            quantity: 3,
+            unitPriceDzd: 500,
+            valueDzd: 1_500,
+            direction: "OUT",
+            occurredAt: "2026-05-21T00:00:00.000Z",
+          },
+        ],
+      }),
+    )
+    render(<ProjectCostSection projectId="p-1" />)
+
+    // The anomaly renders the screen; it is not an error state and not hidden.
+    expect(screen.queryByText(/تعذّر تحميل تكلفة المشروع/)).toBeNull()
+    expect(screen.getByText("8,500 دج")).toBeTruthy()
+    // The negative material figure is shown as computed ...
+    expect(screen.getByText("-1,500 دج")).toBeTruthy()
+    // ... with a warning that says what it usually means.
+    expect(screen.getByText(/المواد الخارجة من هذا المشروع أكثر من الداخلة إليه/)).toBeTruthy()
+  })
+
   it("shows the parked asset inventory value separately from the cost total", () => {
     prime(cost())
     render(<ProjectCostSection projectId="p-1" />)

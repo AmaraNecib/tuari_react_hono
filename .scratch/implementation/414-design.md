@@ -96,6 +96,16 @@ must be representable).
   the project". It must never be labelled "consumed" (`المستهلكة`): the system
   knows the material was charged, not that it was physically used.
 
+  **Negative net (parent decision).** The net can be negative when more material
+  left than entered. In that case the figure is SHOWN as computed and the screen
+  shows an Arabic warning that says more material left the project than entered
+  and that this is usually a transfer out recorded without its counterpart. The
+  total is the plain arithmetic sum of the four parts and is shown even when it
+  falls below zero. Refusing the screen and clamping to zero were both rejected:
+  the first throws away the project's expenses/salaries/stock over one anomaly,
+  the second hides it. The part and the total are signed-but-bounded; only an
+  aggregate outside ±`MAX_MONEY_DZD` is refused.
+
 - **Parked inventory (shown separately, never cost)** — the value of what is
   physically at the project right now, **assets only**: asset units
   (`purchase_price_dzd`). **Consumables are deliberately excluded**: a

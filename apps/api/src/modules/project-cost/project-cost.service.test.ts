@@ -234,31 +234,31 @@ describe("ProjectCostService (#414)", () => {
     expect(result.item.materialMovements.map((row) => row.direction)).toEqual(["OUT", "IN"]);
   });
 
-  it("refuses a negative material net instead of emitting a negative part", () => {
-    const negativeNet = () =>
-      service(
-        makeRepo({
-          listProjectMaterialMovements: () => [
-            {
-              id: "m-out",
-              itemDefinitionId: null,
-              itemName: null,
-              unit: null,
-              quantity: 3,
-              unitPriceDzd: 500,
-              direction: "OUT",
-              occurredAt: "2026-09-22T00:00:00.000Z",
-            },
-          ],
-        }),
-      ).getProjectCost({ projectId: "p-1" });
+  it("shows a negative material net and sums it into the total", () => {
+    const result = service(
+      makeRepo({
+        listProjectExpenses: () => [
+          { id: "e-1", expenseDate: "2026-10-01T00:00:00.000Z", whatFor: null, amountDzd: 10_000, responsibleWorkerId: null, responsibleWorkerName: null, sellerId: null, sellerName: null },
+        ],
+        listProjectMaterialMovements: () => [
+          {
+            id: "m-out",
+            itemDefinitionId: null,
+            itemName: null,
+            unit: null,
+            quantity: 3,
+            unitPriceDzd: 500,
+            direction: "OUT",
+            occurredAt: "2026-09-22T00:00:00.000Z",
+          },
+        ],
+      }),
+    ).getProjectCost({ projectId: "p-1" });
 
-    expect(negativeNet).toThrowError(ProjectCostError);
-    try {
-      negativeNet();
-    } catch (error) {
-      expect((error as ProjectCostError).appError.code).toBe("BUSINESS_RULE");
-    }
+    // More material left than entered: the figure is shown as computed, not
+    // clamped and not refused, and the total is the plain arithmetic sum.
+    expect(result.item.parts.chargedMaterialsDzd).toBe(-1_500);
+    expect(result.item.totalDzd).toBe(8_500);
   });
 
   it("adds the four parts into one total and keeps them separate", () => {

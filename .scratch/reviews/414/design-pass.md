@@ -193,11 +193,15 @@ not against a second copy of the formula.
 is applied; the adapter reports `direction` as a fact (which column matched),
 the service decides the arithmetic. No signed money reaches the contract.
 
-**Kept.** The negative-net refusal is a domain guard, not a formatter: a project
-returning more than it received is incoherent data, and the repo's convention is
-to refuse a suspect aggregate rather than emit it. It sits next to the existing
-`MAX_MONEY_DZD` guard so all "refuse a bad aggregate" rules are in one function
-family.
+**Changed after parent review.** The draft refused a negative material net. The
+parent decision is to SHOW the net and WARN: refusing throws away the project's
+expenses, salaries and stock charges for a data anomaly the operator may not
+have caused, and clamping hides the anomaly. The part and the total are now
+signed-but-bounded (`signedPaymentAmountSchema`); the materials row renders the
+negative figure with an Arabic warning that says more material left than
+entered and that it is usually a transfer out recorded without its counterpart.
+`sumMoney` bounds the magnitude in both directions, so only an unrepresentable
+aggregate (beyond ±`MAX_MONEY_DZD`) is still refused.
 
 ### improve-codebase-architecture
 
