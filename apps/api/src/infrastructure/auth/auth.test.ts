@@ -9,6 +9,7 @@ function buildConfig() {
     databasePath: ":memory:",
     databaseUrl: "file::memory:",
     attachmentsRootPath: "./private/invoices",
+    backupsRootPath: "./private/backups",
     host: "127.0.0.1",
     port: 4318,
     allowedOrigins: ["http://localhost:3000"],

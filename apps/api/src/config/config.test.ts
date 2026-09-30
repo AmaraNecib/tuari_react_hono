@@ -76,6 +76,27 @@ describe("createAppConfig", () => {
     expect(config.attachmentsRootPath).toMatch(/[\\/]private[\\/]invoices$/);
   });
 
+  it("resolves the backups root as a sibling of the database directory", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+    });
+
+    // Sibling of `data`, not inside it, so a data-dir reset keeps backups.
+    expect(config.backupsRootPath).toMatch(/[\\/]backups$/);
+    expect(config.backupsRootPath).not.toMatch(/[\\/]data[\\/]backups$/);
+  });
+
+  it("respects APP_BACKUPS_ROOT for the backups path", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+      APP_BACKUPS_ROOT: "./private/backups",
+    });
+
+    expect(config.backupsRootPath).toMatch(/[\\/]private[\\/]backups$/);
+  });
+
   it("derives database path from DATABASE_URL when set", () => {
     const config = createAppConfig({
       ...requiredAuth,
@@ -608,6 +629,7 @@ describe("createAppConfig", () => {
     expect(config).toHaveProperty("databaseUrl");
     expect(config).toHaveProperty("databaseKey");
     expect(config).toHaveProperty("attachmentsRootPath");
+    expect(config).toHaveProperty("backupsRootPath");
     expect(config).toHaveProperty("host");
     expect(config).toHaveProperty("port");
     expect(config).toHaveProperty("allowedOrigins");
@@ -624,6 +646,7 @@ describe("appConfigSchema port validation", () => {
     databasePath: "/tmp/tuari.sqlite",
     databaseUrl: "file:///tmp/tuari.sqlite",
     attachmentsRootPath: "/tmp/attachments",
+    backupsRootPath: "/tmp/backups",
     betterAuthSecret: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM",
     betterAuthUrl: "https://api.example.com",
   };
@@ -652,6 +675,7 @@ describe("appConfigSchema betterAuthUrl validation", () => {
     databasePath: "/tmp/tuari.sqlite",
     databaseUrl: "file:///tmp/tuari.sqlite",
     attachmentsRootPath: "/tmp/attachments",
+    backupsRootPath: "/tmp/backups",
     betterAuthSecret: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM",
   };
 

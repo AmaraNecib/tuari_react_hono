@@ -13,6 +13,7 @@ import { invoiceContract } from "./invoice-contract"
 import { paymentContract } from "./payment-contract"
 import { expensesContract } from "./expenses-contract"
 import { updateContract } from "./update-contract"
+import { backupContract } from "./backup-contract"
 import { rbacContract } from "./rbac-contract"
 
 export const appContract = {
@@ -29,6 +30,7 @@ export const appContract = {
   ...paymentContract,
   ...expensesContract,
   ...updateContract,
+  ...backupContract,
   ...rbacContract,
 } as const
 

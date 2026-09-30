@@ -26,6 +26,7 @@ import { createPaymentHandlers } from "./handlers/payment";
 import { createExpensesHandlers } from "./handlers/expenses";
 import { createUpdateHandlers } from "./handlers/update";
 import { createRbacHandlers } from "./handlers/rbac";
+import { createBackupHandlers } from "./handlers/backup";
 
 import type { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import type { UpdateHistoryService } from "../modules/update/update-history.service";
@@ -33,6 +34,7 @@ import type { UpdateService } from "../modules/update/update.service";
 import type { RoleModule } from "../modules/rbac/role.module";
 import type { DatabaseKeyManager } from "../infrastructure/database/database-key-manager";
 import type { DatabaseKeyPersister } from "../infrastructure/database/database-key-persister";
+import type { BackupService } from "../modules/backup/backup.types";
 
 type RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
@@ -51,6 +53,7 @@ type RouterDependencies = {
   roleModule: RoleModule;
   databaseKeyManager: DatabaseKeyManager;
   databaseKeyPersister: DatabaseKeyPersister;
+  backupService: BackupService;
 };
 
 export function createRouter(
@@ -96,6 +99,7 @@ export function createRouter(
     ...createPaymentHandlers(os, m, dependencies.paymentModule),
     ...createExpensesHandlers(os, m, dependencies.expensesModule),
     ...createUpdateHandlers(os, m, dependencies.updateService, dependencies.updateHistoryService),
+    ...createBackupHandlers(os, m, dependencies.backupService),
     ...createRbacHandlers(os, m, dependencies.roleModule),
   };
 

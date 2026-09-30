@@ -11,7 +11,7 @@
 
 import "dotenv/config";
 import { z } from "zod";
-import { resolveDatabaseEnv } from "../infrastructure/config/database-env";
+import { resolveBackupsRootPath, resolveDatabaseEnv } from "../infrastructure/config/database-env";
 import { normalizeBaseUrl, normalizeOriginList, isLocalHostname } from "../infrastructure/config/url";
 import { loadConfigFile, mergeConfigIntoEnv } from "./loader";
 import { dbAdapterSchema } from "./db-adapter";
@@ -92,6 +92,12 @@ export const appConfigSchema = z.object({
   databaseKey: z.string().nullable().default(null),
   /** Root directory for file attachments (invoices, etc.). */
   attachmentsRootPath: z.string(),
+  /**
+   * Root directory for daily backups (#430). A sibling of the database's
+   * directory, overridable with `APP_BACKUPS_ROOT`. API-side only: the desktop
+   * shell does not forward that variable yet (see docs/backups.md).
+   */
+  backupsRootPath: z.string(),
 
   // --- Server ---
   /** Bind host for the HTTP server. */
@@ -173,6 +179,10 @@ export function createAppConfig(
 
   // --- Database resolution (reuses the existing, tested helper) ---
   const database = resolveDatabaseEnv(effectiveSource);
+  const backupsRootPath = resolveBackupsRootPath(
+    effectiveSource,
+    database.databasePath,
+  );
 
   // --- Adapter selection ---
   const dbAdapter = (() => {
@@ -271,6 +281,7 @@ export function createAppConfig(
     // fallback semantics.
     databaseKey: effectiveSource.APP_DB_KEY?.trim() || null,
     attachmentsRootPath: database.attachmentsRootPath,
+    backupsRootPath,
     host,
     port,
     allowedOrigins,

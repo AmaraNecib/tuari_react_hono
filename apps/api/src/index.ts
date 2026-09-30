@@ -4,6 +4,7 @@ import { createApp } from "./app/create-app";
 import { createAppDependencies } from "./app/dependencies";
 import { installShutdownHook } from "./app/shutdown";
 import { createAppConfig } from "./config";
+import { createStartupBackup } from "./modules/backup/backup.scheduler";
 
 async function main() {
   // Single validated config — env + optional TUARI_CONFIG_FILE merge. Every
@@ -23,14 +24,33 @@ async function main() {
     authRateLimitMaxRequests: config.authRateLimitMaxRequests,
   });
 
+  // Daily local backup (#430): the snapshot copies the whole database on a
+  // dedicated connection in a worker thread, so it never blocks the event loop
+  // or the readiness probe. It is still deferred to a later turn and gated on
+  // the first `/health` response so the copy never competes with boot.
+  // `createStartupBackup` owns that timing. It never throws, so a failure only
+  // shows up on the `backupStatus` read and the app stays usable.
+  const startupBackup = createStartupBackup(appDependencies.backupService);
+
   const server = serve(
     {
-      fetch: app.fetch,
+      // The health probe is the desktop shell's readiness gate. Detect it here
+      // so the daily backup can be gated on the app proving readiness (see
+      // below) — the snapshot must never run on the path that answers it.
+      fetch: (request, env) => {
+        const response = app.fetch(request, env);
+        if (new URL(request.url).pathname === "/health") {
+          startupBackup.onHealthServed();
+        }
+        return response;
+      },
       port: config.port,
       hostname: config.host,
     },
     (info) => {
       console.log(`API listening on http://${info.address}:${info.port}`);
+      // Fallback so a deployment nobody probes still takes its daily backup.
+      startupBackup.onServerListening();
     },
   );
 

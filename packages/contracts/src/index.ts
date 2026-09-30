@@ -20,6 +20,8 @@ export * from "./expenses";
 export * from "./expenses-contract";
 export * from "./update";
 export * from "./update-contract";
+export * from "./backup";
+export * from "./backup-contract";
 export * from "./license";
 export * from "./rbac-contract";
 export * from "./security";

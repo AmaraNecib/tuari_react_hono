@@ -99,7 +99,7 @@ describe("RPC router", () => {
       persistKey: () => ({ success: true } as const),
     },
     expensesOverrides: Record<string, unknown> = {},
-    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown } = {},
+    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown; backupService?: unknown } = {},
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -157,6 +157,14 @@ describe("RPC router", () => {
       updateHistoryService: {} as never,
       databaseKeyManager: databaseKeyManager as never,
       databaseKeyPersister: databaseKeyPersister as never,
+      backupService: (modules.backupService ?? {
+        getStatus: () => ({
+          lastSuccessAt: "2026-01-14T08:00:00.000Z",
+          lastBackupPath: "/backups/2026-01-14",
+          lastFailure: null,
+        }),
+        runDueBackup: async () => ({ status: "not-due" }),
+      }) as never,
     } as never);
   }
 
@@ -258,6 +266,26 @@ describe("RPC router", () => {
     const client = createRouterClient(router, { context: createContext(null) as never });
 
     await expect(client.rolesList()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("returns the backup status to an authenticated admin", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(client.backupStatus()).resolves.toEqual({
+      lastSuccessAt: "2026-01-14T08:00:00.000Z",
+      lastBackupPath: "/backups/2026-01-14",
+      lastFailure: null,
+    });
+  });
+
+  it("rejects the backup status without a session", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext(null) as never });
+
+    await expect(client.backupStatus()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   it("allows non-admin users with RBAC permission to create employees", async () => {
