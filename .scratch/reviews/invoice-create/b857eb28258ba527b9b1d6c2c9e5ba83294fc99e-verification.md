@@ -4,9 +4,9 @@
   13 (row type control, variant C), 12 (add action at the bottom), plus the
   item-offer seam re-expression.
 - **Branch**: `fix/invoice-create`
-- **Base**: `develop` @ `55b71181a493fcfe413b2375b1901e1a36f66513` (rebased onto
-  salaries #420 + items pagination #442)
-- **Final reviewable HEAD**: `b0c4fadcd737410c8b81fb4f894d20550c933bed`
+- **Base**: `develop` @ `5d0629be768a75689c081249843af4a79d045230` (rebased onto
+  #442/#445/#446; the latest develop commit `93b0cba3` is the design-pass docs only)
+- **Final reviewable HEAD**: `b857eb28258ba527b9b1d6c2c9e5ba83294fc99e`
 - **Mode**: local verification only (no push, no PR, no hosted review)
 - **Tier**: Standard
 
@@ -69,3 +69,15 @@ three recommended follow-ups.
   review skills on the pushed head.
 - `pnpm test:e2e` full suite — only the touched spec.
 - Push / PR / merge — parent-owned.
+
+## Post-rebase delta
+
+Rebased onto `5d0629be` (#442/#445/#446) resolving conflicts in
+`form-controls.test.tsx` (kept BOTH the develop placeholder-contrast tests and
+the lane's FileInput tests) and `.agents/wisdom/architecture.md` (kept both
+lessons). Re-ran at the rebased HEAD: contracts build, `pnpm typecheck`,
+`pnpm lint`, the touched web suites (55), the touched API suites (153), and the
+invoice E2E (3/3) — all green. The full `pnpm test:web` (91 files / 811 tests)
+and the full `pnpm test:api` (modulo the loaded-machine timeouts) were green
+before the rebase; no web/API logic changed in the rebase beyond the two file
+merges above.
