@@ -11,13 +11,6 @@ import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import { useProjectCostQuery } from "./project-cost-queries"
 
-const SOURCE_BAR_CLASS = {
-  expenses: "bg-chart-1",
-  salaries: "bg-chart-2",
-  stock: "bg-chart-3",
-  consumables: "bg-chart-4",
-} as const
-
 function formatNumber(value: number) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value)
 }
@@ -70,10 +63,10 @@ export function ProjectCostSection({
   const percentOf = (value: number) => (total > 0 ? Math.round((value / total) * 100) : 0)
 
   const sources = [
-    { key: "expenses", label: t("detailPages.project.cost.sources.expenses"), value: data.parts.expensesDzd, bar: SOURCE_BAR_CLASS.expenses },
-    { key: "salaries", label: t("detailPages.project.cost.sources.salaries"), value: data.parts.salariesDzd, bar: SOURCE_BAR_CLASS.salaries },
-    { key: "stock", label: t("detailPages.project.cost.sources.stock"), value: data.parts.stockDzd, bar: SOURCE_BAR_CLASS.stock },
-    { key: "consumables", label: t("detailPages.project.cost.sources.consumables"), value: data.parts.consumablesDzd, bar: SOURCE_BAR_CLASS.consumables },
+    { key: "expenses", label: t("detailPages.project.cost.sources.expenses"), value: data.parts.expensesDzd, bar: "bg-chart-1" },
+    { key: "salaries", label: t("detailPages.project.cost.sources.salaries"), value: data.parts.salariesDzd, bar: "bg-chart-2" },
+    { key: "stock", label: t("detailPages.project.cost.sources.stock"), value: data.parts.stockDzd, bar: "bg-chart-3" },
+    { key: "consumables", label: t("detailPages.project.cost.sources.consumables"), value: data.parts.consumablesDzd, bar: "bg-chart-4" },
   ]
 
   const hasCost = total > 0
@@ -179,10 +172,7 @@ export function ProjectCostSection({
                         {t("detailPages.project.cost.salaries.days", { count: salary.days })} · {formatDay(salary.paymentDate)}
                       </span>
                     </span>
-                    <span className="shrink-0 text-left">
-                      <span className="block font-mono text-ink" dir="ltr">{money(salary.amountDzd)}</span>
-                      <span className="text-xs text-ink-3" dir="ltr">{money(salary.dayRateDzd)}</span>
-                    </span>
+                    <span className="shrink-0 font-mono text-ink" dir="ltr">{money(salary.amountDzd)}</span>
                   </li>
                 ))}
               </ul>
@@ -253,7 +243,7 @@ export function ProjectCostSection({
             ))}
             {data.parkedInventory.consumables.map((balance) => (
               <li
-                key={`${balance.itemDefinitionId ?? balance.itemName ?? "consumable"}-${balance.quantity}-${balance.unitPriceDzd ?? 0}`}
+                key={balance.id}
                 className="flex items-center justify-between gap-3 py-2 text-sm"
               >
                 <span className="min-w-0 truncate text-ink">{balance.itemName ?? t("common.none")}</span>

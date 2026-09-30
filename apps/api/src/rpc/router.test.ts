@@ -27,7 +27,6 @@ import { createRouter } from "./router";
 import { createRpcMiddleware } from "./rpc-middleware";
 import type { RpcContext } from "./context";
 import { ExpenseNotFoundError } from "../modules/expenses/expenses.types";
-import { ProjectCostError } from "../modules/project-cost/project-cost.errors";
 import { ProjectCostService } from "../modules/project-cost/project-cost.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
@@ -40,7 +39,7 @@ import { createInMemoryPaymentRepository } from "../modules/payment/adapters/in-
 import { PaymentNotFoundError } from "../modules/payment/payment.types";
 import { InvoiceModule } from "../modules/invoice/invoice.module";
 import { createInMemoryInvoiceRepository } from "../modules/invoice/adapters/in-memory-invoice.repository";
-import { paymentContract } from "@tuari/contracts";
+import { paymentContract, projectCostSchema } from "@tuari/contracts";
 
 function expectSuccess<T extends { success: boolean }>(result: T): Extract<T, { success: true }> {
   expect(result.success).toBe(true);
@@ -1280,7 +1279,7 @@ describe("RPC router", () => {
   it("serves the project cost through the wire contract and maps a missing project (issue #414)", async () => {
     const harness = createHarness();
     const projectCostService = new ProjectCostService({
-      getProject: (id: string) => ({ id, name: "مشروع" }),
+      getProject: (id: string) => ({ id }),
       listProjectExpenses: () => [
         {
           id: "e-1",
@@ -1293,27 +1292,53 @@ describe("RPC router", () => {
           sellerName: null,
         },
       ],
-      listProjectSalarySplits: () => [],
-      listProjectStockCharges: () => [],
-      listProjectConsumableIssues: () => [],
-      getProjectParkedInventory: () => ({ assets: [], consumables: [] }),
+      listProjectSalarySplits: () => [
+        {
+          paymentId: "pay-1",
+          employeeId: "emp-1",
+          employeeName: "كريم ب.",
+          paymentDays: 30,
+          paymentAmountDzd: 60_000,
+          splitDays: 18,
+          paymentDate: "2026-05-31T00:00:00.000Z",
+        },
+      ],
+      listProjectStockCharges: () => [
+        { id: "c-1", assetUnitId: "a-1", assetName: "خلاطة", amountDzd: 180_000, placedAt: "2026-05-20T00:00:00.000Z" },
+      ],
+      listProjectConsumableIssues: () => [
+        { id: "m-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 40, unitPriceDzd: 850, occurredAt: "2026-05-20T00:00:00.000Z" },
+      ],
+      getProjectParkedInventory: () => ({
+        assets: [{ assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 500_000 }],
+        consumables: [{ id: "bal-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 10, unitPriceDzd: 850 }],
+      }),
     });
     const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, { projectCostService });
     const client = createClient(router, createContext());
 
-    await expect(
-      client.projectCostGet({ projectId: "11111111-1111-4111-8111-111111111111" }),
-    ).resolves.toMatchObject({
-      success: true,
-      item: { totalDzd: 12_500, parts: { expensesDzd: 12_500 } },
-    });
+    // The whole populated response must satisfy the declared output schema —
+    // not just the fields a toMatchObject spot-check happens to name.
+    const response = expectSuccess(
+      await client.projectCostGet({ projectId: "11111111-1111-4111-8111-111111111111" }),
+    );
+    expect(response.item.totalDzd).toBe(262_500);
+    expect(projectCostSchema.safeParse(response.item).success).toBe(true);
+    expect(response.item.expenses).toHaveLength(1);
+    expect(response.item.salaries).toHaveLength(1);
+    expect(response.item.stock).toHaveLength(1);
+    expect(response.item.consumables).toHaveLength(1);
+    expect(response.item.parkedInventory.consumables[0].id).toBe("bal-1");
 
     const missingRouter = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
-      projectCostService: {
-        getProjectCost: () => {
-          throw new ProjectCostError("NOT_FOUND", "تعذر العثور على المشروع المطلوب.");
-        },
-      },
+      projectCostService: new ProjectCostService({
+        getProject: () => null,
+        listProjectExpenses: () => [],
+        listProjectSalarySplits: () => [],
+        listProjectStockCharges: () => [],
+        listProjectConsumableIssues: () => [],
+        getProjectParkedInventory: () => ({ assets: [], consumables: [] }),
+      }),
     });
     const missingClient = createClient(missingRouter, createContext());
     await expect(

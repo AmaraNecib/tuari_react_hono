@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { MAX_MONEY_DZD } from "@tuari/contracts";
+
 import { ProjectCostService } from "./project-cost.service";
 import { ProjectCostError } from "./project-cost.errors";
 import type { ProjectCostRepository } from "./project-cost.types";
@@ -13,7 +15,7 @@ import type { ProjectCostRepository } from "./project-cost.types";
 
 function makeRepo(overrides: Partial<ProjectCostRepository> = {}): ProjectCostRepository {
   return {
-    getProject: (id) => ({ id, name: "مشروع أ" }),
+    getProject: (id) => ({ id }),
     listProjectExpenses: () => [],
     listProjectSalarySplits: () => [],
     listProjectStockCharges: () => [],
@@ -102,10 +104,39 @@ describe("ProjectCostService (#414)", () => {
       }),
     ).getProjectCost({ projectId: "p-1" });
 
-    // 50_000 × 15 / 30 = 25_000 exactly; the displayed rounded day rate must
-    // not be multiplied back in, or the part would drift to 25_000.05.
+    // 50_000 × 15 / 30 = 25_000 exactly; the displayed rounded day rate
+    // (1_666.67) must not be multiplied back in, or the part would drift to
+    // 25_000.05. This matches `computeProposedSalaryAmount`'s round-once
+    // convention.
     expect(result.item.salaries[0]?.amountDzd).toBe(25_000);
+    expect(result.item.salaries[0]?.dayRateDzd).toBe(1_666.67);
     expect(result.item.parts.salariesDzd).toBe(25_000);
+  });
+
+  it("refuses a non-positive payment day count instead of fabricating a wage", () => {
+    const zeroDays = () =>
+      service(
+        makeRepo({
+          listProjectSalarySplits: () => [
+            {
+              paymentId: "pay-1",
+              employeeId: "emp-1",
+              employeeName: null,
+              paymentDays: 0,
+              paymentAmountDzd: 60_000,
+              splitDays: 18,
+              paymentDate: "2026-10-01T00:00:00.000Z",
+            },
+          ],
+        }),
+      ).getProjectCost({ projectId: "p-1" });
+
+    expect(zeroDays).toThrowError(ProjectCostError);
+    try {
+      zeroDays();
+    } catch (error) {
+      expect((error as ProjectCostError).appError.code).toBe("BUSINESS_RULE");
+    }
   });
 
   it("sums live stock charges for the project at their stored amount", () => {
@@ -145,7 +176,6 @@ describe("ProjectCostService (#414)", () => {
             unit: "كيس",
             quantity: 40,
             unitPriceDzd: 850,
-            movementType: "TRANSFER",
             occurredAt: "2026-09-25T00:00:00.000Z",
           },
           {
@@ -155,7 +185,6 @@ describe("ProjectCostService (#414)", () => {
             unit: "طن",
             quantity: 2,
             unitPriceDzd: null,
-            movementType: "PURCHASE",
             occurredAt: "2026-09-22T00:00:00.000Z",
           },
         ],
@@ -181,7 +210,7 @@ describe("ProjectCostService (#414)", () => {
           { id: "c-1", assetUnitId: "a-1", assetName: null, amountDzd: 5_000, placedAt: "2026-09-30T00:00:00.000Z" },
         ],
         listProjectConsumableIssues: () => [
-          { id: "m-1", itemDefinitionId: null, itemName: null, unit: null, quantity: 4, unitPriceDzd: 250, movementType: "TRANSFER", occurredAt: "2026-09-29T00:00:00.000Z" },
+          { id: "m-1", itemDefinitionId: null, itemName: null, unit: null, quantity: 4, unitPriceDzd: 250, occurredAt: "2026-09-29T00:00:00.000Z" },
         ],
       }),
     ).getProjectCost({ projectId: "p-1" });
@@ -211,7 +240,7 @@ describe("ProjectCostService (#414)", () => {
         getProjectParkedInventory: () => ({
           assets: [{ assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 500_000 }],
           consumables: [
-            { itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 10, unitPriceDzd: 850 },
+            { id: "bal-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 10, unitPriceDzd: 850 },
           ],
         }),
       }),
@@ -223,22 +252,53 @@ describe("ProjectCostService (#414)", () => {
     expect(result.item.parkedInventory.consumables[0]?.valueDzd).toBe(8_500);
   });
 
+  it("orders each source newest first with an id tie-break", () => {
+    const result = service(
+      makeRepo({
+        listProjectExpenses: () => [
+          { id: "e-b", expenseDate: "2026-10-02T00:00:00.000Z", whatFor: null, amountDzd: 1, responsibleWorkerId: null, responsibleWorkerName: null, sellerId: null, sellerName: null },
+          { id: "e-c", expenseDate: "2026-10-01T00:00:00.000Z", whatFor: null, amountDzd: 1, responsibleWorkerId: null, responsibleWorkerName: null, sellerId: null, sellerName: null },
+          { id: "e-a", expenseDate: "2026-10-02T00:00:00.000Z", whatFor: null, amountDzd: 1, responsibleWorkerId: null, responsibleWorkerName: null, sellerId: null, sellerName: null },
+        ],
+      }),
+    ).getProjectCost({ projectId: "p-1" });
+
+    // Same date → id ascending; later date first.
+    expect(result.item.expenses.map((row) => row.id)).toEqual(["e-a", "e-b", "e-c"]);
+  });
+
   it("rejects an unknown project", () => {
     expect(() => service(makeRepo({ getProject: () => null })).getProjectCost({ projectId: "missing" }))
       .toThrowError(ProjectCostError);
   });
 
   it("refuses an aggregate above MAX_MONEY_DZD instead of emitting it", () => {
-    const nearBound = Number.MAX_SAFE_INTEGER - 1;
-    expect(() =>
-      service(
-        makeRepo({
-          listProjectStockCharges: () => [
-            { id: "c-1", assetUnitId: "a-1", assetName: null, amountDzd: nearBound, placedAt: "2026-09-20T00:00:00.000Z" },
-            { id: "c-2", assetUnitId: "a-2", assetName: null, amountDzd: 10, placedAt: "2026-09-19T00:00:00.000Z" },
-          ],
-        }),
-      ).getProjectCost({ projectId: "p-1" }),
-    ).toThrowError(ProjectCostError);
+    const repo = makeRepo({
+      listProjectStockCharges: () => [
+        { id: "c-1", assetUnitId: "a-1", assetName: null, amountDzd: MAX_MONEY_DZD - 1, placedAt: "2026-09-20T00:00:00.000Z" },
+        { id: "c-2", assetUnitId: "a-2", assetName: null, amountDzd: 10, placedAt: "2026-09-19T00:00:00.000Z" },
+      ],
+    });
+
+    let thrown: unknown;
+    try {
+      service(repo).getProjectCost({ projectId: "p-1" });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ProjectCostError);
+    expect((thrown as ProjectCostError).appError.code).toBe("BUSINESS_RULE");
+  });
+
+  it("accepts an aggregate exactly at MAX_MONEY_DZD", () => {
+    const result = service(
+      makeRepo({
+        listProjectStockCharges: () => [
+          { id: "c-1", assetUnitId: "a-1", assetName: null, amountDzd: MAX_MONEY_DZD, placedAt: "2026-09-20T00:00:00.000Z" },
+        ],
+      }),
+    ).getProjectCost({ projectId: "p-1" });
+
+    expect(result.item.totalDzd).toBe(MAX_MONEY_DZD);
   });
 });

@@ -12,6 +12,8 @@ export function createProjectCostHandlers(
   projectCostService: ProjectCostService,
 ) {
   return {
+    // `queryAuth`'s handler input is loose; the wire contract already narrowed
+    // it before the handler runs, so the cast names the shape it arrives as.
     projectCostGet: os.projectCostGet.handler(m.queryAuth(
       async ({ input }) => projectCostService.getProjectCost(input as ProjectCostInput),
       toFailureResult,

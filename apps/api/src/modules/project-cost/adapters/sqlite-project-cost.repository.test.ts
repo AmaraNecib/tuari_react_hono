@@ -4,7 +4,7 @@
  * Pins the SQL the service's fake port cannot: the live/void predicates, the
  * name joins, the salary split join and the movement-into-project valuation.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 
 import { schemaStatements } from "../../../infrastructure/database/schema-definitions";
@@ -96,6 +96,9 @@ describe("SqliteProjectCostRepository (#414)", () => {
   beforeEach(() => {
     env = createTestEnv();
   });
+  afterEach(() => {
+    env.db.close();
+  });
 
   it("reads only LIVE expenses for the project and resolves worker/seller names", () => {
     const rows = env.repository.listProjectExpenses("p-1");
@@ -103,6 +106,24 @@ describe("SqliteProjectCostRepository (#414)", () => {
     expect(rows[0]?.responsibleWorkerName).toBe("كريم ب.");
     expect(rows[0]?.sellerName).toBe("مورد الإسمنت");
     expect(rows[0]?.amountDzd).toBe(10_000);
+  });
+
+  it("normalizes blank text to null so output validation cannot fail", () => {
+    env.db
+      .prepare(
+        `INSERT INTO "expense" ("id","amount_dzd","expense_date","what_for","seller_id","project_id","status","created_at","updated_at")
+         VALUES ('e-blank', 1, '2026-05-01T00:00:00.000Z', '   ', 'seller-blank', 'p-1', 'LIVE', ?, ?)`,
+      )
+      .run(NOW, NOW);
+    env.db
+      .prepare(
+        `INSERT INTO "external_counterparty" ("id","full_name","phone_number","created_at","updated_at") VALUES ('seller-blank', '   ', '0550000003', ?, ?)`,
+      )
+      .run(NOW, NOW);
+
+    const row = env.repository.listProjectExpenses("p-1").find((expense) => expense.id === "e-blank");
+    expect(row?.whatFor).toBeNull();
+    expect(row?.sellerName).toBeNull();
   });
 
   it("reads the project's split lines with the payment's days and amount", () => {
@@ -134,11 +155,12 @@ describe("SqliteProjectCostRepository (#414)", () => {
     expect(parked.assets.map((asset) => asset.assetUnitId)).toEqual(["asset-1"]);
     expect(parked.assets[0]?.purchasePriceDzd).toBe(180_000);
     expect(parked.consumables).toHaveLength(1);
-    expect(parked.consumables[0]).toMatchObject({ itemName: "إسمنت", quantity: 10, unitPriceDzd: 850 });
+    expect(parked.consumables[0]).toMatchObject({ id: "bal-1", itemName: "إسمنت", quantity: 10, unitPriceDzd: 850 });
   });
 
   it("returns null for an unknown project", () => {
     expect(env.repository.getProject("missing")).toBeNull();
+    expect(env.repository.getProject("p-1")).toEqual({ id: "p-1" });
   });
 
   it("agrees with the service end to end over the real SQL", () => {

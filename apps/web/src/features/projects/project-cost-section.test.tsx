@@ -2,7 +2,7 @@
 
 import "@/i18n"
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { ProjectCost } from "@tuari/contracts"
@@ -68,7 +68,6 @@ function cost(overrides: Partial<ProjectCost> = {}): ProjectCost {
         quantity: 40,
         unitPriceDzd: 850,
         valueDzd: 34_000,
-        movementType: "TRANSFER",
         occurredAt: "2026-05-20T00:00:00.000Z",
       },
     ],
@@ -76,14 +75,14 @@ function cost(overrides: Partial<ProjectCost> = {}): ProjectCost {
       totalDzd: 188_500,
       assets: [{ assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 180_000 }],
       consumables: [
-        { itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 10, unitPriceDzd: 850, valueDzd: 8_500 },
+        { id: "bal-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 10, unitPriceDzd: 850, valueDzd: 8_500 },
       ],
     },
     ...overrides,
   }
 }
 
-function prime(data: ProjectCost | undefined, extras: Partial<ReturnType<typeof useProjectCostQuery>> = {}) {
+function prime(data: ProjectCost | undefined, extras: Record<string, unknown> = {}) {
   useProjectCostQuery.mockReturnValue({
     data,
     isPending: false,
@@ -107,24 +106,25 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText("مصروفات")).toBeTruthy()
     expect(screen.getByText("أجور (أيام موزّعة)")).toBeTruthy()
     expect(screen.getByText("عتاد مخصّص")).toBeTruthy()
-    expect(screen.getAllByText("مواد مستهلكة").length).toBeGreaterThan(0)
+    // The source label and the source card share the phrase; both must render.
+    expect(screen.getAllByText("مواد مستهلكة")).toHaveLength(2)
 
     // The lists behind each source explain the number.
     expect(screen.getByText("وقود")).toBeTruthy()
     expect(screen.getByText(/18 يومًا/)).toBeTruthy()
     expect(screen.getByText("خلاطة إسمنت")).toBeTruthy()
-    expect(screen.getAllByText("إسمنت").length).toBeGreaterThan(0)
+    // The consumables row and the parked balance both name the material.
+    expect(screen.getAllByText("إسمنت")).toHaveLength(2)
   })
 
   it("renders a positive share for each source, never a bare signed number", () => {
     prime(cost())
     render(<ProjectCostSection projectId="p-1" />)
 
-    // 10_000 / 260_000 = 4%, etc.
-    expect(screen.getByText("4%")).toBeTruthy()
-    expect(screen.getByText("14%")).toBeTruthy()
-    expect(screen.getByText("69%")).toBeTruthy()
-    expect(screen.getByText("13%")).toBeTruthy()
+    // 10_000/260_000=4%, 36_000=14%, 180_000=69%, 34_000=13%.
+    for (const share of ["4%", "14%", "69%", "13%"]) {
+      expect(screen.getByText(share)).toBeTruthy()
+    }
   })
 
   it("shows the parked inventory value separately from the cost total", () => {
@@ -156,17 +156,72 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText("دفع أجر")).toBeTruthy()
   })
 
-  it("shows a loading state instead of an empty total", () => {
-    prime(undefined, { isPending: true } as never)
+  it("keeps the empty-cost state but still shows parked inventory for a parked-only project", () => {
+    prime(
+      cost({
+        totalDzd: 0,
+        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, consumablesDzd: 0 },
+        expenses: [],
+        salaries: [],
+        stock: [],
+        consumables: [],
+        parkedInventory: {
+          totalDzd: 8_500,
+          assets: [],
+          consumables: [
+            { id: "bal-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 10, unitPriceDzd: 850, valueDzd: 8_500 },
+          ],
+        },
+      }),
+    )
     render(<ProjectCostSection projectId="p-1" />)
 
+    // No cost and no inventory are two different facts; both are true here.
+    expect(screen.getByText("لا توجد تكلفة على هذا المشروع بعد")).toBeTruthy()
+    // The parked total and the single parked row are both 8,500 here.
+    expect(screen.getAllByText("8,500 دج").length).toBeGreaterThan(0)
+  })
+
+  it("routes the empty-state actions to the screens that create a cost", () => {
+    prime(
+      cost({
+        totalDzd: 0,
+        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, consumablesDzd: 0 },
+        expenses: [],
+        salaries: [],
+        stock: [],
+        consumables: [],
+        parkedInventory: { totalDzd: 0, assets: [], consumables: [] },
+      }),
+    )
+    const onOpenItems = vi.fn()
+    render(<ProjectCostSection projectId="p-1" onOpenItems={onOpenItems} />)
+
+    fireEvent.click(screen.getByText("إضافة مصروف"))
+    expect(mockNavigateToWorkspaceRoute).toHaveBeenCalledWith(mockNavigate, "/expenses")
+
+    fireEvent.click(screen.getByText("نقل عتاد إلى المشروع"))
+    expect(onOpenItems).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByText("دفع أجر"))
+    expect(mockNavigateToWorkspaceRoute).toHaveBeenCalledWith(mockNavigate, "/salaries")
+  })
+
+  it("shows a loading state instead of an empty total", () => {
+    prime(undefined, { isPending: true })
+    render(<ProjectCostSection projectId="p-1" />)
+
+    expect(screen.getByText("جارٍ التنفيذ...")).toBeTruthy()
     expect(screen.queryByText("لا توجد تكلفة على هذا المشروع بعد")).toBeNull()
   })
 
-  it("shows an error surface with a retry instead of a zero total", () => {
-    prime(undefined, { isError: true } as never)
+  it("shows an error surface with a retry that refetches, not a zero total", () => {
+    const refetch = vi.fn()
+    prime(undefined, { isError: true, refetch })
     render(<ProjectCostSection projectId="p-1" />)
 
     expect(screen.getByText(/تعذّر تحميل تكلفة المشروع/)).toBeTruthy()
+    fireEvent.click(screen.getByText("إعادة المحاولة"))
+    expect(refetch).toHaveBeenCalledTimes(1)
   })
 })

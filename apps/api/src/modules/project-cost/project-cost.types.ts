@@ -1,5 +1,3 @@
-import type { InventoryMovementType } from "@tuari/contracts";
-
 /**
  * Project cost (issue #414) — the raw rows the project-cost service aggregates.
  *
@@ -11,7 +9,6 @@ import type { InventoryMovementType } from "@tuari/contracts";
 
 export type ProjectCostProjectRecord = {
   id: string;
-  name: string;
 };
 
 /** A non-voided expense tagged to the project (counted in full). */
@@ -62,7 +59,6 @@ export type ProjectCostConsumableIssueRecord = {
   unit: string | null;
   quantity: number;
   unitPriceDzd: number | null;
-  movementType: InventoryMovementType;
   occurredAt: string;
 };
 
@@ -75,6 +71,7 @@ export type ProjectCostParkedAssetRecord = {
 
 /** A consumable balance physically at the project right now (inventory value). */
 export type ProjectCostParkedConsumableRecord = {
+  id: string;
   itemDefinitionId: string | null;
   itemName: string | null;
   unit: string | null;

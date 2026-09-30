@@ -52,6 +52,8 @@ import {
   projectSchema,
   projectCostInputSchema,
   projectCostSchema,
+  projectCostExpenseRowSchema,
+  projectCostPartsSchema,
   recurringPatternSchema,
   reportFilterInputSchema,
   paymentAmountSchema,
@@ -2016,6 +2018,32 @@ describe("contracts", () => {
 
     it("advertises projectCostGet on the app contract", () => {
       expect("projectCostGet" in appContract).toBe(true);
+    });
+
+    it("keeps stored rows permissive but computed aggregates bounded", () => {
+      const aboveBound = Number.MAX_SAFE_INTEGER + 1;
+      // A legacy stored row reads back (it predates the write bound) ...
+      expect(
+        projectCostExpenseRowSchema.safeParse({
+          id: "11111111-1111-4111-8111-111111111111",
+          expenseDate: "2026-05-10T00:00:00.000Z",
+          whatFor: null,
+          amountDzd: aboveBound,
+          responsibleWorkerId: null,
+          responsibleWorkerName: null,
+          sellerId: null,
+          sellerName: null,
+        }).success,
+      ).toBe(true);
+      // ... but a computed part/total may never leave the representable range.
+      expect(
+        projectCostPartsSchema.safeParse({
+          expensesDzd: aboveBound,
+          salariesDzd: 0,
+          stockDzd: 0,
+          consumablesDzd: 0,
+        }).success,
+      ).toBe(false);
     });
   });
 });

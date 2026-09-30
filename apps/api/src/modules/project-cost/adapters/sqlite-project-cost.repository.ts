@@ -21,6 +21,8 @@ import type {
  *
  * Names are resolved with LEFT JOINs rather than per-row lookups, so one
  * project cost is a fixed number of queries, not one per expense/tool/day.
+ * Row ORDER is not fixed here — `ProjectCostService` owns deterministic
+ * newest-first ordering, so the rule lives in one place.
  */
 export class SqliteProjectCostRepository implements ProjectCostRepository {
   constructor(private readonly db: BetterSqliteDatabase) {}
@@ -28,9 +30,9 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
   /** getProject. */
   getProject(projectId: string): ProjectCostProjectRecord | null {
     const row = this.db
-      .prepare(`SELECT id, name FROM "project" WHERE id = ?`)
-      .get(projectId) as { id: string; name: string } | undefined;
-    return row ? { id: String(row.id), name: String(row.name) } : null;
+      .prepare(`SELECT id FROM "project" WHERE id = ?`)
+      .get(projectId) as { id: string } | undefined;
+    return row ? { id: String(row.id) } : null;
   }
 
   /** listProjectExpenses. */
@@ -49,20 +51,19 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
          FROM "expense" e
          LEFT JOIN "employee" emp ON emp.id = e.responsible_worker_id
          LEFT JOIN "external_counterparty" cp ON cp.id = e.seller_id
-         WHERE e.project_id = ? AND e.status = 'LIVE'
-         ORDER BY e.expense_date DESC, e.id ASC`,
+         WHERE e.project_id = ? AND e.status = 'LIVE'`,
       )
       .all(projectId) as Array<Record<string, unknown>>;
 
     return rows.map((row) => ({
       id: String(row.id),
       expenseDate: String(row.expense_date),
-      whatFor: nullableString(row.what_for),
+      whatFor: emptyToNull(row.what_for),
       amountDzd: Number(row.amount_dzd ?? 0),
-      responsibleWorkerId: nullableString(row.responsible_worker_id),
-      responsibleWorkerName: emptyToNull(nullableString(row.responsible_worker_name)),
-      sellerId: nullableString(row.seller_id),
-      sellerName: nullableString(row.seller_name),
+      responsibleWorkerId: emptyToNull(row.responsible_worker_id),
+      responsibleWorkerName: emptyToNull(row.responsible_worker_name),
+      sellerId: emptyToNull(row.seller_id),
+      sellerName: emptyToNull(row.seller_name),
     }));
   }
 
@@ -81,15 +82,14 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
          FROM "employee_salary_payment_split" s
          JOIN "employee_salary_payment" p ON p.id = s.payment_id
          LEFT JOIN "employee" emp ON emp.id = p.employee_id
-         WHERE s.project_id = ?
-         ORDER BY p.payment_date DESC, p.id ASC`,
+         WHERE s.project_id = ?`,
       )
       .all(projectId) as Array<Record<string, unknown>>;
 
     return rows.map((row) => ({
       paymentId: String(row.payment_id),
       employeeId: String(row.employee_id),
-      employeeName: emptyToNull(nullableString(row.employee_name)),
+      employeeName: emptyToNull(row.employee_name),
       paymentDays: Number(row.payment_days ?? 0),
       paymentAmountDzd: Number(row.payment_amount_dzd ?? 0),
       splitDays: Number(row.split_days ?? 0),
@@ -109,15 +109,14 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
            c.created_at AS created_at
          FROM "inventory_asset_charge" c
          LEFT JOIN "inventory_asset_unit" u ON u.id = c.asset_unit_id
-         WHERE c.project_id = ? AND c.status = 'LIVE'
-         ORDER BY c.created_at DESC, c.id ASC`,
+         WHERE c.project_id = ? AND c.status = 'LIVE'`,
       )
       .all(projectId) as Array<Record<string, unknown>>;
 
     return rows.map((row) => ({
       id: String(row.id),
       assetUnitId: String(row.asset_unit_id),
-      assetName: nullableString(row.asset_name),
+      assetName: emptyToNull(row.asset_name),
       amountDzd: Number(row.amount_dzd ?? 0),
       placedAt: String(row.created_at),
     }));
@@ -134,23 +133,20 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
            e.unit AS unit,
            m.quantity AS quantity,
            e.unit_price_dzd AS unit_price_dzd,
-           m.movement_type AS movement_type,
            m.occurred_at AS occurred_at
          FROM "inventory_movement" m
          LEFT JOIN "inventory_entry" e ON e.id = m.inventory_entry_id
-         WHERE m.to_project_id = ? AND m.item_type = 'CONSUMABLE'
-         ORDER BY m.occurred_at DESC, m.id ASC`,
+         WHERE m.to_project_id = ? AND m.item_type = 'CONSUMABLE'`,
       )
       .all(projectId) as Array<Record<string, unknown>>;
 
     return rows.map((row) => ({
       id: String(row.id),
-      itemDefinitionId: nullableString(row.item_definition_id),
-      itemName: nullableString(row.item_name),
-      unit: nullableString(row.unit),
+      itemDefinitionId: emptyToNull(row.item_definition_id),
+      itemName: emptyToNull(row.item_name),
+      unit: emptyToNull(row.unit),
       quantity: Number(row.quantity ?? 0),
       unitPriceDzd: row.unit_price_dzd != null ? Number(row.unit_price_dzd) : null,
-      movementType: String(row.movement_type) as ProjectCostConsumableIssueRecord["movementType"],
       occurredAt: String(row.occurred_at),
     }));
   }
@@ -164,14 +160,14 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
       .prepare(
         `SELECT u.id AS asset_unit_id, u.asset_name AS asset_name, u.purchase_price_dzd AS purchase_price_dzd
          FROM "inventory_asset_unit" u
-         WHERE u.current_project_id = ?
-         ORDER BY u.asset_name ASC, u.id ASC`,
+         WHERE u.current_project_id = ?`,
       )
       .all(projectId) as Array<Record<string, unknown>>;
 
     const consumableRows = this.db
       .prepare(
         `SELECT
+           b.id AS id,
            b.item_definition_id AS item_definition_id,
            e.item_name AS item_name,
            e.unit AS unit,
@@ -179,21 +175,21 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
            e.unit_price_dzd AS unit_price_dzd
          FROM "inventory_consumable_balance" b
          LEFT JOIN "inventory_entry" e ON e.id = b.inventory_entry_id
-         WHERE b.project_id = ?
-         ORDER BY e.item_name ASC, b.id ASC`,
+         WHERE b.project_id = ?`,
       )
       .all(projectId) as Array<Record<string, unknown>>;
 
     return {
       assets: assetRows.map((row) => ({
         assetUnitId: String(row.asset_unit_id),
-        assetName: nullableString(row.asset_name),
+        assetName: emptyToNull(row.asset_name),
         purchasePriceDzd: Number(row.purchase_price_dzd ?? 0),
       })),
       consumables: consumableRows.map((row) => ({
-        itemDefinitionId: nullableString(row.item_definition_id),
-        itemName: nullableString(row.item_name),
-        unit: nullableString(row.unit),
+        id: String(row.id),
+        itemDefinitionId: emptyToNull(row.item_definition_id),
+        itemName: emptyToNull(row.item_name),
+        unit: emptyToNull(row.unit),
         quantity: Number(row.quantity ?? 0),
         unitPriceDzd: row.unit_price_dzd != null ? Number(row.unit_price_dzd) : null,
       })),
@@ -201,13 +197,17 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
   }
 }
 
-function nullableString(value: unknown): string | null {
-  return value != null ? String(value) : null;
-}
-
-/** A `TRIM(...)` name join yields "" when neither name column is set. */
-function emptyToNull(value: string | null): string | null {
-  return value != null && value.length > 0 ? value : null;
+/**
+ * A nullable text column read back as `null` when it is absent or blank.
+ *
+ * The contract's `nullableTextSchema` rejects an empty/whitespace string, so a
+ * legacy or imported row holding `""`/`"  "` must not fail the whole response's
+ * output validation — it is normalised at the read boundary instead.
+ */
+function emptyToNull(value: unknown): string | null {
+  if (value == null) return null;
+  const text = String(value);
+  return text.trim().length > 0 ? text : null;
 }
 
 /** Create a SQLite-backed project-cost repository. */

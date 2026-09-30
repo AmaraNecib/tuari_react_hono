@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import {
   entityIdSchema,
-  inventoryMovementTypeSchema,
   nullableTextSchema,
   timestampSchema,
 } from "./core";
@@ -76,7 +75,6 @@ export const projectCostConsumableRowSchema = z.object({
   quantity: z.number().positive(),
   unitPriceDzd: storedMoneyDzdSchema.nullable(),
   valueDzd: storedMoneyDzdSchema,
-  movementType: inventoryMovementTypeSchema,
   occurredAt: timestampSchema,
 });
 
@@ -89,6 +87,7 @@ export const projectCostParkedAssetSchema = z.object({
 
 /** A consumable balance currently parked at the project (inventory value). */
 export const projectCostParkedConsumableSchema = z.object({
+  id: entityIdSchema,
   itemDefinitionId: entityIdSchema.nullable(),
   itemName: nullableTextSchema,
   unit: nullableTextSchema,

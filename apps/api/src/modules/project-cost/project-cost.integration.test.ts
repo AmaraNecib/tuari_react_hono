@@ -6,7 +6,7 @@
  * one, must appear in that project's cost in full — the read model must follow
  * the current `project_id`, not a creation-time snapshot.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 
 import { schemaStatements } from "../../infrastructure/database/schema-definitions";
@@ -31,13 +31,16 @@ function createTestEnv() {
 
   const expensesModule = createExpensesModule(new SqliteExpenseRepository(rawDb, createFifoLock()));
   const projectCostService = new ProjectCostService(createProjectCostRepository(rawDb));
-  return { expensesModule, projectCostService };
+  return { rawDb, expensesModule, projectCostService };
 }
 
 describe("project cost with a reassigned expense (#414)", () => {
   let env: ReturnType<typeof createTestEnv>;
   beforeEach(() => {
     env = createTestEnv();
+  });
+  afterEach(() => {
+    env.rawDb.close();
   });
 
   it("counts a project's only cost when the expense is assigned after creation", async () => {
@@ -62,6 +65,20 @@ describe("project cost with a reassigned expense (#414)", () => {
     expect(result.item.parts.expensesDzd).toBe(42_500);
     expect(result.item.totalDzd).toBe(42_500);
     expect(result.item.expenses).toHaveLength(1);
+  });
+
+  it("drops the cost again when the expense is moved off the project", async () => {
+    await env.expensesModule.create({
+      id: "e-1",
+      amount: 42_500,
+      expenseDate: "2026-06-02T00:00:00.000Z",
+      projectId: "p-1",
+    });
+
+    const movedOff = await env.expensesModule.update({ id: "e-1", projectId: null, reason: "إسناد خاطئ" });
+
+    expect(movedOff.projectId).toBeNull();
+    expect(env.projectCostService.getProjectCost({ projectId: "p-1" }).item.totalDzd).toBe(0);
   });
 
   it("drops a voided expense from the project's cost", async () => {

@@ -1,4 +1,4 @@
-import { MAX_MONEY_DZD, roundMoney } from "@tuari/contracts";
+import { MAX_MONEY_DZD, roundMoney, type ProjectCostInput } from "@tuari/contracts";
 
 import { successResult } from "../company/company.helpers";
 import { ProjectCostError } from "./project-cost.errors";
@@ -16,6 +16,9 @@ import type {
  *  - A salary's project share is `amount × splitDays / paymentDays`; the day
  *    rate is `amount / paymentDays` and the payment's amount is authoritative
  *    (the split is hand-typed in #412, so it, not the assignment, decides).
+ *    The share keeps the exact quotient and only rounds once, matching
+ *    `computeProposedSalaryAmount`'s convention; the displayed day rate is a
+ *    rounded derivative and is never multiplied back in.
  *  - Stock placement charges are the LIVE charges for the project.
  *  - Consumables are valued at the movement's linked entry unit price — the
  *    same valuation the inventory module uses — and only movements INTO the
@@ -24,13 +27,13 @@ import type {
  *    separately and is NEVER added to the total: parked stock is inventory
  *    value, not money the project spent.
  *  - Money is rounded with the shared `roundMoney`, and every computed
- *    aggregate is refused if it leaves `MAX_MONEY_DZD`, rather than emitting a
- *    number the contract cannot represent.
+ *    aggregate is refused if it is non-finite or leaves `MAX_MONEY_DZD`,
+ *    rather than emitting a number the contract cannot represent.
  */
 export class ProjectCostService {
   constructor(private readonly repository: ProjectCostRepository) {}
 
-  getProjectCost(input: { projectId: string }) {
+  getProjectCost(input: ProjectCostInput) {
     const project = this.repository.getProject(input.projectId);
     if (!project) {
       throw new ProjectCostError("NOT_FOUND", "تعذر العثور على المشروع المطلوب.");
@@ -44,16 +47,23 @@ export class ProjectCostService {
 
     const salaries = sortByDateDesc(
       this.repository.listProjectSalarySplits(project.id).map((split) => {
-        // A payment's `days` is a positive integer by contract; guard the
-        // division anyway so a legacy/bad row can never yield Infinity/NaN.
-        const paymentDays = split.paymentDays > 0 ? split.paymentDays : 1;
+        // A payment's `days` is a positive integer by contract, but the DB has
+        // no positivity CHECK (#427). A non-positive divisor must fail loudly:
+        // falling back to 1 would fabricate a plausible-looking multiple of the
+        // real wage rather than refusing it.
+        if (!Number.isFinite(split.paymentDays) || split.paymentDays <= 0) {
+          throw new ProjectCostError(
+            "BUSINESS_RULE",
+            "تعذر احتساب نصيب المشروع من الأجر: عدد أيام الدفع غير صالح.",
+          );
+        }
         return {
           paymentId: split.paymentId,
           employeeId: split.employeeId,
           employeeName: split.employeeName,
           days: split.splitDays,
-          dayRateDzd: roundMoney(split.paymentAmountDzd / paymentDays),
-          amountDzd: roundMoney((split.paymentAmountDzd * split.splitDays) / paymentDays),
+          dayRateDzd: roundMoney(split.paymentAmountDzd / split.paymentDays),
+          amountDzd: roundMoney((split.paymentAmountDzd * split.splitDays) / split.paymentDays),
           paymentDate: split.paymentDate,
         };
       }),
@@ -73,19 +83,15 @@ export class ProjectCostService {
       (row) => row.id,
     );
 
-    const expensesDzd = sumMoney(expenses.map((row) => row.amountDzd), "expensesDzd");
-    const salariesDzd = sumMoney(salaries.map((row) => row.amountDzd), "salariesDzd");
-    const stockDzd = sumMoney(stock.map((row) => row.amountDzd), "stockDzd");
-    const consumablesDzd = sumMoney(consumables.map((row) => row.valueDzd), "consumablesDzd");
-    const totalDzd = sumMoney([expensesDzd, salariesDzd, stockDzd, consumablesDzd], "totalDzd");
+    const expensesDzd = sumMoney(expenses.map((row) => row.amountDzd));
+    const salariesDzd = sumMoney(salaries.map((row) => row.amountDzd));
+    const stockDzd = sumMoney(stock.map((row) => row.amountDzd));
+    const consumablesDzd = sumMoney(consumables.map((row) => row.valueDzd));
+    const totalDzd = sumMoney([expensesDzd, salariesDzd, stockDzd, consumablesDzd]);
 
     const parked = this.repository.getProjectParkedInventory(project.id);
-    const parkedAssets = parked.assets.map((asset) => ({
-      assetUnitId: asset.assetUnitId,
-      assetName: asset.assetName,
-      purchasePriceDzd: asset.purchasePriceDzd,
-    }));
     const parkedConsumables = parked.consumables.map((balance) => ({
+      id: balance.id,
       itemDefinitionId: balance.itemDefinitionId,
       itemName: balance.itemName,
       unit: balance.unit,
@@ -93,13 +99,10 @@ export class ProjectCostService {
       unitPriceDzd: balance.unitPriceDzd,
       valueDzd: roundMoney((balance.unitPriceDzd ?? 0) * balance.quantity),
     }));
-    const parkedTotalDzd = sumMoney(
-      [
-        ...parkedAssets.map((asset) => asset.purchasePriceDzd),
-        ...parkedConsumables.map((balance) => balance.valueDzd),
-      ],
-      "parkedInventoryDzd",
-    );
+    const parkedTotalDzd = sumMoney([
+      ...parked.assets.map((asset) => asset.purchasePriceDzd),
+      ...parkedConsumables.map((balance) => balance.valueDzd),
+    ]);
 
     return successResult("تم تحميل تكلفة المشروع بنجاح.", {
       projectId: project.id,
@@ -111,7 +114,7 @@ export class ProjectCostService {
       consumables,
       parkedInventory: {
         totalDzd: parkedTotalDzd,
-        assets: parkedAssets,
+        assets: parked.assets,
         consumables: parkedConsumables,
       },
     });
@@ -127,26 +130,25 @@ function valueConsumableIssue(row: ProjectCostConsumableIssueRecord) {
     unit: row.unit,
     quantity: row.quantity,
     unitPriceDzd: row.unitPriceDzd,
-    movementType: row.movementType,
     occurredAt: row.occurredAt,
     valueDzd: roundMoney((row.unitPriceDzd ?? 0) * row.quantity),
   };
 }
 
 /**
- * Sum money and refuse a result outside `MAX_MONEY_DZD`. Individual stored
- * rows may predate the bound (they are read permissively), but a computed
- * aggregate must stay representable; refusing beats emitting a wrong number
- * (#413 round 2).
+ * Sum money and refuse a result that is non-finite or outside `MAX_MONEY_DZD`.
+ * Individual stored rows may predate the bound (they are read permissively),
+ * but a computed aggregate must stay representable; refusing beats emitting a
+ * wrong number (#413 round 2).
  */
-function sumMoney(values: number[], field: string): number {
+function sumMoney(values: number[]): number {
   let total = 0;
   for (const value of values) {
     total = roundMoney(total + value);
-    if (total > MAX_MONEY_DZD) {
+    if (!Number.isFinite(total) || total > MAX_MONEY_DZD) {
       throw new ProjectCostError(
         "BUSINESS_RULE",
-        `إجمالي ${field} يتجاوز الحد الأقصى المسموح به.`,
+        "إجمالي تكلفة المشروع يتجاوز الحد الأقصى المسموح به.",
       );
     }
   }
