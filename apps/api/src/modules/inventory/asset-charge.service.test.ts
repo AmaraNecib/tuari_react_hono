@@ -461,3 +461,129 @@ describe("AssetChargeService — money boundary and bulk placements (#422 round 
     ).toThrowError(/المشروع/)
   })
 })
+
+describe("AssetChargeService — batch gate equals the read, void and correction edges (#422 round 7)", () => {
+  it("refuses a batch whose individually legal amounts would make the total unreadable", () => {
+    // Pre-fix the batch accumulated existing-first with a per-step round, so
+    // MAX + 0.01 + 0.49 stayed at MAX and both charges were written; the
+    // newest-first READ then summed 0.49 + 0.01 + MAX to 2^53 and threw
+    // forever. The gate must build the exact list the read sums (#422 round 7).
+    const { service, repository } = createHarness()
+    repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: Number.MAX_SAFE_INTEGER })
+
+    expect(() =>
+      service.createPlacementCharges(
+        {
+          projectId: "project-a",
+          placements: [
+            { assetUnitId: "asset-1", amountDzd: 0.01 },
+            { assetUnitId: "asset-1", amountDzd: 0.49 },
+          ],
+        },
+        AUDIT,
+      ),
+    ).toThrowError(/الحد الأقصى/)
+
+    // The refused batch wrote nothing and the total is still readable.
+    expect(repository._charges.size).toBe(1)
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(Number.MAX_SAFE_INTEGER)
+  })
+
+  it("rolls the whole batch back when a later placement overflows", () => {
+    const { service, repository } = createHarness()
+    repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: Number.MAX_SAFE_INTEGER - 1 })
+
+    expect(() =>
+      service.createPlacementCharges(
+        {
+          projectId: "project-a",
+          placements: [
+            { assetUnitId: "asset-1", amountDzd: 1 },
+            { assetUnitId: "asset-1", amountDzd: 1 },
+          ],
+        },
+        AUDIT,
+      ),
+    ).toThrowError(/الحد الأقصى/)
+
+    // The batch is refused before any write, so the seeded row is untouched.
+    expect(repository._charges.size).toBe(1)
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(Number.MAX_SAFE_INTEGER - 1)
+  })
+
+  it("defaults a repeated unit in one batch to the amount just charged to it", () => {
+    const { service } = createHarness()
+    const charges = service.createPlacementCharges(
+      {
+        projectId: "project-a",
+        placements: [{ assetUnitId: "asset-1", amountDzd: 70_000 }, { assetUnitId: "asset-1" }],
+      },
+      AUDIT,
+    )
+
+    expect(charges.map((charge) => charge.amountDzd)).toEqual([70_000, 70_000])
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(140_000)
+  })
+
+  it("resolves the default for an explicit null batch amount and returns [] for an empty batch", () => {
+    const { service } = createHarness()
+    service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 80_000 }, AUDIT)
+
+    const resolved = service.createPlacementCharges(
+      { projectId: "project-b", placements: [{ assetUnitId: "asset-1", amountDzd: null }] },
+      AUDIT,
+    )
+    expect(resolved[0]?.amountDzd).toBe(80_000)
+    expect(service.createPlacementCharges({ projectId: "project-b", placements: [] }, AUDIT)).toEqual([])
+  })
+
+  it("falls back to the purchase price when the only prior charge was voided", () => {
+    const { service } = createHarness()
+    const charge = service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 80_000 }, AUDIT)
+    service.voidCharge({ chargeId: charge.id }, AUDIT)
+
+    expect(service.resolveDefault({ assetUnitId: "asset-1" })).toMatchObject({
+      amountDzd: 100_000,
+      source: "PURCHASE_PRICE",
+    })
+  })
+
+  it("records the void reason and actor on the void revision", () => {
+    const { service } = createHarness()
+    const charge = service.createPlacementCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 500 }, AUDIT)
+
+    const voided = service.voidCharge({ chargeId: charge.id, reason: "خطأ إدخال" }, AUDIT)
+
+    expect(voided.item.revisions[0]).toMatchObject({
+      previousAmountDzd: 500,
+      newAmountDzd: null,
+      reason: "خطأ إدخال",
+      actorUserId: "user-1",
+      actorLabel: "مدير",
+    })
+  })
+
+  it("accepts a correction that lands the live total exactly on the bound", () => {
+    const { service, repository } = createHarness()
+    repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: Number.MAX_SAFE_INTEGER - 2 })
+    const second = repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 1 })
+
+    const updated = service.updateCharge({ chargeId: second.id, amountDzd: 2 }, AUDIT)
+
+    expect(updated.item.amountDzd).toBe(2)
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(Number.MAX_SAFE_INTEGER)
+  })
+
+  it("lets a void bring an already over-bound legacy project back into range", () => {
+    // Voiding deliberately skips the aggregate gate, so the over-bound state a
+    // pre-gate write could leave is recoverable (#422 round 4).
+    const { service, repository } = createHarness()
+    repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: Number.MAX_SAFE_INTEGER })
+    const extra = repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 1 })
+    expect(() => service.listByProject({ projectId: "project-a" })).toThrowError(InventoryError)
+
+    service.voidCharge({ chargeId: extra.id }, AUDIT)
+
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(Number.MAX_SAFE_INTEGER)
+  })
+})

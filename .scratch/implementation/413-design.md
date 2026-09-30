@@ -455,3 +455,93 @@ micro-optimisation. The read still happens inside the same locked transaction.
    itself fetches nothing until a transfer dialog opens. This also makes the
    consumable transfer charge-aware-consistent with every other transfer entry
    point.
+
+## Review round 7 — PR #422 (aggressive local review: debate + code-review + test-audit)
+
+Hosted Greptile is unavailable, so this round ran the three local review skills
+with fresh context (critic + defender; Standards + Spec; edge + coverage +
+quality). Findings and decisions:
+
+1. **Fixed: the bulk purchase gate was NOT the read's summation.** The single
+   placement path built the exact projected list and summed once, but
+   `createPlacementCharges` advanced a per-step running total in
+   existing-first order. A batch of `[0.01, 0.49]` on a project already at
+   `MAX_MONEY_DZD` passed the gate (`MAX + 0.01 + 0.49` stays at `MAX` in
+   float) and then the newest-first READ summed `0.49 + 0.01 + MAX` to `2^53`
+   and threw `BUSINESS_RULE` forever. The batch now resolves every amount
+   first (carrying a repeated unit's just-resolved amount forward, so it still
+   matches sequential placements), checks `sumLiveCharges` over the exact
+   read-ordered list once, and only then writes. Pinned by two service tests
+   that fail on the pre-fix code (`refuses a batch whose individually legal
+   amounts would make the total unreadable`, `rolls the whole batch back when a
+   later placement overflows`) and a real-sqlite savepoint test for a mid-batch
+   failure.
+2. **Fixed: an unhandled rejection escaped the transfer dialog.** `handleSubmit`
+   awaited `mutateAsync` with no `try/catch`, so the new charge rejections
+   (aggregate overflow, missing service, over-bound default) leaked as
+   `unhandledRejection` and left the dialog mid-submit. Wrapped like the
+   round-5 history fix; pinned by a dialog test that fails pre-fix.
+3. **Fixed: money was rendered raw in the new UI.** `AssetChargeHistory` and the
+   dialog's price hint printed `55000` instead of the repo's
+   `toLocaleString("ar-DZ")` convention. Pinned by tests that fail pre-fix.
+4. **Fixed: the amount parser accepted hex/scientific text.** `Number("0x10")`
+   and `Number("1e3")` were treated as amounts. The parser now accepts only
+   plain decimal text; pinned by a test that fails pre-fix.
+5. **Fixed: the history toggle had no `aria-expanded`/`aria-controls` and the
+   revision list had no accessible name.** Pinned by an a11y test that fails
+   pre-fix.
+6. **Fixed: duplicated `roundMoney`.** Moved to `@tuari/contracts` next to
+   `MAX_MONEY_DZD`; the API helper re-exports it and the web dialog imports it,
+   so the two copies can no longer drift. Contract coverage for the helper
+   added.
+7. **Fixed (test quality):** the "warn, never block" test only asserted a button
+   existed (now submits and asserts the over-price payload); the project-name
+   N+1 test now counts the name queries; the contracts `charges` test now
+   proves the field is required; the history test now asserts the timestamp and
+   that a voided row has no edit affordance; hook mocks now record the unit id
+   so a wiring swap fails.
+8. **Fixed (coverage):** added the header-inherited project charge, the
+   invoice path's loud failure without the charge service, an explicit `null`
+   transfer amount, the void revision's reason/actor, a correction landing
+   exactly on the bound, the void escape hatch, the empty batch, the batch
+   default carry-forward, the consumable dialog branch and the cancel paths.
+9. **Fixed (E2E):** `tests/e2e/inventory-asset-charge.spec.ts` drives the real
+   purchase of an ASSET onto a project, asserts the charge in the unit history
+   and at the sqlite seam, and that the transfer dialog asks for a charge.
+
+### Dismissed with evidence
+
+- **"A header-level project destination books no charge."** The loop iterates
+  `preparedEntries`, whose ASSET `projectId` is `effectiveProjectId`
+  (`inventory.service.ts:384`), not the raw entry field, so an inherited header
+  project IS charged. A regression test now pins it.
+- **"Asset-detail read silently degrades when the charge service is absent."**
+  The production composition always wires it (`dependencies.ts`), every write
+  path calls `requireAssetChargeService()`, and `getAsset` deliberately stays
+  optional so a warehouse-only composition can still read. Making it strict
+  would break warehouse-only reads and a large set of pre-existing tests for no
+  production-observable gain.
+- **"A free placement poisons every later default."** The settled rule is
+  "default = the last amount charged for that unit"; an explicit `0` IS that
+  amount, the operator sees it prefilled, and can change it.
+- **"The FK tightening is invisible on an existing DB."** `inventory_asset_charge`
+  is created by this PR; no released database has the earlier CASCADE shape, so
+  `CREATE TABLE IF NOT EXISTS` always creates the RESTRICT version.
+- **"Void relies on unverified Drizzle behaviour."** Disproven by the real-sqlite
+  void test: `updateCharge` with no `amountDzd` leaves the NOT NULL column
+  intact and the suite passes.
+- **Em dashes in new code comments.** The codebase uses `—` in JSDoc throughout
+  (`git grep` on `origin/develop`), and `check:unslop` scopes to markdown only.
+
+### Reported, not fixed here (pre-existing or owned by another issue)
+
+- `movement_id … ON DELETE SET NULL` can orphan a charge's placement reference,
+  and a SQLite FK violation on a future delete path is unmapped. No delete path
+  exists today; a follow-up should map constraint failures to `BUSINESS_RULE`.
+- `listChargesByProject` returns LIVE+VOID but `listByProject` filters to LIVE;
+  #414's project view should decide whether it renders voids.
+- `apps/api/vitest.config.ts` coverage include omits `modules/inventory/**`, so
+  the money module is not under the repo's 100% gate. Scoped coverage over
+  `asset-charge.service.ts` is 100%; the config gap is pre-existing.
+- Web `transfer-item-dialog.tsx` branch coverage (~79%) is UI chrome
+  (consumable quantity, cancel handlers); web has no coverage threshold gate.

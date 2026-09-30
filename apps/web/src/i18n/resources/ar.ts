@@ -912,6 +912,7 @@ export const ar = {
         empty: "لا توجد احتسابات لهذا الأصل بعد.",
         project: "مشروع",
         corrected: "مُصحَّح",
+        revisions: "سجل التصحيحات",
         revisionCorrected: "تصحيح من {{from}} إلى {{to}}",
         revisionVoid: "إلغاء من {{from}} إلى 0",
         unknownActor: "غير معروف",

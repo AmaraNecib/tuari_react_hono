@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import { MAX_MONEY_DZD } from "@tuari/contracts"
+import { MAX_MONEY_DZD, roundMoney } from "@tuari/contracts"
 
 import {
   Dialog,
@@ -44,16 +44,6 @@ type TransferConsumableTarget = {
 /** TransferTarget. */
 export type TransferTarget = TransferAssetTarget | TransferConsumableTarget
 
-function roundMoney(value: number) {
-  // Mirror the API helper's overflow guard: `value * 100` corrupts large
-  // magnitudes, so return those unchanged instead of losing precision.
-  if (Math.abs(value) * 100 > Number.MAX_SAFE_INTEGER) {
-    return value
-  }
-
-  return Math.round(value * 100) / 100
-}
-
 /**
  * The amount expressed as a percentage of the purchase price (#413):
  * negative for a cut, positive above it, `null` when the purchase price is 0
@@ -95,8 +85,16 @@ export function parseChargeAmountInput(value: string): ChargeAmountInput {
     return { kind: "default" }
   }
 
+  // Accept only a plain decimal amount. `Number("0x10")` and `Number("1e3")`
+  // are legal JS numbers but not amount text, and the correction editor reuses
+  // this parser, so a hex/scientific entry must be rejected, not silently
+  // converted (#422 round 7).
+  if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(trimmed)) {
+    return { kind: "invalid" }
+  }
+
   const parsed = Number(trimmed)
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > MAX_MONEY_DZD) {
+  if (!Number.isFinite(parsed) || parsed > MAX_MONEY_DZD) {
     return { kind: "invalid" }
   }
 
@@ -250,41 +248,49 @@ export function TransferItemDialog({
     const occurredAt = date ? toAlgeriaDayBoundaryIso(date, "start") : undefined
     const noteVal = note.trim() || null
 
-    if (target.type === "ASSET") {
-      const parsedAmount = parseChargeAmountInput(chargeAmount)
-      // An invalid non-blank amount never silently becomes a free placement:
-      // block the submit and let the rendered error tell the operator. Blank
-      // means "use the server default"; an explicit 0 is a free placement.
-      let chargeAmountDzd: number | null = null
-      if (destType === "PROJECT") {
-        if (parsedAmount.kind === "invalid") {
-          return
+    try {
+      if (target.type === "ASSET") {
+        const parsedAmount = parseChargeAmountInput(chargeAmount)
+        // An invalid non-blank amount never silently becomes a free placement:
+        // block the submit and let the rendered error tell the operator. Blank
+        // means "use the server default"; an explicit 0 is a free placement.
+        let chargeAmountDzd: number | null = null
+        if (destType === "PROJECT") {
+          if (parsedAmount.kind === "invalid") {
+            return
+          }
+
+          chargeAmountDzd = parsedAmount.kind === "default" ? null : parsedAmount.value
         }
 
-        chargeAmountDzd = parsedAmount.kind === "default" ? null : parsedAmount.value
+        await assetMutation.mutateAsync({
+          assetUnitId: target.assetUnitId,
+          toWarehouseId: destType === "WAREHOUSE" ? destId : null,
+          toProjectId: destType === "PROJECT" ? destId : null,
+          chargeAmountDzd,
+          note: noteVal,
+          occurredAt,
+        })
+      } else {
+        const qty = Number(quantity)
+        if (!Number.isFinite(qty) || qty <= 0) return
+        await consumableMutation.mutateAsync({
+          inventoryEntryId: target.inventoryEntryId,
+          quantity: qty,
+          fromWarehouseId: target.sourceWarehouseId ?? null,
+          fromProjectId: target.sourceProjectId ?? null,
+          toWarehouseId: destType === "WAREHOUSE" ? destId : null,
+          toProjectId: destType === "PROJECT" ? destId : null,
+          note: noteVal,
+          occurredAt,
+        })
       }
-
-      await assetMutation.mutateAsync({
-        assetUnitId: target.assetUnitId,
-        toWarehouseId: destType === "WAREHOUSE" ? destId : null,
-        toProjectId: destType === "PROJECT" ? destId : null,
-        chargeAmountDzd,
-        note: noteVal,
-        occurredAt,
-      })
-    } else {
-      const qty = Number(quantity)
-      if (!Number.isFinite(qty) || qty <= 0) return
-      await consumableMutation.mutateAsync({
-        inventoryEntryId: target.inventoryEntryId,
-        quantity: qty,
-        fromWarehouseId: target.sourceWarehouseId ?? null,
-        fromProjectId: target.sourceProjectId ?? null,
-        toWarehouseId: destType === "WAREHOUSE" ? destId : null,
-        toProjectId: destType === "PROJECT" ? destId : null,
-        note: noteVal,
-        occurredAt,
-      })
+    } catch {
+      // The mutation's onError already surfaced the failure toast. Swallow the
+      // rejection (an `await`ed rejection in an event handler would otherwise
+      // leak as an unhandledRejection) and keep the form open so the operator
+      // can retry with their input intact (#422 round 7).
+      return
     }
 
     resetForm()
@@ -410,7 +416,7 @@ export function TransferItemDialog({
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  {t("inventory.transfer.chargeHint", { price: purchasePriceDzd })}
+                  {t("inventory.transfer.chargeHint", { price: purchasePriceDzd.toLocaleString("ar-DZ") })}
                 </p>
               )}
 

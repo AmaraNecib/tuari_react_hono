@@ -161,8 +161,17 @@ describe("DrizzleAssetChargeRepository (#413)", () => {
     env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 100_000 })
     env.repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: 80_000 })
 
+    // Count the project-name lookups: a per-row query (N+1) must fail this.
+    let nameQueries = 0
+    const prepare = env.rawDb.prepare.bind(env.rawDb)
+    ;(env.rawDb as unknown as { prepare: typeof prepare }).prepare = ((sql: string) => {
+      if (/SELECT name FROM project/i.test(sql)) nameQueries += 1
+      return prepare(sql)
+    }) as typeof prepare
+
     const charges = env.repository.listChargesByProject("project-a")
 
+    expect(nameQueries).toBe(1)
     expect(charges).toHaveLength(2)
     expect(charges.every((charge) => charge.projectName === "مشروع أ")).toBe(true)
     // A different project's charge is not leaked into the list.

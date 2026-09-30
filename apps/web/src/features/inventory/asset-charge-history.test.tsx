@@ -2,17 +2,21 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   charges: vi.fn(),
+  chargeQueryIds: [] as Array<string | undefined>,
   update: { isPending: false, mutateAsync: vi.fn() },
   voidCharge: { isPending: false, mutateAsync: vi.fn() },
 }))
 
 vi.mock("./inventory-hooks", () => ({
-  useAssetChargesByUnitQuery: () => mocks.charges(),
+  useAssetChargesByUnitQuery: (assetUnitId?: string) => {
+    mocks.chargeQueryIds.push(assetUnitId)
+    return mocks.charges()
+  },
   useUpdateAssetChargeMutation: () => mocks.update,
   useVoidAssetChargeMutation: () => mocks.voidCharge,
 }))
@@ -42,6 +46,7 @@ function makeCharge(overrides: Record<string, unknown> = {}) {
 describe("AssetChargeHistory (#413)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.chargeQueryIds.length = 0
     mocks.charges.mockReturnValue({ data: { items: [makeCharge()] } })
     mocks.update.mutateAsync.mockResolvedValue({})
     mocks.voidCharge.mutateAsync.mockResolvedValue({})
@@ -49,13 +54,33 @@ describe("AssetChargeHistory (#413)", () => {
 
   afterEach(cleanup)
 
-  it("shows the unit's charge chain once expanded", () => {
+  it("shows the unit's charge chain once expanded, scoped to that unit", () => {
     render(<AssetChargeHistory assetUnitId="asset-1" />)
+
+    // Lazy: the query stays disabled until the row is expanded.
+    expect(mocks.chargeQueryIds).toEqual([undefined])
 
     fireEvent.click(screen.getByText("سجل الاحتساب"))
 
+    expect(mocks.chargeQueryIds).toContain("asset-1")
+
     expect(screen.getByText(/مشروع أ/)).toBeTruthy()
-    expect(screen.getByText(/100000/)).toBeTruthy()
+    // Money uses the repo convention, not the raw JS number.
+    expect(screen.getByText(new RegExp((100_000).toLocaleString("ar-DZ")))).toBeTruthy()
+  })
+
+  it("exposes the panel state to assistive tech", () => {
+    render(<AssetChargeHistory assetUnitId="asset-1" />)
+
+    const toggle = screen.getByText("سجل الاحتساب")
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+
+    fireEvent.click(toggle)
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    const panelId = toggle.getAttribute("aria-controls")
+    expect(panelId).toBeTruthy()
+    expect(document.getElementById(panelId!)?.getAttribute("data-testid")).toBe("asset-charge-history")
   })
 
   it("records a correction with the typed amount and optional reason", async () => {
@@ -156,9 +181,12 @@ describe("AssetChargeHistory (#413)", () => {
     render(<AssetChargeHistory assetUnitId="asset-1" />)
     fireEvent.click(screen.getByText("سجل الاحتساب"))
 
-    // The voided row shows its state and has no edit/void affordance.
+    // The voided row shows its state and has no edit/void affordance. The live
+    // row keeps both, so a regression that renders "تعديل" on the voided row
+    // must fail here.
     expect(screen.getByText("ملغى")).toBeTruthy()
     expect(screen.getAllByText("إلغاء")).toHaveLength(1)
+    expect(screen.getAllByText("تعديل")).toHaveLength(1)
 
     fireEvent.click(screen.getByTestId("void-charge-1"))
     fireEvent.click(screen.getByTestId("confirm-void-charge-1"))
@@ -187,6 +215,24 @@ describe("AssetChargeHistory (#413)", () => {
       expect(mocks.voidCharge.mutateAsync).toHaveBeenCalledWith({ chargeId: "charge-2", reason: "سبب الإلغاء" }),
     )
     expect(mocks.voidCharge.mutateAsync).not.toHaveBeenCalledWith(expect.objectContaining({ reason: "سبب التصحيح" }))
+  })
+
+  it("cancels an in-progress correction and an in-progress void without sending anything", () => {
+    render(<AssetChargeHistory assetUnitId="asset-1" />)
+    fireEvent.click(screen.getByText("سجل الاحتساب"))
+
+    fireEvent.click(screen.getByText("تعديل"))
+    const editForm = screen.getByLabelText("المبلغ الجديد").parentElement!
+    fireEvent.click(within(editForm).getByText("إلغاء"))
+    expect(screen.queryByLabelText("المبلغ الجديد")).toBeNull()
+
+    fireEvent.click(screen.getByTestId("void-charge-1"))
+    const voidForm = screen.getByLabelText("سبب الإلغاء (اختياري)").parentElement!
+    fireEvent.click(within(voidForm).getByText("إلغاء"))
+    expect(screen.queryByLabelText("سبب الإلغاء (اختياري)")).toBeNull()
+
+    expect(mocks.update.mutateAsync).not.toHaveBeenCalled()
+    expect(mocks.voidCharge.mutateAsync).not.toHaveBeenCalled()
   })
 
   it("shows an empty state when the unit has never been charged", () => {
@@ -254,10 +300,16 @@ describe("AssetChargeHistory (#413)", () => {
 
     fireEvent.click(screen.getByText("سجل الاحتساب"))
 
-    expect(screen.getByText(/تصحيح من 100000 إلى 75000/)).toBeTruthy()
-    expect(screen.getByText(/إلغاء من 75000 إلى 0/)).toBeTruthy()
-    // The actor and the reason are not collapsed into a single "corrected" badge.
+    const from100 = (100_000).toLocaleString("ar-DZ")
+    const to75 = (75_000).toLocaleString("ar-DZ")
+    expect(screen.getByText(new RegExp(`تصحيح من ${from100} إلى ${to75}`))).toBeTruthy()
+    expect(screen.getByText(new RegExp(`إلغاء من ${to75} إلى 0`))).toBeTruthy()
+    // The actor, the timestamp and the reason are not collapsed into a single
+    // "corrected" badge.
     expect(screen.getAllByText(/مدير/).length).toBe(2)
     expect(screen.getByText(/خصم/)).toBeTruthy()
+    expect(
+      screen.getAllByText((content) => content.includes(new Date(createdAt).toLocaleString("ar-DZ"))).length,
+    ).toBeGreaterThan(0)
   })
 })

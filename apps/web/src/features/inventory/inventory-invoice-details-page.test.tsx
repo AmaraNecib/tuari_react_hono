@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   invoiceGroupQuery: vi.fn(),
   warehousesQuery: vi.fn(),
   projectsQuery: vi.fn(),
+  chargeQueryIds: [] as Array<string | undefined>,
   transferAssetMutation: { isPending: false, mutateAsync: vi.fn() },
   transferConsumableMutation: { isPending: false, mutateAsync: vi.fn() },
 }))
@@ -25,7 +26,10 @@ vi.mock("./inventory-hooks", () => ({
   useTransferInventoryConsumableMutation: () => mocks.transferConsumableMutation,
   // The page now embeds AssetChargeHistory so a unit with no location keeps its
   // charge editor reachable (#422 round 6).
-  useAssetChargesByUnitQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+  useAssetChargesByUnitQuery: (assetUnitId?: string) => {
+    mocks.chargeQueryIds.push(assetUnitId)
+    return { data: { items: [] }, isPending: false, isError: false }
+  },
   useUpdateAssetChargeMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useVoidAssetChargeMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   // The invoice screen routes asset transfers through TransferItemDialog (#413).
@@ -334,8 +338,11 @@ describe("InventoryInvoiceDetailsPage error surface (issue #34)", () => {
     renderPage({ data: detail, isPending: false, isError: false, refetch: vi.fn() })
 
     expect(screen.getByText("المكان الحالي: غير محدد")).toBeTruthy()
+    mocks.chargeQueryIds.length = 0
     fireEvent.click(screen.getByRole("button", { name: "سجل الاحتساب" }))
 
     expect(screen.getByTestId("asset-charge-history")).toBeTruthy()
+    // The history read is scoped to the rendered unit, not an arbitrary one.
+    expect(mocks.chargeQueryIds).toContain(asset.id)
   })
 })

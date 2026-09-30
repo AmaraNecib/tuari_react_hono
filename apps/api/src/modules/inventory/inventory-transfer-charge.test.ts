@@ -169,6 +169,16 @@ describe("InventoryService.transferAsset — placement charges (#413)", () => {
     expect([...chargeRepository._charges.values()][0]?.amountDzd).toBe(0)
   })
 
+  it("resolves the server default for an explicit null amount", () => {
+    // The wire contract declares null as "server resolves the default", which
+    // the dialog sends while the fresh default is still loading.
+    const { service, chargeRepository } = createHarness()
+
+    service.transferAsset({ assetUnitId: "asset-1", toProjectId: "project-a", chargeAmountDzd: null }, AUDIT)
+
+    expect([...chargeRepository._charges.values()][0]?.amountDzd).toBe(100_000)
+  })
+
   it("keeps each project's own charge when the unit moves on", () => {
     const { service, chargeRepository } = createHarness()
 
@@ -226,7 +236,7 @@ describe("InventoryService read paths tolerate a legacy above-bound price (#413 
 })
 
 describe("InventoryService.createInvoiceGroup — a unit created on a project is charged (#413)", () => {
-  function createInvoiceHarness() {
+  function createInvoiceHarness(options?: { withoutChargeService?: boolean }) {
     const chargeRepository = createInMemoryAssetChargeRepository()
     const createdAssets = new Map<string, { id: string; purchasePriceDzd: number; currentProjectId: string | null }>()
     const movements: Array<Record<string, unknown>> = []
@@ -238,7 +248,27 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
       getLatestInvoiceNumber: () => null,
       getItemDefinitionById: (id: string) =>
         id === "def-1" ? { id, name: "مثقاب", itemType: "ASSET", unit: null, isActive: true } : null,
-      withTransaction: <T,>(callback: () => T) => callback(),
+      // A real transaction double: snapshot the mutable stores and restore them
+      // when the callback throws, so a failure after a movement/charge insert
+      // leaves nothing behind (sqlite's runSyncTransaction does the same).
+      withTransaction: <T,>(callback: () => T): T => {
+        const chargeSnapshot = new Map(chargeRepository._charges)
+        const revisionSnapshot = new Map(chargeRepository._revisions)
+        const movementSnapshot = [...movements]
+        const assetSnapshot = new Map(createdAssets)
+        try {
+          return callback()
+        } catch (error) {
+          chargeRepository._charges.clear()
+          for (const [id, charge] of chargeSnapshot) chargeRepository._charges.set(id, charge)
+          chargeRepository._revisions.clear()
+          for (const [id, revision] of revisionSnapshot) chargeRepository._revisions.set(id, revision)
+          movements.splice(0, movements.length, ...movementSnapshot)
+          createdAssets.clear()
+          for (const [id, asset] of assetSnapshot) createdAssets.set(id, asset)
+          throw error
+        }
+      },
       createInvoiceGroup: (data: Record<string, unknown>) => ({ id: "group-1", ...data }),
       createEntry: (data: Record<string, unknown>) => ({ id: "entry-1", ...data }),
       createAssetUnit: (data: { id?: string; purchasePriceDzd: number; currentProjectId: string | null }) => {
@@ -264,7 +294,7 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
       {} as InventoryAttachmentStorage,
       undefined,
       undefined,
-      chargeService,
+      options?.withoutChargeService ? undefined : chargeService,
     )
 
     return { service, chargeRepository, movements }
@@ -331,6 +361,56 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
     expect([...chargeRepository._charges.values()].map((charge) => charge.amountDzd)).toEqual([
       100_000, 100_000, 100_000,
     ])
+  })
+
+  it("charges an asset that inherits the invoice header's project destination", () => {
+    // The entry sets neither destination, so `effectiveProjectId` comes from
+    // the header. The unit is placed on that project, so it must be charged.
+    const { service, chargeRepository } = createInvoiceHarness()
+
+    service.createInvoiceGroup(
+      {
+        projectId: "project-a",
+        entries: [
+          {
+            kind: "ASSET",
+            itemDefinitionId: "def-1",
+            assets: [{ assetName: "مثقاب", purchasePriceDzd: 100_000 }],
+          },
+        ],
+      },
+      AUDIT,
+    )
+
+    expect([...chargeRepository._charges.values()]).toHaveLength(1)
+    expect([...chargeRepository._charges.values()][0]).toMatchObject({
+      projectId: "project-a",
+      amountDzd: 100_000,
+    })
+  })
+
+  it("fails loudly instead of booking an uncharged invoice placement when the charge service is absent", () => {
+    const { service, chargeRepository, movements } = createInvoiceHarness({ withoutChargeService: true })
+
+    expect(() =>
+      service.createInvoiceGroup(
+        {
+          projectId: "project-a",
+          entries: [
+            {
+              kind: "ASSET",
+              itemDefinitionId: "def-1",
+              projectId: "project-a",
+              assets: [{ assetName: "مثقاب", purchasePriceDzd: 100_000 }],
+            },
+          ],
+        },
+        AUDIT,
+      ),
+    ).toThrowError(/احتساب/)
+
+    expect(chargeRepository._charges.size).toBe(0)
+    expect(movements).toHaveLength(0)
   })
 
   it("writes no charge for an asset created on a warehouse", () => {
@@ -416,14 +496,15 @@ describe("InventoryService.transferAsset ↔ charge rollback on real sqlite (#42
     const lock = createFifoLock()
     const inventoryRepository = createInventoryRepository(db, lock)
     const chargeRepository = createAssetChargeRepository(db, lock)
+    const chargeService = new AssetChargeService(chargeRepository, inventoryRepository)
     const service = new InventoryService(
       inventoryRepository,
       {} as InventoryAttachmentStorage,
       undefined,
       undefined,
-      new AssetChargeService(chargeRepository, inventoryRepository),
+      chargeService,
     )
-    return { service, inventoryRepository, chargeRepository }
+    return { service, chargeService, inventoryRepository, chargeRepository }
   }
 
   it("rolls the transfer and its charge back together when a later step fails", () => {
@@ -448,6 +529,39 @@ describe("InventoryService.transferAsset ↔ charge rollback on real sqlite (#42
     const asset = inventoryRepository.getAssetUnitById("asset-1")
     expect(asset?.currentWarehouseId).toBe("wh-1")
     expect(asset?.currentProjectId).toBeNull()
+  })
+
+  it("rolls the whole bulk batch back on real sqlite when a later insert fails", () => {
+    // The batch gate resolves every amount before writing, so an overflow is
+    // refused with nothing written. This test fails AFTER the first insert to
+    // prove the real savepoint still discards a partial batch (#422 round 7).
+    const { chargeService, chargeRepository } = createRealHarness()
+
+    let inserts = 0
+    const insertCharge = chargeRepository.createCharge.bind(chargeRepository)
+    chargeRepository.createCharge = (data) => {
+      const created = insertCharge(data)
+      inserts += 1
+      if (inserts === 2) throw new Error("bulk insert failed")
+      return created
+    }
+
+    expect(() =>
+      chargeService.createPlacementCharges(
+        {
+          projectId: "project-a",
+          placements: [
+            { assetUnitId: "asset-1", amountDzd: 10 },
+            { assetUnitId: "asset-1", amountDzd: 20 },
+            { assetUnitId: "asset-1", amountDzd: 30 },
+          ],
+        },
+        AUDIT,
+      ),
+    ).toThrowError(/bulk insert failed/)
+
+    expect(chargeRepository.listChargesByProject("project-a")).toHaveLength(0)
+    expect(chargeRepository.listChargesByUnit("asset-1")).toHaveLength(0)
   })
 
   afterEach(() => {

@@ -49,7 +49,20 @@ export function createInMemoryAssetChargeRepository(): InventoryAssetChargeRepos
     _revisions: revisions,
 
     withTransaction<T>(callback: () => T): T {
-      return callback()
+      // Snapshot/restore so the double mirrors the sqlite savepoint: a throw
+      // inside the callback discards every charge/revision written during it.
+      // Without this the double could only prove its own harness (#422 round 7).
+      const chargeSnapshot = new Map(charges)
+      const revisionSnapshot = new Map(revisions)
+      try {
+        return callback()
+      } catch (error) {
+        charges.clear()
+        for (const [id, charge] of chargeSnapshot) charges.set(id, charge)
+        revisions.clear()
+        for (const [id, revision] of revisionSnapshot) revisions.set(id, revision)
+        throw error
+      }
     },
 
     createCharge(data: InventoryAssetChargeCreateData) {

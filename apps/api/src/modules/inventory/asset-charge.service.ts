@@ -148,11 +148,12 @@ export class AssetChargeService {
    *
    * A purchase invoice can place many units on the SAME project at once. The
    * single-placement path re-reads the project's live charges for every unit,
-   * so an N-unit purchase costs N scans. This reads them ONCE and advances a
-   * running total across the batch, so the cost is one read regardless of N
-   * (#422 round 6). Amounts resolve exactly as the single path (an explicit
-   * value, else the unit's default) and every charge shares the caller's
-   * transaction.
+   * so an N-unit purchase costs N scans. This reads them ONCE, resolves the
+   * whole batch's amounts, and checks the exact projected post-write total in
+   * the SAME order the read uses, so the cost is one read regardless of N and
+   * an accepted batch can never leave a total the read refuses (#422 round 6,
+   * round 7). Amounts resolve exactly as the single path (an explicit value,
+   * else the unit's default) and every charge shares the caller's transaction.
    */
   createPlacementCharges(
     input: {
@@ -171,40 +172,54 @@ export class AssetChargeService {
 
     return this.repository.withTransaction(() => {
       // One read for the whole batch. `currentTotalDzd` is what the read-back
-      // shows before the batch and what the refusal message reports; the
-      // running total advances with each created charge, so an N-unit purchase
-      // costs one scan instead of N (#422 round 6).
+      // shows before the batch and what the refusal message reports (#422
+      // round 6).
       const liveAmounts = this.repository
         .listChargesByProject(input.projectId)
         .filter((charge) => charge.status === "LIVE")
         .map((charge) => charge.amountDzd)
       const currentTotalDzd = this.sumLiveCharges(liveAmounts)
-      let runningTotalDzd = currentTotalDzd
 
-      return input.placements.map((placement) => {
-        // Resolve each default AS the batch is written, so a unit placed twice
-        // in one batch defaults to the amount just charged to it, exactly like
-        // sequential single placements.
+      // Resolve EVERY amount before writing anything. A unit placed twice in
+      // one batch defaults to the amount the batch just charged it, exactly
+      // like sequential single placements: the map carries that forward
+      // without another read.
+      const batchLastAmountByUnit = new Map<string, number>()
+      const resolvedPlacements = input.placements.map((placement) => {
+        const batchLastAmount = batchLastAmountByUnit.get(placement.assetUnitId)
         const amountDzd =
           placement.amountDzd === undefined || placement.amountDzd === null
-            ? this.resolveDefault({ assetUnitId: placement.assetUnitId }).amountDzd
+            ? batchLastAmount ?? this.resolveDefault({ assetUnitId: placement.assetUnitId }).amountDzd
             : this.parseAmount(placement.amountDzd, "chargeAmountDzd")
 
-        runningTotalDzd = roundMoney(runningTotalDzd + amountDzd)
-        if (runningTotalDzd > MAX_MONEY_DZD) {
-          throw this.projectTotalOutOfRange(currentTotalDzd, "amountDzd")
-        }
+        batchLastAmountByUnit.set(placement.assetUnitId, amountDzd)
+        return { ...placement, amountDzd }
+      })
 
-        return this.repository.createCharge({
+      // Check the EXACT list the read will sum, in the read's order. The new
+      // charges are the newest rows, so they read back last-placed-first ahead
+      // of the existing newest-first list. A per-step running total let a batch
+      // of individually legal amounts land on a total the read then refused
+      // (#422 round 7).
+      const projectedAmounts = [
+        ...resolvedPlacements.map((placement) => placement.amountDzd).reverse(),
+        ...liveAmounts,
+      ]
+      if (this.sumLiveCharges(projectedAmounts) > MAX_MONEY_DZD) {
+        throw this.projectTotalOutOfRange(currentTotalDzd, "amountDzd")
+      }
+
+      return resolvedPlacements.map((placement) =>
+        this.repository.createCharge({
           assetUnitId: placement.assetUnitId,
           projectId: input.projectId,
           movementId: placement.movementId ?? null,
-          amountDzd,
+          amountDzd: placement.amountDzd,
           actorUserId: audit.actorUserId,
           actorLabel: audit.actorLabel,
           transactionId: audit.transactionId,
-        })
-      })
+        }),
+      )
     })
   }
 

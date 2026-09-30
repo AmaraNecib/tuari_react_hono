@@ -49,6 +49,24 @@ export const nonNegativePaymentAmountSchema = z.number().nonnegative().max(MAX_M
 export const storedMoneyDzdSchema = z.number().nonnegative();
 
 /**
+ * Round a monetary value to 2 decimals so float noise never reaches the UI or a
+ * stored row. Shared by the API charge/report boundaries and the web percentage
+ * linkage so the two cannot drift.
+ *
+ * `value * 100` is exact only while `|value| <= MAX_MONEY_DZD / 100`
+ * (~9.007e13). Past that the multiply overflows IEEE-754 integer precision and
+ * the round-trip corrupts the value, so a value that large is returned
+ * unchanged: at that magnitude it has no representable cents.
+ */
+export function roundMoney(value: number): number {
+  if (Math.abs(value) * 100 > MAX_MONEY_DZD) {
+    return value;
+  }
+
+  return Math.round(value * 100) / 100;
+}
+
+/**
  * Shared page-limit validity for payment listing (wire gate + module seam).
  * `.int()` because sqlite `LIMIT ?` throws a datatype mismatch on fractional
  * bounds (issue #289 + test-audit finding).

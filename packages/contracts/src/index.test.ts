@@ -53,6 +53,7 @@ import {
   recurringPatternSchema,
   reportFilterInputSchema,
   paymentAmountSchema,
+  roundMoney,
   paymentListLimitSchema,
   paymentListInputSchema,
   nonNegativePaymentAmountSchema,
@@ -1614,6 +1615,16 @@ describe("contracts", () => {
       expect(paymentListInputSchema.parse({}).limit).toBe(50);
       expect(paymentListInputSchema.safeParse({ limit: 2.5 }).success).toBe(false);
     });
+
+    it("roundMoney snaps float noise to cents and leaves cent-less magnitudes unchanged", () => {
+      expect(roundMoney(0.1 + 0.2)).toBe(0.3);
+      expect(roundMoney(1.006)).toBe(1.01);
+      expect(roundMoney(1.004)).toBe(1);
+      // Past MAX_MONEY_DZD / 100 the multiply overflows integer precision, so
+      // the value is returned unchanged rather than corrupted (the old helper
+      // returned MAX - 2 for an input of MAX - 1).
+      expect(roundMoney(Number.MAX_SAFE_INTEGER - 1)).toBe(Number.MAX_SAFE_INTEGER - 1);
+    });
   });
 
   describe("recurring patterns contract surface", () => {
@@ -1946,15 +1957,20 @@ describe("contracts", () => {
     });
 
     it("the asset detail requires a charges array", () => {
+      // Omit `charges` entirely. The other fields are deliberately empty, but
+      // the error list must still name `charges` as missing. Asserting only
+      // that the schema has a `charges` key would pass even if it were optional.
       const parsed = inventoryAssetDetailSchema.safeParse({
         asset: {},
         invoiceGroup: {},
         movements: [],
-        charges: [charge],
       });
-      expect(parsed.success).toBe(false); // asset/invoiceGroup are not empty objects
-      const shape = inventoryAssetDetailSchema.shape;
-      expect(shape.charges).toBeDefined();
+      expect(parsed.success).toBe(false);
+      if (parsed.success) throw new Error("expected the parse to fail");
+      expect(parsed.error.issues.some((issue) => issue.path[0] === "charges")).toBe(true);
+
+      // Required, not non-empty: an empty chain is a legal asset detail.
+      expect(inventoryAssetDetailSchema.shape.charges.safeParse([]).success).toBe(true);
     });
 
     it("advertises the charge procedures on the inventory contract", () => {

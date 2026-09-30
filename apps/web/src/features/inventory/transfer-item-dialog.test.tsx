@@ -5,13 +5,17 @@ import "@/i18n"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const { transferAssetMutateAsync, chargeDefault } = vi.hoisted(() => ({
+const { transferAssetMutateAsync, chargeDefault, chargeDefaultIds } = vi.hoisted(() => ({
   transferAssetMutateAsync: vi.fn(async () => ({})),
   chargeDefault: vi.fn(),
+  chargeDefaultIds: [] as Array<string | undefined>,
 }))
 
 vi.mock("./inventory-hooks", () => ({
-  useAssetChargeDefaultQuery: () => chargeDefault(),
+  useAssetChargeDefaultQuery: (assetUnitId?: string) => {
+    chargeDefaultIds.push(assetUnitId)
+    return chargeDefault()
+  },
   useTransferInventoryAssetMutation: () => ({ isPending: false, mutateAsync: transferAssetMutateAsync }),
   useTransferInventoryConsumableMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useInventoryWarehousesQuery: () => ({ data: { items: [{ id: "wh-1", name: "رئيسي" }] } }),
@@ -75,11 +79,24 @@ describe("placement charge amount ↔ percentage", () => {
     })
     expect(parseChargeAmountInput(String(Number.MAX_SAFE_INTEGER + 1))).toEqual({ kind: "invalid" })
   })
+
+  it("rejects hex and scientific notation instead of silently converting them", () => {
+    // `Number("0x10")` is 16 and `Number("1e3")` is 1000. Both are legal JS
+    // numbers but not amount text, and the correction editor reuses this
+    // parser, so neither may slip through as a valid amount (#422 round 7).
+    expect(parseChargeAmountInput("0x10")).toEqual({ kind: "invalid" })
+    expect(parseChargeAmountInput("1e3")).toEqual({ kind: "invalid" })
+    expect(parseChargeAmountInput("1,500")).toEqual({ kind: "invalid" })
+    // Plain decimal forms still work, including a leading or trailing dot.
+    expect(parseChargeAmountInput(".5")).toEqual({ kind: "amount", value: 0.5 })
+    expect(parseChargeAmountInput("5.")).toEqual({ kind: "amount", value: 5 })
+  })
 })
 
 describe("TransferItemDialog charge validation (#413)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    chargeDefaultIds.length = 0
     chargeDefault.mockReturnValue({
       data: {
         assetUnitId: "asset-1",
@@ -107,7 +124,7 @@ describe("TransferItemDialog charge validation (#413)", () => {
     fireEvent.change(screen.getByLabelText("الوجهة"), { target: { value: "project-a" } })
   }
 
-  it("prefills the resolved default and warns without blocking an over-price amount", () => {
+  it("prefills the resolved default and still SUBMITS an over-price amount after warning", async () => {
     renderDialog()
     chooseProjectDestination()
 
@@ -116,7 +133,43 @@ describe("TransferItemDialog charge validation (#413)", () => {
 
     fireEvent.change(amount, { target: { value: "150000" } })
     expect(screen.getByTestId("charge-warning")).toBeTruthy()
-    expect(screen.getByRole("button", { name: "تأكيد التحويل" })).toBeTruthy()
+
+    // "Warn, never block" is the requirement: assert the submit is actually
+    // enabled and sends the over-price amount, not merely that a button exists.
+    const confirm = screen.getByRole("button", { name: "تأكيد التحويل" }) as HTMLButtonElement
+    expect(confirm.disabled).toBe(false)
+    fireEvent.click(confirm)
+    await waitFor(() =>
+      expect(transferAssetMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ assetUnitId: "asset-1", toProjectId: "project-a", chargeAmountDzd: 150_000 }),
+      ),
+    )
+  })
+
+  it("renders the quantity field for a consumable transfer and no charge fields", () => {
+    render(
+      <TransferItemDialog
+        open
+        target={{
+          type: "CONSUMABLE",
+          inventoryEntryId: "entry-1",
+          itemName: "مادة",
+          availableQuantity: 10,
+          sourceWarehouseId: "wh-1",
+          sourceProjectId: null,
+        }}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByLabelText(/الكمية/)).toBeTruthy()
+    expect(screen.queryByLabelText("مبلغ الاحتساب")).toBeNull()
+  })
+
+  it("scopes the default read to the dialog's unit", () => {
+    renderDialog()
+
+    expect(chargeDefaultIds).toContain("asset-1")
   })
 
   it("rejects an invalid amount instead of booking a free placement", () => {
@@ -255,6 +308,67 @@ describe("TransferItemDialog charge validation (#413)", () => {
     )
 
     expect((screen.getByLabelText("مبلغ الاحتساب") as HTMLInputElement).value).toBe("70000")
+  })
+
+  it("derives the amount from a typed percentage", () => {
+    renderDialog()
+    chooseProjectDestination()
+
+    fireEvent.change(screen.getByLabelText("النسبة من سعر الشراء"), { target: { value: "-20" } })
+
+    expect((screen.getByLabelText("مبلغ الاحتساب") as HTMLInputElement).value).toBe("80000")
+  })
+
+  it("blocks submit when a huge percentage derives an over-bound amount", () => {
+    renderDialog()
+    chooseProjectDestination()
+
+    fireEvent.change(screen.getByLabelText("النسبة من سعر الشراء"), { target: { value: "100000000000000" } })
+
+    expect(screen.getByTestId("charge-error")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "تأكيد التحويل" }))
+    expect(transferAssetMutateAsync).not.toHaveBeenCalled()
+  })
+
+  it("disables percentage entry and skips the above-price warning when the price is zero", () => {
+    chargeDefault.mockReturnValue({
+      data: { assetUnitId: "asset-1", amountDzd: 0, purchasePriceDzd: 0, source: "PURCHASE_PRICE" },
+    })
+    renderDialog()
+    chooseProjectDestination()
+
+    expect((screen.getByLabelText("النسبة من سعر الشراء") as HTMLInputElement).disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText("مبلغ الاحتساب"), { target: { value: "5000" } })
+    expect(screen.queryByTestId("charge-warning")).toBeNull()
+    expect((screen.getByRole("button", { name: "تأكيد التحويل" }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("renders the echoed purchase price with the shared money format", () => {
+    renderDialog()
+    chooseProjectDestination()
+
+    const formatted = (100_000).toLocaleString("ar-DZ")
+    expect(screen.getByText((content) => content.includes(formatted))).toBeTruthy()
+  })
+
+  it("keeps the dialog open and swallows the rejection when the transfer fails", async () => {
+    transferAssetMutateAsync.mockRejectedValueOnce(new Error("رفض الخادم"))
+    const onUnhandled = vi.fn()
+    process.on("unhandledRejection", onUnhandled)
+    try {
+      renderDialog()
+      chooseProjectDestination()
+      fireEvent.click(screen.getByRole("button", { name: "تأكيد التحويل" }))
+
+      await waitFor(() => expect(transferAssetMutateAsync).toHaveBeenCalled())
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      expect(onUnhandled).not.toHaveBeenCalled()
+      // The form stays on screen for a retry.
+      expect(screen.getByLabelText("مبلغ الاحتساب")).toBeTruthy()
+    } finally {
+      process.off("unhandledRejection", onUnhandled)
+    }
   })
 
   it("computes the percentage from a typed amount once the price arrives", () => {

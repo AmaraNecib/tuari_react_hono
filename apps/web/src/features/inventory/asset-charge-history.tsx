@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useId, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,7 @@ import { parseChargeAmountInput } from "./transfer-item-dialog"
 export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
+  const panelId = useId()
   const [editing, setEditing] = useState<{ chargeId: string; amount: string; reason: string } | null>(null)
   const [voiding, setVoiding] = useState<{ chargeId: string; reason: string } | null>(null)
   const [editError, setEditError] = useState(false)
@@ -89,12 +90,19 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
 
   return (
     <div className="mt-1">
-      <Button size="xs" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setExpanded((value) => !value)}>
+      <Button
+        size="xs"
+        variant="ghost"
+        className="h-6 px-2 text-xs"
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        onClick={() => setExpanded((value) => !value)}
+      >
         {expanded ? t("inventory.chargeHistory.hide") : t("inventory.chargeHistory.show")}
       </Button>
 
       {expanded ? (
-        <div className="mt-1 space-y-1" data-testid="asset-charge-history">
+        <div id={panelId} className="mt-1 space-y-1" data-testid="asset-charge-history">
           {isLoading ? (
             <p className="text-xs text-muted-foreground">{t("inventory.chargeHistory.loading")}</p>
           ) : isLoadError ? (
@@ -111,7 +119,7 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
               <div key={charge.id} className="rounded-md border border-line/60 px-2 py-1 text-xs">
                 <div className="flex items-center justify-between gap-2">
                   <span className={charge.status === "VOID" ? "text-muted-foreground line-through" : ""}>
-                    {charge.projectName ?? t("inventory.chargeHistory.project")} — {charge.amountDzd}
+                    {charge.projectName ?? t("inventory.chargeHistory.project")} — {charge.amountDzd.toLocaleString("ar-DZ")}
                   </span>
                   <span className="flex items-center gap-1">
                     {charge.revisions.length > 0 ? (
@@ -133,15 +141,15 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
                 </div>
 
                 {charge.revisions.length > 0 ? (
-                  <ul className="mt-1 space-y-0.5 border-t border-line/50 pt-1" data-testid="charge-revisions">
+                  <ul aria-label={t("inventory.chargeHistory.revisions")} className="mt-1 space-y-0.5 border-t border-line/50 pt-1" data-testid="charge-revisions">
                     {charge.revisions.map((revision) => (
                       <li key={revision.id} className="text-[11px] leading-4 text-muted-foreground">
                         <span>
                           {revision.newAmountDzd === null
-                            ? t("inventory.chargeHistory.revisionVoid", { from: revision.previousAmountDzd })
+                            ? t("inventory.chargeHistory.revisionVoid", { from: revision.previousAmountDzd.toLocaleString("ar-DZ") })
                             : t("inventory.chargeHistory.revisionCorrected", {
-                                from: revision.previousAmountDzd,
-                                to: revision.newAmountDzd,
+                                from: revision.previousAmountDzd.toLocaleString("ar-DZ"),
+                                to: revision.newAmountDzd.toLocaleString("ar-DZ"),
                               })}
                         </span>
                         <span> · {revision.actorLabel ?? t("inventory.chargeHistory.unknownActor")}</span>
