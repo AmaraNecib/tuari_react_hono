@@ -148,3 +148,24 @@ duplicated.
 `pnpm --filter @tuari/web test -- --maxWorkers=2`, `pnpm typecheck`,
 `pnpm lint`, `pnpm check:unslop`, scoped coverage, plus targeted
 `@tuari/contracts` and `@tuari/api` test runs.
+
+## Post-review amendments (fix `6159fbdc`)
+
+An aggressive local review (debate + code-review + test-audit) changed three
+decisions above:
+
+- The consolidation dialog's *remaining balance* preview was phrased from the
+  sign of a side magnitude; it now derives from the account direction. Its two
+  account headers also show the direction-aware state phrase, so an overpaid
+  account cannot read as "we owe".
+- The gross report totals (`totalOutstandingDzd`, `overdueDzd`,
+  `topDebtors.amountDzd`) aggregate BOTH directions (`finance.service.ts`
+  documents gross exposure), so the `owedToUs` phrase added to
+  `dashboard-overview.tsx` and `report-builder.tsx` was false and was removed.
+  `totalSettledDzd` keeps the settled label.
+- `formatDebtAmount` keeps up to two centimes so a nonzero sub-dinar balance
+  cannot round to a bare `0` beside a direction phrase.
+
+The `debt-create-page.tsx` direction label is correct, but the page never
+passes `direction` to `createDebtAccount` (defaults to PAYABLE) — a pre-existing
+accounting bug outside this PR's diff, raised to the parent.
