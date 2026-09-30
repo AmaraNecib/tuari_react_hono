@@ -139,4 +139,32 @@ describe("SalariesSection (#412)", () => {
     expect(screen.getByText(/33\.34/)).toBeTruthy()
     expect(screen.getAllByText(/33\.33/).length).toBe(2)
   })
+
+  it("renders the paid and expected amounts with the shares' precision", () => {
+    const payment = {
+      ...PAYMENT,
+      days: 2,
+      expectedAmountDzd: 100.5,
+      actualAmountDzd: 100.5,
+      projectSplits: [
+        { projectId: PROJECT.id, days: 1 },
+        { projectId: "project-2", days: 1 },
+      ],
+    }
+
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[PROJECT, { id: "project-2", name: "مشروع باء" }]}
+        recentPayments={[payment]}
+        workers={[worker(30000)]}
+      />,
+    )
+
+    // Whole-dinar rounding would show 101 paid beside 50.25 shares; the row
+    // must render both at cent precision so they visibly reconcile.
+    expect(screen.getAllByText(/100\.5/).length).toBe(2)
+    expect(screen.queryByText(/101/)).toBeNull()
+    expect(screen.getAllByText(/50\.25/).length).toBe(2)
+  })
 })

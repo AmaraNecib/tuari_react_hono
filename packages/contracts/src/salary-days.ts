@@ -33,8 +33,16 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 /** Algeria is UTC+1 year round; subtracting the offset yields the local calendar day. */
 const ALGERIA_OFFSET_MS = 60 * 60 * 1000;
 
-/** Round a DZD amount to two decimals to absorb binary floating-point noise. */
-function roundAmount(value: number): number {
+/**
+ * Normalise a DZD amount to two decimals (whole cents), rounding half up.
+ *
+ * Money reaches the server as a decimal but JS carries binary floats, so an
+ * override can arrive with more precision than the currency has (100.005). Every
+ * write boundary (the service and the payment form) normalises through this
+ * helper so the stored amount and the displayed split shares reconcile to the
+ * same whole-cent total.
+ */
+export function roundMoneyToCents(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
@@ -70,7 +78,9 @@ function addDays(dayKey: string, count: number): string {
  * The proposed amount for a payment, before any hand edit.
  *
  * MONTHLY prorates at `salary / 30` per day; DAILY multiplies the daily wage
- * by the days; WEEKLY is left unprorated (not offered in the UI).
+ * by the days; WEEKLY is left unprorated (not offered in the UI). The
+ * arithmetic runs in whole cents and rounds half up: `(salary / 30) * days` in
+ * binary floats loses a cent (30010.05 / 30 rounds to 1000.33, not 1000.34).
  */
 export function computeProposedSalaryAmount({
   periodType,
@@ -81,15 +91,17 @@ export function computeProposedSalaryAmount({
   salaryAmountDzd: number;
   days: number;
 }): number {
+  const salaryCents = Math.round(salaryAmountDzd * 100);
+
   if (periodType === "MONTHLY") {
-    return roundAmount((salaryAmountDzd / 30) * days);
+    return Math.round((salaryCents * days) / 30) / 100;
   }
 
   if (periodType === "DAILY") {
-    return roundAmount(salaryAmountDzd * days);
+    return (salaryCents * days) / 100;
   }
 
-  return roundAmount(salaryAmountDzd);
+  return salaryCents / 100;
 }
 
 /**

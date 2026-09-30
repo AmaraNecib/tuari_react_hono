@@ -4,7 +4,11 @@
  * Kept out of the component so the pay-period boundaries and the unallocated
  * remainder can be unit-tested without rendering.
  */
+import { roundMoneyToCents } from "@tuari/contracts"
+
 import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+
+export { roundMoneyToCents }
 
 export type SalaryPaymentPeriodType = "DAILY" | "WEEKLY" | "MONTHLY"
 
@@ -111,7 +115,9 @@ export function computeUnallocatedDays(
  * and the leftover cents go to the lines with the largest fractional part. The
  * returned amounts therefore sum EXACTLY to the rounded attributed portion of the
  * payment, which is the whole amount when the split covers every paid day. Ties
- * are broken by line order so the result is deterministic.
+ * are broken by line order so the result is deterministic. The amount is
+ * normalised to whole cents first, so it cannot disagree with the stored amount
+ * when an override carried more than two decimals.
  */
 export function allocateSalaryAmountByDays(
   amountDzd: number,
@@ -122,9 +128,10 @@ export function allocateSalaryAmountByDays(
     return splitDays.map(() => 0)
   }
 
+  const amountCents = Math.round(amountDzd * 100)
   const allocatedDays = splitDays.reduce((sum, lineDays) => sum + lineDays, 0)
-  const attributedCents = Math.round(((amountDzd * allocatedDays) / totalDays) * 100)
-  const exactCents = splitDays.map((lineDays) => (amountDzd * lineDays * 100) / totalDays)
+  const attributedCents = Math.round((amountCents * allocatedDays) / totalDays)
+  const exactCents = splitDays.map((lineDays) => (amountCents * lineDays) / totalDays)
   const flooredCents = exactCents.map((cents) => Math.floor(cents))
   const remainingCents = attributedCents - flooredCents.reduce((sum, cents) => sum + cents, 0)
 

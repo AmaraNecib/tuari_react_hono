@@ -179,10 +179,10 @@ export function SalariesSection({
                         ) : null}
                       </td>
                       <td className="px-4 py-3 text-start">
-                        <MoneyCell value={payment.expectedAmountDzd} currencyLabel={currencyLabel} />
+                        <MoneyCell value={payment.expectedAmountDzd} currencyLabel={currencyLabel} maximumFractionDigits={2} />
                       </td>
                       <td className="px-4 py-3 text-start">
-                        <MoneyCell value={payment.actualAmountDzd} currencyLabel={currencyLabel} />
+                        <MoneyCell value={payment.actualAmountDzd} currencyLabel={currencyLabel} maximumFractionDigits={2} />
                       </td>
                       <td className="px-4 py-3 text-start text-[12.5px] text-ink-3">
                         {payment.note ?? "—"}

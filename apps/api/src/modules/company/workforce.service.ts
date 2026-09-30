@@ -27,6 +27,7 @@ import {
   type RoleCreateInput,
   type RoleUpdateInput,
   computeProposedSalaryAmount,
+  roundMoneyToCents,
 } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
@@ -651,7 +652,10 @@ export class WorkforceService {
         salaryAmountDzd: salaryAmount,
         days,
       });
-      const actualAmount = input.actualAmountDzd ?? proposedAmount;
+      // The override is stored at the currency's precision: a value with more
+      // than two decimals would make the stored amount disagree with the
+      // whole-cent shares the split display attributes.
+      const actualAmount = roundMoneyToCents(input.actualAmountDzd ?? proposedAmount);
 
       if (!Number.isFinite(actualAmount) || actualAmount <= 0) {
         throw new CompanyError("VALIDATION", "يجب إدخال مبلغ راتب أكبر من صفر.", [

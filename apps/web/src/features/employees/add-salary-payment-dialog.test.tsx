@@ -195,4 +195,43 @@ describe("AddSalaryPaymentDialog (#412)", () => {
       }),
     )
   })
+
+  it("adopts a carried draft once and normalises an over-precise override on submit", async () => {
+    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
+    const draft = {
+      days: 12,
+      daysTouched: true,
+      amount: 100.005,
+      amountTouched: true,
+      date: "2026-03-15",
+      note: "ملاحظة",
+    }
+
+    render(
+      <AddSalaryPaymentDialog
+        employeeId="employee-1"
+        employeeName="عامل"
+        salaryAmountDzd={30000}
+        salaryPeriod="MONTHLY"
+        projectAssignments={[ASSIGNMENT]}
+        projects={[PROJECT]}
+        initialDraft={draft}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    // The quick form's 12 days and amount open the dialog, not the monthly
+    // 30-day default.
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("12")
+    expect(screen.getByDisplayValue("100.005")).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
+    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
+    // The override is stored at the currency's precision so it reconciles with
+    // the whole-cent split shares.
+    expect(mockMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ days: 12, actualAmountDzd: 100.01 }),
+    )
+  })
 })

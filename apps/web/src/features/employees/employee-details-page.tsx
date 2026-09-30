@@ -10,10 +10,11 @@ import { DatePicker, fromDatePickerValue, toDatePickerValue } from "@/components
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashboard"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 import type {
+  SalaryPaymentDraft,
   SalaryProjectAssignmentWindow,
   SalaryProjectOption,
 } from "./add-salary-payment-dialog"
-import { defaultSalaryPaymentDays, parsePositiveInteger } from "./salary-payment-form"
+import { defaultSalaryPaymentDays, parsePositiveInteger, roundMoneyToCents } from "./salary-payment-form"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { classifyWorkforceRole } from "./role-classification"
@@ -138,6 +139,7 @@ export function EmployeeDetailsPage({
   salaryPayments: Array<{
     id: string
     paymentDate: string
+    days: number
     expectedAmountDzd: number
     actualAmountDzd: number
     periodType: "DAILY" | "WEEKLY" | "MONTHLY"
@@ -161,6 +163,9 @@ export function EmployeeDetailsPage({
   // Once the split dialog is handed the payment, the quick form's draft is
   // cleared so the two surfaces can never hold a live draft for one payment.
   const [splitDialogTookOver, setSplitDialogTookOver] = useState(false)
+  // The quick draft is carried into the split dialog before the quick form is
+  // cleared: the operator's days, amount, date, and note are not lost.
+  const [splitDraft, setSplitDraft] = useState<SalaryPaymentDraft | null>(null)
   const availableTabs = isWorker ? ["personal", "history", "finance", "debts"] : ["personal", "history", "finance"]
   const resolvedTab = availableTabs.includes(activeTab) ? activeTab : "personal"
   const sortedSalaryPayments = useMemo(
@@ -201,8 +206,18 @@ export function EmployeeDetailsPage({
 
   // Hand the payment to the split dialog. The quick form cannot attribute the
   // payment to projects, so opening the dialog for the same payment would leave
-  // two live drafts; clearing the quick draft removes the double-submit trap.
+  // two live drafts; the draft moves to the dialog and the quick form clears
+  // in the same action, so nothing typed is discarded and there is still one
+  // live draft for the payment.
   const handOffQuickDraftToSplitDialog = () => {
+    setSplitDraft({
+      days: parsedPaymentDays ?? defaultSalaryPaymentDays(employee.salaryPeriod),
+      daysTouched: paymentDaysTouched,
+      amount: hasValidActualAmount ? actualAmountValue : null,
+      amountTouched: paymentAmountTouched,
+      date: paymentDate,
+      note,
+    })
     setPaymentDate(getAlgeriaDateInputValue())
     setPaymentDays(String(defaultSalaryPaymentDays(employee.salaryPeriod)))
     setPaymentDaysTouched(false)
@@ -272,11 +287,13 @@ export function EmployeeDetailsPage({
               salaryPeriod={employee.salaryPeriod}
               projectAssignments={projectAssignments}
               projects={projects}
+              initialDraft={splitDraft}
               open={paymentDialogOpen}
               onOpenChange={(open) => {
                 setPaymentDialogOpen(open)
                 if (!open) {
                   setSplitDialogTookOver(false)
+                  setSplitDraft(null)
                 }
               }}
             />
@@ -480,7 +497,7 @@ export function EmployeeDetailsPage({
                         // The days are captured by the form; the amount still
                         // overrides the day-derived proposal when edited.
                         days: parsedPaymentDays ?? defaultSalaryPaymentDays(employee.salaryPeriod),
-                        actualAmountDzd: actualAmountValue!,
+                        actualAmountDzd: roundMoneyToCents(actualAmountValue!),
                         paymentDate: paymentDate ? toAlgeriaDayBoundaryIso(paymentDate, "start") : undefined,
                         note: note.trim() || null,
                       })
@@ -499,6 +516,7 @@ export function EmployeeDetailsPage({
                 <thead className="bg-muted/40 text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDate")}</th>
+                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDays")}</th>
                     <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableExpected")}</th>
                     <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableActual")}</th>
                     <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDifference")}</th>
@@ -513,6 +531,7 @@ export function EmployeeDetailsPage({
                       return (
                         <tr key={payment.id} className="border-t border-border/60 bg-sidebar dark:bg-background">
                           <td className="px-4 py-4 text-start text-foreground">{new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}</td>
+                          <td className="px-4 py-4 text-start font-mono tabular-nums text-foreground" dir="ltr">{payment.days}</td>
                           <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.expectedAmountDzd, currencyLabel)}</td>
                           <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.actualAmountDzd, currencyLabel)}</td>
                           <td className="px-4 py-4 text-start font-medium">
@@ -528,7 +547,7 @@ export function EmployeeDetailsPage({
                     })
                   ) : (
                     <tr>
-                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
+                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={6}>
                         {t("detailPages.employee.financeEmpty")}
                       </td>
                     </tr>

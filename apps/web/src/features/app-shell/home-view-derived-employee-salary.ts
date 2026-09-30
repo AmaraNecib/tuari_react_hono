@@ -59,6 +59,12 @@ export function buildEmployeeSalaryCollections({
     if (!windows) {
       continue
     }
+    // An archived assignment is history, not a wage-period window: an archived
+    // row with no end date would otherwise cover the whole payment period and
+    // suggest a month of days to a project the worker no longer works on.
+    if (assignment.status === "ARCHIVED") {
+      continue
+    }
     windows.push({
       projectId: assignment.projectId,
       startDate: assignment.startDate,

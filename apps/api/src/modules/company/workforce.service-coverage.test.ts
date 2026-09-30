@@ -1195,6 +1195,28 @@ describe("WorkforceService coverage branches", () => {
       expect(payment.actualAmountDzd).toBe(14000);
     });
 
+    it("normalises an over-precise override to whole cents at the write boundary", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000218" });
+      const payment = service
+        .createSalaryPayment({ employeeId: worker.id, days: 30, actualAmountDzd: 100.005, projectSplits: [] }, audit())
+        .item;
+      // Stored at the currency's precision so the whole-cent split shares can
+      // reconcile with it exactly.
+      expect(payment.actualAmountDzd).toBe(100.01);
+    });
+
+    it("stores the monthly day rate in whole cents without losing one", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createPaidWorker(service, roleIds, {
+        phone: "0554000219",
+        salaryAmountDzd: 30010.05,
+      });
+      const payment = service.createSalaryPayment({ employeeId: worker.id, days: 1, projectSplits: [] }, audit()).item;
+      expect(payment.expectedAmountDzd).toBe(1000.34);
+      expect(payment.actualAmountDzd).toBe(1000.34);
+    });
+
     it("records an unallocated payment with no project attribution", () => {
       const { service, roleIds } = createHarness();
       const worker = createPaidWorker(service, roleIds, { phone: "0554000204" });

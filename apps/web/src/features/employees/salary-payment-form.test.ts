@@ -125,4 +125,12 @@ describe("allocateSalaryAmountByDays", () => {
     expect(allocateSalaryAmountByDays(30000, [15, 15], 0)).toEqual([0, 0])
     expect(allocateSalaryAmountByDays(Number.NaN, [15, 15], 30)).toEqual([0, 0])
   })
+
+  it("normalises an over-precise amount to whole cents before allocating", () => {
+    // 100.005 has more precision than the currency: the shares must reconcile
+    // to the two-decimal amount (100.01), not to 300 or to a partial total.
+    const shares = allocateSalaryAmountByDays(100.005, [1, 1, 1], 3)
+    expect(shares).toEqual([33.34, 33.34, 33.33])
+    expect(shares.reduce((sum, share) => sum + Math.round(share * 100), 0)).toBe(10001)
+  })
 })

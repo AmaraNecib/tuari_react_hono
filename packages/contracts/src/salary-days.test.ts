@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computeProposedSalaryAmount, deriveSalaryProjectDays } from "./salary-days";
+import { computeProposedSalaryAmount, deriveSalaryProjectDays, roundMoneyToCents } from "./salary-days";
 import { employeeSalaryPaymentCreateInputSchema } from "./workforce";
 
 /** Algerians day-boundary ISO helper mirroring apps/web's toAlgeriaDayBoundaryIso. */
@@ -37,6 +37,23 @@ describe("computeProposedSalaryAmount", () => {
   it("prorates beyond a calendar month (a day is a 30th in every month)", () => {
     expect(computeProposedSalaryAmount({ periodType: "MONTHLY", salaryAmountDzd: 30000, days: 31 })).toBe(31000);
     expect(computeProposedSalaryAmount({ periodType: "MONTHLY", salaryAmountDzd: 30000, days: 1 })).toBe(1000);
+  });
+
+  it("computes the monthly day rate in whole cents without losing one", () => {
+    // (30010.05 / 30) in binary floats is 1000.3349999999999 and rounds to
+    // 1000.33. The day's pay is 100033.5 cents, which rounds half up to
+    // 1000.34.
+    expect(computeProposedSalaryAmount({ periodType: "MONTHLY", salaryAmountDzd: 30010.05, days: 1 })).toBe(1000.34);
+    expect(computeProposedSalaryAmount({ periodType: "MONTHLY", salaryAmountDzd: 30010.05, days: 30 })).toBe(30010.05);
+  });
+});
+
+describe("roundMoneyToCents", () => {
+  it("normalises money to two decimals, rounding half up", () => {
+    expect(roundMoneyToCents(100.005)).toBe(100.01);
+    expect(roundMoneyToCents(100.004)).toBe(100);
+    expect(roundMoneyToCents(30010.05)).toBe(30010.05);
+    expect(roundMoneyToCents(18000.5)).toBe(18000.5);
   });
 });
 

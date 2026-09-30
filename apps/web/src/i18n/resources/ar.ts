@@ -626,6 +626,7 @@ export const ar = {
         financeSave: "حفظ دفعة الراتب",
         financeSaving: "جارٍ حفظ الدفعة...",
         financeTableDate: "التاريخ",
+        financeTableDays: "الأيام",
         financeTableExpected: "المتوقع",
         financeTableActual: "الفعلي",
         financeTableDifference: "الفرق",

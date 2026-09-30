@@ -5,7 +5,7 @@ import "@/i18n"
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { ReactNode } from "react"
+import type { ComponentProps, ReactNode } from "react"
 
 const { createSalaryPaymentMutate, mutationState, resetSalaryPaymentMutation } = vi.hoisted(() => {
   const state = { isSuccess: false }
@@ -70,6 +70,8 @@ import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { EmployeeDetailsPage } from "./employee-details-page"
 import type { EmployeeTableRow } from "./employee-table"
 
+type SalaryPaymentsProp = ComponentProps<typeof EmployeeDetailsPage>["salaryPayments"]
+
 const PROJECT = { id: "project-1", name: "مشروع الرواتب" }
 // An open-ended window far wider than any payment month: the derived default
 // is always full coverage, whichever month the dialog defaults to.
@@ -109,7 +111,10 @@ function monthlyWorker(overrides: Partial<EmployeeTableRow> = {}): EmployeeTable
   }
 }
 
-function renderDetails(employee: EmployeeTableRow = monthlyWorker()) {
+function renderDetails(
+  employee: EmployeeTableRow = monthlyWorker(),
+  salaryPayments: SalaryPaymentsProp = [],
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -124,7 +129,7 @@ function renderDetails(employee: EmployeeTableRow = monthlyWorker()) {
         managedWarehouses={[]}
         projects={[PROJECT]}
         projectAssignments={[ASSIGNMENT]}
-        salaryPayments={[]}
+        salaryPayments={salaryPayments}
         workHistory={[]}
         onTabChange={vi.fn()}
       />
@@ -265,24 +270,49 @@ describe("EmployeeDetailsPage salary payments (#412)", () => {
     expect(within(dialog).getByText("توزيع الأيام على المشاريع")).toBeTruthy()
   })
 
-  it("clears the quick draft and says the split dialog took over", async () => {
-    renderDetails()
+  it("carries the quick draft into the split dialog and clears the quick form", async () => {
+    const { view } = renderDetails()
 
     fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
     fireEvent.change(screen.getAllByRole("spinbutton")[0]!, { target: { value: "12" } })
+    fireEvent.change(screen.getByLabelText(/المبلغ الفعلي/), { target: { value: "12345" } })
     expect(screen.getByDisplayValue("12")).toBeTruthy()
 
     fireEvent.click(screen.getByRole("button", { name: "توزيع الأيام على المشاريع" }))
     const dialog = await screen.findByRole("dialog")
 
-    // Only the split dialog holds a live draft now: the quick form's old one is
-    // gone, so the same payment cannot be submitted twice, and its notice says
-    // the split dialog owns the payment.
-    expect(within(dialog).getByText("توزيع الأيام على المشاريع")).toBeTruthy()
-    expect(screen.queryByDisplayValue("12")).toBeNull()
+    // The dialog adopts the draft: the same days and amount the operator typed
+    // are carried over instead of resetting to the monthly 30-day default.
+    const dialogDays = within(dialog).getAllByRole("spinbutton")[0] as HTMLInputElement
+    expect(dialogDays.value).toBe("12")
+    expect(within(dialog).getByDisplayValue("12345")).toBeTruthy()
+
+    // The quick form cleared its copy, so only one surface holds a live draft
+    // for this payment.
+    const quickFormDays = view.container.querySelector('input[type="number"]') as HTMLInputElement
+    expect(quickFormDays.value).toBe("30")
     expect(
       screen.getByText("تم فتح نافذة توزيع الأيام على المشاريع؛ أكمل تسجيل هذه الدفعة من هناك."),
     ).toBeTruthy()
+  })
+
+  it("shows the recorded day count in the quick-payment history", () => {
+    renderDetails(monthlyWorker(), [
+      {
+        id: "payment-1",
+        paymentDate: "2026-03-31T00:00:00.000Z",
+        days: 15,
+        expectedAmountDzd: 15000,
+        actualAmountDzd: 15000,
+        periodType: "MONTHLY",
+        note: null,
+      },
+    ])
+
+    // The operator no longer has to leave the page to check how many days a
+    // recorded payment covered.
+    expect(screen.getByRole("columnheader", { name: "الأيام" })).toBeTruthy()
+    expect(screen.getByText("15")).toBeTruthy()
   })
 
   it("submits the date picked in the quick payment form as the canonical day boundary", () => {

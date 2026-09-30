@@ -15,7 +15,7 @@ import { DatePicker, fromDatePickerValue, toDatePickerValue } from "@/components
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/workspace-mutations"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
-import { computeProposedSalaryAmount, deriveSalaryProjectDays } from "@tuari/contracts"
+import { computeProposedSalaryAmount, deriveSalaryProjectDays, roundMoneyToCents } from "@tuari/contracts"
 
 import {
   computeUnallocatedDays,
@@ -27,6 +27,21 @@ import {
 
 export type SalaryProjectOption = { id: string; name: string }
 export type SalaryProjectAssignmentWindow = { projectId: string; startDate: string; endDate: string | null }
+
+/**
+ * A quick-form draft handed to the split dialog. The dialog owns the payment
+ * once it opens: the quick form clears its fields in the same action so one
+ * payment never has two live drafts and no typed input is discarded.
+ */
+export type SalaryPaymentDraft = {
+  days: number
+  daysTouched: boolean
+  amount: number | null
+  amountTouched: boolean
+  date: string
+  note: string
+}
+
 type SplitLine = { key: string; projectId: string; days: string }
 
 /**
@@ -44,6 +59,7 @@ export function AddSalaryPaymentDialog({
   salaryPeriod = null,
   projectAssignments = [],
   projects = [],
+  initialDraft = null,
   open,
   onOpenChange,
 }: {
@@ -56,6 +72,8 @@ export function AddSalaryPaymentDialog({
   projectAssignments?: SalaryProjectAssignmentWindow[]
   /** Projects the split can be attributed to. */
   projects?: SalaryProjectOption[]
+  /** A quick-form draft to adopt once when the dialog opens. */
+  initialDraft?: SalaryPaymentDraft | null
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -76,6 +94,9 @@ export function AddSalaryPaymentDialog({
   // reclassifies the worker (monthly→daily) re-applies the day default while
   // the dialog stays open, without discarding an operator edit.
   const initializedTargetRef = useRef<{ employeeId: string; period: SalaryPaymentPeriodType | null } | null>(null)
+  // A handoff draft is adopted once per object identity, so a parent re-render
+  // cannot replay it over an edit the operator made inside the dialog.
+  const appliedDraftRef = useRef<SalaryPaymentDraft | null>(null)
 
   const days = parsePositiveInteger(daysText)
   const proposedAmount =
@@ -135,6 +156,34 @@ export function AddSalaryPaymentDialog({
       setSplitsTouched(false)
     }
   }, [open, employeeId, salaryPeriod, daysTouched, resetAmount, resetDate])
+
+  useEffect(() => {
+    if (!open || !employeeId || !initialDraft || appliedDraftRef.current === initialDraft) {
+      return
+    }
+    appliedDraftRef.current = initialDraft
+    // A carried draft wins over the default init: it is what the operator
+    // typed in the quick form. An untouched day/amount keeps following the
+    // wage, an edited one is pinned.
+    if (initialDraft.daysTouched) {
+      setDaysText(String(initialDraft.days))
+      setDaysTouched(true)
+    } else {
+      setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
+      setDaysTouched(false)
+    }
+    if (initialDraft.amountTouched && initialDraft.amount !== null) {
+      setManualAmount(String(initialDraft.amount))
+      setManualAmountTouched(true)
+    } else {
+      resetAmount()
+      setManualAmountTouched(false)
+    }
+    setDate(initialDraft.date || getAlgeriaDateInputValue())
+    setNote(initialDraft.note)
+    setSplitsTouched(false)
+    initializedTargetRef.current = { employeeId, period: salaryPeriod }
+  }, [open, employeeId, initialDraft, salaryPeriod, setDate, setManualAmount, resetAmount])
 
   useEffect(() => {
     if (!open || !employeeId || splitsTouched) {
@@ -204,7 +253,12 @@ export function AddSalaryPaymentDialog({
     await mutation.mutateAsync({
       employeeId,
       days,
-      actualAmountDzd: manualAmountTouched ? manualAmountValue ?? undefined : undefined,
+      // The override is stored at the currency's precision so it agrees with
+      // the whole-cent shares the split display attributes.
+      actualAmountDzd:
+        manualAmountTouched && manualAmountValue !== null
+          ? roundMoneyToCents(manualAmountValue)
+          : undefined,
       paymentDate: date ? toAlgeriaDayBoundaryIso(date, "start") : undefined,
       note: note.trim() || null,
       projectSplits: splits.map((line) => ({ projectId: line.projectId, days: Number(line.days) })),
