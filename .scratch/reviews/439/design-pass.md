@@ -52,3 +52,14 @@ Ran against the finished diff (`git diff HEAD`, plus untracked new modules), per
 ## Result
 
 Nothing found that blocks the merge. No follow-up issues filed.
+
+## Fix round (HEAD `791383dd`)
+
+Re-ran the pass against the review fixes. The run root is now pinned for the
+duration of a run, which makes the "one folder per run" rule explicit rather
+than implied by the mutable variable. The writability probe and the
+session-only/future/prune copy changes keep the honesty rules in one place
+(the component and the i18n file). No new module, no new seam. The writer is
+still the single write protocol; the dedicated `config-file-writer.test.ts`
+pins its interface instead of leaving the protocol covered only through a
+consumer. Nothing in the fix round makes the codebase harder to change.

@@ -46,3 +46,12 @@ Ran against the finished diff (`git diff HEAD`, plus untracked new modules), per
 ## Result
 
 Nothing found that blocks the merge. No follow-up issues filed.
+
+## Fix round (HEAD `791383dd`)
+
+Re-ran the pass against the review fixes. The validator now proves writability
+with a real probe (one rule, one home) instead of a stat that Windows ignores.
+The persistence error reason flows through the existing writer result, and the
+picker failure surfaces instead of masquerading as Cancel. Both are
+deepening-in-place, not new seams. Nothing in the fix round makes the codebase
+harder to change.
