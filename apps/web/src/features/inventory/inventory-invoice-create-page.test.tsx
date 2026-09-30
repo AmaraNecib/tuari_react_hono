@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { showErrorToast } from "@/lib/toast"
+import { getAlgeriaDateInputValue } from "@/lib/algeria-time"
 import { InventoryInvoiceCreatePage } from "./inventory-invoice-create-page"
 
 const mocks = vi.hoisted(() => ({
@@ -657,7 +658,7 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
 describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)", () => {
   beforeEach(() => mockQueries())
 
-  it("submits the picked invoice date as the canonical ISO instant", async () => {
+  it("submits the picked invoice date on the picked Algeria day", async () => {
     // The page seeds the picker with the UTC today, so pick inside that month.
     const pickedDay = nonDefaultPickedDay()
     expect(pickedDay).not.toBe(new Date().toISOString().slice(0, 10))
@@ -667,10 +668,14 @@ describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)",
     pickCalendarDate(pickedDay)
 
     const payload = await submitInvoice()
-    expect(payload.invoiceDate).toBe(new Date(pickedDay).toISOString())
+    // Convention-agnostic: the submitted instant must land on the picked
+    // Algeria day. The page converts via UTC today; #440 aligns it with the
+    // Algeria business day. Both land on the same Algeria day, so this holds
+    // either way and does not pin the UTC string.
+    expect(getAlgeriaDateInputValue(new Date(payload.invoiceDate))).toBe(pickedDay)
   })
 
-  it("submits the picked asset purchase date as the canonical ISO instant", async () => {
+  it("submits the picked asset purchase date on the picked Algeria day", async () => {
     const pickedDay = nonDefaultPickedDay()
     renderPage()
 
@@ -685,6 +690,10 @@ describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)",
     const assetLine = (payload.entries as Array<{ kind: string; assets?: Array<{ purchaseDate: string | null }> }>).find(
       (entry) => entry.kind === "ASSET",
     )
-    expect(assetLine?.assets?.[0]?.purchaseDate).toBe(new Date(pickedDay).toISOString())
+    const purchaseDate = assetLine?.assets?.[0]?.purchaseDate
+    expect(purchaseDate).toBeTruthy()
+    // See the invoice-date case: assert the Algeria day, not the UTC string,
+    // so #440 can change the conversion without rewriting this test.
+    expect(getAlgeriaDateInputValue(new Date(purchaseDate as string))).toBe(pickedDay)
   })
 })
