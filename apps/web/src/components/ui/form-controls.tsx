@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import type { ComponentProps, ReactNode } from "react"
+import { useState, type ComponentProps, type ReactNode } from "react"
 
 import { ChevronDown } from "lucide-react"
 
@@ -94,21 +94,36 @@ function CurrencyInput({
   )
 }
 
-/** Styled file input with translated "No file chosen" / "Choose Files" text. */
-function FileInput({ className, label, chooseLabel, ...props }: ComponentProps<"input"> & { label?: string; chooseLabel?: string }) {
+/**
+ * Styled file input that reflects the chosen files (so a selection is
+ * visibly acknowledged) while still forwarding the native `onChange` to its
+ * owner. It shows the file name for a single selection and a count for a
+ * multiple one.
+ */
+function FileInput({ className, label, chooseLabel, onChange, ...props }: ComponentProps<"input"> & { label?: string; chooseLabel?: string }) {
   const { t } = useTranslation()
-  const resolvedLabel = label ?? t("common.noFileChosen")
+  const [selectedNames, setSelectedNames] = useState<string[]>([])
   const resolvedChooseLabel = chooseLabel ?? t("common.chooseFile")
+  const displayLabel =
+    selectedNames.length === 0
+      ? label ?? t("common.noFileChosen")
+      : selectedNames.length === 1
+        ? selectedNames[0]
+        : t("common.filesChosen", { files: selectedNames.length })
   return (
     <span className={cn("relative block w-full", className)}>
       <input
         type="file"
         className="peer absolute inset-0 cursor-pointer opacity-0"
         {...props}
+        onChange={(event) => {
+          setSelectedNames(Array.from(event.target.files ?? []).map((file) => file.name))
+          onChange?.(event)
+        }}
       />
       <span className={cn(formInputClassName, "flex items-center gap-2 pointer-events-none")}>
-        <span className="truncate text-muted-foreground">
-          {props.multiple ? resolvedLabel : resolvedLabel}
+        <span className={cn("truncate", selectedNames.length === 0 ? "text-muted-foreground" : "text-foreground")}>
+          {displayLabel}
         </span>
         <span className="ms-auto text-primary text-xs font-medium">{resolvedChooseLabel}</span>
       </span>

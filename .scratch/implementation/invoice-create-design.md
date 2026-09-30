@@ -1,0 +1,99 @@
+# Invoice create — diagnosability, disabled-reason, attachments (#11 + #10)
+
+**Issue**: owner items 11 (invoice creation fails silently) and 10 (invoice attachments)
+**Lane**: `fix-invoice-create` (worktree `worktrees/fix-invoice-create`)
+**Branch**: `fix/invoice-create`
+**Base**: `develop` @ `22495413b7d792e20afcce24a94d6c84c61dd523` (merge-base == HEAD at start)
+**Mode**: remote (parent owns push/PR; no merges from this lane)
+**Tier**: Standard
+
+## Problem
+
+1. **No server-side failure trace.** `api-server.log` (the desktop shell's stdout/stderr
+   capture for the sidecar) held exactly one line — the startup banner. The API only
+   had a near-dead `onError` ORPC interceptor (`console.error("[oRPC error]", error)`);
+   ORPC's request handler catches every procedure error and encodes it into a response
+   before the interceptor sees it, and the common invoice-create rejection path
+   (`toFailureResult` → `{ success: false, error }`) is a **200 response with no thrown
+   error at all**. A user reporting "it didn't save" left nothing a human could read.
+2. **The save control gave no reason.** `disabled={createMutation.isPending || lines.length === 0}`:
+   deleting all lines dead-locked the button with no explanation, and an incomplete line
+   only produced a message at the top of the page after a click.
+3. **Attachment selection looked like a no-op.** `FileInput` rendered
+   `props.multiple ? resolvedLabel : resolvedLabel` (a tautology) and never reflected the
+   chosen files; the invoice page passed no `accept` and did no client-side check, so a
+   PDF selection produced no visible change and a rejected upload surfaced only a generic
+   toast that named neither the file nor the reason.
+
+## Design
+
+### API — one readable line per failed request
+
+New `apps/api/src/infrastructure/observability/request-failure.ts` (uses the existing
+`StructuredLogger`; never logs request bodies, query strings, or inputs):
+
+- `logRequestFailure({ method, path, status, message, code?, error? })` → one
+  `StructuredLogger.error("Request failed", …)` line with route, status, and message.
+- `markFailureLogged(context)` / `isFailureLogged(context)` — a `WeakSet` keyed by the
+  per-request `RpcContext`, so exactly one layer logs a given failed RPC.
+- `resolveFailureMessage` / `resolveFailureCode` read an already-decoded response body.
+
+Wiring in `create-app.ts` (replaces the dead `console.error` interceptor):
+
+- `clientInterceptors: [onError, onFinish]` — the only layer that still holds the real
+  error (ORPC maps unknown errors to a generic 500 envelope): logs thrown procedure
+  errors (real message + `options.path`) and `{ success: false }` outputs, and marks the
+  context.
+- request-level `interceptors: [onFinish]` — logs `status >= 400` responses and any
+  `{ success: false }` envelope not already logged (covers wire/decode rejections).
+- a first-registered Hono middleware — logs non-RPC `status >= 400` from the response
+  body, and rethrows unhandled errors after logging them. ORPC error envelopes are
+  skipped there because the interceptor already logged them; the body-limit 413 (which
+  bypasses ORPC) is still logged.
+
+Norm: exactly one line for a rejected mutation, zero for a success.
+
+### Web — the form says why, and attachments fail loudly
+
+- Extract the existing per-line checks from `validateForm` into `validateLines(lines)`.
+  The save button's disabled reason uses the same function, so the operator sees
+  "اختر تعريف العنصر في السطر 1." / quantity / price / asset-name messages next to the
+  button instead of only at the top after a click. No second message set is invented.
+  `lines.length === 0` gets its own reason (`noLines`).
+- `FileInput` mirrors the selected file names (`noFileChosen` → file name → `filesChosen`
+  count) while still forwarding `onChange`; the invoice page passes the server's accepted
+  MIME set as `accept`.
+- New `invoice-attachment-rules.ts` mirrors the server's count/size/MIME limits and
+  returns a localized message naming the offending file. Runs on selection and again
+  before submit, so an invalid attachment never creates a half-saved invoice. Upload
+  rejections surface the server's message (which already names the file) instead of a
+  fixed generic toast. The create-first/upload-after/retry-only shape is unchanged.
+
+## Tests
+
+- `apps/api/src/app/create-app.test.ts`: a rejected mutation logs exactly one line
+  containing the domain error message and the procedure; a successful mutation logs
+  nothing; a non-RPC 4xx is logged once.
+- `apps/web/src/features/inventory/inventory-invoice-create-page.test.tsx`: disabled
+  reason for no lines and for an incomplete line; a rejected attachment names the file
+  and the reason; a server upload rejection surfaces its message.
+- `apps/web/src/components/ui/form-controls.test.tsx` (new): `FileInput` shows the chosen
+  file name / count and forwards `onChange`.
+- `tests/e2e/inventory-invoice-create.spec.ts`: disabled save reason plus a rejected
+  `.txt` attachment named in the UI.
+
+## Risks / boundaries
+
+- `createMutation.isPending` still governs the in-flight disabled state; the reason is only
+  shown when the control is disabled for a content reason.
+- The `#42` bound tests must select a valid item definition first now that an incomplete
+  line disables the button; their subject (paid-amount bounds) is unchanged.
+- "Unhandled error" messages are taken from the client interceptor (the real error); a
+  decode/encode failure that never reaches a procedure client is logged by the request
+  interceptor with status 500, though the wire envelope may be a 400.
+- **Pre-existing red test (waiver):** `apps/web/src/features/date-picker-screens.test.tsx`
+  > "passes the canonical picked day as occurredAt" fails on the pinned base with
+  `No QueryClient set, use QueryClientProvider to set one` (the transfer dialog mounts
+  `useAssetChargeDefaultQuery` un-mocked). Reproduced with all lane changes stashed; the
+  full web suite is 735 passed / 1 failed on this branch, and that one is the base's.
+  Out of scope for this lane; the parent decides whether to fix it separately.

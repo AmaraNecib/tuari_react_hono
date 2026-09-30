@@ -493,6 +493,9 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
   it("blocks submitting a negative paid amount (issue #42)", () => {
     renderPage()
 
+    // The line must be complete: an incomplete line now disables Save (it has
+    // its own reason), which would stop the submit-path assertion below.
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
     openSection(DEBT_SECTION)
     fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
     fireEvent.change(screen.getByLabelText("المدفوع الآن"), { target: { value: "-5" } })
@@ -506,6 +509,7 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
   it("blocks submitting a paid percent above 100 (issue #42)", () => {
     renderPage()
 
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
     openSection(DEBT_SECTION)
     fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
     fireEvent.change(screen.getByLabelText("طريقة الدفع", { exact: false }), { target: { value: "PERCENT" } })
@@ -520,6 +524,7 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
   it("blocks submitting a negative paid percent (issue #42)", () => {
     renderPage()
 
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
     openSection(DEBT_SECTION)
     fireEvent.change(screen.getByLabelText("هل هذه دين؟"), { target: { value: "YES" } })
     fireEvent.change(screen.getByLabelText("طريقة الدفع", { exact: false }), { target: { value: "PERCENT" } })
@@ -570,7 +575,9 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
 
     await waitFor(() => {
       expect(mocks.createInvoiceMutation.mutateAsync).toHaveBeenCalledTimes(1)
-      expect(showErrorToast).toHaveBeenCalledWith("تم حفظ الفاتورة لكن تعذر رفع ملفات المرفقات.")
+      // The upload error's own message is surfaced (in production the server
+      // message names the offending file), not a fixed generic string.
+      expect(showErrorToast).toHaveBeenCalledWith("تعذر رفع ملفات الفاتورة.")
     })
     expect(onCreated).not.toHaveBeenCalled()
     // Save is gone; only the retry action can be used from now on.
@@ -651,6 +658,95 @@ describe("InventoryInvoiceCreatePage progressive disclosure (issue #25)", () => 
     })
     // Let the rejected mutateAsync settle through handleSubmit's catch.
     await act(async () => {})
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+})
+
+describe("InventoryInvoiceCreatePage save reason and attachment validation", () => {
+  beforeEach(() => mockQueries())
+
+  it("explains why Save is disabled for an incomplete line and for no lines", () => {
+    renderPage()
+
+    const saveButton = () => screen.getByRole("button", { name: "حفظ الفاتورة" }) as HTMLButtonElement
+
+    // Default single empty line: Save is dead and says exactly what is missing.
+    expect(saveButton().disabled).toBe(true)
+    expect(screen.getByText("اختر تعريف العنصر في السطر 1.")).not.toBeNull()
+
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    expect(saveButton().disabled).toBe(false)
+    expect(screen.queryByText("اختر تعريف العنصر في السطر 1.")).toBeNull()
+
+    // Delete every line: the reason becomes the no-lines one.
+    fireEvent.click(screen.getAllByText("حذف")[0]!)
+    expect(saveButton().disabled).toBe(true)
+    expect(screen.getByText("أضف سطرًا واحدًا على الأقل قبل الحفظ.")).not.toBeNull()
+  })
+
+  it("names the second incomplete line in the disabled reason", () => {
+    renderPage()
+
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    fireEvent.click(screen.getByText("إضافة مادة"))
+
+    expect((screen.getByRole("button", { name: "حفظ الفاتورة" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText("اختر تعريف العنصر في السطر 2.")).not.toBeNull()
+  })
+
+  it("rejects an unsupported attachment by name before creating the invoice", async () => {
+    const { onCreated } = renderPage()
+
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    openSection(NOTES_SECTION)
+    fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
+      target: { files: [new File(["hello"], "notes.txt", { type: "text/plain" })] },
+    })
+
+    const alert = screen.getByRole("alert")
+    expect(alert.textContent).toContain("notes.txt")
+    expect(alert.textContent).toContain("غير مدعوم")
+
+    fireEvent.click(screen.getByText("حفظ الفاتورة"))
+
+    await waitFor(() => {
+      expect(showErrorToast).toHaveBeenCalledWith(expect.stringContaining("notes.txt"))
+    })
+    expect(mocks.createInvoiceMutation.mutateAsync).not.toHaveBeenCalled()
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
+  it("rejects an oversized attachment by name", () => {
+    renderPage()
+
+    openSection(NOTES_SECTION)
+    fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
+      target: {
+        files: [new File([new Uint8Array(5 * 1024 * 1024 + 1)], "big.pdf", { type: "application/pdf" })],
+      },
+    })
+
+    const alert = screen.getByRole("alert")
+    expect(alert.textContent).toContain("big.pdf")
+    expect(alert.textContent).toContain("5")
+  })
+
+  it("surfaces the server upload rejection that names the file", async () => {
+    const { onCreated } = renderPage()
+
+    mocks.uploadInvoiceAttachments.mockRejectedValue(new Error("حجم الملف كبير جدًا: facture.pdf"))
+
+    fireEvent.change(nativeSelectWithOption("مادة استهلاكية 1"), { target: { value: "def-1" } })
+    openSection(NOTES_SECTION)
+    fireEvent.change(screen.getByLabelText("ملفات الفاتورة", { exact: false }), {
+      target: { files: [new File(["bytes"], "facture.pdf", { type: "application/pdf" })] },
+    })
+
+    fireEvent.click(screen.getByText("حفظ الفاتورة"))
+
+    await waitFor(() => {
+      expect(showErrorToast).toHaveBeenCalledWith("حجم الملف كبير جدًا: facture.pdf")
+    })
     expect(onCreated).not.toHaveBeenCalled()
   })
 })

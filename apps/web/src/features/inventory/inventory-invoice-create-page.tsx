@@ -19,6 +19,11 @@ import {
   useInventoryWarehousesQuery,
 } from "./inventory-hooks"
 import {
+  INVOICE_ATTACHMENT_ACCEPT,
+  validateInvoiceAttachmentFiles,
+  type InvoiceAttachmentMessages,
+} from "./invoice-attachment-rules"
+import {
   useCreateWarehouseMutation,
   useCreateProjectMutation,
   useCreateExternalCounterpartyMutation,
@@ -111,6 +116,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   const [paidValue, setPaidValue] = useState("0")
   const [note, setNote] = useState("")
   const [files, setFiles] = useState<File[]>([])
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [lines, setLines] = useState<LineState[]>([createConsumableLine()])
   const [formError, setFormError] = useState<string | null>(null)
   // Set once the invoice is created: the attachment upload targets THIS id,
@@ -132,28 +138,13 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     setLines((current) => current.map((line, lineIndex) => (lineIndex === index ? next : line)))
   }
 
-/** validateForm - helper function. */
-  function validateForm() {
-    if (warehouseId && projectId) {
-      return "اختر مستودعًا أو مشروعًا واحدًا فقط كوجهة افتراضية."
-    }
-
-    // The wire contract bounds the paid fields (amount >= 0, percent 0-100);
-    // mirror both bounds here so invalid values never leave the client.
-    if (createDebt && paymentInputType === "PERCENT") {
-      const percent = Number(paidValue)
-      if (percent < 0 || percent > 100) {
-        return t("inventory.invoiceCreate.invalidPaidPercent", "النسبة المدفوعة يجب أن تكون بين 0 و 100.")
-      }
-    }
-
-    if (createDebt && paymentInputType === "AMOUNT") {
-      if (Number(paidValue) < 0) {
-        return t("inventory.invoiceCreate.invalidPaidAmount", "المبلغ المدفوع يجب أن يكون صفرًا أو أكثر.")
-      }
-    }
-
-    for (const [index, line] of lines.entries()) {
+  /**
+   * Validates the line items and returns the first localized message, or
+   * `null`. Extracted from `validateForm` so the disabled-save reason and the
+   * submit gate share exactly one message set.
+   */
+  function validateLines(linesToValidate: LineState[]) {
+    for (const [index, line] of linesToValidate.entries()) {
       if (!line.itemDefinitionId) {
         return `اختر تعريف العنصر في السطر ${index + 1}.`
       }
@@ -188,6 +179,50 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     return null
   }
 
+  /** validateForm - helper function. */
+  function validateForm() {
+    if (warehouseId && projectId) {
+      return "اختر مستودعًا أو مشروعًا واحدًا فقط كوجهة افتراضية."
+    }
+
+    // The wire contract bounds the paid fields (amount >= 0, percent 0-100);
+    // mirror both bounds here so invalid values never leave the client.
+    if (createDebt && paymentInputType === "PERCENT") {
+      const percent = Number(paidValue)
+      if (percent < 0 || percent > 100) {
+        return t("inventory.invoiceCreate.invalidPaidPercent", "النسبة المدفوعة يجب أن تكون بين 0 و 100.")
+      }
+    }
+
+    if (createDebt && paymentInputType === "AMOUNT") {
+      if (Number(paidValue) < 0) {
+        return t("inventory.invoiceCreate.invalidPaidAmount", "المبلغ المدفوع يجب أن يكون صفرًا أو أكثر.")
+      }
+    }
+
+    return validateLines(lines)
+  }
+
+  const attachmentMessages: InvoiceAttachmentMessages = {
+    tooMany: (max) => t("inventory.invoiceCreate.attachmentTooMany", { max }),
+    tooLarge: (fileName, maxMb) => t("inventory.invoiceCreate.attachmentTooLarge", { fileName, maxMb }),
+    totalTooLarge: (maxMb) => t("inventory.invoiceCreate.attachmentTotalTooLarge", { maxMb }),
+    unsupportedType: (fileName) => t("inventory.invoiceCreate.attachmentUnsupportedType", { fileName }),
+  }
+
+  // The reason the save control is dead, shown next to it — "no lines yet",
+  // or the exact line/item the reusable validator complains about.
+  const saveDisabledReason = lines.length === 0
+    ? t("inventory.invoiceCreate.noLines")
+    : validateLines(lines)
+
+  /** Upload failures name the file/reason when the server provided one. */
+  function resolveUploadError(error: unknown) {
+    return error instanceof Error && error.message.trim().length > 0
+      ? error.message
+      : t("inventory.invoiceCreate.attachmentsUploadFailed")
+  }
+
   async function handleSubmit() {
     const validationMessage = validateForm()
     if (validationMessage) {
@@ -198,7 +233,17 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       return
     }
 
+    // Reject invalid attachments BEFORE creating: the create-first/upload-
+    // after shape would otherwise leave a half-saved invoice behind.
+    const attachmentValidationMessage = validateInvoiceAttachmentFiles(files, attachmentMessages)
+    if (attachmentValidationMessage) {
+      setAttachmentError(attachmentValidationMessage)
+      showErrorToast(attachmentValidationMessage)
+      return
+    }
+
     setFormError(null)
+    setAttachmentError(null)
 
     let groupId: string
     try {
@@ -269,12 +314,13 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       setUploadingAttachments(true)
       try {
         await uploadInvoiceAttachments(groupId, files)
-      } catch {
+      } catch (error) {
         // The invoice was already saved — surface the failed upload (the
         // creation mutation's onError does NOT cover this separate step) and
         // stay on the page in the retry state: the user must see the partial
         // save and be able to retry the upload against the same invoice id.
-        showErrorToast("تم حفظ الفاتورة لكن تعذر رفع ملفات المرفقات.")
+        // The server message already names the offending file.
+        showErrorToast(resolveUploadError(error))
         return
       } finally {
         setUploadingAttachments(false)
@@ -300,8 +346,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     setUploadingAttachments(true)
     try {
       await uploadInvoiceAttachments(createdInvoiceGroupId, files)
-    } catch {
-      showErrorToast("تم حفظ الفاتورة لكن تعذر رفع ملفات المرفقات.")
+    } catch (error) {
+      showErrorToast(resolveUploadError(error))
       return
     } finally {
       setUploadingAttachments(false)
@@ -472,7 +518,20 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                 </label>
                 <label className="space-y-1.5 text-sm">
                   <FieldLabel label="ملفات الفاتورة" />
-                  <FileInput multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+                  <FileInput
+                    multiple
+                    accept={INVOICE_ATTACHMENT_ACCEPT}
+                    onChange={(event) => {
+                      const nextFiles = Array.from(event.target.files ?? [])
+                      setFiles(nextFiles)
+                      setAttachmentError(validateInvoiceAttachmentFiles(nextFiles, attachmentMessages))
+                    }}
+                  />
+                  {attachmentError ? (
+                    <span role="alert" className="block text-sm text-destructive">
+                      {attachmentError}
+                    </span>
+                  ) : null}
                 </label>
               </div>
             </CollapsibleSection>
@@ -596,6 +655,11 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       })}
 
       <div className="flex items-center justify-end gap-3">
+        {!createdInvoiceGroupId && saveDisabledReason ? (
+          <p role="status" aria-live="polite" className="text-sm text-destructive">
+            {saveDisabledReason}
+          </p>
+        ) : null}
         {createdInvoiceGroupId ? (
           <Button disabled={uploadingAttachments} onClick={() => {
             void handleRetryAttachmentUpload().catch(() => {
@@ -605,13 +669,13 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
             {t("inventory.invoiceCreate.retryAttachments")}
           </Button>
         ) : (
-          <Button disabled={createMutation.isPending || lines.length === 0} onClick={() => {
+          <Button disabled={createMutation.isPending || saveDisabledReason !== null} onClick={() => {
             void handleSubmit().catch(() => {
               // Every known failure path (validation, mutation, attachment
               // upload) is handled inside handleSubmit with a field error or
               // toast. This catch only covers unexpected errors — surface them
               // and never let an unhandled rejection reach dev/CI logs.
-              showErrorToast("تعذر حفظ الفاتورة.")
+              showErrorToast(t("inventory.invoiceCreate.attachmentsSaveFailed"))
             })
           }}>
             {createMutation.isPending ? t("common.saving") : t("inventory.invoiceCreate.save")}

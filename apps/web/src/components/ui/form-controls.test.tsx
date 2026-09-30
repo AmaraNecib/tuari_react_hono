@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import "@/i18n"
+
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { Input } from "./input"
-import { CurrencyInput, NativeSelect, Textarea } from "./form-controls"
+import { CurrencyInput, FileInput, NativeSelect, Textarea } from "./form-controls"
 
 /**
  * The form controls share `formControlClassName`, so a placeholder-contrast
@@ -17,6 +19,10 @@ import { CurrencyInput, NativeSelect, Textarea } from "./form-controls"
 /** Exact className tokens, so `…-muted-foreground/80` cannot satisfy `…-muted-foreground`. */
 function classTokens(element: Element): string[] {
   return (element.getAttribute("class") ?? "").split(/\s+/).filter(Boolean)
+}
+
+function fileInputElement() {
+  return document.querySelector('input[type="file"]') as HTMLInputElement
 }
 
 afterEach(cleanup)
@@ -62,5 +68,37 @@ describe("form control placeholder contrast", () => {
     expect(tokens).toContain("text-foreground")
     expect(tokens).toContain("dark:[color-scheme:dark]")
     expect(tokens).toContain("dark:placeholder:text-muted-foreground")
+  })
+})
+
+describe("FileInput", () => {
+  it("shows the chosen file name after a selection and forwards onChange", () => {
+    const onChange = vi.fn()
+    render(<FileInput onChange={onChange} />)
+
+    expect(screen.getByText("لم يتم اختيار ملف")).not.toBeNull()
+
+    fireEvent.change(fileInputElement(), {
+      target: { files: [new File(["bytes"], "facture.pdf", { type: "application/pdf" })] },
+    })
+
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(screen.getByText("facture.pdf")).not.toBeNull()
+    expect(screen.queryByText("لم يتم اختيار ملف")).toBeNull()
+  })
+
+  it("shows a count for a multi-file selection", () => {
+    render(<FileInput multiple />)
+
+    fireEvent.change(fileInputElement(), {
+      target: {
+        files: [
+          new File(["a"], "facture.pdf", { type: "application/pdf" }),
+          new File(["b"], "photo.png", { type: "image/png" }),
+        ],
+      },
+    })
+
+    expect(screen.getByText("تم اختيار 2 ملفات")).not.toBeNull()
   })
 })

@@ -132,4 +132,34 @@ test.describe("inventory invoice create — header default warehouse persistence
       db.close()
     }
   })
+
+  test("the save control explains why it is disabled and rejects an unsupported attachment by name", async ({ page }) => {
+    await bootstrapOrSignIn(page)
+
+    await page.goto("/invoices/create")
+    await expect(page.getByRole("heading", { name: "إضافة مخزون بالفاتورة" })).toBeVisible()
+
+    // Default single empty line: Save is disabled and the reason names the
+    // exact line and what is missing.
+    const save = page.getByRole("button", { name: "حفظ الفاتورة" })
+    await expect(save).toBeDisabled()
+    await expect(page.getByText("اختر تعريف العنصر في السطر 1.")).toBeVisible()
+
+    // Remove the only line: the reason becomes the no-lines message.
+    await page.getByRole("button", { name: "حذف" }).first().click()
+    await expect(save).toBeDisabled()
+    await expect(page.getByText("أضف سطرًا واحدًا على الأقل قبل الحفظ.")).toBeVisible()
+
+    // An unsupported attachment is rejected client-side with the file named,
+    // before any invoice is created.
+    await page.getByRole("button", { name: "ملاحظات وملفات" }).click()
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "notes.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("hello"),
+    })
+    const alert = page.getByRole("alert")
+    await expect(alert).toContainText("notes.txt")
+    await expect(alert).toContainText("غير مدعوم")
+  })
 })
