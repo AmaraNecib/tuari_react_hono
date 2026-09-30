@@ -1993,7 +1993,7 @@ describe("contracts", () => {
   });
 
   describe("project cost contract (issue #414)", () => {
-    it("requires a project id and refuses a negative computed total", () => {
+    it("requires a project id and accepts a signed-but-bounded computed total", () => {
       expect(projectCostInputSchema.safeParse({ projectId: "" }).success).toBe(false);
       expect(projectCostInputSchema.safeParse({ projectId: "11111111-1111-4111-8111-111111111111" }).success).toBe(true);
 
@@ -2022,6 +2022,13 @@ describe("contracts", () => {
           parts: { ...base.parts, chargedMaterialsDzd: -1 },
         }).success,
       ).toBe(true);
+      // The part is bounded on BOTH sides, not just made non-negative.
+      expect(
+        projectCostSchema.safeParse({
+          ...base,
+          parts: { ...base.parts, chargedMaterialsDzd: -(Number.MAX_SAFE_INTEGER + 1) },
+        }).success,
+      ).toBe(false);
       expect(
         projectCostSchema.safeParse({
           ...base,

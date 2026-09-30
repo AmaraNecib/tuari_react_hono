@@ -335,6 +335,34 @@ describe("ProjectCostService (#414)", () => {
     expect(result.item.expenses.map((row) => row.id)).toEqual(["e-a", "e-b", "e-c"]);
   });
 
+  it("orders salaries, stock and material by date and id, not only expenses", () => {
+    const result = service(
+      makeRepo({
+        listProjectSalarySplits: () => [
+          { paymentId: "pay-b", employeeId: "emp-1", employeeName: null, paymentDays: 30, paymentAmountDzd: 30_000, splitDays: 10, paymentDate: "2026-10-02T00:00:00.000Z" },
+          { paymentId: "pay-a", employeeId: "emp-1", employeeName: null, paymentDays: 30, paymentAmountDzd: 30_000, splitDays: 10, paymentDate: "2026-10-02T00:00:00.000Z" },
+          { paymentId: "pay-c", employeeId: "emp-1", employeeName: null, paymentDays: 30, paymentAmountDzd: 30_000, splitDays: 10, paymentDate: "2026-10-01T00:00:00.000Z" },
+        ],
+        listProjectStockCharges: () => [
+          { id: "c-b", assetUnitId: "a-1", assetName: null, amountDzd: 1, placedAt: "2026-10-02T00:00:00.000Z" },
+          { id: "c-a", assetUnitId: "a-1", assetName: null, amountDzd: 1, placedAt: "2026-10-02T00:00:00.000Z" },
+          { id: "c-c", assetUnitId: "a-1", assetName: null, amountDzd: 1, placedAt: "2026-10-01T00:00:00.000Z" },
+        ],
+        listProjectMaterialMovements: () => [
+          { id: "m-b", itemDefinitionId: null, itemName: null, unit: null, quantity: 1, unitPriceDzd: 1, direction: "IN", occurredAt: "2026-10-02T00:00:00.000Z" },
+          { id: "m-a", itemDefinitionId: null, itemName: null, unit: null, quantity: 1, unitPriceDzd: 1, direction: "IN", occurredAt: "2026-10-02T00:00:00.000Z" },
+          { id: "m-c", itemDefinitionId: null, itemName: null, unit: null, quantity: 1, unitPriceDzd: 1, direction: "IN", occurredAt: "2026-10-01T00:00:00.000Z" },
+        ],
+      }),
+    ).getProjectCost({ projectId: "p-1" });
+
+    // Each source has its own accessor pair; a wrong one (e.g. stock keyed on
+    // the wrong column) must fail here, not only for expenses.
+    expect(result.item.salaries.map((row) => row.paymentId)).toEqual(["pay-a", "pay-b", "pay-c"]);
+    expect(result.item.stock.map((row) => row.id)).toEqual(["c-a", "c-b", "c-c"]);
+    expect(result.item.materialMovements.map((row) => row.id)).toEqual(["m-a", "m-b", "m-c"]);
+  });
+
   it("rejects an unknown project", () => {
     expect(() => service(makeRepo({ getProject: () => null })).getProjectCost({ projectId: "missing" }))
       .toThrowError(ProjectCostError);
