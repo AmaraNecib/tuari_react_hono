@@ -1180,8 +1180,6 @@ export const ar = {
         goToSalaries: "الذهاب إلى الرواتب",
       },
       unknownParty: "طرف غير معروف",
-      payable: "مستحقات علينا",
-      receivable: "مستحقات لنا",
       currency: "دج",
     },
     license: {

@@ -6,7 +6,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
+import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
+import { ConsolidationDialog } from "@/features/debts/consolidation-dialog"
 import { DebtsHubPage } from "@/features/debts/debts-hub-page"
 import { DebtLedgerPanel } from "@/features/debts/debt-ledger-panel"
 import { DebtPartySummaryCard } from "@/features/debts/debt-party-summary-card"
@@ -65,6 +67,7 @@ vi.mock("@/features/app-shell/mock-dashboard", () => ({
   useCreateSalaryPaymentMutation: () => ({ isPending: false, mutate: createSalaryPaymentMutate, reset: vi.fn() }),
   useRecordDebtPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useDebtEntriesConsolidateMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }))
 
 function renderWithProviders(ui: ReactNode) {
@@ -435,6 +438,122 @@ describe("debts MVP web UI", () => {
       expect(screen.getAllByText(/1,500/).length).toBeGreaterThan(0)
       expect(container.textContent).not.toContain("-1,500")
       expect(container.textContent).not.toContain("-1500")
+    })
+  })
+
+  describe("debt consolidation terminology", () => {
+    const account = (currentBalance: number, direction: "PAYABLE" | "RECEIVABLE"): DebtAccount => ({
+      actorLabel: null,
+      actorUserId: null,
+      createdAt: "2026-03-27T10:00:00.000Z",
+      currentBalance,
+      direction,
+      externalCounterpartyId: "external-1",
+      id: `acct-${direction}`,
+      note: null,
+      partyType: "EXTERNAL_COUNTERPARTY",
+      settledAt: null,
+      status: "OPEN",
+      transactionId: null,
+      updatedAt: "2026-03-27T10:00:00.000Z",
+      workerId: null,
+    })
+
+    const opening = (debtAccountId: string, signedAmountDzd: number, note: string): DebtEntry => ({
+      actorLabel: null,
+      actorUserId: null,
+      balanceAfterDzd: signedAmountDzd,
+      createdAt: "2026-03-27T10:00:00.000Z",
+      debtAccountId,
+      entryDate: "2026-03-01T10:00:00.000Z",
+      entryType: "OPENING",
+      id: `entry-${debtAccountId}`,
+      note,
+      paymentMethod: null,
+      reasonCategory: "INVOICE_DRIVEN",
+      reasonDetail: null,
+      signedAmountDzd,
+      status: "LIVE",
+      transactionId: null,
+      updatedAt: "2026-03-27T10:00:00.000Z",
+      voidReason: null,
+      voidedAt: null,
+      voidedBy: null,
+    })
+
+    const renderConsolidation = (
+      payableAccount: DebtAccount,
+      receivableAccount: DebtAccount,
+      payableEntries: DebtEntry[],
+      receivableEntries: DebtEntry[],
+    ) =>
+      renderWithProviders(
+        <ConsolidationDialog
+          payableAccount={payableAccount}
+          payableEntries={payableEntries}
+          receivableAccount={receivableAccount}
+          receivableEntries={receivableEntries}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+
+    const selectOpenings = (payableNote: string, receivableNote: string) => {
+      fireEvent.click(screen.getByText(payableNote).closest("button")!)
+      fireEvent.click(screen.getByText(receivableNote).closest("button")!)
+    }
+
+    it("phrases the remaining payable balance as owed by us, not owed to us", () => {
+      renderConsolidation(
+        account(5000, "PAYABLE"),
+        account(0, "RECEIVABLE"),
+        [opening("acct-PAYABLE", 5000, "افتتاحي علينا")],
+        [opening("acct-RECEIVABLE", 2000, "افتتاحي لنا")],
+      )
+      selectOpenings("افتتاحي علينا", "افتتاحي لنا")
+
+      // The remainder (5000 - 2000) stays on the payable side, so the phrase
+      // must state "we owe them", not the sign-only "they owe us".
+      const remaining = screen.getByText(/^يبقى (?!رصيد)/)
+      expect(remaining.textContent).toContain("مستحق علينا")
+      expect(remaining.textContent).not.toContain("مستحق لنا")
+    })
+
+    it("phrases the remaining receivable balance as owed to us, not owed by us", () => {
+      renderConsolidation(
+        account(2000, "PAYABLE"),
+        account(5000, "RECEIVABLE"),
+        [opening("acct-PAYABLE", 2000, "افتتاحي علينا")],
+        [opening("acct-RECEIVABLE", 5000, "افتتاحي لنا")],
+      )
+      selectOpenings("افتتاحي علينا", "افتتاحي لنا")
+
+      const remaining = screen.getByText(/^يبقى (?!رصيد)/)
+      expect(remaining.textContent).toContain("مستحق لنا")
+      expect(remaining.textContent).not.toContain("مستحق علينا")
+    })
+
+    it("states the overpayment phrase for an overpaid payable account header", () => {
+      renderConsolidation(
+        account(-50_000, "PAYABLE"),
+        account(0, "RECEIVABLE"),
+        [],
+        [],
+      )
+
+      // -50,000 PAYABLE is a credit with us, not "we owe 50,000".
+      expect(screen.getByText(/رصيد مستحق لنا/)).toBeTruthy()
+    })
+
+    it("keeps opening-entry movement deltas signed", () => {
+      renderConsolidation(
+        account(5000, "PAYABLE"),
+        account(0, "RECEIVABLE"),
+        [opening("acct-PAYABLE", -5000, "افتتاحي علينا")],
+        [],
+      )
+
+      expect(document.body.textContent).toContain("-5000")
     })
   })
 })

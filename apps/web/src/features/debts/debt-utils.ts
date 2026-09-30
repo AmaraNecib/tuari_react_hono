@@ -20,11 +20,13 @@ export function formatDebtMoney(value: number) {
 
 /**
  * Absolute money formatter for balance displays. Always nonnegative and
- * grouped, so `-50_000` renders as `50,000` next to its phrase.
+ * grouped, so `-50_000` renders as `50,000` next to its phrase. Keeps up to
+ * two centimes so a nonzero sub-dinar balance can never round to a bare `0`
+ * beside a direction phrase (the settled state owns `0`).
  */
 export function formatDebtAmount(value: number) {
   return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
     useGrouping: true,
   }).format(getDebtBalanceAmount(value))
 }

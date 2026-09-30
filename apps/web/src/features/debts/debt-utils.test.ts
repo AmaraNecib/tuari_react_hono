@@ -115,6 +115,14 @@ describe("formatDebtAmount", () => {
     expect(formatDebtAmount(0)).toBe("0")
     expect(formatDebtAmount(-300)).not.toContain("-")
   })
+
+  it("keeps a nonzero sub-dinar balance from rounding to a bare zero", () => {
+    // roundMoney() works in centimes, so 0.4 DZD is a real balance. Rounding it
+    // to "0" would pair a direction phrase with a zero amount.
+    expect(formatDebtAmount(0.4)).toBe("0.4")
+    expect(getDebtBalanceDisplay({ currentBalance: 0.4, direction: "PAYABLE" }).amountLabel).toBe("0.4 دج")
+    expect(getDebtBalanceDisplay({ currentBalance: -0.4, direction: "RECEIVABLE" }).amountLabel).toBe("0.4 دج")
+  })
 })
 
 describe("formatDebtMoney (signed movement formatter)", () => {

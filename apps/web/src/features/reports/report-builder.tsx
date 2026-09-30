@@ -134,7 +134,6 @@ export function ReportBuilder() {
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المتبقية</p>
                   <p className="text-2xl font-bold">{data.summary.totalOutstandingDzd.toLocaleString("ar-DZ")} د.ج</p>
-                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{t("debts.terminology.states.owedToUs")}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المسددة</p>
@@ -144,7 +143,6 @@ export function ReportBuilder() {
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المتأخرة</p>
                   <p className="text-2xl font-bold">{data.summary.overdueDzd.toLocaleString("ar-DZ")} د.ج</p>
-                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{t("debts.terminology.states.owedToUs")}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">عدد الأطراف</p>

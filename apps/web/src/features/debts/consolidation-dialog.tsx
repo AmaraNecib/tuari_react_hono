@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button"
 import {
   useDebtEntriesConsolidateMutation,
 } from "@/features/app-shell/mock-dashboard"
-import { formatDebtAmount, getDebtBalanceMeta, getDebtDirectionLabel } from "./debt-utils"
+import { formatDebtAmount, formatDebtMoney, getDebtBalanceDisplay, getDebtBalanceMeta, getDebtDirectionLabel } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
 /**
@@ -117,17 +117,26 @@ export function ConsolidationDialog({
     }
 
     if (netAmount > 0) {
-      const remaining = getDebtBalanceMeta(netAmount).shortLabel
+      // The remainder stays on the PAYABLE side, so its phrase must follow the
+      // account direction — never the sign of a side magnitude (a positive
+      // payable remainder is owed BY us, not to us).
+      const remaining = getDebtBalanceDisplay({
+        currentBalance: netAmount,
+        direction: payableAccount.direction,
+      })
       return {
-        description: `يبقى رصيد ${formatDebtAmount(netAmount)} دج على حساب ${getDebtDirectionLabel(payableAccount.direction)} (${remaining}).`,
-        label: `يبقى ${remaining} ${formatDebtAmount(netAmount)} دج`,
+        description: `يبقى رصيد ${formatDebtAmount(netAmount)} دج على حساب ${getDebtDirectionLabel(payableAccount.direction)} (${remaining.phrase}).`,
+        label: `يبقى ${remaining.phrase} ${formatDebtAmount(netAmount)} دج`,
       }
     }
 
-    const remaining = getDebtBalanceMeta(netAmount).shortLabel
+    const remaining = getDebtBalanceDisplay({
+      currentBalance: -netAmount,
+      direction: receivableAccount.direction,
+    })
     return {
-      description: `يبقى رصيد ${formatDebtAmount(-netAmount)} دج على حساب ${getDebtDirectionLabel(receivableAccount.direction)} (${remaining}).`,
-      label: `يبقى ${remaining} ${formatDebtAmount(-netAmount)} دج`,
+      description: `يبقى رصيد ${formatDebtAmount(-netAmount)} دج على حساب ${getDebtDirectionLabel(receivableAccount.direction)} (${remaining.phrase}).`,
+      label: `يبقى ${remaining.phrase} ${formatDebtAmount(-netAmount)} دج`,
     }
   }, [selectedPayable, selectedReceivable, payableAmount, receivableAmount, netAmount, payableAccount.direction, receivableAccount.direction])
 
@@ -148,6 +157,11 @@ export function ConsolidationDialog({
 
   const hasMultiplePayableOptions = livePayableOpenings.length > 1
 
+  // Direction-aware displays for the two account headers: an overpaid account
+  // (-50,000) must read its state phrase, not "we owe 50,000".
+  const payableDisplay = getDebtBalanceDisplay(payableAccount)
+  const receivableDisplay = getDebtBalanceDisplay(receivableAccount)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
@@ -163,7 +177,7 @@ export function ConsolidationDialog({
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
               {getDebtDirectionLabel(payableAccount.direction)} — رصيد الحساب: دج{" "}
-              {formatDebtAmount(payableAccount.currentBalance)}
+              {formatDebtAmount(payableDisplay.amount)} ({t(payableDisplay.phraseKey)})
             </h4>
             {livePayableOpenings.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings")}</p>
@@ -195,7 +209,7 @@ export function ConsolidationDialog({
                         )}
                       </div>
                       <span className={cn("font-mono text-base font-semibold", amountMeta.textClassName)} dir="ltr">
-                        دج {formatDebtAmount(entry.signedAmountDzd)}
+                        دج {formatDebtMoney(entry.signedAmountDzd)}
                       </span>
                     </button>
                   )
@@ -208,7 +222,7 @@ export function ConsolidationDialog({
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
               {getDebtDirectionLabel(receivableAccount.direction)} — رصيد الحساب: دج{" "}
-              {formatDebtAmount(receivableAccount.currentBalance)}
+              {formatDebtAmount(receivableDisplay.amount)} ({t(receivableDisplay.phraseKey)})
             </h4>
             {liveReceivableOpenings.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings")}</p>
@@ -239,7 +253,7 @@ export function ConsolidationDialog({
                         )}
                       </div>
                       <span className={cn("font-mono text-base font-semibold", amountMeta.textClassName)} dir="ltr">
-                        دج {formatDebtAmount(entry.signedAmountDzd)}
+                        دج {formatDebtMoney(entry.signedAmountDzd)}
                       </span>
                     </button>
                   )
