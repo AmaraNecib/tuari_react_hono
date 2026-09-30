@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 
+import { deriveSalaryProjectDays } from "@tuari/contracts"
+
 import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 
 import { allocateSalaryAmountByDays, computeUnallocatedDays, defaultSalaryPaymentDays, parsePositiveInteger, resolveSalaryPaymentPeriod } from "./salary-payment-form"
@@ -28,6 +30,12 @@ describe("parsePositiveInteger", () => {
     expect(parsePositiveInteger("1.5")).toBeNull()
     expect(parsePositiveInteger("-3")).toBeNull()
     expect(parsePositiveInteger("days")).toBeNull()
+  })
+
+  it("rejects a day count past the safe-integer range", () => {
+    // Digits-only parsing would otherwise turn a 20-digit string into 1e20 and
+    // submit it straight to the cent arithmetic.
+    expect(parsePositiveInteger("99999999999999999999")).toBeNull()
   })
 })
 
@@ -73,6 +81,27 @@ describe("resolveSalaryPaymentPeriod", () => {
       toAlgeriaDayBoundaryIso("2028-02-01", "start"),
     )
     expect(resolveSalaryPaymentPeriod("2026-03-00", "DAILY")).toBeNull()
+  })
+})
+
+describe("resolveSalaryPaymentPeriod → deriveSalaryProjectDays seam", () => {
+  it("scales a real 28-day February period to the payment's day count", () => {
+    // The half-lines are tested with a 31-day March period; the production
+    // February seam (28 real days scaled to a 30-day payment) was never
+    // crossed end-to-end.
+    const period = resolveSalaryPaymentPeriod("2026-02-10", "MONTHLY")
+    expect(period).toEqual({
+      start: toAlgeriaDayBoundaryIso("2026-02-01", "start"),
+      end: toAlgeriaDayBoundaryIso("2026-02-28", "end"),
+    })
+    expect(
+      deriveSalaryProjectDays({
+        assignments: [{ projectId: "p1", startDate: period!.start, endDate: period!.end }],
+        periodStart: period!.start,
+        periodEnd: period!.end,
+        days: 30,
+      }),
+    ).toEqual([{ projectId: "p1", days: 30 }])
   })
 })
 
@@ -124,6 +153,13 @@ describe("allocateSalaryAmountByDays", () => {
   it("returns zero shares instead of dividing by a non-positive day count", () => {
     expect(allocateSalaryAmountByDays(30000, [15, 15], 0)).toEqual([0, 0])
     expect(allocateSalaryAmountByDays(Number.NaN, [15, 15], 30)).toEqual([0, 0])
+  })
+
+  it("returns zero shares for a non-finite or fractional paid-day count", () => {
+    // `NaN <= 0` is false, so a non-finite count used to fall through and make
+    // every returned share NaN.
+    expect(allocateSalaryAmountByDays(30000, [15, 15], Number.NaN)).toEqual([0, 0])
+    expect(allocateSalaryAmountByDays(30000, [15, 15], 2.5)).toEqual([0, 0])
   })
 
   it("normalises an over-precise amount to whole cents before allocating", () => {

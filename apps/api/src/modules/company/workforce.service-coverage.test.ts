@@ -1391,5 +1391,43 @@ describe("WorkforceService coverage branches", () => {
         ),
       ).toThrowError(CompanyError);
     });
+
+    it("rejects a day count past the safe-integer range", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000220" });
+      // `Number.isInteger(1e20)` is true, so the absurd count used to pass and
+      // overflow the cent proposal before SQLite stored it as a REAL.
+      expect(() =>
+        service.createSalaryPayment({ employeeId: worker.id, days: 1e20, projectSplits: [] }, audit()),
+      ).toThrowError(CompanyError);
+    });
+
+    it("rejects a split line whose days are past the safe-integer range", () => {
+      const { service, roleIds } = createHarness();
+      const manager = service.createEmployee({
+        firstName: "مدير",
+        lastName: "آمن",
+        phone: "0554000222",
+        roleId: roleIds.projectManager,
+        status: "ACTIVE",
+      }).item;
+      const project = createProject(service, manager.id, "مشروع آمن");
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000223" });
+      expect(() =>
+        service.createSalaryPayment(
+          { employeeId: worker.id, days: 30, projectSplits: [{ projectId: project.id, days: 1e20 }] },
+          audit(),
+        ),
+      ).toThrowError(CompanyError);
+    });
+
+    it("rounds a half-cent override up, not only the float-favourable values", () => {
+      const { service, roleIds } = createHarness();
+      const worker = createPaidWorker(service, roleIds, { phone: "0554000221" });
+      const payment = service
+        .createSalaryPayment({ employeeId: worker.id, days: 30, actualAmountDzd: 1.005, projectSplits: [] }, audit())
+        .item;
+      expect(payment.actualAmountDzd).toBe(1.01);
+    });
   });
 });

@@ -196,7 +196,7 @@ describe("AddSalaryPaymentDialog (#412)", () => {
     )
   })
 
-  it("adopts a carried draft once and normalises an over-precise override on submit", async () => {
+  it("adopts a carried draft and normalises an over-precise override on submit", async () => {
     mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
     const draft = {
       days: 12,
@@ -233,5 +233,40 @@ describe("AddSalaryPaymentDialog (#412)", () => {
     expect(mockMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ days: 12, actualAmountDzd: 100.01 }),
     )
+  })
+
+  it("does not replay a carried draft over an operator edit on re-render", () => {
+    mockMutateAsync.mockReset()
+    const draft = {
+      days: 12,
+      daysTouched: true,
+      amount: 100,
+      amountTouched: true,
+      date: "2026-03-15",
+      note: "ملاحظة",
+    }
+    const element = (
+      <AddSalaryPaymentDialog
+        employeeId="employee-1"
+        employeeName="عامل"
+        salaryAmountDzd={30000}
+        salaryPeriod="MONTHLY"
+        projectAssignments={[ASSIGNMENT]}
+        projects={[PROJECT]}
+        initialDraft={draft}
+        open
+        onOpenChange={vi.fn()}
+      />
+    )
+    const view = render(element)
+
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("12")
+    fireEvent.change(screen.getAllByRole("spinbutton")[0]!, { target: { value: "7" } })
+
+    // The same draft object arrives again on a parent re-render: the
+    // applied-draft guard must keep the operator's edit rather than re-adopting
+    // the carried value.
+    view.rerender(element)
+    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("7")
   })
 })

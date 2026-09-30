@@ -639,7 +639,7 @@ export class WorkforceService {
 
       const { days, projectSplits } = input;
 
-      if (!Number.isInteger(days) || days <= 0) {
+      if (!Number.isSafeInteger(days) || days <= 0) {
         throw new CompanyError("VALIDATION", "يجب إدخال عدد أيام صحيح أكبر من صفر.", [
           { field: "days", message: "يجب إدخال عدد أيام صحيح أكبر من صفر." },
         ]);
@@ -667,7 +667,7 @@ export class WorkforceService {
       let allocatedDays = 0;
 
       for (const split of projectSplits) {
-        if (!Number.isInteger(split.days) || split.days <= 0) {
+        if (!Number.isSafeInteger(split.days) || split.days <= 0) {
           throw new CompanyError("VALIDATION", "يجب إدخال عدد أيام صحيح أكبر من صفر لكل مشروع.", [
             { field: "projectSplits", message: "يجب إدخال عدد أيام صحيح أكبر من صفر لكل مشروع." },
           ]);

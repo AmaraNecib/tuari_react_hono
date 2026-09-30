@@ -190,6 +190,18 @@ describe("EmployeeDetailsPage salary payments (#412)", () => {
     )
   })
 
+  it("disables the quick payment submit for a zero amount", () => {
+    renderDetails()
+
+    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
+    fireEvent.change(screen.getByLabelText(/المبلغ الفعلي/), { target: { value: "0" } })
+
+    // The service rejects a non-positive amount; the form must not offer a
+    // submit that can only fail server-side.
+    const submit = screen.getByRole("button", { name: "حفظ دفعة الراتب" }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+  })
+
   it("defaults a daily worker's quick form to one day, not a month", () => {
     renderDetails(monthlyWorker({ salaryPeriod: "DAILY", salaryAmountDzd: 1500 }))
 

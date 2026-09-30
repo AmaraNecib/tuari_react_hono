@@ -35,7 +35,9 @@ export function parsePositiveInteger(value: string): number | null {
     return null
   }
   const parsed = Number(trimmed)
-  return parsed > 0 ? parsed : null
+  // A 20-digit entry parses to a finite, integer-looking 1e20 whose cent
+  // arithmetic overflows; only a safe integer is a real day count.
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
 }
 
 function pad(value: number): string {
@@ -124,7 +126,7 @@ export function allocateSalaryAmountByDays(
   splitDays: readonly number[],
   totalDays: number,
 ): number[] {
-  if (!Number.isFinite(amountDzd) || totalDays <= 0) {
+  if (!Number.isFinite(amountDzd) || !Number.isInteger(totalDays) || totalDays <= 0) {
     return splitDays.map(() => 0)
   }
 

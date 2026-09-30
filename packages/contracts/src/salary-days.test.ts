@@ -55,6 +55,25 @@ describe("roundMoneyToCents", () => {
     expect(roundMoneyToCents(30010.05)).toBe(30010.05);
     expect(roundMoneyToCents(18000.5)).toBe(18000.5);
   });
+
+  it("rounds every half-cent up, not only the float-favourable values", () => {
+    // `Math.round(1.005 * 100)` is `Math.round(100.49999999999999)` → 100: the
+    // binary product rounds the half-cent DOWN, contradicting the helper's
+    // "rounding half up" contract. The helper must scale the decimal value
+    // (`"1.005e2"` → 100.5), not the float product.
+    expect(roundMoneyToCents(1.005)).toBe(1.01);
+    expect(roundMoneyToCents(8.575)).toBe(8.58);
+    expect(roundMoneyToCents(0.145)).toBe(0.15);
+  });
+
+  it("passes a non-finite value through and rounds tiny exponential magnitudes to zero", () => {
+    expect(Number.isNaN(roundMoneyToCents(Number.NaN))).toBe(true);
+    expect(roundMoneyToCents(Number.POSITIVE_INFINITY)).toBe(Number.POSITIVE_INFINITY);
+    // `String(1e-16)` is `"1e-16"`; that decimal-exponent form is unparseable,
+    // so the helper falls back to the float product, which rounds the noise to
+    // zero instead of returning NaN.
+    expect(roundMoneyToCents(1e-16)).toBe(0);
+  });
 });
 
 describe("deriveSalaryProjectDays", () => {
@@ -324,7 +343,12 @@ describe("deriveSalaryProjectDays", () => {
     });
 
     expect(splits.reduce((total, split) => total + split.days, 0)).toBe(30);
-    expect(splits.map((split) => split.projectId)).toEqual(["a", "b"]);
+    // The exact split, not just the sum: a wrong partition such as [29, 1]
+    // still sums to 30 but misattributes half a month to the wrong project.
+    expect(splits).toEqual([
+      { projectId: "a", days: 15 },
+      { projectId: "b", days: 15 },
+    ]);
   });
 
   it("de-duplicates a day two overlapping projects both claim", () => {
@@ -409,6 +433,19 @@ describe("salary payment create contract (#412)", () => {
       employeeSalaryPaymentCreateInputSchema.safeParse({
         employeeId: "e1",
         projectSplits: [{ projectId: "p1", days: 1.5 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a day count past the safe-integer range", () => {
+    // `Number.isInteger(1e20)` is true and the value overflows the cent
+    // arithmetic before SQLite silently stores it as a REAL, so the wire must
+    // bound `days` to safe integers.
+    expect(employeeSalaryPaymentCreateInputSchema.safeParse({ employeeId: "e1", days: 1e20 }).success).toBe(false);
+    expect(
+      employeeSalaryPaymentCreateInputSchema.safeParse({
+        employeeId: "e1",
+        projectSplits: [{ projectId: "p1", days: 1e20 }],
       }).success,
     ).toBe(false);
   });

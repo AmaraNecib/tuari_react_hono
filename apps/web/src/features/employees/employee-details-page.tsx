@@ -186,7 +186,7 @@ export function EmployeeDetailsPage({
     paymentAmountTouched || proposedPaymentAmount === null ? actualAmount : String(proposedPaymentAmount)
   const normalizedActualAmount = displayedActualAmount.trim()
   const actualAmountValue = normalizedActualAmount.length > 0 ? Number(normalizedActualAmount) : null
-  const hasValidActualAmount = actualAmountValue !== null && Number.isFinite(actualAmountValue) && actualAmountValue >= 0
+  const hasValidActualAmount = actualAmountValue !== null && Number.isFinite(actualAmountValue) && actualAmountValue > 0
   const totalExpectedAmount = sortedSalaryPayments.reduce((sum, payment) => sum + payment.expectedAmountDzd, 0)
   const totalActualAmount = sortedSalaryPayments.reduce((sum, payment) => sum + payment.actualAmountDzd, 0)
   const totalDifferenceMeta = getSalaryDifferenceMeta(totalExpectedAmount, totalActualAmount)
