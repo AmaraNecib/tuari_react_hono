@@ -52,3 +52,10 @@ branch's. Out of scope; the parent decides whether to fix it separately.
 - `pnpm test:e2e` full suite — only the touched spec was run (the brief scoped E2E to
   `inventory-invoice-create.spec.ts`).
 - Push / PR / merge — parent-owned.
+
+## Post-evidence delta
+
+- `1edda64d` adds `.agents/wisdom/architecture.md` only (the ORPC
+  error-observability lesson). No source, test, or config file changed after the
+  verified implementation commit `799249ed`, so every command result above still
+  applies.
