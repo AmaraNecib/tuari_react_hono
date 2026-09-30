@@ -27,6 +27,7 @@ import { createRouter } from "./router";
 import { createRpcMiddleware } from "./rpc-middleware";
 import type { RpcContext } from "./context";
 import { ExpenseNotFoundError } from "../modules/expenses/expenses.types";
+import { ProjectCostService } from "../modules/project-cost/project-cost.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
 import { SqliteRoleRepository } from "../modules/workforce/adapters/role.repository";
@@ -38,7 +39,7 @@ import { createInMemoryPaymentRepository } from "../modules/payment/adapters/in-
 import { PaymentNotFoundError } from "../modules/payment/payment.types";
 import { InvoiceModule } from "../modules/invoice/invoice.module";
 import { createInMemoryInvoiceRepository } from "../modules/invoice/adapters/in-memory-invoice.repository";
-import { paymentContract } from "@tuari/contracts";
+import { paymentContract, projectCostSchema } from "@tuari/contracts";
 
 function expectSuccess<T extends { success: boolean }>(result: T): Extract<T, { success: true }> {
   expect(result.success).toBe(true);
@@ -101,7 +102,7 @@ describe("RPC router", () => {
       persistKey: () => ({ success: true } as const),
     },
     expensesOverrides: Record<string, unknown> = {},
-    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown; backupService?: unknown; inventoryService?: unknown } = {},
+    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown; backupService?: unknown; inventoryService?: unknown; projectCostService?: unknown } = {},
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -163,6 +164,22 @@ describe("RPC router", () => {
       invoiceModule: (modules.invoiceModule ?? {}) as never,
       paymentModule,
       expensesModule,
+      projectCostService: (modules.projectCostService ?? {
+        getProjectCost: () => ({
+          success: true,
+          message: "ok",
+          item: {
+            projectId: "p-1",
+            totalDzd: 0,
+            parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: 0 },
+            expenses: [],
+            salaries: [],
+            stock: [],
+            materialMovements: [],
+            parkedInventory: { totalDzd: 0, assets: [] },
+          },
+        }),
+      }) as never,
       roleModule,
       recoveryKeyService: recoveryKeyService as never,
       updateService: {} as never,
@@ -1257,6 +1274,78 @@ describe("RPC router", () => {
     await expect(
       client.expensesUpdate({ id: "11111111-1111-4111-8111-111111111111", amount: 10 }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("serves the project cost through the wire contract and maps a missing project (issue #414)", async () => {
+    const harness = createHarness();
+    const projectCostService = new ProjectCostService({
+      getProject: (id: string) => ({ id }),
+      listProjectExpenses: () => [
+        {
+          id: "e-1",
+          expenseDate: "2026-05-10T00:00:00.000Z",
+          whatFor: "وقود",
+          amountDzd: 12_500,
+          responsibleWorkerId: null,
+          responsibleWorkerName: null,
+          sellerId: null,
+          sellerName: null,
+        },
+      ],
+      listProjectSalarySplits: () => [
+        {
+          paymentId: "pay-1",
+          employeeId: "emp-1",
+          employeeName: "كريم ب.",
+          paymentDays: 30,
+          paymentAmountDzd: 60_000,
+          splitDays: 18,
+          paymentDate: "2026-05-31T00:00:00.000Z",
+        },
+      ],
+      listProjectStockCharges: () => [
+        { id: "c-1", assetUnitId: "a-1", assetName: "خلاطة", amountDzd: 180_000, placedAt: "2026-05-20T00:00:00.000Z" },
+      ],
+      listProjectMaterialMovements: () => [
+        { id: "m-in", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 40, unitPriceDzd: 850, direction: "IN", occurredAt: "2026-05-20T00:00:00.000Z" },
+        { id: "m-out", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 5, unitPriceDzd: 850, direction: "OUT", occurredAt: "2026-05-21T00:00:00.000Z" },
+      ],
+      getProjectParkedAssets: () => [
+        { assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 500_000 },
+      ],
+    });
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, { projectCostService });
+    const client = createClient(router, createContext());
+
+    // The whole populated response must satisfy the declared output schema —
+    // not just the fields a toMatchObject spot-check happens to name.
+    const response = expectSuccess(
+      await client.projectCostGet({ projectId: "11111111-1111-4111-8111-111111111111" }),
+    );
+    // 12,500 + 36,000 + 180,000 + (40 − 5) × 850 = 258,250.
+    expect(response.item.totalDzd).toBe(258_250);
+    expect(projectCostSchema.safeParse(response.item).success).toBe(true);
+    expect(response.item.expenses).toHaveLength(1);
+    expect(response.item.salaries).toHaveLength(1);
+    expect(response.item.stock).toHaveLength(1);
+    expect(response.item.materialMovements).toHaveLength(2);
+    expect(response.item.parkedInventory.assets[0].assetUnitId).toBe("a-9");
+    expect("consumables" in response.item.parkedInventory).toBe(false);
+
+    const missingRouter = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      projectCostService: new ProjectCostService({
+        getProject: () => null,
+        listProjectExpenses: () => [],
+        listProjectSalarySplits: () => [],
+        listProjectStockCharges: () => [],
+        listProjectMaterialMovements: () => [],
+        getProjectParkedAssets: () => [],
+      }),
+    });
+    const missingClient = createClient(missingRouter, createContext());
+    await expect(
+      missingClient.projectCostGet({ projectId: "11111111-1111-4111-8111-111111111111" }),
+    ).resolves.toMatchObject({ success: false, error: { code: "NOT_FOUND" } });
   });
 
   it("rejects out-of-bounds invoice paid values at the wire contract (issue #42)", async () => {

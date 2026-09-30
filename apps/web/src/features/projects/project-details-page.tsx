@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { InventoryLocationContentsSection } from "@/features/inventory/inventory-location-contents-section"
 import { LocationTransferHistory } from "@/features/inventory/location-transfer-history"
+import { ProjectCostSection } from "./project-cost-section"
 import { workspaceRoutes } from "@/router/navigation"
 import {
   RecordHistoryTable,
@@ -56,7 +57,7 @@ export function ProjectDetailsPage({
   }>
 }) {
   const { t } = useTranslation()
-  const resolvedTab = ["overview", "history", "workers", "items", "transfers"].includes(activeTab) ? activeTab : "overview"
+  const resolvedTab = ["overview", "history", "workers", "items", "transfers", "cost"].includes(activeTab) ? activeTab : "overview"
   const hasExpandedNotes = (project.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `project-record-${project.id}`
 
@@ -78,6 +79,7 @@ export function ProjectDetailsPage({
           { id: "workers", label: t("detailPages.project.workersTab") },
           { id: "items", label: "العناصر" },
           { id: "transfers", label: "سجل التحويلات" },
+          { id: "cost", label: t("detailPages.project.cost.tab") },
         ]}
         onChange={onTabChange}
       />
@@ -124,6 +126,10 @@ export function ProjectDetailsPage({
 
       <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="transfers">
         <LocationTransferHistory locationId={project.id} locationType="PROJECT" />
+      </RecordTabPanel>
+
+      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="cost">
+        <ProjectCostSection projectId={project.id} onOpenItems={() => onTabChange("items")} />
       </RecordTabPanel>
     </RecordPageFrame>
   )

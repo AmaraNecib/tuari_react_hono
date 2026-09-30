@@ -50,6 +50,11 @@ import {
   phonePasswordSignInSchema,
   projectAssignmentCreateInputSchema,
   projectSchema,
+  projectCostInputSchema,
+  projectCostSchema,
+  projectCostExpenseRowSchema,
+  projectCostMaterialMovementSchema,
+  projectCostPartsSchema,
   recurringPatternSchema,
   reportFilterInputSchema,
   paymentAmountSchema,
@@ -1984,6 +1989,113 @@ describe("contracts", () => {
         expect(key in inventoryContract).toBe(true);
         expect(key in appContract).toBe(true);
       }
+    });
+  });
+
+  describe("project cost contract (issue #414)", () => {
+    it("requires a project id and accepts a signed-but-bounded computed total", () => {
+      expect(projectCostInputSchema.safeParse({ projectId: "" }).success).toBe(false);
+      expect(projectCostInputSchema.safeParse({ projectId: "11111111-1111-4111-8111-111111111111" }).success).toBe(true);
+
+      const base = {
+        projectId: "11111111-1111-4111-8111-111111111111",
+        totalDzd: 0,
+        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: 0 },
+        expenses: [],
+        salaries: [],
+        stock: [],
+        materialMovements: [],
+        parkedInventory: { totalDzd: 0, assets: [] },
+      };
+      expect(projectCostSchema.safeParse(base).success).toBe(true);
+      // A negative total is a legal computed value (a negative material net can
+      // outweigh the positive parts). It must not lock the operator out of the
+      // screen; the UI warns instead.
+      expect(projectCostSchema.safeParse({ ...base, totalDzd: -1 }).success).toBe(true);
+      // ... but leaving the representable range on either side is refused.
+      expect(
+        projectCostSchema.safeParse({ ...base, totalDzd: -(Number.MAX_SAFE_INTEGER + 1) }).success,
+      ).toBe(false);
+      expect(
+        projectCostSchema.safeParse({
+          ...base,
+          parts: { ...base.parts, chargedMaterialsDzd: -1 },
+        }).success,
+      ).toBe(true);
+      // The part is bounded on BOTH sides, not just made non-negative.
+      expect(
+        projectCostSchema.safeParse({
+          ...base,
+          parts: { ...base.parts, chargedMaterialsDzd: -(Number.MAX_SAFE_INTEGER + 1) },
+        }).success,
+      ).toBe(false);
+      expect(
+        projectCostSchema.safeParse({
+          ...base,
+          parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0 },
+        }).success,
+      ).toBe(false);
+    });
+
+    it("labels material charged to the project, not consumed", () => {
+      // The direction carries the sign; valueDzd stays a positive magnitude.
+      expect(
+        projectCostMaterialMovementSchema.safeParse({
+          id: "11111111-1111-4111-8111-111111111111",
+          itemDefinitionId: null,
+          itemName: null,
+          unit: null,
+          quantity: 3,
+          unitPriceDzd: 500,
+          valueDzd: 1_500,
+          direction: "OUT",
+          occurredAt: "2026-05-20T00:00:00.000Z",
+        }).success,
+      ).toBe(true);
+      // A direction outside IN/OUT is refused.
+      expect(
+        projectCostMaterialMovementSchema.safeParse({
+          id: "11111111-1111-4111-8111-111111111111",
+          itemDefinitionId: null,
+          itemName: null,
+          unit: null,
+          quantity: 3,
+          unitPriceDzd: 500,
+          valueDzd: 1_500,
+          direction: "CONSUMED",
+          occurredAt: "2026-05-20T00:00:00.000Z",
+        }).success,
+      ).toBe(false);
+    });
+
+    it("advertises projectCostGet on the app contract", () => {
+      expect("projectCostGet" in appContract).toBe(true);
+    });
+
+    it("keeps stored rows permissive but computed aggregates bounded", () => {
+      const aboveBound = Number.MAX_SAFE_INTEGER + 1;
+      // A legacy stored row reads back (it predates the write bound) ...
+      expect(
+        projectCostExpenseRowSchema.safeParse({
+          id: "11111111-1111-4111-8111-111111111111",
+          expenseDate: "2026-05-10T00:00:00.000Z",
+          whatFor: null,
+          amountDzd: aboveBound,
+          responsibleWorkerId: null,
+          responsibleWorkerName: null,
+          sellerId: null,
+          sellerName: null,
+        }).success,
+      ).toBe(true);
+      // ... but a computed part/total may never leave the representable range.
+      expect(
+        projectCostPartsSchema.safeParse({
+          expensesDzd: aboveBound,
+          salariesDzd: 0,
+          stockDzd: 0,
+          chargedMaterialsDzd: 0,
+        }).success,
+      ).toBe(false);
     });
   });
 });

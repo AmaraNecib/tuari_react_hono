@@ -20,6 +20,8 @@ export * from "./payment";
 export * from "./payment-contract";
 export * from "./expenses";
 export * from "./expenses-contract";
+export * from "./project-cost";
+export * from "./project-cost-contract";
 export * from "./update";
 export * from "./update-contract";
 export * from "./backup";

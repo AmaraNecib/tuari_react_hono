@@ -12,6 +12,7 @@ import { reportsContract } from "./reports-contract"
 import { invoiceContract } from "./invoice-contract"
 import { paymentContract } from "./payment-contract"
 import { expensesContract } from "./expenses-contract"
+import { projectCostContract } from "./project-cost-contract"
 import { updateContract } from "./update-contract"
 import { backupContract } from "./backup-contract"
 import { rbacContract } from "./rbac-contract"
@@ -29,6 +30,7 @@ export const appContract = {
   ...invoiceContract,
   ...paymentContract,
   ...expensesContract,
+  ...projectCostContract,
   ...updateContract,
   ...backupContract,
   ...rbacContract,
