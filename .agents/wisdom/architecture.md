@@ -632,3 +632,41 @@ the library ships no default CSS here.
 **Always**: when overriding a component library's default class to `""`, check
 what the default element actually paints (attribute vs `currentColor`); an empty
 class is not "theme-aware", it is "unstyled default".
+## ORPC swallows procedure errors before the request interceptor: the real message only exists at the client interceptor (🟠 Major)
+
+On the invoice-observability lane the API had no usable failure log. The only
+hook was `interceptors: [onError(...)]` on the `RPCHandler`, but ORPC's
+`StandardHandler.handle` wraps the whole match/decode/call in a `try/catch`
+that **encodes every procedure error into a response** (`codec.encodeError`)
+and returns `{ matched: true, response }`. A request-level `onFinish`/`onError`
+therefore sees either a resolved result or, for decode/encode failures, a
+thrown error — never the original procedure error. Worse, `toORPCError` maps a
+plain `Error` to `{ code: "INTERNAL_SERVER_ERROR", message: "Internal server
+error" }`, so the wire body does not carry the real message either.
+
+Two more traps found while wiring the logging:
+
+1. The only layer that still holds the real error is the **procedure client**
+   interceptor (`clientInterceptors: [onError(...)]`), whose options include
+   `path` (the procedure name) and `context`. A domain failure returned as
+   `{ success: false }` never throws at all, so it needs a **client-level
+   `onFinish`** inspecting the decoded output.
+2. The ORPC standard-protocol response body is wrapped as `{ json: <payload>,
+   meta?: [...] }` — for **errors too**. A status/body logger that reads
+   `response.message` finds nothing and falls back to `HTTP 500`; it must
+   unwrap `body.json` first.
+
+De-duplication between the client interceptor (has the error) and the request
+interceptor (has the response) needs an explicit per-request marker: a
+`WeakSet<object>` keyed by the request-scoped ORPC `context` survives from the
+client callback to the request callback because both receive the same object.
+Test the exact contract: a rejected mutation logs **one** line with the error
+message, a thrown procedure error logs one line with its real message, and a
+successful mutation logs nothing.
+
+**Always**: when adding ORPC server-side logging, put thrown-error logging on
+`clientInterceptors.onError`, `{ success: false }` logging on
+`clientInterceptors.onFinish`, and wire/decode + 4xx/5xx logging on the
+request-level `onFinish` (or a transport middleware), deduped by a
+request-scoped marker. Never assume a request-level `onError` sees handler
+errors, and always unwrap `{ json: ... }` before reading a response body.
