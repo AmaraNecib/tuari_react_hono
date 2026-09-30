@@ -40,9 +40,11 @@ import type { BackupSnapshotter } from "./backup.types";
 // to the real implementation.
 const fsControl = vi.hoisted(() => ({
   failReaddir: false,
+  failReaddirMatching: null as string | null,
   failRemove: false,
   failRemoveMatching: null as string | null,
   failOpenMatching: null as string | null,
+  failRename: false,
   removeError: new Error("EBUSY: resource busy or locked") as unknown,
   readdirError: new Error("EACCES: permission denied") as unknown,
 }));
@@ -53,6 +55,12 @@ vi.mock("node:fs", async (importOriginal) => {
     ...actual,
     readdirSync: ((...args: unknown[]) => {
       if (fsControl.failReaddir) throw fsControl.readdirError;
+      if (
+        fsControl.failReaddirMatching !== null &&
+        String(args[0]).includes(fsControl.failReaddirMatching)
+      ) {
+        throw fsControl.readdirError;
+      }
       return (actual.readdirSync as (...inner: unknown[]) => unknown)(...args);
     }) as typeof actual.readdirSync,
     openSync: ((...args: unknown[]) => {
@@ -74,6 +82,10 @@ vi.mock("node:fs", async (importOriginal) => {
       }
       return (actual.rmSync as (...inner: unknown[]) => unknown)(...args);
     }) as typeof actual.rmSync,
+    renameSync: ((...args: unknown[]) => {
+      if (fsControl.failRename) throw new Error("EPERM: operation not permitted");
+      return (actual.renameSync as (...inner: unknown[]) => unknown)(...args);
+    }) as typeof actual.renameSync,
   };
 });
 
@@ -153,9 +165,11 @@ describe("createBackupService", () => {
 
   beforeEach(() => {
     fsControl.failReaddir = false;
+    fsControl.failReaddirMatching = null;
     fsControl.failRemove = false;
     fsControl.failRemoveMatching = null;
     fsControl.failOpenMatching = null;
+    fsControl.failRename = false;
     fsControl.removeError = new Error("EBUSY: resource busy or locked");
     fsControl.readdirError = new Error("EACCES: permission denied");
     tempRoot = mkdtempSync(join(tmpdir(), "tuari-backup-"));
@@ -164,9 +178,11 @@ describe("createBackupService", () => {
 
   afterEach(() => {
     fsControl.failReaddir = false;
+    fsControl.failReaddirMatching = null;
     fsControl.failRemove = false;
     fsControl.failRemoveMatching = null;
     fsControl.failOpenMatching = null;
+    fsControl.failRename = false;
     fsControl.removeError = new Error("EBUSY: resource busy or locked");
     fsControl.readdirError = new Error("EACCES: permission denied");
     for (const database of openDatabases.splice(0)) database.close();
@@ -174,7 +190,7 @@ describe("createBackupService", () => {
   });
 
   it("takes a due backup into a dated folder with a readable, marked snapshot", async () => {
-    const { databasePath, db } = createLiveDatabase();
+    const { databasePath } = createLiveDatabase();
     const service = createBackupService({
       snapshot: realSnapshotter(databasePath),
       backupsRootPath: backupsRoot,
@@ -213,7 +229,6 @@ describe("createBackupService", () => {
       lastSuccessAt: now().toISOString(),
       lastFailure: null,
     });
-    void db;
   });
 
   it("takes none when the newest backup is yesterday", async () => {
@@ -270,6 +285,9 @@ describe("createBackupService", () => {
 
     expect((await service.runDueBackup()).status).toBe("created");
 
+    // daily: 09,10; weekly (newest ISO week in the older set): 08; monthly
+    // (newest month after that): 07. A weekly rep already inside the daily
+    // window does not consume a slot, which is why the older set starts at 08.
     expect(readdirSync(backupsRoot).sort()).toEqual([
       "2026-01-08",
       "2026-01-09",
@@ -330,6 +348,54 @@ describe("createBackupService", () => {
       date: DATE,
       reason: "boom",
     });
+  });
+
+  it("reports a non-empty reason for a thrown empty string", async () => {
+    const service = createBackupService({
+      snapshot: async () => {
+        throw "";
+      },
+      backupsRootPath: backupsRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    // `lastFailure.reason` is `.min(1)` on the wire: an empty reason would turn
+    // the status read into a 500 instead of reporting the failure.
+    expect(await service.runDueBackup()).toEqual({
+      status: "failed",
+      date: DATE,
+      reason: "unknown backup failure",
+    });
+    expect(service.getStatus().lastFailure?.reason).toBe(
+      "unknown backup failure",
+    );
+  });
+
+  it("records a failure and cleans staging when the commit rename fails", async () => {
+    const previous = createSnapshotFixture("2026-01-13");
+    const { databasePath } = createLiveDatabase();
+    const service = createBackupService({
+      snapshot: realSnapshotter(databasePath),
+      backupsRootPath: backupsRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    fsControl.failRename = true;
+    const result = await service.runDueBackup();
+    fsControl.failRename = false;
+
+    expect(result).toEqual({
+      status: "failed",
+      date: DATE,
+      reason: "EPERM: operation not permitted",
+    });
+    // The previous backup is intact, no dated folder was committed, and the
+    // staging work area was removed.
+    expect(existsSync(previous)).toBe(true);
+    expect(existsSync(join(backupsRoot, DATE))).toBe(false);
+    expect(readdirSync(backupsRoot)).toEqual(["2026-01-13"]);
   });
 
   it("keeps the snapshot failure when staging cleanup also fails", async () => {
@@ -416,6 +482,31 @@ describe("createBackupService", () => {
     expect(readdirSync(foreign)).toEqual(["operator-notes.txt"]);
   });
 
+  it("replaces OUR OWN unusable snapshot at the target instead of wedging forever", async () => {
+    // A previous run's folder at yesterday's name carries our marker but its
+    // database is empty, so `isUsableSnapshot` rejects it. It is excluded from
+    // the listing, which makes the run due; without a replace path every future
+    // start would fail on "refusing to overwrite". Removing an unusable
+    // snapshot of ours loses no usable backup.
+    const corrupt = join(backupsRoot, DATE);
+    mkdirSync(corrupt, { recursive: true });
+    writeFileSync(join(corrupt, BACKUP_DB_FILE_NAME), "");
+    writeFileSync(join(corrupt, BACKUP_MARKER_FILE_NAME), markerJson());
+
+    const { databasePath } = createLiveDatabase();
+    const service = createBackupService({
+      snapshot: realSnapshotter(databasePath),
+      backupsRootPath: backupsRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    const result = await service.runDueBackup();
+    expect(result.status).toBe("created");
+    const { integrity } = readBackup(join(corrupt, BACKUP_DB_FILE_NAME));
+    expect(integrity[0]?.integrity_check).toBe("ok");
+  });
+
   it("takes a fresh backup when the newest snapshot is future-dated", async () => {
     // A clock accidentally set years ahead left a "newest" folder in the
     // future. It must not suppress today's backup.
@@ -428,6 +519,10 @@ describe("createBackupService", () => {
       logger: noopLogger,
     });
 
+    // The future-dated snapshot is the newest actual snapshot on disk, so the
+    // status is honest about it...
+    expect(service.getStatus().lastBackupPath).toBe(future);
+    // ...but it is not credible for the due check, so a real backup is taken.
     expect((await service.runDueBackup()).status).toBe("created");
     expect(
       existsSync(join(backupsRoot, DATE, BACKUP_DB_FILE_NAME)),
@@ -515,6 +610,26 @@ describe("createBackupService", () => {
     expect(service.getStatus().lastBackupPath).toBeNull();
   });
 
+  it("does not count a marker whose takenAt is not a timestamp", () => {
+    const folder = join(backupsRoot, DATE);
+    mkdirSync(folder, { recursive: true });
+    // Encrypted, so the plaintext header check does not mask the marker-schema
+    // rejection being pinned here.
+    writeFileSync(join(folder, BACKUP_DB_FILE_NAME), "ciphertext");
+    writeFileSync(
+      join(folder, BACKUP_MARKER_FILE_NAME),
+      markerJson({ encrypted: true, takenAt: "not-a-date" }),
+    );
+    const service = createBackupService({
+      snapshot: stubSnapshotter(),
+      backupsRootPath: backupsRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    expect(service.getStatus().lastBackupPath).toBeNull();
+  });
+
   it("treats an encrypted marker as valid without reading the file magic", () => {
     // A SQLCipher copy does not start with the plaintext SQLite magic, so the
     // marker (and the integrity check run when it was written) is the signal.
@@ -533,6 +648,26 @@ describe("createBackupService", () => {
     });
 
     expect(service.getStatus().lastBackupPath).toBe(folder);
+  });
+
+  it("does not count a directory named like the database as an encrypted snapshot", () => {
+    // `isFile` is required here: a directory has size > 0 on some filesystems,
+    // and an encrypted marker skips the plaintext header check that would
+    // otherwise reject it.
+    const folder = join(backupsRoot, DATE);
+    mkdirSync(join(folder, BACKUP_DB_FILE_NAME), { recursive: true });
+    writeFileSync(
+      join(folder, BACKUP_MARKER_FILE_NAME),
+      markerJson({ encrypted: true }),
+    );
+    const service = createBackupService({
+      snapshot: stubSnapshotter(),
+      backupsRootPath: backupsRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    expect(service.getStatus().lastBackupPath).toBeNull();
   });
 
   it("does not count a marked folder whose database cannot be opened", () => {
@@ -582,6 +717,23 @@ describe("createBackupService", () => {
     expect(service.getStatus()).toEqual({
       lastBackupPath: previous,
       lastSuccessAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      lastFailure: null,
+    });
+  });
+
+  it("seeds lastSuccessAt from the marker's takenAt, not the folder mtime", () => {
+    const previous = createSnapshotFixture("2026-01-13");
+    const service = createBackupService({
+      snapshot: stubSnapshotter(),
+      backupsRootPath: backupsRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    // createSnapshotFixture writes takenAt 2026-01-13T08:00:00.000Z.
+    expect(service.getStatus()).toEqual({
+      lastBackupPath: previous,
+      lastSuccessAt: "2026-01-13T08:00:00.000Z",
       lastFailure: null,
     });
   });
@@ -692,6 +844,8 @@ describe("createBackupService", () => {
     createLiveDatabase();
     const stale = join(backupsRoot, ".staging-abandoned");
     mkdirSync(stale, { recursive: true });
+    // A crashed run leaves our partial copy behind, not just an empty folder.
+    writeFileSync(join(stale, BACKUP_DB_FILE_NAME), "partial");
     const service = createBackupService({
       snapshot: stubSnapshotter(),
       backupsRootPath: backupsRoot,
@@ -702,6 +856,45 @@ describe("createBackupService", () => {
     await service.runDueBackup();
 
     expect(existsSync(stale)).toBe(false);
+  });
+
+  it("keeps a foreign .staging-* directory it did not create", async () => {
+    createLiveDatabase();
+    const foreign = join(backupsRoot, ".staging-operator");
+    mkdirSync(foreign, { recursive: true });
+    writeFileSync(join(foreign, "keep.txt"), "not ours");
+    const service = createBackupService({
+      snapshot: stubSnapshotter(),
+      backupsRootPath: backupsRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    await service.runDueBackup();
+
+    expect(existsSync(join(foreign, "keep.txt"))).toBe(true);
+  });
+
+  it("keeps a .staging-* file and an unreadable .staging-* directory", async () => {
+    createLiveDatabase();
+    mkdirSync(backupsRoot, { recursive: true });
+    const file = join(backupsRoot, ".staging-file");
+    writeFileSync(file, "not a directory");
+    const locked = join(backupsRoot, ".staging-locked");
+    mkdirSync(locked, { recursive: true });
+    const service = createBackupService({
+      snapshot: stubSnapshotter(),
+      backupsRootPath: backupsRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    fsControl.failReaddirMatching = ".staging-locked";
+    await service.runDueBackup();
+    fsControl.failReaddirMatching = null;
+
+    expect(existsSync(file)).toBe(true);
+    expect(existsSync(locked)).toBe(true);
   });
 
   it("surfaces a prune the filesystem refused instead of swallowing it", async () => {
@@ -771,6 +964,7 @@ describe("pruneBackups", () => {
 
   afterEach(() => {
     fsControl.failRemoveMatching = null;
+    fsControl.failReaddirMatching = null;
     fsControl.removeError = new Error("EBUSY: resource busy or locked");
     rmSync(tempRoot, { recursive: true, force: true });
   });

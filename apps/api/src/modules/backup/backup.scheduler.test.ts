@@ -78,13 +78,34 @@ describe("createStartupBackup", () => {
     expect(setTimer).toHaveBeenCalledWith(expect.any(Function), 30_000);
   });
 
-  it("defaults the timer and scheduler and unrefs the fallback", async () => {
+  it("defaults the timer and scheduler", async () => {
     const runDueBackup = vi.fn(resolveNotDue);
     const startup = createStartupBackup({ runDueBackup }, { fallbackDelayMs: 1 });
 
     startup.onServerListening();
 
     await vi.waitFor(() => expect(runDueBackup).toHaveBeenCalledTimes(1));
+  });
+
+  it("unrefs the fallback timer so it never holds the process open", () => {
+    const unref = vi.fn();
+    const startup = createStartupBackup(
+      { runDueBackup: vi.fn(resolveNotDue) },
+      { schedule: (run) => run(), setTimer: () => ({ unref }) },
+    );
+
+    startup.onServerListening();
+
+    expect(unref).toHaveBeenCalledTimes(1);
+  });
+
+  it("tolerates an injected timer that returns nothing", () => {
+    const startup = createStartupBackup(
+      { runDueBackup: vi.fn(resolveNotDue) },
+      { schedule: (run) => run(), setTimer: () => undefined },
+    );
+
+    expect(() => startup.onServerListening()).not.toThrow();
   });
 
   it("logs a rejected run with the default logger without throwing", async () => {

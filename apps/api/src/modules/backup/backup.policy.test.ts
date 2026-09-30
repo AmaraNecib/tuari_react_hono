@@ -89,6 +89,16 @@ describe("selectBackupsToPrune", () => {
     ]);
   });
 
+  it("buckets an ISO week that starts in the previous calendar year", () => {
+    const pruned = selectBackupsToPrune(
+      ["2025-12-29", "2025-12-30", "2026-01-01"],
+      { daily: 0, weekly: 1, monthly: 0 },
+    );
+    // 2025-12-29 (Monday) starts ISO week 2026-W01, so all three share one
+    // bucket and only the newest survives the single weekly slot.
+    expect(pruned).toEqual(["2025-12-29", "2025-12-30"]);
+  });
+
   it("never prunes the newest backup even with a zero-size policy", () => {
     expect(
       selectBackupsToPrune(["2026-01-01", "2026-01-02"], {

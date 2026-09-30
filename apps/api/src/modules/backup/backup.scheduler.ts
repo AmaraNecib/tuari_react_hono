@@ -27,7 +27,7 @@ export type StartupBackupOptions = {
   setTimer?: (
     run: () => void,
     delayMs: number,
-  ) => { unref?: () => void };
+  ) => { unref?: () => void } | undefined;
   /** Error sink (injectable for tests). Defaults to `console.error`. */
   log?: (message: string, cause?: unknown) => void;
 };
@@ -69,8 +69,9 @@ export const createStartupBackup = (
     onServerListening: () => {
       // An install nobody probes (a bare `pnpm dev:api`, a manual install)
       // would otherwise never back up. The timer is unref'd so it never holds
-      // the process open on its own.
-      setTimer(start, fallbackDelayMs).unref?.();
+      // the process open on its own. The optional chain covers an injected
+      // timer that returns nothing.
+      setTimer(start, fallbackDelayMs)?.unref?.();
     },
     hasScheduled: () => scheduled,
   };

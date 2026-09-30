@@ -55,24 +55,41 @@ describe("createWorkerSnapshotter", () => {
     copy.close();
   });
 
-  it("keeps the event loop turning while the copy runs", async () => {
-    // Large enough that a synchronous copy would hold the loop across several
-    // timer periods; the worker must let the timer keep firing.
-    seedDatabase(200_000);
+  it("runs the copy off the event loop instead of blocking it", async () => {
+    seedDatabase(50);
     const outputPath = join(tempRoot, "out.sqlite");
-    let ticks = 0;
-    const timer = setInterval(() => {
-      ticks += 1;
-    }, 1);
+    let immediateRan = false;
+    // Queued BEFORE the copy starts. A synchronous copy inside `snapshot()`
+    // would run to completion before the event loop reaches the check phase,
+    // so the `await` continuation (a microtask) would resume first and this
+    // flag would still be false. The worker path lets it run while the copy is
+    // in flight.
+    setImmediate(() => {
+      immediateRan = true;
+    });
 
-    try {
-      await createWorkerSnapshotter({ databasePath })(outputPath);
-    } finally {
-      clearInterval(timer);
-    }
+    await createWorkerSnapshotter({ databasePath })(outputPath);
 
+    expect(immediateRan).toBe(true);
     expect(statSync(outputPath).size).toBeGreaterThan(0);
-    expect(ticks).toBeGreaterThan(0);
+  });
+
+  it("handles an output path containing a single quote", async () => {
+    // The VACUUM INTO statement embeds the path in single quotes; the quote in
+    // the directory name must be escaped, not break the SQL.
+    seedDatabase(3);
+    const quotedDirectory = join(tempRoot, "it's here");
+    mkdirSync(quotedDirectory, { recursive: true });
+    const outputPath = join(quotedDirectory, "out.sqlite");
+
+    const result = await createWorkerSnapshotter({ databasePath })(outputPath);
+
+    expect(result).toEqual({ schemaVersion: 0, encrypted: false });
+    const copy = new Database(outputPath, { readonly: true });
+    expect(copy.prepare("SELECT COUNT(*) AS count FROM items").get()).toEqual({
+      count: 3,
+    });
+    copy.close();
   });
 
   it("rejects when the source database cannot be opened", async () => {
@@ -96,6 +113,12 @@ describe("createWorkerSnapshotter", () => {
       databaseKey: "secret",
     });
 
-    await expect(snapshot(join(tempRoot, "out.sqlite"))).rejects.toThrow();
+    // On a workspace without the SQLCipher native binding the module resolves
+    // but its `.node` is missing; where the binding exists the keyed open of a
+    // plaintext file fails. Either way the worker must report a rejection, not
+    // crash, and it must be about the keyed path.
+    await expect(snapshot(join(tempRoot, "out.sqlite"))).rejects.toThrow(
+      /better_sqlite3\.node|sqlcipher|not a database|cannot open|unable to open/i,
+    );
   });
 });

@@ -41,7 +41,12 @@ On every API startup the backup service looks at the newest dated folder:
 
 - no backup yet, or the newest is older than yesterday → take a backup for the
   period that just ended;
-- the newest is yesterday or newer → do nothing.
+- the newest is yesterday or today → do nothing;
+- a folder dated in the future (a clock that was set ahead) is not credible. It
+  is ignored when deciding whether a backup is due and when pruning, so it can
+  neither suppress the backup nor hold a retention slot. It is still a real
+  snapshot on disk and `backupStatus` reports it as the newest until a credible
+  one exists.
 
 So a normal day produces at most one backup, and the app can be restarted
 freely without taking extra copies.
@@ -139,6 +144,11 @@ backups are left untouched.
   backup). This is a deliberate MVP cut: the data the operator actually entered
   lives in the database, which is what this feature protects. Attachment backup
   is tracked separately.
+- **A corrected clock can orphan snapshots.** If the machine clock is set
+  forward, backups taken then are dated in the future. After the clock is
+  corrected they are left on disk (deleting them would be guessing) but are not
+  pruned until real dates pass them, so a few can accumulate; delete them by
+  hand if that matters. Nothing is lost, and normal daily backups continue.
 - **Same disk means the backups do not protect against hardware failure or
   theft.** A dead disk or a stolen laptop takes the live database and its
   backups together. This feature protects against mistakes and app bugs, which
