@@ -37,7 +37,9 @@ describe("createWorkerSnapshotter", () => {
   });
 
   afterEach(() => {
-    rmSync(tempRoot, { recursive: true, force: true });
+    // maxRetries covers a worker that is still releasing its output file after
+    // a timeout-terminate on Windows.
+    rmSync(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   it("copies the live database into an integrity-checked snapshot", async () => {
@@ -100,6 +102,15 @@ describe("createWorkerSnapshotter", () => {
     await expect(snapshot(join(tempRoot, "out.sqlite"))).rejects.toThrow(
       /cannot open database|unable to open|not a database|ENOENT/i,
     );
+  });
+
+  it("terminates the worker and rejects when the copy times out", async () => {
+    seedDatabase(1);
+    const outputPath = join(tempRoot, "out.sqlite");
+    // 0 fires on the next timer turn, before a freshly spawned worker can post.
+    const snapshot = createWorkerSnapshotter({ databasePath, timeoutMs: 0 });
+
+    await expect(snapshot(outputPath)).rejects.toThrow(/timed out after 0ms/);
   });
 
   it("routes the keyed path through the SQLCipher binding", async () => {

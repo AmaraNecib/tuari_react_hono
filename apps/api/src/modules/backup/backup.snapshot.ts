@@ -82,7 +82,20 @@ export type SnapshotWorkerOptions = {
   databasePath: string;
   /** SQLCipher key, when the database is encrypted. */
   databaseKey?: string | null;
+  /**
+   * Bound on one copy. A hung output mount (an SMB share that never returns)
+   * would otherwise leave the promise pending forever — no backup, no recorded
+   * failure, and the scheduler's `scheduled` latch stuck true. Defaults to
+   * {@link DEFAULT_SNAPSHOT_TIMEOUT_MS}.
+   */
+  timeoutMs?: number;
 };
+
+/**
+ * Generous cap on one snapshot: bounded, but far above any plausible local
+ * `VACUUM INTO`, so only a genuinely stuck copy is terminated.
+ */
+export const DEFAULT_SNAPSHOT_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * Resolve a SQLite driver module to an absolute path, from the API package.
@@ -117,6 +130,7 @@ export const createWorkerSnapshotter = (
   const modulePath = resolveDriverModule(
     options.databaseKey ? "better-sqlite3-sqlcipher" : "better-sqlite3",
   );
+  const timeoutMs = options.timeoutMs ?? DEFAULT_SNAPSHOT_TIMEOUT_MS;
 
   return (outputPath: string) =>
     new Promise<BackupSnapshotResult>((resolve, reject) => {
@@ -130,20 +144,37 @@ export const createWorkerSnapshotter = (
         },
       });
 
+      // A hung output mount (an SMB share that never returns) would otherwise
+      // leave this promise pending forever: no backup and, worse, no recorded
+      // failure. Bound it; the timeout terminates the worker and reports a
+      // normal rejection the service already handles.
+      const timer = setTimeout(() => {
+        void worker.terminate();
+        reject(new Error(`snapshot timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      timer.unref();
+
+      const settle = (finish: () => void) => {
+        clearTimeout(timer);
+        finish();
+      };
+
       worker.once("message", (message: SnapshotWorkerMessage) => {
-        if (message.ok) {
-          resolve({
-            schemaVersion: message.schemaVersion,
-            encrypted: message.encrypted,
-          });
-        } else {
-          reject(new Error(message.error));
-        }
+        settle(() => {
+          if (message.ok) {
+            resolve({
+              schemaVersion: message.schemaVersion,
+              encrypted: message.encrypted,
+            });
+          } else {
+            reject(new Error(message.error));
+          }
+        });
       });
 
       /* v8 ignore start -- worker bootstrap failure (failed module load, OOM) is not reproducible on demand; the worker reports ordinary snapshot failures as a message */
       worker.once("error", (error) => {
-        reject(error);
+        settle(() => reject(error));
       });
       /* v8 ignore stop */
     });
