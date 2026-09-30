@@ -125,10 +125,11 @@ duplicated.
 - `packages/contracts/src/debt-helpers.test.ts`: state for all four
   direction/sign combinations, zero, net sign-only, absolute amount.
 - `apps/web/src/features/debts/debt-utils.test.ts`: display helper for all
-  four states + zero; direction labels; `formatDebtAmount` never signed.
-- `apps/web/src/features/debts/debt-terminology.test.tsx` (new): per-screen
-  phrases + positive amounts; asserts no rendered balance text matches a
-  negative amount; zero shows `مسوّى`.
+  four states + zero; direction labels; `formatDebtAmount` never signed; i18n
+  copy pinned to the shared contract phrases.
+- `apps/web/src/features/debts/debts-mvp-web.test.tsx`: per-screen phrases +
+  positive amounts for the four states and zero, plus a guard that no balance
+  renders as a negative number.
 - API `company.unit.test.ts` / `company.service.test.ts`: new wire phrases.
 - `packages/contracts/src/index.test.ts`: new enum values.
 - Update the existing debt web tests that asserted the old labels.
