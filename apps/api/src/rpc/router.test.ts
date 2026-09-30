@@ -149,6 +149,16 @@ describe("RPC router", () => {
       operationsService: new OperationsService(repository, repository, mutation),
       financeService: (modules.financeService ?? new FinanceService(repository, repository, mutation)) as never,
       inventoryService: (modules.inventoryService ?? createEmptyInventoryService()) as never,
+      // backupService arrived with the daily-backup feature (#430); the router
+      // reads it unconditionally, so the harness must provide it the way the
+      // composition root does. A minimal stub is enough for routing tests.
+      backupService: (modules.backupService ?? {
+        getStatus: async () => ({
+          lastSuccessAt: null,
+          lastBackupPath: null,
+          lastFailure: null,
+        }),
+      }) as never,
       employeeModule,
       invoiceModule: (modules.invoiceModule ?? {}) as never,
       paymentModule,
