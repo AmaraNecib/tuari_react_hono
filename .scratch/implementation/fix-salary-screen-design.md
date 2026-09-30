@@ -99,3 +99,15 @@ same-month payment, and the screen renders no derived remaining figure.
   the prop type as optional so existing call sites/fixtures keep compiling.
 - The employees-screen quick form and the detail-page dialog are untouched.
 - No money math change: rows keep integer DZD through existing helpers.
+
+## Follow-up — period visibility (parent decision)
+
+The parent accepted the item-5 delta and asked that the null-period dead end be
+made visible: a worker with no wage period now sees the full amount prefilled,
+so the API refusal would otherwise only appear after save. The dialog now
+disables the save and shows the reason next to it, naming the missing setting
+and the fix ("دورية أجر العامل غير محددة. حدّدها من ملف العامل أولًا."), reusing
+the invoice save-reason pattern (`role="status" aria-live="polite"` +
+`text-destructive`). The API requirement is unchanged. Explicitly out of scope
+per the parent: a "pay full" affordance, and using a former employee's last
+expected amount.
