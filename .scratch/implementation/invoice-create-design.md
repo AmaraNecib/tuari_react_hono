@@ -35,21 +35,30 @@ New `apps/api/src/infrastructure/observability/request-failure.ts` (uses the exi
 
 - `logRequestFailure({ method, path, status, message, code?, error? })` → one
   `StructuredLogger.error("Request failed", …)` line with route, status, and message.
-- `markFailureLogged(context)` / `isFailureLogged(context)` — a `WeakSet` keyed by the
-  per-request `RpcContext`, so exactly one layer logs a given failed RPC.
-- `resolveFailureMessage` / `resolveFailureCode` read an already-decoded response body.
+- `createRpcFailureStore` / `runWithRpcFailureStore` / `markFailureLogged()` /
+  `isFailureLogged()` — an `AsyncLocalStorage` store created by the `/rpc/*` middleware, so
+  exactly one layer logs a given failed RPC. It is NOT keyed on the ORPC `context`
+  object: ORPC shallow-copies the context between layers, so the client interceptor and
+  the transport middleware see different identities for one request (found empirically).
+- `resolveFailureMessage` / `resolveFailureCode` / `unwrapResponseBody` read an
+  already-decoded `{ json: … }` response body.
 
 Wiring in `create-app.ts` (replaces the dead `console.error` interceptor):
 
 - `clientInterceptors: [onError, onFinish]` — the only layer that still holds the real
   error (ORPC maps unknown errors to a generic 500 envelope): logs thrown procedure
   errors (real message + `options.path`) and `{ success: false }` outputs, and marks the
-  context.
-- request-level `interceptors: [onFinish]` — logs `status >= 400` responses and any
-  `{ success: false }` envelope not already logged (covers wire/decode rejections).
-- a first-registered Hono middleware — logs non-RPC `status >= 400` from the response
-  body, and rethrows unhandled errors after logging them. ORPC error envelopes are
-  skipped there because the interceptor already logged them; the body-limit 413 (which
+  store.
+- request-level `interceptors: [onFinish]` — logs any `{ success: false }` envelope not
+  already logged. Decode/encode failures (`isSuccess === false`) are left to the
+  transport, where ORPC has already mapped the correct status.
+- the `/rpc/*` Hono middleware — wraps `handle` in the store and logs a `status >= 400`
+  response the client never logged, **using ORPC's mapped status verbatim**: 400 for a
+  request it could not decode (the client's fault), 500 for a response it could not
+  encode (the server's). No layer guesses 400 vs 500.
+- a first-registered global Hono middleware — logs non-RPC `status >= 400` from the
+  response body, and rethrows unhandled errors after logging them. ORPC error envelopes
+  on `/rpc/*` are skipped there (already handled above); the body-limit 413 (which
   bypasses ORPC) is still logged.
 
 Norm: exactly one line for a rejected mutation, zero for a success.
@@ -89,6 +98,6 @@ Norm: exactly one line for a rejected mutation, zero for a success.
   shown when the control is disabled for a content reason.
 - The `#42` bound tests must select a valid item definition first now that an incomplete
   line disables the button; their subject (paid-amount bounds) is unchanged.
-- "Unhandled error" messages are taken from the client interceptor (the real error); a
-  decode/encode failure that never reaches a procedure client is logged by the request
-  interceptor with status 500, though the wire envelope may be a 400.
+- "Unhandled error" messages are taken from the client interceptor (the real error). A
+  decode/encode failure is logged by the `/rpc/*` middleware with ORPC's mapped status:
+  400 for a malformed request, 500 for a server-side encode/output failure.

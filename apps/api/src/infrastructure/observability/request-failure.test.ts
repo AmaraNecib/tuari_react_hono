@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createRpcFailureStore,
   isFailureLogged,
   logRequestFailure,
   markFailureLogged,
   readResponseBody,
   resolveFailureCode,
   resolveFailureMessage,
+  runWithRpcFailureStore,
   unwrapResponseBody,
 } from "./request-failure";
 
@@ -45,11 +47,26 @@ describe("logRequestFailure", () => {
 });
 
 describe("failure-log dedupe marker", () => {
-  it("is false until the request is marked", () => {
-    const context = {};
-    expect(isFailureLogged(context)).toBe(false);
-    markFailureLogged(context);
-    expect(isFailureLogged(context)).toBe(true);
+  it("is false outside a request store", () => {
+    expect(isFailureLogged()).toBe(false);
+    // A mark with no active store is a no-op, not a crash.
+    expect(() => markFailureLogged()).not.toThrow();
+  });
+
+  it("is false until the request is marked, and scoped to that request", () => {
+    const first = createRpcFailureStore();
+    const second = createRpcFailureStore();
+
+    runWithRpcFailureStore(first, () => {
+      expect(isFailureLogged()).toBe(false);
+      markFailureLogged();
+      expect(isFailureLogged()).toBe(true);
+    });
+
+    // A sibling request's store is untouched.
+    runWithRpcFailureStore(second, () => {
+      expect(isFailureLogged()).toBe(false);
+    });
   });
 });
 
@@ -91,6 +108,10 @@ describe("readResponseBody", () => {
 
   it("returns undefined for a non-JSON response", async () => {
     expect(await readResponseBody(new Response("plain text"))).toBeUndefined();
+  });
+
+  it("returns undefined for a response with no content-type", async () => {
+    expect(await readResponseBody(new Response(null, { status: 400 }))).toBeUndefined();
   });
 
   it("returns undefined for an unparseable JSON response", async () => {

@@ -864,6 +864,52 @@ describe("createApp request-failure logging", () => {
     expect(failureLines[0]).toContain("Blocked origin.");
     expect(failureLines[0]).toContain("403");
   });
+
+  it("logs a malformed request body as a 400 client failure, once", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dependencies = adminDependencies();
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(
+      new Request("http://localhost/rpc/inventoryItemDefinitionsCreate", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:3000",
+        },
+        body: "{not json",
+      }),
+    );
+
+    // ORPC maps a body it cannot decode to BAD_REQUEST: the client's fault.
+    expect(response.status).toBe(400);
+    const failureLines = capturedLogLines([errorSpy]);
+    expect(failureLines).toHaveLength(1);
+    expect(failureLines[0]).toContain("\"status\":400");
+    expect(failureLines[0]).toContain("Malformed request");
+    expect(dependencies.inventoryService.createItemDefinition).not.toHaveBeenCalled();
+  });
+
+  it("logs a server-side output failure as a 500, distinguishable from a malformed request", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dependencies = adminDependencies();
+    // The handler resolves, but the output cannot satisfy the contract's
+    // output schema: a server-side failure, not the client's fault.
+    dependencies.inventoryService.createItemDefinition.mockResolvedValue({
+      success: true,
+      message: "تم",
+      item: null,
+    });
+    const app = createApp(dependencies as never, transportSecurity);
+
+    const response = await app.request(mutationRequest());
+
+    expect(response.status).toBe(500);
+    const failureLines = capturedLogLines([errorSpy]);
+    expect(failureLines).toHaveLength(1);
+    expect(failureLines[0]).toContain("\"status\":500");
+    expect(failureLines[0]).not.toContain("\"status\":400");
+  });
 });
 
 describe("createTransportSecurity", () => {

@@ -6,6 +6,7 @@ import { cors } from "hono/cors";
 import type { AppDependencies } from "./dependencies";
 import { isLocalHostname, normalizeOrigin } from "../infrastructure/config/url";
 import {
+  createRpcFailureStore,
   isFailureLogged,
   isRecord,
   logRequestFailure,
@@ -13,6 +14,7 @@ import {
   readResponseBody,
   resolveFailureCode,
   resolveFailureMessage,
+  runWithRpcFailureStore,
   unwrapResponseBody,
 } from "../infrastructure/observability/request-failure";
 import { bodyLimitMiddleware } from "../middleware/body-limit";
@@ -143,27 +145,16 @@ export function createApp(
       // wire/decode rejection never reaches the procedure client, so this is
       // the only layer that sees it.
       onFinish((state, options) => {
-        const { request, context } = options as unknown as RpcInterceptorOptions;
-        const [error, rawResult, isSuccess] = state as unknown as RpcInterceptorState;
+        const { request } = options as unknown as RpcInterceptorOptions;
+        const [, rawResult, isSuccess] = state as unknown as RpcInterceptorState;
         const path = request.url.pathname;
 
-        // A decode/encode failure never reaches a procedure client, so only
-        // this layer can log it. A procedure error already went through the
-        // client interceptor (same context), so it is skipped here.
+        // A request body ORPC could not decode, or a response it could not
+        // encode, never reaches a procedure client. Its accurate status (400
+        // for the client's malformed request, 500 for the server's failure) is
+        // only known at the transport, where ORPC has already mapped it, so
+        // the `/rpc/*` middleware logs those rather than this layer guessing.
         if (!isSuccess) {
-          if (isFailureLogged(context)) {
-            return;
-          }
-
-          const failure = error instanceof Error ? error : undefined;
-          logRequestFailure({
-            method: request.method,
-            path,
-            status: 500,
-            message: failure?.message ?? String(error),
-            error: failure,
-          });
-          markFailureLogged(context);
           return;
         }
 
@@ -179,7 +170,7 @@ export function createApp(
           return;
         }
 
-        if (isFailureLogged(context)) {
+        if (isFailureLogged()) {
           return;
         }
 
@@ -190,7 +181,7 @@ export function createApp(
           message: resolveFailureMessage(decoded) ?? `HTTP ${status}`,
           code: resolveFailureCode(decoded),
         });
-        markFailureLogged(context);
+        markFailureLogged();
       }),
     ],
     clientInterceptors: [
@@ -198,7 +189,7 @@ export function createApp(
       // (ORPC maps unknown errors to a generic 500 envelope before the
       // request-level interceptor sees a response).
       onError((error, options) => {
-        const { path = [], context } = options as unknown as RpcInterceptorOptions;
+        const { path = [] } = options as unknown as RpcInterceptorOptions;
         const failure = error instanceof Error ? error : undefined;
         logRequestFailure({
           method: "POST",
@@ -208,12 +199,12 @@ export function createApp(
           code: error instanceof ORPCError ? error.code : undefined,
           error: failure,
         });
-        markFailureLogged(context);
+        markFailureLogged();
       }),
       // Procedure level: a domain failure returned as `{ success: false }` is a
       // 200 at the transport, so it must be logged from the decoded output.
       onFinish((state, options) => {
-        const { path = [], context } = options as unknown as RpcInterceptorOptions;
+        const { path = [] } = options as unknown as RpcInterceptorOptions;
         const [, result, isSuccess] = state as unknown as RpcInterceptorState;
         if (!isSuccess || !isRecord(result) || result.success !== false) {
           return;
@@ -226,7 +217,7 @@ export function createApp(
           message: resolveFailureMessage(result) ?? "Procedure returned a failure result",
           code: resolveFailureCode(result),
         });
-        markFailureLogged(context);
+        markFailureLogged();
       }),
     ],
   });
@@ -485,12 +476,32 @@ export function createApp(
       dependencies.sessionService,
       getRemoteAddress(c.env),
     );
-    const { matched, response } = await rpcHandler.handle(c.req.raw, {
-      prefix: "/rpc",
-      context,
-    });
+    // One marker per request, inherited by every interceptor inside handle.
+    const failureStore = createRpcFailureStore();
+    const { matched, response } = await runWithRpcFailureStore(
+      failureStore,
+      () => rpcHandler.handle(c.req.raw, { prefix: "/rpc", context }),
+    );
 
     if (matched) {
+      // ORPC maps a request it cannot decode to BAD_REQUEST (400) and a
+      // failure on the server side of the response to INTERNAL_SERVER_ERROR
+      // (500). Use that mapped status verbatim: never report a malformed
+      // request as a server fault, and never hide a real server fault as a
+      // client one. Client interceptors already logged thrown procedure
+      // errors and `{ success: false }` envelopes, so those are skipped here.
+      if (response.status >= 400 && !failureStore.logged) {
+        const body = unwrapResponseBody(await readResponseBody(response));
+        logRequestFailure({
+          method: c.req.method,
+          path: c.req.path,
+          status: response.status,
+          message: resolveFailureMessage(body) ?? `HTTP ${response.status}`,
+          code: resolveFailureCode(body),
+        });
+        failureStore.logged = true;
+      }
+
       return c.newResponse(response.body, response);
     }
 

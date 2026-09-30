@@ -12,31 +12,60 @@
  *   the only layer that still holds the original error (ORPC catches procedure
  *   errors and maps unknown ones to a generic 500 envelope before a response
  *   exists);
- * - a `{ success: false }` envelope or a 4xx/5xx response is logged by the
- *   request interceptor from the already-decoded response body;
+ * - a `{ success: false }` envelope is logged by the request interceptor from
+ *   the already-decoded response body;
+ * - a 4xx/5xx response the client never logged (a request ORPC could not
+ *   decode, a response it could not encode) is logged by the `/rpc/*`
+ *   middleware from the response ORPC already mapped;
  * - every other 4xx/5xx (a transport route, the body-limit guard, an unknown
- *   route) is logged by the Hono middleware from the response body.
+ *   route) is logged by the global Hono middleware from the response body.
  *
  * The request body, query string, and procedure input are NEVER logged: they
  * can carry credentials.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import { StructuredLogger } from "./logger";
 
 /**
- * Per-request marker so the client interceptor (which has the real error) and
- * the request interceptor (which has the response) cannot both log the same
- * failure. Keyed by the request-scoped `RpcContext` object.
+ * Per-request dedupe marker so the client interceptor (which has the real
+ * error) and the transport middleware (which has the mapped status) cannot
+ * both log the same failure.
+ *
+ * This deliberately does NOT key off the ORPC `context` object: ORPC shallow-
+ * copies the context between layers, so the client interceptor and the
+ * middleware receive different object identities for one request. An async
+ * local store is established by the `/rpc/*` middleware and inherited by every
+ * interceptor running inside it, independent of object identity.
  */
-const loggedFailures = new WeakSet<object>();
+export type RpcFailureStore = { logged: boolean };
 
-/** Marks a request as already logged. */
-export function markFailureLogged(context: object): void {
-  loggedFailures.add(context);
+const rpcFailureStore = new AsyncLocalStorage<RpcFailureStore>();
+
+/** Creates the per-request marker the transport middleware runs with. */
+export function createRpcFailureStore(): RpcFailureStore {
+  return { logged: false };
 }
 
-/** Whether a request has already produced its one failure line. */
-export function isFailureLogged(context: object): boolean {
-  return loggedFailures.has(context);
+/** Runs `fn` with the request's marker visible to every nested interceptor. */
+export function runWithRpcFailureStore<T>(
+  store: RpcFailureStore,
+  fn: () => T,
+): T {
+  return rpcFailureStore.run(store, fn);
+}
+
+/** Marks the current request as already logged. */
+export function markFailureLogged(): void {
+  const store = rpcFailureStore.getStore();
+  if (store) {
+    store.logged = true;
+  }
+}
+
+/** Whether the current request has already produced its one failure line. */
+export function isFailureLogged(): boolean {
+  return rpcFailureStore.getStore()?.logged ?? false;
 }
 
 export type RequestFailure = {
