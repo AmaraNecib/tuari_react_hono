@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test"
 
 import { resetE2eDatabase } from "./helpers/db-isolation"
 import { findE2eDatabase, loadDatabaseConstructor } from "./helpers/db-seed"
+import { selectInvoiceLineItem } from "./helpers/invoice-line"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
@@ -53,15 +54,10 @@ test.describe("inventory asset charge — purchase onto a project", () => {
     await page.goto("/invoices/create")
     await expect(page.getByRole("heading", { name: "إضافة مخزون بالفاتورة" })).toBeVisible()
 
-    // The page starts with one line; pick the ASSET definition by its value
-    // (the option text carries the type suffix), then set the line's
-    // destination to the project.
-    const definitionSelect = page.getByLabel("تعريف العنصر").first()
-    const definitionValue = await definitionSelect
-      .locator("option")
-      .filter({ hasText: itemName })
-      .getAttribute("value")
-    await definitionSelect.selectOption(definitionValue ?? "")
+    // The page starts with one line. Variant C: choose the row's type first
+    // (an ASSET definition is offered only under the ASSET kind), then pick the
+    // definition by its unique name, then set the line's destination.
+    await selectInvoiceLineItem(page, { kind: "ASSET", itemName })
 
     // The line's project select is a native <select> whose option list carries
     // the project; the header default project is a custom combobox, so this
