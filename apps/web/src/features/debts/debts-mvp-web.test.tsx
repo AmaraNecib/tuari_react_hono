@@ -12,6 +12,7 @@ import { ConsolidationDialog } from "@/features/debts/consolidation-dialog"
 import { DebtsHubPage } from "@/features/debts/debts-hub-page"
 import { DebtLedgerPanel } from "@/features/debts/debt-ledger-panel"
 import { DebtPartySummaryCard } from "@/features/debts/debt-party-summary-card"
+import { VoidEntryDialog } from "@/features/debts/void-entry-dialog"
 import { ExternalCounterpartyCreatePage } from "@/features/externals/external-create-page"
 import { ExternalCounterpartyDetailsPage } from "@/features/externals/external-details-page"
 import { EmployeeDetailsPage } from "@/features/employees/employee-details-page"
@@ -554,6 +555,25 @@ describe("debts MVP web UI", () => {
       )
 
       expect(document.body.textContent).toContain("-5000")
+    })
+
+    it("keeps a voided payment movement delta signed", () => {
+      const payment: DebtEntry = {
+        ...opening("acct-PAYABLE", -300, "دفعة"),
+        entryType: "PAYMENT",
+        id: "payment-1",
+      }
+      renderWithProviders(
+        <VoidEntryDialog
+          accountDirection="PAYABLE"
+          entry={payment}
+          livePaymentEntries={[]}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+
+      expect(document.body.textContent).toContain("-300")
     })
   })
 })

@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/form-controls"
 import { useVoidDebtEntryMutation } from "@/features/app-shell/mock-dashboard"
-import { formatDebtAmount, getDebtBalanceDisplay, getDebtBalanceMeta } from "./debt-utils"
+import { formatDebtAmount, formatDebtMoney, getDebtBalanceDisplay, getDebtBalanceMeta } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
 /**
@@ -95,7 +95,7 @@ export function VoidEntryDialog({
                 {entry.entryType === "OPENING" ? t("debts.voidEntry.openingBalance") : t("debts.voidEntry.payment")}
               </span>
               <span className={cn("font-mono text-lg font-semibold", amountMeta.textClassName)} dir="ltr">
-                دج {formatDebtAmount(entry.signedAmountDzd)}
+                دج {formatDebtMoney(entry.signedAmountDzd)}
               </span>
             </div>
             {isOpeningBalance ? (
