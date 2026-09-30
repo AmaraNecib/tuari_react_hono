@@ -90,6 +90,44 @@ function prime(data: ProjectCost | undefined, extras: Record<string, unknown> = 
   })
 }
 
+/**
+ * Expenses 10,000, material net -1,500 → total 8,500. The expenses part is
+ * 117.6% of that total, the scenario the share cap exists for.
+ */
+function negativeNetCost(): ProjectCost {
+  return cost({
+    totalDzd: 8_500,
+    parts: { expensesDzd: 10_000, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: -1_500 },
+    expenses: [
+      {
+        id: "e-1",
+        expenseDate: "2026-05-10T00:00:00.000Z",
+        whatFor: "وقود",
+        amountDzd: 10_000,
+        responsibleWorkerId: null,
+        responsibleWorkerName: null,
+        sellerId: null,
+        sellerName: null,
+      },
+    ],
+    salaries: [],
+    stock: [],
+    materialMovements: [
+      {
+        id: "m-out",
+        itemDefinitionId: "def-1",
+        itemName: "إسمنت",
+        unit: "كيس",
+        quantity: 3,
+        unitPriceDzd: 500,
+        valueDzd: 1_500,
+        direction: "OUT",
+        occurredAt: "2026-05-21T00:00:00.000Z",
+      },
+    ],
+  })
+}
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -169,40 +207,7 @@ describe("ProjectCostSection (#414)", () => {
   })
 
   it("shows a negative material net with a warning instead of refusing the screen", () => {
-    prime(
-      cost({
-        // The arithmetic sum: 10,000 + 0 + 0 + (-1,500) = 8,500.
-        totalDzd: 8_500,
-        parts: { expensesDzd: 10_000, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: -1_500 },
-        expenses: [
-          {
-            id: "e-1",
-            expenseDate: "2026-05-10T00:00:00.000Z",
-            whatFor: "وقود",
-            amountDzd: 10_000,
-            responsibleWorkerId: null,
-            responsibleWorkerName: null,
-            sellerId: null,
-            sellerName: null,
-          },
-        ],
-        salaries: [],
-        stock: [],
-        materialMovements: [
-          {
-            id: "m-out",
-            itemDefinitionId: "def-1",
-            itemName: "إسمنت",
-            unit: "كيس",
-            quantity: 3,
-            unitPriceDzd: 500,
-            valueDzd: 1_500,
-            direction: "OUT",
-            occurredAt: "2026-05-21T00:00:00.000Z",
-          },
-        ],
-      }),
-    )
+    prime(negativeNetCost())
     render(<ProjectCostSection projectId="p-1" />)
 
     // The anomaly renders the screen; it is not an error state and not hidden.
@@ -212,6 +217,21 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText("-1,500 دج")).toBeTruthy()
     // ... with a warning that says what it usually means.
     expect(screen.getByText(/المواد الخارجة من هذا المشروع أكثر من الداخلة إليه/)).toBeTruthy()
+  })
+
+  it("caps every source share at 100% when a negative net inflates a positive part", () => {
+    prime(negativeNetCost())
+    render(<ProjectCostSection projectId="p-1" />)
+
+    // 10,000 / 8,500 is 117.6%. A share over 100% is a wrong number on screen,
+    // so the label is capped even though the total stays the arithmetic sum.
+    expect(screen.queryByText("118%")).toBeNull()
+    expect(screen.getByText("100%")).toBeTruthy()
+    const shares = screen.getAllByText(/^\d+%$/)
+    expect(shares.length).toBeGreaterThan(0)
+    for (const share of shares) {
+      expect(Number.parseInt(share.textContent ?? "", 10)).toBeLessThanOrEqual(100)
+    }
   })
 
   it("shows the parked asset inventory value separately from the cost total", () => {

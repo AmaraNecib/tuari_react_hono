@@ -62,7 +62,13 @@ export function ProjectCostSection({
 
   const data: ProjectCost = query.data
   const total = data.totalDzd
-  const percentOf = (value: number) => (total > 0 ? Math.max(0, Math.round((value / total) * 100)) : 0)
+  // A share is capped at 100%. The total is the plain arithmetic sum of the
+  // four parts, so a negative material net can make a positive part larger
+  // than the total (10,000 against a total of 8,500 is 117.6%); showing that
+  // as a percentage is a wrong number on screen. The cap is display-only: the
+  // total and the netting are unchanged, and the warning explains the anomaly.
+  const percentOf = (value: number) =>
+    total > 0 ? Math.min(100, Math.max(0, Math.round((value / total) * 100))) : 0
 
   const sources = [
     { key: "expenses", label: t("detailPages.project.cost.sources.expenses"), value: data.parts.expensesDzd, bar: "bg-chart-1" },
