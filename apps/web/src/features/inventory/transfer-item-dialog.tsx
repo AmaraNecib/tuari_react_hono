@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { MAX_MONEY_DZD } from "@tuari/contracts"
@@ -163,15 +163,52 @@ export function TransferItemDialog({
   // clobber an amount the operator has already typed. A refetch while the
   // dialog is open (a correction landing in another tab) only applies while
   // the field is still untouched.
+  //
+  // NEVER prefill from the cache: the query always refetches on open
+  // (`staleTime: 0` + `refetchOnMount: "always"`), and React Query hands back
+  // the previous cached value while that fetch is in flight. Prefilling it
+  // would let the operator submit a stale amount, so the field stays blank
+  // until the fresh default settles (a blank amount makes the server resolve
+  // the default at write time, which is always current) (#422 round 6).
   useEffect(() => {
     if (!open || target?.type !== "ASSET") return
     if (amountTouched) return
-    const defaultAmount = chargeDefault.data?.amountDzd
-    if (defaultAmount === undefined) return
-    setChargeAmount(String(defaultAmount))
-    const percent = chargePercentFromAmount(defaultAmount, chargeDefault.data!.purchasePriceDzd)
+    if (chargeDefault.isFetching) return
+    // A refetch that fails keeps the last cached value in `data` (TanStack v5
+    // semantics), so `isFetching` alone is not enough: an errored read must not
+    // prefill either. A blank field is safe because the server resolves the
+    // default at write time.
+    if (chargeDefault.isError) return
+    const defaultData = chargeDefault.data
+    if (defaultData === undefined) return
+    setChargeAmount(String(defaultData.amountDzd))
+    const percent = chargePercentFromAmount(defaultData.amountDzd, defaultData.purchasePriceDzd)
     setChargePercent(percent === null ? "" : String(percent))
-  }, [open, target, chargeDefault.data, amountTouched])
+  }, [open, target, chargeDefault.data, chargeDefault.isFetching, chargeDefault.isError, amountTouched])
+
+  // The percentage depends on the purchase price, which the default query
+  // resolves asynchronously. If the operator typed an amount while the price
+  // was still loading, the percentage is blank; once the price arrives, derive
+  // it from the typed amount. The percentage input is disabled until the price
+  // is known, so this can never clobber an entered percentage. A ref remembers
+  // the price last derived against, so ordinary amount edits keep flowing
+  // through `handleAmountChange` without this effect re-deriving per keystroke
+  // (#422 round 6).
+  const pricedAtRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!open || target?.type !== "ASSET") {
+      pricedAtRef.current = null
+      return
+    }
+    if (!hasPurchasePrice) return
+    if (pricedAtRef.current === purchasePriceDzd) return
+    pricedAtRef.current = purchasePriceDzd
+    if (!amountTouched) return
+    const parsed = parseChargeAmountInput(chargeAmount)
+    if (parsed.kind !== "amount") return
+    const percent = chargePercentFromAmount(parsed.value, purchasePriceDzd)
+    setChargePercent(percent === null ? "" : String(percent))
+  }, [open, target, hasPurchasePrice, purchasePriceDzd, amountTouched, chargeAmount])
 
   const resetForm = () => {
     setDestType("WAREHOUSE")

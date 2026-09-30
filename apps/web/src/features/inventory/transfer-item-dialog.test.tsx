@@ -203,4 +203,86 @@ describe("TransferItemDialog charge validation (#413)", () => {
     expect(screen.queryByText(/سعر الشراء: 0/)).toBeNull()
     expect((screen.getByLabelText("النسبة من سعر الشراء") as HTMLInputElement).disabled).toBe(true)
   })
+
+  it("does not prefill the cached default while the fresh default is still loading", () => {
+    // Reopening the dialog serves the previous open's cached amount while the
+    // query refetches. Prefilling that would let the operator submit a stale
+    // amount; the field must wait for the fresh default (#422 round 6).
+    chargeDefault.mockReturnValue({
+      data: { assetUnitId: "asset-1", amountDzd: 55_000, purchasePriceDzd: 100_000, source: "LAST_CHARGE" },
+      isFetching: true,
+    })
+    renderDialog()
+    chooseProjectDestination()
+
+    expect((screen.getByLabelText("مبلغ الاحتساب") as HTMLInputElement).value).toBe("")
+  })
+
+  it("does not prefill a retained cached default when the refetch fails", () => {
+    // TanStack v5 keeps `data` after a failed background refetch; an errored
+    // read must not prefill either. A blank field submits `null` and the server
+    // resolves the default fresh (#422 round 6).
+    chargeDefault.mockReturnValue({
+      data: { assetUnitId: "asset-1", amountDzd: 55_000, purchasePriceDzd: 100_000, source: "LAST_CHARGE" },
+      isError: true,
+      isFetching: false,
+    })
+    renderDialog()
+    chooseProjectDestination()
+
+    expect((screen.getByLabelText("مبلغ الاحتساب") as HTMLInputElement).value).toBe("")
+  })
+
+  it("prefills the fresh default once the refetch settles", () => {
+    chargeDefault.mockReturnValue({
+      data: { assetUnitId: "asset-1", amountDzd: 55_000, purchasePriceDzd: 100_000, source: "LAST_CHARGE" },
+      isFetching: true,
+    })
+    const { rerender } = renderDialog()
+    chooseProjectDestination()
+    expect((screen.getByLabelText("مبلغ الاحتساب") as HTMLInputElement).value).toBe("")
+
+    chargeDefault.mockReturnValue({
+      data: { assetUnitId: "asset-1", amountDzd: 70_000, purchasePriceDzd: 100_000, source: "LAST_CHARGE" },
+      isFetching: false,
+    })
+    rerender(
+      <TransferItemDialog
+        open
+        target={{ type: "ASSET", assetUnitId: "asset-1", assetName: "مثقاب" }}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect((screen.getByLabelText("مبلغ الاحتساب") as HTMLInputElement).value).toBe("70000")
+  })
+
+  it("computes the percentage from a typed amount once the price arrives", () => {
+    // The operator types an amount while the price is still loading; the
+    // percentage must be derived from what they typed, not left blank (#422
+    // round 6).
+    chargeDefault.mockReturnValue({ isPending: true, data: undefined })
+    const { rerender } = renderDialog()
+    chooseProjectDestination()
+
+    expect((screen.getByLabelText("النسبة من سعر الشراء") as HTMLInputElement).disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText("مبلغ الاحتساب"), { target: { value: "120000" } })
+    expect((screen.getByLabelText("النسبة من سعر الشراء") as HTMLInputElement).value).toBe("")
+
+    chargeDefault.mockReturnValue({
+      data: { assetUnitId: "asset-1", amountDzd: 100_000, purchasePriceDzd: 100_000, source: "PURCHASE_PRICE" },
+      isFetching: false,
+    })
+    rerender(
+      <TransferItemDialog
+        open
+        target={{ type: "ASSET", assetUnitId: "asset-1", assetName: "مثقاب" }}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    // The typed amount is never clobbered; only the percentage is filled in.
+    expect((screen.getByLabelText("مبلغ الاحتساب") as HTMLInputElement).value).toBe("120000")
+    expect((screen.getByLabelText("النسبة من سعر الشراء") as HTMLInputElement).value).toBe("20")
+  })
 })

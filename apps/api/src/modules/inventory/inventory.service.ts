@@ -459,6 +459,12 @@ export class InventoryService {
         note: normalizeText(input.note),
       })
 
+      // Placements are charged AFTER the entry loop, grouped per project, so a
+      // bulk purchase reads the project's live charges once instead of once per
+      // unit (#422 round 6). The charges still commit with the invoice: this
+      // runs inside the same transaction.
+      const pendingPlacements = new Map<string, Array<{ assetUnitId: string; movementId: string }>>()
+
       for (const entry of preparedEntries) {
         if (entry.kind === "CONSUMABLE") {
           const createdEntry = this.repository.createEntry({
@@ -535,14 +541,15 @@ export class InventoryService {
           // fault: fail loudly rather than book an uncharged placement (#422
           // round 5).
           if (entry.projectId) {
-            this.requireAssetChargeService().createPlacementCharge({
-              assetUnitId: createdAsset.id,
-              projectId: entry.projectId,
-              movementId: movement.id,
-              amountDzd: null,
-            }, audit)
+            const placements = pendingPlacements.get(entry.projectId) ?? []
+            placements.push({ assetUnitId: createdAsset.id, movementId: movement.id })
+            pendingPlacements.set(entry.projectId, placements)
           }
         }
+      }
+
+      for (const [projectId, placements] of pendingPlacements) {
+        this.requireAssetChargeService().createPlacementCharges({ projectId, placements }, audit)
       }
 
       return {

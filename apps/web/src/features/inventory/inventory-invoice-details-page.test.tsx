@@ -19,10 +19,15 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./inventory-hooks", () => ({
   useInventoryInvoiceGroupQuery: () => mocks.invoiceGroupQuery(),
-  useInventoryWarehousesQuery: () => mocks.warehousesQuery(),
-  useInventoryProjectsQuery: () => mocks.projectsQuery(),
+  useInventoryWarehousesQuery: (enabled?: boolean) => mocks.warehousesQuery(enabled),
+  useInventoryProjectsQuery: (enabled?: boolean) => mocks.projectsQuery(enabled),
   useTransferInventoryAssetMutation: () => mocks.transferAssetMutation,
   useTransferInventoryConsumableMutation: () => mocks.transferConsumableMutation,
+  // The page now embeds AssetChargeHistory so a unit with no location keeps its
+  // charge editor reachable (#422 round 6).
+  useAssetChargesByUnitQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+  useUpdateAssetChargeMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useVoidAssetChargeMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   // The invoice screen routes asset transfers through TransferItemDialog (#413).
   useAssetChargeDefaultQuery: () => ({
     data: {
@@ -295,5 +300,42 @@ describe("InventoryInvoiceDetailsPage error surface (issue #34)", () => {
     fireEvent.change(screen.getByLabelText("نوع الوجهة"), { target: { value: "PROJECT" } })
 
     expect(screen.getByLabelText("مبلغ الاحتساب")).toBeTruthy()
+  })
+
+  it("keeps the destination lists disabled until a transfer dialog opens (#422 round 6)", () => {
+    renderPage(successQuery())
+
+    expect(mocks.warehousesQuery).toHaveBeenCalledWith(false)
+    expect(mocks.projectsQuery).toHaveBeenCalledWith(false)
+
+    fireEvent.click(screen.getByRole("button", { name: "تحويل الأصل" }))
+
+    expect(mocks.warehousesQuery).toHaveBeenCalledWith(true)
+    expect(mocks.projectsQuery).toHaveBeenCalledWith(true)
+  })
+
+  it("routes a consumable transfer through the shared dialog too (#422 round 6)", () => {
+    renderPage(successQuery())
+
+    fireEvent.click(screen.getByRole("button", { name: "تحويل الكمية" }))
+
+    expect(screen.getByRole("heading", { name: "تحويل عنصر" })).toBeTruthy()
+  })
+
+  it("keeps the charge editor reachable for a unit with no location (#422 round 6)", () => {
+    // An outbound sale/gift/return clears the unit's location, so it drops out
+    // of the location-contents view. The invoice's own asset list is the
+    // per-unit view that keeps its charge history and correction reachable.
+    const detail = makeInvoiceGroupDetail()
+    const asset = detail.entries[1]!.assets[0]!
+    detail.entries[1]!.assets = [
+      { ...asset, currentWarehouseId: null, currentProjectId: null, currentLocationLabel: null },
+    ]
+    renderPage({ data: detail, isPending: false, isError: false, refetch: vi.fn() })
+
+    expect(screen.getByText("المكان الحالي: غير محدد")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "سجل الاحتساب" }))
+
+    expect(screen.getByTestId("asset-charge-history")).toBeTruthy()
   })
 })

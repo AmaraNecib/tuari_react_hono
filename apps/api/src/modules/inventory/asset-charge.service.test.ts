@@ -366,3 +366,98 @@ describe("AssetChargeService — chain, corrections and total (#413)", () => {
     expect(projectResult.item.charges[0]?.id).toBe(charge.id)
   })
 })
+
+describe("AssetChargeService — money boundary and bulk placements (#422 round 6)", () => {
+  it("rounds a sub-cent placement at the write boundary so the stored amount equals the total", () => {
+    // 0.005 is a legal non-negative amount at the wire gate, but storing it
+    // as-is made the charge row disagree with the rounded project total.
+    const { service } = createHarness()
+    const charge = service.createPlacementCharge(
+      { assetUnitId: "asset-1", projectId: "project-a", amountDzd: 0.005 },
+      AUDIT,
+    )
+
+    expect(charge.amountDzd).toBe(0.01)
+    const project = service.listByProject({ projectId: "project-a" })
+    expect(project.charges[0]?.amountDzd).toBe(0.01)
+    expect(project.totalDzd).toBe(0.01)
+  })
+
+  it("rounds a sub-cent correction at the write boundary (revision mirrors the stored amount)", () => {
+    const { service } = createHarness()
+    const charge = service.createPlacementCharge(
+      { assetUnitId: "asset-1", projectId: "project-a", amountDzd: 10 },
+      AUDIT,
+    )
+
+    const updated = service.updateCharge({ chargeId: charge.id, amountDzd: 0.005 }, AUDIT)
+
+    expect(updated.item.amountDzd).toBe(0.01)
+    expect(updated.item.revisions[0]?.newAmountDzd).toBe(0.01)
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(0.01)
+  })
+
+  it("charges a batch of placements with ONE project read and a running total", () => {
+    const { service, repository } = createHarness()
+    let reads = 0
+    const original = repository.listChargesByProject.bind(repository)
+    repository.listChargesByProject = (projectId: string) => {
+      reads += 1
+      return original(projectId)
+    }
+
+    const charges = service.createPlacementCharges(
+      {
+        projectId: "project-a",
+        placements: [
+          { assetUnitId: "asset-1", movementId: "m-1" },
+          { assetUnitId: "asset-1", movementId: "m-2" },
+          { assetUnitId: "asset-1", movementId: "m-3" },
+        ],
+      },
+      AUDIT,
+    )
+
+    expect(reads).toBe(1)
+    expect(charges.map((charge) => charge.movementId)).toEqual(["m-1", "m-2", "m-3"])
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(300_000)
+  })
+
+  it("sums explicit batch amounts through the same money boundary", () => {
+    const { service } = createHarness()
+    service.createPlacementCharges(
+      {
+        projectId: "project-a",
+        placements: [
+          { assetUnitId: "asset-1", amountDzd: 0.005 },
+          { assetUnitId: "asset-1", amountDzd: 0.2 },
+        ],
+      },
+      AUDIT,
+    )
+
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(0.21)
+  })
+
+  it("refuses a batch whose running total would exceed the bound before writing it", () => {
+    const { service, repository } = createHarness()
+    repository.createCharge({ assetUnitId: "asset-1", projectId: "project-a", amountDzd: Number.MAX_SAFE_INTEGER })
+
+    expect(() =>
+      service.createPlacementCharges(
+        { projectId: "project-a", placements: [{ assetUnitId: "asset-1", movementId: "m-1" }] },
+        AUDIT,
+      ),
+    ).toThrowError(/الحد الأقصى/)
+
+    expect(repository._charges.size).toBe(1)
+    expect(service.listByProject({ projectId: "project-a" }).totalDzd).toBe(Number.MAX_SAFE_INTEGER)
+  })
+
+  it("rejects a batch for an unknown project before reading or writing anything", () => {
+    const { service } = createHarness()
+    expect(() =>
+      service.createPlacementCharges({ projectId: "nope", placements: [{ assetUnitId: "asset-1" }] }, AUDIT),
+    ).toThrowError(/المشروع/)
+  })
+})

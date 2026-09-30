@@ -298,6 +298,41 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
     })
   })
 
+  it("charges a multi-unit project purchase with ONE project read (#422 round 6)", () => {
+    const { service, chargeRepository } = createInvoiceHarness()
+    let reads = 0
+    const original = chargeRepository.listChargesByProject.bind(chargeRepository)
+    chargeRepository.listChargesByProject = (projectId: string) => {
+      reads += 1
+      return original(projectId)
+    }
+
+    service.createInvoiceGroup(
+      {
+        projectId: "project-a",
+        entries: [
+          {
+            kind: "ASSET",
+            itemDefinitionId: "def-1",
+            projectId: "project-a",
+            assets: [
+              { assetName: "مثقاب 1", purchasePriceDzd: 100_000 },
+              { assetName: "مثقاب 2", purchasePriceDzd: 100_000 },
+              { assetName: "مثقاب 3", purchasePriceDzd: 100_000 },
+            ],
+          },
+        ],
+      },
+      AUDIT,
+    )
+
+    expect(reads).toBe(1)
+    expect(chargeRepository._charges.size).toBe(3)
+    expect([...chargeRepository._charges.values()].map((charge) => charge.amountDzd)).toEqual([
+      100_000, 100_000, 100_000,
+    ])
+  })
+
   it("writes no charge for an asset created on a warehouse", () => {
     const { service, chargeRepository } = createInvoiceHarness()
 

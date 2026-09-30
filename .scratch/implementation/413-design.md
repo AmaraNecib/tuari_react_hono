@@ -416,3 +416,42 @@ Note on the round-4 "reading full rows for the aggregate does not need the
 lock" entry: round 5 deliberately reintroduces a full read in the write gate,
 because correctness (one summation, one order) outranks the single-aggregate
 micro-optimisation. The read still happens inside the same locked transaction.
+
+## Review round 6 — PR #422 (six batched findings)
+
+1. **A stale cached default can no longer be charged.** Round 5 made the
+   default query refetch on open, but React Query still returns the previous
+   open's cached value while that refetch is in flight; the prefill effect used
+   it, so the operator could submit a stale amount. The effect now returns
+   while `isFetching` and while `isError` (a failed refetch keeps the cached
+   value in TanStack v5), and applies the default only once the fresh read
+   settles. While it is blank, submitting sends `null`, which makes the server
+   resolve the default at write time (always current).
+   `transfer-item-dialog.test.tsx` pins the blank-while-loading field and the
+   errored-refetch case; the loading test fails on the round-5 code (it
+   prefilled `55000`).
+2. **Money is rounded at the write boundary.** `parseAmount` (used by the
+   placement path) and `updateCharge` now run every amount through the shared
+   `roundMoney` helper before it is stored, and `resolveDefault` rounds the
+   amount it returns, so the stored row, the revision record, the prefilled
+   default and the project total all agree on a sub-cent input.
+3. **An outbound unit keeps its charge editor.** A sale, gift or return clears
+   the unit's location, so it drops out of the location-contents view. The
+   invoice-details asset row now embeds `AssetChargeHistory`, the per-unit view
+   that stays reachable for a unit with no location.
+4. **A bulk purchase reads the project's charges once.** `createPlacementCharges`
+   loads the project's live charges a single time and advances a running total
+   as it writes each placement; `createInvoiceGroup` groups the placements per
+   project and calls it once. An N-unit purchase no longer costs N scans. The
+   single-placement path keeps its own one-read gate.
+5. **The percentage is derived from a typed amount once the price arrives.**
+   The percentage field is disabled while the price is unknown, so it could not
+   be typed; a separate effect now computes it from the amount the operator
+   typed when the price lands, without touching the amount. A ref keyed to the
+   price keeps ordinary amount edits on the existing `handleAmountChange` path.
+6. **Invoice details stops fetching the destination lists eagerly.** The
+   inline consumable transfer form is replaced by the shared `TransferItemDialog`
+   (which already owns the open-gated warehouse/project queries), so the page
+   itself fetches nothing until a transfer dialog opens. This also makes the
+   consumable transfer charge-aware-consistent with every other transfer entry
+   point.

@@ -73,9 +73,12 @@ export class AssetChargeService {
     // The echoed `purchasePriceDzd` uses the permissive stored shape, so a
     // legacy above-bound price still reads back whenever the amount itself
     // comes from a valid last charge (#413 round 3).
+    // Round at the boundary so the default the dialog prefills is EXACTLY the
+    // amount that will be stored: a sub-cent source (a legacy price) must not
+    // show one value and persist another (#422 round 6).
     const resolved = inventoryAssetChargeDefaultSchema.safeParse({
       assetUnitId: asset.id,
-      amountDzd: lastAmount ?? asset.purchasePriceDzd,
+      amountDzd: roundMoney(lastAmount ?? asset.purchasePriceDzd),
       purchasePriceDzd: asset.purchasePriceDzd,
       source: lastAmount === null ? "PURCHASE_PRICE" : "LAST_CHARGE",
     })
@@ -140,6 +143,71 @@ export class AssetChargeService {
     })
   }
 
+  /**
+   * createPlacementCharges — the bulk form of {@link createPlacementCharge}.
+   *
+   * A purchase invoice can place many units on the SAME project at once. The
+   * single-placement path re-reads the project's live charges for every unit,
+   * so an N-unit purchase costs N scans. This reads them ONCE and advances a
+   * running total across the batch, so the cost is one read regardless of N
+   * (#422 round 6). Amounts resolve exactly as the single path (an explicit
+   * value, else the unit's default) and every charge shares the caller's
+   * transaction.
+   */
+  createPlacementCharges(
+    input: {
+      projectId: string
+      placements: Array<{ assetUnitId: string; movementId?: string | null; amountDzd?: number | null }>
+    },
+    auditContext?: MutationAuditContext,
+  ): InventoryAssetChargeRecord[] {
+    const audit = normalizeMutationAuditContext(auditContext)
+
+    if (!this.inventory.projectExists(input.projectId)) {
+      throw new InventoryError("VALIDATION", "المشروع المحدد غير موجود.", [
+        { field: "projectId", message: "المشروع المحدد غير موجود." },
+      ])
+    }
+
+    return this.repository.withTransaction(() => {
+      // One read for the whole batch. `currentTotalDzd` is what the read-back
+      // shows before the batch and what the refusal message reports; the
+      // running total advances with each created charge, so an N-unit purchase
+      // costs one scan instead of N (#422 round 6).
+      const liveAmounts = this.repository
+        .listChargesByProject(input.projectId)
+        .filter((charge) => charge.status === "LIVE")
+        .map((charge) => charge.amountDzd)
+      const currentTotalDzd = this.sumLiveCharges(liveAmounts)
+      let runningTotalDzd = currentTotalDzd
+
+      return input.placements.map((placement) => {
+        // Resolve each default AS the batch is written, so a unit placed twice
+        // in one batch defaults to the amount just charged to it, exactly like
+        // sequential single placements.
+        const amountDzd =
+          placement.amountDzd === undefined || placement.amountDzd === null
+            ? this.resolveDefault({ assetUnitId: placement.assetUnitId }).amountDzd
+            : this.parseAmount(placement.amountDzd, "chargeAmountDzd")
+
+        runningTotalDzd = roundMoney(runningTotalDzd + amountDzd)
+        if (runningTotalDzd > MAX_MONEY_DZD) {
+          throw this.projectTotalOutOfRange(currentTotalDzd, "amountDzd")
+        }
+
+        return this.repository.createCharge({
+          assetUnitId: placement.assetUnitId,
+          projectId: input.projectId,
+          movementId: placement.movementId ?? null,
+          amountDzd,
+          actorUserId: audit.actorUserId,
+          actorLabel: audit.actorLabel,
+          transactionId: audit.transactionId,
+        })
+      })
+    })
+  }
+
   /** listByUnit — the unit's charge chain, newest first, with revisions. */
   listByUnit(input: { assetUnitId: string }) {
     // One revisions query for the whole chain instead of one per charge (#422
@@ -188,6 +256,9 @@ export class AssetChargeService {
 
     const audit = normalizeMutationAuditContext(auditContext)
     const reason = normalizeText(parsed.data.reason)
+    // Round at the write boundary with the same helper the read uses, so the
+    // stored amount and the summed total can never disagree (#422 round 6).
+    const amountDzd = this.parseAmount(parsed.data.amountDzd, "amountDzd")
 
     // The read, the aggregate check and the write share one locked transaction:
     // a concurrent correction/void can no longer make the revision record a
@@ -196,15 +267,15 @@ export class AssetChargeService {
     // database cannot resurrect a voided charge (#422 round 4).
     const updated = this.repository.withTransaction(() => {
       const charge = this.requireLiveCharge(parsed.data.chargeId, "update")
-      this.assertProjectTotalWithinBound(charge.projectId, parsed.data.amountDzd, charge.id)
+      this.assertProjectTotalWithinBound(charge.projectId, amountDzd, charge.id)
 
       const result = this.repository.updateCharge(
         charge.id,
-        { amountDzd: parsed.data.amountDzd, updatedAt: createAlgeriaTimestamp() },
+        { amountDzd, updatedAt: createAlgeriaTimestamp() },
         {
           chargeId: charge.id,
           previousAmountDzd: charge.amountDzd,
-          newAmountDzd: parsed.data.amountDzd,
+          newAmountDzd: amountDzd,
           reason,
           actorUserId: audit.actorUserId,
           actorLabel: audit.actorLabel,
@@ -356,6 +427,9 @@ export class AssetChargeService {
       ])
     }
 
-    return parsed.data
+    // Every persisted charge amount goes through this ONE boundary, so a
+    // sub-cent input is stored as the amount the project total will sum
+    // (#422 round 6).
+    return roundMoney(parsed.data)
   }
 }
