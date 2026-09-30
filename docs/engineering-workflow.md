@@ -183,7 +183,33 @@ and documented; it must not be silently ignored.
 
 ## 5. Quality check
 
-Select relevant skills rather than loading every skill:
+### Design pass on the finished diff — mandatory, and it is a merge gate
+
+Load the three design skills against **the diff you just wrote**, not only
+against the new modules in it. The point is that a PR does not merge and get
+"cleaned up later": the mess compounds, and after two or three such PRs the
+codebase is harder to change than when it started.
+
+| Skill | What it asks of this diff |
+| --- | --- |
+| `domain-modeling` | Does the diff use the project's vocabulary? Did it introduce or resolve a term that belongs in `CONTEXT.md`? Is a new domain rule stated once, in the right place? |
+| `codebase-design` | Is anything the diff added **shallow** (run the deletion test)? Is a seam where it should be, and does it have two adapters or is it hypothetical? Is the interface the test surface? Did the diff introduce duplication that will drift? |
+| `improve-codebase-architecture` | What friction did this diff create? List the deepening opportunities it reveals — fix the ones inside this PR's scope, file the rest as issues with the finding, and say why the remainder is justified. |
+
+**Output** (part of the review evidence, `.scratch/reviews/<issue-id>/design-pass.md`):
+what the pass found, what it fixed in this PR, what it filed, and the reasoning
+for anything deliberately left. "Nothing found" is a valid result but it must be
+stated — silence is not evidence that the pass ran.
+
+This applies to every PR, including small ones: a five-line change that adds a
+second copy of a rule is exactly how drift starts.
+
+Separately, and periodically rather than per PR, run
+`improve-codebase-architecture` over the **whole** codebase (it produces an HTML
+report of deepening candidates). That is how debt accumulated before this rule
+gets retired.
+
+### Select relevant skills rather than loading every skill:
 
 | Change | Skill |
 | --- | --- |
