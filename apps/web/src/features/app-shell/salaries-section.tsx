@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react"
-import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { Field } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { PageHeader } from "@/features/shared/page-primitives"
@@ -52,27 +52,6 @@ function MoneyCell({
       {currencyLabel}{" "}
       {new Intl.NumberFormat("en-US", { maximumFractionDigits, useGrouping: true }).format(value)}
     </span>
-  )
-}
-
-/**
- * One labelled filter control. The wrapping `<label>` gives the native control
- * its accessible name so screen readers and tests find it by the visible label.
- */
-function SalaryFilterField({
-  label,
-  children,
-  className,
-}: {
-  label: string
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <label className={className ?? "flex min-w-[10rem] flex-col gap-2"}>
-      <span className="text-sm font-medium text-foreground">{label}</span>
-      {children}
-    </label>
   )
 }
 
@@ -263,8 +242,8 @@ export function SalariesSection({
         <div className="space-y-4">
           {recentPayments.length > 0 ? (
             <AppShellFilterShell>
-              <SalaryFilterField
-                className="flex min-w-[14rem] flex-1 flex-col gap-2"
+              <Field
+                className="min-w-[14rem] flex-1"
                 label={t("salaries.searchPlaceholder")}
               >
                 <Input
@@ -272,8 +251,8 @@ export function SalariesSection({
                   placeholder={t("salaries.searchPlaceholder")}
                   onChange={(event) => setPaymentQuery(event.target.value)}
                 />
-              </SalaryFilterField>
-              <SalaryFilterField label={t("salaries.workerFilter")}>
+              </Field>
+              <Field label={t("salaries.workerFilter")}>
                 <NativeSelect
                   value={paymentWorkerFilter}
                   onChange={(event) => setPaymentWorkerFilter(event.target.value)}
@@ -283,8 +262,8 @@ export function SalariesSection({
                     <option key={option.id} value={option.id}>{option.name}</option>
                   ))}
                 </NativeSelect>
-              </SalaryFilterField>
-              <SalaryFilterField label={t("salaries.projectFilter")}>
+              </Field>
+              <Field label={t("salaries.projectFilter")}>
                 <NativeSelect
                   value={paymentProjectFilter}
                   onChange={(event) => setPaymentProjectFilter(event.target.value)}
@@ -294,8 +273,8 @@ export function SalariesSection({
                     <option key={project.id} value={project.id}>{project.name}</option>
                   ))}
                 </NativeSelect>
-              </SalaryFilterField>
-              <SalaryFilterField label={t("salaries.periodFilter")}>
+              </Field>
+              <Field label={t("salaries.periodFilter")}>
                 <NativeSelect
                   value={paymentPeriodFilter}
                   onChange={(event) =>
@@ -307,7 +286,7 @@ export function SalariesSection({
                     <option key={value} value={value}>{t(getSalaryPeriodLabelKey(value))}</option>
                   ))}
                 </NativeSelect>
-              </SalaryFilterField>
+              </Field>
             </AppShellFilterShell>
           ) : null}
 
@@ -414,8 +393,8 @@ export function SalariesSection({
         <div className="space-y-4">
           {workers.length > 0 ? (
             <AppShellFilterShell>
-              <SalaryFilterField
-                className="flex min-w-[14rem] flex-1 flex-col gap-2"
+              <Field
+                className="min-w-[14rem] flex-1"
                 label={t("salaries.searchPlaceholder")}
               >
                 <Input
@@ -423,8 +402,8 @@ export function SalariesSection({
                   placeholder={t("salaries.searchPlaceholder")}
                   onChange={(event) => setWorkerQuery(event.target.value)}
                 />
-              </SalaryFilterField>
-              <SalaryFilterField label={t("salaries.projectFilter")}>
+              </Field>
+              <Field label={t("salaries.projectFilter")}>
                 <NativeSelect
                   value={workerProjectFilter}
                   onChange={(event) => setWorkerProjectFilter(event.target.value)}
@@ -434,8 +413,8 @@ export function SalariesSection({
                     <option key={project.id} value={project.id}>{project.name}</option>
                   ))}
                 </NativeSelect>
-              </SalaryFilterField>
-              <SalaryFilterField label={t("salaries.periodFilter")}>
+              </Field>
+              <Field label={t("salaries.periodFilter")}>
                 <NativeSelect
                   value={workerPeriodFilter}
                   onChange={(event) =>
@@ -447,7 +426,7 @@ export function SalariesSection({
                     <option key={value} value={value}>{t(getSalaryPeriodLabelKey(value))}</option>
                   ))}
                 </NativeSelect>
-              </SalaryFilterField>
+              </Field>
             </AppShellFilterShell>
           ) : null}
 

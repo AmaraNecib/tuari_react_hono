@@ -376,6 +376,30 @@ describe("AddSalaryPaymentDialog (#412)", () => {
     expect(screen.getByText("salaries.missingPeriodReason")).toBeTruthy()
   })
 
+  it("blocks save with a reason when the worker has no wage, even after an amount is typed", () => {
+    mockMutateAsync.mockReset()
+    render(
+      <AddSalaryPaymentDialog
+        employeeId="employee-1"
+        employeeName="عامل"
+        salaryAmountDzd={null}
+        salaryPeriod="MONTHLY"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    // The operator can type an amount and days, but the API still needs the
+    // worker's wage, so save stays blocked with the missing setting named.
+    fireEvent.change(screen.getByLabelText(/salaries.actualAmount/), {
+      target: { value: "5000" },
+    })
+
+    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
+    expect(submit.hasAttribute("disabled")).toBe(true)
+    expect(screen.getByText("salaries.missingWageReason")).toBeTruthy()
+  })
+
   it("records a second payment for the same worker in the same month (owner item 6, decision C)", async () => {
     mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
     renderDialog("MONTHLY")

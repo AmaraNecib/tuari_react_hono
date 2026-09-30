@@ -21,6 +21,7 @@ import type { SalaryPeriodType, SalaryProjectAssignmentWindow } from "@tuari/con
 import {
   computeUnallocatedDays,
   defaultSalaryPaymentDays,
+  effectiveSalaryPeriod,
   parsePositiveInteger,
   resolveSalaryPaymentPeriod,
 } from "./salary-payment-form"
@@ -104,13 +105,13 @@ export function AddSalaryPaymentDialog({
 
   const days = parsePositiveInteger(daysText)
   // An unknown wage period still has a known wage. The day default already
-  // treats a null period as a month (see `defaultSalaryPaymentDays`), so the
+  // treats a null period as a month (see `effectiveSalaryPeriod`), so the
   // amount default follows the same convention instead of leaving the field
   // empty and forcing the operator to retype the wage the app already knows.
   const proposedAmount =
     salaryAmountDzd !== null && days !== null
       ? computeProposedSalaryAmount({
-          periodType: salaryPeriod ?? "MONTHLY",
+          periodType: effectiveSalaryPeriod(salaryPeriod),
           salaryAmountDzd,
           days,
         })
@@ -227,11 +228,13 @@ export function AddSalaryPaymentDialog({
     !overAllocated &&
     !mutation.isPending
 
-  // The API refuses a payment when the worker has no wage period. The
-  // full-salary default now fills the amount, so the refusal would otherwise be
-  // a silent dead end at save time; name the missing setting and what to do
-  // next to the save control (the invoice save-reason pattern).
+  // The API refuses a payment when the worker has no current wage or no wage
+  // period. The full-salary default now fills the amount, so the refusal would
+  // otherwise be a silent dead end at save time; name each missing setting and
+  // what to do next to the save control (the invoice save-reason pattern).
+  const missingWageReason = salaryAmountDzd === null ? t("salaries.missingWageReason") : null
   const missingPeriodReason = salaryPeriod === null ? t("salaries.missingPeriodReason") : null
+  const saveBlocked = missingWageReason !== null || missingPeriodReason !== null
 
   const resetForm = () => {
     setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
@@ -418,10 +421,11 @@ export function AddSalaryPaymentDialog({
           </label>
         </div>
 
-        {missingPeriodReason ? (
-          <p role="status" aria-live="polite" className="text-sm text-destructive">
-            {missingPeriodReason}
-          </p>
+        {saveBlocked ? (
+          <div role="status" aria-live="polite" className="space-y-1 text-sm text-destructive">
+            {missingWageReason ? <p>{missingWageReason}</p> : null}
+            {missingPeriodReason ? <p>{missingPeriodReason}</p> : null}
+          </div>
         ) : null}
 
         <DialogFooter>
@@ -434,7 +438,7 @@ export function AddSalaryPaymentDialog({
           >
             {t("common.cancel")}
           </Button>
-          <Button disabled={!canSubmit || missingPeriodReason !== null} onClick={handleSubmit}>
+          <Button disabled={!canSubmit || saveBlocked} onClick={handleSubmit}>
             {t("salaries.addPayment")}
           </Button>
         </DialogFooter>

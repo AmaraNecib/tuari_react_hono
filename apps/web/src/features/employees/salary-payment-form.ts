@@ -12,6 +12,15 @@ import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 export { roundMoneyToCents, SALARY_DAYS_PER_MONTH }
 
 /**
+ * The wage period a payment treats as effective when the worker's configured
+ * period is unknown. The "unknown period means a month" convention lives here
+ * once so the day default and the amount default cannot drift apart.
+ */
+export function effectiveSalaryPeriod(periodType: SalaryPeriodType | null): SalaryPeriodType {
+  return periodType ?? "MONTHLY"
+}
+
+/**
  * The default day count for a new payment.
  *
  * MONTHLY and legacy WEEKLY default to a full 30-day month; DAILY defaults to a
@@ -21,7 +30,7 @@ export { roundMoneyToCents, SALARY_DAYS_PER_MONTH }
  * share this helper. A null period (unknown) falls back to the month.
  */
 export function defaultSalaryPaymentDays(periodType: SalaryPeriodType | null): number {
-  return periodType === "DAILY" ? 1 : SALARY_DAYS_PER_MONTH
+  return effectiveSalaryPeriod(periodType) === "DAILY" ? 1 : SALARY_DAYS_PER_MONTH
 }
 
 /** Parse a positive whole-day string, or null when it is not one. */
