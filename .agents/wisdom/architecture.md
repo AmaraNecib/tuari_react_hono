@@ -656,17 +656,30 @@ Two more traps found while wiring the logging:
    `response.message` finds nothing and falls back to `HTTP 500`; it must
    unwrap `body.json` first.
 
-De-duplication between the client interceptor (has the error) and the request
-interceptor (has the response) needs an explicit per-request marker: a
-`WeakSet<object>` keyed by the request-scoped ORPC `context` survives from the
-client callback to the request callback because both receive the same object.
-Test the exact contract: a rejected mutation logs **one** line with the error
-message, a thrown procedure error logs one line with its real message, and a
-successful mutation logs nothing.
+De-duplication between the client interceptor (has the error) and the
+transport middleware (has the mapped status) needs an explicit per-request
+marker, but **NOT keyed on the ORPC `context` object**: ORPC shallow-copies
+the context between layers (`resolveFriendlyStandardHandleOptions` spreads,
+`intercept` spreads again), so the client interceptor and the `/rpc/*`
+middleware receive different object identities for one request — a
+`WeakSet<object>` keyed on `context` silently misses and both layers log
+(found empirically with a tag property that appeared on both copies). Use an
+`AsyncLocalStorage` store created by the transport middleware and inherited by
+every nested interceptor; that is identity-independent. Test the exact
+contract: a rejected mutation logs **one** line with the error message, a
+thrown procedure error logs one line with its real message, and a successful
+mutation logs nothing.
+
+3. Do not guess 400 vs 500 in the interceptor. ORPC already mapped the status
+   (`step === "decode_input"` → `BAD_REQUEST`, otherwise
+   `INTERNAL_SERVER_ERROR`), but only the transport sees the encoded response.
+   Log the status verbatim from a `status >= 400` response in the `/rpc/*`
+   middleware: a malformed request must not be reported as a server fault.
 
 **Always**: when adding ORPC server-side logging, put thrown-error logging on
 `clientInterceptors.onError`, `{ success: false }` logging on
-`clientInterceptors.onFinish`, and wire/decode + 4xx/5xx logging on the
-request-level `onFinish` (or a transport middleware), deduped by a
-request-scoped marker. Never assume a request-level `onError` sees handler
-errors, and always unwrap `{ json: ... }` before reading a response body.
+`clientInterceptors.onFinish`, and decode/encode + 4xx/5xx logging at the
+transport using ORPC's mapped status, deduped by an `AsyncLocalStorage` store
+(never by the context object). Never assume a request-level `onError` sees
+handler errors, and always unwrap `{ json: ... }` before reading a response
+body.
