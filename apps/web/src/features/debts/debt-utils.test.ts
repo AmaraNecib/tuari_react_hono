@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
+import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts"
 
+import { ar } from "@/i18n/resources/ar"
 import {
   formatDebtAmount,
   formatDebtMoney,
@@ -91,6 +93,18 @@ describe("getDebtDirectionLabel", () => {
 
   it("returns the direction phrase for RECEIVABLE", () => {
     expect(getDebtDirectionLabel("RECEIVABLE")).toBe("مستحقات لنا")
+  })
+
+  it("keeps the i18n state copy identical to the shared contract phrases", () => {
+    expect(ar.translation.debts.terminology.states).toEqual(DEBT_BALANCE_STATE_PHRASE)
+  })
+
+  it("keeps the i18n direction and button copy aligned with the shared terms", () => {
+    const directions = ar.translation.debts.terminology.directions
+    expect(directions.payable).toBe(getDebtDirectionLabel("PAYABLE"))
+    expect(directions.receivable).toBe(getDebtDirectionLabel("RECEIVABLE"))
+    expect(ar.translation.debts.terminology.buttons.recordPayment).toBe("تسجيل دفعة")
+    expect(ar.translation.debts.terminology.buttons.recordDebt).toBe("تسجيل دين")
   })
 })
 
