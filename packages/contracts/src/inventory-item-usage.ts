@@ -75,6 +75,10 @@ export type InventoryItemUsage = z.infer<typeof inventoryItemUsageSchema>;
  * at the write gate. A predicate could only run in JS, which would force the
  * picker to filter after paging (unstable page sizes) or the gate to keep its
  * own copy of the rule — the drift this seam exists to remove.
+ *
+ * The outbound transfer's write path does not consult the rule yet: it lands
+ * with #450, so `OUTBOUND_PICK` availability is enforced on the read side only
+ * today.
  */
 export type InventoryItemOfferFilter = {
   itemTypes: readonly z.infer<typeof inventoryItemTypeSchema>[];

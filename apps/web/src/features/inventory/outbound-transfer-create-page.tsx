@@ -48,15 +48,25 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
     : null
 
   const addItem = () => {
-    setItems([...items, { itemOption: null, quantity: "", unitPrice: "" }])
+    setItems((prev) => [...prev, { id: crypto.randomUUID(), itemOption: null, quantity: "", unitPrice: "" }])
   }
 
   const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index))
+    setItems((prev) => prev.filter((_, i) => i !== index))
   }
 
   const updateItem = (index: number, patch: Partial<ItemEditorRow>) => {
-    setItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+  }
+
+  /**
+   * Availability is a fact about the source, so a pick made for one source is
+   * not evidence for another. Clearing the picked items on a source change
+   * keeps a stale choice from being submitted; the typed quantities and prices
+   * survive, so nothing the operator entered is lost.
+   */
+  const clearItemOptions = () => {
+    setItems((prev) => prev.map((item) => (item.itemOption ? { ...item, itemOption: null } : item)))
   }
 
   const handleSubmit = async () => {
@@ -142,6 +152,7 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
               <select value={fromType} onChange={(e) => {
                 setFromType(e.target.value as "WAREHOUSE" | "PROJECT")
                 setFromId("")
+                clearItemOptions()
               }} className="h-10 rounded-xl border border-border bg-background px-3">
                 <option value="WAREHOUSE">مستودع</option>
                 <option value="PROJECT">مشروع</option>
@@ -150,7 +161,7 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
 
             <div className="grid gap-2">
               <label className="text-sm font-medium">اختر {fromType === "WAREHOUSE" ? "المستودع" : "المشروع"}</label>
-              <select value={fromId} onChange={(e) => setFromId(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3">
+              <select value={fromId} onChange={(e) => { setFromId(e.target.value); clearItemOptions() }} className="h-10 rounded-xl border border-border bg-background px-3">
                 <option value="">اختر...</option>
                 {locations.map((loc) => (
                   <option key={loc.id} value={loc.id}>

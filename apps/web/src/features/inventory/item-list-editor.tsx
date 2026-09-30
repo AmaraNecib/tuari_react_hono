@@ -17,6 +17,9 @@ import { ItemOptionPicker } from "./item-option-picker"
 
 /** ItemEditorRow. */
 export interface ItemEditorRow {
+  /** Stable row identity, so deleting a row does not shift the next row's
+   * picker state (React keys must not be the array index). */
+  id: string
   itemOption: InventoryItemDefinition | null
   quantity: string
   unitPrice: string
@@ -42,7 +45,7 @@ export function ItemListEditor({
   return (
     <div className="space-y-3">
       {items.map((item, idx) => (
-        <div key={idx} className="flex items-start gap-3 rounded-xl border border-border/70 p-3">
+        <div key={item.id} className="flex items-start gap-3 rounded-xl border border-border/70 p-3">
           <div className="min-w-0 flex-1">
             <ItemOptionPicker
               label={t("inventory.items.selectItem")}

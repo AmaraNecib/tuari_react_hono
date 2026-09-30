@@ -99,10 +99,12 @@ switches to warehouse B.
   expense selector.
 - New i18n key `inventory.transfer.chooseSourceFirst` (Arabic). No new hard-coded UI
   text; the picker's strings come from the existing keys.
-- When the source changes after rows exist, the rows keep their selected options and
-  re-query against the new source; the server write gate rejects an unavailable row.
-  Clearing rows on a source switch would discard typed quantities, so it is left alone
-  and recorded as a decision.
+- When the source changes after rows exist, the picked item on each row is
+  cleared (the quantity and unit price survive, so nothing typed is lost). A pick
+  is evidence about one source: `ItemOptionPicker` deliberately re-renders a held
+  selection, so leaving it in place after the source changes would offer an item
+  that is not in stock at the new source. The row then has to be re-picked, and
+  submit fails client-side rather than sending the stale id.
 
 ## Tests
 
@@ -112,13 +114,20 @@ switches to warehouse B.
   source.
 - `apps/api/src/modules/inventory/item-offer-equivalence.test.ts`: `OUTBOUND_PICK`
   usages (warehouse and project) join the `USAGES` sweep, so SQL and JS must agree for
-  every fixture; fixtures gain stock locations and the setup inserts the matching
-  balance/asset rows. Explicit traps: an archived definition that HAS stock is still not
-  offered; a definition with no stock at the source is not offered; an in-stock active
-  one is; a cursor from a different source resets.
+  every fixture; the JS candidate is projected from the seeded balance/asset rows (not
+  a hand mirror of the fixture literal); fixtures gain stock locations and the setup
+  inserts the matching balance/asset rows. Explicit traps: an archived definition that
+  HAS stock is still not offered; a definition with no stock at the source is not
+  offered; an in-stock active one is; a cursor from a different source resets. A zero or
+  negative balance is not representable (`inventory_consumable_balance_quantity_check`),
+  so the SQL `quantity > 0` clause is defence-in-depth rather than a reachable branch.
 - `apps/web/src/features/inventory/outbound-transfer-create-page.test.tsx` (new): the
   page asks for `OUTBOUND_PICK` with the selected source, re-asks with the new source
-  when it changes, and renders only the options the paged read returns.
+  when it changes, renders only the options the paged read returns, clears a row's pick
+  on a source change, and submits the picked id with the typed quantity.
+- `apps/web/src/features/inventory/inventory-hooks.test.tsx`: two `OUTBOUND_PICK`
+  sources get separate query keys/requests, so one source cannot serve the other's
+  cached page.
 
 Red/green: each new behaviour test is run against the pre-fix production files with the
 implementation temporarily reverted; the ones that fail are listed in the handoff.

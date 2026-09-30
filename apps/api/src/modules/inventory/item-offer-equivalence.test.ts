@@ -61,13 +61,30 @@ const USAGES: InventoryItemUsage[] = [
   outboundPickUsage({ locationType: "PROJECT", projectId: "prj-1" }),
 ]
 
-/** The JS evaluator's view of a fixture; must mirror what the SQL rows say. */
-function candidateOf(fixture: Fixture): ItemOfferCandidate {
+/**
+ * The JS evaluator's view of a fixture, read from the same rows the SQL
+ * evaluator reads rather than from the fixture literal: the location ids where
+ * the definition actually holds stock (a positive balance, or an asset unit
+ * whose entry references it).
+ */
+function candidateOf(db: Database.Database, fixture: Fixture): ItemOfferCandidate {
+  const balances = db.prepare(
+    `SELECT "warehouse_id" AS warehouseId, "project_id" AS projectId
+       FROM "inventory_consumable_balance"
+      WHERE "item_definition_id" = ? AND "quantity" > 0`,
+  ).all(fixture.id) as Array<{ warehouseId: string | null; projectId: string | null }>
+  const assets = db.prepare(
+    `SELECT u."current_warehouse_id" AS warehouseId, u."current_project_id" AS projectId
+       FROM "inventory_asset_unit" u
+       JOIN "inventory_entry" e ON u."inventory_entry_id" = e."id"
+      WHERE e."item_definition_id" = ?`,
+  ).all(fixture.id) as Array<{ warehouseId: string | null; projectId: string | null }>
+  const rows = [...balances, ...assets]
   return {
     itemType: fixture.itemType,
     isActive: fixture.isActive,
-    stockWarehouseIds: fixture.stock?.warehouseId ? [fixture.stock.warehouseId] : [],
-    stockProjectIds: fixture.stock?.projectId ? [fixture.stock.projectId] : [],
+    stockWarehouseIds: rows.flatMap((row) => (row.warehouseId ? [row.warehouseId] : [])),
+    stockProjectIds: rows.flatMap((row) => (row.projectId ? [row.projectId] : [])),
   }
 }
 
@@ -190,7 +207,7 @@ describe("item-offer rule: SQL path equals JS path", () => {
       const offered = collectOfferedIds(env.repository, usage)
 
       for (const fixture of FIXTURES) {
-        const candidate = candidateOf(fixture)
+        const candidate = candidateOf(env.db, fixture)
         expect(
           offered.has(fixture.id),
           `${JSON.stringify(usage)} should ${matchesItemOfferFilter(filter, candidate) ? "" : "NOT "}offer ${fixture.id}`,

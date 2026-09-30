@@ -2,7 +2,7 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { OutboundTransferCreatePage } from "./outbound-transfer-create-page"
@@ -142,5 +142,43 @@ describe("OutboundTransferCreatePage item selection", () => {
       surface: "OUTBOUND_PICK",
       source: { locationType: "PROJECT", projectId: "prj-1" },
     })
+  })
+
+  it("clears a row's picked item when the source changes, so a stale choice cannot be submitted", async () => {
+    render(<OutboundTransferCreatePage onBack={vi.fn()} />)
+
+    // An item is picked because it is in stock at wh-1...
+    fireEvent.change(pageSelects()[1]!, { target: { value: "wh-1" } })
+    fireEvent.change(pageSelects()[2]!, { target: { value: "cp-1" } })
+    fireEvent.click(screen.getByRole("button", { name: /إضافة عنصر/ }))
+    const picker = screen.getByLabelText("اختر العنصر") as HTMLSelectElement
+    fireEvent.change(picker, { target: { value: "cement" } })
+    expect(picker.value).toBe("cement")
+
+    // ...but the source moves to one that does not hold it.
+    fireEvent.change(pageSelects()[1]!, { target: { value: "wh-2" } })
+    expect((screen.getByLabelText("اختر العنصر") as HTMLSelectElement).value).toBe("")
+
+    // Submitting now fails client-side instead of sending the stale pick.
+    fireEvent.click(screen.getByRole("button", { name: /إنشاء التحويل/ }))
+    await waitFor(() => expect(mocks.createTransferMutation.mutateAsync).not.toHaveBeenCalled())
+  })
+
+  it("submits the picked option's id with the typed quantity", async () => {
+    render(<OutboundTransferCreatePage onBack={vi.fn()} />)
+
+    fireEvent.change(pageSelects()[1]!, { target: { value: "wh-1" } })
+    fireEvent.change(pageSelects()[2]!, { target: { value: "cp-1" } })
+    fireEvent.click(screen.getByRole("button", { name: /إضافة عنصر/ }))
+    fireEvent.change(screen.getByLabelText("اختر العنصر"), { target: { value: "cement" } })
+    fireEvent.change(screen.getByLabelText("الكمية"), { target: { value: "3" } })
+
+    fireEvent.click(screen.getByRole("button", { name: /إنشاء التحويل/ }))
+
+    await waitFor(() =>
+      expect(mocks.createTransferMutation.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ items: [{ itemId: "cement", quantity: 3 }] }),
+      ),
+    )
   })
 })

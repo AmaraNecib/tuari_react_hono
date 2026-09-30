@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 
+import { outboundPickUsage } from "@tuari/contracts"
+
 const mocks = vi.hoisted(() => ({
   session: vi.fn(),
   list: vi.fn(),
@@ -340,6 +342,35 @@ describe("item-definition options — the usage-scoped paged picker read", () =>
     await waitFor(() =>
       expect(mocks.options).toHaveBeenLastCalledWith(
         expect.objectContaining({ usage: { surface: "INVOICE_LINE", kind: "ASSET" } }),
+      ),
+    )
+  })
+
+  it("keys two outbound sources separately instead of sharing the first source's page chain", async () => {
+    mocks.options.mockResolvedValue({ items: [], total: 0, nextCursor: null, hasMore: false })
+    const queryClient = makeQueryClient()
+    const { rerender } = renderHook(
+      ({ warehouseId }: { warehouseId: string }) =>
+        useItemDefinitionOptionsQuery({ usage: outboundPickUsage({ locationType: "WAREHOUSE", warehouseId }) }),
+      { wrapper: wrapper(queryClient), initialProps: { warehouseId: "wh-1" } },
+    )
+
+    await waitFor(() =>
+      expect(mocks.options).toHaveBeenCalledWith(
+        expect.objectContaining({
+          usage: { surface: "OUTBOUND_PICK", source: { locationType: "WAREHOUSE", warehouseId: "wh-1" } },
+        }),
+      ),
+    )
+
+    // A second source is a different rule and must not be served the first
+    // source's cached page (the source is part of the query key).
+    rerender({ warehouseId: "wh-2" })
+    await waitFor(() =>
+      expect(mocks.options).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          usage: { surface: "OUTBOUND_PICK", source: { locationType: "WAREHOUSE", warehouseId: "wh-2" } },
+        }),
       ),
     )
   })
