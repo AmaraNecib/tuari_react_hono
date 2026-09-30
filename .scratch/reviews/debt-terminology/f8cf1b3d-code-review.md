@@ -1,10 +1,12 @@
-# Debt terminology — verification review of the pushed head
+# Debt terminology — code review + verification of the pushed head
 
 - lane: fix-debt-terminology
 - base SHA: `5d0629be768a75689c081249843af4a79d045230` (real `git merge-base origin/develop HEAD`)
 - reviewed HEAD: `f8cf1b3dc0d24eb5c75732119d868e51b9dec0a0`
-- tier: Standard (UI + API + shared contracts + i18n); the three-stream review
-  below is the verification pass for the fixes made after the pre-fix review.
+- tier: Standard (UI + API + shared contracts + i18n); this is the two-axis
+  (Standards + Spec) code review and the verification pass for the fixes made
+  after the pre-fix review. The test-quality axis is in
+  `f8cf1b3d-test-audit.md`.
 - earlier evidence: `24142f7c-*` (pre-fix review), `fb4cfd09-review-resolution.md`,
   `27d72d47-code-review.md`, `a78f9eb5-resolution.md`. Those SHAs are the
   rebased equivalents of the pre-rebase SHAs they were originally recorded
