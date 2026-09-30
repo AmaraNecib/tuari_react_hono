@@ -42,15 +42,28 @@ git commit -m "..."
 Follow `docs/engineering-workflow.md` and the `feature-implement` skill for all code changes.
 Read `.agents/wisdom/*.md` before starting a session.
 
-**Design pass is a merge gate.** Before a PR is considered done, run
-`domain-modeling`, `codebase-design` and `improve-codebase-architecture` against
-its own finished diff — not only the new modules in it. Fix what the diff made
-worse inside the PR; file the rest as issues with the finding; record the outcome
-in `.scratch/reviews/<issue-id>/design-pass.md` (including "nothing found").
-Do not merge a PR that leaves the codebase harder to change on the promise of
-cleaning it up later — that is how the mess compounds. Periodically, run
-`improve-codebase-architecture` over the whole codebase and retire the debt that
-accumulated before this rule existed.
+**The design pass is a merge gate.** Every PR runs three skills against **the work
+that PR did** — its diff, not only the new modules in it:
+
+- **`domain-modeling`** — does the change use the project's vocabulary, and is any
+  new domain rule stated once, in the right place?
+- **`codebase-design`** — is anything it added shallow (apply the deletion test),
+  is each seam real or hypothetical, did it introduce duplication that will drift?
+- **`improve-codebase-architecture`** — what friction did this change create?
+
+**It is incremental.** Fix what this diff made worse plus the cheap cleanups it
+exposes — a deleted duplicate, a rule single-sourced, a seam moved where it
+belongs. A finding whose fix would sprawl belongs in its own issue, filed with the
+finding: a feature PR must not turn into a refactor. The bar is that the codebase
+is never left worse than the PR found it — a PR that would leave the codebase
+harder to change does not merge "and get cleaned up later": the mess compounds.
+Record the outcome in `.scratch/reviews/<issue-id>/<HEAD>-design-pass.md`
+(the filename must contain the reviewed HEAD SHA), including "nothing found" —
+silence is not evidence the pass ran.
+
+The same three skills also run over the **whole codebase**, periodically rather
+than per PR (#451): per PR asks "did this diff make things worse", periodically
+asks "what is worse everywhere". For a large change, run both.
 
 ## Crew dispatch shape (parallel lanes)
 

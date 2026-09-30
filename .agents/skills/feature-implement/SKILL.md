@@ -136,16 +136,25 @@ prove it on the base and document the waiver rather than hiding it.
 
 ### 5. Quality check
 
-**First, the design pass — mandatory on the finished diff, and it is a merge
-gate.** Run `domain-modeling`, `codebase-design` and
-`improve-codebase-architecture` against the diff you just wrote, not only the new
-modules in it: does it use the domain's vocabulary and state new rules once, is
-anything it added shallow (deletion test), is a seam real or hypothetical, and
-what friction did it create? Fix what is in scope here; file the rest as issues
-with the finding. Write the outcome to `.scratch/reviews/<issue-id>/design-pass.md`
-— including "nothing found", because silence is not evidence that it ran.
-A PR that would leave the codebase harder to change does not merge "and get
-cleaned up later": the mess compounds. See `docs/engineering-workflow.md` §5.
+**First, the design pass — mandatory on the work this PR did, and it is a merge
+gate.** Run **`domain-modeling`**, **`codebase-design`** and
+**`improve-codebase-architecture`** against this PR's diff, not only the new
+modules in it: does it use the domain's vocabulary and state new rules once; is
+anything it added shallow (the deletion test); is each seam real or hypothetical;
+what friction did it create?
+
+**It is incremental.** Fix what this diff made worse plus the cheap cleanups it
+exposes — a deleted duplicate, a rule single-sourced, a seam moved where it
+belongs. A finding whose fix would sprawl belongs in its own issue, filed with the
+finding: a feature PR must not become a refactor. The bar is that the codebase is
+never left worse than this PR found it — a PR that would leave the codebase harder
+to change does not merge "and get cleaned up later": the mess compounds. See
+`docs/engineering-workflow.md` §5.
+
+Record the outcome in `.scratch/reviews/<issue-id>/<HEAD>-design-pass.md`
+(the filename must contain the reviewed HEAD SHA), including "nothing found" —
+silence is not evidence the pass ran. The same three skills run over the
+**whole** codebase periodically (#451), not per PR; for a large change, run both.
 
 Then load only the skills relevant to the change:
 

@@ -190,31 +190,40 @@ and documented; it must not be silently ignored.
 
 ## 5. Quality check
 
-### Design pass on the finished diff — mandatory, and it is a merge gate
+### The design pass — mandatory, and it is a merge gate
 
-Load the three design skills against **the diff you just wrote**, not only
-against the new modules in it. The point is that a PR does not merge and get
-"cleaned up later": the mess compounds, and after two or three such PRs the
-codebase is harder to change than when it started.
+Run **`domain-modeling`**, **`codebase-design`** and
+**`improve-codebase-architecture`** against **the work this PR did**: its diff,
+not only the new modules in it.
 
-| Skill | What it asks of this diff |
+| Skill | What it asks of this change |
 | --- | --- |
-| `domain-modeling` | Does the diff use the project's vocabulary? Did it introduce or resolve a term that belongs in `CONTEXT.md`? Is a new domain rule stated once, in the right place? |
-| `codebase-design` | Is anything the diff added **shallow** (run the deletion test)? Is a seam where it should be, and does it have two adapters or is it hypothetical? Is the interface the test surface? Did the diff introduce duplication that will drift? |
-| `improve-codebase-architecture` | What friction did this diff create? List the deepening opportunities it reveals — fix the ones inside this PR's scope, file the rest as issues with the finding, and say why the remainder is justified. |
+| `domain-modeling` | Does it use the project's vocabulary? Is a new domain rule stated once, in the right place? Did it resolve a term that belongs in `CONTEXT.md`? |
+| `codebase-design` | Is anything it added **shallow** (the deletion test)? Is each seam real (two adapters) or hypothetical? Is the interface the test surface? Did it add a second copy of a rule that will drift? |
+| `improve-codebase-architecture` | What friction did this change create? Name the deepening opportunities it reveals — fix the ones inside this PR's scope, file the rest as issues with the finding, and say why the remainder is justified. |
 
-**Output** (part of the review evidence, `.scratch/reviews/<issue-id>/design-pass.md`):
-what the pass found, what it fixed in this PR, what it filed, and the reasoning
-for anything deliberately left. "Nothing found" is a valid result but it must be
-stated — silence is not evidence that the pass ran.
+**It is incremental by design.** Fix what this diff made worse, plus the cheap
+cleanups it exposes — a deleted duplicate, a rule single-sourced, a seam moved to
+where it belongs. A finding whose fix would sprawl belongs in its own issue,
+filed with the finding. Do **not** turn a feature PR into a refactor: the bar is
+that the codebase is never left worse than this PR found it, not that every
+finding is fixed here. This applies to every PR, including small ones: a
+five-line change that adds a second copy of a rule is exactly how drift starts.
 
-This applies to every PR, including small ones: a five-line change that adds a
-second copy of a rule is exactly how drift starts.
+**Output** (part of the review evidence,
+`.scratch/reviews/<issue-id>/<HEAD>-design-pass.md`, and the filename must
+contain the reviewed HEAD SHA): what the pass found, what it fixed here, what it
+filed, and why anything was deliberately left. "Nothing found" is a valid result
+but it must be stated; silence is not evidence the pass ran.
 
-Separately, and periodically rather than per PR, run
-`improve-codebase-architecture` over the **whole** codebase (it produces an HTML
-report of deepening candidates). That is how debt accumulated before this rule
-gets retired.
+### Whole-codebase pass — periodic, not per PR
+
+The same three skills also run over the **whole** codebase, on its own cadence
+(#451): `improve-codebase-architecture` produces an HTML report of deepening
+candidates, and one candidate is chosen and grilled through per PR. That is how
+debt accumulated before this rule gets retired. Per PR asks "did this diff make
+things worse"; periodically asks "what is worse everywhere". For a large change,
+run both.
 
 ### Select relevant skills rather than loading every skill:
 
