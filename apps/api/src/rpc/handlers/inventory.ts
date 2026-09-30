@@ -2,6 +2,8 @@
 import { implement } from "@orpc/server";
 
 import type {
+  InventoryAssetChargeUpdateInput,
+  InventoryAssetChargeVoidInput,
   InventoryInvoiceGroupCreateInput,
   InventoryInvoiceGroupRecordPaymentInput,
   InventoryItemDefinitionCreateInput,
@@ -15,6 +17,9 @@ import type { InventoryService } from "../../modules/inventory/inventory.service
 import type { RpcMiddleware } from "../rpc-middleware";
 import type {
   IdInput,
+  InventoryAssetChargeDefaultInput,
+  InventoryAssetChargesListByProjectInput,
+  InventoryAssetChargesListByUnitInput,
   InventoryAssetTransferInput,
   InventoryConsumableTransferInput,
   InventoryInvoiceGroupListInput,
@@ -65,6 +70,25 @@ export function createInventoryHandlers(
     )),
     inventoryAssetsTransfer: os.inventoryAssetsTransfer.handler(m.mutationAudit(
       ({ input, auditContext }) => inventoryService.transferAsset(input as InventoryAssetTransferInput, auditContext),
+      toInventoryFailureResult,
+    )),
+    inventoryAssetChargeDefault: os.inventoryAssetChargeDefault.handler(m.queryAuth(
+      async ({ input }) => inventoryService.getAssetChargeDefault(input as InventoryAssetChargeDefaultInput),
+      toInventoryFailureResult,
+    )),
+    inventoryAssetChargesListByUnit: os.inventoryAssetChargesListByUnit.handler(m.queryAuth(async ({ input }) =>
+      inventoryService.listAssetChargesByUnit(input as InventoryAssetChargesListByUnitInput)
+    )),
+    inventoryAssetChargesListByProject: os.inventoryAssetChargesListByProject.handler(m.queryAuth(
+      async ({ input }) => inventoryService.getProjectCharges(input as InventoryAssetChargesListByProjectInput),
+      toInventoryFailureResult,
+    )),
+    inventoryAssetChargesUpdate: os.inventoryAssetChargesUpdate.handler(m.mutationAudit(
+      ({ input, auditContext }) => inventoryService.updateAssetCharge(input as InventoryAssetChargeUpdateInput, auditContext),
+      toInventoryFailureResult,
+    )),
+    inventoryAssetChargesVoid: os.inventoryAssetChargesVoid.handler(m.mutationAudit(
+      ({ input, auditContext }) => inventoryService.voidAssetCharge(input as InventoryAssetChargeVoidInput, auditContext),
       toInventoryFailureResult,
     )),
     inventoryConsumablesTransfer: os.inventoryConsumablesTransfer.handler(m.mutationAudit(

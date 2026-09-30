@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   session: vi.fn(),
   list: vi.fn(),
   create: vi.fn(),
+  createInvoiceGroup: vi.fn(),
+  listProjectCharges: vi.fn(),
+  chargeDefault: vi.fn(),
 }))
 
 vi.mock("@/lib/orpc-client", async (importOriginal) => {
@@ -16,6 +19,9 @@ vi.mock("@/lib/orpc-client", async (importOriginal) => {
     rpcClient: {
       inventoryItemDefinitionsList: mocks.list,
       inventoryItemDefinitionsCreate: mocks.create,
+      inventoryInvoiceGroupsCreate: mocks.createInvoiceGroup,
+      inventoryAssetChargesListByProject: mocks.listProjectCharges,
+      inventoryAssetChargeDefault: mocks.chargeDefault,
     },
   }
 })
@@ -25,13 +31,19 @@ vi.mock("@/features/session/use-session-query", () => ({
 }))
 
 import {
+  useAssetChargeDefaultQuery,
+  useCreateInventoryInvoiceGroupMutation,
   useCreateInventoryItemDefinitionMutation,
   useInventoryItemDefinitionsQuery,
+  useProjectChargesQuery,
 } from "./inventory-hooks"
 import { orpc } from "@/lib/orpc-client"
 
 function makeQueryClient() {
-  return new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // Mirror the app's production stale window (30s) so a test that relies on
+  // revalidation cannot pass merely because the test client defaults to
+  // `staleTime: 0`.
+  return new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } })
 }
 
 function wrapper(queryClient: QueryClient) {
@@ -127,5 +139,113 @@ describe("inventory item definitions — list freshness after create", () => {
     })
 
     await waitFor(() => expect(listResult.current.data?.items).toEqual([CREATED_ITEM]))
+  })
+})
+
+/**
+ * Invoice creation books a placement charge for ASSETs placed directly on a
+ * project, so the project's charges cache must refetch (#422 round 4).
+ */
+describe("inventory project charges — freshness after invoice create", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.session.mockReturnValue({ data: { user: { id: "user-1" } } })
+    mocks.createInvoiceGroup.mockResolvedValue({
+      success: true,
+      message: "تم إنشاء الفاتورة.",
+      item: { group: { id: "group-1" } },
+    })
+  })
+
+  it("refetches the affected project's charges after an invoice places assets on it", async () => {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(orpc.session.queryOptions().queryKey, {
+      user: { id: "user-1", name: "مدير التشغيل", phone: "0612345678", version: "0.0.0" },
+    })
+    mocks.listProjectCharges.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { projectId: "project-a", totalDzd: 0, charges: [] },
+    })
+
+    const { result: chargesResult } = renderHook(() => useProjectChargesQuery("project-a"), {
+      wrapper: wrapper(queryClient),
+    })
+    const { result: mutationResult } = renderHook(() => useCreateInventoryInvoiceGroupMutation(), {
+      wrapper: wrapper(queryClient),
+    })
+
+    await waitFor(() => expect(chargesResult.current.data?.totalDzd).toBe(0))
+
+    // The server books the charge during the create; the next read sees it.
+    mocks.listProjectCharges.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { projectId: "project-a", totalDzd: 100_000, charges: [] },
+    })
+
+    await act(async () => {
+      await mutationResult.current.mutateAsync({
+        projectId: "project-a",
+        entries: [
+          {
+            kind: "ASSET",
+            itemDefinitionId: "def-1",
+            projectId: "project-a",
+            assets: [{ assetName: "مثقاب", purchasePriceDzd: 100_000 }],
+          },
+        ],
+      })
+    })
+
+    await waitFor(() => expect(chargesResult.current.data?.totalDzd).toBe(100_000))
+    expect(mocks.listProjectCharges).toHaveBeenCalledTimes(2)
+  })
+})
+
+/**
+ * The transfer dialog prefills the charge amount from the unit's resolved
+ * default. Reopening it must revalidate that default: another tab can correct
+ * the last charge while this tab's cached copy is still inside the stale
+ * window, and a stale prefill books the wrong amount (#422 round 5).
+ */
+describe("asset charge default — revalidates when the dialog reopens", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.session.mockReturnValue({ data: { user: { id: "user-1" } } })
+  })
+
+  it("refetches on re-enable even while the cached value is still fresh", async () => {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(orpc.session.queryOptions().queryKey, {
+      user: { id: "user-1", name: "مدير التشغيل", phone: "0612345678", version: "0.0.0" },
+    })
+    mocks.chargeDefault.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { assetUnitId: "asset-1", amountDzd: 100_000, purchasePriceDzd: 100_000, source: "PURCHASE_PRICE" },
+    })
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useAssetChargeDefaultQuery(enabled ? "asset-1" : undefined),
+      { wrapper: wrapper(queryClient), initialProps: { enabled: true } },
+    )
+
+    await waitFor(() => expect(result.current.data?.amountDzd).toBe(100_000))
+    expect(mocks.chargeDefault).toHaveBeenCalledTimes(1)
+
+    // Another tab corrects the unit's last charge.
+    mocks.chargeDefault.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { assetUnitId: "asset-1", amountDzd: 70_000, purchasePriceDzd: 100_000, source: "LAST_CHARGE" },
+    })
+
+    // Close the dialog, then reopen inside the 30s stale window.
+    rerender({ enabled: false })
+    rerender({ enabled: true })
+
+    await waitFor(() => expect(result.current.data?.amountDzd).toBe(70_000))
+    expect(mocks.chargeDefault).toHaveBeenCalledTimes(2)
   })
 })

@@ -1,22 +1,17 @@
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { downloadDesktopApiFile } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { resolveApiUrl } from "@/lib/runtime-config"
 
-import {
-  useInventoryInvoiceGroupQuery,
-  useInventoryProjectsQuery,
-  useInventoryWarehousesQuery,
-  useTransferInventoryAssetMutation,
-  useTransferInventoryConsumableMutation,
-} from "./inventory-hooks"
+import { AssetChargeHistory } from "./asset-charge-history"
+import { useInventoryInvoiceGroupQuery } from "./inventory-hooks"
 import { RecordInvoicePaymentDialog } from "./record-invoice-payment-dialog"
+import { TransferItemDialog, type TransferTarget } from "./transfer-item-dialog"
 
 /** buildLocationHref - helper function. */
 function buildLocationHref(location: { warehouseId?: string | null; projectId?: string | null }) {
@@ -38,20 +33,15 @@ function buildLocationHref(location: { warehouseId?: string | null; projectId?: 
 export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: string; onBack: () => void }) {
   const { t } = useTranslation()
   const invoiceQuery = useInventoryInvoiceGroupQuery(invoiceId)
-  const [transferSectionExpanded] = useState(false)
-  // Only fetch warehouses/projects when transfer section is expanded (lazy loading optimization)
-  const warehousesQuery = useInventoryWarehousesQuery(transferSectionExpanded)
-  const projectsQuery = useInventoryProjectsQuery(transferSectionExpanded)
-  const transferAssetMutation = useTransferInventoryAssetMutation()
-  const transferConsumableMutation = useTransferInventoryConsumableMutation()
-  const [assetTargets, setAssetTargets] = useState<Record<string, { warehouseId: string; projectId: string }>>({})
-  const [consumableTargets, setConsumableTargets] = useState<Record<string, { quantity: string; warehouseId: string; projectId: string }>>({})
+  // The destination lists live inside `TransferItemDialog`, which enables them
+  // only while it is open. The page itself must not fetch them eagerly: a fixed
+  // two-list fetch on every invoice open is pure waste until a transfer starts
+  // (#422 round 6).
+  const [transferTarget, setTransferTarget] = useState<TransferTarget | null>(null)
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
 
   const detail = invoiceQuery.data
   const isDesktop = isDesktopRuntime()
-  const warehouses = useMemo(() => warehousesQuery.data?.items ?? [], [warehousesQuery.data?.items])
-  const projects = useMemo(() => projectsQuery.data?.items ?? [], [projectsQuery.data?.items])
 
   async function handleAttachmentOpen(attachment: { id: string; originalName: string }) {
     await downloadDesktopApiFile(resolveApiUrl(`/api/inventory/attachments/${attachment.id}`), attachment.originalName)
@@ -72,6 +62,12 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
 
   return (
     <div className="space-y-6">
+      <TransferItemDialog
+        open={transferTarget !== null}
+        target={transferTarget}
+        onOpenChange={(open) => { if (!open) setTransferTarget(null) }}
+      />
+
       <Surface variant="panel">
         <PageSurfaceContent>
           <PageHeader title={detail?.group.invoiceNumber || "تفاصيل الفاتورة"} description={detail?.group.supplierName || "بدون مورد محدد"} action={<PageActionGroup><Button variant="outline" onClick={onBack}>العودة إلى الفواتير</Button>{detail && detail.group.remainingDebtDzd > 0 && <Button onClick={() => setPaymentDialogOpen(true)}>تسجيل دفعة</Button>}</PageActionGroup>} />
@@ -102,7 +98,6 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
                   <div className="mt-4 space-y-3">
                     {entry.assets.map((asset) => {
                       const href = buildLocationHref({ warehouseId: asset.currentWarehouseId, projectId: asset.currentProjectId })
-                      const target = assetTargets[asset.id] ?? { warehouseId: "", projectId: "" }
 
                       return (
                         <div key={asset.id} className="rounded-xl bg-muted/20 p-3">
@@ -110,20 +105,20 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
                             <div>
                               <div className="font-medium text-foreground">{asset.assetName}</div>
                               <div className="text-xs text-muted-foreground">المكان الحالي: {asset.currentLocationLabel ?? "غير محدد"}</div>
+                              {/* The unit stays reachable here after a sale, a
+                                  gift or a return clears its location, so its
+                                  charge history and correction stay available
+                                  (#422 round 6). */}
+                              <AssetChargeHistory assetUnitId={asset.id} />
                             </div>
                             {href ? <a className="text-xs text-primary underline-offset-4 hover:underline" href={href}>فتح الموقع الحالي</a> : null}
                           </div>
 
-                          <div className="mt-3 grid gap-3 md:grid-cols-3">
-                            <select className="h-10 rounded-xl border border-border bg-background px-3" value={target.warehouseId} onChange={(event) => setAssetTargets((current) => ({ ...current, [asset.id]: { warehouseId: event.target.value, projectId: event.target.value ? "" : target.projectId } }))}>
-                              <option value="">انقل إلى مستودع</option>
-                              {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
-                            </select>
-                            <select className="h-10 rounded-xl border border-border bg-background px-3" value={target.projectId} onChange={(event) => setAssetTargets((current) => ({ ...current, [asset.id]: { projectId: event.target.value, warehouseId: event.target.value ? "" : target.warehouseId } }))}>
-                              <option value="">انقل إلى مشروع</option>
-                              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                            </select>
-                            <Button disabled={transferAssetMutation.isPending || (!target.warehouseId && !target.projectId)} onClick={() => void transferAssetMutation.mutateAsync({ assetUnitId: asset.id, toWarehouseId: target.warehouseId || null, toProjectId: target.projectId || null })}>تحويل الأصل</Button>
+                          <div className="mt-3">
+                            {/* The transfer dialog asks for the placement charge when
+                                the destination is a project (#413); a warehouse
+                                transfer writes none. */}
+                            <Button variant="outline" onClick={() => setTransferTarget({ type: "ASSET", assetUnitId: asset.id, assetName: asset.assetName })}>تحويل الأصل</Button>
                           </div>
                         </div>
                       )
@@ -141,7 +136,6 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
           <SurfaceHeader title="الأرصدة الحالية للمواد" description="هذه الكميات تمثل ما بقي الآن في كل موقع بعد الشراء والتحويلات." />
           <div className="grid gap-3">
             {detail?.consumableBalances.map((balance) => {
-              const target = consumableTargets[balance.id] ?? { quantity: String(balance.quantity), warehouseId: "", projectId: "" }
               const href = buildLocationHref({ warehouseId: balance.warehouseId, projectId: balance.projectId })
               return (
                 <div key={balance.id} className="rounded-xl border border-border/70 p-4 text-sm">
@@ -153,17 +147,22 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
                     </div>
                     {href ? <a className="text-xs text-primary underline-offset-4 hover:underline" href={href}>فتح الموقع الحالي</a> : null}
                   </div>
-                  <div className="mt-3 grid gap-3 md:grid-cols-4">
-                    <Input type="number" min="0" step="0.01" value={target.quantity} onChange={(event) => setConsumableTargets((current) => ({ ...current, [balance.id]: { ...target, quantity: event.target.value } }))} />
-                    <select className="h-10 rounded-xl border border-border bg-background px-3" value={target.warehouseId} onChange={(event) => setConsumableTargets((current) => ({ ...current, [balance.id]: { ...target, warehouseId: event.target.value, projectId: event.target.value ? "" : target.projectId } }))}>
-                      <option value="">إلى مستودع</option>
-                      {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
-                    </select>
-                    <select className="h-10 rounded-xl border border-border bg-background px-3" value={target.projectId} onChange={(event) => setConsumableTargets((current) => ({ ...current, [balance.id]: { ...target, projectId: event.target.value, warehouseId: event.target.value ? "" : target.warehouseId } }))}>
-                      <option value="">إلى مشروع</option>
-                      {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                    </select>
-                    <Button disabled={transferConsumableMutation.isPending || (!target.warehouseId && !target.projectId)} onClick={() => void transferConsumableMutation.mutateAsync({ inventoryEntryId: balance.inventoryEntryId, quantity: Number(target.quantity), fromWarehouseId: balance.warehouseId, fromProjectId: balance.projectId, toWarehouseId: target.warehouseId || null, toProjectId: target.projectId || null })}>تحويل الكمية</Button>
+                  {/* One transfer entry point: the shared dialog enables the
+                      destination lists only while it is open (#422 round 6). */}
+                  <div className="mt-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => setTransferTarget({
+                        type: "CONSUMABLE",
+                        inventoryEntryId: balance.inventoryEntryId,
+                        itemName: balance.itemName,
+                        availableQuantity: balance.quantity,
+                        sourceWarehouseId: balance.warehouseId,
+                        sourceProjectId: balance.projectId,
+                      })}
+                    >
+                      تحويل الكمية
+                    </Button>
                   </div>
                 </div>
               )

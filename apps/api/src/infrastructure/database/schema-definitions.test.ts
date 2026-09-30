@@ -355,3 +355,91 @@ describe("expense schema (#411)", () => {
     );
   });
 });
+
+describe("inventory_asset_charge schema (#413 stock charge)", () => {
+  const definitions = createSchemaDefinitions();
+
+  function getChargeDefinition() {
+    const def = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "inventory_asset_charge"'),
+    );
+    expect(def).toBeDefined();
+    return def!;
+  }
+
+  it("creates the charge table with unit, project, movement and amount columns", () => {
+    const def = getChargeDefinition();
+    expect(def).toContain('"asset_unit_id" TEXT NOT NULL');
+    expect(def).toContain('"project_id" TEXT NOT NULL');
+    expect(def).toContain('"movement_id" TEXT');
+    expect(def).toContain('"amount_dzd" REAL NOT NULL');
+  });
+
+  it("allows a zero amount (a free placement) with a LIVE/VOID status", () => {
+    const def = getChargeDefinition();
+    expect(def).toMatch(/CHECK\s*\("amount_dzd"\s*>=\s*0\)/);
+    expect(def).toMatch(/"status"\s+TEXT\s+NOT\s+NULL\s+DEFAULT\s+'LIVE'/);
+    expect(def).toMatch(/CHECK\s*\("status"\s*IN\s*\(\s*'LIVE'\s*,\s*'VOID'\s*\)\)/);
+  });
+
+  it("annotates a void with actor + reason and keeps the movement reference nullable", () => {
+    const def = getChargeDefinition();
+    expect(def).toContain('"voided_at"');
+    expect(def).toContain('"voided_by"');
+    expect(def).toContain('"void_reason"');
+    expect(def).toContain('FOREIGN KEY ("movement_id") REFERENCES "inventory_movement"');
+    expect(def).toContain("ON DELETE SET NULL");
+  });
+
+  it("refuses to delete a unit that still has a charge, keeping the record", () => {
+    // A charge is a money record: deleting its unit (directly, or through the
+    // invoice → entry cascade) must not take the charge and its revisions with
+    // it. RESTRICT keeps the unit reference NOT NULL and the record intact;
+    // the delete fails instead (#422 round 5).
+    const def = getChargeDefinition();
+    expect(def).toContain(
+      'FOREIGN KEY ("asset_unit_id") REFERENCES "inventory_asset_unit" ("id") ON DELETE RESTRICT',
+    );
+    expect(def).not.toContain(
+      'FOREIGN KEY ("asset_unit_id") REFERENCES "inventory_asset_unit" ("id") ON DELETE CASCADE',
+    );
+  });
+
+  it("refuses to delete a project that still has charges", () => {
+    // A charge is a money record: deleting a project must not take its charges
+    // (and their revisions) with it. RESTRICT keeps the project reference NOT
+    // NULL and the record intact; the delete fails instead.
+    const def = getChargeDefinition();
+    expect(def).toContain(
+      'FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT',
+    );
+    expect(def).not.toContain(
+      'FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE CASCADE',
+    );
+  });
+
+  it("creates the revision table that records from → to + reason", () => {
+    const def = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "inventory_asset_charge_revision"'),
+    );
+    expect(def).toBeDefined();
+    expect(def).toContain('"charge_id" TEXT NOT NULL');
+    expect(def).toContain('"previous_amount_dzd" REAL NOT NULL');
+    expect(def).toContain('"new_amount_dzd" REAL');
+    expect(def).toContain('"reason" TEXT');
+    expect(def).toContain(
+      'FOREIGN KEY ("charge_id") REFERENCES "inventory_asset_charge" ("id") ON DELETE CASCADE',
+    );
+  });
+
+  it("indexes charges by unit and by project", () => {
+    expect(definitions).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'ON "inventory_asset_charge" ("asset_unit_id", "created_at")',
+        ),
+        expect.stringContaining('ON "inventory_asset_charge" ("project_id", "status")'),
+      ]),
+    );
+  });
+});

@@ -6,10 +6,13 @@
 
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/** Round a monetary sum to 2 decimals so float noise never reaches the report UI. */
-export function roundMoney(value: number) {
-  return Math.round(value * 100) / 100;
-}
+/**
+ * Round a monetary sum to 2 decimals so float noise never reaches the report UI.
+ * The implementation lives in `@tuari/contracts` next to the money bound so the
+ * API boundaries and the web percentage linkage share one copy; re-exported
+ * here for the report aggregators that already import it from this module.
+ */
+export { roundMoney } from "@tuari/contracts";
 
 /** Optional ISO-8601 report filter dates. */
 export type ReportDateFilter = { startDate?: string; endDate?: string };

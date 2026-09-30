@@ -21,6 +21,9 @@ import {
   consumeRecoveryKeyInputSchema,
   employeePagedListInputSchema,
   idInputSchema,
+  inventoryAssetChargeDefaultInputSchema,
+  inventoryAssetChargesListByProjectInputSchema,
+  inventoryAssetChargesListByUnitInputSchema,
   inventoryAssetTransferInputSchema,
   inventoryConsumableTransferInputSchema,
   inventoryInvoiceGroupListInputSchema,
@@ -47,6 +50,15 @@ export type InventoryInvoiceGroupListInput = z.infer<typeof inventoryInvoiceGrou
 
 /** Input for `inventoryAssetsTransfer`. */
 export type InventoryAssetTransferInput = z.infer<typeof inventoryAssetTransferInputSchema>;
+
+/** Input for `inventoryAssetChargeDefault`. */
+export type InventoryAssetChargeDefaultInput = z.infer<typeof inventoryAssetChargeDefaultInputSchema>;
+
+/** Input for `inventoryAssetChargesListByUnit`. */
+export type InventoryAssetChargesListByUnitInput = z.infer<typeof inventoryAssetChargesListByUnitInputSchema>;
+
+/** Input for `inventoryAssetChargesListByProject`. */
+export type InventoryAssetChargesListByProjectInput = z.infer<typeof inventoryAssetChargesListByProjectInputSchema>;
 
 /** Input for `inventoryConsumablesTransfer`. */
 export type InventoryConsumableTransferInput = z.infer<typeof inventoryConsumableTransferInputSchema>;

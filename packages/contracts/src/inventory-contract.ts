@@ -7,6 +7,14 @@ import {
   idInputSchema,
 } from "./core"
 import {
+  inventoryAssetChargeDefaultInputSchema,
+  inventoryAssetChargeDefaultSchema,
+  inventoryAssetChargeDetailSchema,
+  inventoryAssetChargeSchema,
+  inventoryAssetChargesListByProjectInputSchema,
+  inventoryAssetChargesListByUnitInputSchema,
+  inventoryAssetChargeUpdateInputSchema,
+  inventoryAssetChargeVoidInputSchema,
   inventoryAssetDetailSchema,
   inventoryAssetTransferInputSchema,
   inventoryConsumableTransferInputSchema,
@@ -24,6 +32,7 @@ import {
   inventoryMovementSchema,
   inventoryOutboundTransferCreateInputSchema,
   inventoryOutboundTransferSchema,
+  inventoryProjectChargesSchema,
   inventoryTransferHistoryInputSchema,
 } from "./inventory"
 
@@ -73,6 +82,26 @@ export const inventoryContract = {
   inventoryAssetsTransfer: oc
     .input(inventoryAssetTransferInputSchema)
     .output(createEntityResultSchema(inventoryAssetDetailSchema)),
+  /** inventoryAssetChargeDefault procedure — resolve the prefill for a placement. */
+  inventoryAssetChargeDefault: oc
+    .input(inventoryAssetChargeDefaultInputSchema)
+    .output(createEntityResultSchema(inventoryAssetChargeDefaultSchema)),
+  /** inventoryAssetChargesListByUnit procedure. */
+  inventoryAssetChargesListByUnit: oc
+    .input(inventoryAssetChargesListByUnitInputSchema)
+    .output(createListSchema(inventoryAssetChargeDetailSchema)),
+  /** inventoryAssetChargesListByProject procedure — charges + project total. */
+  inventoryAssetChargesListByProject: oc
+    .input(inventoryAssetChargesListByProjectInputSchema)
+    .output(createEntityResultSchema(inventoryProjectChargesSchema)),
+  /** inventoryAssetChargesUpdate procedure — correct a past charge. */
+  inventoryAssetChargesUpdate: oc
+    .input(inventoryAssetChargeUpdateInputSchema)
+    .output(createEntityResultSchema(inventoryAssetChargeDetailSchema)),
+  /** inventoryAssetChargesVoid procedure — void a past charge, keeping history. */
+  inventoryAssetChargesVoid: oc
+    .input(inventoryAssetChargeVoidInputSchema)
+    .output(createEntityResultSchema(inventoryAssetChargeDetailSchema)),
   /** inventoryConsumablesTransfer procedure. */
   inventoryConsumablesTransfer: oc
     .input(inventoryConsumableTransferInputSchema)
