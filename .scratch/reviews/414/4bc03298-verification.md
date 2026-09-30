@@ -1,5 +1,9 @@
 # #414 — verification review of PR #462's head
 
+> Superseded by `6b19b673-verification.md`, which adds the parent-approved
+> share cap (finding 5) and the coverage-gate entry (finding 6). Kept for the
+> history of the `4bc03298` state.
+
 mode: remote
 ticket: AmaraNecib/tuari_react_hono#414 (PR #462, `feat/project-cost`)
 reviewed code HEAD: `af99be19af2ec8d538a86ec413aee81b6a9e17ed`
