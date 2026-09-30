@@ -77,14 +77,15 @@ test.describe("inventory invoice create — header default warehouse persistence
     await expect(warehouseTrigger).not.toContainText("بدون مستودع")
 
     // 2) Re-render by adding a line item: the selection must persist.
-    await page.getByRole("button", { name: "إضافة مادة" }).click()
+    await page.getByRole("button", { name: "إضافة سطر" }).click()
     await expect(warehouseTrigger).toContainText(warehouseName)
 
-    // 3) Fill the line's item definition and leave its warehouse/project on
-    // "default" so the header default must seed it. The option label is
-    // "<name> — استهلاكي", so selecting by index (1 = the single definition).
-    // The re-render step above added a second line, so fill the definition on
-    // BOTH lines (the first consumer line and the new one).
+    // 3) Fill both rows. Variant C: the row's type comes first and filters the
+    // item options, so choose the type on each row before its item. Leave the
+    // rows' warehouse/project on "default" so the header default must seed it.
+    const typeSelects = page.getByLabel("النوع")
+    await typeSelects.first().selectOption("CONSUMABLE")
+    await typeSelects.last().selectOption("CONSUMABLE")
     const definitionSelects = page.getByLabel("تعريف العنصر")
     await definitionSelects.first().selectOption({ index: 1 })
     await definitionSelects.last().selectOption({ index: 1 })
@@ -139,10 +140,14 @@ test.describe("inventory invoice create — header default warehouse persistence
     await page.goto("/invoices/create")
     await expect(page.getByRole("heading", { name: "إضافة مخزون بالفاتورة" })).toBeVisible()
 
-    // Default single empty line: Save is disabled and the reason names the
-    // exact line and what is missing.
+    // Default single empty row: Save is disabled and the reason names the
+    // missing type first (variant C puts the type on the row).
     const save = page.getByRole("button", { name: "حفظ الفاتورة" })
     await expect(save).toBeDisabled()
+    await expect(page.getByText("اختر نوع السطر 1.")).toBeVisible()
+
+    // Choosing a type moves the reason to the row's item.
+    await page.getByLabel("النوع").first().selectOption("CONSUMABLE")
     await expect(page.getByText("اختر تعريف العنصر في السطر 1.")).toBeVisible()
 
     // Remove the only line: the reason becomes the no-lines message.

@@ -1,5 +1,6 @@
 import type {
   InventoryAssetDetail,
+  InventoryItemOfferFilter,
   InventoryAssetUnit,
   InventoryConsumableBalance,
   InventoryInvoiceAttachment,
@@ -38,6 +39,23 @@ export type InventoryInvoiceGroupDetailRecord = InventoryInvoiceGroupDetail
 export type InventoryItemDefinitionListFilters = {
   itemType?: InventoryItemDefinition["itemType"]
   isActive?: boolean
+}
+
+/** Query for the usage-scoped, keyset-paged item-option read. */
+export type InventoryItemDefinitionPageQuery = {
+  filter: InventoryItemOfferFilter
+  search?: string
+  cursor?: string
+  limit: number
+}
+
+/** One page of item-definition options plus the total match count. */
+export type InventoryItemDefinitionPage = {
+  items: InventoryItemDefinitionRecord[]
+  total: number
+  nextCursor: string | null
+  /** True when a stale cursor (different filter/search) was ignored. */
+  cursorReset: boolean
 }
 
 /** InventoryInvoiceGroupListFilters. */

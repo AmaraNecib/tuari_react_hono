@@ -7,6 +7,7 @@ export * from "./warehouses";
 export * from "./debts";
 export * from "./debt-helpers";
 export * from "./inventory";
+export * from "./inventory-item-usage";
 export * from "./inventory-contract";
 export * from "./system-log";
 export * from "./workspace";

@@ -448,7 +448,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const ac = [...fc];
     if (query.cursor) {
       const d = decodeCursorToken(query.cursor);
-      ac.push(sql`(${schema.employee.createdAt} < ${d.createdAt} OR (${schema.employee.createdAt} = ${d.createdAt} AND ${schema.employee.id} < ${d.id}))`);
+      ac.push(sql`(${schema.employee.createdAt} < ${d.sortKey} OR (${schema.employee.createdAt} = ${d.sortKey} AND ${schema.employee.id} < ${d.id}))`);
     }
     const w = buildWhere(ac);
     const q = this.db.select().from(schema.employee);
@@ -456,7 +456,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const hasMore = rows.length > query.limit;
     const items = rows.slice(0, query.limit);
     const last = items[items.length - 1];
-    return { items, total, nextCursor: hasMore && last ? encodeCursorToken({ createdAt: last.createdAt, id: last.id }) : null };
+    return { items, total, nextCursor: hasMore && last ? encodeCursorToken({ sortKey: last.createdAt, id: last.id }) : null };
   }
 
   upsertEmployee(data: EmployeeCreateData | (EmployeeUpdateData & { id: string })): EmployeeRecord {

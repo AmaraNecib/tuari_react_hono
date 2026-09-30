@@ -60,8 +60,8 @@ export class InMemoryEmployeeRepository implements EmployeeRepository {
       const cursor = decodeCursor(options.cursor);
       // Find the first item strictly past the cursor in sort order.
       startIndex = sorted.findIndex(
-        (record) => record.createdAt < cursor.createdAt
-          || (record.createdAt === cursor.createdAt && record.id < cursor.id),
+        (record) => record.createdAt < cursor.sortKey
+          || (record.createdAt === cursor.sortKey && record.id < cursor.id),
       );
       if (startIndex < 0) startIndex = sorted.length;
     }
@@ -69,7 +69,7 @@ export class InMemoryEmployeeRepository implements EmployeeRepository {
     const slice = sorted.slice(startIndex, startIndex + options.limit);
     const hasMore = startIndex + slice.length < sorted.length;
     const last = slice[slice.length - 1];
-    const nextCursor = hasMore && last ? encodeCursor({ createdAt: last.createdAt, id: last.id }) : null;
+    const nextCursor = hasMore && last ? encodeCursor({ sortKey: last.createdAt, id: last.id }) : null;
 
     return {
       items: slice,

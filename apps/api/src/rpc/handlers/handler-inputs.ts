@@ -32,6 +32,7 @@ import {
   reportFilterInputSchema,
   revokeRecoveryKeyInputSchema,
 } from "@tuari/contracts";
+import type { InventoryItemUsage } from "@tuari/contracts";
 
 /** Input for procedures that take a single `{ id }` payload (get/delete/end). */
 export type IdInput = z.infer<typeof idInputSchema>;
@@ -44,6 +45,14 @@ export type EmployeePagedListInput = NonNullable<z.infer<typeof employeePagedLis
 
 /** Input for `inventoryItemDefinitionsList` — optional item-type/active filters. */
 export type InventoryItemDefinitionListInput = z.infer<typeof inventoryItemDefinitionListInputSchema>;
+
+/** Input for `inventoryItemDefinitionOptions` — usage-scoped, paged picker read. */
+export type InventoryItemDefinitionOptionsInput = {
+  cursor?: string;
+  limit?: number;
+  usage: InventoryItemUsage;
+  search?: string;
+};
 
 /** Input for `inventoryInvoiceGroupsList` — optional warehouse/project filters. */
 export type InventoryInvoiceGroupListInput = z.infer<typeof inventoryInvoiceGroupListInputSchema>;

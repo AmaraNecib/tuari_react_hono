@@ -14,13 +14,20 @@
 /**
  * Position cursor: the last seen row's sort key plus its id.
  *
- * `createdAt` is the primary sort key (descending — newest first) and `id`
- * is the tiebreaker (also descending for stability). `id` must always be
- * present as the tiebreaker because two rows can share a `createdAt`.
+ * `sortKey` is whatever column the caller sorts by (a timestamp, a name, …)
+ * and `id` is the tiebreaker. `id` must always be present because two rows can
+ * share any non-unique sort key. The shared module deliberately does not know
+ * which column a caller sorts by.
+ *
+ * `scope` is an optional opaque fingerprint of the query that produced the
+ * cursor (filter, search, ordering). A caller paging a filtered dataset can
+ * compare it and restart at the first page when a stale cursor from a different
+ * filter arrives, instead of silently returning a wrong page.
  */
 export type Cursor = {
-  createdAt: string
+  sortKey: string
   id: string
+  scope?: string
 }
 
 export type CursorPaginationInput = {
@@ -89,7 +96,11 @@ export function decodeCursor(token: string): Cursor {
 function isCursor(value: unknown): value is Cursor {
   if (typeof value !== "object" || value === null) return false
   const record = value as Record<string, unknown>
-  return typeof record.createdAt === "string" && typeof record.id === "string"
+  return (
+    typeof record.sortKey === "string" &&
+    typeof record.id === "string" &&
+    (record.scope === undefined || typeof record.scope === "string")
+  )
 }
 
 /**

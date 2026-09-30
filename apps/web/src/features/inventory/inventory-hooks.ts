@@ -1,4 +1,5 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useMemo, useState } from "react"
 import type {
   AppError,
   InventoryAssetChargeDefault,
@@ -13,6 +14,7 @@ import type {
   InventoryInvoiceGroup,
   InventoryItemDefinition,
   InventoryItemDefinitionCreateInput,
+  InventoryItemUsage,
   InventoryOutboundTransfer,
   InventoryOutboundTransferCreateInput,
   InventoryInvoiceGroupRecordPaymentInput,
@@ -23,6 +25,7 @@ import type {
 
 import { AppMutationError } from "@/features/app-shell/mock-dashboard"
 import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
+import { useSessionQuery } from "@/features/session/use-session-query"
 import {
   getCachedSessionUserId,
   invalidateUserScopedQuery,
@@ -47,13 +50,98 @@ function requireEntitySuccess<T>(result: { success: boolean; message?: string; i
   return { item: result.item, message: result.message ?? "تم الحفظ بنجاح." }
 }
 
-/** Fetches item definitions for the inventory. */
-export function useInventoryItemDefinitionsQuery({ enabled = true }: { enabled?: boolean } = {}) {
+/**
+ * Fetches item definitions for the inventory.
+ *
+ * An optional `itemType` filter is applied by the SERVER (`inventoryItemDefinitionsList`
+ * takes it), not by trimming a full list in the browser: the invoice line's item picker
+ * can then offer only the definitions valid for that row, and stays correct as the
+ * catalog grows. Filtered variants key under the same `inventoryItems` prefix, so the
+ * existing workspace invalidation still reaches them.
+ */
+export function useInventoryItemDefinitionsQuery({
+  enabled = true,
+  itemType,
+}: { enabled?: boolean; itemType?: InventoryItemDefinition["itemType"] } = {}) {
   return useWorkspaceScopedQuery({
-    key: workspaceQueryKeys.inventoryItems,
+    key: (userId) =>
+      itemType
+        ? ([...workspaceQueryKeys.inventoryItems(userId), itemType] as const)
+        : workspaceQueryKeys.inventoryItems(userId),
     enabled,
-    queryFn: async (): Promise<{ items: InventoryItemDefinition[] }> => rpcClient.inventoryItemDefinitionsList(undefined),
+    queryFn: async (): Promise<{ items: InventoryItemDefinition[] }> =>
+      rpcClient.inventoryItemDefinitionsList(itemType ? { itemType } : undefined),
   })
+}
+
+/** Page size for the paged item-option picker. */
+export const ITEM_DEFINITION_OPTIONS_PAGE_SIZE = 20
+
+/** A stable query-key fingerprint for a usage. */
+function itemUsageKey(usage: InventoryItemUsage): string {
+  return usage.surface === "INVOICE_LINE" ? `INVOICE_LINE:${usage.kind}` : "STOCK_REFERENCE"
+}
+
+/** Debounces a rapidly changing value (the picker's search box). */
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs)
+    return () => clearTimeout(timer)
+  }, [value, delayMs])
+  return debounced
+}
+
+/**
+ * The single web module that owns the usage-scoped item picker's read:
+ * debounce, the cursor chain, page accumulation, and resolving a selection that
+ * is not on the current page. Keyed under the existing `inventoryItems` prefix
+ * so the create/update invalidations already in place reach every search and
+ * page variant.
+ */
+export function useItemDefinitionOptionsQuery({
+  usage,
+  search,
+  enabled = true,
+}: {
+  usage: InventoryItemUsage
+  search?: string
+  enabled?: boolean
+}) {
+  const sessionQuery = useSessionQuery()
+  const userId = sessionQuery.data?.user?.id ?? null
+  const debouncedSearch = useDebouncedValue(search?.trim() ?? "", 250)
+
+  const query = useInfiniteQuery({
+    queryKey: [
+      ...workspaceQueryKeys.inventoryItems(userId),
+      "options",
+      itemUsageKey(usage),
+      debouncedSearch,
+    ] as const,
+    enabled: Boolean(sessionQuery.data?.user) && enabled,
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) =>
+      rpcClient.inventoryItemDefinitionOptions({
+        usage,
+        search: debouncedSearch || undefined,
+        cursor: pageParam,
+        limit: ITEM_DEFINITION_OPTIONS_PAGE_SIZE,
+      }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  })
+
+  const options = useMemo(
+    () => query.data?.pages.flatMap((page) => page.items) ?? [],
+    [query.data],
+  )
+
+  // Note: there is deliberately no `resolve(id)` here yet. The caller (the
+  // invoice row) holds the picked OPTION in its state, so a selection that is
+  // not on the current page is rendered from that object, not re-fetched. An
+  // id-only hydration path (editing an existing invoice) would add `resolve`
+  // here then — not speculatively now.
+  return { ...query, options, debouncedSearch }
 }
 
 /**

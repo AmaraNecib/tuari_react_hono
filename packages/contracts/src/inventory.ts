@@ -23,6 +23,14 @@ export const inventoryItemDefinitionSchema = z.object({
   updatedAt: timestampSchema,
 });
 
+/**
+ * inventoryItemDefinitionOptionSchema - what the paged item picker returns.
+ *
+ * The picker needs the definition's `name` and `unit` (to label the option and
+ * default an asset's name), so it is the full definition read shape.
+ */
+export const inventoryItemDefinitionOptionSchema = inventoryItemDefinitionSchema;
+
 /** inventoryInvoiceAttachmentSchema - Invoice attachment schema. */
 export const inventoryInvoiceAttachmentSchema = z.object({
   id: entityIdSchema,
