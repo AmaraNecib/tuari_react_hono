@@ -78,6 +78,11 @@ vi.mock("@/features/inventory/inventory-hooks", async (importActual) => ({
     isPending: false,
     mutateAsync: mocks.transferConsumable,
   }),
+  // The transfer dialog gained a default-charge query with the stock-charge
+  // feature (#413). This file renders that dialog without a QueryClient, so the
+  // query must be stubbed here the way the dialog's own test stubs it —
+  // otherwise the screen throws "No QueryClient set" and the whole file fails.
+  useAssetChargeDefaultQuery: () => ({ data: undefined, isFetching: false, isError: false }),
   useInventoryWarehousesQuery: () => ({ data: { items: [{ id: "w1", name: "مستودع" }] } }),
   useInventoryProjectsQuery: () => ({ data: { items: [{ id: "p1", name: "مشروع" }] } }),
 }))
