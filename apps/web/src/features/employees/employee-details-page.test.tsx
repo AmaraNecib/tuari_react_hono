@@ -46,7 +46,7 @@ vi.mock("@/features/app-shell/workspace-mutations", () => ({
   }),
 }))
 
-// The real picker renders and returns `dd/MM/yyyy`; expose that contract so the
+// The picker speaks canonical `yyyy-MM-dd` in and out (#428); expose that contract so the
 // quick form's canonical-date conversion is exercised without the popover.
 vi.mock("@/components/ui/date-picker", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/ui/date-picker")>()
@@ -57,7 +57,7 @@ vi.mock("@/components/ui/date-picker", async (importOriginal) => {
         type="button"
         data-testid="salary-date-picker"
         data-value={value}
-        onClick={() => onChange("15/03/2026")}
+        onClick={() => onChange("2026-03-15")}
       >
         pick
       </button>

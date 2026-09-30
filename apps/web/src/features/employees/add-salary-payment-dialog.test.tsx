@@ -26,7 +26,7 @@ vi.mock("@/components/ui/date-picker", async (importOriginal) => {
         type="button"
         data-testid="salary-date-picker"
         data-value={value}
-        onClick={() => onChange("15/03/2026")}
+        onClick={() => onChange("2026-03-15")}
       >
         pick
       </button>
@@ -176,11 +176,10 @@ describe("AddSalaryPaymentDialog (#412)", () => {
     mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
     const { lineDaysInput } = renderDialog()
 
-    // The dialog hands the picker the display format it expects, not the raw
-    // canonical state (a raw `yyyy-MM-dd` would render as a placeholder and a
-    // picked day would come back as `dd/MM/yyyy` and null the pay period).
+    // The dialog hands the picker canonical state and takes canonical back; a
+    // mismatch here is what used to null the pay period.
     const picker = screen.getByTestId("salary-date-picker")
-    expect(picker.getAttribute("data-value")).toMatch(/^\d{2}\/\d{2}\/\d{4}$/)
+    expect(picker.getAttribute("data-value")).toMatch(/^\d{4}-\d{2}-\d{2}$/)
 
     // Picking a day must not wipe the prefilled per-project split.
     fireEvent.click(picker)
