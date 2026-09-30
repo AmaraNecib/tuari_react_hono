@@ -176,4 +176,20 @@ describe("TablePaginationControls", () => {
     fireEvent.change(select, { target: { value: "50" } })
     expect(onPageSizeChange).toHaveBeenCalledWith(50)
   })
+
+  it("exposes an accessible name for the page-size select", () => {
+    render(
+      <TablePaginationControls
+        page={1}
+        pageSize={10}
+        totalCount={100}
+        onPageChange={vi.fn()}
+        onPageSizeChange={vi.fn()}
+      />,
+    )
+
+    // The visible "عدد الصفوف" span is not associated with the select, so the
+    // accessible name must come from the control itself.
+    expect(screen.getByRole("combobox", { name: "عدد الصفوف" })).toBeTruthy()
+  })
 })

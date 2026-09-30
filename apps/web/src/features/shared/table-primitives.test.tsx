@@ -130,6 +130,47 @@ describe("usePaginatedRows", () => {
     await waitFor(() => expect(screen.getByTestId("page").textContent).toBe("2"))
   })
 
+  it("clamps rows on the first render after a shrink, before effects flush", () => {
+    const snapshots: Array<{ page: number; rendered: number }> = []
+
+    function RecordingHarness() {
+      const [rows, setRows] = React.useState(twentyFiveRows)
+      const { page, pagedRows, setPage } = usePaginatedRows({ rows })
+      // Render-phase capture: the first entry after the shrink is the pre-effect
+      // paint, which is exactly the frame a user sees.
+      snapshots.push({ page, rendered: pagedRows.length })
+      return (
+        <div>
+          <button type="button" onClick={() => setPage(3)}>
+            record-page-3
+          </button>
+          <button type="button" onClick={() => setRows(rows.slice(0, 12))}>
+            record-shrink-12
+          </button>
+          <ul>
+            {pagedRows.map((row) => (
+              <li key={row}>{row}</li>
+            ))}
+          </ul>
+        </div>
+      )
+    }
+
+    render(<RecordingHarness />)
+    fireEvent.click(screen.getByText("record-page-3"))
+    expect(screen.getAllByRole("listitem")).toHaveLength(5)
+
+    snapshots.length = 0
+    fireEvent.click(screen.getByText("record-shrink-12"))
+
+    // 12 rows / pageSize 10 → max page 2. The first render after the shrink must
+    // already show page 2 with its 2 rows; a clamp that ran only in an effect
+    // returned page 3 / [] here.
+    expect(snapshots[0]).toEqual({ page: 2, rendered: 2 })
+    expect(screen.getByText("row-11")).toBeTruthy()
+    expect(screen.getByText("row-12")).toBeTruthy()
+  })
+
   it("lands on page 1 when the rows shrink all the way to empty", async () => {
     function EmptyShrinkHarness() {
       const [rows, setRows] = React.useState(twentyFiveRows)

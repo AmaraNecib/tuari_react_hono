@@ -66,6 +66,22 @@ separate paged endpoint (not a behavior change to this one).
   `usePaginatedRows`'s clamp-on-shrink effect still handles the derived case
   where the underlying list changes under the user.
 
+## Shared-primitive changes (parent-approved Option A)
+
+The review found two defects in the shared pagination primitives that the new
+page inherited. Both are fixed once here so every consumer (invoices, audit,
+warehouses, projects, system log, items) benefits:
+
+- `usePaginatedRows` now derives `effectivePage = Math.min(page, maxPage)` and
+  uses it for slicing and for the returned `page`, so a shrink that crosses a
+  page boundary never paints an empty frame. The state-sync effect is **kept**
+  (`if (page > maxPage) setPage(maxPage)`): without it, a list that grows back
+  after a shrink would make `Math.min` restore the stale page. The effect now
+  runs only to converge stored state, not to make the visible frame correct.
+- `TablePaginationControls` gives the page-size `NativeSelect` an
+  `aria-label` from the existing `tables.rowsPerPage` key; the sibling
+  Previous/Next buttons already carry text names.
+
 ## Tests
 
 `apps/web/src/features/inventory/inventory-item-definitions-page.test.tsx`
@@ -100,11 +116,12 @@ cross-package typecheck had its declarations.
 | Command | Result |
 | --- | --- |
 | `pnpm --filter @tuari/web test --maxWorkers=2 inventory-item-definitions-page` | 10/10 pass |
-| `pnpm --filter @tuari/web test --maxWorkers=2` | full suite; see `.scratch/reviews/442/` |
+| `pnpm --filter @tuari/web test --maxWorkers=2 table-primitives table-pagination-controls inventory-item-definitions-page` | 39/39 pass |
+| `pnpm --filter @tuari/web test --maxWorkers=2` | 735 passed, 1 pre-existing failure (`date-picker-screens`) |
 | `pnpm typecheck` | pass (4/4 packages) |
-| `pnpm lint` | pass (all repo checks + turbo lint) |
+| `pnpm lint` | pass (all repo checks + turbo lint), 0 warnings |
 | `pnpm check:unslop` | PASS |
-| scoped coverage (`--coverage.include` page + control) | page + control; see report |
+| scoped coverage (page + control + hook) | page 91.66% stmts, control 100%, hook 96.15% |
 
 **Pre-existing failure waiver**: `date-picker-screens.test.tsx > TransferItemDialog
 submits the picked day for a transfer (#428) > passes the canonical picked day as
@@ -121,9 +138,9 @@ Full reports: `.scratch/reviews/442/<HEAD>-debate.md`,
 | --- | --- | --- | --- |
 | F1 | `items.length > pageSize` gate hid the whole control, so picking 50 (with 34 items) stranded the operator at 50 rows/page with no way back | Major | **Fixed** (gate now `items.length > 0`); test fails pre-fix |
 | F2 | A created definition inserts in name order, so it could land off-page; the operator saw an unchanged page and only a toast as proof | Major | **Fixed** (follow the new row to its page); test fails pre-fix |
-| F3 | `usePaginatedRows` clamps in a `useEffect`, so a cross-page shrink paints one empty control-less frame | Minor | **Filed** (shared-hook paint timing; parent decision) |
+| F3 | `usePaginatedRows` clamps in a `useEffect`, so a cross-page shrink paints one empty control-less frame | Minor | **Fixed** — synchronous `effectivePage` + hook test that asserts the first render after the shrink |
 | F4 | No `resetPageDeps`; a future filter would land on the clamped last page instead of page 1 | Minor | **Dismissed** — filtering would happen before `rows` reaches the hook; no filter exists (critic score 2/10) |
-| F5 | Page-size `NativeSelect` has no `aria-label` | Minor | **Filed** — shared control, pre-existing, not introduced here |
+| F5 | Page-size `NativeSelect` has no accessible name | Minor | **Fixed** — `aria-label` from `tables.rowsPerPage` + shared-control test |
 | F6 | Test isolation used `clearAllMocks` (kept implementations across tests) | Minor | **Fixed** (`resetAllMocks` + seed in `beforeEach`) |
 | F7 | Bar-gate boundary at exactly `pageSize` untested | Minor | **Fixed** (exactly-one-page test) |
 | F8 | Shrink below one page untested | Minor | **Fixed** (34 → 3 test) |
