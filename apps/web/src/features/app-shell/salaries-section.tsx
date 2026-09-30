@@ -374,7 +374,7 @@ export function SalariesSection({
             </table>
           </AppShellTableFrame>
 
-          {recentPayments.length > 0 ? (
+          {filteredPayments.length > 0 ? (
             <TablePaginationControls
               page={payments.page}
               pageSize={payments.pageSize}
@@ -484,7 +484,7 @@ export function SalariesSection({
             </table>
           </AppShellTableFrame>
 
-          {workers.length > 0 ? (
+          {filteredWorkers.length > 0 ? (
             <TablePaginationControls
               page={workerRows.page}
               pageSize={workerRows.pageSize}

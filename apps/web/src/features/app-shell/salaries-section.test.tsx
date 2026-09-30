@@ -300,7 +300,8 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
     expect(screen.getByText("1-10 من 10")).toBeTruthy()
     expect(screen.getByText("1 / 1")).toBeTruthy()
     expect((screen.getByRole("button", { name: "التالي" }) as HTMLButtonElement).disabled).toBe(true)
-    expect(getPageSizeSelect()).toBeTruthy()
+    // The page-size control is reachable and still on its default size at one page.
+    expect(getPageSizeSelect()?.value).toBe("10")
   })
 
   it("windows the payment history through the shared pagination controls", () => {
@@ -444,6 +445,123 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
 
     expect(screen.getByText("لا توجد نتائج")).toBeTruthy()
     expect(historyTable().queryByText("عامل 01")).toBeNull()
+    // No rows means no pagination bar: the range must not read "0-0 of 0" next
+    // to the empty state, and the search field stays so the filter can be cleared.
+    expect(screen.queryByText("0-0 من 0")).toBeNull()
+    expect(getPageSizeSelect()).toBeUndefined()
+    expect(screen.getByLabelText("بحث باسم العامل...")).toBeTruthy()
+  })
+
+  it("changes the page size from the shared control and re-windows the table", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={makePayments(23)}
+        workers={[]}
+      />,
+    )
+
+    expect(screen.getByText("1-10 من 23")).toBeTruthy()
+
+    const pageSizeSelect = getPageSizeSelect()
+    expect(pageSizeSelect?.value).toBe("10")
+    fireEvent.change(pageSizeSelect!, { target: { value: "25" } })
+
+    // 23 rows at 25/page is one page: the window and the range line follow the
+    // new size, and no stale page 2 survives.
+    expect(screen.getByText("1-23 من 23")).toBeTruthy()
+    expect(screen.getByText("1 / 1")).toBeTruthy()
+    expect(historyTable().getByText("عامل 23")).toBeTruthy()
+  })
+
+  it("applies the search and the project filter together", () => {
+    const payments = makePayments(23).map((payment, index) => ({
+      ...payment,
+      projectSplits: [{ projectId: index % 2 === 0 ? "project-1" : "project-2", days: 30 }],
+    }))
+
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[
+          { id: "project-1", name: "مشروع ألف" },
+          { id: "project-2", name: "مشروع باء" },
+        ]}
+        recentPayments={payments}
+        workers={[]}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText(/المشروع/), { target: { value: "project-1" } })
+    expect(screen.getByText("1-10 من 12")).toBeTruthy()
+
+    // Search and filter are ANDed, not either/or: only the project-1 payment
+    // whose worker matches remains, and the page resets to 1 for the join.
+    fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), {
+      target: { value: "عامل 01" },
+    })
+    expect(screen.getByText("1-1 من 1")).toBeTruthy()
+    expect(historyTable().getByText("عامل 01")).toBeTruthy()
+    expect(historyTable().queryByText("عامل 03")).toBeNull()
+  })
+
+  it("shows one page with no phantom next when a filter matches exactly the page size", () => {
+    const payments = makePayments(23).map((payment, index) => ({
+      ...payment,
+      projectSplits: [{ projectId: index < 10 ? "project-1" : "project-2", days: 30 }],
+    }))
+
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[
+          { id: "project-1", name: "مشروع ألف" },
+          { id: "project-2", name: "مشروع باء" },
+        ]}
+        recentPayments={payments}
+        workers={[]}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText(/المشروع/), { target: { value: "project-1" } })
+
+    expect(screen.getByText("1-10 من 10")).toBeTruthy()
+    expect(screen.getByText("1 / 1")).toBeTruthy()
+    expect((screen.getByRole("button", { name: "التالي" }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it("does not block a second same-month payment at the screen level (owner item 6, decision C)", () => {
+    const paidThisMonth = {
+      ...makeWorkers(1, "MONTHLY")[0]!,
+      lastPaymentDate: "2026-03-20T00:00:00.000Z",
+    }
+    const payment = {
+      ...makePayments(1)[0]!,
+      employeeId: paidThisMonth.employeeId,
+      employeeName: paidThisMonth.employeeName,
+    }
+
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={[payment]}
+        workers={[paidThisMonth]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+    const payButton = within(screen.getByRole("table")).getByRole("button", { name: "إضافة دفعة" })
+    // A monthly guard would disable this for a worker already paid this month.
+    expect(payButton.hasAttribute("disabled")).toBe(false)
+
+    fireEvent.click(payButton)
+    // The dialog opens with a live save control, proving the screen adds no
+    // monthly guard of its own (the API has none either).
+    const dialog = screen.getByRole("dialog")
+    const submit = within(dialog).getByRole("button", { name: "إضافة دفعة" })
+    expect(submit.hasAttribute("disabled")).toBe(false)
   })
 
   it("does not render a remaining or paid-vs-salary balance (owner item 6, decision C)", () => {

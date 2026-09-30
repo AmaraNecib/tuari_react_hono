@@ -1209,8 +1209,10 @@ describe("WorkforceService coverage branches", () => {
 
       expect(second.id).not.toBe(first.id);
       const stored = service.listSalaryPayments({ employeeId: worker.id }).items;
-      expect(stored.map((payment) => payment.id)).toEqual(
-        expect.arrayContaining([first.id, second.id]),
+      // Exactly the two rows, not merely "both present": an extra row would mean
+      // a guard/upsert path changed the history rather than accepting both.
+      expect(stored.map((payment) => payment.id).sort()).toEqual(
+        [first.id, second.id].sort(),
       );
     });
 

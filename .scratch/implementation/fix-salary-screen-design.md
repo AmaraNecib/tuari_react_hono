@@ -58,8 +58,11 @@ stock `Input`/`NativeSelect` controls; no second pagination UI.
 - workers tab: search by worker (name + role), filters period / project
   (assignment window).
 - Both window through `usePaginatedRows` with `resetPageDeps` on every
-  search/filter value, and render `TablePaginationControls` whenever the source
-  list is non-empty so the page-size control stays reachable at one page.
+  search/filter value, and render `TablePaginationControls` whenever the
+  **filtered** list is non-empty, so the page-size control stays reachable at one
+  page while a filter that matches nothing shows no dead `0-0 of 0` control bar.
+  The filter shell itself stays gated on the source list, so a filter can always
+  be cleared.
 
 Columns/filters found (for the PR body): worker, date, days, expected, actual,
 note on the history table; worker, salary, period, last payment on the workers
@@ -111,5 +114,8 @@ parent decision added the matching missing-wage reason ("أجر العامل غ�
 حدّده من ملف العامل أولًا.") because the same silent-failure shape appears when
 the operator types an amount for a worker with no wage. Both use the invoice
 save-reason pattern (`role="status" aria-live="polite"` + `text-destructive`),
-and the API requirement is unchanged. Explicitly out of scope per the parent: a
+and the API requirement is unchanged. A third reason covers an amount that is
+empty, zero, or not a number (a zero wage prefills `0`), so a disabled save is
+never silent; it does not block on its own, so a zero-wage worker who types a
+real amount can still save. Explicitly out of scope per the parent: a
 "pay full" affordance, and using a former employee's last expected amount.

@@ -109,6 +109,28 @@ describe("AddSalaryPaymentDialog (#412)", () => {
     expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("20")
   })
 
+  it("keeps a hand-typed amount when the wage period changes underneath it", async () => {
+    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
+    const { rerenderPeriod } = renderDialog("MONTHLY")
+
+    const amountInput = screen.getByLabelText(/salaries.actualAmount/) as HTMLInputElement
+    fireEvent.change(amountInput, { target: { value: "12000" } })
+
+    // The proposal is re-derived from the wage, but an edited amount is pinned:
+    // reclassifying the worker must not overwrite the operator's figure with a
+    // fresh proposal (a naive "sync amount to proposal" would).
+    rerenderPeriod("DAILY")
+    expect(
+      (screen.getByLabelText(/salaries.actualAmount/) as HTMLInputElement).value,
+    ).toBe("12000")
+
+    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
+    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
+    expect(mockMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ actualAmountDzd: 12000 }),
+    )
+  })
+
   it("re-derives the split default from the new period when the day count was untouched", () => {
     mockMutateAsync.mockReset()
     const { rerenderPeriod } = renderDialog("MONTHLY")
@@ -332,6 +354,8 @@ describe("AddSalaryPaymentDialog (#412)", () => {
 
     // A known period means no missing-setting reason and a live save control.
     expect(screen.queryByText("salaries.missingPeriodReason")).toBeNull()
+    expect(screen.queryByText("salaries.missingWageReason")).toBeNull()
+    expect(screen.queryByText("salaries.missingAmountReason")).toBeNull()
     expect(
       screen.getByRole("button", { name: "salaries.addPayment" }).hasAttribute("disabled"),
     ).toBe(false)
@@ -374,6 +398,66 @@ describe("AddSalaryPaymentDialog (#412)", () => {
     const submit = screen.getByRole("button", { name: "salaries.addPayment" })
     expect(submit.hasAttribute("disabled")).toBe(true)
     expect(screen.getByText("salaries.missingPeriodReason")).toBeTruthy()
+
+    // Typing a valid amount does not clear the period refusal: the API refuses
+    // on the missing period regardless of the amount.
+    fireEvent.change(screen.getByLabelText(/salaries.actualAmount/), {
+      target: { value: "12000" },
+    })
+    expect(submit.hasAttribute("disabled")).toBe(true)
+    expect(screen.getByText("salaries.missingPeriodReason")).toBeTruthy()
+  })
+
+  it("names an invalid amount so a disabled save is never silent", () => {
+    mockMutateAsync.mockReset()
+    render(
+      <AddSalaryPaymentDialog
+        employeeId="employee-1"
+        employeeName="عامل"
+        salaryAmountDzd={0}
+        salaryPeriod="MONTHLY"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    // A zero wage proposes zero and the API rejects a non-positive amount, so
+    // the save is disabled; it must say why rather than be a silent dead end.
+    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
+    expect(submit.hasAttribute("disabled")).toBe(true)
+    expect(screen.getByText("salaries.missingAmountReason")).toBeTruthy()
+    // The wage is set (to zero), so the missing-wage reason must not also fire.
+    expect(screen.queryByText("salaries.missingWageReason")).toBeNull()
+  })
+
+  it("lets a zero-wage worker save once a positive amount is typed", async () => {
+    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
+    render(
+      <AddSalaryPaymentDialog
+        employeeId="employee-1"
+        employeeName="عامل"
+        salaryAmountDzd={0}
+        salaryPeriod="MONTHLY"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText(/salaries.actualAmount/), {
+      target: { value: "5000" },
+    })
+
+    // A zero wage is allowed by the contract and the API stores a hand-typed
+    // amount for it, so the dialog must not treat it as unpayable.
+    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
+    expect(submit.hasAttribute("disabled")).toBe(false)
+    expect(screen.queryByText("salaries.missingAmountReason")).toBeNull()
+
+    fireEvent.click(submit)
+    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
+    expect(mockMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ actualAmountDzd: 5000 }),
+    )
   })
 
   it("blocks save with a reason when the worker has no wage, even after an amount is typed", () => {

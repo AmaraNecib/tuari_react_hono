@@ -490,6 +490,7 @@ export const ar = {
       allPeriods: "كل الدوريات",
       missingPeriodReason: "لا يمكن تسجيل الدفعة: دورية أجر العامل غير محددة. حدّدها من ملف العامل أولاً.",
       missingWageReason: "لا يمكن تسجيل الدفعة: أجر العامل غير محدد. حدّده من ملف العامل أولاً.",
+      missingAmountReason: "أدخل مبلغ دفعة أكبر من صفر.",
       noPaymentsYet: "لا توجد دفعات بعد",
     },
     toasts: {

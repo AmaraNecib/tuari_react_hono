@@ -235,6 +235,15 @@ export function AddSalaryPaymentDialog({
   const missingWageReason = salaryAmountDzd === null ? t("salaries.missingWageReason") : null
   const missingPeriodReason = salaryPeriod === null ? t("salaries.missingPeriodReason") : null
   const saveBlocked = missingWageReason !== null || missingPeriodReason !== null
+  // A disabled save must always name why. An amount that is empty, zero, or not
+  // a number is the remaining silent case (a zero wage prefills "0", which the
+  // API rejects as "greater than zero"); name it too. This does NOT block on its
+  // own — `hasValidAmount` already does that — so a zero-wage worker who types a
+  // real amount can still save, exactly as the API's amount check allows. It is
+  // suppressed while days are invalid, because then the empty amount is a
+  // consequence of the days field, not a separate mistake to explain.
+  const invalidAmountReason =
+    days !== null && !hasValidAmount && !saveBlocked ? t("salaries.missingAmountReason") : null
 
   const resetForm = () => {
     setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
@@ -269,7 +278,10 @@ export function AddSalaryPaymentDialog({
   }
 
   const handleSubmit = async () => {
-    if (!canSubmit || !employeeId || days === null) return
+    // `saveBlocked` is also checked here, not only by the disabled button: the
+    // guard lives in the handler so a future non-button submit path cannot skip
+    // the API's wage/period precondition.
+    if (!canSubmit || saveBlocked || !employeeId || days === null) return
 
     await mutation.mutateAsync({
       employeeId,
@@ -421,10 +433,11 @@ export function AddSalaryPaymentDialog({
           </label>
         </div>
 
-        {saveBlocked ? (
+        {saveBlocked || invalidAmountReason ? (
           <div role="status" aria-live="polite" className="space-y-1 text-sm text-destructive">
             {missingWageReason ? <p>{missingWageReason}</p> : null}
             {missingPeriodReason ? <p>{missingPeriodReason}</p> : null}
+            {invalidAmountReason ? <p>{invalidAmountReason}</p> : null}
           </div>
         ) : null}
 
