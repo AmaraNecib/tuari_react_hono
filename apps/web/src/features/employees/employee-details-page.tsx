@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
 import { DatePicker } from "@/components/ui/date-picker"
 import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashboard"
+import { getSalaryPeriodLabelKey } from "@/features/app-shell/salary-table-primitives"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 import type {
   SalaryPaymentDraft,
@@ -63,22 +64,6 @@ function getSalaryDifferenceMeta(expectedAmountDzd: number, actualAmountDzd: num
     className: "text-muted-foreground",
     value: difference,
   }
-}
-
-function getSalaryPeriodLabelKey(value: EmployeeTableRow["salaryPeriod"]) {
-  if (value === "DAILY") {
-    return "detailPages.salary.daily"
-  }
-
-  if (value === "WEEKLY") {
-    return "detailPages.salary.weekly"
-  }
-
-  if (value === "MONTHLY") {
-    return "detailPages.salary.monthly"
-  }
-
-  return "detailPages.salary.notSpecified"
 }
 
 function renderMoneyValue(
