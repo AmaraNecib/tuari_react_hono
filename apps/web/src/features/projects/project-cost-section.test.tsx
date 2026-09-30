@@ -32,7 +32,7 @@ function cost(overrides: Partial<ProjectCost> = {}): ProjectCost {
   return {
     projectId: "p-1",
     totalDzd: 260_000,
-    parts: { expensesDzd: 10_000, salariesDzd: 36_000, stockDzd: 180_000, consumablesDzd: 34_000 },
+    parts: { expensesDzd: 10_000, salariesDzd: 36_000, stockDzd: 180_000, chargedMaterialsDzd: 34_000 },
     expenses: [
       {
         id: "e-1",
@@ -59,7 +59,7 @@ function cost(overrides: Partial<ProjectCost> = {}): ProjectCost {
     stock: [
       { id: "c-1", assetUnitId: "a-1", assetName: "خلاطة إسمنت", amountDzd: 180_000, placedAt: "2026-05-20T00:00:00.000Z" },
     ],
-    consumables: [
+    materialMovements: [
       {
         id: "m-1",
         itemDefinitionId: "def-1",
@@ -68,15 +68,13 @@ function cost(overrides: Partial<ProjectCost> = {}): ProjectCost {
         quantity: 40,
         unitPriceDzd: 850,
         valueDzd: 34_000,
+        direction: "IN",
         occurredAt: "2026-05-20T00:00:00.000Z",
       },
     ],
     parkedInventory: {
-      totalDzd: 188_500,
+      totalDzd: 180_000,
       assets: [{ assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 180_000 }],
-      consumables: [
-        { id: "bal-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 10, unitPriceDzd: 850, valueDzd: 8_500 },
-      ],
     },
     ...overrides,
   }
@@ -107,14 +105,15 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText("أجور (أيام موزّعة)")).toBeTruthy()
     expect(screen.getByText("عتاد مخصّص")).toBeTruthy()
     // The source label and the source card share the phrase; both must render.
-    expect(screen.getAllByText("مواد مستهلكة")).toHaveLength(2)
+    expect(screen.getAllByText("المواد المحمّلة على المشروع")).toHaveLength(2)
 
     // The lists behind each source explain the number.
     expect(screen.getByText("وقود")).toBeTruthy()
     expect(screen.getByText(/18 يومًا/)).toBeTruthy()
     expect(screen.getByText("خلاطة إسمنت")).toBeTruthy()
-    // The consumables row and the parked balance both name the material.
-    expect(screen.getAllByText("إسمنت")).toHaveLength(2)
+    // The material movement names the item and carries its direction.
+    expect(screen.getByText("إسمنت")).toBeTruthy()
+    expect(screen.getByText(/إضافة إلى المشروع/)).toBeTruthy()
   })
 
   it("renders a positive share for each source, never a bare signed number", () => {
@@ -127,12 +126,55 @@ describe("ProjectCostSection (#414)", () => {
     }
   })
 
-  it("shows the parked inventory value separately from the cost total", () => {
+  it("marks a material movement out of the project as a reversal", () => {
+    prime(
+      cost({
+        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: 2_500 },
+        totalDzd: 2_500,
+        materialMovements: [
+          {
+            id: "m-in",
+            itemDefinitionId: "def-1",
+            itemName: "إسمنت",
+            unit: "كيس",
+            quantity: 10,
+            unitPriceDzd: 500,
+            valueDzd: 5_000,
+            direction: "IN",
+            occurredAt: "2026-05-20T00:00:00.000Z",
+          },
+          {
+            id: "m-out",
+            itemDefinitionId: "def-1",
+            itemName: "إسمنت",
+            unit: "كيس",
+            quantity: 5,
+            unitPriceDzd: 500,
+            valueDzd: 2_500,
+            direction: "OUT",
+            occurredAt: "2026-05-21T00:00:00.000Z",
+          },
+        ],
+        expenses: [],
+        salaries: [],
+        stock: [],
+      }),
+    )
+    render(<ProjectCostSection projectId="p-1" />)
+
+    // Both directions are visible with their sign, so the net is explained.
+    expect(screen.getByText(/إضافة إلى المشروع/)).toBeTruthy()
+    expect(screen.getByText(/إخراج من المشروع/)).toBeTruthy()
+    expect(screen.getByText((content) => content.includes("−") && content.includes("2,500"))).toBeTruthy()
+  })
+
+  it("shows the parked asset inventory value separately from the cost total", () => {
     prime(cost())
     render(<ProjectCostSection projectId="p-1" />)
 
     expect(screen.getByText("مخزون على الموقع")).toBeTruthy()
-    expect(screen.getByText("188,500 دج")).toBeTruthy()
+    // The parked total and the single parked asset are both 180,000 here.
+    expect(screen.getAllByText("180,000 دج").length).toBeGreaterThan(0)
     expect(screen.getByText("رافعة")).toBeTruthy()
   })
 
@@ -140,12 +182,12 @@ describe("ProjectCostSection (#414)", () => {
     prime(
       cost({
         totalDzd: 0,
-        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, consumablesDzd: 0 },
+        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: 0 },
         expenses: [],
         salaries: [],
         stock: [],
-        consumables: [],
-        parkedInventory: { totalDzd: 0, assets: [], consumables: [] },
+        materialMovements: [],
+        parkedInventory: { totalDzd: 0, assets: [] },
       }),
     )
     render(<ProjectCostSection projectId="p-1" />)
@@ -156,42 +198,39 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText("دفع أجر")).toBeTruthy()
   })
 
-  it("keeps the empty-cost state but still shows parked inventory for a parked-only project", () => {
+  it("keeps the empty-cost state but still shows a parked asset for a parked-only project", () => {
     prime(
       cost({
         totalDzd: 0,
-        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, consumablesDzd: 0 },
+        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: 0 },
         expenses: [],
         salaries: [],
         stock: [],
-        consumables: [],
+        materialMovements: [],
         parkedInventory: {
-          totalDzd: 8_500,
-          assets: [],
-          consumables: [
-            { id: "bal-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 10, unitPriceDzd: 850, valueDzd: 8_500 },
-          ],
+          totalDzd: 180_000,
+          assets: [{ assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 180_000 }],
         },
       }),
     )
     render(<ProjectCostSection projectId="p-1" />)
 
-    // No cost and no inventory are two different facts; both are true here.
+    // No cost and parked inventory are two different facts; both are true here.
     expect(screen.getByText("لا توجد تكلفة على هذا المشروع بعد")).toBeTruthy()
-    // The parked total and the single parked row are both 8,500 here.
-    expect(screen.getAllByText("8,500 دج").length).toBeGreaterThan(0)
+    expect(screen.getByText("مخزون على الموقع")).toBeTruthy()
+    expect(screen.getByText("رافعة")).toBeTruthy()
   })
 
   it("routes the empty-state actions to the screens that create a cost", () => {
     prime(
       cost({
         totalDzd: 0,
-        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, consumablesDzd: 0 },
+        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: 0 },
         expenses: [],
         salaries: [],
         stock: [],
-        consumables: [],
-        parkedInventory: { totalDzd: 0, assets: [], consumables: [] },
+        materialMovements: [],
+        parkedInventory: { totalDzd: 0, assets: [] },
       }),
     )
     const onOpenItems = vi.fn()

@@ -1,9 +1,8 @@
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import type {
-  ProjectCostConsumableIssueRecord,
+  ProjectCostMaterialMovementRecord,
   ProjectCostExpenseRecord,
   ProjectCostParkedAssetRecord,
-  ProjectCostParkedConsumableRecord,
   ProjectCostProjectRecord,
   ProjectCostRepository,
   ProjectCostSalarySplitRecord,
@@ -16,8 +15,9 @@ import type {
  * Read-only: the cost screen explains money other modules already wrote, so
  * there is no write path and no connection-lock transaction here. Each source
  * is read with the SAME predicate the owning module uses (non-voided expenses,
- * LIVE charges, split rows, consumable movements into the project), so the
- * total cannot disagree with the module that wrote the rows.
+ * LIVE charges, split rows, consumable movements the project is a party to in
+ * EITHER direction), so the total cannot disagree with the module that wrote
+ * the rows.
  *
  * Names are resolved with LEFT JOINs rather than per-row lookups, so one
  * project cost is a fixed number of queries, not one per expense/tool/day.
@@ -122,8 +122,8 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
     }));
   }
 
-  /** listProjectConsumableIssues. */
-  listProjectConsumableIssues(projectId: string): ProjectCostConsumableIssueRecord[] {
+  /** listProjectMaterialMovements. */
+  listProjectMaterialMovements(projectId: string): ProjectCostMaterialMovementRecord[] {
     const rows = this.db
       .prepare(
         `SELECT
@@ -133,12 +133,17 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
            e.unit AS unit,
            m.quantity AS quantity,
            e.unit_price_dzd AS unit_price_dzd,
-           m.occurred_at AS occurred_at
+           m.occurred_at AS occurred_at,
+           m.to_project_id AS to_project_id
          FROM "inventory_movement" m
          LEFT JOIN "inventory_entry" e ON e.id = m.inventory_entry_id
-         WHERE m.to_project_id = ? AND m.item_type = 'CONSUMABLE'`,
+         WHERE m.item_type = 'CONSUMABLE'
+           AND (
+             (m.to_project_id = ? AND (m.from_project_id IS NULL OR m.from_project_id <> ?))
+             OR (m.from_project_id = ? AND (m.to_project_id IS NULL OR m.to_project_id <> ?))
+           )`,
       )
-      .all(projectId) as Array<Record<string, unknown>>;
+      .all(projectId, projectId, projectId, projectId) as Array<Record<string, unknown>>;
 
     return rows.map((row) => ({
       id: String(row.id),
@@ -147,15 +152,13 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
       unit: emptyToNull(row.unit),
       quantity: Number(row.quantity ?? 0),
       unitPriceDzd: row.unit_price_dzd != null ? Number(row.unit_price_dzd) : null,
+      direction: String(row.to_project_id) === projectId ? "IN" : "OUT",
       occurredAt: String(row.occurred_at),
     }));
   }
 
-  /** getProjectParkedInventory. */
-  getProjectParkedInventory(projectId: string): {
-    assets: ProjectCostParkedAssetRecord[];
-    consumables: ProjectCostParkedConsumableRecord[];
-  } {
+  /** getProjectParkedAssets. */
+  getProjectParkedAssets(projectId: string): ProjectCostParkedAssetRecord[] {
     const assetRows = this.db
       .prepare(
         `SELECT u.id AS asset_unit_id, u.asset_name AS asset_name, u.purchase_price_dzd AS purchase_price_dzd
@@ -164,36 +167,11 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
       )
       .all(projectId) as Array<Record<string, unknown>>;
 
-    const consumableRows = this.db
-      .prepare(
-        `SELECT
-           b.id AS id,
-           b.item_definition_id AS item_definition_id,
-           e.item_name AS item_name,
-           e.unit AS unit,
-           b.quantity AS quantity,
-           e.unit_price_dzd AS unit_price_dzd
-         FROM "inventory_consumable_balance" b
-         LEFT JOIN "inventory_entry" e ON e.id = b.inventory_entry_id
-         WHERE b.project_id = ?`,
-      )
-      .all(projectId) as Array<Record<string, unknown>>;
-
-    return {
-      assets: assetRows.map((row) => ({
-        assetUnitId: String(row.asset_unit_id),
-        assetName: emptyToNull(row.asset_name),
-        purchasePriceDzd: Number(row.purchase_price_dzd ?? 0),
-      })),
-      consumables: consumableRows.map((row) => ({
-        id: String(row.id),
-        itemDefinitionId: emptyToNull(row.item_definition_id),
-        itemName: emptyToNull(row.item_name),
-        unit: emptyToNull(row.unit),
-        quantity: Number(row.quantity ?? 0),
-        unitPriceDzd: row.unit_price_dzd != null ? Number(row.unit_price_dzd) : null,
-      })),
-    };
+    return assetRows.map((row) => ({
+      assetUnitId: String(row.asset_unit_id),
+      assetName: emptyToNull(row.asset_name),
+      purchasePriceDzd: Number(row.purchase_price_dzd ?? 0),
+    }));
   }
 }
 

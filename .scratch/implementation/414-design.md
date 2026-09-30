@@ -35,15 +35,19 @@ disagree mid-refresh.
 - `projectCostGet` input: `{ projectId }`.
 - Output (entity result envelope, like the other read queries):
   - `totalDzd` — the four parts summed, `roundMoney`, write-bound checked.
-  - `parts`: `{ expensesDzd, salariesDzd, stockDzd, consumablesDzd }`.
+  - `parts`: `{ expensesDzd, salariesDzd, stockDzd, chargedMaterialsDzd }`.
   - `expenses[]`: id, date, whatFor, amount, responsibleWorkerId, sellerId.
   - `salaries[]`: paymentId, employeeId, employeeName, days, dayRateDzd,
     amountDzd, paymentDate.
   - `stock[]`: chargeId, assetUnitId, assetName, amountDzd, placedAt.
-  - `consumables[]`: movementId, itemDefinitionId, itemName, unit, quantity,
-    unitPriceDzd, valueDzd, occurredAt, movementType.
-  - `parkedInventory` — the **separate** inventory value (never in `totalDzd`):
-    total plus the asset units and consumable balances currently at the project.
+  - `materialMovements[]`: movementId, itemDefinitionId, itemName, unit,
+    quantity, unitPriceDzd, valueDzd, direction (`IN`/`OUT`), occurredAt. The
+    list carries BOTH directions; `valueDzd` is the positive magnitude and
+    `direction` is the sign.
+  - `parkedInventory` — the **separate** inventory value of what is physically
+    at the project (never in `totalDzd`): total plus the asset units currently
+    at the project. Consumables at a project are charged, so they are NOT
+    parked (see the settled rule below).
 
 All money fields use `storedMoneyDzdSchema` for reads and
 `nonNegativePaymentAmountSchema` for the computed aggregates (the #413/#422
@@ -66,41 +70,47 @@ must be representable).
   `status = 'LIVE'`, at their stored amount. A voided/corrected charge follows
   the #413 chain: the project keeps what it was charged; a later placement is a
   new charge.
-- **Consumables consumed** — consumable `inventory_movement` rows **whose
-  destination is the project** (`to_project_id = project`,
-  `item_type = 'CONSUMABLE'`), valued `roundMoney(unitPriceDzd * quantity)`
-  with the linked entry's unit price — the valuation the inventory module
-  already uses in `listMovementValuations`/the movement report. This captures
-  both a consumable bought straight into the project (a PURCHASE) and one
-  issued from the warehouse (a TRANSFER).
+- **Material charged to the project (SETTLED — owner, supersedes the earlier
+  "consumed" proxy)** — the **NET** of consumable `inventory_movement` rows in
+  which the project is a party (`item_type = 'CONSUMABLE'`): a movement into the
+  project (`to_project_id = project`) ADDS `roundMoney(unitPriceDzd ×
+  quantity)`, a movement out of the project (`from_project_id = project`)
+  SUBTRACTS it. The unit price is the linked entry's, the same valuation the
+  inventory module uses in `listMovementValuations`. A project→project movement
+  is one row: it subtracts at the source and adds at the destination.
+
+  The owner's rule, verbatim:
+
+  > **Project material cost is based on the net value of materials currently
+  > charged to the project. A material becomes a project cost when it is
+  > purchased directly for the project or transferred from a warehouse to the
+  > project. If material is later transferred out of the project to a warehouse
+  > or another project, its cost is removed from the original project and added
+  > to the destination. Physical consumption does not require a separate event.**
+
+  In one line: **cost follows the material, not the physical consumption
+  event.** The Arabic for the accountant: **المادة تُحمَّل على المشروع عند
+  دخولها إليه، وتُلغى من تكلفته عند خروجها منه.**
+
+  The UI/contract term is **المواد المحمّلة على المشروع** / "material charged to
+  the project". It must never be labelled "consumed" (`المستهلكة`): the system
+  knows the material was charged, not that it was physically used.
+
 - **Parked inventory (shown separately, never cost)** — the value of what is
-  physically at the project right now: asset units (`purchase_price_dzd`) plus
-  consumable balances (`quantity × entry unit price`). This is inventory value,
-  not money spent.
+  physically at the project right now, **assets only**: asset units
+  (`purchase_price_dzd`). **Consumables are deliberately excluded**: a
+  consumable at a project is charged to that project under the settled rule, so
+  also listing it as parked would double-count it. The asset/tool rule is
+  unchanged — a tool on site is inventory value, never cost.
 
-### The one rule I could not fully reconcile — ASK
+### Physical consumption deliberately has no event
 
-The app has **no "consumed" event** for consumables: only movements in/out and
-a current balance. "Consumed there" is therefore a proxy. I chose **cumulative
-issuance to the project** (movements into it), because:
-
-- it is the only observable quantity that grows with what the site actually
-  took, and
-- parked stock (the current balance) is reported separately, so the two numbers
-  are not the same figure.
-
-Consequences a reviewer must confirm against the business rule:
-
-1. A consumable issued to project A and later transferred out to a warehouse or
-   project B is counted at A in full and (once) at B — cumulative issuance, not
-   "net of returns".
-2. A consumable bought straight into the project counts even if it is still
-   sitting unused in the project's balance.
-
-If the intended rule is instead "the inventory module's `listInventoryValuations`
-value of CONSUMABLE entries whose destination is the project", the change is
-one method in the repository adapter (`listConsumableIssues`); no contract or
-service change. I flagged this to the parent rather than guessing further.
+The product has **no "consumed" event** for consumables: only movements in/out
+and a current balance. That is not a gap to fill here — the owner's rule makes
+physical consumption irrelevant to cost. The charge is born when the material
+enters the project and is reversed when it leaves; whether it was later used,
+still on site, or resold does not move the project's figure. This is recorded
+as a deliberate decision, not an unresolved question.
 
 ## Sources each query reads
 
@@ -109,8 +119,8 @@ service change. I flagged this to the parent rather than guessing further.
 | expenses | `expense` (+ `employee`, `external_counterparty` for names) | `project_id = ? AND status = 'LIVE'` |
 | salaries | `employee_salary_payment_split` × `employee_salary_payment` (+ `employee`) | `split.project_id = ?` |
 | stock | `inventory_asset_charge` (+ `inventory_asset_unit`) | `project_id = ? AND status = 'LIVE'` |
-| consumables | `inventory_movement` (+ `inventory_entry`) | `to_project_id = ? AND item_type = 'CONSUMABLE'` |
-| parked | `inventory_asset_unit`, `inventory_consumable_balance` (+ `inventory_entry`) | `current_project_id = ?` / `project_id = ?` |
+| material movements | `inventory_movement` (+ `inventory_entry`) | `item_type = 'CONSUMABLE'` AND (`to_project_id = ?` OR `from_project_id = ?`), excluding a same-project no-op |
+| parked | `inventory_asset_unit` | `current_project_id = ?` |
 
 ## API shape
 
@@ -132,7 +142,7 @@ exposes `projectCostGet` as a permissioned read, mapped like the other reads.
 
 - `features/projects/project-cost-section.tsx` — the P screen: the total, four
   labelled bars with each source's share (display-only percent), the lists
-  behind each source, the parked-inventory block, a loading/error/empty split,
+  behind each source, the parked-asset block, a loading/error/empty split,
   and an empty state that says what to do (add an expense, move a tool, pay a
   wage).
 - `features/projects/project-cost-queries.ts` — the project-scoped query.
@@ -140,16 +150,22 @@ exposes `projectCostGet` as a permissioned read, mapped like the other reads.
 - All copy in `ar.ts` under `detailPages.project.cost.*`; bars use the
   `chart-1..4` semantic tokens, so light and dark both come from the theme (no
   colour literals).
-- No bare signed numbers; parked inventory is labelled as inventory value, and
-  a per-source share is rendered as a positive percentage.
+- No bare signed numbers; a material movement OUT is labelled as a reversal
+  and its value is shown as charged; parked inventory is labelled as inventory
+  value, and a per-source share is rendered as a positive percentage.
 
 ## Tests
 
 - `project-cost.service.test.ts` — each source in isolation, the combination,
-  a project with no activity, the salary day-rate math, the consumed/parked
-  separation, the empty/absent project, and the aggregate-bound guard.
+  a project with no activity, the salary day-rate math, the material/parked
+  separation (charges are net of movements out; parked assets are never cost),
+  the empty/absent project, and the aggregate-bound guard.
 - `project-cost.repository.sqlite.test.ts` — the real SQL: live-vs-voided
-  expenses and charges, split joins, movement valuation, parked balances.
+  expenses and charges, split joins, movement valuation (both directions),
+  parked assets.
+- `tests/integration/project-cost-materials.test.ts` — the owner's worked
+  example driven through the real `InventoryService`, the net-of-movements
+  consistency check, and the parked/charge exclusion for consumables.
 - `project-cost.router.test.ts` (or a router case) — the RPC through
   auth + contract, and the "unassigned then assigned expense" path driven
   through the **real expenses module**.

@@ -138,3 +138,94 @@ Remaining findings reported, not fixed here:
 4. **Shared helpers**: `toFailureResult`, `successResult` and web money
    formatting are duplicated across modules/features; a dedicated refactor.
 
+
+## Addendum — design pass on the settled net-material rule (owner decision)
+
+Skills run against the second diff: `domain-modeling`, `codebase-design`,
+`improve-codebase-architecture`. Base unchanged (`origin/develop` @ `55b71181`).
+This pass supersedes finding 1 and finding 3 of the addendum above.
+
+### domain-modeling
+
+**Term resolved, not invented.** The owner settled the rule this diff had left
+as an ASK: project material cost is the NET of consumable movements in and out
+of the project, valued at the linked entry's price. The verbatim rule and the
+Arabic term (`المواد المحمّلة على المشروع`, "material charged to the project")
+are recorded in `.scratch/implementation/414-design.md`, and the code, contract
+comments and i18n now use that term. "Consumed"/`المستهلكة` is gone from the
+fourth source everywhere: the system knows material was CHARGED, not that it was
+physically used. The decision record now states explicitly that physical
+consumption deliberately has no event.
+
+**One term, one sign.** `direction: IN | OUT` names the direction of a movement
+relative to the project; `valueDzd` stays a positive magnitude and the service
+owns the arithmetic. This keeps the glossary free of a "signed inventory value"
+concept neither the inventory module nor the wire previously had.
+
+**No second model of "parked".** A consumable at a project is charged, so the
+parked block is assets only. The former `parkedInventory.consumables` was
+removed rather than always-empty, so the model cannot drift back to a double
+count.
+
+### codebase-design
+
+**In-scope fix — the direction union was stated in three places** (the zod
+enum, the API storage record, and `netMaterialCost`'s parameter). Added
+`projectCostMaterialDirectionSchema` / `ProjectCostMaterialDirection` in the
+contracts and used it in the schema and both API sites, matching the earlier
+pass's `InventoryMovementType` fix: a new direction cannot drift between the
+wire and the port.
+
+**Depth improved.** `getProjectParkedInventory(): { assets, consumables }`
+became `getProjectParkedAssets(): ProjectCostParkedAssetRecord[]`. The port lost
+a method shape and the adapter lost an entire SQL query and a mapper; the
+service lost the parked-consumable valuation loop. Deleting the flat method
+would put an `inventory_asset_unit` read in the service, so it earns its keep.
+
+**Seam is real and the oracle is external.** `ProjectCostRepository` still has
+the sqlite adapter and the service-test fake, so the port is not hypothetical.
+The new integration test (`project-cost-materials.test.ts`) reduces the
+inventory module's own `listMovementValuations()` output and asserts the service
+figure equals it; the net is pinned against the module that writes the rows,
+not against a second copy of the formula.
+
+**Sign rule lives once.** `netMaterialCost` is the only place a movement's sign
+is applied; the adapter reports `direction` as a fact (which column matched),
+the service decides the arithmetic. No signed money reaches the contract.
+
+**Kept.** The negative-net refusal is a domain guard, not a formatter: a project
+returning more than it received is incoherent data, and the repo's convention is
+to refuse a suspect aggregate rather than emit it. It sits next to the existing
+`MAX_MONEY_DZD` guard so all "refuse a bad aggregate" rules are in one function
+family.
+
+### improve-codebase-architecture
+
+Friction the diff creates, with recommendations:
+
+1. **The adapter's WHERE now has four bind parameters** to exclude a same-project
+   no-op. A simpler `(to_project_id = ? OR from_project_id = ?)` plus a JS skip
+   was considered. Kept the explicit SQL: the no-op row should never reach the
+   service, and the direction is read from `to_project_id` in the same query.
+   No action.
+2. **Cross-domain read model still has no owning-module seam** (finding 1 of the
+   first addendum). The new integration test now pins material against the
+   inventory module, which closes the drift risk for this part. Remaining
+   salaries/stock pins are unchanged; still follow-up only if a second consumer
+   appears.
+3. **Ownership of "what is charged" is split in wording.** The inventory module
+   writes the movements; the project-cost module decides which ones count as
+   cost. That is correct for a read model, but if inventory ever wants its own
+   "charged to project" report, `netMaterialCost` is the candidate to lift into
+   a shared inventory read. Recommendation: follow-up only if that consumer
+   appears.
+4. **Shared money helpers and web formatting** remain duplicated (carried over);
+   unchanged.
+
+### Outcome
+
+One in-scope fix applied (direction union unified). The settled rule is stated
+once in code (`netMaterialCost`), once as the wire shape, and once in the
+decision record. The double count is removed structurally (the parked
+consumables field no longer exists), not by convention. Findings 2-4 are
+documented follow-ups, not correctness gaps. Nothing found that blocks this PR.

@@ -171,12 +171,12 @@ describe("RPC router", () => {
           item: {
             projectId: "p-1",
             totalDzd: 0,
-            parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, consumablesDzd: 0 },
+            parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: 0 },
             expenses: [],
             salaries: [],
             stock: [],
-            consumables: [],
-            parkedInventory: { totalDzd: 0, assets: [], consumables: [] },
+            materialMovements: [],
+            parkedInventory: { totalDzd: 0, assets: [] },
           },
         }),
       }) as never,
@@ -1306,13 +1306,13 @@ describe("RPC router", () => {
       listProjectStockCharges: () => [
         { id: "c-1", assetUnitId: "a-1", assetName: "خلاطة", amountDzd: 180_000, placedAt: "2026-05-20T00:00:00.000Z" },
       ],
-      listProjectConsumableIssues: () => [
-        { id: "m-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 40, unitPriceDzd: 850, occurredAt: "2026-05-20T00:00:00.000Z" },
+      listProjectMaterialMovements: () => [
+        { id: "m-in", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 40, unitPriceDzd: 850, direction: "IN", occurredAt: "2026-05-20T00:00:00.000Z" },
+        { id: "m-out", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 5, unitPriceDzd: 850, direction: "OUT", occurredAt: "2026-05-21T00:00:00.000Z" },
       ],
-      getProjectParkedInventory: () => ({
-        assets: [{ assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 500_000 }],
-        consumables: [{ id: "bal-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 10, unitPriceDzd: 850 }],
-      }),
+      getProjectParkedAssets: () => [
+        { assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 500_000 },
+      ],
     });
     const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, { projectCostService });
     const client = createClient(router, createContext());
@@ -1322,13 +1322,15 @@ describe("RPC router", () => {
     const response = expectSuccess(
       await client.projectCostGet({ projectId: "11111111-1111-4111-8111-111111111111" }),
     );
-    expect(response.item.totalDzd).toBe(262_500);
+    // 12,500 + 36,000 + 180,000 + (40 − 5) × 850 = 258,250.
+    expect(response.item.totalDzd).toBe(258_250);
     expect(projectCostSchema.safeParse(response.item).success).toBe(true);
     expect(response.item.expenses).toHaveLength(1);
     expect(response.item.salaries).toHaveLength(1);
     expect(response.item.stock).toHaveLength(1);
-    expect(response.item.consumables).toHaveLength(1);
-    expect(response.item.parkedInventory.consumables[0].id).toBe("bal-1");
+    expect(response.item.materialMovements).toHaveLength(2);
+    expect(response.item.parkedInventory.assets[0].assetUnitId).toBe("a-9");
+    expect("consumables" in response.item.parkedInventory).toBe(false);
 
     const missingRouter = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
       projectCostService: new ProjectCostService({
@@ -1336,8 +1338,8 @@ describe("RPC router", () => {
         listProjectExpenses: () => [],
         listProjectSalarySplits: () => [],
         listProjectStockCharges: () => [],
-        listProjectConsumableIssues: () => [],
-        getProjectParkedInventory: () => ({ assets: [], consumables: [] }),
+        listProjectMaterialMovements: () => [],
+        getProjectParkedAssets: () => [],
       }),
     });
     const missingClient = createClient(missingRouter, createContext());

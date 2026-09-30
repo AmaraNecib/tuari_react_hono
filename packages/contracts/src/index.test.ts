@@ -53,6 +53,7 @@ import {
   projectCostInputSchema,
   projectCostSchema,
   projectCostExpenseRowSchema,
+  projectCostMaterialMovementSchema,
   projectCostPartsSchema,
   recurringPatternSchema,
   reportFilterInputSchema,
@@ -1999,12 +2000,12 @@ describe("contracts", () => {
       const base = {
         projectId: "11111111-1111-4111-8111-111111111111",
         totalDzd: 0,
-        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, consumablesDzd: 0 },
+        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: 0 },
         expenses: [],
         salaries: [],
         stock: [],
-        consumables: [],
-        parkedInventory: { totalDzd: 0, assets: [], consumables: [] },
+        materialMovements: [],
+        parkedInventory: { totalDzd: 0, assets: [] },
       };
       expect(projectCostSchema.safeParse(base).success).toBe(true);
       expect(projectCostSchema.safeParse({ ...base, totalDzd: -1 }).success).toBe(false);
@@ -2012,6 +2013,37 @@ describe("contracts", () => {
         projectCostSchema.safeParse({
           ...base,
           parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0 },
+        }).success,
+      ).toBe(false);
+    });
+
+    it("labels material charged to the project, not consumed", () => {
+      // The direction carries the sign; valueDzd stays a positive magnitude.
+      expect(
+        projectCostMaterialMovementSchema.safeParse({
+          id: "11111111-1111-4111-8111-111111111111",
+          itemDefinitionId: null,
+          itemName: null,
+          unit: null,
+          quantity: 3,
+          unitPriceDzd: 500,
+          valueDzd: 1_500,
+          direction: "OUT",
+          occurredAt: "2026-05-20T00:00:00.000Z",
+        }).success,
+      ).toBe(true);
+      // A direction outside IN/OUT is refused.
+      expect(
+        projectCostMaterialMovementSchema.safeParse({
+          id: "11111111-1111-4111-8111-111111111111",
+          itemDefinitionId: null,
+          itemName: null,
+          unit: null,
+          quantity: 3,
+          unitPriceDzd: 500,
+          valueDzd: 1_500,
+          direction: "CONSUMED",
+          occurredAt: "2026-05-20T00:00:00.000Z",
         }).success,
       ).toBe(false);
     });
@@ -2041,7 +2073,7 @@ describe("contracts", () => {
           expensesDzd: aboveBound,
           salariesDzd: 0,
           stockDzd: 0,
-          consumablesDzd: 0,
+          chargedMaterialsDzd: 0,
         }).success,
       ).toBe(false);
     });

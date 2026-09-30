@@ -1,3 +1,5 @@
+import type { ProjectCostMaterialDirection } from "@tuari/contracts";
+
 /**
  * Project cost (issue #414) — the raw rows the project-cost service aggregates.
  *
@@ -48,17 +50,21 @@ export type ProjectCostStockChargeRecord = {
 };
 
 /**
- * A consumable movement whose destination is the project. `unitPriceDzd` is the
- * linked entry's unit price (null when the movement has no entry link), so the
- * service can value it exactly like the inventory module's movement report.
+ * A consumable movement the project is a party to. `unitPriceDzd` is the linked
+ * entry's unit price (null when the movement has no entry link), so the service
+ * can value it exactly like the inventory module's movement report.
+ * `direction` is `IN` when the project is the destination and `OUT` when it is
+ * the source; the service applies the sign. A movement that both leaves and
+ * returns to the same project is a no-op and is not returned.
  */
-export type ProjectCostConsumableIssueRecord = {
+export type ProjectCostMaterialMovementRecord = {
   id: string;
   itemDefinitionId: string | null;
   itemName: string | null;
   unit: string | null;
   quantity: number;
   unitPriceDzd: number | null;
+  direction: ProjectCostMaterialDirection;
   occurredAt: string;
 };
 
@@ -67,16 +73,6 @@ export type ProjectCostParkedAssetRecord = {
   assetUnitId: string;
   assetName: string | null;
   purchasePriceDzd: number;
-};
-
-/** A consumable balance physically at the project right now (inventory value). */
-export type ProjectCostParkedConsumableRecord = {
-  id: string;
-  itemDefinitionId: string | null;
-  itemName: string | null;
-  unit: string | null;
-  quantity: number;
-  unitPriceDzd: number | null;
 };
 
 /**
@@ -99,12 +95,16 @@ export interface ProjectCostRepository {
   /** listProjectStockCharges — the project's LIVE placement charges. */
   listProjectStockCharges(projectId: string): ProjectCostStockChargeRecord[];
 
-  /** listProjectConsumableIssues — consumable movements INTO the project. */
-  listProjectConsumableIssues(projectId: string): ProjectCostConsumableIssueRecord[];
+  /**
+   * listProjectMaterialMovements — consumable movements in which the project is
+   * the destination (`IN`) or the source (`OUT`). The service nets them.
+   */
+  listProjectMaterialMovements(projectId: string): ProjectCostMaterialMovementRecord[];
 
-  /** getProjectParkedInventory — what is physically at the project right now. */
-  getProjectParkedInventory(projectId: string): {
-    assets: ProjectCostParkedAssetRecord[];
-    consumables: ProjectCostParkedConsumableRecord[];
-  };
+  /**
+   * getProjectParkedAssets — the asset units physically at the project right
+   * now. Assets are inventory value, never cost. Consumables at a project are
+   * charged, so they are deliberately not parked.
+   */
+  getProjectParkedAssets(projectId: string): ProjectCostParkedAssetRecord[];
 }

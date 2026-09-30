@@ -1,9 +1,9 @@
-import { MAX_MONEY_DZD, roundMoney, type ProjectCostInput } from "@tuari/contracts";
+import { MAX_MONEY_DZD, roundMoney, type ProjectCostInput, type ProjectCostMaterialDirection } from "@tuari/contracts";
 
 import { successResult } from "../company/company.helpers";
 import { ProjectCostError } from "./project-cost.errors";
 import type {
-  ProjectCostConsumableIssueRecord,
+  ProjectCostMaterialMovementRecord,
   ProjectCostRepository,
 } from "./project-cost.types";
 
@@ -20,12 +20,18 @@ import type {
  *    `computeProposedSalaryAmount`'s convention; the displayed day rate is a
  *    rounded derivative and is never multiplied back in.
  *  - Stock placement charges are the LIVE charges for the project.
- *  - Consumables are valued at the movement's linked entry unit price — the
- *    same valuation the inventory module uses — and only movements INTO the
- *    project count.
- *  - `parkedInventory` (what is physically at the project now) is reported
- *    separately and is NEVER added to the total: parked stock is inventory
- *    value, not money the project spent.
+ *  - Material charged to the project is the NET of consumable movements the
+ *    project is a party to: a movement INTO the project (a direct purchase, or
+ *    a warehouse → project transfer) adds `quantity × the linked entry's unit
+ *    price`, a movement OUT (project → warehouse, project → another project)
+ *    subtracts it. Cost follows the material, not the physical consumption
+ *    event; the product has no "consumed" event and needs none. A project
+ *    cannot have returned more material than it received, so a negative net is
+ *    refused rather than shown.
+ *  - `parkedInventory` (what is physically at the project now, ASSETS ONLY) is
+ *    reported separately and is NEVER added to the total: parked stock is
+ *    inventory value, not money the project spent. A consumable at a project
+ *    is charged, so it is not parked.
  *  - Money is rounded with the shared `roundMoney`, and every computed
  *    aggregate is refused if it is non-finite or leaves `MAX_MONEY_DZD`,
  *    rather than emitting a number the contract cannot represent.
@@ -77,8 +83,8 @@ export class ProjectCostService {
       (row) => row.id,
     );
 
-    const consumables = sortByDateDesc(
-      this.repository.listProjectConsumableIssues(project.id).map(valueConsumableIssue),
+    const materialMovements = sortByDateDesc(
+      this.repository.listProjectMaterialMovements(project.id).map(valueMaterialMovement),
       (row) => row.occurredAt,
       (row) => row.id,
     );
@@ -86,43 +92,34 @@ export class ProjectCostService {
     const expensesDzd = sumMoney(expenses.map((row) => row.amountDzd));
     const salariesDzd = sumMoney(salaries.map((row) => row.amountDzd));
     const stockDzd = sumMoney(stock.map((row) => row.amountDzd));
-    const consumablesDzd = sumMoney(consumables.map((row) => row.valueDzd));
-    const totalDzd = sumMoney([expensesDzd, salariesDzd, stockDzd, consumablesDzd]);
+    const chargedMaterialsDzd = netMaterialCost(materialMovements);
+    const totalDzd = sumMoney([expensesDzd, salariesDzd, stockDzd, chargedMaterialsDzd]);
 
-    const parked = this.repository.getProjectParkedInventory(project.id);
-    const parkedConsumables = parked.consumables.map((balance) => ({
-      id: balance.id,
-      itemDefinitionId: balance.itemDefinitionId,
-      itemName: balance.itemName,
-      unit: balance.unit,
-      quantity: balance.quantity,
-      unitPriceDzd: balance.unitPriceDzd,
-      valueDzd: roundMoney((balance.unitPriceDzd ?? 0) * balance.quantity),
-    }));
-    const parkedTotalDzd = sumMoney([
-      ...parked.assets.map((asset) => asset.purchasePriceDzd),
-      ...parkedConsumables.map((balance) => balance.valueDzd),
-    ]);
+    const parkedAssets = this.repository.getProjectParkedAssets(project.id);
+    const parkedTotalDzd = sumMoney(parkedAssets.map((asset) => asset.purchasePriceDzd));
 
     return successResult("تم تحميل تكلفة المشروع بنجاح.", {
       projectId: project.id,
       totalDzd,
-      parts: { expensesDzd, salariesDzd, stockDzd, consumablesDzd },
+      parts: { expensesDzd, salariesDzd, stockDzd, chargedMaterialsDzd },
       expenses,
       salaries,
       stock,
-      consumables,
+      materialMovements,
       parkedInventory: {
         totalDzd: parkedTotalDzd,
-        assets: parked.assets,
-        consumables: parkedConsumables,
+        assets: parkedAssets,
       },
     });
   }
 }
 
-/** Value one consumable issue: quantity × the linked entry's unit price. */
-function valueConsumableIssue(row: ProjectCostConsumableIssueRecord) {
+/**
+ * Value one material movement: quantity × the linked entry's unit price, the
+ * same valuation the inventory module uses. `valueDzd` is the positive
+ * magnitude; `direction` carries the sign.
+ */
+function valueMaterialMovement(row: ProjectCostMaterialMovementRecord) {
   return {
     id: row.id,
     itemDefinitionId: row.itemDefinitionId,
@@ -130,9 +127,28 @@ function valueConsumableIssue(row: ProjectCostConsumableIssueRecord) {
     unit: row.unit,
     quantity: row.quantity,
     unitPriceDzd: row.unitPriceDzd,
+    direction: row.direction,
     occurredAt: row.occurredAt,
     valueDzd: roundMoney((row.unitPriceDzd ?? 0) * row.quantity),
   };
+}
+
+/**
+ * The project's material cost: sum the movements IN and subtract the movements
+ * OUT. A negative net means the ledger returned more material than it recorded
+ * entering the project (movements predating this feature, or bad data); that is
+ * not a cost, so refuse it instead of emitting a negative part.
+ */
+function netMaterialCost(rows: Array<{ direction: ProjectCostMaterialDirection; valueDzd: number }>): number {
+  const net = sumMoney(rows.map((row) => (row.direction === "IN" ? row.valueDzd : -row.valueDzd)));
+  if (net < 0) {
+    throw new ProjectCostError(
+      "BUSINESS_RULE",
+      "قيمة المواد الخارجة من المشروع تتجاوز المواد الداخلة إليه؛ تعذّر احتساب التكلفة.",
+    );
+  }
+
+  return net;
 }
 
 /**

@@ -72,8 +72,8 @@ function createTestEnv() {
      VALUES ('charge-void','asset-1','p-1',99999,'VOID',?,?)`,
   ).run(NOW, NOW);
 
-  // Movements: 40 bags transferred into p-1, 2 bought into p-2, and one
-  // transfer OUT of p-1 (must not count).
+  // Movements: 40 bags transferred into p-1, 2 bought into p-2, 5 transferred
+  // OUT of p-1 to a warehouse, and 2 from p-1 to p-2.
   const insertMovement = db.prepare(
     `INSERT INTO "inventory_movement" ("id","movement_type","item_type","inventory_entry_id","quantity","from_warehouse_id","from_project_id","to_warehouse_id","to_project_id","occurred_at","created_at")
      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
@@ -81,6 +81,7 @@ function createTestEnv() {
   insertMovement.run("m-in", "TRANSFER", "CONSUMABLE", "entry-c", 40, null, null, null, "p-1", "2026-05-20T00:00:00.000Z", NOW);
   insertMovement.run("m-other", "PURCHASE", "CONSUMABLE", "entry-c", 2, null, null, null, "p-2", "2026-05-21T00:00:00.000Z", NOW);
   insertMovement.run("m-out", "TRANSFER", "CONSUMABLE", "entry-c", 5, null, "p-1", "wh-1", null, "2026-05-22T00:00:00.000Z", NOW);
+  insertMovement.run("m-a-to-b", "TRANSFER", "CONSUMABLE", "entry-c", 2, null, "p-1", null, "p-2", "2026-05-23T00:00:00.000Z", NOW);
 
   // 10 bags still parked at p-1.
   db.prepare(
@@ -144,18 +145,22 @@ describe("SqliteProjectCostRepository (#414)", () => {
     expect(rows[0]?.assetName).toBe("خلاطة");
   });
 
-  it("values only consumable movements INTO the project", () => {
-    const rows = env.repository.listProjectConsumableIssues("p-1");
-    expect(rows.map((row) => row.id)).toEqual(["m-in"]);
-    expect(rows[0]).toMatchObject({ itemName: "إسمنت", unit: "كيس", quantity: 40, unitPriceDzd: 850 });
+  it("values both directions of consumable movement for the project", () => {
+    const rows = env.repository.listProjectMaterialMovements("p-1");
+    expect(rows.map((row) => row.id).sort()).toEqual(["m-a-to-b", "m-in", "m-out"]);
+    const incoming = rows.find((row) => row.id === "m-in");
+    const outgoing = rows.find((row) => row.id === "m-out");
+    const toOtherProject = rows.find((row) => row.id === "m-a-to-b");
+    expect(incoming).toMatchObject({ itemName: "إسمنت", unit: "كيس", quantity: 40, unitPriceDzd: 850, direction: "IN" });
+    expect(outgoing).toMatchObject({ quantity: 5, unitPriceDzd: 850, direction: "OUT" });
+    expect(toOtherProject).toMatchObject({ quantity: 2, unitPriceDzd: 850, direction: "OUT" });
   });
 
-  it("reads the parked assets and consumable balances at the project", () => {
-    const parked = env.repository.getProjectParkedInventory("p-1");
-    expect(parked.assets.map((asset) => asset.assetUnitId)).toEqual(["asset-1"]);
-    expect(parked.assets[0]?.purchasePriceDzd).toBe(180_000);
-    expect(parked.consumables).toHaveLength(1);
-    expect(parked.consumables[0]).toMatchObject({ id: "bal-1", itemName: "إسمنت", quantity: 10, unitPriceDzd: 850 });
+  it("reads the parked assets at the project, never a consumable balance", () => {
+    const parked = env.repository.getProjectParkedAssets("p-1");
+    expect(parked.map((asset) => asset.assetUnitId)).toEqual(["asset-1"]);
+    expect(parked[0]?.purchasePriceDzd).toBe(180_000);
+    // bal-1 (10 bags) is at p-1 but is CHARGED, so it is not parked.
   });
 
   it("returns null for an unknown project", () => {
@@ -165,14 +170,17 @@ describe("SqliteProjectCostRepository (#414)", () => {
 
   it("agrees with the service end to end over the real SQL", () => {
     const result = new ProjectCostService(env.repository).getProjectCost({ projectId: "p-1" });
+    // Material is net: (40 in − 5 to wh-1 − 2 to p-2) × 850 = 28,050.
     expect(result.item.parts).toEqual({
       expensesDzd: 10_000,
       salariesDzd: 36_000,
       stockDzd: 180_000,
-      consumablesDzd: 34_000,
+      chargedMaterialsDzd: 28_050,
     });
-    expect(result.item.totalDzd).toBe(260_000);
-    // Parked is 180_000 (asset) + 8_500 (10 bags) and is NOT in the total.
-    expect(result.item.parkedInventory.totalDzd).toBe(188_500);
+    expect(result.item.totalDzd).toBe(254_050);
+    // Parked is the asset only (180_000); the 10 consumable bags at p-1 are
+    // charged, not parked, and the asset is NOT in the total.
+    expect(result.item.parkedInventory.totalDzd).toBe(180_000);
+    expect(result.item.parkedInventory.assets).toHaveLength(1);
   });
 });

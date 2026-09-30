@@ -23,9 +23,11 @@ function formatDay(iso: string) {
  * The project page's cost breakdown (issue #414, screen "P").
  *
  * One total with four labelled sources (expenses tagged to the project,
- * salaries by allocated days, charged stock, consumed materials), the rows
- * behind each source, and the project's CURRENT inventory value shown
- * separately — parked stock is inventory value, never cost.
+ * salaries by allocated days, charged stock, material charged to the project),
+ * the rows behind each source, and the project's CURRENT asset inventory value
+ * shown separately — parked tools are inventory value, never cost. Material
+ * charged to the project is the NET of the movements in and out, so the list
+ * shows each movement's direction.
  */
 export function ProjectCostSection({
   projectId,
@@ -66,12 +68,11 @@ export function ProjectCostSection({
     { key: "expenses", label: t("detailPages.project.cost.sources.expenses"), value: data.parts.expensesDzd, bar: "bg-chart-1" },
     { key: "salaries", label: t("detailPages.project.cost.sources.salaries"), value: data.parts.salariesDzd, bar: "bg-chart-2" },
     { key: "stock", label: t("detailPages.project.cost.sources.stock"), value: data.parts.stockDzd, bar: "bg-chart-3" },
-    { key: "consumables", label: t("detailPages.project.cost.sources.consumables"), value: data.parts.consumablesDzd, bar: "bg-chart-4" },
+    { key: "materials", label: t("detailPages.project.cost.sources.chargedMaterials"), value: data.parts.chargedMaterialsDzd, bar: "bg-chart-4" },
   ]
 
   const hasCost = total > 0
-  const hasParked =
-    data.parkedInventory.assets.length > 0 || data.parkedInventory.consumables.length > 0
+  const hasParked = data.parkedInventory.assets.length > 0
 
   return (
     <div className="space-y-6">
@@ -199,22 +200,28 @@ export function ProjectCostSection({
           </Surface>
 
           <Surface variant="card" className="p-5">
-            <SurfaceHeader title={t("detailPages.project.cost.consumables.title")} />
-            {data.consumables.length === 0 ? (
-              <p className="mt-3 text-sm text-ink-3">{t("detailPages.project.cost.consumables.empty")}</p>
+            <SurfaceHeader title={t("detailPages.project.cost.materials.title")} />
+            {data.materialMovements.length === 0 ? (
+              <p className="mt-3 text-sm text-ink-3">{t("detailPages.project.cost.materials.empty")}</p>
             ) : (
               <ul className="mt-3 divide-y divide-line">
-                {data.consumables.map((movement) => (
+                {data.materialMovements.map((movement) => (
                   <li key={movement.id} className="flex items-center justify-between gap-3 py-2 text-sm">
                     <span className="min-w-0">
                       <span className="block truncate text-ink">{movement.itemName ?? t("common.none")}</span>
                       <span className="text-xs text-ink-3">
+                        {movement.direction === "IN"
+                          ? t("detailPages.project.cost.materials.in")
+                          : t("detailPages.project.cost.materials.out")}
+                        {" · "}
                         {formatNumber(movement.quantity)}
                         {movement.unit ? ` ${movement.unit}` : ""}
                         {movement.unitPriceDzd != null ? ` · ${money(movement.unitPriceDzd)}` : ""}
                       </span>
                     </span>
-                    <span className="shrink-0 font-mono text-ink" dir="ltr">{money(movement.valueDzd)}</span>
+                    <span className="shrink-0 font-mono text-ink" dir="ltr">
+                      {movement.direction === "IN" ? "+" : "−"} {money(movement.valueDzd)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -239,15 +246,6 @@ export function ProjectCostSection({
               <li key={asset.assetUnitId} className="flex items-center justify-between gap-3 py-2 text-sm">
                 <span className="min-w-0 truncate text-ink">{asset.assetName ?? t("common.none")}</span>
                 <span className="shrink-0 font-mono text-ink" dir="ltr">{money(asset.purchasePriceDzd)}</span>
-              </li>
-            ))}
-            {data.parkedInventory.consumables.map((balance) => (
-              <li
-                key={balance.id}
-                className="flex items-center justify-between gap-3 py-2 text-sm"
-              >
-                <span className="min-w-0 truncate text-ink">{balance.itemName ?? t("common.none")}</span>
-                <span className="shrink-0 font-mono text-ink" dir="ltr">{money(balance.valueDzd)}</span>
               </li>
             ))}
           </ul>

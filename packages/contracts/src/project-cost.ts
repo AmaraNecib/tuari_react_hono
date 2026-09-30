@@ -18,11 +18,20 @@ import {
  *   expenses (non-voided, tagged to the project, in full)
  * + salaries (allocated split days × the payment's day rate)
  * + stock    (live placement charges for the project)
- * + consumables (value of consumable movements issued to the project)
+ * + chargedMaterials (the NET of consumable movements in and out of the project)
  *
- * `parkedInventory` is the CURRENT inventory value physically at the project.
- * It is deliberately OUTSIDE `totalDzd`: a tool sitting on site is inventory
- * value, not money the project spent. Only what was used or charged is cost.
+ * Material charged to the project follows the SETTLED owner rule: cost follows
+ * the material, not the physical consumption event. A consumable movement INTO
+ * the project adds `quantity × the linked entry's unit price`; a movement OUT
+ * of the project (to a warehouse or another project) subtracts it. The system
+ * has no "consumed" event, so "consumed" must never be the label: material at a
+ * project is CHARGED, whether or not it was physically used.
+ *
+ * `parkedInventory` is the CURRENT inventory value physically at the project,
+ * ASSETS ONLY. It is deliberately OUTSIDE `totalDzd`: a tool sitting on site is
+ * inventory value, not money the project spent. A consumable sitting at a
+ * project is charged (it is in `chargedMaterialsDzd`), so it is not parked;
+ * listing it in both would double-count it.
  *
  * Money rules: every stored row uses the permissive {@link storedMoneyDzdSchema}
  * (a legacy row may predate the write bound), while every COMPUTED aggregate
@@ -66,8 +75,20 @@ export const projectCostStockRowSchema = z.object({
   placedAt: timestampSchema,
 });
 
-/** A consumable movement INTO the project, valued at the entry's unit price. */
-export const projectCostConsumableRowSchema = z.object({
+/**
+ * Whether a material movement adds to (`IN`) or reverses (`OUT`) the project's
+ * charged material. The sign lives with the movement, not in a signed money
+ * field, so `valueDzd` stays a positive magnitude.
+ */
+export const projectCostMaterialDirectionSchema = z.enum(["IN", "OUT"]);
+export type ProjectCostMaterialDirection = z.infer<typeof projectCostMaterialDirectionSchema>;
+
+/**
+ * A consumable movement the project is a party to, valued at the entry's unit
+ * price. `valueDzd` is the positive magnitude; `direction` is the sign the
+ * service applies — `IN` adds to the project's material cost, `OUT` reverses it.
+ */
+export const projectCostMaterialMovementSchema = z.object({
   id: entityIdSchema,
   itemDefinitionId: entityIdSchema.nullable(),
   itemName: nullableTextSchema,
@@ -75,6 +96,7 @@ export const projectCostConsumableRowSchema = z.object({
   quantity: z.number().positive(),
   unitPriceDzd: storedMoneyDzdSchema.nullable(),
   valueDzd: storedMoneyDzdSchema,
+  direction: projectCostMaterialDirectionSchema,
   occurredAt: timestampSchema,
 });
 
@@ -85,17 +107,6 @@ export const projectCostParkedAssetSchema = z.object({
   purchasePriceDzd: storedMoneyDzdSchema,
 });
 
-/** A consumable balance currently parked at the project (inventory value). */
-export const projectCostParkedConsumableSchema = z.object({
-  id: entityIdSchema,
-  itemDefinitionId: entityIdSchema.nullable(),
-  itemName: nullableTextSchema,
-  unit: nullableTextSchema,
-  quantity: z.number().positive(),
-  unitPriceDzd: storedMoneyDzdSchema.nullable(),
-  valueDzd: storedMoneyDzdSchema,
-});
-
 /**
  * The four disjoint cost parts. `totalDzd` is their rounded sum; it never
  * includes `parkedInventory`.
@@ -104,7 +115,7 @@ export const projectCostPartsSchema = z.object({
   expensesDzd: nonNegativePaymentAmountSchema,
   salariesDzd: nonNegativePaymentAmountSchema,
   stockDzd: nonNegativePaymentAmountSchema,
-  consumablesDzd: nonNegativePaymentAmountSchema,
+  chargedMaterialsDzd: nonNegativePaymentAmountSchema,
 });
 
 export const projectCostSchema = z.object({
@@ -114,11 +125,10 @@ export const projectCostSchema = z.object({
   expenses: z.array(projectCostExpenseRowSchema),
   salaries: z.array(projectCostSalaryRowSchema),
   stock: z.array(projectCostStockRowSchema),
-  consumables: z.array(projectCostConsumableRowSchema),
+  materialMovements: z.array(projectCostMaterialMovementSchema),
   parkedInventory: z.object({
     totalDzd: nonNegativePaymentAmountSchema,
     assets: z.array(projectCostParkedAssetSchema),
-    consumables: z.array(projectCostParkedConsumableSchema),
   }),
 });
 
@@ -126,8 +136,7 @@ export type ProjectCostInput = z.infer<typeof projectCostInputSchema>;
 export type ProjectCostExpenseRow = z.infer<typeof projectCostExpenseRowSchema>;
 export type ProjectCostSalaryRow = z.infer<typeof projectCostSalaryRowSchema>;
 export type ProjectCostStockRow = z.infer<typeof projectCostStockRowSchema>;
-export type ProjectCostConsumableRow = z.infer<typeof projectCostConsumableRowSchema>;
+export type ProjectCostMaterialMovement = z.infer<typeof projectCostMaterialMovementSchema>;
 export type ProjectCostParkedAsset = z.infer<typeof projectCostParkedAssetSchema>;
-export type ProjectCostParkedConsumable = z.infer<typeof projectCostParkedConsumableSchema>;
 export type ProjectCostParts = z.infer<typeof projectCostPartsSchema>;
 export type ProjectCost = z.infer<typeof projectCostSchema>;

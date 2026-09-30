@@ -9,8 +9,9 @@ import type { ProjectCostRepository } from "./project-cost.types";
 /**
  * Service rules of the project-cost read model (issue #414):
  * each source in isolation, the combination, an empty project, the salary
- * day-rate math, the parked/cost separation (parked is NEVER cost) and the
- * aggregate bound guard.
+ * day-rate math, material netting (charges minus movements out), the parked
+ * asset / cost separation (parked is NEVER cost, consumables are NEVER parked)
+ * and the aggregate bound guard.
  */
 
 function makeRepo(overrides: Partial<ProjectCostRepository> = {}): ProjectCostRepository {
@@ -19,8 +20,8 @@ function makeRepo(overrides: Partial<ProjectCostRepository> = {}): ProjectCostRe
     listProjectExpenses: () => [],
     listProjectSalarySplits: () => [],
     listProjectStockCharges: () => [],
-    listProjectConsumableIssues: () => [],
-    getProjectParkedInventory: () => ({ assets: [], consumables: [] }),
+    listProjectMaterialMovements: () => [],
+    getProjectParkedAssets: () => [],
     ...overrides,
   };
 }
@@ -165,10 +166,10 @@ describe("ProjectCostService (#414)", () => {
     expect(result.item.stock.map((row) => row.assetName)).toEqual(["خلاطة", "مولدة"]);
   });
 
-  it("values consumables issued to the project at the entry unit price", () => {
+  it("values material movements at the entry unit price", () => {
     const result = service(
       makeRepo({
-        listProjectConsumableIssues: () => [
+        listProjectMaterialMovements: () => [
           {
             id: "m-1",
             itemDefinitionId: "def-1",
@@ -176,6 +177,7 @@ describe("ProjectCostService (#414)", () => {
             unit: "كيس",
             quantity: 40,
             unitPriceDzd: 850,
+            direction: "IN",
             occurredAt: "2026-09-25T00:00:00.000Z",
           },
           {
@@ -185,16 +187,78 @@ describe("ProjectCostService (#414)", () => {
             unit: "طن",
             quantity: 2,
             unitPriceDzd: null,
+            direction: "IN",
             occurredAt: "2026-09-22T00:00:00.000Z",
           },
         ],
       }),
     ).getProjectCost({ projectId: "p-1" });
 
-    expect(result.item.parts.consumablesDzd).toBe(34_000);
-    expect(result.item.consumables).toHaveLength(2);
+    expect(result.item.parts.chargedMaterialsDzd).toBe(34_000);
+    expect(result.item.materialMovements).toHaveLength(2);
     // A movement with no entry link is honest value 0, never an estimate.
-    expect(result.item.consumables[1]?.valueDzd).toBe(0);
+    expect(result.item.materialMovements[1]?.valueDzd).toBe(0);
+  });
+
+  it("subtracts a movement out of the project from its material cost", () => {
+    const result = service(
+      makeRepo({
+        listProjectMaterialMovements: () => [
+          {
+            id: "m-in",
+            itemDefinitionId: "def-1",
+            itemName: "إسمنت",
+            unit: "كيس",
+            quantity: 10,
+            unitPriceDzd: 500,
+            direction: "IN",
+            occurredAt: "2026-09-20T00:00:00.000Z",
+          },
+          {
+            id: "m-out",
+            itemDefinitionId: "def-1",
+            itemName: "إسمنت",
+            unit: "كيس",
+            quantity: 3,
+            unitPriceDzd: 500,
+            direction: "OUT",
+            occurredAt: "2026-09-22T00:00:00.000Z",
+          },
+        ],
+      }),
+    ).getProjectCost({ projectId: "p-1" });
+
+    // 10 × 500 in, 3 × 500 out → 3,500. The cost follows the material.
+    expect(result.item.parts.chargedMaterialsDzd).toBe(3_500);
+    expect(result.item.totalDzd).toBe(3_500);
+    expect(result.item.materialMovements.map((row) => row.direction)).toEqual(["OUT", "IN"]);
+  });
+
+  it("refuses a negative material net instead of emitting a negative part", () => {
+    const negativeNet = () =>
+      service(
+        makeRepo({
+          listProjectMaterialMovements: () => [
+            {
+              id: "m-out",
+              itemDefinitionId: null,
+              itemName: null,
+              unit: null,
+              quantity: 3,
+              unitPriceDzd: 500,
+              direction: "OUT",
+              occurredAt: "2026-09-22T00:00:00.000Z",
+            },
+          ],
+        }),
+      ).getProjectCost({ projectId: "p-1" });
+
+    expect(negativeNet).toThrowError(ProjectCostError);
+    try {
+      negativeNet();
+    } catch (error) {
+      expect((error as ProjectCostError).appError.code).toBe("BUSINESS_RULE");
+    }
   });
 
   it("adds the four parts into one total and keeps them separate", () => {
@@ -209,13 +273,13 @@ describe("ProjectCostService (#414)", () => {
         listProjectStockCharges: () => [
           { id: "c-1", assetUnitId: "a-1", assetName: null, amountDzd: 5_000, placedAt: "2026-09-30T00:00:00.000Z" },
         ],
-        listProjectConsumableIssues: () => [
-          { id: "m-1", itemDefinitionId: null, itemName: null, unit: null, quantity: 4, unitPriceDzd: 250, occurredAt: "2026-09-29T00:00:00.000Z" },
+        listProjectMaterialMovements: () => [
+          { id: "m-1", itemDefinitionId: null, itemName: null, unit: null, quantity: 4, unitPriceDzd: 250, direction: "IN", occurredAt: "2026-09-29T00:00:00.000Z" },
         ],
       }),
     ).getProjectCost({ projectId: "p-1" });
 
-    expect(result.item.parts).toEqual({ expensesDzd: 10_000, salariesDzd: 30_000, stockDzd: 5_000, consumablesDzd: 1_000 });
+    expect(result.item.parts).toEqual({ expensesDzd: 10_000, salariesDzd: 30_000, stockDzd: 5_000, chargedMaterialsDzd: 1_000 });
     expect(result.item.totalDzd).toBe(46_000);
   });
 
@@ -223,33 +287,37 @@ describe("ProjectCostService (#414)", () => {
     const result = service(makeRepo()).getProjectCost({ projectId: "p-empty" });
 
     expect(result.item.totalDzd).toBe(0);
-    expect(result.item.parts).toEqual({ expensesDzd: 0, salariesDzd: 0, stockDzd: 0, consumablesDzd: 0 });
+    expect(result.item.parts).toEqual({ expensesDzd: 0, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: 0 });
     expect(result.item.expenses).toEqual([]);
     expect(result.item.salaries).toEqual([]);
     expect(result.item.stock).toEqual([]);
-    expect(result.item.consumables).toEqual([]);
+    expect(result.item.materialMovements).toEqual([]);
     expect(result.item.parkedInventory.totalDzd).toBe(0);
+    expect(result.item.parkedInventory.assets).toEqual([]);
   });
 
-  it("reports parked inventory separately and never adds it to the total", () => {
+  it("reports parked assets separately and never counts consumables as parked", () => {
     const result = service(
       makeRepo({
         listProjectStockCharges: () => [
           { id: "c-1", assetUnitId: "a-1", assetName: "خلاطة", amountDzd: 180_000, placedAt: "2026-09-20T00:00:00.000Z" },
         ],
-        getProjectParkedInventory: () => ({
-          assets: [{ assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 500_000 }],
-          consumables: [
-            { id: "bal-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 10, unitPriceDzd: 850 },
-          ],
-        }),
+        // The consumable sitting at the project is CHARGED (material), not
+        // parked. Only real assets belong in the parked block.
+        listProjectMaterialMovements: () => [
+          { id: "m-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 10, unitPriceDzd: 850, direction: "IN", occurredAt: "2026-09-25T00:00:00.000Z" },
+        ],
+        getProjectParkedAssets: () => [
+          { assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 500_000 },
+        ],
       }),
     ).getProjectCost({ projectId: "p-1" });
 
-    expect(result.item.totalDzd).toBe(180_000);
-    expect(result.item.parkedInventory.totalDzd).toBe(508_500);
+    expect(result.item.totalDzd).toBe(188_500);
+    expect(result.item.parts.chargedMaterialsDzd).toBe(8_500);
+    expect(result.item.parkedInventory.totalDzd).toBe(500_000);
     expect(result.item.parkedInventory.assets).toHaveLength(1);
-    expect(result.item.parkedInventory.consumables[0]?.valueDzd).toBe(8_500);
+    expect("consumables" in result.item.parkedInventory).toBe(false);
   });
 
   it("orders each source newest first with an id tie-break", () => {
