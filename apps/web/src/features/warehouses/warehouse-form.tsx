@@ -78,6 +78,7 @@ export function WarehouseFormFields({
             onChange={(value) => onChange({ ...state, managerId: value })}
             options={managerOptions.map((m) => ({ id: m.id, name: m.label }))}
             emptyLabel={labels.noManager}
+            clearable
             displayValue={managerDisplayValue}
             createLabel={managerCreate?.createLabel}
             createFields={managerCreate?.fields}

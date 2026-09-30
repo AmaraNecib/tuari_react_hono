@@ -6,7 +6,10 @@
   not push or open a PR — the parent owns that.
 - **Branch/worktree:** `feat/manager-inline` at `worktrees/feat-manager-inline`
 - **Base:** `develop`
-- **Base SHA (fixed):** `22495413b7d792e20afcce24a94d6c84c61dd523`
+- **Base SHA (fixed):** `fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36`
+  (`git merge-base develop HEAD`; the branch originally recorded its cut point
+  `22495413`, but `develop` advanced by #441 before review, so the review base
+  was re-pinned to the current merge-base).
 - **Review tier:** Standard
 
 ## Problem
@@ -143,7 +146,7 @@ E2E (Playwright):
 
 ## Base SHA
 
-`22495413b7d792e20afcce24a94d6c84c61dd523` (`git merge-base develop HEAD`).
+`fdb5dda66b21aa3ca09b5e6a04b4899dcc75fd36` (`git merge-base develop HEAD`).
 
 ## Suggested PR subject/body (parent owns the PR)
 

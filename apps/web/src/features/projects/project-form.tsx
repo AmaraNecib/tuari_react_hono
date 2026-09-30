@@ -84,6 +84,7 @@ export function ProjectFormFields({
             onChange={(value) => onChange({ ...state, managerId: value })}
             options={managerOptions.map((manager) => ({ id: manager.id, name: manager.label }))}
             emptyLabel={labels.noManager}
+            clearable
             displayValue={managerDisplayValue}
             createLabel={managerCreate?.createLabel}
             createFields={managerCreate?.fields}

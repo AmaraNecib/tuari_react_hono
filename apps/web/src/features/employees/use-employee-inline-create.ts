@@ -33,7 +33,9 @@ export type EmployeeInlineCreateConfig = {
  *
  * `errorMessage` must be a localized string: every failure that is not a
  * server-authored `AppMutationError` (wire validation, network) is wrapped in
- * it so no raw English message reaches the dialog.
+ * it so no raw English message reaches the dialog. A server `AppMutationError`
+ * keeps its own message, preferring the first field error when present so the
+ * specific reason (for example a taken phone number) reaches the user.
  */
 export function useEmployeeInlineCreate({
   roleId,
@@ -56,8 +58,10 @@ export function useEmployeeInlineCreate({
     createLabel,
     fields,
     onCreate: async (data) => {
+      let result: Awaited<ReturnType<typeof createEmployeeMutation.mutateAsync>>
+
       try {
-        const result = await createEmployeeMutation.mutateAsync({
+        result = await createEmployeeMutation.mutateAsync({
           employees: [
             {
               firstName: data.firstName ?? "",
@@ -72,19 +76,32 @@ export function useEmployeeInlineCreate({
             },
           ],
         })
+      } catch (error) {
+        if (error instanceof AppMutationError) {
+          // A batch validation error carries a generic top-level message
+          // ("could not save the batch"); the actionable reason (the phone is
+          // taken, the role is not assignable) rides the field errors. Surface
+          // the specific one so the dialog does not tell the user to "review
+          // the marked fields" when no field is marked.
+          const fieldMessage = error.fieldErrors[0]?.message
 
-        const employee = result.employees[0]
-
-        // Fail loudly rather than fabricate an id: a selection pointing at a
-        // non-existent row would submit a broken reference to the API.
-        if (!employee?.id) {
-          throw new Error(errorMessage)
+          throw fieldMessage
+            ? new AppMutationError({ code: error.code, message: fieldMessage, fieldErrors: error.fieldErrors })
+            : error
         }
 
-        return { id: employee.id, name: `${employee.firstName} ${employee.lastName}` }
-      } catch (error) {
-        throw error instanceof AppMutationError ? error : new Error(errorMessage)
+        throw new Error(errorMessage)
       }
+
+      const employee = result.employees[0]
+
+      // Fail loudly rather than fabricate an id: a selection pointing at a
+      // non-existent row would submit a broken reference to the API.
+      if (!employee?.id) {
+        throw new Error(errorMessage)
+      }
+
+      return { id: employee.id, name: `${employee.firstName} ${employee.lastName}` }
     },
   }
 }

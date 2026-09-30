@@ -567,6 +567,41 @@ describe("HomeView workspace shell", () => {
     })
   })
 
+  it("inline-creates a project manager with the seeded project_manager role id", async () => {
+    // The role id is derived from `derived.roles` by key in the detail-pages
+    // shell. A regression to an index-based or wrong-key lookup would create a
+    // person under the wrong role and still pass the page-level tests, which
+    // inject the role id as a prop.
+    mocks.createEmployeesBatchMutate.mockResolvedValue({
+      createdCount: 1,
+      employees: [{ id: "employee-new-1", firstName: "سعيد", lastName: "بلقاسم" }],
+    })
+
+    renderWorkspace("project-create", { sessionUser: demoUser })
+
+    expect(await screen.findByRole("heading", { name: "إضافة مشروع" })).toBeTruthy()
+
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /المدير المسؤول/ }))
+    const listbox = await screen.findByRole("listbox")
+    const createOption = await within(listbox).findByRole("option", { name: /إضافة مدير مشروع/ })
+    fireEvent.pointerDown(createOption, { button: 0, pointerId: 1, pointerType: "mouse" })
+    fireEvent.click(createOption)
+
+    const dialog = await screen.findByRole("dialog")
+    fireEvent.change(within(dialog).getByPlaceholderText("اسم الموظف..."), { target: { value: "سعيد" } })
+    fireEvent.change(within(dialog).getByPlaceholderText("لقب الموظف..."), { target: { value: "بلقاسم" } })
+    fireEvent.change(within(dialog).getByPlaceholderText("0612345678"), { target: { value: "0661112233" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "إنشاء" }))
+
+    await waitFor(() => {
+      expect(mocks.createEmployeesBatchMutate).toHaveBeenCalledWith({
+        employees: [
+          expect.objectContaining({ roleId: "role-project-manager", phone: "0661112233", status: "ACTIVE" }),
+        ],
+      })
+    })
+  })
+
   it("navigates project add actions to the dedicated create route", async () => {
     renderWorkspace("projects", { sessionUser: demoUser })
 

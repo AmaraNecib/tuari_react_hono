@@ -152,6 +152,36 @@ describe("WarehouseCreatePage — inline manager creation", () => {
     })
   })
 
+  it("fails localized when the create resolves without a row", async () => {
+    mocks.createEmployeesMutate.mockResolvedValue({ createdCount: 0, employees: [] })
+
+    renderCreatePage()
+
+    const dialog = await openCreateManagerDialog()
+    fillManagerFields(dialog, { phone: "0669998877" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "إنشاء" }))
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByRole("dialog")).getByText("تعذر إنشاء المدير الآن. تحقق من البيانات وحاول مرة أخرى."),
+      ).toBeTruthy()
+    })
+  })
+
+  it("passes a server AppMutationError message straight through", async () => {
+    mocks.createEmployeesMutate.mockRejectedValue(new AppMutationError({ message: "رقم الهاتف مستخدم بالفعل." }))
+
+    renderCreatePage()
+
+    const dialog = await openCreateManagerDialog()
+    fillManagerFields(dialog, { phone: "0669998877" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "إنشاء" }))
+
+    await waitFor(() => {
+      expect(within(screen.getByRole("dialog")).getByText("رقم الهاتف مستخدم بالفعل.")).toBeTruthy()
+    })
+  })
+
   it("hides the create option when the warehouse_manager role is unavailable", async () => {
     renderCreatePage("")
 

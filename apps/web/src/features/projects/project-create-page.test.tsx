@@ -197,6 +197,30 @@ describe("ProjectCreatePage — inline manager creation", () => {
     })
   })
 
+  it("prefers the server field error over the generic batch message", async () => {
+    // The batch handler's top-level message is generic; the actionable reason
+    // (a taken phone) rides the field errors. Showing the generic message would
+    // tell the user to "review the marked fields" while marking none.
+    const rejection = new AppMutationError({
+      message: "تعذر حفظ دفعة العاملين. راجع الحقول المعلّمة ثم حاول مرة أخرى.",
+    })
+    rejection.fieldErrors = [{ field: "employees.0.phone", message: "رقم هاتف العامل مستخدم بالفعل." }]
+    mocks.createEmployeesMutate.mockRejectedValue(rejection)
+
+    renderCreatePage()
+
+    const dialog = await openCreateManagerDialog()
+    fillManagerFields(dialog, { phone: "0669998877" })
+    submitManagerCreate(dialog)
+
+    await waitFor(() => {
+      expect(within(screen.getByRole("dialog")).getByText("رقم هاتف العامل مستخدم بالفعل.")).toBeTruthy()
+    })
+    expect(
+      within(screen.getByRole("dialog")).queryByText("تعذر حفظ دفعة العاملين. راجع الحقول المعلّمة ثم حاول مرة أخرى."),
+    ).toBeNull()
+  })
+
   it("fails localized when the create resolves without a row", async () => {
     mocks.createEmployeesMutate.mockResolvedValue({ createdCount: 0, employees: [] })
 
