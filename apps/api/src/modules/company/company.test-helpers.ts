@@ -264,7 +264,7 @@ const schemaStatements = [
   `CREATE INDEX "external_counterparty_full_name_idx" ON "external_counterparty" ("full_name")`,
   `CREATE INDEX "debt_account_worker_id_idx" ON "debt_account" ("worker_id")`,
   `CREATE INDEX "debt_account_external_counterparty_id_idx" ON "debt_account" ("external_counterparty_id")`,
-  `CREATE UNIQUE INDEX "debt_account_worker_unique" ON "debt_account" ("worker_id") WHERE "worker_id" IS NOT NULL`,
+  `CREATE UNIQUE INDEX "debt_account_worker_direction_unique" ON "debt_account" ("worker_id", "direction") WHERE "worker_id" IS NOT NULL`,
   `CREATE UNIQUE INDEX "debt_account_external_counterparty_direction_unique" ON "debt_account" ("external_counterparty_id", "direction") WHERE "external_counterparty_id" IS NOT NULL`,
   `CREATE INDEX "debt_entry_debt_account_id_idx" ON "debt_entry" ("debt_account_id", "entry_date")`,
 ];

@@ -25,6 +25,7 @@ import {
   type DebtSettlementInput,
   type ExternalCounterpartyCreateInput,
   getDebtAccountNetContribution,
+  getLockedDirectionForCategory,
   getNetDebtBalance,
 } from "@tuari/contracts";
 
@@ -87,6 +88,7 @@ export class FinanceService {
       employeeId: string;
       entryType: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE";
       amountDzd: number;
+      direction?: DebtAccountCreateInput["direction"];
       entryDate?: string;
       note?: string | null;
       reasonCategory?: DebtEntry["reasonCategory"];
@@ -94,25 +96,31 @@ export class FinanceService {
     auditContext?: MutationAuditContext,
   ) {
     const employee = requireEmployee(this.workforceRepo, input.employeeId);
+    const direction = this.resolveEmployeeEntryDirection(
+      input.employeeId,
+      input.entryType,
+      input.direction,
+    );
 
-    let account = this.getEmployeeDebtAccount(input.employeeId);
-    if (!account) {
-      const createResult = this.createDebtAccount(
-        {
-          partyType: "INTERNAL_WORKER",
-          workerId: input.employeeId,
-          note: `حساب الدين للعامل: ${employee.firstName} ${employee.lastName}`,
-        },
-        auditContext,
-      );
-      account = createResult.item;
-    }
+    const account = this.createDebtAccount(
+      {
+        partyType: "INTERNAL_WORKER",
+        workerId: input.employeeId,
+        direction,
+        note: `حساب الدين للعامل: ${employee.firstName} ${employee.lastName}`,
+      },
+      auditContext,
+    ).item;
+
+    // D7: sign by entry type. A PAYMENT reduces the outstanding balance;
+    // every other type increases it in the ledger's own direction.
+    const signedAmountDzd = input.entryType === "PAYMENT" ? -input.amountDzd : input.amountDzd;
 
     const result = this.createDebtEntry(
       {
         debtAccountId: account.id,
         entryType: input.entryType,
-        signedAmountDzd: input.amountDzd,
+        signedAmountDzd,
         entryDate: input.entryDate,
         note: input.note || `${input.entryType}: ${employee.firstName} ${employee.lastName}`,
         reasonCategory: input.reasonCategory,
@@ -121,6 +129,32 @@ export class FinanceService {
     );
 
     return result.item;
+  }
+
+  /**
+   * Resolve which worker ledger an employee-debt entry targets. An ADVANCE is a
+   * worker receivable (D1a); a PAYMENT follows the ledger that still has a
+   * balance so a repayment offsets the advance instead of opening a second
+   * account; everything else lands on the PAYABLE ledger.
+   */
+  private resolveEmployeeEntryDirection(
+    workerId: string,
+    entryType: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE",
+    explicit?: DebtAccountCreateInput["direction"],
+  ): "PAYABLE" | "RECEIVABLE" {
+    if (explicit) {
+      return explicit;
+    }
+    if (entryType === "ADVANCE") {
+      return "RECEIVABLE";
+    }
+    if (entryType === "PAYMENT") {
+      const receivable = this.repository.getDebtAccountByWorkerIdAndDirection(workerId, "RECEIVABLE");
+      if (receivable && receivable.currentBalance !== 0) {
+        return "RECEIVABLE";
+      }
+    }
+    return "PAYABLE";
   }
 
   // ---------------------------------------------------------------------------
@@ -216,18 +250,27 @@ export class FinanceService {
     }
     const entryDate = normalizeAlgeriaTimestamp(input.openingEntryDate);
 
+    // D2: the reason category locks the direction. A supplied direction that
+    // contradicts it is rejected, so no writer can store the intent backwards.
+    const lockedDirection = input.reasonCategory
+      ? getLockedDirectionForCategory(input.reasonCategory)
+      : null;
+    if (lockedDirection && input.direction && input.direction !== lockedDirection) {
+      throw new CompanyError(
+        "VALIDATION",
+        `اتجاه الحساب محدد حسب سبب الدين (${lockedDirection}).`,
+        [{ field: "direction", message: "اتجاه الحساب لا يطابق سبب الدين المحدد." }],
+      );
+    }
+    const direction = lockedDirection ?? input.direction ?? "PAYABLE";
+
     const existingAccount =
       input.partyType === "INTERNAL_WORKER"
-        ? this.repository.getDebtAccountByWorkerId(workerId!)
-        : input.direction === "RECEIVABLE"
-          ? this.repository.getDebtAccountByExternalCounterpartyIdAndDirection(
-              externalCounterpartyId!,
-              "RECEIVABLE",
-            )
-          : this.repository.getDebtAccountByExternalCounterpartyIdAndDirection(
-              externalCounterpartyId!,
-              "PAYABLE",
-            );
+        ? this.repository.getDebtAccountByWorkerIdAndDirection(workerId!, direction)
+        : this.repository.getDebtAccountByExternalCounterpartyIdAndDirection(
+            externalCounterpartyId!,
+            direction,
+          );
 
     if (existingAccount) {
       if (openingBalance !== 0) {
@@ -258,7 +301,7 @@ export class FinanceService {
           partyType: input.partyType,
           workerId,
           externalCounterpartyId,
-          direction: input.direction ?? "PAYABLE",
+          direction,
           status,
           currentBalance: openingBalance,
           note: normalizeText(input.note),
@@ -370,9 +413,6 @@ export class FinanceService {
     }
     if (entry.status !== "LIVE") {
       throw new CompanyError("BUSINESS_RULE", "لا يمكن تسديد حركة دين ملغية.");
-    }
-    if (entry.entryType !== "OPENING") {
-      throw new CompanyError("BUSINESS_RULE", "يمكن تسديد حركات الفتح فقط.");
     }
     const account = requireDebtAccount(this.repository, entry.debtAccountId);
     if (input.amountDzd > account.currentBalance) {

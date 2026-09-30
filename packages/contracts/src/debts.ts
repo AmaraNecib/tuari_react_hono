@@ -12,6 +12,7 @@ import {
   debtPartyTypeSchema,
   debtReasonCategorySchema,
   entityIdSchema,
+  getLockedDirectionForCategory,
   nullableTextSchema,
   paymentMethodSchema,
   timestampSchema,
@@ -175,6 +176,20 @@ export const debtAccountCreateInputSchema = z
         path: ["externalCounterpartyId"],
       });
     }
+
+    // D2: the direction is locked by the reason category; a supplied
+    // direction that contradicts it is rejected at the wire so no writer
+    // can store the intent backwards.
+    const lockedDirection = input.reasonCategory
+      ? getLockedDirectionForCategory(input.reasonCategory)
+      : null;
+    if (lockedDirection && input.direction && input.direction !== lockedDirection) {
+      ctx.addIssue({
+        code: "custom",
+        message: `اتجاه الحساب محدد حسب سبب الدين (${lockedDirection}).`,
+        path: ["direction"],
+      });
+    }
   });
 
 export const debtEntryCreateInputSchema = z.object({
@@ -301,6 +316,11 @@ export const employeeDebtEntryCreateInputSchema = z.object({
   employeeId: entityIdSchema,
   entryType: z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "ADVANCE"]),
   amountDzd: z.number().positive(),
+  /**
+   * Which worker ledger the entry targets. Optional: an `ADVANCE` defaults to
+   * RECEIVABLE (the worker owes us, D1a) and everything else to PAYABLE.
+   */
+  direction: debtAccountDirectionSchema.optional(),
   entryDate: timestampSchema.optional(),
   note: z.string().trim().max(1000).nullable().optional(),
   reasonCategory: debtReasonCategorySchema.optional(),

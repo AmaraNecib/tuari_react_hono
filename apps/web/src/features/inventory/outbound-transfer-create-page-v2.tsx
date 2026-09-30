@@ -131,7 +131,8 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
             quantity: item.quantity,
             ...(item.unitPrice > 0 ? { unitPriceDzd: item.unitPrice } : {}),
           })),
-          debtAmountDzd: remainingDebt > 0 ? remainingDebt : undefined,
+          debtAmountDzd: remainingDebt > 0 ? totalAmount : undefined,
+          firstPaymentAmountDzd: remainingDebt > 0 && firstPaymentAmount > 0 ? firstPaymentAmount : undefined,
           notes: notes.trim() || undefined,
         })
       }

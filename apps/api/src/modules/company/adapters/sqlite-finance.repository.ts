@@ -15,7 +15,7 @@ export class SqliteFinanceRepository implements FinanceRepository {
   createExternalCounterparty(data: ExternalCounterpartyCreateData): ExternalCounterpartyRecord { return this.inner.createExternalCounterparty(data); }
   listDebtAccounts(filters?: DebtAccountListFilters): DebtAccountRecord[] { return this.inner.listDebtAccounts(filters); }
   getDebtAccountById(id: string): DebtAccountRecord | null { return this.inner.getDebtAccountById(id); }
-  getDebtAccountByWorkerId(workerId: string): DebtAccountRecord | null { return this.inner.getDebtAccountByWorkerId(workerId); }
+  getDebtAccountByWorkerIdAndDirection(workerId: string, direction: DebtAccountRecord["direction"]): DebtAccountRecord | null { return this.inner.getDebtAccountByWorkerIdAndDirection(workerId, direction); }
   getDebtAccountByExternalCounterpartyId(ecId: string): DebtAccountRecord | null { return this.inner.getDebtAccountByExternalCounterpartyId(ecId); }
   getDebtAccountByExternalCounterpartyIdAndDirection(ecId: string, direction: DebtAccountRecord["direction"]): DebtAccountRecord | null { return this.inner.getDebtAccountByExternalCounterpartyIdAndDirection(ecId, direction); }
   createDebtAccount(data: DebtAccountCreateData, audit?: MutationAuditContext): DebtAccountRecord { return this.inner.createDebtAccount(data, audit); }

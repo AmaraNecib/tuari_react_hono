@@ -871,6 +871,11 @@ export const addAdvanceDebtEntryMigrationKey = "add_advance_debt_entry_type_v1"
 export const invoiceDebtLinkageMigrationKey = "link_invoices_to_debt_accounts_v1"
 export const debtAccountBalanceRenameMigrationKey = "rename_debt_account_balance_drop_dzd_v1"
 export const debtAccountDirectionMigrationKey = "add_debt_account_direction_v1"
+// D3: a worker gets one ledger per direction (an advance is a worker
+// receivable). Swaps the legacy single-column worker unique index for the
+// composite (worker_id, direction) index, mirroring the external-counterparty
+// ledger.
+export const debtAccountWorkerDirectionMigrationKey = "add_debt_account_worker_direction_v1"
 export const debtEntryReasonCategoryMigrationKey = "add_debt_entry_reason_category_v1"
 export const invoiceDirectionMigrationKey = "add_invoice_direction_v1"
 

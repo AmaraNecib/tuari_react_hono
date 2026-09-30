@@ -90,7 +90,7 @@ export class InMemoryCompanyRepository implements CompanyRepository {
   createExternalCounterparty(data: Parameters<CompanyRepository["createExternalCounterparty"]>[0]) { return this.finance.createExternalCounterparty(data); }
   listDebtAccounts(filters?: Parameters<CompanyRepository["listDebtAccounts"]>[0]) { return this.finance.listDebtAccounts(filters); }
   getDebtAccountById(id: string) { return this.finance.getDebtAccountById(id); }
-  getDebtAccountByWorkerId(workerId: string) { return this.finance.getDebtAccountByWorkerId(workerId); }
+  getDebtAccountByWorkerIdAndDirection(workerId: string, direction: Parameters<CompanyRepository["getDebtAccountByWorkerIdAndDirection"]>[1]) { return this.finance.getDebtAccountByWorkerIdAndDirection(workerId, direction); }
   getDebtAccountByExternalCounterpartyId(ecId: string) { return this.finance.getDebtAccountByExternalCounterpartyId(ecId); }
   getDebtAccountByExternalCounterpartyIdAndDirection(ecId: string, direction: Parameters<CompanyRepository["getDebtAccountByExternalCounterpartyIdAndDirection"]>[1]) { return this.finance.getDebtAccountByExternalCounterpartyIdAndDirection(ecId, direction); }
   createDebtAccount(data: Parameters<CompanyRepository["createDebtAccount"]>[0], audit?: Parameters<CompanyRepository["createDebtAccount"]>[1]) { return this.finance.createDebtAccount(data, audit); }

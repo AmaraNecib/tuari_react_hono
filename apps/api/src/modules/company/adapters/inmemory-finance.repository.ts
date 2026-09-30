@@ -47,8 +47,8 @@ export class InMemoryFinanceRepository implements FinanceRepository {
   getDebtAccountById(id: string): DebtAccountRecord | null {
     return this.store.debtAccounts.get(id) ?? null;
   }
-  getDebtAccountByWorkerId(workerId: string): DebtAccountRecord | null {
-    for (const a of this.store.debtAccounts.values()) if (a.workerId === workerId) return a;
+  getDebtAccountByWorkerIdAndDirection(workerId: string, direction: DebtAccountRecord["direction"]): DebtAccountRecord | null {
+    for (const a of this.store.debtAccounts.values()) if (a.workerId === workerId && a.direction === direction) return a;
     return null;
   }
   getDebtAccountByExternalCounterpartyId(ecId: string): DebtAccountRecord | null {

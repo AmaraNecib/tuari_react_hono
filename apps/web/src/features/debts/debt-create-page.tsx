@@ -32,7 +32,7 @@ const DEBT_CATEGORIES: Array<{
     value: "SALARY_ADVANCE",
     labelAr: "سلفة راتب",
     labelEn: "Salary Advance",
-    impliedDirection: "PAYABLE",
+    impliedDirection: "RECEIVABLE",
     descriptionAr: "صرفنا للعامل مال قبل استحقاقه",
     descriptionEn: "We gave the worker money before they earned it",
   },
