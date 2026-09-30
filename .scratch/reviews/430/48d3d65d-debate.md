@@ -1,4 +1,4 @@
-# #430 debate synthesis (PR #434 review, HEAD `8408c4e0`)
+# #430 debate synthesis (PR #434 review, HEAD `48d3d65d`)
 
 One harsh critic and one defender reviewed the whole backup module against the
 PR diff. The parent (this lane) synthesized and decided.
@@ -14,7 +14,7 @@ PR diff. The parent (this lane) synthesized and decided.
 | 4 | No timeout/terminate on the snapshot worker. | **Fixed**: a bounded, injectable watchdog terminates the worker and rejects. |
 | 4 | `createWorkerSnapshotter` resolves the driver eagerly at construction. | Dismissed with evidence: unreachable (the DB connection is opened first, and the keyed binding is required there). |
 | 4 | Seeded `lastSuccessAt` is the folder mtime, not the marker `takenAt`. | **Fixed**. |
-| 3 | A seeded failure is never cleared on a `not-due` start. | Reported, not fixed; distinguishing seeded from run failures is a small follow-up. Parent decision requested. |
+| 3 | A seeded failure is never cleared on a `not-due` start. | **Fixed** `48d3d65d` (parent decision): a construction-seeded failure is cleared on the first successful listing; a real run/prune failure is not seeded and survives — pinned by three tests, the clear test red on pre-fix code. |
 
 ## Disproved by the critic (kept as safeguards)
 

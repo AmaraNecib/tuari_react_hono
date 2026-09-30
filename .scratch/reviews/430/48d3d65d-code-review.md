@@ -1,11 +1,11 @@
 # #430 code review — PR #434 aggressive local review + fixes
 
-- reviewed code HEAD (final): `8408c4e0`
-- base: `origin/develop` @ `edf1e5b3` (the branch contains it; `git rev-list --left-right --count origin/develop...HEAD` = `0 11`)
+- reviewed code HEAD (final): `48d3d65d`
+- base: `origin/develop` @ `edf1e5b3` (the branch contains it; `git rev-list --left-right --count origin/develop...HEAD` = `0 12`)
 - tier: Standard (new module + config + contract + docs; no authz/crypto/finance)
 - PR: #434 (parent-owned; a lane never merges)
 - lane: `worktrees/feat-daily-backups`, branch `feat/430-daily-backups`
-- fixes: `9f6116cb` (target replace / staging sweep / status) and `8408c4e0` (worker watchdog)
+- fixes: `9f6116cb` (target replace / staging sweep / status), `8408c4e0` (worker watchdog), `48d3d65d` (seeded-failure clear)
 - prior evidence: `8e240048-*` (now superseded)
 
 This round ran three independent reviews on a fresh context (debate, code-review
@@ -27,7 +27,7 @@ two-axis, test-audit) and then fixed every finding. Findings table:
 | 12 | Low | No in-flight guard on `runDueBackup`; two concurrent calls could race the rename. | **Dismissed with evidence.** | The only production caller is `createStartupBackup`, whose `scheduled` latch invokes it at most once (`backup.scheduler.test.ts` "runs once when health is served repeatedly and the fallback also fires"); grep shows no other caller. |
 | 13 | Low | `createWorkerSnapshotter`'s eager `require.resolve` runs at composition time and could block boot. | **Dismissed with evidence.** | `createAppDependencies` opens the DB connection first (`dependencies.ts:138`) and, for a keyed deployment, the SQLCipher binding is already required there, so a resolution failure throws before the backup service is built; for plaintext the module is the same one the live connection uses. Not reachable. |
 | 14 | Low | `/health/` is not matched; a non-2xx `/health` still arms the backup. | **Dismissed with evidence.** | The desktop shell sends exactly `GET /health` (`apps/desktop/src-tauri/src/lib.rs:1942`) and only proceeds on success; the fallback timer covers any other path. A non-2xx arming the backup is harmless (the backup should run anyway). |
-| 15 | Low | A construction-time `lastFailure` persists on a later `not-due` start even after the root becomes readable. | **Reported, not fixed.** | Clearing it would also hide a real prune failure (the design keeps `lastFailure` until a success); distinguishing seeded from run failures is a small follow-up. Parent decision requested. |
+| 15 | Low | A construction-time `lastFailure` persists on a later `not-due` start even after the root becomes readable. | **Fixed** `48d3d65d` (parent decision) — a seeded failure is cleared on the first successful listing; a real run/prune failure is never seeded and survives. | Test `clears a construction-time root failure once the root can be listed` fails on pre-fix code; `keeps a real run failure across a later not-due start` and the extended prune test pin the survival invariant. |
 | — | False | `docs/editions-and-features.md` "undocumented change". | **Dismissed with evidence.** | Artifact of the review agents diffing the stale design-doc base `1dc6191...HEAD` (the branch has since absorbed develop, including #435). `git diff origin/develop...HEAD --name-only` does not touch that file. |
 | — | False | The 100% coverage is "hollow" because the worker body is an eval'd string v8 cannot instrument. | **Dismissed with evidence.** | The worker body is exercised for real by `backup.snapshot.test.ts` (real temp DB, real worker, integrity check, quoted path, timeout). v8 cannot *measure* it; the behavior is covered. |
 
@@ -48,4 +48,4 @@ transaction on its own connection" rule (the worker's dedicated connection),
 100% scoped coverage, and no `any`. The two `/* v8 ignore */` regions are
 unchanged and still defensible (CJS-only base; worker bootstrap error).
 
-## Dismissals I could not disprove are listed as reported (15), not silently dropped.
+## Dismissals I could not disprove: none remain; finding 15 was fixed on the parent's decision.

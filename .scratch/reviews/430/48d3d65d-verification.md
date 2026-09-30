@@ -1,8 +1,8 @@
-# #430 verification evidence (PR #434 review + fixes, final HEAD `8408c4e0`)
+# #430 verification evidence (PR #434 review + fixes, final HEAD `48d3d65d`)
 
 - worktree: `worktrees/feat-daily-backups`, branch `feat/430-daily-backups`
 - base: `origin/develop` @ `edf1e5b3`
-- fix commits: `9f6116cb`, `8408c4e0`
+- fix commits: `9f6116cb`, `8408c4e0`, `48d3d65d`
 - tier: Standard
 - PR: #434 (parent-owned)
 
@@ -10,13 +10,13 @@
 
 | Command | Result |
 | --- | --- |
-| `pnpm --filter @tuari/api exec vitest run src/modules/backup --maxWorkers=2 --coverage --coverage.include="src/modules/backup/**/*.ts" --coverage.reporter=text` | **exit 0** — 4 files, 67 passed / 1 skipped; **100%** stmts (255/255), branches (94/94), funcs (56/56), lines (228/228) |
+| `pnpm --filter @tuari/api exec vitest run src/modules/backup --maxWorkers=2 --coverage --coverage.include="src/modules/backup/**/*.ts" --coverage.reporter=text` | **exit 0** — 4 files, 69 passed / 1 skipped; **100%** stmts (260/260), branches (96/96), funcs (56/56), lines (233/233) |
 | `pnpm typecheck` | exit 0 (4 tasks) |
 | `pnpm lint` | exit 0 — 0 errors (1658 pre-existing warns); `[check:unslop] PASS` |
 | `pnpm test:api` (run 1, before the watchdog fix) | exit 0 — 78 files, 1428 passed / 2 skipped |
 | `pnpm test:api` (run 2, final HEAD) | exit 1 — 3 **timeout** flakes: `update-history.service.test.ts` hook timeout (pre-existing, documented), `sqlite-bootstrap.port.test.ts` cross-connection test timeout (pre-existing, documented), and `backup.service.test.ts > surfaces a prune…` (5s test timeout under load). No assertion failures. |
 | `pnpm --filter @tuari/api exec vitest run src/modules/backup/backup.service.test.ts --maxWorkers=1 -t "surfaces a prune the filesystem refused"` | exit 0 — passes standalone |
-| `pnpm --filter @tuari/api exec vitest run src/modules/backup --maxWorkers=1` | exit 0 — 67 passed / 1 skipped |
+| `pnpm --filter @tuari/api exec vitest run src/modules/backup --maxWorkers=1` | exit 0 — 69 passed / 1 skipped |
 
 Only two full-suite runs were made (the first was clean; the second hit the known
 load class). The backup timeout was re-verified standalone immediately after.
@@ -40,6 +40,11 @@ and running the suite.
 2. `git stash push -- backup.snapshot.ts`, then
    `vitest run src/modules/backup/backup.snapshot.test.ts -t "terminates the worker"`
    → **exit 1, 1 failed** (`terminates the worker and rejects when the copy times out`).
+3. `git stash push -- backup.service.ts` (the finding-15 change only; the earlier
+   service fixes are committed), then `vitest run src/modules/backup/backup.service.test.ts`
+   → **exit 1, 1 failed**: `clears a construction-time root failure once the root can be listed`.
+   `keeps a real run failure across a later not-due start` passes on pre-fix code
+   (it is the survival invariant, not the red behavior).
 
 After each stash, the fix was restored and the scoped suite re-run green.
 

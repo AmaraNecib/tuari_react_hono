@@ -1,4 +1,4 @@
-# #430 test audit (PR #434 review, HEAD `8408c4e0`)
+# #430 test audit (PR #434 review, HEAD `48d3d65d`)
 
 Three read-only test-audit agents (edge-case hunter, coverage analyst, quality
 reviewer) ran over the backup tests and their source. Findings and resolution:
@@ -20,6 +20,7 @@ reviewer) ran over the backup tests and their source. Findings and resolution:
 | The keyed-path test used a bare `rejects.toThrow()` | Tightened to a matcher covering the missing `.node` / keyed-open failure. |
 | No ISO-week year-boundary case | New policy test: `2025-12-29` is `2026-W01`. |
 | Dead `void db;` lint silencer | Removed the unused destructure and the statement. |
+| No test that a construction-time root failure is cleared once the root reads, and that a real failure survives a `not-due` start | New `clears a construction-time root failure once the root can be listed` (red pre-fix) and `keeps a real run failure across a later not-due start`; the prune-refusal test now also asserts the prune failure survives a later not-due start. |
 | Retention assertion had no comment explaining the weekly-in-daily-window quirk | Added the comment. |
 
 ## Dismissed with evidence
