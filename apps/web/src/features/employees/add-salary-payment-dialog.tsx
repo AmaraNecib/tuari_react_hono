@@ -21,6 +21,7 @@ import type { SalaryPeriodType, SalaryProjectAssignmentWindow } from "@tuari/con
 import {
   computeUnallocatedDays,
   defaultSalaryPaymentDays,
+  effectiveSalaryPeriod,
   parsePositiveInteger,
   resolveSalaryPaymentPeriod,
 } from "./salary-payment-form"
@@ -103,9 +104,17 @@ export function AddSalaryPaymentDialog({
   const appliedDraftRef = useRef<SalaryPaymentDraft | null>(null)
 
   const days = parsePositiveInteger(daysText)
+  // An unknown wage period still has a known wage. The day default already
+  // treats a null period as a month (see `effectiveSalaryPeriod`), so the
+  // amount default follows the same convention instead of leaving the field
+  // empty and forcing the operator to retype the wage the app already knows.
   const proposedAmount =
-    salaryAmountDzd !== null && salaryPeriod !== null && days !== null
-      ? computeProposedSalaryAmount({ periodType: salaryPeriod, salaryAmountDzd, days })
+    salaryAmountDzd !== null && days !== null
+      ? computeProposedSalaryAmount({
+          periodType: effectiveSalaryPeriod(salaryPeriod),
+          salaryAmountDzd,
+          days,
+        })
       : null
 
   // The amount follows the proposal until the user edits it; then their value wins.
@@ -219,6 +228,23 @@ export function AddSalaryPaymentDialog({
     !overAllocated &&
     !mutation.isPending
 
+  // The API refuses a payment when the worker has no current wage or no wage
+  // period. The full-salary default now fills the amount, so the refusal would
+  // otherwise be a silent dead end at save time; name each missing setting and
+  // what to do next to the save control (the invoice save-reason pattern).
+  const missingWageReason = salaryAmountDzd === null ? t("salaries.missingWageReason") : null
+  const missingPeriodReason = salaryPeriod === null ? t("salaries.missingPeriodReason") : null
+  const saveBlocked = missingWageReason !== null || missingPeriodReason !== null
+  // A disabled save must always name why. An amount that is empty, zero, or not
+  // a number is the remaining silent case (a zero wage prefills "0", which the
+  // API rejects as "greater than zero"); name it too. This does NOT block on its
+  // own — `hasValidAmount` already does that — so a zero-wage worker who types a
+  // real amount can still save, exactly as the API's amount check allows. It is
+  // suppressed while days are invalid, because then the empty amount is a
+  // consequence of the days field, not a separate mistake to explain.
+  const invalidAmountReason =
+    days !== null && !hasValidAmount && !saveBlocked ? t("salaries.missingAmountReason") : null
+
   const resetForm = () => {
     setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
     setDaysTouched(false)
@@ -252,7 +278,10 @@ export function AddSalaryPaymentDialog({
   }
 
   const handleSubmit = async () => {
-    if (!canSubmit || !employeeId || days === null) return
+    // `saveBlocked` is also checked here, not only by the disabled button: the
+    // guard lives in the handler so a future non-button submit path cannot skip
+    // the API's wage/period precondition.
+    if (!canSubmit || saveBlocked || !employeeId || days === null) return
 
     await mutation.mutateAsync({
       employeeId,
@@ -404,6 +433,14 @@ export function AddSalaryPaymentDialog({
           </label>
         </div>
 
+        {saveBlocked || invalidAmountReason ? (
+          <div role="status" aria-live="polite" className="space-y-1 text-sm text-destructive">
+            {missingWageReason ? <p>{missingWageReason}</p> : null}
+            {missingPeriodReason ? <p>{missingPeriodReason}</p> : null}
+            {invalidAmountReason ? <p>{invalidAmountReason}</p> : null}
+          </div>
+        ) : null}
+
         <DialogFooter>
           <Button
             variant="outline"
@@ -414,7 +451,7 @@ export function AddSalaryPaymentDialog({
           >
             {t("common.cancel")}
           </Button>
-          <Button disabled={!canSubmit} onClick={handleSubmit}>
+          <Button disabled={!canSubmit || saveBlocked} onClick={handleSubmit}>
             {t("salaries.addPayment")}
           </Button>
         </DialogFooter>

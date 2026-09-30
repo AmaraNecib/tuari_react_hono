@@ -1,0 +1,8 @@
+ RUN  v4.1.4 D:/projects/tuari_react_hono/worktrees/fix-salary-screen/apps/web
+
+
+ Test Files  3 passed (3)
+      Tests  53 passed (53)
+   Start at  19:04:33
+   Duration  28.53s (transform 2.00s, setup 0ms, import 24.83s, tests 17.85s, environment 9.80s)
+

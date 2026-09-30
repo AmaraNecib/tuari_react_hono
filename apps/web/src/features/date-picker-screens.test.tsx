@@ -181,6 +181,8 @@ describe("AddSalaryPaymentDialog submits the picked day for a salary payment (#4
       <AddSalaryPaymentDialog
         employeeId="employee-1"
         employeeName="عامل"
+        salaryAmountDzd={30000}
+        salaryPeriod="MONTHLY"
         open
         onOpenChange={vi.fn()}
       />,
