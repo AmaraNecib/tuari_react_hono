@@ -59,13 +59,16 @@ test.describe("debt entry — critical path", () => {
     ).toBeVisible({ timeout: 15_000 })
 
     // The debts hub reflects the new party and its balance (PAYABLE +5000
-    // renders as "دج -5000" — we owe the counterparty). Scope to the party's
-    // row so the signed amount can't match unrelated page text.
+    // renders as "مستحق علينا دج 5,000" — we owe the counterparty). Scope to
+    // the party's row so the amount can't match unrelated page text.
     await page.getByRole("link", { name: "الديون" }).first().click()
     await expect(page.getByRole("heading", { name: "مركز الديون" })).toBeVisible()
     const hubRow = page.getByRole("row", { name: new RegExp(counterpartyName) }).first()
     await expect(hubRow).toBeVisible({ timeout: 10_000 })
-    await expect(hubRow).toContainText(/-5\s?000/)
+    await expect(hubRow).toContainText("مستحق علينا")
+    await expect(hubRow).toContainText(/5,000/)
+    // Regression guard for the reported bug: a balance never renders signed.
+    await expect(hubRow).not.toContainText(/-5\s?000/)
   })
 
   test("admin records a partial payment and the balance drops by the paid amount", async ({ page }) => {
@@ -93,8 +96,11 @@ test.describe("debt entry — critical path", () => {
     await page.getByRole("button", { name: "تأكيد الدفعة" }).click()
 
     // The ledger refreshes (debtsDetail invalidation → useDebtPartyDetailQuery)
-    // and the balance drops from +5000 to +3000 after the 2000 payment.
-    await expect(page.getByText(/\+3000/).first()).toBeVisible({ timeout: 15_000 })
+    // and the balance drops to 3,000 after the 2,000 payment. The balance is
+    // shown as the direction phrase plus a positive amount.
+    await expect(page.getByText("مستحق علينا").first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(/3,000/).first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(/-3,000/)).toHaveCount(0)
     await expect(
       page.getByRole("cell", { name: /دفعة/ }).first(),
     ).toBeVisible({ timeout: 10_000 })
@@ -104,6 +110,8 @@ test.describe("debt entry — critical path", () => {
     await expect(page.getByRole("heading", { name: "مركز الديون" })).toBeVisible()
     const hubRow = page.getByRole("row", { name: new RegExp(counterpartyName) }).first()
     await expect(hubRow).toBeVisible({ timeout: 10_000 })
-    await expect(hubRow).toContainText(/-3\s?000/)
+    await expect(hubRow).toContainText("مستحق علينا")
+    await expect(hubRow).toContainText(/3,000/)
+    await expect(hubRow).not.toContainText(/-3\s?000/)
   })
 })

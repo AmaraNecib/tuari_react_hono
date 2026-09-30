@@ -10,6 +10,7 @@ import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { Surface } from "@/features/shared/page-primitives"
 import { useCreateDebtAccountMutation, useCreateExternalCounterpartyMutation } from "@/features/app-shell/mock-dashboard"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { debtDirectionFromAlias, type DebtDirectionAlias } from "./debt-utils"
 import { cn } from "@/lib/utils"
 import type { useHomeViewNavigation } from "@/features/app-shell/home-view-navigation"
 import type { ExternalCounterparty } from "@tuari/contracts"
@@ -127,7 +128,7 @@ export function DebtCreatePage({
   const [selectedPartyId, setSelectedPartyId] = useState(preselectedExternalCounterpartyId || preselectedWorkerId || "")
   const [reasonCategory, setReasonCategory] = useState<ReasonCategory>("SALARY_ADVANCE")
   const [reasonDetail, setReasonDetail] = useState("")
-  const [direction, setDirection] = useState<"owed-to-us" | "owed-by-us">("owed-to-us")
+  const [direction, setDirection] = useState<DebtDirectionAlias>("owed-to-us")
   const [amount, setAmount] = useState("")
   const [note, setNote] = useState("")
   const [createDate, setCreateDate] = useState(() => getAlgeriaDateInputValue())
@@ -157,19 +158,22 @@ export function DebtCreatePage({
   const normalizedAmount = amount.trim()
   const amountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : 0
   const hasValidAmount = Number.isFinite(amountValue) && amountValue > 0
-  const directionLabel = resolvedDirection === "owed-to-us" ? t("detailPages.debt.direction.owedToUs") : t("detailPages.debt.direction.owedByUs")
+  const accountDirection = debtDirectionFromAlias(resolvedDirection)
+  const directionLabel = accountDirection === "RECEIVABLE" ? t("detailPages.debt.direction.owedToUs") : t("detailPages.debt.direction.owedByUs")
 
   const handleCreateDebt = async () => {
     if (!selectedPartyId || !hasValidAmount || !hasValidReasonDetail) return
 
-    const signedAmount = resolvedDirection === "owed-to-us" ? amountValue : -amountValue
-
+    // The direction carries the meaning; the opening amount is always positive
+    // (a signed balance is never stored or shown). The server stores the
+    // direction we send and only falls back to PAYABLE when it is omitted.
     await createDebtAccountMutation.mutateAsync({
       partyType,
       workerId: partyType === "INTERNAL_WORKER" ? selectedPartyId : null,
       externalCounterpartyId: partyType === "EXTERNAL_COUNTERPARTY" ? selectedPartyId : null,
+      direction: accountDirection,
       note: note.trim() || null,
-      openingBalanceDzd: signedAmount,
+      openingBalanceDzd: amountValue,
       openingEntryDate: createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined,
       openingEntryNote: note.trim() || null,
       reasonCategory,

@@ -17,7 +17,7 @@ import {
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 
-import { formatDebtAmount, formatDebtMoney, getDebtAccountBalance, getDebtBalanceDisplay, getDebtBalanceMeta, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
+import { formatDebtAmount, formatDebtMoney, getDebtAccountBalance, getDebtBalanceDisplay, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
 import { RecordEntryPaymentDialog } from "./record-entry-payment-dialog"
 import { VoidEntryDialog } from "./void-entry-dialog"
 
@@ -180,7 +180,12 @@ export function DebtLedgerPanel({
             <tbody>
               {sortedEntries.length > 0 ? (
                 sortedEntries.map((entry) => {
-                  const amountMeta = getDebtBalanceMeta(entry.signedAmountDzd)
+                  // Movement tone follows the account direction: a positive
+                  // movement on a PAYABLE account increases what we owe.
+                  const amountDisplay = getDebtBalanceDisplay({
+                    currentBalance: entry.signedAmountDzd,
+                    direction: debtAccount?.direction,
+                  })
                   // balanceAfterDzd is the per-account running balance,
                   // so its phrase and color follow the account direction.
                   const balanceAfter = getDebtBalanceDisplay({
@@ -198,7 +203,7 @@ export function DebtLedgerPanel({
                       <td className="px-4 py-4 text-start text-muted-foreground">
                         {getDebtEntryTypeLabel(entry.entryType)}
                       </td>
-                      <td className={cn("px-4 py-4 text-start font-mono", amountMeta.textClassName)} dir="ltr">
+                      <td className={cn("px-4 py-4 text-start font-mono", amountDisplay.textClassName)} dir="ltr">
                         دج {formatDebtMoney(entry.signedAmountDzd)}
                       </td>
                       <td className={cn("px-4 py-4 text-start font-mono", balanceAfter.textClassName)}>

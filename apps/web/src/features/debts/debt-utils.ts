@@ -86,19 +86,60 @@ export function getDebtBalanceDisplay(input: DebtBalanceInput) {
     phraseKey: `debts.terminology.states.${state}` as const,
     phrase: DEBT_BALANCE_STATE_PHRASE[state],
     amount,
-    amountLabel: `${formatDebtAmount(amount)} دج`,
     ...tone,
   }
 }
 
 /**
- * Direction-agnostic balance meta for netted figures (party summaries, hub
- * rows). Kept as the tone/label vocabulary for consumers that only need the
- * meta, now backed by the state machine.
+ * The phrasing rule for the balance left after netting one payable and one
+ * receivable opening. Both amounts are magnitudes (the caller takes the
+ * absolute opening); the remainder lands on the side whose opening is larger,
+ * so its phrase follows that account's direction — a positive payable
+ * remainder is owed BY us, never to us. Returns null until both sides are
+ * chosen. This is a domain rule, so it lives here next to the other debt
+ * display rules rather than inside the dialog component.
  */
-export function getDebtBalanceMeta(balanceDzd: number) {
-  const state = getDebtBalanceState({ currentBalance: balanceDzd })
-  return { ...DEBT_BALANCE_STATE_TONE[state], shortLabel: DEBT_BALANCE_STATE_PHRASE[state], state, statusLabel: state === "settled" ? "مسوّى" : "مفتوح" }
+export function getConsolidationRemainder(input: {
+  payableAmount: number | null
+  receivableAmount: number | null
+  payableDirection: DebtAccount["direction"]
+  receivableDirection: DebtAccount["direction"]
+}): { description: string; label: string } | null {
+  const { payableAmount, receivableAmount, payableDirection, receivableDirection } = input
+  if (payableAmount === null || receivableAmount === null) {
+    return null
+  }
+
+  const netAmount = payableAmount - receivableAmount
+  if (netAmount === 0) {
+    return { description: "سيتم إلغاء الحركتين بالكامل. لا يبقى رصيد.", label: "إلغاء تام" }
+  }
+
+  if (netAmount > 0) {
+    const remaining = getDebtBalanceDisplay({ currentBalance: netAmount, direction: payableDirection })
+    return {
+      description: `يبقى رصيد ${formatDebtAmount(netAmount)} دج على حساب ${getDebtDirectionLabel(payableDirection)} (${remaining.phrase}).`,
+      label: `يبقى ${remaining.phrase} ${formatDebtAmount(netAmount)} دج`,
+    }
+  }
+
+  const remaining = getDebtBalanceDisplay({ currentBalance: -netAmount, direction: receivableDirection })
+  return {
+    description: `يبقى رصيد ${formatDebtAmount(-netAmount)} دج على حساب ${getDebtDirectionLabel(receivableDirection)} (${remaining.phrase}).`,
+    label: `يبقى ${remaining.phrase} ${formatDebtAmount(-netAmount)} دج`,
+  }
+}
+
+/**
+ * The create page and hub use "owed-to-us"/"owed-by-us" as a UI alias; the
+ * domain and the wire use PAYABLE/RECEIVABLE. This is the one place the alias
+ * is translated, so the form and the label cannot disagree about the account
+ * direction.
+ */
+export type DebtDirectionAlias = "owed-to-us" | "owed-by-us"
+
+export function debtDirectionFromAlias(alias: DebtDirectionAlias): DebtAccount["direction"] {
+  return alias === "owed-to-us" ? "RECEIVABLE" : "PAYABLE"
 }
 
 /**
