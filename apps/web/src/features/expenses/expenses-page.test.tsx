@@ -128,6 +128,28 @@ describe("ExpensesPage", () => {
     expect(screen.getAllByText("بدون مشروع").length).toBeGreaterThan(0)
   })
 
+  it("uses the shared page-frame spacing so its header aligns with other pages", () => {
+    useExpensesListQuery.mockReturnValue({
+      data: DATA,
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    // Other list pages render their header through `RecordPageFrame`
+    // (`<div className="space-y-6">`). A local `PageSurfaceContent` wrapper
+    // added p-6/xl:p-7 and pushed this header down; the frame must stay the
+    // bare `space-y-6` wrapper with no padding of its own.
+    const heading = screen.getByRole("heading", { level: 1 })
+    const frame = heading.closest("header")?.parentElement
+    expect(frame).not.toBeNull()
+    expect(frame!.className).toContain("space-y-6")
+    expect(frame!.className).not.toContain("p-6")
+    expect(frame!.className).not.toContain("xl:p-7")
+  })
+
   it("passes the filter bar's date range to the list query", () => {
     useExpensesListQuery.mockReturnValue({
       data: DATA,

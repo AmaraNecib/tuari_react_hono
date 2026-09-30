@@ -105,3 +105,31 @@ describe("DatePicker value contract", () => {
     expect(screen.getByRole("button").textContent).toContain("dd/mm/yyyy")
   })
 })
+
+describe("DatePicker month navigation is theme-aware", () => {
+  afterEach(cleanup)
+
+  it("paints the nav chevrons with the inherited ink token instead of the black default", () => {
+    render(<DatePicker value="2026-10-01" onChange={vi.fn()} />)
+    openPicker()
+
+    const chevron = document.querySelector("nav svg")
+    expect(chevron).not.toBeNull()
+    // react-day-picker ships a black-filled polygon by default; `fill-current`
+    // makes it follow the button's `text-ink-3` (light in dark mode).
+    expect(chevron!.getAttribute("class")).toContain("fill-current")
+  })
+
+  it("gives the nav buttons hover, focus and disabled states", () => {
+    render(<DatePicker value="2026-10-01" onChange={vi.fn()} />)
+    openPicker()
+
+    const previous = document.querySelector("nav button")
+    expect(previous).not.toBeNull()
+    const className = previous!.getAttribute("class") ?? ""
+    expect(className).toContain("text-ink-3")
+    expect(className).toContain("hover:text-ink")
+    expect(className).toContain("disabled:opacity-40")
+    expect(className).toContain("focus-visible:outline-primary")
+  })
+})

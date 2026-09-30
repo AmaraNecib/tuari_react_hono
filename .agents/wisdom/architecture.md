@@ -586,3 +586,49 @@ Floor-then-distribute, not round-each: rounding each line can overshoot the tota
 as easily as undershoot. Test the divide-evenly case (100 into 3) and a case
 where the leftover unit lands on a different line; a 50/50 split never rounds, so
 it passes on the buggy code and proves nothing.
+
+## Base UI state attributes are `data-*` presence, not `:focus` and not `="true"` (🟠 Major)
+
+The shared `Select` styled its items with `focus:bg-accent focus:text-accent-foreground`.
+Base UI marks the active option with `data-highlighted` (value `""`) and the
+chosen option with `data-selected` (value `""`), and it drives the highlight
+from pointer/keyboard state rather than per-item focus, so the `:focus` variant
+misses real highlight states. Worse, this repo's `shadcn/tailwind.css` defines
+`@custom-variant data-selected { &:where([data-selected="true"]) }`, which a
+Base UI `data-selected=""` never matches; the bare `data-selected:` variant
+silently generates dead CSS. Use the arbitrary form `data-[selected]:` (→
+`[data-selected]`) and style `data-[highlighted]:` for hover/keyboard.
+
+**Always**: for Base UI (or any primitive that emits bare boolean `data-*`
+attributes), grep the compiled stylesheet for the generated selector before
+trusting a `data-*` variant. If it contains `="true"` and the runtime attribute
+is `""`, switch to the `data-[attr]:` arbitrary form. Style the state attribute,
+not `:focus`, so pointer and keyboard highlight stay in sync.
+
+## Theme CSS must never mix against a hard-coded `white` (🟠 Major)
+
+`::selection { background: color-mix(in oklab, var(--primary) 24%, white) }`
+was invisible in dark mode: `white` is light in both themes, so the light
+`--foreground` ink sat on a near-white highlight. The same class of bug shows up
+whenever a token is mixed with a fixed colour instead of the theme surface.
+Mix with `var(--surface)` (white in light, the dark card in dark) so the light
+theme is byte-identical and dark follows its own tokens. The native `<select>`
+had the sibling bug: `select option { color: var(--foreground); background-color:
+var(--background) }` overrides the OS highlight's own text colour, so a hovered
+option in dark mode was light-on-light. Leave `<option>` to the platform and
+theme the closed control with `color-scheme` per theme.
+
+**Always**: after any `color-mix`/overlay token, check both themes; and never
+set `color`/`background-color` on native `<option>` — use `color-scheme`.
+
+## react-day-picker's default chevron is a black-filled polygon (🟡 Minor)
+
+`chevron: ""` in the `classNames` left react-day-picker's default `<svg><polygon>`
+with no `fill` attribute, so it rendered black in both themes (invisible on the
+dark popup). Give it `fill-current` so it inherits the nav button's ink token
+(`text-ink-3`), and add explicit `disabled:*`/`focus-visible:*` classes because
+the library ships no default CSS here.
+
+**Always**: when overriding a component library's default class to `""`, check
+what the default element actually paints (attribute vs `currentColor`); an empty
+class is not "theme-aware", it is "unstyled default".

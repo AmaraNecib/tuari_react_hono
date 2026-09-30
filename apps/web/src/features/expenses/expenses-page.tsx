@@ -23,7 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
-import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
+import { PageHeader, Surface } from "@/features/shared/page-primitives"
 import { formatAlgeriaDate, getAlgeriaDateInputValue } from "@/lib/algeria-time"
 
 import { ExpenseFormDialog, type ExpenseLookupOption } from "./expense-form-dialog"
@@ -142,7 +142,7 @@ export function ExpensesPage({ projects, employees, sellers, stockItems }: Expen
   }
 
   return (
-    <PageSurfaceContent>
+    <div className="space-y-6">
       <PageHeader
         title={t("expenses.title")}
         description={t("expenses.description")}
@@ -418,6 +418,6 @@ export function ExpensesPage({ projects, employees, sellers, stockItems }: Expen
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PageSurfaceContent>
+    </div>
   )
 }

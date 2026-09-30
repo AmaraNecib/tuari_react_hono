@@ -234,7 +234,7 @@ export function EmployeeBatchRowCard({
         <label className="flex flex-col gap-2.5 xl:col-span-3">
           <span className="text-sm font-medium text-foreground">{copy.notesLabel}</span>
           <textarea
-            className="min-h-[120px] w-full rounded-xl border border-border/80 bg-sidebar px-4 py-3 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition placeholder:text-muted-foreground/80 focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 dark:bg-background dark:shadow-none"
+            className="min-h-[120px] w-full rounded-xl border border-border/80 bg-sidebar px-4 py-3 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition placeholder:text-muted-foreground/80 dark:placeholder:text-muted-foreground focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 dark:bg-background dark:shadow-none"
             name={`employee-notes-${index}`}
             placeholder={copy.notesPlaceholder}
             value={draft.notes}

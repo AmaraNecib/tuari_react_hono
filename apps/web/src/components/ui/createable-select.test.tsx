@@ -205,11 +205,34 @@ describe("CreateableSelect clear + create dialog contract", () => {
     resolveCreate({ id: "emp-new-1", name: "سعيد بلقاسم" })
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith("emp-new-1"))
+describe("CreateableSelect popup styling follows Base UI state attributes", () => {
+  it("styles the popup surface and the highlighted/selected item with theme tokens", async () => {
+    const trigger = renderSelect({ value: "wh-1" }).trigger
+    fireEvent.mouseDown(trigger)
+    const listbox = await screen.findByRole("listbox")
+    const popup = listbox.closest('[data-slot="select-content"]') as HTMLElement | null
+    expect(popup).not.toBeNull()
+
+    // Popup surface uses the semantic popover tokens (same values as --surface),
+    // so it stays legible in both themes without a colour literal.
+    expect(popup!.className).toContain("bg-popover")
+    expect(popup!.className).toContain("text-popover-foreground")
+
+    const option = await within(listbox).findByRole("option", { name: "المستودع المركزي" })
+    const optionClass = option.getAttribute("class") ?? ""
+    // Base UI marks hover/keyboard highlight with `data-highlighted` and the
+    // chosen row with `data-selected`; styling those (not bare `:focus`)
+    // keeps the highlight following the pointer and the text dark-mode safe.
+    expect(optionClass).toContain("data-[highlighted]:bg-accent")
+    // Light mode keeps the paired --accent-foreground token; only dark mode
+    // strengthens it to the full --foreground ink (light-on-dark surface).
+    expect(optionClass).toContain("data-[highlighted]:text-accent-foreground")
+    expect(optionClass).toContain("dark:data-[highlighted]:text-foreground")
+    expect(optionClass).toContain("data-[selected]:font-medium")
   })
 })
 
 /**
- * Simulate a real browser mouse pick. Since Base UI 1.5+ (#4699 hardening), an
  * item click only commits when the press started on the item itself
  * (`allowMouseSelectionRef`, set by pointerdown) — bare synthetic clicks are
  * treated as drag/ghost clicks and ignored. Playwright fires the full real
