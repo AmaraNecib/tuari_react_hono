@@ -101,3 +101,40 @@ Friction the diff creates, with recommendations:
 Two in-scope fixes applied (shallow export removed; movement type unified).
 Four findings reported with recommendations; none changes this PR's correctness.
 No unresolved blocker inside the diff.
+
+## Addendum — fixes applied after the parallel review round
+
+The critic / edge / test-audit / standards reviewers ran against the first HEAD.
+In-scope findings fixed in `d06ffee0`:
+
+- blank/whitespace text is normalised to `null` at the read boundary, so one odd
+  legacy row can no longer fail the whole response's output validation;
+- `paymentDays ≤ 0` now refuses with a typed error instead of fabricating a
+  multiple of the wage;
+- `sumMoney` refuses `NaN`, not only an above-bound total, and its message no
+  longer leaks the internal field key;
+- SQL `ORDER BY` removed — the service owns ordering, with a new out-of-order
+  test that makes it falsifiable;
+- dead surface removed (`ProjectCostProjectRecord.name`, `movementType`);
+- the misleading paired `amount` / rounded `dayRate` display was removed, so
+  the two numbers a reader sees cannot fail to reconcile;
+- parked consumables now carry an `id`, used as the React key;
+- the RPC round-trip test now carries a fully populated `ProjectCost` and parses
+  it with `projectCostSchema`; bound/blank/ordering/parked-only/empty-action
+  test gaps closed.
+
+Remaining findings reported, not fixed here:
+
+1. **Consumed source is a business rule (ASK).** The app has no consumption
+   event; the diff counts cumulative issuance into the project. Alternative:
+   the inventory report's entry valuation of consumables located at the project.
+   Recommendation: parent decides; the change is one adapter method.
+2. **No browser E2E** (documented standard): the brief constrained Playwright
+   and the tests cover the behaviour; recommend a follow-up
+   `tests/e2e/project-cost.spec.ts`.
+3. **No owning-module pin for salaries/stock/consumables**: only expenses is
+   pinned against its owning module. Recommend a follow-up cross-module test
+   for consumables (the acceptance clause names the inventory module).
+4. **Shared helpers**: `toFailureResult`, `successResult` and web money
+   formatting are duplicated across modules/features; a dedicated refactor.
+
