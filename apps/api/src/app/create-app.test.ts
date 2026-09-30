@@ -887,6 +887,8 @@ describe("createApp request-failure logging", () => {
     expect(failureLines).toHaveLength(1);
     expect(failureLines[0]).toContain("\"status\":400");
     expect(failureLines[0]).toContain("Malformed request");
+    // A malformed request is the client's fault, not an encode failure.
+    expect(failureLines[0]).not.toContain("encodeFailed");
     expect(dependencies.inventoryService.createItemDefinition).not.toHaveBeenCalled();
   });
 

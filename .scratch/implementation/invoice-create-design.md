@@ -33,8 +33,10 @@
 New `apps/api/src/infrastructure/observability/request-failure.ts` (uses the existing
 `StructuredLogger`; never logs request bodies, query strings, or inputs):
 
-- `logRequestFailure({ method, path, status, message, code?, error? })` → one
-  `StructuredLogger.error("Request failed", …)` line with route, status, and message.
+- `logRequestFailure({ method, path, status, message, code?, error?, encodeFailed? })` →
+  one `StructuredLogger.error("Request failed", …)` line with route, status, and message.
+  `encodeFailed: true` is emitted only when the server failed to encode its own
+  response; it is absent for every other failure, including a malformed request.
 - `createRpcFailureStore` / `runWithRpcFailureStore` / `markFailureLogged()` /
   `isFailureLogged()` — an `AsyncLocalStorage` store created by the `/rpc/*` middleware, so
   exactly one layer logs a given failed RPC. It is NOT keyed on the ORPC `context`
@@ -56,6 +58,10 @@ Wiring in `create-app.ts` (replaces the dead `console.error` interceptor):
   response the client never logged, **using ORPC's mapped status verbatim**: 400 for a
   request it could not decode (the client's fault), 500 for a response it could not
   encode (the server's). No layer guesses 400 vs 500.
+- `recordInterceptedFailure(error)` — the request interceptor classifies ORPC's raw
+  error (the `cause` it attaches) and flags the store's `encodeFailed` for anything that
+  is not a decode-class error (`SyntaxError`/`ORPCError`). An operator can do nothing
+  about an encode failure, so it is called out explicitly in the log line.
 - a first-registered global Hono middleware — logs non-RPC `status >= 400` from the
   response body, and rethrows unhandled errors after logging them. ORPC error envelopes
   on `/rpc/*` are skipped there (already handled above); the body-limit 413 (which

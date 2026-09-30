@@ -10,8 +10,10 @@ import {
   isFailureLogged,
   isRecord,
   logRequestFailure,
+  logRpcResponseFailure,
   markFailureLogged,
   readResponseBody,
+  recordInterceptedFailure,
   resolveFailureCode,
   resolveFailureMessage,
   runWithRpcFailureStore,
@@ -146,15 +148,17 @@ export function createApp(
       // the only layer that sees it.
       onFinish((state, options) => {
         const { request } = options as unknown as RpcInterceptorOptions;
-        const [, rawResult, isSuccess] = state as unknown as RpcInterceptorState;
+        const [error, rawResult, isSuccess] = state as unknown as RpcInterceptorState;
         const path = request.url.pathname;
 
         // A request body ORPC could not decode, or a response it could not
         // encode, never reaches a procedure client. Its accurate status (400
         // for the client's malformed request, 500 for the server's failure) is
-        // only known at the transport, where ORPC has already mapped it, so
-        // the `/rpc/*` middleware logs those rather than this layer guessing.
+        // only known at the transport, where ORPC has already mapped it. This
+        // layer only classifies the raw error (ORPC's `cause`) so the transport
+        // can flag an encode failure explicitly.
         if (!isSuccess) {
+          recordInterceptedFailure(error);
           return;
         }
 
@@ -490,17 +494,7 @@ export function createApp(
       // request as a server fault, and never hide a real server fault as a
       // client one. Client interceptors already logged thrown procedure
       // errors and `{ success: false }` envelopes, so those are skipped here.
-      if (response.status >= 400 && !failureStore.logged) {
-        const body = unwrapResponseBody(await readResponseBody(response));
-        logRequestFailure({
-          method: c.req.method,
-          path: c.req.path,
-          status: response.status,
-          message: resolveFailureMessage(body) ?? `HTTP ${response.status}`,
-          code: resolveFailureCode(body),
-        });
-        failureStore.logged = true;
-      }
+      await logRpcResponseFailure(failureStore, c.req.method, c.req.path, response);
 
       return c.newResponse(response.body, response);
     }
