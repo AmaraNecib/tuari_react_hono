@@ -4,12 +4,14 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import { outboundPickUsage } from "@tuari/contracts"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { showErrorToast } from "@/lib/toast"
 import { ItemListEditor, type ItemEditorRow } from "./item-list-editor"
-import { useCreateOutboundTransferMutation, useInventoryExternalCounterpartiesQuery, useInventoryWarehousesQuery, useInventoryProjectsQuery, useInventoryItemDefinitionsQuery } from "./inventory-hooks"
+import { useCreateOutboundTransferMutation, useInventoryExternalCounterpartiesQuery, useInventoryWarehousesQuery, useInventoryProjectsQuery } from "./inventory-hooks"
 
 /**
  * @description Component
@@ -19,7 +21,6 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
   const counterpartiesQuery = useInventoryExternalCounterpartiesQuery()
   const warehousesQuery = useInventoryWarehousesQuery()
   const projectsQuery = useInventoryProjectsQuery()
-  const itemsQuery = useInventoryItemDefinitionsQuery()
   const createTransferMutation = useCreateOutboundTransferMutation()
 
   const [fromType, setFromType] = useState<"WAREHOUSE" | "PROJECT">("WAREHOUSE")
@@ -33,30 +34,39 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
   const counterparties = counterpartiesQuery.data?.items ?? []
   const warehouses = warehousesQuery.data?.items ?? []
   const projects = projectsQuery.data?.items ?? []
-  const itemDefinitions = itemsQuery.data?.items ?? []
 
   const locations = fromType === "WAREHOUSE" ? warehouses : projects
 
+  // The offer rule needs a source: an item is offerable only when it holds
+  // stock where it is leaving from. No source chosen means no options yet.
+  const sourceUsage = fromId
+    ? outboundPickUsage(
+        fromType === "WAREHOUSE"
+          ? { locationType: "WAREHOUSE", warehouseId: fromId }
+          : { locationType: "PROJECT", projectId: fromId },
+      )
+    : null
+
   const addItem = () => {
-    setItems([...items, { itemId: "", quantity: "", unitPrice: "" } as const])
+    setItems((prev) => [...prev, { id: crypto.randomUUID(), itemOption: null, quantity: "", unitPrice: "" }])
   }
 
   const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index))
+    setItems((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const updateItem = (index: number, field: string, value: string) => {
-    if (!items[index]) return
-    const newItems = [...items]
-    const currentItem = newItems[index]!
-    if (field === "itemId") {
-      newItems[index] = { itemId: value, quantity: currentItem.quantity, unitPrice: currentItem.unitPrice }
-    } else if (field === "quantity") {
-      newItems[index] = { itemId: currentItem.itemId, quantity: value, unitPrice: currentItem.unitPrice }
-    } else if (field === "unitPrice") {
-      newItems[index] = { itemId: currentItem.itemId, quantity: currentItem.quantity, unitPrice: value }
-    }
-    setItems(newItems)
+  const updateItem = (index: number, patch: Partial<ItemEditorRow>) => {
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+  }
+
+  /**
+   * Availability is a fact about the source, so a pick made for one source is
+   * not evidence for another. Clearing the picked items on a source change
+   * keeps a stale choice from being submitted; the typed quantities and prices
+   * survive, so nothing the operator entered is lost.
+   */
+  const clearItemOptions = () => {
+    setItems((prev) => prev.map((item) => (item.itemOption ? { ...item, itemOption: null } : item)))
   }
 
   const handleSubmit = async () => {
@@ -73,12 +83,8 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
     // Validate items
     const validationErrors: string[] = []
     const validatedItems = items.map((item, idx) => {
-      if (!item.itemId) {
+      if (!item.itemOption) {
         validationErrors.push(`العنصر ${idx + 1}: يجب تحديد العنصر`)
-        return null
-      }
-      if (!itemDefinitions.some((def) => def.id === item.itemId)) {
-        validationErrors.push(`العنصر ${idx + 1}: العنصر المحدد غير موجود`)
         return null
       }
       const quantity = Number(item.quantity)
@@ -91,7 +97,7 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
         return null
       }
       return {
-        itemId: item.itemId,
+        itemId: item.itemOption.id,
         quantity,
         ...(item.unitPrice ? { unitPriceDzd: Number(item.unitPrice) } : {}),
       }
@@ -146,6 +152,7 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
               <select value={fromType} onChange={(e) => {
                 setFromType(e.target.value as "WAREHOUSE" | "PROJECT")
                 setFromId("")
+                clearItemOptions()
               }} className="h-10 rounded-xl border border-border bg-background px-3">
                 <option value="WAREHOUSE">مستودع</option>
                 <option value="PROJECT">مشروع</option>
@@ -154,7 +161,7 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
 
             <div className="grid gap-2">
               <label className="text-sm font-medium">اختر {fromType === "WAREHOUSE" ? "المستودع" : "المشروع"}</label>
-              <select value={fromId} onChange={(e) => setFromId(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3">
+              <select value={fromId} onChange={(e) => { setFromId(e.target.value); clearItemOptions() }} className="h-10 rounded-xl border border-border bg-background px-3">
                 <option value="">اختر...</option>
                 {locations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
@@ -191,7 +198,11 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
       <Surface variant="panel">
         <PageSurfaceContent>
           <SurfaceHeader title="العناصر المحولة" />
-          <ItemListEditor items={items} itemDefinitions={itemDefinitions} onAdd={addItem} onRemove={removeItem} onUpdate={updateItem} />
+          {sourceUsage ? (
+            <ItemListEditor items={items} usage={sourceUsage} onAdd={addItem} onRemove={removeItem} onUpdate={updateItem} />
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("inventory.transfer.chooseSourceFirst")}</p>
+          )}
         </PageSurfaceContent>
       </Surface>
 

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, type UseMutationResult } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
+
+import { outboundPickUsage } from "@tuari/contracts"
 
 const mocks = vi.hoisted(() => ({
   session: vi.fn(),
@@ -11,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   createInvoiceGroup: vi.fn(),
   listProjectCharges: vi.fn(),
   chargeDefault: vi.fn(),
+  transferConsumable: vi.fn(),
+  transferAsset: vi.fn(),
+  createOutboundTransfer: vi.fn(),
 }))
 
 vi.mock("@/lib/orpc-client", async (importOriginal) => {
@@ -24,6 +29,9 @@ vi.mock("@/lib/orpc-client", async (importOriginal) => {
       inventoryInvoiceGroupsCreate: mocks.createInvoiceGroup,
       inventoryAssetChargesListByProject: mocks.listProjectCharges,
       inventoryAssetChargeDefault: mocks.chargeDefault,
+      inventoryConsumablesTransfer: mocks.transferConsumable,
+      inventoryAssetsTransfer: mocks.transferAsset,
+      inventoryOutboundTransfersCreate: mocks.createOutboundTransfer,
     },
   }
 })
@@ -37,9 +45,12 @@ import {
   useAssetChargeDefaultQuery,
   useCreateInventoryInvoiceGroupMutation,
   useCreateInventoryItemDefinitionMutation,
+  useCreateOutboundTransferMutation,
   useInventoryItemDefinitionsQuery,
   useItemDefinitionOptionsQuery,
   useProjectChargesQuery,
+  useTransferInventoryAssetMutation,
+  useTransferInventoryConsumableMutation,
 } from "./inventory-hooks"
 import { orpc } from "@/lib/orpc-client"
 
@@ -344,6 +355,35 @@ describe("item-definition options — the usage-scoped paged picker read", () =>
     )
   })
 
+  it("keys two outbound sources separately instead of sharing the first source's page chain", async () => {
+    mocks.options.mockResolvedValue({ items: [], total: 0, nextCursor: null, hasMore: false })
+    const queryClient = makeQueryClient()
+    const { rerender } = renderHook(
+      ({ warehouseId }: { warehouseId: string }) =>
+        useItemDefinitionOptionsQuery({ usage: outboundPickUsage({ locationType: "WAREHOUSE", warehouseId }) }),
+      { wrapper: wrapper(queryClient), initialProps: { warehouseId: "wh-1" } },
+    )
+
+    await waitFor(() =>
+      expect(mocks.options).toHaveBeenCalledWith(
+        expect.objectContaining({
+          usage: { surface: "OUTBOUND_PICK", source: { locationType: "WAREHOUSE", warehouseId: "wh-1" } },
+        }),
+      ),
+    )
+
+    // A second source is a different rule and must not be served the first
+    // source's cached page (the source is part of the query key).
+    rerender({ warehouseId: "wh-2" })
+    await waitFor(() =>
+      expect(mocks.options).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          usage: { surface: "OUTBOUND_PICK", source: { locationType: "WAREHOUSE", warehouseId: "wh-2" } },
+        }),
+      ),
+    )
+  })
+
   it("does not fetch while disabled", async () => {
     const queryClient = makeQueryClient()
     renderHook(() => useItemDefinitionOptionsQuery({ usage: { surface: "STOCK_REFERENCE" }, enabled: false }), {
@@ -351,5 +391,114 @@ describe("item-definition options — the usage-scoped paged picker read", () =>
     })
     await new Promise((resolve) => setTimeout(resolve, 350))
     expect(mocks.options).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * A stock change must invalidate the outbound picker's cached page. Its
+ * `OUTBOUND_PICK` rule filters on `inStockAt`, so the read's answer is a
+ * function of where stock sits; a receipt, a location transfer or an outbound
+ * changes that answer while the 30s stale window is still open. Without the
+ * invalidation the picker keeps serving its empty page, so the newly stocked
+ * item cannot be picked (issue #467, the Greptile finding on #465).
+ */
+describe("outbound item options — no stale availability page after a stock change", () => {
+  const WAREHOUSE_A = outboundPickUsage({ locationType: "WAREHOUSE", warehouseId: "wh-1" })
+  const STOCKED_ITEM = { id: "def-1", name: "إسمنت", itemType: "CONSUMABLE", unit: "قطعة" }
+  const EMPTY_PAGE = { items: [], total: 0, nextCursor: null, hasMore: false }
+  const STOCKED_PAGE = { items: [STOCKED_ITEM], total: 1, nextCursor: null, hasMore: false }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.session.mockReturnValue({ data: { user: { id: "user-1" } } })
+    mocks.options.mockResolvedValue(EMPTY_PAGE)
+  })
+
+  /**
+   * Mounts the picker read and one stock-changing mutation over the same real
+   * `QueryClient`, then drives the whole sequence: empty page → stock change →
+   * item appears. `makeQueryClient`'s 30s `staleTime` is what makes this an
+   * invalidation check rather than a lucky refetch. The session cache is seeded
+   * at the key the mutation reads, so this pins the PRIMARY invalidation path
+   * (not the null-userId prefix-wide fallback).
+   */
+  async function expectItemAppearsAfter<TData, TError, TVariables, TContext>(
+    useStockChange: () => UseMutationResult<TData, TError, TVariables, TContext>,
+    mutateInput: TVariables,
+  ) {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(orpc.session.queryOptions().queryKey, {
+      user: { id: "user-1", name: "مدير التشغيل", phone: "0612345678", version: "0.0.0" },
+    })
+
+    const { result: optionsResult } = renderHook(
+      () => useItemDefinitionOptionsQuery({ usage: WAREHOUSE_A }),
+      { wrapper: wrapper(queryClient) },
+    )
+    const { result: mutationResult } = renderHook(() => useStockChange(), {
+      wrapper: wrapper(queryClient),
+    })
+
+    // The source is empty and its page is cached as such, still inside the 30s
+    // stale window. Without an invalidation the mounted read would not re-run.
+    await waitFor(() => expect(optionsResult.current.options).toEqual([]))
+    expect(mocks.options).toHaveBeenCalledTimes(1)
+
+    // Stock arrives at the source; the server's next answer includes the item.
+    mocks.options.mockResolvedValue(STOCKED_PAGE)
+
+    await act(async () => {
+      await mutationResult.current.mutateAsync(mutateInput)
+    })
+
+    await waitFor(() => expect(optionsResult.current.options).toEqual([STOCKED_ITEM]))
+    expect(mocks.options).toHaveBeenCalledTimes(2)
+  }
+
+  it("refreshes the picker after a consumable transfer into the source", async () => {
+    mocks.transferConsumable.mockResolvedValue({ success: true, message: "تم التحويل.", item: {} })
+    await expectItemAppearsAfter(
+      () => useTransferInventoryConsumableMutation(),
+      { inventoryEntryId: "entry-1", quantity: 5, toWarehouseId: "wh-1", toProjectId: null },
+    )
+  })
+
+  it("refreshes the picker after an asset transfer between locations", async () => {
+    mocks.transferAsset.mockResolvedValue({
+      success: true,
+      message: "تم التحويل.",
+      item: { asset: { id: "asset-1", currentWarehouseId: "wh-1", currentProjectId: null }, invoiceGroup: { id: "group-1" } },
+    })
+    await expectItemAppearsAfter(
+      () => useTransferInventoryAssetMutation(),
+      { assetUnitId: "asset-1", toWarehouseId: "wh-1", toProjectId: null },
+    )
+  })
+
+  it("refreshes the picker after an outbound transfer consumes stock", async () => {
+    mocks.createOutboundTransfer.mockResolvedValue({ success: true, message: "تم الإنشاء.", item: { id: "ot-1" } })
+    await expectItemAppearsAfter(
+      () => useCreateOutboundTransferMutation(),
+      {
+        fromType: "WAREHOUSE",
+        fromId: "wh-1",
+        counterpartyId: "cp-1",
+        transferType: "SALE",
+        items: [{ itemId: "def-1", quantity: 1 }],
+      },
+    )
+  })
+
+  it("refreshes the picker after a purchase receipts stock at the source", async () => {
+    mocks.createInvoiceGroup.mockResolvedValue({ success: true, message: "تم إنشاء الفاتورة.", item: { group: { id: "group-1" } } })
+    await expectItemAppearsAfter(
+      () => useCreateInventoryInvoiceGroupMutation(),
+      {
+        warehouseId: "wh-1",
+        entries: [
+          { kind: "CONSUMABLE", itemDefinitionId: "def-1", warehouseId: "wh-1", quantity: 5, unitPriceDzd: 100, totalPriceDzd: 500 },
+        ],
+      },
+    )
   })
 })

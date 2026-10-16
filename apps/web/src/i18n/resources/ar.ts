@@ -920,6 +920,7 @@ export const ar = {
         sourceType: "نوع المصدر",
         source: "المصدر",
         selectSource: "اختر المصدر...",
+        chooseSourceFirst: "اختر الموقع الأصلي أولًا ثم أضف العناصر المتوفرة فيه",
         availableItems: "العناصر المتاحة",
         noItems: "لا توجد عناصر في هذا الموقع",
         selectedItems: "العناصر المحددة",

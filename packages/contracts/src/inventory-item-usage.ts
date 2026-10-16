@@ -21,11 +21,34 @@ export const inventoryItemKindSchema = z.enum(["CONSUMABLE", "ASSET"]);
 export type InventoryItemKind = z.infer<typeof inventoryItemKindSchema>;
 
 /**
+ * The location an availability rule is asked about.
+ *
+ * A transfer's source is exactly one of a warehouse or a project (the schema's
+ * XOR destination rule), so the source is a closed union rather than a pair of
+ * nullable ids that could both be set.
+ */
+export const inventoryItemOfferSourceSchema = z.discriminatedUnion("locationType", [
+  z.object({
+    locationType: z.literal("WAREHOUSE"),
+    warehouseId: z.string().min(1),
+  }),
+  z.object({
+    locationType: z.literal("PROJECT"),
+    projectId: z.string().min(1),
+  }),
+]);
+
+/** InventoryItemOfferSource - a location a stock rule is asked about. */
+export type InventoryItemOfferSource = z.infer<typeof inventoryItemOfferSourceSchema>;
+
+/**
  * A closed union of every surface that asks for item options.
  *
  * `STOCK_REFERENCE` is the expense dialog's soft reference to a stock item
- * (issue #411): it may reference any active definition. A new surface must add
- * a member here, which then fails the `never` check in
+ * (issue #411): it may reference any active definition. `OUTBOUND_PICK` is the
+ * outbound transfer's item list (issue #465): the item is about to leave the
+ * business, so it must be active AND hold stock at the chosen source. A new
+ * surface must add a member here, which then fails the `never` check in
  * {@link resolveItemOffer} until its rule is stated.
  */
 export const inventoryItemUsageSchema = z.discriminatedUnion("surface", [
@@ -35,6 +58,10 @@ export const inventoryItemUsageSchema = z.discriminatedUnion("surface", [
   }),
   z.object({
     surface: z.literal("STOCK_REFERENCE"),
+  }),
+  z.object({
+    surface: z.literal("OUTBOUND_PICK"),
+    source: inventoryItemOfferSourceSchema,
   }),
 ]);
 
@@ -48,21 +75,44 @@ export type InventoryItemUsage = z.infer<typeof inventoryItemUsageSchema>;
  * at the write gate. A predicate could only run in JS, which would force the
  * picker to filter after paging (unstable page sizes) or the gate to keep its
  * own copy of the rule — the drift this seam exists to remove.
+ *
+ * The outbound transfer's write path does not consult the rule yet: it lands
+ * with #450, so `OUTBOUND_PICK` availability is enforced on the read side only
+ * today.
  */
 export type InventoryItemOfferFilter = {
   itemTypes: readonly z.infer<typeof inventoryItemTypeSchema>[];
   activeOnly: boolean;
+  /**
+   * When set, only definitions that currently hold stock at this location are
+   * offered. Absent means the rule does not care about availability.
+   *
+   * Availability is a fact about (definition, source), not about the definition
+   * alone — which is why `{ itemTypes, activeOnly }` could not express it and
+   * this field had to be added. BOTH evaluators honour it: the SQL compiler in
+   * the inventory repository, and {@link matchesItemOfferFilter} in JS.
+   */
+  inStockAt?: InventoryItemOfferSource;
 };
 
 /** Evidence a definition must satisfy to be offered. */
 export type ItemOfferCandidate = {
   itemType: z.infer<typeof inventoryItemTypeSchema>;
   isActive: boolean;
+  /** Warehouse ids where this definition currently holds stock. */
+  stockWarehouseIds?: readonly string[];
+  /** Project ids where this definition currently holds stock. */
+  stockProjectIds?: readonly string[];
 };
 
 /** Convenience constructor for the invoice-line usage. */
 export function invoiceLineUsage(kind: InventoryItemKind): InventoryItemUsage {
   return { surface: "INVOICE_LINE", kind };
+}
+
+/** Convenience constructor for the outbound-transfer usage. */
+export function outboundPickUsage(source: InventoryItemOfferSource): InventoryItemUsage {
+  return { surface: "OUTBOUND_PICK", source };
 }
 
 /**
@@ -80,11 +130,27 @@ export function resolveItemOffer(usage: InventoryItemUsage): InventoryItemOfferF
     case "STOCK_REFERENCE":
       // The expense soft reference may point at any active definition.
       return { itemTypes: ["CONSUMABLE", "ASSET"], activeOnly: true };
+    case "OUTBOUND_PICK":
+      // The item is leaving the business: it must be active and physically
+      // present at the source it leaves from.
+      return { itemTypes: ["CONSUMABLE", "ASSET"], activeOnly: true, inStockAt: usage.source };
     default: {
       const exhaustive: never = usage;
       return exhaustive;
     }
   }
+}
+
+/**
+ * Does the definition currently hold stock at this source?
+ *
+ * The candidate carries the location ids where stock exists; an unknown (or
+ * absent) set means the definition is not available there.
+ */
+function isInStockAt(definition: ItemOfferCandidate, source: InventoryItemOfferSource): boolean {
+  return source.locationType === "WAREHOUSE"
+    ? (definition.stockWarehouseIds?.includes(source.warehouseId) ?? false)
+    : (definition.stockProjectIds?.includes(source.projectId) ?? false);
 }
 
 /**
@@ -98,6 +164,7 @@ export function matchesItemOfferFilter(
 ): boolean {
   return (
     filter.itemTypes.includes(definition.itemType) &&
-    (!filter.activeOnly || definition.isActive)
+    (!filter.activeOnly || definition.isActive) &&
+    (!filter.inStockAt || isInStockAt(definition, filter.inStockAt))
   );
 }

@@ -1,20 +1,26 @@
 /**
- * Item list editor for managing inventory items in invoices.
+ * Item list editor for managing the outbound transfer's items.
+ *
+ * Each row's item is chosen through {@link ItemOptionPicker}, the usage-scoped,
+ * paged adapter: the row holds the picked option, so an option that is not on
+ * the loaded page still renders, and the read is filtered to what the surface
+ * may actually offer (active, and in stock at the transfer's source).
  */
 import { useTranslation } from "react-i18next"
+
+import type { InventoryItemDefinition, InventoryItemUsage } from "@tuari/contracts"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+
+import { ItemOptionPicker } from "./item-option-picker"
 
 /** ItemEditorRow. */
 export interface ItemEditorRow {
-  itemId: string
+  /** Stable row identity, so deleting a row does not shift the next row's
+   * picker state (React keys must not be the array index). */
+  id: string
+  itemOption: InventoryItemDefinition | null
   quantity: string
   unitPrice: string
 }
@@ -24,54 +30,49 @@ export interface ItemEditorRow {
  */
 export function ItemListEditor({
   items,
-  itemDefinitions,
+  usage,
   onAdd,
   onRemove,
   onUpdate,
 }: {
   items: ItemEditorRow[]
-  itemDefinitions: Array<{ id: string; name: string }>
+  usage: InventoryItemUsage
   onAdd: () => void
   onRemove: (index: number) => void
-  onUpdate: (index: number, field: string, value: string) => void
+  onUpdate: (index: number, patch: Partial<ItemEditorRow>) => void
 }) {
   const { t } = useTranslation()
   return (
     <div className="space-y-3">
       {items.map((item, idx) => (
-        <div key={idx} className="flex gap-3 rounded-xl border border-border/70 p-3">
-          <Select
-            value={item.itemId}
-            onValueChange={(value) => { if (value) onUpdate(idx, "itemId", value) }}
-          >
-            <SelectTrigger className="flex-1">
-              <SelectValue placeholder={t("inventory.items.selectItem")} />
-            </SelectTrigger>
-            <SelectContent>
-              {itemDefinitions.map((def) => (
-                <SelectItem key={def.id} value={def.id}>
-                  {def.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div key={item.id} className="flex items-start gap-3 rounded-xl border border-border/70 p-3">
+          <div className="min-w-0 flex-1">
+            <ItemOptionPicker
+              label={t("inventory.items.selectItem")}
+              usage={usage}
+              value={item.itemOption}
+              onChange={(option) => onUpdate(idx, { itemOption: option })}
+            />
+          </div>
           <Input
             type="number"
             min="0"
             step="0.01"
+            aria-label={t("inventory.items.quantity")}
             placeholder={t("inventory.items.quantity")}
             value={item.quantity}
-            onChange={(e) => onUpdate(idx, "quantity", e.target.value)}
-            className="w-20"
+            onChange={(e) => onUpdate(idx, { quantity: e.target.value })}
+            className="w-24"
           />
           <Input
             type="number"
             min="0"
             step="0.01"
+            aria-label={t("inventory.items.price")}
             placeholder={t("inventory.items.price")}
             value={item.unitPrice}
-            onChange={(e) => onUpdate(idx, "unitPrice", e.target.value)}
-            className="w-24"
+            onChange={(e) => onUpdate(idx, { unitPrice: e.target.value })}
+            className="w-28"
           />
           <Button variant="ghost" size="sm" onClick={() => onRemove(idx)} className="text-destructive hover:bg-destructive/10">
             {t("common.delete")}

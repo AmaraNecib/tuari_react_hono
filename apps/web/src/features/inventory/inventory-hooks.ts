@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import type {
   AppError,
@@ -69,7 +69,22 @@ export const ITEM_DEFINITION_OPTIONS_PAGE_SIZE = 20
 
 /** A stable query-key fingerprint for a usage. */
 function itemUsageKey(usage: InventoryItemUsage): string {
-  return usage.surface === "INVOICE_LINE" ? `INVOICE_LINE:${usage.kind}` : "STOCK_REFERENCE"
+  switch (usage.surface) {
+    case "INVOICE_LINE":
+      return `INVOICE_LINE:${usage.kind}`
+    case "STOCK_REFERENCE":
+      return "STOCK_REFERENCE"
+    case "OUTBOUND_PICK":
+      // The source is part of the rule, so it must be part of the cache key;
+      // without it two different sources would share one page chain.
+      return usage.source.locationType === "WAREHOUSE"
+        ? `OUTBOUND_PICK:WAREHOUSE:${usage.source.warehouseId}`
+        : `OUTBOUND_PICK:PROJECT:${usage.source.projectId}`
+    default: {
+      const exhaustive: never = usage
+      return exhaustive
+    }
+  }
 }
 
 /** Debounces a rapidly changing value (the picker's search box). */
@@ -130,6 +145,24 @@ export function useItemDefinitionOptionsQuery({
   // The invoice row holds the picked OPTION in its state, so a selection that
   // is not on the current page is rendered from that object, not re-fetched.
   return { ...query, options, debouncedSearch }
+}
+
+/**
+ * Refresh every item read whose answer depends on current stock.
+ *
+ * `OUTBOUND_PICK`'s `inStockAt` rule makes the usage-scoped options read a
+ * function of where stock sits, so any mutation that moves or consumes stock
+ * (a receipt, a location transfer, an outbound) invalidates that answer
+ * immediately rather than at the end of the 30s stale window. The options read
+ * is keyed under the `inventoryItems` prefix for exactly this reason: one
+ * invalidation reaches every source, search and page variant, so the mutation
+ * does not need to know which source moved.
+ */
+function invalidateStockDependentItemReads(
+  queryClient: Pick<QueryClient, "invalidateQueries">,
+  userId: string | null,
+): Promise<void> {
+  return invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryItems)
 }
 
 /**
@@ -289,6 +322,9 @@ export function useCreateInventoryInvoiceGroupMutation() {
       for (const projectId of affectedProjectIds) {
         await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryProjectCharges(uid, projectId))
       }
+      // A purchase adds stock at its destinations, so the outbound picker's
+      // availability answer changed.
+      await invalidateStockDependentItemReads(queryClient, userId)
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -321,6 +357,9 @@ export function useTransferInventoryAssetMutation() {
       if (item.asset.currentWarehouseId || item.asset.currentProjectId) {
         await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryLocationContents(uid, { warehouseId: item.asset.currentWarehouseId ?? undefined, projectId: item.asset.currentProjectId ?? undefined }))
       }
+      // The unit left one location and arrived at another, so both sources'
+      // availability answers changed.
+      await invalidateStockDependentItemReads(queryClient, userId)
       showSuccessToast(message)
       return item
     },
@@ -428,6 +467,9 @@ export function useTransferInventoryConsumableMutation() {
       for (const location of affectedLocations) {
         await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryLocationContents(uid, location))
       }
+      // Quantity moved between two sources, so either source's availability
+      // answer changed.
+      await invalidateStockDependentItemReads(queryClient, userId)
       await invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryInvoices)
       showSuccessToast(message)
     },
@@ -523,7 +565,10 @@ export function useCreateOutboundTransferMutation() {
     mutationKey: ["inventory", "outbound-transfers", "create"],
     mutationFn: async (input: InventoryOutboundTransferCreateInput) => requireEntitySuccess(await rpcClient.inventoryOutboundTransfersCreate(input)),
     onSuccess: async ({ item, message }) => {
-      await invalidateUserScopedQuery(queryClient, getCachedSessionUserId(queryClient), workspaceQueryKeys.inventoryOutboundTransfers)
+      const userId = getCachedSessionUserId(queryClient)
+      await invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryOutboundTransfers)
+      // The outbound consumed stock at its source.
+      await invalidateStockDependentItemReads(queryClient, userId)
       showSuccessToast(message)
       return item
     },

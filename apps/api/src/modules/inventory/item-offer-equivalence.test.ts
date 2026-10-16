@@ -18,8 +18,10 @@ import Database from "better-sqlite3"
 import {
   invoiceLineUsage,
   matchesItemOfferFilter,
+  outboundPickUsage,
   resolveItemOffer,
   type InventoryItemUsage,
+  type ItemOfferCandidate,
 } from "@tuari/contracts"
 
 import { encodeCursor } from "../shared/cursor"
@@ -32,20 +34,108 @@ import { InventoryError } from "./inventory.errors"
 
 const NOW = "2026-06-01T00:00:00.000Z"
 
-type Fixture = { id: string; name: string; itemType: "CONSUMABLE" | "ASSET"; isActive: boolean }
+type Fixture = {
+  id: string
+  name: string
+  itemType: "CONSUMABLE" | "ASSET"
+  isActive: boolean
+  /** Where the definition physically sits, as the availability rule reads it. */
+  stock?: { warehouseId?: string; projectId?: string }
+}
 
 const FIXTURES: Fixture[] = [
-  { id: "c-active", name: "إسمنت", itemType: "CONSUMABLE", isActive: true },
-  { id: "a-active", name: "مثقاب", itemType: "ASSET", isActive: true },
-  { id: "c-archived", name: "جير", itemType: "CONSUMABLE", isActive: false },
+  { id: "c-active", name: "إسمنت", itemType: "CONSUMABLE", isActive: true, stock: { warehouseId: "wh-1" } },
+  { id: "a-active", name: "مثقاب", itemType: "ASSET", isActive: true, stock: { warehouseId: "wh-1" } },
+  // Archived yet still physically present: availability must not rescue it.
+  { id: "c-archived", name: "جير", itemType: "CONSUMABLE", isActive: false, stock: { warehouseId: "wh-1" } },
   { id: "a-archived", name: "خلاطة", itemType: "ASSET", isActive: false },
+  // Stock only at the project source (the other half of the availability rule).
+  { id: "p-active", name: "رمل", itemType: "CONSUMABLE", isActive: true, stock: { projectId: "prj-1" } },
 ]
 
 const USAGES: InventoryItemUsage[] = [
   invoiceLineUsage("CONSUMABLE"),
   invoiceLineUsage("ASSET"),
   { surface: "STOCK_REFERENCE" },
+  outboundPickUsage({ locationType: "WAREHOUSE", warehouseId: "wh-1" }),
+  outboundPickUsage({ locationType: "PROJECT", projectId: "prj-1" }),
 ]
+
+/**
+ * The JS evaluator's view of a fixture, read from the same rows the SQL
+ * evaluator reads rather than from the fixture literal: the location ids where
+ * the definition actually holds stock (a positive balance, or an asset unit
+ * whose entry references it).
+ */
+function candidateOf(db: Database.Database, fixture: Fixture): ItemOfferCandidate {
+  const balances = db.prepare(
+    `SELECT "warehouse_id" AS warehouseId, "project_id" AS projectId
+       FROM "inventory_consumable_balance"
+      WHERE "item_definition_id" = ? AND "quantity" > 0`,
+  ).all(fixture.id) as Array<{ warehouseId: string | null; projectId: string | null }>
+  const assets = db.prepare(
+    `SELECT u."current_warehouse_id" AS warehouseId, u."current_project_id" AS projectId
+       FROM "inventory_asset_unit" u
+       JOIN "inventory_entry" e ON u."inventory_entry_id" = e."id"
+      WHERE e."item_definition_id" = ?`,
+  ).all(fixture.id) as Array<{ warehouseId: string | null; projectId: string | null }>
+  const rows = [...balances, ...assets]
+  return {
+    itemType: fixture.itemType,
+    isActive: fixture.isActive,
+    stockWarehouseIds: rows.flatMap((row) => (row.warehouseId ? [row.warehouseId] : [])),
+    stockProjectIds: rows.flatMap((row) => (row.projectId ? [row.projectId] : [])),
+  }
+}
+
+/**
+ * The availability evidence lives in the balance/asset tables, so the SQL
+ * evaluator reads it from here; each fixture's `stock` is where its row goes.
+ */
+function seedStock(db: Database.Database): void {
+  const insertWarehouse = db.prepare(
+    `INSERT INTO "warehouse" ("id", "name", "status", "created_at", "updated_at") VALUES (?, ?, 'ACTIVE', ?, ?)`,
+  )
+  insertWarehouse.run("wh-1", "المستودع المركزي", NOW, NOW)
+  insertWarehouse.run("wh-2", "مستودع فارغ", NOW, NOW)
+  db.prepare(
+    `INSERT INTO "project" ("id", "name", "status", "created_at", "updated_at") VALUES (?, ?, 'ACTIVE', ?, ?)`,
+  ).run("prj-1", "مشروع التوسعة", NOW, NOW)
+  db.prepare(
+    `INSERT INTO "inventory_invoice_group" ("id", "supplier_name", "created_at", "updated_at") VALUES ('g-stock', 'مورد', ?, ?)`,
+  ).run(NOW, NOW)
+
+  const insertEntry = db.prepare(
+    `INSERT INTO "inventory_entry" ("id", "invoice_group_id", "item_definition_id", "item_type", "item_name", "unit", "quantity", "total_price_dzd", "created_at", "updated_at") VALUES (?, 'g-stock', ?, ?, ?, ?, 1, 0, ?, ?)`,
+  )
+  const insertBalance = db.prepare(
+    `INSERT INTO "inventory_consumable_balance" ("id", "inventory_entry_id", "item_definition_id", "warehouse_id", "project_id", "quantity", "created_at", "updated_at") VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+  )
+  const insertAsset = db.prepare(
+    `INSERT INTO "inventory_asset_unit" ("id", "inventory_entry_id", "asset_name", "purchase_price_dzd", "current_warehouse_id", "current_project_id", "created_at", "updated_at") VALUES (?, ?, ?, 100, ?, ?, ?, ?)`,
+  )
+
+  for (const fixture of FIXTURES) {
+    if (!fixture.stock) continue
+    const entryId = `entry-${fixture.id}`
+    const warehouseId = fixture.stock.warehouseId ?? null
+    const projectId = fixture.stock.projectId ?? null
+    insertEntry.run(
+      entryId,
+      fixture.id,
+      fixture.itemType,
+      fixture.name,
+      fixture.itemType === "CONSUMABLE" ? "قطعة" : null,
+      NOW,
+      NOW,
+    )
+    if (fixture.itemType === "CONSUMABLE") {
+      insertBalance.run(`bal-${fixture.id}`, entryId, fixture.id, warehouseId, projectId, NOW, NOW)
+    } else {
+      insertAsset.run(`asset-${fixture.id}`, entryId, fixture.name, warehouseId, projectId, NOW, NOW)
+    }
+  }
+}
 
 function createEnv(): { db: Database.Database; repository: InventoryRepository } {
   const db = new Database(":memory:")
@@ -69,6 +159,8 @@ function createEnv(): { db: Database.Database; repository: InventoryRepository }
       NOW,
     )
   }
+
+  seedStock(db)
 
   return { db, repository: createInventoryRepository(db) }
 }
@@ -115,10 +207,11 @@ describe("item-offer rule: SQL path equals JS path", () => {
       const offered = collectOfferedIds(env.repository, usage)
 
       for (const fixture of FIXTURES) {
+        const candidate = candidateOf(env.db, fixture)
         expect(
           offered.has(fixture.id),
-          `${JSON.stringify(usage)} should ${matchesItemOfferFilter(filter, fixture) ? "" : "NOT "}offer ${fixture.id}`,
-        ).toBe(matchesItemOfferFilter(filter, fixture))
+          `${JSON.stringify(usage)} should ${matchesItemOfferFilter(filter, candidate) ? "" : "NOT "}offer ${fixture.id}`,
+        ).toBe(matchesItemOfferFilter(filter, candidate))
       }
     }
   })
@@ -129,7 +222,7 @@ describe("item-offer rule: SQL path equals JS path", () => {
 
     // itemTypes field: the consumable usage never offers the asset.
     const consumable = collectOfferedIds(env.repository, invoiceLineUsage("CONSUMABLE"))
-    expect(consumable).toEqual(new Set(["c-active"]))
+    expect(consumable).toEqual(new Set(["c-active", "p-active"]))
 
     // activeOnly field: neither usage offers the archived consumable.
     expect(consumable.has("c-archived")).toBe(false)
@@ -137,8 +230,29 @@ describe("item-offer rule: SQL path equals JS path", () => {
 
     // A usage that allows both types still excludes both archived ones.
     expect(collectOfferedIds(env.repository, { surface: "STOCK_REFERENCE" })).toEqual(
-      new Set(["c-active", "a-active"]),
+      new Set(["c-active", "a-active", "p-active"]),
     )
+  })
+
+  it("offers only what is in stock and active at the chosen source", () => {
+    const env = createEnv()
+    envs.push(env)
+
+    // Only c-active and a-active hold stock at wh-1; c-archived also sits there
+    // but is archived; p-active is stocked at the project, not here.
+    expect(
+      collectOfferedIds(env.repository, outboundPickUsage({ locationType: "WAREHOUSE", warehouseId: "wh-1" })),
+    ).toEqual(new Set(["c-active", "a-active"]))
+
+    // The other half of the rule: only p-active holds stock at prj-1.
+    expect(
+      collectOfferedIds(env.repository, outboundPickUsage({ locationType: "PROJECT", projectId: "prj-1" })),
+    ).toEqual(new Set(["p-active"]))
+
+    // A source with nothing returns nothing, not the whole catalog.
+    expect(
+      collectOfferedIds(env.repository, outboundPickUsage({ locationType: "WAREHOUSE", warehouseId: "wh-2" })),
+    ).toEqual(new Set())
   })
 
   it("counts every match in total, not just the page", () => {
@@ -151,7 +265,7 @@ describe("item-offer rule: SQL path equals JS path", () => {
     })
 
     expect(page.items).toHaveLength(1)
-    expect(page.total).toBe(2)
+    expect(page.total).toBe(3)
     expect(page.nextCursor).not.toBeNull()
   })
 
@@ -171,6 +285,7 @@ describe("item-offer rule: SQL path equals JS path", () => {
     do {
       const page = env.repository.listItemDefinitionsPaged({
         filter: resolveItemOffer(invoiceLineUsage("CONSUMABLE")),
+        search: "طلاء",
         cursor,
         limit: 1,
       })
@@ -180,7 +295,7 @@ describe("item-offer rule: SQL path equals JS path", () => {
     } while (cursor)
 
     expect(new Set(seen).size).toBe(seen.length)
-    expect(seen).toEqual(["c-active", "dup-a", "dup-b"])
+    expect(seen).toEqual(["dup-a", "dup-b"])
   })
 
   it("refuses to flip a definition's type while entries reference it", () => {
@@ -213,9 +328,10 @@ describe("item-offer rule: SQL path equals JS path", () => {
       expect((error as InventoryError).appError.code).toBe("CONFLICT")
     }
 
-    // A definition no entry references may still change type.
+    // A definition no entry references may still change type (a-archived has
+    // never been stocked, so no inventory_entry points at it).
     expect(
-      service.updateItemDefinition({ id: "a-active", itemType: "CONSUMABLE", unit: "قطعة" }, audit).success,
+      service.updateItemDefinition({ id: "a-archived", itemType: "CONSUMABLE", unit: "قطعة" }, audit).success,
     ).toBe(true)
   })
 
@@ -358,6 +474,27 @@ describe("item-offer rule: SQL path equals JS path", () => {
 
     expect(page.cursorReset).toBe(true)
     expect(page.items.map((item) => item.id)).toEqual(["c-active"])
+  })
+
+  it("resets a cursor produced for a different source instead of returning a wrong page", () => {
+    const env = createEnv()
+    envs.push(env)
+
+    const first = env.repository.listItemDefinitionsPaged({
+      filter: resolveItemOffer(outboundPickUsage({ locationType: "WAREHOUSE", warehouseId: "wh-1" })),
+      limit: 1,
+    })
+    expect(first.nextCursor).not.toBeNull()
+
+    // Reusing the warehouse cursor for the project source has no meaning.
+    const second = env.repository.listItemDefinitionsPaged({
+      filter: resolveItemOffer(outboundPickUsage({ locationType: "PROJECT", projectId: "prj-1" })),
+      cursor: first.nextCursor ?? undefined,
+      limit: 1,
+    })
+
+    expect(second.cursorReset).toBe(true)
+    expect(second.items.map((item) => item.id)).toEqual(["p-active"])
   })
 
   it("resets a cursor produced for a different search instead of returning a wrong page", () => {

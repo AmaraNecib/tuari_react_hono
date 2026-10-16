@@ -4,6 +4,7 @@ import {
   invoiceLineUsage,
   inventoryItemUsageSchema,
   matchesItemOfferFilter,
+  outboundPickUsage,
   resolveItemOffer,
 } from "./inventory-item-usage";
 
@@ -39,6 +40,71 @@ describe("resolveItemOffer", () => {
       surface: "STOCK_REFERENCE",
     });
     expect(inventoryItemUsageSchema.safeParse({ surface: "UNKNOWN" }).success).toBe(false);
+  });
+});
+
+describe("outbound pick availability", () => {
+  const warehouseSource = { locationType: "WAREHOUSE" as const, warehouseId: "wh-1" };
+  const projectSource = { locationType: "PROJECT" as const, projectId: "prj-1" };
+
+  it("resolves the chosen source into the offer filter", () => {
+    expect(resolveItemOffer(outboundPickUsage(warehouseSource))).toEqual({
+      itemTypes: ["CONSUMABLE", "ASSET"],
+      activeOnly: true,
+      inStockAt: warehouseSource,
+    });
+    expect(resolveItemOffer(outboundPickUsage(projectSource))).toEqual({
+      itemTypes: ["CONSUMABLE", "ASSET"],
+      activeOnly: true,
+      inStockAt: projectSource,
+    });
+  });
+
+  it("rejects an active definition with no stock at the source", () => {
+    const filter = resolveItemOffer(outboundPickUsage(warehouseSource));
+    expect(matchesItemOfferFilter(filter, { ...consumableActive })).toBe(false);
+    expect(matchesItemOfferFilter(filter, { ...consumableActive, stockWarehouseIds: [] })).toBe(false);
+  });
+
+  it("rejects stock recorded at a different location", () => {
+    const filter = resolveItemOffer(outboundPickUsage(warehouseSource));
+    expect(matchesItemOfferFilter(filter, { ...consumableActive, stockWarehouseIds: ["wh-2"] })).toBe(false);
+    expect(
+      matchesItemOfferFilter(
+        resolveItemOffer(outboundPickUsage(projectSource)),
+        { ...consumableActive, stockWarehouseIds: ["prj-1"] },
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts an active definition that holds stock at the source", () => {
+    const warehouseFilter = resolveItemOffer(outboundPickUsage(warehouseSource));
+    expect(matchesItemOfferFilter(warehouseFilter, { ...consumableActive, stockWarehouseIds: ["wh-1"] })).toBe(true);
+    expect(matchesItemOfferFilter(warehouseFilter, { ...assetActive, stockWarehouseIds: ["wh-1"] })).toBe(true);
+
+    const projectFilter = resolveItemOffer(outboundPickUsage(projectSource));
+    expect(matchesItemOfferFilter(projectFilter, { ...consumableActive, stockProjectIds: ["prj-1"] })).toBe(true);
+  });
+
+  it("rejects an archived definition even when it still holds stock at the source", () => {
+    expect(
+      matchesItemOfferFilter(
+        resolveItemOffer(outboundPickUsage(warehouseSource)),
+        { ...consumableArchived, stockWarehouseIds: ["wh-1"] },
+      ),
+    ).toBe(false);
+  });
+
+  it("carries the source through the usage schema", () => {
+    expect(
+      inventoryItemUsageSchema.parse({ surface: "OUTBOUND_PICK", source: projectSource }),
+    ).toEqual({ surface: "OUTBOUND_PICK", source: projectSource });
+    expect(
+      inventoryItemUsageSchema.safeParse({ surface: "OUTBOUND_PICK", source: { locationType: "WAREHOUSE" } }).success,
+    ).toBe(false);
+    expect(
+      inventoryItemUsageSchema.safeParse({ surface: "OUTBOUND_PICK" }).success,
+    ).toBe(false);
   });
 });
 

@@ -7,7 +7,7 @@
  * Architecture: Drizzle queries + raw better-sqlite3 handle for transactions
  * (same pattern as CompanyRepository).
  */
-import { eq, and, asc, desc, sql, inArray, count } from "drizzle-orm"
+import { eq, and, asc, desc, sql, inArray, count, exists } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import type { BetterSqliteDatabase } from "../../../types/sqlite"
 import * as schema from "../../../schema"
@@ -266,6 +266,38 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       conditions.push(eq(schema.inventoryItemDefinition.isActive, 1))
     }
 
+    // Availability is a fact about (definition, source): a definition is offered
+    // when at least one consumable balance still holds quantity there, or an
+    // asset unit physically sits there and its entry references the definition.
+    const inStockAt = query.filter.inStockAt
+    if (inStockAt) {
+      const balanceAtSource = inStockAt.locationType === "WAREHOUSE"
+        ? eq(schema.inventoryConsumableBalance.warehouseId, inStockAt.warehouseId)
+        : eq(schema.inventoryConsumableBalance.projectId, inStockAt.projectId)
+      const assetAtSource = inStockAt.locationType === "WAREHOUSE"
+        ? eq(schema.inventoryAssetUnit.currentWarehouseId, inStockAt.warehouseId)
+        : eq(schema.inventoryAssetUnit.currentProjectId, inStockAt.projectId)
+
+      const consumableStock = this.db
+        .select({ one: sql`1` })
+        .from(schema.inventoryConsumableBalance)
+        .where(and(
+          eq(schema.inventoryConsumableBalance.itemDefinitionId, schema.inventoryItemDefinition.id),
+          balanceAtSource,
+          sql`${schema.inventoryConsumableBalance.quantity} > 0`,
+        ))
+      const assetStock = this.db
+        .select({ one: sql`1` })
+        .from(schema.inventoryAssetUnit)
+        .innerJoin(schema.inventoryEntry, eq(schema.inventoryAssetUnit.inventoryEntryId, schema.inventoryEntry.id))
+        .where(and(
+          eq(schema.inventoryEntry.itemDefinitionId, schema.inventoryItemDefinition.id),
+          assetAtSource,
+        ))
+
+      conditions.push(sql`(${exists(consumableStock)} OR ${exists(assetStock)})`)
+    }
+
     const search = query.search?.trim()
     if (search) {
       conditions.push(sql`${schema.inventoryItemDefinition.name} LIKE ${`%${escapeLikePattern(search)}%`} ESCAPE '\\'`)
@@ -275,6 +307,11 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     const scope = JSON.stringify({
       itemTypes: [...query.filter.itemTypes],
       activeOnly: query.filter.activeOnly,
+      inStockAt: inStockAt
+        ? inStockAt.locationType === "WAREHOUSE"
+          ? `WAREHOUSE:${inStockAt.warehouseId}`
+          : `PROJECT:${inStockAt.projectId}`
+        : null,
       search: search ?? "",
     })
 
