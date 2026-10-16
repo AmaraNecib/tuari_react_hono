@@ -97,11 +97,15 @@ rotation** can only be opened with the **pre-rotation key**: the snapshot's
 usability depends on the key at the time it was written, not the current one.
 Keep the key that was in use when the backup was taken.
 
-Encryption and key rotation are **parked** in this version: the encrypted
-SQLCipher build is not proven yet (#410) and encryption at rest is not available
-(#435). Rotation itself exists elsewhere in the app (the database-key change
-flow), but it only re-encrypts the live database. It does **not** re-encrypt
-existing backups. A snapshot stays encrypted with the key that was in force when
+SQLCipher is a shipped capability: the desktop build refuses to package a
+runtime without the native binding (#402), and the keyed backup path is proved by
+`apps/api/src/modules/backup/backup.encrypted.test.ts` — a keyed database backs
+up to a file that does not start with `SQLite format 3`, reopens with the key,
+and refuses to open without it. That file needs the native fork built (node-gyp
+plus the platform SDK) and is run by the native CI job tracked in #410.
+Rotation itself exists elsewhere in the app (the database-key change flow), but
+it only re-encrypts the live database. It does **not** re-encrypt existing
+backups. A snapshot stays encrypted with the key that was in force when
 it was taken, so a snapshot taken **before** a rotation opens only with the
 pre-rotation key. Keep that key for as long as you may need to restore that
 snapshot, and note the rotation point when restoring an older one. Handling

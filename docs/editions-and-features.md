@@ -53,13 +53,12 @@ Authoritative map: `editionToMinEdition` in
 | `multi_user` | professional | More than one user account | No. `maxUsers` is displayed but never enforced (section 5). |
 | `advanced_reports` | professional | Advanced reporting | No consumer outside the feature enum and the min-edition map. |
 | `external_api` | professional | External API access | No consumer. The RPC API exists for the bundled UI, with no license gate and no API-key auth. |
-| `encrypted_db` | enterprise | SQLCipher-encrypted workspace database | **Parked.** The shell checks this feature flag before setting `APP_DB_KEY`, but no released build can encrypt yet, so the licence must not sell it (section 6c). |
+| `encrypted_db` | enterprise | SQLCipher-encrypted workspace database | **Yes.** The shell checks this feature flag before setting `APP_DB_KEY`, and the desktop build refuses to package a runtime whose SQLCipher gate did not pass (section 6c). |
 | `multi_site_sync` | enterprise | Multi-site data sync | No consumer. |
 | `audit_export` | enterprise | Export the audit log | No consumer. The audit log itself is ungated and available in every edition. |
 | `priority_support` | enterprise | Priority support | Process, not code. `docs/licensing-architecture.md:286` classifies it as "Support process (not code)". |
 
-Only `encrypted_db` has a code path behind it, and that path is parked until a
-build can actually encrypt (6c). The other seven appear in the
+Only `encrypted_db` has a code path behind it. The other seven appear in the
 license payload and in `editionToMinEdition` but are read by nothing that runs
 in production; see section 8.
 
@@ -186,63 +185,58 @@ Consequence: `lan_server`, `multi_user`, `advanced_reports`, `external_api`,
 `multi_site_sync`, and `audit_export` are inert. `encrypted_db` and
 `priority_support` are handled outside these gates (6c and section 2).
 
-### 6c. Database encryption — parked
+### 6c. Database encryption
 
-`[parked]` `encrypted_db` is the one feature with a runtime code path, and that
-path exists — but **no released build can encrypt today**, so the feature is
-parked and must not be sold or advertised. What exists and what does not:
+`[shipped]` `encrypted_db` is the one feature that changes runtime behavior, and
+the desktop shell enforces it:
 
 - The shell sets `APP_DB_KEY` on the API sidecar only when
   `manager.has_feature("encrypted_db")` is true
-  (`apps/desktop/src-tauri/src/lib.rs:2058`). The sidecar environment is cleared
-  first (`:2025`), so a system-level `APP_DB_KEY` cannot leak in.
+  (`apps/desktop/src-tauri/src/lib.rs:2147`). The sidecar environment is cleared
+  first, so a system-level `APP_DB_KEY` cannot leak in.
 - The API database factory uses the key when present: it loads
   `better-sqlite3-sqlcipher` and runs `PRAGMA key` plus
-  `cipher_compatibility = 4` (`apps/api/src/infrastructure/database/factory.ts:51`,
-  `:27`, `:56`). With no key it returns plain `better-sqlite3`
-  (`apps/api/src/infrastructure/database/factory.ts:23`).
-- If a key is present but the sqlcipher binding is not built, the factory
-  throws rather than opening an unencrypted database
-  (`apps/api/src/infrastructure/database/factory.ts:29`).
-- **What is missing:** the SQLCipher native addon is not built into the shipped
-  artifact, and **nothing prevents that** — the desktop build does not refuse to
-  package a plaintext database. When the addon is unavailable it warns and copies
-  plain `better-sqlite3` (`apps/desktop/scripts/build-sidecar.mjs`). No publish
-  workflow sets a waiver, because there is no gate to waive: an earlier attempt
-  to add one (the build refuses unless explicitly waived, plus the
-  `cipher_version` probe and the factory's refusal to open an encrypted file
-  without a key) is preserved on the **closed #409 branch** for whoever revives
-  the feature. **Adding that gate is a condition for shipping encryption** — a
-  plaintext artifact must be impossible *by accident* before a licence can
-  promise encryption.
-- Nothing has proven a keyed write actually encrypts. Two different checks are
-  easy to confuse, so state them separately:
-  - **Today**, the release smoke test only asserts that a native SQLite binding
-    is *present* in the bundle (either the plain one or the SQLCipher fork). It
-    does not load it and does not query `cipher_version`.
-  - **After #409 lands**, the build gate loads the copied addon with the copied
-    Node and requires a non-empty `PRAGMA cipher_version`, which rules out plain
-    better-sqlite3 but still does not prove a keyed write encrypts — a binding
-    that reports a version while failing to encrypt would pass.
-  - The only real proof would be a CI job that builds the native fork, writes
-    with a key, asserts the file is not `SQLite format 3`, and reads it back:
-    tracked as #410 and deliberately parked with the rest of the feature.
+  `cipher_compatibility = 4`. With no key it returns plain `better-sqlite3`
+  (`apps/api/src/infrastructure/database/factory.ts`).
+- The factory does not trust `require()`: after keying it requires a non-empty
+  `PRAGMA cipher_version`. Plain `better-sqlite3` accepts the SQLCipher PRAGMAs
+  as no-ops, so this proves the loaded binding is SQLCipher rather than plain
+  `better-sqlite3`. A key with a non-encrypting binding is refused (connection
+  closed, clear error), never ignored.
+- The binding must be **shipped**, not merely buildable. `build-sidecar.mjs`
+  fails the desktop build when the SQLCipher native binding is missing, instead
+  of silently packaging a plaintext-only runtime (#402). The gate may be waived
+  only with an explicit `--allow-plaintext` / `TUARI_ALLOW_PLAINTEXT_DB=1`, which
+  prints a loud banner; release builds never pass it. `typecheck` passes the
+  waiver together with `--ephemeral`, so the runtime it exercises is assembled in
+  a temp directory and never lands in `src-tauri/bin`; `tauri.conf.json`'s
+  `beforeBuildCommand` re-runs the strict build, so `tauri build` cannot package
+  an unverified runtime.
+- The build loads the copied addon with the copied Node and requires a non-empty
+  `PRAGMA cipher_version` before publishing, and the installer smoke test checks
+  the same capability on the built artifact.
+
+The end-to-end proof that a keyed write lands ciphertext lives in
+`apps/api/src/modules/backup/backup.encrypted.test.ts`: it writes a keyed
+database, backs it up, asserts the copy does not start with `SQLite format 3`,
+reads a committed row back with the key, and refuses the copy without the key.
+It runs only where the native fork can be built (node-gyp plus the platform SDK);
+this workstation has no Windows SDK, so the file is `describe.skipIf`-gated and
+#410's native CI job is what runs it.
 
 Without `encrypted_db`, the workspace opens a plain, unencrypted SQLite file,
-regardless of edition. That is the entire practical difference the licence makes
+regardless of edition. That is the entire practical difference the license makes
 today.
-
-**Shipping the feature later** means, in order: build the addon in CI, prove the
-keyed write (#410), add the build gate so a plaintext release cannot happen by
-accident (the closed #409 branch has one), and only then add `encrypted_db` to a
-licence. Until all four happen, the matrix says parked.
 
 The flag is not reversible for an existing workspace. If a database was created
 while the license carried `encrypted_db`, a later launch whose license lacks the
-feature drops `APP_DB_KEY`, and the factory opens the still-encrypted file with
-plain `better-sqlite3` (`apps/api/src/infrastructure/database/factory.ts:23`,
-`:51`); the workspace then cannot start. The same happens on the failed-init
-path in section 4, where the shell sets no license vars at all. Tracked as #402.
+feature drops `APP_DB_KEY`. The factory reads the file header before opening it
+and refuses a non-`SQLite format 3` file with a message that names both
+possibilities — the workspace is encrypted and `encrypted_db`/`APP_DB_KEY` is
+not active, or the plaintext file is damaged — without asserting which, rather
+than failing at the first query with an opaque `file is not a database` (#402).
+The same applies on the failed-init path in section 4, where the shell sets no
+license vars at all.
 
 ## 7. What a buyer gets per tier
 
@@ -256,7 +250,7 @@ but no code checks it, so any edition currently gets the capability.
 | More than one user account | Per license (`maxUsers`), not tied to the edition in code | Per license | Per license | Yes. Seats are never counted. |
 | Advanced reports | No | Intended | Intended | Yes. |
 | External API access | No | Intended | Intended | Yes. |
-| Encrypted workspace database | Feature `encrypted_db` only | Feature `encrypted_db` only | Feature `encrypted_db` only | **Parked.** The shell checks the flag, but no released build can encrypt yet, so nothing may sell it (6c). |
+| Encrypted workspace database | Feature `encrypted_db` only | Feature `encrypted_db` only | Feature `encrypted_db` only | **Enforced.** The shell checks the flag and the factory refuses a keyed open on a non-encrypting binding; a build whose SQLCipher gate fails does not ship (6c). |
 | Multi-site sync | No | No | Intended | Yes. No sync code exists. |
 | Audit-log export | No | No | Intended | Yes. The audit log itself is ungated. |
 | Priority support | No | No | Yes | Not code; a support commitment. |
@@ -270,11 +264,13 @@ Caveats for sales:
 2. Encryption follows the `encrypted_db` feature on the signed license, not the
    edition. `editionToMinEdition` states the minimum edition the feature implies
    (`apps/api/src/infrastructure/license.ts:168`); the shell checks
-   `has_feature("encrypted_db")` (`apps/desktop/src-tauri/src/lib.rs:2058`). An
+   `has_feature("encrypted_db")` (`apps/desktop/src-tauri/src/lib.rs:2147`). An
    Enterprise license without the feature opens a plain database, and a
    Professional license that carries it enables encryption. The flag is not
    reversible for an existing workspace: the file stays encrypted while the key
-   is no longer passed, so it cannot be opened (section 6c, #402).
+   is no longer passed, so it is refused with a clear "encrypted or damaged
+   workspace, no key" message instead of being opened as plaintext (section 6c,
+   #402).
 3. The `grace` window is read-only, shipped in `develop` at this base
    (section 6a).
 4. The seat counts in the architecture doc's matrix (1 / 10 / unlimited at

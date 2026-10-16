@@ -1,0 +1,181 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import Database from "better-sqlite3";
+
+import {
+  assertBindingEncrypts,
+  assertNotEncryptedWithoutKey,
+  createDatabaseConnection,
+  resolveDatabaseConstructor,
+} from "./factory";
+
+/** A binding that claims to be SQLCipher: it reports a cipher version. */
+const createEncryptingFake = () => {
+  const queried: string[] = [];
+  let closed = false;
+
+  const fake = {
+    pragma(source: string) {
+      queried.push(source);
+      if (source === "cipher_version") return "4.5.5 community";
+      return [];
+    },
+    prepare() {
+      return {} as never;
+    },
+    close() {
+      closed = true;
+    },
+  };
+
+  return {
+    constructor: function FakeEncryptingDatabase() {
+      return fake;
+    } as unknown as typeof Database,
+    queried,
+    isClosed: () => closed,
+  };
+};
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+const tempDbPath = () => {
+  const dir = mkdtempSync(join(tmpdir(), "tuari-factory-"));
+  tempDirs.push(dir);
+  return join(dir, "tuari.sqlite");
+};
+
+describe("resolveDatabaseConstructor", () => {
+  it("uses plain better-sqlite3 when no key is configured", () => {
+    expect(resolveDatabaseConstructor(null)).toBe(Database);
+    expect(resolveDatabaseConstructor("")).toBe(Database);
+  });
+
+  it("uses the SQLCipher constructor when a key is configured", () => {
+    const encrypting = createEncryptingFake();
+    expect(resolveDatabaseConstructor("secret", () => encrypting.constructor)).toBe(
+      encrypting.constructor,
+    );
+  });
+
+  it("fails closed when the SQLCipher binding cannot be loaded", () => {
+    expect(() =>
+      resolveDatabaseConstructor("secret", () => {
+        throw new Error("Cannot find module 'better-sqlite3-sqlcipher'");
+      }),
+    ).toThrowError(/better-sqlite3-sqlcipher.*not installed or cannot be loaded/s);
+  });
+});
+
+describe("assertBindingEncrypts", () => {
+  it("refuses a keyed connection whose binding does not encrypt", () => {
+    // Plain better-sqlite3 accepts `PRAGMA key` as a no-op; the capability
+    // probe is what refuses it instead of writing a plaintext database (#402).
+    const plain = new Database(":memory:");
+    plain.pragma("key = 'secret'");
+    plain.pragma("cipher_compatibility = 4");
+
+    expect(() => assertBindingEncrypts(plain)).toThrowError(/cannot encrypt/);
+    expect(plain.open).toBe(false);
+  });
+
+  it("accepts a binding that reports a cipher version", () => {
+    const encrypting = createEncryptingFake();
+    const db = new encrypting.constructor(":memory:");
+
+    expect(() => assertBindingEncrypts(db)).not.toThrow();
+    expect(encrypting.isClosed()).toBe(false);
+  });
+
+  it("closes the connection and reports the cause when the probe throws", () => {
+    let closed = false;
+    const sqlite = {
+      pragma() {
+        throw new Error("no such pragma");
+      },
+      close() {
+        closed = true;
+      },
+    };
+
+    expect(() => assertBindingEncrypts(sqlite)).toThrowError(/no such pragma/);
+    expect(closed).toBe(true);
+  });
+});
+
+describe("assertNotEncryptedWithoutKey", () => {
+  const plaintextHeader = "SQLite format 3\0";
+
+  it("refuses a non-SQLite file with a message that does not assert encryption", () => {
+    const dbPath = tempDbPath();
+    writeFileSync(dbPath, Buffer.from("not a plaintext sqlite database at all"));
+
+    expect(() => assertNotEncryptedWithoutKey(dbPath, null)).toThrowError(
+      /SQLCipher-encrypted.*encrypted_db.*#402/s,
+    );
+    // A truncated or corrupt plaintext database takes the same path, so the
+    // message must keep encryption as a possibility WITHOUT asserting it, offer
+    // damage as the alternative, and say what to check (#409).
+    const message = () => {
+      try {
+        assertNotEncryptedWithoutKey(dbPath, null);
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+      return "";
+    };
+
+    expect(message()).not.toMatch(/almost certainly/);
+    expect(message()).toMatch(/cannot tell those apart/);
+    expect(message()).toMatch(/damaged/);
+    expect(message()).toMatch(/truncated or corrupt/);
+    expect(message()).toMatch(/inspect or restore it/);
+  });
+
+  it("accepts a plaintext SQLite header", () => {
+    const dbPath = tempDbPath();
+    writeFileSync(dbPath, Buffer.from(plaintextHeader + "rest"));
+
+    expect(() => assertNotEncryptedWithoutKey(dbPath, null)).not.toThrow();
+  });
+
+  it("accepts a missing or empty file (a fresh workspace)", () => {
+    const missing = tempDbPath();
+    expect(() => assertNotEncryptedWithoutKey(missing, null)).not.toThrow();
+
+    const empty = tempDbPath();
+    writeFileSync(empty, "");
+    expect(() => assertNotEncryptedWithoutKey(empty, null)).not.toThrow();
+  });
+
+  it("does not pre-judge the file when a key is configured", () => {
+    const dbPath = tempDbPath();
+    writeFileSync(dbPath, Buffer.from("encrypted-looking bytes"));
+
+    expect(() => assertNotEncryptedWithoutKey(dbPath, "secret")).not.toThrow();
+  });
+});
+
+describe("createDatabaseConnection", () => {
+  it("refuses to open a keyed workspace on a non-encrypting binding", () => {
+    expect(() =>
+      createDatabaseConnection(":memory:", "secret", () => Database),
+    ).toThrowError(/cannot encrypt/);
+  });
+
+  it("opens a keyed workspace on a binding that encrypts and applies the key", () => {
+    const encrypting = createEncryptingFake();
+    const db = createDatabaseConnection(":memory:", "secret", () => encrypting.constructor);
+
+    expect(encrypting.queried).toContain("key = 'secret'");
+    expect(encrypting.queried).toContain("cipher_compatibility = 4");
+    expect(encrypting.queried).toContain("cipher_version");
+    expect(db).toBeDefined();
+  });
+});

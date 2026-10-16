@@ -65,3 +65,134 @@ is months old, so the smoke test can go green while the sidecar never ran.
 **Always**: when proving an app created state, compare the file mtime against the
 run start, not just existence. Same rule for any check that a crashed process
 could satisfy through a repair or migration path.
+
+## A probe that runs after the destructive step is not a gate (🟠 Major)
+
+PR #409 round 1 added a real `cipher_version` load probe to `build-sidecar.mjs`,
+but it ran after `buildRuntime` had already deleted `src-tauri/bin` and copied
+the new tree. When the addon existed but could not load with the bundled Node,
+the build failed with the previous runtime already gone, so a developer who had a
+working local runtime ended the run with a broken one. The gate stopped the
+artifact but destroyed the workspace on the way.
+
+`apps/desktop/scripts/runtime-staging.mjs` fixes the order. The runtime is built
+into a staging directory (`mkdtempSync` beside `src-tauri/bin`, same volume so
+the final rename is atomic), the probe runs against the staged `node.exe` and
+staged `node_modules`, and only then does the directory swap into place. The
+previous tree is renamed aside first and restored if the swap fails, so no path
+leaves a half-copied runtime.
+
+**Always**: a validation step that can reject the new artifact must run BEFORE
+anything replaces the old one. If the check needs the artifact on disk, build it
+in a staging directory and publish on success. "Gate first" applies to the
+destructive step too, not just to the write gate.
+
+## Cleanup after a publish must not invert the publish's exit code (🟠 Major)
+
+PR #409 round 3: `swapRuntimeDirectory` renamed the staged runtime into
+`src-tauri/bin`, then removed the renamed-aside previous tree as its last
+statement. When that removal threw (a locked file on Windows is enough), the
+error propagated and `build-sidecar.mjs` exited non-zero, but the new runtime was
+already live. Anyone reading the exit code concluded the previous runtime was
+still in place, the opposite of what happened.
+
+The post-publish removal now runs in a `try/catch` that warns with the live
+destination, the leftover path and the cause, and the build succeeds. The
+stale-backup removal BEFORE the swap stays fatal: at that point nothing has been
+published and the rename would fail against a non-empty backup.
+
+**Always**: split the failure handling of a publish at the point of no return.
+Before it, a failed step must fail the operation; after it, the operation has
+succeeded and any later failure is a warning that names the resulting state
+(what is live, what is left behind). One code path that treats both the same
+will eventually report the wrong outcome.
+
+## An escape hatch must cover every failure mode it exists for (🟠 Major)
+
+PR #409 round 4: `--allow-plaintext` only guarded the build-sidecar availability
+gate (the addon file missing). An addon that existed at the loader path but could
+not load with the bundled Node passed the gate and then failed the staged probe,
+so a waived build (including the `--ephemeral` typecheck path) still exited
+non-zero. The waiver looked supported and then blocked the builds it existed for.
+
+The staged probe now catches the load failure: without the waiver it rethrows,
+with it the same loud plaintext-only banner prints, naming the probe error and
+the fact that the runtime cannot encrypt, and the build publishes.
+
+**Always**: when adding an opt-out, enumerate every refusal the code path can
+produce and decide explicitly which ones it covers. Test the matrix
+(failure mode × waiver on/off); an escape hatch that covers one of two failure
+modes is a trap.
+
+## A swap that renames the old tree aside must recover its own interrupted run (🟠 Major)
+
+PR #409 round 4: `swapRuntimeDirectory` renamed `src-tauri/bin` aside, then
+renamed the staged tree into place. A run killed between those two renames left
+no `bin` and a `bin.previous-<pid>` backup. The next build found no destination,
+so it published normally but never restored or cleared the backup: recovery
+depended on the destination already existing, and only a human deleting
+directories could clean it up.
+
+The swap now scans for `<dir>.previous-*` siblings. If the destination is missing
+and one exists, it restores it first (logging the state it found and what it
+did) and then runs the normal swap. Restoring before publishing is what makes
+the publish-failure path safe: the catch restores a runnable runtime instead of
+leaving nothing. Older backups are swept after the next successful publish.
+
+**Always**: a multi-rename publish must recognize the state its own crash window
+leaves behind (missing destination plus a backup) and repair it on the next run.
+Recovery that assumes the destination exists is not recovery, and the stranded
+state should be restored before republishing so even a failed retry leaves
+something runnable.
+
+## An ownership claim another process uses to decide whether to steal your work must be fatal if it fails (🔴 Major)
+
+PR #409 round 5d: `claimBackupOwnership` wrote a marker file that tells an
+overlapping build "this backup is mine, do not recover or sweep it". The initial
+write shared a warn-and-continue handler with the later heartbeat refreshes. When
+that first write failed, the swap carried on with no marker on disk, so
+`readOwnerMarker` returned `null`, `isAbandonedBackup(null)` called the tree
+abandoned, and the other build could steal the backup this one had just renamed
+aside - leaving it with nothing to roll back to.
+
+The initial claim now throws before the destination is renamed aside; only
+heartbeat refreshes after the claim may fail (the last successful heartbeat and
+the live pid hold the lease), and those warn once per failure run rather than on
+every beat.
+
+**Always**: if a lock, marker, or lease is the signal other processes use to
+decide whether your work is abandoned, failing to acquire it must abort the
+operation BEFORE you move anything, not degrade to a warning. A warning is fine
+for refreshing an already-acquired claim; it is wrong for acquiring one. Test the
+"cannot claim" path separately from the "claim went stale" path - they have
+opposite correct outcomes.
+
+## Ownership needs a pid AND a start time; neither a pid nor a heartbeat alone is enough (🟠 Major)
+
+PR #409 rounds 5b-5e: a build renames the live runtime directory aside before
+publishing a new one, and overlapping builds must not steal a tree another build
+still needs for rollback. Three ownership tests were tried and each failed on its
+own:
+
+- a pid alone cannot establish ownership, because pids are reused - an unrelated
+  process that inherited a dead build's pid kept its intact backup frozen
+  forever (5b);
+- a heartbeat alone cannot establish death, because the writer can stall - a
+  live build stuck on a locked file past the 30s lease had its backup restored
+  or swept out from under it (5e);
+- a marker file that is not written is not a claim at all, so a failed initial
+  write let the other build steal the tree (5d).
+
+The signal that settles it is the owner's process start time. A process is the
+owner exactly when a process with the marker's pid exists AND its start time is
+not later than the marker's `startedAt`; a later start time means the pid was
+reused, so the writer is gone. Only when the start time cannot be read (an
+unsupported platform or a permission failure) does the heartbeat lease decide.
+
+**Always**: when deciding whether another process's work is abandoned, ask
+"is it the SAME process", not "does a process with that name exist" and not "did
+it check in recently". Identity needs pid + start time (Windows process creation
+time; `/proc/<pid>/stat` or `ps -o lstart=` on POSIX). Keep the timeout as an
+explicit fallback for platforms that cannot report identity, and comment which
+signal won - otherwise the next fix trades one failure mode for the other, as
+this one did twice.
