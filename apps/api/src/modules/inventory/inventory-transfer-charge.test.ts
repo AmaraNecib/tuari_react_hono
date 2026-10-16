@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import Database from "better-sqlite3"
 
-import { inventoryLocationContentsSchema } from "@tuari/contracts"
+import { MAX_MONEY_DZD, inventoryLocationContentsSchema } from "@tuari/contracts"
 
 import { schemaStatements } from "../../infrastructure/database/schema-definitions"
 import { createFifoLock } from "../../infrastructure/database/fifo-lock"
@@ -459,6 +459,60 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
 
     expect(chargeRepository._charges.size).toBe(0)
     expect(movements).toHaveLength(0)
+  })
+
+  it("refuses an aggregate above MAX_MONEY_DZD instead of storing an unrepresentable gross total (#429)", () => {
+    // Each line is individually inside the bound, but the batch sum is not:
+    // the guard must refuse the whole invoice before anything is written
+    // rather than persist a total the safe-integer range cannot represent.
+    const { service, chargeRepository, movements } = createInvoiceHarness()
+
+    expect(() =>
+      service.createInvoiceGroup(
+        {
+          projectId: "project-a",
+          entries: [
+            {
+              kind: "ASSET",
+              itemDefinitionId: "def-1",
+              projectId: "project-a",
+              assets: [
+                { assetName: "مثقاب 1", purchasePriceDzd: MAX_MONEY_DZD },
+                { assetName: "مثقاب 2", purchasePriceDzd: 1 },
+              ],
+            },
+          ],
+        },
+        AUDIT,
+      ),
+    ).toThrowError(/إجمالي الفاتورة يتجاوز الحد الأقصى/)
+
+    expect(chargeRepository._charges.size).toBe(0)
+    expect(movements).toHaveLength(0)
+  })
+
+  it("accepts a batch whose aggregate lands exactly on MAX_MONEY_DZD (#429)", () => {
+    const { service, chargeRepository } = createInvoiceHarness()
+
+    service.createInvoiceGroup(
+      {
+        projectId: "project-a",
+        entries: [
+          {
+            kind: "ASSET",
+            itemDefinitionId: "def-1",
+            projectId: "project-a",
+            assets: [
+              { assetName: "مثقاب 1", purchasePriceDzd: MAX_MONEY_DZD },
+              { assetName: "مثقاب 2", purchasePriceDzd: 0 },
+            ],
+          },
+        ],
+      },
+      AUDIT,
+    )
+
+    expect(chargeRepository._charges.size).toBe(2)
   })
 })
 

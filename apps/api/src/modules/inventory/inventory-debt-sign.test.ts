@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 
+import { MAX_MONEY_DZD } from "@tuari/contracts";
+
 import { ensureDatabaseSchema } from "../../infrastructure/database/schema";
 import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor";
 import { createInventoryRepository } from "./adapters/sqlite-inventory.repository";
@@ -122,6 +124,92 @@ describe("Inventory debt signs (D4/D8)", () => {
         expect(env.company.getDebtAccount(accountId).item.currentBalance).toBe(invoice.remainingDebtDzd);
       }
       expect(env.company.getDebtAccount(accountId).item.currentBalance).toBe(0);
+    });
+
+    it("refuses an above-bound consumable unit price at the module seam (#429)", () => {
+      const { supplier, warehouse, item } = setupPurchaseBase();
+
+      expect(() =>
+        env.service.createInvoiceGroup(
+          {
+            warehouseId: warehouse.id,
+            externalCounterpartyId: supplier.id,
+            createDebt: true,
+            paymentInputType: "AMOUNT",
+            paidAmountDzd: 0,
+            entries: [
+              {
+                kind: "CONSUMABLE",
+                itemDefinitionId: item.id,
+                warehouseId: warehouse.id,
+                quantity: 1,
+                unitPriceDzd: MAX_MONEY_DZD + 1,
+                totalPriceDzd: 1,
+              },
+            ],
+          },
+          AUDIT,
+        ),
+      ).toThrowError(/خارج النطاق/);
+    });
+
+    it("refuses an above-bound initial paid amount at the module seam (#429)", () => {
+      const { supplier, warehouse, item } = setupPurchaseBase();
+
+      expect(() =>
+        env.service.createInvoiceGroup(
+          {
+            warehouseId: warehouse.id,
+            externalCounterpartyId: supplier.id,
+            createDebt: true,
+            paymentInputType: "AMOUNT",
+            paidAmountDzd: MAX_MONEY_DZD + 1,
+            entries: [
+              {
+                kind: "CONSUMABLE",
+                itemDefinitionId: item.id,
+                warehouseId: warehouse.id,
+                quantity: 1,
+                unitPriceDzd: 10,
+                totalPriceDzd: 10,
+              },
+            ],
+          },
+          AUDIT,
+        ),
+      ).toThrowError(/خارج النطاق/);
+    });
+
+    it("refuses an invoice whose line total overflows MAX_MONEY_DZD, storing nothing (#429)", () => {
+      // A consumable invoice has no charge backstop: the gross-total guard is
+      // the only thing between a legal-per-line batch and a stored number
+      // outside the safe-integer range.
+      const { supplier, warehouse, item } = setupPurchaseBase();
+
+      expect(() =>
+        env.service.createInvoiceGroup(
+          {
+            warehouseId: warehouse.id,
+            externalCounterpartyId: supplier.id,
+            createDebt: true,
+            paymentInputType: "AMOUNT",
+            paidAmountDzd: 0,
+            entries: [
+              {
+                kind: "CONSUMABLE",
+                itemDefinitionId: item.id,
+                warehouseId: warehouse.id,
+                quantity: 2,
+                unitPriceDzd: MAX_MONEY_DZD,
+                totalPriceDzd: 10,
+              },
+            ],
+          },
+          AUDIT,
+        ),
+      ).toThrowError(/إجمالي الفاتورة يتجاوز الحد الأقصى/);
+
+      expect(env.inventoryRepo.listInvoiceGroups()).toHaveLength(0);
     });
   });
 
