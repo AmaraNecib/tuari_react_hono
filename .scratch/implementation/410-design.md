@@ -112,3 +112,52 @@ every file this lane adds is disjoint from the #402 diff.
 2. Windows CI: `pnpm --filter @tuari/desktop sidecar:build` (no
    `--allow-plaintext`) then `node apps/desktop/scripts/sqlcipher-encryption-proof.mjs`.
 3. Gate: debate + code-review + test-audit at the code HEAD.
+
+## Review rounds
+
+High-assurance tier, so all three gates plus the design pass ran, three times:
+
+| Round | HEAD | Outcome |
+| --- | --- | --- |
+| 1 | `8e729c4d` | Request changes: the job would die before the proof (no contracts build), the unit test never ran in CI, the Windows runner was billed on every PR, plus parseArgs and doc findings. |
+| 2 | `ada25cc5` | APPROVE from all four. Five LOW items left, all text and one test assertion. |
+| 3 | `69530400` | APPROVE from all four. No blocker, no medium, no new finding. |
+
+Evidence: `.scratch/reviews/410/<sha>-{debate,code-review,test-audit,design-pass}.md`;
+round 1's files are under `raw/` because they were superseded.
+
+### Local check results at `69530400`
+
+- `pnpm lint` — 0 errors. `pnpm typecheck` — clean.
+- `pnpm test:web` — 963/963. `pnpm check:sqlcipher-proof` — 14/14.
+- `pnpm test:api` — **waived**, pre-existing: five files
+  (`auth/adapters/sqlite-bootstrap.port`, `auth/recovery-key.{service,e2e}`,
+  `backup/backup.service`, `update/update-history.service`) fail with hook/test
+  **timeouts only**, never an assertion. The same five files fail on the merge
+  base (`develop` = `fdb5dda6`) in a clean checkout, with more failures (21 vs
+  9) — machine-load flakes, not this branch. See
+  `.agents/wisdom/process.md` (the pre-push flake entry).
+
+### Accepted at merge (not fixed, deliberately)
+
+- `docs/editions-and-features.md` still carries unrelated pre-existing citation
+  drift (`license.ts:168` at `:42`/`:47`) and a licence-status sentence that
+  predates the #399 failure-env change. Both are outside this issue's diff.
+- A non-empty but malformed `cipher_version` string still passes step 2, which
+  is the price of single-sourcing the probe with the build (decision 2).
+- The backup comparison has no unit test; it needs the native binding, so only
+  the Windows job can exercise it. Fail-closed.
+
+### Follow-ups proposed to the parent (not filed here)
+
+1. Single-source the backup folder layout between `backup.policy.ts` /
+   `backup.service.ts` and the proof — the seam would be `packages/contracts`,
+   which changes build order for a workspace package.
+2. Assert the CI required-status contract and path-filter completeness in
+   `tests/workflow-assets.test.mjs` — a top-level `if:`/`paths:` on a
+   path-gated job would silently stop its required check reporting.
+3. Single-source or cross-reference the `cipher_compatibility = 4` the proof's
+   probe sources mirror from `factory.ts` / `backup.snapshot.ts`.
+4. `PRAGMA user_version > 0` in the live-database check, to catch a
+   half-migrated keyed database that today passes the schema equality.
+5. Fix the pre-existing `apps/api` load-flaky timeout files on their own.
