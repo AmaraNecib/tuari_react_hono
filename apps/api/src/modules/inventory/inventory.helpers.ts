@@ -5,7 +5,7 @@
  * they have no fixed currency scale. They still need ONE rounding rule: a sum
  * or difference of stored balances carries IEEE-754 noise (`0.7 + 0.1` is
  * `0.7999999999999999`), which makes an exact availability check reject a valid
- * request and leaves a residual that the picker's `quantity > 0` predicate still
+ * request and leaves a residual that the picker's availability predicate still
  * offers as stock.
  */
 
@@ -19,14 +19,21 @@ export const QUANTITY_DECIMALS = 6;
 const QUANTITY_SCALE = 10 ** QUANTITY_DECIMALS;
 
 /**
+ * The smallest representable balance. A quantity below this rounds to zero, so
+ * both the picker's availability predicate and the write gate treat any row
+ * smaller than it as empty — one bound, evaluated in SQL and in JS.
+ */
+export const QUANTITY_MIN = 1 / QUANTITY_SCALE;
+
+/**
  * Round a consumable quantity to {@link QUANTITY_DECIMALS} decimals, half away
  * from zero.
  *
  * Scales the decimal representation rather than the binary product, mirroring
  * `roundMoneyToCents`: `${v}e6` is read as an exact decimal, so `0.7999999999999999`
  * becomes `0.8` instead of dragging a float epsilon through to storage. A value
- * whose string form is exponential falls back to the float product, which is
- * exact enough at that magnitude.
+ * whose string form is exponential falls back to the float product; a magnitude
+ * whose scale would overflow is returned unchanged rather than `Infinity`.
  */
 export function roundQuantity(value: number): number {
   if (!Number.isFinite(value)) {
@@ -34,12 +41,12 @@ export function roundQuantity(value: number): number {
   }
 
   const scaled = Number(`${value}e${QUANTITY_DECIMALS}`);
-  if (!Number.isFinite(scaled)) {
-    // Exponential string form (the fallback also keeps a magnitude whose *scale*
-    // overflows from turning into Infinity).
-    const product = value * QUANTITY_SCALE;
-    return Number.isFinite(product) ? Math.round(product) / QUANTITY_SCALE : value;
+  const units = Number.isFinite(scaled) ? scaled : value * QUANTITY_SCALE;
+  if (!Number.isFinite(units)) {
+    return value;
   }
 
-  return (Math.sign(scaled) * Math.round(Math.abs(scaled))) / QUANTITY_SCALE;
+  const result = (Math.sign(units) * Math.round(Math.abs(units))) / QUANTITY_SCALE;
+  // Normalise -0 so a value rounded away from nothing compares equal to 0.
+  return result === 0 ? 0 : result;
 }

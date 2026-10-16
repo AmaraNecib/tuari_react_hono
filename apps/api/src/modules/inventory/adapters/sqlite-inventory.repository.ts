@@ -16,6 +16,7 @@ import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infr
 import { decodeCursor as decodeCursorToken, encodeCursor as encodeCursorToken } from "../../shared/cursor"
 import { escapeLikePattern } from "../../shared/sql-search"
 import type { InventoryItemOfferSource } from "@tuari/contracts"
+import { QUANTITY_MIN } from "../inventory.helpers"
 import { normalizeAuditContext } from "../../company/company.repository-mappers"
 import { createAlgeriaTimestamp } from "../../company/company-time"
 import type { MutationAuditContext } from "../../company/company.types"
@@ -298,7 +299,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
         .where(and(
           eq(schema.inventoryConsumableBalance.itemDefinitionId, schema.inventoryItemDefinition.id),
           atSource.balance,
-          sql`${schema.inventoryConsumableBalance.quantity} > 0`,
+          sql`${schema.inventoryConsumableBalance.quantity} >= ${QUANTITY_MIN}`,
         ))
       const assetStock = this.db
         .select({ one: sql`1` })
@@ -650,9 +651,9 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       LEFT JOIN warehouse w ON w.id = b.warehouse_id
       LEFT JOIN project p ON p.id = b.project_id
       WHERE b.inventory_entry_id IN (SELECT id FROM inventory_entry WHERE invoice_group_id = ?)
-        AND b.quantity > 0
+        AND b.quantity >= ?
       ORDER BY b.updated_at DESC
-    `).all(invoiceGroupId) as Record<string, unknown>[]
+    `).all(invoiceGroupId, QUANTITY_MIN) as Record<string, unknown>[]
     return rows.map(mapConsumableBalance)
   }
 
@@ -666,9 +667,9 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       INNER JOIN inventory_entry e ON e.id = b.inventory_entry_id
       LEFT JOIN warehouse w ON w.id = b.warehouse_id
       LEFT JOIN project p ON p.id = b.project_id
-      WHERE ${locationCol} = ? AND b.quantity > 0
+      WHERE ${locationCol} = ? AND b.quantity >= ?
       ORDER BY b.updated_at DESC
-    `).all(filters.warehouseId ?? filters.projectId ?? "") as Record<string, unknown>[]
+    `).all(filters.warehouseId ?? filters.projectId ?? "", QUANTITY_MIN) as Record<string, unknown>[]
     return rows.map(mapConsumableBalance)
   }
 
@@ -682,7 +683,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       .where(and(
         eq(schema.inventoryConsumableBalance.itemDefinitionId, query.itemDefinitionId),
         atSource.balance,
-        sql`${schema.inventoryConsumableBalance.quantity} > 0`,
+        sql`${schema.inventoryConsumableBalance.quantity} >= ${QUANTITY_MIN}`,
       ))
       // Deterministic depletion order: oldest stock leaves first.
       .orderBy(asc(schema.inventoryConsumableBalance.createdAt), asc(schema.inventoryConsumableBalance.id))

@@ -111,6 +111,24 @@ function normalizePositive(value: number, field: string) {
   return value
 }
 
+/**
+ * Validate and round a requested quantity to the storage quantum.
+ *
+ * A request below the quantum (`0.0000004`) rounds to zero, which would write
+ * an empty balance or a zero-quantity movement the schema forbids, so it is
+ * refused as validation rather than silently consumed.
+ */
+function normalizeQuantity(value: number, field: string) {
+  const quantity = roundQuantity(normalizePositive(value, field))
+  if (quantity <= 0) {
+    throw new InventoryError("VALIDATION", "الكمية أصغر من الدقة المسموح بها.", [
+      { field, message: "الكمية أصغر من الدقة المسموح بها." },
+    ])
+  }
+
+  return quantity
+}
+
 function validateWarehouse(repository: InventoryRepository, warehouseId: string | null | undefined, field: string) {
   if (warehouseId && !repository.warehouseExists(warehouseId)) {
     throw new InventoryError("VALIDATION", "المستودع المحدد غير موجود.", [{ field, message: "المستودع المحدد غير موجود." }])
@@ -785,7 +803,7 @@ export class InventoryService {
   transferConsumable(input: { inventoryEntryId: string; quantity: number; fromWarehouseId?: string | null; fromProjectId?: string | null; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
     this.createMutationAuditContext(auditContext)
 
-    normalizePositive(input.quantity, "quantity")
+    const quantity = normalizeQuantity(input.quantity, "quantity")
     validateSingleDestination(input.fromWarehouseId ?? null, input.fromProjectId ?? null, "fromWarehouseId")
     validateSingleDestination(input.toWarehouseId ?? null, input.toProjectId ?? null, "toWarehouseId")
     validateWarehouse(this.repository, input.fromWarehouseId ?? null, "fromWarehouseId")
@@ -808,12 +826,14 @@ export class InventoryService {
       throw new InventoryError("BUSINESS_RULE", "المصدر والوجهة متطابقان، لا توجد حركة مطلوبة.")
     }
 
-    if (!sourceBalance || roundQuantity(sourceBalance.quantity) < input.quantity) {
+    // Raw compare, not a rounded balance: a stored 0.4999996 must not satisfy a
+    // 0.5 request. The request is already rounded to the quantum above.
+    if (!sourceBalance || sourceBalance.quantity < quantity) {
       throw new InventoryError("BUSINESS_RULE", "الكمية المطلوبة غير متوفرة في الموقع الحالي.")
     }
 
     this.repository.withTransaction(() => {
-      const remainingQty = roundQuantity(sourceBalance.quantity - input.quantity)
+      const remainingQty = roundQuantity(sourceBalance.quantity - quantity)
       if (remainingQty <= 0) {
         // Delete the zero-balance record to satisfy the quantity > 0 DB constraint
         this.repository.deleteConsumableBalance(sourceBalance.id)
@@ -828,14 +848,14 @@ export class InventoryService {
       })
 
       if (targetBalance) {
-        this.repository.updateConsumableBalanceQuantity(targetBalance.id, roundQuantity(targetBalance.quantity + input.quantity))
+        this.repository.updateConsumableBalanceQuantity(targetBalance.id, roundQuantity(targetBalance.quantity + quantity))
       } else {
         this.repository.createConsumableBalance({
           inventoryEntryId: entry.id,
           itemDefinitionId: entry.itemDefinitionId,
           warehouseId: input.toWarehouseId ?? null,
           projectId: input.toProjectId ?? null,
-          quantity: roundQuantity(input.quantity),
+          quantity,
         })
       }
 
@@ -843,7 +863,7 @@ export class InventoryService {
         movementType: "TRANSFER",
         itemType: "CONSUMABLE",
         inventoryEntryId: entry.id,
-        quantity: input.quantity,
+        quantity,
         fromWarehouseId: input.fromWarehouseId ?? null,
         fromProjectId: input.fromProjectId ?? null,
         toWarehouseId: input.toWarehouseId ?? null,
@@ -1016,7 +1036,8 @@ export class InventoryService {
     // Quantities are fractional, so both the total and every deduction are
     // rounded through the shared rule: `0.7 + 0.1` must compare equal to `0.8`,
     // and a balance that reaches the requested total must end at exactly 0
-    // rather than a float epsilon that the picker's `quantity > 0` still offers.
+    // rather than a float epsilon that the picker's availability predicate still
+    // offers as stock.
     const available = roundQuantity(input.balances.reduce((total, balance) => total + balance.quantity, 0))
     if (available < input.quantity) {
       throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${input.definitionName} غير متوفرة.`)
@@ -1122,8 +1143,9 @@ export class InventoryService {
 
       for (const [index, item] of input.items.entries()) {
         // The wire schema enforces a positive quantity; a direct caller must not
-        // be able to write an empty transfer past it.
-        normalizePositive(item.quantity, `items.${index}.quantity`)
+        // be able to write an empty transfer past it, and a request below the
+        // storage quantum must not become a zero-quantity movement.
+        const quantity = normalizeQuantity(item.quantity, `items.${index}.quantity`)
 
         const definition = this.repository.getItemDefinitionById(item.itemId)
         if (!definition) {
@@ -1143,7 +1165,7 @@ export class InventoryService {
         if (definition.itemType === "CONSUMABLE") {
           this.consumeConsumableFromSource({
             balances: stockAtSource.consumableBalances,
-            quantity: item.quantity,
+            quantity,
             definitionName: definition.name,
             from,
             note,
@@ -1152,8 +1174,8 @@ export class InventoryService {
           continue
         }
 
-        const assets = stockAtSource.assetUnits.slice(0, item.quantity)
-        if (assets.length < item.quantity) {
+        const assets = stockAtSource.assetUnits.slice(0, quantity)
+        if (assets.length < quantity) {
           throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${definition.name} غير متوفرة.`)
         }
 

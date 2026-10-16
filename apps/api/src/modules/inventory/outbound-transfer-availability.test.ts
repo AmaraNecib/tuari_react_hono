@@ -521,4 +521,110 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
     expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-inbound", warehouseId: "wh-1" })?.quantity).toBe(0.5)
     expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-inbound", projectId: "prj-1" })?.quantity).toBe(0.2)
   })
+
+  it("rounds a noisy request before comparing it with the available total", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-noisy", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-noisy", invoiceGroupId: "g", itemDefinitionId: "def-noisy", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-noisy", entryId: "e-noisy", itemDefinitionId: "def-noisy", warehouseId: "wh-1", quantity: 0.3 })
+
+    // A wire-legal request `0.1 + 0.2` is 0.30000000000000004; it must still
+    // match a 0.3 balance rather than be rejected as an over-request.
+    transfer(env, [{ itemId: "def-noisy", quantity: 0.1 + 0.2 }])
+
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" })).toHaveLength(0)
+    expect(env.repository.listAllMovements({})[0]!.quantity).toBe(0.3)
+  })
+
+  it("rejects a request below the storage quantum instead of writing a zero movement", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-dust", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-dust", invoiceGroupId: "g", itemDefinitionId: "def-dust", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-dust", entryId: "e-dust", itemDefinitionId: "def-dust", warehouseId: "wh-1", quantity: 0.5 })
+
+    // 4e-7 rounds to 0: writing it would leave the balance untouched and record
+    // a zero-quantity OUTBOUND_SALE the movement schema forbids.
+    expect(() => transfer(env, [{ itemId: "def-dust", quantity: 0.0000004 }])).toThrow(/أصغر من الدقة/)
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" }).find((balance) => balance.id === "bal-dust")?.quantity).toBe(0.5)
+    expect(env.repository.listAllMovements({})).toHaveLength(0)
+  })
+
+  it("rejects an inbound request below the storage quantum before touching a balance", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedProject(env.db, "prj-1")
+    seedDefinition(env.db, { id: "def-sub", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-sub", invoiceGroupId: "g", itemDefinitionId: "def-sub", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-sub", entryId: "e-sub", itemDefinitionId: "def-sub", warehouseId: "wh-1", quantity: 0.5 })
+
+    // A zero would be written to the target balance and violate the DB CHECK.
+    expect(() =>
+      env.service.transferConsumable(
+        { inventoryEntryId: "e-sub", quantity: 0.0000004, fromWarehouseId: "wh-1", toProjectId: "prj-1" },
+        AUDIT,
+      ),
+    ).toThrow(/أصغر من الدقة/)
+    expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-sub", warehouseId: "wh-1" })?.quantity).toBe(0.5)
+  })
+
+  it("keeps an inbound movement equal to its balance deltas on a noisy request", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedProject(env.db, "prj-1")
+    seedDefinition(env.db, { id: "def-delta", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-delta", invoiceGroupId: "g", itemDefinitionId: "def-delta", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-delta", entryId: "e-delta", itemDefinitionId: "def-delta", warehouseId: "wh-1", quantity: 0.5 })
+
+    // 7-decimal requests are legal input; the rounded quantity must be what both
+    // the balances and the movement record, or the two drift apart.
+    env.service.transferConsumable(
+      { inventoryEntryId: "e-delta", quantity: 0.1000004, fromWarehouseId: "wh-1", toProjectId: "prj-1" },
+      AUDIT,
+    )
+    env.service.transferConsumable(
+      { inventoryEntryId: "e-delta", quantity: 0.2000004, fromWarehouseId: "wh-1", toProjectId: "prj-1" },
+      AUDIT,
+    )
+
+    expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-delta", warehouseId: "wh-1" })?.quantity).toBe(0.2)
+    expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-delta", projectId: "prj-1" })?.quantity).toBe(0.3)
+    // Each movement records the same rounded quantity the balances moved by
+    // (0.5 - 0.1 - 0.2 = 0.2 at the source, 0.1 + 0.2 = 0.3 at the target).
+    expect(env.repository.listAllMovements({}).map((movement) => movement.quantity).sort((a, b) => a - b)).toEqual([0.1, 0.2])
+  })
+
+  it("rejects an inbound request above a fractional stored balance", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedProject(env.db, "prj-1")
+    seedDefinition(env.db, { id: "def-short", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-short", invoiceGroupId: "g", itemDefinitionId: "def-short", itemType: "CONSUMABLE" })
+    // A legacy 7-decimal row must not be rounded up into a 0.5 request.
+    seedBalance(env.db, { id: "bal-short", entryId: "e-short", itemDefinitionId: "def-short", warehouseId: "wh-1", quantity: 0.4999996 })
+
+    expect(() =>
+      env.service.transferConsumable(
+        { inventoryEntryId: "e-short", quantity: 0.5, fromWarehouseId: "wh-1", toProjectId: "prj-1" },
+        AUDIT,
+      ),
+    ).toThrow(/غير متوفرة/)
+    expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-short", warehouseId: "wh-1" })?.quantity).toBe(0.4999996)
+  })
+
+  it("treats a sub-quantum balance as empty in both the picker and the gate", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-ghost", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-ghost", invoiceGroupId: "g", itemDefinitionId: "def-ghost", itemType: "CONSUMABLE" })
+    // The residual the pre-fix subtraction could leave: below the quantum, so
+    // neither surface may treat it as stock.
+    seedBalance(env.db, { id: "bal-ghost", entryId: "e-ghost", itemDefinitionId: "def-ghost", warehouseId: "wh-1", quantity: 5e-7 })
+
+    const source = SOURCE_AT_WAREHOUSE("wh-1")
+    const offered = env.repository.listItemDefinitionsPaged({ filter: resolveItemOffer(outboundPickUsage(source)), limit: 50 }).items
+    expect(offered.map((item) => item.id)).not.toContain("def-ghost")
+    expect(() => transfer(env, [{ itemId: "def-ghost", quantity: 1 }])).toThrow(/غير متوفر/)
+  })
 })
