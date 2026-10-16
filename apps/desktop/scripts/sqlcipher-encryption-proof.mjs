@@ -106,15 +106,19 @@ export function isPlaintextSqliteFile(filePath) {
 }
 
 /**
- * Every path the proof needs before it can run. Listing them up front turns a
- * "the runtime is a plaintext build" failure into one clear message instead of
- * a stack trace from the deepest probe.
+ * Every asset the proof needs before it can run, each with what it is. Naming
+ * them turns "the runtime is a plaintext build" into one clear message instead
+ * of a stack trace from the deepest probe — and keeps a missing interpreter
+ * from being reported as a missing SQLCipher build.
  */
 export function requiredRuntimeFiles(runtimeDir, nodeExe) {
   return [
-    nodeExe,
-    path.join(runtimeDir, SIDECAR_ENTRY),
-    path.join(runtimeDir, SQLCIPHER_PACKAGE_DIR, "package.json"),
+    { path: nodeExe, what: "the bundled Node runtime" },
+    { path: path.join(runtimeDir, SIDECAR_ENTRY), what: "the built sidecar entry (dist/index.cjs)" },
+    {
+      path: path.join(runtimeDir, SQLCIPHER_PACKAGE_DIR, "package.json"),
+      what: "the better-sqlite3-sqlcipher package",
+    },
   ];
 }
 
@@ -350,11 +354,12 @@ export async function runProof(options, { log = console.log } = {}) {
   try {
     log("[1/5] The built runtime holds a loadable SQLCipher binding");
     for (const required of requiredRuntimeFiles(runtimeDir, nodeExe)) {
-      if (!existsSync(required)) {
-        throw new Error(
-          `missing ${required}. The sidecar was not built with the real SQLCipher dependency — `
-          + "run `pnpm --filter @tuari/desktop sidecar:build` without --allow-plaintext.",
-        );
+      if (!existsSync(required.path)) {
+        const hint = required.path.includes(SQLCIPHER_PACKAGE_DIR)
+          ? " The sidecar was not built with the real SQLCipher dependency — run"
+            + " `pnpm --filter @tuari/desktop sidecar:build` without --allow-plaintext."
+          : "";
+        throw new Error(`missing ${required.what} at ${required.path}.${hint}`);
       }
     }
     const availability = inspectSqlcipherArtifact({

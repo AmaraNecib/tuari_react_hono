@@ -81,11 +81,16 @@ test("findSnapshotDatabase ignores folders that are not snapshots", () => {
 
 test("requiredRuntimeFiles names the shipped binding, entry point and interpreter", () => {
   const files = requiredRuntimeFiles("/runtime", "/runtime/node.exe");
-  assert.deepEqual(files, [
-    "/runtime/node.exe",
-    path.join("/runtime", "dist", "index.cjs"),
-    path.join("/runtime", "node_modules", "better-sqlite3-sqlcipher", "package.json"),
-  ]);
+  assert.deepEqual(
+    files.map((file) => file.path),
+    [
+      "/runtime/node.exe",
+      path.join("/runtime", "dist", "index.cjs"),
+      path.join("/runtime", "node_modules", "better-sqlite3-sqlcipher", "package.json"),
+    ],
+  );
+  assert.equal(files[0].what, "the bundled Node runtime");
+  assert.ok(files[2].what.includes("better-sqlite3-sqlcipher"));
 });
 
 test("parseArgs defaults to the sidecar build output", () => {
