@@ -2,6 +2,7 @@ import {
   invoiceLineUsage,
   matchesItemOfferFilter,
   nonNegativePaymentAmountSchema,
+  outboundPickUsage,
   resolveItemOffer,
 } from "@tuari/contracts"
 import type {
@@ -16,8 +17,10 @@ import type {
   InventoryItemDefinitionCreateInput,
   InventoryItemDefinitionUpdateInput,
   InventoryOutboundTransferCreateInput,
+  InventoryItemOfferSource,
   InventoryItemUsage,
   InventoryReport,
+  ItemOfferCandidate,
   MovementReport,
 } from "@tuari/contracts"
 
@@ -30,6 +33,7 @@ import { ageInDays, resolveReportWindow, roundMoney } from "../company/report.he
 import type { MutationAuditContext } from "../company/company.types"
 import type {
   InventoryAssetUnitCreateData,
+  InventoryConsumableBalanceRecord,
   InventoryItemDefinitionRecord,
   InventoryUploadFile,
   InventoryStoredUpload,
@@ -963,7 +967,53 @@ export class InventoryService {
     })
   }
 
-/** Create an outbound transfer. */
+/**
+   * Consume `quantity` of a definition from the balances at one source, oldest
+   * stock first. One `OUTBOUND_SALE` movement is written per balance consumed,
+   * so every movement names the inventory entry it actually drew from — never
+   * the definition id the operator picked.
+   */
+  private consumeConsumableFromSource(input: {
+    balances: InventoryConsumableBalanceRecord[]
+    quantity: number
+    definitionName: string
+    source: InventoryItemOfferSource
+    counterpartyId: string
+    occurredAt: string
+  }) {
+    const available = input.balances.reduce((total, balance) => total + balance.quantity, 0)
+    if (available < input.quantity) {
+      throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${input.definitionName} غير متوفرة.`)
+    }
+
+    let remaining = input.quantity
+    for (const balance of input.balances) {
+      if (remaining <= 0) break
+
+      const consumed = Math.min(balance.quantity, remaining)
+      const left = balance.quantity - consumed
+      if (left > 0) {
+        this.repository.updateConsumableBalanceQuantity(balance.id, left)
+      } else {
+        this.repository.deleteConsumableBalance(balance.id)
+      }
+
+      this.repository.createMovement({
+        movementType: "OUTBOUND_SALE",
+        itemType: "CONSUMABLE",
+        inventoryEntryId: balance.inventoryEntryId,
+        quantity: consumed,
+        fromWarehouseId: input.source.locationType === "WAREHOUSE" ? input.source.warehouseId : undefined,
+        fromProjectId: input.source.locationType === "PROJECT" ? input.source.projectId : undefined,
+        note: `تحويل خارجي إلى ${input.counterpartyId}`,
+        occurredAt: input.occurredAt,
+      })
+
+      remaining -= consumed
+    }
+  }
+
+  /** Create an outbound transfer. */
   createOutboundTransfer(input: InventoryOutboundTransferCreateInput, auditContext?: MutationAuditContext) {
     if (!this.debtService) {
       throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
@@ -1025,54 +1075,73 @@ export class InventoryService {
         }
       }
 
+      // The picker offers DEFINITIONS; `item.itemId` is a definition id, and so
+      // is the outbound transfer item's persisted FK. The availability rule the
+      // picker compiled to SQL is re-evaluated here against the very rows this
+      // gate is about to mutate, so the two accept the same set at a source.
+      const source: InventoryItemOfferSource = input.fromType === "WAREHOUSE"
+        ? { locationType: "WAREHOUSE", warehouseId: input.fromId }
+        : { locationType: "PROJECT", projectId: input.fromId }
+
       for (const item of input.items) {
-        const itemDef = this.repository.getItemDefinitionById(item.itemId)
-        if (!itemDef) {
+        const definition = this.repository.getItemDefinitionById(item.itemId)
+        if (!definition) {
           throw new InventoryError("NOT_FOUND", `العنصر ${item.itemId} غير موجود.`)
         }
 
-        if (itemDef.itemType === "CONSUMABLE") {
-          const balance = this.repository.getConsumableBalanceByEntryAndLocation({
-            inventoryEntryId: item.itemId,
-            warehouseId: input.fromType === "WAREHOUSE" ? input.fromId : null,
-            projectId: input.fromType === "PROJECT" ? input.fromId : null,
-          })
-
-          if (!balance || balance.quantity < item.quantity) {
-            throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${itemDef.name} غير متوفرة.`)
-          }
-
-          const newQuantity = balance.quantity - item.quantity
-          if (newQuantity > 0) {
-            this.repository.updateConsumableBalanceQuantity(balance.id, newQuantity)
-          } else {
-            this.repository.deleteConsumableBalance(balance.id)
-          }
-        } else {
-          const assets = this.repository.listAssetUnitsByLocation({
-            warehouseId: input.fromType === "WAREHOUSE" ? input.fromId : undefined,
-            projectId: input.fromType === "PROJECT" ? input.fromId : undefined,
-          }).slice(0, item.quantity)
-
-          if (assets.length < item.quantity) {
-            throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${itemDef.name} غير متوفرة.`)
-          }
-
-          for (const asset of assets) {
-            this.repository.updateAssetUnitLocation(asset.id, { currentWarehouseId: null, currentProjectId: null })
-          }
+        const stockAtSource = this.repository.listItemStockAtSource({
+          itemDefinitionId: definition.id,
+          source,
+        })
+        const candidate: ItemOfferCandidate = {
+          itemType: definition.itemType,
+          isActive: definition.isActive,
+          stockWarehouseIds: [
+            ...stockAtSource.consumableBalances.flatMap((balance) => (balance.warehouseId ? [balance.warehouseId] : [])),
+            ...stockAtSource.assetUnits.flatMap((asset) => (asset.currentWarehouseId ? [asset.currentWarehouseId] : [])),
+          ],
+          stockProjectIds: [
+            ...stockAtSource.consumableBalances.flatMap((balance) => (balance.projectId ? [balance.projectId] : [])),
+            ...stockAtSource.assetUnits.flatMap((asset) => (asset.currentProjectId ? [asset.currentProjectId] : [])),
+          ],
         }
 
-        this.repository.createMovement({
-          movementType: "OUTBOUND_SALE",
-          itemType: itemDef.itemType,
-          inventoryEntryId: itemDef.itemType === "CONSUMABLE" ? item.itemId : undefined,
-          quantity: item.quantity,
-          fromWarehouseId: input.fromType === "WAREHOUSE" ? input.fromId : undefined,
-          fromProjectId: input.fromType === "PROJECT" ? input.fromId : undefined,
-          note: `تحويل خارجي إلى ${input.counterpartyId}`,
-          occurredAt: createAlgeriaTimestamp(),
-        })
+        if (!matchesItemOfferFilter(resolveItemOffer(outboundPickUsage(source)), candidate)) {
+          throw new InventoryError("BUSINESS_RULE", `العنصر ${definition.name} غير متوفر في الموقع المحدد.`)
+        }
+
+        const occurredAt = createAlgeriaTimestamp()
+        if (definition.itemType === "CONSUMABLE") {
+          this.consumeConsumableFromSource({
+            balances: stockAtSource.consumableBalances,
+            quantity: item.quantity,
+            definitionName: definition.name,
+            source,
+            counterpartyId: input.counterpartyId,
+            occurredAt,
+          })
+          continue
+        }
+
+        const assets = stockAtSource.assetUnits.slice(0, item.quantity)
+        if (assets.length < item.quantity) {
+          throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${definition.name} غير متوفرة.`)
+        }
+
+        for (const asset of assets) {
+          this.repository.updateAssetUnitLocation(asset.id, { currentWarehouseId: null, currentProjectId: null })
+          this.repository.createMovement({
+            movementType: "OUTBOUND_SALE",
+            itemType: "ASSET",
+            inventoryEntryId: asset.inventoryEntryId,
+            assetUnitId: asset.id,
+            quantity: 1,
+            fromWarehouseId: input.fromType === "WAREHOUSE" ? input.fromId : undefined,
+            fromProjectId: input.fromType === "PROJECT" ? input.fromId : undefined,
+            note: `تحويل خارجي إلى ${input.counterpartyId}`,
+            occurredAt,
+          })
+        }
       }
 
       const transfer = this.repository.createOutboundTransfer(

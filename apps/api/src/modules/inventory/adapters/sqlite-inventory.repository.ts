@@ -15,6 +15,7 @@ import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzl
 import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock"
 import { decodeCursor as decodeCursorToken, encodeCursor as encodeCursorToken } from "../../shared/cursor"
 import { escapeLikePattern } from "../../shared/sql-search"
+import type { InventoryItemOfferSource } from "@tuari/contracts"
 import { normalizeAuditContext } from "../../company/company.repository-mappers"
 import { createAlgeriaTimestamp } from "../../company/company-time"
 import type { MutationAuditContext } from "../../company/company.types"
@@ -41,6 +42,8 @@ import type {
   InventoryItemDefinitionUpdateData,
   InventoryOutboundTransferCreateData,
   InventoryOutboundTransferRecord,
+  InventoryItemStockHolding,
+  InventoryItemStockAtSourceQuery,
 } from "../inventory.types"
 
 // ---------------------------------------------------------------------------
@@ -256,6 +259,23 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   }
 
   /**
+   * The consumption / asset-unit predicates that place a definition's stock at
+   * one source. The paged picker's `inStockAt` EXISTS and
+   * {@link listItemStockAtSource} both build on this, so the two cannot match a
+   * source with different columns.
+   */
+  private stockAtSourceWhere(source: InventoryItemOfferSource) {
+    return {
+      balance: source.locationType === "WAREHOUSE"
+        ? eq(schema.inventoryConsumableBalance.warehouseId, source.warehouseId)
+        : eq(schema.inventoryConsumableBalance.projectId, source.projectId),
+      assetUnit: source.locationType === "WAREHOUSE"
+        ? eq(schema.inventoryAssetUnit.currentWarehouseId, source.warehouseId)
+        : eq(schema.inventoryAssetUnit.currentProjectId, source.projectId),
+    }
+  }
+
+  /**
    * compiles the offer filter to SQL. Its verdict must equal
    * `matchesItemOfferFilter` for the same definition; the SQL/JS equivalence
    * test pins that.
@@ -271,19 +291,13 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     // asset unit physically sits there and its entry references the definition.
     const inStockAt = query.filter.inStockAt
     if (inStockAt) {
-      const balanceAtSource = inStockAt.locationType === "WAREHOUSE"
-        ? eq(schema.inventoryConsumableBalance.warehouseId, inStockAt.warehouseId)
-        : eq(schema.inventoryConsumableBalance.projectId, inStockAt.projectId)
-      const assetAtSource = inStockAt.locationType === "WAREHOUSE"
-        ? eq(schema.inventoryAssetUnit.currentWarehouseId, inStockAt.warehouseId)
-        : eq(schema.inventoryAssetUnit.currentProjectId, inStockAt.projectId)
-
+      const atSource = this.stockAtSourceWhere(inStockAt)
       const consumableStock = this.db
         .select({ one: sql`1` })
         .from(schema.inventoryConsumableBalance)
         .where(and(
           eq(schema.inventoryConsumableBalance.itemDefinitionId, schema.inventoryItemDefinition.id),
-          balanceAtSource,
+          atSource.balance,
           sql`${schema.inventoryConsumableBalance.quantity} > 0`,
         ))
       const assetStock = this.db
@@ -292,7 +306,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
         .innerJoin(schema.inventoryEntry, eq(schema.inventoryAssetUnit.inventoryEntryId, schema.inventoryEntry.id))
         .where(and(
           eq(schema.inventoryEntry.itemDefinitionId, schema.inventoryItemDefinition.id),
-          assetAtSource,
+          atSource.assetUnit,
         ))
 
       conditions.push(sql`(${exists(consumableStock)} OR ${exists(assetStock)})`)
@@ -656,6 +670,38 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       ORDER BY b.updated_at DESC
     `).all(filters.warehouseId ?? filters.projectId ?? "") as Record<string, unknown>[]
     return rows.map(mapConsumableBalance)
+  }
+
+  /** listItemStockAtSource. */
+  listItemStockAtSource(query: InventoryItemStockAtSourceQuery): InventoryItemStockHolding {
+    const atSource = this.stockAtSourceWhere(query.source)
+
+    const consumableBalances = this.db
+      .select()
+      .from(schema.inventoryConsumableBalance)
+      .where(and(
+        eq(schema.inventoryConsumableBalance.itemDefinitionId, query.itemDefinitionId),
+        atSource.balance,
+        sql`${schema.inventoryConsumableBalance.quantity} > 0`,
+      ))
+      // Deterministic depletion order: oldest stock leaves first.
+      .orderBy(asc(schema.inventoryConsumableBalance.createdAt), asc(schema.inventoryConsumableBalance.id))
+      .all()
+      .map(mapConsumableBalance)
+
+    const assetUnits = this.db
+      .select({ unit: schema.inventoryAssetUnit })
+      .from(schema.inventoryAssetUnit)
+      .innerJoin(schema.inventoryEntry, eq(schema.inventoryAssetUnit.inventoryEntryId, schema.inventoryEntry.id))
+      .where(and(
+        eq(schema.inventoryEntry.itemDefinitionId, query.itemDefinitionId),
+        atSource.assetUnit,
+      ))
+      .orderBy(desc(schema.inventoryAssetUnit.updatedAt), asc(schema.inventoryAssetUnit.id))
+      .all()
+      .map((row) => mapAssetUnit(row.unit as Record<string, unknown>))
+
+    return { consumableBalances, assetUnits }
   }
 
   /** getConsumableBalanceByEntryAndLocation. */

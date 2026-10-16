@@ -465,6 +465,11 @@ export const inventoryInvoiceGroupRecordPaymentInputSchema = z.object({
 
 /** outboundTransferItemInputSchema - Outbound transfer item input schema. */
 export const outboundTransferItemInputSchema = z.object({
+  /**
+   * The picked item DEFINITION id (the catalog row), not an inventory entry id.
+   * The write path resolves it to the entry/balance rows that hold its stock at
+   * the transfer's source (#450).
+   */
   itemId: entityIdSchema,
   quantity: z.number().positive(),
   unitPriceDzd: z.number().nonnegative().optional(),
