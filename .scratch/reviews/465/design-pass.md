@@ -110,3 +110,27 @@ Re-ran the pass over the review fixes. Design outcomes:
 - **Accepted friction:** the `${locationType}:${id}` scope/key formatting is
   duplicated in the web hook and the repository; they serve different layers
   (React Query key vs server cursor scope) and cannot share a module cleanly.
+
+## Addendum — Greptile stale-stock finding (`ad0ad988`)
+
+The finding was a missing half of the read's contract: the `OUTBOUND_PICK`
+filter made the options read a function of stock, but nothing told the read when
+stock changed. Design outcomes:
+
+- **The rule is stated once.** `invalidateStockDependentItemReads` names the
+  invariant ("a stock change refreshes every item read whose answer depends on
+  stock") and the four stock-changing mutations call it. Without it the same
+  call plus comment would be copied four times, and one copy would eventually
+  be dropped — which is exactly how the finding arose.
+- **The seam is the existing prefix, not a new one.** The options read was
+  already keyed under `inventoryItems` for this purpose (the comment on
+  `useItemDefinitionOptionsQuery` predates the fix), so the invalidation is a
+  prefix match with no new key or exported API.
+- **Coarse by choice.** The invalidation refreshes every source and the catalog
+  read, not only the two sources the mutation moved. A source-surgical
+  invalidation would need a predicate over the encoded `itemUsageKey` and would
+  couple each mutation to the key's internal shape; the over-fetch is
+  operator-paced and accepted.
+- **No hypothetical abstraction.** `invalidateStockDependentItemReads` is a
+  wrapper, not a new module; the deletion test keeps it (four call sites depend
+  on it), but it does not pretend to be more than a named rule.

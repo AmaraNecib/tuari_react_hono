@@ -149,3 +149,24 @@ inventory entry id is expected and lists asset units without a definition filter
 belongs with the read rule — one shared "where does definition X hold stock?" read, routed
 through by both the picker and the write gate — and is explicitly out of this issue's
 scope. Not fixed here.
+
+## Follow-up — a stock change must invalidate the picker's page (`ad0ad988`)
+
+The Greptile review of PR #467 scored 4/5: the `OUTBOUND_PICK` options read
+depends on stock, but the receipt/transfer/outbound mutations did not invalidate
+its `inventoryItems` key, so under the 30s `staleTime` a picker cached empty for
+a source kept serving that empty page after stock arrived (visit source A's
+empty picker → move stock into A → client-side back → the item is absent).
+
+The read-side rule was already a function of stock (`inStockAt`); the missing
+half was the write side telling it. Four mutations change stock: invoice create
+(a receipt), asset transfer, consumable transfer, outbound transfer. Each now
+calls one helper, `invalidateStockDependentItemReads`, which invalidates the
+`inventoryItems` prefix — every source, search and page variant — so no mutation
+needs to know which source moved. The helper exists so the rule is stated once
+rather than copied four times.
+
+Tests: `inventory-hooks.test.tsx` gains one sequence per mutation (empty →
+stock change → item offered) over a real `QueryClient` with the app's 30s
+`staleTime`, proving the refetch comes from invalidation and not a zero stale
+window. Red/green: 4 failed → 13 passed on that suite.

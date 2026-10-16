@@ -78,3 +78,41 @@ diff.
 
 **Not verified:** local Greptile CLI (`greptile whoami` returns `access_denied`
 without an interactive login); the parent owns push/PR and the hosted review.
+
+## Round 3 — the Greptile stale-stock finding (HEAD `ad0ad988`)
+
+Greptile scored the PR 4/5 with one inline finding: the new `OUTBOUND_PICK`
+options read depends on stock, but no stock-changing mutation invalidated its
+`inventoryItems` cache key, so under the 30s `staleTime` a picker visited empty
+(visit source A → move stock in → navigate back client-side) kept serving the
+cached empty page. Fixed in `ad0ad988` by invalidating the `inventoryItems`
+prefix from all four stock-changing mutations (invoice create/receipt, asset
+transfer, consumable transfer, outbound transfer), through one helper
+(`invalidateStockDependentItemReads`) that states the rule once.
+
+### Red/green (new hook tests proven to fail pre-fix)
+
+Pre-fix = `apps/web/src/features/inventory/inventory-hooks.ts` reverted to HEAD
+with the new test file kept in place; restored after the run.
+
+| Suite | Pre-fix result | Post-fix result |
+| --- | --- | --- |
+| `@tuari/web test inventory-hooks` | 4 failed / 9 passed (the four new "no stale availability page" cases) | 13 passed |
+
+Each new case mounts `useItemDefinitionOptionsQuery` for warehouse `wh-1`
+(empty page, within the 30s stale window), runs one stock change, and asserts
+the options read re-ran and shows the newly stocked item. The pre-fix failure
+is the read still returning `[]` — the stale reuse the finding describes.
+
+### Green runs (HEAD `ad0ad988`)
+
+| Command | Result |
+| --- | --- |
+| `VITEST_MAX_WORKERS=2 pnpm --filter @tuari/web exec vitest run src/features/inventory/inventory-hooks.test.tsx` | exit 0 — 13 passed |
+| `VITEST_MAX_WORKERS=2 pnpm --filter @tuari/web test` | exit 0 — 98 files, 920 passed |
+| `pnpm typecheck` | exit 0 — 4/4 packages |
+| `pnpm lint` | exit 0 — 2/2 tasks (includes `check:unslop`, `check:i18n-keys`) |
+
+**Not verified here:** local Greptile CLI (`greptile whoami` still returns
+`access_denied` without an interactive login) and the hosted review/CI, which
+run on the pushed PR the parent owns.
