@@ -1,0 +1,201 @@
+{
+  "$comment": "Path -> Playwright spec map for the e2e selector (scripts/ci/e2e-selection.mjs). FAIL CLOSED: a changed file that matches neither always_full, a feature rule, nor skip_e2e forces a full e2e run. Adding a spec under tests/e2e/ without wiring it into a feature rule or always_specs fails tests/e2e-selection.test.mjs. Per-file precedence: always_full > features > skip_e2e > unmapped(full).",
+
+  "always_full": [
+    "$comment: the gate itself and the browser harness — a change here can move any spec",
+    "playwright.config.ts",
+    "tests/e2e/**",
+    "tests/e2e-selection.map.json",
+    "scripts/ci/e2e-selection.mjs",
+    "tests/e2e-selection.test.mjs",
+    ".husky/**",
+    ".github/workflows/ci.yml",
+
+    "$comment: build/config surface shared by every workspace",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "turbo.json",
+    "tsconfig*.json",
+    "apps/*/package.json",
+    "packages/*/package.json",
+
+    "$comment: web boot path — one wrong line here moves every screen",
+    "apps/web/index.html",
+    "apps/web/vite.config.*",
+    "apps/web/src/main.tsx",
+    "apps/web/src/App.tsx",
+    "apps/web/src/router.tsx",
+    "apps/web/src/router/**",
+    "apps/web/src/lib/**",
+    "apps/web/src/providers/**",
+    "apps/web/src/i18n/**",
+    "apps/web/src/styles.css",
+
+    "$comment: shared contracts + the API composition root, router and persistence",
+    "packages/contracts/**",
+    "apps/api/src/app.ts",
+    "apps/api/src/app/**",
+    "apps/api/src/index.ts",
+    "apps/api/src/config/**",
+    "apps/api/src/rpc/**",
+    "apps/api/src/schema/**",
+    "apps/api/src/middleware/**",
+    "apps/api/src/infrastructure/**",
+    "apps/api/src/modules/shared/**",
+    "apps/api/src/modules/backup/**",
+    "apps/api/data/**",
+    "**/*.sqlite*"
+  ],
+
+  "skip_e2e": [
+    "$comment: no browser surface — lint/hygiene and the API/web unit suites still run",
+    "**/*.md",
+    "docs/**",
+    ".github/**",
+    ".agents/**",
+    ".claude/**",
+    ".scratch/**",
+    "infrastructure/**",
+    "apps/desktop/**",
+    "scripts/**",
+    "tests/**",
+    ".gitignore",
+    ".gitattributes",
+    "README.md"
+  ],
+
+  "always_specs": [
+    "$comment: cross-cutting specs that join every affected e2e run — the wiring home for specs that are not owned by one feature",
+    "foundation-smoke.spec.ts",
+    "fonts.spec.ts",
+    "splashscreen.spec.ts",
+    "web-hygiene.spec.ts"
+  ],
+
+  "features": [
+    {
+      "match": [
+        "apps/web/src/features/auth/**",
+        "apps/web/src/features/license/**",
+        "apps/web/src/features/session/**",
+        "apps/api/src/modules/auth/**",
+        "apps/api/src/modules/account/**",
+        "apps/api/src/modules/session/**",
+        "apps/api/src/modules/rbac/**"
+      ],
+      "specs": [
+        "admin-account.spec.ts",
+        "bootstrap-setup-key.spec.ts",
+        "legacy-password-recovery.spec.ts",
+        "recovery-keys.spec.ts",
+        "security-batch.spec.ts"
+      ]
+    },
+    {
+      "match": ["apps/web/src/features/app-shell/**"],
+      "specs": [
+        "foundation-smoke.spec.ts",
+        "mobile-drawer.spec.ts",
+        "dialogs-a11y.spec.ts",
+        "workspace-snapshot.spec.ts",
+        "backup-settings.spec.ts"
+      ]
+    },
+    {
+      "match": ["apps/web/src/features/dashboard/**"],
+      "specs": ["foundation-smoke.spec.ts", "workspace-snapshot.spec.ts"]
+    },
+    {
+      "match": ["apps/web/src/features/audit/**"],
+      "specs": ["i18n-raw-keys.spec.ts"]
+    },
+    {
+      "match": [
+        "apps/web/src/features/debts/**",
+        "apps/web/src/features/externals/**",
+        "apps/api/src/modules/company/**"
+      ],
+      "specs": ["debt-entry.spec.ts"]
+    },
+    {
+      "match": [
+        "apps/web/src/features/employees/**",
+        "apps/api/src/modules/workforce/**"
+      ],
+      "specs": [
+        "employees.spec.ts",
+        "employees-search.spec.ts",
+        "salaries.spec.ts",
+        "worker-assignment.spec.ts"
+      ]
+    },
+    {
+      "match": [
+        "apps/web/src/features/expenses/**",
+        "apps/api/src/modules/expenses/**"
+      ],
+      "specs": ["expenses.spec.ts"]
+    },
+    {
+      "match": [
+        "apps/web/src/features/inventory/**",
+        "apps/api/src/modules/inventory/**",
+        "apps/api/src/modules/invoice/**",
+        "apps/api/src/modules/payment/**"
+      ],
+      "specs": [
+        "inventory-asset-charge.spec.ts",
+        "inventory-invoice-create.spec.ts",
+        "inventory-invoice-progressive-disclosure.spec.ts",
+        "inventory-transfer.spec.ts"
+      ]
+    },
+    {
+      "match": [
+        "apps/web/src/features/projects/**",
+        "apps/api/src/modules/project-cost/**"
+      ],
+      "specs": ["projects.spec.ts"]
+    },
+    {
+      "match": ["apps/web/src/features/warehouses/**"],
+      "specs": ["warehouses.spec.ts", "search.spec.ts"]
+    },
+    {
+      "$comment": "Shared UI primitives (components/**) are imported by nearly every feature. A single wrong line here can move any screen, so this rule fans out to every consuming feature's specs rather than guessing one owner. Keep it in sync when a new feature imports a shared control.",
+      "match": [
+        "apps/web/src/features/shared/**",
+        "apps/web/src/components/**"
+      ],
+      "specs": [
+        "admin-account.spec.ts",
+        "backup-settings.spec.ts",
+        "bootstrap-setup-key.spec.ts",
+        "debt-entry.spec.ts",
+        "dialogs-a11y.spec.ts",
+        "employees-search.spec.ts",
+        "employees.spec.ts",
+        "expenses.spec.ts",
+        "foundation-smoke.spec.ts",
+        "i18n-raw-keys.spec.ts",
+        "inventory-asset-charge.spec.ts",
+        "inventory-invoice-create.spec.ts",
+        "inventory-invoice-progressive-disclosure.spec.ts",
+        "inventory-transfer.spec.ts",
+        "legacy-password-recovery.spec.ts",
+        "mobile-drawer.spec.ts",
+        "projects.spec.ts",
+        "recovery-keys.spec.ts",
+        "salaries.spec.ts",
+        "search.spec.ts",
+        "security-batch.spec.ts",
+        "select-combobox-regression.spec.ts",
+        "validation-toast.spec.ts",
+        "warehouses.spec.ts",
+        "worker-assignment.spec.ts",
+        "workspace-snapshot.spec.ts"
+      ]
+    }
+  ]
+}
