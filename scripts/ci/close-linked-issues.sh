@@ -26,8 +26,9 @@
 #
 # Safety rules (preserved from the original workflow):
 #   1. Only "Closes/Fixes/Resolves #N" in the PR BODY counts (never titles),
-#      and the keyword must come IMMEDIATELY before the reference (#466) —
-#      prose that merely mentions #N never closes it.
+#      the keyword must come IMMEDIATELY before the reference (#466), and a
+#      NEGATED close ("does not close #N") counts for nothing — prose that
+#      merely mentions #N, or says it will not close it, never closes it.
 #   2. Skips parent/tracker issues that still have open sub-issues.
 #   3. Skips issues whose body marks REMAINING work in a still-open issue
 #      ("remaining"/"todo" — NOT lineage markers like "Part of #N").
@@ -160,6 +161,29 @@ numbers=$(
     | sort -un \
     || true
 )
+
+# 1b. A NEGATED close is not a close (#466, parent decision): "does not close
+#     #N" / "never fixes #N" must extract nothing. Collect the negated
+#     references first, then subtract them — the affirmative pass above stays
+#     exactly the same, so nothing else about extraction changes. The negator
+#     may be up to two words away from the keyword ("not going to close #N"),
+#     no further: a negator three words out is a different clause more often
+#     than a negated close ("do not merge until it Closes #N" must still
+#     close). Subtracting a NUMBER is deliberately conservative — a body that
+#     both negates and closes the same number does not close it.
+negated=$(
+  printf '%s\n' "$PR_BODY" \
+    | grep -oiE '\b(not|never|no[[:space:]]+longer|no[[:space:]]+more|won[[:punct:]]?t|don[[:punct:]]?t|doesn[[:punct:]]?t|didn[[:punct:]]?t|isn[[:punct:]]?t|aren[[:punct:]]?t|cannot|can[[:punct:]]?t|hardly)([[:space:]]+[[:alnum:]_-]+){0,2}[[:space:]]+(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)[[:space:]:]+#[0-9]+' \
+    | grep -oE '#[0-9]+' \
+    | tr -d '#' \
+    | sort -un \
+    || true
+)
+for neg in $negated; do
+  numbers=$(printf '%s\n' "$numbers" | grep -vx "$neg" || true)
+  echo "Ignoring #$neg: the PR body negates closing it"
+done
+numbers=$(printf '%s\n' "$numbers" | grep -E '^[0-9]+$' || true)
 
 if [ -z "$numbers" ]; then
   echo "No 'Closes #N' reference in PR body #$PR_NUMBER — nothing to close."

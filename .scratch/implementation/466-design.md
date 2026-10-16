@@ -58,6 +58,32 @@ existed and are *not* the fix: the `remaining/todo #N` issue-body guard and the
 twice over now — the extractor never sees it, and the self-reference guard would
 still catch a body that says both (`Closes #201 — Part of #201`).
 
+### Negated closes (parent decision on #466)
+
+`This does not close #443` is the same bug class as a mention, so it must extract
+nothing. A second pass collects negated references (`not` / `never` / `no longer`
+/ contractions / `cannot`, up to two words before the keyword) and subtracts
+them from the affirmative set:
+
+```bash
+\b(not|never|no longer|...)([[:space:]]+word){0,2}[[:space:]]+(close|fix|resolve)[[:space:]:]+#[0-9]+
+```
+
+The affirmative pass is untouched, so nothing else about extraction changes. Two
+properties are deliberate:
+
+- **Two words, no more.** `not going to close #N` is negated; a negator three
+  words out is a different clause more often than a negated close, so
+  `Do not merge this until it Closes #N` still closes.
+- **Subtraction is by number, and conservative.** A body that both negates and
+  closes the same number does not close it. Impossible wording in practice; the
+  safe direction when it happens.
+
+Forms that extract nothing now: `does not close #N`, `does not resolve #N`,
+`never fixes #N`, `no longer closes #N`, `won't fix #N`, `cannot resolve #N`,
+`not going to close #N`. Mixed bodies keep the affirmative side:
+`This does not close #131, but Closes #132` → #132 only.
+
 ## Tests
 
 Existing scenarios keep running; added (each one is a real-world shape):
@@ -73,20 +99,28 @@ Existing scenarios keep running; added (each one is a real-world shape):
 | `Fixes #N` | `Fixes #125` | closed |
 | `Closes:`/`Resolves: #N` | `Resolves: #126` | closed |
 | title-only `Closes #N` | body has no keyword, fixture PR carries `title: "Closes #127"` | not closed |
+| negated close | `This does not close #128 — the work is still open.` | not closed, `Ignoring #128` echoed |
+| negated resolve | `The shared primitive does not resolve #129 on its own.` | not closed |
+| negated fix (`never`) | `Refactoring the hook never fixes #130.` | not closed |
+| mixed, negated first | `This does not close #131, but Closes #132.` | #131 not closed, #132 closed |
+| mixed, negated second | `Closes #133. It does not fix #134.` | #133 closed, #134 not closed |
+| negator in a different clause | `Do not merge this until it Closes #135.` | closed (three-word gap is not a negation of this close) |
 
-The two gap tests are the regression pins: on `HEAD` (pre-fix script) the suite
-reports `PASS=48 FAIL=2`, both failures being the prose-gap closes. On the fixed
-script: `PASS=50 FAIL=0`.
+The two gap tests and the six negation tests are the regression pins: on the
+pre-fix script the suite reports `PASS=52 FAIL=8` — the two prose-gap closes plus
+the six negated-close scenarios. On the fixed script: `PASS=60 FAIL=0`.
 
 ## Risks and non-goals
 
-- **Negated phrasing is still matched.** `This does not close #443` extracts
-  #443 and would close it. Out of the ticket's stated scope (it names bare `#N`,
-  `filed as #N`, `part of #N`); the adjacency fix does not make it worse. Note to
-  the parent: candidate follow-up, decide separately.
+- **Subtraction is lossy in one direction only.** See the negated-closes section:
+  a body that both negates and closes one number does not close it. That is the
+  visible-failure direction (a missing close is noticed; a wrong close is not).
 - `Closes #12 and #13` still only extracts #12 — pre-existing, unchanged.
 - A keyword in an HTML comment or a quote inside the body still counts. GitHub's
   own parser has the same property.
+- A negator more than two words from the keyword is not treated as negating it
+  (`Do not merge this until it Closes #N` closes). Deliberate: the alternative
+  drifts into sentence parsing, and over-dropping silently loses real closes.
 - No workflow-logic change, so no new failure mode on the merge path; the four
   existing fail-open guarantees (API failure, close failure, dry run, event
   qualification) are untouched.

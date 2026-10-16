@@ -230,6 +230,43 @@ OUT=$(PR_NUMBER=42 bash "$TARGET" 2>&1); RC=$?
 check "title-only run exits 0" "0" "$RC"
 assert_not_closed "a closing keyword in the PR TITLE never closes" 127
 
+# A negated close is not a close (parent decision on #466).
+reset_state
+mk_issue 128 open "negated close"
+run_script "This does not close #128 — the work is still open."
+check "negated run exits 0" "0" "$RC"
+assert_not_closed "'does not close #N' never closes" 128
+assert_has "$OUT" "Ignoring #128" "negation is echoed"
+
+reset_state
+mk_issue 129 open "negated resolve"
+run_script "The shared primitive does not resolve #129 on its own."
+assert_not_closed "'does not resolve #N' never closes" 129
+
+reset_state
+mk_issue 130 open "negated fix (never)"
+run_script "Refactoring the hook never fixes #130."
+assert_not_closed "'never fixes #N' never closes" 130
+
+reset_state
+mk_issue 131 open "negated on one side"
+mk_issue 132 open "affirmative on the other side"
+run_script "This does not close #131, but Closes #132."
+assert_not_closed "the negated reference in a mixed body is dropped (#131)" 131
+assert_closed "the affirmative reference in the same body still closes (#132)" 132
+
+reset_state
+mk_issue 133 open "affirmative then negated"
+mk_issue 134 open "negated second"
+run_script "Closes #133. It does not fix #134."
+assert_closed "a leading affirmative close still fires (#133)" 133
+assert_not_closed "a trailing negated close does not (#134)" 134
+
+reset_state
+mk_issue 135 open "negator in a different clause"
+run_script "Do not merge this until it Closes #135."
+assert_closed "a negator three words from the keyword is a different clause (#135)" 135
+
 reset_state
 run_script "no references at all in this body"
 check "no refs exits 0" "0" "$RC"
