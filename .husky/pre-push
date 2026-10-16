@@ -1,1 +1,76 @@
-pnpm --filter @tuari/contracts build && pnpm typecheck && pnpm lint && pnpm test:api && pnpm test:web
+#!/bin/sh
+# Pre-push gate, scoped to the pushed diff.
+#
+# FAIL CLOSED: an empty or unresolvable diff, a critical shared path, or any
+# file scripts/ci/e2e-selection.mjs does not know runs the FULL gate at the
+# bottom. The map is an optimisation — it can only make a run cheaper, never
+# weaker. Root hygiene and unslop stay on every path because `lint` is
+# cross-cutting and is never scoped.
+#
+# Scope comes from `e2e-selection.mjs --mode areas`:
+#   gate=full    -> full gate (fail closed)
+#   api=1        -> apps/api/**, packages/contracts/**, or a manifest changed
+#   web=1        -> apps/web/**, packages/contracts/**, or a manifest changed
+#   e2e_mode     -> full | affected | skip (affected runs only the mapped specs)
+set -e
+
+files="$(mktemp)"
+trap 'rm -f "$files"' EXIT
+
+# Hook stdin: <local_ref> <local_sha> <remote_ref> <remote_sha>.
+# An all-zero remote sha means a new branch, so diff against the merge base
+# with origin/develop. Anything we cannot resolve leaves the list empty, which
+# the selector treats as a full gate. No stdin (run by hand) is the same.
+if [ ! -t 0 ]; then
+  while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ -n "$local_sha" ] || continue
+    case "$local_sha" in 0000000000000000000000000000000000000000) continue ;; esac
+    base=""
+    case "$remote_sha" in
+      "" | 0000000000000000000000000000000000000000)
+        base="$(git merge-base origin/develop "$local_sha" 2>/dev/null || true)"
+        ;;
+      *)
+        base="$remote_sha"
+        ;;
+    esac
+    if [ -n "$base" ]; then
+      git diff --name-only "$base...$local_sha" >> "$files" || true
+    fi
+  done
+fi
+
+scope="$(node scripts/ci/e2e-selection.mjs --mode areas --files "$files")"
+gate="$(printf '%s\n' "$scope" | sed -n 's/^gate=//p')"
+api="$(printf '%s\n' "$scope" | sed -n 's/^api=//p')"
+web="$(printf '%s\n' "$scope" | sed -n 's/^web=//p')"
+e2e_mode="$(printf '%s\n' "$scope" | sed -n 's/^e2e_mode=//p')"
+e2e_specs="$(printf '%s\n' "$scope" | sed -n 's/^e2e_specs=//p')"
+reason="$(printf '%s\n' "$scope" | sed -n 's/^reason=//p')"
+
+echo "pre-push scope: gate=$gate api=$api web=$web e2e=$e2e_mode ($reason)"
+
+if [ "$gate" = "full" ]; then
+  pnpm --filter @tuari/contracts build
+  pnpm typecheck
+  pnpm lint
+  pnpm test:api
+  pnpm test:web
+  exit 0
+fi
+
+pnpm --filter @tuari/contracts build
+pnpm typecheck
+pnpm lint
+
+if [ "$api" = "1" ]; then
+  pnpm test:api
+fi
+if [ "$web" = "1" ]; then
+  pnpm test:web
+fi
+
+if [ "$e2e_mode" = "affected" ]; then
+  # shellcheck disable=SC2086  # e2e_specs is an intentional space-separated list
+  pnpm exec playwright test $e2e_specs
+fi
