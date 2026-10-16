@@ -77,6 +77,7 @@ jobs:
       api: ${{ steps.resolve.outputs.api }}
       web: ${{ steps.resolve.outputs.web }}
       e2e: ${{ steps.resolve.outputs.e2e }}
+      encryption: ${{ steps.resolve.outputs.encryption }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -111,6 +112,19 @@ jobs:
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'playwright.config.ts'
+            # The encryption proof builds a native SQLCipher addon, so it is a
+            # Windows runner and only pays for itself when something it depends
+            # on moved: the sidecar build, the API database/backup paths, the
+            # native build config, or the locked SQLCipher version.
+            encryption:
+              - 'apps/desktop/**'
+              - 'apps/api/**'
+              - 'packages/contracts/**'
+              - 'infrastructure/**'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - '.github/workflows/ci.yml'
 
       # Manual dispatch (workflow_dispatch) has no PR diff to compare —
       # paths-filter would see "no changes" and skip every test, defeating
@@ -123,11 +137,13 @@ jobs:
             echo "api=true" >> "$GITHUB_OUTPUT"
             echo "web=true" >> "$GITHUB_OUTPUT"
             echo "e2e=true" >> "$GITHUB_OUTPUT"
+            echo "encryption=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=${{ steps.filter.outputs.rust }}" >> "$GITHUB_OUTPUT"
             echo "api=${{ steps.filter.outputs.api }}" >> "$GITHUB_OUTPUT"
             echo "web=${{ steps.filter.outputs.web }}" >> "$GITHUB_OUTPUT"
             echo "e2e=${{ steps.filter.outputs.e2e }}" >> "$GITHUB_OUTPUT"
+            echo "encryption=${{ steps.filter.outputs.encryption }}" >> "$GITHUB_OUTPUT"
           fi
 
   test-rust:
@@ -366,3 +382,44 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm turbo build --filter="!@tuari/desktop"
+
+  # ── The encryption proof (#410) ─────────────────────────────────
+  # The only non-Ubuntu job in this workflow, and the only place a real
+  # SQLCipher native build is exercised. `windows-latest` is required: the
+  # addon is a node-gyp build that needs the Windows SDK, and the runtime it is
+  # proven against is the Windows artifact. A green release previously said
+  # nothing about encryption, because the fallback to plain better-sqlite3 was a
+  # warning in the build log — this job is what makes that failure loud before
+  # release day, not on it.
+  prove-encryption:
+    name: Prove SQLCipher encryption (built artifact)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    needs: detect
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # No --allow-plaintext: a sidecar that cannot encrypt must fail here
+      # rather than ship. The waiver exists for local typechecking, not for CI.
+      - name: Build the sidecar with the real SQLCipher dependency
+        if: needs.detect.outputs.encryption == 'true'
+        run: pnpm --filter @tuari/desktop sidecar:build
+
+      # Proves cipher_version, a keyed write, a non-plaintext file, a keyed
+      # read, and a non-plaintext key-readable daily backup — against the
+      # runtime the previous step built.
+      - name: Prove the built runtime encrypts
+        if: needs.detect.outputs.encryption == 'true'
+        run: node apps/desktop/scripts/sqlcipher-encryption-proof.mjs
+
+      - name: Encryption proof skipped (no desktop/api/native changes)
+        if: needs.detect.outputs.encryption != 'true'
+        run: echo "No encryption-relevant changes — skipping (required check satisfied)"
