@@ -1096,6 +1096,14 @@ describe("createBackupService.setBackupsRoot (#436)", () => {
     return { schemaVersion: 0, encrypted: false };
   };
 
+  /** A usable snapshot folder (SQLite header + valid marker) in `root`. */
+  const writeUsableSnapshot = (root: string, date: string): void => {
+    const folder = join(root, date);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, BACKUP_DB_FILE_NAME), "SQLite format 3\u0000");
+    writeFileSync(join(folder, BACKUP_MARKER_FILE_NAME), markerJson());
+  };
+
   beforeEach(() => {
     tempRoot = mkdtempSync(join(tmpdir(), "tuari-backup-root-"));
     firstRoot = join(tempRoot, "backups-a");
@@ -1157,6 +1165,30 @@ describe("createBackupService.setBackupsRoot (#436)", () => {
     expect(service.getStatus().lastFailure?.reason).toEqual(expect.any(String));
   });
 
+  it("keeps a real run failure when the same folder is saved again", async () => {
+    // Re-saving the folder the status already describes must not re-seed from
+    // the disk scan: the scan is readable and would report a clean status,
+    // hiding a snapshot/prune failure the owner still has and never retried.
+    const failingSnapshot: BackupSnapshotter = async () => {
+      throw new Error("disk removed");
+    };
+    const service = createBackupService({
+      snapshot: failingSnapshot,
+      backupsRootPath: firstRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    const result = await service.runDueBackup();
+    expect(result.status).toBe("failed");
+    const failure = service.getStatus().lastFailure;
+    expect(failure?.reason).toContain("disk removed");
+
+    service.setBackupsRoot(firstRoot);
+
+    expect(service.getStatus().lastFailure).toEqual(failure);
+  });
+
   it("does not adopt a run that finishes after the owner changed the root", async () => {
     // `deps.snapshot` awaits, so the owner can repoint the root mid-run. The
     // completed snapshot lives in the old root; the status must keep
@@ -1188,6 +1220,53 @@ describe("createBackupService.setBackupsRoot (#436)", () => {
     // Re-seeded for the new (empty) root; the old run must not overwrite it.
     expect(status.lastSuccessAt).toBeNull();
     expect(status.lastBackupPath).toBeNull();
+  });
+
+  it("prunes only the pinned old root after a mid-run root change", async () => {
+    // The data-loss regression from the PR: `runDueBackup` lists `runRoot`,
+    // awaits the snapshot, and only then prunes. If pruning followed the LIVE
+    // `backupsRootPath`, the old root's date list would be applied to the new
+    // root and real backups in the folder the owner just chose would be
+    // deleted. Seed BOTH roots with identical dates so a wrong-root prune is
+    // observable, and assert the new root is untouched.
+    const policy = { daily: 1, weekly: 0, monthly: 0 };
+    for (const date of ["2026-01-01", "2026-01-02", "2026-01-03"]) {
+      writeUsableSnapshot(firstRoot, date);
+      writeUsableSnapshot(secondRoot, date);
+    }
+
+    let releaseSnapshot: () => void = () => {};
+    const gate = new Promise<void>((resolveGate) => {
+      releaseSnapshot = resolveGate;
+    });
+    const slowSnapshot: BackupSnapshotter = async (outputPath) => {
+      await gate;
+      writeFileSync(outputPath, "SQLite format 3\u0000");
+      return { schemaVersion: 0, encrypted: false };
+    };
+    const service = createBackupService({
+      snapshot: slowSnapshot,
+      backupsRootPath: firstRoot,
+      policy,
+      now,
+      logger: noopLogger,
+    });
+
+    const pending = service.runDueBackup();
+    service.setBackupsRoot(secondRoot);
+    releaseSnapshot();
+    const result = await pending;
+
+    expect(result.status).toBe("created");
+    // Retention ran against the pinned old root: its stale snapshots are gone,
+    // only the fresh one survives.
+    expect(listBackupDates(firstRoot)).toEqual([DATE]);
+    // The new root kept every seed; the old root's retention never touched it.
+    expect(listBackupDates(secondRoot)).toEqual([
+      "2026-01-01",
+      "2026-01-02",
+      "2026-01-03",
+    ]);
   });
 
   it("does not pin an in-flight failure on the root the owner moved to", async () => {

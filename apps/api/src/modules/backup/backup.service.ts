@@ -533,8 +533,15 @@ export const createBackupService = (
    * validated and persisted it; re-seeding from the new root makes the screen
    * describe what is actually there (usually "no backups yet") rather than the
    * folder the owner just navigated away from.
+   *
+   * Saving the SAME folder is deliberately a no-op. The status already
+   * describes that root, and re-seeding from a readable disk scan would replace
+   * a real snapshot/prune failure with a clean read — the card would show
+   * success while the problem (and the un-retried backup) remains. Only an
+   * actual move re-seeds.
    */
   const setBackupsRoot = (path: string): void => {
+    if (path === backupsRootPath) return;
     backupsRootPath = path;
     const next = seedStatusFromDisk(backupsRootPath, now(), logger);
     lastBackupPath = next.lastBackupPath;

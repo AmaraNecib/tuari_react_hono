@@ -1,13 +1,14 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { validateBackupsRootPath } from "./backup.settings";
 
-// Wrap writeFileSync so the writability probe can be forced to fail on demand
-// (a real read-only directory is unreliable cross-platform). Every other fs
-// call delegates to the real implementation.
+// Wrap the fs calls the writability probe depends on so each step can be
+// forced to fail on demand (a real read-only/rename-denied directory is
+// unreliable cross-platform). Every other call delegates to the real
+// implementation.
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {
@@ -15,10 +16,18 @@ vi.mock("node:fs", async (importOriginal) => {
     writeFileSync: vi.fn((...args: Parameters<typeof actual.writeFileSync>) =>
       actual.writeFileSync(...args),
     ),
+    renameSync: vi.fn((...args: Parameters<typeof actual.renameSync>) =>
+      actual.renameSync(...args),
+    ),
+    rmSync: vi.fn((...args: Parameters<typeof actual.rmSync>) =>
+      actual.rmSync(...args),
+    ),
   };
 });
 
 const writeFileSyncMock = vi.mocked(writeFileSync);
+const renameSyncMock = vi.mocked(renameSync);
+const rmSyncMock = vi.mocked(rmSync);
 
 describe("validateBackupsRootPath", () => {
   let tempDir: string;
@@ -26,6 +35,8 @@ describe("validateBackupsRootPath", () => {
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "tuari-backup-settings-"));
     writeFileSyncMock.mockClear();
+    renameSyncMock.mockClear();
+    rmSyncMock.mockClear();
   });
 
   afterEach(() => {
@@ -98,6 +109,47 @@ describe("validateBackupsRootPath", () => {
       "cannot use this folder",
     );
     expect(result.success === false && result.error).toContain("EACCES");
+  });
+
+  it("rejects a folder that cannot rename within itself, naming the problem", () => {
+    // A folder can allow file creation yet deny renaming, which is how the
+    // engine moves a finished staging folder into place. That must fail here,
+    // not at the next run.
+    renameSyncMock.mockImplementationOnce(() => {
+      throw new Error("EPERM: operation not permitted, rename 'probe'");
+    });
+
+    const result = validateBackupsRootPath(tempDir);
+
+    expect(result.success).toBe(false);
+    expect(result.success === false && result.error).toContain(
+      "cannot use this folder",
+    );
+    expect(result.success === false && result.error).toContain("EPERM");
+  });
+
+  it("rejects a folder that cannot delete, naming the problem", () => {
+    // Create-denied is caught by the write probe; DELETE-denied is a different
+    // ACL. Without this step a save looks successful, leaks a probe directory
+    // every time, and the engine's prune/cleanup fails later.
+    rmSyncMock.mockImplementationOnce(() => {
+      throw new Error("EPERM: operation not permitted, rmdir 'probe'");
+    });
+
+    const result = validateBackupsRootPath(tempDir);
+
+    expect(result.success).toBe(false);
+    expect(result.success === false && result.error).toContain(
+      "cannot use this folder",
+    );
+    expect(result.success === false && result.error).toContain("EPERM");
+  });
+
+  it("leaves no probe behind after a successful validation", () => {
+    const result = validateBackupsRootPath(tempDir);
+
+    expect(result.success).toBe(true);
+    expect(readdirSync(tempDir)).toEqual([]);
   });
 
   it("falls back to the thrown value when a failure carries no message", () => {

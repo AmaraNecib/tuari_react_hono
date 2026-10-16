@@ -10,9 +10,17 @@ import type { BackupStatus } from "@tuari/contracts";
 
 // ─── Mock the hooks module ─────────────────────────────────────
 
-const mockUseBackupStatusQuery = vi.fn();
-const mockUseSetBackupsRootMutation = vi.fn();
-const mockPickBackupFolder = vi.fn();
+// Declared via `vi.hoisted` because `vi.mock` factories are hoisted above
+// top-level consts and this module is imported at startup (wisdom: testing.md).
+const {
+  mockUseBackupStatusQuery,
+  mockUseSetBackupsRootMutation,
+  mockPickBackupFolder,
+} = vi.hoisted(() => ({
+  mockUseBackupStatusQuery: vi.fn(),
+  mockUseSetBackupsRootMutation: vi.fn(),
+  mockPickBackupFolder: vi.fn(),
+}));
 
 vi.mock("./backup-hooks", () => ({
   useBackupStatusQuery: () => mockUseBackupStatusQuery(),
