@@ -310,3 +310,19 @@ from that round, fixed here:
 
 The default resolver is renamed `defaultResolveDriverModule` so it does not read
 as the option of the same name.
+
+## Round 6 — final evidence at `4444ca13`
+
+The design pass, debate (critic + defender), test-audit, and code-review all ran
+again in fresh contexts at `4444ca13` and passed with no blockers. Evidence:
+`.scratch/reviews/402/4444ca13-{design-pass,debate,test-audit,code-review}.md`.
+
+Three Low findings were dismissed with a cited reason (see the evidence): the
+`tsup.config.ts:16` comment names a symbol that still exists in the same file;
+the keyless `"better-sqlite3"` specifier is unasserted while five keyless tests
+exercise the path end to end; and the fake driver's `user_version` branch is
+shape-insensitive on purpose (the worker coerces it to a number).
+
+Evidence freshness: the evidence commit follows the reviewed HEAD, so the diff
+between `4444ca13` and the evidence commit touches only `.scratch/` — which the
+guard treats as non-reviewable, leaving the evidence valid for the reviewed code.
