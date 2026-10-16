@@ -82,14 +82,17 @@ for the parent to scope/queue.
 
 - `formatAlgeriaDate(value: string | Date, locale = "ar-DZ"): string` — widened
   parameter; same return, same pinned zone.
-- `findUnpinnedDateFormatters(source: string): Array<{ line: number; call: string }>`
+- `findUnpinnedDateFormatters(source): Array<{ line: number; callee: string; call: string }>`
   — new test helper (not shipped).
 
 ## Risks
 
 - Switching bare numeric call sites to `formatAlgeriaDate`'s `medium` style is a
-  small visual change (numeric → day-month-name). It matches the app's existing
-  date style (expenses, projects) and no test asserts the old numeric string.
+  small visual change (numeric → day-month-name) on the inventory invoice list
+  and details pages, outbound transfers, and the debt/salary tables. It matches
+  the app's existing date style (expenses, projects) and no test asserts the old
+  numeric string; the TZ-pinned screen tests assert the `medium` output, so a
+  future style change fails them.
 - `process.env.TZ` is process-wide; the test restores it in `afterEach` so no
   other suite in the worker inherits UTC.
 

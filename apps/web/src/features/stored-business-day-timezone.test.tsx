@@ -15,6 +15,7 @@ import { formatAlgeriaDate } from "@/lib/algeria-time"
 import {
   ALGERIA_DAY,
   ALGERIA_DAY_SHORT,
+  MIDNIGHT_CROSSING,
   UTC_DAY,
   UTC_DAY_SHORT,
   pinUtcTimeZone,
@@ -27,8 +28,6 @@ vi.mock("@tanstack/react-router", async (importActual) => {
     Link: ({ children, ...props }: { children: ReactNode }) => <a {...props}>{children}</a>,
   }
 })
-
-const MIDNIGHT_CROSSING = "2026-09-30T23:00:00.000Z" // 2026-10-01T00:00 in Africa/Algiers
 
 const transferItem = {
   id: "transfer-00000001",

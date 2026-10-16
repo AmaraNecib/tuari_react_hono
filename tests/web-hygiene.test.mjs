@@ -70,7 +70,7 @@ function matchFormatterAt(source, index) {
   return null;
 }
 
-/** Index of the `)` that closes the `(` at `openIndex`, skipping strings and comments. */
+/** Index of the `)` that closes the `(` at `openIndex`, or `-1` when unbalanced. */
 function findMatchingParen(source, openIndex) {
   let depth = 0;
   let index = openIndex;
@@ -95,13 +95,18 @@ function findMatchingParen(source, openIndex) {
     }
     index += 1;
   }
-  return source.length - 1;
+  return -1;
 }
 
 /**
  * Every `toLocaleDateString(...)` / `new Intl.DateTimeFormat(...)` call whose
  * balanced parentheses do not contain a `timeZone`. Mentions in comments or
  * string literals are not calls and are never reported.
+ *
+ * Text-level heuristic: it does not descend into a template literal's `${…}`
+ * interpolation (none in `apps/web/src` today), and a `timeZone` supplied via a
+ * spread or a string also counts. The point is to catch a re-added bare call,
+ * not to be a type checker.
  */
 export function findUnpinnedDateFormatters(source) {
   const violations = [];
@@ -130,6 +135,12 @@ export function findUnpinnedDateFormatters(source) {
 
     const openParen = index + formatter.length - 1;
     const closeParen = findMatchingParen(source, openParen);
+    if (closeParen === -1) {
+      // Unbalanced input: flag it rather than letting a later `timeZone` mask
+      // it, and stop — the rest of the file cannot be trusted to resync.
+      violations.push({ line: lineNumberAt(source, index), callee: formatter.name, call: source.slice(index) });
+      break;
+    }
     const call = source.slice(index, closeParen + 1);
     if (!/\btimeZone\b/.test(call)) {
       violations.push({ line: lineNumberAt(source, index), callee: formatter.name, call });
@@ -154,7 +165,10 @@ async function listProductionWebSources() {
     }
   }
   return files.filter(
-    (file) => /\.(ts|tsx)$/.test(file) && !/\.(test|spec)\.(ts|tsx)$/.test(file),
+    (file) =>
+      /\.(ts|tsx)$/.test(file) &&
+      !/\.(test|spec)\.(ts|tsx)$/.test(file) &&
+      !/(^|[/\\])(test-utils|__tests__|__mocks__)[/\\]/.test(file),
   );
 }
 
@@ -275,6 +289,9 @@ test('date formatter scanner self-test: pinned passes, unpinned flags, comments 
   // A pinned call with nested parentheses/strings stays balanced.
   const nested = 'new Intl.DateTimeFormat("ar-DZ", { timeZone: fn("a)b", (x) => x) }).format(d)';
   assert.deepEqual(findUnpinnedDateFormatters(nested), []);
+
+  // Unbalanced input is flagged rather than letting a later `timeZone` mask it.
+  assert.equal(findUnpinnedDateFormatters('const a = new Intl.DateTimeFormat("ar-DZ"').length, 1);
 });
 
 test('fonts are self-hosted: index.html has no Google Fonts links or preconnects', async () => {
