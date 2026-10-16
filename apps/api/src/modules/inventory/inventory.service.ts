@@ -27,7 +27,7 @@ import { normalizePageSize } from "../shared/cursor"
 import { StructuredLogger } from "../../infrastructure/observability/logger"
 import { CompanyError } from "../company/company.errors"
 import { createAlgeriaTimestamp } from "../company/company-time"
-import { ageInDays, resolveReportWindow, roundMoney } from "../company/report.helpers"
+import { accumulateReportMoney, ageInDays, REPORT_MONEY_OVERFLOW_MESSAGE, resolveReportWindow, roundMoney } from "../company/report.helpers"
 import type { MutationAuditContext } from "../company/company.types"
 import type {
   InventoryAssetUnitCreateData,
@@ -85,8 +85,9 @@ function normalizeMoney(value: number, field: string) {
  * The module seam for money that must also respect the wire contract's
  * magnitude bound (`MAX_MONEY_DZD`). The wire gate and this seam parse the SAME
  * schema, so a direct caller cannot store an amount the contract rejects
- * (issue #289 defense-in-depth). Used for the asset purchase price (#413) and
- * the invoice line/payment inputs (#429).
+ * (issue #289 defense-in-depth). Used for the asset purchase price (#413),
+ * the invoice line/payment inputs (#429), and the record-payment amount
+ * (#475).
  */
 function normalizeMoneyWithinBound(value: number, field: string, message: string) {
   const parsed = nonNegativePaymentAmountSchema.safeParse(value)
@@ -107,15 +108,24 @@ function normalizeMoneyWithinBound(value: number, field: string, message: string
  * number. Mirrors `AssetChargeService.sumLiveCharges` / `project-cost.service`.
  */
 function accumulateGrossTotal(currentTotalDzd: number, lineTotalDzd: number) {
-  const nextTotalDzd = currentTotalDzd + lineTotalDzd
-  if (!Number.isFinite(nextTotalDzd) || nextTotalDzd > MAX_MONEY_DZD) {
+  return accumulateReportMoney(currentTotalDzd, lineTotalDzd, () => {
     throw new InventoryError(
       "BUSINESS_RULE",
       `إجمالي الفاتورة يتجاوز الحد الأقصى المسموح به (${MAX_MONEY_DZD}).`,
     )
-  }
+  })
+}
 
-  return nextTotalDzd
+/**
+ * The inventory/movement report aggregate guard. `accumulateReportMoney` owns
+ * the finite + `MAX_MONEY_DZD` rule; a report is computed at read time, so
+ * unlike a persisted column it refuses to emit an unrepresentable total with
+ * the module's typed BUSINESS_RULE error (#475).
+ */
+function accumulateInventoryReportMoney(currentDzd: number, amountDzd: number) {
+  return accumulateReportMoney(currentDzd, amountDzd, () => {
+    throw new InventoryError("BUSINESS_RULE", REPORT_MONEY_OVERFLOW_MESSAGE)
+  })
 }
 
 function normalizePositive(value: number, field: string) {
@@ -965,6 +975,14 @@ export class InventoryService {
     }
 
     const amountToRecord = normalizePositive(input.amountDzd, "amountDzd")
+    // Defense-in-depth beyond the wire bound (#475): a legacy invoice row whose
+    // remaining debt is above MAX_MONEY_DZD must not accept an over-bound
+    // payment from a direct caller either (#289 pattern).
+    normalizeMoneyWithinBound(
+      amountToRecord,
+      "amountDzd",
+      `مبلغ الدفع يتجاوز الحد الأقصى المسموح به (${MAX_MONEY_DZD}).`,
+    )
     if (amountToRecord > invoice.remainingDebtDzd) {
       throw new InventoryError("VALIDATION", "المبلغ المدفوع يتجاوز الدين المتبقي.", [
         { field: "amountDzd", message: `لا يمكن دفع أكثر من ${invoice.remainingDebtDzd} دزد.` },
@@ -1187,14 +1205,15 @@ export class InventoryService {
     let totalConsumablesRaw = 0
     for (const row of rows) {
       if (row.itemType === "ASSET") {
-        totalAssetsRaw += row.totalPriceDzd
+        totalAssetsRaw = accumulateInventoryReportMoney(totalAssetsRaw, row.totalPriceDzd)
       } else {
-        totalConsumablesRaw += row.totalPriceDzd
+        totalConsumablesRaw = accumulateInventoryReportMoney(totalConsumablesRaw, row.totalPriceDzd)
       }
     }
     const totalAssetsDzd = roundMoney(totalAssetsRaw)
     const totalConsumablesDzd = roundMoney(totalConsumablesRaw)
-    const totalValueDzd = roundMoney(totalAssetsRaw + totalConsumablesRaw)
+    // The cross-sum can leave the bound even when each side is inside it.
+    const totalValueDzd = roundMoney(accumulateInventoryReportMoney(totalAssetsRaw, totalConsumablesRaw))
 
     const locations = new Map<string, {
       locationId: string | null
@@ -1217,7 +1236,7 @@ export class InventoryService {
       }
       if (row.itemType === "ASSET") {
         current.assetCount += row.quantity
-        current.assetValueDzd += row.totalPriceDzd
+        current.assetValueDzd = accumulateInventoryReportMoney(current.assetValueDzd, row.totalPriceDzd)
       } else {
         current.consumableCount += row.quantity
       }
@@ -1241,7 +1260,7 @@ export class InventoryService {
         lastUpdated: row.lastUpdated,
       }
       current.quantity += row.quantity
-      current.valueDzd += row.totalPriceDzd
+      current.valueDzd = accumulateInventoryReportMoney(current.valueDzd, row.totalPriceDzd)
       if (row.lastUpdated > current.lastUpdated) {
         current.lastUpdated = row.lastUpdated
       }
@@ -1265,7 +1284,10 @@ export class InventoryService {
       const category =
         age <= 30 ? "0-30_DAYS" : age <= 89 ? "31-90_DAYS" : age <= 179 ? "90-180_DAYS" : "180+_DAYS"
       agingAccumulators[category].count += 1
-      agingAccumulators[category].valueDzd += row.totalPriceDzd
+      agingAccumulators[category].valueDzd = accumulateInventoryReportMoney(
+        agingAccumulators[category].valueDzd,
+        row.totalPriceDzd,
+      )
     }
     const agingAnalysis = (["0-30_DAYS", "31-90_DAYS", "90-180_DAYS", "180+_DAYS"] as const).map(
       (ageCategory) => ({
@@ -1321,10 +1343,10 @@ export class InventoryService {
 
     const byType = (["PURCHASE", "TRANSFER", "OUTBOUND_SALE"] as const).map((movementType) => {
       const ofType = rows.filter(({ movement }) => movement.movementType === movementType)
-      const valueDzd = ofType.reduce(
-        (sum, { movement, unitPriceDzd }) => sum + (unitPriceDzd ?? 0) * movement.quantity,
-        0,
-      )
+      let valueDzd = 0
+      for (const { movement, unitPriceDzd } of ofType) {
+        valueDzd = accumulateInventoryReportMoney(valueDzd, (unitPriceDzd ?? 0) * movement.quantity)
+      }
       return { movementType, count: ofType.length, valueDzd: roundMoney(valueDzd) }
     })
 
@@ -1333,7 +1355,7 @@ export class InventoryService {
       const period = movement.occurredAt.slice(0, 7)
       const current = periods.get(period) ?? { count: 0, valueDzd: 0 }
       current.count += 1
-      current.valueDzd += (unitPriceDzd ?? 0) * movement.quantity
+      current.valueDzd = accumulateInventoryReportMoney(current.valueDzd, (unitPriceDzd ?? 0) * movement.quantity)
       periods.set(period, current)
     }
     const byPeriod = Array.from(periods.entries())
@@ -1356,7 +1378,7 @@ export class InventoryService {
         valueDzd: 0,
       }
       current.receiveCount += 1
-      current.valueDzd += (unitPriceDzd ?? 0) * movement.quantity
+      current.valueDzd = accumulateInventoryReportMoney(current.valueDzd, (unitPriceDzd ?? 0) * movement.quantity)
       destinations.set(key, current)
     }
     const topDestinations = Array.from(destinations.values())

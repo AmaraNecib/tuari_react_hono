@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE, type DebtAccountCreateInput } from "@tuari/contracts";
+import { DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE, MAX_MONEY_DZD, type DebtAccountCreateInput } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
 import {
@@ -1004,6 +1004,98 @@ describe("FinanceService coverage branches", () => {
       // Equal amounts → the amount difference is zero → localeCompare("ar") decides.
       expect(parties[0]!.partyName).toBe("شركة أ");
       expect(parties[1]!.partyName).toBe("شركة ب");
+    });
+
+    it("refuses an aggregate above MAX_MONEY_DZD with the business-rule error (#475)", () => {
+      const { service, database } = createHarness();
+      const counterparty = service.createExternalCounterparty({
+        fullName: "طرف تجاوز الحد",
+        phoneNumber: "0214444009",
+      }).item;
+      const account = service.createDebtAccount({
+        direction: "PAYABLE",
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: 100,
+        openingEntryDate: "2026-02-01T10:00:00+01:00",
+      }).item;
+      // A stored row can legitimately sit above the write bound: the write gate
+      // (not the DB CHECK, which only enforces >= 0) is what keeps a NEW balance
+      // in range, so an older build can leave one (#413 round 3).
+      database
+        .prepare('UPDATE "debt_account" SET "current_balance" = ? WHERE "id" = ?')
+        .run(MAX_MONEY_DZD + 1, account.id);
+
+      let thrown: unknown;
+      try {
+        service.finance.generateDebtReport({});
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(CompanyError);
+      expect((thrown as CompanyError).appError.code).toBe("BUSINESS_RULE");
+    });
+
+    it("refuses a settled-report total above MAX_MONEY_DZD (#475)", () => {
+      const { service } = createHarness();
+      // Two SETTLED accounts that each settle at the bound: outstanding stays
+      // zero, so only the settled-total fold can leave the bound.
+      for (const [fullName, phoneNumber] of [
+        ["طرف تسوية أ", "0214444010"],
+        ["طرف تسوية ب", "0214444011"],
+      ] as const) {
+        const counterparty = service.createExternalCounterparty({ fullName, phoneNumber }).item;
+        const account = service.createDebtAccount({
+          direction: "PAYABLE",
+          partyType: "EXTERNAL_COUNTERPARTY",
+          externalCounterpartyId: counterparty.id,
+          openingBalanceDzd: MAX_MONEY_DZD,
+          openingEntryDate: "2026-02-01T10:00:00+01:00",
+        }).item;
+        service.settleDebtAccount({ id: account.id, entryDate: "2026-03-01T10:00:00+01:00" }, audit());
+      }
+
+      let thrown: unknown;
+      try {
+        service.finance.generateDebtReport({});
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(CompanyError);
+      expect((thrown as CompanyError).appError.code).toBe("BUSINESS_RULE");
+    });
+
+    it("refuses a legacy settlement entry above MAX_MONEY_DZD in the per-account fold (#475)", () => {
+      const { service, database } = createHarness();
+      const counterparty = service.createExternalCounterparty({
+        fullName: "طرف تسوية قديم",
+        phoneNumber: "0214444012",
+      }).item;
+      const account = service.createDebtAccount({
+        direction: "PAYABLE",
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: 100,
+        openingEntryDate: "2026-02-01T10:00:00+01:00",
+      }).item;
+      service.settleDebtAccount({ id: account.id, entryDate: "2026-03-01T10:00:00+01:00" }, audit());
+      // The per-account SETTLEMENT fold guards BEFORE the account total is
+      // folded, so a single legacy settlement entry above the bound refuses
+      // here instead of at `totalSettledDzd`.
+      database
+        .prepare(
+          'UPDATE "debt_entry" SET "signed_amount" = ? WHERE "debt_account_id" = ? AND "entry_type" = ?',
+        )
+        .run(-(MAX_MONEY_DZD + 1), account.id, "SETTLEMENT");
+
+      let thrown: unknown;
+      try {
+        service.finance.generateDebtReport({});
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(CompanyError);
+      expect((thrown as CompanyError).appError.code).toBe("BUSINESS_RULE");
     });
   });
 });

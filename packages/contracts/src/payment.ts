@@ -21,9 +21,12 @@ export const paymentAmountSchema = z.number().positive().max(MAX_MONEY_DZD);
 
 /**
  * Money that explicitly permits zero. Used where "no money moved" is a legal
- * state — e.g. a stock charge of 0 (a free placement, #413). Same magnitude
- * bound as {@link paymentAmountSchema} so there is still ONE money rule; only
- * the sign bound differs.
+ * state — e.g. a stock charge of 0 (a free placement, #413). It is also the
+ * bound for a computed, non-negative read-time aggregate, such as a report
+ * total (#475); a persisted column reads back through
+ * {@link storedMoneyDzdSchema} instead.
+ * Same magnitude bound as {@link paymentAmountSchema} so there is still ONE
+ * money rule; only the sign bound differs.
  */
 export const nonNegativePaymentAmountSchema = z.number().nonnegative().max(MAX_MONEY_DZD);
 

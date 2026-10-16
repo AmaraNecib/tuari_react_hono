@@ -47,9 +47,14 @@ import {
   inventoryContract,
   inventoryInvoiceGroupCreateInputSchema,
   inventoryInvoiceGroupDetailSchema,
+  inventoryInvoiceGroupRecordPaymentInputSchema,
   inventoryInvoiceGroupSchema,
   inventoryLocationContentsSchema,
   inventoryProjectChargesSchema,
+  inventoryReportSchema,
+  debtReportSchema,
+  movementReportSchema,
+  MAX_MONEY_DZD,
   managerAssignmentCreateInputSchema,
   phonePasswordSignInSchema,
   projectAssignmentCreateInputSchema,
@@ -2223,6 +2228,111 @@ describe("contracts", () => {
           expect(inventoryInvoiceGroupSchema.safeParse({ ...group, [field]: bad }).success).toBe(false);
         }
       }
+    });
+  });
+
+  describe("remaining inventory money bound + report aggregates (#475)", () => {
+    const aboveBound = MAX_MONEY_DZD + 1;
+
+    it("bounds the record-payment amount INPUT with the shared positive money rule", () => {
+      const valid = { invoiceGroupId: "group-1", amountDzd: 500 };
+      expect(inventoryInvoiceGroupRecordPaymentInputSchema.safeParse(valid).success).toBe(true);
+      expect(
+        inventoryInvoiceGroupRecordPaymentInputSchema.safeParse({
+          ...valid,
+          amountDzd: MAX_MONEY_DZD,
+        }).success,
+      ).toBe(true);
+      // Above the bound the payment is no longer representable.
+      expect(
+        inventoryInvoiceGroupRecordPaymentInputSchema.safeParse({
+          ...valid,
+          amountDzd: aboveBound,
+        }).success,
+      ).toBe(false);
+      // Still a POSITIVE amount: zero and negatives stay refused.
+      for (const bad of [0, -1, NaN, Infinity]) {
+        expect(
+          inventoryInvoiceGroupRecordPaymentInputSchema.safeParse({ ...valid, amountDzd: bad }).success,
+        ).toBe(false);
+      }
+    });
+
+    it("bounds the computed report money fields with the shared money rule", () => {
+      const inventoryReport = {
+        type: "INVENTORY",
+        generatedAt: "2026-06-01T00:00:00.000Z",
+        summary: { totalAssetsDzd: 100, totalConsumablesDzd: 20, totalValueDzd: 120 },
+        byLocation: [
+          { locationId: null, locationLabel: "مستودع", assetCount: 1, assetValueDzd: 100, consumableCount: 0 },
+        ],
+        byItemType: [
+          { itemName: "مثقاب", quantity: 1, valueDzd: 100, lastUpdated: "2026-06-01T00:00:00.000Z" },
+        ],
+        agingAnalysis: [{ ageCategory: "0-30_DAYS", count: 1, valueDzd: 100 }],
+      };
+      expect(inventoryReportSchema.safeParse(inventoryReport).success).toBe(true);
+      // A computed aggregate above the bound is refused (it is not a stored row).
+      expect(
+        inventoryReportSchema.safeParse({
+          ...inventoryReport,
+          summary: { ...inventoryReport.summary, totalValueDzd: aboveBound },
+        }).success,
+      ).toBe(false);
+      expect(
+        inventoryReportSchema.safeParse({
+          ...inventoryReport,
+          byItemType: [{ ...inventoryReport.byItemType[0], valueDzd: aboveBound }],
+        }).success,
+      ).toBe(false);
+      // Counts are not money and stay unbounded.
+      expect(
+        inventoryReportSchema.safeParse({
+          ...inventoryReport,
+          byLocation: [{ ...inventoryReport.byLocation[0], assetCount: aboveBound }],
+        }).success,
+      ).toBe(true);
+
+      const debtReport = {
+        type: "DEBT",
+        generatedAt: "2026-06-01T00:00:00.000Z",
+        summary: { totalOutstandingDzd: 100, totalSettledDzd: 50, overdueDzd: 10, partyCount: 1 },
+        agingBreakdown: [{ ageCategory: "0-30_DAYS", countOpen: 1, amountDzd: 10 }],
+        byParty: [
+          {
+            partyId: "party-1",
+            partyName: "طرف",
+            partyType: "EXTERNAL_COUNTERPARTY",
+            outstandingDzd: 10,
+            settledDzd: 0,
+            lastTransaction: null,
+          },
+        ],
+        topDebtors: [{ partyName: "طرف", amountDzd: 10, daysSinceLastPayment: 3 }],
+      };
+      expect(debtReportSchema.safeParse(debtReport).success).toBe(true);
+      expect(
+        debtReportSchema.safeParse({
+          ...debtReport,
+          summary: { ...debtReport.summary, totalOutstandingDzd: aboveBound },
+        }).success,
+      ).toBe(false);
+
+      const movementReport = {
+        type: "MOVEMENT",
+        generatedAt: "2026-06-01T00:00:00.000Z",
+        summary: { totalMovements: 1, assetTransfers: 0, consumableTransfers: 0, outboundSales: 1 },
+        byType: [{ movementType: "OUTBOUND_SALE", count: 1, valueDzd: 100 }],
+        byPeriod: [{ period: "2026-06", count: 1, valueDzd: 100 }],
+        topDestinations: [{ destinationLabel: "مستودع", receiveCount: 1, valueDzd: 100 }],
+      };
+      expect(movementReportSchema.safeParse(movementReport).success).toBe(true);
+      expect(
+        movementReportSchema.safeParse({
+          ...movementReport,
+          byPeriod: [{ ...movementReport.byPeriod[0], valueDzd: aboveBound }],
+        }).success,
+      ).toBe(false);
     });
   });
 

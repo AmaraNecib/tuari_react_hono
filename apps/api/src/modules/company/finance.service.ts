@@ -54,13 +54,25 @@ import {
   type MutationAuditContext,
 } from "./company.types";
 import { createAlgeriaTimestamp, normalizeAlgeriaTimestamp } from "./company-time";
-import { MS_PER_DAY, resolveReportWindow, roundMoney } from "./report.helpers";
+import { accumulateReportMoney, MS_PER_DAY, REPORT_MONEY_OVERFLOW_MESSAGE, resolveReportWindow, roundMoney } from "./report.helpers";
 import {
   requireDebtAccount,
   requireEmployee,
   requireEmployeeWorker,
   requireExternalCounterparty,
 } from "./company.entity-resolvers";
+
+/**
+ * The debt report aggregate guard. `accumulateReportMoney` owns the finite +
+ * `MAX_MONEY_DZD` rule; a report is computed at read time, so unlike a
+ * persisted column it refuses to emit an unrepresentable total with the
+ * module's typed BUSINESS_RULE error (#475).
+ */
+function accumulateDebtReportMoney(currentDzd: number, amountDzd: number) {
+  return accumulateReportMoney(currentDzd, amountDzd, () => {
+    throw new CompanyError("BUSINESS_RULE", REPORT_MONEY_OVERFLOW_MESSAGE);
+  });
+}
 
 export class FinanceService {
   constructor(
@@ -1014,11 +1026,14 @@ export class FinanceService {
         account.status === "SETTLED"
           ? entries
               .filter((entry) => entry.entryType === "SETTLEMENT")
-              .reduce((sum, entry) => sum + Math.abs(entry.signedAmountDzd), 0)
+              .reduce(
+                (sum, entry) => accumulateDebtReportMoney(sum, Math.abs(entry.signedAmountDzd)),
+                0,
+              )
           : 0;
 
-      totalOutstandingDzd += accountOutstanding;
-      totalSettledDzd += accountSettled;
+      totalOutstandingDzd = accumulateDebtReportMoney(totalOutstandingDzd, accountOutstanding);
+      totalSettledDzd = accumulateDebtReportMoney(totalSettledDzd, accountSettled);
 
       if (account.status === "OPEN") {
         // Boundary: age 60 lands in "60+_DAYS" so the 60+ bucket always equals
@@ -1026,9 +1041,12 @@ export class FinanceService {
         const ageCategory =
           age <= 30 ? "0-30_DAYS" : age <= 59 ? "31-60_DAYS" : "60+_DAYS";
         agingAccumulators[ageCategory].countOpen += 1;
-        agingAccumulators[ageCategory].amountDzd += account.currentBalance;
+        agingAccumulators[ageCategory].amountDzd = accumulateDebtReportMoney(
+          agingAccumulators[ageCategory].amountDzd,
+          account.currentBalance,
+        );
         if (age >= 60) {
-          overdueDzd += account.currentBalance;
+          overdueDzd = accumulateDebtReportMoney(overdueDzd, account.currentBalance);
         }
       }
 
@@ -1061,8 +1079,8 @@ export class FinanceService {
           ? `${employee.firstName} ${employee.lastName}`
           : counterparty?.fullName ?? account.id,
         partyType: account.partyType,
-        outstandingDzd: (current?.outstandingDzd ?? 0) + accountOutstanding,
-        settledDzd: (current?.settledDzd ?? 0) + accountSettled,
+        outstandingDzd: accumulateDebtReportMoney(current?.outstandingDzd ?? 0, accountOutstanding),
+        settledDzd: accumulateDebtReportMoney(current?.settledDzd ?? 0, accountSettled),
         lastTransaction:
           !previous || Date.parse(latestTransaction) > Date.parse(previous)
             ? latestTransaction
