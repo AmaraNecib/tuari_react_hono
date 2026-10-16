@@ -163,14 +163,38 @@
       "specs": ["warehouses.spec.ts", "search.spec.ts"]
     },
     {
+      "$comment": "Shared UI primitives (components/**) are imported by nearly every feature. A single wrong line here can move any screen, so this rule fans out to every consuming feature's specs rather than guessing one owner. Keep it in sync when a new feature imports a shared control.",
       "match": [
         "apps/web/src/features/shared/**",
         "apps/web/src/components/**"
       ],
       "specs": [
+        "admin-account.spec.ts",
+        "backup-settings.spec.ts",
+        "bootstrap-setup-key.spec.ts",
+        "debt-entry.spec.ts",
+        "dialogs-a11y.spec.ts",
+        "employees-search.spec.ts",
+        "employees.spec.ts",
+        "expenses.spec.ts",
+        "foundation-smoke.spec.ts",
+        "i18n-raw-keys.spec.ts",
+        "inventory-asset-charge.spec.ts",
+        "inventory-invoice-create.spec.ts",
+        "inventory-invoice-progressive-disclosure.spec.ts",
+        "inventory-transfer.spec.ts",
+        "legacy-password-recovery.spec.ts",
+        "mobile-drawer.spec.ts",
+        "projects.spec.ts",
+        "recovery-keys.spec.ts",
+        "salaries.spec.ts",
+        "search.spec.ts",
+        "security-batch.spec.ts",
         "select-combobox-regression.spec.ts",
         "validation-toast.spec.ts",
-        "dialogs-a11y.spec.ts"
+        "warehouses.spec.ts",
+        "worker-assignment.spec.ts",
+        "workspace-snapshot.spec.ts"
       ]
     }
   ]

@@ -307,7 +307,7 @@ jobs:
             # Fail closed: if the base ref cannot be fetched the changed-file
             # list is empty and the selector returns mode=full (whole suite).
             git fetch --no-tags origin "${{ github.base_ref }}" || true
-            git diff --name-only "origin/${{ github.base_ref }}...HEAD" > /tmp/e2e-changed.txt || true
+            git diff --name-only --no-renames "origin/${{ github.base_ref }}...HEAD" > /tmp/e2e-changed.txt || true
             node scripts/ci/e2e-selection.mjs --mode e2e --files /tmp/e2e-changed.txt >> "$GITHUB_OUTPUT"
           fi
 

@@ -42,13 +42,41 @@ test('selectSpecs: critical path beats a skip match', () => {
   assert.match(scope.reason, /critical path/);
 });
 
-test('selectSpecs: a feature match beats a skip match', () => {
-  // `scripts/**` is inert and `apps/web/**` is not skipped, but the point is
-  // that a matching feature rule routes a web screen even when a broader inert
-  // pattern also matches the same tree.
-  const scope = selectSpecs(['apps/web/src/features/expenses/expenses-page.tsx']);
+test('selectSpecs: a feature match beats a skip match on the SAME path', () => {
+  // A custom map where one path matches both a skip rule and a feature rule.
+  // The feature must win, so this test fails if the skip check ever moves ahead
+  // of the feature check. (The real map has no such overlap by construction.)
+  const overlapMap = {
+    always_full: [],
+    skip_e2e: ['apps/web/src/features/overlap/**'],
+    always_specs: [],
+    features: [
+      { match: ['apps/web/src/features/overlap/**'], specs: ['overlap.spec.ts'] },
+    ],
+  };
+  const scope = selectSpecs(['apps/web/src/features/overlap/page.tsx'], overlapMap);
   assert.equal(scope.mode, 'affected');
-  assert.ok(scope.specs.includes('expenses.spec.ts'));
+  assert.deepEqual(scope.specs, ['overlap.spec.ts']);
+});
+
+test('selectSpecs: a shared UI control routes its callers, warehouses included', () => {
+  // Shared UI primitives are imported by nearly every feature; the components
+  // rule fans out so a CreateableSelect change cannot skip the warehouse form.
+  const scope = selectSpecs(['apps/web/src/components/ui/createable-select.tsx']);
+  assert.equal(scope.mode, 'affected');
+  assert.ok(scope.specs.includes('warehouses.spec.ts'));
+});
+
+test('selectSpecs: both sides of a rename are honoured', () => {
+  // The hook and CI pass --no-renames so a rename reports source and
+  // destination. A feature moved out of apps/web (destination inert) must still
+  // route from its old browser path instead of degrading to a skip.
+  const scope = selectSpecs([
+    'apps/desktop/warehouse-form.tsx',
+    'apps/web/src/features/warehouses/warehouse-form.tsx',
+  ]);
+  assert.equal(scope.mode, 'affected');
+  assert.ok(scope.specs.includes('warehouses.spec.ts'));
 });
 
 test('selectSpecs: an unmapped path fails closed to a full run', () => {

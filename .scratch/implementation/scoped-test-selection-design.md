@@ -35,7 +35,10 @@ tests/e2e-selection.test.mjs     # unit tests + anti-rot test
 - `always_full` — critical/shared paths. Any hit means run the whole suite.
 - `skip_e2e` — no browser surface (docs, `.github`, `.agents`, `.scratch`,
   markdown, local scripts/config).
-- `features` — `{ match: [globs], specs: [names] }`.
+- `features` — `{ match: [globs], specs: [names] }`. A shared surface whose
+  blast radius spans features (`apps/web/src/components/**`) is a feature rule
+  that fans out to every consuming feature's specs, so a shared-control change
+  routes the screens that use it instead of a single guessed owner.
 - `always_specs` — cross-cutting specs (boot, fonts, splashscreen, web hygiene)
   that join every `affected` run. They are the wiring home for specs that do not
   belong to a single feature, so the anti-rot test can prove every spec is
@@ -113,7 +116,9 @@ run-everything escape hatch. On a PR it computes the changed files with
 ## Risks
 
 - The map can rot. The anti-rot test makes a new unwired spec fail CI.
-- A mapped feature can still fan out wider than its rule. Shared code lives in
-  `always_full`, so the fan-out case degrades to the full suite, not to silence.
+- A mapped feature can still fan out wider than its rule. Genuinely critical
+  shared code lives in `always_full`; the shared UI primitives under
+  `apps/web/src/components/**` are a fan-out feature rule that names every
+  consuming feature's specs. Both degrade to coverage, never to silence.
 - Pre-push e2e needs local servers/ports. The hook runs the mapped subset only;
   a mapping miss is caught by the fail-closed full run in CI.

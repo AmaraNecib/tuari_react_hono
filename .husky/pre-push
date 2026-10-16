@@ -21,6 +21,9 @@ trap 'rm -f "$files"' EXIT
 # An all-zero remote sha means a new branch, so diff against the merge base
 # with origin/develop. Anything we cannot resolve leaves the list empty, which
 # the selector treats as a full gate. No stdin (run by hand) is the same.
+# A multi-ref push where ANY ref cannot be compared forces the full gate too:
+# one ref's diff must never make another ref's failure look like a complete list.
+diff_incomplete=0
 if [ ! -t 0 ]; then
   while read -r _local_ref local_sha _remote_ref remote_sha; do
     [ -n "$local_sha" ] || continue
@@ -34,13 +37,27 @@ if [ ! -t 0 ]; then
         base="$remote_sha"
         ;;
     esac
-    if [ -n "$base" ]; then
-      git diff --name-only "$base...$local_sha" >> "$files" || true
+    if [ -z "$base" ]; then
+      # Could not resolve this ref's base: the file list is incomplete, so the
+      # whole run must fail closed to the full gate below.
+      diff_incomplete=1
+      continue
+    fi
+    # --no-renames keeps BOTH sides of a rename; otherwise only the destination
+    # is reported and a path that left the browser tree looks inert.
+    if ! git diff --name-only --no-renames "$base...$local_sha" >> "$files"; then
+      diff_incomplete=1
     fi
   done
 fi
 
-scope="$(node scripts/ci/e2e-selection.mjs --mode areas --files "$files")"
+if [ "$diff_incomplete" = "1" ]; then
+  # Any ref that could not be compared makes every derived scope untrustworthy.
+  # Keep the selector's one-field-per-line shape so the sed reads below match.
+  scope="$(printf 'gate=full\napi=1\nweb=1\ne2e_mode=full\ne2e_specs=\nreason=unresolvable push base - fail closed')"
+else
+  scope="$(node scripts/ci/e2e-selection.mjs --mode areas --files "$files")"
+fi
 gate="$(printf '%s\n' "$scope" | sed -n 's/^gate=//p')"
 api="$(printf '%s\n' "$scope" | sed -n 's/^api=//p')"
 web="$(printf '%s\n' "$scope" | sed -n 's/^web=//p')"
