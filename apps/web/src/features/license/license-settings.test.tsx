@@ -273,3 +273,44 @@ describe("LicenseSettings", () => {
     expect(screen.queryByText("لا توجد ميزات إضافية في هذا الإصدار.")).toBeTruthy();
   });
 });
+
+describe("stored business day timezone (#473)", () => {
+  const originalTimeZone = process.env.TZ;
+  // 2026-09-30T23:00Z is 2026-10-01 00:00 in Africa/Algiers (UTC+1).
+  const MIDNIGHT_CROSSING = "2026-09-30T23:00:00.000Z";
+  const options = { year: "numeric", month: "long", day: "numeric" } as const;
+  const ALGERIA_DAY = new Intl.DateTimeFormat("ar-DZ", { ...options, timeZone: "Africa/Algiers" }).format(
+    new Date(MIDNIGHT_CROSSING),
+  );
+  const UTC_DAY = new Intl.DateTimeFormat("ar-DZ", { ...options, timeZone: "UTC" }).format(
+    new Date(MIDNIGHT_CROSSING),
+  );
+
+  beforeEach(() => {
+    process.env.TZ = "UTC";
+    mockUseLicenseStatus.mockReset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    if (originalTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimeZone;
+  });
+
+  it("runs under UTC so the assertions are not vacuous", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC");
+  });
+
+  it("renders the licence expiry date on its Algeria day, not the ambient UTC day", () => {
+    mockUseLicenseStatus.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: createLicenseData({ validUntil: MIDNIGHT_CROSSING }),
+    });
+
+    renderWithQuery(<LicenseSettings />);
+
+    expect(screen.queryByText(ALGERIA_DAY)).toBeTruthy();
+    expect(screen.queryByText(UTC_DAY)).toBeNull();
+  });
+});

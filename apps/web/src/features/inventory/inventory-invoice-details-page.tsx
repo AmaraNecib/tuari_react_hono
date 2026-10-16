@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { formatAlgeriaDate } from "@/lib/algeria-time"
 import { downloadDesktopApiFile } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { resolveApiUrl } from "@/lib/runtime-config"
@@ -73,7 +74,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
           <PageHeader title={detail?.group.invoiceNumber || "تفاصيل الفاتورة"} description={detail?.group.supplierName || "بدون مورد محدد"} action={<PageActionGroup><Button variant="outline" onClick={onBack}>العودة إلى الفواتير</Button>{detail && detail.group.remainingDebtDzd > 0 && <Button onClick={() => setPaymentDialogOpen(true)}>تسجيل دفعة</Button>}</PageActionGroup>} />
           {detail ? (
             <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl border border-border/70 p-4">تاريخ الفاتورة: {detail.group.invoiceDate ? new Date(detail.group.invoiceDate).toLocaleDateString("ar-DZ") : "غير محدد"}</div>
+              <div className="rounded-xl border border-border/70 p-4">تاريخ الفاتورة: {detail.group.invoiceDate ? formatAlgeriaDate(detail.group.invoiceDate) : "غير محدد"}</div>
               <div className="rounded-xl border border-border/70 p-4">الإجمالي: {detail.group.grossTotalDzd.toFixed(2)} دج</div>
               <div className="rounded-xl border border-border/70 p-4">المدفوع: {detail.group.paidAmountDzd.toFixed(2)} دج</div>
               <div className="rounded-xl border border-border/70 p-4">الدين المتبقي: {detail.group.remainingDebtDzd.toFixed(2)} دج</div>

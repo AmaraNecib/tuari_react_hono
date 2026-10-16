@@ -7,6 +7,7 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { Field } from "@/components/ui/field"
 import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
+import { formatDateTimeInAlgeria } from "@/lib/algeria-time"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { BackupSettings } from "./backup-settings"
@@ -136,7 +137,7 @@ export function SettingsSection({
     try {
       const date = new Date(checkedAt)
       if (isNaN(date.getTime())) return "-"
-      return date.toLocaleString()
+      return formatDateTimeInAlgeria(date)
     } catch {
       return "-"
     }

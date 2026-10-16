@@ -638,3 +638,58 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
     expect(screen.queryByText(/المتبقي|متبق|الرصيد|رصيد/)).toBeNull()
   })
 })
+
+describe("stored business day timezone (#473)", () => {
+  const originalTimeZone = process.env.TZ
+  // 2026-09-30T23:00Z is 2026-10-01 00:00 in Africa/Algiers (UTC+1).
+  const MIDNIGHT_CROSSING = "2026-09-30T23:00:00.000Z"
+  const ALGERIA_DAY = new Intl.DateTimeFormat("ar-DZ", { dateStyle: "medium", timeZone: "Africa/Algiers" }).format(
+    new Date(MIDNIGHT_CROSSING),
+  )
+  const UTC_DAY = new Intl.DateTimeFormat("ar-DZ", { dateStyle: "medium", timeZone: "UTC" }).format(
+    new Date(MIDNIGHT_CROSSING),
+  )
+
+  beforeEach(() => {
+    process.env.TZ = "UTC"
+  })
+
+  afterEach(() => {
+    cleanup()
+    if (originalTimeZone === undefined) delete process.env.TZ
+    else process.env.TZ = originalTimeZone
+  })
+
+  it("runs under UTC so the assertions are not vacuous", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
+  })
+
+  it("renders the payment history date on its Algeria day, not the ambient UTC day", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[PROJECT]}
+        recentPayments={[{ ...PAYMENT, paymentDate: MIDNIGHT_CROSSING }]}
+        workers={[worker(30000)]}
+      />,
+    )
+
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
+  })
+
+  it("renders the workers' last-payment date on its Algeria day, not the ambient UTC day", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[PROJECT]}
+        recentPayments={[]}
+        workers={[{ ...worker(30000), lastPaymentDate: MIDNIGHT_CROSSING }]}
+      />,
+    )
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
+  })
+})

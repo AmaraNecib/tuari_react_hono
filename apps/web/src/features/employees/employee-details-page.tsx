@@ -28,7 +28,7 @@ import {
   RecordTabPanel,
   RecordTabs,
 } from "@/features/shared/record-page-frame"
-import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { formatAlgeriaDate, getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 import { computeProposedSalaryAmount } from "@tuari/contracts"
 
@@ -515,7 +515,7 @@ export function EmployeeDetailsPage({
 
                       return (
                         <tr key={payment.id} className="border-t border-border/60 bg-sidebar dark:bg-background">
-                          <td className="px-4 py-4 text-start text-foreground">{new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}</td>
+                          <td className="px-4 py-4 text-start text-foreground">{formatAlgeriaDate(payment.paymentDate)}</td>
                           <td className="px-4 py-4 text-start font-mono tabular-nums text-foreground" dir="ltr">{payment.days}</td>
                           <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.expectedAmountDzd, currencyLabel)}</td>
                           <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.actualAmountDzd, currencyLabel)}</td>

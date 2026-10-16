@@ -1,11 +1,17 @@
 /**
  * Algeria timezone utilities for date handling.
+ *
+ * Africa/Algiers is UTC+1 year-round (no DST). A stored business day must be
+ * rendered in this zone: the machine's zone is not the business zone, and an
+ * instant near midnight would otherwise render the previous day.
  */
 const ALGERIA_TIME_ZONE = "Africa/Algiers"
 const ALGERIA_OFFSET_HOURS = 1
 
 /**
- * toAlgeriaDayBoundaryIso(value component.
+ * Expand a `yyyy-MM-dd` business day to the inclusive UTC instant range of that
+ * day in Africa/Algiers (`start` = 00:00 local, `end` = 23:59:59.999 local).
+ * Returns `undefined` when the value is not a valid calendar day.
  */
 export function toAlgeriaDayBoundaryIso(value: string, boundary: "start" | "end") {
   const [rawYear, rawMonth, rawDay] = value.split("-").map((part) => Number.parseInt(part, 10))
@@ -19,27 +25,24 @@ export function toAlgeriaDayBoundaryIso(value: string, boundary: "start" | "end"
 
   return boundary === "start"
     ? new Date(Date.UTC(year, month - 1, day, 0 - ALGERIA_OFFSET_HOURS, 0, 0, 0)).toISOString()
-/**
- * getAlgeriaDateInputValue(date = new Date()) component.
- */
     : new Date(Date.UTC(year, month - 1, day, 23 - ALGERIA_OFFSET_HOURS, 59, 59, 999)).toISOString()
 }
 
+/**
+ * The app's canonical business day (`yyyy-MM-dd`) for `date`, in Africa/Algiers.
+ */
 export function getAlgeriaDateInputValue(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: ALGERIA_TIME_ZONE,
-/**
- * formatDateTimeInAlgeria(date component.
- */
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(date)
 }
-/**
- * getAlgeriaTimeZone() component.
- */
 
+/**
+ * Format a stored instant as a date and time in Africa/Algiers.
+ */
 export function formatDateTimeInAlgeria(date: Date, locale = "ar-DZ") {
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
@@ -49,16 +52,19 @@ export function formatDateTimeInAlgeria(date: Date, locale = "ar-DZ") {
 }
 
 /**
- * Format a stored instant as the Algeria calendar day it fell on (date only),
- * pinned to Africa/Algiers so a UTC midnight boundary cannot shift the day.
+ * Format a stored business day as the Algeria calendar day it fell on (date
+ * only), pinned to Africa/Algiers so a UTC midnight boundary cannot shift the
+ * day. Accepts the stored value directly — an instant string or a `Date`.
  */
-export function formatAlgeriaDate(date: Date, locale = "ar-DZ") {
+export function formatAlgeriaDate(value: string | Date, locale = "ar-DZ") {
+  const date = typeof value === "string" ? new Date(value) : value
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeZone: ALGERIA_TIME_ZONE,
   }).format(date)
 }
 
+/** The app's business timezone, for formatters that take their own options. */
 export function getAlgeriaTimeZone() {
   return ALGERIA_TIME_ZONE
 }

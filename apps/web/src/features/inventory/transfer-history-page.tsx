@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader, StatBand } from "@/features/shared/page-primitives"
+import { getAlgeriaTimeZone } from "@/lib/algeria-time"
 import { useTransferHistoryQuery, type TransferHistoryFilters, type TransferHistoryItem } from "./transfer-history-hooks"
 
 /** formatDate - helper function. */
@@ -17,6 +18,7 @@ function formatDate(dateString: string): string {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: getAlgeriaTimeZone(),
   })
 }
 

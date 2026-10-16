@@ -344,3 +344,46 @@ describe("EmployeeDetailsPage salary payments (#412)", () => {
     )
   })
 })
+
+describe("stored business day timezone (#473)", () => {
+  const originalTimeZone = process.env.TZ
+  // 2026-09-30T23:00Z is 2026-10-01 00:00 in Africa/Algiers (UTC+1).
+  const MIDNIGHT_CROSSING = "2026-09-30T23:00:00.000Z"
+  const ALGERIA_DAY = new Intl.DateTimeFormat("ar-DZ", { dateStyle: "medium", timeZone: "Africa/Algiers" }).format(
+    new Date(MIDNIGHT_CROSSING),
+  )
+  const UTC_DAY = new Intl.DateTimeFormat("ar-DZ", { dateStyle: "medium", timeZone: "UTC" }).format(
+    new Date(MIDNIGHT_CROSSING),
+  )
+
+  beforeEach(() => {
+    process.env.TZ = "UTC"
+  })
+
+  afterEach(() => {
+    cleanup()
+    if (originalTimeZone === undefined) delete process.env.TZ
+    else process.env.TZ = originalTimeZone
+  })
+
+  it("runs under UTC so the assertions are not vacuous", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
+  })
+
+  it("renders the salary payment history date on its Algeria day, not the ambient UTC day", () => {
+    renderDetails(monthlyWorker(), [
+      {
+        id: "payment-1",
+        paymentDate: MIDNIGHT_CROSSING,
+        days: 15,
+        expectedAmountDzd: 15000,
+        actualAmountDzd: 15000,
+        periodType: "MONTHLY",
+        note: null,
+      },
+    ])
+
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
+  })
+})
