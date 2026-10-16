@@ -28,7 +28,8 @@
 #   1. Only "Closes/Fixes/Resolves #N" in the PR BODY counts (never titles),
 #      the keyword must come IMMEDIATELY before the reference (#466), and a
 #      NEGATED close ("does not close #N") counts for nothing — prose that
-#      merely mentions #N, or says it will not close it, never closes it.
+#      merely mentions #N, or says it will not close it, never closes it. A
+#      negator only reaches a close verb inside its OWN sentence (#486).
 #   2. Skips parent/tracker issues that still have open sub-issues.
 #   3. Skips issues whose body marks REMAINING work in a still-open issue
 #      ("remaining"/"todo" — NOT lineage markers like "Part of #N").
@@ -163,18 +164,44 @@ CLOSE_VERBS='(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)'
 # "Closes#12" is not a close; only emphasis may sit around that separator,
 # never prose. That is the #466 fix.
 CLOSE_SEP='[*_]*([[:space:]]+|:)[[:space:]]*[*_]*'
-# Negators; contractions are spelled out because grep -E has no lookaround.
-# The trailing \b matters: without it `not` matches the prefix of "notably"
-# and `no` the prefix of "nobody", and the false drop lands on a REAL close
-# (review round 2). Bare `no` must be followed by whitespace, so the
-# interjection "No, this Closes #N" is not a negator. `nor`/`neither` are
-# negators too — "does not close #A, nor does it close #B" must negate both
-# (round-3 finding: #B closed).
-NEGATORS='(not|never|nor|neither|no[[:space:]]+longer|no[[:space:]]+more|no[[:space:]]+|won[[:punct:]]?t|don[[:punct:]]?t|doesn[[:punct:]]?t|didn[[:punct:]]?t|isn[[:punct:]]?t|aren[[:punct:]]?t|cannot|can[[:punct:]]?t|hardly)'
+# Negators. Each alternative carries its OWN trailing boundary/separator, so a
+# word test can never be defeated by what follows the word (round-2 finding 3:
+# `no **intention** of closing #N` slipped through while the \b sat after the
+# emphasis instead of right after `no`). The whole-word test is what keeps
+# `not` out of "notably" and `no` out of "nobody" — a false drop there lands
+# on a REAL close. Bare `no` must be a whole word followed by whitespace,
+# which is why the interjection "No, this Closes #N" is not a negator.
+# `nor`/`neither` are negators too — "does not close #A, nor does it close
+# #B" must negate both (round-3 finding). Contractions are spelled out
+# because grep -E has no lookaround (round-2 finding 2: `hasn't` closed its
+# issue while `has not` did not).
+NEGATOR='(\b(not|never|nor|neither|hardly)\b|\bno[[:space:]]+(longer|more)\b|\bno\b[[:space:]]+|\b(won|don|doesn|didn|hasn|haven|hadn|isn|aren|wasn|weren|can|couldn|shouldn|wouldn|mustn|needn)[[:punct:]]t\b|\bcannot\b)'
+NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"
+# "not only/just/merely/simply fixes #N" is AFFIRMATIVE, but only when the
+# close verb follows the idiom DIRECTLY. The test runs per matched SPAN, not
+# per line, so a later real negator in that span survives (round-2 finding 1:
+# the old line filter threw away "…does not fix #443" because "not only"
+# appeared earlier in the same span). Emphasis is allowed between the words
+# and before the verb (round-2 finding 4: `not **only** fixes #N` closes).
+AFFIRMATIVE_IDIOM="${NEGATOR}[[:space:]*_]+(only|just|merely|simply)[[:space:]*_]+${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"
 
 # One line, not many: grep is line-based, and "does not\nclose #N" is the same
 # statement as "does not close #N" (test-audit finding).
 body_flat=$(printf '%s' "$PR_BODY" | tr '\n' ' ')
+
+# Negation is scoped to a SENTENCE, not a word count (#486). The old
+# "{0,3} words" window was zero-sum: a negator in an unrelated clause
+# swallowed a real close ("Neither reviewer objected. Closes #N"), while a
+# negation padded past three words let an issue close ("This does not, in any
+# way whatsoever, close #N"). A sentence ends at . ! ? ; — those four
+# characters become line breaks, so the negation pass below reads one
+# sentence at a time. The affirmative pass needs no split (a `#` can never
+# appear between a keyword and its reference), so it keeps reading body_flat.
+#
+# Known trade, accepted in #486: a negator and a close verb in the SAME
+# sentence negate, so "Do not merge this until it Closes #N" is a logged,
+# recoverable drop instead of a close.
+body_sentences=$(printf '%s' "$body_flat" | tr '.!?;' '\n\n\n\n')
 
 to_numbers() { # stdin: matched closing spans → one issue number per line
   grep -oE '#[0-9]+' | tr -d '#' | sort -un
@@ -192,28 +219,34 @@ numbers=$(
 #     references first, then subtract them — the affirmative pass above stays
 #     exactly the same, so nothing else about extraction changes.
 #
-#     The negator may be up to THREE words from the keyword, and those words
-#     may carry punctuation or quotes ("does not, however, close #N", "no plans
-#     to close #N"); a `#` is not allowed inside that gap, so a negated
-#     reference can never swallow the reference that follows it. Four words out
-#     is a different clause ("do not merge this until it Closes #N" must still
-#     close). "not only/just/merely fixes #N" is AFFIRMATIVE and is filtered
-#     back out, contractions included ("doesn't just fix #N", review finding
-#     C2 round 1, extended in round 2).
+#     The negator and the close verb must share a SENTENCE (#486), and the gap
+#     between them may hold prose but never a `#`, so a negation can only
+#     swallow the reference it directly precedes ("does not close #A, but
+#     Closes #B" still closes #B). "not only/just/merely fixes #N" is
+#     AFFIRMATIVE and is filtered back out per matched span, emphasis included.
 #     Subtracting a NUMBER is deliberately conservative — a body that both
 #     negates and closes the same number does not close it.
+negated_spans=$(
+  printf '%s\n' "$body_sentences" \
+    | while IFS= read -r sentence; do
+        [ -n "$sentence" ] || continue
+        printf '%s\n' "$sentence" | grep -oiE "$NEGATED_CLOSE" || true
+      done
+)
 negated=$(
-  printf '%s\n' "$body_flat" \
-    | grep -oiE "\b${NEGATORS}\b([^[:alnum:]#]*[[:alnum:]_'-]+){0,3}[^[:alnum:]#]*${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+" \
-    | grep -viE '\b([a-z]*n[[:punct:]]?t|not|never)[[:space:]]+(only|just|merely|simply)\b' \
+  printf '%s\n' "$negated_spans" \
+    | grep -viE "$AFFIRMATIVE_IDIOM" \
     | to_numbers \
     || true
 )
 for neg in $negated; do
-  # Only report a subtraction that actually happened (review finding C4).
+  # Only report a subtraction that actually happened (review finding C4) — and
+  # record it in the step summary too, not just the run log (round-2 finding 5:
+  # a negated candidate used to vanish from the summary table).
   if printf '%s\n' "$numbers" | grep -qx "$neg"; then
     numbers=$(printf '%s\n' "$numbers" | grep -vx "$neg" || true)
     echo "Ignoring #$neg: the PR body negates closing it"
+    summarize SKIP "#$neg" "PR body negates closing it — no close performed"
   fi
 done
 numbers=$(printf '%s\n' "$numbers" | grep -E '^[0-9]+$' || true)

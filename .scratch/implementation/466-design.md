@@ -63,37 +63,56 @@ existed and are *not* the fix: the `remaining/todo #N` issue-body guard and the
 twice over now — the extractor never sees it, and the self-reference guard would
 still catch a body that says both (`Closes #201 — Part of #201`).
 
-### Negated closes (parent decision on #466)
+### Negated closes (parent decision on #466, rescoped by #486)
 
 `This does not close #443` is the same bug class as a mention, so it must extract
 nothing. A second pass collects negated references and subtracts them from the
 affirmative set. The affirmative pass is untouched, so nothing else about
 extraction changes.
 
+The negator must reach the close verb **inside one sentence**. Two review rounds
+of token patches (`{0,3}` words, then contractions, then the `\b` placement,
+then markdown emphasis) each fixed one body and broke another, because a word
+count is not a clause. The window is now structural:
+
 ```bash
-NEGATORS='(not|never|nor|neither|no longer|no more|won't|don't|doesn't|didn't|isn't|aren't|cannot|can't|no |hardly)'
-\b${NEGATORS}([^[:alnum:]#]*word){0,3}[^[:alnum:]#]*${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+
+body_sentences=$(printf '%s' "$body_flat" | tr '.!?;' '\n\n\n\n')
+NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"
 ```
 
-Four properties are deliberate:
-
-- **Three words, and punctuation is allowed between them.** `does not, however,
-  close #N`, `no intention of closing #N`, `does not, in any way, close #N` all
-  negate (review finding C1). A `#` may not appear in the gap, so a negated
-  reference can never swallow the reference after it.
-- **The negator must be a whole word.** `\bnot\b` and `no[[:space:]]+`, so
-  `Notably, this Closes #N` and `Note: this Closes #N` still close (review
-  round 2), while `No, this does not close #N` is negated by the `not`, not
-  swallowed by the interjection `No,` (review round 2 BLOCKER).
-- **Four words out is a different clause.** `Do not merge this until it
-  Closes #N` still closes. Pinned from both sides (`#446` negates, `#135`
-  closes).
-- **`not only` / `not just` / `not merely` is affirmative.** Those matches are
-  filtered back out before subtraction (review finding C2), contractions
-  included (`doesn't just fix #N`).
+- **A sentence ends at `. ! ? ;`.** A negator in one sentence cannot reach a
+  close verb in the next, and vice versa. `Neither reviewer objected. Closes #N`
+  closes; `This does not, in any way whatsoever, close #N` negates. Under the
+  word count both of those were wrong, in opposite directions.
+- **No word-count window.** Inside a sentence the gap holds any amount of prose
+  and punctuation, bounded only by the next `#` — so a negation still swallows
+  only the reference it directly precedes (`does not close #A, but Closes #B`
+  still closes #B).
+- **Every negator alternative carries its own trailing separator.**
+  `\bno\b[[:space:]]+` — so `Nobody`, `Note:` and the interjection `No,` are not
+  negators, and markdown between `no` and its object
+  (`no **intention** of closing #N`) can no longer defeat the word test by
+  sitting between the word and its `\b`.
+- **Contractions are enumerated** (`hasn't`, `haven't`, `hadn't`, `won't`, …)
+  because `grep -E` has no lookaround; `hasn't fixed #N` and `has not fixed #N`
+  now agree.
+- **`not only` / `not just` / `not merely` is affirmative — per matched span.**
+  The check runs on the span the negator actually covers, not on the whole line,
+  so `not only does not fix #N` keeps its negation while `not **only** fixes #N`
+  closes. The old line filter threw away the whole span, negation included.
 - **Subtraction is by number, and conservative.** A body that both negates and
   closes the same number does not close it (`#456`). The safe direction: a
   missing close is visible, a wrong close is not.
+
+Known trade, accepted in #486: a negator and a close verb in the SAME sentence
+negate, so `Do not merge this until it Closes #N` is now a logged, recoverable
+drop (`Ignoring #N: the PR body negates closing it`) instead of a close. Comma-
+separated clauses are the same sentence, so `Not sure, but Closes #N` is the
+same class of conservative miss — visible in the run log and the step summary,
+correctable by hand.
+
+Negated candidates are recorded in the step summary as `SKIP` as well as echoed
+to the run log; they used to vanish from the summary table.
 
 Forms that extract nothing now: `does not close #N`, `does not resolve #N`,
 `never fixes #N`, `no longer closes #N`, `won't fix #N`, `cannot resolve #N`,
@@ -121,7 +140,7 @@ Existing scenarios keep running; added (each one is a real-world shape):
 | negated fix (`never`) | `Refactoring the hook never fixes #130.` | not closed |
 | mixed, negated first | `This does not close #131, but Closes #132.` | #131 not closed, #132 closed |
 | mixed, negated second | `Closes #133. It does not fix #134.` | #133 closed, #134 not closed |
-| negator in a different clause | `Do not merge this until it Closes #135.` | closed (four-word gap is not a negation of this close) |
+| negator in a different clause | `Do not merge this until it Closes #135.` | not closed, `Ignoring #135` echoed (#486 trade: documented, recoverable drop) |
 | negated, punctuation gap (C1) | `This does not, however, close #444.` | not closed |
 | negated, bare `no` (C1) | `We have no intention of closing #445.` | not closed |
 | negated, three-word gap (C1) | `This does not, in any way, close #446.` | not closed |
@@ -144,13 +163,26 @@ Existing scenarios keep running; added (each one is a real-world shape):
 | neither/nor (round 3) | `Neither fixes #473 nor closes #474.` | both not closed |
 | affirmative beside a nor-clause (anti-vacuity) | `This does not close #471, nor does it resolve #472. Closes #480.` | #480 closed, exit 0 |
 | no-space colon separator | `Closes:#481` | closed |
+| not-only then a real negation (round 2) | `This not only does not fix #490, it makes it worse. Closes #491.` | #490 not closed, #491 closed |
+| not-only contraction then a negation | `This not only doesn't fix #492, it makes it worse. Closes #493.` | #492 not closed, #493 closed |
+| negative contractions, both spellings | `This hasn't fixed #494 yet, and it has not fixed #495 yet. Closes #496.` | #494/#495 not closed, #496 closed |
+| negative contraction, `haven't` | `We haven't resolved #497 yet. Closes #498.` | #497 not closed, #498 closed |
+| `no` + markdown emphasis | `We have no **intention** of closing #499. Closes #500.` | #499 not closed, #500 closed |
+| `not **only**` is affirmative | `This not **only** fixes #501, it also improves performance. It does not fix #502.` | #501 closed, #502 not closed |
+| negator in an earlier sentence (#486) | `Neither reviewer objected. Closes #503.` | closed |
+| negation padded past three words (#486) | `This does not, in any way whatsoever, close #504. Closes #505.` | #504 not closed, #505 closed |
+| negated candidate in the step summary | `This does not close #507. Closes #508.` with `GITHUB_STEP_SUMMARY` set | summary carries `SKIP … #507` and `CLOSED … #508` |
 
 The gap tests and the negated-close tests are the regression pins. With the
 74-assertion suite the pre-fix script reported `PASS=58 FAIL=16` (2 prose-gap
 closes, the negated-close scenarios, the split-line/bold separators, the mixed
 body); the 84-assertion control run against the base script is PENDING A SLOT
 (the machine is CPU-bound and the owner's policy forbids re-running suites for
-it). The fixed script: `PASS=91 FAIL=0`.
+it). The round-1 fixed script: `PASS=91 FAIL=0`. After the #486 rescope the
+suite is 110 assertions: `PASS=110 FAIL=0` at the round-2 code HEAD, and the
+same suite against the 8b2504e2 (word-count) script is recorded in
+`<head>-control-wordcount.log` — the round-2 rows are exactly the ones that
+fail there, which is what makes them non-vacuous.
 
 ## Risks and non-goals
 
@@ -160,22 +192,14 @@ it). The fixed script: `PASS=91 FAIL=0`.
   always closed (base did it too, and so does GitHub's own parser), so the
   change makes a line-break body behave like a one-line body rather than
   inventing a new class. It is the direct cost of the C3 fix.
-- **A negator inside an unrelated clause can still swallow a following close**
-  when it is within three words (`Not sure, but Closes #N` drops #N), and a
-  negated reference more than three words from its keyword is not treated as
-  negating it. Deliberate: the alternative drifts into sentence parsing.
-- **Only whole-word negators count.** `Note:` and `Nobody` no longer negate
-  (`\bnot\b` / `no[[:space:]]+`), so `Note: this Closes #N` closes.
-- **The negation window is a word count, not a clause.** Two consequences, both
-  accepted for now and both candidates for one follow-up (see below): a negator
-  in an *unrelated* clause within three words can swallow a following close
-  (`Neither reviewer objected. Closes #N`; `Not sure, but Closes #N`), and a
-  negated reference more than three words from its keyword is not negated
-  (`This does not, in any way whatsoever, close #N`). Widening or narrowing the
-  window trades one class for the other; the real fix is to scope the negation
-  to the SENTENCE (split on `.`/`!`/`?`/`;`, require negator and verb to share a
-  sentence). Proposed follow-up, not folded in here: it is a rewrite of the
-  matcher, not a fourth token.
+- **A negator inside an unrelated COMMA clause can still swallow a following
+  close** (`Not sure, but Closes #N` drops #N). Deliberate, and the direction is
+  safe: a missed close is visible in the log and the step summary, a wrong close
+  is not. Splitting on `,` instead of `. ! ? ;` would break
+  `This does not, however, close #N`, which is a real negation — the two cases
+  are indistinguishable on surface tokens, so the matcher stays conservative.
+- **Only whole-word negators count.** `Note:` and `Nobody` do not negate
+  (`\bnot\b` / `\bno\b[[:space:]]+`), so `Note: this Closes #N` closes.
 - **Subtraction is lossy in one direction only.** See the negated-closes section:
   a body that both negates and closes one number does not close it. That is the
   visible-failure direction (a missing close is noticed; a wrong close is not).

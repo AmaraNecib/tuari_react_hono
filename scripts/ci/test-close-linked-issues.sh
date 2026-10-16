@@ -262,10 +262,14 @@ run_script "Closes #133. It does not fix #134."
 assert_closed "a leading affirmative close still fires (#133)" 133
 assert_not_closed "a trailing negated close does not (#134)" 134
 
+# #486 turned this case from a close into a LOGGED, RECOVERABLE drop: the
+# negator and the close verb now share a sentence, and "Do not merge" must
+# never close anything. The drop is echoed so a human can close it by hand.
 reset_state
-mk_issue 135 open "negator in a different clause"
+mk_issue 135 open "negator in the same sentence as the close"
 run_script "Do not merge this until it Closes #135."
-assert_closed "a negator four words from the keyword is a different clause (#135)" 135
+assert_not_closed "'Do not merge this until it Closes #N' is a documented drop (#135, #486 trade)" 135
+assert_has "$OUT" "Ignoring #135" "the documented drop is logged so it can be recovered by hand"
 
 # ── Findings from the f64292ec review round ─────────────────────────────
 # C1: punctuation between negator and keyword defeated the negation pass.
@@ -419,6 +423,93 @@ reset_state
 mk_issue 456 open "negated and closed"
 run_script "Closes #456, though this does not close #456."
 assert_not_closed "a body that both negates and closes one number does not close it" 456
+
+# ── Round-2 Greptile findings (#466 → #486: sentence-scoped negation) ───
+# The three-word negation window was zero-sum, so the fix is structural:
+# negation is scoped to a sentence (terminated by . ! ? ;), and the
+# affirmative "not only" idiom is filtered per matched span. Every block
+# below pairs a must-NOT-close with a must-close in the SAME body, so an
+# affirmative regression cannot leave the block vacuously green.
+
+# Finding 1: the affirmative-idiom filter used to discard the WHOLE matched
+# span, so a real negator later in that span vanished and the issue closed.
+reset_state
+mk_issue 490 open "not-only then a real negation"
+mk_issue 491 open "affirmative control in the same body"
+run_script "This not only does not fix #490, it makes it worse. Closes #491."
+assert_not_closed "'not only does not fix #N' still negates (#490)" 490
+assert_closed "the affirmative control in that body closes (#491)" 491
+
+reset_state
+mk_issue 492 open "not-only then a contraction negation"
+mk_issue 493 open "affirmative control in the same body"
+run_script "This not only doesn't fix #492, it makes it worse. Closes #493."
+assert_not_closed "'not only doesn't fix #N' still negates (#492)" 492
+assert_closed "the affirmative control in that body closes (#493)" 493
+
+# Finding 2: negative contractions. Both spellings must agree.
+reset_state
+mk_issue 494 open "hasn't spelling"
+mk_issue 495 open "has not spelling"
+mk_issue 496 open "affirmative control in the same body"
+run_script "This hasn't fixed #494 yet, and it has not fixed #495 yet. Closes #496."
+assert_not_closed "\"hasn't fixed #N\" never closes (#494)" 494
+assert_not_closed "'has not fixed #N' never closes (#495)" 495
+assert_closed "the affirmative control in that body closes (#496)" 496
+
+reset_state
+mk_issue 497 open "haven't spelling"
+mk_issue 498 open "affirmative control in the same body"
+run_script "We haven't resolved #497 yet. Closes #498."
+assert_not_closed "\"haven't resolved #N\" never closes (#497)" 497
+assert_closed "the affirmative control in that body closes (#498)" 498
+
+# Finding 3: markdown emphasis must not defeat the whole-word test on `no`.
+reset_state
+mk_issue 499 open "no with markdown emphasis"
+mk_issue 500 open "affirmative control in the same body"
+run_script "We have no **intention** of closing #499. Closes #500."
+assert_not_closed "'no **intention** of closing #N' never closes (#499)" 499
+assert_closed "the affirmative control in that body closes (#500)" 500
+
+# Finding 4: the AFFIRMATIVE idiom must tolerate the same emphasis.
+reset_state
+mk_issue 501 open "not **only** fixes"
+mk_issue 502 open "real negation in the same body"
+run_script "This not **only** fixes #501, it also improves performance. It does not fix #502."
+assert_closed "'not **only** fixes #N' is affirmative (#501)" 501
+assert_not_closed "the real negation in that body still negates (#502)" 502
+
+# #486 itself: the sentence scope. A negator in an unrelated sentence used to
+# swallow a real close; a negation padded past the old three-word window used
+# to let an issue close.
+reset_state
+mk_issue 503 open "negator in an unrelated sentence"
+run_script "Neither reviewer objected. Closes #503."
+assert_closed "a negator in an earlier sentence does not negate a later close (#503)" 503
+
+reset_state
+mk_issue 504 open "negation padded past three words"
+mk_issue 505 open "affirmative control in the same body"
+run_script "This does not, in any way whatsoever, close #504. Closes #505."
+assert_not_closed "a negation longer than three words still negates (#504)" 504
+assert_closed "the affirmative control in that body closes (#505)" 505
+
+# Finding 5: a negated candidate must appear in the STEP SUMMARY as skipped,
+# not just in the run log.
+reset_state
+jq -cn --arg s open --arg b 'This does not close #507. Closes #508.' \
+  '{state:$s, body:$b, merged:true, base:{ref:"develop"}}' >"$TMP/issues/42.json"
+mk_issue 507 open "negated summary row"
+mk_issue 508 open "affirmative summary row"
+SUMF="$TMP/summary-negated.md"
+OUT=$(GITHUB_STEP_SUMMARY="$SUMF" PR_NUMBER=42 PR_BODY="This does not close #507. Closes #508." bash "$TARGET" 2>&1); RC=$?
+check "negated-summary run exits 0" "0" "$RC"
+if grep -q "SKIP.*#507" "$SUMF" && grep -q "CLOSED.*#508" "$SUMF"; then
+  check "a negated candidate is reported as skipped in the step summary" yes yes
+else
+  check "a negated candidate is reported as skipped in the step summary" yes no
+fi
 
 reset_state
 run_script "no references at all in this body"
