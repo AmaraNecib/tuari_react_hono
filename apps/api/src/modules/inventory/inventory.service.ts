@@ -1,4 +1,5 @@
 import {
+  MAX_MONEY_DZD,
   invoiceLineUsage,
   matchesItemOfferFilter,
   nonNegativePaymentAmountSchema,
@@ -84,17 +85,37 @@ function normalizeMoney(value: number, field: string) {
  * The module seam for money that must also respect the wire contract's
  * magnitude bound (`MAX_MONEY_DZD`). The wire gate and this seam parse the SAME
  * schema, so a direct caller cannot store an amount the contract rejects
- * (issue #289 defense-in-depth). Used for the asset purchase price, whose
- * stored value is later reused as the charge default (#413).
+ * (issue #289 defense-in-depth). Used for the asset purchase price (#413) and
+ * the invoice line/payment inputs (#429).
  */
-function normalizeMoneyWithinBound(value: number, field: string) {
+function normalizeMoneyWithinBound(value: number, field: string, message: string) {
   const parsed = nonNegativePaymentAmountSchema.safeParse(value)
   if (!parsed.success) {
-    const message = "سعر الشراء خارج النطاق المسموح به."
     throw new InventoryError("VALIDATION", message, [{ field, message }])
   }
 
   return parsed.data
+}
+
+/**
+ * Accumulate the invoice's running gross total and refuse a total that leaves
+ * `MAX_MONEY_DZD`. Each line is bounded individually, but a batch of legal
+ * lines can still sum past the safe-integer range (#429): a `quantity ×
+ * unitPrice` or a per-line sum above the bound is no longer exactly
+ * representable, so the write is refused with a typed BUSINESS_RULE before
+ * anything is persisted rather than storing a silently wrong financial
+ * number. Mirrors `AssetChargeService.sumLiveCharges` / `project-cost.service`.
+ */
+function accumulateGrossTotal(currentTotalDzd: number, lineTotalDzd: number) {
+  const nextTotalDzd = currentTotalDzd + lineTotalDzd
+  if (!Number.isFinite(nextTotalDzd) || nextTotalDzd > MAX_MONEY_DZD) {
+    throw new InventoryError(
+      "BUSINESS_RULE",
+      `إجمالي الفاتورة يتجاوز الحد الأقصى المسموح به (${MAX_MONEY_DZD}).`,
+    )
+  }
+
+  return nextTotalDzd
 }
 
 function normalizePositive(value: number, field: string) {
@@ -395,10 +416,14 @@ export class InventoryService {
         }
 
         const quantity = normalizePositive(entry.quantity, `entries.${index}.quantity`)
-        const unitPriceDzd = normalizeMoney(entry.unitPriceDzd, `entries.${index}.unitPriceDzd`)
+        const unitPriceDzd = normalizeMoneyWithinBound(
+          entry.unitPriceDzd,
+          `entries.${index}.unitPriceDzd`,
+          "سعر الوحدة خارج النطاق المسموح به.",
+        )
         // Server derives total to prevent client-submitted inconsistencies
         const totalPriceDzd = quantity * unitPriceDzd
-        grossTotalDzd += totalPriceDzd
+        grossTotalDzd = accumulateGrossTotal(grossTotalDzd, totalPriceDzd)
         preparedEntries.push({
           kind: "CONSUMABLE",
           definitionId: definition.id,
@@ -425,14 +450,18 @@ export class InventoryService {
         serialNumber: normalizeText(asset.serialNumber),
         condition: asset.condition ?? null,
         purchaseDate: asset.purchaseDate ?? null,
-        purchasePriceDzd: normalizeMoneyWithinBound(asset.purchasePriceDzd, `entries.${index}.assets.${assetIndex}.purchasePriceDzd`),
+        purchasePriceDzd: normalizeMoneyWithinBound(
+          asset.purchasePriceDzd,
+          `entries.${index}.assets.${assetIndex}.purchasePriceDzd`,
+          "سعر الشراء خارج النطاق المسموح به.",
+        ),
         currentWarehouseId: effectiveWarehouseId,
         currentProjectId: effectiveProjectId,
         note: normalizeText(asset.note),
       }))
 
       const totalPriceDzd = assets.reduce((sum, asset) => sum + asset.purchasePriceDzd, 0)
-      grossTotalDzd += totalPriceDzd
+      grossTotalDzd = accumulateGrossTotal(grossTotalDzd, totalPriceDzd)
       preparedEntries.push({
         kind: "ASSET",
         definitionId: definition.id,
@@ -449,7 +478,11 @@ export class InventoryService {
     const paidAmountDzd = input.createDebt
       ? input.paymentInputType === "PERCENT"
         ? normalizeMoney((grossTotalDzd * (input.paidPercent ?? 0)) / 100, "paidPercent")
-        : normalizeMoney(input.paidAmountDzd ?? 0, "paidAmountDzd")
+        : normalizeMoneyWithinBound(
+            input.paidAmountDzd ?? 0,
+            "paidAmountDzd",
+            "المبلغ المدفوع خارج النطاق المسموح به.",
+          )
       : grossTotalDzd
 
     if (input.createDebt && paidAmountDzd > grossTotalDzd) {

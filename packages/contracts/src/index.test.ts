@@ -43,9 +43,11 @@ import {
   inventoryAssetTransferInputSchema,
   inventoryAssetUnitCreateInputSchema,
   inventoryAssetUnitSchema,
+  inventoryConsumableEntryCreateInputSchema,
   inventoryContract,
   inventoryInvoiceGroupCreateInputSchema,
   inventoryInvoiceGroupDetailSchema,
+  inventoryInvoiceGroupSchema,
   inventoryLocationContentsSchema,
   inventoryProjectChargesSchema,
   managerAssignmentCreateInputSchema,
@@ -2129,6 +2131,97 @@ describe("contracts", () => {
       ]) {
         expect(key in inventoryContract).toBe(true);
         expect(key in appContract).toBe(true);
+      }
+    });
+  });
+
+  describe("invoice money bound (#429)", () => {
+    const consumableInput = {
+      kind: "CONSUMABLE" as const,
+      itemDefinitionId: "def-1",
+      warehouseId: "wh-1",
+      quantity: 2,
+      unitPriceDzd: 500,
+      totalPriceDzd: 1_000,
+    };
+
+    it("bounds the consumable line money INPUT with the shared money rule", () => {
+      expect(inventoryConsumableEntryCreateInputSchema.safeParse(consumableInput).success).toBe(true);
+      expect(
+        inventoryConsumableEntryCreateInputSchema.safeParse({
+          ...consumableInput,
+          unitPriceDzd: Number.MAX_SAFE_INTEGER,
+        }).success,
+      ).toBe(true);
+      // Above the bound is where the line total stops being representable.
+      expect(
+        inventoryConsumableEntryCreateInputSchema.safeParse({
+          ...consumableInput,
+          unitPriceDzd: Number.MAX_SAFE_INTEGER + 1,
+        }).success,
+      ).toBe(false);
+      expect(
+        inventoryConsumableEntryCreateInputSchema.safeParse({
+          ...consumableInput,
+          totalPriceDzd: Number.MAX_SAFE_INTEGER + 1,
+        }).success,
+      ).toBe(false);
+    });
+
+    it("bounds the initial paid amount INPUT, keeping the omitted/null/zero forms", () => {
+      const debtInvoiceInput = {
+        externalCounterpartyId: "cp-1",
+        createDebt: true,
+        paymentInputType: "AMOUNT" as const,
+        entries: [consumableInput],
+      };
+      for (const paidAmountDzd of [undefined, null, 0]) {
+        expect(
+          inventoryInvoiceGroupCreateInputSchema.safeParse({ ...debtInvoiceInput, paidAmountDzd }).success,
+        ).toBe(true);
+      }
+      expect(
+        inventoryInvoiceGroupCreateInputSchema.safeParse({
+          ...debtInvoiceInput,
+          paidAmountDzd: Number.MAX_SAFE_INTEGER,
+        }).success,
+      ).toBe(true);
+      expect(
+        inventoryInvoiceGroupCreateInputSchema.safeParse({
+          ...debtInvoiceInput,
+          paidAmountDzd: Number.MAX_SAFE_INTEGER + 1,
+        }).success,
+      ).toBe(false);
+    });
+
+    it("reads the invoice group totals back as a permissive stored shape, not a strict output bound (#429)", () => {
+      const group = {
+        id: "group-1",
+        invoiceNumber: null,
+        supplierName: null,
+        invoiceDate: null,
+        warehouseId: null,
+        projectId: null,
+        externalCounterpartyId: null,
+        grossTotalDzd: 1_000,
+        paidAmountDzd: 200,
+        remainingDebtDzd: 800,
+        debtAccountId: null,
+        note: null,
+        createdAt: "2026-06-01T00:00:00.000Z",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+      };
+      expect(inventoryInvoiceGroupSchema.safeParse(group).success).toBe(true);
+      for (const field of ["grossTotalDzd", "paidAmountDzd", "remainingDebtDzd"] as const) {
+        // A legacy row above MAX_MONEY_DZD must still read back: the write
+        // gate (`accumulateGrossTotal` + the input bounds), not the read
+        // shape, is what keeps a new total in range (#413 round 3).
+        expect(
+          inventoryInvoiceGroupSchema.safeParse({ ...group, [field]: Number.MAX_SAFE_INTEGER + 1 }).success,
+        ).toBe(true);
+        for (const bad of [-1, NaN, Infinity, -Infinity]) {
+          expect(inventoryInvoiceGroupSchema.safeParse({ ...group, [field]: bad }).success).toBe(false);
+        }
       }
     });
   });

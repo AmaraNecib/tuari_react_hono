@@ -190,8 +190,13 @@ export const inventoryEntrySchema = z.object({
   itemName: z.string().trim().min(1).max(160),
   unit: nullableTextSchema,
   quantity: z.number().positive(),
-  unitPriceDzd: z.number().nonnegative().nullable(),
-  totalPriceDzd: z.number().nonnegative(),
+  /**
+   * Line money is a STORED read shape: the write gate caps a new line at
+   * `MAX_MONEY_DZD`, but a row written before that gate existed must still
+   * read back (#413 round 3).
+   */
+  unitPriceDzd: storedMoneyDzdSchema.nullable(),
+  totalPriceDzd: storedMoneyDzdSchema,
   note: nullableTextSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
@@ -207,9 +212,18 @@ export const inventoryInvoiceGroupSchema = z.object({
   warehouseId: entityIdSchema.nullable(),
   projectId: entityIdSchema.nullable(),
   externalCounterpartyId: entityIdSchema.nullable(),
-  grossTotalDzd: z.number().nonnegative(),
-  paidAmountDzd: z.number().nonnegative(),
-  remainingDebtDzd: z.number().nonnegative(),
+  /**
+   * The invoice header totals are a PERSISTED read shape: the write gate and
+   * `InventoryService.accumulateGrossTotal` refuse to store a total above
+   * `MAX_MONEY_DZD` (#429), but an invoice created before that gate existed
+   * must still read back — unlike a sum computed fresh at read time
+   * (`inventoryProjectChargesSchema.totalDzd`, #422), refusing here would
+   * break the screen that merely displays the row. Same stored-read rule as
+   * the entry line money (#413 round 3).
+   */
+  grossTotalDzd: storedMoneyDzdSchema,
+  paidAmountDzd: storedMoneyDzdSchema,
+  remainingDebtDzd: storedMoneyDzdSchema,
   debtAccountId: entityIdSchema.nullable(),
   note: nullableTextSchema,
   createdAt: timestampSchema,
@@ -299,8 +313,8 @@ export const inventoryConsumableEntryCreateInputSchema = z.object({
   warehouseId: entityIdSchema.nullable().optional(),
   projectId: entityIdSchema.nullable().optional(),
   quantity: z.number().positive(),
-  unitPriceDzd: z.number().nonnegative(),
-  totalPriceDzd: z.number().nonnegative(),
+  unitPriceDzd: nonNegativePaymentAmountSchema,
+  totalPriceDzd: nonNegativePaymentAmountSchema,
   note: z.string().trim().max(1000).nullable().optional(),
 }).superRefine((input, ctx) => {
   if (input.warehouseId && input.projectId) {
@@ -338,7 +352,7 @@ export const inventoryInvoiceGroupCreateInputSchema = z.object({
   externalCounterpartyId: entityIdSchema.nullable().optional(),
   createDebt: z.boolean().optional(),
   paymentInputType: inventoryPaymentInputTypeSchema.optional(),
-  paidAmountDzd: z.number().nonnegative().nullable().optional(),
+  paidAmountDzd: nonNegativePaymentAmountSchema.nullable().optional(),
   paidPercent: z.number().min(0).max(100).nullable().optional(),
   note: z.string().trim().max(1000).nullable().optional(),
   entries: z.array(inventoryInvoiceEntryCreateInputSchema).min(1),
