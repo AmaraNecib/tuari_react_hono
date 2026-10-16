@@ -38,20 +38,22 @@ not introduce a new constant.
 - `inventoryInvoiceGroupCreateInputSchema.paidAmountDzd` →
   `nonNegativePaymentAmountSchema.nullable().optional()`
 
-### 2. Outputs — bound the invoice group, keep the entry a stored read shape
+### 2. Outputs — both the entry and the invoice group are stored read shapes
 
 - `inventoryInvoiceGroupSchema.grossTotalDzd | paidAmountDzd | remainingDebtDzd`
-  → `nonNegativePaymentAmountSchema` (validator only, `.max` — no transform;
-  output schemas validate, they do not transform).
+  → `storedMoneyDzdSchema` (**decision F1 = B**, parent-confirmed). These are
+  persisted columns; the write gate (input bounds + `accumulateGrossTotal`) is
+  what keeps a NEW total within `MAX_MONEY_DZD`, so the read shape must stay
+  permissive or a legacy above-bound invoice becomes unreadable while its entry
+  lines still read. Same stored-read rule as #413 round 3. (Contrast
+  `inventoryProjectChargesSchema.totalDzd`, #422, which is computed at read time
+  and may therefore refuse to emit an unrepresentable value.)
 - `inventoryEntrySchema.unitPriceDzd | totalPriceDzd` → `storedMoneyDzdSchema`
-  (permissive read shape). The #413 round 3 rule stands for an individually
-  stored line: a legacy row must read back. The group total is the aggregate the
-  issue singles out and the service now refuses to emit one above the bound, so
-  refusing beats emitting an unrepresentable financial number — the same choice
-  `inventoryProjectChargesSchema.totalDzd` (#422) already makes.
+  (permissive read shape), so the group total and the lines it sums have the
+  same read semantics.
 
 `InventoryInvoiceGroupRecord = InventoryInvoiceGroup` (the output schema), so
-the bound flows into the repository type with no extra work.
+the read shape flows into the repository type with no extra work.
 
 ### 3. Service seam + aggregate guard (`InventoryService`)
 
@@ -83,8 +85,8 @@ Contracts (`packages/contracts/src/index.test.ts`):
   and accepts the boundary;
 - invoice input rejects `paidAmountDzd` above the bound, accepts it and the
   omitted/null/zero forms;
-- invoice group output rejects `grossTotalDzd` / `paidAmountDzd` /
-  `remainingDebtDzd` above the bound, accepts the boundary;
+- invoice group output reads both a normal and an above-bound stored row back
+  (permissive persisted shape), rejecting only negative/non-finite values;
 - entry output still reads a stored above-bound row back.
 
 API (`apps/api/src/modules/inventory/inventory-transfer-charge.test.ts`):
@@ -95,12 +97,11 @@ API (`apps/api/src/modules/inventory/inventory-transfer-charge.test.ts`):
 
 ## Risks / migration
 
-- A legacy invoice group stored above the bound (created before this gate) can no
-  longer be read. This is the deliberate "refuse to emit an unrepresentable
-  financial number" choice, consistent with #422. The input gate and the
-  aggregate guard mean no new row can reach that state.
-- UI is unchanged: the error surfaces through the existing `InventoryError`
-  envelope (Arabic message).
+- No legacy read break: both the invoice group totals and the entry lines are
+  permissive persisted read shapes. The input bounds and `accumulateGrossTotal`
+  are what prevent a NEW over-bound total.
+- UI is unchanged: an out-of-range input or an over-bound batch surfaces through
+  the existing `InventoryError` envelope (Arabic message).
 
 ## Out of scope (candidate follow-ups)
 

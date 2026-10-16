@@ -213,15 +213,17 @@ export const inventoryInvoiceGroupSchema = z.object({
   projectId: entityIdSchema.nullable(),
   externalCounterpartyId: entityIdSchema.nullable(),
   /**
-   * The invoice header totals are COMPUTED aggregates the service refuses to
-   * emit above `MAX_MONEY_DZD` (#429), so they keep the write bound: a total
-   * above the safe-integer range is no longer exactly representable, and
-   * refusing beats emitting a silently wrong financial number — the same
-   * choice `inventoryProjectChargesSchema.totalDzd` makes (#422).
+   * The invoice header totals are a PERSISTED read shape: the write gate and
+   * `InventoryService.accumulateGrossTotal` refuse to store a total above
+   * `MAX_MONEY_DZD` (#429), but an invoice created before that gate existed
+   * must still read back — unlike a sum computed fresh at read time
+   * (`inventoryProjectChargesSchema.totalDzd`, #422), refusing here would
+   * break the screen that merely displays the row. Same stored-read rule as
+   * the entry line money (#413 round 3).
    */
-  grossTotalDzd: nonNegativePaymentAmountSchema,
-  paidAmountDzd: nonNegativePaymentAmountSchema,
-  remainingDebtDzd: nonNegativePaymentAmountSchema,
+  grossTotalDzd: storedMoneyDzdSchema,
+  paidAmountDzd: storedMoneyDzdSchema,
+  remainingDebtDzd: storedMoneyDzdSchema,
   debtAccountId: entityIdSchema.nullable(),
   note: nullableTextSchema,
   createdAt: timestampSchema,

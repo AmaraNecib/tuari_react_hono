@@ -2194,7 +2194,7 @@ describe("contracts", () => {
       ).toBe(false);
     });
 
-    it("bounds the invoice group OUTPUT totals so an unrepresentable aggregate cannot be emitted", () => {
+    it("reads the invoice group totals back as a permissive stored shape, not a strict output bound (#429)", () => {
       const group = {
         id: "group-1",
         invoiceNumber: null,
@@ -2213,12 +2213,15 @@ describe("contracts", () => {
       };
       expect(inventoryInvoiceGroupSchema.safeParse(group).success).toBe(true);
       for (const field of ["grossTotalDzd", "paidAmountDzd", "remainingDebtDzd"] as const) {
-        expect(
-          inventoryInvoiceGroupSchema.safeParse({ ...group, [field]: Number.MAX_SAFE_INTEGER }).success,
-        ).toBe(true);
+        // A legacy row above MAX_MONEY_DZD must still read back: the write
+        // gate (`accumulateGrossTotal` + the input bounds), not the read
+        // shape, is what keeps a new total in range (#413 round 3).
         expect(
           inventoryInvoiceGroupSchema.safeParse({ ...group, [field]: Number.MAX_SAFE_INTEGER + 1 }).success,
-        ).toBe(false);
+        ).toBe(true);
+        for (const bad of [-1, NaN, Infinity, -Infinity]) {
+          expect(inventoryInvoiceGroupSchema.safeParse({ ...group, [field]: bad }).success).toBe(false);
+        }
       }
     });
   });
