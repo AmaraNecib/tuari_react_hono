@@ -13,6 +13,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 
+import { MAX_MONEY_DZD } from "@tuari/contracts";
+
 import { createRouter } from "../router";
 import type { RpcContext } from "../context";
 import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor";
@@ -983,7 +985,7 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     // A legacy stored entry at the bound; a second money row pushes the
     // aggregate past MAX_MONEY_DZD. The write gate never wrote these, but the
     // DDL only enforces >= 0, so an older build can leave them.
-    const atBound = Number.MAX_SAFE_INTEGER;
+    const atBound = MAX_MONEY_DZD;
     for (const entryId of [seed.cementEntryId, seed.mixerEntryId]) {
       env.raw
         .prepare('UPDATE "inventory_entry" SET "total_price_dzd" = ? WHERE "id" = ?')

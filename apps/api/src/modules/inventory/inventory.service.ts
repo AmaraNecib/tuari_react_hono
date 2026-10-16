@@ -108,15 +108,12 @@ function normalizeMoneyWithinBound(value: number, field: string, message: string
  * number. Mirrors `AssetChargeService.sumLiveCharges` / `project-cost.service`.
  */
 function accumulateGrossTotal(currentTotalDzd: number, lineTotalDzd: number) {
-  const nextTotalDzd = currentTotalDzd + lineTotalDzd
-  if (!Number.isFinite(nextTotalDzd) || nextTotalDzd > MAX_MONEY_DZD) {
+  return accumulateReportMoney(currentTotalDzd, lineTotalDzd, () => {
     throw new InventoryError(
       "BUSINESS_RULE",
       `إجمالي الفاتورة يتجاوز الحد الأقصى المسموح به (${MAX_MONEY_DZD}).`,
     )
-  }
-
-  return nextTotalDzd
+  })
 }
 
 /**

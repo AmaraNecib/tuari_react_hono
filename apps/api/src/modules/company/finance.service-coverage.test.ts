@@ -1035,5 +1035,34 @@ describe("FinanceService coverage branches", () => {
       expect(thrown).toBeInstanceOf(CompanyError);
       expect((thrown as CompanyError).appError.code).toBe("BUSINESS_RULE");
     });
+
+    it("refuses a settled-report total above MAX_MONEY_DZD (#475)", () => {
+      const { service } = createHarness();
+      // Two SETTLED accounts that each settle at the bound: outstanding stays
+      // zero, so only the settled-total fold can leave the bound.
+      for (const [fullName, phoneNumber] of [
+        ["طرف تسوية أ", "0214444010"],
+        ["طرف تسوية ب", "0214444011"],
+      ] as const) {
+        const counterparty = service.createExternalCounterparty({ fullName, phoneNumber }).item;
+        const account = service.createDebtAccount({
+          direction: "PAYABLE",
+          partyType: "EXTERNAL_COUNTERPARTY",
+          externalCounterpartyId: counterparty.id,
+          openingBalanceDzd: MAX_MONEY_DZD,
+          openingEntryDate: "2026-02-01T10:00:00+01:00",
+        }).item;
+        service.settleDebtAccount({ id: account.id, entryDate: "2026-03-01T10:00:00+01:00" }, audit());
+      }
+
+      let thrown: unknown;
+      try {
+        service.finance.generateDebtReport({});
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(CompanyError);
+      expect((thrown as CompanyError).appError.code).toBe("BUSINESS_RULE");
+    });
   });
 });

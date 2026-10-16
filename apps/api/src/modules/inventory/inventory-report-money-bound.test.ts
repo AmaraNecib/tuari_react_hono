@@ -123,6 +123,38 @@ describe("inventory report money bound (#475)", () => {
     expectBusinessRule(captureError(() => service.generateMovementReport({})))
   })
 
+  it("refuses a month total that leaves the bound across movement types", () => {
+    // Each type is inside the bound; only the month fold (which mixes types)
+    // leaves it, so this exercises the `byPeriod` guard specifically.
+    const service = createService({
+      movements: [
+        movement({ id: "m-1", movementType: "PURCHASE" }, MAX_MONEY_DZD),
+        movement(
+          { id: "m-2", movementType: "TRANSFER", occurredAt: "2026-06-15T00:00:00.000Z" },
+          MAX_MONEY_DZD,
+        ),
+      ],
+    })
+
+    expectBusinessRule(captureError(() => service.generateMovementReport({})))
+  })
+
+  it("refuses a destination total that leaves the bound across types and periods", () => {
+    // byType and byPeriod both stay inside the bound; only the destination fold
+    // (one destination, two types, two months) leaves it.
+    const service = createService({
+      movements: [
+        movement({ id: "m-1", movementType: "PURCHASE" }, MAX_MONEY_DZD),
+        movement(
+          { id: "m-2", movementType: "TRANSFER", occurredAt: "2026-07-01T00:00:00.000Z" },
+          MAX_MONEY_DZD,
+        ),
+      ],
+    })
+
+    expectBusinessRule(captureError(() => service.generateMovementReport({})))
+  })
+
   it("still aggregates a normal batch", () => {
     const service = createService({
       inventory: [

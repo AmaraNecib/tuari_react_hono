@@ -59,11 +59,11 @@ export const REPORT_MONEY_OVERFLOW_MESSAGE = `إجمالي التقرير يتج
 export function accumulateReportMoney(
   currentDzd: number,
   amountDzd: number,
-  onOverflow: (nextDzd: number) => never,
+  onOverflow: () => never,
 ): number {
   const nextDzd = currentDzd + amountDzd;
   if (!Number.isFinite(nextDzd) || nextDzd > MAX_MONEY_DZD) {
-    onOverflow(nextDzd);
+    onOverflow();
   }
   return nextDzd;
 }
