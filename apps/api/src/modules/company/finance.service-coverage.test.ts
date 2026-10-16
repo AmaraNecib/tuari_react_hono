@@ -1064,5 +1064,38 @@ describe("FinanceService coverage branches", () => {
       expect(thrown).toBeInstanceOf(CompanyError);
       expect((thrown as CompanyError).appError.code).toBe("BUSINESS_RULE");
     });
+
+    it("refuses a legacy settlement entry above MAX_MONEY_DZD in the per-account fold (#475)", () => {
+      const { service, database } = createHarness();
+      const counterparty = service.createExternalCounterparty({
+        fullName: "طرف تسوية قديم",
+        phoneNumber: "0214444012",
+      }).item;
+      const account = service.createDebtAccount({
+        direction: "PAYABLE",
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: 100,
+        openingEntryDate: "2026-02-01T10:00:00+01:00",
+      }).item;
+      service.settleDebtAccount({ id: account.id, entryDate: "2026-03-01T10:00:00+01:00" }, audit());
+      // The per-account SETTLEMENT fold guards BEFORE the account total is
+      // folded, so a single legacy settlement entry above the bound refuses
+      // here instead of at `totalSettledDzd`.
+      database
+        .prepare(
+          'UPDATE "debt_entry" SET "signed_amount" = ? WHERE "debt_account_id" = ? AND "entry_type" = ?',
+        )
+        .run(-(MAX_MONEY_DZD + 1), account.id, "SETTLEMENT");
+
+      let thrown: unknown;
+      try {
+        service.finance.generateDebtReport({});
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(CompanyError);
+      expect((thrown as CompanyError).appError.code).toBe("BUSINESS_RULE");
+    });
   });
 });

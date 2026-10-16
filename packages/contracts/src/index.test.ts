@@ -2232,7 +2232,7 @@ describe("contracts", () => {
   });
 
   describe("remaining inventory money bound + report aggregates (#475)", () => {
-    const aboveBound = Number.MAX_SAFE_INTEGER + 1;
+    const aboveBound = MAX_MONEY_DZD + 1;
 
     it("bounds the record-payment amount INPUT with the shared positive money rule", () => {
       const valid = { invoiceGroupId: "group-1", amountDzd: 500 };

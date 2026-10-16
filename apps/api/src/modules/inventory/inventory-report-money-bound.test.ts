@@ -124,8 +124,8 @@ describe("inventory report money bound (#475)", () => {
   })
 
   it("refuses a month total that leaves the bound across movement types", () => {
-    // Each type is inside the bound; only the month fold (which mixes types)
-    // leaves it, so this exercises the `byPeriod` guard specifically.
+    // Each type is inside the bound; the month fold mixes them, so a movement
+    // batch can overflow a month even when every per-type total is legal.
     const service = createService({
       movements: [
         movement({ id: "m-1", movementType: "PURCHASE" }, MAX_MONEY_DZD),
@@ -153,6 +153,19 @@ describe("inventory report money bound (#475)", () => {
     })
 
     expectBusinessRule(captureError(() => service.generateMovementReport({})))
+  })
+
+  it("refuses a consumable total that sums past the bound", () => {
+    // The consumable accumulator sees these rows before the asset fold or the
+    // cross-sum, so this exercises that guard rather than a later one.
+    const service = createService({
+      inventory: [
+        valuation({ itemType: "CONSUMABLE", itemName: "مادة", totalPriceDzd: MAX_MONEY_DZD }),
+        valuation({ id: "entry-2", itemType: "CONSUMABLE", itemName: "مادة", totalPriceDzd: 1 }),
+      ],
+    })
+
+    expectBusinessRule(captureError(() => service.generateInventoryReport({})))
   })
 
   it("still aggregates a normal batch", () => {
