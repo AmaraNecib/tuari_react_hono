@@ -259,7 +259,9 @@ describe("createDatabaseConnection", () => {
     const dbPath = tempDbPath();
     writeFileSync(dbPath, Buffer.from("not a sqlite database at all"));
 
-    expect(() => createDatabaseConnection(dbPath, null)).toThrowError(
+    // "" rather than null: null falls through to APP_DB_KEY in the environment,
+    // which would flip this onto the keyed path on a configured runner.
+    expect(() => createDatabaseConnection(dbPath, "")).toThrowError(
       /cannot tell those apart/,
     );
   });

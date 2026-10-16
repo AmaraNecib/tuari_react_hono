@@ -99,6 +99,13 @@ export type SnapshotWorkerOptions = {
    * {@link DEFAULT_SNAPSHOT_TIMEOUT_MS}.
    */
   timeoutMs?: number;
+  /**
+   * Injection seam for tests: resolve the SQLite driver module the worker
+   * loads. The default anchors the driver to the API package so the worker
+   * loads the same binding (plain or SQLCipher) the API uses; a test that
+   * needs a non-encrypting or fake binding overrides it.
+   */
+  resolveDriverModule?: (specifier: string) => string;
 };
 
 /**
@@ -137,7 +144,7 @@ type SnapshotWorkerMessage =
 export const createWorkerSnapshotter = (
   options: SnapshotWorkerOptions,
 ): BackupSnapshotter => {
-  const modulePath = resolveDriverModule(
+  const modulePath = (options.resolveDriverModule ?? resolveDriverModule)(
     options.databaseKey ? "better-sqlite3-sqlcipher" : "better-sqlite3",
   );
   const timeoutMs = options.timeoutMs ?? DEFAULT_SNAPSHOT_TIMEOUT_MS;

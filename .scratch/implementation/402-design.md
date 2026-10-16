@@ -15,7 +15,7 @@
 runtime with a `console.warn` and exit code 0 when the SQLCipher binding was
 unavailable. The shipped artifact is edition-agnostic and the shell sets
 `APP_DB_KEY` whenever the signed licence carries `encrypted_db`
-(`apps/desktop/src-tauri/src/lib.rs:2147`), so a customer who bought encrypted
+(`apps/desktop/src-tauri/src/lib.rs:2148`), so a customer who bought encrypted
 storage got an artifact that cannot honour the guarantee — silently.
 
 Four defects made the fallback unconditional:
@@ -269,3 +269,29 @@ Still deferred (recorded, not silent):
 - **`installer-smoke.mjs` docstring enumeration ordering (debate L1)** — the
   header lists themes, not the code order; cosmetic, and the checks themselves
   are correct.
+
+## Round 4 — confirmation at `583f1ffe`
+
+`design pass`, `debate` (critic + defender), `test-audit`, and `code-review` ran
+again in fresh contexts at `583f1ffe`. All four round-3 objections were confirmed
+closed: the probe timeout, the backup worker's capability probe, the corrected
+`onlyBuiltDependencies` root cause, and the sentinel's mechanism. Findings left
+by that round, fixed here:
+
+- **The worker's capability probe had no executed test on any host (test-audit).**
+  `createWorkerSnapshotter` now takes a `resolveDriverModule` injection seam, and
+  `backup.snapshot.test.ts` drives the worker with a fake driver that reports no
+  `cipher_version` (refused) and one that does (accepted). This is the revert
+  detector for the probe; the real native proof stays #410's.
+- **The keyless wiring test depended on the ambient environment (debate N1).**
+  It passes `""` instead of `null`, which falls through to `APP_DB_KEY`.
+- **A leftover `lib.rs:2147` citation (code-review).** Corrected to 2148.
+- **Evidence freshness (code-review S1).** This round's evidence is committed at
+  its own HEAD; the earlier `e76946ee` pair stays removed because it described a
+  superseded commit.
+
+Still deferred, unchanged: **#410** (and the `TUARI_REQUIRE_SQLCIPHER=1`
+trigger it must set), `portable:only`, and `APP_DB_KEY=""`. The
+`build-sidecar.mjs` call sites of `sqlcipherPlaintextWaiver` are
+wiring-inspected rather than unit-tested because the script runs at import; both
+call sites are behaviourally identical to the pre-round-3 code.
