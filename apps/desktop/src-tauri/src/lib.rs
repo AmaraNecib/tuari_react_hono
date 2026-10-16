@@ -162,19 +162,80 @@ fn app_ready(
 // ─── API sidecar identity (stale-process cleanup) ──────────────────
 //
 // The API sidecar child is always spawned as
-// `node <install>/bin/api-runtime/dist/index.cjs`. These stable layout
-// markers (kept out of the absolute install path so they survive app updates
-// that relocate the install directory) identify OUR child and nothing else.
-const API_SIDECAR_CMD_MARKERS: [&str; 2] = ["api-runtime", "index.cjs"];
+// `node <install>/bin/api-runtime/dist/index.cjs`. The layout markers alone
+// (`api-runtime`, `index.cjs`) are install-relative, so matching on them killed
+// the sidecar of EVERY Tuari install on the machine — a portable build killed
+// a running installed build, and vice versa (#403). Identity is therefore the
+// absolute sidecar path of THIS installation's runtime directory.
 
-/// Returns `true` when `command_line` belongs to this application's API
-/// sidecar child rather than an unrelated process. Used to narrow stale
+/// The sidecar entry script inside this installation's runtime directory.
+/// Single-sourced so the spawn path and the cleanup predicate cannot drift.
+fn api_sidecar_entry_path(runtime_dir: &Path) -> PathBuf {
+    runtime_dir.join("dist").join("index.cjs")
+}
+
+/// Normalizes a path or command line for identity comparison: drops the
+/// Windows extended-length prefix, unifies separators, and folds case **on
+/// Windows only**, because Windows filesystems are case-insensitive while
+/// POSIX paths are not.
+fn normalize_path_for_match(value: &str) -> String {
+    let stripped = strip_windows_extended_path_prefix(value);
+    let unified = stripped.replace('\\', "/");
+    if cfg!(target_os = "windows") {
+        unified.to_ascii_lowercase()
+    } else {
+        unified
+    }
+}
+
+/// Returns `true` when `command_line` belongs to **this** installation's API
+/// sidecar child, i.e. it references
+/// `<install_runtime_dir>/dist/index.cjs`. A sidecar from a different install
+/// carries a different absolute path and does not match. Used to narrow stale
 /// cleanup to our own child instead of "anything listening on the API port".
-fn is_api_sidecar_command_line(command_line: &str) -> bool {
-    let lower = command_line.to_ascii_lowercase();
-    API_SIDECAR_CMD_MARKERS
-        .iter()
-        .all(|marker| lower.contains(marker))
+///
+/// Pure, so the predicate is unit-testable without spawning or killing a
+/// process.
+fn is_api_sidecar_command_line(command_line: &str, install_runtime_dir: &Path) -> bool {
+    let sidecar_path = api_sidecar_entry_path(install_runtime_dir);
+    let expected = normalize_path_for_match(&sidecar_path.to_string_lossy());
+    command_line_contains_path(&normalize_path_for_match(command_line), &expected)
+}
+
+/// True when `command_line` contains `expected_path` as a whole argument —
+/// bounded by whitespace, a quote, or the start/end of the string — rather
+/// than as a substring of a longer path (`index.cjs.map`) or of another
+/// argument (`--entry=.../index.cjs`).
+fn command_line_contains_path(command_line: &str, expected_path: &str) -> bool {
+    command_line
+        .match_indices(expected_path)
+        .any(|(start, _)| {
+            is_argument_boundary_before(command_line, start)
+                && is_argument_boundary_after(command_line, start + expected_path.len())
+        })
+}
+
+/// True when the character before `index` bounds a command-line argument: the
+/// start of the string, whitespace, or a quote that itself begins an argument.
+/// A quote preceded by `=` (`--entry="<path>"`) is not an argument boundary.
+fn is_argument_boundary_before(command_line: &str, index: usize) -> bool {
+    let mut chars = command_line[..index].chars().rev();
+    match chars.next() {
+        None => true,
+        Some('"') | Some('\'') => chars.next().map_or(true, char::is_whitespace),
+        Some(c) => c.is_whitespace(),
+    }
+}
+
+/// True when the character after `index` bounds a command-line argument: the
+/// end of the string, whitespace, or a quote that itself ends an argument.
+fn is_argument_boundary_after(command_line: &str, index: usize) -> bool {
+    let mut chars = command_line[index..].chars();
+    match chars.next() {
+        None => true,
+        Some('"') | Some('\'') => chars.next().map_or(true, char::is_whitespace),
+        Some(c) => c.is_whitespace(),
+    }
 }
 
 /// Strips the Windows extended-length ("verbatim") path prefix.
@@ -1342,12 +1403,24 @@ fn has_portable_runtime_layout(root: &Path) -> bool {
     };
 
     root.join("bin").join(node_binary_name).exists()
-        && root
-            .join("bin")
-            .join("api-runtime")
-            .join("dist")
-            .join("index.cjs")
-            .exists()
+        && api_sidecar_entry_path(&api_runtime_dir(root)).exists()
+}
+
+/// This installation's `<install>/bin/api-runtime` directory — the directory
+/// `spawn_api_process` runs the sidecar from and the path prefix that
+/// identifies our own stale child (#403).
+fn api_runtime_dir(resource_dir: &Path) -> PathBuf {
+    resource_dir.join("bin").join("api-runtime")
+}
+
+/// This installation's runtime directory from the app's resource directory.
+/// Errors (rather than guessing) when the resource directory is unavailable,
+/// so stale cleanup can fail open and leave every process alone.
+fn resolve_api_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .resource_dir()
+        .map(|resource_dir| api_runtime_dir(&resource_dir))
+        .map_err(|error| error.to_string())
 }
 
 fn resolve_portable_data_dir() -> Result<Option<PathBuf>, String> {
@@ -1854,10 +1927,17 @@ fn resolve_attachments_root(app_db_path: &Path) -> PathBuf {
 /// (`node <install>/bin/api-runtime/dist/index.cjs`) — never by port. The
 /// previous port-based cleanup could terminate an unrelated process that
 /// happened to listen on `API_PORT`.
-fn cleanup_stale_api_processes() {
+fn cleanup_stale_api_processes(app: &AppHandle) {
     if cfg!(debug_assertions) {
         return;
     }
+
+    // Never guess: if we cannot determine this installation's runtime path we
+    // leave every process alone rather than risk killing a foreign sidecar.
+    let install_runtime_dir = match resolve_api_runtime_dir(app) {
+        Ok(dir) => dir,
+        Err(_) => return,
+    };
 
     #[cfg(target_os = "windows")]
     {
@@ -1881,7 +1961,7 @@ fn cleanup_stale_api_processes() {
                 let Some((pid, command_line)) = line.split_once('|') else {
                     continue;
                 };
-                if is_api_sidecar_command_line(command_line) {
+                if is_api_sidecar_command_line(command_line, &install_runtime_dir) {
                     let _ = Command::new("taskkill")
                         .args(["/PID", pid, "/T", "/F"])
                         .stdout(Stdio::null())
@@ -1910,7 +1990,7 @@ fn cleanup_stale_api_processes() {
                 let Some((pid, command_line)) = line.split_once(' ') else {
                     continue;
                 };
-                if is_api_sidecar_command_line(command_line) {
+                if is_api_sidecar_command_line(command_line, &install_runtime_dir) {
                     let _ = Command::new("kill")
                         .args(["-9", pid])
                         .stdout(Stdio::null())
@@ -2050,7 +2130,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
     let attachments_root = resolve_attachments_root(&app_db_path);
     let runtime_secrets = load_runtime_secrets(app)?;
-    cleanup_stale_api_processes();
+    cleanup_stale_api_processes(app);
 
     let log_file = OpenOptions::new()
         .create(true)
@@ -2081,8 +2161,8 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
             "node"
         };
         let node_path = resource_dir.join("bin").join(node_binary_name);
-        let runtime_dir = resource_dir.join("bin").join("api-runtime");
-        let sidecar_path = runtime_dir.join("dist").join("index.cjs");
+        let runtime_dir = api_runtime_dir(&resource_dir);
+        let sidecar_path = api_sidecar_entry_path(&runtime_dir);
 
         let mut cmd = Command::new(node_path);
         cmd.arg(strip_windows_extended_path_prefix(
@@ -2274,6 +2354,7 @@ fn kill_api(app: &AppHandle) {
 mod tests {
     use super::{
         copy_allowlisted_legacy_runtime_files_if_missing, encode_secret,
+        api_sidecar_entry_path,
         has_portable_runtime_layout, is_allowed_desktop_bridge_path,
         is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
         license_failure_env_map, license_status_for_error,
@@ -2765,34 +2846,104 @@ mod tests {
     }
 
     #[test]
-    fn identifies_only_api_sidecar_command_lines_for_stale_cleanup() {
-        // Our own child on Windows and POSIX install layouts.
+    fn stale_cleanup_matches_only_this_installations_api_sidecar() {
+        let install = if cfg!(target_os = "windows") {
+            PathBuf::from(r"C:\Program Files\Tuari\bin\api-runtime")
+        } else {
+            PathBuf::from("/opt/tuari/bin/api-runtime")
+        };
+        // Derived from the same helper the production predicate uses, so the
+        // test guards the single-sourced sidecar path.
+        let entry = api_sidecar_entry_path(&install);
+
+        // This installation's own child, quoted and unquoted, with trailing
+        // arguments, and Windows-only spelling variants.
+        if cfg!(target_os = "windows") {
+            assert!(is_api_sidecar_command_line(
+                r#""C:\Program Files\Tuari\bin\node.exe" "C:\Program Files\Tuari\bin\api-runtime\dist\index.cjs""#,
+                &install
+            ));
+            assert!(is_api_sidecar_command_line(
+                r#""C:\PROGRAM FILES\TUARI\BIN\NODE.EXE" "C:\PROGRAM FILES\TUARI\BIN\API-RUNTIME\DIST\INDEX.CJS""#,
+                &install
+            ));
+            assert!(is_api_sidecar_command_line(
+                "node C:/Program Files/Tuari/bin/api-runtime/dist/index.cjs",
+                &install
+            ));
+            assert!(is_api_sidecar_command_line(
+                r"node \\srv\share\tuari\bin\api-runtime\dist\index.cjs",
+                &PathBuf::from(r"\\srv\share\tuari\bin\api-runtime")
+            ));
+        } else {
+            assert!(is_api_sidecar_command_line(
+                "/opt/tuari/bin/node /opt/tuari/bin/api-runtime/dist/index.cjs",
+                &install
+            ));
+            // POSIX paths are case-sensitive: a different-case install is a
+            // different install.
+            assert!(!is_api_sidecar_command_line(
+                "node /OPT/TUARI/bin/api-runtime/dist/index.cjs",
+                &install
+            ));
+        }
+
         assert!(is_api_sidecar_command_line(
-            r#""C:\Program Files\Tuari\bin\node.exe" "C:\Program Files\Tuari\bin\api-runtime\dist\index.cjs""#
+            &format!("node {} --port 47821", entry.display()),
+            &install
         ));
         assert!(is_api_sidecar_command_line(
-            "/opt/tuari/bin/node /opt/tuari/bin/api-runtime/dist/index.cjs"
+            &entry.to_string_lossy(),
+            &install
         ));
-        // Windows command lines are case-insensitive.
-        assert!(is_api_sidecar_command_line(
-            r#""C:\PROGRAM FILES\TUARI\BIN\NODE.EXE" "C:\PROGRAM FILES\TUARI\BIN\API-RUNTIME\DIST\INDEX.CJS""#
-        ));
-        // An unrelated node process that merely listens on the API port.
+
+        // #403 regression: a second installation with the IDENTICAL
+        // `bin/api-runtime/dist/index.cjs` layout must not match.
         assert!(!is_api_sidecar_command_line(
-            "C:\\tools\\node.exe C:\\unrelated\\server.js"
-        ));
-        // An unrelated process owning port 4318.
-        assert!(!is_api_sidecar_command_line(
-            "C:\\Windows\\System32\\svchost.exe -k tuari-port-4318"
-        ));
-        // Both markers are required; a partial match is not our child.
-        assert!(!is_api_sidecar_command_line(
-            "node C:\\x\\api-runtime\\server.js"
+            r#""C:\Program Files\Other\bin\node.exe" "C:\Program Files\Other\bin\api-runtime\dist\index.cjs""#,
+            &install
         ));
         assert!(!is_api_sidecar_command_line(
-            "node C:\\x\\dist\\index.cjs"
+            "/opt/other/bin/node /opt/other/bin/api-runtime/dist/index.cjs",
+            &install
         ));
-        assert!(!is_api_sidecar_command_line(""));
+        assert!(!is_api_sidecar_command_line(
+            r#""D:\portable\Tuari\bin\node.exe" "D:\portable\Tuari\bin\api-runtime\dist\index.cjs""#,
+            &install
+        ));
+
+        // Same runtime directory, but not the sidecar entry script.
+        assert!(!is_api_sidecar_command_line(
+            r#""C:\Program Files\Tuari\bin\node.exe" "C:\Program Files\Tuari\bin\api-runtime\server.js""#,
+            &install
+        ));
+        assert!(!is_api_sidecar_command_line(
+            "/opt/tuari/bin/node /opt/tuari/bin/api-runtime/dist/other.cjs",
+            &install
+        ));
+
+        // The sidecar path as a substring of a longer path or of another
+        // argument — including the quoted value form — is not our child.
+        assert!(!is_api_sidecar_command_line(
+            &format!("node {}.map", entry.display()),
+            &install
+        ));
+        assert!(!is_api_sidecar_command_line(
+            &format!("node runner.js --entry={}", entry.display()),
+            &install
+        ));
+        assert!(!is_api_sidecar_command_line(
+            &format!("node runner.js --entry=\"{}\"", entry.display()),
+            &install
+        ));
+
+        // An unrelated node process that merely listens on the API port, and
+        // empty input.
+        assert!(!is_api_sidecar_command_line(
+            "C:\\tools\\node.exe C:\\unrelated\\server.js",
+            &install
+        ));
+        assert!(!is_api_sidecar_command_line("", &install));
     }
 
     #[test]
