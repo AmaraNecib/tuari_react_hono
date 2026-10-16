@@ -233,7 +233,9 @@ export function DebtCasesPanel({
                 // A payment reduces the balance on either ledger, so the typed
                 // magnitude becomes a negative movement; the sign is the
                 // payment's, never inferred from the direction. The direction
-                // selected which ledger's account receives it.
+                // selected which ledger's account receives it. This matches the
+                // server's recordDebtPayment law (`-|amount|`): an account
+                // already in credit stays reducing rather than being refunded.
                 await createDebtEntryMutation.mutateAsync({
                   debtAccountId: accountAction.account.id,
                   entryType: "PAYMENT",

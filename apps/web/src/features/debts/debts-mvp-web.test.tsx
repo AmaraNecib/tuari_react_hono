@@ -341,6 +341,28 @@ describe("debts MVP web UI", () => {
       })
     })
 
+    it("reduces (does not refund) a ledger that is already in credit", async () => {
+      createDebtAccountMutateAsync.mockClear()
+      createDebtEntryMutate.mockClear()
+      renderWithProviders(
+        <DebtCasesPanel
+          accounts={[{ ...existingAccount, currentBalance: -700 }]}
+          debtEntriesByAccountId={{ "debt-existing": [] }}
+          externalCounterpartyId="external-1"
+          title="طرف"
+        />,
+      )
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "200" } })
+      fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
+
+      await waitFor(() => {
+        expect(createDebtEntryMutate).toHaveBeenCalledWith(
+          expect.objectContaining({ signedAmountDzd: -200 }),
+        )
+      })
+    })
+
     it("labels a ledger with no account as an account creation, not a payment", () => {
       renderExistingAccountPanel()
 
