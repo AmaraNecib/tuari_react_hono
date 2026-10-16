@@ -431,6 +431,55 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
     expect(within(screen.getByRole("table")).queryByText("عامل 01")).toBeNull()
   })
 
+  it("keeps each tab's page, search and page size when the operator switches tabs", () => {
+    // The workers fixture carries its own name token so each tab's search is
+    // recognisably its own, and both tabs span more than one page.
+    const workers = makeWorkers(40, "MONTHLY").map((row, index) => ({
+      ...row,
+      employeeName: `صانع ${String(index + 1).padStart(2, "0")}`,
+    }))
+
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={makePayments(23)}
+        workers={workers}
+      />,
+    )
+
+    // History tab: its own search, page 2 of 3 and the default page size.
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "عامل" } })
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+    expect(screen.getByText("11-20 من 23")).toBeTruthy()
+
+    // Workers tab: a different search, a different page size, page 2 of 2.
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "صانع" } })
+    fireEvent.change(getPageSizeSelect()!, { target: { value: "25" } })
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 2")).toBeTruthy()
+    expect(screen.getByText("26-40 من 40")).toBeTruthy()
+
+    const expectVisibleState = (page: string, range: string, query: string, pageSize: string) => {
+      expect(screen.getByText(page)).toBeTruthy()
+      expect(screen.getByText(range)).toBeTruthy()
+      expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe(query)
+      expect(getPageSizeSelect()?.value).toBe(pageSize)
+    }
+
+    // Each visit must restore that tab's OWN state, never the other tab's, and
+    // a second round trip proves the state was retained rather than recomputed.
+    for (let roundTrip = 0; roundTrip < 2; roundTrip += 1) {
+      fireEvent.click(screen.getByRole("tab", { name: "آخر دفعات الرواتب" }))
+      expectVisibleState("2 / 3", "11-20 من 23", "عامل", "10")
+
+      fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+      expectVisibleState("2 / 2", "26-40 من 40", "صانع", "25")
+    }
+  }, 15000) // Instrumented coverage runs this multi-render test past the 5s default; the assertions are the guard.
+
   it("shows a no-results message instead of dead controls when a filter matches nothing", () => {
     render(
       <SalariesSection
