@@ -13,6 +13,7 @@ import {
   formatDateTimeInAlgeria,
   getAlgeriaDateInputValue,
   getAlgeriaTimeZone,
+  toAlgeriaDayBoundaryIso,
 } from "./algeria-time"
 
 /**
@@ -62,5 +63,33 @@ describe("formatDateTimeInAlgeria", () => {
 describe("getAlgeriaDateInputValue", () => {
   it("returns the Algeria calendar day for an instant near UTC midnight", () => {
     expect(getAlgeriaDateInputValue(new Date(MIDNIGHT_CROSSING))).toBe("2026-10-01")
+  })
+})
+
+describe("toAlgeriaDayBoundaryIso", () => {
+  it("expands a real day to the inclusive Algeria instant range", () => {
+    expect(toAlgeriaDayBoundaryIso("2026-10-01", "start")).toBe("2026-09-30T23:00:00.000Z")
+    expect(toAlgeriaDayBoundaryIso("2026-10-01", "end")).toBe("2026-10-01T22:59:59.999Z")
+  })
+
+  it("rejects 2026-02-30 instead of rolling it into March", () => {
+    expect(toAlgeriaDayBoundaryIso("2026-02-30", "start")).toBeUndefined()
+    expect(toAlgeriaDayBoundaryIso("2026-02-30", "end")).toBeUndefined()
+  })
+
+  it("rejects out-of-range month and day parts", () => {
+    expect(toAlgeriaDayBoundaryIso("2026-13-01", "start")).toBeUndefined()
+    expect(toAlgeriaDayBoundaryIso("2026-00-10", "start")).toBeUndefined()
+    expect(toAlgeriaDayBoundaryIso("2026-04-31", "start")).toBeUndefined()
+    expect(toAlgeriaDayBoundaryIso("2026-11-00", "start")).toBeUndefined()
+  })
+
+  it("keeps a leap day", () => {
+    expect(toAlgeriaDayBoundaryIso("2028-02-29", "start")).toBe("2028-02-28T23:00:00.000Z")
+  })
+
+  it("rejects non-finite and malformed parts", () => {
+    expect(toAlgeriaDayBoundaryIso("not-a-day", "start")).toBeUndefined()
+    expect(toAlgeriaDayBoundaryIso("", "start")).toBeUndefined()
   })
 })

@@ -11,7 +11,8 @@ const ALGERIA_OFFSET_HOURS = 1
 /**
  * Expand a `yyyy-MM-dd` business day to the inclusive UTC instant range of that
  * day in Africa/Algiers (`start` = 00:00 local, `end` = 23:59:59.999 local).
- * Returns `undefined` when the value is not a valid calendar day.
+ * Returns `undefined` when the value is not a real calendar day: a rolling
+ * value like `2026-02-30` is rejected, not normalized into March.
  */
 export function toAlgeriaDayBoundaryIso(value: string, boundary: "start" | "end") {
   const [rawYear, rawMonth, rawDay] = value.split("-").map((part) => Number.parseInt(part, 10))
@@ -20,6 +21,17 @@ export function toAlgeriaDayBoundaryIso(value: string, boundary: "start" | "end"
   const day = rawDay ?? Number.NaN
 
   if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return undefined
+  }
+
+  // Date.UTC rolls an impossible day forward (2026-02-30 -> 2026-03-02), so
+  // round-trip the parts to reject an invalid month or day.
+  const midnightUtc = new Date(Date.UTC(year, month - 1, day))
+  const isRealCalendarDay =
+    midnightUtc.getUTCFullYear() === year &&
+    midnightUtc.getUTCMonth() === month - 1 &&
+    midnightUtc.getUTCDate() === day
+  if (!isRealCalendarDay) {
     return undefined
   }
 

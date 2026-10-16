@@ -5,11 +5,33 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { dayIn, pinUtcTimeZone } from "@/test-utils/algeria-day"
+import { ar } from "@/i18n/resources/ar"
 
 // The update-check stamp renders only on the desktop "system" tab, so the
 // runtime and the update hook are mocked; the settings tabs live behind `?tab=`.
+// `t` resolves against the real Arabic resource, so a key missing from the
+// resource fails this suite instead of silently rendering the raw key
+// (wisdom: testing.md).
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string, fallback?: string) => fallback ?? key }),
+  useTranslation: () => ({
+    t: (key: string, fallback?: string, options?: Record<string, unknown>) => {
+      let node: unknown = ar.translation
+      for (const part of key.split(".")) {
+        if (node === null || typeof node !== "object" || !(part in node)) {
+          node = undefined
+          break
+        }
+        node = (node as Record<string, unknown>)[part]
+      }
+      let result = typeof node === "string" ? node : (fallback ?? key)
+      if (options) {
+        for (const [k, v] of Object.entries(options)) {
+          result = result.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), String(v))
+        }
+      }
+      return result
+    },
+  }),
 }))
 
 vi.mock("./use-update-check", () => ({
@@ -40,7 +62,7 @@ vi.mock("@/features/license/use-license-status", () => ({
 
 import { SettingsSection } from "./settings-section"
 
-const LAST_CHECKED_LABEL = "آخر فحص"
+const LAST_CHECKED_LABEL = ar.translation.shell.settingsLastChecked
 
 const PROPS = {
   accountCurrentPasswordLabel: "كلمة المرور الحالية",
