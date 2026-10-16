@@ -6,7 +6,7 @@ import Database from "better-sqlite3";
 
 import {
   assertBindingEncrypts,
-  assertNotEncryptedWithoutKey,
+  assertDatabaseFileMatchesKey,
   createDatabaseConnection,
   resolveDatabaseConstructor,
 } from "./factory";
@@ -109,14 +109,14 @@ describe("assertBindingEncrypts", () => {
   });
 });
 
-describe("assertNotEncryptedWithoutKey", () => {
+describe("assertDatabaseFileMatchesKey (no key configured)", () => {
   const plaintextHeader = "SQLite format 3\0";
 
   it("refuses a non-SQLite file with a message that does not assert encryption", () => {
     const dbPath = tempDbPath();
     writeFileSync(dbPath, Buffer.from("not a plaintext sqlite database at all"));
 
-    expect(() => assertNotEncryptedWithoutKey(dbPath, null)).toThrowError(
+    expect(() => assertDatabaseFileMatchesKey(dbPath, null)).toThrowError(
       /SQLCipher-encrypted.*encrypted_db.*#402/s,
     );
     // A truncated or corrupt plaintext database takes the same path, so the
@@ -124,7 +124,7 @@ describe("assertNotEncryptedWithoutKey", () => {
     // damage as the alternative, and say what to check (#409).
     const message = () => {
       try {
-        assertNotEncryptedWithoutKey(dbPath, null);
+        assertDatabaseFileMatchesKey(dbPath, null);
       } catch (error) {
         return error instanceof Error ? error.message : String(error);
       }
@@ -142,23 +142,69 @@ describe("assertNotEncryptedWithoutKey", () => {
     const dbPath = tempDbPath();
     writeFileSync(dbPath, Buffer.from(plaintextHeader + "rest"));
 
-    expect(() => assertNotEncryptedWithoutKey(dbPath, null)).not.toThrow();
+    expect(() => assertDatabaseFileMatchesKey(dbPath, null)).not.toThrow();
   });
 
   it("accepts a missing or empty file (a fresh workspace)", () => {
     const missing = tempDbPath();
-    expect(() => assertNotEncryptedWithoutKey(missing, null)).not.toThrow();
+    expect(() => assertDatabaseFileMatchesKey(missing, null)).not.toThrow();
 
     const empty = tempDbPath();
     writeFileSync(empty, "");
-    expect(() => assertNotEncryptedWithoutKey(empty, null)).not.toThrow();
+    expect(() => assertDatabaseFileMatchesKey(empty, null)).not.toThrow();
+  });
+
+  it("refuses a truncated (1-15 byte) file with the damaged-or-encrypted message", () => {
+    // A 5-byte file has a non-SQLite header but is too short to be an
+    // encrypted database either. It must take the same conservative path as
+    // any non-header file: refused, with damage named as a possibility.
+    const dbPath = tempDbPath();
+    writeFileSync(dbPath, Buffer.from("short"));
+
+    expect(() => assertDatabaseFileMatchesKey(dbPath, null)).toThrowError(
+      /cannot tell those apart/,
+    );
   });
 
   it("does not pre-judge the file when a key is configured", () => {
     const dbPath = tempDbPath();
     writeFileSync(dbPath, Buffer.from("encrypted-looking bytes"));
 
-    expect(() => assertNotEncryptedWithoutKey(dbPath, "secret")).not.toThrow();
+    expect(() => assertDatabaseFileMatchesKey(dbPath, "secret")).not.toThrow();
+  });
+});
+
+describe("assertDatabaseFileMatchesKey", () => {
+  it("refuses a plaintext database when a key is configured (#402)", () => {
+    // The other direction of the same rule: the header says the file is a
+    // plain SQLite database while APP_DB_KEY is set.
+    const dbPath = tempDbPath();
+    writeFileSync(dbPath, Buffer.from("SQLite format 3\0and more"));
+
+    expect(() => assertDatabaseFileMatchesKey(dbPath, "secret")).toThrowError(
+      /APP_DB_KEY set.*plaintext SQLite header.*#402/s,
+    );
+  });
+
+  it("accepts an encrypted-looking file with a key and refuses it without one", () => {
+    const dbPath = tempDbPath();
+    writeFileSync(dbPath, Buffer.from("random salt bytes that are not the magic"));
+
+    expect(() => assertDatabaseFileMatchesKey(dbPath, "secret")).not.toThrow();
+    expect(() => assertDatabaseFileMatchesKey(dbPath, null)).toThrowError(
+      /SQLCipher-encrypted/,
+    );
+  });
+
+  it("accepts a missing or empty file for either key configuration", () => {
+    const missing = tempDbPath();
+    expect(() => assertDatabaseFileMatchesKey(missing, "secret")).not.toThrow();
+    expect(() => assertDatabaseFileMatchesKey(missing, null)).not.toThrow();
+
+    const empty = tempDbPath();
+    writeFileSync(empty, "");
+    expect(() => assertDatabaseFileMatchesKey(empty, "secret")).not.toThrow();
+    expect(() => assertDatabaseFileMatchesKey(empty, null)).not.toThrow();
   });
 });
 

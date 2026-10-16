@@ -67,27 +67,47 @@ const readLeadingBytes = (databasePath: string): string | null => {
 }
 
 /**
- * A SQLCipher-encrypted file is indistinguishable from noise to a plaintext
- * reader, so without a key it only fails at the first query with an opaque
- * `file is not a database`. Refuse it up front with a message that names both
- * possibilities — an encrypted workspace whose `encrypted_db` capability is not
- * active, or a damaged plaintext file — without asserting which one it is
- * (licensing architecture §8.3 / #402).
+ * Check a database file's header against the configured key, in BOTH
+ * directions (#402).
+ *
+ *  - key set + a plaintext `SQLite format 3\0` header → refuse. Opening a
+ *    plaintext file under a key would either corrupt it or silently defeat
+ *    the at-rest guarantee the key is there to provide.
+ *  - no key + a non-SQLite header → refuse. A SQLCipher-encrypted file is
+ *    indistinguishable from noise to a plaintext reader, so without this it
+ *    only fails at the first query with an opaque `file is not a database`
+ *    (licensing architecture §8.3 / #402).
+ *
+ * A missing or empty file (a fresh workspace) is valid either way: SQLCipher
+ * creates an encrypted file on first write.
  */
-export function assertNotEncryptedWithoutKey(databasePath: string, key: string | null): void {
-  if (key || databasePath === ":memory:") return
+export function assertDatabaseFileMatchesKey(databasePath: string, key: string | null): void {
+  if (databasePath === ":memory:") return
 
   const header = readLeadingBytes(databasePath)
-  if (header === null || header === "" || header === SQLITE_HEADER) return
+  if (header === null || header === "") return
 
-  throw new Error(
-    `Refusing to open ${databasePath}: its first bytes are not the SQLite header, so it is `
-    + "either SQLCipher-encrypted (expected when no database key is active) or damaged. This "
-    + "build cannot tell those apart. Check the license's encrypted_db feature and APP_DB_KEY: "
-    + "if the workspace should be encrypted, provide the key or restore the license; if it "
-    + "should be plaintext, the file may be truncated or corrupt, so inspect or restore it "
-    + "before retrying (#402)."
-  )
+  const isPlaintext = header === SQLITE_HEADER
+
+  if (key && isPlaintext) {
+    throw new Error(
+      `Refusing to open ${databasePath} with APP_DB_KEY set: its first bytes are the plaintext `
+      + "SQLite header, so it is an unencrypted database. Opening it under a key would either "
+      + "corrupt it or silently defeat at-rest encryption (#402). Remove APP_DB_KEY for this "
+      + "workspace, or point APP_DB_PATH at the encrypted database."
+    )
+  }
+
+  if (!key && !isPlaintext) {
+    throw new Error(
+      `Refusing to open ${databasePath}: its first bytes are not the SQLite header, so it is `
+      + "either SQLCipher-encrypted (expected when no database key is active) or damaged. This "
+      + "build cannot tell those apart. Check the license's encrypted_db feature and APP_DB_KEY: "
+      + "if the workspace should be encrypted, provide the key or restore the license; if it "
+      + "should be plaintext, the file may be truncated or corrupt, so inspect or restore it "
+      + "before retrying (#402)."
+    )
+  }
 }
 
 /** Message for a keyed open whose binding does not actually encrypt. */
@@ -108,7 +128,8 @@ export type EncryptionCapabilityProbe = Pick<BetterSqliteDatabase, "pragma"> & {
  * version, so a successful `require()` is not enough. This proves the binding
  * can encrypt; it does not prove that a keyed write lands ciphertext on disk —
  * the #410 CI job covers that end to end. On failure the connection is closed
- * before throwing, so no handle (and no plaintext file) is left behind.
+ * before throwing, so no handle is left behind and no plaintext content is
+ * written.
  */
 export function assertBindingEncrypts(sqlite: EncryptionCapabilityProbe): void {
   let cipherVersion: unknown
@@ -143,7 +164,7 @@ export function createDatabaseConnection(
   mkdirSync(dirname(resolvedPath), { recursive: true })
 
   const resolvedKey = dbKey ?? process.env.APP_DB_KEY ?? null
-  assertNotEncryptedWithoutKey(resolvedPath, resolvedKey)
+  assertDatabaseFileMatchesKey(resolvedPath, resolvedKey)
   const SqliteConstructor = resolveDatabaseConstructor(resolvedKey, loadSqlcipher)
   const sqlite = new SqliteConstructor(resolvedPath)
 

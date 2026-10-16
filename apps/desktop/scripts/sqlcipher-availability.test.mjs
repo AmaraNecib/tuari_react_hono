@@ -9,9 +9,11 @@ import {
   SQLCIPHER_PROBE_SOURCE,
   SQLCIPHER_WINDOWS_DLL_RELATIVE_PATH,
   inspectSqlcipherArtifact,
+  isReleaseBuild,
   probeSqlcipherBinding,
   requiredSqlcipherFiles,
   resolveSqlcipherArtifact,
+  sqlcipherGateDecision,
 } from "./sqlcipher-availability.mjs";
 
 /**
@@ -354,4 +356,45 @@ test("a failed native build is reported in detail instead of thrown", () => {
   assert.equal(result.attemptedBuild, true);
   assert.equal(result.availability.available, false);
   assert.match(result.detail, /node-gyp rebuild failed/);
+});
+
+test("isReleaseBuild treats CI and NODE_ENV=production as release builds", () => {
+  assert.equal(isReleaseBuild({ CI: "true" }), true);
+  assert.equal(isReleaseBuild({ CI: "1" }), true);
+  assert.equal(isReleaseBuild({ NODE_ENV: "production" }), true);
+  assert.equal(isReleaseBuild({ NODE_ENV: "development" }), false);
+  assert.equal(isReleaseBuild({}), false);
+});
+
+test("the gate proceeds only with a real SQLCipher binding", () => {
+  assert.equal(
+    sqlcipherGateDecision({ available: true, plaintextAllowed: false, release: false }),
+    "proceed",
+  );
+  assert.equal(
+    sqlcipherGateDecision({ available: true, plaintextAllowed: true, release: true }),
+    "proceed",
+  );
+});
+
+test("the gate refuses without a waiver and waives only outside a release", () => {
+  assert.equal(
+    sqlcipherGateDecision({ available: false, plaintextAllowed: false, release: false }),
+    "refuse",
+  );
+  assert.equal(
+    sqlcipherGateDecision({ available: false, plaintextAllowed: true, release: false }),
+    "waived",
+  );
+});
+
+test("a release build can never waive SQLCipher, however the waiver is requested", () => {
+  assert.equal(
+    sqlcipherGateDecision({ available: false, plaintextAllowed: true, release: true }),
+    "refuse-release",
+  );
+  assert.equal(
+    sqlcipherGateDecision({ available: false, plaintextAllowed: false, release: true }),
+    "refuse-release",
+  );
 });

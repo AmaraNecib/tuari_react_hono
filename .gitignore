@@ -29,6 +29,10 @@ Thumbs.db
 /apps/desktop/src-tauri/bin/api-runtime/
 /apps/desktop/src-tauri/bin/node.exe
 /apps/desktop/src-tauri/gen/schemas/
+# Sidecar build staging trees (removed on success; a SIGKILL can leave one) and
+# the runtime tree a swap renames aside. Never committed.
+/apps/desktop/src-tauri/.bin-staging-*/
+/apps/desktop/src-tauri/bin.previous-*
 
 /tmp/*
 

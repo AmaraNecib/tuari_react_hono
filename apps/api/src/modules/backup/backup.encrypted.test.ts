@@ -1,17 +1,23 @@
 /**
- * Encrypted-backup proof (#402).
+ * Encrypted-backup proof.
  *
  * The daily engine copies with `VACUUM INTO` and applies the key to both the
  * source and the copy, so an encrypted workspace backs up to an encrypted file.
  * That is a claim about real bytes, and the only honest way to prove it is to
  * write a keyed database, take the backup, and then read the copy back with the
- * key and refuse it without. This file is that proof.
+ * key and refuse it without. This file is that proof — the backup-path guard
+ * (the same claim #430/#470 make), which #402 needed evidence for.
+ *
+ * Scope: this is NOT the revert detector for #402's build gate or its keyed
+ * file-header check; those live in `factory.test.ts` and
+ * `apps/desktop/scripts/sqlcipher-availability.test.mjs`. On a host without the
+ * native fork this whole file skips.
  *
  * It is gated on the SQLCipher native binding actually being present and
  * loadable. This workspace has node-gyp but no Windows SDK, so the fork cannot
- * be built here; when the binding is missing the whole suite is skipped rather
- * than silently passing. Building the fork and running this file is what #410's
- * native CI job exists to do.
+ * be built here; when the binding is missing the suite is skipped (vitest shows
+ * it as skipped, never as passed). #410's native CI job builds the fork and runs
+ * this file — and must fail when the binding is absent rather than skip.
  */
 import { createRequire } from "node:module";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";

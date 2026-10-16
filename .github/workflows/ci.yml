@@ -32,6 +32,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo lint
+      # The desktop sidecar/packaging tests guard the #402 build gate
+      # (SQLCipher availability, runtime staging). Turbo never runs them —
+      # @tuari/desktop has no lint task and `turbo test` is not a CI entry
+      # point — so an unwired gate would silently rot.
+      - run: pnpm --filter @tuari/desktop test:packaging-security
       # Root-level gates turbo never runs: turbo has no root lint task, so the
       # prose gate and the issue-closing harness would silently pass CI.
       - run: pnpm check:unslop

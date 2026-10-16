@@ -188,3 +188,35 @@ export const probeSqlcipherBinding = ({
 
   return version;
 };
+
+/**
+ * True when this process is a build that will ship (CI or NODE_ENV=production).
+ * A plaintext-only artifact is never acceptable there: an `encrypted_db`
+ * licence would silently get a plaintext database (#402). The waiver exists for
+ * local development only.
+ */
+export const isReleaseBuild = (env = process.env) =>
+  Boolean(env.CI) || env.NODE_ENV === "production";
+
+/**
+ * Decide what the build does about a missing or unloadable SQLCipher binding.
+ * Pure, so the release guard is unit-testable without a compiler.
+ *
+ * - `proceed`        — a real SQLCipher binding is available.
+ * - `waived`         — local build, operator explicitly asked for plaintext.
+ * - `refuse-release` — a plaintext artifact is never acceptable in a release,
+ *                      whichever way the waiver was requested.
+ * - `refuse`         — no waiver, so the build must fail.
+ *
+ * @param {object} options
+ * @param {boolean} options.available
+ * @param {boolean} options.plaintextAllowed - The waiver was requested.
+ * @param {boolean} options.release - `isReleaseBuild()` for this process.
+ * @returns {"proceed" | "waived" | "refuse" | "refuse-release"}
+ */
+export const sqlcipherGateDecision = ({ available, plaintextAllowed, release }) => {
+  if (available) return "proceed";
+  if (release) return "refuse-release";
+  if (plaintextAllowed) return "waived";
+  return "refuse";
+};

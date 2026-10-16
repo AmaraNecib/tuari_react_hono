@@ -203,15 +203,21 @@ the desktop shell enforces it:
   as no-ops, so this proves the loaded binding is SQLCipher rather than plain
   `better-sqlite3`. A key with a non-encrypting binding is refused (connection
   closed, clear error), never ignored.
+- Before opening, the factory compares the file's first bytes with the configured
+  key in both directions: a plaintext `SQLite format 3` file with `APP_DB_KEY`
+  set is refused (opening it under a key would corrupt it or silently defeat
+  at-rest encryption), and a non-SQLite file with no key active is refused as
+  encrypted-or-damaged rather than failing at the first query.
 - The binding must be **shipped**, not merely buildable. `build-sidecar.mjs`
   fails the desktop build when the SQLCipher native binding is missing, instead
   of silently packaging a plaintext-only runtime (#402). The gate may be waived
   only with an explicit `--allow-plaintext` / `TUARI_ALLOW_PLAINTEXT_DB=1`, which
-  prints a loud banner; release builds never pass it. `typecheck` passes the
-  waiver together with `--ephemeral`, so the runtime it exercises is assembled in
-  a temp directory and never lands in `src-tauri/bin`; `tauri.conf.json`'s
-  `beforeBuildCommand` re-runs the strict build, so `tauri build` cannot package
-  an unverified runtime.
+  prints a loud banner; a release build (`CI` / `NODE_ENV=production`) refuses
+  that waiver outright, so it cannot leak a plaintext artifact out of CI.
+  `typecheck` passes the waiver together with `--ephemeral`, so the runtime it
+  exercises is assembled in a temp directory and never lands in `src-tauri/bin`;
+  `tauri.conf.json`'s `beforeBuildCommand` re-runs the strict build, so
+  `tauri build` cannot package an unverified runtime.
 - The build loads the copied addon with the copied Node and requires a non-empty
   `PRAGMA cipher_version` before publishing, and the installer smoke test checks
   the same capability on the built artifact.

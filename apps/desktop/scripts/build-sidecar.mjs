@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyValidatedTree, runPnpmCommand } from "./script-security-utils.mjs";
 import { buildProbeAndPublishRuntime } from "./runtime-staging.mjs";
-import { probeSqlcipherBinding, resolveSqlcipherArtifact } from "./sqlcipher-availability.mjs";
+import { isReleaseBuild, probeSqlcipherBinding, resolveSqlcipherArtifact, sqlcipherGateDecision } from "./sqlcipher-availability.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,6 +46,13 @@ const apiDistDir = path.resolve(apiRoot, "dist");
 const plaintextAllowed =
   process.argv.includes("--allow-plaintext")
   || process.env.TUARI_ALLOW_PLAINTEXT_DB === "1";
+
+/**
+ * A release build (CI or NODE_ENV=production) may never ship a plaintext-only
+ * artifact, whichever way the waiver was requested (#402). The waiver is a
+ * local development escape hatch, not a release knob.
+ */
+const release = isReleaseBuild();
 
 const findPackageRoot = (resolvedPath) => {
   let currentDir = path.dirname(resolvedPath);
@@ -127,7 +134,7 @@ const resolveSqlcipher = () => {
     sqlcipherDir,
     ...resolveSqlcipherArtifact({
       packageDir: sqlcipherDir,
-      plaintextAllowed,
+      plaintextAllowed: plaintextAllowed && !release,
       ephemeral,
       buildNative: () => buildSqlcipherNative(sqlcipherDir),
     }),
@@ -161,23 +168,42 @@ const printPlaintextOnlyWarning = (detail) => {
 // The gate runs inside the build callback, before the staging tree is
 // published, so a refused gate leaves the previous artifact untouched.
 const enforceSqlcipherGate = () => {
-  if (sqlcipher.availability.available) return;
+  const decision = sqlcipherGateDecision({
+    available: sqlcipher.availability.available,
+    plaintextAllowed,
+    release,
+  });
+
+  if (decision === "proceed") return;
+  if (decision === "waived") {
+    printPlaintextOnlyWarning(
+      sqlcipher.detail
+      ?? (sqlcipher.availability.missing.length > 0
+        ? `missing ${sqlcipher.availability.missing.join(", ")}`
+        : "unknown reason"),
+    );
+    return;
+  }
 
   const detail = sqlcipher.detail
     ?? (sqlcipher.availability.missing.length > 0
       ? `missing ${sqlcipher.availability.missing.join(", ")}`
       : "unknown reason");
 
-  if (!plaintextAllowed) {
+  if (decision === "refuse-release") {
     throw new Error(
-      "SQLCipher is required to build the desktop artifact, but its native binding is not available "
-      + `(${detail}). Without it an encrypted_db license would silently get a plaintext database (#402). `
-      + "Fix the native build (node-gyp + a C++ toolchain, or approve better-sqlite3-sqlcipher's build), "
-      + "or produce a knowingly plaintext-only artifact with --allow-plaintext / TUARI_ALLOW_PLAINTEXT_DB=1.",
+      "SQLCipher is required to build the desktop artifact, and a plaintext-only artifact may "
+      + "not be produced in a release build (CI / NODE_ENV=production). Without SQLCipher an "
+      + `encrypted_db license would silently get a plaintext database (#402). Reason: ${detail}.`,
     );
   }
 
-  printPlaintextOnlyWarning(detail);
+  throw new Error(
+    "SQLCipher is required to build the desktop artifact, but its native binding is not available "
+    + `(${detail}). Without it an encrypted_db license would silently get a plaintext database (#402). `
+    + "Fix the native build (node-gyp + a C++ toolchain, or approve better-sqlite3-sqlcipher's build), "
+    + "or produce a knowingly plaintext-only artifact with --allow-plaintext / TUARI_ALLOW_PLAINTEXT_DB=1.",
+  );
 };
 
 const buildRuntime = () => {
@@ -247,7 +273,9 @@ const probeStagedRuntime = () => {
       runtimeDir,
     });
   } catch (error) {
-    if (!plaintextAllowed) throw error;
+    // A failed load is fatal in a release too: the waiver cannot turn an
+    // unloadable addon into a shipping artifact (#402).
+    if (!plaintextAllowed || release) throw error;
 
     printPlaintextOnlyWarning(
       "the SQLCipher binding is present but the bundled Node cannot load it "
