@@ -89,3 +89,28 @@ it; only open an account when the chosen ledger has none.
 - Overpaying past the balance is allowed (the domain has credit states), matching
   the ledger panel; the cases form is not the allocation dialog
   (`recordDebtPayment`) which caps at the balance.
+
+## Round 2 — review findings (Greptile on #481)
+
+Three findings against `2c852a1f`, all fixed on `fix/459-debt-cases-payment`:
+
+1. **Submit unlocked mid-save.** Creating an account refreshes the accounts
+   while the create mutation is still pending; the form flips to
+   `record-payment`, and the button only watched the (idle) entry mutation, so a
+   second click posted the opening amount as a negative `PAYMENT` and cancelled
+   the debt. The submit now stays disabled while **either** mutation is pending,
+   and the amount is only cleared after the save resolves. Pinned by a test that
+   rerenders the panel with the account present but the create mutation pending
+   and asserts a second click posts nothing; the test fails on the pre-fix code.
+2. **A blocked save had no reason.** The payment path blocks empty/zero amounts
+   with a disabled button and no explanation. A localized Arabic hint now sits
+   beside the submit in a `role="status"` line (the invoice `saveDisabledReason`
+   pattern), naming a non-zero payment amount required, or a valid number for an
+   invalid opening amount.
+3. **`createAccountDescription` contradicted the page.** It said the party had
+   no account, but the form also shows creation when a `PAYABLE` account exists
+   and the operator picks a missing `RECEIVABLE` ledger. It now says the
+   **selected ledger** has no account.
+
+No contract or wire change. `resolveDebtCasesFormAction` remains the single
+source of the action, label, description and submit branch.

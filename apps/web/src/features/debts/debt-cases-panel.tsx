@@ -75,9 +75,24 @@ export function DebtCasesPanel({
   const accountAction = resolveDebtCasesFormAction(sortedAccounts, accountDirection)
   const isRecordingPayment = accountAction.kind === "record-payment"
   const hasValidPaymentAmount = Number.isFinite(amountValue) && amountValue !== 0
-  const isSubmitDisabled = isRecordingPayment
-    ? !hasValidPaymentAmount || createDebtEntryMutation.isPending
-    : !hasValidCreateAmount || createDebtAccountMutation.isPending
+  const hasValidAmount = isRecordingPayment ? hasValidPaymentAmount : hasValidCreateAmount
+  // Both mutations gate the submit. The account refresh can flip the form to
+  // "record-payment" while the opening save is still in flight, and the button
+  // then watches the now-idle entry mutation — a second click would post the
+  // opening amount as a payment and cancel the debt. The original amount is
+  // only cleared after the save resolves, so pending means blocked.
+  const isSubmitDisabled =
+    createDebtEntryMutation.isPending ||
+    createDebtAccountMutation.isPending ||
+    !hasValidAmount
+  // A disabled save must say why, on screen. The amount is the only input the
+  // operator can fix; a zero/empty payment and a non-numeric amount are the
+  // two reasons.
+  const amountBlockedReasonKey = !hasValidAmount
+    ? isRecordingPayment
+      ? "debts.cases.paymentAmountRequired"
+      : "debts.cases.amountInvalid"
+    : null
 
   // Aggregate stats across all accounts
   const totalEntryCount = useMemo(
@@ -226,6 +241,11 @@ export function DebtCasesPanel({
         </div>
 
         <PageFooterActions className="mt-4">
+          {amountBlockedReasonKey ? (
+            <p aria-live="polite" className="self-center text-sm text-destructive" role="status">
+              {t(amountBlockedReasonKey)}
+            </p>
+          ) : null}
           <Button
             disabled={isSubmitDisabled}
             onClick={async () => {
