@@ -218,6 +218,10 @@ the desktop shell enforces it:
   exercises is assembled in a temp directory and never lands in `src-tauri/bin`;
   `tauri.conf.json`'s `beforeBuildCommand` re-runs the strict build, so
   `tauri build` cannot package an unverified runtime.
+  `pnpm-workspace.yaml` leaves `better-sqlite3-sqlcipher` out of
+  `onlyBuiltDependencies`, so a plain `pnpm install` does not attempt the native
+  build; the sidecar build drives `node-gyp` itself through its own
+  devDependency (the version is pinned by the lockfile).
 - The build loads the copied addon with the copied Node and requires a non-empty
   `PRAGMA cipher_version` before publishing, and the installer smoke test checks
   the same capability on the built artifact.

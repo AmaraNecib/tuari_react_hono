@@ -132,6 +132,12 @@ export function requiredRuntimeFiles(runtimeDir, nodeExe) {
  * `snapshot.json` marker, and treat only a marked folder as a snapshot. If that
  * layout changes, this returns null and the job goes red — the duplication
  * fails closed, which is the right failure for a gate.
+ *
+ * The duplicated names and the deliberately un-duplicated `SQLITE_HEADER_MAGIC`
+ * are opposite answers to the same question. The magic is fixed by the SQLite
+ * file format, so it cannot drift and there is nothing to gain by sharing it;
+ * the folder layout is a project decision that can change, so this copy carries
+ * real drift risk and is mitigated only by failing closed.
  */
 export function findSnapshotDatabase(backupsRoot, { readdir = readdirSync } = {}) {
   if (!existsSync(backupsRoot)) return null;
@@ -211,9 +217,11 @@ export function parseArgs(argv) {
         options.help = true;
         break;
       default:
-        if (arg.startsWith("--")) {
-          throw new Error(`Unknown option: ${arg}`);
-        }
+        // Any unrecognised argument is an error. A bare positional or a
+        // single-dash typo (`-runtime ./x`, `--runtime=./x`) would otherwise be
+        // ignored and the default used silently, which is how a gate ends up
+        // proving a runtime the caller did not name.
+        throw new Error(`Unknown option: ${arg}`);
     }
   }
 
@@ -240,7 +248,10 @@ export function usage() {
 // `require("better-sqlite3-sqlcipher")` resolves from the process cwd, so these
 // load the same binding the shipped runtime loads.
 
-const WRITE_ROW_PROBE_SOURCE = [
+// A structural guard in the unit suite asserts these two strings still apply
+// the key: the keyed write is the guarantee #410 exists to make, and it is
+// otherwise only observable on the Windows runner.
+export const WRITE_ROW_PROBE_SOURCE = [
   'const Database = require("better-sqlite3-sqlcipher");',
   'const key = String(process.env.TUARI_PROOF_KEY || "").replace(/\'/g, "\'\'");',
   "const db = new Database(process.env.TUARI_PROOF_DB);",
@@ -254,7 +265,7 @@ const WRITE_ROW_PROBE_SOURCE = [
   "}",
 ].join("\n");
 
-const READ_ROWS_PROBE_SOURCE = [
+export const READ_ROWS_PROBE_SOURCE = [
   'const Database = require("better-sqlite3-sqlcipher");',
   'const key = String(process.env.TUARI_PROOF_KEY || "").replace(/\'/g, "\'\'");',
   "const db = new Database(process.env.TUARI_PROOF_DB);",
@@ -342,17 +353,29 @@ async function waitForSnapshot(backupsRoot, { timeoutMs, child, transcript }) {
 }
 
 /**
- * A database file that exists, is large enough to hold a header, and does NOT
- * start with the plaintext magic. Returns its size.
+ * A database file that exists, is a real file, is large enough to hold a
+ * header, and does NOT start with the plaintext magic. Returns its size.
  *
- * Exported so the three rejection paths (missing, too small, plaintext) are
- * unit-tested: this is the enforcement point for steps 3 to 5.
+ * The name says what it establishes: "not plaintext SQLite", not "encrypted" —
+ * bytes that are not the magic are not proof of ciphertext, and the keyed
+ * read-back is what closes that gap.
+ *
+ * Exported so the rejection paths (missing, directory, too small, plaintext)
+ * are unit-tested: this is the enforcement point for steps 3 to 5.
  */
-export function assertEncryptedDatabase(filePath, label) {
+export function assertNotPlaintextDatabase(filePath, label) {
   if (!existsSync(filePath)) {
     throw new Error(`${label}: expected a database at ${filePath}, found none`);
   }
-  const size = statSync(filePath).size;
+  // A mis-resolved runtime path is a directory or a special file. Say which,
+  // rather than surfacing a raw EISDIR from somewhere deeper.
+  const stats = statSync(filePath);
+  if (!stats.isFile()) {
+    throw new Error(
+      `${label}: expected a database at ${filePath}, found ${stats.isDirectory() ? "a directory" : "a special file"}`,
+    );
+  }
+  const size = stats.size;
   if (size < SQLITE_HEADER_MAGIC.length) {
     throw new Error(`${label}: ${filePath} is ${size} bytes — too small to be a database at all`);
   }
@@ -420,7 +443,7 @@ export async function runProof(options, { log = console.log } = {}) {
       TUARI_PROOF_KEY: key,
       TUARI_PROOF_MARKER: marker,
     });
-    const roundTripSize = assertEncryptedDatabase(roundTripDb, "keyed write");
+    const roundTripSize = assertNotPlaintextDatabase(roundTripDb, "keyed write");
     results.push(`keyed write produced ${roundTripSize} encrypted bytes`);
 
     log("[4/5] Reopening WITH the key reads the row back");
@@ -459,7 +482,7 @@ export async function runProof(options, { log = console.log } = {}) {
     await waitForHealth(port, { timeoutMs: options.healthTimeoutMs, child, transcript });
     results.push("shipped runtime answered /health with a keyed database");
 
-    const liveSize = assertEncryptedDatabase(liveDb, "sidecar database");
+    const liveSize = assertNotPlaintextDatabase(liveDb, "sidecar database");
     // One reader for both databases, so "the backup is a copy of the live
     // database" is a comparison of like with like.
     const keyedTableNames = (databasePath) =>
@@ -482,18 +505,27 @@ export async function runProof(options, { log = console.log } = {}) {
       child,
       transcript,
     });
-    const snapshotSize = assertEncryptedDatabase(snapshot, "daily backup");
+    const snapshotSize = assertNotPlaintextDatabase(snapshot, "daily backup");
     const snapshotTables = keyedTableNames(snapshot);
     if (snapshotTables.length === 0) {
       throw new Error("the keyed daily backup holds no tables — the backup is not key-readable");
     }
-    // The backup is a `VACUUM INTO` copy, so the schema it carries must be the
-    // live schema. Equality is schema-agnostic, so this cannot drift with a
-    // migration — and it catches a backup that is readable but incomplete.
-    if (snapshotTables.join("\n") !== liveTables.join("\n")) {
+    // The backup is a `VACUUM INTO` copy of the live database, so every table
+    // the live database had at backup time must be present in the backup. A
+    // table that is missing means the copy is not faithful.
+    //
+    // This is a schema check, not a data check: it cannot see a backup whose
+    // tables exist but are empty, and it does not compare rows.
+    //
+    // Subset, not equality: the live database may add a table between the
+    // snapshot and this read, and that is not the backup's fault.
+    //
+    // It is deliberately schema-agnostic, so it cannot drift with a migration.
+    const missingTables = liveTables.filter((table) => !snapshotTables.includes(table));
+    if (missingTables.length > 0) {
       throw new Error(
-        `the daily backup is not a faithful copy: the live database has [${liveTables.join(", ")}] `
-        + `but the backup has [${snapshotTables.join(", ")}]`,
+        `the daily backup is not a faithful copy: it is missing [${missingTables.join(", ")}] `
+        + `(the backup has [${snapshotTables.join(", ")}])`,
       );
     }
     results.push(`daily backup ${path.relative(backupsRoot, snapshot)} is ${snapshotSize} encrypted bytes (key-readable)`);

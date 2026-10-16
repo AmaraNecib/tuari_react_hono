@@ -122,6 +122,9 @@ jobs:
               - 'apps/api/**'
               - 'packages/contracts/**'
               - 'infrastructure/**'
+              # The proof's own unit test: a change to it alone must re-run the
+              # job it guards, not just the ungated lint step.
+              - 'tests/sqlcipher-encryption-proof.test.mjs'
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'package.json'
@@ -395,12 +398,15 @@ jobs:
   prove-encryption:
     name: Prove SQLCipher encryption (built artifact)
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: windows-latest
+    # `runs-on` is conditional, not just the steps: a `windows-latest` job that
+    # skips every step still provisions (and bills for) a Windows VM. When
+    # nothing encryption-relevant moved, this runs the skipped-echo step on
+    # Ubuntu so the required status check still reports and costs nothing.
+    runs-on: ${{ needs.detect.outputs.encryption == 'true' && 'windows-latest' || 'ubuntu-latest' }}
     needs: detect
     steps:
-      # Every step but the last is gated: a Windows runner that only echoes
-      # "skipped" is a wasted runner-minute on every unrelated PR. The JOB
-      # always runs, so its required status check always reports.
+      # Every step but the last is gated, so an unrelated PR runs no real work.
+      # The JOB always runs, so its required status check always reports.
       - uses: actions/checkout@v4
         if: needs.detect.outputs.encryption == 'true'
         with:

@@ -33,6 +33,10 @@ encrypted too.
 3. **The plaintext predicate is deliberately NOT shared with the API.** The API
    owns its own `SQLITE_HEADER_MAGIC` check (`backup.service.ts`). A proof that
    reused the predicate it is proving could not catch a bug in that predicate.
+   Note the contrast with the duplicated folder layout below: the magic is fixed
+   by the SQLite file format, so a second copy cannot drift and sharing it buys
+   nothing, while the folder names are a project decision that can change, so
+   that copy does carry drift risk and is only mitigated by failing closed.
 4. **The job lives in `ci.yml` and is path-gated**, not only in the publish
    gate — a broken native build must fail before release day.
 
@@ -65,9 +69,14 @@ every file this lane adds is disjoint from the #402 diff.
   every PR as an explicit step of the `lint` job (the root `lint` script is not
   what CI invokes; `pnpm turbo lint` never reaches the root package): the magic
   predicate (including that an **empty or truncated** file is not proof of
-  encryption), `assertEncryptedDatabase`'s three rejection paths, snapshot
-  discovery (only marked `YYYY-MM-DD` folders carry a backup), argument parsing
-  (including a flag whose value is missing), and the required-file list.
+  encryption), `assertNotPlaintextDatabase`'s rejection paths (missing,
+  directory, too small, plaintext) and its 16-byte acceptance boundary, snapshot
+  discovery (only a marked `YYYY-MM-DD` folder is a backup, and a broken newest
+  folder falls back to the newest complete one), argument parsing (a missing
+  value, a non-numeric timeout, an unknown flag, a single-dash typo, a bare
+  positional), the required-file list, and a structural guard that both probe
+  sources still apply `key` and `cipher_compatibility` — the only place the
+  keyed write can be observed without the native binding.
 - The Windows job is the integration proof. It is not unit-testable locally
   (`node-gyp` fails configure on this workstation: *missing any Windows SDK*),
   so the CI run is the only place steps 2–5 execute.
@@ -89,6 +98,12 @@ every file this lane adds is disjoint from the #402 diff.
   nothing and go red — fail-closed, which is the right failure for a gate. The
   marker's own `encrypted` field is **not** asserted: `backup.service.ts` writes
   `Boolean(databaseKey)`, an echo of the config rather than a verification.
+- **The live-vs-backup check is a schema check, not a data check.** Every table
+  the live database has must be present in the backup, but rows are never
+  compared, so a schema-complete backup whose tables are all empty still passes.
+  Closing that needs a known row written before the backup is taken; the proof
+  currently writes no rows into the live database. Accepted limitation, recorded
+  rather than implied.
 
 ## Verification plan
 
