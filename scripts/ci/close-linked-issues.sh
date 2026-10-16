@@ -153,9 +153,26 @@ as_num() {
 #    MENTIONED. Word-boundary anchors (\b) still block mid-word matches like
 #    "unresolved #5"; with the gap closed, a bare `#N`, "part of #N" and
 #    "filed as #N" extract nothing.
+#
+#    Review round on f64292ec added: the separator may carry markdown emphasis
+#    ("**Closes** #N", "Closes **#N**"), newlines are joined first so a
+#    keyword and its reference on separate lines still count, and the verbs
+#    are defined once (they were duplicated across the two passes).
+CLOSE_VERBS='(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)'
+# At least a space or a ":" must sit between keyword and reference, so
+# "Closes#12" is not a close; only emphasis may sit around that separator,
+# never prose. That is the #466 fix.
+CLOSE_SEP='[*_]*([[:space:]]+|:)[[:space:]]*[*_]*'
+# Negators; contractions are spelled out because grep -E has no lookaround.
+NEGATORS='(not|never|no[[:space:]]+longer|no[[:space:]]+more|won[[:punct:]]?t|don[[:punct:]]?t|doesn[[:punct:]]?t|didn[[:punct:]]?t|isn[[:punct:]]?t|aren[[:punct:]]?t|cannot|can[[:punct:]]?t|no|hardly)'
+
+# One line, not many: grep is line-based, and "does not\nclose #N" is the same
+# statement as "does not close #N" (test-audit finding).
+body_flat=$(printf '%s' "$PR_BODY" | tr '\n' ' ')
+
 numbers=$(
-  printf '%s\n' "$PR_BODY" \
-    | grep -oiE '\b(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)[[:space:]:]+#[0-9]+' \
+  printf '%s\n' "$body_flat" \
+    | grep -oiE "\b${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+" \
     | grep -oE '#[0-9]+' \
     | tr -d '#' \
     | sort -un \
@@ -165,23 +182,33 @@ numbers=$(
 # 1b. A NEGATED close is not a close (#466, parent decision): "does not close
 #     #N" / "never fixes #N" must extract nothing. Collect the negated
 #     references first, then subtract them — the affirmative pass above stays
-#     exactly the same, so nothing else about extraction changes. The negator
-#     may be up to two words away from the keyword ("not going to close #N"),
-#     no further: a negator three words out is a different clause more often
-#     than a negated close ("do not merge until it Closes #N" must still
-#     close). Subtracting a NUMBER is deliberately conservative — a body that
-#     both negates and closes the same number does not close it.
+#     exactly the same, so nothing else about extraction changes.
+#
+#     The negator may be up to THREE words from the keyword, and those words
+#     may carry punctuation or quotes ("does not, however, close #N", "no plans
+#     to close #N"); a `#` is not allowed inside that gap, so a negated
+#     reference can never swallow the reference that follows it. Four words out
+#     is a different clause ("do not merge this until it Closes #N" must still
+#     close). "not only/just/merely fixes #N" is AFFIRMATIVE and is filtered
+#     back out (review finding C2), and so is a sentence-opening "No, ..." —
+#     bare `no` needs a word after it ("no plans to close #N"), not a comma.
+#     Subtracting a NUMBER is deliberately conservative — a body that both
+#     negates and closes the same number does not close it.
 negated=$(
-  printf '%s\n' "$PR_BODY" \
-    | grep -oiE '\b(not|never|no[[:space:]]+longer|no[[:space:]]+more|won[[:punct:]]?t|don[[:punct:]]?t|doesn[[:punct:]]?t|didn[[:punct:]]?t|isn[[:punct:]]?t|aren[[:punct:]]?t|cannot|can[[:punct:]]?t|hardly)([[:space:]]+[[:alnum:]_-]+){0,2}[[:space:]]+(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)[[:space:]:]+#[0-9]+' \
+  printf '%s\n' "$body_flat" \
+    | grep -oiE "\b${NEGATORS}([^[:alnum:]#]*[[:alnum:]_'-]+){0,3}[^[:alnum:]#]*${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+" \
+    | grep -viE '^[[:space:]]*no[[:space:]]*,|\b(not|never)[[:space:]]+(only|just|merely|simply)\b' \
     | grep -oE '#[0-9]+' \
     | tr -d '#' \
     | sort -un \
     || true
 )
 for neg in $negated; do
-  numbers=$(printf '%s\n' "$numbers" | grep -vx "$neg" || true)
-  echo "Ignoring #$neg: the PR body negates closing it"
+  # Only report a subtraction that actually happened (review finding C4).
+  if printf '%s\n' "$numbers" | grep -qx "$neg"; then
+    numbers=$(printf '%s\n' "$numbers" | grep -vx "$neg" || true)
+    echo "Ignoring #$neg: the PR body negates closing it"
+  fi
 done
 numbers=$(printf '%s\n' "$numbers" | grep -E '^[0-9]+$' || true)
 

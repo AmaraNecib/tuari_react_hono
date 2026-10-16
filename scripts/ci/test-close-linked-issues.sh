@@ -265,7 +265,77 @@ assert_not_closed "a trailing negated close does not (#134)" 134
 reset_state
 mk_issue 135 open "negator in a different clause"
 run_script "Do not merge this until it Closes #135."
-assert_closed "a negator three words from the keyword is a different clause (#135)" 135
+assert_closed "a negator four words from the keyword is a different clause (#135)" 135
+
+# ── Findings from the f64292ec review round ─────────────────────────────
+# C1: punctuation between negator and keyword defeated the negation pass.
+reset_state
+mk_issue 444 open "negation with punctuation"
+run_script "This does not, however, close #444."
+assert_not_closed "'does not, however, close #N' never closes" 444
+
+reset_state
+mk_issue 445 open "negation via intention"
+run_script "We have no intention of closing #445."
+assert_not_closed "'no intention of closing #N' never closes" 445
+
+reset_state
+mk_issue 446 open "negation three words out"
+run_script "This does not, in any way, close #446."
+assert_not_closed "a three-word negator gap still negates (#446)" 446
+
+# The negation pass cannot span a line break unless newlines are joined first.
+reset_state
+mk_issue 447 open "negation across a line break"
+run_script "This does not
+close #447."
+assert_not_closed "a negated close split across two lines never closes" 447
+
+# C2: "not only/just" is affirmative — it must not be subtracted.
+reset_state
+mk_issue 448 open "affirmative not-only"
+mk_issue 449 open "affirmative same body"
+run_script "This not only fixes #448, it Closes #449."
+assert_closed "'not only fixes #N' is affirmative and closes (#448)" 448
+assert_closed "the second close in the same body closes (#449)" 449
+
+# C3: markdown emphasis and line breaks around the separator are real closes.
+reset_state
+mk_issue 450 open "bold keyword"
+run_script "The constraint is satisfied. **Closes** #450."
+assert_closed "'**Closes** #N' closes" 450
+
+reset_state
+mk_issue 451 open "bold reference"
+run_script "Closes **#451**."
+assert_closed "'Closes **#N**' closes" 451
+
+reset_state
+mk_issue 452 open "keyword on its own line"
+run_script "Closes
+#452."
+assert_closed "'Closes' on one line and '#N' on the next closes" 452
+
+# C4: the subtraction is logged only for a real candidate.
+reset_state
+mk_issue 454 open "negated and affirmative in one body"
+mk_issue 455 open "affirmative"
+run_script "This does not close #454. Closes #455."
+assert_closed "the affirmative reference closes (#455)" 455
+assert_not_closed "the negated reference does not (#454)" 454
+assert_has "$OUT" "Ignoring #454" "the subtracted candidate is reported"
+
+# A sentence-opening "No," is not a negated close.
+reset_state
+mk_issue 457 open "interjection no"
+run_script "No, this Closes #457."
+assert_closed "a sentence-opening 'No,' does not negate the close (#457)" 457
+
+# Documented conservative tie-break: one number, negated and closed.
+reset_state
+mk_issue 456 open "negated and closed"
+run_script "Closes #456, though this does not close #456."
+assert_not_closed "a body that both negates and closes one number does not close it" 456
 
 reset_state
 run_script "no references at all in this body"
