@@ -62,7 +62,13 @@ export function accumulateReportMoney(
   onOverflow: () => never,
 ): number {
   const nextDzd = currentDzd + amountDzd;
-  if (!Number.isFinite(nextDzd) || nextDzd > MAX_MONEY_DZD) {
+  // `nextDzd > MAX_MONEY_DZD` alone is not enough near the bound: a small
+  // fraction added to a total already at MAX rounds the sum back to MAX (the
+  // double spacing at 2^53 is 1), so the fraction would be silently dropped
+  // instead of refused. Compare the increment against the remaining headroom,
+  // which is exact while `currentDzd <= MAX_MONEY_DZD`. The finiteness check
+  // still catches NaN/Infinity that the comparison cannot.
+  if (!Number.isFinite(nextDzd) || amountDzd > MAX_MONEY_DZD - currentDzd) {
     onOverflow();
   }
   return nextDzd;

@@ -16,6 +16,7 @@ import Database from "better-sqlite3";
 import { MAX_MONEY_DZD } from "@tuari/contracts";
 
 import { createRouter } from "../router";
+import { toReportOrpcError } from "./reports";
 import type { RpcContext } from "../context";
 import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor";
 import { ensureDatabaseSchema } from "../../infrastructure/database/schema";
@@ -976,6 +977,19 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     expect(entries2).toHaveLength(1);
     expect(entries2[0].warehouseId).toBe(wh.id);
     expect(entries2[0].projectId).toBeNull();
+  });
+
+  it("rethrows a non-domain report error instead of returning it as procedure output (#479 P2)", () => {
+    // An appError-carrying failure becomes the typed wire error...
+    expect(toReportOrpcError({ appError: { code: "BUSINESS_RULE", message: "over" } })).toMatchObject({
+      code: "BUSINESS_RULE",
+      message: "over",
+    });
+    // ...but any other error must be THROWN so `queryAuth` keeps the original
+    // cause instead of handing it to ORPC as output (which `reportSchema` would
+    // reject with an output-validation error, losing the cause).
+    const boom = new Error("boom");
+    expect(() => toReportOrpcError(boom)).toThrow(boom);
   });
 
   it("refuses an unrepresentable inventory aggregate with the business-rule code (#475)", async () => {

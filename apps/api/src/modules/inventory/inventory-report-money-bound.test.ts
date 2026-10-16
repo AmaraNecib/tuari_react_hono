@@ -168,6 +168,20 @@ describe("inventory report money bound (#475)", () => {
     expectBusinessRule(captureError(() => service.generateInventoryReport({})))
   })
 
+  it("refuses a fractional increment above the bound that float addition rounds away", () => {
+    // `MAX_MONEY_DZD + 0.25 === MAX_MONEY_DZD` in float64 (the double spacing
+    // at 2^53 is 1), so a `next > MAX` check alone emits the total and silently
+    // drops the fraction. The headroom check must still refuse it.
+    const service = createService({
+      inventory: [
+        valuation({ totalPriceDzd: MAX_MONEY_DZD }),
+        valuation({ id: "entry-2", totalPriceDzd: 0.25 }),
+      ],
+    })
+
+    expectBusinessRule(captureError(() => service.generateInventoryReport({})))
+  })
+
   it("still aggregates a normal batch", () => {
     const service = createService({
       inventory: [
