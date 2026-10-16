@@ -45,6 +45,17 @@ dialog renders the direction phrase from the passed prop (not from the account's
    implementation cannot produce two different phrases for one sign, so the test
    only passes if the prop drives the phrase.
 
+Review-round additions (findings from the first gate pass at `03ff355d`):
+
+3. `RecordEntryPaymentDialog` test: make the max-payment phrase a distinct
+   direction phrase (`accountCurrentBalance: -5000`) so the assertion pins the
+   entry surface *and* the max surface exactly (`getByText`), matching the test
+   name (design-pass F4 / debate finding 1).
+4. `docs/COMPLETION_STATUS.md:73` no longer lists the deleted file as a live
+   deliverable (design-pass F1).
+5. Remove the 13 `dashboardPage.*` keys the deletion orphaned; only
+   `outstandingDebts` survives (`home-view-copy.ts:347`) (design-pass F2).
+
 ## Interfaces / contracts
 
 No production interface changes. The tests pin the existing required-prop contract:
@@ -56,19 +67,20 @@ No production interface changes. The tests pin the existing required-prop contra
   "entry dialogs take the direction from the prop, not the amount's sign":
   - `VoidEntryDialog` OPENING `+5000` with `PAYABLE` → `مستحق علينا`, with
     `RECEIVABLE` → `مستحق لنا`; the opposite phrase is absent each time.
-  - `RecordEntryPaymentDialog` entry `+5000`, `accountCurrentBalance 5000`:
-    same two-direction assertion over the entry phrase and the max-payment phrase.
+  - `RecordEntryPaymentDialog` entry `+5000`, `accountCurrentBalance -5000`:
+    same two-direction assertion over the entry phrase and the max-payment
+    phrase, each pinned exactly.
 
 No E2E: the diff removes an unrendered file and adds unit tests; there is no
 user-visible flow to exercise, so no Playwright spec or visual evidence applies.
 
 ## Risks / migration
 
-- Deleting the file cannot break a caller (no importer). It does leave some
-  `dashboardPage.*` i18n keys unused (`home-view-copy.ts:347` still uses
-  `dashboardPage.outstandingDebts`). Removing unused keys is a separate cleanup
-  and is deliberately **not** done here — it would sprawl into `ar.ts` and is not
-  part of the issue. Noted, not deferred silently.
+- Deleting the file cannot break a caller (no importer). The 13 `dashboardPage.*`
+  keys it was the only reader of are removed with it; `outstandingDebts` stays
+  because `home-view-copy.ts:347` reads it. An unused-i18n-key lint rule (rather
+  than another manual prune) is the durable fix and is a recommended follow-up
+  (design-pass F3) — not silently deferred, flagged for the parent.
 - The direction tests assert existing behaviour; they cannot fail on a pre-this-diff
   checkout of this branch because the required prop already exists at the base.
   Their value is locking the contract so a future optional-direction shape regresses
@@ -78,4 +90,5 @@ user-visible flow to exercise, so no Playwright spec or visual evidence applies.
 
 - Re-implementing the explicit-direction prop (already shipped by #458/#471).
 - Wiring `DashboardOverview` anywhere.
-- i18n key pruning.
+- The contract-side optional `direction` / signed opening (design-pass F5,
+  pre-existing, tracked by the debt-terminology pass).

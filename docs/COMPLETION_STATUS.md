@@ -70,7 +70,7 @@
 - [x] Confirmation dialogs for destructive actions
 
 **Priority 4: Dashboard Enhancements (e51e203)**
-- [x] apps/web/src/features/dashboard/dashboard-overview.tsx - Dashboard layout
+- [x] apps/web/src/features/dashboard/dashboard-overview.tsx - Dashboard layout (removed in #460: dead code, never imported; the live dashboard is the app-shell home view + report-builder)
 - [x] 5 key metric cards (value summary, debt, aging, top debtors, quick actions)
 - [x] Card rendering with report data
 - [x] Loading states and error handling

@@ -944,27 +944,30 @@ describe("debts MVP web UI", () => {
 
       const payable = renderWithProviders(
         <RecordEntryPaymentDialog
-          accountCurrentBalance={5000}
+          accountCurrentBalance={-5000}
           accountDirection="PAYABLE"
           entry={entry}
           open
           onOpenChange={vi.fn()}
         />,
       )
-      expect(screen.getAllByText("مستحق علينا").length).toBeGreaterThan(0)
+      // +5000 on a PAYABLE ledger is owed by us; the -5000 max is a credit with us.
+      expect(screen.getByText("مستحق علينا")).toBeTruthy()
+      expect(screen.getByText(/رصيد مستحق لنا/)).toBeTruthy()
       expect(screen.queryByText("مستحق لنا")).toBeNull()
       payable.unmount()
 
       renderWithProviders(
         <RecordEntryPaymentDialog
-          accountCurrentBalance={5000}
+          accountCurrentBalance={-5000}
           accountDirection="RECEIVABLE"
           entry={entry}
           open
           onOpenChange={vi.fn()}
         />,
       )
-      expect(screen.getAllByText("مستحق لنا").length).toBeGreaterThan(0)
+      expect(screen.getByText("مستحق لنا")).toBeTruthy()
+      expect(screen.getByText(/رصيد مستحق لهم/)).toBeTruthy()
       expect(screen.queryByText("مستحق علينا")).toBeNull()
     })
   })
