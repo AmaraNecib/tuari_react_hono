@@ -39,9 +39,9 @@ If the change touches Rust Core (`apps/desktop/src-tauri/src/`):
 [ ] cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings — clean?
 ```
 
-## Phase 2 — Local pre-Greptile / remote pre-push
+## Phase 2 — Local pre-push
 
-In local-only mode this is the pre-Greptile gate; in remote mode it is also the
+In local-only mode this is the pre-handoff gate; in remote mode it is also the
 pre-push gate. It never pushes by itself. Uses the Husky pre-push hook when the
 hook is available.
 
@@ -77,6 +77,7 @@ get the docs-only exemption.
 
 **Standard** (code, CI, workflow, config):
 ```
+[ ] Debate evidence exists and is not stale
 [ ] Test-audit evidence exists and is not stale
 [ ] Code-review evidence exists and is not stale
 ```
@@ -97,7 +98,7 @@ Run before reporting a local handoff or remote merge-readiness.
 ```
 [ ] Local checks green (lint, typecheck, test-api, test-web, and Rust when relevant)
 [ ] Review evidence current for the selected tier
-[ ] Greptile CLI result is for the final HEAD and has no actionable findings
+[ ] Local review evidence (debate, code-review, test-audit) is for the final HEAD and has no actionable findings
 [ ] Deferred items documented in docs/local-issue-status.md or a local follow-up
 [ ] Wisdom captured when a durable lesson was learned
 [ ] Report does not claim CI, PR, merge, or issue closure
@@ -107,7 +108,7 @@ Run before reporting a local handoff or remote merge-readiness.
 
 ```
 [ ] CI — all required checks green on GitHub
-[ ] Greptile — no actionable findings (inspect findings, not just command status)
+[ ] Local reviews — no actionable findings (inspect findings, not just command status)
 [ ] PR description — accurate and complete
 [ ] Any deferred items — documented with follow-up issues
 [ ] Wisdom — any lessons to capture
@@ -122,5 +123,6 @@ Run before reporting a local handoff or remote merge-readiness.
 4. If the user says "fix it", fix it and re-run the check.
 
 **Mandatory gates (never skip):** typecheck, lint, applicable tests, and a
-clean Greptile result. In local-only mode the Greptile CLI JSON/result replaces
-hosted PR comment inspection; CI is deferred until the remote is restored.
+clean local review (debate, code-review, test-audit). In local-only mode the
+local review replaces hosted PR comment inspection; CI is deferred until the
+remote is restored.

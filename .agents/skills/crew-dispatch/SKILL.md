@@ -57,8 +57,11 @@ and tells each lane exactly which skills to load.
   Visible lanes launched by `launch-lane.mjs` also receive the `crew_report`
   tool, which writes a handoff artifact and sends a completion/blocker message
   directly to the parent pane. Verified recipe (Herdr, any OS): see Launch.
-  Project policy defaults to six concurrent mutation lanes; the captain may
-  explicitly choose another positive cap for a batch.
+  Project policy is **three** concurrent lanes. Never start a new lane while
+  three or more are open: the work waits for a lane to finish and be closed, it
+  does not push the cap. Only the captain may raise it, and the raise is per batch.
+  Track the waiting work outside git (`.scratch/queue.md`, which is gitignored) —
+  a queue is not a commit.
 - **Headless children require explicit captain opt-in.** Cheaper, disposable,
   not visible as live terminals. Allowed ONLY for cheap scouts, read-only
   probes, when the captain is not watching — or when the captain explicitly
@@ -182,8 +185,9 @@ TASK (mode: pipeline|smoke):
   if the files don't exist). Then:
   - If the project has a feature-implement skill (check .agents/skills/), load
     it and follow its implementation stages, scoped to this issue and this
-    worktree. The lane may run local `cli-review` and `greploop --local` against
-    the pinned base and report the raw Greptile status/findings to the parent.
+    worktree. The lane may run the local review skills (`debate`, `code-review`,
+    `test-audit`) against the pinned base and report their verdicts to the
+    parent.
     Stop before pushing, opening PRs, merging, or changing remote state — the
     parent owns those so parallel lanes never collide. Issue-specific review
     evidence may be refreshed by the lane when the parent explicitly delegates
@@ -196,9 +200,9 @@ TASK (mode: pipeline|smoke):
     commands; unit tests + user-facing E2E if the flow is user-facing; run the
     project's typecheck/lint/tests), then run the project's guard equivalent —
     build + typecheck + lint + tests all green — and STOP.
-  STOP after implementation + local checks pass, run the delegated local
-  Greptile review when requested, and report. Do NOT open PRs, do NOT push, do
-  NOT merge, and do not decide silent deferrals.
+  STOP after implementation + local checks pass, run the delegated local review
+  when requested, and report. Do NOT open PRs, do NOT push, do NOT merge, and do
+  not decide silent deferrals.
 - <smoke> READ-ONLY. Change nothing. Inspect the code related to this issue and
   report: what the relevant module does, its structure, tests present, and any
   risks you notice.
@@ -320,13 +324,12 @@ When the captain says "run the lanes for real", follow this order:
    then verify containment: `git -C <worktree> status` matches preflight + the
    lane's claimed files, and the main checkout is untouched.
 5. **Review fanout (delegate first, parent aggregates).** Ask each live lane to
-   run its local tests plus `cli-review`/`greploop --local` against the pinned
-   base and send structured status/findings through `crew_report`. For
-   Standard/High-assurance work, the parent may additionally dispatch fresh
-   read-only debate/test-audit/code-review reviewers when independent review is
-   needed. Findings are grouped by must-fix / should-fix / nit; the parent
-   aggregates verdicts and makes scope/deferral decisions rather than repeating
-   every command inline.
+   run its local tests plus the local review skills (`debate`, `code-review`,
+   `test-audit`) against the pinned base and send structured status/findings
+   through `crew_report`. The parent may additionally dispatch fresh read-only
+   reviewers for independent verification. Findings are grouped by must-fix /
+   should-fix / nit; the parent aggregates verdicts and makes scope/deferral
+   decisions rather than repeating every command inline.
 6. **Fix-findings loop (per lane, agent owns the fix).** For every lane with
    must-fix/should-fix findings: send the findings back to that lane's live
    agent (`agent prompt <pane> "Reviewer findings: <findings>. Fix in THIS
@@ -342,12 +345,17 @@ When the captain says "run the lanes for real", follow this order:
 7. **Guard + land.** Run the project's guard (or the inline check set) per
    lane, then push + open/update one PR per lane (branch already exists in the
    worktree) with the review evidence linked, wait for CI green, and hand the
-   captain full PR URLs. A 5/5 review is the stop condition, not merge
+   captain full PR URLs. Clean local reviews (`debate`, `code-review`,
+   `test-audit`) on the pushed head are the stop condition, not merge
    permission: crew automation must NEVER merge. After the parent receives the
-   handoff and creates/updates the PR, close the Herdr workspace only if the
-   lane is terminal and no follow-up is expected. Keep reusable lanes alive;
-   when closing, preserve the workspace/pane/session identifiers so the parent
-   can reopen or resume the lane if needed.
+   handoff and creates/updates the PR, **close the Herdr workspace**. A lane whose
+   deliverable exists — a pushed branch, an opened PR, a reported review — is done
+   with that view: keeping it idle holds a lane slot out of the cap and leaves the
+   fleet ambiguous about what is still in flight. If more work is needed on the
+   same worktree, launch a fresh lane on it (the worktree and branch persist;
+   `launch-lane.mjs` will create a new workspace) rather than re-prompting a
+   finished one. Preserve the workspace/pane/session identifiers in the handoff so
+   the context can be reopened if it is genuinely needed.
 8. **Lessons (parent-owned, serialized — lanes never write shared state).**
    If the project keeps lessons (capture-wisdom / docs/lessons/ / AGENTS.md
    convention), the parent files per-lane technical lessons after each PR lands
