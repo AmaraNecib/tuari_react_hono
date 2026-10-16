@@ -9,6 +9,7 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { BackupSettings } from "./backup-settings"
 import { RecoveryKeySettings } from "./recovery-key-settings"
 import { UpdateSection } from "@/features/update/update-section"
 import { useQueryClient } from "@tanstack/react-query"
@@ -411,6 +412,7 @@ export function SettingsSection({
       {/* System Tab */}
       {activeTab === 'system' && (
         <div className="space-y-4">
+          <BackupSettings />
           {/* Check for Updates — only in desktop runtime */}
           {isDesktopRuntime() ? (
             <div className="p-5 border border-line rounded-xl">

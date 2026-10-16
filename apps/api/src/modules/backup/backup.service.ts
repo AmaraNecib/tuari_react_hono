@@ -382,7 +382,10 @@ export const createBackupService = (
     error: (message, cause) => console.error(message, cause),
   };
 
-  const seeded = seedStatusFromDisk(deps.backupsRootPath, now(), logger);
+  // The root is mutable so the owner can point the next run at another disk
+  // (#436). Every read below goes through this variable, never `deps`.
+  let backupsRootPath = deps.backupsRootPath;
+  const seeded = seedStatusFromDisk(backupsRootPath, now(), logger);
   let lastBackupPath = seeded.lastBackupPath;
   let lastSuccessAt = seeded.lastSuccessAt;
   let lastFailure: BackupFailure | null = seeded.lastFailure;
@@ -396,15 +399,20 @@ export const createBackupService = (
   const runDueBackup = async (): Promise<BackupRunResult> => {
     const runAt = now();
     const date = formatBackupDate(previousDay(runAt));
+    // Pin the root for the whole run. `deps.snapshot` awaits, and the owner can
+    // change the root from Settings while it runs; the run's status update must
+    // never describe the folder they just left (a later restart would, but the
+    // screen must not).
+    const runRoot = backupsRootPath;
 
     let stagingDirectory: string | null = null;
     try {
       // Preflight (stale-staging cleanup, listing, the due check) lives INSIDE
       // the guarded region: a throw here must record a failure, not escape the
       // service while `lastFailure` stays null and the status reads healthy.
-      removeStaleStagingEntries(deps.backupsRootPath);
+      removeStaleStagingEntries(runRoot);
 
-      const existingDates = listBackupDates(deps.backupsRootPath, runAt);
+      const existingDates = listBackupDates(runRoot, runAt);
       // The root proved readable, so a failure seeded at construction is
       // stale. Clear it before the due check — a not-due start must still be
       // able to report a clean status. A real run failure is not seeded, so
@@ -419,8 +427,8 @@ export const createBackupService = (
           : null;
       if (!isBackupDue(newest, runAt)) return { status: "not-due" };
 
-      const targetDirectory = join(deps.backupsRootPath, date);
-      mkdirSync(deps.backupsRootPath, { recursive: true });
+      const targetDirectory = join(runRoot, date);
+      mkdirSync(runRoot, { recursive: true });
 
       // A folder already sitting at the target name is NOT necessarily an
       // incomplete snapshot of ours: the root can be a shared directory, and
@@ -440,9 +448,7 @@ export const createBackupService = (
         rmSync(targetDirectory, { recursive: true, force: true });
       }
 
-      stagingDirectory = mkdtempSync(
-        join(deps.backupsRootPath, BACKUP_STAGING_PREFIX),
-      );
+      stagingDirectory = mkdtempSync(join(runRoot, BACKUP_STAGING_PREFIX));
 
       const snapshot = await deps.snapshot(
         join(stagingDirectory, BACKUP_DB_FILE_NAME),
@@ -466,13 +472,19 @@ export const createBackupService = (
       renameSync(stagingDirectory, targetDirectory);
       stagingDirectory = null;
 
-      lastBackupPath = targetDirectory;
-      lastSuccessAt = runAt.toISOString();
-      lastFailure = null;
+      // The snapshot really did land in `runRoot`. Only adopt it into the
+      // status when that is still the root the screen is describing; if the
+      // owner repointed it mid-run, `setBackupsRoot` has already re-seeded the
+      // status for the new root and this run belongs to the old one.
+      if (backupsRootPath === runRoot) {
+        lastBackupPath = targetDirectory;
+        lastSuccessAt = runAt.toISOString();
+        lastFailure = null;
+      }
       logger.info(`[backup] created ${targetDirectory} for ${date}`);
 
       const prune = pruneBackups(
-        deps.backupsRootPath,
+        runRoot,
         [...existingDates, date],
         policy,
         logger,
@@ -480,8 +492,11 @@ export const createBackupService = (
       );
       // A prune the filesystem refused is a real problem (the disk is filling
       // up), so it is surfaced on the SAME failure field the snapshot uses —
-      // it must not be swallowed by a log line only.
-      if (prune.failures.length > 0) lastFailure = prune.failures[0]!;
+      // it must not be swallowed by a log line only. A failure from the old
+      // root must not be pinned on the new one.
+      if (prune.failures.length > 0 && backupsRootPath === runRoot) {
+        lastFailure = prune.failures[0]!;
+      }
 
       return { status: "created", date, path: targetDirectory };
     } catch (error) {
@@ -501,15 +516,49 @@ export const createBackupService = (
         }
       }
 
-      lastFailure = { at: runAt.toISOString(), reason };
-      lastFailureIsSeeded = false;
+      // A failure belongs to the root this run was writing to. If the owner
+      // changed the root while the run was in flight, the recorded failure
+      // would name the wrong folder on the status.
+      if (backupsRootPath === runRoot) {
+        lastFailure = { at: runAt.toISOString(), reason };
+        lastFailureIsSeeded = false;
+      }
       logger.error(`[backup] failed for ${date}: ${reason}`, error);
       return { status: "failed", date, reason };
     }
   };
 
+  /**
+   * Repoint subsequent runs and the status at `path`. The caller has already
+   * validated and persisted it; re-seeding from the new root makes the screen
+   * describe what is actually there (usually "no backups yet") rather than the
+   * folder the owner just navigated away from.
+   *
+   * Saving the SAME folder is deliberately a no-op. The status already
+   * describes that root, and re-seeding from a readable disk scan would replace
+   * a real snapshot/prune failure with a clean read — the card would show
+   * success while the problem (and the un-retried backup) remains. Only an
+   * actual move re-seeds.
+   */
+  const setBackupsRoot = (path: string): void => {
+    if (path === backupsRootPath) return;
+    backupsRootPath = path;
+    const next = seedStatusFromDisk(backupsRootPath, now(), logger);
+    lastBackupPath = next.lastBackupPath;
+    lastSuccessAt = next.lastSuccessAt;
+    lastFailure = next.lastFailure;
+    lastFailureIsSeeded = next.lastFailure !== null;
+  };
+
   return {
     runDueBackup,
-    getStatus: () => ({ lastBackupPath, lastSuccessAt, lastFailure }),
+    setBackupsRoot,
+    getStatus: () => ({
+      lastBackupPath,
+      lastSuccessAt,
+      lastFailure,
+      backupsRootPath,
+      retention: { ...policy },
+    }),
   };
 };

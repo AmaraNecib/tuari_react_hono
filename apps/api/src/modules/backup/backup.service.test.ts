@@ -228,6 +228,8 @@ describe("createBackupService", () => {
       lastBackupPath: backupDirectory,
       lastSuccessAt: now().toISOString(),
       lastFailure: null,
+      backupsRootPath: backupsRoot,
+      retention: { daily: 14, weekly: 8, monthly: 6 },
     });
   });
 
@@ -330,6 +332,8 @@ describe("createBackupService", () => {
       lastBackupPath: previous,
       lastSuccessAt: expect.any(String),
       lastFailure: { at: now().toISOString(), reason: "disk full" },
+      backupsRootPath: backupsRoot,
+      retention: { daily: 14, weekly: 8, monthly: 6 },
     });
   });
 
@@ -548,6 +552,8 @@ describe("createBackupService", () => {
       lastBackupPath: null,
       lastSuccessAt: null,
       lastFailure: null,
+      backupsRootPath: backupsRoot,
+      retention: { daily: 14, weekly: 8, monthly: 6 },
     });
   });
 
@@ -718,6 +724,8 @@ describe("createBackupService", () => {
       lastBackupPath: previous,
       lastSuccessAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
       lastFailure: null,
+      backupsRootPath: backupsRoot,
+      retention: { daily: 14, weekly: 8, monthly: 6 },
     });
   });
 
@@ -735,6 +743,8 @@ describe("createBackupService", () => {
       lastBackupPath: previous,
       lastSuccessAt: "2026-01-13T08:00:00.000Z",
       lastFailure: null,
+      backupsRootPath: backupsRoot,
+      retention: { daily: 14, weekly: 8, monthly: 6 },
     });
   });
 
@@ -750,6 +760,8 @@ describe("createBackupService", () => {
       lastBackupPath: null,
       lastSuccessAt: null,
       lastFailure: null,
+      backupsRootPath: join(tempRoot, "missing"),
+      retention: { daily: 14, weekly: 8, monthly: 6 },
     });
   });
 
@@ -796,6 +808,8 @@ describe("createBackupService", () => {
         at: now().toISOString(),
         reason: "EACCES: permission denied",
       },
+      backupsRootPath: backupsRoot,
+      retention: { daily: 14, weekly: 8, monthly: 6 },
     });
   });
 
@@ -1067,5 +1081,220 @@ describe("pruneBackups", () => {
       { at: at.toISOString(), reason: "could not prune 2026-01-01: locked" },
     ]);
     expect(existsSync(folder)).toBe(true);
+  });
+});
+
+describe("createBackupService.setBackupsRoot (#436)", () => {
+  let tempRoot: string;
+  let firstRoot: string;
+  let secondRoot: string;
+
+  const snapshot: BackupSnapshotter = async (outputPath) => {
+    // A minimal non-empty copy; the service trusts the injected snapshotter and
+    // only re-validates on-disk folders when seeding, not the just-written run.
+    writeFileSync(outputPath, "SQLite format 3\u0000");
+    return { schemaVersion: 0, encrypted: false };
+  };
+
+  /** A usable snapshot folder (SQLite header + valid marker) in `root`. */
+  const writeUsableSnapshot = (root: string, date: string): void => {
+    const folder = join(root, date);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, BACKUP_DB_FILE_NAME), "SQLite format 3\u0000");
+    writeFileSync(join(folder, BACKUP_MARKER_FILE_NAME), markerJson());
+  };
+
+  beforeEach(() => {
+    tempRoot = mkdtempSync(join(tmpdir(), "tuari-backup-root-"));
+    firstRoot = join(tempRoot, "backups-a");
+    secondRoot = join(tempRoot, "backups-b");
+  });
+
+  afterEach(() => {
+    rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  it("writes the next run into the newly chosen root and reports it", async () => {
+    const service = createBackupService({
+      snapshot,
+      backupsRootPath: firstRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    service.setBackupsRoot(secondRoot);
+
+    // Re-seeded from the new (empty) root, not the old folder.
+    expect(service.getStatus().backupsRootPath).toBe(secondRoot);
+    expect(service.getStatus().lastSuccessAt).toBeNull();
+
+    const result = await service.runDueBackup();
+    expect(result.status).toBe("created");
+    expect(readdirSync(secondRoot)).toContain(DATE);
+    expect(existsSync(join(secondRoot, DATE, BACKUP_DB_FILE_NAME))).toBe(true);
+  });
+
+  it("reports a retention override with the status", () => {
+    const policy = { daily: 3, weekly: 2, monthly: 1 };
+    const service = createBackupService({
+      snapshot,
+      backupsRootPath: firstRoot,
+      policy,
+      now,
+      logger: noopLogger,
+    });
+
+    expect(service.getStatus().retention).toEqual(policy);
+  });
+
+  it("records a failure when the root path is a file, instead of throwing", async () => {
+    // The root is a FILE: construction sees "not a directory" and seeds an
+    // empty status; the run's mkdir must fail and become a recorded failure.
+    const fileRoot = join(tempRoot, "not-a-folder");
+    writeFileSync(fileRoot, "i am a file");
+    const service = createBackupService({
+      snapshot,
+      backupsRootPath: fileRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    const result = await service.runDueBackup();
+
+    expect(result.status).toBe("failed");
+    expect(service.getStatus().lastFailure?.reason).toEqual(expect.any(String));
+  });
+
+  it("keeps a real run failure when the same folder is saved again", async () => {
+    // Re-saving the folder the status already describes must not re-seed from
+    // the disk scan: the scan is readable and would report a clean status,
+    // hiding a snapshot/prune failure the owner still has and never retried.
+    const failingSnapshot: BackupSnapshotter = async () => {
+      throw new Error("disk removed");
+    };
+    const service = createBackupService({
+      snapshot: failingSnapshot,
+      backupsRootPath: firstRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    const result = await service.runDueBackup();
+    expect(result.status).toBe("failed");
+    const failure = service.getStatus().lastFailure;
+    expect(failure?.reason).toContain("disk removed");
+
+    service.setBackupsRoot(firstRoot);
+
+    expect(service.getStatus().lastFailure).toEqual(failure);
+  });
+
+  it("does not adopt a run that finishes after the owner changed the root", async () => {
+    // `deps.snapshot` awaits, so the owner can repoint the root mid-run. The
+    // completed snapshot lives in the old root; the status must keep
+    // describing the new one (the screen must never describe the old folder).
+    let releaseSnapshot: () => void = () => {};
+    const gate = new Promise<void>((resolveGate) => {
+      releaseSnapshot = resolveGate;
+    });
+    const slowSnapshot: BackupSnapshotter = async (outputPath) => {
+      await gate;
+      writeFileSync(outputPath, "SQLite format 3\u0000");
+      return { schemaVersion: 0, encrypted: false };
+    };
+    const service = createBackupService({
+      snapshot: slowSnapshot,
+      backupsRootPath: firstRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    const pending = service.runDueBackup();
+    service.setBackupsRoot(secondRoot);
+    releaseSnapshot();
+    const result = await pending;
+
+    expect(result.status).toBe("created");
+    const status = service.getStatus();
+    expect(status.backupsRootPath).toBe(secondRoot);
+    // Re-seeded for the new (empty) root; the old run must not overwrite it.
+    expect(status.lastSuccessAt).toBeNull();
+    expect(status.lastBackupPath).toBeNull();
+  });
+
+  it("prunes only the pinned old root after a mid-run root change", async () => {
+    // The data-loss regression from the PR: `runDueBackup` lists `runRoot`,
+    // awaits the snapshot, and only then prunes. If pruning followed the LIVE
+    // `backupsRootPath`, the old root's date list would be applied to the new
+    // root and real backups in the folder the owner just chose would be
+    // deleted. Seed BOTH roots with identical dates so a wrong-root prune is
+    // observable, and assert the new root is untouched.
+    const policy = { daily: 1, weekly: 0, monthly: 0 };
+    for (const date of ["2026-01-01", "2026-01-02", "2026-01-03"]) {
+      writeUsableSnapshot(firstRoot, date);
+      writeUsableSnapshot(secondRoot, date);
+    }
+
+    let releaseSnapshot: () => void = () => {};
+    const gate = new Promise<void>((resolveGate) => {
+      releaseSnapshot = resolveGate;
+    });
+    const slowSnapshot: BackupSnapshotter = async (outputPath) => {
+      await gate;
+      writeFileSync(outputPath, "SQLite format 3\u0000");
+      return { schemaVersion: 0, encrypted: false };
+    };
+    const service = createBackupService({
+      snapshot: slowSnapshot,
+      backupsRootPath: firstRoot,
+      policy,
+      now,
+      logger: noopLogger,
+    });
+
+    const pending = service.runDueBackup();
+    service.setBackupsRoot(secondRoot);
+    releaseSnapshot();
+    const result = await pending;
+
+    expect(result.status).toBe("created");
+    // Retention ran against the pinned old root: its stale snapshots are gone,
+    // only the fresh one survives.
+    expect(listBackupDates(firstRoot)).toEqual([DATE]);
+    // The new root kept every seed; the old root's retention never touched it.
+    expect(listBackupDates(secondRoot)).toEqual([
+      "2026-01-01",
+      "2026-01-02",
+      "2026-01-03",
+    ]);
+  });
+
+  it("does not pin an in-flight failure on the root the owner moved to", async () => {
+    // The mirror of the success case: if the run fails after the root changed,
+    // the failure belongs to the old root, not the folder now on screen.
+    let releaseSnapshot: () => void = () => {};
+    const gate = new Promise<void>((resolveGate) => {
+      releaseSnapshot = resolveGate;
+    });
+    const failingSnapshot: BackupSnapshotter = async () => {
+      await gate;
+      throw new Error("disk removed");
+    };
+    const service = createBackupService({
+      snapshot: failingSnapshot,
+      backupsRootPath: firstRoot,
+      now,
+      logger: noopLogger,
+    });
+
+    const pending = service.runDueBackup();
+    service.setBackupsRoot(secondRoot);
+    releaseSnapshot();
+    const result = await pending;
+
+    expect(result.status).toBe("failed");
+    const status = service.getStatus();
+    expect(status.backupsRootPath).toBe(secondRoot);
+    expect(status.lastFailure).toBeNull();
   });
 });

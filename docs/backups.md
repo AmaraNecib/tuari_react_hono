@@ -26,14 +26,15 @@ inside it, so deleting the project data directory does not delete the backups:
 | Desktop (Windows) | `<Tuari>/projects/default/tuari.sqlite` | `<Tuari>/projects/backups/` |
 | Dev (`pnpm dev:api`) | `<repo>/data/tuari.sqlite` | `<repo>/backups/` |
 
-The root defaults to the sibling shown above. An absolute `APP_BACKUPS_ROOT`
-moves it (for example to a second drive). This is an **API-side environment
-variable**: it is useful for development and for a manual (sidecar) install.
-The desktop shell clears the sidecar environment and forwards only a fixed
-allowlist that does **not** include `APP_BACKUPS_ROOT`, and its user-editable
-`config.json` has no backups setting, so **on the desktop the root is always
-the default sibling** and this variable has no effect. Exposing it as a desktop
-setting is tracked as a follow-up.
+The root defaults to the sibling shown above. It is configurable from the
+desktop app's **Settings → System → backup folder** setting, and from an
+absolute `APP_BACKUPS_ROOT` environment variable for development and manual
+(sidecar) installs. The setting writes `backups_root` into the user-editable
+`config.json`; the desktop shell points the sidecar at that file, so the chosen
+folder reaches the next sidecar start. Environment `APP_BACKUPS_ROOT` still wins
+over the config file when both are set. A deployment with no `config.json`
+(bare `pnpm dev:api`) has no durable place to store the choice, so the app says
+the setting applies to the current session only.
 
 ## When
 
@@ -130,7 +131,9 @@ logged, and the status is available to the UI through the authenticated
 {
   lastSuccessAt: string | null,   // when the last backup succeeded
   lastBackupPath: string | null,  // the newest backup folder on disk
-  lastFailure: { at, reason } | null
+  lastFailure: { at, reason } | null,
+  backupsRootPath: string,        // the configured root (present before any backup)
+  retention: { daily, weekly, monthly }  // the active policy
 }
 ```
 
@@ -151,10 +154,13 @@ backups are left untouched.
   hand if that matters. Nothing is lost, and normal daily backups continue.
 - **Same disk means the backups do not protect against hardware failure or
   theft.** A dead disk or a stolen laptop takes the live database and its
-  backups together. This feature protects against mistakes and app bugs, which
-  is exactly what it claims to do. For a manual/API install, point
-  `APP_BACKUPS_ROOT` at a synced or external location (the desktop does not
-  expose that variable yet); on the desktop, copy the backups root off the
-  machine instead.
+  backups together unless the backups root is on another drive. This feature
+  protects against mistakes and app bugs, which is exactly what it claims to
+  do. Point the root at a second drive or a USB disk (desktop: Settings →
+  System → backup folder; manual/API install: `APP_BACKUPS_ROOT`) to also
+  survive a disk failure. Changing the root does not move existing snapshots:
+  the old snapshots stay where they were, are no longer pruned automatically
+  (retention applies to the folder currently in use), and the new folder starts
+  empty. Delete the old folder by hand when you no longer need it.
 - A backup is only as good as it has been tested. Restore one into a scratch
   copy occasionally.

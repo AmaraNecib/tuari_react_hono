@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { appConfigSchema, createAppConfig, type AppConfig } from "./index";
+import { createConfigFileBackupFolderPersister } from "../infrastructure/config/backup-folder-persister";
 
 let configTempDir: string;
 beforeEach(() => {
@@ -95,6 +96,66 @@ describe("createAppConfig", () => {
     });
 
     expect(config.backupsRootPath).toMatch(/[\\/]private[\\/]backups$/);
+  });
+
+  it("resolves the config file's backups_root into the backups path when env is unset", () => {
+    // This is the desktop forwarding path (#436): the shell points the sidecar
+    // at config.json, and the chosen folder rides in as backups_root.
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ backups_root: "./usb/backups" }),
+      "utf8",
+    );
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+      TUARI_CONFIG_FILE: configPath,
+    });
+
+    expect(config.backupsRootPath).toMatch(/[\\/]usb[\\/]backups$/);
+  });
+
+  it("env APP_BACKUPS_ROOT wins over the config file's backups_root", () => {
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ backups_root: "./usb/backups" }),
+      "utf8",
+    );
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+      TUARI_CONFIG_FILE: configPath,
+      APP_BACKUPS_ROOT: "./env/backups",
+    });
+
+    expect(config.backupsRootPath).toMatch(/[\\/]env[\\/]backups$/);
+  });
+
+  it("reads back a folder saved through the persister (restart durability, #436)", () => {
+    // The full #436 chain: the setting action writes the config file, and a
+    // fresh process reading that file resolves the chosen root. This is what
+    // "the choice survives a restart" means; a page reload alone only re-reads
+    // the running process's in-memory root.
+    const configPath = join(configTempDir, "restart.json");
+    const persister = createConfigFileBackupFolderPersister(configPath);
+    const savedPath = join(configTempDir, "usb-backups");
+
+    expect(persister.persistBackupsRoot(savedPath)).toEqual({
+      success: true,
+      persisted: true,
+    });
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+      TUARI_CONFIG_FILE: configPath,
+    });
+
+    expect(config.backupsRootPath).toBe(savedPath);
   });
 
   it("derives database path from DATABASE_URL when set", () => {
