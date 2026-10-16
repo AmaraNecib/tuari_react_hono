@@ -7,7 +7,7 @@
  * Architecture: Drizzle queries + raw better-sqlite3 handle for transactions
  * (same pattern as CompanyRepository).
  */
-import { eq, and, asc, desc, sql, inArray, count, exists } from "drizzle-orm"
+import { eq, and, asc, desc, sql, inArray, count, exists, getTableColumns } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import type { BetterSqliteDatabase } from "../../../types/sqlite"
 import * as schema from "../../../schema"
@@ -90,6 +90,7 @@ function mapAssetUnit(row: Record<string, unknown>): InventoryAssetUnitRecord {
   return {
     id: String(row.id),
     inventoryEntryId: String(row.inventoryEntryId),
+    itemDefinitionId: row.itemDefinitionId != null ? String(row.itemDefinitionId) : undefined,
     assetName: String(row.assetName),
     assetTag: row.assetTag != null ? String(row.assetTag) : null,
     serialNumber: row.serialNumber != null ? String(row.serialNumber) : null,
@@ -617,7 +618,13 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     const condition = filters.warehouseId
       ? eq(schema.inventoryAssetUnit.currentWarehouseId, filters.warehouseId)
       : eq(schema.inventoryAssetUnit.currentProjectId, filters.projectId ?? "")
-    return this.db.select().from(schema.inventoryAssetUnit)
+    return this.db.select({
+      ...getTableColumns(schema.inventoryAssetUnit),
+      // The location listing is the outbound picker's source; it must offer a
+      // DEFINITION id, so resolve the unit's entry to its definition here.
+      itemDefinitionId: sql<string>`(SELECT e.item_definition_id FROM inventory_entry e WHERE e.id = ${schema.inventoryAssetUnit.inventoryEntryId})`.as("itemDefinitionId"),
+    })
+      .from(schema.inventoryAssetUnit)
       .where(condition)
       .orderBy(desc(schema.inventoryAssetUnit.updatedAt))
       .all().map(mapAssetUnit)

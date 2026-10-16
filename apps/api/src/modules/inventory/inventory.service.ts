@@ -1207,7 +1207,10 @@ export class InventoryService {
         auditContext,
       )
 
-      return transfer
+      // The create contract is `createEntityResultSchema`; the client's
+      // `requireEntitySuccess` reads `.item`, so the bare record here failed
+      // ORPC output validation after a successful write.
+      return successResult("تم إنشاء التحويل الخارجي بنجاح.", transfer)
     })
   }
 

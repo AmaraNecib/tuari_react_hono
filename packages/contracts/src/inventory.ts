@@ -57,6 +57,13 @@ export const inventoryInvoiceAttachmentSchema = z.object({
 export const inventoryAssetUnitSchema = z.object({
   id: entityIdSchema,
   inventoryEntryId: entityIdSchema,
+  /**
+   * The definition this unit is an instance of. Present on reads that resolve
+   * the entry's definition (the location-contents listing the outbound picker
+   * consumes), because the outbound write gate takes a definition id, never a
+   * unit id. Optional on reads that return the raw unit row.
+   */
+  itemDefinitionId: entityIdSchema.optional(),
   assetName: z.string().trim().min(1).max(160),
   assetTag: nullableTextSchema,
   serialNumber: nullableTextSchema,
