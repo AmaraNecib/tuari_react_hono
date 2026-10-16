@@ -33,7 +33,7 @@ One-line change of the extraction contract, plus the tests that pin it:
 
 ```
 scripts/ci/close-linked-issues.sh       # extractor: keyword must be ADJACENT to #N
-scripts/ci/test-close-linked-issues.sh  # 10 new assertions across 9 scenarios
+scripts/ci/test-close-linked-issues.sh  # regression matrix, 84 assertions
 .github/workflows/auto-close-issues.yml # header rule restated (no logic changed)
 ```
 
@@ -81,12 +81,16 @@ Four properties are deliberate:
   close #N`, `no intention of closing #N`, `does not, in any way, close #N` all
   negate (review finding C1). A `#` may not appear in the gap, so a negated
   reference can never swallow the reference after it.
+- **The negator must be a whole word.** `\bnot\b` and `no[[:space:]]+`, so
+  `Notably, this Closes #N` and `Note: this Closes #N` still close (review
+  round 2), while `No, this does not close #N` is negated by the `not`, not
+  swallowed by the interjection `No,` (review round 2 BLOCKER).
 - **Four words out is a different clause.** `Do not merge this until it
   Closes #N` still closes. Pinned from both sides (`#446` negates, `#135`
   closes).
 - **`not only` / `not just` / `not merely` is affirmative.** Those matches are
-  filtered back out before subtraction (review finding C2), as is a
-  sentence-opening `No, ...` (`#457`).
+  filtered back out before subtraction (review finding C2), contractions
+  included (`doesn't just fix #N`).
 - **Subtraction is by number, and conservative.** A body that both negates and
   closes the same number does not close it (`#456`). The safe direction: a
   missing close is visible, a wrong close is not.
@@ -129,22 +133,38 @@ Existing scenarios keep running; added (each one is a real-world shape):
 | negated + affirmative in one body | `This does not close #454. Closes #455.` | #454 not closed (reported), #455 closed |
 | negation and close of one number | `Closes #456, though this does not close #456.` | not closed (conservative) |
 | sentence-opening `No,` | `No, this Closes #457.` | closed |
+| real negation after `No,` (BLOCKER, round 2) | `No, this does not close #460.` | not closed |
+| contraction negation after `No,` | `No, it doesn't fix #470.` | not closed |
+| `Note:` is not the negator `not` | `Note: this Closes #458.` | closed |
+| a word starting with `no` is not a negator | `Nobody closes #459, it is still open.` | closed |
+| contraction not-only (C2 round 2) | `This doesn't just fix #462, it closes it.` | closed |
+| case-insensitive keyword | `CLOSES #463` | closed |
+| remaining negation spellings | `no longer closes #464` / `won't fix #465` / `cannot resolve #468` / `not going to close #469` | not closed |
 
-The gap tests and the negated-close tests are the regression pins: on the
-pre-fix script the suite reports `PASS=58 FAIL=16` — 2 prose-gap closes, the
-negated-close scenarios, the split-line/bold separators, and the mixed body. On
-the fixed script: `PASS=74 FAIL=0`.
+The gap tests and the negated-close tests are the regression pins. With the
+74-assertion suite the pre-fix script reported `PASS=58 FAIL=16` (2 prose-gap
+closes, the negated-close scenarios, the split-line/bold separators, the mixed
+body); the 84-assertion control run against the base script is PENDING A SLOT
+(the machine is CPU-bound and the owner's policy forbids re-running suites for
+it). The fixed script: `PASS=84 FAIL=0`.
 
 ## Risks and non-goals
 
+- **Joining newlines makes a hard-wrapped mention a close.** `…the earlier PR
+  closes\n#150 was reopened…` closes #150, because the keyword and the reference
+  are adjacent once the lines are joined. The same sentence on one line has
+  always closed (base did it too, and so does GitHub's own parser), so the
+  change makes a line-break body behave like a one-line body rather than
+  inventing a new class. It is the direct cost of the C3 fix.
+- **A negator inside an unrelated clause can still swallow a following close**
+  when it is within three words (`Not sure, but Closes #N` drops #N), and a
+  negated reference more than three words from its keyword is not treated as
+  negating it. Deliberate: the alternative drifts into sentence parsing.
+- **Only whole-word negators count.** `Note:` and `Nobody` no longer negate
+  (`\bnot\b` / `no[[:space:]]+`), so `Note: this Closes #N` closes.
 - **Subtraction is lossy in one direction only.** See the negated-closes section:
   a body that both negates and closes one number does not close it. That is the
   visible-failure direction (a missing close is noticed; a wrong close is not).
-- A negated reference more than three words from its keyword is not treated as
-  negating it, and a `not`/`no` that opens a separate clause can still swallow a
-  following close within three words ("Not sure, but Closes #N" drops #N).
-  Deliberate: the alternative drifts into sentence parsing, and the C1 review
-  round chose to kill false closes over false drops.
 - `Closes #12 and #13` still only extracts #12 — pre-existing, unchanged.
 - `Closes - #N` (prose dash separator) no longer closes; it did at base only
   because the old gap matched anything. `Closes#N` never closed.

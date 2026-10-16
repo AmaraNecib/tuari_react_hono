@@ -164,18 +164,24 @@ CLOSE_VERBS='(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)'
 # never prose. That is the #466 fix.
 CLOSE_SEP='[*_]*([[:space:]]+|:)[[:space:]]*[*_]*'
 # Negators; contractions are spelled out because grep -E has no lookaround.
-NEGATORS='(not|never|no[[:space:]]+longer|no[[:space:]]+more|won[[:punct:]]?t|don[[:punct:]]?t|doesn[[:punct:]]?t|didn[[:punct:]]?t|isn[[:punct:]]?t|aren[[:punct:]]?t|cannot|can[[:punct:]]?t|no|hardly)'
+# The trailing \b matters: without it `not` matches the prefix of "notably"
+# and `no` the prefix of "nobody", and the false drop lands on a REAL close
+# (review round 2). Bare `no` must be followed by whitespace, so the
+# interjection "No, this Closes #N" is not a negator.
+NEGATORS='(not|never|no[[:space:]]+longer|no[[:space:]]+more|no[[:space:]]+|won[[:punct:]]?t|don[[:punct:]]?t|doesn[[:punct:]]?t|didn[[:punct:]]?t|isn[[:punct:]]?t|aren[[:punct:]]?t|cannot|can[[:punct:]]?t|hardly)'
 
 # One line, not many: grep is line-based, and "does not\nclose #N" is the same
 # statement as "does not close #N" (test-audit finding).
 body_flat=$(printf '%s' "$PR_BODY" | tr '\n' ' ')
 
+to_numbers() { # stdin: matched closing spans → one issue number per line
+  grep -oE '#[0-9]+' | tr -d '#' | sort -un
+}
+
 numbers=$(
   printf '%s\n' "$body_flat" \
     | grep -oiE "\b${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+" \
-    | grep -oE '#[0-9]+' \
-    | tr -d '#' \
-    | sort -un \
+    | to_numbers \
     || true
 )
 
@@ -190,17 +196,15 @@ numbers=$(
 #     reference can never swallow the reference that follows it. Four words out
 #     is a different clause ("do not merge this until it Closes #N" must still
 #     close). "not only/just/merely fixes #N" is AFFIRMATIVE and is filtered
-#     back out (review finding C2), and so is a sentence-opening "No, ..." —
-#     bare `no` needs a word after it ("no plans to close #N"), not a comma.
+#     back out, contractions included ("doesn't just fix #N", review finding
+#     C2 round 1, extended in round 2).
 #     Subtracting a NUMBER is deliberately conservative — a body that both
 #     negates and closes the same number does not close it.
 negated=$(
   printf '%s\n' "$body_flat" \
-    | grep -oiE "\b${NEGATORS}([^[:alnum:]#]*[[:alnum:]_'-]+){0,3}[^[:alnum:]#]*${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+" \
-    | grep -viE '^[[:space:]]*no[[:space:]]*,|\b(not|never)[[:space:]]+(only|just|merely|simply)\b' \
-    | grep -oE '#[0-9]+' \
-    | tr -d '#' \
-    | sort -un \
+    | grep -oiE "\b${NEGATORS}\b([^[:alnum:]#]*[[:alnum:]_'-]+){0,3}[^[:alnum:]#]*${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+" \
+    | grep -viE '\b([a-z]*n[[:punct:]]?t|not|never)[[:space:]]+(only|just|merely|simply)\b' \
+    | to_numbers \
     || true
 )
 for neg in $negated; do

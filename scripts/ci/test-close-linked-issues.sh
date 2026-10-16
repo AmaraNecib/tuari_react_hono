@@ -331,6 +331,60 @@ mk_issue 457 open "interjection no"
 run_script "No, this Closes #457."
 assert_closed "a sentence-opening 'No,' does not negate the close (#457)" 457
 
+# ── Findings from the 978cf95b review round ─────────────────────────────
+# BLOCKER: the bare-`no` filter swallowed a real negation that followed it.
+reset_state
+mk_issue 460 open "interjection then a real negation"
+run_script "No, this does not close #460."
+assert_not_closed "a real negation after 'No,' still negates (#460)" 460
+
+reset_state
+mk_issue 470 open "interjection then a contraction negation"
+run_script "No, it doesn't fix #470."
+assert_not_closed "a contraction negation after 'No,' still negates (#470)" 470
+
+# A negator must be a whole word: these are real closes, not negations.
+reset_state
+mk_issue 458 open "Note: is not a negator"
+run_script "Note: this Closes #458."
+assert_closed "'Note:' is not the negator 'not' (#458)" 458
+
+reset_state
+mk_issue 459 open "Nobody is not a negator"
+run_script "Nobody closes #459, it is still open."
+assert_closed "a word starting with 'no' is not a negator, so the close stands (#459)" 459
+
+reset_state
+mk_issue 462 open "contraction not-only"
+run_script "This doesn't just fix #462, it closes it."
+assert_closed "\"doesn't just fix #N\" is affirmative (#462)" 462
+
+# Case-insensitivity and the remaining documented negation spellings.
+reset_state
+mk_issue 463 open "uppercase keyword"
+run_script "CLOSES #463"
+assert_closed "case-insensitive 'CLOSES #N' closes" 463
+
+reset_state
+mk_issue 464 open "no longer negates"
+run_script "This no longer closes #464."
+assert_not_closed "'no longer closes #N' never closes" 464
+
+reset_state
+mk_issue 465 open "won't negates"
+run_script "Won't fix #465 here."
+assert_not_closed "\"won't fix #N\" never closes" 465
+
+reset_state
+mk_issue 468 open "cannot negates"
+run_script "This cannot resolve #468 alone."
+assert_not_closed "'cannot resolve #N' never closes" 468
+
+reset_state
+mk_issue 469 open "not going to negates"
+run_script "We are not going to close #469 in this PR."
+assert_not_closed "'not going to close #N' never closes" 469
+
 # Documented conservative tie-break: one number, negated and closed.
 reset_state
 mk_issue 456 open "negated and closed"
