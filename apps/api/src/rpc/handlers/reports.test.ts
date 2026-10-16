@@ -975,4 +975,23 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     expect(entries2[0].warehouseId).toBe(wh.id);
     expect(entries2[0].projectId).toBeNull();
   });
+
+  it("refuses an unrepresentable inventory aggregate with the business-rule code (#475)", async () => {
+    const env = await setup();
+    const seed = seedInventory(env);
+
+    // A legacy stored entry at the bound; a second money row pushes the
+    // aggregate past MAX_MONEY_DZD. The write gate never wrote these, but the
+    // DDL only enforces >= 0, so an older build can leave them.
+    const atBound = Number.MAX_SAFE_INTEGER;
+    for (const entryId of [seed.cementEntryId, seed.mixerEntryId]) {
+      env.raw
+        .prepare('UPDATE "inventory_entry" SET "total_price_dzd" = ? WHERE "id" = ?')
+        .run(atBound, entryId);
+    }
+
+    await expect(env.client.reportsGenerate({ type: "INVENTORY" })).rejects.toMatchObject({
+      code: "BUSINESS_RULE",
+    });
+  });
 });

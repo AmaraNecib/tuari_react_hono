@@ -1,8 +1,24 @@
-import { implement } from "@orpc/server";
+import { implement, ORPCError } from "@orpc/server";
 import type { RpcMiddleware } from "../rpc-middleware";
 import type { FinanceService } from "../../modules/company/finance.service";
 import type { InventoryService } from "../../modules/inventory/inventory.service";
 import type { ReportFilterInput } from "./handler-inputs";
+
+/**
+ * Reports refuse an unrepresentable aggregate with a typed domain error
+ * (`InventoryError` / `CompanyError`). The report output is a plain
+ * discriminated union with no failure branch, so this resolver must rethrow the
+ * refusal as a wire error or ORPC would surface it as a generic 500 (#421
+ * lesson). ORPC v1 accepts arbitrary string codes, so `appError.code` (e.g.
+ * `BUSINESS_RULE`) crosses the wire verbatim.
+ */
+function toReportOrpcError(error: unknown): unknown {
+  const appError = (error as { appError?: { code: string; message: string } } | null)?.appError;
+  if (appError) {
+    return new ORPCError(appError.code, { message: appError.message });
+  }
+  return error;
+}
 
 /**
  * Reports RPC handlers — thin dispatchers over the real service aggregations.
@@ -33,6 +49,6 @@ export function createReportsHandlers(
         default:
           throw new Error(`Unknown report type: ${type}`);
       }
-    })),
+    }, toReportOrpcError)),
   };
 }

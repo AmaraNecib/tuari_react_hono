@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE, type DebtAccountCreateInput } from "@tuari/contracts";
+import { DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE, MAX_MONEY_DZD, type DebtAccountCreateInput } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
 import {
@@ -1004,6 +1004,36 @@ describe("FinanceService coverage branches", () => {
       // Equal amounts → the amount difference is zero → localeCompare("ar") decides.
       expect(parties[0]!.partyName).toBe("شركة أ");
       expect(parties[1]!.partyName).toBe("شركة ب");
+    });
+
+    it("refuses an aggregate above MAX_MONEY_DZD with the business-rule error (#475)", () => {
+      const { service, database } = createHarness();
+      const counterparty = service.createExternalCounterparty({
+        fullName: "طرف تجاوز الحد",
+        phoneNumber: "0214444009",
+      }).item;
+      const account = service.createDebtAccount({
+        direction: "PAYABLE",
+        partyType: "EXTERNAL_COUNTERPARTY",
+        externalCounterpartyId: counterparty.id,
+        openingBalanceDzd: 100,
+        openingEntryDate: "2026-02-01T10:00:00+01:00",
+      }).item;
+      // A stored row can legitimately sit above the write bound: the write gate
+      // (not the DB CHECK, which only enforces >= 0) is what keeps a NEW balance
+      // in range, so an older build can leave one (#413 round 3).
+      database
+        .prepare('UPDATE "debt_account" SET "current_balance" = ? WHERE "id" = ?')
+        .run(MAX_MONEY_DZD + 1, account.id);
+
+      let thrown: unknown;
+      try {
+        service.finance.generateDebtReport({});
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(CompanyError);
+      expect((thrown as CompanyError).appError.code).toBe("BUSINESS_RULE");
     });
   });
 });

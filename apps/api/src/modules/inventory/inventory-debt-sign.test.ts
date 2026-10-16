@@ -127,6 +127,53 @@ describe("Inventory debt signs (D4/D8)", () => {
       expect(env.company.getDebtAccount(accountId).item.currentBalance).toBe(0);
     });
 
+    it("refuses an over-bound payment at the module seam, even against a legacy above-bound invoice (#475)", () => {
+      const { supplier, warehouse, item } = setupPurchaseBase();
+
+      const created = env.service.createInvoiceGroup(
+        {
+          warehouseId: warehouse.id,
+          externalCounterpartyId: supplier.id,
+          createDebt: true,
+          paymentInputType: "AMOUNT",
+          paidAmountDzd: 0,
+          entries: [
+            {
+              kind: "CONSUMABLE",
+              itemDefinitionId: item.id,
+              warehouseId: warehouse.id,
+              quantity: 1,
+              unitPriceDzd: 600,
+              totalPriceDzd: 600,
+            },
+          ],
+        },
+        AUDIT,
+      ).item.group;
+
+      // A legacy row above the write bound (#429 never wrote one, but the DB
+      // CHECK only enforces >= 0, so an older build can leave one).
+      env.db
+        .prepare('UPDATE "inventory_invoice_group" SET "remaining_debt_dzd" = ? WHERE "id" = ?')
+        .run(MAX_MONEY_DZD + 1, created.id);
+
+      let thrown: unknown;
+      try {
+        env.service.recordInvoicePayment(
+          { invoiceGroupId: created.id, amountDzd: MAX_MONEY_DZD + 1 },
+          AUDIT,
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(InventoryError);
+      expect((thrown as InventoryError).appError.code).toBe("VALIDATION");
+
+      // A normal payment against the same legacy row still passes.
+      const paid = env.service.recordInvoicePayment({ invoiceGroupId: created.id, amountDzd: 600 }, AUDIT);
+      expect(paid.remainingDebtDzd).toBe(MAX_MONEY_DZD + 1 - 600);
+    });
+
     it("refuses an above-bound consumable unit price at the module seam (#429)", () => {
       const { supplier, warehouse, item } = setupPurchaseBase();
 

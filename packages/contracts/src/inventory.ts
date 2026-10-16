@@ -9,7 +9,7 @@ import {
   nullableTextSchema,
   timestampSchema,
 } from "./core";
-import { nonNegativePaymentAmountSchema, storedMoneyDzdSchema } from "./payment";
+import { nonNegativePaymentAmountSchema, paymentAmountSchema, storedMoneyDzdSchema } from "./payment";
 
 /** inventoryItemDefinitionSchema - Item definition schema. */
 export const inventoryItemDefinitionSchema = z.object({
@@ -473,7 +473,12 @@ export const inventoryLocationContentsInputSchema = z.object({
 /** inventoryInvoiceGroupRecordPaymentInputSchema - Invoice group record payment input schema. */
 export const inventoryInvoiceGroupRecordPaymentInputSchema = z.object({
   invoiceGroupId: entityIdSchema,
-  amountDzd: z.number().positive(),
+  /**
+   * The last unbounded invoice money input (#475): a positive amount capped at
+   * the shared `MAX_MONEY_DZD`. A legacy invoice row above the bound (written
+   * before the #429 gate) would otherwise accept an over-bound payment.
+   */
+  amountDzd: paymentAmountSchema,
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
