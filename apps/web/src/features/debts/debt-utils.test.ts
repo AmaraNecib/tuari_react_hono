@@ -259,6 +259,15 @@ describe("resolveDebtCasesFormAction (the label/action seam for #459)", () => {
     expect(resolveDebtCasesFormAction([payable], "RECEIVABLE")).toEqual({ kind: "create-account" })
   })
 
+  it("picks the first account for a direction (the server keeps one per ledger)", () => {
+    const first = account("PAYABLE", "debt-first")
+    const second = account("PAYABLE", "debt-second")
+    expect(resolveDebtCasesFormAction([first, second], "PAYABLE")).toEqual({
+      kind: "record-payment",
+      account: first,
+    })
+  })
+
   it("picks the account on the chosen ledger when both exist", () => {
     const payable = account("PAYABLE", "debt-payable")
     const receivable = account("RECEIVABLE", "debt-receivable")

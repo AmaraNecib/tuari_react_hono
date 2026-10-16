@@ -9,12 +9,18 @@
 
 ## The defect
 
-`debt-cases-panel.tsx` renders an amount form that says **record a payment on the
-account** whenever an account exists, and **record a debt** when none does. Its
-submit handler *always* calls `useCreateDebtAccountMutation`, whatever the label
-says. The direction half was fixed in #458 (the form now sends
-`debtDirectionFromAlias(direction)` with `Math.abs`), so the remaining defect is
-the action itself: the label promises a payment and the code opens an account.
+`debt-cases-panel.tsx` renders an amount form whose copy says **record a payment
+on the account** whenever an account exists, and **record a debt** when none
+does. Its submit handler *always* calls `useCreateDebtAccountMutation`, whatever
+the label says.
+
+The direction half was fixed in #458 (the form sends `debtDirectionFromAlias(direction)`
+with `Math.abs`). After #458 the account-create service already reuses an account
+on the **same** direction (posting a positive ADJUSTMENT), so the residual defect
+had two faces: with a **different** direction selected the form opened a second
+ledger while the label still said *record payment*, and even on the matching
+ledger the stored entry was an ADJUSTMENT, not the PAYMENT the label and
+description promise. The mismatch between the copy and the action is the defect.
 
 ## Decision (owner default, Option 1)
 

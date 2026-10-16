@@ -308,7 +308,7 @@ describe("debts MVP web UI", () => {
             debtAccountId: "debt-existing",
             entryType: "PAYMENT",
             signedAmountDzd: -1200,
-            entryDate: expect.any(String),
+            entryDate: toAlgeriaDayBoundaryIso(getAlgeriaDateInputValue(), "start"),
             note: "دفعة نقدية",
           }),
         )
@@ -341,7 +341,7 @@ describe("debts MVP web UI", () => {
       })
     })
 
-    it("reduces (does not refund) a ledger that is already in credit", async () => {
+    it("posts a reducing movement even on a credited ledger", async () => {
       createDebtAccountMutateAsync.mockClear()
       createDebtEntryMutate.mockClear()
       renderWithProviders(
