@@ -6,7 +6,13 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createAppQueryClient } from "@/lib/query-client";
 import { LicenseSettings } from "./license-settings";
 import { ar } from "@/i18n/resources/ar";
-import type { LicenseStatusData } from "./license-hooks";
+import type { LicenseStatusData } from "./license-hooks"
+import {
+  ALGERIA_DAY_LONG,
+  MIDNIGHT_CROSSING,
+  UTC_DAY_LONG,
+  pinUtcTimeZone,
+} from "@/test-utils/algeria-day";
 
 // ─── Mock useLicenseStatus ─────────────────────────────────────
 
@@ -275,30 +281,21 @@ describe("LicenseSettings", () => {
 });
 
 describe("stored business day timezone (#473)", () => {
-  const originalTimeZone = process.env.TZ;
-  // 2026-09-30T23:00Z is 2026-10-01 00:00 in Africa/Algiers (UTC+1).
-  const MIDNIGHT_CROSSING = "2026-09-30T23:00:00.000Z";
-  const options = { year: "numeric", month: "long", day: "numeric" } as const;
-  const ALGERIA_DAY = new Intl.DateTimeFormat("ar-DZ", { ...options, timeZone: "Africa/Algiers" }).format(
-    new Date(MIDNIGHT_CROSSING),
-  );
-  const UTC_DAY = new Intl.DateTimeFormat("ar-DZ", { ...options, timeZone: "UTC" }).format(
-    new Date(MIDNIGHT_CROSSING),
-  );
+  let restoreTimeZone: () => void;
 
   beforeEach(() => {
-    process.env.TZ = "UTC";
+    restoreTimeZone = pinUtcTimeZone();
     mockUseLicenseStatus.mockReset();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
-    if (originalTimeZone === undefined) delete process.env.TZ;
-    else process.env.TZ = originalTimeZone;
+    restoreTimeZone();
   });
 
   it("runs under UTC so the assertions are not vacuous", () => {
     expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC");
+    expect(ALGERIA_DAY_LONG).not.toBe(UTC_DAY_LONG);
   });
 
   it("renders the licence expiry date on its Algeria day, not the ambient UTC day", () => {
@@ -310,7 +307,7 @@ describe("stored business day timezone (#473)", () => {
 
     renderWithQuery(<LicenseSettings />);
 
-    expect(screen.queryByText(ALGERIA_DAY)).toBeTruthy();
-    expect(screen.queryByText(UTC_DAY)).toBeNull();
+    expect(screen.queryByText(ALGERIA_DAY_LONG)).toBeTruthy();
+    expect(screen.queryByText(UTC_DAY_LONG)).toBeNull();
   });
 });

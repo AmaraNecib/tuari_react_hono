@@ -11,6 +11,8 @@ vi.mock("@/features/app-shell/workspace-mutations", () => ({
   useCreateSalaryPaymentMutation: () => ({ mutateAsync, isPending: false, isSuccess: false, reset: vi.fn() }),
 }))
 
+import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
+
 import { SalariesSection } from "./salaries-section"
 
 const PROJECT = { id: "project-1", name: "مشروع ألف" }
@@ -640,28 +642,20 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
 })
 
 describe("stored business day timezone (#473)", () => {
-  const originalTimeZone = process.env.TZ
-  // 2026-09-30T23:00Z is 2026-10-01 00:00 in Africa/Algiers (UTC+1).
-  const MIDNIGHT_CROSSING = "2026-09-30T23:00:00.000Z"
-  const ALGERIA_DAY = new Intl.DateTimeFormat("ar-DZ", { dateStyle: "medium", timeZone: "Africa/Algiers" }).format(
-    new Date(MIDNIGHT_CROSSING),
-  )
-  const UTC_DAY = new Intl.DateTimeFormat("ar-DZ", { dateStyle: "medium", timeZone: "UTC" }).format(
-    new Date(MIDNIGHT_CROSSING),
-  )
+  let restoreTimeZone: () => void
 
   beforeEach(() => {
-    process.env.TZ = "UTC"
+    restoreTimeZone = pinUtcTimeZone()
   })
 
   afterEach(() => {
     cleanup()
-    if (originalTimeZone === undefined) delete process.env.TZ
-    else process.env.TZ = originalTimeZone
+    restoreTimeZone()
   })
 
   it("runs under UTC so the assertions are not vacuous", () => {
     expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
+    expect(ALGERIA_DAY).not.toBe(UTC_DAY)
   })
 
   it("renders the payment history date on its Algeria day, not the ambient UTC day", () => {

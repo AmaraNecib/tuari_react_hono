@@ -6,12 +6,19 @@ import { cleanup, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
-import { formatAlgeriaDate } from "@/lib/algeria-time"
 import { formatDateLabel } from "@/features/app-shell/home-view-derived-formatters"
 import { InventoryInvoicesPage } from "@/features/inventory/inventory-invoices-page"
 import { LocationTransferHistory } from "@/features/inventory/location-transfer-history"
 import { OutboundTransfersPage } from "@/features/inventory/outbound-transfers-page"
 import { TransferHistoryPage } from "@/features/inventory/transfer-history-page"
+import { formatAlgeriaDate } from "@/lib/algeria-time"
+import {
+  ALGERIA_DAY,
+  ALGERIA_DAY_SHORT,
+  UTC_DAY,
+  UTC_DAY_SHORT,
+  pinUtcTimeZone,
+} from "@/test-utils/algeria-day"
 
 vi.mock("@tanstack/react-router", async (importActual) => {
   const actual = await importActual<typeof import("@tanstack/react-router")>()
@@ -21,28 +28,7 @@ vi.mock("@tanstack/react-router", async (importActual) => {
   }
 })
 
-/**
- * Issue #473. Every stored business day must render on its Africa/Algiers
- * calendar day even when the process runs in another timezone. These tests force
- * `TZ=UTC` and use an instant that is already the next day in Algeria, so an
- * unpinned formatter (the pre-fix code) renders 2026-09-30 and fails.
- */
 const MIDNIGHT_CROSSING = "2026-09-30T23:00:00.000Z" // 2026-10-01T00:00 in Africa/Algiers
-const SHORT_OPTIONS = { year: "numeric", month: "short", day: "numeric" } as const
-
-function dayIn(timeZone: string, options?: Intl.DateTimeFormatOptions) {
-  return new Intl.DateTimeFormat("ar-DZ", {
-    ...(options ?? { dateStyle: "medium" }),
-    timeZone,
-  }).format(new Date(MIDNIGHT_CROSSING))
-}
-
-const ALGERIA_DAY = dayIn("Africa/Algiers")
-const UTC_DAY = dayIn("UTC")
-const ALGERIA_DAY_SHORT = dayIn("Africa/Algiers", SHORT_OPTIONS)
-const UTC_DAY_SHORT = dayIn("UTC", SHORT_OPTIONS)
-
-const originalTimeZone = process.env.TZ
 
 const transferItem = {
   id: "transfer-00000001",
@@ -74,8 +60,10 @@ vi.mock("@/features/inventory/inventory-hooks", () => ({
   useInventoryInvoiceGroupsQuery: () => invoiceGroupsQuery(),
 }))
 
+let restoreTimeZone: () => void
+
 beforeEach(() => {
-  process.env.TZ = "UTC"
+  restoreTimeZone = pinUtcTimeZone()
   transferHistoryQuery.mockReturnValue({ data: { items: [transferItem] }, isLoading: false })
   locationTransferHistoryQuery.mockReturnValue({ data: { items: [transferItem] }, isLoading: false })
   outboundTransfersQuery.mockReturnValue({
@@ -112,8 +100,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  if (originalTimeZone === undefined) delete process.env.TZ
-  else process.env.TZ = originalTimeZone
+  restoreTimeZone()
 })
 
 describe("stored business day renders in Africa/Algiers (#473)", () => {

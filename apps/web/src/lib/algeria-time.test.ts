@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import {
+  ALGERIA_DAY,
+  MIDNIGHT_CROSSING,
+  UTC_DAY,
+  dayIn,
+  pinUtcTimeZone,
+} from "@/test-utils/algeria-day"
+
+import {
   formatAlgeriaDate,
   formatDateTimeInAlgeria,
   getAlgeriaDateInputValue,
@@ -13,57 +21,41 @@ import {
  * the fixture sits one hour before Algeria midnight, so an unpinned formatter
  * renders the previous day (2026-09-30) and the assertion fails.
  */
-// 2026-09-30T23:00Z is 2026-10-01 00:00 in Africa/Algiers (UTC+1).
-const MIDNIGHT_CROSSING = "2026-09-30T23:00:00.000Z"
-
-const originalTimeZone = process.env.TZ
+let restoreTimeZone: () => void
 
 beforeEach(() => {
-  process.env.TZ = "UTC"
+  restoreTimeZone = pinUtcTimeZone()
 })
 
 afterEach(() => {
-  if (originalTimeZone === undefined) delete process.env.TZ
-  else process.env.TZ = originalTimeZone
+  restoreTimeZone()
 })
 
 describe("formatAlgeriaDate", () => {
   it("runs under UTC, so the assertions are not vacuous", () => {
     expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
     expect(getAlgeriaTimeZone()).toBe("Africa/Algiers")
+    expect(ALGERIA_DAY).not.toBe(UTC_DAY)
   })
 
   it("renders a stored instant on its Algeria day, not the ambient UTC day", () => {
-    const algeriaDay = new Intl.DateTimeFormat("ar-DZ", {
-      dateStyle: "medium",
-      timeZone: "Africa/Algiers",
-    }).format(new Date(MIDNIGHT_CROSSING))
-    const utcDay = new Intl.DateTimeFormat("ar-DZ", {
-      dateStyle: "medium",
-      timeZone: "UTC",
-    }).format(new Date(MIDNIGHT_CROSSING))
+    expect(formatAlgeriaDate(MIDNIGHT_CROSSING)).toBe(ALGERIA_DAY)
+    expect(formatAlgeriaDate(new Date(MIDNIGHT_CROSSING))).toBe(ALGERIA_DAY)
+  })
 
-    expect(algeriaDay).not.toBe(utcDay)
-    expect(formatAlgeriaDate(MIDNIGHT_CROSSING)).toBe(algeriaDay)
-    expect(formatAlgeriaDate(new Date(MIDNIGHT_CROSSING))).toBe(algeriaDay)
+  it("renders a bare yyyy-MM-dd business day on the same Algeria day", () => {
+    expect(formatAlgeriaDate("2026-10-01")).toBe(dayIn("Africa/Algiers"))
   })
 })
 
 describe("formatDateTimeInAlgeria", () => {
   it("renders the settings update-check instant in Africa/Algiers, not the ambient zone", () => {
-    const algeriaStamp = new Intl.DateTimeFormat("ar-DZ", {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: "Africa/Algiers",
-    }).format(new Date(MIDNIGHT_CROSSING))
-    const utcStamp = new Intl.DateTimeFormat("ar-DZ", {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: "UTC",
-    }).format(new Date(MIDNIGHT_CROSSING))
+    const stampOptions = { dateStyle: "medium", timeStyle: "short" } as const
 
-    expect(algeriaStamp).not.toBe(utcStamp)
-    expect(formatDateTimeInAlgeria(new Date(MIDNIGHT_CROSSING))).toBe(algeriaStamp)
+    expect(formatDateTimeInAlgeria(new Date(MIDNIGHT_CROSSING))).toBe(
+      dayIn("Africa/Algiers", stampOptions),
+    )
+    expect(dayIn("Africa/Algiers", stampOptions)).not.toBe(dayIn("UTC", stampOptions))
   })
 })
 

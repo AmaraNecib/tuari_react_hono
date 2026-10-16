@@ -222,6 +222,8 @@ test('root package scripts keep web hygiene validation in normal checks', async 
 
 test('every production web date formatter is pinned to a timezone', async () => {
   const files = await listProductionWebSources();
+  // Guard against a silent filter drift (an empty list would pass vacuously).
+  assert.ok(files.length > 0, 'the production web scan must find source files');
   const violations = [];
 
   for (const file of files) {

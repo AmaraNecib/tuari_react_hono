@@ -19,6 +19,7 @@ import { ExternalCounterpartyCreatePage } from "@/features/externals/external-cr
 import { ExternalCounterpartyDetailsPage } from "@/features/externals/external-details-page"
 import { EmployeeDetailsPage } from "@/features/employees/employee-details-page"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
 
 const {
   createDebtAccountMutateAsync,
@@ -623,25 +624,15 @@ describe("debts MVP web UI", () => {
 })
 
 describe("stored business day timezone (#473)", () => {
-  const originalTimeZone = process.env.TZ
-  // 2026-09-30T23:00Z is 2026-10-01 00:00 in Africa/Algiers (UTC+1). Under the
-  // forced UTC process timezone an unpinned formatter renders 2026-09-30.
-  const MIDNIGHT_CROSSING = "2026-09-30T23:00:00.000Z"
-  const ALGERIA_DAY = new Intl.DateTimeFormat("ar-DZ", { dateStyle: "medium", timeZone: "Africa/Algiers" }).format(
-    new Date(MIDNIGHT_CROSSING),
-  )
-  const UTC_DAY = new Intl.DateTimeFormat("ar-DZ", { dateStyle: "medium", timeZone: "UTC" }).format(
-    new Date(MIDNIGHT_CROSSING),
-  )
+  let restoreTimeZone: () => void
 
   beforeEach(() => {
-    process.env.TZ = "UTC"
+    restoreTimeZone = pinUtcTimeZone()
   })
 
   afterEach(() => {
     cleanup()
-    if (originalTimeZone === undefined) delete process.env.TZ
-    else process.env.TZ = originalTimeZone
+    restoreTimeZone()
   })
 
   const account = (direction: "PAYABLE" | "RECEIVABLE"): DebtAccount => ({
@@ -708,7 +699,7 @@ describe("stored business day timezone (#473)", () => {
         receivableEntries={[entry({ id: "receivable-entry", debtAccountId: "acct-RECEIVABLE" })]}
       />,
     )
-    expect(screen.getAllByText(ALGERIA_DAY).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(ALGERIA_DAY)).toHaveLength(2)
     expect(screen.queryByText(UTC_DAY)).toBeNull()
   })
 
