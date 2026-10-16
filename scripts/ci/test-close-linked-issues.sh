@@ -385,6 +385,21 @@ mk_issue 469 open "not going to negates"
 run_script "We are not going to close #469 in this PR."
 assert_not_closed "'not going to close #N' never closes" 469
 
+# Round 3: a second reference in a nor-clause is still negated.
+reset_state
+mk_issue 471 open "nor clause, first reference"
+mk_issue 472 open "nor clause, second reference"
+run_script "This does not close #471, nor does it resolve #472."
+assert_not_closed "the negated first reference never closes (#471)" 471
+assert_not_closed "the nor-clause reference never closes (#472)" 472
+
+reset_state
+mk_issue 473 open "neither/nor, first reference"
+mk_issue 474 open "neither/nor, second reference"
+run_script "Neither fixes #473 nor closes #474."
+assert_not_closed "'neither fixes #N' never closes (#473)" 473
+assert_not_closed "'nor closes #N' never closes (#474)" 474
+
 # Documented conservative tie-break: one number, negated and closed.
 reset_state
 mk_issue 456 open "negated and closed"

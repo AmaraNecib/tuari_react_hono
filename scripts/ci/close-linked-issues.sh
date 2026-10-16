@@ -167,8 +167,10 @@ CLOSE_SEP='[*_]*([[:space:]]+|:)[[:space:]]*[*_]*'
 # The trailing \b matters: without it `not` matches the prefix of "notably"
 # and `no` the prefix of "nobody", and the false drop lands on a REAL close
 # (review round 2). Bare `no` must be followed by whitespace, so the
-# interjection "No, this Closes #N" is not a negator.
-NEGATORS='(not|never|no[[:space:]]+longer|no[[:space:]]+more|no[[:space:]]+|won[[:punct:]]?t|don[[:punct:]]?t|doesn[[:punct:]]?t|didn[[:punct:]]?t|isn[[:punct:]]?t|aren[[:punct:]]?t|cannot|can[[:punct:]]?t|hardly)'
+# interjection "No, this Closes #N" is not a negator. `nor`/`neither` are
+# negators too — "does not close #A, nor does it close #B" must negate both
+# (round-3 finding: #B closed).
+NEGATORS='(not|never|nor|neither|no[[:space:]]+longer|no[[:space:]]+more|no[[:space:]]+|won[[:punct:]]?t|don[[:punct:]]?t|doesn[[:punct:]]?t|didn[[:punct:]]?t|isn[[:punct:]]?t|aren[[:punct:]]?t|cannot|can[[:punct:]]?t|hardly)'
 
 # One line, not many: grep is line-based, and "does not\nclose #N" is the same
 # statement as "does not close #N" (test-audit finding).
