@@ -167,6 +167,8 @@ export function resolveDebtCasesFormAction(
   accounts: DebtAccount[],
   direction: DebtAccount["direction"],
 ): DebtCasesFormAction {
+  // The server's create path keeps at most one account per (party, direction),
+  // so a direction has one account and `find` is not a choice between two.
   const account = accounts.find((candidate) => candidate.direction === direction)
   return account ? { kind: "record-payment", account } : { kind: "create-account" }
 }

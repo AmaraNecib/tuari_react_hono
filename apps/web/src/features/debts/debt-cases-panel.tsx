@@ -57,15 +57,15 @@ export function DebtCasesPanel({
   const createDebtAccountMutation = useCreateDebtAccountMutation()
   const createDebtEntryMutation = useCreateDebtEntryMutation()
   const [createDate, setCreateDate] = useState(() => getAlgeriaDateInputValue())
-  const [openingBalance, setOpeningBalance] = useState("")
+  const [amount, setAmount] = useState("")
   const [note, setNote] = useState("")
   const [direction, setDirection] = useState<DebtDirectionAlias>("owed-by-us")
   const [consolidationDialogOpen, setConsolidationDialogOpen] = useState(false)
   const sortedAccounts = useMemo(() => sortDebtAccounts(accounts), [accounts])
   const debtAccount = sortedAccounts[0] ?? null
-  const normalizedOpeningBalance = openingBalance.trim()
-  const openingBalanceValue = normalizedOpeningBalance.length > 0 ? Number(normalizedOpeningBalance) : 0
-  const hasValidOpeningBalance = Number.isFinite(openingBalanceValue)
+  const normalizedAmount = amount.trim()
+  const amountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : 0
+  const hasValidCreateAmount = Number.isFinite(amountValue)
   // The direction carries the meaning; the opening amount is always a positive
   // magnitude (a signed balance is never stored or shown).
   const accountDirection = debtDirectionFromAlias(direction)
@@ -74,10 +74,10 @@ export function DebtCasesPanel({
   // that account. One resolver feeds all four.
   const accountAction = resolveDebtCasesFormAction(sortedAccounts, accountDirection)
   const isRecordingPayment = accountAction.kind === "record-payment"
-  const hasValidPaymentAmount = Number.isFinite(openingBalanceValue) && openingBalanceValue !== 0
+  const hasValidPaymentAmount = Number.isFinite(amountValue) && amountValue !== 0
   const isSubmitDisabled = isRecordingPayment
     ? !hasValidPaymentAmount || createDebtEntryMutation.isPending
-    : !hasValidOpeningBalance || createDebtAccountMutation.isPending
+    : !hasValidCreateAmount || createDebtAccountMutation.isPending
 
   // Aggregate stats across all accounts
   const totalEntryCount = useMemo(
@@ -218,7 +218,7 @@ export function DebtCasesPanel({
             <DatePicker value={createDate} onChange={setCreateDate} />
           </Field>
           <Field label={t("debts.cases.amount")}>
-            <CurrencyInput placeholder="0 أو 2500" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} />
+            <CurrencyInput placeholder="0 أو 2500" value={amount} onChange={(event) => setAmount(event.target.value)} />
           </Field>
           <Field label={t("debts.cases.note")} className="md:col-span-2">
             <Textarea placeholder="مثال: دين جديد، دفعة وصلت، دفعة خرجت" value={note} onChange={(event) => setNote(event.target.value)} />
@@ -237,7 +237,7 @@ export function DebtCasesPanel({
                 await createDebtEntryMutation.mutateAsync({
                   debtAccountId: accountAction.account.id,
                   entryType: "PAYMENT",
-                  signedAmountDzd: -Math.abs(openingBalanceValue),
+                  signedAmountDzd: -Math.abs(amountValue),
                   entryDate: createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined,
                   note: note.trim() || null,
                 })
@@ -246,7 +246,7 @@ export function DebtCasesPanel({
                   externalCounterpartyId: externalCounterpartyId ?? null,
                   note: note.trim() || null,
                   direction: accountDirection,
-                  openingBalanceDzd: openingBalanceValue === 0 ? undefined : Math.abs(openingBalanceValue),
+                  openingBalanceDzd: amountValue === 0 ? undefined : Math.abs(amountValue),
                   openingEntryDate: createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined,
                   openingEntryNote: note.trim() || null,
                   partyType: workerId ? "INTERNAL_WORKER" : "EXTERNAL_COUNTERPARTY",
@@ -255,7 +255,7 @@ export function DebtCasesPanel({
               }
 
               setCreateDate(getAlgeriaDateInputValue())
-              setOpeningBalance("")
+              setAmount("")
               setNote("")
             }}
           >

@@ -297,6 +297,9 @@ describe("debts MVP web UI", () => {
       expect(screen.getByText(/لا يُنشأ حساب جديد/)).toBeTruthy()
 
       fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "1200" } })
+      fireEvent.change(screen.getByPlaceholderText("مثال: دين جديد، دفعة وصلت، دفعة خرجت"), {
+        target: { value: "دفعة نقدية" },
+      })
       fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
 
       await waitFor(() => {
@@ -305,10 +308,24 @@ describe("debts MVP web UI", () => {
             debtAccountId: "debt-existing",
             entryType: "PAYMENT",
             signedAmountDzd: -1200,
+            entryDate: expect.any(String),
+            note: "دفعة نقدية",
           }),
         )
       })
       expect(createDebtAccountMutateAsync).not.toHaveBeenCalled()
+    })
+
+    it("keeps the payment submit disabled until the amount is non-zero", () => {
+      renderExistingAccountPanel()
+      const paymentButton = screen.getAllByRole("button", { name: "تسجيل دفعة" })[0] as HTMLButtonElement
+
+      // Empty and an explicit zero are both "no action", not a zero payment.
+      expect(paymentButton.disabled).toBe(true)
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "0" } })
+      expect(paymentButton.disabled).toBe(true)
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      expect(paymentButton.disabled).toBe(false)
     })
 
     it("treats a typed minus as a magnitude on the payment", async () => {
@@ -333,6 +350,22 @@ describe("debts MVP web UI", () => {
       expect(screen.getByRole("button", { name: "تسجيل دين" })).toBeTruthy()
       expect(screen.getByText("إنشاء الحساب")).toBeTruthy()
       expect(screen.getByText(/سيُفتح حساب جديد/)).toBeTruthy()
+    })
+
+    it("opens the chosen ledger's account when only the other ledger exists", async () => {
+      renderExistingAccountPanel()
+
+      // The party has a PAYABLE account only; owed-to-us is a different ledger.
+      fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
+
+      await waitFor(() => {
+        expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ direction: "RECEIVABLE", openingBalanceDzd: 500 }),
+        )
+      })
+      expect(createDebtEntryMutate).not.toHaveBeenCalled()
     })
   })
 

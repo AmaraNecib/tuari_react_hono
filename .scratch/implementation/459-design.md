@@ -49,8 +49,8 @@ it; only open an account when the chosen ledger has none.
 - Existing account on the chosen ledger → `debtEntriesCreate` with
   `entryType: "PAYMENT"`, `signedAmountDzd: -|amount|` (a payment reduces the
   balance on either ledger), the picked day as `entryDate`, and the note.
-  `hasValidAmount` requires a positive magnitude (a payment of 0 is not an
-  action).
+  The submit stays disabled until the typed magnitude is finite and non-zero;
+  a typed minus is normalized with `Math.abs`, never read as a sign.
 - No account on the chosen ledger → `debtAccountsCreate` with a positive
   `openingBalanceDzd` and the derived direction, exactly as today.
 
@@ -59,14 +59,21 @@ it; only open an account when the chosen ledger has none.
 - `debt-utils.test.ts`: the resolver — matching direction → record-payment on
   that account; no match → create-account; a different-direction account does
   not satisfy the selected ledger.
-- `debts-mvp-web.test.tsx`: (1) existing account → submit posts a `PAYMENT`
-  entry to that account and **does not** call create-account; (2) no account →
-  submit calls create-account and does not post an entry; (3) the button label
-  and the panel title track the resolved action.
-- Existing `manages a unified external counterparty debt account` case is
-  updated: it asserted the buggy create-on-existing behaviour.
-- E2E `tests/e2e/debt-entry.spec.ts` covers the create path through this panel;
-  run it to confirm the create flow still lands.
+- `debts-mvp-web.test.tsx`: a `DebtCasesPanel` describe covering (1) existing
+  account → submit posts a `PAYMENT` entry (account id, `entryType`, `-|amount|`,
+  `entryDate`, note) and **does not** call create-account; (2) the submit stays
+  disabled on empty/zero and enables on a non-zero magnitude; (3) a typed minus
+  is a magnitude; (4) the label and the panel title track the resolved action;
+  (5) a ledger with no account but a different-direction account still opens the
+  chosen ledger's account and posts no entry. The existing `manages a unified
+  external counterparty debt account` case is updated — it asserted the buggy
+  create-on-existing behaviour.
+- Existing `DebtCasesPanel sends the chosen direction with a positive opening`
+  cases now also assert no entry is posted on the create path; the create flow
+  labels stay `تسجيل دين`.
+- E2E `tests/e2e/debt-entry.spec.ts` exercises the fixed path: after the panel
+  opens the account it posts a 500 payment on it from the same form, asserts the
+  balance drops to 4,500, and the second test's ledger payment then reads 2,500.
 
 ## Risks / migration
 

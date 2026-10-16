@@ -58,15 +58,25 @@ test.describe("debt entry — critical path", () => {
       page.getByRole("cell", { name: /رصيد افتتاحي/ }).first(),
     ).toBeVisible({ timeout: 15_000 })
 
-    // The debts hub reflects the new party and its balance (PAYABLE +5000
-    // renders as "مستحق علينا دج 5,000" — we owe the counterparty). Scope to
+    // #459: the same form now posts a payment on the account it just created
+    // instead of opening a second account. The opening entry is dated at the
+    // start of today, so this payment shares that day and is not backdated.
+    await page.getByPlaceholder("0 أو 2500").fill("500")
+    await page.getByRole("button", { name: "تسجيل دفعة", exact: true }).first().click()
+    await expect(page.getByText(/4,500/).first()).toBeVisible({ timeout: 15_000 })
+    await expect(
+      page.getByRole("cell", { name: /دفعة/ }).first(),
+    ).toBeVisible({ timeout: 10_000 })
+
+    // The debts hub reflects the new party and its balance (PAYABLE 4,500
+    // renders as "مستحق علينا دج 4,500" — we owe the counterparty). Scope to
     // the party's row so the amount can't match unrelated page text.
     await page.getByRole("link", { name: "الديون" }).first().click()
     await expect(page.getByRole("heading", { name: "مركز الديون" })).toBeVisible()
     const hubRow = page.getByRole("row", { name: new RegExp(counterpartyName) }).first()
     await expect(hubRow).toBeVisible({ timeout: 10_000 })
     await expect(hubRow).toContainText("مستحق علينا")
-    await expect(hubRow).toContainText(/5,000/)
+    await expect(hubRow).toContainText(/4,500/)
     // Regression guard for the reported bug: a balance never renders signed.
     await expect(hubRow).not.toContainText(/-5\s?000/)
   })
@@ -96,11 +106,11 @@ test.describe("debt entry — critical path", () => {
     await page.getByRole("button", { name: "تأكيد الدفعة" }).click()
 
     // The ledger refreshes (debtsDetail invalidation → useDebtPartyDetailQuery)
-    // and the balance drops to 3,000 after the 2,000 payment. The balance is
-    // shown as the direction phrase plus a positive amount.
+    // and the balance drops from 4,500 to 2,500 after the 2,000 payment. The
+    // balance is shown as the direction phrase plus a positive amount.
     await expect(page.getByText("مستحق علينا").first()).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText(/3,000/).first()).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText(/-3,000/)).toHaveCount(0)
+    await expect(page.getByText(/2,500/).first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(/-2,500/)).toHaveCount(0)
     await expect(
       page.getByRole("cell", { name: /دفعة/ }).first(),
     ).toBeVisible({ timeout: 10_000 })
@@ -111,7 +121,7 @@ test.describe("debt entry — critical path", () => {
     const hubRow = page.getByRole("row", { name: new RegExp(counterpartyName) }).first()
     await expect(hubRow).toBeVisible({ timeout: 10_000 })
     await expect(hubRow).toContainText("مستحق علينا")
-    await expect(hubRow).toContainText(/3,000/)
-    await expect(hubRow).not.toContainText(/-3\s?000/)
+    await expect(hubRow).toContainText(/2,500/)
+    await expect(hubRow).not.toContainText(/-2\s?500/)
   })
 })
