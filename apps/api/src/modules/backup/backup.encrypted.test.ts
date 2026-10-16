@@ -169,3 +169,17 @@ describe.skipIf(Sqlcipher === null)("encrypted backup (SQLCipher)", () => {
     ).toMatchObject({ app: "tuari", format: 1, encrypted: true });
   });
 });
+
+/**
+ * The sentinel that turns a silent skip into a failure where the binding is
+ * REQUIRED. `describe.skipIf` above keeps this file green on a workstation with
+ * no C++ toolchain; without a sentinel the same skip would also hide a broken
+ * native build in the job that exists to run it (#410). Set
+ * `TUARI_REQUIRE_SQLCIPHER=1` in that job.
+ */
+it.runIf(process.env.TUARI_REQUIRE_SQLCIPHER === "1")(
+  "this job requires a working SQLCipher binding",
+  () => {
+    expect(Sqlcipher, "native SQLCipher binding required in this job").not.toBeNull();
+  },
+);

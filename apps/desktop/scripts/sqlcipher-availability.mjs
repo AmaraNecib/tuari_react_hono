@@ -148,6 +148,14 @@ export const SQLCIPHER_PROBE_SOURCE = [
 ].join("\n");
 
 /**
+ * Bound on the probe subprocess. A freshly copied ~100 MB `node.exe` can sit in
+ * a scanner, and a hung probe would otherwise block the build and the publish
+ * gate forever. Matches the convention the staging code already uses for
+ * spawned processes (`runtime-staging.mjs`).
+ */
+export const SQLCIPHER_PROBE_TIMEOUT_MS = 30_000;
+
+/**
  * Load the copied SQLCipher package with the Node executable that will ship
  * beside it and require a cipher version. Throws with the loader's own error
  * when the addon cannot load, so a stale/incompatible artifact fails the build
@@ -158,18 +166,22 @@ export const SQLCIPHER_PROBE_SOURCE = [
  * @param {string} options.runtimeDir - Sidecar root; holds `node_modules`.
  * @param {(file: string, args: string[], options: object) => string} [options.execFile]
  *   Injection seam; defaults to `execFileSync`.
+ * @param {number} [options.timeoutMs] - Probe timeout; defaults to
+ *   {@link SQLCIPHER_PROBE_TIMEOUT_MS}.
  * @returns {string} the reported cipher version.
  */
 export const probeSqlcipherBinding = ({
   nodeExecPath,
   runtimeDir,
   execFile = execFileSync,
+  timeoutMs = SQLCIPHER_PROBE_TIMEOUT_MS,
 }) => {
   let stdout;
   try {
     stdout = execFile(nodeExecPath, ["-e", SQLCIPHER_PROBE_SOURCE], {
       cwd: runtimeDir,
       encoding: "utf8",
+      timeout: timeoutMs,
     });
   } catch (error) {
     const stderr = error && error.stderr ? String(error.stderr).trim() : "";
@@ -199,6 +211,20 @@ export const isReleaseBuild = (env = process.env) =>
   Boolean(env.CI) || env.NODE_ENV === "production";
 
 /**
+ * Whether a waived plaintext artifact may be published. ONE definition of the
+ * release rule, shared by every call site — the gate decision below, the
+ * staging availability probe, and the staged-runtime load probe — so a release
+ * can never waive however the waiver was requested (#402).
+ *
+ * @param {object} options
+ * @param {boolean} options.plaintextAllowed - The waiver was requested.
+ * @param {boolean} options.release - `isReleaseBuild()` for this process.
+ * @returns {boolean}
+ */
+export const sqlcipherPlaintextWaiver = ({ plaintextAllowed, release }) =>
+  plaintextAllowed && !release;
+
+/**
  * Decide what the build does about a missing or unloadable SQLCipher binding.
  * Pure, so the release guard is unit-testable without a compiler.
  *
@@ -217,6 +243,6 @@ export const isReleaseBuild = (env = process.env) =>
 export const sqlcipherGateDecision = ({ available, plaintextAllowed, release }) => {
   if (available) return "proceed";
   if (release) return "refuse-release";
-  if (plaintextAllowed) return "waived";
+  if (sqlcipherPlaintextWaiver({ plaintextAllowed, release })) return "waived";
   return "refuse";
 };

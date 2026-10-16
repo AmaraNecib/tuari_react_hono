@@ -71,8 +71,10 @@ const readLeadingBytes = (databasePath: string): string | null => {
  * directions (#402).
  *
  *  - key set + a plaintext `SQLite format 3\0` header → refuse. Opening a
- *    plaintext file under a key would either corrupt it or silently defeat
- *    the at-rest guarantee the key is there to provide.
+ *    plaintext file under a key would silently defeat the at-rest guarantee the
+ *    key is there to provide (SQLCipher rejects the file).
+ *  - key set + a file shorter than any database header → refuse as truncated or
+ *    damaged, rather than accepting it and failing at the first query.
  *  - no key + a non-SQLite header → refuse. A SQLCipher-encrypted file is
  *    indistinguishable from noise to a plaintext reader, so without this it
  *    only fails at the first query with an opaque `file is not a database`
@@ -88,13 +90,22 @@ export function assertDatabaseFileMatchesKey(databasePath: string, key: string |
   if (header === null || header === "") return
 
   const isPlaintext = header === SQLITE_HEADER
+  const isTruncated = header.length < SQLITE_HEADER.length
+
+  if (key && isTruncated) {
+    throw new Error(
+      `Refusing to open ${databasePath} with APP_DB_KEY set: it is only ${header.length} bytes, `
+      + "shorter than any SQLite or SQLCipher header, so it is truncated or damaged. Restore it "
+      + "from a backup, or remove it to start a fresh encrypted workspace (#402)."
+    )
+  }
 
   if (key && isPlaintext) {
     throw new Error(
       `Refusing to open ${databasePath} with APP_DB_KEY set: its first bytes are the plaintext `
-      + "SQLite header, so it is an unencrypted database. Opening it under a key would either "
-      + "corrupt it or silently defeat at-rest encryption (#402). Remove APP_DB_KEY for this "
-      + "workspace, or point APP_DB_PATH at the encrypted database."
+      + "SQLite header, so it is an unencrypted database. SQLCipher cannot read it under a key, "
+      + "and opening it would silently defeat at-rest encryption (#402). Remove APP_DB_KEY for "
+      + "this workspace, or point APP_DB_PATH at the encrypted database."
     )
   }
 

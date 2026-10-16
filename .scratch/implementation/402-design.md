@@ -20,9 +20,10 @@ storage got an artifact that cannot honour the guarantee — silently.
 
 Four defects made the fallback unconditional:
 
-1. **The fork's addon is never built by pnpm.** `pnpm-workspace.yaml`
-   `onlyBuiltDependencies` omits `better-sqlite3-sqlcipher`, and
-   `pnpm rebuild <pkg>` does not run the fork's implicit node-gyp build.
+1. **The fork's addon is never built by pnpm.** The package ships no
+   `install`/`postinstall` script, so pnpm has nothing to run — adding it to
+   `onlyBuiltDependencies` would change nothing — and `pnpm rebuild <pkg>` does
+   not drive node-gyp either.
 2. **The availability check looked at the wrong path.** The fork's loader
    requires `build/better_sqlite3.node`; the old check looked at
    `build/Release/better_sqlite3.node`, which is *plain* better-sqlite3's layout.
@@ -96,8 +97,9 @@ build are recovered by pid + process start time, not a name sort.
   the binding encrypts rather than trusting `require()`.
 - `assertDatabaseFileMatchesKey(path, key)` — one rule for both directions of
   the header check (#402): with a key configured and a plaintext `SQLite format
-  3\0` file, refuse (opening it under a key would corrupt it or silently defeat
-  at-rest encryption); with no key and a non-SQLite file, refuse with a message
+  3\0` file, refuse (SQLCipher rejects it under a key, and opening it would
+  silence the at-rest guarantee); with no key and a non-SQLite file, refuse with
+  a message
   naming both possibilities (an encrypted workspace without the capability, or a
   damaged plaintext file) instead of the opaque first-query `file is not a
   database` (licensing architecture §8.3 downgrade case). A missing or empty file
@@ -164,7 +166,9 @@ native job in #410 is what runs it.
 ## Round 2 — gate findings (review at `e76946ee`)
 
 `debate`, `code-review`, `test-audit`, and the design pass ran at `e76946ee`;
-evidence is `.scratch/reviews/402/e76946ee-*.md`. No hard blockers. Fixed here:
+that round's two evidence files were superseded by the `7620322b` review below
+and are no longer kept in `.scratch/reviews/402/` — the findings in this section
+are their record. No hard blockers. Fixed here:
 
 - **Keyed direction of the header rule (design pass #1).** The first version
   only refused a non-SQLite file when NO key was set, so a plaintext file opened
@@ -200,6 +204,68 @@ Deferred to their own issues (not silently):
   detector in `build-portable.mjs` — owner decision requested.
 - **Duplicated cipher-rule sites (code-review L1) and the worker's keyed open
   without a probe (design pass #2, pre-existing #430).** Low drift risk; not
-  introduced here.
+  introduced here. (The worker probe was pulled forward in round 3 — see below.)
 - **`APP_DB_KEY` empty-string and `readSync` failure paths (test-audit #3/#4).**
   Edge cases, no behaviour change proposed.
+
+## Round 3 — review at `7620322b`
+
+`design pass`, `debate` (critic + defender), `test-audit`, and `code-review` ran
+in fresh contexts at `7620322b`. No blockers; the diff already met #402's
+acceptance criteria. Fixed here:
+
+- **Header rule untested through its production call site (test-audit H1).**
+  `factory.test.ts` now drives `createDatabaseConnection` over a real file path
+  in both directions and asserts the constructor is never reached on the
+  refused keyed path — delete the call and the test fails.
+- **Release waiver re-derived at the staged-runtime probe (design pass #1,
+  code-review).** `sqlcipherPlaintextWaiver({plaintextAllowed, release})` is now
+  the ONE definition; `sqlcipherGateDecision`, `resolveSqlcipher`, and
+  `probeStagedRuntime` all call it, and the predicate has its own tests.
+- **The probe subprocess had no timeout (debate H4).** A hung `node.exe` would
+  block both the build and the installer smoke gate; the bound is now part of
+  the contract and asserted in the probe test.
+- **A truncated file under a key fell through to an opaque first-query error
+  (test-audit M1).** A file shorter than any database header is refused as
+  damaged, and the case is pinned by a test.
+- **The backup worker claimed `encrypted: true` without proving it (debate
+  H2/H3, code-review Standards).** The worker now requires a non-empty
+  `PRAGMA cipher_version` before it writes, and takes the key already escaped by
+  the exported `escapeSqliteString` instead of an inline copy of the rule.
+- **A silent skip would hide a broken native build (test-audit H4).**
+  `backup.encrypted.test.ts` gains a `TUARI_REQUIRE_SQLCIPHER=1` sentinel that
+  FAILS in the #410 job when the binding is absent.
+- **Unsupported "corrupt it" claim (debate M1).** The refusal message, the doc,
+  and the design no longer assert corruption; SQLCipher rejects the file.
+- **The release refusal dropped the remedy (debate M4) and the plaintext advice
+  did not name the release case (code-review).** Both messages now state the fix.
+- **The design record's root cause #1 was wrong (debate H5).** The fork ships no
+  `install`/`postinstall` script, so `onlyBuiltDependencies` was never the fix;
+  the doc and the `build-sidecar.mjs` comment say so.
+- **Duplicated npm script and an off-by-one doc citation (code-review).**
+  `@tuari/desktop`'s `test` now delegates to `test:packaging-security`;
+  `docs/editions-and-features.md` cites `lib.rs:2148`.
+
+Dismissed with a cited reason (not silently):
+
+- **`isReleaseBuild` treats any non-empty `CI` as release (debate M4).** It
+  fails closed in the safe direction; "CI=0 means local" is not a contract.
+- **`createDatabaseConnection(path, null)` no longer means "plaintext" (debate
+  M5).** The `dbKey ?? process.env.APP_DB_KEY ?? null` chain is unchanged; `null`
+  always meant "fall back to the environment".
+- **The `--ephemeral` gate can never refuse (debate M2).** The refusing gate is
+  the release build, whose `beforeBuildCommand` re-runs the strict path;
+  `typecheck` deliberately assembles into a temp dir and publishes nothing.
+- **`build-sidecar.mjs` still cannot be imported by a test (test-audit H2/H3
+  remainder).** Lifting the whole build into an injected function would churn a
+  300-line side-effecting script; the incremental step is the single shared
+  predicate plus the wiring assertions in `factory.test.ts`.
+
+Still deferred (recorded, not silent):
+
+- **#410** — the native CI job. It must set `TUARI_REQUIRE_SQLCIPHER=1` so the
+  sentinel above fails instead of skipping.
+- **`portable:only` plaintext zip and `APP_DB_KEY=""`** — unchanged from round 2.
+- **`installer-smoke.mjs` docstring enumeration ordering (debate L1)** — the
+  header lists themes, not the code order; cosmetic, and the checks themselves
+  are correct.

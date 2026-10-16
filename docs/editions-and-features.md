@@ -192,7 +192,7 @@ the desktop shell enforces it:
 
 - The shell sets `APP_DB_KEY` on the API sidecar only when
   `manager.has_feature("encrypted_db")` is true
-  (`apps/desktop/src-tauri/src/lib.rs:2147`). The sidecar environment is cleared
+  (`apps/desktop/src-tauri/src/lib.rs:2148`). The sidecar environment is cleared
   first, so a system-level `APP_DB_KEY` cannot leak in.
 - The API database factory uses the key when present: it loads
   `better-sqlite3-sqlcipher` and runs `PRAGMA key` plus
@@ -205,8 +205,8 @@ the desktop shell enforces it:
   closed, clear error), never ignored.
 - Before opening, the factory compares the file's first bytes with the configured
   key in both directions: a plaintext `SQLite format 3` file with `APP_DB_KEY`
-  set is refused (opening it under a key would corrupt it or silently defeat
-  at-rest encryption), and a non-SQLite file with no key active is refused as
+  set is refused (SQLCipher rejects it under a key, and opening it would silence
+  the at-rest guarantee), and a non-SQLite file with no key active is refused as
   encrypted-or-damaged rather than failing at the first query.
 - The binding must be **shipped**, not merely buildable. `build-sidecar.mjs`
   fails the desktop build when the SQLCipher native binding is missing, instead
@@ -270,7 +270,7 @@ Caveats for sales:
 2. Encryption follows the `encrypted_db` feature on the signed license, not the
    edition. `editionToMinEdition` states the minimum edition the feature implies
    (`apps/api/src/infrastructure/license.ts:168`); the shell checks
-   `has_feature("encrypted_db")` (`apps/desktop/src-tauri/src/lib.rs:2147`). An
+   `has_feature("encrypted_db")` (`apps/desktop/src-tauri/src/lib.rs:2148`). An
    Enterprise license without the feature opens a plain database, and a
    Professional license that carries it enables encryption. The flag is not
    reversible for an existing workspace: the file stays encrypted while the key

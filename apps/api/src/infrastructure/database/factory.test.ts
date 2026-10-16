@@ -196,6 +196,18 @@ describe("assertDatabaseFileMatchesKey", () => {
     );
   });
 
+  it("refuses a truncated SQLite-header prefix when a key is configured", () => {
+    // A 13-byte file is neither a plaintext database nor a valid encrypted one,
+    // so with a key set it must be named as damage rather than accepted as
+    // "encrypted-looking" and failing later with an opaque first-query error.
+    const dbPath = tempDbPath();
+    writeFileSync(dbPath, Buffer.from("SQLite format"));
+
+    expect(() => assertDatabaseFileMatchesKey(dbPath, "secret")).toThrowError(
+      /shorter than any SQLite or SQLCipher header/,
+    );
+  });
+
   it("accepts a missing or empty file for either key configuration", () => {
     const missing = tempDbPath();
     expect(() => assertDatabaseFileMatchesKey(missing, "secret")).not.toThrow();
@@ -223,5 +235,32 @@ describe("createDatabaseConnection", () => {
     expect(encrypting.queried).toContain("cipher_compatibility = 4");
     expect(encrypting.queried).toContain("cipher_version");
     expect(db).toBeDefined();
+  });
+
+  it("refuses a plaintext file on the wired keyed path before constructing a connection (#402)", () => {
+    // The header rule is only load-bearing if createDatabaseConnection actually
+    // calls it: delete the call and this test — unlike the helper-level ones —
+    // fails. The constructor must never be reached.
+    const dbPath = tempDbPath();
+    writeFileSync(dbPath, Buffer.from("SQLite format 3\0and more"));
+    let constructed = false;
+    const constructor = function TrackedDatabase() {
+      constructed = true;
+      return createEncryptingFake().constructor();
+    } as unknown as typeof Database;
+
+    expect(() => createDatabaseConnection(dbPath, "secret", () => constructor)).toThrowError(
+      /plaintext SQLite header/,
+    );
+    expect(constructed).toBe(false);
+  });
+
+  it("refuses a non-SQLite file on the wired keyless path (#402)", () => {
+    const dbPath = tempDbPath();
+    writeFileSync(dbPath, Buffer.from("not a sqlite database at all"));
+
+    expect(() => createDatabaseConnection(dbPath, null)).toThrowError(
+      /cannot tell those apart/,
+    );
   });
 });

@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   SQLCIPHER_ADDON_RELATIVE_PATH,
   SQLCIPHER_PROBE_SOURCE,
+  SQLCIPHER_PROBE_TIMEOUT_MS,
   SQLCIPHER_WINDOWS_DLL_RELATIVE_PATH,
   inspectSqlcipherArtifact,
   isReleaseBuild,
@@ -14,6 +15,7 @@ import {
   requiredSqlcipherFiles,
   resolveSqlcipherArtifact,
   sqlcipherGateDecision,
+  sqlcipherPlaintextWaiver,
 } from "./sqlcipher-availability.mjs";
 
 /**
@@ -124,6 +126,9 @@ test("probeSqlcipherBinding runs the probe with the bundled Node and returns the
   // sidecar's node_modules, so it is part of the contract, not an accident.
   assert.equal(calls[0].options.cwd, path.join("C:", "bundle", "api-runtime"));
   assert.equal(calls[0].options.encoding, "utf8");
+  // A hung probe would block the build and the installer smoke check forever,
+  // so the bound is part of the contract.
+  assert.equal(calls[0].options.timeout, SQLCIPHER_PROBE_TIMEOUT_MS);
   // The probe must exercise the keyed path and ask for the capability, not
   // just load the module.
   assert.match(SQLCIPHER_PROBE_SOURCE, /cipher_version/);
@@ -364,6 +369,15 @@ test("isReleaseBuild treats CI and NODE_ENV=production as release builds", () =>
   assert.equal(isReleaseBuild({ NODE_ENV: "production" }), true);
   assert.equal(isReleaseBuild({ NODE_ENV: "development" }), false);
   assert.equal(isReleaseBuild({}), false);
+});
+
+test("the plaintext waiver is refused in a release build, however it is requested", () => {
+  // The ONE definition the gate decision, the availability probe, and the
+  // staged-runtime probe all share (#402).
+  assert.equal(sqlcipherPlaintextWaiver({ plaintextAllowed: true, release: false }), true);
+  assert.equal(sqlcipherPlaintextWaiver({ plaintextAllowed: false, release: false }), false);
+  assert.equal(sqlcipherPlaintextWaiver({ plaintextAllowed: true, release: true }), false);
+  assert.equal(sqlcipherPlaintextWaiver({ plaintextAllowed: false, release: true }), false);
 });
 
 test("the gate proceeds only with a real SQLCipher binding", () => {

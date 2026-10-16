@@ -36,8 +36,18 @@ const post = (message) => parentPort.postMessage(message);
 
 const applyKey = (db) => {
   if (!workerData.databaseKey) return;
-  db.pragma("key = '" + String(workerData.databaseKey).replace(/'/g, "''") + "'");
+  db.pragma("key = '" + workerData.escapedDatabaseKey + "'");
   db.pragma("cipher_compatibility = 4");
+  // Same capability probe the API applies on its own connection
+  // (assertBindingEncrypts): plain better-sqlite3 accepts PRAGMA key as a
+  // no-op and reports no cipher version, so without this the worker would write
+  // a plaintext copy and still report encrypted: true (#402).
+  const cipherVersion = db.pragma("cipher_version", { simple: true });
+  if (typeof cipherVersion !== "string" || cipherVersion.trim() === "") {
+    throw new Error(
+      "the backup connection's SQLite binding reports no cipher_version, so it cannot encrypt",
+    );
+  }
 };
 
 try {
@@ -140,6 +150,9 @@ export const createWorkerSnapshotter = (
           modulePath,
           databasePath: options.databasePath,
           databaseKey: options.databaseKey ?? null,
+          // Escaped here, by the exported single source, rather than by the
+          // worker's inline copy of the rule.
+          escapedDatabaseKey: escapeSqliteString(options.databaseKey ?? ""),
           vacuumSql: `VACUUM INTO '${escapeSqliteString(outputPath)}'`,
         },
       });

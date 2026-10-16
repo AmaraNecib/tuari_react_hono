@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyValidatedTree, runPnpmCommand } from "./script-security-utils.mjs";
 import { buildProbeAndPublishRuntime } from "./runtime-staging.mjs";
-import { isReleaseBuild, probeSqlcipherBinding, resolveSqlcipherArtifact, sqlcipherGateDecision } from "./sqlcipher-availability.mjs";
+import { isReleaseBuild, probeSqlcipherBinding, resolveSqlcipherArtifact, sqlcipherGateDecision, sqlcipherPlaintextWaiver } from "./sqlcipher-availability.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,9 +97,10 @@ const ensureBetterSqliteBinary = () => {
 const buildSqlcipherNative = (sqlcipherDir) => {
   let nodeGypBin;
   try {
-    // node-gyp is a devDependency of @tuari/desktop. `pnpm rebuild` does NOT run
-    // the fork's implicit node-gyp build (proved: it exits 0 and produces no
-    // addon), so the sidecar build must drive node-gyp itself.
+    // node-gyp is a devDependency of @tuari/desktop. The fork ships no
+    // install/postinstall script, so pnpm never builds its addon and
+    // `pnpm rebuild` does not drive node-gyp either (proved: it exits 0 and
+    // produces no addon), so the sidecar build must drive node-gyp itself.
     const nodeGypDir = resolvePackageDir("node-gyp", desktopPackageJson);
     nodeGypBin = path.join(nodeGypDir, "bin", "node-gyp.js");
   } catch (error) {
@@ -134,7 +135,7 @@ const resolveSqlcipher = () => {
     sqlcipherDir,
     ...resolveSqlcipherArtifact({
       packageDir: sqlcipherDir,
-      plaintextAllowed: plaintextAllowed && !release,
+      plaintextAllowed: sqlcipherPlaintextWaiver({ plaintextAllowed, release }),
       ephemeral,
       buildNative: () => buildSqlcipherNative(sqlcipherDir),
     }),
@@ -175,26 +176,24 @@ const enforceSqlcipherGate = () => {
   });
 
   if (decision === "proceed") return;
-  if (decision === "waived") {
-    printPlaintextOnlyWarning(
-      sqlcipher.detail
-      ?? (sqlcipher.availability.missing.length > 0
-        ? `missing ${sqlcipher.availability.missing.join(", ")}`
-        : "unknown reason"),
-    );
-    return;
-  }
 
   const detail = sqlcipher.detail
     ?? (sqlcipher.availability.missing.length > 0
       ? `missing ${sqlcipher.availability.missing.join(", ")}`
       : "unknown reason");
 
+  if (decision === "waived") {
+    printPlaintextOnlyWarning(detail);
+    return;
+  }
+
   if (decision === "refuse-release") {
     throw new Error(
       "SQLCipher is required to build the desktop artifact, and a plaintext-only artifact may "
       + "not be produced in a release build (CI / NODE_ENV=production). Without SQLCipher an "
-      + `encrypted_db license would silently get a plaintext database (#402). Reason: ${detail}.`,
+      + `encrypted_db license would silently get a plaintext database (#402). Reason: ${detail}. `
+      + "Fix the native build (node-gyp + a C++ toolchain, or approve better-sqlite3-sqlcipher's "
+      + "build); the plaintext waiver is not available in a release.",
     );
   }
 
@@ -274,8 +273,9 @@ const probeStagedRuntime = () => {
     });
   } catch (error) {
     // A failed load is fatal in a release too: the waiver cannot turn an
-    // unloadable addon into a shipping artifact (#402).
-    if (!plaintextAllowed || release) throw error;
+    // unloadable addon into a shipping artifact (#402). Same waiver definition
+    // as the availability gate, so the two cannot drift apart.
+    if (!sqlcipherPlaintextWaiver({ plaintextAllowed, release })) throw error;
 
     printPlaintextOnlyWarning(
       "the SQLCipher binding is present but the bundled Node cannot load it "
