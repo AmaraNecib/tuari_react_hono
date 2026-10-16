@@ -24,6 +24,7 @@ import {
   type DebtReport,
   type DebtSettlementInput,
   type ExternalCounterpartyCreateInput,
+  DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE,
   DEBT_ADVANCE_DIRECTION_MESSAGE,
   DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE,
   getDebtAccountNetContribution,
@@ -37,7 +38,7 @@ import {
   buildDebtPartyKey,
   getDebtAccountBalanceLabel,
   getDebtAccountStatus,
-  getDebtBalanceLabel,
+  getNetDebtBalanceLabel,
   normalizeSignedMoneyAmount,
   normalizeText,
   successResult,
@@ -78,12 +79,6 @@ export class FinanceService {
   // lifecycle). The same logic also lives on `CompanyService` for
   // callers that prefer the cross-domain coordinator.
   // ---------------------------------------------------------------------------
-
-  getEmployeeDebtAccount(employeeId: string) {
-    requireEmployee(this.workforceRepo, employeeId);
-    const accounts = this.listDebtAccounts({ workerId: employeeId }).items;
-    return accounts[0] ?? null;
-  }
 
   createEmployeeDebtEntry(
     input: {
@@ -268,15 +263,19 @@ export class FinanceService {
     }
 
     const openingBalance = input.openingBalanceDzd ?? 0;
-    if (!Number.isFinite(openingBalance)) {
-      throw new CompanyError("VALIDATION", "يجب إدخال رصيد افتتاحي صالح.", [
-        { field: "openingBalanceDzd", message: "يجب إدخال رصيد افتتاحي صالح." },
+    if (!Number.isFinite(openingBalance) || openingBalance < 0) {
+      throw new CompanyError("VALIDATION", "لا يمكن أن يكون الرصيد الافتتاحي سالباً؛ الاتجاه هو ما يحمل المعنى.", [
+        {
+          field: "openingBalanceDzd",
+          message: "لا يمكن أن يكون الرصيد الافتتاحي سالباً؛ الاتجاه هو ما يحمل المعنى.",
+        },
       ]);
     }
     const entryDate = normalizeAlgeriaTimestamp(input.openingEntryDate);
 
     // D2: the reason category locks the direction. A supplied direction that
     // contradicts it is rejected, so no writer can store the intent backwards.
+    // The direction itself is required: there is no implicit PAYABLE default.
     const lockedDirection = input.reasonCategory
       ? getLockedDirectionForCategory(input.reasonCategory)
       : null;
@@ -287,7 +286,12 @@ export class FinanceService {
         [{ field: "direction", message: DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE }],
       );
     }
-    const direction = lockedDirection ?? input.direction ?? "PAYABLE";
+    const direction = lockedDirection ?? input.direction;
+    if (direction !== "PAYABLE" && direction !== "RECEIVABLE") {
+      throw new CompanyError("VALIDATION", DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE, [
+        { field: "direction", message: DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE },
+      ]);
+    }
 
     const existingAccount =
       input.partyType === "INTERNAL_WORKER"
@@ -795,7 +799,7 @@ export class FinanceService {
         phoneNumber: employee.phone,
         note: employee.notes,
         totalBalanceDzd,
-        balanceLabel: getDebtBalanceLabel(totalBalanceDzd),
+        balanceLabel: getNetDebtBalanceLabel(totalBalanceDzd),
         debtAccounts,
       });
     }
@@ -817,7 +821,7 @@ export class FinanceService {
       phoneNumber: counterparty.phoneNumber,
       note: counterparty.note,
       totalBalanceDzd,
-      balanceLabel: getDebtBalanceLabel(totalBalanceDzd),
+      balanceLabel: getNetDebtBalanceLabel(totalBalanceDzd),
       debtAccounts,
     });
   }
@@ -905,7 +909,7 @@ export class FinanceService {
     const parties = Array.from(partyMap.values())
       .map((party) => ({
         ...party,
-        balanceLabel: getDebtBalanceLabel(party.totalBalanceDzd),
+        balanceLabel: getNetDebtBalanceLabel(party.totalBalanceDzd),
       }))
       .sort((left, right) => Date.parse(right.latestActivityAt) - Date.parse(left.latestActivityAt));
 

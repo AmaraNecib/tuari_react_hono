@@ -32,7 +32,7 @@ import { WorkspaceBreadcrumbs } from "./workspace-breadcrumbs"
 import { UpdateRestartModal, UpdateRestartBadge } from "@/features/update"
 import { WorkspaceSidebar } from "./workspace-sidebar"
 import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
-import { formatDebtAmount, getDebtBalanceDisplay } from "@/features/debts/debt-utils"
+import { formatDebtAmount, getDebtAccountBalanceDisplay } from "@/features/debts/debt-utils"
 
 /** Main app shell with sidebar, header, and content area. */
 /**
@@ -246,11 +246,11 @@ export function HomeViewSignedInShell({
         : partyName && "fullName" in partyName
           ? partyName.fullName
           : t("search.unknownParty")
-      const balance = getDebtBalanceDisplay({ currentBalance: d.currentBalance, direction: d.direction })
+      const balance = getDebtAccountBalanceDisplay(d)
       return {
         id: `debt-${d.id}`,
         title: name,
-        description: `${t(balance.phraseKey)} ${formatDebtAmount(balance.amount)} ${t("search.currency")}`,
+        description: `${balance.phrase} ${formatDebtAmount(balance.amount)} ${t("search.currency")}`,
         category: t("debts.label"),
         action: () => { window.location.href = "/debts" },
       }

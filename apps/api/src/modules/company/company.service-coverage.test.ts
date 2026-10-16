@@ -187,7 +187,8 @@ describe("CompanyService facade delegations", () => {
     expect(service.listDebtAccounts().items).toEqual([]);
     expect(service.listDebtsSummary().parties.length).toBe(0);
     const account = service
-      .createDebtAccount({ partyType: "INTERNAL_WORKER", workerId: worker.id, openingBalanceDzd: 1000 })
+      .createDebtAccount({
+        direction: "PAYABLE", partyType: "INTERNAL_WORKER", workerId: worker.id, openingBalanceDzd: 1000 })
       .item;
     expect(service.getDebtAccount(account.id).item.id).toBe(account.id);
     const entry = service.listDebtEntries({ debtAccountId: account.id }).items[0]!;

@@ -1,4 +1,4 @@
-import { getDebtBalancePhrase } from "@tuari/contracts";
+import { getDebtAccountBalancePhrase, getNetDebtBalancePhrase } from "@tuari/contracts";
 import { CompanyError } from "./company.errors";
 import type { DebtAccountRecord, MutationAuditContext } from "./company.types";
 
@@ -55,19 +55,19 @@ export function getDebtAccountStatus(balance: number) {
 /**
  * Direction-aware label for a single debt account: +PAYABLE = "مستحق علينا",
  * +RECEIVABLE = "مستحق لنا", and the overpayment states get their own
- * phrases. Use this for per-account UIs; use `getDebtBalanceLabel(net)` for
+ * phrases. Use this for per-account UIs; use `getNetDebtBalanceLabel(net)` for
  * party aggregates.
  */
 export function getDebtAccountBalanceLabel(account: { currentBalance: number; direction: "PAYABLE" | "RECEIVABLE" }) {
-  return getDebtBalancePhrase(account);
+  return getDebtAccountBalancePhrase(account);
 }
 
 /**
  * Sign-only label for a netted balance: positive = they owe us
  * ("مستحق لنا"), negative = we owe them ("مستحق علينا"), zero = "مسوّى".
  */
-export function getDebtBalanceLabel(balance: number) {
-  return getDebtBalancePhrase({ currentBalance: balance });
+export function getNetDebtBalanceLabel(balance: number) {
+  return getNetDebtBalancePhrase(balance);
 }
 
 export function buildDebtPartyKey(account: Pick<DebtAccountRecord, "partyType" | "workerId" | "externalCounterpartyId">) {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE, type DebtAccountCreateInput } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
 import {
@@ -25,7 +26,8 @@ describe("FinanceService coverage branches", () => {
     it("rejects an account linked to no party (or to two parties)", () => {
       const { service } = createHarness();
       expect(() =>
-        service.createDebtAccount({ partyType: "EXTERNAL_COUNTERPARTY", openingBalanceDzd: 100 }),
+        service.createDebtAccount({
+        direction: "PAYABLE", partyType: "EXTERNAL_COUNTERPARTY", openingBalanceDzd: 100 }),
       ).toThrowError(CompanyError);
     });
 
@@ -44,6 +46,7 @@ describe("FinanceService coverage branches", () => {
       }).item;
       expect(() =>
         service.createDebtAccount({
+        direction: "PAYABLE",
           partyType: "EXTERNAL_COUNTERPARTY",
           workerId: worker.id,
           externalCounterpartyId: counterparty.id,
@@ -60,6 +63,7 @@ describe("FinanceService coverage branches", () => {
       }).item;
       expect(() =>
         service.createDebtAccount({
+        direction: "PAYABLE",
           partyType: "EXTERNAL_COUNTERPARTY",
           externalCounterpartyId: counterparty.id,
           openingBalanceDzd: Number.NaN,
@@ -191,6 +195,7 @@ describe("FinanceService coverage branches", () => {
         phoneNumber: "0218888888",
       }).item;
       const payable = service.createDebtAccount({
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 1000,
@@ -219,6 +224,7 @@ describe("FinanceService coverage branches", () => {
         phoneNumber: "0218888889",
       }).item;
       service.createDebtAccount({
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 400,
@@ -246,6 +252,7 @@ describe("FinanceService coverage branches", () => {
           phoneNumber: "0218888890",
         }).item;
         service.createDebtAccount({
+        direction: "PAYABLE",
           partyType: "EXTERNAL_COUNTERPARTY",
           externalCounterpartyId: counterparty.id,
           openingBalanceDzd: 400,
@@ -267,40 +274,9 @@ describe("FinanceService coverage branches", () => {
     });
   });
 
-  describe("getEmployeeDebtAccount / createEmployeeDebtEntry", () => {
-    it("returns null when the employee has no debt account yet", () => {
-      const { service, roleIds } = createHarness();
-      const worker = service.createEmployee({
-        firstName: "عامل",
-        lastName: "أول",
-        phone: "0551000001",
-        roleId: roleIds.worker,
-        status: "ACTIVE",
-      }).item;
-      expect(service.finance.getEmployeeDebtAccount(worker.id)).toBeNull();
-    });
-
-    it("returns the existing worker debt account", () => {
-      const { service, roleIds } = createHarness();
-      const worker = service.createEmployee({
-        firstName: "عامل",
-        lastName: "ثان",
-        phone: "0551000002",
-        roleId: roleIds.worker,
-        status: "ACTIVE",
-      }).item;
-      service.finance.createEmployeeDebtEntry({
-        employeeId: worker.id,
-        entryType: "OPENING",
-        amountDzd: 2000,
-      });
-      const account = service.finance.getEmployeeDebtAccount(worker.id);
-      expect(account?.workerId).toBe(worker.id);
-      expect(account?.currentBalance).toBe(2000);
-    });
-
+  describe("createEmployeeDebtEntry", () => {
     it("creates the account on first entry and records ADVANCE entries", () => {
-      const { service, roleIds } = createHarness();
+      const { service, repository, roleIds } = createHarness();
       const worker = service.createEmployee({
         firstName: "عامل",
         lastName: "ثالث",
@@ -316,7 +292,7 @@ describe("FinanceService coverage branches", () => {
       });
       expect(entry.entryType).toBe("ADVANCE");
       expect(entry.signedAmountDzd).toBe(500);
-      const account = service.finance.getEmployeeDebtAccount(worker.id);
+      const account = repository.getDebtAccountByWorkerIdAndDirection(worker.id, "RECEIVABLE");
       expect(account?.currentBalance).toBe(500);
     });
 
@@ -353,6 +329,66 @@ describe("FinanceService coverage branches", () => {
           employeeId: "missing",
           entryType: "OPENING",
           amountDzd: 100,
+        }),
+      ).toThrowError(CompanyError);
+    });
+
+    it("keeps one ledger per direction when the worker holds two (D3)", () => {
+      const { service, repository, roleIds } = createHarness();
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "مزدوج",
+        phone: "0551000005",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+
+      service.finance.createEmployeeDebtEntry({ employeeId: worker.id, entryType: "ADVANCE", amountDzd: 500 });
+      service.finance.createEmployeeDebtEntry({ employeeId: worker.id, entryType: "OPENING", amountDzd: 1000 });
+
+      const receivable = repository.getDebtAccountByWorkerIdAndDirection(worker.id, "RECEIVABLE");
+      const payable = repository.getDebtAccountByWorkerIdAndDirection(worker.id, "PAYABLE");
+      expect(receivable?.currentBalance).toBe(500);
+      expect(payable?.currentBalance).toBe(1000);
+      expect(receivable?.direction).toBe("RECEIVABLE");
+      expect(payable?.direction).toBe("PAYABLE");
+    });
+
+    it("rejects createDebtAccount with no direction instead of defaulting to PAYABLE", () => {
+      const { service, roleIds } = createHarness();
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "بلا اتجاه",
+        phone: "0551000006",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+
+      expect(() =>
+        service.createDebtAccount({
+          partyType: "INTERNAL_WORKER",
+          workerId: worker.id,
+          openingBalanceDzd: 500,
+        } as unknown as DebtAccountCreateInput),
+      ).toThrowError(DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE);
+    });
+
+    it("rejects a negative opening balance server-side too", () => {
+      const { service, roleIds } = createHarness();
+      const worker = service.createEmployee({
+        firstName: "عامل",
+        lastName: "سالب",
+        phone: "0551000007",
+        roleId: roleIds.worker,
+        status: "ACTIVE",
+      }).item;
+
+      expect(() =>
+        service.createDebtAccount({
+          partyType: "INTERNAL_WORKER",
+          workerId: worker.id,
+          direction: "PAYABLE",
+          openingBalanceDzd: -1,
         }),
       ).toThrowError(CompanyError);
     });
@@ -400,6 +436,7 @@ describe("FinanceService coverage branches", () => {
       const { service } = createHarness();
       expect(() =>
         service.createDebtAccount({
+        direction: "PAYABLE",
           partyType: "EXTERNAL_COUNTERPARTY",
           externalCounterpartyId: "missing-cp",
           openingBalanceDzd: 100,
@@ -696,6 +733,7 @@ describe("FinanceService coverage branches", () => {
         phoneNumber: phone,
       }).item;
       const payable = service.createDebtAccount({
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 1000,
@@ -814,6 +852,7 @@ describe("FinanceService coverage branches", () => {
         phoneNumber: "0213333339",
       }).item;
       const payable = service.createDebtAccount({
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
       }).item;
@@ -912,6 +951,7 @@ describe("FinanceService coverage branches", () => {
       // newer than the party's previous lastTransaction (equal date). The party
       // merge must then keep the previous lastTransaction instead of regressing.
       service.createDebtAccount({
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 600,
@@ -942,12 +982,14 @@ describe("FinanceService coverage branches", () => {
         phoneNumber: "0214444005",
       }).item;
       service.createDebtAccount({
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: first.id,
         openingBalanceDzd: 400,
         openingEntryDate: "2026-02-01T10:00:00+01:00",
       });
       service.createDebtAccount({
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: second.id,
         openingBalanceDzd: 400,

@@ -774,3 +774,32 @@ component. A rebase that merges an older branch over the inversion will
 reintroduce those calls and every screen rendering that dialog throws
 `toDatePickerValue is not a function`; the fix is to delete the calls, not to
 restore the helpers.
+
+## Requiring a previously-optional field hides failures in loosely-typed test harnesses (🟠 Major)
+
+On #458, `direction` became required on `createDebtAccount` and its schema. `tsc`
+caught every **typed** caller, but the RPC/router and report tests drive the
+contract through harnesses typed `any`/`never`, so ~7 calls still omitted the
+field. They passed typecheck and only failed in the full suite as
+`Input validation failed` / a thrown `DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE`
+at runtime.
+
+**Always**: when a field flips from optional to required (or a `.positive()` /
+`.optional()` bound tightens), grep for the *call shape* — both the service
+method (`createDebtAccount(`) and the wire method (`debtAccountsCreate(`) — not
+just the TypeScript errors. Run the affected package's suite, not only
+`tsc`, before claiming the call sites are migrated.
+
+## A client-side `?? default` survives a server default removal (🟠 Major)
+
+The same change removed `input.direction ?? "PAYABLE"` from the service, but the
+web `useCreateDebtAccountMutation` still had `direction: input.direction ??
+"PAYABLE"` and `openingBalanceDzd: input.openingBalanceDzd ?? 0`. The first
+reintroduced the silent default at a new layer; the second turned "no opening
+balance" into a supplied `0`, which the new `.positive()` schema rejects — so
+empty-account creation would have broken while every mocked web test stayed
+green.
+
+**Always**: when removing a server-side default, grep the client layer for the
+same `?? default` / `?? 0` coercion. The value the client sends is the value the
+wire validates; "omitted" must stay omitted for an optional field.

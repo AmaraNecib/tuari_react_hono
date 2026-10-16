@@ -1,19 +1,16 @@
 /**
- * Employee debt hooks for querying and mutating employee debt data.
+ * Employee debt hooks for mutating employee debt data.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type {
   AppError,
-  DebtAccount,
   EmployeeDebtEntryCreateInput,
 } from "@tuari/contracts"
 
 import { AppMutationError } from "@/features/app-shell/mock-dashboard"
-import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
 import {
   getCachedSessionUserId,
-  invalidateUserScopedQuery,
-  workspaceQueryKeys,
+  invalidateWorkspaceDomains,
 } from "@/features/app-shell/workspace-keys"
 import { rpcClient } from "@/lib/orpc-client"
 import { buildErrorMessage } from "@/lib/rpc-error-handling"
@@ -31,31 +28,22 @@ function requireEntitySuccess<T>(result: { success: boolean; message?: string; i
   return { item: result.item, message: result.message ?? "تم الحفظ بنجاح." }
 }
 
-/**
- * useEmployeeDebtAccountQuery(employeeId component.
- */
-export function useEmployeeDebtAccountQuery(employeeId: string | undefined) {
-  return useWorkspaceScopedQuery({
-    key: (userId) => workspaceQueryKeys.employeeDebtAccount(userId, employeeId ?? "missing"),
-    enabled: Boolean(employeeId),
-    queryFn: async (): Promise<DebtAccount | null> => {
-      const result = await rpcClient.employeeDebtAccountGet({ employeeId: employeeId! })
-      return requireEntitySuccess(result).item
-    },
-/**
- * useCreateEmployeeDebtEntryMutation() component.
- */
-  })
-}
-
 export function useCreateEmployeeDebtEntryMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationKey: ["employee-debt", "entry", "create"],
     mutationFn: async (input: EmployeeDebtEntryCreateInput) => requireEntitySuccess(await rpcClient.employeeDebtEntryCreate(input)),
-    onSuccess: async ({ item, message }, variables) => {
-      await invalidateUserScopedQuery(queryClient, getCachedSessionUserId(queryClient), (uid) => workspaceQueryKeys.employeeDebtAccount(uid, variables.employeeId))
+    onSuccess: async ({ item, message }) => {
+      // The entry changes the worker's ledger and the debts summary/detail
+      // views; invalidate the same workspace domains the other debt mutations
+      // do. (The single-account read this used to target was deleted with the
+      // dead EmployeeDebtPanel.)
+      await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), {
+        debtsSummary: true,
+        debtsDetail: true,
+        employees: true,
+      })
       showSuccessToast(message)
       return item
     },

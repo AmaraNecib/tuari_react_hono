@@ -558,6 +558,7 @@ describe("contracts", () => {
       debtAccountCreateInputSchema.parse({
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: "counterparty-1",
+        direction: "PAYABLE",
         openingBalanceDzd: 1200,
       }).partyType,
     ).toBe("EXTERNAL_COUNTERPARTY")
@@ -577,8 +578,77 @@ describe("contracts", () => {
         partyType: "INTERNAL_WORKER",
         workerId: "worker-1",
         externalCounterpartyId: "counterparty-1",
+        direction: "PAYABLE",
       }),
     ).toThrowError()
+  })
+
+  it("requires a direction on createDebtAccount (no silent PAYABLE default)", () => {
+    expect(() =>
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        openingBalanceDzd: 500,
+      }),
+    ).toThrowError()
+
+    // The direction is required even when a category locks it: the caller
+    // must still state the ledger it means.
+    expect(() =>
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        openingBalanceDzd: 500,
+        reasonCategory: "SALARY_ADVANCE",
+      }),
+    ).toThrowError()
+
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 500,
+      }).direction,
+    ).toBe("RECEIVABLE")
+  })
+
+  it("rejects a negative opening balance (the direction carries the sign)", () => {
+    expect(() =>
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+        openingBalanceDzd: -500,
+      }),
+    ).toThrowError()
+
+    // Zero is not a positive opening; omit the field to open an empty account.
+    expect(() =>
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 0,
+      }),
+    ).toThrowError()
+
+    // A positive opening, or no opening at all, is accepted.
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 500,
+      }).openingBalanceDzd,
+    ).toBe(500)
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+      }).openingBalanceDzd,
+    ).toBeUndefined()
   })
 
   it("rejects a debt account whose direction contradicts its reason category (D2)", () => {
@@ -591,7 +661,7 @@ describe("contracts", () => {
       }),
     ).toThrowError()
 
-    // A matching direction (or none) is accepted; the category locks it.
+    // A matching direction is accepted; the category locks it.
     expect(
       debtAccountCreateInputSchema.parse({
         partyType: "INTERNAL_WORKER",

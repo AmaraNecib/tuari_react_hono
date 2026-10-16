@@ -8,7 +8,6 @@ import type {
   DebtEntryVoidInput,
   DebtPartyDetailInput,
   DebtSettlementInput,
-  EmployeeDebtAccountGetInput,
   EmployeeDebtEntryCreateInput,
   ExternalCounterpartyCreateInput,
 } from "@tuari/contracts";
@@ -77,9 +76,6 @@ export function createFinanceHandlers(
     )),
     debtsSummary: os.debtsSummary.handler(m.queryAuth(async () =>
       financeService.listDebtsSummary()
-    )),
-    employeeDebtAccountGet: os.employeeDebtAccountGet.handler(m.queryAuth(async ({ input }) =>
-      financeService.getEmployeeDebtAccount((input as EmployeeDebtAccountGetInput).employeeId)
     )),
     employeeDebtEntryCreate: os.employeeDebtEntryCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => financeService.createEmployeeDebtEntry(input as EmployeeDebtEntryCreateInput, auditContext),

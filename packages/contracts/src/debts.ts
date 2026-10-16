@@ -157,9 +157,19 @@ export const debtAccountCreateInputSchema = z
     partyType: debtPartyTypeSchema,
     workerId: entityIdSchema.nullable().optional(),
     externalCounterpartyId: entityIdSchema.nullable().optional(),
-    direction: debtAccountDirectionSchema.optional(),
+    /**
+     * Which ledger the account is. Required: the direction carries the
+     * meaning of the balance, so there is no implicit PAYABLE default. A
+     * missing direction is a validation error.
+     */
+    direction: debtAccountDirectionSchema,
     note: z.string().trim().max(1000).nullable().optional(),
-    openingBalanceDzd: z.number().finite().optional(),
+    /**
+     * The opening magnitude. Optional (absent means no opening balance), but
+     * never negative: the direction carries the sign, so a signed opening is
+     * rejected rather than silently stored.
+     */
+    openingBalanceDzd: z.number().finite().positive().optional(),
     openingEntryDate: timestampSchema.optional(),
     openingEntryNote: z.string().trim().max(1000).nullable().optional(),
     reasonCategory: debtReasonCategorySchema.optional(),
@@ -369,10 +379,6 @@ export const employeeDebtEntryCreateInputSchema = z
     }
   });
 
-export const employeeDebtAccountGetInputSchema = z.object({
-  employeeId: entityIdSchema,
-});
-
 export type ExternalCounterparty = z.infer<typeof externalCounterpartySchema>;
 export type DebtAccount = z.infer<typeof debtAccountSchema>;
 export type DebtEntry = z.infer<typeof debtEntrySchema>;
@@ -389,5 +395,4 @@ export type DirectDebtEntryCreateInput = z.infer<typeof directDebtEntryCreateInp
 export type DebtSettlementInput = z.infer<typeof debtSettlementInputSchema>;
 export type DebtPartyDetailInput = z.infer<typeof debtPartyDetailInputSchema>;
 export type EmployeeDebtEntryCreateInput = z.infer<typeof employeeDebtEntryCreateInputSchema>;
-export type EmployeeDebtAccountGetInput = z.infer<typeof employeeDebtAccountGetInputSchema>;
 export type DebtConsolidationInput = z.infer<typeof debtConsolidationInputSchema>;

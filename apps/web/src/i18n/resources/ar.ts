@@ -1163,7 +1163,6 @@ export const ar = {
       emptyFiltered: "لا توجد نتائج للفلتر المحدد.",
       filters: {
         all: "الكل",
-        settled: "مسوّى",
       },
     },
     debtLedger: {
@@ -1354,17 +1353,6 @@ export const ar = {
     debts: {
       loadError: "تعذر تحميل بيانات الديون. حاول مرة أخرى.",
       terminology: {
-        directions: {
-          payable: "مستحقات علينا",
-          receivable: "مستحقات لنا",
-        },
-        states: {
-          owedToUs: "مستحق لنا",
-          owedByUs: "مستحق علينا",
-          creditWithUs: "رصيد مستحق لنا",
-          creditWithThem: "رصيد مستحق لهم",
-          settled: "مسوّى",
-        },
         buttons: {
           recordPayment: "تسجيل دفعة",
           recordDebt: "تسجيل دين",

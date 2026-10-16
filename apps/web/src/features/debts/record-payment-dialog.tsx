@@ -15,7 +15,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import { useCreateDebtEntryMutation, useSettleDebtAccountMutation } from "@/features/app-shell/mock-dashboard"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
-import { formatDebtAmount, getDebtBalanceDisplay } from "./debt-utils"
+import { formatDebtAmount, getDebtAccountBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
 import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
 
@@ -43,7 +43,6 @@ export function RecordPaymentDialog({
   const [showSettlePrompt, setShowSettlePrompt] = useState(false)
 
   const balance = debtAccount?.currentBalance ?? 0
-  const balanceDisplay = getDebtBalanceDisplay({ currentBalance: balance, direction: debtAccount?.direction })
 
   const handlePayFull = () => {
     setAmount(String(Math.abs(balance)))
@@ -93,6 +92,10 @@ export function RecordPaymentDialog({
 
   if (!debtAccount) return null
 
+  // The account has a direction here, so the balance is phrased as a
+  // direction-aware figure (never a bare sign-only phrase).
+  const balanceDisplay = getDebtAccountBalanceDisplay(debtAccount)
+
   return (
     <Dialog
       open={open}
@@ -112,7 +115,7 @@ export function RecordPaymentDialog({
             <div className="rounded-xl border border-border/60 bg-surface p-4">
               <p className="text-sm text-muted-foreground">{t("detailPages.debt.payment.currentBalance")}</p>
               <p className={cn("mt-2 text-sm font-semibold", balanceDisplay.textClassName)}>
-                {t(balanceDisplay.phraseKey)}
+                {balanceDisplay.phrase}
               </p>
               <p className={cn("mt-1 font-mono text-2xl font-semibold", balanceDisplay.textClassName)} dir="ltr">
                 {t("detailPages.debt.currency")} {formatDebtAmount(balanceDisplay.amount)}

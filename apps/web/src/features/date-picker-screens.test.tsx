@@ -10,9 +10,8 @@ import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { DebtCreatePage } from "@/features/debts/debt-create-page"
-import { getDebtBalanceDisplay } from "@/features/debts/debt-utils"
+import { getDebtAccountBalanceDisplay } from "@/features/debts/debt-utils"
 import { DebtLedgerPanel } from "@/features/debts/debt-ledger-panel"
-import { EmployeeDebtPanel } from "@/features/debts/employee-debt-panel"
 import { RecordPaymentDialog } from "@/features/debts/record-payment-dialog"
 import { AddSalaryPaymentDialog } from "@/features/employees/add-salary-payment-dialog"
 import { TransferItemDialog } from "@/features/inventory/transfer-item-dialog"
@@ -32,7 +31,6 @@ const mocks = vi.hoisted(() => ({
   createSalaryPayment: vi.fn(async () => ({})),
   transferAsset: vi.fn(async () => ({})),
   transferConsumable: vi.fn(async () => ({})),
-  createEmployeeDebtEntry: vi.fn(async () => ({})),
 }))
 
 vi.mock("@tanstack/react-router", async (importActual) => {
@@ -61,15 +59,6 @@ vi.mock("@/features/app-shell/workspace-mutations", async (importActual) => ({
   useCreateSalaryPaymentMutation: () => ({ isPending: false, mutateAsync: mocks.createSalaryPayment }),
   useRecordDebtPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn(), mutate: vi.fn() }),
   useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn(), mutate: vi.fn() }),
-}))
-
-vi.mock("@/features/debts/employee-debt-hooks", async (importActual) => ({
-  ...(await importActual<typeof import("@/features/debts/employee-debt-hooks")>()),
-  useEmployeeDebtAccountQuery: () => ({ data: null }),
-  useCreateEmployeeDebtEntryMutation: () => ({
-    isPending: false,
-    mutateAsync: mocks.createEmployeeDebtEntry,
-  }),
 }))
 
 vi.mock("@/features/inventory/inventory-hooks", async (importActual) => ({
@@ -199,21 +188,6 @@ describe("AddSalaryPaymentDialog submits the picked day for a salary payment (#4
   })
 })
 
-describe("EmployeeDebtPanel submits the picked day for a worker debt entry (#428)", () => {
-  it("passes the canonical picked day as entryDate", async () => {
-    render(<EmployeeDebtPanel employeeId="employee-1" />)
-
-    fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "50" } })
-    pickDate()
-    fireEvent.click(screen.getByRole("button", { name: "حفظ الحركة" }))
-
-    await waitFor(() => expect(mocks.createEmployeeDebtEntry).toHaveBeenCalledTimes(1))
-    expect(mocks.createEmployeeDebtEntry).toHaveBeenCalledWith(
-      expect.objectContaining({ entryDate: PICKED_ISO }),
-    )
-  })
-})
-
 describe("DebtLedgerPanel submits the picked day for a ledger entry (#428)", () => {
   it("passes the canonical picked day as entryDate", async () => {
     const entries: DebtEntry[] = []
@@ -323,10 +297,10 @@ describe("DebtCreatePage sends the chosen direction with a positive opening amou
 
     expect(args.direction).toBe("RECEIVABLE")
     expect(args.openingBalanceDzd).toBe(500)
-    // The server stores the sent direction (default PAYABLE when omitted), so
-    // this is the phrase the resulting account renders.
+    // The create page always sends the direction, so this is the phrase the
+    // resulting account renders.
     expect(
-      getDebtBalanceDisplay({
+      getDebtAccountBalanceDisplay({
         currentBalance: args.openingBalanceDzd ?? 0,
         direction: args.direction ?? "PAYABLE",
       }).phrase,
@@ -342,7 +316,7 @@ describe("DebtCreatePage sends the chosen direction with a positive opening amou
     expect(args.direction).toBe("PAYABLE")
     expect(args.openingBalanceDzd).toBe(500)
     expect(
-      getDebtBalanceDisplay({
+      getDebtAccountBalanceDisplay({
         currentBalance: args.openingBalanceDzd ?? 0,
         direction: args.direction ?? "PAYABLE",
       }).phrase,

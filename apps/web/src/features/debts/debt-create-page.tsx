@@ -160,8 +160,8 @@ export function DebtCreatePage({
     if (!selectedPartyId || !hasValidAmount || !hasValidReasonDetail) return
 
     // The direction carries the meaning; the opening amount is always positive
-    // (a signed balance is never stored or shown). The server stores the
-    // direction we send and only falls back to PAYABLE when it is omitted.
+    // (a signed balance is never stored or shown). The direction is required by
+    // the contract, so it is always sent with the opening.
     await createDebtAccountMutation.mutateAsync({
       partyType,
       workerId: partyType === "INTERNAL_WORKER" ? selectedPartyId : null,

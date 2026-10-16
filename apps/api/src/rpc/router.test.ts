@@ -792,6 +792,7 @@ describe("RPC router", () => {
       await client.debtAccountsCreate({
         partyType: "INTERNAL_WORKER",
         workerId: worker.item.id,
+        direction: "PAYABLE",
         openingBalanceDzd: 1000,
       }),
     )
@@ -810,6 +811,7 @@ describe("RPC router", () => {
       await client.debtAccountsCreate({
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: externalCounterparty.item.id,
+        direction: "PAYABLE",
       }),
     )
 
@@ -817,7 +819,8 @@ describe("RPC router", () => {
       await client.debtAccountsCreate({
         partyType: "INTERNAL_WORKER",
         workerId: worker.item.id,
-        openingBalanceDzd: -300,
+        direction: "PAYABLE",
+        openingBalanceDzd: 300,
       }),
     )
 
@@ -825,6 +828,7 @@ describe("RPC router", () => {
       await client.debtAccountsCreate({
         partyType: "INTERNAL_WORKER",
         workerId: worker.item.id,
+        direction: "PAYABLE",
         openingBalanceDzd: 500,
       }),
     )
@@ -842,7 +846,7 @@ describe("RPC router", () => {
         note: "دفعة جزئية",
       }),
     )
-    expect(payment.item.balanceAfterDzd).toBe(950)
+    expect(payment.item.balanceAfterDzd).toBe(1550)
 
     const settlement = expectSuccess(await client.debtAccountsSettle({ id: internalAccount.item.id }))
     expect(settlement.item.entryType).toBe("SETTLEMENT")
@@ -853,7 +857,7 @@ describe("RPC router", () => {
         expect.objectContaining({ entryType: "SETTLEMENT" }),
         expect.objectContaining({ entryType: "PAYMENT" }),
         expect.objectContaining({ entryType: "OPENING" }),
-        expect.objectContaining({ entryType: "ADJUSTMENT", signedAmountDzd: -300 }),
+        expect.objectContaining({ entryType: "ADJUSTMENT", signedAmountDzd: 300 }),
         expect.objectContaining({ entryType: "ADJUSTMENT", signedAmountDzd: 500 }),
       ]),
     })
@@ -1647,6 +1651,7 @@ describe("RPC router", () => {
       client.debtAccountsCreate({
         partyType: "INTERNAL_WORKER",
         workerId: randomUUID(),
+        direction: "PAYABLE",
         openingBalanceDzd: 1000,
       }),
     ).resolves.toEqual({

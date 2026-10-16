@@ -7,9 +7,10 @@ import {
   formatDebtAmount,
   formatDebtMoney,
   getConsolidationRemainder,
-  getDebtAccountBalance,
-  getDebtBalanceDisplay,
+  getDebtAccountBalanceDisplay,
   getDebtDirectionLabel,
+  getNetDebtBalanceDisplay,
+  matchesDebtHubFilter,
   sortDebtAccounts,
 } from "./debt-utils"
 
@@ -21,9 +22,9 @@ const ARABIC_STATES = {
   settled: "مسوّى",
 } as const
 
-describe("getDebtBalanceDisplay (the single balance display helper)", () => {
+describe("getDebtAccountBalanceDisplay (the direction-aware balance helper)", () => {
   it("shows a positive PAYABLE balance as 'مستحق علينا' with a positive amount", () => {
-    const display = getDebtBalanceDisplay({ currentBalance: 600, direction: "PAYABLE" })
+    const display = getDebtAccountBalanceDisplay({ currentBalance: 600, direction: "PAYABLE" })
     expect(display.state).toBe("owedByUs")
     expect(display.phrase).toBe(ARABIC_STATES.owedByUs)
     expect(display.amount).toBe(600)
@@ -32,7 +33,7 @@ describe("getDebtBalanceDisplay (the single balance display helper)", () => {
   })
 
   it("shows an overpaid PAYABLE balance as 'رصيد مستحق لنا' with the magnitude", () => {
-    const display = getDebtBalanceDisplay({ currentBalance: -50_000, direction: "PAYABLE" })
+    const display = getDebtAccountBalanceDisplay({ currentBalance: -50_000, direction: "PAYABLE" })
     expect(display.state).toBe("creditWithUs")
     expect(display.phrase).toBe(ARABIC_STATES.creditWithUs)
     expect(display.amount).toBe(50_000)
@@ -40,30 +41,47 @@ describe("getDebtBalanceDisplay (the single balance display helper)", () => {
   })
 
   it("shows a positive RECEIVABLE balance as 'مستحق لنا' with a positive amount", () => {
-    const display = getDebtBalanceDisplay({ currentBalance: 600, direction: "RECEIVABLE" })
+    const display = getDebtAccountBalanceDisplay({ currentBalance: 600, direction: "RECEIVABLE" })
     expect(display.state).toBe("owedToUs")
     expect(display.phrase).toBe(ARABIC_STATES.owedToUs)
     expect(display.amount).toBe(600)
   })
 
   it("shows an overpaid RECEIVABLE balance as 'رصيد مستحق لهم' with the magnitude", () => {
-    const display = getDebtBalanceDisplay({ currentBalance: -600, direction: "RECEIVABLE" })
+    const display = getDebtAccountBalanceDisplay({ currentBalance: -600, direction: "RECEIVABLE" })
     expect(display.state).toBe("creditWithThem")
     expect(display.phrase).toBe(ARABIC_STATES.creditWithThem)
     expect(display.amount).toBe(600)
   })
 
   it("shows zero as the settled phrase, never 'مستحق علينا 0'", () => {
-    const display = getDebtBalanceDisplay({ currentBalance: 0, direction: "PAYABLE" })
+    const display = getDebtAccountBalanceDisplay({ currentBalance: 0, direction: "PAYABLE" })
     expect(display.state).toBe("settled")
     expect(display.phrase).toBe(ARABIC_STATES.settled)
     expect(display.amount).toBe(0)
     expect(display.phrase).not.toContain("0")
   })
 
-  it("falls back to sign-only phrasing for a netted party balance", () => {
-    expect(getDebtBalanceDisplay({ currentBalance: 2500 }).phrase).toBe(ARABIC_STATES.owedToUs)
-    expect(getDebtBalanceDisplay({ currentBalance: -1500 }).phrase).toBe(ARABIC_STATES.owedByUs)
+  it("refuses a direction-less account instead of falling back to the sign", () => {
+    expect(() =>
+      getDebtAccountBalanceDisplay({ currentBalance: 2500 } as unknown as { currentBalance: number; direction: "PAYABLE" }),
+    ).toThrow()
+  })
+})
+
+describe("getNetDebtBalanceDisplay (the sign-only net helper)", () => {
+  it("phrases a positive net as owed to us", () => {
+    expect(getNetDebtBalanceDisplay(2500).phrase).toBe(ARABIC_STATES.owedToUs)
+  })
+
+  it("phrases a negative net as owed by us with the magnitude", () => {
+    const display = getNetDebtBalanceDisplay(-1500)
+    expect(display.phrase).toBe(ARABIC_STATES.owedByUs)
+    expect(display.amount).toBe(1500)
+  })
+
+  it("phrases zero as settled", () => {
+    expect(getNetDebtBalanceDisplay(0).state).toBe("settled")
   })
 })
 
@@ -115,13 +133,13 @@ describe("getConsolidationRemainder", () => {
 describe("movement tone follows the account direction", () => {
   it("a positive PAYABLE movement reads as a debt increase (rose)", () => {
     expect(
-      getDebtBalanceDisplay({ currentBalance: 5000, direction: "PAYABLE" }).textClassName,
+      getDebtAccountBalanceDisplay({ currentBalance: 5000, direction: "PAYABLE" }).textClassName,
     ).toContain("rose")
   })
 
   it("a positive RECEIVABLE movement reads as an increase for them (emerald)", () => {
     expect(
-      getDebtBalanceDisplay({ currentBalance: 5000, direction: "RECEIVABLE" }).textClassName,
+      getDebtAccountBalanceDisplay({ currentBalance: 5000, direction: "RECEIVABLE" }).textClassName,
     ).toContain("emerald")
   })
 })
@@ -142,16 +160,45 @@ describe("getDebtDirectionLabel", () => {
     expect(getDebtDirectionLabel("RECEIVABLE")).toBe("مستحقات لنا")
   })
 
-  it("keeps the i18n state copy identical to the shared contract phrases", () => {
-    expect(ar.translation.debts.terminology.states).toEqual(DEBT_BALANCE_STATE_PHRASE)
+  it("renders the state phrase from the shared contract table (single source, no i18n copy)", () => {
+    expect(getDebtAccountBalanceDisplay({ currentBalance: 600, direction: "PAYABLE" }).phrase).toBe(
+      DEBT_BALANCE_STATE_PHRASE.owedByUs,
+    )
+    expect(getNetDebtBalanceDisplay(2500).phrase).toBe(DEBT_BALANCE_STATE_PHRASE.owedToUs)
   })
 
-  it("keeps the i18n direction and button copy aligned with the shared terms", () => {
-    const directions = ar.translation.debts.terminology.directions
-    expect(directions.payable).toBe(getDebtDirectionLabel("PAYABLE"))
-    expect(directions.receivable).toBe(getDebtDirectionLabel("RECEIVABLE"))
+  it("keeps the i18n button copy aligned with the shared terms", () => {
     expect(ar.translation.debts.terminology.buttons.recordPayment).toBe("تسجيل دفعة")
     expect(ar.translation.debts.terminology.buttons.recordDebt).toBe("تسجيل دين")
+  })
+})
+
+describe("matchesDebtHubFilter (the hub row predicate)", () => {
+  const openOwedToUs = { status: "OPEN" as const, balanceDzd: 500 }
+  const openOwedByUs = { status: "OPEN" as const, balanceDzd: -500 }
+  const settled = { status: "SETTLED" as const, balanceDzd: 0 }
+
+  it("all matches every row", () => {
+    expect(matchesDebtHubFilter(openOwedToUs, "all")).toBe(true)
+    expect(matchesDebtHubFilter(openOwedByUs, "all")).toBe(true)
+    expect(matchesDebtHubFilter(settled, "all")).toBe(true)
+  })
+
+  it("owed-to-us matches an open positive balance only", () => {
+    expect(matchesDebtHubFilter(openOwedToUs, "owed-to-us")).toBe(true)
+    expect(matchesDebtHubFilter(openOwedByUs, "owed-to-us")).toBe(false)
+    expect(matchesDebtHubFilter(settled, "owed-to-us")).toBe(false)
+  })
+
+  it("owed-by-us matches an open negative balance only", () => {
+    expect(matchesDebtHubFilter(openOwedByUs, "owed-by-us")).toBe(true)
+    expect(matchesDebtHubFilter(openOwedToUs, "owed-by-us")).toBe(false)
+    expect(matchesDebtHubFilter(settled, "owed-by-us")).toBe(false)
+  })
+
+  it("settled matches the settled status regardless of sign", () => {
+    expect(matchesDebtHubFilter(settled, "settled")).toBe(true)
+    expect(matchesDebtHubFilter(openOwedToUs, "settled")).toBe(false)
   })
 })
 
@@ -176,14 +223,6 @@ describe("formatDebtMoney (signed movement formatter)", () => {
     expect(formatDebtMoney(1500)).toBe("+1500")
     expect(formatDebtMoney(-300)).toBe("-300")
     expect(formatDebtMoney(0)).toBe("+0")
-  })
-})
-
-describe("getDebtAccountBalance", () => {
-  it("returns the account balance or 0 for missing", () => {
-    expect(getDebtAccountBalance({ currentBalance: 999 } as never)).toBe(999)
-    expect(getDebtAccountBalance(null)).toBe(0)
-    expect(getDebtAccountBalance(undefined)).toBe(0)
   })
 })
 

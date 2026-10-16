@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/form-controls"
 import { useVoidDebtEntryMutation } from "@/features/app-shell/mock-dashboard"
-import { formatDebtAmount, formatDebtMoney, getDebtBalanceDisplay } from "./debt-utils"
+import { formatDebtAmount, formatDebtMoney, getDebtAccountBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
 /**
@@ -31,7 +31,7 @@ export function VoidEntryDialog({
 }: {
   entry: DebtEntry | null
   /** The account's ledger direction, so an opening balance is phrased unambiguously. */
-  accountDirection?: DebtAccount["direction"] | null
+  accountDirection: DebtAccount["direction"]
   /** All LIVE PAYMENT entries on the same account (for cascade warning) */
   livePaymentEntries: DebtEntry[]
   open: boolean
@@ -60,7 +60,7 @@ export function VoidEntryDialog({
   if (!entry) return null
 
   const isOpeningBalance = entry.entryType === "OPENING"
-  const openingDisplay = getDebtBalanceDisplay({
+  const openingDisplay = getDebtAccountBalanceDisplay({
     currentBalance: entry.signedAmountDzd,
     direction: accountDirection,
   })
@@ -99,7 +99,7 @@ export function VoidEntryDialog({
             </div>
             {isOpeningBalance ? (
               <p className={cn("mt-1 text-xs font-medium", openingDisplay.textClassName)}>
-                {t(openingDisplay.phraseKey)}
+                {openingDisplay.phrase}
               </p>
             ) : null}
             <p className="mt-1 text-xs text-muted-foreground">
