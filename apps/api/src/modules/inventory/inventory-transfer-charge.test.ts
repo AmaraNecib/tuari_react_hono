@@ -8,6 +8,7 @@ import { createFifoLock } from "../../infrastructure/database/fifo-lock"
 import type { InventoryRepository } from "./inventory.repository"
 import type { InventoryAttachmentStorage } from "./inventory.storage"
 import { InventoryService } from "./inventory.service"
+import { InventoryError } from "./inventory.errors"
 import { AssetChargeService } from "./asset-charge.service"
 import { createInMemoryAssetChargeRepository } from "./adapters/in-memory-asset-charge.repository"
 import { createAssetChargeRepository } from "./adapters/sqlite-asset-charge.repository"
@@ -467,7 +468,8 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
     // rather than persist a total the safe-integer range cannot represent.
     const { service, chargeRepository, movements } = createInvoiceHarness()
 
-    expect(() =>
+    let thrown: unknown
+    try {
       service.createInvoiceGroup(
         {
           projectId: "project-a",
@@ -484,17 +486,59 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
           ],
         },
         AUDIT,
-      ),
-    ).toThrowError(/إجمالي الفاتورة يتجاوز الحد الأقصى/)
+      )
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(InventoryError)
+    expect((thrown as InventoryError).appError.code).toBe("BUSINESS_RULE")
+    expect((thrown as InventoryError).appError.message).toMatch(/إجمالي الفاتورة يتجاوز الحد الأقصى/)
 
     expect(chargeRepository._charges.size).toBe(0)
     expect(movements).toHaveLength(0)
   })
 
-  it("accepts a batch whose aggregate lands exactly on MAX_MONEY_DZD (#429)", () => {
+  it("refuses a SECOND entry that pushes the running total past the bound (#429)", () => {
+    // The guard is stateful across the entry loop: a first entry at the bound
+    // plus one more line must still be refused, proving `currentTotalDzd` is
+    // carried forward rather than each line checked in isolation.
     const { service, chargeRepository } = createInvoiceHarness()
 
-    service.createInvoiceGroup(
+    let thrown: unknown
+    try {
+      service.createInvoiceGroup(
+        {
+          projectId: "project-a",
+          entries: [
+            {
+              kind: "ASSET",
+              itemDefinitionId: "def-1",
+              projectId: "project-a",
+              assets: [{ assetName: "مثقاب 1", purchasePriceDzd: MAX_MONEY_DZD }],
+            },
+            {
+              kind: "ASSET",
+              itemDefinitionId: "def-1",
+              projectId: "project-a",
+              assets: [{ assetName: "مثقاب 2", purchasePriceDzd: 1 }],
+            },
+          ],
+        },
+        AUDIT,
+      )
+    } catch (error) {
+      thrown = error
+    }
+
+    expect((thrown as InventoryError).appError.code).toBe("BUSINESS_RULE")
+    expect(chargeRepository._charges.size).toBe(0)
+  })
+
+  it("accepts a batch whose aggregate lands exactly on MAX_MONEY_DZD, storing that total (#429)", () => {
+    const { service, chargeRepository } = createInvoiceHarness()
+
+    const result = service.createInvoiceGroup(
       {
         projectId: "project-a",
         entries: [
@@ -512,6 +556,7 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
       AUDIT,
     )
 
+    expect(result.item.group.grossTotalDzd).toBe(MAX_MONEY_DZD)
     expect(chargeRepository._charges.size).toBe(2)
   })
 })

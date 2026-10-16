@@ -88,7 +88,7 @@ function normalizeMoney(value: number, field: string) {
  * (issue #289 defense-in-depth). Used for the asset purchase price (#413) and
  * the invoice line/payment inputs (#429).
  */
-function normalizeMoneyWithinBound(value: number, field: string, message = "المبلغ خارج النطاق المسموح به.") {
+function normalizeMoneyWithinBound(value: number, field: string, message: string) {
   const parsed = nonNegativePaymentAmountSchema.safeParse(value)
   if (!parsed.success) {
     throw new InventoryError("VALIDATION", message, [{ field, message }])

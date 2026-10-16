@@ -10,6 +10,7 @@ import { ensureDatabaseSchema } from "../../infrastructure/database/schema";
 import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor";
 import { createInventoryRepository } from "./adapters/sqlite-inventory.repository";
 import { InventoryService } from "./inventory.service";
+import { InventoryError } from "./inventory.errors";
 import { InventoryAttachmentStorage } from "./inventory.storage";
 import { SqliteCompanyRepository } from "../company/company.repository";
 import { CompanyService } from "../company/company.service";
@@ -186,7 +187,8 @@ describe("Inventory debt signs (D4/D8)", () => {
       // outside the safe-integer range.
       const { supplier, warehouse, item } = setupPurchaseBase();
 
-      expect(() =>
+      let thrown: unknown;
+      try {
         env.service.createInvoiceGroup(
           {
             warehouseId: warehouse.id,
@@ -206,8 +208,14 @@ describe("Inventory debt signs (D4/D8)", () => {
             ],
           },
           AUDIT,
-        ),
-      ).toThrowError(/إجمالي الفاتورة يتجاوز الحد الأقصى/);
+        );
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(InventoryError);
+      expect((thrown as InventoryError).appError.code).toBe("BUSINESS_RULE");
+      expect((thrown as InventoryError).appError.message).toMatch(/إجمالي الفاتورة يتجاوز الحد الأقصى/);
 
       expect(env.inventoryRepo.listInvoiceGroups()).toHaveLength(0);
     });
