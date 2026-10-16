@@ -500,27 +500,28 @@ describe("InventoryService.createInvoiceGroup — a unit created on a project is
   })
 
   it("refuses a SECOND entry that pushes the running total past the bound (#429)", () => {
-    // The guard is stateful across the entry loop: a first entry at the bound
-    // plus one more line must still be refused, proving `currentTotalDzd` is
-    // carried forward rather than each line checked in isolation.
+    // A warehouse placement has no charge backstop, so the running gross-total
+    // guard is the only catch. The first entry lands at the bound and the
+    // second pushes past it: this proves `currentTotalDzd` is carried forward
+    // across the entry loop rather than each line checked in isolation.
     const { service, chargeRepository } = createInvoiceHarness()
 
     let thrown: unknown
     try {
       service.createInvoiceGroup(
         {
-          projectId: "project-a",
+          warehouseId: "wh-1",
           entries: [
             {
               kind: "ASSET",
               itemDefinitionId: "def-1",
-              projectId: "project-a",
+              warehouseId: "wh-1",
               assets: [{ assetName: "مثقاب 1", purchasePriceDzd: MAX_MONEY_DZD }],
             },
             {
               kind: "ASSET",
               itemDefinitionId: "def-1",
-              projectId: "project-a",
+              warehouseId: "wh-1",
               assets: [{ assetName: "مثقاب 2", purchasePriceDzd: 1 }],
             },
           ],
