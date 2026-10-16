@@ -29,8 +29,10 @@ describe("createWorkerSnapshotter", () => {
       driverPath,
       [
         "class FakeDatabase {",
-        "  pragma(source) {",
-        `    if (source === "cipher_version") return ${JSON.stringify(cipherVersion)};`,
+        "  pragma(source, options) {",
+        "    if (source === \"cipher_version\") {",
+        `      return options && options.simple ? ${JSON.stringify(cipherVersion)} : [{ cipher_version: ${JSON.stringify(cipherVersion)} }];`,
+        "    }",
         '    if (source === "integrity_check") return [{ integrity_check: "ok" }];',
         '    if (source === "user_version") return 0;',
         "    return [];",
@@ -166,7 +168,10 @@ describe("createWorkerSnapshotter", () => {
     const snapshot = createWorkerSnapshotter({
       databasePath,
       databaseKey: "secret",
-      resolveDriverModule: () => writeFakeDriver(""),
+      resolveDriverModule: (specifier) => {
+        expect(specifier).toBe("better-sqlite3-sqlcipher");
+        return writeFakeDriver("");
+      },
     });
 
     await expect(snapshot(join(tempRoot, "out.sqlite"))).rejects.toThrow(
@@ -179,7 +184,10 @@ describe("createWorkerSnapshotter", () => {
     const snapshot = createWorkerSnapshotter({
       databasePath,
       databaseKey: "secret",
-      resolveDriverModule: () => writeFakeDriver("4.5.6 community"),
+      resolveDriverModule: (specifier) => {
+        expect(specifier).toBe("better-sqlite3-sqlcipher");
+        return writeFakeDriver("4.5.6 community");
+      },
     });
 
     await expect(snapshot(join(tempRoot, "out.sqlite"))).resolves.toEqual({

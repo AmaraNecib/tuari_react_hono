@@ -124,7 +124,7 @@ export const DEFAULT_SNAPSHOT_TIMEOUT_MS = 30 * 60 * 1000;
  * anchors the driver to the API package instead of the worker's cwd, so the
  * worker loads the same binding (plain or SQLCipher) the API uses.
  */
-const resolveDriverModule = (specifier: string): string => {
+const defaultResolveDriverModule = (specifier: string): string => {
   /* v8 ignore start -- CJS-bundle branch: the ESM dev server and test runner never define `__filename`; see the doc comment above */
   const base: string = typeof __filename === "string" ? __filename : import.meta.url;
   /* v8 ignore stop */
@@ -144,7 +144,7 @@ type SnapshotWorkerMessage =
 export const createWorkerSnapshotter = (
   options: SnapshotWorkerOptions,
 ): BackupSnapshotter => {
-  const modulePath = (options.resolveDriverModule ?? resolveDriverModule)(
+  const modulePath = (options.resolveDriverModule ?? defaultResolveDriverModule)(
     options.databaseKey ? "better-sqlite3-sqlcipher" : "better-sqlite3",
   );
   const timeoutMs = options.timeoutMs ?? DEFAULT_SNAPSHOT_TIMEOUT_MS;

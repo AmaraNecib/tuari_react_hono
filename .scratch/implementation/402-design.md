@@ -295,3 +295,18 @@ trigger it must set), `portable:only`, and `APP_DB_KEY=""`. The
 `build-sidecar.mjs` call sites of `sqlcipherPlaintextWaiver` are
 wiring-inspected rather than unit-tested because the script runs at import; both
 call sites are behaviourally identical to the pre-round-3 code.
+
+## Round 5 — final confirmation at `2201983c`
+
+Four lenses re-ran at `2201983c`; all passed with no blockers. Two refinements
+from that round, fixed here:
+
+- The fake driver now honours better-sqlite3's pragma contract, returning a row
+  array unless `{ simple: true }` is passed, so the accepted-path test fails if
+  the worker's probe drops `{ simple: true }` — a wrong-but-present probe, not
+  only a deleted one.
+- The fake resolver asserts the specifier is `better-sqlite3-sqlcipher`, so
+  swapping the keyed driver choice fails the test.
+
+The default resolver is renamed `defaultResolveDriverModule` so it does not read
+as the option of the same name.
