@@ -177,10 +177,11 @@ Then load only the skills relevant to the change:
 | Playwright tests | `playwright-best-practices` |
 | Accessibility/keyboard/RTL | `accessibility` |
 
-### 6. Debate: High-assurance only
+### 6. Debate: Standard and High-assurance
 
-For High-assurance work, run `debate` against the fixed base SHA. Save the
-result as `.scratch/reviews/<issue-id>/<HEAD>-debate.md`.
+Run `debate` against the fixed base SHA for any Standard or High-assurance
+change — anything that alters behaviour. Skip it only for Lightweight work.
+Save the result as `.scratch/reviews/<issue-id>/<HEAD>-debate.md`.
 
 ### 7. Test audit: Standard and High-assurance
 
@@ -347,5 +348,5 @@ restored, the remote loop and the Merge rules below apply.
 | --- | --- | --- |
 | Lightweight | Truly non-reviewable files only | Guard Phase 1 → quality check → report |
 | Standard | Code, tests, CI, workflow, config, UI, API, skills | Guard Phase 1 → quality check → design pass → test-audit → code-review → debate → Guard Phase 2 → Guard Phase 3 |
-| High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard plus debate |
+| High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard, with the strictest reading of every finding |
 

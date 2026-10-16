@@ -17,7 +17,10 @@ The caller (feature-implement) provides:
 ## When to run
 
 After implementation is complete but before local verification and code-review.
-Only for High-assurance changes (authz core, permissions, denial, security).
+For Standard and High-assurance work — anything that alters behaviour, including
+code, tests, config, skills, and workflow. Skip it only for Lightweight work
+(truly non-reviewable files). Authz core, permissions, denial, and security still
+get the closest reading.
 
 ## How to run
 

@@ -77,6 +77,7 @@ get the docs-only exemption.
 
 **Standard** (code, CI, workflow, config):
 ```
+[ ] Debate evidence exists and is not stale
 [ ] Test-audit evidence exists and is not stale
 [ ] Code-review evidence exists and is not stale
 ```

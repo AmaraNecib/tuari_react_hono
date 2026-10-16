@@ -56,7 +56,7 @@ Guard Phase 1 — local pre-review checks
     ↓
 Quality check — relevant skills
     ↓
-Debate — High-assurance only
+Debate — Standard + High-assurance
     ↓
 Test audit — Standard + High-assurance
     ↓
@@ -128,7 +128,7 @@ Choose one tier:
 | --- | --- | --- |
 | Lightweight | Truly non-reviewable files only (`.gitignore`, `.gitattributes`, `LICENSE`, scratch) | Guard 1 → relevant quality check → report |
 | Standard | Code, tests, CI, workflow, config, skills, UI, API | Guard 1 → quality check → design pass → test audit → code review → debate → Guard 2 → Guard 3 |
-| High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard plus debate |
+| High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard, with the strictest reading of every finding |
 
 Workflow files and skills are Standard because they change future engineering
 behavior. Do not label them Lightweight to avoid review.
@@ -241,10 +241,11 @@ run both.
 | Playwright architecture/selectors | `playwright-best-practices` |
 | Accessibility/keyboard/RTL | `accessibility` |
 
-## 6. Debate: High-assurance only
+## 6. Debate: Standard and High-assurance
 
-Run the `debate` skill with the pinned base. Preserve critic and defender
-outputs at:
+Run the `debate` skill with the pinned base for any Standard or High-assurance
+change — anything that alters behaviour. Skip it only for Lightweight work.
+Preserve critic and defender outputs at:
 
 ```
 .scratch/reviews/<issue-id>/<head-sha>-debate.md

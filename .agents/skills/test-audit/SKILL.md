@@ -1,6 +1,6 @@
 ---
 name: test-audit
-description: "Audit test quality using 3 specialized sub-agents: edge case hunter, coverage analyst, and quality reviewer. Use after debate and before code-review — catches shallow test coverage that 'all tests pass' misses. High-assurance tier only."
+description: "Audit test quality using 3 specialized sub-agents: edge case hunter, coverage analyst, and quality reviewer. Use after debate and before code-review — catches shallow test coverage that 'all tests pass' misses. For Standard and High-assurance work."
 ---
 
 # Test Audit — 3-Agent Test Quality Review
@@ -15,7 +15,7 @@ The caller (feature-implement) provides:
 ## When to run
 
 After debate (implementation is finalized) and before code-review.
-Only for High-assurance changes.
+For Standard and High-assurance work. Skip it only for Lightweight work.
 
 ## How to run
 
