@@ -83,23 +83,27 @@ launches through the async workflow instead, and the launcher does not apply.
 
 ### Crew concurrency and landing policy
 
-- Use **six concurrent mutation lanes/worktrees by default**. The captain may
-  explicitly choose another positive cap for a batch; otherwise queue
-  additional work until a lane is handed off and its Herdr workspace is closed.
+- Use **three concurrent mutation lanes/worktrees by default**. Only the
+  captain may raise the cap, and the raise is per batch; otherwise wait for a
+  lane to finish and its Herdr workspace to be closed before starting the next.
+  Track waiting work outside git (`.scratch/queue.md`, which is gitignored) — a
+  queue is not a commit.
 - A lane may implement, validate, and report. The parent owns pushing and
   creating PRs; a lane must never merge anything.
 - A lane may propose deferring out-of-scope work to a follow-up PR, but it must
   ask the parent first with the exact finding, scope, dependency, and proposed
   destination. The parent decides whether to fix it in the current PR, defer
   it, or reorder/queue other worktrees. No silent deferrals.
-- **Never merge a PR from crew automation, even after a 5/5 review.** A 5/5
-  result authorizes at most opening/updating the PR and stopping. Merge is not a
+- **Never merge a PR from crew automation, even after a clean review.** A clean
+  review authorizes at most opening/updating the PR and stopping. Merge is not a
   crew deliverable.
-- After the parent receives a lane handoff, close a Herdr workspace only when
-  the lane is terminal and no follow-up work is expected. Keep a lane alive when
-  the parent will send another task; do not stop it just because the first
-  handoff arrived. If closing is useful, preserve the workspace/pane/session
-  identifiers in the handoff so the lane can be reopened or resumed later.
+- After the parent receives a lane handoff, **close the Herdr workspace**. A lane
+  whose deliverable exists — a pushed branch, an opened PR, a reported review —
+  is done with that view; keeping it idle holds a lane slot and leaves the fleet
+  ambiguous about what is still in flight. For more work on the same worktree,
+  launch a fresh lane on it (the worktree and branch persist) rather than
+  re-prompting a finished one. Preserve the workspace/pane/session identifiers
+  in the handoff so the context can be reopened if it is genuinely needed.
 
 ## Issue-closing convention (multi-PR issues)
 

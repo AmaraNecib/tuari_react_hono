@@ -8,8 +8,8 @@ when the GitHub repository is genuinely unreachable or the user asks for it.
 
 | Mode | Source of truth | Allowed review transport | Finish state |
 | --- | --- | --- | --- |
-| **Remote** (default) | Fresh `develop`, issue/PR data, CI | PR/CI plus Greptile CLI or hosted review | PR opened/updated; merged only when the user authorizes it |
-| Local-only (fallback) | Current checkout, local branches/worktrees, cached refs, `docs/local-issue-status.md` | Greptile CLI (`greptile review --json`) | Locally verified and ready for later integration; never "merged" or "closed" |
+| **Remote** (default) | Fresh `develop`, issue/PR data, CI | PR/CI plus the local review skills (debate, code-review, test-audit) | PR opened/updated; merged only when the user authorizes it |
+| Local-only (fallback) | Current checkout, local branches/worktrees, cached refs, `docs/local-issue-status.md` | the local review skills (debate, code-review, test-audit) | Locally verified and ready for later integration; never "merged" or "closed" |
 
 Selecting local-only mode is not a downgrade in code quality. It removes the
 GitHub transport dependency while retaining the local tests, two-axis review,
@@ -64,9 +64,7 @@ Code-review — local Standards + Spec axes
     ↓
 Guard Phase 2 — local pre-report checks
     ↓
-Greptile CLI review (`cli-review`)
-    ↓
-Greploop local fix/review loop when findings exist
+Local review — debate, code-review, test-audit
     ↓
 Guard Phase 3 — local pre-report gate
     ↓
@@ -286,10 +284,10 @@ available"; it must not guess. Save:
 .scratch/reviews/<issue-id>/<head-sha>-code-review.md
 ```
 
-Fix actionable findings, rerun local checks, then regenerate evidence. Greptile
+Fix actionable findings, rerun local checks, then regenerate evidence. Review
 findings are claims: verify them in the current code before changing anything.
 
-## 9. Guard Phase 2: local pre-Greptile gate
+## 9. Guard Phase 2: local pre-push gate
 
 Verify all applicable local checks, evidence freshness, and handoff state.
 Evidence filenames must contain the final reviewed `HEAD` SHA. If the code
@@ -301,62 +299,37 @@ to integrate. Never use `git add -A`; stage only named files when committing.
 
 ## 10. Local review on the pushed head (the Greptile step, replaced)
 
-Greptile is unavailable (`access_denied` locally, quota exhausted on the host), so
-this step is the local review skills against the pushed head — see the note at the
-top of this document. Run `debate`, `code-review` and `test-audit` in fresh
-context, fix every high and medium finding (and the lows unless provably wrong),
-and prove each behaviour fix with a test that fails on the pre-fix code. A verdict
-on an earlier commit does not count as a review of the pushed head.
+**Greptile is not part of the gate.** Greptile is unavailable (`access_denied`
+locally, quota exhausted on the host), so no step may depend on it and a reviewer
+must not report its absence as unfinished work. This step is the local review
+skills against the pushed head — see the note at the top of this document.
 
-Greptile review is now performed locally from the checkout, not by scraping PR
-comments. The CLI may send the committed diff to Greptile's service, but no
-GitHub repo, PR, branch push, or comment is required. The CLI excludes
-uncommitted files, so commit intended files explicitly or report the exact
-uncommitted review boundary; never claim those files were reviewed.
+Run `debate`, `code-review` and `test-audit` in fresh context. Fix every high and
+medium finding (and the lows unless provably wrong), and prove each behaviour fix
+with a test that fails on the pre-fix code. A verdict on an earlier commit does
+not count as a review of the pushed head. There is no CLI to install and no
+hosted review to request.
 
-First run `cli-review`:
-
-```bash
-git rev-parse --show-toplevel
-greptile whoami
-greptile review --json --branch <base-branch>
-```
-
-Always pass the pinned base branch/ref. Omitting it can make the CLI compare
-against the repository default branch and review an unrelated, enormous diff.
-If the CLI is missing, ask before installing it. If authentication is missing,
-ask the user to complete `greptile login`. Prefer JSON and preserve the raw
-result. A successful command only means the review ran; inspect its status,
-score, and findings.
-
-When findings are actionable, run `greploop --local`. It may iterate over local
-fixes and re-review the current checkout, up to the skill's maximum iteration
-count. It must not:
-
-- call `gh`, `glab`, or PR/MR APIs;
-- post comments or resolve remote threads;
-- push, shelve, or create a PR;
-- use `git add -A` or silently commit unrelated files;
-- continue from stale review output after a code change.
-
-Store evidence for a ticket as:
+Store each review under `.scratch/reviews/<issue-id>/`, with the reviewed HEAD
+SHA in the filename:
 
 ```
-.scratch/reviews/<issue-id>/<head-sha>-greptile-local.json
-.scratch/reviews/<issue-id>/<head-sha>-greptile-local.md
+.scratch/reviews/<issue-id>/<head-sha>-debate.md
+.scratch/reviews/<issue-id>/<head-sha>-code-review.md
+.scratch/reviews/<issue-id>/<head-sha>-test-audit.md
 ```
 
-The gate is clean only when the latest result reports confidence 5/5 with zero
-unresolved/actionable findings, or an equivalent explicit "no actionable
-findings" result. Check the current code before dismissing a false positive.
+The gate is clean only when all three are current for the final HEAD and report
+no unresolved/actionable findings. Check the current code before dismissing a
+false positive, and regenerate the evidence after any reviewable change.
 
 ## 11. Guard Phase 3: local pre-report
 
 In local-only mode, verify:
 
 - all applicable local checks are green;
-- test-audit/debate/code-review evidence exists and matches the final code;
-- the latest Greptile CLI result is for the final code and is clean;
+- test-audit/debate/code-review evidence exists, matches the final code, and is
+  clean;
 - deferred work is recorded in `docs/local-issue-status.md` or a follow-up
   design/ticket;
 - the report does not imply CI, PR, merge, or issue closure.
@@ -370,7 +343,7 @@ Run `capture-wisdom` when a finding or failure is durable. The report must state
 - ticket, branch/worktree, mode, base SHA, and final HEAD SHA;
 - checks and exact results;
 - local review evidence paths;
-- Greptile score/findings and local loop iterations;
+- local review verdicts (debate, code-review, test-audit) and any re-review iterations;
 - remaining work and whether it is shipped, local-only, deferred, or unknown;
 - explicit parent decisions for any deferral and any lane/worktree reorder.
 
@@ -381,7 +354,7 @@ Run `capture-wisdom` when a finding or failure is durable. The report must state
 - local verification passes;
 - required local quality reviews pass;
 - current evidence is present;
-- Greptile CLI/Greploop reports no actionable findings;
+- the local reviews (debate, code-review, test-audit) report no actionable findings;
 - branch and working-tree state is accurately reported.
 
 This is **not** a merge or issue closure.
@@ -390,16 +363,17 @@ This is **not** a merge or issue closure.
 
 Rebase/compare against a freshly fetched `develop`, rerun the complete local
 lifecycle, then use the PR/CI lifecycle. Verify the PR base and issue references
-before triggering any hosted review. Never infer issue closure from a title or
+before opening or updating a PR. Never infer issue closure from a title or
 cached state.
 
 ## Two-layer review model
 
-1. **Local agent review**: quality skills, test audit, debate where required, and
-   `code-review` against a pinned base.
-2. **Greptile CLI review**: independent automated review of the current local
-   checkout, with `greploop --local` for iterative fixes.
+1. **Local agent review**: quality skills (including the design pass), test
+   audit, debate where required, and `code-review` against a pinned base.
+2. **Local review of the pushed head**: `debate`, `code-review` and `test-audit`
+   re-run on the commit the merge would ship, with the reviewed HEAD SHA in the
+   evidence filename.
 
 The second layer is not a replacement for tests or the two code-review axes.
-Neither a green command nor a 5/5 score excuses unresolved inline/actionable
+Neither a clean command nor a clean verdict excuses unresolved actionable
 findings.

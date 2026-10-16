@@ -1,6 +1,6 @@
 ---
 name: feature-implement
-description: "Mandatory lifecycle orchestrator for implementing a local or remote issue. Uses local verification, code review, Greptile CLI review, and the local Greploop loop without requiring a pull request."
+description: "Mandatory lifecycle orchestrator for implementing a local or remote issue. Uses local verification, two-axis code review, test audit, and adversarial debate without requiring a pull request."
 ---
 
 # Feature Implementation Orchestration
@@ -19,11 +19,13 @@ local branches/worktrees, `docs/local-issue-snapshot.json`, and cached refs; do
 not use `gh issue`, `gh pr`, PR comments, `git fetch`, `git push`, or GitHub
 Actions, and stop at a local handoff instead of a PR.
 
-Crew policy: use at most six concurrent mutation worktrees. The parent may push
-and open/update a PR after the gates pass, and merges only under the Merge rules
-below (never on a lane's own initiative; a lane never merges at all). Close a Herdr workspace only when its lane is terminal
-and no follow-up is expected; keep reusable lanes alive and preserve
-workspace/pane/session identifiers before closing.
+Crew policy: use three concurrent mutation worktrees by default; only the
+captain may raise the cap, per batch. The parent may push and open/update a PR
+after the gates pass, and merges only under the Merge rules below (never on a
+lane's own initiative; a lane never merges at all). After a lane's deliverable
+exists (a pushed branch, an opened PR, a reported review), close its Herdr
+workspace and preserve the workspace/pane/session identifiers in the handoff;
+launch a fresh lane for more work on the same worktree.
 
 ## Mode selection and base SHA
 
@@ -200,7 +202,7 @@ The Standards and Spec axes must use local designs/specs and
 content. Save `.scratch/reviews/<issue-id>/<HEAD>-code-review.md`.
 
 Fix actionable findings, rerun the local checks, and regenerate evidence after
-any reviewable-file change. Greptile findings are claims: verify each against
+any reviewable-file change. Review findings are claims: verify each against
 current code before fixing. If a finding appears outside scope, ask
 the parent before deferring it; include the proposed follow-up, dependency
 impact, and whether it should change the current lane/worktree order.
@@ -234,59 +236,30 @@ test that fails on the pre-fix code. **A verdict on an earlier commit does not
 count** — the review must be on the pushed head, because that is the commit the
 merge would ship.
 
-Use both, in this order:
-
-1. Before pushing, run the CLI against the pinned base so findings are cheap to
-   fix in the checkout:
-
-```bash
-greptile whoami
-greptile review --json --branch <base-branch>
-```
-
-Pass the pinned base branch/ref; omitting it can compare against the repository
-default branch and review an unrelated, enormous diff. If the issue needs an
-iterative fix loop, run `greploop --local` after the first review. Re-run the
-local checks after every code fix.
-
-2. After pushing, the hosted review runs on the PR. Read its score and **every**
-   finding from the PR — the summary comment and the inline review comments are
-   different endpoints:
-
-```bash
-gh pr view <n> --json comments                     # summary + confidence score
-gh api repos/{owner}/{repo}/pulls/<n>/comments \  # inline, file-level findings
-  --paginate --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'
-```
-
-   Fix real findings with a new commit, request a fresh review, and never claim
-   a clean verdict from a stale one: match the reviewed commit to the current
-   head.
-
-Save the raw CLI result and a concise summary under:
+Run the three skills in fresh context. Save each result under
+`.scratch/reviews/<issue-id>/`, with the reviewed HEAD SHA in the filename:
 
 ```
-.scratch/reviews/<issue-id>/<HEAD>-greptile-local.json
-.scratch/reviews/<issue-id>/<HEAD>-greptile-local.md
+.scratch/reviews/<issue-id>/<HEAD>-debate.md
+.scratch/reviews/<issue-id>/<HEAD>-code-review.md
+.scratch/reviews/<issue-id>/<HEAD>-test-audit.md
 ```
 
-The local Greptile gate passes only when the latest result is clean: confidence
-5/5 with zero unresolved/actionable findings, or an equivalent CLI result that
-explicitly reports no actionable findings. A successful command by itself is
-not a clean verdict.
+The gate is clean only when all three are current for the final HEAD and report
+no unresolved/actionable findings. Check the current code before dismissing a
+false positive, and regenerate the evidence after any reviewable change.
 
 ### 11. Guard Phase 3, then the remote loop
 
 **Phase 3a — local gate, before any push.** All of these must hold:
 
 - contracts/typecheck/lint/API/web/Rust checks are green as applicable
-- code-review, test-audit, and debate evidence is present and current
-- the CLI Greptile result is clean **on the final local HEAD**
+- code-review, test-audit, and debate evidence is present, current **on the
+  final local HEAD**, and clean
 - deferred work has an explicit parent decision; lanes never defer silently
 
-**Phase 3b — the remote loop, in this order.** Hosted CI and the hosted review
-cannot exist before the PR does, so they are verified here, not in the pre-push
-gate:
+**Phase 3b — the remote loop, in this order.** Hosted CI cannot exist before the
+PR does, so it is verified here, not in the pre-push gate:
 
 1. Push the branch (`git push origin <branch>`) with explicit staging.
 2. Open or update the PR with the issue link (`Closes #N` only when the whole
@@ -299,21 +272,13 @@ gate:
    than none.
 3. Wait for the hosted CI checks on the pushed head; re-run flaky
    infrastructure jobs rather than changing unrelated code.
-4. Read the hosted review on that head — summary **and** inline findings:
-
-```bash
-gh pr view <n> --json comments                     # review summary + score
-gh api repos/{owner}/{repo}/pulls/<n>/comments \  # inline, file-level findings
-  --paginate --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'
-```
-
-5. Match the review's "Last reviewed commit" to the current head. After every
-   fix push, request a fresh review (`@greptile-apps review`) and wait for the
-   new verdict — an automatic review runs on PR creation, later commits need
-   the request.
-6. Repeat 3-5 until CI is green and the review on the current head is clean.
-7. Report the PR URL, the check states, and the Greptile score, then stop.
-   A **lane** never merges. The **parent** merges only under the Merge
+4. Re-run `debate`, `code-review` and `test-audit` on the pushed head and update
+   the evidence. The local review is the review of record; there is no hosted
+   review to request or poll.
+5. Repeat 3-4 until CI is green on the current head and the local review
+   evidence is current and clean.
+6. Report the PR URL, the check states, and the local review verdicts, then
+   stop. A **lane** never merges. The **parent** merges only under the Merge
    rules below — never on a lane's own initiative.
 
 In **local-only mode**, report the local state and stop; do not wait for CI or
@@ -326,7 +291,7 @@ Run `capture-wisdom` for any durable lesson. Report:
 - ticket and local branch/worktree
 - base SHA and final HEAD SHA
 - checks run and their results
-- local Greptile confidence/findings and loop iterations
+- local review verdicts (debate, code-review, test-audit) and any re-review iterations
 - evidence paths
 - deferred items and whether they are shipped, local-only, or unverified
 
@@ -335,12 +300,12 @@ Run `capture-wisdom` for any durable lesson. Report:
 The **parent** may merge a PR only when every one of these holds:
 
 1. The user has authorized merging — an explicit "merge it", or a standing
-   instruction such as "merge when CI is green and Greptile is 5/5". Absent
-   that, report and stop.
+   instruction such as "merge when CI is green and the local reviews are clean".
+   Absent that, report and stop.
 2. Every required CI check is green **on the pushed head**.
-3. Greptile is clean **on that same head** (5/5, or an explicit no-actionable
-   findings verdict). A verdict on an older commit does not count — check the
-   reviewed SHA against `headRefOid`, and re-request a review after each push.
+3. `debate`, `code-review` and `test-audit` are clean **on that same head**. A
+   verdict on an older commit does not count — check the reviewed SHA against
+   `headRefOid`, and re-run the reviews after each push.
 4. No blocker remains (unresolved finding, failing gate, unknown deferral).
 
 ```bash
@@ -362,18 +327,18 @@ state instead of merging.
 | No code review | Step 8 |
 | Guard Phase 2 not run | Step 9 |
 | Not pushed, or PR not opened/updated | Step 10 |
-| Local Greptile not clean | Step 10 (CLI gate) |
-| CI red, or Greptile stale/not clean on the head | Step 11 |
-| All green and 5/5 | Step 12 (capture wisdom + report) → Merge rules (parent only) |
+| Local review findings unresolved | Step 10 (local review gate) |
+| CI red, or local review evidence stale on the head | Step 11 |
+| All green and reviews clean | Step 12 (capture wisdom + report) → Merge rules (parent only) |
 
 ## Local-only completion rules
 
-A local implementation is ready for later integration, not merged, only when the gates above pass, the review evidence is current, the latest Greptile result is clean, and the working tree state is reported accurately.
+A local implementation is ready for later integration, not merged, only when the gates above pass, the review evidence is current and clean, and the working tree state is reported accurately.
 
 Never claim an issue is closed or merged while GitHub is unavailable. When the
 remote is restored, rebase/compare against the fresh `develop`, rerun all local
-checks and Greptile review, then push/open or update the remote PR only with the
-user's approval. In local-only mode nothing is merged; once the remote is
+checks and the local reviews, then push/open or update the remote PR only with
+the user's approval. In local-only mode nothing is merged; once the remote is
 restored, the remote loop and the Merge rules below apply.
 
 ## Review tiers
@@ -381,6 +346,6 @@ restored, the remote loop and the Merge rules below apply.
 | Tier | Applies to | Required review |
 | --- | --- | --- |
 | Lightweight | Truly non-reviewable files only | Guard Phase 1 → quality check → report |
-| Standard | Code, tests, CI, workflow, config, UI, API, skills | Guard Phase 1 → quality check → test-audit → code-review → Guard Phase 2 → CLI Greptile → Guard Phase 3 |
+| Standard | Code, tests, CI, workflow, config, UI, API, skills | Guard Phase 1 → quality check → design pass → test-audit → code-review → debate → Guard Phase 2 → Guard Phase 3 |
 | High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard plus debate |
 
