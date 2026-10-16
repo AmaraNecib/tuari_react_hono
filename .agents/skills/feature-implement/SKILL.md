@@ -225,7 +225,8 @@ the hosted review is out of quota, so nothing may depend on it and its absence i
 not a gap to report. This step is the local review skills instead:
 
 - **`debate`** — critic and defender in fresh context, then synthesize. Run it on
-  every PR whose diff changes behaviour, not only the high-assurance tier.
+  every Standard and High-assurance change — anything that alters behaviour. It
+  is not High-assurance-only; skip it only for Lightweight work.
 - **`code-review`** — Standards (does it follow the repo's rules?) and Spec (does
   it do what the issue asked?), in parallel fresh contexts.
 - **`test-audit`** — do the tests prove the behaviour, and would they fail if the
@@ -347,6 +348,6 @@ restored, the remote loop and the Merge rules below apply.
 | Tier | Applies to | Required review |
 | --- | --- | --- |
 | Lightweight | Truly non-reviewable files only | Guard Phase 1 → quality check → report |
-| Standard | Code, tests, CI, workflow, config, UI, API, skills | Guard Phase 1 → quality check → design pass → test-audit → code-review → debate → Guard Phase 2 → Guard Phase 3 |
+| Standard | Code, tests, CI, workflow, config, UI, API, skills | Guard Phase 1 → quality check → design pass → debate → test-audit → code-review → Guard Phase 2 → Guard Phase 3 |
 | High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard, with the strictest reading of every finding |
 

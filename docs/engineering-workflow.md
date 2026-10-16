@@ -127,7 +127,7 @@ Choose one tier:
 | Tier | Applies to | Required lifecycle |
 | --- | --- | --- |
 | Lightweight | Truly non-reviewable files only (`.gitignore`, `.gitattributes`, `LICENSE`, scratch) | Guard 1 → relevant quality check → report |
-| Standard | Code, tests, CI, workflow, config, skills, UI, API | Guard 1 → quality check → design pass → test audit → code review → debate → Guard 2 → Guard 3 |
+| Standard | Code, tests, CI, workflow, config, skills, UI, API | Guard 1 → quality check → design pass → debate → test audit → code review → Guard 2 → Guard 3 |
 | High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard, with the strictest reading of every finding |
 
 Workflow files and skills are Standard because they change future engineering

@@ -57,9 +57,9 @@ and tells each lane exactly which skills to load.
   Visible lanes launched by `launch-lane.mjs` also receive the `crew_report`
   tool, which writes a handoff artifact and sends a completion/blocker message
   directly to the parent pane. Verified recipe (Herdr, any OS): see Launch.
-  Project policy is **three** concurrent lanes. Never start a new lane while more
-  than three are open: the work waits for a lane to finish and be closed, it does
-  not push the cap. Only the captain may raise it, and the raise is per batch.
+  Project policy is **three** concurrent lanes. Never start a new lane while
+  three or more are open: the work waits for a lane to finish and be closed, it
+  does not push the cap. Only the captain may raise it, and the raise is per batch.
   Track the waiting work outside git (`.scratch/queue.md`, which is gitignored) —
   a queue is not a commit.
 - **Headless children require explicit captain opt-in.** Cheaper, disposable,
@@ -345,7 +345,8 @@ When the captain says "run the lanes for real", follow this order:
 7. **Guard + land.** Run the project's guard (or the inline check set) per
    lane, then push + open/update one PR per lane (branch already exists in the
    worktree) with the review evidence linked, wait for CI green, and hand the
-   captain full PR URLs. A 5/5 review is the stop condition, not merge
+   captain full PR URLs. Clean local reviews (`debate`, `code-review`,
+   `test-audit`) on the pushed head are the stop condition, not merge
    permission: crew automation must NEVER merge. After the parent receives the
    handoff and creates/updates the PR, **close the Herdr workspace**. A lane whose
    deliverable exists — a pushed branch, an opened PR, a reported review — is done
